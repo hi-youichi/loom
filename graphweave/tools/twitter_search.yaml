@@ -1,0 +1,38 @@
+name: twitter_search
+description: |
+  Search Twitter tweets via advanced search. Returns up to 20 tweets per page as JSON (tweets array,
+  has_next_page, next_cursor). Use next_cursor for the next page.
+
+  Query syntax (combine with spaces, OR must be uppercase):
+  - Keywords: AI, "exact phrase", puppy OR kitten
+  - Users: from:elonmusk (by user), to:NASA (replies to), @NASA (mentions)
+  - Time: since:2024-01-01, until:2024-12-31
+  - Filters: filter:images, filter:videos, filter:links, lang:en
+  - Engagement: min_faves:10, min_retweets:5
+  - Hashtag: #AI, Cashtag: $TSLA
+  - Exclude: -love, -filter:retweets
+
+  Examples: "from:elonmusk AI", "lang:en min_faves:100", "since:2024-06-01 filter:images"
+input_schema:
+  type: object
+  properties:
+    query:
+      type: string
+      description: |
+        Search query using Twitter advanced syntax. Required. Examples:
+        - "AI" (keyword)
+        - "from:elonmusk" (tweets by user)
+        - "lang:en since:2024-01-01" (English, after date)
+        - "min_faves:100 -filter:retweets" (popular, exclude RTs)
+    query_type:
+      type: string
+      description: |
+        Sort order. Latest = most recent first. Top = by engagement (likes, RTs).
+        Default Latest for real-time; use Top for popular tweets.
+      enum: [Latest, Top]
+    cursor:
+      type: string
+      description: |
+        Pagination cursor from previous response next_cursor. Omit or use empty string for first page.
+  required:
+    - query

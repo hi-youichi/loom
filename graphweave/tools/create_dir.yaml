@@ -1,0 +1,16 @@
+name: create_dir
+description: |
+  Create a directory; parent directories are created if needed. Path is relative to the
+  working folder.
+input_schema:
+  type: object
+  properties:
+    path:
+      type: string
+      description: Directory path relative to working folder.
+    exist_ok:
+      type: boolean
+      description: If true, no error when directory already exists. Default true.
+      default: true
+  required:
+    - path

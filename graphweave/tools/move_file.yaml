@@ -1,0 +1,15 @@
+name: move_file
+description: |
+  Move or rename a file or directory. Both source and target must be under the working folder.
+input_schema:
+  type: object
+  properties:
+    source:
+      type: string
+      description: Source path relative to working folder.
+    target:
+      type: string
+      description: Target path relative to working folder.
+  required:
+    - source
+    - target

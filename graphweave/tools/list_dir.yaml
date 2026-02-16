@@ -1,0 +1,12 @@
+name: list_dir
+description: |
+  List entries (files and subdirectories) in a directory. Path is relative to the working
+  folder. Use '.' for the working folder root.
+input_schema:
+  type: object
+  properties:
+    path:
+      type: string
+      description: Directory path relative to working folder (use '.' for working folder root).
+  required:
+    - path

@@ -1,0 +1,25 @@
+name: glob
+description: |
+  - Fast file pattern matching tool that works with any codebase size
+  - Supports glob patterns like "**/*.js" or "src/**/*.ts"
+  - Returns matching file paths sorted by modification time
+  - Use this tool when you need to find files by name patterns
+  - When you are doing an open-ended search that may require multiple rounds of globbing and grepping, use the Task tool instead
+  - You have the capability to call multiple tools in a single response. It is always better to speculatively perform multiple searches as a batch that are potentially useful.
+
+input_schema:
+  type: object
+  properties:
+    pattern:
+      type: string
+      description: "Glob pattern relative to path (e.g. '*.rs', '**/*.yaml'). Use '**' for recursive."
+    path:
+      type: string
+      description: "Directory under working folder to search in. Default '.'."
+    include:
+      type: array
+      items:
+        type: string
+      description: "Optional list of patterns; only include paths matching any of these (extra filter)."
+  required:
+    - pattern

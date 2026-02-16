@@ -1,0 +1,23 @@
+name: web_fetcher
+description: |
+  Fetch or send content to a URL. Use this tool to retrieve web pages (GET), call APIs with a
+  body (POST), or other HTTP-accessible content. Optional method (default GET), body (string or
+  JSON object), headers (object). Returns the response body as text.
+input_schema:
+  type: object
+  properties:
+    url:
+      type: string
+      description: The URL to request. Must be a valid HTTP/HTTPS URL.
+    method:
+      type: string
+      description: HTTP method. One of GET, POST. Default is GET.
+      enum: [GET, POST]
+    body: {}
+    headers:
+      type: object
+      description: Optional HTTP headers as key-value pairs (string keys and values).
+      additionalProperties:
+        type: string
+  required:
+    - url

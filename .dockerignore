@@ -1,0 +1,43 @@
+# Exclude from Docker build context (faster builds, smaller images)
+
+# Git
+.git
+.gitignore
+
+# Build output
+target/
+
+# Third-party (not in repo)
+thirdparty/
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+
+# Docs and IDE (not needed for build)
+docs/
+idea/
+*.md
+!README.md
+
+# Tests (optional: remove if you want tests in image)
+# tests/ - keep for cargo check, but exclude large fixtures if any
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage and debug
+coverage/
+*.profraw
+*.profdata
+**/mutants.out*/
+
+# Database files (local dev)
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+lancedb_data/
+graphweave/data/

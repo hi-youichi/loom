@@ -1,0 +1,14 @@
+name: remember
+description: |
+  Write a key-value pair to long-term memory. Call when the user expresses a preference, the
+  user explicitly asks to remember something, or existing memory should be updated.
+input_schema:
+  type: object
+  properties:
+    key:
+      type: string
+      description: Memory key
+    value: {}
+  required:
+    - key
+    - value

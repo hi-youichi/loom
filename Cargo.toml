@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+members = [
+    "graphweave",
+    "graphweave-examples",
+    "graphweave-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["graphweave contributors"]
+license = "MIT"
+
+[workspace.dependencies]
+tokio = { version = "1.0", features = ["full"] }
+async-trait = "0.1"
+thiserror = "1.0"
+dotenv = "0.15"
+futures = "0.3"
+clap = { version = "4", features = ["derive"] }
+tokio-stream = { version = "0.1", features = ["sync"] }

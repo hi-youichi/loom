@@ -1,0 +1,12 @@
+name: recall
+description: |
+  Read a value by key from long-term memory. Call when you need to retrieve something
+  previously stored with remember.
+input_schema:
+  type: object
+  properties:
+    key:
+      type: string
+      description: Memory key
+  required:
+    - key

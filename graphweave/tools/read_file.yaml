@@ -1,0 +1,16 @@
+name: read_file
+description: |
+  Read entire text content of a file. Path is relative to the working folder. Use for text
+  files; binary files may be truncated or unsupported.
+input_schema:
+  type: object
+  properties:
+    path:
+      type: string
+      description: File path relative to working folder.
+    encoding:
+      type: string
+      description: Optional encoding (e.g. 'utf-8'). Default utf-8.
+      default: utf-8
+  required:
+    - path

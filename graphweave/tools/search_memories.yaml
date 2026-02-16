@@ -1,0 +1,13 @@
+name: search_memories
+description: |
+  Search long-term memories by query (optional) and limit (optional). Call when you need to
+  find relevant past information before answering or acting.
+input_schema:
+  type: object
+  properties:
+    query:
+      type: string
+      description: Search query (optional)
+    limit:
+      type: integer
+      description: Max results (optional)

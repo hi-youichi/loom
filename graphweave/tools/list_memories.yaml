@@ -1,0 +1,7 @@
+name: list_memories
+description: |
+  List all memory keys in the current namespace. Call when you need to see what has been
+  stored before recalling or searching.
+input_schema:
+  type: object
+  properties: {}

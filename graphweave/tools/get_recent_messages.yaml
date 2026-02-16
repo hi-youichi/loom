@@ -1,0 +1,11 @@
+name: get_recent_messages
+description: |
+  (Optional) Get last N messages from current conversation. Use only when you need to
+  explicitly re-read or summarize recent turns (e.g. when prompt does not include full
+  history). Most ReAct flows can omit this tool.
+input_schema:
+  type: object
+  properties:
+    limit:
+      type: integer
+      description: Max number of messages to return (optional)

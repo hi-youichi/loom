@@ -1,0 +1,13 @@
+# Helve product prompts: workdir rules and approval text. Canonical source.
+# Placeholder: {workdir} is replaced at runtime with the working folder path.
+
+workdir_section_template: |
+  WORKING FOLDER & FILE RULES:
+  - Working folder path: {workdir}
+  - You may ONLY use the provided file tools (list_dir, read_file, write_file, move_file, delete_file, create_dir) to operate inside this directory and its subdirectories.
+  - Do NOT access paths outside the working folder. Any path you use must be under the above folder.
+  - FILE OUTPUT: When the user explicitly asks you to write/save a document, report, or content to a file (e.g., "write to file", "save to file", "write a report to file"), you MUST call write_file to save the content BEFORE giving FINAL_ANSWER. Do NOT give FINAL_ANSWER with only text—call write_file first, then report the file path in your final answer.
+
+approval_destructive: "\n\nAPPROVAL: Before executing delete_file or remove_dir, output your plan and wait for the user to confirm (e.g. \"Proceed?\" or \"Continue?\"). Do not perform the deletion until the user approves."
+
+approval_always: "\n\nAPPROVAL: Before executing delete_file, remove_dir, or bulk write_file operations, output your plan and wait for the user to confirm. Do not perform these operations until the user approves."

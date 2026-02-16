@@ -1,0 +1,16 @@
+name: delete_file
+description: |
+  Delete a file or an empty directory. Path must be under the working folder. For non-empty
+  directories, use recursive option with caution.
+input_schema:
+  type: object
+  properties:
+    path:
+      type: string
+      description: File or directory path relative to working folder.
+    recursive:
+      type: boolean
+      description: If true, remove directory and its contents. Default false.
+      default: false
+  required:
+    - path
