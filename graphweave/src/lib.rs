@@ -115,6 +115,7 @@
 
 pub mod cache;
 pub mod channels;
+pub mod model_spec;
 pub mod config;
 pub mod dup;
 pub mod error;
@@ -163,6 +164,10 @@ pub use helve::{
 };
 pub use llm::ChatOpenAI;
 pub use llm::{LlmClient, LlmResponse, LlmUsage, MockLlm, ToolChoiceMode};
+pub use model_spec::{
+    CachedResolver, CompositeResolver, ConfigOverride, LocalFileResolver, ModelLimitResolver,
+    ModelSpec, ModelsDevResolver, ResolverRefresher,
+};
 pub use managed::{IsLastStep, ManagedValue};
 pub use memory::Embedder;
 #[cfg(feature = "lance")]
