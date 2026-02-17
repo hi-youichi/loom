@@ -1,7 +1,4 @@
-//! Builds checkpointer, store, runnable_config and tool_source from [`ReactBuildConfig`](super::config::ReactBuildConfig).
-//!
-//! Used by CLI or other callers that hold a [`ReactBuildConfig`](super::config::ReactBuildConfig).
-//! Requires `sqlite` and `mcp` features (SqliteSaver, SqliteStore, McpToolSource).
+//! Builds checkpointer, store, runnable_config and tool_source from ReactBuildConfig.
 
 mod context;
 mod error;
@@ -15,12 +12,12 @@ use crate::dup::DupRunner;
 use crate::error::AgentError;
 use crate::got::GotRunner;
 use crate::memory::{JsonSerializer, RunnableConfig, SqliteSaver};
-use crate::react::ReactRunner;
 use crate::state::ReActState;
 use crate::tot::TotRunner;
 use crate::LlmClient;
 
 use super::config::ReactBuildConfig;
+use super::runner::ReactRunner;
 use crate::prompts::AgentPrompts;
 use llm::build_default_llm_with_tool_source;
 use store::build_store;
@@ -33,7 +30,6 @@ fn to_agent_error(e: impl std::fmt::Display) -> AgentError {
     AgentError::ExecutionFailed(e.to_string())
 }
 
-/// Builds checkpointer when thread_id is set; otherwise returns None.
 fn build_checkpointer(
     config: &ReactBuildConfig,
     db_path: &str,
@@ -48,7 +44,6 @@ fn build_checkpointer(
     ))
 }
 
-/// Builds runnable_config when thread_id or user_id is set; otherwise returns None.
 fn build_runnable_config(config: &ReactBuildConfig) -> Option<RunnableConfig> {
     if config.thread_id.is_none() && config.user_id.is_none() {
         return None;
@@ -62,10 +57,6 @@ fn build_runnable_config(config: &ReactBuildConfig) -> Option<RunnableConfig> {
     })
 }
 
-/// Builds checkpointer, store, runnable_config and tool_source from the given config.
-///
-/// Requires `sqlite` and `mcp` features. Callers build [`ReactBuildConfig`](super::config::ReactBuildConfig)
-/// from their own config and pass it here.
 pub async fn build_react_run_context(
     config: &ReactBuildConfig,
 ) -> Result<ReactRunContext, AgentError> {
@@ -84,16 +75,6 @@ pub async fn build_react_run_context(
     })
 }
 
-/// Builds a [`ReactRunner`](crate::react::ReactRunner) from config and optional LLM.
-///
-/// When `llm` is `Some`, that client is used. When `llm` is `None`, the library builds a default
-/// LLM from config if `openai_api_key` and `model` (or env) are set (requires `openai` feature);
-/// otherwise returns [`BuildRunnerError::NoLlm`].
-///
-/// Uses [`build_react_run_context`](build_react_run_context) for persistence and tool source,
-/// then compiles the ReAct graph with optional checkpointer. System prompt is resolved in order:
-/// `config.system_prompt` → `agent_prompts.react_system_prompt()` when `agent_prompts` is `Some` →
-/// in-code [`REACT_SYSTEM_PROMPT`](crate::react::REACT_SYSTEM_PROMPT).
 pub async fn build_react_runner(
     config: &ReactBuildConfig,
     llm: Option<Box<dyn LlmClient>>,
@@ -123,7 +104,6 @@ pub async fn build_react_runner(
     Ok(runner)
 }
 
-/// Wraps `Box<dyn LlmClient>` so it can be stored in `Arc<dyn LlmClient>`.
 struct BoxedLlmClient(Box<dyn LlmClient>);
 
 #[async_trait::async_trait]
@@ -143,9 +123,6 @@ impl LlmClient for BoxedLlmClient {
     }
 }
 
-/// Builds a [`DupRunner`](crate::dup::DupRunner) from config and optional LLM.
-///
-/// Same as [`build_react_runner`] but returns a DUP runner (understand → plan → act → observe).
 pub async fn build_dup_runner(
     config: &ReactBuildConfig,
     llm: Option<Box<dyn LlmClient>>,
@@ -181,10 +158,6 @@ pub async fn build_dup_runner(
     Ok(runner)
 }
 
-/// Builds a [`TotRunner`](crate::tot::TotRunner) from config and optional LLM.
-///
-/// Same as [`build_react_runner`] but returns a ToT runner (think_expand → think_evaluate → act | end).
-/// Uses default max_depth=5 and candidates_per_step=3 when not configured.
 pub async fn build_tot_runner(
     config: &ReactBuildConfig,
     llm: Option<Box<dyn LlmClient>>,
@@ -221,14 +194,11 @@ pub async fn build_tot_runner(
         verbose,
         max_depth,
         candidates_per_step,
-        false, // research_quality_addon: opt-in via config when needed
+        false,
     )?;
     Ok(runner)
 }
 
-/// Builds a [`GotRunner`](crate::got::GotRunner) from config and optional LLM.
-///
-/// Same as [`build_react_runner`] but returns a GoT runner (plan_graph → execute_graph).
 pub async fn build_got_runner(
     config: &ReactBuildConfig,
     llm: Option<Box<dyn LlmClient>>,
@@ -264,9 +234,6 @@ pub async fn build_got_runner(
     Ok(runner)
 }
 
-/// Builds a [`ReactRunner`](crate::react::ReactRunner) with an OpenAI client from explicit config and model.
-///
-/// Convenience when you already have an [`OpenAIConfig`](async_openai::config::OpenAIConfig).
 pub async fn build_react_runner_with_openai(
     config: &ReactBuildConfig,
     openai_config: async_openai::config::OpenAIConfig,

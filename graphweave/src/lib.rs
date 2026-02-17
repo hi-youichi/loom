@@ -39,8 +39,8 @@
 //! ## Main modules
 //!
 //! - [`graph`]: [`StateGraph`], [`CompiledStateGraph`], [`Node`], [`Next`], [`RunContext`] — build and run state graphs.
-//! - [`react`]: ReAct nodes ([`ThinkNode`], [`ActNode`], [`ObserveNode`]), [`run_react_graph`], [`tools_condition`], [`ReactRunner`].
-//! - [`react_builder`]: [`ReactBuildConfig`], [`build_react_runner`] (recommended), [`build_react_run_context`].
+//! - [`agent`]: [`agent::react`] — ReAct nodes ([`ThinkNode`], [`ActNode`], [`ObserveNode`]), [`run_react_graph`],
+//!   [`tools_condition`], [`ReactRunner`], [`ReactBuildConfig`], [`build_react_runner`], [`build_react_run_context`].
 //! - [`state`]: [`ReActState`], [`ToolCall`], [`ToolResult`] — state and tool types for ReAct.
 //! - [`llm`]: [`LlmClient`] trait, [`MockLlm`], [`ChatOpenAI`].
 //! - [`memory`]: Checkpointing ([`Checkpointer`], [`MemorySaver`], [`SqliteSaver`]), [`Store`]; optional LanceDB.
@@ -130,8 +130,7 @@ pub mod memory;
 pub mod message;
 pub mod openai_sse;
 pub mod prompts;
-pub mod react;
-pub mod react_builder;
+pub mod agent;
 pub mod state;
 pub mod stream;
 pub mod tool_source;
@@ -188,20 +187,17 @@ pub use openai_sse::{
     ChunkMeta, ChunkUsage, DeltaToolCall, MessageContent, ParseError, ParsedChatRequest,
     StreamOptions, StreamToSse,
 };
-pub use react::{
-    build_react_initial_state, run_react_graph, run_react_graph_stream, tools_condition, ActNode,
-    ErrorHandlerFn, HandleToolErrors, ObserveNode, ReactRunner, RunError, ThinkNode,
-    ToolsConditionResult, WithNodeLogging, DEFAULT_EXECUTION_ERROR_TEMPLATE,
-    DEFAULT_TOOL_ERROR_TEMPLATE, REACT_SYSTEM_PROMPT,
+pub use agent::react::{
+    build_dup_runner, build_got_runner, build_react_initial_state, build_react_run_context,
+    build_react_runner, build_react_runner_with_openai, build_tot_runner, run_react_graph,
+    run_react_graph_stream, tools_condition, ActNode, BuildRunnerError, ErrorHandlerFn,
+    HandleToolErrors, ObserveNode, ReactBuildConfig, ReactRunContext, ReactRunner, RunError,
+    STEP_PROGRESS_EVENT_TYPE, ThinkNode, ToolsConditionResult, WithNodeLogging,
+    DEFAULT_EXECUTION_ERROR_TEMPLATE, DEFAULT_TOOL_ERROR_TEMPLATE, REACT_SYSTEM_PROMPT,
 };
 pub use prompts::{
     default_from_embedded as default_agent_prompts_from_yaml, load as load_agent_prompts,
     load_or_default as load_agent_prompts_or_default, AgentPrompts, LoadError as PromptsLoadError,
-};
-pub use react_builder::{
-    build_dup_runner, build_got_runner, build_react_run_context, build_react_runner,
-    build_react_runner_with_openai, build_tot_runner, BuildRunnerError, ReactBuildConfig,
-    ReactRunContext,
 };
 pub use state::{ReActState, ToolCall, ToolResult};
 pub use stream::{

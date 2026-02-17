@@ -1,7 +1,4 @@
-//! Builds vector store for long-term memory from [`ReactBuildConfig`](super::super::config::ReactBuildConfig).
-//!
-//! When embedding is configured (and `in-memory-vector` + `openai` features), uses
-//! `InMemoryVectorStore` for semantic long-term memory.
+//! Builds vector store for long-term memory from ReactBuildConfig.
 
 use std::sync::Arc;
 
@@ -9,11 +6,6 @@ use crate::error::AgentError;
 
 use super::super::config::ReactBuildConfig;
 
-/// Builds store when embedder config is available; otherwise returns None.
-/// When embedding is configured (and `in-memory-vector` + `openai` features), uses
-/// InMemoryVectorStore for semantic long-term memory. Long-term memory is enabled by
-/// default when embedding keys are set; namespace is derived from `user_id` at build
-/// time or per-invoke config when dynamic config is used.
 pub(crate) fn build_store(
     config: &ReactBuildConfig,
     _db_path: &str,

@@ -2,15 +2,15 @@
 //!
 //! This module provides **only** types and pure functions: no server, TUI, or I/O. Callers
 //! (e.g. a CLI) parse request/args into [`HelveConfig`], then use
-//! [`to_react_build_config`] to obtain a full [`ReactBuildConfig`](crate::react_builder::ReactBuildConfig)
-//! for [`build_react_runner`](crate::react_builder::build_react_runner). System prompt text is
+//! [`to_react_build_config`] to obtain a full [`ReactBuildConfig`](crate::agent::react::ReactBuildConfig)
+//! for [`build_react_runner`](crate::agent::react::build_react_runner). System prompt text is
 //! built via [`assemble_system_prompt`] when a working folder is set.
 //!
 //! ## Purpose
 //!
 //! - **Separation of concerns**: Product meaning (working folder, thread, user, approval policy)
 //!   lives in [`HelveConfig`]; infra (DB, MCP, OpenAI) stays in
-//!   [`ReactBuildConfig`](crate::react_builder::ReactBuildConfig). The server merges them with
+//!   [`ReactBuildConfig`](crate::agent::react::ReactBuildConfig). The server merges them with
 //!   [`to_react_build_config`].
 //! - **Single source of prompt copy**: [`assemble_system_prompt`] centralises workdir and
 //!   approval instructions so the ReAct layer does not embed product wording.
@@ -23,13 +23,13 @@
 //! | [`to_react_build_config`] | Merges `HelveConfig` with a base `ReactBuildConfig`; sets `system_prompt` from override, or [`role_setting`](HelveConfig::role_setting) + [`assemble_system_prompt`]. |
 //! | [`assemble_system_prompt`] | Builds full system prompt: base ReAct prompt + workdir path + file rules + optional approval text. |
 //! | [`ApprovalPolicy`] | `None` / `DestructiveOnly` / `Always`; controls which tools require user confirmation. |
-//! | [`tools_requiring_approval`] | Returns tool names that need approval for a given policy; used by [`ActNode`](crate::react::ActNode) to trigger interrupts. |
+//! | [`tools_requiring_approval`] | Returns tool names that need approval for a given policy; used by [`ActNode`](crate::agent::react::ActNode) to trigger interrupts. |
 //! | [`APPROVAL_REQUIRED_EVENT_TYPE`] | Stream/interrupt event type string; clients use it to show approval UI and resume with `approved` payload. |
 //!
 //! ## Interaction with other modules
 //!
-//! - **react_builder**: [`to_react_build_config`] produces [`ReactBuildConfig`](crate::react_builder::ReactBuildConfig); that config is passed to [`build_react_runner`](crate::react_builder::build_react_runner).
-//! - **react**: [`ActNode`](crate::react::ActNode) uses [`ApprovalPolicy`] and [`tools_requiring_approval`] to decide when to interrupt before running a tool; [`REACT_SYSTEM_PROMPT`](crate::react::REACT_SYSTEM_PROMPT) is the base for [`assemble_system_prompt`].
+//! - **agent::react**: [`to_react_build_config`] produces [`ReactBuildConfig`](crate::agent::react::ReactBuildConfig); that config is passed to [`build_react_runner`](crate::agent::react::build_react_runner).
+//! - **agent::react**: [`ActNode`](crate::agent::react::ActNode) uses [`ApprovalPolicy`] and [`tools_requiring_approval`] to decide when to interrupt before running a tool; [`REACT_SYSTEM_PROMPT`](crate::agent::react::REACT_SYSTEM_PROMPT) is the base for [`assemble_system_prompt`].
 //! - **openai_sse**: [`ParsedChatRequest`](crate::openai_sse::ParsedChatRequest) may carry optional `helve_config` parsed from request body (`working_folder`, `approval_policy`, etc.).
 //!
 //! ## Internal structure

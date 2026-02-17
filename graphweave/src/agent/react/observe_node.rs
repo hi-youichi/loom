@@ -1,8 +1,4 @@
 //! Observe node: read tool_results, merge into state (e.g. messages), clear tool_calls and tool_results.
-//!
-//! ObserveNode has no external dependencies, implements `Node<ReActState>`; run reads
-//! state.tool_results, appends them to state (as User messages so next Think sees context),
-//! then clears tool_calls and tool_results. Linear-chain phase does not return next-hop.
 
 use async_trait::async_trait;
 
@@ -12,33 +8,18 @@ use crate::message::Message;
 use crate::state::ReActState;
 use crate::Node;
 
-/// Observe node: one ReAct step that merges tool results into state and clears tool_*.
-///
-/// Reads `state.tool_results`, appends each result to messages as a User message
-/// (e.g. "Tool get_time returned: 12:00") so the next Think round has context;
-/// then clears tool_calls and tool_results. When `enable_loop` is false (linear chain),
-/// returns `Next::Continue` so the runner stops after this node if it is last. When
-/// `enable_loop` is true, returns `Next::Node("think")` when this round had tool_calls
-/// (ReAct loop), else `Next::End`.
-///
 /// Maximum number of ReAct loop rounds (observe passes) before forcing End.
 pub const MAX_REACT_TURNS: u32 = 10;
 
-/// **Interaction**: Implements `Node<ReActState>`; used by StateGraph. No external
-/// deps; reads ReActState.tool_results, writes ReActState.messages and clears
-/// tool_calls/tool_results.
 pub struct ObserveNode {
-    /// When true, return Node("think") to loop; when false, return Continue (linear chain).
     enable_loop: bool,
 }
 
 impl ObserveNode {
-    /// Creates an Observe node for linear chain (one round): returns Next::Continue.
     pub fn new() -> Self {
         Self { enable_loop: false }
     }
 
-    /// Creates an Observe node for multi-round ReAct: returns Node("think") or End.
     pub fn with_loop() -> Self {
         Self { enable_loop: true }
     }
@@ -56,8 +37,6 @@ impl Node<ReActState> for ObserveNode {
         "observe"
     }
 
-    /// Merges tool_results into messages (one User message per result), clears tool_*.
-    /// Returns Next::Node("think") when this round had tool_calls (ReAct loop), else Next::End.
     async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
         let had_tool_calls = !state.tool_calls.is_empty();
         let mut messages = state.messages;
@@ -83,7 +62,6 @@ impl Node<ReActState> for ObserveNode {
             total_usage: state.total_usage,
             message_count_after_last_think: state.message_count_after_last_think,
         };
-        // When looping with tool calls, return Continue so the graph follows observe → compress → think.
         let next = if self.enable_loop && next_turn >= MAX_REACT_TURNS {
             Next::End
         } else if self.enable_loop && had_tool_calls {

@@ -1,9 +1,9 @@
-//! Error type when building a [`ReactRunner`](crate::react::ReactRunner) from config.
+//! Error type when building a ReactRunner from config.
 
 use crate::error::AgentError;
 use crate::graph::CompilationError;
 
-/// Error when building a [`ReactRunner`](crate::react::ReactRunner) from config.
+/// Error when building a ReactRunner from config.
 #[derive(Debug, thiserror::Error)]
 pub enum BuildRunnerError {
     #[error("failed to build run context: {0}")]

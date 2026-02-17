@@ -21,7 +21,7 @@ pub struct BashToolsSource {
 impl BashToolsSource {
     /// Creates a bash tools source.
     ///
-    /// Returns an [`AggregateToolSource`] that you can use with [`ActNode`](crate::react::ActNode).
+    /// Returns an [`AggregateToolSource`] that you can use with [`ActNode`](crate::agent::react::ActNode).
     /// This function is async and must be awaited.
     ///
     /// # Examples

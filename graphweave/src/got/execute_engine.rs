@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use crate::error::AgentError;
 use crate::graph::{Next, RunContext};
 use crate::message::Message;
-use crate::react::{ActNode, HandleToolErrors, ObserveNode, ThinkNode};
+use crate::agent::react::{ActNode, HandleToolErrors, ObserveNode, ThinkNode};
 use crate::state::ReActState;
 use crate::stream::{StreamEvent, StreamMode};
 use crate::tool_source::ToolSource;

@@ -1,9 +1,4 @@
-//! Builds tool source from [`ReactBuildConfig`](super::super::config::ReactBuildConfig).
-//!
-//! Always includes web_fetcher and bash. When no memory, no Exa, and no working_folder,
-//! returns AggregateToolSource with web_fetcher and bash; otherwise AggregateToolSource with
-//! optional MemoryToolsSource, optional MCP Exa, optional file tools (when working_folder is set),
-//! web_fetcher, and bash.
+//! Builds tool source from ReactBuildConfig.
 
 use std::sync::Arc;
 
@@ -14,7 +9,6 @@ use crate::tool_source::{
 use crate::tools::{
     register_mcp_tools, AggregateToolSource, BashTool, TwitterSearchTool, WebFetcherTool,
 };
-
 use crate::tool_source::McpToolSource;
 
 use super::super::config::ReactBuildConfig;
@@ -23,11 +17,8 @@ fn to_agent_error(e: impl std::fmt::Display) -> AgentError {
     AgentError::ExecutionFailed(e.to_string())
 }
 
-/// Default namespace for long-term memory when no user_id is set (default-on behavior).
 const DEFAULT_MEMORY_NAMESPACE: &[&str] = &["default", "memories"];
 
-/// Registers MCP Exa tools on the aggregate when exa_api_key is set.
-/// Prefers HTTP when `mcp_exa_url` is http(s); otherwise uses mcp-remote (stdio).
 async fn register_exa_mcp(
     config: &ReactBuildConfig,
     aggregate: &AggregateToolSource,
@@ -69,11 +60,6 @@ async fn register_exa_mcp(
     Ok(())
 }
 
-/// Builds tool source: WebToolsSource when no memory, no Exa, and no working_folder; otherwise
-/// AggregateToolSource with optional MemoryToolsSource, optional MCP Exa, optional file tools
-/// (when working_folder is set), and web_fetcher.
-/// Long-term memory is enabled by default when store is available; namespace is
-/// `[user_id, "memories"]` when config.user_id is set, else `["default", "memories"]`.
 pub(crate) async fn build_tool_source(
     config: &ReactBuildConfig,
     store: &Option<Arc<dyn crate::memory::Store>>,
@@ -81,7 +67,6 @@ pub(crate) async fn build_tool_source(
     let has_memory = store.is_some();
     let has_exa = config.exa_api_key.is_some();
     let has_working_folder = config.working_folder.is_some();
-
     let has_twitter = config.twitter_api_key.is_some();
 
     if !has_memory && !has_exa && !has_working_folder && !has_twitter {

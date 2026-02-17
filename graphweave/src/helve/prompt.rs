@@ -7,7 +7,7 @@
 use std::path::Path;
 
 use crate::prompts::AgentPrompts;
-use crate::react::REACT_SYSTEM_PROMPT;
+use crate::agent::react::REACT_SYSTEM_PROMPT;
 
 /// Approval policy for destructive or high-risk file operations.
 ///

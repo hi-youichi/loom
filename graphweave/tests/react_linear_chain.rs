@@ -10,9 +10,8 @@ use std::collections::HashMap;
 
 use graphweave::{
     compress::{build_graph, CompactionConfig, CompressionGraphNode},
-    react::tools_condition,
     ActNode, CompiledStateGraph, LlmClient, Message, MockLlm, MockToolSource, ObserveNode,
-    ReActState, StateGraph, ThinkNode, END, START,
+    ReActState, StateGraph, ThinkNode, END, START, tools_condition,
 };
 
 #[tokio::test]

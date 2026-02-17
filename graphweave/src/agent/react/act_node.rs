@@ -37,7 +37,6 @@ use crate::tool_source::{ToolCallContext, ToolSource, ToolSourceError};
 pub const STEP_PROGRESS_EVENT_TYPE: &str = "step_progress";
 
 /// Truncates a string for logging, appending "..." if longer than max_len.
-/// Used for tool result preview in tracing to avoid huge log lines.
 fn truncate_for_log(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         s.to_string()
@@ -46,9 +45,7 @@ fn truncate_for_log(s: &str, max_len: usize) -> String {
     }
 }
 
-/// Parses ToolCall.arguments string to JSON Value. If the result is a string (e.g. double-encoded
-/// from some parsers), parses that string again so MCP receives an object, not a string.
-/// Invalid JSON yields an empty object `{}` (does not panic).
+/// Parses ToolCall.arguments string to JSON Value.
 fn parse_tool_arguments(arguments: &str) -> Value {
     let raw = if arguments.trim().is_empty() {
         serde_json::json!({})
@@ -81,22 +78,14 @@ pub const DEFAULT_EXECUTION_ERROR_TEMPLATE: &str =
     "Error executing tool '{tool_name}' with kwargs {tool_kwargs} with error:\n {error}\n Please fix the error and try again.";
 
 /// Error handler function type.
-///
-/// Takes the error, tool name, and tool arguments, returns an error message string.
 pub type ErrorHandlerFn =
     Arc<dyn Fn(&ToolSourceError, &str, &Value) -> String + Send + Sync + 'static>;
 
 /// Configuration for how ActNode handles tool errors.
-///
-/// Aligns with Python's `handle_tool_errors` parameter in ToolNode.
 #[derive(Clone)]
 pub enum HandleToolErrors {
-    /// Errors propagate and short-circuit the graph (default behavior).
     Never,
-    /// Errors are caught and returned as ToolResult with error message.
-    /// Uses the default error template if None.
     Always(Option<String>),
-    /// Custom error handler function.
     Custom(ErrorHandlerFn),
 }
 
@@ -116,7 +105,6 @@ impl std::fmt::Debug for HandleToolErrors {
     }
 }
 
-/// Builds an approval_required Interrupt and Custom event payload for streaming.
 fn approval_required_payload(tc: &ToolCall, args: &Value) -> Value {
     serde_json::json!({
         "type": APPROVAL_REQUIRED_EVENT_TYPE,
@@ -128,45 +116,13 @@ fn approval_required_payload(tc: &ToolCall, args: &Value) -> Value {
 }
 
 /// Act node: one ReAct step that executes tool_calls and produces tool_results.
-///
-/// Reads `state.tool_calls`, sets context via `ToolSource::set_call_context`, then
-/// calls `ToolSource::call_tool_with_context(name, arguments, None)` for each
-/// (parsing arguments from JSON string); appends one ToolResult per call.
-///
-/// # Approval (Interrupt)
-///
-/// When `with_approval_policy` is set, tools in the policy's list (e.g. delete_file) require
-/// user approval. Before executing such a tool, ActNode emits a Custom "approval_required" event
-/// and returns `Err(AgentError::Interrupted(...))`. On resume, set `state.approval_result` from
-/// the user's response (e.g. `Some(true)` to execute, `Some(false)` to reject) and invoke with
-/// `config.resume_from_node_id = Some("act")`.
-///
-/// # Error Handling
-///
-/// By default (HandleToolErrors::Never), a single call failure returns Err and
-/// short-circuits the graph. Use `with_handle_tool_errors` to configure error handling:
-///
-/// ```rust,ignore
-/// let act = ActNode::new(tools)
-///     .with_handle_tool_errors(HandleToolErrors::Always(None));
-/// ```
-///
-/// **Interaction**: Implements `Node<ReActState>`; used by StateGraph. Consumes
-/// `ToolSource` (e.g. MockToolSource); reads ReActState.tool_calls, writes
-/// ReActState.tool_results.
 pub struct ActNode {
-    /// Tool source used to execute each tool call.
     tools: Box<dyn ToolSource>,
-    /// Error handling configuration.
     handle_tool_errors: HandleToolErrors,
-    /// When set, tools in the policy's list require approval; ActNode interrupts before executing them.
     approval_policy: Option<ApprovalPolicy>,
 }
 
 impl ActNode {
-    /// Creates an Act node with the given tool source.
-    ///
-    /// By default, tool errors propagate (HandleToolErrors::Never) and no approval is required.
     pub fn new(tools: Box<dyn ToolSource>) -> Self {
         Self {
             tools,
@@ -175,17 +131,11 @@ impl ActNode {
         }
     }
 
-    /// Sets the approval policy for destructive or high-risk tools.
-    ///
-    /// When set, tools returned by `tools_requiring_approval(policy)` will trigger an
-    /// Interrupt before execution. On resume, set `state.approval_result` and
-    /// `config.resume_from_node_id = Some("act")`.
     pub fn with_approval_policy(mut self, policy: Option<ApprovalPolicy>) -> Self {
         self.approval_policy = policy;
         self
     }
 
-    /// Returns true if the given tool name requires approval under the current policy.
     fn needs_approval(&self, tool_name: &str) -> bool {
         match &self.approval_policy {
             None => false,
@@ -193,42 +143,11 @@ impl ActNode {
         }
     }
 
-    /// Sets the error handling configuration.
-    ///
-    /// # Arguments
-    ///
-    /// * `handle_tool_errors` - How to handle tool errors:
-    ///   - `Never` - Errors propagate (default)
-    ///   - `Always(None)` - Catch errors with default message
-    ///   - `Always(Some(msg))` - Catch errors with custom message
-    ///   - `Custom(handler)` - Use custom error handler
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// // Catch all errors with default message
-    /// let act = ActNode::new(tools)
-    ///     .with_handle_tool_errors(HandleToolErrors::Always(None));
-    ///
-    /// // Catch errors with custom message
-    /// let act = ActNode::new(tools)
-    ///     .with_handle_tool_errors(HandleToolErrors::Always(Some("Custom error".into())));
-    ///
-    /// // Custom error handler
-    /// let act = ActNode::new(tools)
-    ///     .with_handle_tool_errors(HandleToolErrors::Custom(Arc::new(|e, name, _args| {
-    ///         format!("Tool {} failed: {}", name, e)
-    ///     })));
-    /// ```
     pub fn with_handle_tool_errors(mut self, handle_tool_errors: HandleToolErrors) -> Self {
         self.handle_tool_errors = handle_tool_errors;
         self
     }
 
-    /// Handles a tool error according to the configured error handling mode.
-    ///
-    /// Returns Some(error_message) if the error should be caught and returned as a result,
-    /// or None if the error should propagate.
     fn handle_error(
         &self,
         error: &ToolSourceError,
@@ -257,20 +176,6 @@ impl Node<ReActState> for ActNode {
         "act"
     }
 
-    /// Reads state.tool_calls, calls call_tool_with_context for each, writes tool_results.
-    /// Sets ToolCallContext via set_call_context before the loop; tools read it from there
-    /// (call_tool_with_context is called with None so implementations use the stored context).
-    /// Returns Next::Continue.
-    ///
-    /// # Error Handling
-    ///
-    /// If `handle_tool_errors` is:
-    /// - `Never` (default): Errors propagate and short-circuit the graph
-    /// - `Always`: Errors are caught and returned as error messages in ToolResult
-    /// - `Custom(handler)`: Custom handler is called to generate error message
-    ///
-    /// This is the basic version without streaming support. For streaming support,
-    /// use `run_with_context` which passes a `ToolStreamWriter` to tools.
     async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
         let ctx = ToolCallContext::new(state.messages.clone());
         self.tools.set_call_context(Some(ctx.clone()));
@@ -300,7 +205,6 @@ impl Node<ReActState> for ActNode {
                     }
                     Some(true) => {
                         approval_result_consumed = true;
-                        // Fall through to execute the tool.
                     }
                 }
             }
@@ -329,14 +233,12 @@ impl Node<ReActState> for ActNode {
                 Err(e) => {
                     warn!(tool = %tc.name, error = %e, "Tool call failed");
                     if let Some(error_msg) = self.handle_error(&e, &tc.name, &args) {
-                        // Error is handled - add as error result
                         tool_results.push(ToolResult {
                             call_id: tc.id.clone(),
                             name: Some(tc.name.clone()),
                             content: error_msg,
                         });
                     } else {
-                        // Error propagates
                         self.tools.set_call_context(None);
                         return Err(AgentError::ExecutionFailed(e.to_string()));
                     }
@@ -362,42 +264,11 @@ impl Node<ReActState> for ActNode {
         Ok((new_state, Next::Continue))
     }
 
-    /// Reads state.tool_calls, calls call_tool_with_context for each, writes tool_results.
-    ///
-    /// This version supports custom streaming: when `StreamMode::Custom` is enabled in the
-    /// run context, it creates a `ToolStreamWriter` and passes it to tools via `ToolCallContext`.
-    /// Tools can then emit progress updates or intermediate results during execution.
-    ///
-    /// # Error Handling
-    ///
-    /// Same as `run`: respects `handle_tool_errors` configuration.
-    ///
-    /// # Streaming
-    ///
-    /// When `run_ctx.stream_mode` contains `StreamMode::Custom`:
-    /// - A `ToolStreamWriter` is created from the run context's stream sender
-    /// - The writer is passed to each tool via `ToolCallContext::stream_writer`
-    /// - Tools can call `ctx.emit_custom(json!({"progress": 50}))` to emit events
-    /// - Events are sent as `StreamEvent::Custom(Value)` to the stream consumer
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// // In a tool implementation:
-    /// async fn call(&self, args: Value, ctx: Option<&ToolCallContext>) -> Result<ToolCallContent, ToolSourceError> {
-    ///     if let Some(ctx) = ctx {
-    ///         ctx.emit_custom(serde_json::json!({"status": "starting"}));
-    ///     }
-    ///     // Do work...
-    ///     Ok(ToolCallContent { text: "Done".to_string() })
-    /// }
-    /// ```
     async fn run_with_context(
         &self,
         state: ReActState,
         run_ctx: &RunContext<ReActState>,
     ) -> Result<(ReActState, Next), AgentError> {
-        // Create ToolStreamWriter if Custom streaming is enabled
         let tool_writer = if run_ctx.stream_mode.contains(&StreamMode::Custom) {
             if let Some(tx) = &run_ctx.stream_tx {
                 let tx = tx.clone();
@@ -409,7 +280,6 @@ impl Node<ReActState> for ActNode {
             ToolStreamWriter::noop()
         };
 
-        // Create ToolCallContext with stream writer and config ids (thread_id, user_id)
         let ctx = ToolCallContext {
             recent_messages: state.messages.clone(),
             stream_writer: Some(tool_writer),
@@ -451,7 +321,6 @@ impl Node<ReActState> for ActNode {
                     }
                     Some(true) => {
                         approval_result_consumed = true;
-                        // Fall through to execute the tool.
                     }
                 }
             }

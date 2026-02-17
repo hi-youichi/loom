@@ -5,7 +5,7 @@
 
 use crate::dup::DUP_UNDERSTAND_PROMPT;
 use crate::got::{AGOT_EXPAND_SYSTEM, GOT_PLAN_SYSTEM};
-use crate::react::{
+use crate::agent::react::{
     DEFAULT_EXECUTION_ERROR_TEMPLATE, DEFAULT_TOOL_ERROR_TEMPLATE, REACT_SYSTEM_PROMPT,
 };
 use crate::tot::{TOT_EXPAND_SYSTEM_ADDON, TOT_RESEARCH_QUALITY_ADDON};
@@ -17,7 +17,7 @@ use super::{
 /// Loaded and env-overridden prompts for all agent patterns. Getters resolve to code defaults when unset.
 ///
 /// Build via [`load`](crate::prompts::load) or [`load_or_default`](crate::prompts::load_or_default).
-/// Pass to [`build_react_runner`](crate::react_builder::build_react_runner) or use in
+/// Pass to [`build_react_runner`](crate::agent::react::build_react_runner) or use in
 /// [`assemble_system_prompt_with_prompts`](crate::helve::assemble_system_prompt_with_prompts) to override in-code prompts.
 #[derive(Clone, Debug)]
 pub struct AgentPrompts {

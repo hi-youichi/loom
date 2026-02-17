@@ -6,7 +6,7 @@ use async_trait::async_trait;
 
 use crate::error::AgentError;
 use crate::graph::Next;
-use crate::react::{ActNode, HandleToolErrors, ObserveNode};
+use crate::agent::react::{ActNode, HandleToolErrors, ObserveNode};
 use crate::Node;
 use crate::{helve::ApprovalPolicy, tool_source::ToolSource};
 

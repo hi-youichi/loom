@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-use crate::react_builder::ReactBuildConfig;
+use crate::agent::react::ReactBuildConfig;
 use crate::REACT_SYSTEM_PROMPT;
 
 use super::prompt::{assemble_system_prompt, ApprovalPolicy};
