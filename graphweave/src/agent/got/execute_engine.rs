@@ -357,7 +357,7 @@ impl Node<GotState> for ExecuteGraphNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::got::state::{TaskGraph, TaskNode};
+    use crate::agent::got::state::{TaskGraph, TaskNode};
 
     fn node(id: &str, desc: &str) -> TaskNode {
         TaskNode {

@@ -126,7 +126,7 @@ pub enum AppendSubgraphError {
 /// validation fails. Edges may reference existing nodes (e.g. parent) and new
 /// nodes; used by AGoT dynamic expansion.
 ///
-/// **Interaction**: Called by `crate::got::adaptive::maybe_expand` when
+/// **Interaction**: Called by `crate::agent::got::adaptive::maybe_expand` when
 /// dynamically extending the graph after a node completes.
 pub fn append_subgraph(
     graph: &mut TaskGraph,

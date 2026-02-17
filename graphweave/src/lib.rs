@@ -118,9 +118,7 @@ pub mod channels;
 pub mod compress;
 pub mod model_spec;
 pub mod config;
-pub mod dup;
 pub mod error;
-pub mod got;
 pub mod graph;
 pub mod helve;
 pub mod runner_common;
@@ -135,7 +133,6 @@ pub mod state;
 pub mod stream;
 pub mod tool_source;
 pub mod tools;
-pub mod tot;
 pub mod traits;
 
 pub use cache::{Cache, CacheError, InMemoryCache};
@@ -148,12 +145,7 @@ pub use config::{
     build_config_summary, ConfigSection, EmbeddingConfigSummary, LlmConfigSummary,
     MemoryConfigSummary, RunConfigSummary, RunConfigSummarySource, ToolConfigSummary,
 };
-pub use dup::{build_dup_initial_state, DupRunError, DupRunner, DupState, UnderstandOutput};
 pub use error::AgentError;
-pub use got::{
-    build_got_initial_state, GotRunError, GotRunner, GotState, TaskGraph, TaskNode, TaskNodeState,
-    TaskStatus,
-};
 pub use graph::{
     generate_dot, generate_text, log_graph_complete, log_graph_error, log_graph_start,
     log_node_complete, log_node_start, log_state_update, CompilationError, CompiledStateGraph,
@@ -212,10 +204,14 @@ pub use tool_source::{
     TOOL_SEARCH_MEMORIES, TOOL_WEB_FETCHER,
 };
 pub use tools::{register_mcp_tools, BashTool, McpToolAdapter};
-pub use tot::{
-    build_tot_initial_state, TotCandidate, TotExtension, TotRunError, TotRunner, TotState,
-};
 pub use traits::Agent;
+
+// Re-export DUP, GoT, ToT from agent for backward compatibility.
+pub use agent::{
+    build_dup_initial_state, build_got_initial_state, build_tot_initial_state, DupRunError,
+    DupRunner, DupState, GotRunError, GotRunner, GotState, TaskGraph, TaskNode, TaskNodeState,
+    TaskStatus, TotCandidate, TotExtension, TotRunError, TotRunner, TotState, UnderstandOutput,
+};
 
 /// When running `cargo test -p graphweave`, initializes tracing from `RUST_LOG` so that
 /// unit tests in `src/**` (e.g. `openai.rs` `mod tests`) can print logs with `--nocapture`.

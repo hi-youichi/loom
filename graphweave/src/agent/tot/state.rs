@@ -9,8 +9,8 @@ use crate::state::{ReActState, ToolCall};
 
 /// One candidate produced by ThinkExpand: a thought and optional tool calls.
 ///
-/// Written by [`ThinkExpandNode`](crate::tot::ThinkExpandNode); scored by
-/// [`ThinkEvaluateNode`](crate::tot::ThinkEvaluateNode). The chosen candidate's
+/// Written by [`ThinkExpandNode`](crate::agent::tot::ThinkExpandNode); scored by
+/// [`ThinkEvaluateNode`](crate::agent::tot::ThinkEvaluateNode). The chosen candidate's
 /// `tool_calls` are applied to `TotState::core` before Act.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TotCandidate {
@@ -27,7 +27,7 @@ pub struct TotCandidate {
 ///
 /// Used by ThinkExpand (writes `candidates`), ThinkEvaluate (writes `scores`,
 /// `chosen_index`), and select condition / Backtrack (read `chosen_index`,
-/// `tried_indices`). Interacts with [`TotState`] and nodes in `crate::tot`.
+/// `tried_indices`). Interacts with [`TotState`] and nodes in `crate::agent::tot`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TotExtension {
     /// Current depth in the thought tree (incremented each expand round).
@@ -59,7 +59,7 @@ pub struct TotExtension {
 /// and ThinkEvaluate write `tot`; adapter nodes read/write `core` (and preserve `tot`).
 /// Checkpointer serializes the full `TotState`.
 ///
-/// **Interaction**: Flows through `StateGraph<TotState>`; see `crate::tot::runner`.
+/// **Interaction**: Flows through `StateGraph<TotState>`; see `crate::agent::tot::runner`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TotState {
     /// Core execution state (messages, tool_calls, tool_results). Reused from ReAct.

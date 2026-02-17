@@ -80,7 +80,7 @@ impl Default for TaskNodeState {
 /// PlanGraphNode sets `task_graph`; ExecuteGraphNode reads `task_graph` and
 /// updates `node_states`. Checkpointer serializes the full `GotState`.
 ///
-/// **Interaction**: Flows through `StateGraph<GotState>`; see `crate::got::runner`.
+/// **Interaction**: Flows through `StateGraph<GotState>`; see `crate::agent::got::runner`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GotState {
     /// User message used by PlanGraphNode to generate the DAG.

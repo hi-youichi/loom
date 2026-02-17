@@ -8,12 +8,12 @@ mod tool_source;
 
 use std::sync::Arc;
 
-use crate::dup::DupRunner;
+use crate::agent::dup::DupRunner;
+use crate::agent::got::GotRunner;
+use crate::agent::tot::TotRunner;
 use crate::error::AgentError;
-use crate::got::GotRunner;
 use crate::memory::{JsonSerializer, RunnableConfig, SqliteSaver};
 use crate::state::ReActState;
-use crate::tot::TotRunner;
 use crate::LlmClient;
 
 use super::config::ReactBuildConfig;
@@ -140,7 +140,7 @@ pub async fn build_dup_runner(
         let serializer = Arc::new(JsonSerializer);
         let saver = SqliteSaver::new(db_path, serializer)
             .map_err(|e| AgentError::ExecutionFailed(e.to_string()))?;
-        Some(Arc::new(saver) as Arc<dyn crate::memory::Checkpointer<crate::dup::DupState>>)
+        Some(Arc::new(saver) as Arc<dyn crate::memory::Checkpointer<crate::agent::dup::DupState>>)
     } else {
         None
     };
@@ -175,7 +175,7 @@ pub async fn build_tot_runner(
         let serializer = Arc::new(JsonSerializer);
         let saver = SqliteSaver::new(db_path, serializer)
             .map_err(|e| AgentError::ExecutionFailed(e.to_string()))?;
-        Some(Arc::new(saver) as Arc<dyn crate::memory::Checkpointer<crate::tot::TotState>>)
+        Some(Arc::new(saver) as Arc<dyn crate::memory::Checkpointer<crate::agent::tot::TotState>>)
     } else {
         None
     };
@@ -216,7 +216,7 @@ pub async fn build_got_runner(
         let serializer = Arc::new(JsonSerializer);
         let saver = SqliteSaver::new(db_path, serializer)
             .map_err(|e| AgentError::ExecutionFailed(e.to_string()))?;
-        Some(Arc::new(saver) as Arc<dyn crate::memory::Checkpointer<crate::got::GotState>>)
+        Some(Arc::new(saver) as Arc<dyn crate::memory::Checkpointer<crate::agent::got::GotState>>)
     } else {
         None
     };

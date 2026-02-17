@@ -3,12 +3,12 @@
 //! [`AgentPrompts`] holds per-pattern optional overrides; getters return the string to use
 //! (override or in-code default). Used by runners and [`assemble_system_prompt`](crate::helve::assemble_system_prompt).
 
-use crate::dup::DUP_UNDERSTAND_PROMPT;
-use crate::got::{AGOT_EXPAND_SYSTEM, GOT_PLAN_SYSTEM};
+use crate::agent::dup::DUP_UNDERSTAND_PROMPT;
+use crate::agent::got::{AGOT_EXPAND_SYSTEM, GOT_PLAN_SYSTEM};
 use crate::agent::react::{
     DEFAULT_EXECUTION_ERROR_TEMPLATE, DEFAULT_TOOL_ERROR_TEMPLATE, REACT_SYSTEM_PROMPT,
 };
-use crate::tot::{TOT_EXPAND_SYSTEM_ADDON, TOT_RESEARCH_QUALITY_ADDON};
+use crate::agent::tot::{TOT_EXPAND_SYSTEM_ADDON, TOT_RESEARCH_QUALITY_ADDON};
 
 use super::{
     DupPromptsFile, GotPromptsFile, HelvePromptsFile, ReactPromptsFile, TotPromptsFile,
