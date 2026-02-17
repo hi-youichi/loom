@@ -15,7 +15,7 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 
 use crate::error::AgentError;
-use crate::llm::{LlmClient, LlmResponse};
+use crate::llm::{LlmClient, LlmResponse, LlmUsage};
 use crate::message::Message;
 use crate::state::ToolCall;
 use crate::stream::MessageChunk;
@@ -44,6 +44,8 @@ pub struct MockLlm {
     second_content: Option<String>,
     /// When true, invoke_stream sends each character as a separate chunk.
     stream_by_char: AtomicBool,
+    /// Token usage to return when set (for testing usage merge in ThinkNode).
+    usage: Option<LlmUsage>,
 }
 
 impl MockLlm {
@@ -61,6 +63,7 @@ impl MockLlm {
             call_count: None,
             second_content: None,
             stream_by_char: AtomicBool::new(false),
+            usage: None,
         }
     }
 
@@ -72,6 +75,7 @@ impl MockLlm {
             call_count: None,
             second_content: None,
             stream_by_char: AtomicBool::new(false),
+            usage: None,
         }
     }
 
@@ -83,6 +87,7 @@ impl MockLlm {
             call_count: None,
             second_content: None,
             stream_by_char: AtomicBool::new(false),
+            usage: None,
         }
     }
 
@@ -99,6 +104,7 @@ impl MockLlm {
             call_count: Some(AtomicUsize::new(0)),
             second_content: Some("The time is as above.".to_string()),
             stream_by_char: AtomicBool::new(false),
+            usage: None,
         }
     }
 
@@ -120,6 +126,12 @@ impl MockLlm {
     /// This is useful for testing streaming behavior.
     pub fn with_stream_by_char(self) -> Self {
         self.stream_by_char.store(true, Ordering::SeqCst);
+        self
+    }
+
+    /// Set token usage to return in the response (for testing usage merge in ThinkNode).
+    pub fn with_usage(mut self, usage: LlmUsage) -> Self {
+        self.usage = Some(usage);
         self
     }
 }
@@ -147,7 +159,7 @@ impl LlmClient for MockLlm {
         Ok(LlmResponse {
             content,
             tool_calls,
-            usage: None,
+            usage: self.usage.clone(),
         })
     }
 

@@ -15,8 +15,8 @@ use graphweave::{
     react::STEP_PROGRESS_EVENT_TYPE,
     stream::{StreamEvent, StreamMode},
     tool_source::FileToolSource,
-    ActNode, Message, MockLlm, MockToolSource, Next, Node, ObserveNode, ReActState, ThinkNode,
-    ToolCall, ToolResult,
+    ActNode, LlmUsage, Message, MockLlm, MockToolSource, Next, Node, ObserveNode, ReActState,
+    ThinkNode, ToolCall, ToolResult,
 };
 use tokio::sync::mpsc;
 
@@ -94,6 +94,213 @@ async fn think_node_preserves_tool_results_from_input_state() {
     let (out, _) = node.run(state).await.unwrap();
     assert_eq!(out.tool_results.len(), 1);
     assert_eq!(out.tool_results[0].content, "12:00");
+}
+
+#[tokio::test]
+async fn think_node_sets_message_count_after_last_think() {
+    let llm = MockLlm::with_no_tool_calls("Hi.");
+    let node = ThinkNode::new(Arc::new(llm));
+    let state = ReActState {
+        messages: vec![Message::user("Hello")],
+        tool_calls: vec![],
+        tool_results: vec![],
+        turn_count: 0,
+        approval_result: None,
+        usage: None,
+        total_usage: None,
+        message_count_after_last_think: None,
+    };
+    let (out, _) = node.run(state).await.unwrap();
+    assert_eq!(out.messages.len(), 2);
+    assert_eq!(out.message_count_after_last_think, Some(2));
+}
+
+#[tokio::test]
+async fn think_node_usage_merge_none_plus_some() {
+    let usage = LlmUsage {
+        prompt_tokens: 10,
+        completion_tokens: 5,
+        total_tokens: 15,
+    };
+    let llm = MockLlm::with_no_tool_calls("Ok.").with_usage(usage.clone());
+    let node = ThinkNode::new(Arc::new(llm));
+    let state = ReActState {
+        messages: vec![Message::user("Hi")],
+        tool_calls: vec![],
+        tool_results: vec![],
+        turn_count: 0,
+        approval_result: None,
+        usage: None,
+        total_usage: None,
+        message_count_after_last_think: None,
+    };
+    let (out, _) = node.run(state).await.unwrap();
+    let u = out.usage.as_ref().expect("usage should be set");
+    assert_eq!(u.prompt_tokens, 10);
+    assert_eq!(u.completion_tokens, 5);
+    assert_eq!(u.total_tokens, 15);
+    let t = out.total_usage.as_ref().expect("total_usage should be set");
+    assert_eq!(t.prompt_tokens, 10);
+    assert_eq!(t.completion_tokens, 5);
+    assert_eq!(t.total_tokens, 15);
+}
+
+#[tokio::test]
+async fn think_node_usage_merge_some_plus_some() {
+    let prev = LlmUsage {
+        prompt_tokens: 10,
+        completion_tokens: 5,
+        total_tokens: 15,
+    };
+    let curr = LlmUsage {
+        prompt_tokens: 20,
+        completion_tokens: 8,
+        total_tokens: 28,
+    };
+    let llm = MockLlm::with_no_tool_calls("Ok.").with_usage(curr);
+    let node = ThinkNode::new(Arc::new(llm));
+    let state = ReActState {
+        messages: vec![Message::user("Hi")],
+        tool_calls: vec![],
+        tool_results: vec![],
+        turn_count: 0,
+        approval_result: None,
+        usage: None,
+        total_usage: Some(prev),
+        message_count_after_last_think: None,
+    };
+    let (out, _) = node.run(state).await.unwrap();
+    assert_eq!(out.usage.as_ref().map(|u| u.total_tokens), Some(28));
+    assert_eq!(
+        out.total_usage.as_ref().map(|u| u.total_tokens),
+        Some(15 + 28)
+    );
+    assert_eq!(
+        out.total_usage.as_ref().map(|u| u.prompt_tokens),
+        Some(30)
+    );
+}
+
+#[tokio::test]
+async fn think_node_fallback_when_empty_content_and_no_tools() {
+    let llm = MockLlm::with_no_tool_calls("");
+    let node = ThinkNode::new(Arc::new(llm));
+    let state = ReActState {
+        messages: vec![Message::user("Hi")],
+        tool_calls: vec![],
+        tool_results: vec![],
+        turn_count: 0,
+        approval_result: None,
+        usage: None,
+        total_usage: None,
+        message_count_after_last_think: None,
+    };
+    let (out, _) = node.run_with_context(
+        state,
+        &RunContext::<ReActState> {
+            config: RunnableConfig::default(),
+            stream_tx: None,
+            stream_mode: HashSet::new(),
+            managed_values: Default::default(),
+            store: None,
+            previous: None,
+            runtime_context: None,
+        },
+    )
+    .await
+    .unwrap();
+    let expected = "No text response from the model. Please try again or check the API.";
+    assert!(matches!(&out.messages[1], Message::Assistant(s) if s == expected));
+}
+
+#[tokio::test]
+async fn think_node_fallback_streaming_emits_messages_event() {
+    let llm = MockLlm::with_no_tool_calls("");
+    let node = ThinkNode::new(Arc::new(llm));
+    let state = ReActState {
+        messages: vec![Message::user("Hi")],
+        tool_calls: vec![],
+        tool_results: vec![],
+        turn_count: 0,
+        approval_result: None,
+        usage: None,
+        total_usage: None,
+        message_count_after_last_think: None,
+    };
+    let (tx, mut rx) = mpsc::channel::<StreamEvent<ReActState>>(128);
+    let ctx = RunContext::<ReActState> {
+        config: RunnableConfig::default(),
+        stream_tx: Some(tx),
+        stream_mode: HashSet::from_iter([StreamMode::Messages]),
+        managed_values: Default::default(),
+        store: None,
+        previous: None,
+        runtime_context: None,
+    };
+    let (out, _) = node.run_with_context(state, &ctx).await.unwrap();
+    drop(ctx);
+    let mut events: Vec<_> = Vec::new();
+    while let Ok(e) = rx.try_recv() {
+        events.push(e);
+    }
+    let expected = "No text response from the model. Please try again or check the API.";
+    assert!(matches!(&out.messages[1], Message::Assistant(s) if s == expected));
+    assert_eq!(events.len(), 1, "should emit one Messages event for fallback");
+    match &events[0] {
+        StreamEvent::Messages { chunk, metadata } => {
+            assert_eq!(chunk.content, expected);
+            assert_eq!(metadata.graphweave_node, "think");
+        }
+        _ => panic!("expected Messages event, got {:?}", events[0]),
+    }
+}
+
+#[tokio::test]
+async fn think_node_stream_emits_usage_when_available() {
+    let usage = LlmUsage {
+        prompt_tokens: 10,
+        completion_tokens: 5,
+        total_tokens: 15,
+    };
+    let llm = MockLlm::with_no_tool_calls("Hello").with_usage(usage).with_stream_by_char();
+    let node = ThinkNode::new(Arc::new(llm));
+    let state = ReActState {
+        messages: vec![Message::user("Hi")],
+        tool_calls: vec![],
+        tool_results: vec![],
+        turn_count: 0,
+        approval_result: None,
+        usage: None,
+        total_usage: None,
+        message_count_after_last_think: None,
+    };
+    let (tx, mut rx) = mpsc::channel::<StreamEvent<ReActState>>(128);
+    let ctx = RunContext::<ReActState> {
+        config: RunnableConfig::default(),
+        stream_tx: Some(tx),
+        stream_mode: HashSet::from_iter([StreamMode::Messages]),
+        managed_values: Default::default(),
+        store: None,
+        previous: None,
+        runtime_context: None,
+    };
+    let _ = node.run_with_context(state, &ctx).await.unwrap();
+    drop(ctx);
+    let mut usage_events = 0u32;
+    while let Ok(e) = rx.try_recv() {
+        if let StreamEvent::Usage {
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+        } = e
+        {
+            usage_events += 1;
+            assert_eq!(prompt_tokens, 10);
+            assert_eq!(completion_tokens, 5);
+            assert_eq!(total_tokens, 15);
+        }
+    }
+    assert_eq!(usage_events, 1, "should emit exactly one Usage event");
 }
 
 // --- ActNode ---

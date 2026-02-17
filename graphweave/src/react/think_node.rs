@@ -19,7 +19,7 @@ use crate::error::AgentError;
 use crate::graph::{Next, RunContext};
 use crate::llm::LlmClient;
 use crate::message::Message;
-use crate::state::ReActState;
+use crate::state::{ReActState, ToolCall};
 use crate::stream::{MessageChunk, StreamEvent, StreamMetadata, StreamMode};
 use crate::Node;
 
@@ -44,6 +44,49 @@ impl ThinkNode {
     }
 }
 
+/// Merge response usage with accumulated total_usage.
+fn compute_usage(
+    state: &ReActState,
+    response_usage: &Option<crate::llm::LlmUsage>,
+) -> (Option<crate::llm::LlmUsage>, Option<crate::llm::LlmUsage>) {
+    match (&state.total_usage, response_usage) {
+        (Some(t), Some(u)) => (
+            response_usage.clone(),
+            Some(crate::llm::LlmUsage {
+                prompt_tokens: t.prompt_tokens + u.prompt_tokens,
+                completion_tokens: t.completion_tokens + u.completion_tokens,
+                total_tokens: t.total_tokens + u.total_tokens,
+            }),
+        ),
+        (None, Some(u)) => (response_usage.clone(), Some(u.clone())),
+        (Some(t), None) => (None, Some(t.clone())),
+        (None, None) => (None, None),
+    }
+}
+
+/// Build new ReActState after Think: append assistant message, set tool_calls, merge usage.
+fn apply_think_response(
+    state: ReActState,
+    content: String,
+    tool_calls: Vec<ToolCall>,
+    response_usage: Option<crate::llm::LlmUsage>,
+) -> ReActState {
+    let (usage, total_usage) = compute_usage(&state, &response_usage);
+    let mut messages = state.messages;
+    messages.push(Message::Assistant(content));
+    let message_count_after_last_think = Some(messages.len());
+    ReActState {
+        messages,
+        tool_calls,
+        tool_results: state.tool_results,
+        turn_count: state.turn_count,
+        approval_result: state.approval_result,
+        usage,
+        total_usage,
+        message_count_after_last_think,
+    }
+}
+
 #[async_trait]
 impl Node<ReActState> for ThinkNode {
     fn id(&self) -> &str {
@@ -54,32 +97,8 @@ impl Node<ReActState> for ThinkNode {
     /// Returns Next::Continue to follow linear edge order (e.g. think → act).
     async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
         let response = self.llm.invoke(&state.messages).await?;
-        let mut messages = state.messages;
-        messages.push(Message::Assistant(response.content));
-        let (usage, total_usage) = match (&state.total_usage, &response.usage) {
-            (Some(t), Some(u)) => (
-                response.usage.clone(),
-                Some(crate::llm::LlmUsage {
-                    prompt_tokens: t.prompt_tokens + u.prompt_tokens,
-                    completion_tokens: t.completion_tokens + u.completion_tokens,
-                    total_tokens: t.total_tokens + u.total_tokens,
-                }),
-            ),
-            (None, Some(u)) => (response.usage.clone(), Some(u.clone())),
-            (Some(t), None) => (None, Some(t.clone())),
-            (None, None) => (None, None),
-        };
-        let message_count_after_last_think = Some(messages.len());
-        let new_state = ReActState {
-            messages,
-            tool_calls: response.tool_calls,
-            tool_results: state.tool_results,
-            turn_count: state.turn_count,
-            approval_result: state.approval_result,
-            usage,
-            total_usage,
-            message_count_after_last_think,
-        };
+        let new_state =
+            apply_think_response(state, response.content, response.tool_calls, response.usage);
         Ok((new_state, Next::Continue))
     }
 
@@ -99,34 +118,25 @@ impl Node<ReActState> for ThinkNode {
         let response = if should_stream {
             // Create internal channel for message chunks
             let (chunk_tx, mut chunk_rx) = mpsc::channel::<MessageChunk>(128);
-
-            // Get a clone of the stream sender for the forwarding task
             let stream_tx = ctx.stream_tx.clone().unwrap();
             let node_id = self.id().to_string();
 
-            // Spawn task to forward chunks as StreamEvent::Messages
-            let forward_task = tokio::spawn(async move {
-                while let Some(chunk) = chunk_rx.recv().await {
-                    let event = StreamEvent::Messages {
-                        chunk,
-                        metadata: StreamMetadata {
-                            graphweave_node: node_id.clone(),
-                        },
-                    };
-                    // Ignore send errors (consumer may have dropped)
-                    let _ = stream_tx.send(event).await;
-                }
-            });
-
-            // Call LLM with streaming
-            let result = self
-                .llm
-                .invoke_stream(&state.messages, Some(chunk_tx))
-                .await;
-
-            // Wait for forwarding task to complete (chunk_tx is dropped after invoke_stream)
-            let _ = forward_task.await;
-
+            // Run invoke_stream and forward loop concurrently; when invoke_stream returns
+            // it drops chunk_tx, so the forward loop receives None and exits.
+            let (result, ()) = tokio::join!(
+                self.llm.invoke_stream(&state.messages, Some(chunk_tx)),
+                async move {
+                    while let Some(chunk) = chunk_rx.recv().await {
+                        let event = StreamEvent::Messages {
+                            chunk,
+                            metadata: StreamMetadata {
+                                graphweave_node: node_id.clone(),
+                            },
+                        };
+                        let _ = stream_tx.send(event).await;
+                    }
+                },
+            );
             result?
         } else {
             // Non-streaming path: use regular invoke
@@ -160,32 +170,12 @@ impl Node<ReActState> for ThinkNode {
                 .await;
         }
 
-        let mut messages = state.messages;
-        messages.push(Message::Assistant(content));
-        let (usage, total_usage) = match (&state.total_usage, &response.usage) {
-            (Some(t), Some(u)) => (
-                response.usage.clone(),
-                Some(crate::llm::LlmUsage {
-                    prompt_tokens: t.prompt_tokens + u.prompt_tokens,
-                    completion_tokens: t.completion_tokens + u.completion_tokens,
-                    total_tokens: t.total_tokens + u.total_tokens,
-                }),
-            ),
-            (None, Some(u)) => (response.usage.clone(), Some(u.clone())),
-            (Some(t), None) => (None, Some(t.clone())),
-            (None, None) => (None, None),
-        };
-        let message_count_after_last_think = Some(messages.len());
-        let new_state = ReActState {
-            messages,
-            tool_calls: response.tool_calls,
-            tool_results: state.tool_results,
-            turn_count: state.turn_count,
-            approval_result: state.approval_result,
-            usage,
-            total_usage,
-            message_count_after_last_think,
-        };
+        let new_state = apply_think_response(
+            state,
+            content,
+            response.tool_calls,
+            response.usage.clone(),
+        );
 
         // Emit token usage when available so CLI can print when --verbose
         if let (Some(ref tx), Some(ref u)) = (ctx.stream_tx.as_ref(), response.usage.as_ref()) {
