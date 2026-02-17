@@ -1,7 +1,7 @@
 //! Todo tools: todo_write, todo_read.
 //!
 //! Persist todo list as JSON under XDG state home (e.g. `~/.local/state/graphweave/todos.json` on Linux).
-//! Uses the `cross-xdg` crate for cross-platform paths. Aligns with opencode todowrite/todoread semantics.
+//! Uses the `cross-xdg` crate for cross-platform paths.
 
 mod todo_read;
 mod todo_write;
@@ -28,7 +28,7 @@ pub fn todo_file_path() -> Result<std::path::PathBuf, crate::tool_source::ToolSo
     Ok(base.state_home().join(XDG_APP_NAME).join(TODOS_FILENAME))
 }
 
-/// Single todo item (aligns with opencode Todo.Info).
+/// Single todo item.
 ///
 /// Used for JSON (de)serialization to/from the XDG todo file.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -44,7 +44,7 @@ pub(crate) static XDG_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(()
 
 #[cfg(test)]
 mod tests {
-    use super::{TodoInfo, XDG_APP_NAME, TODOS_FILENAME};
+    use super::{TodoInfo, TODOS_FILENAME, XDG_APP_NAME};
 
     /// Given XDG_STATE_HOME is set, todo_file_path returns state_home/graphweave/todos.json.
     #[test]

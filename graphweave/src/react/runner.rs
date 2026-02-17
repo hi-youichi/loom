@@ -28,6 +28,7 @@ use std::sync::Arc;
 
 use tokio_stream::StreamExt;
 
+use crate::compress::{build_graph, CompactionConfig, CompressionGraphNode};
 use crate::error::AgentError;
 use crate::graph::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
 use crate::helve::ApprovalPolicy;
@@ -87,6 +88,7 @@ pub async fn build_react_initial_state(
         approval_result: None,
         usage: None,
         total_usage: None,
+        message_count_after_last_think: None,
     })
 }
 
@@ -117,6 +119,7 @@ pub async fn run_react_graph(
         checkpointer,
         store,
         runnable_config,
+        None,
         None,
         None,
         verbose,
@@ -154,6 +157,7 @@ where
         checkpointer,
         store,
         runnable_config,
+        None,
         None,
         None,
         verbose,
@@ -208,6 +212,7 @@ impl ReactRunner {
     /// checkpointer and verbose are set, compiles with both.
     /// `system_prompt`: when `Some`, used for initial state; when `None`, uses [`REACT_SYSTEM_PROMPT`](crate::REACT_SYSTEM_PROMPT).
     /// `approval_policy`: when `Some`, tools that require approval (e.g. delete_file) will interrupt before execution.
+    /// `compaction_config`: when `Some`, enables context compression (prune + compact). When `None`, uses default (disabled).
     pub fn new(
         llm: Box<dyn LlmClient>,
         tool_source: Box<dyn ToolSource>,
@@ -216,13 +221,19 @@ impl ReactRunner {
         runnable_config: Option<RunnableConfig>,
         system_prompt: Option<String>,
         approval_policy: Option<ApprovalPolicy>,
+        compaction_config: Option<CompactionConfig>,
         verbose: bool,
     ) -> Result<Self, CompilationError> {
-        let think = ThinkNode::new(llm);
+        let llm = Arc::from(llm);
+        let think = ThinkNode::new(Arc::clone(&llm));
         let act = ActNode::new(tool_source)
             .with_handle_tool_errors(HandleToolErrors::Always(None))
             .with_approval_policy(approval_policy);
         let observe = ObserveNode::with_loop();
+
+        let compaction_cfg = compaction_config.unwrap_or_default();
+        let compression_graph = build_graph(compaction_cfg.clone(), Arc::clone(&llm))?;
+        let compress_node = Arc::new(CompressionGraphNode::new(compression_graph));
 
         let mut graph = StateGraph::<ReActState>::new();
         if let Some(s) = store {
@@ -237,6 +248,7 @@ impl ReactRunner {
             .add_node("think", Arc::new(think))
             .add_node("act", Arc::new(act))
             .add_node("observe", Arc::new(observe))
+            .add_node("compress", compress_node)
             .add_edge(START, "think")
             .add_conditional_edges(
                 "think",
@@ -244,7 +256,8 @@ impl ReactRunner {
                 Some(think_condition_path_map),
             )
             .add_edge("act", "observe")
-            .add_edge("observe", END);
+            .add_edge("observe", "compress")
+            .add_edge("compress", "think");
 
         let graph = if verbose {
             graph.with_node_logging()

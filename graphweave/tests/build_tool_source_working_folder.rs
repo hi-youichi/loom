@@ -34,6 +34,7 @@ async fn build_tool_source_with_working_folder_includes_file_tools() {
         embedding_model: None,
         working_folder: Some(dir.path().to_path_buf()),
         approval_policy: None,
+        compaction_config: None,
         got_adaptive: false,
         got_agot_llm_complexity: false,
     };

@@ -62,7 +62,25 @@ pub fn resolve_path_under(
     let full = base_canonical.join(path_param);
     let normalized = normalize_path(&full);
 
-    if !normalized.starts_with(&base_canonical) {
+    let under_base = if normalized.starts_with(&base_canonical) {
+        true
+    } else if normalized.exists() {
+        // Resolve symlinks: e.g. /tmp/foo vs /private/tmp on macOS
+        normalized
+            .canonicalize()
+            .map(|p| p.starts_with(&base_canonical))
+            .unwrap_or(false)
+    } else if let Some(parent) = normalized.parent().filter(|p| !p.as_os_str().is_empty()) {
+        // New file: parent must be under base (e.g. /tmp/foo.md, parent /tmp -> /private/tmp)
+        parent
+            .canonicalize()
+            .map(|p| p == base_canonical || p.starts_with(&base_canonical))
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
+    if !under_base {
         return Err(ToolSourceError::InvalidInput(
             "path is outside working folder".to_string(),
         ));

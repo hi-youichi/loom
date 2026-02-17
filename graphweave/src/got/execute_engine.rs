@@ -132,7 +132,7 @@ impl ExecuteGraphNode {
         adaptive: bool,
         agot_llm_complexity: bool,
     ) -> Self {
-        let think = ThinkNode::new(Box::new(SharedLlm(Arc::clone(&llm))));
+        let think = ThinkNode::new(Arc::new(SharedLlm(Arc::clone(&llm))));
         let act = ActNode::new(tool_source).with_handle_tool_errors(HandleToolErrors::Always(None));
         let observe = ObserveNode::with_loop();
         Self {
@@ -161,6 +161,7 @@ impl ExecuteGraphNode {
             approval_result: None,
             usage: None,
             total_usage: None,
+            message_count_after_last_think: None,
         };
 
         for _ in 0..MAX_SUB_TASK_TURNS {

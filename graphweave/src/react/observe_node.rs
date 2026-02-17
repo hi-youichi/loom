@@ -81,11 +81,13 @@ impl Node<ReActState> for ObserveNode {
             approval_result: state.approval_result,
             usage: state.usage,
             total_usage: state.total_usage,
+            message_count_after_last_think: state.message_count_after_last_think,
         };
+        // When looping with tool calls, return Continue so the graph follows observe → compress → think.
         let next = if self.enable_loop && next_turn >= MAX_REACT_TURNS {
             Next::End
         } else if self.enable_loop && had_tool_calls {
-            Next::Node("think".to_string())
+            Next::Continue
         } else if self.enable_loop && !had_tool_calls {
             Next::End
         } else {

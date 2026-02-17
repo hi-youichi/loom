@@ -20,6 +20,9 @@ fn empty_state() -> ReActState {
         tool_results: vec![],
         turn_count: 0,
         approval_result: None,
+        usage: None,
+        total_usage: None,
+        message_count_after_last_think: None,
     }
 }
 
@@ -208,6 +211,9 @@ fn adapter_emits_tool_calls_chunk_on_updates_with_tool_calls() {
             tool_results: vec![],
             turn_count: 0,
             approval_result: None,
+            usage: None,
+            total_usage: None,
+            message_count_after_last_think: None,
         },
     });
 

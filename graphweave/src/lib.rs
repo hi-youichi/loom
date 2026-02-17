@@ -115,6 +115,7 @@
 
 pub mod cache;
 pub mod channels;
+pub mod compress;
 pub mod model_spec;
 pub mod config;
 pub mod dup;
@@ -142,6 +143,7 @@ pub use channels::{
     BinaryOperatorAggregate, Channel, ChannelError, EphemeralValue, FieldBasedUpdater, LastValue,
     NamedBarrierValue, StateUpdater, Topic,
 };
+pub use compress::CompactionConfig;
 pub use config::{
     build_config_summary, ConfigSection, EmbeddingConfigSummary, LlmConfigSummary,
     MemoryConfigSummary, RunConfigSummary, RunConfigSummarySource, ToolConfigSummary,

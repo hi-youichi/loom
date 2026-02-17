@@ -54,6 +54,8 @@ pub struct ReactBuildConfig {
     /// When set, tools that require approval (e.g. delete_file for DestructiveOnly) will trigger
     /// an Interrupt before execution. On resume, set state.approval_result and config.resume_from_node_id.
     pub approval_policy: Option<crate::helve::ApprovalPolicy>,
+    /// When set, enables context compression (prune old tool results, compact when overflow). When None, compression is disabled.
+    pub compaction_config: Option<crate::compress::CompactionConfig>,
     /// When true, GoT uses AGoT mode: complex nodes may be expanded into subgraphs at test time.
     /// Set via `GOT_ADAPTIVE` env or `helve.got_adaptive`. Default: false (plain GoT).
     pub got_adaptive: bool,
@@ -103,6 +105,7 @@ impl ReactBuildConfig {
             embedding_model: std::env::var("EMBEDDING_MODEL").ok(),
             working_folder: std::env::var("WORKING_FOLDER").ok().map(PathBuf::from),
             approval_policy: None,
+            compaction_config: None,
             got_adaptive: std::env::var("GOT_ADAPTIVE")
                 .ok()
                 .and_then(|s| s.parse().ok())

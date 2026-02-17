@@ -73,6 +73,9 @@ pub struct ReActState {
     /// Accumulated token usage over the whole run (sum of all Think turns). Set by ThinkNode.
     #[serde(default)]
     pub total_usage: Option<LlmUsage>,
+    /// Number of messages at the time of the last Think; used for hybrid token estimate in compression.
+    #[serde(default)]
+    pub message_count_after_last_think: Option<usize>,
 }
 
 impl Default for ReActState {
@@ -85,6 +88,7 @@ impl Default for ReActState {
             approval_result: None,
             usage: None,
             total_usage: None,
+            message_count_after_last_think: None,
         }
     }
 }

@@ -3,6 +3,8 @@
 //! Each wraps the corresponding react node, extracting state.core, calling the inner
 //! node, and writing the result back.
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 
 use crate::error::AgentError;
@@ -21,7 +23,7 @@ pub struct PlanNode {
 impl PlanNode {
     pub fn new(llm: Box<dyn crate::LlmClient>) -> Self {
         Self {
-            think: ThinkNode::new(llm),
+            think: ThinkNode::new(Arc::from(llm)),
         }
     }
 }

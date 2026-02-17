@@ -149,6 +149,7 @@ mod tests {
             approval_result: None,
             usage: None,
             total_usage: None,
+            message_count_after_last_think: None,
         };
 
         let result = tools_condition(&state);
@@ -171,6 +172,7 @@ mod tests {
             approval_result: None,
             usage: None,
             total_usage: None,
+            message_count_after_last_think: None,
         };
 
         let result = tools_condition(&state);

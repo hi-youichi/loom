@@ -10,6 +10,8 @@
 //! `stream_mode` contains `StreamMode::Messages`, it uses `LlmClient::invoke_stream()`
 //! and forwards `MessageChunk` tokens to the stream channel as `StreamEvent::Messages`.
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
@@ -28,16 +30,16 @@ use crate::Node;
 /// graph can end after observe. Does not call ToolSource::list_tools in this minimal
 /// version (prompt can be fixed).
 ///
-/// **Interaction**: Implements `Node<ReActState>`; used by StateGraph. Consumes
-/// `LlmClient` (e.g. MockLlm); writes to ReActState.messages and ReActState.tool_calls.
+/// **Interaction**: Implements `Node<ReActState>`; used by StateGraph. Holds
+/// `Arc<dyn LlmClient>` so the same LLM can be shared with the compression subgraph.
 pub struct ThinkNode {
     /// LLM client used to produce assistant message and optional tool_calls.
-    llm: Box<dyn LlmClient>,
+    llm: Arc<dyn LlmClient>,
 }
 
 impl ThinkNode {
     /// Creates a Think node with the given LLM client.
-    pub fn new(llm: Box<dyn LlmClient>) -> Self {
+    pub fn new(llm: Arc<dyn LlmClient>) -> Self {
         Self { llm }
     }
 }
@@ -67,6 +69,7 @@ impl Node<ReActState> for ThinkNode {
             (Some(t), None) => (None, Some(t.clone())),
             (None, None) => (None, None),
         };
+        let message_count_after_last_think = Some(messages.len());
         let new_state = ReActState {
             messages,
             tool_calls: response.tool_calls,
@@ -75,6 +78,7 @@ impl Node<ReActState> for ThinkNode {
             approval_result: state.approval_result,
             usage,
             total_usage,
+            message_count_after_last_think,
         };
         Ok((new_state, Next::Continue))
     }
@@ -171,6 +175,7 @@ impl Node<ReActState> for ThinkNode {
             (Some(t), None) => (None, Some(t.clone())),
             (None, None) => (None, None),
         };
+        let message_count_after_last_think = Some(messages.len());
         let new_state = ReActState {
             messages,
             tool_calls: response.tool_calls,
@@ -179,6 +184,7 @@ impl Node<ReActState> for ThinkNode {
             approval_result: state.approval_result,
             usage,
             total_usage,
+            message_count_after_last_think,
         };
 
         // Emit token usage when available so CLI can print when --verbose

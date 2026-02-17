@@ -20,6 +20,11 @@ pub fn init() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,hyper_util=off"));
 
     if let Ok(path) = std::env::var("LOG_FILE") {
+        if let Some(parent) = std::path::Path::new(&path).parent() {
+            if !parent.as_os_str().is_empty() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+        }
         let file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
