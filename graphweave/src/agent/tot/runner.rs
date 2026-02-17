@@ -12,7 +12,7 @@ use crate::helve::ApprovalPolicy;
 use crate::memory::{CheckpointError, Checkpointer, RunnableConfig, Store};
 use crate::message::Message;
 use crate::agent::react::{build_react_initial_state, REACT_SYSTEM_PROMPT};
-use crate::runner_common;
+use crate::runner_common::{self, load_from_checkpoint_or_build};
 use crate::stream::StreamEvent;
 use crate::tool_source::ToolSource;
 use crate::LlmClient;
@@ -49,37 +49,33 @@ pub async fn build_tot_initial_state(
     runnable_config: Option<&RunnableConfig>,
     system_prompt: Option<&str>,
 ) -> Result<TotState, CheckpointError> {
-    let load_from_checkpoint =
-        checkpointer.is_some() && runnable_config.and_then(|c| c.thread_id.as_ref()).is_some();
-
-    if load_from_checkpoint {
-        let cp = checkpointer.expect("checkpointer is Some");
-        let config = runnable_config.expect("runnable_config is Some");
-        let tuple = cp.get_tuple(config).await?;
-        if let Some((checkpoint, _)) = tuple {
-            let mut state = checkpoint.channel_values.clone();
-            state
-                .core
-                .messages
-                .push(Message::user(user_message.to_string()));
+    let system_prompt_owned = system_prompt.unwrap_or(REACT_SYSTEM_PROMPT).to_string();
+    let user_message_owned = user_message.to_string();
+    load_from_checkpoint_or_build(
+        checkpointer,
+        runnable_config,
+        user_message,
+        async move {
+            let core = build_react_initial_state(
+                &user_message_owned,
+                None,
+                runnable_config,
+                Some(&system_prompt_owned),
+            )
+            .await?;
+            Ok(TotState {
+                core,
+                tot: TotExtension::default(),
+            })
+        },
+        |mut state, msg| {
+            state.core.messages.push(Message::user(msg));
             state.core.tool_calls = vec![];
             state.core.tool_results = vec![];
-            return Ok(state);
-        }
-    }
-
-    let core = build_react_initial_state(
-        user_message,
-        None,
-        runnable_config,
-        Some(system_prompt.unwrap_or(REACT_SYSTEM_PROMPT)),
+            state
+        },
     )
-    .await?;
-
-    Ok(TotState {
-        core,
-        tot: TotExtension::default(),
-    })
+    .await
 }
 
 /// Error type for TotRunner operations.

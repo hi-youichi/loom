@@ -183,7 +183,8 @@ pub use agent::react::{
     build_dup_runner, build_got_runner, build_react_initial_state, build_react_run_context,
     build_react_runner, build_react_runner_with_openai, build_tot_runner, run_react_graph,
     run_react_graph_stream, tools_condition, ActNode, BuildRunnerError, ErrorHandlerFn,
-    HandleToolErrors, ObserveNode, ReactBuildConfig, ReactRunContext, ReactRunner, RunError,
+    GotRunnerConfig, HandleToolErrors, ObserveNode, ReactBuildConfig, ReactRunContext,
+    ReactRunner, RunError, TotRunnerConfig,
     STEP_PROGRESS_EVENT_TYPE, ThinkNode, ToolsConditionResult, WithNodeLogging,
     DEFAULT_EXECUTION_ERROR_TEMPLATE, DEFAULT_TOOL_ERROR_TEMPLATE, REACT_SYSTEM_PROMPT,
 };

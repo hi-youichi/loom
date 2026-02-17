@@ -35,8 +35,8 @@ async fn build_tool_source_with_working_folder_includes_file_tools() {
         working_folder: Some(dir.path().to_path_buf()),
         approval_policy: None,
         compaction_config: None,
-        got_adaptive: false,
-        got_agot_llm_complexity: false,
+        tot_config: graphweave::TotRunnerConfig::default(),
+        got_config: graphweave::GotRunnerConfig::default(),
     };
     let ctx = build_react_run_context(&config).await.unwrap();
     let tools = ctx.tool_source.list_tools().await.unwrap();

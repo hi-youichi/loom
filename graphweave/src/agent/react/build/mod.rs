@@ -8,13 +8,15 @@ mod tool_source;
 
 use std::sync::Arc;
 
-use crate::agent::dup::DupRunner;
-use crate::agent::got::GotRunner;
-use crate::agent::tot::TotRunner;
+use crate::agent::dup::{DupRunner, DupState};
+use crate::agent::got::{GotRunner, GotState};
+use crate::agent::tot::{TotRunner, TotState};
 use crate::error::AgentError;
-use crate::memory::{JsonSerializer, RunnableConfig, SqliteSaver};
+use crate::memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
 use crate::state::ReActState;
 use crate::LlmClient;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 use super::config::ReactBuildConfig;
 use super::runner::ReactRunner;
@@ -30,18 +32,28 @@ fn to_agent_error(e: impl std::fmt::Display) -> AgentError {
     AgentError::ExecutionFailed(e.to_string())
 }
 
-fn build_checkpointer(
+/// Builds an optional checkpointer for state type `S` when `config.thread_id` is set.
+/// Shared by ReAct, DUP, ToT, and GoT runners to avoid duplicating SqliteSaver construction.
+fn build_checkpointer_for_state<S>(
     config: &ReactBuildConfig,
     db_path: &str,
-) -> Result<Option<Arc<dyn crate::memory::Checkpointer<ReActState>>>, AgentError> {
+) -> Result<Option<Arc<dyn Checkpointer<S>>>, AgentError>
+where
+    S: Clone + Send + Sync + 'static + Serialize + DeserializeOwned,
+{
     if config.thread_id.is_none() {
         return Ok(None);
     }
     let serializer = Arc::new(JsonSerializer);
     let saver = SqliteSaver::new(db_path, serializer).map_err(to_agent_error)?;
-    Ok(Some(
-        Arc::new(saver) as Arc<dyn crate::memory::Checkpointer<ReActState>>
-    ))
+    Ok(Some(Arc::new(saver) as Arc<dyn Checkpointer<S>>))
+}
+
+fn build_checkpointer(
+    config: &ReactBuildConfig,
+    db_path: &str,
+) -> Result<Option<Arc<dyn Checkpointer<ReActState>>>, AgentError> {
+    build_checkpointer_for_state::<ReActState>(config, db_path)
 }
 
 fn build_runnable_config(config: &ReactBuildConfig) -> Option<RunnableConfig> {
@@ -135,15 +147,8 @@ pub async fn build_dup_runner(
     };
     let llm_arc: Arc<dyn LlmClient> = Arc::new(BoxedLlmClient(llm));
 
-    let dup_checkpointer = if ctx.checkpointer.is_some() {
-        let db_path = config.db_path.as_deref().unwrap_or("memory.db");
-        let serializer = Arc::new(JsonSerializer);
-        let saver = SqliteSaver::new(db_path, serializer)
-            .map_err(|e| AgentError::ExecutionFailed(e.to_string()))?;
-        Some(Arc::new(saver) as Arc<dyn crate::memory::Checkpointer<crate::agent::dup::DupState>>)
-    } else {
-        None
-    };
+    let db_path = config.db_path.as_deref().unwrap_or("memory.db");
+    let dup_checkpointer = build_checkpointer_for_state::<DupState>(config, db_path)?;
 
     let runner = DupRunner::new(
         llm_arc,
@@ -170,19 +175,10 @@ pub async fn build_tot_runner(
     };
     let llm_arc: Arc<dyn LlmClient> = Arc::new(BoxedLlmClient(llm));
 
-    let tot_checkpointer = if ctx.checkpointer.is_some() {
-        let db_path = config.db_path.as_deref().unwrap_or("memory.db");
-        let serializer = Arc::new(JsonSerializer);
-        let saver = SqliteSaver::new(db_path, serializer)
-            .map_err(|e| AgentError::ExecutionFailed(e.to_string()))?;
-        Some(Arc::new(saver) as Arc<dyn crate::memory::Checkpointer<crate::agent::tot::TotState>>)
-    } else {
-        None
-    };
+    let db_path = config.db_path.as_deref().unwrap_or("memory.db");
+    let tot_checkpointer = build_checkpointer_for_state::<TotState>(config, db_path)?;
 
-    let max_depth = 5u32;
-    let candidates_per_step = 3u32;
-
+    let tot = &config.tot_config;
     let runner = TotRunner::new(
         llm_arc,
         ctx.tool_source,
@@ -192,9 +188,9 @@ pub async fn build_tot_runner(
         config.system_prompt.clone(),
         config.approval_policy,
         verbose,
-        max_depth,
-        candidates_per_step,
-        false,
+        tot.max_depth,
+        tot.candidates_per_step,
+        tot.research_quality_addon,
     )?;
     Ok(runner)
 }
@@ -211,16 +207,10 @@ pub async fn build_got_runner(
     };
     let llm_arc: Arc<dyn LlmClient> = Arc::new(BoxedLlmClient(llm));
 
-    let got_checkpointer = if ctx.checkpointer.is_some() {
-        let db_path = config.db_path.as_deref().unwrap_or("memory.db");
-        let serializer = Arc::new(JsonSerializer);
-        let saver = SqliteSaver::new(db_path, serializer)
-            .map_err(|e| AgentError::ExecutionFailed(e.to_string()))?;
-        Some(Arc::new(saver) as Arc<dyn crate::memory::Checkpointer<crate::agent::got::GotState>>)
-    } else {
-        None
-    };
+    let db_path = config.db_path.as_deref().unwrap_or("memory.db");
+    let got_checkpointer = build_checkpointer_for_state::<GotState>(config, db_path)?;
 
+    let got = &config.got_config;
     let runner = GotRunner::new(
         llm_arc,
         ctx.tool_source,
@@ -228,8 +218,8 @@ pub async fn build_got_runner(
         ctx.store,
         ctx.runnable_config,
         verbose,
-        config.got_adaptive,
-        config.got_agot_llm_complexity,
+        got.adaptive,
+        got.agot_llm_complexity,
     )?;
     Ok(runner)
 }

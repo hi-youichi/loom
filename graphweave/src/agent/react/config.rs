@@ -2,6 +2,40 @@
 
 use std::path::PathBuf;
 
+/// ToT-specific runner config (max depth, candidates per step, etc.).
+#[derive(Clone, Debug)]
+pub struct TotRunnerConfig {
+    pub max_depth: u32,
+    pub candidates_per_step: u32,
+    pub research_quality_addon: bool,
+}
+
+impl Default for TotRunnerConfig {
+    fn default() -> Self {
+        Self {
+            max_depth: 5,
+            candidates_per_step: 3,
+            research_quality_addon: false,
+        }
+    }
+}
+
+/// GoT-specific runner config (adaptive mode, AGoT LLM complexity).
+#[derive(Clone, Debug)]
+pub struct GotRunnerConfig {
+    pub adaptive: bool,
+    pub agot_llm_complexity: bool,
+}
+
+impl Default for GotRunnerConfig {
+    fn default() -> Self {
+        Self {
+            adaptive: false,
+            agot_llm_complexity: false,
+        }
+    }
+}
+
 /// Configuration for building ReAct run context.
 #[derive(Clone, Debug)]
 pub struct ReactBuildConfig {
@@ -24,8 +58,8 @@ pub struct ReactBuildConfig {
     pub working_folder: Option<PathBuf>,
     pub approval_policy: Option<crate::helve::ApprovalPolicy>,
     pub compaction_config: Option<crate::compress::CompactionConfig>,
-    pub got_adaptive: bool,
-    pub got_agot_llm_complexity: bool,
+    pub tot_config: TotRunnerConfig,
+    pub got_config: GotRunnerConfig,
 }
 
 impl ReactBuildConfig {
@@ -62,14 +96,30 @@ impl ReactBuildConfig {
             working_folder: std::env::var("WORKING_FOLDER").ok().map(PathBuf::from),
             approval_policy: None,
             compaction_config: None,
-            got_adaptive: std::env::var("GOT_ADAPTIVE")
-                .ok()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(false),
-            got_agot_llm_complexity: std::env::var("GOT_AGOT_LLM_COMPLEXITY")
-                .ok()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(false),
+            tot_config: TotRunnerConfig {
+                max_depth: std::env::var("TOT_MAX_DEPTH")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(5),
+                candidates_per_step: std::env::var("TOT_CANDIDATES_PER_STEP")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(3),
+                research_quality_addon: std::env::var("TOT_RESEARCH_QUALITY_ADDON")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(false),
+            },
+            got_config: GotRunnerConfig {
+                adaptive: std::env::var("GOT_ADAPTIVE")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(false),
+                agot_llm_complexity: std::env::var("GOT_AGOT_LLM_COMPLEXITY")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(false),
+            },
         }
     }
 }

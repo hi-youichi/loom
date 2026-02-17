@@ -45,15 +45,24 @@ fn truncate_for_log(s: &str, max_len: usize) -> String {
     }
 }
 
-/// Parses ToolCall.arguments string to JSON Value.
+/// Parses ToolCall.arguments string to JSON Value. Logs a warning on parse failure.
 fn parse_tool_arguments(arguments: &str) -> Value {
     let raw = if arguments.trim().is_empty() {
         serde_json::json!({})
     } else {
-        serde_json::from_str(arguments).unwrap_or(serde_json::json!({}))
+        match serde_json::from_str(arguments) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(error = %e, arguments = %arguments, "tool arguments JSON parse failed, using empty object");
+                serde_json::json!({})
+            }
+        }
     };
     if let Some(s) = raw.as_str() {
-        serde_json::from_str(s).unwrap_or(raw)
+        serde_json::from_str(s).unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "nested tool arguments JSON parse failed");
+            raw
+        })
     } else {
         raw
     }

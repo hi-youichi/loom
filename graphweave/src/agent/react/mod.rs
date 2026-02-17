@@ -33,7 +33,7 @@ pub use build::{
     build_dup_runner, build_got_runner, build_react_run_context, build_react_runner,
     build_react_runner_with_openai, build_tot_runner, BuildRunnerError, ReactRunContext,
 };
-pub use config::ReactBuildConfig;
+pub use config::{GotRunnerConfig, ReactBuildConfig, TotRunnerConfig};
 pub use observe_node::ObserveNode;
 pub use runner::{
     build_react_initial_state, run_react_graph, run_react_graph_stream, ReactRunner, RunError,

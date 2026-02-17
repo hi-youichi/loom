@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::compress::{build_graph, CompactionConfig, CompressionGraphNode};
-use crate::runner_common;
+use crate::runner_common::{self, load_from_checkpoint_or_build};
 use crate::error::AgentError;
 use crate::graph::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware, StateGraph, END, START};
 use crate::helve::ApprovalPolicy;
@@ -28,36 +28,35 @@ pub async fn build_react_initial_state(
     runnable_config: Option<&RunnableConfig>,
     system_prompt: Option<&str>,
 ) -> Result<ReActState, CheckpointError> {
-    let load_from_checkpoint =
-        checkpointer.is_some() && runnable_config.and_then(|c| c.thread_id.as_ref()).is_some();
-
-    if load_from_checkpoint {
-        let cp = checkpointer.expect("checkpointer is Some");
-        let config = runnable_config.expect("runnable_config is Some");
-        let tuple = cp.get_tuple(config).await?;
-        if let Some((checkpoint, _)) = tuple {
-            let mut state = checkpoint.channel_values.clone();
-            state.messages.push(Message::user(user_message.to_string()));
+    let prompt = system_prompt.unwrap_or(REACT_SYSTEM_PROMPT);
+    let user_message_owned = user_message.to_string();
+    load_from_checkpoint_or_build(
+        checkpointer,
+        runnable_config,
+        user_message,
+        async move {
+            Ok(ReActState {
+                messages: vec![
+                    Message::system(prompt),
+                    Message::user(user_message_owned),
+                ],
+                tool_calls: vec![],
+                tool_results: vec![],
+                turn_count: 0,
+                approval_result: None,
+                usage: None,
+                total_usage: None,
+                message_count_after_last_think: None,
+            })
+        },
+        |mut state, msg| {
+            state.messages.push(Message::user(msg));
             state.tool_calls = vec![];
             state.tool_results = vec![];
-            return Ok(state);
-        }
-    }
-
-    let prompt = system_prompt.unwrap_or(REACT_SYSTEM_PROMPT);
-    Ok(ReActState {
-        messages: vec![
-            Message::system(prompt),
-            Message::user(user_message.to_string()),
-        ],
-        tool_calls: vec![],
-        tool_results: vec![],
-        turn_count: 0,
-        approval_result: None,
-        usage: None,
-        total_usage: None,
-        message_count_after_last_think: None,
-    })
+            state
+        },
+    )
+    .await
 }
 
 pub async fn run_react_graph(
