@@ -65,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let tools = tool_source.list_tools().await?;
     let llm = ChatOpenAI::new("gpt-4o-mini").with_tools(tools);
-    let think = ThinkNode::new(Box::new(llm));
+    let think = ThinkNode::new(Arc::new(llm));
     let act = ActNode::new(Box::new(tool_source));
     let observe = ObserveNode::new();
 
@@ -89,6 +89,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tool_results: vec![],
         turn_count: 0,
         approval_result: None,
+        usage: None,
+        total_usage: None,
+        message_count_after_last_think: None,
     };
 
     println!("User: {}", user_input);

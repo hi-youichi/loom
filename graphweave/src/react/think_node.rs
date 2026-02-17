@@ -13,14 +13,13 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tokio::sync::mpsc;
 
 use crate::error::AgentError;
 use crate::graph::{Next, RunContext};
 use crate::llm::LlmClient;
 use crate::message::Message;
 use crate::state::{ReActState, ToolCall};
-use crate::stream::{MessageChunk, StreamEvent, StreamMetadata, StreamMode};
+use crate::stream::{ChunkToStreamSender, MessageChunk, StreamEvent, StreamMetadata, StreamMode};
 use crate::Node;
 
 /// Think node: one ReAct step that produces assistant message and optional tool_calls.
@@ -116,26 +115,12 @@ impl Node<ReActState> for ThinkNode {
             ctx.stream_mode.contains(&StreamMode::Messages) && ctx.stream_tx.is_some();
 
         let response = if should_stream {
-            // Create internal channel for message chunks
-            let (chunk_tx, mut chunk_rx) = mpsc::channel::<MessageChunk>(128);
             let stream_tx = ctx.stream_tx.clone().unwrap();
-            let node_id = self.id().to_string();
-
-            // Run invoke_stream and forward loop concurrently; when invoke_stream returns
-            // it drops chunk_tx, so the forward loop receives None and exits.
+            let adapter = ChunkToStreamSender::new(stream_tx, self.id());
+            let (chunk_tx, chunk_rx) = adapter.channel();
             let (result, ()) = tokio::join!(
                 self.llm.invoke_stream(&state.messages, Some(chunk_tx)),
-                async move {
-                    while let Some(chunk) = chunk_rx.recv().await {
-                        let event = StreamEvent::Messages {
-                            chunk,
-                            metadata: StreamMetadata {
-                                graphweave_node: node_id.clone(),
-                            },
-                        };
-                        let _ = stream_tx.send(event).await;
-                    }
-                },
+                adapter.forward(chunk_rx),
             );
             result?
         } else {

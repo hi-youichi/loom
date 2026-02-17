@@ -2,15 +2,13 @@
 //!
 //! Graph: START → plan_graph → execute_graph → [has_pending] → execute_graph | END.
 
-use std::collections::HashSet;
 use std::sync::Arc;
-
-use tokio_stream::StreamExt;
 
 use crate::error::AgentError;
 use crate::graph::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
 use crate::memory::{CheckpointError, Checkpointer, RunnableConfig, Store};
-use crate::stream::{StreamEvent, StreamMode};
+use crate::runner_common;
+use crate::stream::StreamEvent;
 use crate::tool_source::ToolSource;
 use crate::LlmClient;
 use crate::{StateGraph, END, START};
@@ -177,7 +175,7 @@ impl GotRunner {
         &self,
         user_message: &str,
         config: Option<RunnableConfig>,
-        mut on_event: Option<F>,
+        on_event: Option<F>,
     ) -> Result<GotState, GotRunError>
     where
         F: FnMut(StreamEvent<GotState>),
@@ -189,27 +187,9 @@ impl GotRunner {
             run_config.as_ref(),
         )
         .await?;
-
-        let modes = HashSet::from([
-            StreamMode::Messages,
-            StreamMode::Tasks,
-            StreamMode::Updates,
-            StreamMode::Values,
-            StreamMode::Custom,
-        ]);
-        let mut stream = self.compiled.stream(state, run_config, modes);
-
-        let mut final_state: Option<GotState> = None;
-        while let Some(event) = stream.next().await {
-            if let Some(ref mut f) = on_event {
-                f(event.clone());
-            }
-            if let StreamEvent::Values(s) = event {
-                final_state = Some(s);
-            }
-        }
-
-        final_state.ok_or(GotRunError::StreamEndedWithoutState)
+        runner_common::run_stream_with_config(&self.compiled, state, run_config, on_event)
+            .await
+            .map_err(|_| GotRunError::StreamEndedWithoutState)
     }
 }
 

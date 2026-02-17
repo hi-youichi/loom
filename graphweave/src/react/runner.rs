@@ -23,19 +23,18 @@
 //! ).await?;
 //! ```
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use tokio_stream::StreamExt;
-
 use crate::compress::{build_graph, CompactionConfig, CompressionGraphNode};
+use crate::runner_common;
 use crate::error::AgentError;
 use crate::graph::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
 use crate::helve::ApprovalPolicy;
 use crate::memory::{CheckpointError, Checkpointer, RunnableConfig, Store};
 use crate::message::Message;
 use crate::state::ReActState;
-use crate::stream::{StreamEvent, StreamMode};
+use crate::stream::StreamEvent;
 use crate::tool_source::ToolSource;
 use crate::LlmClient;
 use crate::{
@@ -337,7 +336,7 @@ impl ReactRunner {
         &self,
         user_message: &str,
         config: Option<RunnableConfig>,
-        mut on_event: Option<F>,
+        on_event: Option<F>,
     ) -> Result<ReActState, RunError>
     where
         F: FnMut(StreamEvent<ReActState>),
@@ -350,26 +349,8 @@ impl ReactRunner {
             self.system_prompt.as_deref(),
         )
         .await?;
-
-        let modes = HashSet::from([
-            StreamMode::Messages,
-            StreamMode::Tasks,
-            StreamMode::Updates,
-            StreamMode::Values,
-            StreamMode::Custom,
-        ]);
-        let mut stream = self.compiled.stream(state, run_config, modes);
-
-        let mut final_state: Option<ReActState> = None;
-        while let Some(event) = stream.next().await {
-            if let Some(ref mut f) = on_event {
-                f(event.clone());
-            }
-            if let StreamEvent::Values(s) = event {
-                final_state = Some(s);
-            }
-        }
-
-        final_state.ok_or(RunError::StreamEndedWithoutState)
+        runner_common::run_stream_with_config(&self.compiled, state, run_config, on_event)
+            .await
+            .map_err(|_| RunError::StreamEndedWithoutState)
     }
 }

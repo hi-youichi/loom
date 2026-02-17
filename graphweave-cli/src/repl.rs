@@ -6,9 +6,21 @@ use std::io::Write;
 
 use tokio::io::{AsyncBufReadExt, BufReader};
 
-use graphweave_cli::{run_dup, run_got, run_react, run_tot, RunError, RunOptions};
+use graphweave_cli::{run_agent, RunCmd, RunError, RunOptions};
 
 use crate::Command;
+
+fn cmd_to_runcmd(cmd: &Command) -> RunCmd {
+    match cmd {
+        Command::React => RunCmd::React,
+        Command::Dup => RunCmd::Dup,
+        Command::Tot => RunCmd::Tot,
+        Command::Got(a) => RunCmd::Got {
+            got_adaptive: a.got_adaptive,
+        },
+        Command::Tool(_) => unreachable!("tool handled in main"),
+    }
+}
 
 /// Truncates reply for display. 0 means no truncation.
 fn truncate_reply(reply: &str, max_len: usize) -> String {
@@ -62,11 +74,6 @@ fn is_quit_command(s: &str) -> bool {
 
 /// Runs one turn of the agent (react, dup, tot, or got).
 pub async fn run_one_turn(opts: &RunOptions, cmd: &Command) -> Result<String, RunError> {
-    match cmd {
-        Command::React => run_react(opts).await,
-        Command::Dup => run_dup(opts).await,
-        Command::Tot => run_tot(opts).await,
-        Command::Got(_) => run_got(opts).await,
-        Command::Tool(_) => unreachable!("tool handled in main"),
-    }
+    let run_cmd = cmd_to_runcmd(cmd);
+    run_agent(opts, &run_cmd).await
 }

@@ -5,22 +5,17 @@
 //! [`to_react_build_config`](graphweave::to_react_build_config), then invokes the
 //! corresponding runner for each pattern.
 
+mod agent;
 mod display;
-mod dup;
-mod got;
-mod react;
-mod tot;
 
 pub(crate) use display::{
     format_dup_state_display, format_got_state_display, format_react_state_display,
     format_tot_state_display, truncate_display,
 };
-pub use dup::run_dup;
-pub use got::run_got;
-pub use react::run_react;
-pub use tot::run_tot;
+pub use agent::{run_agent, AnyRunner, RunCmd};
 
 use graphweave::{
+    build_dup_runner, build_got_runner, build_react_runner, build_tot_runner,
     build_react_run_context, to_react_build_config, AgentError, BuildRunnerError, HelveConfig,
     ReactBuildConfig,
 };
@@ -105,6 +100,31 @@ pub(crate) fn build_helve_config(opts: &RunOptions) -> (HelveConfig, ReactBuildC
     };
     let config = to_react_build_config(&helve, base);
     (helve, config)
+}
+
+/// Builds the appropriate runner from CLI options and command.
+/// Receives already-built config to avoid calling build_helve_config twice.
+pub(crate) async fn build_runner_from_cli(
+    _helve: &HelveConfig,
+    config: &mut ReactBuildConfig,
+    opts: &RunOptions,
+    cmd: &agent::RunCmd,
+) -> Result<agent::AnyRunner, RunError> {
+    let verbose = opts.verbose;
+    if let agent::RunCmd::Got { got_adaptive } = cmd {
+        config.got_adaptive = *got_adaptive;
+    }
+    let runner = match cmd {
+        agent::RunCmd::React => {
+            agent::AnyRunner::React(build_react_runner(config, None, verbose, None).await?)
+        }
+        agent::RunCmd::Dup => agent::AnyRunner::Dup(build_dup_runner(config, None, verbose).await?),
+        agent::RunCmd::Tot => agent::AnyRunner::Tot(build_tot_runner(config, None, verbose).await?),
+        agent::RunCmd::Got { .. } => {
+            agent::AnyRunner::Got(build_got_runner(config, None, verbose).await?)
+        }
+    };
+    Ok(runner)
 }
 
 /// Builds run context, lists tools from the tool source, and prints them to stderr.

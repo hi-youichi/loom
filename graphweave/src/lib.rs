@@ -123,6 +123,7 @@ pub mod error;
 pub mod got;
 pub mod graph;
 pub mod helve;
+pub mod runner_common;
 pub mod llm;
 pub mod managed;
 pub mod memory;

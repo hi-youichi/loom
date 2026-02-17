@@ -6,5 +6,5 @@
 pub mod run;
 pub mod tool_cmd;
 
-pub use run::{run_dup, run_got, run_react, run_tot, RunError, RunOptions};
+pub use run::{run_agent, RunCmd, RunError, RunOptions};
 pub use tool_cmd::{list_tools, show_tool, ToolShowFormat};

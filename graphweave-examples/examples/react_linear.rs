@@ -22,7 +22,7 @@ async fn main() {
     graph
         .add_node(
             "think",
-            Arc::new(ThinkNode::new(Box::new(MockLlm::with_get_time_call()))),
+            Arc::new(ThinkNode::new(Arc::new(MockLlm::with_get_time_call()))),
         )
         .add_node(
             "act",
@@ -42,6 +42,9 @@ async fn main() {
         tool_results: vec![],
         turn_count: 0,
         approval_result: None,
+        usage: None,
+        total_usage: None,
+        message_count_after_last_think: None,
     };
 
     match compiled.invoke(state, None).await {

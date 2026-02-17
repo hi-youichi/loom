@@ -6,15 +6,14 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use tokio_stream::StreamExt;
-
 use crate::error::AgentError;
 use crate::graph::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
 use crate::helve::ApprovalPolicy;
 use crate::memory::{CheckpointError, Checkpointer, RunnableConfig, Store};
 use crate::message::Message;
 use crate::react::{build_react_initial_state, REACT_SYSTEM_PROMPT};
-use crate::stream::{StreamEvent, StreamMode};
+use crate::runner_common;
+use crate::stream::StreamEvent;
 use crate::tool_source::ToolSource;
 use crate::LlmClient;
 use crate::{StateGraph, END, START};
@@ -250,12 +249,11 @@ impl TotRunner {
         &self,
         user_message: &str,
         config: Option<RunnableConfig>,
-        mut on_event: Option<F>,
+        on_event: Option<F>,
     ) -> Result<TotState, TotRunError>
     where
         F: FnMut(StreamEvent<TotState>),
     {
-        use std::collections::HashSet;
         let run_config = config.or_else(|| self.runnable_config.clone());
         let state = build_tot_initial_state(
             user_message,
@@ -264,26 +262,8 @@ impl TotRunner {
             self.system_prompt.as_deref(),
         )
         .await?;
-
-        let modes = HashSet::from([
-            StreamMode::Messages,
-            StreamMode::Tasks,
-            StreamMode::Updates,
-            StreamMode::Values,
-            StreamMode::Custom,
-        ]);
-        let mut stream = self.compiled.stream(state, run_config, modes);
-
-        let mut final_state: Option<TotState> = None;
-        while let Some(event) = stream.next().await {
-            if let Some(ref mut f) = on_event {
-                f(event.clone());
-            }
-            if let StreamEvent::Values(s) = event {
-                final_state = Some(s);
-            }
-        }
-
-        final_state.ok_or(TotRunError::StreamEndedWithoutState)
+        runner_common::run_stream_with_config(&self.compiled, state, run_config, on_event)
+            .await
+            .map_err(|_| TotRunError::StreamEndedWithoutState)
     }
 }

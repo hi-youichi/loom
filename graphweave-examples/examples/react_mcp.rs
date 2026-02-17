@@ -63,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut graph = StateGraph::<ReActState>::new();
     graph
-        .add_node("think", Arc::new(ThinkNode::new(Box::new(mock_llm))))
+        .add_node("think", Arc::new(ThinkNode::new(Arc::new(mock_llm))))
         .add_node("act", Arc::new(ActNode::new(Box::new(tool_source))))
         .add_node("observe", Arc::new(ObserveNode::new()))
         .add_edge(START, "think")
@@ -79,6 +79,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tool_results: vec![],
         turn_count: 0,
         approval_result: None,
+        usage: None,
+        total_usage: None,
+        message_count_after_last_think: None,
     };
 
     let result = compiled.invoke(state, None).await?;

@@ -86,7 +86,7 @@
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let config = ReactBuildConfig::from_env();
-//! let runner = build_react_runner(&config, None, false).await?;
+//! let runner = build_react_runner(&config, None, false, None).await?;
 //! let state = runner.invoke("Hello").await?;
 //! # Ok(())
 //! # }

@@ -199,6 +199,57 @@ pub struct MessageChunk {
     pub content: String,
 }
 
+/// Adapter that converts `MessageChunk` into `StreamEvent::Messages` and sends to `stream_tx`.
+///
+/// Used by ThinkNode (and similar nodes) to avoid manual channel setup and forward loops.
+/// Call `channel()` to get (chunk_tx, chunk_rx), pass `chunk_tx` to `invoke_stream`, then
+/// `forward(chunk_rx)` alongside it with `tokio::join!` so all chunks are forwarded before return.
+pub struct ChunkToStreamSender<S>
+where
+    S: Clone + Send + Sync + Debug + 'static,
+{
+    stream_tx: mpsc::Sender<StreamEvent<S>>,
+    node_id: String,
+}
+
+impl<S> ChunkToStreamSender<S>
+where
+    S: Clone + Send + Sync + Debug + 'static,
+{
+    pub fn new(stream_tx: mpsc::Sender<StreamEvent<S>>, node_id: impl Into<String>) -> Self {
+        Self {
+            stream_tx,
+            node_id: node_id.into(),
+        }
+    }
+
+    /// Returns (chunk_tx, chunk_rx). Pass chunk_tx to `invoke_stream`, then await
+    /// `forward(chunk_rx)` together with invoke_stream via `tokio::join!` so forwarding
+    /// completes before the caller returns.
+    pub fn channel(&self) -> (mpsc::Sender<MessageChunk>, mpsc::Receiver<MessageChunk>) {
+        mpsc::channel::<MessageChunk>(128)
+    }
+
+    /// Forwards chunks from `chunk_rx` to `stream_tx` as `StreamEvent::Messages`.
+    /// Completes when `chunk_rx` is closed (e.g. when invoke_stream drops its sender).
+    pub async fn forward(
+        &self,
+        mut chunk_rx: mpsc::Receiver<MessageChunk>,
+    ) {
+        let stream_tx = self.stream_tx.clone();
+        let node_id = self.node_id.clone();
+        while let Some(chunk) = chunk_rx.recv().await {
+            let event = StreamEvent::Messages {
+                chunk,
+                metadata: StreamMetadata {
+                    graphweave_node: node_id.clone(),
+                },
+            };
+            let _ = stream_tx.send(event).await;
+        }
+    }
+}
+
 /// Streamed event emitted while running a graph.
 #[derive(Clone, Debug)]
 pub enum StreamEvent<S>

@@ -20,7 +20,8 @@ async fn twitter_search_tool_spec_has_correct_properties() {
     assert_eq!(spec.name, TOOL_TWITTER_SEARCH);
     assert!(spec.description.is_some());
     let desc = spec.description.unwrap();
-    assert!(desc.contains("Search") && desc.contains("query"));
+    let desc_lower = desc.to_lowercase();
+    assert!(desc_lower.contains("search") && desc_lower.contains("query"));
     assert_eq!(spec.input_schema["properties"]["query"]["type"], "string");
     assert_eq!(
         spec.input_schema["properties"]["query_type"]["enum"],
