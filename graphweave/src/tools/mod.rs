@@ -14,8 +14,8 @@ pub use aggregate_source::AggregateToolSource;
 pub use bash::{BashTool, TOOL_BASH};
 pub use conversation::{GetRecentMessagesTool, TOOL_GET_RECENT_MESSAGES};
 pub use file::{
-    CreateDirTool, DeleteFileTool, GlobTool, ListDirTool, MoveFileTool, ReadFileTool, WriteFileTool,
-    TOOL_CREATE_DIR, TOOL_DELETE_FILE, TOOL_GLOB, TOOL_LIST_DIR, TOOL_MOVE_FILE, TOOL_READ_FILE,
+    CreateDirTool, DeleteFileTool, GlobTool, LsTool, MoveFileTool, ReadFileTool, WriteFileTool,
+    TOOL_CREATE_DIR, TOOL_DELETE_FILE, TOOL_GLOB, TOOL_LS, TOOL_MOVE_FILE, TOOL_READ_FILE,
     TOOL_WRITE_FILE,
 };
 pub use todo::{

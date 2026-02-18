@@ -1,6 +1,6 @@
 //! File tool source: file operations under a working folder as tools.
 //!
-//! Exposes list_dir, read_file, write_file, move_file, delete_file, create_dir, glob.
+//! Exposes ls, read_file, write_file, move_file, delete_file, create_dir, glob.
 //! All paths are validated to stay under the working folder. Uses
 //! [`AggregateToolSource`](crate::tools::AggregateToolSource) internally.
 
@@ -11,12 +11,12 @@ use async_trait::async_trait;
 
 use crate::tool_source::{ToolSource, ToolSourceError};
 use crate::tools::file::{
-    CreateDirTool, DeleteFileTool, GlobTool, ListDirTool, MoveFileTool, ReadFileTool, WriteFileTool,
+    CreateDirTool, DeleteFileTool, GlobTool, LsTool, MoveFileTool, ReadFileTool, WriteFileTool,
 };
 use crate::tools::todo::{TodoReadTool, TodoWriteTool};
 use crate::tools::AggregateToolSource;
 
-/// Registers file tools (list_dir, read_file, write_file, move_file, delete_file, create_dir, glob, todo_write, todo_read)
+/// Registers file tools (ls, read_file, write_file, move_file, delete_file, create_dir, glob, todo_write, todo_read)
 /// on an existing [`AggregateToolSource`].
 ///
 /// Use this to combine file tools with memory, web, or MCP tools in one source.
@@ -48,7 +48,7 @@ pub fn register_file_tools(
         ));
     }
     let working_folder = Arc::new(canonical);
-    aggregate.register_sync(Box::new(ListDirTool::new(working_folder.clone())));
+    aggregate.register_sync(Box::new(LsTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(ReadFileTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(WriteFileTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(MoveFileTool::new(working_folder.clone())));
@@ -105,7 +105,7 @@ impl FileToolSource {
         }
         let working_folder = Arc::new(canonical);
         let source = AggregateToolSource::new();
-        source.register_sync(Box::new(ListDirTool::new(working_folder.clone())));
+        source.register_sync(Box::new(LsTool::new(working_folder.clone())));
         source.register_sync(Box::new(ReadFileTool::new(working_folder.clone())));
         source.register_sync(Box::new(WriteFileTool::new(working_folder.clone())));
         source.register_sync(Box::new(MoveFileTool::new(working_folder.clone())));

@@ -10,7 +10,7 @@ use graphweave::tool_source::{
     register_file_tools, register_read_only_dir_tools, ToolSource, ToolSourceError,
     TOOL_READ_ONLY_LIST_DIR, TOOL_READ_ONLY_READ_FILE,
 };
-use graphweave::tools::{AggregateToolSource, TOOL_LIST_DIR, TOOL_READ_FILE, TOOL_WRITE_FILE};
+use graphweave::tools::{AggregateToolSource, TOOL_LS, TOOL_READ_FILE, TOOL_WRITE_FILE};
 use serde_json::json;
 
 /// Scenario: ReadOnlyDirToolSource::new with a valid directory lists read_only_list_dir and read_only_read_file.
@@ -80,7 +80,7 @@ async fn aggregate_file_tools_and_read_only_dir_tools() {
 
     let tools = aggregate.list_tools().await.unwrap();
     let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
-    assert!(names.contains(&TOOL_LIST_DIR));
+    assert!(names.contains(&TOOL_LS));
     assert!(names.contains(&TOOL_READ_FILE));
     assert!(names.contains(&TOOL_WRITE_FILE));
     assert!(names.contains(&TOOL_READ_ONLY_LIST_DIR));

@@ -46,8 +46,9 @@ impl Node<ReActState> for ObserveNode {
                 .as_deref()
                 .or(tr.call_id.as_deref())
                 .unwrap_or("tool");
+            let label = if tr.is_error { "error" } else { "result" };
             messages.push(Message::User(format!(
-                "Tool {} returned: {}",
+                "Tool {} {label}:\n{}",
                 name, tr.content
             )));
         }

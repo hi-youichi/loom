@@ -3,7 +3,7 @@
 //! Each tool has one file under `graphweave/tools/*.yaml`, embedded at compile time via
 //! `include_str!` and parsed when building the tool source. Specs from YAML override the Rust
 //! tool specs for `list_tools()`; execution still dispatches to the registered Rust `Tool`
-//! implementations.
+//! implementations. Add a new line to `TOOL_YAML_FILES` when adding a tool YAML.
 
 use std::collections::HashMap;
 
@@ -28,7 +28,7 @@ const TOOL_YAML_FILES: &[&str] = embed_tool_yaml!(
     "../../tools/web_fetcher.yaml",
     "../../tools/read_file.yaml",
     "../../tools/write_file.yaml",
-    "../../tools/list_dir.yaml",
+    "../../tools/ls.yaml",
     "../../tools/glob.yaml",
     "../../tools/move_file.yaml",
     "../../tools/delete_file.yaml",

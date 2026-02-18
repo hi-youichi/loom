@@ -1,12 +1,12 @@
 //! Integration test: build_react_run_context with working_folder set includes file tools.
 //!
 //! Scenario: when ReactBuildConfig has working_folder set, the built tool source
-//! lists list_dir, read_file, write_file, move_file, delete_file, create_dir.
+//! lists ls, read_file, write_file, move_file, delete_file, create_dir.
 
 mod init_logging;
 
 use graphweave::tools::{
-    TOOL_CREATE_DIR, TOOL_DELETE_FILE, TOOL_LIST_DIR, TOOL_MOVE_FILE, TOOL_READ_FILE,
+    TOOL_CREATE_DIR, TOOL_DELETE_FILE, TOOL_LS, TOOL_MOVE_FILE, TOOL_READ_FILE,
     TOOL_WRITE_FILE,
 };
 use graphweave::{build_react_run_context, ReactBuildConfig};
@@ -42,8 +42,8 @@ async fn build_tool_source_with_working_folder_includes_file_tools() {
     let tools = ctx.tool_source.list_tools().await.unwrap();
     let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
     assert!(
-        names.contains(&TOOL_LIST_DIR),
-        "expected list_dir in {:?}",
+        names.contains(&TOOL_LS),
+        "expected ls in {:?}",
         names
     );
     assert!(names.contains(&TOOL_READ_FILE));

@@ -1,0 +1,19 @@
+name: ls
+description: |
+  Lists files and directories in a given path, rendered as a tree. The path parameter
+  is relative to the working folder; omit it (or use ".") to list the working folder root.
+  You can optionally provide an array of glob patterns to ignore with the ignore parameter.
+  Common build/dependency directories (node_modules, target, .git, dist, etc.) are ignored
+  by default. Results are capped at 100 files. You should generally prefer the Glob and Grep
+  tools if you know which directories to search.
+input_schema:
+  type: object
+  properties:
+    path:
+      type: string
+      description: Directory path relative to working folder (use "." or omit for working folder root).
+    ignore:
+      type: array
+      items:
+        type: string
+      description: List of additional glob patterns to ignore.

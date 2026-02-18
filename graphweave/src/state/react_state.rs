@@ -40,6 +40,10 @@ pub struct ToolResult {
     pub name: Option<String>,
     /// Result content (e.g. text from MCP result.content[].text).
     pub content: String,
+    /// Whether this result represents an error (tool execution failed or user rejected).
+    /// Observe uses this to include error context in the message sent to the LLM.
+    #[serde(default)]
+    pub is_error: bool,
 }
 
 /// State for the minimal ReAct graph: Think → Act → Observe.

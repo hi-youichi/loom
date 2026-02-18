@@ -208,6 +208,7 @@ impl Node<ReActState> for ActNode {
                             call_id: tc.id.clone(),
                             name: Some(tc.name.clone()),
                             content: "User rejected.".to_string(),
+                            is_error: true,
                         });
                         approval_result_consumed = true;
                         continue;
@@ -237,6 +238,7 @@ impl Node<ReActState> for ActNode {
                         call_id: tc.id.clone(),
                         name: Some(tc.name.clone()),
                         content: content.text,
+                        is_error: false,
                     });
                 }
                 Err(e) => {
@@ -246,6 +248,7 @@ impl Node<ReActState> for ActNode {
                             call_id: tc.id.clone(),
                             name: Some(tc.name.clone()),
                             content: error_msg,
+                            is_error: true,
                         });
                     } else {
                         self.tools.set_call_context(None);
@@ -318,6 +321,7 @@ impl Node<ReActState> for ActNode {
                             call_id: tc.id.clone(),
                             name: Some(tc.name.clone()),
                             content: "User rejected.".to_string(),
+                            is_error: true,
                         });
                         approval_result_consumed = true;
                         let payload = step_progress_payload(
@@ -354,6 +358,7 @@ impl Node<ReActState> for ActNode {
                         call_id: tc.id.clone(),
                         name: Some(tc.name.clone()),
                         content: content.text,
+                        is_error: false,
                     });
                     let call_id = tc.id.as_deref().unwrap_or("");
                     let payload = step_progress_payload(&tc.name, call_id, &summary);
@@ -367,6 +372,7 @@ impl Node<ReActState> for ActNode {
                             call_id: tc.id.clone(),
                             name: Some(tc.name.clone()),
                             content: error_msg,
+                            is_error: true,
                         });
                         let call_id = tc.id.as_deref().unwrap_or("");
                         let payload = step_progress_payload(&tc.name, call_id, &summary);

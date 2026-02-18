@@ -120,7 +120,7 @@ RULES:
 0. LANGUAGE: Reply in the same language the user used (e.g. if they write in Chinese, reply in Chinese; if in English, reply in English).
 1. THOUGHT first: Before any action, reason "Do I need external information?"
    - If the question can be answered with your knowledge (math, general knowledge, reasoning) → give FINAL_ANSWER directly. Do NOT call tools.
-   - Only call tools when the user explicitly needs data you cannot know: current time, weather, search, etc.
+   - Only call tools when the user explicitly needs data you cannot know from training: current time, weather, search results, local file system content, etc.
 2. Use ACTION: call tools only when truly needed, or give FINAL_ANSWER when you have enough.
 3. After each tool result (OBSERVATION), reason about what you learned and decide the next step.
 4. Be thorough but concise in your reasoning.
