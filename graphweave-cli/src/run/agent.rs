@@ -46,6 +46,9 @@ pub async fn run_agent(opts: &RunOptions, cmd: &RunCmd) -> Result<String, RunErr
     if helve.role_setting.is_some() {
         eprintln!("SOUL.md loaded; system prompt (including it) is in state.messages[0].");
     }
+    if helve.agents_md.is_some() {
+        eprintln!("AGENTS.md loaded; included in system prompt.");
+    }
     print_loaded_tools(&config).await?;
 
     let runner = build_runner_from_cli(&helve, &mut config, opts, cmd)

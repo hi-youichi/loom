@@ -128,6 +128,7 @@ pub fn parse_chat_request(req: &ChatCompletionRequest) -> Result<ParsedChatReque
             user_id: None,
             approval_policy,
             role_setting: None,
+            agents_md: None,
             system_prompt_override: None,
         })
     } else {

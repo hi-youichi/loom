@@ -30,9 +30,12 @@ pub struct HelveConfig {
     pub user_id: Option<String>,
     /// When set, tools that require approval (e.g. delete_file) will interrupt before execution.
     pub approval_policy: Option<ApprovalPolicy>,
-    /// Role/persona setting: prepended to the assembled system prompt (workdir + approval).
+    /// Role/persona setting (e.g. from SOUL.md): prepended to the assembled system prompt.
     /// E.g. "You are a code review expert." Does not apply when `system_prompt_override` is set.
     pub role_setting: Option<String>,
+    /// Project-level agent rules (e.g. from AGENTS.md): appended after role_setting, before base.
+    /// Order in prompt: role_setting + agents_md + base_content.
+    pub agents_md: Option<String>,
     /// When set, used as the full system prompt instead of assembling from workdir + approval.
     pub system_prompt_override: Option<String>,
 }
@@ -43,7 +46,8 @@ pub struct HelveConfig {
 /// `helve` when set; otherwise from `base`. System prompt is set in this order:
 /// 1. `helve.system_prompt_override` if present (used as full system prompt)
 /// 2. else: base content = assembled from workdir (if set) or `base.system_prompt`;
-///    if `helve.role_setting` is set, system prompt = role_setting + "\n\n" + base content;
+///    role prefix = role_setting (if set) + "\n\n" + agents_md (if set), trimmed;
+///    if role prefix is non-empty, system prompt = role prefix + "\n\n" + base content;
 ///    otherwise system prompt = base content
 ///
 /// Other fields (db_path, mcp_*, openai_*, etc.) are always taken from `base`.
@@ -69,10 +73,16 @@ pub fn to_react_build_config(helve: &HelveConfig, base: ReactBuildConfig) -> Rea
             .map(|p| assemble_system_prompt(p.as_path(), helve.approval_policy))
             .or_else(|| base.system_prompt.clone())
             .unwrap_or_else(|| REACT_SYSTEM_PROMPT.to_string());
-        Some(if let Some(ref role) = helve.role_setting {
-            format!("{}\n\n{}", role.trim(), base_content)
-        } else {
+        let role_prefix: Vec<&str> = [helve.role_setting.as_deref(), helve.agents_md.as_deref()]
+            .into_iter()
+            .flatten()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+        Some(if role_prefix.is_empty() {
             base_content
+        } else {
+            format!("{}\n\n{}", role_prefix.join("\n\n"), base_content)
         })
     });
 
@@ -133,6 +143,7 @@ mod tests {
         assert!(c.user_id.is_none());
         assert!(c.approval_policy.is_none());
         assert!(c.role_setting.is_none());
+        assert!(c.agents_md.is_none());
         assert!(c.system_prompt_override.is_none());
     }
 
@@ -150,5 +161,43 @@ mod tests {
         let prompt = out.system_prompt.as_deref().unwrap();
         assert!(prompt.starts_with("You are a code review expert."));
         assert!(prompt.contains("/tmp/ws"));
+    }
+
+    /// **Scenario**: only agents_md is prepended when role_setting is None.
+    #[test]
+    fn to_react_build_config_agents_md_only() {
+        let mut base = ReactBuildConfig::from_env();
+        base.system_prompt = None;
+        let helve = HelveConfig {
+            working_folder: Some(PathBuf::from("/tmp/ws")),
+            agents_md: Some("Project rules from AGENTS.md.".to_string()),
+            ..Default::default()
+        };
+        let out = to_react_build_config(&helve, base);
+        let prompt = out.system_prompt.as_deref().unwrap();
+        assert!(prompt.starts_with("Project rules from AGENTS.md."));
+        assert!(prompt.contains("/tmp/ws"));
+    }
+
+    /// **Scenario**: role_setting then agents_md then base_content order.
+    #[test]
+    fn to_react_build_config_role_setting_then_agents_md() {
+        let mut base = ReactBuildConfig::from_env();
+        base.system_prompt = None;
+        let helve = HelveConfig {
+            working_folder: Some(PathBuf::from("/tmp/ws")),
+            role_setting: Some("SOUL content.".to_string()),
+            agents_md: Some("AGENTS content.".to_string()),
+            ..Default::default()
+        };
+        let out = to_react_build_config(&helve, base);
+        let prompt = out.system_prompt.as_deref().unwrap();
+        assert!(prompt.starts_with("SOUL content."));
+        assert!(prompt.contains("AGENTS content."));
+        assert!(prompt.contains("/tmp/ws"));
+        let soul_pos = prompt.find("SOUL content.").unwrap();
+        let agents_pos = prompt.find("AGENTS content.").unwrap();
+        let workdir_pos = prompt.find("/tmp/ws").unwrap();
+        assert!(soul_pos < agents_pos && agents_pos < workdir_pos);
     }
 }

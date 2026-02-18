@@ -60,6 +60,31 @@ pub enum RunError {
     ToolNotFound(String),
 }
 
+const AGENTS_MD_FILE: &str = "AGENTS.md";
+
+/// Reads AGENTS.md from current directory and optionally from working_folder, then merges.
+/// Order: current dir first, then working_folder (when set and different from cwd). Returns `None`
+/// when both are missing or empty. Only the filename AGENTS.md is read.
+pub(crate) fn load_agents_md(working_folder: Option<&PathBuf>) -> Option<String> {
+    let cwd = std::env::current_dir().ok()?;
+    let cwd_canon = cwd.canonicalize().unwrap_or(cwd.clone());
+    let cwd_agents = std::fs::read_to_string(cwd.join(AGENTS_MD_FILE))
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.trim().to_string());
+    let work_agents = working_folder
+        .filter(|p| p.canonicalize().unwrap_or_else(|_| p.to_path_buf()) != cwd_canon)
+        .and_then(|p| std::fs::read_to_string(p.join(AGENTS_MD_FILE)).ok())
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.trim().to_string());
+    match (cwd_agents, work_agents) {
+        (Some(c), Some(w)) => Some(format!("{}\n\n{}", c, w)),
+        (Some(c), None) => Some(c),
+        (None, Some(w)) => Some(w),
+        (None, None) => None,
+    }
+}
+
 /// Reads SOUL.md from current directory and optionally from working_folder, then merges.
 /// Order: current dir first, then working_folder (when set and different from cwd). Returns `None`
 /// when both are missing or empty.
@@ -97,6 +122,7 @@ pub(crate) fn build_helve_config(opts: &RunOptions) -> (HelveConfig, ReactBuildC
         user_id: base.user_id.clone(),
         approval_policy: None,
         role_setting: load_soul_md(Some(&working_folder)),
+        agents_md: load_agents_md(Some(&working_folder)),
         system_prompt_override: None,
     };
     let config = to_react_build_config(&helve, base);
@@ -131,4 +157,49 @@ pub(crate) async fn print_loaded_tools(config: &ReactBuildConfig) -> Result<(), 
     let names: Vec<&str> = tools.iter().map(|s| s.name.as_str()).collect();
     eprintln!("loaded tools: {}", names.join(", "));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// load_agents_md(Some(work_dir)) returns content when work_dir contains AGENTS.md and is different from cwd.
+    #[test]
+    fn load_agents_md_from_working_folder() {
+        let work = tempfile::tempdir().unwrap();
+        let work_path = work.path().to_path_buf();
+        let agents_path = work_path.join("AGENTS.md");
+        std::fs::write(&agents_path, "Project agent rules.").unwrap();
+        let out = load_agents_md(Some(&work_path));
+        assert_eq!(out.as_deref(), Some("Project agent rules."));
+    }
+
+    /// load_agents_md(Some(work_dir)) returns None when work_dir has no AGENTS.md.
+    #[test]
+    fn load_agents_md_missing_returns_none() {
+        let work = tempfile::tempdir().unwrap();
+        let work_path = work.path().to_path_buf();
+        let out = load_agents_md(Some(&work_path));
+        assert!(out.is_none());
+    }
+
+    /// build_helve_config sets agents_md when working_folder contains AGENTS.md.
+    #[test]
+    fn build_helve_config_includes_agents_md() {
+        let work = tempfile::tempdir().unwrap();
+        let work_path = work.path().to_path_buf();
+        std::fs::write(work_path.join("AGENTS.md"), "AGENTS content.").unwrap();
+        let opts = RunOptions {
+            message: String::new(),
+            working_folder: Some(work_path),
+            thread_id: None,
+            verbose: false,
+            got_adaptive: false,
+            display_max_len: 2000,
+        };
+        let (helve, config) = build_helve_config(&opts);
+        assert_eq!(helve.agents_md.as_deref(), Some("AGENTS content."));
+        let prompt = config.system_prompt.as_deref().unwrap();
+        assert!(prompt.contains("AGENTS content."));
+    }
 }

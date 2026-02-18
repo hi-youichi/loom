@@ -119,13 +119,14 @@ impl Tool for EditFileTool {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
-        if old_string == new_string {
-            return Err(ToolSourceError::InvalidInput(
-                "oldString and newString must be different".to_string(),
-            ));
-        }
-
         let path = resolve_path_under(self.working_folder.as_ref(), path_param)?;
+
+        // No-op: same string means no change; succeed without touching the file.
+        if old_string == new_string {
+            return Ok(ToolCallContent {
+                text: "Edit applied successfully (no change).".to_string(),
+            });
+        }
 
         // Create / overwrite the file when oldString is empty (new file semantics).
         if old_string.is_empty() {
