@@ -75,6 +75,7 @@ fn tool_result_default_and_construction() {
         call_id: Some("call-1".into()),
         name: Some("get_time".into()),
         content: "2025-01-29 12:00:00".into(),
+        is_error: false,
     };
     assert_eq!(r.call_id.as_deref(), Some("call-1"));
     assert_eq!(r.name.as_deref(), Some("get_time"));
@@ -87,6 +88,7 @@ fn tool_result_call_id_only() {
         call_id: Some("call-1".into()),
         name: None,
         content: "ok".into(),
+        is_error: false,
     };
     assert_eq!(r.call_id.as_deref(), Some("call-1"));
     assert!(r.name.is_none());
@@ -99,6 +101,7 @@ fn tool_result_name_only() {
         call_id: None,
         name: Some("get_time".into()),
         content: "12:00".into(),
+        is_error: false,
     };
     assert!(r.call_id.is_none());
     assert_eq!(r.name.as_deref(), Some("get_time"));
@@ -111,6 +114,7 @@ fn tool_result_clone() {
         call_id: Some("call-1".into()),
         name: Some("get_time".into()),
         content: "12:00".into(),
+        is_error: false,
     };
     let c = r.clone();
     assert_eq!(c.call_id, r.call_id);
@@ -124,6 +128,7 @@ fn tool_result_debug() {
         call_id: Some("call-1".into()),
         name: Some("get_time".into()),
         content: "12:00".into(),
+        is_error: false,
     };
     let s = format!("{:?}", r);
     assert!(s.contains("12:00"));
@@ -156,6 +161,7 @@ fn react_state_construction_and_clone() {
             call_id: Some("call-1".into()),
             name: Some("get_time".into()),
             content: "12:00".into(),
+            is_error: false,
         }],
         turn_count: 0,
         approval_result: None,
@@ -199,11 +205,13 @@ fn react_state_clone_field_by_field() {
                 call_id: Some("call-1".into()),
                 name: Some("get_time".into()),
                 content: "12:00".into(),
+                is_error: false,
             },
             ToolResult {
                 call_id: Some("call-2".into()),
                 name: Some("search".into()),
                 content: "[]".into(),
+                is_error: false,
             },
         ],
         turn_count: 0,
@@ -262,6 +270,7 @@ fn react_state_empty_tool_calls_non_empty_results() {
             call_id: None,
             name: Some("get_time".into()),
             content: "12:00".into(),
+            is_error: false,
         }],
         turn_count: 0,
         approval_result: None,

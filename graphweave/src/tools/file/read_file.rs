@@ -1,7 +1,8 @@
 //! Read-file tool: read text content of a file under the working folder.
 //!
 //! Exposes `read` as a tool for the LLM. Path is validated to be under
-//! working folder. Interacts with [`Tool`](crate::tools::Tool), [`ToolSpec`](crate::tool_source::ToolSpec).
+//! working folder. Supports offset/limit for long files. Interacts with
+//! [`Tool`](crate::tools::Tool), [`ToolSpec`](crate::tool_source::ToolSpec).
 
 use std::sync::Arc;
 
@@ -16,10 +17,13 @@ use super::path::resolve_path_under;
 /// Tool name for reading a file.
 pub const TOOL_READ_FILE: &str = "read";
 
-/// Tool that reads the entire text content of a file under the working folder.
+const DEFAULT_READ_LIMIT: usize = 2000;
+const MAX_LINE_LENGTH: usize = 2000;
+
+/// Tool that reads text content of a file under the working folder.
 ///
-/// Uses UTF-8 by default; optional encoding parameter is accepted but only UTF-8
-/// is implemented. Interacts with [`resolve_path_under`] for path validation.
+/// Supports offset (0-based line index) and limit. Uses UTF-8; lines longer
+/// than MAX_LINE_LENGTH are truncated. Output format: "  {line_num}\t{content}".
 pub struct ReadFileTool {
     /// Canonical working folder path (shared with other file tools).
     pub(crate) working_folder: Arc<std::path::PathBuf>,
@@ -42,8 +46,8 @@ impl Tool for ReadFileTool {
         crate::tool_source::ToolSpec {
             name: TOOL_READ_FILE.to_string(),
             description: Some(
-                "Read entire text content of a file. Path is relative to the working folder. \
-                 Use for text files; binary files may be truncated or unsupported."
+                "Read file content. Path relative to working folder. Optional offset (0-based) and limit (default 2000). \
+                 Output in cat -n style with line numbers."
                     .to_string(),
             ),
             input_schema: json!({
@@ -52,6 +56,17 @@ impl Tool for ReadFileTool {
                     "path": {
                         "type": "string",
                         "description": "File path relative to working folder."
+                    },
+                    "offset": {
+                        "type": "integer",
+                        "description": "0-based line number to start reading from.",
+                        "minimum": 0
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max lines to read (default 2000).",
+                        "minimum": 1,
+                        "default": 2000
                     },
                     "encoding": {
                         "type": "string",
@@ -88,6 +103,34 @@ impl Tool for ReadFileTool {
         }
         let content = std::fs::read_to_string(&path)
             .map_err(|e| ToolSourceError::Transport(format!("failed to read file: {}", e)))?;
-        Ok(ToolCallContent { text: content })
+
+        let offset = args
+            .get("offset")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as usize)
+            .unwrap_or(0);
+        let limit = args
+            .get("limit")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as usize)
+            .unwrap_or(DEFAULT_READ_LIMIT);
+
+        let lines: Vec<&str> = content.split('\n').collect();
+        let total = lines.len();
+        let start = offset.min(total);
+        let end = (start + limit).min(total);
+        let selected = &lines[start..end];
+
+        let mut out = String::new();
+        for (i, line) in selected.iter().enumerate() {
+            let line_num = start + i + 1;
+            let truncated = if line.len() > MAX_LINE_LENGTH {
+                format!("{}...", &line[..MAX_LINE_LENGTH])
+            } else {
+                (*line).to_string()
+            };
+            out.push_str(&format!("  {}\t{}\n", line_num, truncated));
+        }
+        Ok(ToolCallContent { text: out })
     }
 }

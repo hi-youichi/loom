@@ -86,18 +86,30 @@ impl Tool for BashTool {
         crate::tool_source::ToolSpec {
             name: TOOL_BASH.to_string(),
             description: Some(
-                "Run a shell command. Use for: listing files (ls), reading files (cat), cloning \
-                 repos (git clone <url>), running git/cargo/npm, or any system command. Prefer this \
-                 when the user asks to clone a repo, run terminal commands, or work with the \
-                 filesystem. On Unix uses sh -c; on Windows uses cmd /C. Returns combined stdout \
-                 and stderr.".to_string(),
+                "Executes a shell command in a subprocess with optional workdir and timeout. \
+                 Use for git, npm, cargo, docker, etc. Do NOT use for file read/write/search — use read, grep, glob, edit instead. \
+                 On Unix uses sh -c; on Windows uses cmd /C. Returns combined stdout and stderr."
+                    .to_string(),
             ),
             input_schema: json!({
                 "type": "object",
                 "properties": {
                     "command": {
                         "type": "string",
-                        "description": "The shell command to run (e.g. 'git clone https://...', 'ls -la', 'cat README.md')."
+                        "description": "The shell command to run."
+                    },
+                    "workdir": {
+                        "type": "string",
+                        "description": "Directory to run in (relative or absolute). Omit for working folder."
+                    },
+                    "timeout": {
+                        "type": "integer",
+                        "description": "Timeout in milliseconds (default 120000).",
+                        "default": 120000
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Short description of the command (5-10 words)."
                     }
                 },
                 "required": ["command"]
@@ -135,8 +147,13 @@ impl Tool for BashTool {
             .get("command")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolSourceError::InvalidInput("missing command".to_string()))?;
+        let workdir = args.get("workdir").and_then(|v| v.as_str());
+        let timeout_ms = args
+            .get("timeout")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(120_000);
 
-        let output = run_shell_command(command).await?;
+        let output = run_shell_command(command, workdir, timeout_ms).await?;
 
         let text = if output.stderr.is_empty() {
             output.stdout
@@ -157,13 +174,29 @@ struct ShellOutput {
 }
 
 #[cfg(unix)]
-async fn run_shell_command(command: &str) -> Result<ShellOutput, ToolSourceError> {
-    let output = tokio::process::Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        .output()
+async fn run_shell_command(
+    command: &str,
+    workdir: Option<&str>,
+    timeout_ms: u64,
+) -> Result<ShellOutput, ToolSourceError> {
+    let mut cmd = tokio::process::Command::new("sh");
+    cmd.arg("-c").arg(command);
+    if let Some(dir) = workdir {
+        cmd.current_dir(dir);
+    }
+    let output = if timeout_ms == 0 {
+        cmd.output()
+            .await
+            .map_err(|e| ToolSourceError::Transport(format!("failed to run command: {}", e)))?
+    } else {
+        tokio::time::timeout(
+            std::time::Duration::from_millis(timeout_ms),
+            cmd.output(),
+        )
         .await
-        .map_err(|e| ToolSourceError::Transport(format!("failed to run command: {}", e)))?;
+        .map_err(|_| ToolSourceError::Transport("command timed out".to_string()))?
+        .map_err(|e| ToolSourceError::Transport(format!("failed to run command: {}", e)))?
+    };
 
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -171,12 +204,29 @@ async fn run_shell_command(command: &str) -> Result<ShellOutput, ToolSourceError
 }
 
 #[cfg(windows)]
-async fn run_shell_command(command: &str) -> Result<ShellOutput, ToolSourceError> {
-    let output = tokio::process::Command::new("cmd")
-        .args(["/C", command])
-        .output()
+async fn run_shell_command(
+    command: &str,
+    workdir: Option<&str>,
+    timeout_ms: u64,
+) -> Result<ShellOutput, ToolSourceError> {
+    let mut cmd = tokio::process::Command::new("cmd");
+    cmd.args(["/C", command]);
+    if let Some(dir) = workdir {
+        cmd.current_dir(dir);
+    }
+    let output = if timeout_ms == 0 {
+        cmd.output()
+            .await
+            .map_err(|e| ToolSourceError::Transport(format!("failed to run command: {}", e)))?
+    } else {
+        tokio::time::timeout(
+            std::time::Duration::from_millis(timeout_ms),
+            cmd.output(),
+        )
         .await
-        .map_err(|e| ToolSourceError::Transport(format!("failed to run command: {}", e)))?;
+        .map_err(|_| ToolSourceError::Transport("command timed out".to_string()))?
+        .map_err(|e| ToolSourceError::Transport(format!("failed to run command: {}", e)))?
+    };
 
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();

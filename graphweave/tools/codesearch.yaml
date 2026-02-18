@@ -1,0 +1,20 @@
+name: codesearch
+description: |
+  Search for code examples, documentation, and API references using Exa.
+  Use for libraries, SDKs, frameworks, and programming patterns. Optional includeDomains (e.g. github.com, docs.rs).
+input_schema:
+  type: object
+  properties:
+    query:
+      type: string
+      description: Programming-related query (e.g. 'React useState examples', 'Python pandas filter').
+    numResults:
+      type: integer
+      default: 10
+      description: Max results (1-100).
+    includeDomains:
+      type: array
+      items: { type: string }
+      description: e.g. ['github.com', 'docs.rs'].
+  required:
+    - query

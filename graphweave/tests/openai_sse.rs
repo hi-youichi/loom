@@ -282,7 +282,7 @@ fn parse_request_extracts_user_message_and_system_prompt() {
     assert!(parsed.runnable_config.thread_id.is_none());
 }
 
-/// **Scenario**: When no system message, system_prompt is REACT_SYSTEM_PROMPT.
+/// **Scenario**: When no system message, system_prompt is REACT_SYSTEM_PROMPT (code default).
 #[test]
 fn parse_request_uses_default_system_prompt_when_no_system_message() {
     let req = ChatCompletionRequest {
@@ -299,7 +299,7 @@ fn parse_request_uses_default_system_prompt_when_no_system_message() {
     };
     let parsed = parse_chat_request(&req).unwrap();
     assert_eq!(parsed.user_message, "Hi");
-    assert!(parsed.system_prompt.contains("ReAct"));
+    assert_eq!(parsed.system_prompt, graphweave::agent::react::REACT_SYSTEM_PROMPT);
 }
 
 /// **Scenario**: thread_id in request is reflected in runnable_config.

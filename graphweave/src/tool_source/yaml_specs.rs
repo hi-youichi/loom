@@ -25,13 +25,16 @@ macro_rules! embed_tool_yaml {
 
 const TOOL_YAML_FILES: &[&str] = embed_tool_yaml!(
     "../../tools/bash.yaml",
+    "../../tools/batch.yaml",
     "../../tools/web_fetcher.yaml",
     "../../tools/read.yaml",
     "../../tools/write_file.yaml",
     "../../tools/ls.yaml",
     "../../tools/glob.yaml",
     "../../tools/grep.yaml",
+    "../../tools/multiedit.yaml",
     "../../tools/move_file.yaml",
+    "../../tools/apply_patch.yaml",
     "../../tools/delete_file.yaml",
     "../../tools/create_dir.yaml",
     "../../tools/remember.yaml",
@@ -42,6 +45,10 @@ const TOOL_YAML_FILES: &[&str] = embed_tool_yaml!(
     "../../tools/todo_write.yaml",
     "../../tools/todo_read.yaml",
     "../../tools/twitter_search.yaml",
+    "../../tools/websearch.yaml",
+    "../../tools/codesearch.yaml",
+    "../../tools/skill.yaml",
+    "../../tools/lsp.yaml",
 );
 
 /// Errors from loading or using YAML tool specs.

@@ -69,7 +69,30 @@ async fn file_tool_source_write_file_then_read_file_roundtrip() {
         .call_tool(TOOL_READ_FILE, json!({ "path": "f.txt" }))
         .await
         .unwrap();
-    assert_eq!(out.text, "hello world");
+    // read returns cat -n style: "  {line_num}\t{content}\n"
+    assert!(out.text.contains("hello world"), "{}", out.text);
+    assert!(out.text.trim_start().starts_with("1\t"), "expected line 1: {}", out.text);
+}
+
+/// Scenario: read with offset and limit returns only those lines in cat -n format.
+#[tokio::test]
+async fn file_tool_source_read_with_offset_and_limit() {
+    let dir = tempfile::tempdir().unwrap();
+    let content = "line1\nline2\nline3\nline4\nline5\n";
+    std::fs::write(dir.path().join("f.txt"), content).unwrap();
+    let source = FileToolSource::new(dir.path()).unwrap();
+    let out = source
+        .call_tool(
+            TOOL_READ_FILE,
+            json!({ "path": "f.txt", "offset": 1, "limit": 2 }),
+        )
+        .await
+        .unwrap();
+    // Lines 2 and 3 (1-based); output format "  {num}\t{content}\n"
+    assert!(out.text.contains("line2"));
+    assert!(out.text.contains("line3"));
+    assert!(!out.text.contains("line1"));
+    assert!(!out.text.contains("line4"));
 }
 
 /// Scenario: path parameter "../outside" is rejected with InvalidInput (path outside working folder).

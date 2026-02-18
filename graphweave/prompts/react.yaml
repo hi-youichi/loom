@@ -1,0 +1,3 @@
+# ReAct prompts. Canonical source: embedded at compile time when no prompts dir.
+# Default: empty (no system_prompt), so code uses REACT_SYSTEM_PROMPT const.
+# Experimental ReAct system prompt (not used by default, not recommended): see experimental/react.yaml.

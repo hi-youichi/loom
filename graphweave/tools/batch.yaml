@@ -1,0 +1,32 @@
+name: batch
+description: |
+  Execute multiple independent tool calls in parallel to reduce latency (1–25 per batch).
+
+  Payload: JSON array of objects with "tool" (name) and "parameters" (object).
+  Example: [{"tool": "read", "parameters": {"path": "src/main.rs"}}, {"tool": "grep", "parameters": {"pattern": "fn main"}}]
+
+  - Use for: multiple reads, grep+glob+read combos, multiple bash commands, multi-part edits.
+  - Do not use when one call depends on another's output, or when order matters.
+  - Do not nest batch inside batch.
+input_schema:
+  type: object
+  properties:
+    calls:
+      type: array
+      minItems: 1
+      maxItems: 25
+      items:
+        type: object
+        properties:
+          tool:
+            type: string
+            description: Tool name (e.g. read, grep, glob, bash, edit).
+          parameters:
+            type: object
+            description: Arguments for that tool.
+        required:
+          - tool
+          - parameters
+      description: List of tool calls to run in parallel.
+  required:
+    - calls

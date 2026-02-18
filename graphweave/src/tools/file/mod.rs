@@ -3,6 +3,7 @@
 //! All tools operate under a shared working folder; paths are validated to stay
 //! under that folder. Used by [`FileToolSource`](crate::tool_source::FileToolSource).
 
+mod apply_patch;
 mod create_dir;
 mod delete_file;
 mod edit_file;
@@ -10,10 +11,12 @@ mod glob;
 mod grep;
 mod ls;
 mod move_file;
+mod multiedit;
 mod path;
 mod read_file;
 mod write_file;
 
+pub use apply_patch::{ApplyPatchTool, TOOL_APPLY_PATCH};
 pub use create_dir::{CreateDirTool, TOOL_CREATE_DIR};
 pub use delete_file::{DeleteFileTool, TOOL_DELETE_FILE};
 pub use edit_file::{replace as edit_replace, EditFileTool, TOOL_EDIT_FILE};
@@ -21,6 +24,7 @@ pub use glob::{GlobTool, TOOL_GLOB};
 pub use grep::{GrepTool, TOOL_GREP};
 pub use ls::{LsTool, TOOL_LS};
 pub use move_file::{MoveFileTool, TOOL_MOVE_FILE};
+pub use multiedit::{MultieditTool, TOOL_MULTIEDIT};
 pub use path::resolve_path_under;
 pub use read_file::{ReadFileTool, TOOL_READ_FILE};
 pub use write_file::{WriteFileTool, TOOL_WRITE_FILE};

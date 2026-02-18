@@ -1,15 +1,30 @@
 # Edit name, description, or input_schema; execution is in Rust.
 name: bash
 description: |
-  Run a shell command. Use for: listing files (ls), reading files (cat), cloning repos
-  (git clone <url>), running git/cargo/npm, or any system command. Prefer this when the user
-  asks to clone a repo, run terminal commands, or work with the filesystem. On Unix uses sh -c;
-  on Windows uses cmd /C. Returns combined stdout and stderr.
+  Executes a shell command in a subprocess with optional workdir and timeout.
+
+  - Commands run in the working folder by default. Use workdir to run in a different directory.
+    Prefer workdir over "cd ... && command".
+  - Use for git, npm, cargo, docker, etc. Do NOT use for file read/write/search — use read, grep, glob, edit instead.
+  - Quote paths with spaces (e.g. rm "path with spaces/file.txt").
+  - Optional timeout in milliseconds (default 120000). Give a short description in the description field when calling.
+
+  When running multiple commands: if independent, make multiple bash calls in one message; if sequential, use a single call with "&&" (e.g. git add . && git commit -m "msg").
 input_schema:
   type: object
   properties:
     command:
       type: string
-      description: The shell command to run (e.g. 'git clone https://...', 'ls -la', 'cat README.md').
+      description: The shell command to run (e.g. 'git status', 'cargo build', 'npm test').
+    workdir:
+      type: string
+      description: Directory to run the command in (relative to working folder or absolute). Omit to use working folder.
+    timeout:
+      type: integer
+      description: Timeout in milliseconds. Default 120000 (2 minutes).
+      default: 120000
+    description:
+      type: string
+      description: Short (5-10 word) description of what the command does, for logs.
   required:
     - command

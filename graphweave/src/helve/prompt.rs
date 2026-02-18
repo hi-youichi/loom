@@ -138,8 +138,6 @@ mod tests {
         assert!(p.contains(REACT_SYSTEM_PROMPT));
         assert!(p.contains("/tmp/ws"));
         assert!(p.contains("Working folder path"));
-        assert!(p.contains("ls"));
-        assert!(p.contains("delete_file"));
     }
 
     #[test]

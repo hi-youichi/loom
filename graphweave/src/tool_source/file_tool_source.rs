@@ -11,9 +11,10 @@ use async_trait::async_trait;
 
 use crate::tool_source::{ToolSource, ToolSourceError};
 use crate::tools::file::{
-    CreateDirTool, DeleteFileTool, EditFileTool, GlobTool, GrepTool, LsTool, MoveFileTool,
-    ReadFileTool, WriteFileTool,
+    ApplyPatchTool, CreateDirTool, DeleteFileTool, EditFileTool, GlobTool, GrepTool, LsTool,
+    MoveFileTool, MultieditTool, ReadFileTool, WriteFileTool,
 };
+use crate::tools::skill::SkillTool;
 use crate::tools::todo::{TodoReadTool, TodoWriteTool};
 use crate::tools::AggregateToolSource;
 
@@ -53,13 +54,16 @@ pub fn register_file_tools(
     aggregate.register_sync(Box::new(ReadFileTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(WriteFileTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(EditFileTool::new(working_folder.clone())));
+    aggregate.register_sync(Box::new(MultieditTool::new(working_folder.clone())));
+    aggregate.register_sync(Box::new(ApplyPatchTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(MoveFileTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(DeleteFileTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(CreateDirTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(GlobTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(GrepTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(TodoWriteTool::new(working_folder.clone())));
-    aggregate.register_sync(Box::new(TodoReadTool::new(working_folder)));
+    aggregate.register_sync(Box::new(TodoReadTool::new(working_folder.clone())));
+    aggregate.register_sync(Box::new(SkillTool::new(working_folder)));
     Ok(())
 }
 

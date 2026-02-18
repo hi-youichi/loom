@@ -1,0 +1,40 @@
+name: websearch
+description: |
+  Search the web using Exa. Use for current events and up-to-date information.
+  Supports category, date range (startPublishedDate/endPublishedDate in ISO 8601), and domain filters (includeDomains/excludeDomains).
+  Today's date should be used when searching for recent information (e.g. "AI news 2025").
+input_schema:
+  type: object
+  properties:
+    query:
+      type: string
+      description: Search query.
+    numResults:
+      type: integer
+      default: 10
+      description: Max results (1-100).
+    type:
+      type: string
+      enum: [auto, neural, fast, deep, instant]
+      default: auto
+      description: Search type.
+    category:
+      type: string
+      enum: [company, research paper, news, tweet, personal site, financial report, people]
+      description: Focus by category.
+    includeDomains:
+      type: array
+      items: { type: string }
+      description: Only results from these domains.
+    excludeDomains:
+      type: array
+      items: { type: string }
+      description: Exclude these domains.
+    startPublishedDate:
+      type: string
+      description: ISO 8601; only results after this date.
+    endPublishedDate:
+      type: string
+      description: ISO 8601; only results before this date.
+  required:
+    - query

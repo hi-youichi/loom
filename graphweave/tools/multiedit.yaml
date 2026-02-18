@@ -1,0 +1,40 @@
+name: multiedit
+description: |
+  Apply multiple find-and-replace edits to a single file in one call. Prefer over edit when
+  making several changes to the same file.
+
+  Before using:
+  1. Use the Read tool to understand the file contents.
+  2. Verify the path is correct.
+
+  - path: file to modify (relative to working folder).
+  - edits: array of { oldString, newString, replaceAll? }. Applied in order; all or none (atomic).
+  - Same rules as edit: exact match, replaceAll for renames, no line-number prefix in strings.
+
+input_schema:
+  type: object
+  properties:
+    path:
+      type: string
+      description: File path relative to working folder.
+    edits:
+      type: array
+      items:
+        type: object
+        properties:
+          oldString:
+            type: string
+            description: The text to replace.
+          newString:
+            type: string
+            description: The text to replace it with.
+          replaceAll:
+            type: boolean
+            default: false
+        required:
+          - oldString
+          - newString
+      description: List of edits to apply in order.
+  required:
+    - path
+    - edits

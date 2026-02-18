@@ -1,0 +1,13 @@
+name: lsp
+description: |
+  (Experimental) LSP-based code completions and diagnostics. Currently not implemented;
+  use read, edit, grep, and glob for code navigation and edits.
+input_schema:
+  type: object
+  properties:
+    filePath:
+      type: string
+      description: Path to the file.
+    position:
+      type: object
+      description: Optional line/character position.

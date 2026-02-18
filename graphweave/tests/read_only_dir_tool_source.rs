@@ -98,7 +98,8 @@ async fn aggregate_file_tools_and_read_only_dir_tools() {
         .call_tool(TOOL_READ_FILE, json!({ "path": "writable.txt" }))
         .await
         .unwrap();
-    assert_eq!(w.text, "written");
+    // read_file outputs cat -n style: "  {line_num}\t{content}\n"
+    assert_eq!(w.text.trim(), "1\twritten");
 
     // Read-only connector: read from read_only_root
     let ro = aggregate

@@ -160,13 +160,13 @@ mod tests {
         assert!(matches!(result.unwrap_err(), LoadError::DirNotFound(_)));
     }
 
-    /// load_or_default with non-existent dir returns default from embedded YAML (not Rust const).
+    /// load_or_default with non-existent dir returns default from embedded YAML (empty react → code const).
     #[test]
     fn load_or_default_nonexistent_returns_default_from_embedded() {
         let p = load_or_default(Some(Path::new("/nonexistent_prompts_dir_12345")));
         let s = p.react_system_prompt();
-        assert!(s.contains("ReAct"), "default should come from embedded react.yaml");
-        assert!(s.contains("THOUGHT first"));
+        // Embedded react.yaml is empty by design; effective default is code const.
+        assert_eq!(s, crate::agent::react::REACT_SYSTEM_PROMPT);
     }
 
     /// Load from a directory containing only react.yaml with system_prompt overrides that value.
