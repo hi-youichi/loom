@@ -177,6 +177,7 @@ impl LlmClient for ChatOpenAI {
                 })
                 .collect();
             args.tools(chat_tools);
+            args.tool_choice(ChatCompletionToolChoiceOption::Mode(ToolChoiceOptions::Required));
         }
 
         if let Some(t) = self.temperature {
@@ -305,6 +306,7 @@ impl LlmClient for ChatOpenAI {
                 })
                 .collect();
             args.tools(chat_tools);
+            args.tool_choice(ChatCompletionToolChoiceOption::Mode(ToolChoiceOptions::Required));
         }
 
         if let Some(t) = self.temperature {
@@ -599,7 +601,10 @@ mod tests {
     async fn invoke_with_real_api_returns_ok() {
         std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set for this test");
 
-        let client = ChatOpenAI::new("gpt-4o-mini");
+        let model = std::env::var("MODEL")
+            .or_else(|_| std::env::var("OPENAI_MODEL"))
+            .unwrap_or_else(|_| "gpt-4o-mini".to_string());
+        let client = ChatOpenAI::new(model);
         let messages = [Message::user("Say exactly: ok")];
 
         let result = client.invoke(&messages).await;
@@ -619,7 +624,10 @@ mod tests {
     async fn invoke_stream_with_real_api_returns_ok() {
         std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set for this test");
 
-        let client = ChatOpenAI::new("gpt-4o-mini");
+        let model = std::env::var("MODEL")
+            .or_else(|_| std::env::var("OPENAI_MODEL"))
+            .unwrap_or_else(|_| "gpt-4o-mini".to_string());
+        let client = ChatOpenAI::new(model);
         let messages = [Message::user("Say exactly: ok")];
         let (tx, mut rx) = mpsc::channel(16);
 

@@ -26,10 +26,11 @@ macro_rules! embed_tool_yaml {
 const TOOL_YAML_FILES: &[&str] = embed_tool_yaml!(
     "../../tools/bash.yaml",
     "../../tools/web_fetcher.yaml",
-    "../../tools/read_file.yaml",
+    "../../tools/read.yaml",
     "../../tools/write_file.yaml",
     "../../tools/ls.yaml",
     "../../tools/glob.yaml",
+    "../../tools/grep.yaml",
     "../../tools/move_file.yaml",
     "../../tools/delete_file.yaml",
     "../../tools/create_dir.yaml",
@@ -160,8 +161,8 @@ mod tests {
             names
         );
         assert!(
-            names.contains(&"read_file"),
-            "expected read_file in {:?}",
+            names.contains(&"read"),
+            "expected read in {:?}",
             names
         );
     }

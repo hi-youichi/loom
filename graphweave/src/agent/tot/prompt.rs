@@ -16,7 +16,7 @@ Rules:
 - Include at least one candidate that uses tools when the task needs them. Choose tools that fit the task:
   - Search / how-to / research: web_fetcher or web_search_exa. Example: [{"name":"web_fetcher","arguments":"{\"url\":\"https://...\"}"}]
   - Clone repo, run commands, or local files: bash. Example: [{"name":"bash","arguments":"{\"command\":\"git clone https://github.com/org/repo.git\"}"}]
-  - Other tasks: use [] or the tool that matches (read_file, etc.).
+  - Other tasks: use [] or the tool that matches (read, etc.).
 "#;
 
 /// Addon for research/how-to tasks: require multiple tool calls and structured answer.

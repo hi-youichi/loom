@@ -85,7 +85,9 @@ impl ReactBuildConfig {
             mcp_verbose,
             openai_api_key: std::env::var("OPENAI_API_KEY").ok(),
             openai_base_url: std::env::var("OPENAI_BASE_URL").ok(),
-            model: std::env::var("OPENAI_MODEL").ok(),
+            model: std::env::var("MODEL")
+                .or_else(|_| std::env::var("OPENAI_MODEL"))
+                .ok(),
             embedding_api_key: std::env::var("EMBEDDING_API_KEY")
                 .or_else(|_| std::env::var("BIGMODEL_API_KEY"))
                 .ok(),

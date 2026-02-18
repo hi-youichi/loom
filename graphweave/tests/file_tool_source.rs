@@ -1,25 +1,25 @@
 //! Unit tests for FileToolSource and path validation.
 //!
 //! Scenarios: list_tools returns 9 tools (file tools + todo_write, todo_read); ls under working folder;
-//! read_file/write_file roundtrip; path outside working folder returns InvalidInput;
+//! read/write_file roundtrip; path outside working folder returns InvalidInput;
 //! create_dir and delete_file; move_file; glob (pattern/path/include).
 
 mod init_logging;
 
 use graphweave::tool_source::{FileToolSource, ToolSource, ToolSourceError};
 use graphweave::tools::{
-    TOOL_CREATE_DIR, TOOL_DELETE_FILE, TOOL_GLOB, TOOL_LS, TOOL_MOVE_FILE, TOOL_READ_FILE,
-    TOOL_TODO_READ, TOOL_TODO_WRITE, TOOL_WRITE_FILE,
+    TOOL_CREATE_DIR, TOOL_DELETE_FILE, TOOL_GLOB, TOOL_GREP, TOOL_LS, TOOL_MOVE_FILE,
+    TOOL_READ_FILE, TOOL_TODO_READ, TOOL_TODO_WRITE, TOOL_WRITE_FILE,
 };
 use serde_json::json;
 
-/// Scenario: FileToolSource::new with a valid directory returns a source that lists 9 tools (file + todo_write, todo_read).
+/// Scenario: FileToolSource::new with a valid directory returns a source that lists 10 tools (file + grep + todo_write, todo_read).
 #[tokio::test]
-async fn file_tool_source_list_tools_returns_nine_tools() {
+async fn file_tool_source_list_tools_returns_ten_tools() {
     let dir = tempfile::tempdir().unwrap();
     let source = FileToolSource::new(dir.path()).unwrap();
     let tools = source.list_tools().await.unwrap();
-    assert_eq!(tools.len(), 9);
+    assert_eq!(tools.len(), 10);
     let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
     assert!(names.contains(&TOOL_LS));
     assert!(names.contains(&TOOL_READ_FILE));
@@ -28,6 +28,7 @@ async fn file_tool_source_list_tools_returns_nine_tools() {
     assert!(names.contains(&TOOL_DELETE_FILE));
     assert!(names.contains(&TOOL_CREATE_DIR));
     assert!(names.contains(&TOOL_GLOB));
+    assert!(names.contains(&TOOL_GREP));
     assert!(names.contains(&TOOL_TODO_WRITE));
     assert!(names.contains(&TOOL_TODO_READ));
 }
@@ -51,7 +52,7 @@ async fn file_tool_source_ls_root() {
     assert!(result.text.contains("c.txt"));
 }
 
-/// Scenario: write_file then read_file returns the same content; path is under working folder.
+/// Scenario: write_file then read returns the same content; path is under working folder.
 #[tokio::test]
 async fn file_tool_source_write_file_then_read_file_roundtrip() {
     let dir = tempfile::tempdir().unwrap();

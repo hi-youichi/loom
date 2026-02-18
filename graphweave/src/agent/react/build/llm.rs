@@ -22,8 +22,10 @@ fn openai_config_from(
         .model
         .as_deref()
         .filter(|s| !s.is_empty())
-        .unwrap_or("gpt-4o-mini")
-        .to_string();
+        .map(|s| s.to_string())
+        .or_else(|| std::env::var("MODEL").ok())
+        .or_else(|| std::env::var("OPENAI_MODEL").ok())
+        .unwrap_or_else(|| "gpt-4o-mini".to_string());
     let mut openai_config = OpenAIConfig::new().with_api_key(api_key);
     if let Some(ref base) = config.openai_base_url {
         if !base.is_empty() {

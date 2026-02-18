@@ -23,7 +23,7 @@ use std::path::PathBuf;
 use thiserror::Error;
 
 /// Default working folder when `-w` / `--working-folder` is not passed.
-/// File tools (list_dir, read_file, write_file, etc.) use this directory.
+/// File tools (list_dir, read, write_file, etc.) use this directory.
 pub(crate) const DEFAULT_WORKING_FOLDER: &str = "/tmp";
 
 /// Options for running the Helve agent from the CLI.
@@ -65,12 +65,13 @@ pub enum RunError {
 /// when both are missing or empty.
 pub(crate) fn load_soul_md(working_folder: Option<&PathBuf>) -> Option<String> {
     let cwd = std::env::current_dir().ok()?;
+    let cwd_canon = cwd.canonicalize().unwrap_or(cwd.clone());
     let cwd_soul = std::fs::read_to_string(cwd.join("SOUL.md"))
         .ok()
         .filter(|s| !s.trim().is_empty())
         .map(|s| s.trim().to_string());
     let work_soul = working_folder
-        .filter(|p| p.as_path() != cwd.as_path())
+        .filter(|p| p.canonicalize().unwrap_or_else(|_| p.to_path_buf()) != cwd_canon)
         .and_then(|p| std::fs::read_to_string(p.join("SOUL.md")).ok())
         .filter(|s| !s.trim().is_empty())
         .map(|s| s.trim().to_string());

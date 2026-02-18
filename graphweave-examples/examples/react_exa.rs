@@ -64,7 +64,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let tools = tool_source.list_tools().await?;
-    let llm = ChatOpenAI::new("gpt-4o-mini").with_tools(tools);
+    let model = std::env::var("MODEL")
+        .or_else(|_| std::env::var("OPENAI_MODEL"))
+        .unwrap_or_else(|_| "gpt-4o-mini".to_string());
+    let llm = ChatOpenAI::new(model).with_tools(tools);
     let think = ThinkNode::new(Arc::new(llm));
     let act = ActNode::new(Box::new(tool_source));
     let observe = ObserveNode::new();

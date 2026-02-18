@@ -48,6 +48,9 @@ serde_yaml = "0.9"
 walkdir = "2"
 glob = "0.3"
 
+# Grep tool: pure-Rust regex matching (no rg binary dependency)
+regex = "1"
+
 # XDG base dirs for todo storage (cross-platform: Linux, Windows, macOS)
 cross-xdg = "2"
 

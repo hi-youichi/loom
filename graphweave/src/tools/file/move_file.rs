@@ -80,7 +80,7 @@ impl Tool for MoveFileTool {
         let source = resolve_path_under(self.working_folder.as_ref(), source_param)?;
         let target = resolve_path_under(self.working_folder.as_ref(), target_param)?;
         if !source.exists() {
-            return Err(ToolSourceError::NotFound(format!(
+            return Err(ToolSourceError::InvalidInput(format!(
                 "source not found: {}",
                 source.display()
             )));

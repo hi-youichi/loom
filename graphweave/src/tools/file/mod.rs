@@ -1,4 +1,4 @@
-//! File tools: ls, read_file, write_file, move_file, delete_file, create_dir, glob.
+//! File tools: ls, read, write_file, move_file, delete_file, create_dir, glob, grep.
 //!
 //! All tools operate under a shared working folder; paths are validated to stay
 //! under that folder. Used by [`FileToolSource`](crate::tool_source::FileToolSource).
@@ -6,6 +6,7 @@
 mod create_dir;
 mod delete_file;
 mod glob;
+mod grep;
 mod ls;
 mod move_file;
 mod path;
@@ -15,6 +16,7 @@ mod write_file;
 pub use create_dir::{CreateDirTool, TOOL_CREATE_DIR};
 pub use delete_file::{DeleteFileTool, TOOL_DELETE_FILE};
 pub use glob::{GlobTool, TOOL_GLOB};
+pub use grep::{GrepTool, TOOL_GREP};
 pub use ls::{LsTool, TOOL_LS};
 pub use move_file::{MoveFileTool, TOOL_MOVE_FILE};
 pub use path::resolve_path_under;

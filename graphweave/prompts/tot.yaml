@@ -12,7 +12,7 @@ expand_system_addon: |
   - Include at least one candidate that uses tools when the task needs them. Choose tools that fit the task:
     - Search / how-to / research: web_fetcher or web_search_exa. Example: [{"name":"web_fetcher","arguments":"{\"url\":\"https://...\"}"}]
     - Clone repo, run commands, or local files: bash. Example: [{"name":"bash","arguments":"{\"command\":\"git clone https://github.com/org/repo.git\"}"}]
-    - Other tasks: use [] or the tool that matches (read_file, etc.).
+    - Other tasks: use [] or the tool that matches (read, etc.).
 
 research_quality_addon: |
   For "how to", "research", or look-up questions: run at least 2–3 tool calls (e.g. search) before giving a final answer. Structure the answer step-by-step (from simple to in-depth) and cite or mention sources when possible.

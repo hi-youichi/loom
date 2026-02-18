@@ -80,7 +80,7 @@ impl Tool for DeleteFileTool {
             .unwrap_or(false);
         let path = resolve_path_under(self.working_folder.as_ref(), path_param)?;
         if !path.exists() {
-            return Err(ToolSourceError::NotFound(format!(
+            return Err(ToolSourceError::InvalidInput(format!(
                 "path not found: {}",
                 path.display()
             )));

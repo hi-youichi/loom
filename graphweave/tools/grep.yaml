@@ -1,0 +1,26 @@
+name: grep
+description: |
+  - Fast content search tool that works with any codebase size
+  - Searches file contents using regular expressions
+  - Supports full regex syntax (e.g. "log.*Error", "function\s+\w+", etc.)
+  - Filter files by pattern with the include parameter (e.g. "*.rs", "*.{ts,tsx}")
+  - Returns file paths and line numbers with at least one match sorted by modification time
+  - Use this tool when you need to find files containing specific patterns
+  - If you need to identify/count the number of matches within files, use the Bash tool with `rg` (ripgrep) directly
+  - When you are doing an open-ended search that may require multiple rounds of globbing and grepping, use the Task tool instead
+  - You have the capability to call multiple tools in a single response. It is always better to speculatively perform multiple searches as a batch that are potentially useful.
+
+input_schema:
+  type: object
+  properties:
+    pattern:
+      type: string
+      description: "The regex pattern to search for in file contents (e.g. 'fn main', 'TODO', 'use std::')."
+    path:
+      type: string
+      description: "Directory under working folder to search in. Defaults to '.'."
+    include:
+      type: string
+      description: "File glob pattern to restrict search (e.g. '*.rs', '*.{ts,tsx}', 'src/**/*.yaml')."
+  required:
+    - pattern

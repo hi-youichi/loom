@@ -73,7 +73,7 @@ enum ToolCommand {
 
 #[derive(clap::Args, Debug, Clone)]
 struct ShowToolArgs {
-    /// Tool name (e.g. read_file, web_fetcher)
+    /// Tool name (e.g. read, web_fetcher)
     name: String,
     /// Output format: yaml (default) or json
     #[arg(long, value_name = "FORMAT", default_value = "yaml")]

@@ -10,9 +10,7 @@ use crate::agent::react::{
 };
 use crate::agent::tot::{TOT_EXPAND_SYSTEM_ADDON, TOT_RESEARCH_QUALITY_ADDON};
 
-use super::{
-    DupPromptsFile, GotPromptsFile, HelvePromptsFile, ReactPromptsFile, TotPromptsFile,
-};
+use super::{DupPromptsFile, GotPromptsFile, HelvePromptsFile, ReactPromptsFile, TotPromptsFile};
 
 /// Loaded and env-overridden prompts for all agent patterns. Getters resolve to code defaults when unset.
 ///
@@ -112,14 +110,18 @@ impl AgentPrompts {
             .clone()
             .unwrap_or_else(|| {
                 // In-code default (same as helve/prompt.rs inline)
+                //                 r#"
+                // WORKING FOLDER & FILE RULES:
+                // - Working folder path: {workdir}
+                // - You may ONLY use the provided file tools (ls, read, write_file, move_file, delete_file, create_dir) to operate inside this directory and its subdirectories.
+                // - Do NOT access paths outside the working folder. Any path you use must be under the above folder.
+                // - EXPLORE FIRST: When the user asks about the project, codebase, or any contents of the working folder (e.g. "what is this project?", "what files are here?", "describe the code"), you MUST call ls first to explore the structure, then read relevant files (README, config files, etc.) before answering. Never guess or ask the user for more context when the information is available in the working folder.
+                // - FILE OUTPUT: When the user explicitly asks you to write/save a document, report, or content to a file (e.g., "write to file", "save to file", "write a report to file"), you MUST call write_file to save the content BEFORE giving FINAL_ANSWER. Do NOT give FINAL_ANSWER with only text—call write_file first, then report the file path in your final answer."#
                 r#"
 WORKING FOLDER & FILE RULES:
 - Working folder path: {workdir}
-- You may ONLY use the provided file tools (ls, read_file, write_file, move_file, delete_file, create_dir) to operate inside this directory and its subdirectories.
-- Do NOT access paths outside the working folder. Any path you use must be under the above folder.
-- EXPLORE FIRST: When the user asks about the project, codebase, or any contents of the working folder (e.g. "what is this project?", "what files are here?", "describe the code"), you MUST call ls first to explore the structure, then read_file relevant files (README, config files, etc.) before answering. Never guess or ask the user for more context when the information is available in the working folder.
-- FILE OUTPUT: When the user explicitly asks you to write/save a document, report, or content to a file (e.g., "write to file", "save to file", "write a report to file"), you MUST call write_file to save the content BEFORE giving FINAL_ANSWER. Do NOT give FINAL_ANSWER with only text—call write_file first, then report the file path in your final answer."#
-                    .to_string()
+"#
+                .to_string()
             })
     }
 

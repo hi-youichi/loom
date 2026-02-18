@@ -1,6 +1,6 @@
 //! Read-file tool: read text content of a file under the working folder.
 //!
-//! Exposes `read_file` as a tool for the LLM. Path is validated to be under
+//! Exposes `read` as a tool for the LLM. Path is validated to be under
 //! working folder. Interacts with [`Tool`](crate::tools::Tool), [`ToolSpec`](crate::tool_source::ToolSpec).
 
 use std::sync::Arc;
@@ -14,7 +14,7 @@ use crate::tools::Tool;
 use super::path::resolve_path_under;
 
 /// Tool name for reading a file.
-pub const TOOL_READ_FILE: &str = "read_file";
+pub const TOOL_READ_FILE: &str = "read";
 
 /// Tool that reads the entire text content of a file under the working folder.
 ///
@@ -75,7 +75,7 @@ impl Tool for ReadFileTool {
             .ok_or_else(|| ToolSourceError::InvalidInput("missing path".to_string()))?;
         let path = resolve_path_under(self.working_folder.as_ref(), path_param)?;
         if !path.exists() {
-            return Err(ToolSourceError::NotFound(format!(
+            return Err(ToolSourceError::InvalidInput(format!(
                 "file not found: {}",
                 path.display()
             )));

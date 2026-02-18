@@ -1,4 +1,4 @@
-//! Read-only directory connector: list_dir and read_file for a second root (no write/delete).
+//! Read-only directory connector: list_dir and read for a second root (no write/delete).
 //!
 //! Use as a connector example: expose a read-only view of a directory (e.g. reference docs,
 //! cloud mount). Register with [`register_read_only_dir_tools`] on an [`AggregateToolSource`]
@@ -17,13 +17,13 @@ use crate::tools::{AggregateToolSource, Tool};
 
 /// Tool name for read-only list_dir (connector).
 pub const TOOL_READ_ONLY_LIST_DIR: &str = "read_only_list_dir";
-/// Tool name for read-only read_file (connector).
+/// Tool name for read-only read (connector).
 pub const TOOL_READ_ONLY_READ_FILE: &str = "read_only_read_file";
 
 /// Registers read-only directory tools on an existing [`AggregateToolSource`].
 ///
 /// The path must exist and be a directory; it is canonicalized. Tools are
-/// `read_only_list_dir` and `read_only_read_file` (path relative to this root).
+/// `read_only_list_dir` and `read_only_read` (path relative to this root).
 /// Use with [`register_file_tools`](crate::tool_source::file_tool_source::register_file_tools)
 /// to combine a writable working folder and a read-only connector root.
 ///
@@ -155,12 +155,12 @@ impl Tool for ReadOnlyReadFileTool {
             )));
         }
         let text = std::fs::read_to_string(&path)
-            .map_err(|e| ToolSourceError::Transport(format!("read_file failed: {}", e)))?;
+            .map_err(|e| ToolSourceError::Transport(format!("read failed: {}", e)))?;
         Ok(ToolCallContent { text })
     }
 }
 
-/// Read-only directory tool source: list_dir and read_file for a single root.
+/// Read-only directory tool source: list_dir and read for a single root.
 ///
 /// Use when you need a second, read-only root in addition to the writable working folder.
 /// For aggregation with [`FileToolSource`], use [`register_read_only_dir_tools`] on the
