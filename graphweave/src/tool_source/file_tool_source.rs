@@ -11,13 +11,13 @@ use async_trait::async_trait;
 
 use crate::tool_source::{ToolSource, ToolSourceError};
 use crate::tools::file::{
-    CreateDirTool, DeleteFileTool, GlobTool, GrepTool, LsTool, MoveFileTool, ReadFileTool,
-    WriteFileTool,
+    CreateDirTool, DeleteFileTool, EditFileTool, GlobTool, GrepTool, LsTool, MoveFileTool,
+    ReadFileTool, WriteFileTool,
 };
 use crate::tools::todo::{TodoReadTool, TodoWriteTool};
 use crate::tools::AggregateToolSource;
 
-/// Registers file tools (ls, read, write_file, move_file, delete_file, create_dir, glob, grep, todo_write, todo_read)
+/// Registers file tools (ls, read, write_file, edit, move_file, delete_file, create_dir, glob, grep, todo_write, todo_read)
 /// on an existing [`AggregateToolSource`].
 ///
 /// Use this to combine file tools with memory, web, or MCP tools in one source.
@@ -52,6 +52,7 @@ pub fn register_file_tools(
     aggregate.register_sync(Box::new(LsTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(ReadFileTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(WriteFileTool::new(working_folder.clone())));
+    aggregate.register_sync(Box::new(EditFileTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(MoveFileTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(DeleteFileTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(CreateDirTool::new(working_folder.clone())));
@@ -110,6 +111,7 @@ impl FileToolSource {
         source.register_sync(Box::new(LsTool::new(working_folder.clone())));
         source.register_sync(Box::new(ReadFileTool::new(working_folder.clone())));
         source.register_sync(Box::new(WriteFileTool::new(working_folder.clone())));
+        source.register_sync(Box::new(EditFileTool::new(working_folder.clone())));
         source.register_sync(Box::new(MoveFileTool::new(working_folder.clone())));
         source.register_sync(Box::new(DeleteFileTool::new(working_folder.clone())));
         source.register_sync(Box::new(CreateDirTool::new(working_folder.clone())));

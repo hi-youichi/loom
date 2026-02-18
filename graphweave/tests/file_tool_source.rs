@@ -1,6 +1,6 @@
 //! Unit tests for FileToolSource and path validation.
 //!
-//! Scenarios: list_tools returns 9 tools (file tools + todo_write, todo_read); ls under working folder;
+//! Scenarios: list_tools returns 11 tools (file tools + edit + todo_write, todo_read); ls under working folder;
 //! read/write_file roundtrip; path outside working folder returns InvalidInput;
 //! create_dir and delete_file; move_file; glob (pattern/path/include).
 
@@ -8,22 +8,23 @@ mod init_logging;
 
 use graphweave::tool_source::{FileToolSource, ToolSource, ToolSourceError};
 use graphweave::tools::{
-    TOOL_CREATE_DIR, TOOL_DELETE_FILE, TOOL_GLOB, TOOL_GREP, TOOL_LS, TOOL_MOVE_FILE,
-    TOOL_READ_FILE, TOOL_TODO_READ, TOOL_TODO_WRITE, TOOL_WRITE_FILE,
+    TOOL_CREATE_DIR, TOOL_DELETE_FILE, TOOL_EDIT_FILE, TOOL_GLOB, TOOL_GREP, TOOL_LS,
+    TOOL_MOVE_FILE, TOOL_READ_FILE, TOOL_TODO_READ, TOOL_TODO_WRITE, TOOL_WRITE_FILE,
 };
 use serde_json::json;
 
-/// Scenario: FileToolSource::new with a valid directory returns a source that lists 10 tools (file + grep + todo_write, todo_read).
+/// Scenario: FileToolSource::new with a valid directory returns a source that lists 11 tools (file + edit + grep + todo_write, todo_read).
 #[tokio::test]
-async fn file_tool_source_list_tools_returns_ten_tools() {
+async fn file_tool_source_list_tools_returns_eleven_tools() {
     let dir = tempfile::tempdir().unwrap();
     let source = FileToolSource::new(dir.path()).unwrap();
     let tools = source.list_tools().await.unwrap();
-    assert_eq!(tools.len(), 10);
+    assert_eq!(tools.len(), 11);
     let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
     assert!(names.contains(&TOOL_LS));
     assert!(names.contains(&TOOL_READ_FILE));
     assert!(names.contains(&TOOL_WRITE_FILE));
+    assert!(names.contains(&TOOL_EDIT_FILE));
     assert!(names.contains(&TOOL_MOVE_FILE));
     assert!(names.contains(&TOOL_DELETE_FILE));
     assert!(names.contains(&TOOL_CREATE_DIR));
