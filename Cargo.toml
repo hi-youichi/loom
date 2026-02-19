@@ -1,15 +1,15 @@
 [workspace]
 resolver = "2"
 members = [
-    "graphweave",
-    "graphweave-examples",
-    "graphweave-cli",
+    "loom",
+    "loom-examples",
+    "loom-cli",
 ]
 
 [workspace.package]
 version = "0.1.1"
 edition = "2021"
-authors = ["graphweave contributors"]
+authors = ["loom contributors"]
 license = "MIT"
 
 [workspace.dependencies]

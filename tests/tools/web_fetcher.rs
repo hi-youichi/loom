@@ -1,4 +1,4 @@
-use graphweave::tools::{Tool, WebFetcherTool, TOOL_WEB_FETCHER};
+use loom::tools::{Tool, WebFetcherTool, TOOL_WEB_FETCHER};
 use serde_json::json;
 
 #[tokio::test]

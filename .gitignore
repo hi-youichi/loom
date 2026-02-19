@@ -24,7 +24,7 @@ Cargo.lock
 *.db-journal
 *.sqlite
 *.sqlite3
-graphweave/data/
+loom/data/
 
 # IDE / editor
 .idea

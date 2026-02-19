@@ -1,5 +1,5 @@
-use graphweave::tools::{RememberTool, TOOL_REMEMBER};
-use graphweave::memory::{InMemoryStore, Store};
+use loom::tools::{RememberTool, TOOL_REMEMBER};
+use loom::memory::{InMemoryStore, Store};
 use serde_json::json;
 use std::sync::Arc;
 

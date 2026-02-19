@@ -1,6 +1,6 @@
 //! Unit tests for BashToolsSource: list_tools and call_tool for the bash tool.
 
-use graphweave::tool_source::{BashToolsSource, ToolSource};
+use loom::tool_source::{BashToolsSource, ToolSource};
 use serde_json::json;
 
 /// **Scenario**: list_tools returns one tool named "bash".

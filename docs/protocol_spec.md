@@ -1,6 +1,6 @@
 # Streaming Output Protocol Specification (Protocol Spec)
 
-This specification defines the **streaming output** data format and semantics for GraphWeave Agent runs. Senders (server/CLI) and receivers (client/frontend) **must** produce and parse data according to this protocol so that multi-session, multi-turn, and per-node execution can be correctly merged and rendered.
+This specification defines the **streaming output** data format and semantics for Loom Agent runs. Senders (server/CLI) and receivers (client/frontend) **must** produce and parse data according to this protocol so that multi-session, multi-turn, and per-node execution can be correctly merged and rendered.
 
 **Transport form**: This spec defines the **JSON shape of each message (frame)**; it does not mandate the underlying transport (e.g. stdout NDJSON, WebSocket text frames, HTTP chunked). Each line or frame must be a single, complete JSON object.
 

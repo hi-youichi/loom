@@ -1,6 +1,6 @@
 //! Unit tests for BashTool: name, spec, and call behavior.
 
-use graphweave::tools::{BashTool, TOOL_BASH};
+use loom::tools::{BashTool, TOOL_BASH};
 use serde_json::json;
 
 /// **Scenario**: Tool name is "bash".

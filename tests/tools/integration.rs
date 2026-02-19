@@ -1,7 +1,7 @@
-use graphweave::tools::{AggregateToolSource, ToolRegistry, ToolRegistryLocked, RememberTool, RecallTool, SearchMemoriesTool, ListMemoriesTool, GetRecentMessagesTool};
-use graphweave::memory::{InMemoryStore, Store};
-use graphweave::message::Message;
-use graphweave::tool_source::ToolCallContext;
+use loom::tools::{AggregateToolSource, ToolRegistry, ToolRegistryLocked, RememberTool, RecallTool, SearchMemoriesTool, ListMemoriesTool, GetRecentMessagesTool};
+use loom::memory::{InMemoryStore, Store};
+use loom::message::Message;
+use loom::tool_source::ToolCallContext;
 use serde_json::json;
 use std::sync::Arc;
 

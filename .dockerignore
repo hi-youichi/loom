@@ -40,4 +40,4 @@ coverage/
 *.sqlite
 *.sqlite3
 lancedb_data/
-graphweave/data/
+loom/data/

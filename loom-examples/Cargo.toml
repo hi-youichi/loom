@@ -1,0 +1,62 @@
+[package]
+name = "loom-examples"
+version.workspace = true
+edition.workspace = true
+description = "Examples for loom"
+license.workspace = true
+authors.workspace = true
+
+[[example]]
+name = "echo"
+path = "examples/echo.rs"
+
+[[example]]
+name = "state_graph_echo"
+path = "examples/state_graph_echo.rs"
+
+[[example]]
+name = "react_linear"
+path = "examples/react_linear.rs"
+
+[[example]]
+name = "memory_checkpoint"
+path = "examples/memory_checkpoint.rs"
+
+[[example]]
+name = "memory_persistence"
+path = "examples/memory_persistence.rs"
+
+[[example]]
+name = "react_exa"
+path = "examples/react_exa.rs"
+
+[[example]]
+name = "react_mcp"
+path = "examples/react_mcp.rs"
+
+[[example]]
+name = "react_mcp_gitlab"
+path = "examples/react_mcp_gitlab.rs"
+
+[[example]]
+name = "react_memory"
+path = "examples/react_memory.rs"
+required-features = ["embedding"]
+
+[[example]]
+name = "openai_embedding"
+path = "examples/openai_embedding.rs"
+required-features = ["embedding"]
+
+[features]
+# LanceDB vector store for LanceStore (react_memory example). Disabled by default so `cargo test` does not pull in lancedb.
+embedding = ["loom/lance"]
+
+[dependencies]
+loom = { path = "../loom" }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+dotenv = { workspace = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = "0.4"

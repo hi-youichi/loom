@@ -1,6 +1,6 @@
-use graphweave::tools::{GetRecentMessagesTool, TOOL_GET_RECENT_MESSAGES};
-use graphweave::message::Message;
-use graphweave::tool_source::ToolCallContext;
+use loom::tools::{GetRecentMessagesTool, TOOL_GET_RECENT_MESSAGES};
+use loom::message::Message;
+use loom::tool_source::ToolCallContext;
 use serde_json::json;
 
 #[tokio::test]

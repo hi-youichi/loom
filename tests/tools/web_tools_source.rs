@@ -1,4 +1,4 @@
-use graphweave::tool_source::{ToolSource, WebToolsSource};
+use loom::tool_source::{ToolSource, WebToolsSource};
 use serde_json::json;
 
 #[tokio::test]
