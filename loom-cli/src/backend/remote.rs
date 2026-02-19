@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use futures_util::{SinkExt, StreamExt};
 use loom::{
-    AgentType, ClientRequest, RunCmd, RunError, RunOptions, RunRequest, ServerResponse,
+    AgentType, ClientRequest, Envelope, RunCmd, RunError, RunOptions, RunRequest, ServerResponse,
     ToolShowOutput, ToolShowRequest, ToolsListRequest,
 };
 use super::RunOutput;
@@ -17,6 +17,8 @@ use tokio_tungstenite::{
 use super::RunBackend;
 
 const CONNECT_TIMEOUT_SECS: u64 = 10;
+/// Max time to wait for each server message (run can take a long time for LLM).
+const READ_TIMEOUT_SECS: u64 = 300;
 pub struct RemoteBackend {
     url: String,
 }
@@ -89,8 +91,16 @@ impl RunBackend for RemoteBackend {
             .map_err(|e| RunError::Remote(e.to_string()))?;
 
         let mut reply = None;
+        let mut reply_envelope = None;
         let mut events: Vec<serde_json::Value> = Vec::new();
-        while let Some(res) = read.next().await {
+        let read_timeout = Duration::from_secs(READ_TIMEOUT_SECS);
+        loop {
+            let next = tokio::time::timeout(read_timeout, read.next()).await;
+            let res = match next {
+                Ok(Some(r)) => r,
+                Ok(None) => break,
+                Err(_) => return Err(RunError::Remote("read timeout (no response from server)".to_string())),
+            };
             let msg = res.map_err(|e| RunError::Remote(e.to_string()))?;
             if !msg.is_text() {
                 continue;
@@ -110,6 +120,13 @@ impl RunBackend for RemoteBackend {
                 }
                 ServerResponse::RunEnd(r) if r.id == id => {
                     reply = Some(r.reply);
+                    let (s, n, e) = (r.session_id, r.node_id, r.event_id);
+                    reply_envelope = (s.is_some() || n.is_some() || e.is_some()).then(|| {
+                        Envelope::new()
+                            .with_session_id(s.unwrap_or_default())
+                            .with_node_id(n.unwrap_or_default())
+                            .with_event_id(e.unwrap_or(0))
+                    });
                     break;
                 }
                 ServerResponse::Error(e) if e.id.as_deref() == Some(&id) => {
@@ -121,11 +138,15 @@ impl RunBackend for RemoteBackend {
         }
         let reply = reply.ok_or_else(|| RunError::Remote("no run_end received".to_string()))?;
         Ok(if stream_out.is_some() {
-            RunOutput::Reply(reply)
+            RunOutput::Reply(reply, reply_envelope)
         } else if opts.output_json {
-            RunOutput::Json { events, reply }
+            RunOutput::Json {
+                events,
+                reply,
+                reply_envelope,
+            }
         } else {
-            RunOutput::Reply(reply)
+            RunOutput::Reply(reply, reply_envelope)
         })
     }
 

@@ -10,6 +10,8 @@ use loom::{
 };
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+
+use loom_cli::envelope::EnvelopeState;
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
 use tracing::info;
@@ -17,12 +19,30 @@ use tracing::info;
 const DEFAULT_WS_ADDR: &str = "127.0.0.1:8080";
 
 /// Runs the WebSocket server. Listens on `addr` (default 127.0.0.1:8080).
-pub async fn run_serve(addr: Option<&str>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+/// When `once` is true, accepts one connection, handles it, then returns (process exits).
+pub async fn run_serve(
+    addr: Option<&str>,
+    once: bool,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr = addr.unwrap_or(DEFAULT_WS_ADDR);
     let listener = TcpListener::bind(addr).await?;
     info!("WebSocket server listening on ws://{}", addr);
+    if once {
+        info!("will exit after first connection is done (use --keep-alive to run until killed)");
+    }
 
-    while let Ok((stream, peer)) = listener.accept().await {
+    loop {
+        let (stream, peer) = listener.accept().await?;
+        if once {
+            if let Err(e) = handle_connection(stream).await {
+                tracing::warn!("connection {} error: {}", peer, e);
+            }
+            // Give the client time to finish reading before we exit (avoid connection reset).
+            // Default: exit after first connection; use --keep-alive to run until killed.
+            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+            info!("connection done, exiting (default: exit after first connection)");
+            break;
+        }
         tokio::spawn(async move {
             if let Err(e) = handle_connection(stream).await {
                 tracing::warn!("connection {} error: {}", peer, e);
@@ -41,7 +61,12 @@ async fn handle_connection(
     while let Some(res) = read.next().await {
         let msg = match res {
             Ok(m) => m,
-            Err(_) => break,
+            Err(e) => {
+                tracing::warn!("read error (client closed?): {}", e);
+                // Graceful close so client doesn't see connection reset when process exits
+                let _ = write.close().await;
+                break;
+            }
         };
         if !msg.is_text() && !msg.is_binary() {
             continue;
@@ -49,6 +74,7 @@ async fn handle_connection(
         let text = msg.to_text().unwrap_or("");
         if let Err(e) = handle_request_and_send(text, &mut write).await {
             tracing::warn!("handle_request error: {}", e);
+            let _ = write.close().await;
             break;
         }
     }
@@ -146,13 +172,27 @@ where
     };
 
     if output_json {
+        let session_id = format!(
+            "run-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
         let events: Arc<Mutex<Vec<serde_json::Value>>> = Arc::new(Mutex::new(Vec::new()));
         let events_clone = events.clone();
+        let state = Arc::new(Mutex::new(EnvelopeState::new(session_id)));
+        let state_clone = state.clone();
         let on_event = Box::new(move |ev: AnyStreamEvent| {
-            if let Ok(v) = ev.to_format_a() {
-                if let Ok(mut vec) = events_clone.lock() {
-                    vec.push(v);
-                }
+            let mut v = match ev.to_protocol_format() {
+                Ok(x) => x,
+                Err(_) => return,
+            };
+            if let Ok(mut s) = state_clone.lock() {
+                s.inject_into(&mut v);
+            }
+            if let Ok(mut vec) = events_clone.lock() {
+                vec.push(v);
             }
         });
         let result = run_agent(&opts, &cmd, Some(on_event)).await;
@@ -160,14 +200,38 @@ where
         match result {
             Ok(reply) => {
                 for event in events {
-                    send_response(write, &ServerResponse::RunStreamEvent(RunStreamEventResponse { id: id.clone(), event })).await?;
+                    send_response(
+                        write,
+                        &ServerResponse::RunStreamEvent(RunStreamEventResponse {
+                            id: id.clone(),
+                            event,
+                        }),
+                    )
+                    .await?;
                 }
-                send_response(write, &ServerResponse::RunEnd(RunEndResponse {
-                    id,
-                    reply,
-                    usage: None,
-                    total_usage: None,
-                }))
+                let reply_env = state.lock().map(|s| s.reply_envelope()).ok();
+                let (session_id, node_id, event_id) = reply_env
+                    .as_ref()
+                    .map(|e| {
+                        (
+                            e.session_id.clone(),
+                            e.node_id.clone(),
+                            e.event_id,
+                        )
+                    })
+                    .unwrap_or((None, None, None));
+                send_response(
+                    write,
+                    &ServerResponse::RunEnd(RunEndResponse {
+                        id,
+                        reply,
+                        usage: None,
+                        total_usage: None,
+                        session_id,
+                        node_id,
+                        event_id,
+                    }),
+                )
                 .await?;
             }
             Err(e) => {
@@ -188,6 +252,9 @@ where
             reply,
             usage: None,
             total_usage: None,
+            session_id: None,
+            node_id: None,
+            event_id: None,
         }),
         Err(e) => ServerResponse::Error(ErrorResponse {
             id: Some(id),

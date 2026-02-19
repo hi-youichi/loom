@@ -103,7 +103,10 @@ fn write_json_output(
     };
     match file {
         Some(path) => std::fs::write(path, format!("{}\n", s))?,
-        None => println!("{}", s),
+        None => {
+            println!("{}", s);
+            std::io::Write::flush(&mut std::io::stdout())?;
+        }
     }
     Ok(())
 }
@@ -126,7 +129,10 @@ fn write_json_line_append(
             let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path)?;
             f.write_all(line.as_bytes())?;
         }
-        None => println!("{}", s.trim_end()),
+        None => {
+            println!("{}", s.trim_end());
+            std::io::Write::flush(&mut std::io::stdout())?;
+        }
     }
     Ok(())
 }
@@ -145,7 +151,10 @@ fn make_stream_out(
         };
         match &file {
             Some(path) => drop(std::fs::OpenOptions::new().create(true).append(true).open(path).and_then(|mut f| std::io::Write::write_all(&mut f, format!("{}\n", s).as_bytes()))),
-            None => println!("{}", s),
+            None => {
+                println!("{}", s);
+                let _ = std::io::Write::flush(&mut std::io::stdout());
+            }
         }
     })))
 }
@@ -254,6 +263,9 @@ struct ServeArgs {
     /// WebSocket listen address (default 127.0.0.1:8080)
     #[arg(long, value_name = "ADDR")]
     addr: Option<String>,
+    /// Keep server running after first connection (default: exit after first connection)
+    #[arg(long)]
+    keep_alive: bool,
 }
 
 /// Arguments for the `got` subcommand.
@@ -272,7 +284,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     if let Some(Command::Serve(sa)) = &args.cmd {
-        if let Err(e) = serve::run_serve(sa.addr.as_deref()).await {
+        if let Err(e) = serve::run_serve(sa.addr.as_deref(), !sa.keep_alive).await {
             eprintln!("serve error: {}", e);
             std::process::exit(1);
         }
@@ -366,9 +378,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if !msg.trim().is_empty() {
                 opts.message = msg.clone();
                 match run_one_turn(&backend, &opts, &cmd, stream_out.clone()).await {
-                    Ok(RunOutput::Reply(reply)) => {
+                    Ok(RunOutput::Reply(reply, reply_envelope)) => {
                         if args.json {
-                            let out = serde_json::json!({ "reply": reply });
+                            let mut out = serde_json::json!({ "reply": reply });
+                            if let Some(ref env) = reply_envelope {
+                                env.inject_into(&mut out);
+                            }
                             if let Err(e) = write_json_line_append(&out, args.file.as_deref(), args.pretty) {
                                 eprintln!("{}", e);
                                 std::process::exit(1);
@@ -382,8 +397,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             println!("{}", out);
                         }
                     }
-                    Ok(RunOutput::Json { events, reply }) => {
-                        let out = serde_json::json!({ "events": events, "reply": reply });
+                    Ok(RunOutput::Json {
+                        events,
+                        reply,
+                        reply_envelope,
+                    }) => {
+                        let mut reply_obj = serde_json::json!({ "reply": reply });
+                        if let Some(ref env) = reply_envelope {
+                            env.inject_into(&mut reply_obj);
+                        }
+                        let out = serde_json::json!({ "events": events, "reply": reply_obj });
                         if let Err(e) = write_json_output(&out, args.file.as_deref(), args.pretty) {
                             eprintln!("{}", e);
                             std::process::exit(1);
@@ -409,9 +432,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         let output = run_one_turn(&backend, &opts, &cmd, stream_out).await?;
         match output {
-            RunOutput::Reply(reply) => {
+            RunOutput::Reply(reply, reply_envelope) => {
                 if args.json {
-                    let out = serde_json::json!({ "reply": reply });
+                    let mut out = serde_json::json!({ "reply": reply });
+                    if let Some(ref env) = reply_envelope {
+                        env.inject_into(&mut out);
+                    }
                     write_json_line_append(&out, args.file.as_deref(), args.pretty)?;
                 } else {
                     let out = if reply_len == 0 {
@@ -420,10 +446,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         truncate_message(&reply, reply_len)
                     };
                     println!("{}", out);
+                    let _ = std::io::Write::flush(&mut std::io::stdout());
                 }
             }
-            RunOutput::Json { events, reply } => {
-                let out = serde_json::json!({ "events": events, "reply": reply });
+            RunOutput::Json {
+                events,
+                reply,
+                reply_envelope,
+            } => {
+                let mut reply_obj = serde_json::json!({ "reply": reply });
+                if let Some(ref env) = reply_envelope {
+                    env.inject_into(&mut reply_obj);
+                }
+                let out = serde_json::json!({ "events": events, "reply": reply_obj });
                 write_json_output(&out, args.file.as_deref(), args.pretty)?;
             }
         }

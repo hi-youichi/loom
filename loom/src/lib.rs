@@ -56,7 +56,8 @@
 //! - [`openai_sse`]: OpenAI-compatible SSE ([`StreamToSse`], [`ChatCompletionChunk`], [`parse_chat_request`]).
 //! - [`helve`]: Product config ([`HelveConfig`]), [`to_react_build_config`], [`assemble_system_prompt`],
 //!   [`ApprovalPolicy`], [`tools_requiring_approval`], [`APPROVAL_REQUIRED_EVENT_TYPE`].
-//! - [`protocol`]: WebSocket message types for CLI remote mode ([`ClientRequest`], [`ServerResponse`]).
+//! - [`protocol`]: WebSocket message types for CLI remote mode ([`ClientRequest`], [`ServerResponse`]);
+//!   streaming output protocol in [`protocol::stream`] ([`stream_event_to_protocol_format`], [`Envelope`]).
 //!
 //! Key types are re-exported at crate root: `use loom::{Agent, StateGraph, Message, ReActState};`.
 //!
@@ -197,6 +198,7 @@ pub use cli_run::{
     build_helve_config, load_agents_md, load_soul_md, run_agent, AnyRunner, AnyStreamEvent,
     RunCmd, RunError, RunOptions, DEFAULT_WORKING_FOLDER,
 };
+pub use protocol::stream::{stream_event_to_protocol_format, Envelope};
 pub use protocol::{
     AgentType, ClientRequest, ErrorResponse, PingRequest, PongResponse, RunEndResponse,
     RunRequest, RunStreamEventResponse, ServerResponse, ToolShowOutput, ToolShowRequest,

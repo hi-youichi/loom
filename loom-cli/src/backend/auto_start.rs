@@ -6,15 +6,17 @@ use std::time::Duration;
 const POLL_INTERVAL_MS: u64 = 200;
 const MAX_WAIT_MS: u64 = 15000;
 
-/// Spawns `loom serve` in the background. Returns once the process is started.
+/// Spawns `loom serve --keep-alive` in the background so the server stays up for this
+/// and future runs; returns once the process is started.
 pub fn spawn_serve() -> Result<std::process::Child, std::io::Error> {
     let exe = std::env::current_exe()?;
     std::process::Command::new(exe)
         .arg("serve")
+        .arg("--keep-alive")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-    }
+}
 
 /// Polls the WebSocket URL until it accepts connections or timeout.
 pub async fn wait_for_server(url: &str) -> bool {

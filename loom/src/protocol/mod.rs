@@ -1,11 +1,15 @@
-//! # WebSocket Protocol Types
+//! # Protocol module
 //!
-//! Types for the CLI remote mode WebSocket protocol. Aligned with [DESIGN_CLI_REMOTE_MODE]
-//! §2.3 (requests) and §2.4 (responses), and with [EXPORT_SPEC] / [USER_GUIDELINE].
+//! - **WebSocket** (this file): CLI remote mode request/response types. Aligned with [DESIGN_CLI_REMOTE_MODE]
+//!   §2.3 (requests) and §2.4 (responses), and with [EXPORT_SPEC] / [USER_GUIDELINE].
+//! - **Stream** ([`stream`]): Streaming output protocol (type + payload, envelope) per [protocol_spec].
 //!
 //! [DESIGN_CLI_REMOTE_MODE]: https://github.com/loom/loom/blob/main/docs/DESIGN_CLI_REMOTE_MODE.md
 //! [EXPORT_SPEC]: https://github.com/loom/loom/blob/main/docs/EXPORT_SPEC.md
 //! [USER_GUIDELINE]: https://github.com/loom/loom/blob/main/docs/USER_GUIDELINE.md
+//! [protocol_spec]: https://github.com/loom/loom/blob/main/docs/protocol_spec.md
+
+pub mod stream;
 
 use crate::llm::LlmUsage;
 use crate::tool_source::ToolSpec;
@@ -97,6 +101,7 @@ pub struct RunStreamEventResponse {
 }
 
 /// RunEnd: final reply for one run (format B from EXPORT_SPEC).
+/// Optional envelope fields align with protocol_spec §5 (reply message).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RunEndResponse {
     pub id: String,
@@ -105,6 +110,12 @@ pub struct RunEndResponse {
     pub usage: Option<LlmUsage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_usage: Option<LlmUsage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_id: Option<u64>,
 }
 
 /// Tools list response (USER_GUIDELINE §4.2).
@@ -200,6 +211,9 @@ mod tests {
                 total_tokens: 15,
             }),
             total_usage: None,
+            session_id: None,
+            node_id: None,
+            event_id: None,
         });
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"type\":\"run_end\""));

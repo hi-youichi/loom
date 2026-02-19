@@ -52,7 +52,7 @@ Inside the event body, **id** denotes the node name (e.g. "think", "act"), and i
 
 - Event messages **must** include **type** (string) at the top level, indicating the event kind.
 - Aside from type, remaining fields are payload; they sit at the same level as envelope fields (session_id, node_id, event_id).
-- **Events** include node_enter, node_exit, message_chunk, usage, values, updates, custom, checkpoint, and ToT/GoT-related types (see §4.2).
+- **Events** include run_start, node_enter, node_exit, message_chunk, usage, values, updates, custom, checkpoint, and ToT/GoT-related types (see §4.2).
 
 ### 4.2 Event Types and Payloads
 
@@ -60,6 +60,7 @@ The table below lists all event types and their payload fields (excluding type).
 
 | type | Description | Payload fields (besides type) |
 |------|-------------|-------------------------------|
+| **run_start** | Agent run started (before first node_enter) | `run_id`: string (optional), `message`: string (optional, user message), `agent`: string (optional, e.g. "react", "tot", "got") |
 | **node_enter** | Node run started | `id`: string (node name, e.g. "think", "act") |
 | **node_exit** | Node run ended | `id`: string (node name), `result`: "Ok" or `{"Err": string}` |
 | **message_chunk** | LLM message chunk | `content`: string, `id`: string (producing node name) |
@@ -80,6 +81,7 @@ The table below lists all event types and their payload fields (excluding type).
 ### 4.3 Example Event Messages (with envelope)
 
 ```json
+{"session_id":"sess-001","event_id":0,"type":"run_start","run_id":"run-1","message":"Hello","agent":"react"}
 {"session_id":"sess-001","node_id":"run-think-1","event_id":1,"type":"node_enter","id":"think"}
 {"session_id":"sess-001","node_id":"run-think-1","event_id":2,"type":"message_chunk","content":"I","id":"think"}
 {"session_id":"sess-001","node_id":"run-think-1","event_id":3,"type":"message_chunk","content":" don't","id":"think"}
@@ -90,6 +92,7 @@ The table below lists all event types and their payload fields (excluding type).
 Without the envelope, event messages **may** contain only type and payload:
 
 ```json
+{"type":"run_start","run_id":"run-1","agent":"react"}
 {"type":"node_enter","id":"think"}
 {"type":"message_chunk","content":"Hello","id":"think"}
 {"type":"node_exit","id":"think","result":"Ok"}
@@ -125,6 +128,7 @@ This protocol uses a uniform **type + payload** shape. The mapping to the “sin
 
 | This spec type | EXPORT_SPEC key |
 |----------------|-----------------|
+| run_start | RunStart |
 | node_enter | TaskStart |
 | node_exit | TaskEnd |
 | message_chunk | Messages |

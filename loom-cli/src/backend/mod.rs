@@ -9,7 +9,7 @@ pub use local::LocalBackend;
 pub use remote::RemoteBackend;
 
 use async_trait::async_trait;
-use loom::{RunCmd, RunError, RunOptions};
+use loom::{Envelope, RunCmd, RunError, RunOptions};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use crate::ToolShowFormat;
@@ -18,12 +18,14 @@ use crate::ToolShowFormat;
 pub type StreamOut = Option<Arc<Mutex<dyn FnMut(Value) + Send>>>;
 
 /// Result of a single agent run: either plain reply or events + reply for --json.
+/// When json output is used, reply_envelope is set for the reply line (protocol_spec §5).
 #[derive(Debug)]
 pub enum RunOutput {
-    Reply(String),
+    Reply(String, Option<Envelope>),
     Json {
         events: Vec<Value>,
         reply: String,
+        reply_envelope: Option<Envelope>,
     },
 }
 

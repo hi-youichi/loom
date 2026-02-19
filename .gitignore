@@ -37,6 +37,9 @@ loom/data/
 .DS_Store
 Thumbs.db
 
+# CLI output
+out.json
+
 # Debug and test
 log
 logs/

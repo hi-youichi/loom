@@ -66,8 +66,16 @@ pub async fn run_repl_loop(
         opts.message = line;
 
         match run_one_turn(backend, &opts, cmd, stream_out.clone()).await {
-            Ok(loom_cli::RunOutput::Json { events, reply }) => {
-                let out = serde_json::json!({ "events": events, "reply": reply });
+            Ok(loom_cli::RunOutput::Json {
+                events,
+                reply,
+                reply_envelope,
+            }) => {
+                let mut reply_obj = serde_json::json!({ "reply": reply });
+                if let Some(ref env) = reply_envelope {
+                    env.inject_into(&mut reply_obj);
+                }
+                let out = serde_json::json!({ "events": events, "reply": reply_obj });
                 let s = if json_pretty {
                     serde_json::to_string_pretty(&out).unwrap_or_default()
                 } else {
@@ -78,9 +86,12 @@ pub async fn run_repl_loop(
                     None => println!("{}", s),
                 }
             }
-            Ok(loom_cli::RunOutput::Reply(reply)) => {
+            Ok(loom_cli::RunOutput::Reply(reply, reply_envelope)) => {
                 if json_stream {
-                    let out = serde_json::json!({ "reply": reply });
+                    let mut out = serde_json::json!({ "reply": reply });
+                    if let Some(ref env) = reply_envelope {
+                        env.inject_into(&mut out);
+                    }
                     let s = if json_pretty {
                         serde_json::to_string_pretty(&out).unwrap_or_default()
                     } else {

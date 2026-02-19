@@ -1,12 +1,14 @@
 //! Wraps loom::run_agent with stderr display callback.
+//! Uses protocol format (type + payload) and optional envelope per protocol_spec.
 
 use loom::{
-    build_helve_config, build_react_run_context, run_agent, AnyStreamEvent, DupState, GotState,
-    ReActState, TotState,
+    build_helve_config, build_react_run_context, run_agent, AnyStreamEvent, DupState, Envelope,
+    GotState, ReActState, TotState,
 };
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
+use crate::envelope::EnvelopeState;
 use super::display::{
     format_dup_state_display, format_got_state_display, format_react_state_display,
     format_tot_state_display, truncate_display,
@@ -15,8 +17,8 @@ use loom::{RunCmd, RunOptions, StreamEvent};
 
 use super::RunError;
 
-/// Result of run_agent_wrapper: reply text and optionally collected stream events as JSON (when --json).
-pub type RunAgentResult = Result<(String, Option<Vec<Value>>), RunError>;
+/// Result of run_agent_wrapper: reply, optional events (when --json and no stream), optional envelope for reply line.
+pub type RunAgentResult = Result<(String, Option<Vec<Value>>, Option<Envelope>), RunError>;
 
 /// Runs the agent with stderr display for stream events.
 /// When `opts.output_json` is true: if `stream_out` is Some, each event is written via it and returns (reply, None);
@@ -40,22 +42,40 @@ pub async fn run_agent_wrapper(
     let display_max_len = opts.display_max_len;
 
     if opts.output_json {
+        let session_id = format!(
+            "run-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
         if let Some(ref out) = stream_out {
             let out = out.clone();
+            let state = Arc::new(Mutex::new(EnvelopeState::new(session_id.clone())));
+            let state_clone = state.clone();
             let on_event = Box::new(move |ev: AnyStreamEvent| {
-                if let Ok(v) = ev.to_format_a() {
-                    if let Ok(mut f) = out.lock() {
-                        f(v);
+                let mut v = match ev.to_protocol_format() {
+                    Ok(x) => x,
+                    Err(e) => {
+                        eprintln!("loom: failed to serialize stream event: {}", e);
+                        serde_json::json!({ "type": "_error", "_serialize_error": format!("{}", e) })
                     }
+                };
+                if let Ok(mut s) = state_clone.lock() {
+                    s.inject_into(&mut v);
+                }
+                if let Ok(mut f) = out.lock() {
+                    f(v);
                 }
             });
             let reply = run_agent(opts, cmd, Some(on_event)).await?;
-            return Ok((reply, None));
+            let reply_env = state.lock().map(|s| s.reply_envelope()).ok();
+            return Ok((reply, None, reply_env));
         }
         let events: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
         let events_clone = events.clone();
         let on_event = Box::new(move |ev: AnyStreamEvent| {
-            match ev.to_format_a() {
+            match ev.to_protocol_format() {
                 Ok(v) => {
                     if let Ok(mut vec) = events_clone.lock() {
                         vec.push(v);
@@ -65,6 +85,7 @@ pub async fn run_agent_wrapper(
                     eprintln!("loom: failed to serialize stream event to JSON: {}", e);
                     if let Ok(mut vec) = events_clone.lock() {
                         vec.push(serde_json::json!({
+                            "type": "_error",
                             "_serialize_error": format!("{}", e),
                         }));
                     }
@@ -72,8 +93,13 @@ pub async fn run_agent_wrapper(
             }
         });
         let reply = run_agent(opts, cmd, Some(on_event)).await?;
-        let events = events.lock().map(|v| v.clone()).unwrap_or_default();
-        return Ok((reply, Some(events)));
+        let mut events = events.lock().map(|v| v.clone()).unwrap_or_default();
+        let mut state = EnvelopeState::new(session_id);
+        for v in &mut events {
+            state.inject_into(v);
+        }
+        let reply_env = Some(state.reply_envelope());
+        return Ok((reply, Some(events), reply_env));
     }
 
     let state = Arc::new(Mutex::new(EventState {
@@ -97,7 +123,7 @@ pub async fn run_agent_wrapper(
     if let Some(ref from) = state.lock().unwrap().last_node {
         eprintln!("flow: {} → END", from);
     }
-    Ok((reply, None))
+    Ok((reply, None, None))
 }
 
 fn on_event_react(ev: &StreamEvent<ReActState>, s: &mut EventState, display_max_len: usize) {

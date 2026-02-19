@@ -16,13 +16,14 @@ impl RunBackend for LocalBackend {
         cmd: &RunCmd,
         stream_out: super::StreamOut,
     ) -> Result<super::RunOutput, RunError> {
-        let (reply, events) = run_agent(opts, cmd, stream_out).await?;
+        let (reply, events, reply_envelope) = run_agent(opts, cmd, stream_out).await?;
         Ok(match events {
             Some(ev) => super::RunOutput::Json {
                 events: ev,
                 reply,
+                reply_envelope,
             },
-            None => super::RunOutput::Reply(reply),
+            None => super::RunOutput::Reply(reply, reply_envelope),
         })
     }
 
