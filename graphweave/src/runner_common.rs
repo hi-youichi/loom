@@ -65,11 +65,12 @@ where
     F: FnMut(StreamEvent<S>),
 {
     let modes = HashSet::from([
-        StreamMode::Messages,
+        StreamMode::Messages,   // LLM streamed chunks (流式输出)
         StreamMode::Tasks,
         StreamMode::Updates,
         StreamMode::Values,
         StreamMode::Custom,
+        StreamMode::Checkpoints,
     ]);
     let mut stream = compiled.stream(initial_state, run_config, modes);
     let mut final_state: Option<S> = None;

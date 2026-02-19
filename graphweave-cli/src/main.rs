@@ -5,11 +5,17 @@
 mod log_format;
 mod logging;
 mod repl;
+mod serve;
 
 use clap::{Parser, Subcommand};
-use graphweave_cli::{list_tools, show_tool, RunOptions, ToolShowFormat};
+use graphweave_cli::{
+    LocalBackend, RemoteBackend, RunBackend, RunOutput, RunOptions, StreamOut, ToolShowFormat,
+};
 use repl::{run_one_turn, run_repl_loop};
 use std::path::PathBuf;
+use std::sync::Arc;
+
+const DEFAULT_WS_URL: &str = "ws://127.0.0.1:8080";
 
 #[derive(Parser, Debug)]
 #[command(name = "graphweave")]
@@ -41,10 +47,121 @@ struct Args {
     /// Interactive REPL: after output, prompt for input and continue conversation
     #[arg(short, long)]
     interactive: bool,
+
+    /// Use local execution (default: remote)
+    #[arg(long)]
+    local: bool,
+
+    /// Remote WebSocket URL (default: ws://127.0.0.1:8080 or GRAPHWEAVE_REMOTE_URL)
+    #[arg(long, value_name = "URL")]
+    remote: Option<String>,
+
+    /// Do not auto-start server when remote connection fails
+    #[arg(long)]
+    no_auto_start: bool,
+
+    /// Output all data as JSON (stream events + reply for agent run; JSON array for tool list; JSON for tool show)
+    #[arg(long)]
+    json: bool,
+
+    /// When using --json, write output to this file instead of stdout
+    #[arg(long, value_name = "PATH")]
+    file: Option<PathBuf>,
+
+    /// When using --json, pretty-print (multi-line). Default: compact, one line per event
+    #[arg(long)]
+    pretty: bool,
+}
+
+fn resolve_remote_url(args: &Args) -> String {
+    if let Some(ref u) = args.remote {
+        return u.clone();
+    }
+    std::env::var("GRAPHWEAVE_REMOTE_URL").unwrap_or_else(|_| DEFAULT_WS_URL.to_string())
+}
+
+fn resolve_auto_start(args: &Args) -> bool {
+    if args.no_auto_start {
+        return false;
+    }
+    !matches!(
+        std::env::var("GRAPHWEAVE_NO_AUTO_START").as_deref(),
+        Ok("1") | Ok("true") | Ok("yes")
+    )
+}
+
+/// Writes JSON to stdout or to the given file. When pretty is true, multi-line; else one line.
+fn write_json_output(
+    value: &serde_json::Value,
+    file: Option<&std::path::Path>,
+    pretty: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let s = if pretty {
+        serde_json::to_string_pretty(value)?
+    } else {
+        serde_json::to_string(value)?
+    };
+    match file {
+        Some(path) => std::fs::write(path, format!("{}\n", s))?,
+        None => println!("{}", s),
+    }
+    Ok(())
+}
+
+/// Appends one JSON line to file or stdout (for NDJSON stream reply line).
+fn write_json_line_append(
+    value: &serde_json::Value,
+    file: Option<&std::path::Path>,
+    pretty: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let s = if pretty {
+        serde_json::to_string_pretty(value)?
+    } else {
+        serde_json::to_string(value)?
+    };
+    let line = format!("{}\n", s);
+    match file {
+        Some(path) => {
+            use std::io::Write;
+            let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path)?;
+            f.write_all(line.as_bytes())?;
+        }
+        None => println!("{}", s.trim_end()),
+    }
+    Ok(())
+}
+
+/// Builds StreamOut for --json --stream: writes each event as one JSON line to file or stdout.
+fn make_stream_out(
+    file: Option<&PathBuf>,
+    pretty: bool,
+) -> StreamOut {
+    let file = file.cloned();
+    Some(std::sync::Arc::new(std::sync::Mutex::new(move |value: serde_json::Value| {
+        let s = if pretty {
+            serde_json::to_string_pretty(&value).unwrap_or_default()
+        } else {
+            serde_json::to_string(&value).unwrap_or_default()
+        };
+        match &file {
+            Some(path) => drop(std::fs::OpenOptions::new().create(true).append(true).open(path).and_then(|mut f| std::io::Write::write_all(&mut f, format!("{}\n", s).as_bytes()))),
+            None => println!("{}", s),
+        }
+    })))
+}
+
+fn make_backend(args: &Args) -> Arc<dyn RunBackend> {
+    if args.local {
+        Arc::new(LocalBackend)
+    } else {
+        Arc::new(RemoteBackend::new(resolve_remote_url(args)))
+    }
 }
 
 #[derive(Subcommand, Debug, Clone)]
 enum Command {
+    /// Run WebSocket server for remote mode (ws://127.0.0.1:8080)
+    Serve(ServeArgs),
     /// Run ReAct graph (think → act → observe)
     React,
     /// Run DUP graph (understand → plan → act → observe)
@@ -132,6 +249,13 @@ fn max_reply_len() -> usize {
         .unwrap_or(DEFAULT_MAX_REPLY_LEN)
 }
 
+#[derive(clap::Args, Debug, Clone)]
+struct ServeArgs {
+    /// WebSocket listen address (default 127.0.0.1:8080)
+    #[arg(long, value_name = "ADDR")]
+    addr: Option<String>,
+}
+
 /// Arguments for the `got` subcommand.
 #[derive(clap::Args, Debug, Clone)]
 struct GotArgs {
@@ -146,30 +270,52 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     logging::init()?;
 
     let args = Args::parse();
+
+    if let Some(Command::Serve(sa)) = &args.cmd {
+        if let Err(e) = serve::run_serve(sa.addr.as_deref()).await {
+            eprintln!("serve error: {}", e);
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     let got_adaptive = matches!(args.cmd.as_ref(), Some(Command::Got(a)) if a.got_adaptive);
+    let backend = make_backend(&args);
+
+    // For remote backend, ensure server is running (unless --no-auto-start)
+    if !args.local && resolve_auto_start(&args) {
+        let url = resolve_remote_url(&args);
+        if let Err(e) = graphweave_cli::ensure_server_or_spawn(&url).await {
+            eprintln!("graphweave: {}", e);
+            std::process::exit(1);
+        }
+    }
 
     // Tool subcommands do not require a message; handle them first.
     if let Some(Command::Tool(ta)) = &args.cmd {
         let opts = RunOptions {
             message: String::new(),
-            working_folder: args.working_folder,
-            thread_id: args.thread_id,
+            working_folder: args.working_folder.clone(),
+            thread_id: args.thread_id.clone(),
             verbose: args.verbose,
             got_adaptive,
             display_max_len: max_message_len(),
+            output_json: args.json,
         };
         match &ta.sub {
             ToolCommand::List => {
-                list_tools(&opts).await?;
+                if let Err(e) = backend.list_tools(&opts).await {
+                    eprintln!("{}", e);
+                    std::process::exit(1);
+                }
                 return Ok(());
             }
             ToolCommand::Show(show_args) => {
-                let format = if show_args.output.eq_ignore_ascii_case("json") {
+                let format = if args.json || show_args.output.eq_ignore_ascii_case("json") {
                     ToolShowFormat::Json
                 } else {
                     ToolShowFormat::Yaml
                 };
-                if let Err(e) = show_tool(&opts, &show_args.name, format).await {
+                if let Err(e) = backend.show_tool(&opts, &show_args.name, format).await {
                     eprintln!("{}", e);
                     std::process::exit(1);
                 }
@@ -201,10 +347,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         verbose: args.verbose,
         got_adaptive,
         display_max_len: max_message_len(),
+        output_json: args.json,
     };
 
     let cmd = args.cmd.unwrap_or(Command::React);
     let reply_len = max_reply_len();
+    let stream_out: StreamOut = if args.json {
+        make_stream_out(args.file.as_ref(), args.pretty)
+    } else {
+        None
+    };
 
     if interactive {
         if opts.thread_id.is_none() {
@@ -213,14 +365,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(ref msg) = message {
             if !msg.trim().is_empty() {
                 opts.message = msg.clone();
-                match run_one_turn(&opts, &cmd).await {
-                    Ok(reply) => {
-                        let out = if reply_len == 0 {
-                            reply
+                match run_one_turn(&backend, &opts, &cmd, stream_out.clone()).await {
+                    Ok(RunOutput::Reply(reply)) => {
+                        if args.json {
+                            let out = serde_json::json!({ "reply": reply });
+                            if let Err(e) = write_json_line_append(&out, args.file.as_deref(), args.pretty) {
+                                eprintln!("{}", e);
+                                std::process::exit(1);
+                            }
                         } else {
-                            truncate_message(&reply, reply_len)
-                        };
-                        println!("{}", out);
+                            let out = if reply_len == 0 {
+                                reply
+                            } else {
+                                truncate_message(&reply, reply_len)
+                            };
+                            println!("{}", out);
+                        }
+                    }
+                    Ok(RunOutput::Json { events, reply }) => {
+                        let out = serde_json::json!({ "events": events, "reply": reply });
+                        if let Err(e) = write_json_output(&out, args.file.as_deref(), args.pretty) {
+                            eprintln!("{}", e);
+                            std::process::exit(1);
+                        }
                     }
                     Err(e) => {
                         eprintln!("error: {}", e);
@@ -229,15 +396,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        run_repl_loop(&opts, &cmd, reply_len).await?;
+        run_repl_loop(
+            &backend,
+            &opts,
+            &cmd,
+            reply_len,
+            args.file.clone(),
+            args.pretty,
+            stream_out,
+        )
+        .await?;
     } else {
-        let reply = run_one_turn(&opts, &cmd).await?;
-        let out = if reply_len == 0 {
-            reply
-        } else {
-            truncate_message(&reply, reply_len)
-        };
-        println!("{}", out);
+        let output = run_one_turn(&backend, &opts, &cmd, stream_out).await?;
+        match output {
+            RunOutput::Reply(reply) => {
+                if args.json {
+                    let out = serde_json::json!({ "reply": reply });
+                    write_json_line_append(&out, args.file.as_deref(), args.pretty)?;
+                } else {
+                    let out = if reply_len == 0 {
+                        reply
+                    } else {
+                        truncate_message(&reply, reply_len)
+                    };
+                    println!("{}", out);
+                }
+            }
+            RunOutput::Json { events, reply } => {
+                let out = serde_json::json!({ "events": events, "reply": reply });
+                write_json_output(&out, args.file.as_deref(), args.pretty)?;
+            }
+        }
     }
     Ok(())
 }

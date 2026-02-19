@@ -56,6 +56,7 @@
 //! - [`openai_sse`]: OpenAI-compatible SSE ([`StreamToSse`], [`ChatCompletionChunk`], [`parse_chat_request`]).
 //! - [`helve`]: Product config ([`HelveConfig`]), [`to_react_build_config`], [`assemble_system_prompt`],
 //!   [`ApprovalPolicy`], [`tools_requiring_approval`], [`APPROVAL_REQUIRED_EVENT_TYPE`].
+//! - [`protocol`]: WebSocket message types for CLI remote mode ([`ClientRequest`], [`ServerResponse`]).
 //!
 //! Key types are re-exported at crate root: `use graphweave::{Agent, StateGraph, Message, ReActState};`.
 //!
@@ -115,10 +116,13 @@
 
 pub mod cache;
 pub mod channels;
+pub mod cli_run;
+pub mod protocol;
 pub mod compress;
 pub mod model_spec;
 pub mod config;
 pub mod error;
+pub mod export;
 pub mod graph;
 pub mod helve;
 pub mod runner_common;
@@ -146,6 +150,7 @@ pub use config::{
     MemoryConfigSummary, RunConfigSummary, RunConfigSummarySource, ToolConfigSummary,
 };
 pub use error::AgentError;
+pub use export::stream_event_to_format_a;
 pub use graph::{
     generate_dot, generate_text, log_graph_complete, log_graph_error, log_graph_start,
     log_node_complete, log_node_start, log_state_update, CompilationError, CompiledStateGraph,
@@ -184,9 +189,18 @@ pub use agent::react::{
     build_react_runner, build_react_runner_with_openai, build_tot_runner, run_react_graph,
     run_react_graph_stream, tools_condition, ActNode, BuildRunnerError, ErrorHandlerFn,
     GotRunnerConfig, HandleToolErrors, ObserveNode, ReactBuildConfig, ReactRunContext,
-    ReactRunner, RunError, TotRunnerConfig,
+    ReactRunner, RunError as ReactRunError, TotRunnerConfig,
     STEP_PROGRESS_EVENT_TYPE, ThinkNode, ToolsConditionResult, WithNodeLogging,
     DEFAULT_EXECUTION_ERROR_TEMPLATE, DEFAULT_TOOL_ERROR_TEMPLATE, REACT_SYSTEM_PROMPT,
+};
+pub use cli_run::{
+    build_helve_config, load_agents_md, load_soul_md, run_agent, AnyRunner, AnyStreamEvent,
+    RunCmd, RunError, RunOptions, DEFAULT_WORKING_FOLDER,
+};
+pub use protocol::{
+    AgentType, ClientRequest, ErrorResponse, PingRequest, PongResponse, RunEndResponse,
+    RunRequest, RunStreamEventResponse, ServerResponse, ToolShowOutput, ToolShowRequest,
+    ToolShowResponse, ToolsListRequest, ToolsListResponse,
 };
 pub use prompts::{
     default_from_embedded as default_agent_prompts_from_yaml, load as load_agent_prompts,

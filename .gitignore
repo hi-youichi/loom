@@ -4,12 +4,6 @@ AGENTS.md
 .cargo
 tmp/
 
-# Documentation
-# Keep most docs out of git, but track graphweave specs/plans.
-docs/**
-!docs/graphweave/
-!docs/graphweave/**
-
 idea/
 lancedb_data/
 author-name.txt

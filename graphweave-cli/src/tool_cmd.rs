@@ -9,7 +9,9 @@
 //! or `graphweave tool show <NAME>`. Uses [`RunOptions`](crate::run::RunOptions) with a
 //! placeholder message (not used for execution).
 
-use graphweave::{build_react_run_context, AgentError, BuildRunnerError};
+use graphweave::{
+    build_react_run_context, tool_source::ToolSpec, AgentError, BuildRunnerError,
+};
 use serde::Serialize;
 
 use crate::run::{build_helve_config, RunError, RunOptions};
@@ -27,7 +29,7 @@ pub enum ToolShowFormat {
     Json,
 }
 
-/// Lists all tools: builds run context from opts, then prints name and description in a table.
+/// Lists all tools: builds run context from opts, then prints name and description (table or JSON).
 ///
 /// Interacts with [`build_helve_config`](crate::run::build_helve_config) and
 /// [`build_react_run_context`](graphweave::build_react_run_context).
@@ -41,17 +43,38 @@ pub async fn list_tools(opts: &RunOptions) -> Result<(), RunError> {
             e.to_string(),
         )))
     })?;
+    format_tools_list(&tools, opts.output_json)
+}
 
+/// Formats tools list for display (used by both local and remote backend).
+/// When `output_json` is true, prints a JSON array of tools; otherwise prints a table.
+pub fn format_tools_list(tools: &[ToolSpec], output_json: bool) -> Result<(), RunError> {
+    if output_json {
+        let list: Vec<ToolSpecOutput> = tools
+            .iter()
+            .map(|s| ToolSpecOutput {
+                name: s.name.clone(),
+                description: s.description.clone(),
+                input_schema: s.input_schema.clone(),
+            })
+            .collect();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&list).map_err(|e| {
+                RunError::Build(BuildRunnerError::Context(AgentError::ExecutionFailed(
+                    e.to_string(),
+                )))
+            })?
+        );
+        return Ok(());
+    }
     if tools.is_empty() {
         println!("NAME\tDESCRIPTION");
         return Ok(());
     }
-
     let name_width = tools.iter().map(|t| t.name.len()).max().unwrap_or(4).max(4);
-    let header_name = "NAME";
-    let header_desc = "DESCRIPTION";
-    println!("{:<width$}\t{}", header_name, header_desc, width = name_width);
-    for spec in &tools {
+    println!("{:<width$}\t{}", "NAME", "DESCRIPTION", width = name_width);
+    for spec in tools {
         let desc = spec
             .description
             .as_deref()
@@ -65,6 +88,49 @@ pub async fn list_tools(opts: &RunOptions) -> Result<(), RunError> {
             desc.to_string()
         };
         println!("{:<width$}\t{}", spec.name, desc, width = name_width);
+    }
+    Ok(())
+}
+
+/// Formats tool show output from ToolShowResponse (used by remote backend).
+pub fn format_tool_show_output(
+    r: &graphweave::ToolShowResponse,
+    format: ToolShowFormat,
+) -> Result<(), RunError> {
+    match format {
+        ToolShowFormat::Yaml => {
+            if let Some(ref yaml) = r.tool_yaml {
+                print!("{}", yaml);
+            } else if let Some(ref v) = r.tool {
+                let yaml = serde_yaml::to_string(v).map_err(|e| {
+                    RunError::Build(BuildRunnerError::Context(AgentError::ExecutionFailed(
+                        e.to_string(),
+                    )))
+                })?;
+                print!("{}", yaml);
+            } else {
+                return Err(RunError::Remote("no tool or tool_yaml in response".to_string()));
+            }
+        }
+        ToolShowFormat::Json => {
+            if let Some(ref v) = r.tool {
+                println!("{}", serde_json::to_string_pretty(v).map_err(|e| {
+                    RunError::Build(BuildRunnerError::Context(AgentError::ExecutionFailed(
+                        e.to_string(),
+                    )))
+                })?);
+            } else if let Some(ref yaml) = r.tool_yaml {
+                let v: serde_json::Value =
+                    serde_yaml::from_str(yaml).map_err(|e| RunError::Remote(e.to_string()))?;
+                println!("{}", serde_json::to_string_pretty(&v).map_err(|e| {
+                    RunError::Build(BuildRunnerError::Context(AgentError::ExecutionFailed(
+                        e.to_string(),
+                    )))
+                })?);
+            } else {
+                return Err(RunError::Remote("no tool or tool_yaml in response".to_string()));
+            }
+        }
     }
     Ok(())
 }

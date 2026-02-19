@@ -121,6 +121,25 @@ impl Node<ReActState> for ThinkNode {
                 .await;
         }
 
+        // Guarantee at least one Messages event with full reply when streaming, so JSON/stream
+        // consumers always get the assistant content (some LLM invoke_stream implementations
+        // may not send any chunks).
+        if should_stream && !content.is_empty() && ctx.stream_tx.is_some() {
+            let _ = ctx
+                .stream_tx
+                .as_ref()
+                .unwrap()
+                .send(StreamEvent::Messages {
+                    chunk: MessageChunk {
+                        content: content.clone(),
+                    },
+                    metadata: StreamMetadata {
+                        graphweave_node: self.id().to_string(),
+                    },
+                })
+                .await;
+        }
+
         let new_state = apply_think_response(
             state,
             content,
