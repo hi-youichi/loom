@@ -282,7 +282,7 @@ struct GotArgs {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    dotenv::dotenv().ok();
+    config::load_and_apply("loom", None::<&std::path::Path>).ok();
     logging::init()?;
 
     let args = Args::parse();
