@@ -18,6 +18,8 @@ async fn e2e_tool_show_existing() {
         id: id.clone(),
         name: "read".to_string(),
         output: Some(ToolShowOutput::Json),
+        working_folder: None,
+        thread_id: None,
     });
     let (resp, received) = common::send_and_recv(&mut write, &mut read, &req).await.unwrap();
 

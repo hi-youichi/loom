@@ -52,6 +52,10 @@ pub struct RunRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ToolsListRequest {
     pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub working_folder: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<String>,
 }
 
 /// Output format for tool_show.
@@ -69,6 +73,10 @@ pub struct ToolShowRequest {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output: Option<ToolShowOutput>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub working_folder: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<String>,
 }
 
 /// Ping request: health / keepalive.
@@ -192,11 +200,46 @@ mod tests {
     fn request_tools_list_roundtrip() {
         let req = ClientRequest::ToolsList(ToolsListRequest {
             id: "req-1".to_string(),
+            working_folder: None,
+            thread_id: None,
         });
         let json = serde_json::to_string(&req).unwrap();
         assert_eq!(json, r#"{"type":"tools_list","id":"req-1"}"#);
         let parsed: ClientRequest = serde_json::from_str(&json).unwrap();
         assert!(matches!(parsed, ClientRequest::ToolsList(_)));
+    }
+
+    #[test]
+    fn request_tools_list_with_context_roundtrip() {
+        let req = ClientRequest::ToolsList(ToolsListRequest {
+            id: "req-2".to_string(),
+            working_folder: Some("/tmp/proj".to_string()),
+            thread_id: Some("t1".to_string()),
+        });
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"working_folder\":\"/tmp/proj\""));
+        assert!(json.contains("\"thread_id\":\"t1\""));
+        let parsed: ClientRequest = serde_json::from_str(&json).unwrap();
+        if let ClientRequest::ToolsList(r) = parsed {
+            assert_eq!(r.working_folder.as_deref(), Some("/tmp/proj"));
+            assert_eq!(r.thread_id.as_deref(), Some("t1"));
+        } else {
+            panic!("expected ToolsList");
+        }
+    }
+
+    #[test]
+    fn request_tools_list_backward_compat_parses_legacy_json() {
+        // Old clients send JSON without working_folder/thread_id; server must parse.
+        let json = r#"{"type":"tools_list","id":"req-legacy"}"#;
+        let parsed: ClientRequest = serde_json::from_str(json).unwrap();
+        if let ClientRequest::ToolsList(r) = parsed {
+            assert_eq!(r.id, "req-legacy");
+            assert_eq!(r.working_folder, None);
+            assert_eq!(r.thread_id, None);
+        } else {
+            panic!("expected ToolsList");
+        }
     }
 
     #[test]

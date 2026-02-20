@@ -178,3 +178,177 @@ pub enum McpSessionError {
     #[error("initialize: {0}")]
     Initialize(String),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_python_server(script: &str) -> String {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fake_mcp_server.py");
+        std::fs::write(&path, script).unwrap();
+        // Keep tempdir alive by leaking it for test lifetime.
+        let _ = Box::leak(Box::new(dir));
+        path.to_string_lossy().to_string()
+    }
+
+    #[test]
+    fn message_id_matches_checks_expected_id() {
+        assert!(message_id_matches(&MessageId::from("abc"), "abc"));
+        assert!(!message_id_matches(&MessageId::from("abc"), "def"));
+    }
+
+    #[test]
+    fn mcp_session_new_and_roundtrip_requests_with_fake_python_server() {
+        let script_path = write_python_server(
+            r#"
+import json, sys
+
+for raw in sys.stdin:
+    raw = raw.strip()
+    if not raw:
+        continue
+    msg = json.loads(raw)
+    method = msg.get("method")
+    if method == "initialize":
+        print(json.dumps({
+            "jsonrpc":"2.0",
+            "id":"roots-1",
+            "method":"roots/list",
+            "params":{}
+        }), flush=True)
+        print(json.dumps({
+            "jsonrpc":"2.0",
+            "id":msg["id"],
+            "result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}}}
+        }), flush=True)
+    elif method == "tools/list":
+        print(json.dumps({
+            "jsonrpc":"2.0",
+            "id":"other-id",
+            "result":{"ignored":True}
+        }), flush=True)
+        print(json.dumps({
+            "jsonrpc":"2.0",
+            "id":msg["id"],
+            "result":{"tools":[{"name":"fake_tool","description":"demo","inputSchema":{"type":"object"}}]}
+        }), flush=True)
+    elif method == "tools/call":
+        print(json.dumps({
+            "jsonrpc":"2.0",
+            "id":msg["id"],
+            "result":{"content":[{"type":"text","text":"ok-from-fake"}]}
+        }), flush=True)
+"#,
+        );
+
+        let mut session = McpSession::new(
+            "python3",
+            vec![script_path],
+            None::<Vec<(String, String)>>,
+            false,
+        )
+        .unwrap();
+
+        session
+            .send_request("tools-list-1", "tools/list", json!({}))
+            .unwrap();
+        let list_result = session
+            .wait_for_result("tools-list-1", Duration::from_secs(2))
+            .unwrap()
+            .expect("tools/list response");
+        assert!(list_result.error.is_none());
+        let tools = list_result
+            .result
+            .as_ref()
+            .and_then(|r| r.get("tools"))
+            .and_then(|t| t.as_array())
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(tools.len(), 1);
+
+        session
+            .send_request(
+                "tools-call-1",
+                "tools/call",
+                json!({"name":"fake_tool","arguments":{}}),
+            )
+            .unwrap();
+        let call_result = session
+            .wait_for_result("tools-call-1", Duration::from_secs(2))
+            .unwrap()
+            .expect("tools/call response");
+        assert!(call_result.error.is_none());
+    }
+
+    #[test]
+    fn wait_for_result_times_out_when_no_matching_response() {
+        let script_path = write_python_server(
+            r#"
+import json, sys
+
+for raw in sys.stdin:
+    raw = raw.strip()
+    if not raw:
+        continue
+    msg = json.loads(raw)
+    method = msg.get("method")
+    if method == "initialize":
+        print(json.dumps({
+            "jsonrpc":"2.0",
+            "id":msg["id"],
+            "result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}}}
+        }), flush=True)
+    # Intentionally do not respond to "no_reply"
+"#,
+        );
+
+        let mut session = McpSession::new(
+            "python3",
+            vec![script_path],
+            None::<Vec<(String, String)>>,
+            false,
+        )
+        .unwrap();
+        session
+            .send_request("no-reply-id", "no_reply", json!({}))
+            .unwrap();
+        let result = session
+            .wait_for_result("no-reply-id", Duration::from_millis(200))
+            .unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn mcp_session_new_returns_initialize_error_on_rpc_error() {
+        let script_path = write_python_server(
+            r#"
+import json, sys
+
+for raw in sys.stdin:
+    raw = raw.strip()
+    if not raw:
+        continue
+    msg = json.loads(raw)
+    if msg.get("method") == "initialize":
+        print(json.dumps({
+            "jsonrpc":"2.0",
+            "id":msg["id"],
+            "error":{"code":-32000,"message":"init failed"}
+        }), flush=True)
+"#,
+        );
+
+        let err = match McpSession::new(
+            "python3",
+            vec![script_path],
+            None::<Vec<(String, String)>>,
+            false,
+        )
+        {
+            Ok(_) => panic!("expected initialize error"),
+            Err(e) => e,
+        };
+        assert!(matches!(err, McpSessionError::Initialize(msg) if msg == "init failed"));
+    }
+}

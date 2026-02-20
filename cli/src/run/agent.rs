@@ -385,7 +385,10 @@ fn on_event_got(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom::{Message, TaskGraph, TaskNode, TaskNodeState, TaskStatus, ToolCall, TotExtension};
+    use loom::{
+        GotRunnerConfig, Message, TaskGraph, TaskNode, TaskNodeState, TaskStatus, ToolCall,
+        TotExtension, TotRunnerConfig, UnderstandOutput,
+    };
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
 
@@ -393,6 +396,32 @@ mod tests {
         ReActState {
             messages: vec![Message::user("hi"), Message::Assistant("hello".into())],
             ..ReActState::default()
+        }
+    }
+
+    fn minimal_build_config() -> loom::ReactBuildConfig {
+        loom::ReactBuildConfig {
+            db_path: None,
+            thread_id: None,
+            user_id: None,
+            system_prompt: None,
+            exa_api_key: None,
+            twitter_api_key: None,
+            mcp_exa_url: "https://mcp.exa.ai/mcp".to_string(),
+            mcp_remote_cmd: "npx".to_string(),
+            mcp_remote_args: "-y mcp-remote".to_string(),
+            mcp_verbose: false,
+            openai_api_key: None,
+            openai_base_url: None,
+            model: None,
+            embedding_api_key: None,
+            embedding_base_url: None,
+            embedding_model: None,
+            working_folder: None,
+            approval_policy: None,
+            compaction_config: None,
+            tot_config: TotRunnerConfig::default(),
+            got_config: GotRunnerConfig::default(),
         }
     }
 
@@ -553,6 +582,165 @@ mod tests {
             true,
         );
         assert_eq!(s.last_node.as_deref(), Some("plan_graph"));
+    }
+
+    #[test]
+    fn log_tools_used_handles_empty_and_non_empty() {
+        log_tools_used(&[]);
+        log_tools_used(&[ToolCall {
+            name: "search".to_string(),
+            arguments: "{}".to_string(),
+            id: None,
+        }]);
+    }
+
+    #[test]
+    fn non_verbose_paths_update_turns_without_panics() {
+        let mut s = EventState {
+            turn: 0,
+            last_node: None,
+        };
+        let react_with_tool = ReActState {
+            tool_calls: vec![ToolCall {
+                name: "bash".to_string(),
+                arguments: "{\"command\":\"echo hi\"}".to_string(),
+                id: None,
+            }],
+            ..react_state()
+        };
+        on_event_react(
+            &StreamEvent::Updates {
+                node_id: "think".to_string(),
+                state: react_with_tool,
+            },
+            &mut s,
+            120,
+            false,
+        );
+        assert_eq!(s.turn, 0);
+
+        let dup_state = DupState {
+            core: ReActState {
+                tool_calls: vec![ToolCall {
+                    name: "read".to_string(),
+                    arguments: "{}".to_string(),
+                    id: None,
+                }],
+                ..react_state()
+            },
+            understood: Some(UnderstandOutput {
+                core_goal: "goal".to_string(),
+                key_constraints: vec!["c1".to_string()],
+                relevant_context: "ctx".to_string(),
+            }),
+        };
+        on_event_dup(
+            &StreamEvent::Updates {
+                node_id: "plan".to_string(),
+                state: dup_state,
+            },
+            &mut s,
+            120,
+            false,
+        );
+        assert_eq!(s.turn, 1);
+    }
+
+    #[test]
+    fn verbose_tot_and_got_event_variants_are_handled() {
+        let mut s = EventState {
+            turn: 0,
+            last_node: None,
+        };
+
+        on_event_tot(
+            &StreamEvent::TotEvaluate {
+                chosen: 0,
+                scores: vec![0.9],
+            },
+            &mut s,
+            80,
+            true,
+        );
+        on_event_tot(
+            &StreamEvent::TotBacktrack {
+                reason: "retry".to_string(),
+                to_depth: 2,
+            },
+            &mut s,
+            80,
+            true,
+        );
+        on_event_tot(
+            &StreamEvent::Messages {
+                chunk: loom::MessageChunk {
+                    content: "tok".to_string(),
+                },
+                metadata: loom::StreamMetadata {
+                    loom_node: "think_expand".to_string(),
+                },
+            },
+            &mut s,
+            80,
+            true,
+        );
+
+        on_event_got(
+            &StreamEvent::GotNodeStart {
+                node_id: "n1".to_string(),
+            },
+            &mut s,
+            80,
+            true,
+        );
+        on_event_got(
+            &StreamEvent::GotNodeComplete {
+                node_id: "n1".to_string(),
+                result_summary: "done".to_string(),
+            },
+            &mut s,
+            80,
+            true,
+        );
+        on_event_got(
+            &StreamEvent::GotNodeFailed {
+                node_id: "n2".to_string(),
+                error: "boom".to_string(),
+            },
+            &mut s,
+            80,
+            true,
+        );
+        on_event_got(
+            &StreamEvent::GotExpand {
+                node_id: "n1".to_string(),
+                nodes_added: 2,
+                edges_added: 1,
+            },
+            &mut s,
+            80,
+            true,
+        );
+        on_event_got(
+            &StreamEvent::Messages {
+                chunk: loom::MessageChunk {
+                    content: "chunk".to_string(),
+                },
+                metadata: loom::StreamMetadata {
+                    loom_node: "execute_graph".to_string(),
+                },
+            },
+            &mut s,
+            80,
+            true,
+        );
+    }
+
+    #[tokio::test]
+    async fn print_loaded_tools_succeeds_with_minimal_config() {
+        let cfg = minimal_build_config();
+        let res = print_loaded_tools(&cfg).await;
+        assert!(res.is_ok());
     }
 
     fn invalid_opts(output_json: bool) -> RunOptions {

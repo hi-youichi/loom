@@ -191,6 +191,53 @@ impl crate::memory::Embedder for OpenAIEmbedder {
 mod tests {
     use super::*;
     use crate::memory::Embedder;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::{TcpListener, TcpStream};
+
+    async fn read_http_request(stream: &mut TcpStream) {
+        let mut buf = Vec::new();
+        let mut tmp = [0u8; 1024];
+        loop {
+            let n = stream.read(&mut tmp).await.unwrap();
+            if n == 0 {
+                break;
+            }
+            buf.extend_from_slice(&tmp[..n]);
+            if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                let header_end = pos + 4;
+                let headers = String::from_utf8_lossy(&buf[..header_end]).to_string();
+                let content_length = headers
+                    .lines()
+                    .find_map(|line| {
+                        let lower = line.to_ascii_lowercase();
+                        lower
+                            .strip_prefix("content-length:")
+                            .and_then(|v| v.trim().parse::<usize>().ok())
+                    })
+                    .unwrap_or(0);
+                let mut body = buf[header_end..].to_vec();
+                while body.len() < content_length {
+                    let m = stream.read(&mut tmp).await.unwrap();
+                    if m == 0 {
+                        break;
+                    }
+                    body.extend_from_slice(&tmp[..m]);
+                }
+                let _ = &body[..content_length];
+                return;
+            }
+        }
+    }
+
+    async fn write_http_response(stream: &mut TcpStream, status: &str, body: &str) {
+        let resp = format!(
+            "HTTP/1.1 {}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
+            status,
+            body.len(),
+            body
+        );
+        stream.write_all(resp.as_bytes()).await.unwrap();
+    }
 
     #[test]
     fn test_get_model_dimensions() {
@@ -263,5 +310,100 @@ mod tests {
         let vectors = embedder.embed(&["hello from tokio"]).await.unwrap();
         assert_eq!(vectors.len(), 1);
         assert_eq!(vectors[0].len(), 1536);
+    }
+
+    #[tokio::test]
+    async fn embed_and_embed_one_work_with_local_mock_server() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            for idx in 0..2 {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                read_http_request(&mut stream).await;
+                let body = if idx == 0 {
+                    serde_json::json!({
+                        "object":"list",
+                        "data":[{"object":"embedding","index":0,"embedding":[0.1,0.2,0.3]}],
+                        "model":"text-embedding-3-small",
+                        "usage":{"prompt_tokens":1,"total_tokens":1}
+                    })
+                    .to_string()
+                } else {
+                    serde_json::json!({
+                        "object":"list",
+                        "data":[
+                            {"object":"embedding","index":0,"embedding":[1.0,1.1]},
+                            {"object":"embedding","index":1,"embedding":[2.0,2.1]}
+                        ],
+                        "model":"text-embedding-3-small",
+                        "usage":{"prompt_tokens":2,"total_tokens":2}
+                    })
+                    .to_string()
+                };
+                write_http_response(&mut stream, "200 OK", &body).await;
+            }
+        });
+
+        let config = OpenAIConfig::new()
+            .with_api_key("test-key")
+            .with_api_base(format!("http://{}", addr));
+        let embedder = OpenAIEmbedder::with_config(config, "text-embedding-3-small");
+        let one = embedder.embed_one("hello").await.unwrap();
+        assert_eq!(one, vec![0.1, 0.2, 0.3]);
+        let many = embedder.embed(&["a", "b"]).await.unwrap();
+        assert_eq!(many.len(), 2);
+        assert_eq!(many[0], vec![1.0, 1.1]);
+        assert_eq!(many[1], vec![2.0, 2.1]);
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn embed_one_returns_error_when_response_has_no_data() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            read_http_request(&mut stream).await;
+            let body = serde_json::json!({
+                "object":"list",
+                "data":[],
+                "model":"text-embedding-3-small",
+                "usage":{"prompt_tokens":0,"total_tokens":0}
+            })
+            .to_string();
+            write_http_response(&mut stream, "200 OK", &body).await;
+        });
+
+        let config = OpenAIConfig::new()
+            .with_api_key("test-key")
+            .with_api_base(format!("http://{}", addr));
+        let embedder = OpenAIEmbedder::with_config(config, "text-embedding-3-small");
+        let err = embedder.embed_one("hello").await.unwrap_err();
+        assert!(err.to_string().contains("No embedding returned"));
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn embed_returns_error_on_http_failure() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            read_http_request(&mut stream).await;
+            write_http_response(
+                &mut stream,
+                "500 Internal Server Error",
+                r#"{"error":{"message":"boom"}}"#,
+            )
+            .await;
+        });
+
+        let config = OpenAIConfig::new()
+            .with_api_key("test-key")
+            .with_api_base(format!("http://{}", addr));
+        let embedder = OpenAIEmbedder::with_config(config, "text-embedding-3-small");
+        let err = embedder.embed(&["hello"]).await.unwrap_err();
+        assert!(err.to_string().contains("OpenAI API error"));
+        server.await.unwrap();
     }
 }

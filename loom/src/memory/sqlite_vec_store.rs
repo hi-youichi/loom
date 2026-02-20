@@ -640,3 +640,221 @@ impl Store for SqliteVecStore {
             .collect())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    struct MockEmbedder {
+        dim: usize,
+        value: f32,
+        override_len: Option<usize>,
+    }
+
+    impl MockEmbedder {
+        fn new(dim: usize, value: f32) -> Self {
+            Self {
+                dim,
+                value,
+                override_len: None,
+            }
+        }
+
+        fn with_override_len(dim: usize, value: f32, override_len: usize) -> Self {
+            Self {
+                dim,
+                value,
+                override_len: Some(override_len),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl Embedder for MockEmbedder {
+        async fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, StoreError> {
+            let len = self.override_len.unwrap_or(self.dim);
+            Ok(texts
+                .iter()
+                .map(|_| vec![self.value; len])
+                .collect::<Vec<Vec<f32>>>())
+        }
+
+        fn dimension(&self) -> usize {
+            self.dim
+        }
+    }
+
+    fn temp_store(embedder: Arc<dyn Embedder>) -> (SqliteVecStore, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("vec.db");
+        let store = SqliteVecStore::new(&db, embedder).unwrap();
+        (store, dir)
+    }
+
+    #[test]
+    fn helper_functions_cover_namespace_vector_and_text_extraction() {
+        let ns = vec!["u".to_string(), "mem".to_string()];
+        let key = ns_to_key(&ns);
+        assert_eq!(key_to_ns(&key), ns);
+        assert_eq!(key_to_ns("oops"), Namespace::default());
+
+        assert_eq!(vector_to_json(&[1.0, 2.5, 3.0]), "[1,2.5,3]");
+        assert_eq!(text_from_value(&json!({"text":"hello"})), "hello");
+        assert!(text_from_value(&json!({"k":"v"})).contains("\"k\":\"v\""));
+
+        let now = SystemTime::now();
+        let ms = system_time_to_millis(now);
+        let restored = millis_to_system_time(ms);
+        assert!(restored <= now + Duration::from_secs(1));
+    }
+
+    #[test]
+    fn matches_condition_supports_prefix_suffix_and_wildcards() {
+        let ns = vec!["users".to_string(), "u1".to_string(), "memories".to_string()];
+        assert!(SqliteVecStore::matches_condition(
+            &ns,
+            &MatchCondition::prefix(vec!["users".to_string(), "*".to_string()])
+        ));
+        assert!(SqliteVecStore::matches_condition(
+            &ns,
+            &MatchCondition::suffix(vec!["u1".to_string(), "memories".to_string()])
+        ));
+        assert!(!SqliteVecStore::matches_condition(
+            &ns,
+            &MatchCondition::prefix(vec!["nope".to_string()])
+        ));
+    }
+
+    #[tokio::test]
+    async fn put_get_delete_list_and_get_item_work() {
+        let (store, _dir) = temp_store(Arc::new(MockEmbedder::new(4, 0.3)));
+        let ns = vec!["u".to_string(), "mem".to_string()];
+        store.put(&ns, "k1", &json!({"text":"hello"})).await.unwrap();
+        let got = store.get(&ns, "k1").await.unwrap().unwrap();
+        assert_eq!(got["text"], "hello");
+        let keys = store.list(&ns).await.unwrap();
+        assert_eq!(keys, vec!["k1".to_string()]);
+
+        let item1 = store.get_item(&ns, "k1").await.unwrap().unwrap();
+        tokio::time::sleep(Duration::from_millis(2)).await;
+        store.put(&ns, "k1", &json!({"text":"world"})).await.unwrap();
+        let item2 = store.get_item(&ns, "k1").await.unwrap().unwrap();
+        assert_eq!(item1.created_at, item2.created_at);
+        assert!(item2.updated_at >= item1.updated_at);
+
+        store.delete(&ns, "k1").await.unwrap();
+        assert!(store.get(&ns, "k1").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn search_without_query_and_with_query_and_search_simple_work() {
+        let (store, _dir) = temp_store(Arc::new(MockEmbedder::new(4, 0.1)));
+        let ns1 = vec!["u1".to_string(), "mem".to_string()];
+        let ns2 = vec!["u1".to_string(), "prefs".to_string()];
+        store.put(&ns1, "alpha", &json!({"text":"hello"})).await.unwrap();
+        store.put(&ns1, "beta", &json!({"text":"world"})).await.unwrap();
+        store.put(&ns2, "gamma", &json!({"text":"hello prefs"})).await.unwrap();
+
+        let no_query_hits = store
+            .search(
+                &vec!["u1".to_string()],
+                SearchOptions::new().with_limit(10).with_offset(0),
+            )
+            .await
+            .unwrap();
+        assert_eq!(no_query_hits.len(), 3);
+
+        let with_query_hits = store
+            .search(
+                &vec!["u1".to_string()],
+                SearchOptions::new().with_query("hello").with_limit(10),
+            )
+            .await
+            .unwrap();
+        assert!(!with_query_hits.is_empty());
+
+        let simple_hits = store.search_simple(&ns1, Some("alpha"), Some(5)).await.unwrap();
+        assert!(simple_hits.iter().any(|h| h.key == "alpha"));
+    }
+
+    #[tokio::test]
+    async fn list_namespaces_and_batch_paths_work() {
+        let (store, _dir) = temp_store(Arc::new(MockEmbedder::new(3, 0.2)));
+        store
+            .put(
+                &vec!["u1".to_string(), "mem".to_string()],
+                "k1",
+                &json!({"text":"a"}),
+            )
+            .await
+            .unwrap();
+        store
+            .put(
+                &vec!["u1".to_string(), "prefs".to_string()],
+                "k2",
+                &json!({"text":"b"}),
+            )
+            .await
+            .unwrap();
+
+        let ns = store
+            .list_namespaces(ListNamespacesOptions::new().with_prefix(vec!["u1".to_string()]))
+            .await
+            .unwrap();
+        assert_eq!(ns.len(), 2);
+
+        let out = store
+            .batch(vec![
+                StoreOp::Get {
+                    namespace: vec!["u1".to_string(), "mem".to_string()],
+                    key: "k1".to_string(),
+                },
+                StoreOp::Search {
+                    namespace_prefix: vec!["u1".to_string()],
+                    options: SearchOptions::new(),
+                },
+                StoreOp::ListNamespaces {
+                    options: ListNamespacesOptions::new(),
+                },
+                StoreOp::Put {
+                    namespace: vec!["u1".to_string(), "mem".to_string()],
+                    key: "k1".to_string(),
+                    value: None,
+                },
+            ])
+            .await
+            .unwrap();
+        assert!(matches!(out[0], StoreOpResult::Get(Some(_))));
+        assert!(matches!(out[1], StoreOpResult::Search(_)));
+        assert!(matches!(out[2], StoreOpResult::ListNamespaces(_)));
+        assert!(matches!(out[3], StoreOpResult::Put));
+    }
+
+    #[tokio::test]
+    async fn put_and_search_error_on_embedder_dimension_mismatch() {
+        let (store_bad_put, _dir1) =
+            temp_store(Arc::new(MockEmbedder::with_override_len(4, 0.1, 2)));
+        let ns = vec!["u".to_string(), "mem".to_string()];
+        let put_err = store_bad_put
+            .put(&ns, "k", &json!({"text":"x"}))
+            .await
+            .unwrap_err();
+        assert!(put_err.to_string().contains("dimension"));
+
+        let (store_ok, _dir2) = temp_store(Arc::new(MockEmbedder::new(4, 0.2)));
+        store_ok.put(&ns, "k", &json!({"text":"x"})).await.unwrap();
+        let store_bad_query = SqliteVecStore::new(
+            store_ok.db_path.clone(),
+            Arc::new(MockEmbedder::with_override_len(4, 0.2, 1)),
+        )
+        .unwrap();
+        let q_err = store_bad_query
+            .search(&vec!["u".to_string()], SearchOptions::new().with_query("x"))
+            .await
+            .unwrap_err();
+        assert!(q_err.to_string().contains("dimension"));
+    }
+}

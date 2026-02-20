@@ -465,3 +465,195 @@ impl Store for SqliteStore {
             .collect())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::time::Duration;
+
+    fn temp_store() -> (SqliteStore, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("store.db");
+        let store = SqliteStore::new(&db).unwrap();
+        (store, dir)
+    }
+
+    #[test]
+    fn namespace_and_time_helpers_roundtrip() {
+        let ns = vec!["u1".to_string(), "memories".to_string()];
+        let key = ns_to_key(&ns);
+        assert_eq!(key_to_ns(&key), ns);
+        assert_eq!(key_to_ns("not-json"), Namespace::default());
+
+        let now = SystemTime::now();
+        let ms = system_time_to_millis(now);
+        let restored = millis_to_system_time(ms);
+        assert!(restored <= now + Duration::from_secs(1));
+    }
+
+    #[test]
+    fn matches_condition_supports_prefix_suffix_and_wildcards() {
+        let ns = vec!["users".to_string(), "u1".to_string(), "memories".to_string()];
+        assert!(SqliteStore::matches_condition(
+            &ns,
+            &MatchCondition::prefix(vec!["users".to_string(), "*".to_string()])
+        ));
+        assert!(SqliteStore::matches_condition(
+            &ns,
+            &MatchCondition::suffix(vec!["u1".to_string(), "memories".to_string()])
+        ));
+        assert!(!SqliteStore::matches_condition(
+            &ns,
+            &MatchCondition::prefix(vec!["other".to_string()])
+        ));
+    }
+
+    #[tokio::test]
+    async fn list_namespaces_applies_conditions_depth_and_pagination() {
+        let (store, _dir) = temp_store();
+        store
+            .put(
+                &vec!["u1".to_string(), "mem".to_string()],
+                "k1",
+                &json!({"v":1}),
+            )
+            .await
+            .unwrap();
+        store
+            .put(
+                &vec!["u1".to_string(), "prefs".to_string()],
+                "k2",
+                &json!({"v":2}),
+            )
+            .await
+            .unwrap();
+        store
+            .put(
+                &vec!["u2".to_string(), "mem".to_string(), "sub".to_string()],
+                "k3",
+                &json!({"v":3}),
+            )
+            .await
+            .unwrap();
+
+        let prefixed = store
+            .list_namespaces(ListNamespacesOptions::new().with_prefix(vec!["u1".to_string()]))
+            .await
+            .unwrap();
+        assert_eq!(prefixed.len(), 2);
+
+        let suffixed = store
+            .list_namespaces(ListNamespacesOptions::new().with_suffix(vec!["mem".to_string()]))
+            .await
+            .unwrap();
+        assert_eq!(suffixed, vec![vec!["u1".to_string(), "mem".to_string()]]);
+
+        let truncated = store
+            .list_namespaces(ListNamespacesOptions::new().with_max_depth(2))
+            .await
+            .unwrap();
+        assert!(truncated.contains(&vec!["u2".to_string(), "mem".to_string()]));
+
+        let paged = store
+            .list_namespaces(ListNamespacesOptions {
+                limit: 1,
+                offset: 1,
+                ..ListNamespacesOptions::new()
+            })
+            .await
+            .unwrap();
+        assert_eq!(paged.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn search_and_search_simple_apply_query_offset_and_limit() {
+        let (store, _dir) = temp_store();
+        let ns = vec!["u".to_string(), "mem".to_string()];
+        store.put(&ns, "alpha", &json!({"text":"hello"})).await.unwrap();
+        store.put(&ns, "beta", &json!({"text":"world"})).await.unwrap();
+        store.put(&ns, "gamma", &json!({"text":"hello again"})).await.unwrap();
+
+        let hits = store
+            .search(
+                &vec!["u".to_string()],
+                SearchOptions::new().with_query("hello").with_limit(10),
+            )
+            .await
+            .unwrap();
+        assert_eq!(hits.len(), 2);
+
+        let offset_hits = store
+            .search(
+                &vec!["u".to_string()],
+                SearchOptions {
+                    query: Some("hello".to_string()),
+                    filter: None,
+                    limit: 10,
+                    offset: 5,
+                },
+            )
+            .await
+            .unwrap();
+        assert!(offset_hits.is_empty());
+
+        let simple = store.search_simple(&ns, Some("beta"), Some(5)).await.unwrap();
+        assert_eq!(simple.len(), 1);
+        assert_eq!(simple[0].key, "beta");
+    }
+
+    #[tokio::test]
+    async fn batch_supports_put_get_search_list_and_delete() {
+        let (store, _dir) = temp_store();
+        let ns = vec!["u".to_string(), "mem".to_string()];
+        let ops = vec![
+            StoreOp::Put {
+                namespace: ns.clone(),
+                key: "k1".to_string(),
+                value: Some(json!({"x":1})),
+            },
+            StoreOp::Get {
+                namespace: ns.clone(),
+                key: "k1".to_string(),
+            },
+            StoreOp::Search {
+                namespace_prefix: vec!["u".to_string()],
+                options: SearchOptions::new(),
+            },
+            StoreOp::ListNamespaces {
+                options: ListNamespacesOptions::new(),
+            },
+            StoreOp::Put {
+                namespace: ns.clone(),
+                key: "k1".to_string(),
+                value: None,
+            },
+            StoreOp::Get {
+                namespace: ns.clone(),
+                key: "k1".to_string(),
+            },
+        ];
+        let out = store.batch(ops).await.unwrap();
+        assert!(matches!(out[0], StoreOpResult::Put));
+        assert!(matches!(out[1], StoreOpResult::Get(Some(_))));
+        assert!(matches!(out[2], StoreOpResult::Search(_)));
+        assert!(matches!(out[3], StoreOpResult::ListNamespaces(_)));
+        assert!(matches!(out[4], StoreOpResult::Put));
+        assert!(matches!(out[5], StoreOpResult::Get(None)));
+    }
+
+    #[tokio::test]
+    async fn get_item_preserves_created_at_and_updates_updated_at() {
+        let (store, _dir) = temp_store();
+        let ns = vec!["u".to_string(), "mem".to_string()];
+        store.put(&ns, "k", &json!({"v":1})).await.unwrap();
+        let first = store.get_item(&ns, "k").await.unwrap().unwrap();
+        tokio::time::sleep(Duration::from_millis(2)).await;
+        store.put(&ns, "k", &json!({"v":2})).await.unwrap();
+        let second = store.get_item(&ns, "k").await.unwrap().unwrap();
+
+        assert_eq!(first.created_at, second.created_at);
+        assert!(second.updated_at >= first.updated_at);
+        assert_eq!(second.value, json!({"v":2}));
+    }
+}

@@ -508,6 +508,59 @@ mod tests {
     use super::*;
     use crate::llm::LlmClient;
     use crate::message::Message;
+    use std::sync::{Mutex, OnceLock};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::{TcpListener, TcpStream};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    async fn read_http_request(stream: &mut TcpStream) -> String {
+        let mut buf = Vec::new();
+        let mut tmp = [0u8; 1024];
+        loop {
+            let n = stream.read(&mut tmp).await.unwrap();
+            if n == 0 {
+                break;
+            }
+            buf.extend_from_slice(&tmp[..n]);
+            if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                let header_end = pos + 4;
+                let headers = String::from_utf8_lossy(&buf[..header_end]).to_string();
+                let content_length = headers
+                    .lines()
+                    .find_map(|line| {
+                        let lower = line.to_ascii_lowercase();
+                        lower
+                            .strip_prefix("content-length:")
+                            .and_then(|v| v.trim().parse::<usize>().ok())
+                    })
+                    .unwrap_or(0);
+                let mut body = buf[header_end..].to_vec();
+                while body.len() < content_length {
+                    let m = stream.read(&mut tmp).await.unwrap();
+                    if m == 0 {
+                        break;
+                    }
+                    body.extend_from_slice(&tmp[..m]);
+                }
+                return String::from_utf8_lossy(&body[..content_length]).to_string();
+            }
+        }
+        String::new()
+    }
+
+    async fn write_http_response(stream: &mut TcpStream, status: &str, body: &str) {
+        let resp = format!(
+            "HTTP/1.1 {}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
+            status,
+            body.len(),
+            body
+        );
+        stream.write_all(resp.as_bytes()).await.unwrap();
+    }
 
     /// **Scenario**: ChatOpenAI::new sets model; tools and temperature are None.
     #[test]
@@ -534,6 +587,34 @@ mod tests {
         let _ = ChatOpenAI::new("gpt-4")
             .with_tools(tools)
             .with_temperature(0.5f32);
+    }
+
+    #[test]
+    fn chat_completions_url_uses_env_variants() {
+        let _guard = env_lock().lock().unwrap();
+        std::env::set_var("OPENAI_BASE_URL", "https://example.com");
+        assert_eq!(
+            ChatOpenAI::chat_completions_url(),
+            "https://example.com/v1/chat/completions"
+        );
+        std::env::remove_var("OPENAI_BASE_URL");
+
+        std::env::set_var("OPENAI_API_BASE", "https://example.com/v1");
+        assert_eq!(
+            ChatOpenAI::chat_completions_url(),
+            "https://example.com/v1/chat/completions"
+        );
+        std::env::remove_var("OPENAI_API_BASE");
+    }
+
+    #[test]
+    fn messages_to_request_maps_all_roles() {
+        let req = ChatOpenAI::messages_to_request(&[
+            Message::System("s".to_string()),
+            Message::User("u".to_string()),
+            Message::Assistant("a".to_string()),
+        ]);
+        assert_eq!(req.len(), 3);
     }
 
     /// **Scenario**: invoke() against an unreachable API base returns an error (no real API key needed).
@@ -591,6 +672,98 @@ mod tests {
 
         assert!(res_invoke.is_err());
         assert!(res_stream.is_err());
+    }
+
+    #[tokio::test]
+    async fn invoke_and_invoke_stream_none_channel_succeed_with_mock_server() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let body = read_http_request(&mut stream).await;
+                let req: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+                assert!(req.get("messages").is_some());
+                let response = serde_json::json!({
+                    "id":"chatcmpl-1",
+                    "object":"chat.completion",
+                    "created": 1,
+                    "model":"gpt-4o-mini",
+                    "choices":[
+                        {
+                            "index":0,
+                            "message":{
+                                "role":"assistant",
+                                "content":"hello",
+                                "tool_calls":[
+                                    {
+                                        "id":"call_1",
+                                        "type":"function",
+                                        "function":{"name":"get_time","arguments":"{}"}
+                                    }
+                                ]
+                            },
+                            "finish_reason":"stop"
+                        }
+                    ],
+                    "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}
+                })
+                .to_string();
+                write_http_response(&mut stream, "200 OK", &response).await;
+            }
+        });
+
+        let config = OpenAIConfig::new()
+            .with_api_key("test-key")
+            .with_api_base(format!("http://{}", addr));
+        let tools = vec![ToolSpec {
+            name: "get_time".into(),
+            description: Some("time".into()),
+            input_schema: serde_json::json!({"type":"object"}),
+        }];
+        let client = ChatOpenAI::with_config(config, "gpt-4o-mini")
+            .with_tools(tools)
+            .with_temperature(0.2)
+            .with_tool_choice(ToolChoiceMode::Required);
+        let messages = [Message::user("hello")];
+        let res = client.invoke(&messages).await.unwrap();
+        assert_eq!(res.content, "hello");
+        assert_eq!(res.tool_calls.len(), 1);
+        assert_eq!(res.usage.unwrap().total_tokens, 2);
+
+        let res_stream = client.invoke_stream(&messages, None).await.unwrap();
+        assert_eq!(res_stream.content, "hello");
+        assert_eq!(res_stream.tool_calls.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn invoke_returns_error_when_choices_missing() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let _ = read_http_request(&mut stream).await;
+            let response = serde_json::json!({
+                "id":"chatcmpl-2",
+                "object":"chat.completion",
+                "created": 1,
+                "model":"gpt-4o-mini",
+                "choices":[],
+                "usage":{"prompt_tokens":1,"completion_tokens":0,"total_tokens":1}
+            })
+            .to_string();
+            write_http_response(&mut stream, "200 OK", &response).await;
+        });
+
+        let config = OpenAIConfig::new()
+            .with_api_key("test-key")
+            .with_api_base(format!("http://{}", addr));
+        let client = ChatOpenAI::with_config(config, "gpt-4o-mini");
+        let err = match client.invoke(&[Message::user("x")]).await {
+            Ok(_) => panic!("expected no-choices error"),
+            Err(e) => e,
+        };
+        assert!(err.to_string().contains("no choices"));
     }
 
     /// **Scenario**: invoke() against real OpenAI API returns Ok when OPENAI_API_KEY is set.

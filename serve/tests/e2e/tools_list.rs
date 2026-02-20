@@ -14,7 +14,11 @@ async fn e2e_tools_list() {
     let (mut write, mut read) = ws.split();
 
     let id = "tools-list-1".to_string();
-    let req = ClientRequest::ToolsList(ToolsListRequest { id: id.clone() });
+    let req = ClientRequest::ToolsList(ToolsListRequest {
+        id: id.clone(),
+        working_folder: None,
+        thread_id: None,
+    });
     let (resp, received) = common::send_and_recv(&mut write, &mut read, &req).await.unwrap();
 
     assert!(

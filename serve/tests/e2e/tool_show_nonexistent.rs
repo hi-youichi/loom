@@ -18,6 +18,8 @@ async fn e2e_tool_show_nonexistent() {
         id: id.clone(),
         name: "nonexistent_tool_xyz_123".to_string(),
         output: None,
+        working_folder: None,
+        thread_id: None,
     });
     let (resp, received) = common::send_and_recv(&mut write, &mut read, &req).await.unwrap();
 

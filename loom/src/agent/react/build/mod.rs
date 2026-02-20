@@ -234,3 +234,129 @@ pub async fn build_react_runner_with_openai(
     let client = ChatOpenAI::with_config(openai_config, model);
     build_react_runner(config, Some(Box::new(client)), verbose, None).await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::react::{GotRunnerConfig, TotRunnerConfig};
+    use crate::MockLlm;
+
+    fn base_config() -> ReactBuildConfig {
+        ReactBuildConfig {
+            db_path: None,
+            thread_id: None,
+            user_id: None,
+            system_prompt: None,
+            exa_api_key: None,
+            twitter_api_key: None,
+            mcp_exa_url: "https://mcp.exa.ai/mcp".to_string(),
+            mcp_remote_cmd: "npx".to_string(),
+            mcp_remote_args: "-y mcp-remote".to_string(),
+            mcp_verbose: false,
+            openai_api_key: None,
+            openai_base_url: None,
+            model: None,
+            embedding_api_key: None,
+            embedding_base_url: None,
+            embedding_model: None,
+            working_folder: None,
+            approval_policy: None,
+            compaction_config: None,
+            tot_config: TotRunnerConfig::default(),
+            got_config: GotRunnerConfig::default(),
+        }
+    }
+
+    #[test]
+    fn build_runnable_config_handles_none_and_some_fields() {
+        assert!(build_runnable_config(&base_config()).is_none());
+
+        let mut with_thread = base_config();
+        with_thread.thread_id = Some("thread-1".to_string());
+        let rc = build_runnable_config(&with_thread).unwrap();
+        assert_eq!(rc.thread_id.as_deref(), Some("thread-1"));
+
+        let mut with_user = base_config();
+        with_user.user_id = Some("user-1".to_string());
+        let rc2 = build_runnable_config(&with_user).unwrap();
+        assert_eq!(rc2.user_id.as_deref(), Some("user-1"));
+    }
+
+    #[test]
+    fn build_checkpointer_for_state_returns_none_without_thread() {
+        let cp = build_checkpointer_for_state::<ReActState>(&base_config(), "memory.db").unwrap();
+        assert!(cp.is_none());
+    }
+
+    #[test]
+    fn build_checkpointer_for_state_returns_some_with_thread() {
+        let mut cfg = base_config();
+        cfg.thread_id = Some("thread-1".to_string());
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = dir.path().join("cp.db");
+        let cp = build_checkpointer_for_state::<ReActState>(&cfg, db.to_str().unwrap()).unwrap();
+        assert!(cp.is_some());
+    }
+
+    #[tokio::test]
+    async fn build_react_run_context_builds_default_tool_source() {
+        let ctx = build_react_run_context(&base_config()).await.unwrap();
+        assert!(ctx.checkpointer.is_none());
+        assert!(ctx.store.is_none());
+        assert!(ctx.runnable_config.is_none());
+        let tools = ctx.tool_source.list_tools().await.unwrap();
+        assert!(!tools.is_empty());
+    }
+
+    #[tokio::test]
+    async fn build_react_runner_with_mock_llm_and_prompts_invokes() {
+        let cfg = base_config();
+        let mut prompts = AgentPrompts::default();
+        prompts.react.system_prompt = Some("test system prompt".to_string());
+        let runner = build_react_runner(
+            &cfg,
+            Some(Box::new(MockLlm::with_no_tool_calls("react final"))),
+            false,
+            Some(&prompts),
+        )
+        .await
+        .unwrap();
+        let out = runner.invoke("hello").await.unwrap();
+        assert!(out.last_assistant_reply().is_some());
+    }
+
+    #[tokio::test]
+    async fn build_dup_tot_got_runners_with_mock_llm_invoke() {
+        let cfg = base_config();
+
+        let dup = build_dup_runner(
+            &cfg,
+            Some(Box::new(MockLlm::with_no_tool_calls("dup final"))),
+            false,
+        )
+        .await
+        .unwrap();
+        let dup_out = dup.invoke("q").await.unwrap();
+        assert!(dup_out.last_assistant_reply().is_some());
+
+        let tot = build_tot_runner(
+            &cfg,
+            Some(Box::new(MockLlm::with_no_tool_calls("tot final"))),
+            false,
+        )
+        .await
+        .unwrap();
+        let tot_out = tot.invoke("q").await.unwrap();
+        assert!(tot_out.last_assistant_reply().is_some());
+
+        let got = build_got_runner(
+            &cfg,
+            Some(Box::new(MockLlm::with_no_tool_calls("got final"))),
+            false,
+        )
+        .await
+        .unwrap();
+        let got_out = got.invoke("q").await.unwrap();
+        assert!(!got_out.summary_result().is_empty() || !got_out.task_graph.nodes.is_empty());
+    }
+}

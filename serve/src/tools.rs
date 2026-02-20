@@ -4,13 +4,14 @@ use loom::{
     build_helve_config, build_react_run_context, ErrorResponse, RunOptions, ServerResponse,
     ToolShowOutput, ToolShowResponse, ToolsListResponse,
 };
+use std::path::PathBuf;
 
 pub(crate) async fn handle_tools_list(r: loom::ToolsListRequest) -> ServerResponse {
     let id = r.id.clone();
     let opts = RunOptions {
         message: String::new(),
-        working_folder: None,
-        thread_id: None,
+        working_folder: r.working_folder.as_ref().map(PathBuf::from),
+        thread_id: r.thread_id.clone(),
         verbose: false,
         got_adaptive: false,
         display_max_len: 2000,
@@ -36,8 +37,8 @@ pub(crate) async fn handle_tool_show(r: loom::ToolShowRequest) -> ServerResponse
     let id = r.id.clone();
     let opts = RunOptions {
         message: String::new(),
-        working_folder: None,
-        thread_id: None,
+        working_folder: r.working_folder.as_ref().map(PathBuf::from),
+        thread_id: r.thread_id.clone(),
         verbose: false,
         got_adaptive: false,
         display_max_len: 2000,
@@ -99,6 +100,8 @@ mod tests {
     async fn first_tool_name() -> String {
         match handle_tools_list(loom::ToolsListRequest {
             id: "lookup".to_string(),
+            working_folder: None,
+            thread_id: None,
         })
         .await
         {
@@ -115,6 +118,8 @@ mod tests {
     async fn handle_tools_list_returns_non_empty_tools() {
         let resp = handle_tools_list(loom::ToolsListRequest {
             id: "t1".to_string(),
+            working_folder: None,
+            thread_id: None,
         })
         .await;
         match resp {
@@ -133,6 +138,8 @@ mod tests {
             id: "s1".to_string(),
             name: tool_name,
             output: Some(loom::ToolShowOutput::Json),
+            working_folder: None,
+            thread_id: None,
         })
         .await;
         match resp {
@@ -152,6 +159,8 @@ mod tests {
             id: "s2".to_string(),
             name: tool_name,
             output: Some(loom::ToolShowOutput::Yaml),
+            working_folder: None,
+            thread_id: None,
         })
         .await;
         match resp {
@@ -172,6 +181,8 @@ mod tests {
             id: "s3".to_string(),
             name: "no_such_tool".to_string(),
             output: None,
+            working_folder: None,
+            thread_id: None,
         })
         .await;
         match resp {

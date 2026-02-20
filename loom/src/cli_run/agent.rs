@@ -218,3 +218,151 @@ pub async fn build_runner(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Message, TaskGraph, TaskNode, TaskNodeState, TaskStatus, TotExtension};
+
+    fn opts_for_error(cmd: &RunCmd) -> RunOptions {
+        let got_adaptive = matches!(cmd, RunCmd::Got { got_adaptive: true });
+        RunOptions {
+            message: "hello".to_string(),
+            working_folder: Some(PathBuf::from(
+                "/definitely/not/exist/loom-cli-run-agent-tests",
+            )),
+            thread_id: None,
+            verbose: false,
+            got_adaptive,
+            display_max_len: 120,
+            output_json: true,
+        }
+    }
+
+    fn minimal_config_with_invalid_working_folder() -> ReactBuildConfig {
+        ReactBuildConfig {
+            db_path: None,
+            thread_id: None,
+            user_id: None,
+            system_prompt: None,
+            exa_api_key: None,
+            twitter_api_key: None,
+            mcp_exa_url: "https://mcp.exa.ai/mcp".to_string(),
+            mcp_remote_cmd: "npx".to_string(),
+            mcp_remote_args: "-y mcp-remote".to_string(),
+            mcp_verbose: false,
+            openai_api_key: None,
+            openai_base_url: None,
+            model: None,
+            embedding_api_key: None,
+            embedding_base_url: None,
+            embedding_model: None,
+            working_folder: Some(PathBuf::from(
+                "/definitely/not/exist/loom-cli-run-agent-tests",
+            )),
+            approval_policy: None,
+            compaction_config: None,
+            tot_config: crate::TotRunnerConfig::default(),
+            got_config: crate::GotRunnerConfig::default(),
+        }
+    }
+
+    #[test]
+    fn any_stream_event_conversion_covers_all_variants() {
+        let react = AnyStreamEvent::React(StreamEvent::TaskStart {
+            node_id: "think".to_string(),
+        });
+        let dup = AnyStreamEvent::Dup(StreamEvent::TaskStart {
+            node_id: "plan".to_string(),
+        });
+        let tot = AnyStreamEvent::Tot(StreamEvent::TaskStart {
+            node_id: "think_expand".to_string(),
+        });
+        let got = AnyStreamEvent::Got(StreamEvent::TaskStart {
+            node_id: "plan_graph".to_string(),
+        });
+
+        let mut env = EnvelopeState::new("sess-1".to_string());
+        for ev in [react, dup, tot, got] {
+            let a = ev.to_format_a().unwrap();
+            assert!(a.is_object());
+            let p = ev.to_protocol_format(&mut env).unwrap();
+            assert_eq!(p["type"], "node_enter");
+        }
+    }
+
+    #[tokio::test]
+    async fn build_runner_errors_for_invalid_working_folder_for_all_modes() {
+        let cfg = minimal_config_with_invalid_working_folder();
+        let opts = RunOptions {
+            message: "m".to_string(),
+            working_folder: cfg.working_folder.clone(),
+            thread_id: None,
+            verbose: false,
+            got_adaptive: false,
+            display_max_len: 120,
+            output_json: false,
+        };
+        assert!(build_runner(&cfg, &opts, &RunCmd::React).await.is_err());
+        assert!(build_runner(&cfg, &opts, &RunCmd::Dup).await.is_err());
+        assert!(build_runner(&cfg, &opts, &RunCmd::Tot).await.is_err());
+        assert!(build_runner(&cfg, &opts, &RunCmd::Got { got_adaptive: true })
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn run_agent_errors_for_invalid_working_folder_in_each_mode() {
+        for cmd in [
+            RunCmd::React,
+            RunCmd::Dup,
+            RunCmd::Tot,
+            RunCmd::Got { got_adaptive: true },
+        ] {
+            let res = run_agent(&opts_for_error(&cmd), &cmd, None).await;
+            assert!(res.is_err());
+        }
+    }
+
+    #[test]
+    fn run_error_display_variants_are_human_readable() {
+        let e = RunError::Remote("boom".to_string());
+        assert!(e.to_string().contains("remote"));
+        let e2 = RunError::ToolNotFound("x".to_string());
+        assert!(e2.to_string().contains("tool not found"));
+    }
+
+    #[test]
+    fn got_state_summary_result_path_is_usable() {
+        let s = GotState {
+            input_message: "q".to_string(),
+            task_graph: TaskGraph {
+                nodes: vec![TaskNode {
+                    id: "n1".to_string(),
+                    description: "d".to_string(),
+                    tool_calls: vec![],
+                }],
+                edges: vec![],
+            },
+            node_states: [(
+                "n1".to_string(),
+                TaskNodeState {
+                    status: TaskStatus::Done,
+                    result: Some("ok".to_string()),
+                    error: None,
+                },
+            )]
+            .into_iter()
+            .collect(),
+        };
+        assert_eq!(s.summary_result(), "ok");
+
+        let _tot = TotState {
+            core: ReActState {
+                messages: vec![Message::user("u"), Message::Assistant("a".to_string())],
+                ..ReActState::default()
+            },
+            tot: TotExtension::default(),
+        };
+    }
+}
