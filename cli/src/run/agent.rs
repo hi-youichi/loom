@@ -3,7 +3,7 @@
 
 use loom::{
     build_helve_config, build_react_run_context, run_agent, AnyStreamEvent, DupState, Envelope,
-    GotState, ReActState, TotState,
+    GotState, ReActState, TotState, ToolCall,
 };
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
@@ -21,6 +21,15 @@ use super::RunError;
 fn log_node_enter(from: Option<&str>, node_id: &str) {
     let from = from.unwrap_or("START");
     eprintln!("Entering: {} (from {})", node_id, from);
+}
+
+/// Single line listing tool names (normal mode only; verbose shows full state).
+fn log_tools_used(tool_calls: &[ToolCall]) {
+    if tool_calls.is_empty() {
+        return;
+    }
+    let names: Vec<&str> = tool_calls.iter().map(|tc| tc.name.as_str()).collect();
+    eprintln!("tools: {}", names.join(", "));
 }
 
 /// Result of run_agent_wrapper: reply, optional events (when --json and no stream), optional envelope for reply line.
@@ -166,6 +175,8 @@ fn on_event_react(
                 if node_id == "think" && state.tool_calls.is_empty() {
                     eprintln!("(think → END: tool_calls empty, LLM gave FINAL_ANSWER)");
                 }
+            } else if node_id == "think" && !state.tool_calls.is_empty() {
+                log_tools_used(&state.tool_calls);
             }
         }
         _ => {}
@@ -209,8 +220,13 @@ fn on_event_dup(
                 }
                 eprintln!("--- state after {} ---", node_id);
                 eprintln!("{}", format_dup_state_display(state, display_max_len));
-            } else if node_id == "plan" {
-                s.turn += 1;
+            } else {
+                if node_id == "plan" {
+                    s.turn += 1;
+                    if !state.core.tool_calls.is_empty() {
+                        log_tools_used(&state.core.tool_calls);
+                    }
+                }
             }
         }
         _ => {}
@@ -267,6 +283,8 @@ fn on_event_tot(
                 };
                 eprintln!("--- {} ---", label);
                 eprintln!("{}", format_tot_state_display(state, display_max_len));
+            } else if node_id == "act" && !state.core.tool_calls.is_empty() {
+                log_tools_used(&state.core.tool_calls);
             }
         }
         _ => {}
