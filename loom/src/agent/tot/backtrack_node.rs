@@ -94,3 +94,118 @@ impl Node<TotState> for BacktrackNode {
         Ok((out, next))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::memory::RunnableConfig;
+    use crate::state::{ReActState, ToolCall, ToolResult};
+    use super::super::state::{TotCandidate, TotExtension};
+    use tokio::sync::mpsc;
+
+    fn candidate(thought: &str, tool_name: &str) -> TotCandidate {
+        TotCandidate {
+            thought: thought.to_string(),
+            tool_calls: vec![ToolCall {
+                name: tool_name.to_string(),
+                arguments: "{}".to_string(),
+                id: None,
+            }],
+            score: Some(0.5),
+        }
+    }
+
+    #[test]
+    fn pop_last_round_messages_removes_assistant_and_trailing_users() {
+        let mut messages = vec![
+            Message::user("u1"),
+            Message::Assistant("a1".into()),
+            Message::user("tool result 1"),
+            Message::user("tool result 2"),
+        ];
+        BacktrackNode::pop_last_round_messages(&mut messages);
+        assert_eq!(messages.len(), 1);
+        assert!(matches!(messages.first(), Some(Message::User(s)) if s == "u1"));
+    }
+
+    #[tokio::test]
+    async fn run_selects_next_candidate_and_resets_core() {
+        let node = BacktrackNode::new();
+        let state = TotState {
+            core: ReActState {
+                messages: vec![
+                    Message::user("question"),
+                    Message::Assistant("old plan".into()),
+                    Message::user("old tool result"),
+                ],
+                tool_calls: vec![ToolCall {
+                    name: "old_tool".to_string(),
+                    arguments: "{}".to_string(),
+                    id: None,
+                }],
+                tool_results: vec![ToolResult {
+                    call_id: None,
+                    name: Some("old_tool".to_string()),
+                    content: "err".to_string(),
+                    is_error: true,
+                }],
+                ..ReActState::default()
+            },
+            tot: TotExtension {
+                depth: 2,
+                candidates: vec![candidate("first", "t1"), candidate("second", "t2")],
+                chosen_index: Some(0),
+                tried_indices: vec![0],
+                suggest_backtrack: true,
+                path_failed_reason: Some("first failed".to_string()),
+                ..Default::default()
+            },
+        };
+
+        let (out, next) = node.run(state).await.unwrap();
+        assert!(matches!(next, Next::Node(id) if id == "act"));
+        assert_eq!(out.tot.chosen_index, Some(1));
+        assert_eq!(out.tot.tried_indices, vec![0, 1]);
+        assert!(!out.tot.suggest_backtrack);
+        assert!(out.tot.path_failed_reason.is_none());
+        assert!(out.core.tool_results.is_empty());
+        assert_eq!(out.core.tool_calls[0].name, "t2");
+        assert!(matches!(
+            out.core.messages.last(),
+            Some(Message::Assistant(s)) if s == "second"
+        ));
+    }
+
+    #[tokio::test]
+    async fn run_with_context_emits_tot_backtrack_event() {
+        let node = BacktrackNode::new();
+        let state = TotState {
+            core: ReActState {
+                messages: vec![Message::user("q"), Message::Assistant("first".into())],
+                ..ReActState::default()
+            },
+            tot: TotExtension {
+                depth: 3,
+                candidates: vec![candidate("first", "t1"), candidate("second", "t2")],
+                chosen_index: Some(0),
+                tried_indices: vec![0],
+                suggest_backtrack: true,
+                path_failed_reason: Some("tool failed".to_string()),
+                ..Default::default()
+            },
+        };
+
+        let (tx, mut rx) = mpsc::channel(8);
+        let mut ctx = RunContext::<TotState>::new(RunnableConfig::default());
+        ctx.stream_tx = Some(tx);
+
+        let (_out, _next) = node.run_with_context(state, &ctx).await.unwrap();
+        match rx.recv().await {
+            Some(StreamEvent::TotBacktrack { reason, to_depth }) => {
+                assert_eq!(reason, "tool failed");
+                assert_eq!(to_depth, 3);
+            }
+            other => panic!("expected TotBacktrack event, got {:?}", other),
+        }
+    }
+}

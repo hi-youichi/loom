@@ -84,17 +84,17 @@ impl Node<ReActState> for ThinkNode {
         let should_stream =
             ctx.stream_mode.contains(&StreamMode::Messages) && ctx.stream_tx.is_some();
 
-        let response = if should_stream {
+        let (response, streamed_chunks) = if should_stream {
             let stream_tx = ctx.stream_tx.clone().unwrap();
             let adapter = ChunkToStreamSender::new(stream_tx, self.id());
             let (chunk_tx, chunk_rx) = adapter.channel();
-            let (result, ()) = tokio::join!(
+            let (result, forwarded_chunks) = tokio::join!(
                 self.llm.invoke_stream(&state.messages, Some(chunk_tx)),
                 adapter.forward(chunk_rx),
             );
-            result?
+            (result?, forwarded_chunks)
         } else {
-            self.llm.invoke(&state.messages).await?
+            (self.llm.invoke(&state.messages).await?, 0)
         };
 
         let used_fallback = response.content.is_empty() && response.tool_calls.is_empty();
@@ -121,10 +121,9 @@ impl Node<ReActState> for ThinkNode {
                 .await;
         }
 
-        // Guarantee at least one Messages event with full reply when streaming, so JSON/stream
-        // consumers always get the assistant content (some LLM invoke_stream implementations
-        // may not send any chunks).
-        if should_stream && !content.is_empty() && ctx.stream_tx.is_some() {
+        // Guarantee at least one Messages event with full reply when streaming only when
+        // upstream stream emitted no chunks at all.
+        if should_stream && !used_fallback && !content.is_empty() && streamed_chunks == 0 {
             let _ = ctx
                 .stream_tx
                 .as_ref()

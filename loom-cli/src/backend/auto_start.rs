@@ -55,3 +55,35 @@ pub async fn ensure_server_or_spawn(url: &str) -> Result<(), String> {
         Err("server failed to become ready".to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::net::TcpListener;
+
+    #[tokio::test]
+    async fn ensure_server_or_spawn_returns_error_for_invalid_url() {
+        // Invalid URL should fail before spawn logic and return transport parsing error.
+        let err = ensure_server_or_spawn("not-a-valid-url").await.unwrap_err();
+        assert!(!err.to_lowercase().contains("server failed to become ready"));
+    }
+
+    #[tokio::test]
+    async fn wait_for_server_and_ensure_server_or_spawn_succeed_when_server_up() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let url = format!("ws://{}", addr);
+
+        let server = tokio::spawn(async move {
+            // one connection for wait_for_server, one for ensure_server_or_spawn
+            for _ in 0..2 {
+                let (stream, _) = listener.accept().await.unwrap();
+                let _ = tokio_tungstenite::accept_async(stream).await;
+            }
+        });
+
+        assert!(wait_for_server(&url).await);
+        assert!(ensure_server_or_spawn(&url).await.is_ok());
+        server.await.unwrap();
+    }
+}

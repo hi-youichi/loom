@@ -263,3 +263,101 @@ impl TotRunner {
             .map_err(|_| TotRunError::StreamEndedWithoutState)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{MockLlm, MockToolSource, StreamEvent, ToolCall};
+    use super::super::state::TotCandidate;
+    use std::sync::{Arc, Mutex};
+
+    fn state_with_tools(has_tools: bool) -> TotState {
+        TotState {
+            core: crate::ReActState {
+                tool_calls: if has_tools {
+                    vec![ToolCall {
+                        name: "search".to_string(),
+                        arguments: "{}".to_string(),
+                        id: None,
+                    }]
+                } else {
+                    vec![]
+                },
+                ..crate::ReActState::default()
+            },
+            tot: TotExtension::default(),
+        }
+    }
+
+    #[test]
+    fn tot_conditions_route_correctly() {
+        assert_eq!(tot_tools_condition(&state_with_tools(false)), END);
+        assert_eq!(tot_tools_condition(&state_with_tools(true)), "act");
+
+        let mut s = state_with_tools(false);
+        s.tot.suggest_backtrack = true;
+        s.tot.candidates = vec![
+            TotCandidate {
+                thought: "a".to_string(),
+                tool_calls: vec![],
+                score: None,
+            },
+            TotCandidate {
+                thought: "b".to_string(),
+                tool_calls: vec![],
+                score: None,
+            },
+        ];
+        s.tot.tried_indices = vec![0];
+        assert_eq!(tot_observe_condition(&s), "backtrack");
+        s.tot.tried_indices = vec![0, 1];
+        assert_eq!(tot_observe_condition(&s), "think_expand");
+    }
+
+    #[tokio::test]
+    async fn build_tot_initial_state_builds_without_checkpoint() {
+        let state = build_tot_initial_state("hello tot", None, None, None)
+            .await
+            .unwrap();
+        assert!(state.core.messages.len() >= 2);
+        assert!(state.tot.candidates.is_empty());
+    }
+
+    #[tokio::test]
+    async fn tot_runner_invoke_and_stream_with_mock_llm() {
+        let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(
+            "CANDIDATE 1: THOUGHT: answer directly | TOOL_CALLS: []",
+        ));
+        let runner = TotRunner::new(
+            llm,
+            Box::new(MockToolSource::get_time_example()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            false,
+            3,
+            2,
+            false,
+        )
+        .unwrap();
+
+        let out = runner.invoke("what is rust").await.unwrap();
+        assert!(out.last_assistant_reply().is_some());
+
+        let events: Arc<Mutex<Vec<StreamEvent<TotState>>>> = Arc::new(Mutex::new(Vec::new()));
+        let events_clone = Arc::clone(&events);
+        let streamed = runner
+            .stream_with_callback(
+                "what is rust",
+                Some(move |ev: StreamEvent<TotState>| {
+                    events_clone.lock().unwrap().push(ev);
+                }),
+            )
+            .await
+            .unwrap();
+        assert!(streamed.last_assistant_reply().is_some());
+        assert!(!events.lock().unwrap().is_empty());
+    }
+}

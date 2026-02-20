@@ -211,6 +211,20 @@ mod tests {
     }
 
     #[test]
+    fn updates_format_uses_payload_id() {
+        let ev: StreamEvent<DummyState> = StreamEvent::Updates {
+            node_id: "think".to_string(),
+            state: DummyState(7),
+        };
+        let pe = stream_event_to_protocol_event(&ev).unwrap();
+        let v = pe.to_value().unwrap();
+        assert_eq!(v["type"], "updates");
+        assert_eq!(v["id"], "think");
+        assert_eq!(v["state"], 7);
+        assert!(v.get("node_id").is_none());
+    }
+
+    #[test]
     fn node_exit_err_format() {
         let ev: StreamEvent<DummyState> = StreamEvent::TaskEnd {
             node_id: "fail".to_string(),
@@ -221,5 +235,30 @@ mod tests {
         assert_eq!(v["type"], "node_exit");
         assert_eq!(v["id"], "fail");
         assert_eq!(v["result"]["Err"], "boom");
+    }
+
+    #[test]
+    fn stream_event_to_protocol_value_injects_envelope() {
+        let mut state = crate::protocol::EnvelopeState::new("sess-1".to_string());
+        let enter: StreamEvent<DummyState> =
+            StreamEvent::TaskStart { node_id: "think".to_string() };
+        let usage: StreamEvent<DummyState> = StreamEvent::Usage {
+            prompt_tokens: 1,
+            completion_tokens: 2,
+            total_tokens: 3,
+        };
+
+        let first = stream_event_to_protocol_value(&enter, &mut state).unwrap();
+        let second = stream_event_to_protocol_value(&usage, &mut state).unwrap();
+
+        assert_eq!(first["type"], "node_enter");
+        assert_eq!(first["session_id"], "sess-1");
+        assert_eq!(first["node_id"], "run-think-0");
+        assert_eq!(first["event_id"], 1);
+
+        assert_eq!(second["type"], "usage");
+        assert_eq!(second["session_id"], "sess-1");
+        assert_eq!(second["node_id"], "run-think-0");
+        assert_eq!(second["event_id"], 2);
     }
 }

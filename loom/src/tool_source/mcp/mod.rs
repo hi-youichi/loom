@@ -281,6 +281,7 @@ impl ToolSource for McpToolSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mcp_core::ErrorObject;
 
     /// **Scenario**: When command does not exist, McpToolSource::new returns an error.
     #[test]
@@ -291,5 +292,111 @@ mod tests {
             false,
         );
         assert!(result.is_err(), "expected Err for nonexistent command");
+    }
+
+    #[test]
+    fn parse_list_tools_result_success_maps_fields() {
+        let result = ResultMessage::success(
+            "1",
+            serde_json::json!({
+                "tools": [
+                    {
+                        "name": "read_file",
+                        "description": "Read file content",
+                        "inputSchema": {"type":"object","properties":{"path":{"type":"string"}}}
+                    }
+                ]
+            }),
+        );
+        let tools = parse_list_tools_result(result).unwrap();
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].name, "read_file");
+        assert_eq!(tools[0].description.as_deref(), Some("Read file content"));
+        assert_eq!(tools[0].input_schema["type"], "object");
+    }
+
+    #[test]
+    fn parse_list_tools_result_errors_for_missing_or_invalid_tools() {
+        let missing_tools = ResultMessage::success("1", serde_json::json!({}));
+        assert!(matches!(
+            parse_list_tools_result(missing_tools),
+            Err(ToolSourceError::Transport(_))
+        ));
+
+        let non_array = ResultMessage::success("1", serde_json::json!({"tools": {}}));
+        assert!(matches!(
+            parse_list_tools_result(non_array),
+            Err(ToolSourceError::Transport(_))
+        ));
+    }
+
+    #[test]
+    fn parse_list_tools_result_propagates_jsonrpc_error() {
+        let err = ResultMessage::failure(
+            "1",
+            ErrorObject::new(-32000, "rpc failed", None),
+        );
+        assert!(matches!(
+            parse_list_tools_result(err),
+            Err(ToolSourceError::JsonRpc(msg)) if msg == "rpc failed"
+        ));
+    }
+
+    #[test]
+    fn parse_call_tool_result_joins_text_blocks() {
+        let result = ResultMessage::success(
+            "1",
+            serde_json::json!({
+                "content": [
+                    {"type":"text","text":"line1"},
+                    {"type":"image","text":"ignored"},
+                    {"type":"text","text":"line2"}
+                ]
+            }),
+        );
+        let out = parse_call_tool_result(result).unwrap();
+        assert_eq!(out.text, "line1\nline2");
+    }
+
+    #[test]
+    fn parse_call_tool_result_uses_structured_content_fallback() {
+        let result = ResultMessage::success(
+            "1",
+            serde_json::json!({
+                "structuredContent": {"ok": true, "count": 2}
+            }),
+        );
+        let out = parse_call_tool_result(result).unwrap();
+        assert!(out.text.contains("\"ok\":true"));
+    }
+
+    #[test]
+    fn parse_call_tool_result_errors_on_is_error_or_missing_content() {
+        let is_error = ResultMessage::success(
+            "1",
+            serde_json::json!({
+                "isError": true,
+                "content": [{"type":"text","text":"boom"}]
+            }),
+        );
+        assert!(matches!(
+            parse_call_tool_result(is_error),
+            Err(ToolSourceError::Transport(msg)) if msg == "boom"
+        ));
+
+        let missing = ResultMessage::success("1", serde_json::json!({}));
+        assert!(matches!(
+            parse_call_tool_result(missing),
+            Err(ToolSourceError::Transport(_))
+        ));
+    }
+
+    #[test]
+    fn parse_call_tool_result_propagates_jsonrpc_error() {
+        let err = ResultMessage::failure("1", ErrorObject::new(-32000, "call failed", None));
+        assert!(matches!(
+            parse_call_tool_result(err),
+            Err(ToolSourceError::JsonRpc(msg)) if msg == "call failed"
+        ));
     }
 }

@@ -16,20 +16,27 @@ pub struct Envelope {
 }
 
 impl Envelope {
+    /// Creates an empty envelope.
+    ///
+    /// Equivalent to [`Envelope::default`].
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
+    #[must_use]
     pub fn with_session_id(mut self, id: impl Into<String>) -> Self {
         self.session_id = Some(id.into());
         self
     }
 
+    #[must_use]
     pub fn with_node_id(mut self, id: impl Into<String>) -> Self {
         self.node_id = Some(id.into());
         self
     }
 
+    #[must_use]
     pub fn with_event_id(mut self, id: u64) -> Self {
         self.event_id = Some(id);
         self
@@ -56,7 +63,11 @@ impl Envelope {
     }
 }
 
-/// Envelope state for one run: session_id, current node run id, next event_id.
+/// Envelope state for a single run stream.
+///
+/// Create one instance per run/session and call [`EnvelopeState::inject_into`]
+/// for each outgoing event in stream order.
+#[derive(Clone, Debug)]
 pub struct EnvelopeState {
     pub session_id: String,
     pub current_node_id: String,
@@ -65,12 +76,22 @@ pub struct EnvelopeState {
 }
 
 impl EnvelopeState {
+    /// Creates state for a new run/session.
+    #[must_use]
     pub fn new(session_id: String) -> Self {
         Self {
             session_id,
             current_node_id: String::new(),
             node_run_seq: 0,
             next_event_id: 1,
+        }
+    }
+
+    fn active_node_id(&self) -> &str {
+        if self.current_node_id.is_empty() {
+            "run-0"
+        } else {
+            self.current_node_id.as_str()
         }
     }
 
@@ -84,29 +105,23 @@ impl EnvelopeState {
                 self.node_run_seq += 1;
             }
         }
-        let node_id = if self.current_node_id.is_empty() {
-            "run-0"
-        } else {
-            self.current_node_id.as_str()
-        };
         let env = Envelope::new()
             .with_session_id(&self.session_id)
-            .with_node_id(node_id)
+            .with_node_id(self.active_node_id())
             .with_event_id(self.next_event_id);
         self.next_event_id += 1;
         env.inject_into(value);
     }
 
     /// Builds the envelope for the reply line (protocol_spec §5).
+    ///
+    /// This does not advance internal state; repeated calls return the same event_id
+    /// until the next event is injected.
+    #[must_use]
     pub fn reply_envelope(&self) -> Envelope {
-        let node_id = if self.current_node_id.is_empty() {
-            "run-0"
-        } else {
-            self.current_node_id.as_str()
-        };
         Envelope::new()
             .with_session_id(&self.session_id)
-            .with_node_id(node_id)
+            .with_node_id(self.active_node_id())
             .with_event_id(self.next_event_id)
     }
 }
@@ -126,6 +141,7 @@ pub fn to_json(
 mod tests {
     use super::*;
     use crate::event::ProtocolEvent;
+    use serde_json::json;
 
     #[test]
     fn envelope_inject() {
@@ -152,5 +168,53 @@ mod tests {
         assert_eq!(value["id"], "think");
         assert_eq!(value["session_id"], "run-123");
         assert_eq!(value["event_id"], 1);
+    }
+
+    #[test]
+    fn node_enter_advances_span_and_event_ids() {
+        let mut state = EnvelopeState::new("sess-1".to_string());
+
+        let first = to_json(
+            &ProtocolEvent::NodeEnter {
+                id: "think".to_string(),
+            },
+            &mut state,
+        )
+        .unwrap();
+        let chunk = to_json(
+            &ProtocolEvent::MessageChunk {
+                content: "hello".to_string(),
+                id: "think".to_string(),
+            },
+            &mut state,
+        )
+        .unwrap();
+        let second = to_json(
+            &ProtocolEvent::NodeEnter {
+                id: "act".to_string(),
+            },
+            &mut state,
+        )
+        .unwrap();
+
+        assert_eq!(first["node_id"], "run-think-0");
+        assert_eq!(chunk["node_id"], "run-think-0");
+        assert_eq!(second["node_id"], "run-act-1");
+        assert_eq!(first["event_id"], 1);
+        assert_eq!(chunk["event_id"], 2);
+        assert_eq!(second["event_id"], 3);
+    }
+
+    #[test]
+    fn reply_envelope_uses_next_event_id_without_advancing() {
+        let mut state = EnvelopeState::new("sess-1".to_string());
+        let mut event = json!({"type":"usage","prompt_tokens":1,"completion_tokens":1,"total_tokens":2});
+        state.inject_into(&mut event);
+        assert_eq!(event["event_id"], 1);
+
+        let first_reply = state.reply_envelope();
+        let second_reply = state.reply_envelope();
+        assert_eq!(first_reply.event_id, Some(2));
+        assert_eq!(second_reply.event_id, Some(2));
     }
 }

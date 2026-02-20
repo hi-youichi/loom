@@ -472,7 +472,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{truncate_message, DEFAULT_MAX_MESSAGE_LEN, DEFAULT_MAX_REPLY_LEN};
+    use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     /// When message is shorter than max, returns unchanged.
     #[test]
@@ -518,5 +524,127 @@ mod tests {
     #[test]
     fn default_max_reply_len_is_zero() {
         assert_eq!(DEFAULT_MAX_REPLY_LEN, 0);
+    }
+
+    #[test]
+    fn resolve_remote_url_prefers_arg_then_env_then_default() {
+        let args = Args {
+            cmd: None,
+            message: None,
+            rest: vec![],
+            working_folder: None,
+            thread_id: None,
+            verbose: false,
+            interactive: false,
+            local: false,
+            remote: Some("ws://example:9999".to_string()),
+            no_auto_start: false,
+            json: false,
+            file: None,
+            pretty: false,
+        };
+        assert_eq!(resolve_remote_url(&args), "ws://example:9999");
+
+        let _guard = env_lock().lock().unwrap();
+        std::env::set_var("LOOM_REMOTE_URL", "ws://env:8081");
+        let args_no_remote = Args {
+            remote: None,
+            ..args
+        };
+        assert_eq!(resolve_remote_url(&args_no_remote), "ws://env:8081");
+        std::env::remove_var("LOOM_REMOTE_URL");
+        assert_eq!(resolve_remote_url(&args_no_remote), DEFAULT_WS_URL);
+    }
+
+    #[test]
+    fn resolve_auto_start_honors_flag_and_env() {
+        let base = Args {
+            cmd: None,
+            message: None,
+            rest: vec![],
+            working_folder: None,
+            thread_id: None,
+            verbose: false,
+            interactive: false,
+            local: false,
+            remote: None,
+            no_auto_start: false,
+            json: false,
+            file: None,
+            pretty: false,
+        };
+        assert!(resolve_auto_start(&base));
+        let no_auto = Args {
+            cmd: None,
+            message: None,
+            rest: vec![],
+            working_folder: None,
+            thread_id: None,
+            verbose: false,
+            interactive: false,
+            local: false,
+            remote: None,
+            no_auto_start: true,
+            json: false,
+            file: None,
+            pretty: false,
+        };
+        assert!(!resolve_auto_start(&no_auto));
+
+        let _guard = env_lock().lock().unwrap();
+        std::env::set_var("LOOM_NO_AUTO_START", "1");
+        assert!(!resolve_auto_start(&base));
+        std::env::set_var("LOOM_NO_AUTO_START", "true");
+        assert!(!resolve_auto_start(&base));
+        std::env::remove_var("LOOM_NO_AUTO_START");
+    }
+
+    #[test]
+    fn write_json_output_and_append_write_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("out.json");
+        let value = serde_json::json!({"a":1});
+
+        write_json_output(&value, Some(file.as_path()), false).unwrap();
+        let first = std::fs::read_to_string(&file).unwrap();
+        assert_eq!(first.trim(), r#"{"a":1}"#);
+
+        let second = serde_json::json!({"b":2});
+        write_json_line_append(&second, Some(file.as_path()), false).unwrap();
+        let all = std::fs::read_to_string(&file).unwrap();
+        let lines: Vec<&str> = all.lines().collect();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[1], r#"{"b":2}"#);
+    }
+
+    #[test]
+    fn make_stream_out_writes_ndjson_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("stream.ndjson");
+        let file_buf = file.clone();
+        let out = make_stream_out(Some(&file_buf), false).unwrap();
+        if let Ok(mut f) = out.lock() {
+            f(serde_json::json!({"type":"node_enter","id":"think"}));
+            f(serde_json::json!({"type":"usage","total_tokens":3}));
+        }
+        let content = std::fs::read_to_string(&file).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].contains(r#""type":"node_enter""#));
+        assert!(lines[1].contains(r#""type":"usage""#));
+    }
+
+    #[test]
+    fn env_len_and_thread_id_helpers_work() {
+        let _guard = env_lock().lock().unwrap();
+        std::env::set_var("HELVE_MAX_MESSAGE_LEN", "321");
+        std::env::set_var("HELVE_MAX_REPLY_LEN", "654");
+        assert_eq!(max_message_len(), 321);
+        assert_eq!(max_reply_len(), 654);
+        std::env::remove_var("HELVE_MAX_MESSAGE_LEN");
+        std::env::remove_var("HELVE_MAX_REPLY_LEN");
+
+        let id = generate_repl_thread_id();
+        assert!(id.starts_with("thread-repl-"));
     }
 }

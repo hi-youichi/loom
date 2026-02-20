@@ -232,3 +232,74 @@ impl DupRunner {
             .map_err(|_| DupRunError::StreamEndedWithoutState)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{MockLlm, MockToolSource, StreamEvent};
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn dup_tools_condition_routes_correctly() {
+        let no_tools = DupState {
+            core: crate::ReActState::default(),
+            understood: None,
+        };
+        assert_eq!(dup_tools_condition(&no_tools), END);
+
+        let with_tools = DupState {
+            core: crate::ReActState {
+                tool_calls: vec![crate::ToolCall {
+                    name: "x".to_string(),
+                    arguments: "{}".to_string(),
+                    id: None,
+                }],
+                ..crate::ReActState::default()
+            },
+            understood: None,
+        };
+        assert_eq!(dup_tools_condition(&with_tools), "act");
+    }
+
+    #[tokio::test]
+    async fn build_dup_initial_state_builds_without_checkpoint() {
+        let state = build_dup_initial_state("hello dup", None, None, None)
+            .await
+            .unwrap();
+        assert!(state.understood.is_none());
+        assert!(state.core.messages.len() >= 2);
+    }
+
+    #[tokio::test]
+    async fn dup_runner_invoke_and_stream_with_mock_llm() {
+        let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls("final answer"));
+        let runner = DupRunner::new(
+            llm,
+            Box::new(MockToolSource::get_time_example()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            false,
+        )
+        .unwrap();
+
+        let out = runner.invoke("what time is it?").await.unwrap();
+        assert!(out.last_assistant_reply().is_some());
+
+        let events: Arc<Mutex<Vec<StreamEvent<DupState>>>> = Arc::new(Mutex::new(Vec::new()));
+        let events_clone = Arc::clone(&events);
+        let streamed = runner
+            .stream_with_callback(
+                "what time is it?",
+                Some(move |ev: StreamEvent<DupState>| {
+                    events_clone.lock().unwrap().push(ev);
+                }),
+            )
+            .await
+            .unwrap();
+        assert!(streamed.last_assistant_reply().is_some());
+        assert!(!events.lock().unwrap().is_empty());
+    }
+}

@@ -271,3 +271,134 @@ impl Node<TotState> for ThinkExpandNode {
         Ok((out, next))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph::RunContext;
+    use crate::llm::MockLlm;
+    use crate::memory::RunnableConfig;
+    use crate::state::ReActState;
+    use super::super::state::TotExtension;
+    use tokio::sync::mpsc;
+
+    fn make_state() -> TotState {
+        TotState {
+            core: ReActState {
+                messages: vec![Message::user("Search best rust formatter")],
+                ..ReActState::default()
+            },
+            tot: TotExtension::default(),
+        }
+    }
+
+    #[test]
+    fn build_messages_inserts_system_when_missing() {
+        let node = ThinkExpandNode::new(Box::new(MockLlm::with_no_tool_calls("ok")));
+        let state = make_state();
+        let messages = node.build_messages(&state);
+        assert!(matches!(&messages[0], Message::System(_)));
+        let sys = match &messages[0] {
+            Message::System(s) => s,
+            _ => unreachable!(),
+        };
+        assert!(sys.contains("Generate exactly 3 candidates"));
+    }
+
+    #[test]
+    fn build_messages_appends_to_existing_system() {
+        let node = ThinkExpandNode::new(Box::new(MockLlm::with_no_tool_calls("ok")))
+            .with_candidates_per_step(2);
+        let mut state = make_state();
+        state
+            .core
+            .messages
+            .insert(0, Message::system("base-system prompt"));
+        let messages = node.build_messages(&state);
+        let sys = match &messages[0] {
+            Message::System(s) => s,
+            _ => unreachable!(),
+        };
+        assert!(sys.contains("base-system prompt"));
+        assert!(sys.contains("Generate exactly 2 candidates"));
+    }
+
+    #[test]
+    fn parse_candidates_line_based_handles_json_tool_calls() {
+        let content = r#"CANDIDATE 1: THOUGHT: use web search | TOOL_CALLS: [{"name":"web_search","arguments":{"query":"rust fmt"}}]
+CANDIDATE 2: THOUGHT: summarize findings | TOOL_CALLS: []"#;
+        let out = ThinkExpandNode::parse_candidates_line_based(content);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].thought, "use web search");
+        assert_eq!(out[0].tool_calls[0].name, "web_search");
+        assert_eq!(out[0].tool_calls[0].arguments, r#"{"query":"rust fmt"}"#);
+        assert_eq!(out[1].thought, "summarize findings");
+    }
+
+    #[test]
+    fn parse_candidates_json_envelope_works() {
+        let content = r#"{
+            "candidates": [
+                { "thought": "collect data", "tool_calls": [{ "name": "search", "arguments": {"q":"x"} }] },
+                { "thought": "summarize", "tool_calls": [] }
+            ]
+        }"#;
+        let out = ThinkExpandNode::parse_candidates_json_envelope(content);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].thought, "collect data");
+        assert_eq!(out[0].tool_calls[0].name, "search");
+        assert_eq!(out[0].tool_calls[0].arguments, r#"{"q":"x"}"#);
+    }
+
+    #[test]
+    fn parse_candidates_fallback_returns_single_candidate() {
+        let node = ThinkExpandNode::new(Box::new(MockLlm::with_no_tool_calls("ok")));
+        let out = node.parse_candidates("just think directly");
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].thought, "just think directly");
+        assert!(out[0].tool_calls.is_empty());
+    }
+
+    #[test]
+    fn arguments_from_value_preserves_string_and_serializes_object() {
+        let as_string = serde_json::json!({"arguments":"{\"q\":\"hello\"}"});
+        assert_eq!(
+            ThinkExpandNode::arguments_from_value(&as_string),
+            r#"{"q":"hello"}"#
+        );
+
+        let as_object = serde_json::json!({"arguments":{"q":"hello"}});
+        assert_eq!(
+            ThinkExpandNode::arguments_from_value(&as_object),
+            r#"{"q":"hello"}"#
+        );
+    }
+
+    #[tokio::test]
+    async fn run_uses_response_tool_calls_as_fallback() {
+        let node = ThinkExpandNode::new(Box::new(MockLlm::with_get_time_call()));
+        let (out, next) = node.run(make_state()).await.unwrap();
+        assert!(matches!(next, Next::Continue));
+        assert_eq!(out.tot.candidates.len(), 1);
+        assert_eq!(out.tot.candidates[0].tool_calls.len(), 1);
+        assert_eq!(out.tot.candidates[0].tool_calls[0].name, "get_time");
+    }
+
+    #[tokio::test]
+    async fn run_with_context_emits_tot_expand_event() {
+        let node = ThinkExpandNode::new(Box::new(MockLlm::with_no_tool_calls(
+            "CANDIDATE 1: THOUGHT: alpha | TOOL_CALLS: []\nCANDIDATE 2: THOUGHT: beta | TOOL_CALLS: []",
+        )));
+        let (tx, mut rx) = mpsc::channel(8);
+        let mut ctx = RunContext::<TotState>::new(RunnableConfig::default());
+        ctx.stream_tx = Some(tx);
+
+        let (_out, _next) = node.run_with_context(make_state(), &ctx).await.unwrap();
+        match rx.recv().await {
+            Some(StreamEvent::TotExpand { candidates }) => {
+                assert_eq!(candidates, vec!["alpha".to_string(), "beta".to_string()]);
+            }
+            other => panic!("expected TotExpand event, got {:?}", other),
+        }
+    }
+}

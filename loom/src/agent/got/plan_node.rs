@@ -140,3 +140,78 @@ impl Node<GotState> for PlanGraphNode {
         Ok((new_state, Next::Continue))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::llm::MockLlm;
+    use crate::memory::RunnableConfig;
+    use tokio::sync::mpsc;
+
+    #[test]
+    fn parse_task_graph_filters_invalid_edges() {
+        let raw = r#"{
+            "nodes":[
+                {"id":"a","description":"step a"},
+                {"id":"b","description":"step b"}
+            ],
+            "edges":[["a","b"],["a","missing"],["missing","b"]]
+        }"#;
+        let graph = parse_task_graph(raw, "fallback");
+        assert_eq!(graph.nodes.len(), 2);
+        assert_eq!(graph.edges, vec![("a".to_string(), "b".to_string())]);
+    }
+
+    #[test]
+    fn parse_task_graph_fallbacks_to_single_node() {
+        let graph = parse_task_graph("not json", "hello world");
+        assert_eq!(graph.nodes.len(), 1);
+        assert_eq!(graph.nodes[0].id, "task_1");
+        assert_eq!(graph.nodes[0].description, "hello world");
+        assert!(graph.edges.is_empty());
+    }
+
+    #[tokio::test]
+    async fn run_with_context_sets_task_graph_and_emits_event() {
+        let llm = MockLlm::with_no_tool_calls(
+            r#"{
+                "nodes":[
+                    {"id":"collect","description":"collect info"},
+                    {"id":"answer","description":"answer user"}
+                ],
+                "edges":[["collect","answer"]]
+            }"#,
+        );
+        let node = PlanGraphNode::new(Box::new(llm));
+        let state = GotState {
+            input_message: "how to learn rust".to_string(),
+            ..GotState::default()
+        };
+
+        let (tx, mut rx) = mpsc::channel(8);
+        let mut ctx = RunContext::<GotState>::new(RunnableConfig::default());
+        ctx.stream_mode.insert(StreamMode::Custom);
+        ctx.stream_tx = Some(tx);
+
+        let (out, next) = node.run_with_context(state, &ctx).await.unwrap();
+        assert!(matches!(next, Next::Continue));
+        assert_eq!(out.task_graph.nodes.len(), 2);
+        assert_eq!(out.task_graph.edges.len(), 1);
+        assert_eq!(out.node_states.len(), 2);
+        assert!(out.node_states.contains_key("collect"));
+        assert!(out.node_states.contains_key("answer"));
+
+        match rx.recv().await {
+            Some(StreamEvent::GotPlan {
+                node_count,
+                edge_count,
+                node_ids,
+            }) => {
+                assert_eq!(node_count, 2);
+                assert_eq!(edge_count, 1);
+                assert_eq!(node_ids, vec!["collect".to_string(), "answer".to_string()]);
+            }
+            other => panic!("expected GotPlan event, got {:?}", other),
+        }
+    }
+}

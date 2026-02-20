@@ -88,3 +88,61 @@ where
         writeln!(writer)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::sync::{Arc, Mutex};
+    use tracing_subscriber::layer::SubscriberExt;
+
+    #[derive(Clone)]
+    struct VecWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for VecWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn builder_flags_can_be_toggled() {
+        let formatter = TextWithSpanIds::new().with_level(false).with_target(false);
+        assert!(!formatter.with_level);
+        assert!(!formatter.with_target);
+    }
+
+    #[test]
+    fn format_event_includes_span_ids_and_fields() {
+        let sink = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let writer = {
+            let sink = Arc::clone(&sink);
+            move || VecWriter(Arc::clone(&sink))
+        };
+
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_subscriber::fmt::layer()
+                .event_format(TextWithSpanIds::new())
+                .with_writer(writer)
+                .with_ansi(false),
+        );
+
+        tracing::subscriber::with_default(subscriber, || {
+            let span = tracing::info_span!("root");
+            let _guard = span.enter();
+            tracing::info!(k = "v", "hello");
+        });
+
+        let output = String::from_utf8(sink.lock().unwrap().clone()).unwrap();
+        assert!(output.contains("trace_id="));
+        assert!(output.contains("span_id="));
+        assert!(output.contains("INFO"));
+        assert!(output.contains("hello"));
+        assert!(output.contains("k=\"v\""));
+    }
+}

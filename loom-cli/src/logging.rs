@@ -113,3 +113,60 @@ impl<W: Write> Write for StripAnsiWriter<W> {
         self.inner.flush()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::StripAnsiWriter;
+    use std::io::Write;
+
+    #[test]
+    fn strip_ansi_writer_removes_color_sequences() {
+        let mut out = Vec::new();
+        {
+            let mut w = StripAnsiWriter::new(&mut out);
+            w.write_all(b"\x1b[31mred\x1b[0m plain").unwrap();
+            w.flush().unwrap();
+        }
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "red plain",
+            "ANSI CSI color codes should be removed"
+        );
+    }
+
+    #[test]
+    fn strip_ansi_writer_keeps_non_ansi_content() {
+        let mut out = Vec::new();
+        {
+            let mut w = StripAnsiWriter::new(&mut out);
+            w.write_all(b"hello world").unwrap();
+            w.flush().unwrap();
+        }
+        assert_eq!(String::from_utf8(out).unwrap(), "hello world");
+    }
+
+    #[test]
+    fn strip_ansi_writer_handles_split_escape_sequences_across_writes() {
+        let mut out = Vec::new();
+        {
+            let mut w = StripAnsiWriter::new(&mut out);
+            w.write_all(b"\x1b[").unwrap();
+            w.write_all(b"32mgreen").unwrap();
+            w.write_all(b"\x1b[0m!").unwrap();
+            w.flush().unwrap();
+        }
+        assert_eq!(String::from_utf8(out).unwrap(), "green!");
+    }
+
+    #[test]
+    fn strip_ansi_writer_flush_writes_pending_non_csi_state() {
+        let mut out = Vec::new();
+        {
+            let mut w = StripAnsiWriter::new(&mut out);
+            // ESC followed by non-'[' should be preserved.
+            w.write_all(b"\x1bX").unwrap();
+            w.flush().unwrap();
+        }
+        assert_eq!(out, b"\x1bX");
+    }
+}

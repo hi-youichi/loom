@@ -189,3 +189,79 @@ pub async fn show_tool(opts: &RunOptions, name: &str, format: ToolShowFormat) ->
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use loom::{ToolShowResponse, ToolSpec};
+    use std::path::PathBuf;
+
+    #[test]
+    fn format_tools_list_handles_empty_and_json_output() {
+        let empty: Vec<ToolSpec> = vec![];
+        format_tools_list(&empty, false).unwrap();
+
+        let specs = vec![ToolSpec {
+            name: "read_file".to_string(),
+            description: Some("Read file content".to_string()),
+            input_schema: serde_json::json!({"type":"object"}),
+        }];
+        format_tools_list(&specs, true).unwrap();
+    }
+
+    #[test]
+    fn format_tool_show_output_accepts_json_or_yaml_sources() {
+        let from_tool = ToolShowResponse {
+            id: "1".to_string(),
+            tool: Some(serde_json::json!({"name":"read_file","input_schema":{"type":"object"}})),
+            tool_yaml: None,
+        };
+        format_tool_show_output(&from_tool, ToolShowFormat::Json).unwrap();
+        format_tool_show_output(&from_tool, ToolShowFormat::Yaml).unwrap();
+
+        let from_yaml = ToolShowResponse {
+            id: "2".to_string(),
+            tool: None,
+            tool_yaml: Some("name: read_file\ninput_schema:\n  type: object\n".to_string()),
+        };
+        format_tool_show_output(&from_yaml, ToolShowFormat::Yaml).unwrap();
+        format_tool_show_output(&from_yaml, ToolShowFormat::Json).unwrap();
+    }
+
+    #[test]
+    fn format_tool_show_output_errors_when_both_missing() {
+        let empty = ToolShowResponse {
+            id: "3".to_string(),
+            tool: None,
+            tool_yaml: None,
+        };
+        let err = format_tool_show_output(&empty, ToolShowFormat::Json).unwrap_err();
+        assert!(err.to_string().contains("no tool or tool_yaml"));
+    }
+
+    fn invalid_opts() -> RunOptions {
+        RunOptions {
+            message: String::new(),
+            working_folder: Some(PathBuf::from(
+                "/definitely/not/exist/loom-cli-tool-cmd-tests",
+            )),
+            thread_id: None,
+            verbose: false,
+            got_adaptive: false,
+            display_max_len: 100,
+            output_json: true,
+        }
+    }
+
+    #[tokio::test]
+    async fn list_tools_returns_error_for_invalid_context() {
+        let res = list_tools(&invalid_opts()).await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn show_tool_returns_error_for_invalid_context() {
+        let res = show_tool(&invalid_opts(), "read_file", ToolShowFormat::Json).await;
+        assert!(res.is_err());
+    }
+}

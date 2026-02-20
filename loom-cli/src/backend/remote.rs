@@ -242,3 +242,61 @@ impl RunBackend for RemoteBackend {
         Err(RunError::Remote("no tool_show received".to_string()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn cmd_to_agent_maps_all_variants() {
+        assert!(matches!(
+            RemoteBackend::cmd_to_agent(&RunCmd::React),
+            AgentType::React
+        ));
+        assert!(matches!(
+            RemoteBackend::cmd_to_agent(&RunCmd::Dup),
+            AgentType::Dup
+        ));
+        assert!(matches!(
+            RemoteBackend::cmd_to_agent(&RunCmd::Tot),
+            AgentType::Tot
+        ));
+        assert!(matches!(
+            RemoteBackend::cmd_to_agent(&RunCmd::Got { got_adaptive: true }),
+            AgentType::Got
+        ));
+    }
+
+    #[test]
+    fn run_request_maps_options_to_payload() {
+        let opts = RunOptions {
+            message: "hello".to_string(),
+            working_folder: Some(PathBuf::from("/tmp/project")),
+            thread_id: Some("thread-1".to_string()),
+            verbose: true,
+            got_adaptive: true,
+            display_max_len: 120,
+            output_json: true,
+        };
+        let req = RemoteBackend::run_request("req-1", &opts, &RunCmd::Tot);
+        match req {
+            ClientRequest::Run(r) => {
+                assert_eq!(r.id, "req-1");
+                assert_eq!(r.message, "hello");
+                assert!(matches!(r.agent, AgentType::Tot));
+                assert_eq!(r.thread_id.as_deref(), Some("thread-1"));
+                assert_eq!(r.working_folder.as_deref(), Some("/tmp/project"));
+                assert_eq!(r.got_adaptive, Some(true));
+                assert_eq!(r.verbose, Some(true));
+            }
+            _ => panic!("expected ClientRequest::Run"),
+        }
+    }
+
+    #[test]
+    fn new_stores_url() {
+        let backend = RemoteBackend::new("ws://localhost:8080");
+        assert_eq!(backend.url, "ws://localhost:8080");
+    }
+}

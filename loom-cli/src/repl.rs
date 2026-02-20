@@ -132,3 +132,89 @@ pub async fn run_one_turn(
     let run_cmd = cmd_to_runcmd(cmd);
     backend.run(opts, &run_cmd, stream_out).await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use std::sync::{Arc, Mutex};
+
+    struct DummyBackend {
+        seen: Arc<Mutex<Vec<RunCmd>>>,
+    }
+
+    #[async_trait]
+    impl RunBackend for DummyBackend {
+        async fn run(
+            &self,
+            _opts: &RunOptions,
+            cmd: &RunCmd,
+            _stream_out: loom_cli::StreamOut,
+        ) -> Result<loom_cli::RunOutput, RunError> {
+            self.seen.lock().unwrap().push(cmd.clone());
+            Ok(loom_cli::RunOutput::Reply("ok".to_string(), None))
+        }
+
+        async fn list_tools(&self, _opts: &RunOptions) -> Result<(), RunError> {
+            Ok(())
+        }
+
+        async fn show_tool(
+            &self,
+            _opts: &RunOptions,
+            _name: &str,
+            _format: loom_cli::ToolShowFormat,
+        ) -> Result<(), RunError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn is_quit_command_matches_expected_tokens() {
+        assert!(is_quit_command("quit"));
+        assert!(is_quit_command(" EXIT "));
+        assert!(is_quit_command("/quit"));
+        assert!(!is_quit_command("continue"));
+    }
+
+    #[test]
+    fn truncate_reply_respects_zero_and_limit() {
+        assert_eq!(truncate_reply("hello world", 0), "hello world");
+        let truncated = truncate_reply("abcdefghijk", 8);
+        assert_eq!(truncated.chars().count(), 8);
+        assert!(truncated.ends_with("..."));
+    }
+
+    #[test]
+    fn cmd_to_runcmd_maps_basic_variants() {
+        assert!(matches!(cmd_to_runcmd(&Command::React), RunCmd::React));
+        assert!(matches!(cmd_to_runcmd(&Command::Dup), RunCmd::Dup));
+        assert!(matches!(cmd_to_runcmd(&Command::Tot), RunCmd::Tot));
+    }
+
+    #[tokio::test]
+    async fn run_one_turn_delegates_to_backend_with_mapped_cmd() {
+        let seen = Arc::new(Mutex::new(Vec::<RunCmd>::new()));
+        let backend: Arc<dyn RunBackend> = Arc::new(DummyBackend {
+            seen: Arc::clone(&seen),
+        });
+        let opts = RunOptions {
+            message: "hello".to_string(),
+            working_folder: None,
+            thread_id: None,
+            verbose: false,
+            got_adaptive: false,
+            display_max_len: 100,
+            output_json: false,
+        };
+
+        let out = run_one_turn(&backend, &opts, &Command::Dup, None)
+            .await
+            .unwrap();
+        assert!(matches!(out, loom_cli::RunOutput::Reply(reply, _) if reply == "ok"));
+        assert!(matches!(
+            seen.lock().unwrap().first(),
+            Some(RunCmd::Dup)
+        ));
+    }
+}

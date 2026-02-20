@@ -231,14 +231,17 @@ where
     }
 
     /// Forwards chunks from `chunk_rx` to `stream_tx` as `StreamEvent::Messages`.
-    /// Completes when `chunk_rx` is closed (e.g. when invoke_stream drops its sender).
+    /// Completes when `chunk_rx` is closed (e.g. when invoke_stream drops its sender),
+    /// and returns the number of chunks successfully read from `chunk_rx`.
     pub async fn forward(
         &self,
         mut chunk_rx: mpsc::Receiver<MessageChunk>,
-    ) {
+    ) -> usize {
         let stream_tx = self.stream_tx.clone();
         let node_id = self.node_id.clone();
+        let mut forwarded = 0usize;
         while let Some(chunk) = chunk_rx.recv().await {
+            forwarded += 1;
             let event = StreamEvent::Messages {
                 chunk,
                 metadata: StreamMetadata {
@@ -247,6 +250,7 @@ where
             };
             let _ = stream_tx.send(event).await;
         }
+        forwarded
     }
 }
 

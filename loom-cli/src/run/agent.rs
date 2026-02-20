@@ -314,3 +314,201 @@ fn on_event_got(ev: &StreamEvent<GotState>, s: &mut EventState, display_max_len:
         _ => {}
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use loom::{Message, TaskGraph, TaskNode, TaskNodeState, TaskStatus, ToolCall, TotExtension};
+    use std::path::PathBuf;
+    use std::sync::{Arc, Mutex};
+
+    fn react_state() -> ReActState {
+        ReActState {
+            messages: vec![Message::user("hi"), Message::Assistant("hello".into())],
+            ..ReActState::default()
+        }
+    }
+
+    #[test]
+    fn any_stream_event_to_format_a_and_protocol_format() {
+        let ev = AnyStreamEvent::React(StreamEvent::TaskStart {
+            node_id: "think".to_string(),
+        });
+        let a = ev.to_format_a().unwrap();
+        assert!(a.get("TaskStart").is_some());
+
+        let mut state = EnvelopeState::new("sess-1".to_string());
+        let p = ev.to_protocol_format(&mut state).unwrap();
+        assert_eq!(p["type"], "node_enter");
+        assert_eq!(p["id"], "think");
+        assert_eq!(p["session_id"], "sess-1");
+        assert_eq!(p["event_id"], 1);
+    }
+
+    #[test]
+    fn on_event_react_updates_last_node_and_turn() {
+        let mut s = EventState {
+            turn: 0,
+            last_node: None,
+        };
+        on_event_react(
+            &StreamEvent::TaskStart {
+                node_id: "think".to_string(),
+            },
+            &mut s,
+            100,
+        );
+        assert_eq!(s.last_node.as_deref(), Some("think"));
+
+        on_event_react(
+            &StreamEvent::Updates {
+                node_id: "think".to_string(),
+                state: react_state(),
+            },
+            &mut s,
+            100,
+        );
+        assert_eq!(s.turn, 1);
+    }
+
+    #[test]
+    fn on_event_dup_and_tot_and_got_do_not_panic() {
+        let mut s = EventState {
+            turn: 0,
+            last_node: None,
+        };
+
+        let dup_state = DupState {
+            core: react_state(),
+            understood: None,
+        };
+        on_event_dup(
+            &StreamEvent::TaskStart {
+                node_id: "understand".to_string(),
+            },
+            &mut s,
+            120,
+        );
+        on_event_dup(
+            &StreamEvent::Updates {
+                node_id: "plan".to_string(),
+                state: dup_state,
+            },
+            &mut s,
+            120,
+        );
+        assert_eq!(s.turn, 1);
+
+        let tot_state = TotState {
+            core: react_state(),
+            tot: TotExtension::default(),
+        };
+        on_event_tot(
+            &StreamEvent::TaskStart {
+                node_id: "think_expand".to_string(),
+            },
+            &mut s,
+            120,
+        );
+        on_event_tot(
+            &StreamEvent::TotExpand {
+                candidates: vec!["a".to_string(), "b".to_string()],
+            },
+            &mut s,
+            120,
+        );
+        on_event_tot(
+            &StreamEvent::Updates {
+                node_id: "observe".to_string(),
+                state: tot_state,
+            },
+            &mut s,
+            120,
+        );
+
+        let got_state = GotState {
+            input_message: "q".to_string(),
+            task_graph: TaskGraph {
+                nodes: vec![TaskNode {
+                    id: "n1".to_string(),
+                    description: "d1".to_string(),
+                    tool_calls: vec![ToolCall {
+                        name: "search".to_string(),
+                        arguments: "{}".to_string(),
+                        id: None,
+                    }],
+                }],
+                edges: vec![],
+            },
+            node_states: [(
+                "n1".to_string(),
+                TaskNodeState {
+                    status: TaskStatus::Done,
+                    result: Some("ok".to_string()),
+                    error: None,
+                },
+            )]
+            .into_iter()
+            .collect(),
+        };
+        on_event_got(
+            &StreamEvent::TaskStart {
+                node_id: "plan_graph".to_string(),
+            },
+            &mut s,
+            120,
+        );
+        on_event_got(
+            &StreamEvent::GotPlan {
+                node_count: 1,
+                edge_count: 0,
+                node_ids: vec!["n1".to_string()],
+            },
+            &mut s,
+            120,
+        );
+        on_event_got(
+            &StreamEvent::Updates {
+                node_id: "execute_graph".to_string(),
+                state: got_state,
+            },
+            &mut s,
+            120,
+        );
+        assert_eq!(s.last_node.as_deref(), Some("plan_graph"));
+    }
+
+    fn invalid_opts(output_json: bool) -> RunOptions {
+        RunOptions {
+            message: "hello".to_string(),
+            // Deterministic failure path in build context (invalid file-tool root).
+            working_folder: Some(PathBuf::from(
+                "/definitely/not/exist/loom-cli-run-agent-tests",
+            )),
+            thread_id: None,
+            verbose: false,
+            got_adaptive: false,
+            display_max_len: 200,
+            output_json,
+        }
+    }
+
+    #[tokio::test]
+    async fn run_agent_wrapper_errors_for_invalid_working_folder_plain_mode() {
+        let res = run_agent_wrapper(&invalid_opts(false), &RunCmd::React, None).await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn run_agent_wrapper_errors_for_invalid_working_folder_json_collect_mode() {
+        let res = run_agent_wrapper(&invalid_opts(true), &RunCmd::React, None).await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn run_agent_wrapper_errors_for_invalid_working_folder_json_stream_mode() {
+        let sink: Arc<Mutex<dyn FnMut(Value) + Send>> = Arc::new(Mutex::new(|_v: Value| {}));
+        let res = run_agent_wrapper(&invalid_opts(true), &RunCmd::React, Some(sink)).await;
+        assert!(res.is_err());
+    }
+}
