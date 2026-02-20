@@ -2,6 +2,11 @@
 //! Run tests with `--nocapture` to see them.
 
 use futures_util::{SinkExt, StreamExt};
+use loom::{ClientRequest, ServerResponse};
+use std::time::Duration;
+use tokio::net::TcpListener;
+use tokio::time::timeout;
+use tokio_tungstenite::tungstenite::Message;
 
 /// Loads .env from the current directory (or project root when run via `cargo test`).
 /// Call at the start of each e2e test so the server and config see OPENAI_API_KEY etc.
@@ -9,10 +14,14 @@ pub fn load_dotenv() {
     let _ = dotenv::dotenv();
 }
 
-use loom::{ClientRequest, ServerResponse};
-use std::time::Duration;
-use tokio::time::timeout;
-use tokio_tungstenite::tungstenite::Message;
+/// Bind to a random port and spawn the server in once mode. Returns (ws_url, server_handle).
+pub async fn spawn_server_once() -> (String, tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send + Sync>>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let url = format!("ws://{}", addr);
+    let server_handle = tokio::spawn(serve::run_serve_on_listener(listener, true));
+    (url, server_handle)
+}
 
 /// Returns the parsed response and the raw received JSON so tests can assert on wire content.
 pub async fn send_and_recv<W, R>(

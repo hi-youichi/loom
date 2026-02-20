@@ -1,19 +1,15 @@
 use futures_util::{SinkExt, StreamExt};
 use loom::ServerResponse;
-use serve::run_serve_on_listener;
 use std::time::Duration;
-use tokio::net::TcpListener;
 use tokio::time::timeout;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
-#[tokio::test]
-async fn server_e2e_invalid_json_returns_error() {
-    super::common::load_dotenv();
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let url = format!("ws://{}", addr);
+use super::common;
 
-    let server_handle = tokio::spawn(run_serve_on_listener(listener, true));
+#[tokio::test]
+async fn e2e_invalid_json_returns_error() {
+    common::load_dotenv();
+    let (url, server_handle) = common::spawn_server_once().await;
 
     let (ws, _) = connect_async(&url).await.unwrap();
     let (mut write, mut read) = ws.split();
