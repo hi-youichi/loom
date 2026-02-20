@@ -1,0 +1,19 @@
+[package]
+name = "config"
+version.workspace = true
+edition.workspace = true
+description = "Load .env and XDG TOML config for Loom (single place for all env/config)"
+license.workspace = true
+authors.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+cross-xdg = "2"
+toml = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
