@@ -198,7 +198,9 @@ pub use cli_run::{
     build_helve_config, load_agents_md, load_soul_md, run_agent, AnyRunner, AnyStreamEvent,
     RunCmd, RunError, RunOptions, DEFAULT_WORKING_FOLDER,
 };
-pub use protocol::stream::{stream_event_to_protocol_format, Envelope};
+pub use protocol::stream::{
+    stream_event_to_protocol_format, stream_event_to_protocol_value, Envelope,
+};
 pub use protocol::{
     AgentType, ClientRequest, EnvelopeState, ErrorResponse, PingRequest, PongResponse, RunEndResponse,
     RunRequest, RunStreamEventResponse, ServerResponse, ToolShowOutput, ToolShowRequest,

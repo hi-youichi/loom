@@ -18,7 +18,6 @@ pub(crate) async fn handle_run(
     socket: &mut WebSocket,
 ) -> Result<Option<ServerResponse>, Box<dyn std::error::Error + Send + Sync>> {
     let id = r.id.clone();
-    let output_json = r.output_json == Some(true);
     let opts = RunOptions {
         message: r.message,
         working_folder: r.working_folder.map(PathBuf::from),
@@ -26,7 +25,7 @@ pub(crate) async fn handle_run(
         verbose: r.verbose.unwrap_or(false),
         got_adaptive: r.got_adaptive.unwrap_or(false),
         display_max_len: 2000,
-        output_json,
+        output_json: true,
     };
     let cmd = match r.agent {
         AgentType::React => RunCmd::React,
@@ -37,8 +36,7 @@ pub(crate) async fn handle_run(
         },
     };
 
-    if output_json {
-        let session_id = format!(
+    let session_id = format!(
             "run-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -53,13 +51,14 @@ pub(crate) async fn handle_run(
             let state = Arc::new(Mutex::new(EnvelopeState::new(session_id)));
             let state_clone = state.clone();
             let on_event = Box::new(move |ev: AnyStreamEvent| {
-                let mut v = match ev.to_protocol_format() {
+                let v = match state_clone.lock() {
+                    Ok(mut s) => ev.to_protocol_format(&mut *s),
+                    Err(_) => return,
+                };
+                let v = match v {
                     Ok(x) => x,
                     Err(_) => return,
                 };
-                if let Ok(mut s) = state_clone.lock() {
-                    s.inject_into(&mut v);
-                }
                 let _ = tx.send(v);
             });
             let result = run_agent(&opts, &cmd, Some(on_event)).await;
@@ -113,23 +112,5 @@ pub(crate) async fn handle_run(
                 .await?;
             }
         }
-        return Ok(None);
-    }
-
-    let result = run_agent(&opts, &cmd, None).await;
-    Ok(Some(match result {
-        Ok(reply) => ServerResponse::RunEnd(RunEndResponse {
-            id,
-            reply,
-            usage: None,
-            total_usage: None,
-            session_id: None,
-            node_id: None,
-            event_id: None,
-        }),
-        Err(e) => ServerResponse::Error(ErrorResponse {
-            id: Some(id),
-            error: e.to_string(),
-        }),
-    }))
+    Ok(None)
 }

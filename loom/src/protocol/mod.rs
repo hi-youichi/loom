@@ -46,9 +46,6 @@ pub struct RunRequest {
     pub got_adaptive: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verbose: Option<bool>,
-    /// When true, server streams RunStreamEvent for each stream event before RunEnd (for CLI --json).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub output_json: Option<bool>,
 }
 
 /// Tools list request: list all tools.
@@ -96,7 +93,7 @@ pub enum ClientRequest {
 // Responses (server → client)
 // -----------------------------------------------------------------------------
 
-/// One stream event (format A) for a run; sent when client requested output_json.
+/// One stream event (format A) for a run; server sends one per stream event before RunEnd.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RunStreamEventResponse {
     pub id: String,
@@ -181,7 +178,6 @@ mod tests {
             working_folder: None,
             got_adaptive: None,
             verbose: Some(true),
-            output_json: None,
         });
         let json = serde_json::to_string(&req).unwrap();
         assert!(json.contains("\"type\":\"run\""));

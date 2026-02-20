@@ -60,16 +60,17 @@ pub async fn run_agent_wrapper(
             let state = Arc::new(Mutex::new(EnvelopeState::new(session_id.clone())));
             let state_clone = state.clone();
             let on_event = Box::new(move |ev: AnyStreamEvent| {
-                let mut v = match ev.to_protocol_format() {
+                let v = match state_clone.lock() {
+                    Ok(mut s) => ev.to_protocol_format(&mut *s),
+                    Err(_) => return,
+                };
+                let v = match v {
                     Ok(x) => x,
                     Err(e) => {
                         eprintln!("loom: failed to serialize stream event: {}", e);
                         serde_json::json!({ "type": "_error", "_serialize_error": format!("{}", e) })
                     }
                 };
-                if let Ok(mut s) = state_clone.lock() {
-                    s.inject_into(&mut v);
-                }
                 if let Ok(mut f) = out.lock() {
                     f(v);
                 }
@@ -80,11 +81,17 @@ pub async fn run_agent_wrapper(
         }
         let events: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
         let events_clone = events.clone();
+        let state = Arc::new(Mutex::new(EnvelopeState::new(session_id.clone())));
+        let state_clone = state.clone();
         let on_event = Box::new(move |ev: AnyStreamEvent| {
-            match ev.to_protocol_format() {
-                Ok(v) => {
+            let v = match state_clone.lock() {
+                Ok(mut s) => ev.to_protocol_format(&mut *s),
+                Err(_) => return,
+            };
+            match v {
+                Ok(value) => {
                     if let Ok(mut vec) = events_clone.lock() {
-                        vec.push(v);
+                        vec.push(value);
                     }
                 }
                 Err(e) => {
@@ -99,12 +106,8 @@ pub async fn run_agent_wrapper(
             }
         });
         let reply = run_agent(opts, cmd, Some(on_event)).await?;
-        let mut events = events.lock().map(|v| v.clone()).unwrap_or_default();
-        let mut state = EnvelopeState::new(session_id);
-        for v in &mut events {
-            state.inject_into(v);
-        }
-        let reply_env = Some(state.reply_envelope());
+        let events = events.lock().map(|v| v.clone()).unwrap_or_default();
+        let reply_env = state.lock().map(|s| s.reply_envelope()).ok();
         return Ok((reply, Some(events), reply_env));
     }
 

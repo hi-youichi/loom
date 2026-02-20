@@ -2,7 +2,8 @@
 
 use crate::cli_run::build_helve_config;
 use crate::export::stream_event_to_format_a;
-use crate::protocol::stream::stream_event_to_protocol_format;
+use crate::protocol::stream::stream_event_to_protocol_value;
+use crate::protocol::EnvelopeState;
 use crate::{
     build_dup_runner, build_got_runner, build_react_runner, build_tot_runner, DupRunner, DupState,
     GotRunner, GotState, ReactBuildConfig, ReactRunner, ReActState, StreamEvent, TotRunner, TotState,
@@ -81,13 +82,17 @@ impl AnyStreamEvent {
         }
     }
 
-    /// Converts to protocol format (protocol_spec §4: type + payload).
-    pub fn to_protocol_format(&self) -> Result<Value, serde_json::Error> {
+    /// Converts to protocol format (protocol_spec §4: type + payload) and injects envelope.
+    /// Returns the JSON value to send in `RunStreamEventResponse.event`.
+    pub fn to_protocol_format(
+        &self,
+        state: &mut EnvelopeState,
+    ) -> Result<Value, serde_json::Error> {
         match self {
-            AnyStreamEvent::React(ev) => stream_event_to_protocol_format(ev),
-            AnyStreamEvent::Dup(ev) => stream_event_to_protocol_format(ev),
-            AnyStreamEvent::Tot(ev) => stream_event_to_protocol_format(ev),
-            AnyStreamEvent::Got(ev) => stream_event_to_protocol_format(ev),
+            AnyStreamEvent::React(ev) => stream_event_to_protocol_value(ev, state),
+            AnyStreamEvent::Dup(ev) => stream_event_to_protocol_value(ev, state),
+            AnyStreamEvent::Tot(ev) => stream_event_to_protocol_value(ev, state),
+            AnyStreamEvent::Got(ev) => stream_event_to_protocol_value(ev, state),
         }
     }
 }

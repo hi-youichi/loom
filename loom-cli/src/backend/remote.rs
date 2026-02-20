@@ -60,7 +60,6 @@ impl RemoteBackend {
                 .map(|p| p.to_string_lossy().to_string()),
             got_adaptive: Some(opts.got_adaptive),
             verbose: Some(opts.verbose),
-            output_json: Some(opts.output_json),
         })
     }
 }

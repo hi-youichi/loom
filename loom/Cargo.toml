@@ -14,6 +14,7 @@ path = "src/lib.rs"
 lance = ["dep:lancedb", "dep:arrow-array", "dep:arrow-schema", "dep:futures"]
 
 [dependencies]
+stream-event = { path = "../stream-event" }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
