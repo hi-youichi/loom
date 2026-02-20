@@ -252,3 +252,68 @@ where
         self.stream_mode.contains(&mode)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::managed::IsLastStep;
+    use crate::memory::{InMemoryStore, Store};
+
+    #[test]
+    fn builder_and_getter_methods_set_runtime_fields() {
+        let store: Arc<dyn Store> = Arc::new(InMemoryStore::new());
+        let ctx = RunContext::<String>::new(RunnableConfig::default())
+            .with_store(Arc::clone(&store))
+            .with_previous("previous-state".to_string())
+            .with_runtime_context(serde_json::json!({"user_id":"u1"}))
+            .with_managed_value("is_last", Arc::new(IsLastStep::new(true)));
+
+        assert!(ctx.store().is_some());
+        assert_eq!(ctx.previous().map(|s| s.as_str()), Some("previous-state"));
+        assert_eq!(ctx.runtime_context().unwrap()["user_id"], "u1");
+        assert_eq!(
+            ctx.get_managed_value("is_last"),
+            Some(serde_json::Value::Bool(true))
+        );
+        assert_eq!(ctx.get_managed_value("missing"), None);
+    }
+
+    #[tokio::test]
+    async fn emit_helpers_send_events_when_modes_are_enabled() {
+        let (tx, mut rx) = mpsc::channel(8);
+        let mut ctx = RunContext::<String>::new(RunnableConfig::default());
+        ctx.stream_tx = Some(tx);
+        ctx.stream_mode.insert(StreamMode::Custom);
+        ctx.stream_mode.insert(StreamMode::Messages);
+
+        assert!(ctx.is_streaming_mode(StreamMode::Custom));
+        assert!(ctx.emit_custom(serde_json::json!({"progress": 50})).await);
+        match rx.recv().await {
+            Some(StreamEvent::Custom(v)) => assert_eq!(v["progress"], 50),
+            other => panic!("expected custom event, got {:?}", other),
+        }
+
+        assert!(ctx.emit_message("hello", "think").await);
+        match rx.recv().await {
+            Some(StreamEvent::Messages { chunk, metadata }) => {
+                assert_eq!(chunk.content, "hello");
+                assert_eq!(metadata.loom_node, "think");
+            }
+            other => panic!("expected message event, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn stream_writer_and_emit_helpers_return_false_when_mode_disabled() {
+        let (tx, mut rx) = mpsc::channel(4);
+        let mut ctx = RunContext::<String>::new(RunnableConfig::default());
+        ctx.stream_tx = Some(tx);
+
+        let writer = ctx.stream_writer();
+        assert!(!writer.emit_custom(serde_json::json!({"x": 1})).await);
+        assert!(!ctx.emit_custom(serde_json::json!({"x": 2})).await);
+        assert!(!ctx.emit_message("ignored", "node").await);
+        assert!(rx.try_recv().is_err());
+    }
+}

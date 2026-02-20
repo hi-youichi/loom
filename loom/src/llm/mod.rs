@@ -141,3 +141,62 @@ pub trait LlmClient: Send + Sync {
         Ok(response)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct StubLlm {
+        content: String,
+    }
+
+    #[async_trait]
+    impl LlmClient for StubLlm {
+        async fn invoke(&self, _messages: &[Message]) -> Result<LlmResponse, AgentError> {
+            Ok(LlmResponse {
+                content: self.content.clone(),
+                tool_calls: vec![],
+                usage: None,
+            })
+        }
+    }
+
+    #[test]
+    fn tool_choice_mode_from_str_parses_known_values() {
+        assert_eq!("auto".parse::<ToolChoiceMode>().unwrap(), ToolChoiceMode::Auto);
+        assert_eq!("none".parse::<ToolChoiceMode>().unwrap(), ToolChoiceMode::None);
+        assert_eq!(
+            "required".parse::<ToolChoiceMode>().unwrap(),
+            ToolChoiceMode::Required
+        );
+    }
+
+    #[test]
+    fn tool_choice_mode_from_str_rejects_unknown_value() {
+        let err = "unexpected".parse::<ToolChoiceMode>().unwrap_err();
+        assert!(err.contains("unknown tool_choice"));
+    }
+
+    #[tokio::test]
+    async fn default_invoke_stream_sends_single_chunk_when_enabled() {
+        let llm = StubLlm {
+            content: "hello".to_string(),
+        };
+        let (tx, mut rx) = mpsc::channel(2);
+        let resp = llm.invoke_stream(&[], Some(tx)).await.unwrap();
+        assert_eq!(resp.content, "hello");
+        let chunk = rx.recv().await.expect("one chunk");
+        assert_eq!(chunk.content, "hello");
+    }
+
+    #[tokio::test]
+    async fn default_invoke_stream_skips_chunk_for_empty_content() {
+        let llm = StubLlm {
+            content: String::new(),
+        };
+        let (tx, mut rx) = mpsc::channel(2);
+        let resp = llm.invoke_stream(&[], Some(tx)).await.unwrap();
+        assert!(resp.content.is_empty());
+        assert!(rx.try_recv().is_err());
+    }
+}

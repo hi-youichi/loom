@@ -174,3 +174,87 @@ impl ToolSource for WebToolsSource {
         self._source.set_call_context(ctx)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+
+    use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSpec};
+    use crate::tools::Tool;
+
+    struct DummyTool;
+
+    #[async_trait]
+    impl Tool for DummyTool {
+        fn name(&self) -> &str {
+            "dummy_tool"
+        }
+
+        fn spec(&self) -> ToolSpec {
+            ToolSpec {
+                name: "dummy_tool".to_string(),
+                description: Some("dummy".to_string()),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": { "x": { "type": "number" } }
+                }),
+            }
+        }
+
+        async fn call(
+            &self,
+            args: serde_json::Value,
+            _ctx: Option<&ToolCallContext>,
+        ) -> Result<ToolCallContent, ToolSourceError> {
+            Ok(ToolCallContent {
+                text: format!("dummy:{}", args),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn new_registers_web_fetcher_tool() {
+        let source = WebToolsSource::new().await;
+        let tools = source.list_tools().await.unwrap();
+        assert!(tools.iter().any(|s| s.name == TOOL_WEB_FETCHER));
+    }
+
+    #[tokio::test]
+    async fn with_client_registers_web_fetcher_tool() {
+        let client = reqwest::Client::new();
+        let source = WebToolsSource::with_client(client).await;
+        let tools = source.list_tools().await.unwrap();
+        assert!(tools.iter().any(|s| s.name == TOOL_WEB_FETCHER));
+    }
+
+    #[tokio::test]
+    async fn web_tools_source_trait_methods_delegate_to_aggregate_source() {
+        let aggregate = AggregateToolSource::new();
+        aggregate.register_async(Box::new(DummyTool)).await;
+        let source = WebToolsSource {
+            _source: aggregate,
+        };
+
+        let listed = source.list_tools().await.unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].name, "dummy_tool");
+
+        let called = source
+            .call_tool("dummy_tool", serde_json::json!({"x": 1}))
+            .await
+            .unwrap();
+        assert!(called.text.contains("\"x\":1"));
+
+        source.set_call_context(Some(ToolCallContext::default()));
+        let called_with_ctx = source
+            .call_tool_with_context(
+                "dummy_tool",
+                serde_json::json!({"x": 2}),
+                Some(&ToolCallContext::new(vec![])),
+            )
+            .await
+            .unwrap();
+        assert!(called_with_ctx.text.contains("\"x\":2"));
+    }
+}

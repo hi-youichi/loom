@@ -171,4 +171,57 @@ mod tests {
         p.react.system_prompt = Some("Custom system prompt.".to_string());
         assert_eq!(p.react_system_prompt(), "Custom system prompt.");
     }
+
+    #[test]
+    fn default_getters_match_code_defaults() {
+        let p = AgentPrompts::default();
+        assert_eq!(
+            p.react_execution_error_template(),
+            DEFAULT_EXECUTION_ERROR_TEMPLATE
+        );
+        assert_eq!(p.tot_expand_system_addon(), TOT_EXPAND_SYSTEM_ADDON.trim());
+        assert_eq!(
+            p.tot_research_quality_addon(),
+            TOT_RESEARCH_QUALITY_ADDON.trim()
+        );
+        assert_eq!(p.got_plan_system(), GOT_PLAN_SYSTEM);
+        assert_eq!(p.got_agot_expand_system(), AGOT_EXPAND_SYSTEM);
+        assert_eq!(p.dup_understand_prompt(), DUP_UNDERSTAND_PROMPT);
+    }
+
+    #[test]
+    fn custom_values_override_defaults_for_all_prompt_groups() {
+        let mut p = AgentPrompts::default();
+        p.react.tool_error_template = Some("react tool err".to_string());
+        p.react.execution_error_template = Some("react exec err".to_string());
+        p.tot.expand_system_addon = Some("tot expand".to_string());
+        p.tot.research_quality_addon = Some("tot research".to_string());
+        p.got.plan_system = Some("got plan".to_string());
+        p.got.agot_expand_system = Some("got expand".to_string());
+        p.dup.understand_prompt = Some("dup understand".to_string());
+        p.helve.workdir_section_template = Some("WORKDIR={workdir}".to_string());
+        p.helve.approval_destructive = Some("ask before delete".to_string());
+        p.helve.approval_always = Some("ask always".to_string());
+
+        assert_eq!(p.react_tool_error_template(), "react tool err");
+        assert_eq!(p.react_execution_error_template(), "react exec err");
+        assert_eq!(p.tot_expand_system_addon(), "tot expand");
+        assert_eq!(p.tot_research_quality_addon(), "tot research");
+        assert_eq!(p.got_plan_system(), "got plan");
+        assert_eq!(p.got_agot_expand_system(), "got expand");
+        assert_eq!(p.dup_understand_prompt(), "dup understand");
+        assert_eq!(p.helve_workdir_section_template(), "WORKDIR={workdir}");
+        assert_eq!(p.helve_approval_destructive(), "ask before delete");
+        assert_eq!(p.helve_approval_always(), "ask always");
+    }
+
+    #[test]
+    fn helve_defaults_include_expected_placeholders_and_guidance() {
+        let p = AgentPrompts::default();
+        let workdir_template = p.helve_workdir_section_template();
+        assert!(workdir_template.contains("WORKING FOLDER"));
+        assert!(workdir_template.contains("{workdir}"));
+        assert!(p.helve_approval_destructive().contains("APPROVAL"));
+        assert!(p.helve_approval_always().contains("APPROVAL"));
+    }
 }

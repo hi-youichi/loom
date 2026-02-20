@@ -179,4 +179,38 @@ mod tests {
         let p = load(Some(dir)).unwrap();
         assert_eq!(p.react_system_prompt(), "From file.");
     }
+
+    #[test]
+    fn load_invalid_yaml_returns_parse_error() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let dir = temp.path();
+        std::fs::write(dir.join("react.yaml"), "system_prompt: [not closed").unwrap();
+        let err = load(Some(dir)).unwrap_err();
+        assert!(matches!(err, LoadError::ParseYaml { .. }));
+    }
+
+    #[test]
+    fn load_uses_prompts_dir_env_when_dir_is_none() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let dir = temp.path();
+        std::fs::write(dir.join("react.yaml"), "system_prompt: \"From env dir\"").unwrap();
+        let old = std::env::var("PROMPTS_DIR").ok();
+        std::env::set_var("PROMPTS_DIR", dir);
+        let p = load(None).unwrap();
+        assert_eq!(p.react_system_prompt(), "From env dir");
+        if let Some(v) = old {
+            std::env::set_var("PROMPTS_DIR", v);
+        } else {
+            std::env::remove_var("PROMPTS_DIR");
+        }
+    }
+
+    #[test]
+    fn load_missing_files_are_ignored() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let p = load(Some(temp.path())).unwrap();
+        assert_eq!(p.react_system_prompt(), crate::agent::react::REACT_SYSTEM_PROMPT);
+        assert!(!p.tot_expand_system_addon().is_empty());
+    }
+
 }

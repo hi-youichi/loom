@@ -111,3 +111,103 @@ pub fn build_config_summary(source: &impl RunConfigSummarySource) -> RunConfigSu
         .with_section(Box::new(source.tools_section()))
         .with_section(Box::new(source.embedding_section()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct DummySection {
+        name: &'static str,
+        entries: Vec<(&'static str, String)>,
+    }
+
+    impl ConfigSection for DummySection {
+        fn section_name(&self) -> &str {
+            self.name
+        }
+
+        fn entries(&self) -> Vec<(&'static str, String)> {
+            self.entries.clone()
+        }
+    }
+
+    struct DummySource;
+
+    impl RunConfigSummarySource for DummySource {
+        fn llm_section(&self) -> LlmConfigSummary {
+            LlmConfigSummary {
+                model: "glm-5".to_string(),
+                api_base: "https://api.example.com/v1".to_string(),
+                temperature: Some(0.2),
+                tool_choice: "auto".to_string(),
+            }
+        }
+
+        fn memory_section(&self) -> MemoryConfigSummary {
+            MemoryConfigSummary {
+                mode: "short_term".to_string(),
+                short_term: Some("sqlite".to_string()),
+                thread_id: Some("thread-1".to_string()),
+                db_path: Some("memory.db".to_string()),
+                long_term: None,
+                long_term_store: None,
+            }
+        }
+
+        fn tools_section(&self) -> ToolConfigSummary {
+            ToolConfigSummary {
+                sources: vec!["memory".to_string(), "exa".to_string()],
+                exa_url: Some("https://example.com/mcp".to_string()),
+            }
+        }
+
+        fn embedding_section(&self) -> EmbeddingConfigSummary {
+            EmbeddingConfigSummary {
+                model: "text-embedding-3-small".to_string(),
+                api_base: "https://api.example.com/v1".to_string(),
+            }
+        }
+    }
+
+    #[test]
+    fn run_config_summary_new_and_default_are_empty() {
+        assert!(RunConfigSummary::new().sections().is_empty());
+        assert!(RunConfigSummary::default().sections().is_empty());
+    }
+
+    #[test]
+    fn with_section_preserves_insertion_order() {
+        let summary = RunConfigSummary::new()
+            .with_section(Box::new(DummySection {
+                name: "first",
+                entries: vec![("k1", "v1".to_string())],
+            }))
+            .with_section(Box::new(DummySection {
+                name: "second",
+                entries: vec![("k2", "v2".to_string())],
+            }));
+        let names: Vec<&str> = summary.sections().iter().map(|s| s.section_name()).collect();
+        assert_eq!(names, vec!["first", "second"]);
+    }
+
+    #[test]
+    fn build_config_summary_includes_all_four_sections() {
+        let summary = build_config_summary(&DummySource);
+        let names: Vec<&str> = summary.sections().iter().map(|s| s.section_name()).collect();
+        assert_eq!(names, vec!["LLM config", "Memory config", "Tools", "Embedding"]);
+        summary.print_to_stderr();
+    }
+
+    #[test]
+    fn config_section_print_to_stderr_is_best_effort() {
+        let section = DummySection {
+            name: "dummy",
+            entries: vec![
+                ("model", "glm-5".to_string()),
+                ("temperature", "0.2".to_string()),
+            ],
+        };
+        section.print_to_stderr();
+        assert_eq!(section.entries().len(), 2);
+    }
+}

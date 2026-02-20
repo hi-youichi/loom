@@ -43,11 +43,11 @@ pub async fn run_serve_on_listener(
     let app = router(state);
 
     if once {
-        tokio::spawn(async move {
-            let _ = axum::serve(listener, app).await;
-        });
-        let _ = shutdown_rx.await;
-        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async move {
+                let _ = shutdown_rx.await;
+            })
+            .await?;
         info!("connection done, exiting (default: exit after first connection)");
     } else {
         axum::serve(listener, app).await?;

@@ -282,6 +282,64 @@ impl ToolSource for McpToolSource {
 mod tests {
     use super::*;
     use mcp_core::ErrorObject;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::{TcpListener, TcpStream};
+    use std::sync::{Arc, Mutex as StdMutex};
+
+    async fn read_http_request(stream: &mut TcpStream) -> (String, String) {
+        let mut buf = Vec::new();
+        let mut tmp = [0u8; 1024];
+        let header_end;
+        loop {
+            let n = stream.read(&mut tmp).await.unwrap();
+            if n == 0 {
+                break;
+            }
+            buf.extend_from_slice(&tmp[..n]);
+            if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                header_end = pos + 4;
+                let headers = String::from_utf8_lossy(&buf[..header_end]).to_string();
+                let content_length = headers
+                    .lines()
+                    .find_map(|line| {
+                        let lower = line.to_ascii_lowercase();
+                        lower
+                            .strip_prefix("content-length:")
+                            .and_then(|v| v.trim().parse::<usize>().ok())
+                    })
+                    .unwrap_or(0);
+                let mut body = buf[header_end..].to_vec();
+                while body.len() < content_length {
+                    let m = stream.read(&mut tmp).await.unwrap();
+                    if m == 0 {
+                        break;
+                    }
+                    body.extend_from_slice(&tmp[..m]);
+                }
+                let body = String::from_utf8_lossy(&body[..content_length]).to_string();
+                return (headers, body);
+            }
+        }
+        (String::new(), String::new())
+    }
+
+    async fn write_http_response(
+        stream: &mut TcpStream,
+        status: &str,
+        content_type: Option<&str>,
+        extra_headers: &[(&str, &str)],
+        body: &str,
+    ) {
+        let mut resp = format!("HTTP/1.1 {}\r\nConnection: close\r\n", status);
+        if let Some(ct) = content_type {
+            resp.push_str(&format!("Content-Type: {}\r\n", ct));
+        }
+        for (k, v) in extra_headers {
+            resp.push_str(&format!("{}: {}\r\n", k, v));
+        }
+        resp.push_str(&format!("Content-Length: {}\r\n\r\n{}", body.len(), body));
+        stream.write_all(resp.as_bytes()).await.unwrap();
+    }
 
     /// **Scenario**: When command does not exist, McpToolSource::new returns an error.
     #[test]
@@ -398,5 +456,217 @@ mod tests {
             parse_call_tool_result(err),
             Err(ToolSourceError::JsonRpc(msg)) if msg == "call failed"
         ));
+    }
+
+    #[tokio::test]
+    async fn mcp_tool_source_http_list_and_call_success() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let methods: Arc<StdMutex<Vec<String>>> = Arc::new(StdMutex::new(Vec::new()));
+        let methods_clone = Arc::clone(&methods);
+        let server = tokio::spawn(async move {
+            for _ in 0..4 {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let (_headers, body) = read_http_request(&mut stream).await;
+                let json: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+                let method = json
+                    .get("method")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                methods_clone.lock().unwrap().push(method.clone());
+                match method.as_str() {
+                    "initialize" => {
+                        let body = serde_json::json!({
+                            "jsonrpc":"2.0",
+                            "id":"loom-mcp-initialize",
+                            "result":{"protocolVersion":"2025-11-25"}
+                        })
+                        .to_string();
+                        write_http_response(
+                            &mut stream,
+                            "200 OK",
+                            Some("application/json"),
+                            &[("MCP-Session-Id", "sess-1")],
+                            &body,
+                        )
+                        .await;
+                    }
+                    "notifications/initialized" => {
+                        write_http_response(&mut stream, "202 Accepted", None, &[], "").await;
+                    }
+                    "tools/list" => {
+                        let body = serde_json::json!({
+                            "jsonrpc":"2.0",
+                            "id":"loom-tools-list",
+                            "result":{"tools":[{"name":"http_tool","description":"from http","inputSchema":{"type":"object"}}]}
+                        })
+                        .to_string();
+                        write_http_response(
+                            &mut stream,
+                            "200 OK",
+                            Some("application/json"),
+                            &[],
+                            &body,
+                        )
+                        .await;
+                    }
+                    "tools/call" => {
+                        let body = serde_json::json!({
+                            "jsonrpc":"2.0",
+                            "id":"loom-call-http_tool",
+                            "result":{"content":[{"type":"text","text":"ok-from-http"}]}
+                        })
+                        .to_string();
+                        write_http_response(
+                            &mut stream,
+                            "200 OK",
+                            Some("application/json"),
+                            &[],
+                            &body,
+                        )
+                        .await;
+                    }
+                    _ => panic!("unexpected method: {}", method),
+                }
+            }
+        });
+
+        let url = format!("http://{}", addr);
+        let source = McpToolSource::new_http(url, [("X-Test", "1")]).await.unwrap();
+        let tools = source.list_tools().await.unwrap();
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].name, "http_tool");
+        let out = source
+            .call_tool("http_tool", serde_json::json!({"q":"x"}))
+            .await
+            .unwrap();
+        assert_eq!(out.text, "ok-from-http");
+        let called = methods.lock().unwrap().clone();
+        assert_eq!(
+            called,
+            vec![
+                "initialize".to_string(),
+                "notifications/initialized".to_string(),
+                "tools/list".to_string(),
+                "tools/call".to_string()
+            ]
+        );
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn mcp_tool_source_http_supports_sse_jsonrpc_responses() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let (_, body) = read_http_request(&mut stream).await;
+                let json: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+                let method = json.get("method").and_then(|m| m.as_str()).unwrap_or("");
+                match method {
+                    "initialize" => {
+                        write_http_response(&mut stream, "202 Accepted", None, &[], "").await;
+                    }
+                    "tools/list" => {
+                        let sse = "data: {\"jsonrpc\":\"2.0\",\"id\":\"loom-tools-list\",\"result\":{\"tools\":[{\"name\":\"sse_tool\",\"description\":\"sse\",\"inputSchema\":{\"type\":\"object\"}}]}}\n\n";
+                        write_http_response(
+                            &mut stream,
+                            "200 OK",
+                            Some("text/event-stream"),
+                            &[],
+                            sse,
+                        )
+                        .await;
+                    }
+                    _ => panic!("unexpected method: {}", method),
+                }
+            }
+        });
+
+        let source = McpToolSource::new_http(format!("http://{}", addr), std::iter::empty::<(String, String)>())
+            .await
+            .unwrap();
+        let tools = source.list_tools().await.unwrap();
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].name, "sse_tool");
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn mcp_tool_source_http_maps_jsonrpc_error_from_tools_call() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let (_, body) = read_http_request(&mut stream).await;
+                let json: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+                let method = json.get("method").and_then(|m| m.as_str()).unwrap_or("");
+                match method {
+                    "initialize" => {
+                        write_http_response(&mut stream, "202 Accepted", None, &[], "").await;
+                    }
+                    "tools/call" => {
+                        let body = serde_json::json!({
+                            "jsonrpc":"2.0",
+                            "id":"loom-call-bad_tool",
+                            "error":{"code":-32000,"message":"call failed"}
+                        })
+                        .to_string();
+                        write_http_response(
+                            &mut stream,
+                            "200 OK",
+                            Some("application/json"),
+                            &[],
+                            &body,
+                        )
+                        .await;
+                    }
+                    _ => panic!("unexpected method: {}", method),
+                }
+            }
+        });
+
+        let source = McpToolSource::new_http(format!("http://{}", addr), std::iter::empty::<(String, String)>())
+            .await
+            .unwrap();
+        let err = source
+            .call_tool("bad_tool", serde_json::json!({}))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ToolSourceError::JsonRpc(msg) if msg == "call failed"));
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn mcp_tool_source_http_initialize_http_error_surfaces_transport_error() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let _ = read_http_request(&mut stream).await;
+            write_http_response(
+                &mut stream,
+                "500 Internal Server Error",
+                Some("text/plain"),
+                &[],
+                "boom",
+            )
+            .await;
+        });
+
+        let err = match McpToolSource::new_http(
+            format!("http://{}", addr),
+            std::iter::empty::<(String, String)>(),
+        )
+        .await
+        {
+            Ok(_) => panic!("expected initialization to fail"),
+            Err(e) => e,
+        };
+        assert!(matches!(err, ToolSourceError::Transport(msg) if msg.contains("initialize HTTP")));
+        server.await.unwrap();
     }
 }

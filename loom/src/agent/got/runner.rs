@@ -212,3 +212,73 @@ impl LlmClient for SharedLlm {
         self.0.invoke_stream(messages, tx).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{MockLlm, MockToolSource, StreamEvent};
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn got_execute_condition_routes_based_on_ready_nodes() {
+        let empty = GotState::default();
+        assert_eq!(got_execute_condition(&empty), END);
+
+        let state = GotState {
+            input_message: "q".to_string(),
+            task_graph: super::super::state::TaskGraph {
+                nodes: vec![super::super::state::TaskNode {
+                    id: "n1".to_string(),
+                    description: "step".to_string(),
+                    tool_calls: vec![],
+                }],
+                edges: vec![],
+            },
+            node_states: std::collections::HashMap::new(),
+        };
+        assert_eq!(got_execute_condition(&state), "execute_graph");
+    }
+
+    #[tokio::test]
+    async fn build_got_initial_state_without_checkpoint_uses_input_message() {
+        let state = build_got_initial_state("hello got", None, None).await.unwrap();
+        assert_eq!(state.input_message, "hello got");
+        assert!(state.task_graph.nodes.is_empty());
+        assert!(state.node_states.is_empty());
+    }
+
+    #[tokio::test]
+    async fn got_runner_invoke_and_stream_with_mock_llm() {
+        let llm_response = r#"{"nodes":[{"id":"collect","description":"collect info"}],"edges":[]}"#;
+        let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(llm_response));
+        let runner = GotRunner::new(
+            llm,
+            Box::new(MockToolSource::get_time_example()),
+            None,
+            None,
+            None,
+            false,
+            false,
+            false,
+        )
+        .unwrap();
+
+        let out = runner.invoke("help me").await.unwrap();
+        assert!(!out.task_graph.nodes.is_empty());
+        assert_eq!(out.summary_result(), llm_response);
+
+        let events: Arc<Mutex<Vec<StreamEvent<GotState>>>> = Arc::new(Mutex::new(Vec::new()));
+        let events_clone = Arc::clone(&events);
+        let streamed = runner
+            .stream_with_callback(
+                "help me",
+                Some(move |ev: StreamEvent<GotState>| {
+                    events_clone.lock().unwrap().push(ev);
+                }),
+            )
+            .await
+            .unwrap();
+        assert!(!streamed.task_graph.nodes.is_empty());
+        assert!(!events.lock().unwrap().is_empty());
+    }
+}

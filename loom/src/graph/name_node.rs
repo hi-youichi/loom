@@ -43,3 +43,22 @@ where
         Ok((state, Next::Continue))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_sets_node_id() {
+        let node = NameNode::new("pass");
+        assert_eq!(<NameNode as Node<String>>::id(&node), "pass");
+    }
+
+    #[tokio::test]
+    async fn run_passes_state_through() {
+        let node = NameNode::new("n1");
+        let (state, next) = node.run("state".to_string()).await.unwrap();
+        assert_eq!(state, "state");
+        assert_eq!(next, Next::Continue);
+    }
+}

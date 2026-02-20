@@ -54,3 +54,39 @@ where
         result
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn around_run_returns_inner_success_result() {
+        let middleware = LoggingNodeMiddleware::<i32>::default();
+        let out = middleware
+            .around_run(
+                "think",
+                7,
+                Box::new(|s| Box::pin(async move { Ok((s + 1, Next::Continue)) })),
+            )
+            .await
+            .unwrap();
+        assert_eq!(out.0, 8);
+        assert_eq!(out.1, Next::Continue);
+    }
+
+    #[tokio::test]
+    async fn around_run_propagates_inner_error() {
+        let middleware = LoggingNodeMiddleware::<i32>::default();
+        let err = middleware
+            .around_run(
+                "act",
+                1,
+                Box::new(|_| {
+                    Box::pin(async move { Err(AgentError::ExecutionFailed("boom".to_string())) })
+                }),
+            )
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("boom"));
+    }
+}

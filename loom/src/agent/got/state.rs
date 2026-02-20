@@ -143,3 +143,93 @@ impl GotState {
             .unwrap_or_default()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn node(id: &str) -> TaskNode {
+        TaskNode {
+            id: id.to_string(),
+            description: format!("desc-{id}"),
+            tool_calls: vec![],
+        }
+    }
+
+    #[test]
+    fn task_node_state_default_is_pending_without_result() {
+        let s = TaskNodeState::default();
+        assert_eq!(s.status, TaskStatus::Pending);
+        assert!(s.result.is_none());
+        assert!(s.error.is_none());
+    }
+
+    #[test]
+    fn got_state_default_is_empty() {
+        let s = GotState::default();
+        assert!(s.input_message.is_empty());
+        assert!(s.task_graph.nodes.is_empty());
+        assert!(s.task_graph.edges.is_empty());
+        assert!(s.node_states.is_empty());
+    }
+
+    #[test]
+    fn summary_result_returns_empty_when_no_done_nodes() {
+        let s = GotState::default();
+        assert!(s.summary_result().is_empty());
+    }
+
+    #[test]
+    fn summary_result_prefers_sink_node_result() {
+        let s = GotState {
+            input_message: "q".to_string(),
+            task_graph: TaskGraph {
+                nodes: vec![node("a"), node("b")],
+                edges: vec![("a".to_string(), "b".to_string())],
+            },
+            node_states: [
+                (
+                    "a".to_string(),
+                    TaskNodeState {
+                        status: TaskStatus::Done,
+                        result: Some("from a".to_string()),
+                        error: None,
+                    },
+                ),
+                (
+                    "b".to_string(),
+                    TaskNodeState {
+                        status: TaskStatus::Done,
+                        result: Some("from b".to_string()),
+                        error: None,
+                    },
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        };
+        assert_eq!(s.summary_result(), "from b");
+    }
+
+    #[test]
+    fn summary_result_falls_back_to_any_done_result_when_no_sink_has_result() {
+        let s = GotState {
+            input_message: "q".to_string(),
+            task_graph: TaskGraph {
+                nodes: vec![node("a")],
+                edges: vec![("a".to_string(), "a".to_string())],
+            },
+            node_states: [(
+                "a".to_string(),
+                TaskNodeState {
+                    status: TaskStatus::Done,
+                    result: Some("fallback".to_string()),
+                    error: None,
+                },
+            )]
+            .into_iter()
+            .collect(),
+        };
+        assert_eq!(s.summary_result(), "fallback");
+    }
+}

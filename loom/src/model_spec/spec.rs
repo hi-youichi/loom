@@ -42,3 +42,26 @@ impl ModelSpec {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_sets_required_limits_without_cache_fields() {
+        let spec = ModelSpec::new(2048, 512);
+        assert_eq!(spec.context_limit, 2048);
+        assert_eq!(spec.output_limit, 512);
+        assert_eq!(spec.cache_read, None);
+        assert_eq!(spec.cache_write, None);
+    }
+
+    #[test]
+    fn cache_builder_methods_set_optional_limits() {
+        let spec = ModelSpec::new(4096, 1024)
+            .with_cache_read(128)
+            .with_cache_write(64);
+        assert_eq!(spec.cache_read, Some(128));
+        assert_eq!(spec.cache_write, Some(64));
+    }
+}
