@@ -28,14 +28,16 @@ After calling `load_and_apply`, use `std::env::var("KEY")` as usual; no API chan
 
 Location: `$XDG_CONFIG_HOME/<app_name>/config.toml` (e.g. `~/.config/loom/config.toml` on Linux/macOS).
 
-Example:
+Minimal example:
 
 ```toml
 [env]
 OPENAI_API_KEY = "sk-..."
-OPENAI_API_BASE = "https://api.openai.com/v1"
+OPENAI_BASE_URL = "https://api.openai.com/v1"
 RUST_LOG = "info"
 ```
+
+A full example (keys aligned with graphweave `.env`) is in `config/examples/config.toml.example`. Copy it to `~/.config/loom/config.toml` and fill in your values.
 
 Only the `[env]` table is read; keys are injected as environment variables when not already set.
 
