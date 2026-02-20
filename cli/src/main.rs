@@ -47,8 +47,8 @@ struct Args {
     #[arg(short, long)]
     interactive: bool,
 
-    /// Use local execution (default: remote)
-    #[arg(long)]
+    /// Use local execution (default). Use --no-local for remote WebSocket
+    #[arg(long, default_value_t = true)]
     local: bool,
 
     /// Remote WebSocket URL (default: ws://127.0.0.1:8080 or LOOM_REMOTE_URL)
