@@ -1,5 +1,5 @@
 [package]
-name = "loom-cli"
+name = "cli"
 version.workspace = true
 edition.workspace = true
 description = "CLI for Loom: run ReAct agent from the command line"
@@ -7,7 +7,7 @@ license.workspace = true
 authors.workspace = true
 
 [lib]
-name = "loom_cli"
+name = "cli"
 path = "src/lib.rs"
 
 [[bin]]

@@ -15,7 +15,7 @@ A graph-based agent framework in Rust with a **state-in, state-out** design: a s
 With `--json`, the CLI emits [NDJSON](https://ndjson.org/) per [docs/protocol_spec.md](docs/protocol_spec.md): one JSON object per line (events with `type` + payload, then a final line with `reply`). Optional envelope fields `session_id`, `node_id`, `event_id` are included for merging multi-turn or multi-session streams.
 
 ```bash
-cargo run -p loom-cli -- -m "Hello" --json
+cargo run -p cli -- -m "Hello" --json
 # or stream to file: --json --file out.json
 ```
 
@@ -26,8 +26,8 @@ cargo run -p loom-cli -- -m "Hello" --json
 cp .env.example .env
 
 # Run Loom CLI
-cargo run -p loom-cli -- -m "What time is it?"
-cargo run -p loom-cli -- --working-folder . "Summarize this repo"
+cargo run -p cli -- -m "What time is it?"
+cargo run -p cli -- --working-folder . "Summarize this repo"
 ```
 
 ## Workspace
@@ -35,7 +35,7 @@ cargo run -p loom-cli -- --working-folder . "Summarize this repo"
 | Crate | Description |
 |-------|-------------|
 | `loom` | Core library: graph, nodes, state, LLM, tools, memory |
-| `loom-cli` | CLI binary with React / Dup / Tot / Got / Tool subcommands |
+| `cli` | CLI binary with React / Dup / Tot / Got / Tool subcommands |
 | `loom-examples` | Examples |
 
 ## Library usage

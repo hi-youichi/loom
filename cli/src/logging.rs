@@ -36,7 +36,7 @@ pub fn init() -> Result<(), Box<dyn std::error::Error>> {
             .with_ansi(false)
             .with_filter(filter);
         tracing_subscriber::registry().with(file_layer).init();
-        tracing::info!(path = %path, "loom-cli logging to file");
+        tracing::info!(path = %path, "cli logging to file");
     } else {
         let sink_layer = tracing_subscriber::fmt::layer()
             .with_writer(std::io::sink)

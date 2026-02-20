@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "loom",
     "loom-examples",
-    "loom-cli",
+    "cli",
     "serve",
 ]
 

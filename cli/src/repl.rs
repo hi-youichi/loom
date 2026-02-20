@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use tokio::io::{AsyncBufReadExt, BufReader};
 
-use loom_cli::{RunBackend, RunCmd, RunError, RunOptions};
+use cli::{RunBackend, RunCmd, RunError, RunOptions};
 
 use crate::Command;
 
@@ -44,7 +44,7 @@ pub async fn run_repl_loop(
     max_reply_len: usize,
     json_file: Option<PathBuf>,
     json_pretty: bool,
-    stream_out: loom_cli::StreamOut,
+    stream_out: cli::StreamOut,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let json_stream = stream_out.is_some();
     let mut reader = BufReader::new(tokio::io::stdin()).lines();
@@ -66,7 +66,7 @@ pub async fn run_repl_loop(
         opts.message = line;
 
         match run_one_turn(backend, &opts, cmd, stream_out.clone()).await {
-            Ok(loom_cli::RunOutput::Json {
+            Ok(cli::RunOutput::Json {
                 events,
                 reply,
                 reply_envelope,
@@ -86,7 +86,7 @@ pub async fn run_repl_loop(
                     None => println!("{}", s),
                 }
             }
-            Ok(loom_cli::RunOutput::Reply(reply, reply_envelope)) => {
+            Ok(cli::RunOutput::Reply(reply, reply_envelope)) => {
                 if json_stream {
                     let mut out = serde_json::json!({ "reply": reply });
                     if let Some(ref env) = reply_envelope {
@@ -127,8 +127,8 @@ pub async fn run_one_turn(
     backend: &Arc<dyn RunBackend>,
     opts: &RunOptions,
     cmd: &Command,
-    stream_out: loom_cli::StreamOut,
-) -> Result<loom_cli::RunOutput, RunError> {
+    stream_out: cli::StreamOut,
+) -> Result<cli::RunOutput, RunError> {
     let run_cmd = cmd_to_runcmd(cmd);
     backend.run(opts, &run_cmd, stream_out).await
 }

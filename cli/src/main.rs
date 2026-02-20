@@ -7,7 +7,7 @@ mod logging;
 mod repl;
 
 use clap::{Parser, Subcommand};
-use loom_cli::{
+use cli::{
     LocalBackend, RemoteBackend, RunBackend, RunOutput, RunOptions, StreamOut, ToolShowFormat,
 };
 use repl::{run_one_turn, run_repl_loop};
@@ -300,7 +300,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // For remote backend, ensure server is running (unless --no-auto-start)
     if !args.local && resolve_auto_start(&args) {
         let url = resolve_remote_url(&args);
-        if let Err(e) = loom_cli::ensure_server_or_spawn(&url).await {
+        if let Err(e) = cli::ensure_server_or_spawn(&url).await {
             eprintln!("loom: {}", e);
             std::process::exit(1);
         }
