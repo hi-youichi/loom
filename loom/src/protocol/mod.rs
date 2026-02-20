@@ -9,7 +9,10 @@
 //! [USER_GUIDELINE]: https://github.com/loom/loom/blob/main/docs/USER_GUIDELINE.md
 //! [protocol_spec]: https://github.com/loom/loom/blob/main/docs/protocol_spec.md
 
+pub mod envelope_state;
 pub mod stream;
+
+pub use envelope_state::EnvelopeState;
 
 use crate::llm::LlmUsage;
 use crate::tool_source::ToolSpec;

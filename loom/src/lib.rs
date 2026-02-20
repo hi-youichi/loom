@@ -200,7 +200,7 @@ pub use cli_run::{
 };
 pub use protocol::stream::{stream_event_to_protocol_format, Envelope};
 pub use protocol::{
-    AgentType, ClientRequest, ErrorResponse, PingRequest, PongResponse, RunEndResponse,
+    AgentType, ClientRequest, EnvelopeState, ErrorResponse, PingRequest, PongResponse, RunEndResponse,
     RunRequest, RunStreamEventResponse, ServerResponse, ToolShowOutput, ToolShowRequest,
     ToolShowResponse, ToolsListRequest, ToolsListResponse,
 };

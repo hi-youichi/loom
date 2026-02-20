@@ -17,6 +17,12 @@ use loom::{RunCmd, RunOptions, StreamEvent};
 
 use super::RunError;
 
+/// Single line when a node is entered (unified across agents).
+fn log_node_enter(from: Option<&str>, node_id: &str) {
+    let from = from.unwrap_or("START");
+    eprintln!("Entering: {} (from {})", node_id, from);
+}
+
 /// Result of run_agent_wrapper: reply, optional events (when --json and no stream), optional envelope for reply line.
 pub type RunAgentResult = Result<(String, Option<Vec<Value>>, Option<Envelope>), RunError>;
 
@@ -129,10 +135,12 @@ pub async fn run_agent_wrapper(
 fn on_event_react(ev: &StreamEvent<ReActState>, s: &mut EventState, display_max_len: usize) {
     match ev {
         StreamEvent::TaskStart { node_id } => {
-            let from = s.last_node.as_deref().unwrap_or("START");
-            eprintln!("flow: {} → {}", from, node_id);
-            eprintln!("-------------------- {} --------------------", node_id);
+            log_node_enter(s.last_node.as_deref(), node_id);
             s.last_node = Some(node_id.clone());
+        }
+        StreamEvent::Messages { chunk, .. } => {
+            print!("{}", chunk.content);
+            let _ = std::io::Write::flush(&mut std::io::stdout());
         }
         StreamEvent::Updates { node_id, state } => {
             let label = match node_id.as_str() {
@@ -157,10 +165,12 @@ fn on_event_react(ev: &StreamEvent<ReActState>, s: &mut EventState, display_max_
 fn on_event_dup(ev: &StreamEvent<DupState>, s: &mut EventState, display_max_len: usize) {
     match ev {
         StreamEvent::TaskStart { node_id } => {
-            let from = s.last_node.as_deref().unwrap_or("START");
-            eprintln!("flow: {} → {}", from, node_id);
-            eprintln!("-------------------- {} --------------------", node_id);
+            log_node_enter(s.last_node.as_deref(), node_id);
             s.last_node = Some(node_id.clone());
+        }
+        StreamEvent::Messages { chunk, .. } => {
+            print!("{}", chunk.content);
+            let _ = std::io::Write::flush(&mut std::io::stdout());
         }
         StreamEvent::Updates { node_id, state } => {
             match node_id.as_str() {
@@ -191,9 +201,7 @@ fn on_event_dup(ev: &StreamEvent<DupState>, s: &mut EventState, display_max_len:
 fn on_event_tot(ev: &StreamEvent<TotState>, s: &mut EventState, display_max_len: usize) {
     match ev {
         StreamEvent::TaskStart { node_id } => {
-            let from = s.last_node.as_deref().unwrap_or("START");
-            eprintln!("flow: {} → {}", from, node_id);
-            eprintln!("-------------------- {} --------------------", node_id);
+            log_node_enter(s.last_node.as_deref(), node_id);
             s.last_node = Some(node_id.clone());
         }
         StreamEvent::TotExpand { candidates } => {
@@ -213,6 +221,10 @@ fn on_event_tot(ev: &StreamEvent<TotState>, s: &mut EventState, display_max_len:
                 "--- ToT backtrack: reason={}, to_depth={} ---",
                 reason, to_depth
             );
+        }
+        StreamEvent::Messages { chunk, .. } => {
+            print!("{}", chunk.content);
+            let _ = std::io::Write::flush(&mut std::io::stdout());
         }
         StreamEvent::Updates { node_id, state } => {
             let label = match node_id.as_str() {
@@ -251,9 +263,7 @@ async fn print_loaded_tools(config: &loom::ReactBuildConfig) -> Result<(), RunEr
 fn on_event_got(ev: &StreamEvent<GotState>, s: &mut EventState, display_max_len: usize) {
     match ev {
         StreamEvent::TaskStart { node_id } => {
-            let from = s.last_node.as_deref().unwrap_or("START");
-            eprintln!("flow: {} → {}", from, node_id);
-            eprintln!("-------------------- {} --------------------", node_id);
+            log_node_enter(s.last_node.as_deref(), node_id);
             s.last_node = Some(node_id.clone());
         }
         StreamEvent::GotPlan {
@@ -289,6 +299,10 @@ fn on_event_got(ev: &StreamEvent<GotState>, s: &mut EventState, display_max_len:
                 "--- AGoT expand: {} → +{} nodes, +{} edges ---",
                 node_id, nodes_added, edges_added
             );
+        }
+        StreamEvent::Messages { chunk, .. } => {
+            print!("{}", chunk.content);
+            let _ = std::io::Write::flush(&mut std::io::stdout());
         }
         StreamEvent::Updates { node_id, state } => {
             eprintln!("--- state after {} ---", node_id);

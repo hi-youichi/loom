@@ -4,6 +4,7 @@ members = [
     "loom",
     "loom-examples",
     "loom-cli",
+    "serve",
 ]
 
 [workspace.package]

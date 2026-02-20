@@ -5,7 +5,6 @@
 mod log_format;
 mod logging;
 mod repl;
-mod serve;
 
 use clap::{Parser, Subcommand};
 use loom_cli::{
@@ -144,6 +143,11 @@ fn make_stream_out(
 ) -> StreamOut {
     let file = file.cloned();
     Some(std::sync::Arc::new(std::sync::Mutex::new(move |value: serde_json::Value| {
+        if value.get("type").and_then(|t| t.as_str()) == Some("node_enter") {
+            if let Some(id) = value.get("id").and_then(|v| v.as_str()) {
+                eprintln!("Entering: {}", id);
+            }
+        }
         let s = if pretty {
             serde_json::to_string_pretty(&value).unwrap_or_default()
         } else {

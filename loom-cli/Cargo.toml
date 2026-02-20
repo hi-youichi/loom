@@ -16,8 +16,9 @@ path = "src/main.rs"
 
 [dependencies]
 loom = { path = "../loom" }
+serve = { path = "../serve" }
 async-trait = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "net"] }
 clap = { workspace = true }
 dotenv = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }
@@ -31,4 +32,5 @@ tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 futures-util = "0.3"
 
 [dev-dependencies]
+dotenv = { workspace = true }
 tempfile = "3"
