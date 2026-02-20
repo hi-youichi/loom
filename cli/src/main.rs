@@ -39,7 +39,7 @@ struct Args {
     #[arg(long, value_name = "ID")]
     thread_id: Option<String>,
 
-    /// Verbose: log node enter/exit and graph execution
+    /// Print State info to stderr (node enter/exit, state after each step, flow)
     #[arg(short, long)]
     verbose: bool,
 
