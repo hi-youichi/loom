@@ -2,8 +2,9 @@
 resolver = "2"
 members = [
     "loom",
+    "config",
     "loom-examples",
-    "loom-cli",
+    "cli",
     "serve",
     "stream-event",
 ]

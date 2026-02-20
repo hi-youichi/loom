@@ -1,7 +1,7 @@
 //! Run orchestration for agent patterns (ReAct, ToT, GoT, DUP).
 //!
 //! Builds HelveConfig and ReactBuildConfig, then invokes the corresponding runner.
-//! Used by both loom-cli (local) and loom serve (remote).
+//! Used by both cli (local) and loom serve (remote).
 
 mod agent;
 

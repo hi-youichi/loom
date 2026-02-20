@@ -1,0 +1,39 @@
+# Example: ~/.config/loom/config.toml
+# Copy to $XDG_CONFIG_HOME/loom/config.toml and fill in your values.
+# Keys match graphweave/.env; only [env] is read.
+
+[env]
+# API
+OPENAI_BASE_URL = "https://api.openai.com/v1"
+OPENAI_API_KEY = "sk-your-key"
+LANGGRAPH_API_KEY = "your-secret-key"
+
+# Logging
+RUST_LOG = "info"
+LOG_FILE = "./logs/helve-tui.log"
+
+# Model
+MODEL = "gpt-4o"
+OPENAI_TEMPERATURE = "0.5"
+
+# Embedding (e.g. Zhipu)
+EMBEDDING_PROVIDER = "zhipuai"
+BIGMODEL_API_KEY = "your-bigmodel-key"
+EMBEDDING_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
+EMBEDDING_MODEL = "embedding-2"
+
+# Bot / streaming
+BOT_TOKEN = "your-bot-token"
+USE_STREAMING = "true"
+THINKING_MESSAGE = "Thinking..."
+
+# Memory
+MEMORY_STORE_TYPE = "sqlite"
+MEMORY_RECENT_LIMIT = "100"
+LANCE_DB_PATH = "./data/lancedb"
+MEMORY_SQLITE_PATH = "./data/memory.db"
+
+# ReAct / Exa
+EXA_API_KEY = "your-exa-key"
+MCP_EXA_USE_HTTP = "1"
+HELVE_MAX_MESSAGE_LEN = "100"

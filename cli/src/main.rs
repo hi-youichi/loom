@@ -7,7 +7,7 @@ mod logging;
 mod repl;
 
 use clap::{Parser, Subcommand};
-use loom_cli::{
+use cli::{
     LocalBackend, RemoteBackend, RunBackend, RunOutput, RunOptions, StreamOut, ToolShowFormat,
 };
 use repl::{run_one_turn, run_repl_loop};
@@ -39,7 +39,7 @@ struct Args {
     #[arg(long, value_name = "ID")]
     thread_id: Option<String>,
 
-    /// Verbose: log node enter/exit and graph execution
+    /// Print State info to stderr (node enter/exit, state after each step, flow)
     #[arg(short, long)]
     verbose: bool,
 
@@ -47,8 +47,8 @@ struct Args {
     #[arg(short, long)]
     interactive: bool,
 
-    /// Use local execution (default: remote)
-    #[arg(long)]
+    /// Use local execution (default). Use --no-local for remote WebSocket
+    #[arg(long, default_value_t = true)]
     local: bool,
 
     /// Remote WebSocket URL (default: ws://127.0.0.1:8080 or LOOM_REMOTE_URL)
@@ -282,7 +282,7 @@ struct GotArgs {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    dotenv::dotenv().ok();
+    config::load_and_apply("loom", None::<&std::path::Path>).ok();
     logging::init()?;
 
     let args = Args::parse();
@@ -300,7 +300,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // For remote backend, ensure server is running (unless --no-auto-start)
     if !args.local && resolve_auto_start(&args) {
         let url = resolve_remote_url(&args);
-        if let Err(e) = loom_cli::ensure_server_or_spawn(&url).await {
+        if let Err(e) = cli::ensure_server_or_spawn(&url).await {
             eprintln!("loom: {}", e);
             std::process::exit(1);
         }
