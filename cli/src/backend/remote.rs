@@ -1,18 +1,16 @@
 //! RemoteBackend: run agent via WebSocket.
 
+use super::RunOutput;
+use crate::ToolShowFormat;
 use async_trait::async_trait;
 use futures_util::{SinkExt, StreamExt};
 use loom::{
     AgentType, ClientRequest, Envelope, RunCmd, RunError, RunOptions, RunRequest, ServerResponse,
     ToolShowOutput, ToolShowRequest, ToolsListRequest,
 };
-use super::RunOutput;
-use crate::ToolShowFormat;
 use std::time::Duration;
 use tokio::net::TcpStream;
-use tokio_tungstenite::{
-    connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream,
-};
+use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 
 use super::RunBackend;
 
@@ -48,9 +46,9 @@ impl RemoteBackend {
         }
     }
 
-    fn run_request(id: &str, opts: &RunOptions, cmd: &RunCmd) -> ClientRequest {
+    fn run_request(opts: &RunOptions, cmd: &RunCmd) -> ClientRequest {
         ClientRequest::Run(RunRequest {
-            id: id.to_string(),
+            id: None,
             message: opts.message.clone(),
             agent: Self::cmd_to_agent(cmd),
             thread_id: opts.thread_id.clone(),
@@ -75,14 +73,7 @@ impl RunBackend for RemoteBackend {
         let ws = self.connect().await?;
         let (mut write, mut read) = ws.split();
 
-        let id = format!(
-            "req-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_millis()
-        );
-        let req = Self::run_request(&id, opts, cmd);
+        let req = Self::run_request(opts, cmd);
         let json = serde_json::to_string(&req).map_err(|e| RunError::Remote(e.to_string()))?;
         write
             .send(Message::Text(json))
@@ -92,13 +83,18 @@ impl RunBackend for RemoteBackend {
         let mut reply = None;
         let mut reply_envelope = None;
         let mut events: Vec<serde_json::Value> = Vec::new();
+        let mut session_id: Option<String> = None;
         let read_timeout = Duration::from_secs(READ_TIMEOUT_SECS);
         loop {
             let next = tokio::time::timeout(read_timeout, read.next()).await;
             let res = match next {
                 Ok(Some(r)) => r,
                 Ok(None) => break,
-                Err(_) => return Err(RunError::Remote("read timeout (no response from server)".to_string())),
+                Err(_) => {
+                    return Err(RunError::Remote(
+                        "read timeout (no response from server)".to_string(),
+                    ))
+                }
             };
             let msg = res.map_err(|e| RunError::Remote(e.to_string()))?;
             if !msg.is_text() {
@@ -108,7 +104,13 @@ impl RunBackend for RemoteBackend {
             let resp: ServerResponse =
                 serde_json::from_str(text).map_err(|e| RunError::Remote(e.to_string()))?;
             match resp {
-                ServerResponse::RunStreamEvent(r) if r.id == id => {
+                ServerResponse::RunStreamEvent(r) => {
+                    if session_id.is_none() {
+                        session_id = Some(r.id.clone());
+                    }
+                    if session_id.as_deref() != Some(r.id.as_str()) {
+                        continue;
+                    }
                     if let Some(ref out) = stream_out {
                         if let Ok(mut f) = out.lock() {
                             f(r.event);
@@ -117,7 +119,13 @@ impl RunBackend for RemoteBackend {
                         events.push(r.event);
                     }
                 }
-                ServerResponse::RunEnd(r) if r.id == id => {
+                ServerResponse::RunEnd(r) => {
+                    if session_id.is_none() {
+                        session_id = Some(r.id.clone());
+                    }
+                    if session_id.as_deref() != Some(r.id.as_str()) {
+                        continue;
+                    }
                     reply = Some(r.reply);
                     let (s, n, e) = (r.session_id, r.node_id, r.event_id);
                     reply_envelope = (s.is_some() || n.is_some() || e.is_some()).then(|| {
@@ -128,10 +136,18 @@ impl RunBackend for RemoteBackend {
                     });
                     break;
                 }
-                ServerResponse::Error(e) if e.id.as_deref() == Some(&id) => {
+                ServerResponse::Error(e) => {
+                    if let Some(err_id) = e.id.as_ref() {
+                        if session_id.is_none() {
+                            session_id = Some(err_id.clone());
+                        }
+                        if session_id.as_deref() == Some(err_id.as_str()) {
+                            return Err(RunError::Remote(e.error));
+                        }
+                        continue;
+                    }
                     return Err(RunError::Remote(e.error));
                 }
-                ServerResponse::Error(e) => return Err(RunError::Remote(e.error)),
                 _ => {}
             }
         }
@@ -259,7 +275,10 @@ impl RunBackend for RemoteBackend {
 mod tests {
     use super::*;
     use futures_util::{SinkExt, StreamExt};
-    use loom::{ErrorResponse, RunEndResponse, RunStreamEventResponse, ToolShowResponse, ToolSpec, ToolsListResponse};
+    use loom::{
+        ErrorResponse, RunEndResponse, RunStreamEventResponse, ToolShowResponse, ToolSpec,
+        ToolsListResponse,
+    };
     use serde_json::Value;
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
@@ -297,10 +316,10 @@ mod tests {
             display_max_len: 120,
             output_json: true,
         };
-        let req = RemoteBackend::run_request("req-1", &opts, &RunCmd::Tot);
+        let req = RemoteBackend::run_request(&opts, &RunCmd::Tot);
         match req {
             ClientRequest::Run(r) => {
-                assert_eq!(r.id, "req-1");
+                assert_eq!(r.id, None);
                 assert_eq!(r.message, "hello");
                 assert!(matches!(r.agent, AgentType::Tot));
                 assert_eq!(r.thread_id.as_deref(), Some("thread-1"));
@@ -340,19 +359,20 @@ mod tests {
             let req_msg = ws.next().await.unwrap().unwrap();
             let req_text = req_msg.to_text().unwrap();
             let req: ClientRequest = serde_json::from_str(req_text).unwrap();
-            let id = match req {
-                ClientRequest::Run(r) => r.id,
+            match req {
+                ClientRequest::Run(r) => assert_eq!(r.id, None),
                 _ => panic!("expected run request"),
-            };
+            }
+            let session_id = "run-0".to_string();
             let ev = ServerResponse::RunStreamEvent(RunStreamEventResponse {
-                id: id.clone(),
+                id: session_id.clone(),
                 event: serde_json::json!({"type":"node_enter","id":"think"}),
             });
             ws.send(Message::Text(serde_json::to_string(&ev).unwrap().into()))
                 .await
                 .unwrap();
             let end = ServerResponse::RunEnd(RunEndResponse {
-                id,
+                id: session_id,
                 reply: "done".to_string(),
                 usage: None,
                 total_usage: None,
@@ -395,19 +415,20 @@ mod tests {
             let req_msg = ws.next().await.unwrap().unwrap();
             let req_text = req_msg.to_text().unwrap();
             let req: ClientRequest = serde_json::from_str(req_text).unwrap();
-            let id = match req {
-                ClientRequest::Run(r) => r.id,
+            match req {
+                ClientRequest::Run(r) => assert_eq!(r.id, None),
                 _ => panic!("expected run request"),
-            };
+            }
+            let session_id = "run-0".to_string();
             let ev = ServerResponse::RunStreamEvent(RunStreamEventResponse {
-                id: id.clone(),
+                id: session_id.clone(),
                 event: serde_json::json!({"type":"usage","total_tokens":7}),
             });
             ws.send(Message::Text(serde_json::to_string(&ev).unwrap().into()))
                 .await
                 .unwrap();
             let end = ServerResponse::RunEnd(RunEndResponse {
-                id,
+                id: session_id,
                 reply: "ok".to_string(),
                 usage: None,
                 total_usage: None,
@@ -427,7 +448,10 @@ mod tests {
         })));
 
         let backend = RemoteBackend::new(format!("ws://{}", addr));
-        let out = backend.run(&opts(true), &RunCmd::React, sink).await.unwrap();
+        let out = backend
+            .run(&opts(true), &RunCmd::React, sink)
+            .await
+            .unwrap();
         assert!(matches!(out, RunOutput::Reply(reply, _) if reply == "ok"));
         assert_eq!(captured.lock().unwrap().len(), 1);
     }
@@ -442,12 +466,12 @@ mod tests {
             let req_msg = ws.next().await.unwrap().unwrap();
             let req_text = req_msg.to_text().unwrap();
             let req: ClientRequest = serde_json::from_str(req_text).unwrap();
-            let id = match req {
-                ClientRequest::Run(r) => r.id,
+            match req {
+                ClientRequest::Run(r) => assert_eq!(r.id, None),
                 _ => panic!("expected run request"),
-            };
+            }
             let err = ServerResponse::Error(ErrorResponse {
-                id: Some(id),
+                id: Some("run-0".to_string()),
                 error: "remote boom".to_string(),
             });
             ws.send(Message::Text(serde_json::to_string(&err).unwrap().into()))

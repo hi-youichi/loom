@@ -2,10 +2,11 @@
 
 use axum::extract::ws::WebSocket;
 use loom::{
-    run_agent, AnyStreamEvent, AgentType, EnvelopeState, ErrorResponse, RunCmd, RunEndResponse,
+    run_agent, AgentType, AnyStreamEvent, EnvelopeState, ErrorResponse, RunCmd, RunEndResponse,
     RunOptions, RunStreamEventResponse, ServerResponse,
 };
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
@@ -14,6 +15,7 @@ use super::response::send_response;
 /// Bounded buffer size for run stream events. Prevents unbounded memory growth when
 /// the websocket sender cannot keep up with the agent.
 const EVENT_QUEUE_CAPACITY: usize = 128;
+static NEXT_RUN_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Returns `Some(response)` when a single response should be sent by the caller;
 /// `None` when we already sent (streaming case).
@@ -21,7 +23,6 @@ pub(crate) async fn handle_run(
     r: loom::RunRequest,
     socket: &mut WebSocket,
 ) -> Result<Option<ServerResponse>, Box<dyn std::error::Error + Send + Sync>> {
-    let id = r.id.clone();
     let opts = RunOptions {
         message: r.message,
         working_folder: r.working_folder.map(PathBuf::from),
@@ -40,17 +41,12 @@ pub(crate) async fn handle_run(
         },
     };
 
-    let session_id = format!(
-        "run-{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    );
+    let run_seq = NEXT_RUN_SEQ.fetch_add(1, Ordering::Relaxed);
+    let session_id = format!("run-{}", run_seq);
+    let run_id = session_id.clone();
     let (tx, mut rx) = mpsc::channel::<serde_json::Value>(EVENT_QUEUE_CAPACITY);
     let opts = opts.clone();
     let cmd = cmd.clone();
-    let id_run = id.clone();
     let run_handle = tokio::spawn(async move {
         let state = Arc::new(Mutex::new(EnvelopeState::new(session_id)));
         let state_clone = state.clone();
@@ -79,7 +75,7 @@ pub(crate) async fn handle_run(
         if let Err(e) = send_response(
             socket,
             &ServerResponse::RunStreamEvent(RunStreamEventResponse {
-                id: id.clone(),
+                id: run_id.clone(),
                 event,
             }),
         )
@@ -104,18 +100,12 @@ pub(crate) async fn handle_run(
             let reply_env = state.lock().map(|s| s.reply_envelope()).ok();
             let (session_id, node_id, event_id) = reply_env
                 .as_ref()
-                .map(|e| {
-                    (
-                        e.session_id.clone(),
-                        e.node_id.clone(),
-                        e.event_id,
-                    )
-                })
+                .map(|e| (e.session_id.clone(), e.node_id.clone(), e.event_id))
                 .unwrap_or((None, None, None));
             send_response(
                 socket,
                 &ServerResponse::RunEnd(RunEndResponse {
-                    id: id_run,
+                    id: run_id.clone(),
                     reply,
                     usage: None,
                     total_usage: None,
@@ -127,10 +117,13 @@ pub(crate) async fn handle_run(
             .await?;
         }
         Err(e) => {
-            send_response(socket, &ServerResponse::Error(ErrorResponse {
-                id: Some(id_run),
-                error: e.to_string(),
-            }))
+            send_response(
+                socket,
+                &ServerResponse::Error(ErrorResponse {
+                    id: Some(run_id.clone()),
+                    error: e.to_string(),
+                }),
+            )
             .await?;
         }
     }

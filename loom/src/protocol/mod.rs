@@ -35,7 +35,8 @@ pub enum AgentType {
 /// Run request: execute one Agent run (streaming events + final RunEnd).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RunRequest {
-    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub message: String,
     pub agent: AgentType,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -179,7 +180,7 @@ mod tests {
     #[test]
     fn request_run_roundtrip() {
         let req = ClientRequest::Run(RunRequest {
-            id: "abc-123".to_string(),
+            id: Some("abc-123".to_string()),
             message: "hello".to_string(),
             agent: AgentType::React,
             thread_id: Some("t1".to_string()),

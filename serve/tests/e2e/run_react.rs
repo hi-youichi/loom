@@ -22,10 +22,9 @@ async fn e2e_run_react() {
     let (ws, _) = connect_async(&url).await.unwrap();
     let (mut write, mut read) = ws.split();
 
-    let id = "run-react-1".to_string();
     let req = ClientRequest::Run(RunRequest {
-        id: id.clone(),
-        message: "Reply with exactly the word: OK".to_string(),
+        id: None,
+        message: "Search the web for recent Rust programming language news and summarize one or two items in a short reply.".to_string(),
         agent: AgentType::React,
         thread_id: None,
         working_folder: None,
@@ -37,6 +36,8 @@ async fn e2e_run_react() {
         .await
         .unwrap();
 
+    eprintln!("e2e_run_react received:\n{}", received);
+
     match &resp {
         ServerResponse::RunEnd(r) => {
             assert!(
@@ -44,15 +45,19 @@ async fn e2e_run_react() {
                 "expected run_end with reply, received: {}",
                 received
             );
-            assert_eq!(r.id, id);
+            assert!(
+                r.id.starts_with("run-"),
+                "expected server-generated run id, got {:?}",
+                r.id
+            );
             assert!(
                 !r.reply.is_empty(),
                 "expected non-empty reply, got {:?}",
                 r.reply
             );
             assert!(
-                r.reply.to_uppercase().contains("OK"),
-                "expected reply to contain OK, got {:?}",
+                r.reply.to_lowercase().contains("rust"),
+                "expected reply to mention Rust (from web search), got {:?}",
                 r.reply
             );
         }
