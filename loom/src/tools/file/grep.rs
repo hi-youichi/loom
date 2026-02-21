@@ -167,7 +167,11 @@ impl Tool for GrepTool {
             .and_then(|v| v.as_str())
             .map(|s| s.trim())
             .unwrap_or(".");
-        let path_param = if path_param.is_empty() { "." } else { path_param };
+        let path_param = if path_param.is_empty() {
+            "."
+        } else {
+            path_param
+        };
 
         let search_root = resolve_path_under(self.working_folder.as_ref(), path_param)?;
         if !search_root.is_dir() {
@@ -183,9 +187,8 @@ impl Tool for GrepTool {
             .map(|s| s.trim())
             .filter(|s| !s.is_empty());
 
-        let include_patterns: Option<Vec<Pattern>> = include
-            .map(build_include_patterns)
-            .transpose()?;
+        let include_patterns: Option<Vec<Pattern>> =
+            include.map(build_include_patterns).transpose()?;
 
         let mut matches: Vec<Match> = Vec::new();
 

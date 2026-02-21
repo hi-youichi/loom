@@ -56,6 +56,14 @@ use crate::message::Message;
 use crate::state::ToolCall;
 use crate::stream::MessageChunk;
 
+/// Delta for one tool call from LLM streaming (for tool_call_chunk events).
+#[derive(Clone, Debug)]
+pub struct ToolCallDelta {
+    pub call_id: Option<String>,
+    pub name: Option<String>,
+    pub arguments_delta: String,
+}
+
 /// Token usage for one LLM call (prompt + completion).
 ///
 /// **Interaction**: Optional part of `LlmResponse`; emitted as `StreamEvent::Usage`
@@ -140,6 +148,21 @@ pub trait LlmClient: Send + Sync {
 
         Ok(response)
     }
+
+    /// Streaming variant with tool call delta support.
+    ///
+    /// Like `invoke_stream`, but additionally sends `ToolCallDelta` through
+    /// `tool_delta_tx` as the LLM produces tool call arguments incrementally.
+    ///
+    /// Default implementation delegates to `invoke_stream` (no deltas emitted).
+    async fn invoke_stream_with_tool_delta(
+        &self,
+        messages: &[Message],
+        chunk_tx: Option<mpsc::Sender<MessageChunk>>,
+        _tool_delta_tx: Option<mpsc::Sender<ToolCallDelta>>,
+    ) -> Result<LlmResponse, AgentError> {
+        self.invoke_stream(messages, chunk_tx).await
+    }
 }
 
 #[cfg(test)]
@@ -163,8 +186,14 @@ mod tests {
 
     #[test]
     fn tool_choice_mode_from_str_parses_known_values() {
-        assert_eq!("auto".parse::<ToolChoiceMode>().unwrap(), ToolChoiceMode::Auto);
-        assert_eq!("none".parse::<ToolChoiceMode>().unwrap(), ToolChoiceMode::None);
+        assert_eq!(
+            "auto".parse::<ToolChoiceMode>().unwrap(),
+            ToolChoiceMode::Auto
+        );
+        assert_eq!(
+            "none".parse::<ToolChoiceMode>().unwrap(),
+            ToolChoiceMode::None
+        );
         assert_eq!(
             "required".parse::<ToolChoiceMode>().unwrap(),
             ToolChoiceMode::Required

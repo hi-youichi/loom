@@ -25,10 +25,8 @@ where
             json!({ "Updates": { "node_id": node_id, "state": state_json } })
         }
         StreamEvent::Messages {
-            chunk:
-                MessageChunk { content },
-            metadata:
-                StreamMetadata { loom_node },
+            chunk: MessageChunk { content },
+            metadata: StreamMetadata { loom_node },
         } => json!({
             "Messages": {
                 "chunk": { "content": content },
@@ -57,7 +55,9 @@ where
             };
             json!({ "TaskEnd": { "node_id": node_id, "result": result_json } })
         }
-        StreamEvent::TotExpand { candidates } => json!({ "TotExpand": { "candidates": candidates } }),
+        StreamEvent::TotExpand { candidates } => {
+            json!({ "TotExpand": { "candidates": candidates } })
+        }
         StreamEvent::TotEvaluate { chosen, scores } => {
             json!({ "TotEvaluate": { "chosen": chosen, "scores": scores } })
         }
@@ -99,6 +99,45 @@ where
                 "total_tokens": total_tokens
             }
         }),
+        StreamEvent::ToolCallChunk {
+            call_id,
+            name,
+            arguments_delta,
+        } => json!({
+            "ToolCallChunk": { "call_id": call_id, "name": name, "arguments_delta": arguments_delta }
+        }),
+        StreamEvent::ToolCall {
+            call_id,
+            name,
+            arguments,
+        } => json!({
+            "ToolCall": { "call_id": call_id, "name": name, "arguments": arguments }
+        }),
+        StreamEvent::ToolStart { call_id, name } => json!({
+            "ToolStart": { "call_id": call_id, "name": name }
+        }),
+        StreamEvent::ToolOutput {
+            call_id,
+            name,
+            content,
+        } => json!({
+            "ToolOutput": { "call_id": call_id, "name": name, "content": content }
+        }),
+        StreamEvent::ToolEnd {
+            call_id,
+            name,
+            result,
+            is_error,
+        } => json!({
+            "ToolEnd": { "call_id": call_id, "name": name, "result": result, "is_error": is_error }
+        }),
+        StreamEvent::ToolApproval {
+            call_id,
+            name,
+            arguments,
+        } => json!({
+            "ToolApproval": { "call_id": call_id, "name": name, "arguments": arguments }
+        }),
     };
     Ok(obj)
 }
@@ -113,16 +152,19 @@ mod tests {
 
     #[test]
     fn task_start_format() {
-        let ev: StreamEvent<DummyState> =
-            StreamEvent::TaskStart { node_id: "think".to_string() };
+        let ev: StreamEvent<DummyState> = StreamEvent::TaskStart {
+            node_id: "think".to_string(),
+        };
         let v = stream_event_to_format_a(&ev).unwrap();
         assert_eq!(v["TaskStart"]["node_id"], "think");
     }
 
     #[test]
     fn task_end_ok_format() {
-        let ev: StreamEvent<DummyState> =
-            StreamEvent::TaskEnd { node_id: "act".to_string(), result: Ok(()) };
+        let ev: StreamEvent<DummyState> = StreamEvent::TaskEnd {
+            node_id: "act".to_string(),
+            result: Ok(()),
+        };
         let v = stream_event_to_format_a(&ev).unwrap();
         assert_eq!(v["TaskEnd"]["node_id"], "act");
         assert_eq!(v["TaskEnd"]["result"], "Ok");

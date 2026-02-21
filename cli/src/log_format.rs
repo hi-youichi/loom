@@ -50,7 +50,6 @@ impl TextWithSpanIds {
         self.with_target = on;
         self
     }
-
 }
 
 impl<S, N> FormatEvent<S, N> for TextWithSpanIds

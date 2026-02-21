@@ -186,15 +186,26 @@ mod tests {
                 name: "second",
                 entries: vec![("k2", "v2".to_string())],
             }));
-        let names: Vec<&str> = summary.sections().iter().map(|s| s.section_name()).collect();
+        let names: Vec<&str> = summary
+            .sections()
+            .iter()
+            .map(|s| s.section_name())
+            .collect();
         assert_eq!(names, vec!["first", "second"]);
     }
 
     #[test]
     fn build_config_summary_includes_all_four_sections() {
         let summary = build_config_summary(&DummySource);
-        let names: Vec<&str> = summary.sections().iter().map(|s| s.section_name()).collect();
-        assert_eq!(names, vec!["LLM config", "Memory config", "Tools", "Embedding"]);
+        let names: Vec<&str> = summary
+            .sections()
+            .iter()
+            .map(|s| s.section_name())
+            .collect();
+        assert_eq!(
+            names,
+            vec!["LLM config", "Memory config", "Tools", "Embedding"]
+        );
         summary.print_to_stderr();
     }
 

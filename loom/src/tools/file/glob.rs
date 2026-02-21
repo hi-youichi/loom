@@ -110,7 +110,11 @@ impl Tool for GlobTool {
             .and_then(|v| v.as_str())
             .map(|s| s.trim())
             .unwrap_or(".");
-        let path_param = if path_param.is_empty() { "." } else { path_param };
+        let path_param = if path_param.is_empty() {
+            "."
+        } else {
+            path_param
+        };
 
         let search_root = resolve_path_under(self.working_folder.as_ref(), path_param)?;
         if !search_root.is_dir() {
@@ -132,10 +136,8 @@ impl Tool for GlobTool {
             })
             .unwrap_or_default();
 
-        let main_pattern =
-            Pattern::new(pattern_str).map_err(|e| {
-                ToolSourceError::InvalidInput(format!("invalid glob pattern: {}", e))
-            })?;
+        let main_pattern = Pattern::new(pattern_str)
+            .map_err(|e| ToolSourceError::InvalidInput(format!("invalid glob pattern: {}", e)))?;
 
         let working_folder_canon = self.working_folder.canonicalize().map_err(|e| {
             ToolSourceError::InvalidInput(format!(
@@ -162,9 +164,7 @@ impl Tool for GlobTool {
                     return None;
                 }
                 if !include_patterns.is_empty()
-                    && !include_patterns
-                        .iter()
-                        .any(|p| p.matches(&rel_working_str))
+                    && !include_patterns.iter().any(|p| p.matches(&rel_working_str))
                 {
                     return None;
                 }

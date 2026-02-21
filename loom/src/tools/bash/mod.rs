@@ -189,13 +189,10 @@ async fn run_shell_command(
             .await
             .map_err(|e| ToolSourceError::Transport(format!("failed to run command: {}", e)))?
     } else {
-        tokio::time::timeout(
-            std::time::Duration::from_millis(timeout_ms),
-            cmd.output(),
-        )
-        .await
-        .map_err(|_| ToolSourceError::Transport("command timed out".to_string()))?
-        .map_err(|e| ToolSourceError::Transport(format!("failed to run command: {}", e)))?
+        tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), cmd.output())
+            .await
+            .map_err(|_| ToolSourceError::Transport("command timed out".to_string()))?
+            .map_err(|e| ToolSourceError::Transport(format!("failed to run command: {}", e)))?
     };
 
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
@@ -219,13 +216,10 @@ async fn run_shell_command(
             .await
             .map_err(|e| ToolSourceError::Transport(format!("failed to run command: {}", e)))?
     } else {
-        tokio::time::timeout(
-            std::time::Duration::from_millis(timeout_ms),
-            cmd.output(),
-        )
-        .await
-        .map_err(|_| ToolSourceError::Transport("command timed out".to_string()))?
-        .map_err(|e| ToolSourceError::Transport(format!("failed to run command: {}", e)))?
+        tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), cmd.output())
+            .await
+            .map_err(|_| ToolSourceError::Transport("command timed out".to_string()))?
+            .map_err(|e| ToolSourceError::Transport(format!("failed to run command: {}", e)))?
     };
 
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();

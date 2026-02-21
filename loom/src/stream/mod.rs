@@ -68,6 +68,8 @@ use tokio::sync::mpsc;
 pub struct ToolStreamWriter {
     /// Function that emits a custom event. Returns true if sent successfully.
     emit_fn: Arc<dyn Fn(Value) -> bool + Send + Sync>,
+    /// Function that emits a tool output chunk. Returns true if sent successfully.
+    output_fn: Option<Arc<dyn Fn(String) -> bool + Send + Sync>>,
 }
 
 impl ToolStreamWriter {
@@ -82,6 +84,18 @@ impl ToolStreamWriter {
     pub fn new(emit_fn: impl Fn(Value) -> bool + Send + Sync + 'static) -> Self {
         Self {
             emit_fn: Arc::new(emit_fn),
+            output_fn: None,
+        }
+    }
+
+    /// Creates a ToolStreamWriter with both custom emit and tool output callbacks.
+    pub fn new_with_output(
+        emit_fn: impl Fn(Value) -> bool + Send + Sync + 'static,
+        output_fn: impl Fn(String) -> bool + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            emit_fn: Arc::new(emit_fn),
+            output_fn: Some(Arc::new(output_fn)),
         }
     }
 
@@ -91,6 +105,7 @@ impl ToolStreamWriter {
     pub fn noop() -> Self {
         Self {
             emit_fn: Arc::new(|_| false),
+            output_fn: None,
         }
     }
 
@@ -115,6 +130,17 @@ impl ToolStreamWriter {
     /// ```
     pub fn emit_custom(&self, value: Value) -> bool {
         (self.emit_fn)(value)
+    }
+
+    /// Emits a tool output chunk (incremental text output during execution).
+    ///
+    /// Returns `true` if the event was sent successfully, `false` if no output
+    /// callback is configured or sending failed.
+    pub fn emit_output(&self, content: &str) -> bool {
+        self.output_fn
+            .as_ref()
+            .map(|f| f(content.to_string()))
+            .unwrap_or(false)
     }
 
     /// Checks if this writer is a no-op (always returns false).
@@ -144,6 +170,13 @@ impl Default for ToolStreamWriter {
     }
 }
 
+impl ToolStreamWriter {
+    /// Returns a clone of the emit_fn Arc for reuse when constructing per-tool writers.
+    pub fn emit_fn_clone(&self) -> Arc<dyn Fn(Value) -> bool + Send + Sync> {
+        self.emit_fn.clone()
+    }
+}
+
 /// Stream mode selector: which kinds of events to emit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum StreamMode {
@@ -159,6 +192,8 @@ pub enum StreamMode {
     Checkpoints,
     /// Emit task start/end events for each node execution.
     Tasks,
+    /// Emit tool lifecycle events (tool_call, tool_start, tool_output, tool_end, tool_approval).
+    Tools,
     /// Emit both checkpoints and tasks events (debug mode).
     Debug,
 }
@@ -233,10 +268,7 @@ where
     /// Forwards chunks from `chunk_rx` to `stream_tx` as `StreamEvent::Messages`.
     /// Completes when `chunk_rx` is closed (e.g. when invoke_stream drops its sender),
     /// and returns the number of chunks successfully read from `chunk_rx`.
-    pub async fn forward(
-        &self,
-        mut chunk_rx: mpsc::Receiver<MessageChunk>,
-    ) -> usize {
+    pub async fn forward(&self, mut chunk_rx: mpsc::Receiver<MessageChunk>) -> usize {
         let stream_tx = self.stream_tx.clone();
         let node_id = self.node_id.clone();
         let mut forwarded = 0usize;
@@ -350,6 +382,42 @@ where
         completion_tokens: u32,
         /// Total tokens (prompt + completion).
         total_tokens: u32,
+    },
+    /// LLM streaming tool call argument delta (Think node, per chunk).
+    ToolCallChunk {
+        call_id: Option<String>,
+        name: Option<String>,
+        arguments_delta: String,
+    },
+    /// LLM decided to call a tool (Think node, complete arguments).
+    ToolCall {
+        call_id: Option<String>,
+        name: String,
+        arguments: Value,
+    },
+    /// Tool execution started (Act node, before calling tool).
+    ToolStart {
+        call_id: Option<String>,
+        name: String,
+    },
+    /// Tool incremental output during execution (Act node).
+    ToolOutput {
+        call_id: Option<String>,
+        name: String,
+        content: String,
+    },
+    /// Tool execution finished (Act node, after tool returns).
+    ToolEnd {
+        call_id: Option<String>,
+        name: String,
+        result: String,
+        is_error: bool,
+    },
+    /// Tool requires user approval before execution (Act node).
+    ToolApproval {
+        call_id: Option<String>,
+        name: String,
+        arguments: Value,
     },
 }
 
@@ -653,6 +721,135 @@ where
         }
     }
 
+    fn is_tools_enabled(&self) -> bool {
+        self.modes.contains(&StreamMode::Tools) || self.modes.contains(&StreamMode::Debug)
+    }
+
+    pub async fn emit_tool_call_chunk(
+        &self,
+        call_id: Option<String>,
+        name: Option<String>,
+        arguments_delta: String,
+    ) -> bool {
+        if !self.is_tools_enabled() {
+            return false;
+        }
+        if let Some(tx) = &self.tx {
+            tx.send(StreamEvent::ToolCallChunk {
+                call_id,
+                name,
+                arguments_delta,
+            })
+            .await
+            .is_ok()
+        } else {
+            false
+        }
+    }
+
+    pub async fn emit_tool_call(
+        &self,
+        call_id: Option<String>,
+        name: String,
+        arguments: Value,
+    ) -> bool {
+        if !self.is_tools_enabled() {
+            return false;
+        }
+        if let Some(tx) = &self.tx {
+            tx.send(StreamEvent::ToolCall {
+                call_id,
+                name,
+                arguments,
+            })
+            .await
+            .is_ok()
+        } else {
+            false
+        }
+    }
+
+    pub async fn emit_tool_start(&self, call_id: Option<String>, name: String) -> bool {
+        if !self.is_tools_enabled() {
+            return false;
+        }
+        if let Some(tx) = &self.tx {
+            tx.send(StreamEvent::ToolStart { call_id, name })
+                .await
+                .is_ok()
+        } else {
+            false
+        }
+    }
+
+    pub async fn emit_tool_output(
+        &self,
+        call_id: Option<String>,
+        name: String,
+        content: String,
+    ) -> bool {
+        if !self.is_tools_enabled() {
+            return false;
+        }
+        if let Some(tx) = &self.tx {
+            tx.send(StreamEvent::ToolOutput {
+                call_id,
+                name,
+                content,
+            })
+            .await
+            .is_ok()
+        } else {
+            false
+        }
+    }
+
+    pub async fn emit_tool_end(
+        &self,
+        call_id: Option<String>,
+        name: String,
+        result: String,
+        is_error: bool,
+    ) -> bool {
+        if !self.is_tools_enabled() {
+            return false;
+        }
+        if let Some(tx) = &self.tx {
+            tx.send(StreamEvent::ToolEnd {
+                call_id,
+                name,
+                result,
+                is_error,
+            })
+            .await
+            .is_ok()
+        } else {
+            false
+        }
+    }
+
+    pub async fn emit_tool_approval(
+        &self,
+        call_id: Option<String>,
+        name: String,
+        arguments: Value,
+    ) -> bool {
+        if !self.is_tools_enabled() {
+            return false;
+        }
+        if let Some(tx) = &self.tx {
+            tx.send(StreamEvent::ToolApproval {
+                call_id,
+                name,
+                arguments,
+            })
+            .await
+            .is_ok()
+        } else {
+            false
+        }
+    }
+
     /// Returns the raw sender if available.
     ///
     /// This allows advanced use cases where direct access to the sender is needed.
@@ -687,15 +884,16 @@ mod tests {
     #[derive(Clone, Debug, PartialEq)]
     struct DummyState(i32);
 
-    /// **Scenario**: StreamMode seven variants are distinct, Eq, and usable in HashSet.
+    /// **Scenario**: StreamMode eight variants are distinct, Eq, and usable in HashSet.
     #[test]
-    fn stream_mode_four_variants_hashset_equality() {
+    fn stream_mode_variants_hashset_equality() {
         let v = StreamMode::Values;
         let u = StreamMode::Updates;
         let m = StreamMode::Messages;
         let c = StreamMode::Custom;
         let cp = StreamMode::Checkpoints;
         let t = StreamMode::Tasks;
+        let tl = StreamMode::Tools;
         let d = StreamMode::Debug;
         assert_eq!(v, StreamMode::Values);
         assert_ne!(v, u);
@@ -708,13 +906,16 @@ mod tests {
         assert_ne!(cp, c);
         assert_ne!(t, v);
         assert_ne!(t, cp);
+        assert_ne!(tl, t);
+        assert_ne!(tl, d);
         assert_ne!(d, t);
-        let set: HashSet<StreamMode> = [v, u, m, c, cp, t, d].into_iter().collect();
-        assert_eq!(set.len(), 7, "all seven modes distinct in HashSet");
+        let set: HashSet<StreamMode> = [v, u, m, c, cp, t, tl, d].into_iter().collect();
+        assert_eq!(set.len(), 8, "all eight modes distinct in HashSet");
         assert!(set.contains(&StreamMode::Values));
         assert!(set.contains(&StreamMode::Custom));
         assert!(set.contains(&StreamMode::Checkpoints));
         assert!(set.contains(&StreamMode::Tasks));
+        assert!(set.contains(&StreamMode::Tools));
         assert!(set.contains(&StreamMode::Debug));
     }
 
@@ -1048,6 +1249,7 @@ mod tests {
             StreamMode::Updates,
             StreamMode::Checkpoints,
             StreamMode::Tasks,
+            StreamMode::Tools,
             StreamMode::Debug,
         ]);
         let writer: StreamWriter<DummyState> = StreamWriter::new(None, modes);
@@ -1063,6 +1265,17 @@ mod tests {
         );
         assert!(!writer.emit_task_start("").await);
         assert!(!writer.emit_task_end("", Ok(())).await);
+        assert!(
+            !writer
+                .emit_tool_call(None, "".into(), serde_json::json!({}))
+                .await
+        );
+        assert!(!writer.emit_tool_start(None, "".into()).await);
+        assert!(
+            !writer
+                .emit_tool_end(None, "".into(), "".into(), false)
+                .await
+        );
     }
 
     /// **Scenario**: StreamWriter::emit_checkpoint only sends when Checkpoints mode is enabled.
@@ -1312,5 +1525,145 @@ mod tests {
         let writer = ToolStreamWriter::default();
         let sent = writer.emit_custom(serde_json::json!({}));
         assert!(!sent, "default writer should be noop");
+    }
+
+    /// **Scenario**: ToolStreamWriter::emit_output sends via output_fn.
+    #[test]
+    fn tool_stream_writer_emit_output() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let counter = Arc::new(AtomicUsize::new(0));
+        let cc = counter.clone();
+        let writer = ToolStreamWriter::new_with_output(
+            |_| true,
+            move |_content| {
+                cc.fetch_add(1, Ordering::SeqCst);
+                true
+            },
+        );
+        assert!(writer.emit_output("hello\n"));
+        assert!(writer.emit_output("world\n"));
+        assert_eq!(counter.load(Ordering::SeqCst), 2);
+    }
+
+    /// **Scenario**: ToolStreamWriter without output_fn returns false for emit_output.
+    #[test]
+    fn tool_stream_writer_no_output_fn() {
+        let writer = ToolStreamWriter::new(|_| true);
+        assert!(!writer.emit_output("data"));
+    }
+
+    // === StreamWriter tool emit tests ===
+
+    /// **Scenario**: StreamWriter::emit_tool_call only sends when Tools mode is enabled.
+    #[tokio::test]
+    async fn stream_writer_emit_tool_call_respects_mode() {
+        let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
+
+        let modes_without = HashSet::from_iter([StreamMode::Values]);
+        let writer = StreamWriter::new(Some(tx.clone()), modes_without);
+        let sent = writer
+            .emit_tool_call(Some("c1".into()), "bash".into(), serde_json::json!({}))
+            .await;
+        assert!(!sent, "should not send when Tools mode is disabled");
+
+        let modes_with = HashSet::from_iter([StreamMode::Tools]);
+        let writer = StreamWriter::new(Some(tx), modes_with);
+        let sent = writer
+            .emit_tool_call(
+                Some("c1".into()),
+                "bash".into(),
+                serde_json::json!({"cmd":"ls"}),
+            )
+            .await;
+        assert!(sent);
+
+        let event = rx.recv().await.expect("should receive event");
+        match event {
+            StreamEvent::ToolCall {
+                call_id,
+                name,
+                arguments,
+            } => {
+                assert_eq!(call_id, Some("c1".into()));
+                assert_eq!(name, "bash");
+                assert_eq!(arguments["cmd"], "ls");
+            }
+            _ => panic!("expected ToolCall event"),
+        }
+    }
+
+    /// **Scenario**: StreamWriter::emit_tool_start sends when Debug mode is enabled.
+    #[tokio::test]
+    async fn stream_writer_emit_tool_start_debug_mode() {
+        let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
+        let modes = HashSet::from_iter([StreamMode::Debug]);
+        let writer = StreamWriter::new(Some(tx), modes);
+        let sent = writer
+            .emit_tool_start(Some("c1".into()), "list_dir".into())
+            .await;
+        assert!(sent, "Debug mode should enable tool events");
+
+        let event = rx.recv().await.unwrap();
+        match event {
+            StreamEvent::ToolStart { name, .. } => assert_eq!(name, "list_dir"),
+            _ => panic!("expected ToolStart"),
+        }
+    }
+
+    /// **Scenario**: StreamWriter tool end with is_error.
+    #[tokio::test]
+    async fn stream_writer_emit_tool_end() {
+        let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
+        let modes = HashSet::from_iter([StreamMode::Tools]);
+        let writer = StreamWriter::new(Some(tx), modes);
+        let sent = writer
+            .emit_tool_end(Some("c1".into()), "bash".into(), "Error: fail".into(), true)
+            .await;
+        assert!(sent);
+
+        let event = rx.recv().await.unwrap();
+        match event {
+            StreamEvent::ToolEnd {
+                name,
+                result,
+                is_error,
+                ..
+            } => {
+                assert_eq!(name, "bash");
+                assert_eq!(result, "Error: fail");
+                assert!(is_error);
+            }
+            _ => panic!("expected ToolEnd"),
+        }
+    }
+
+    /// **Scenario**: StreamWriter emit_tool_approval.
+    #[tokio::test]
+    async fn stream_writer_emit_tool_approval() {
+        let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
+        let modes = HashSet::from_iter([StreamMode::Tools]);
+        let writer = StreamWriter::new(Some(tx), modes);
+        let sent = writer
+            .emit_tool_approval(
+                Some("c2".into()),
+                "delete_file".into(),
+                serde_json::json!({"path":"x"}),
+            )
+            .await;
+        assert!(sent);
+
+        let event = rx.recv().await.unwrap();
+        match event {
+            StreamEvent::ToolApproval {
+                call_id,
+                name,
+                arguments,
+            } => {
+                assert_eq!(call_id, Some("c2".into()));
+                assert_eq!(name, "delete_file");
+                assert_eq!(arguments["path"], "x");
+            }
+            _ => panic!("expected ToolApproval"),
+        }
     }
 }

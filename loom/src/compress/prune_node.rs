@@ -48,7 +48,10 @@ mod tests {
     #[tokio::test]
     async fn prune_node_with_prune_false_passes_through() {
         let node = PruneNode {
-            config: CompactionConfig { prune: false, ..Default::default() },
+            config: CompactionConfig {
+                prune: false,
+                ..Default::default()
+            },
         };
         let state = ReActState {
             messages: vec![Message::User("Tool x returned: y".to_string())],

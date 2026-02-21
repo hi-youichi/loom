@@ -4,12 +4,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::compress::{build_graph, CompactionConfig, CompressionGraphNode};
-use crate::runner_common::{self, load_from_checkpoint_or_build};
 use crate::error::AgentError;
-use crate::graph::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware, StateGraph, END, START};
+use crate::graph::{
+    CompilationError, CompiledStateGraph, LoggingNodeMiddleware, StateGraph, END, START,
+};
 use crate::helve::ApprovalPolicy;
 use crate::memory::{CheckpointError, Checkpointer, RunnableConfig, Store};
 use crate::message::Message;
+use crate::runner_common::{self, load_from_checkpoint_or_build};
 use crate::state::ReActState;
 use crate::stream::StreamEvent;
 use crate::tool_source::ToolSource;
@@ -36,10 +38,7 @@ pub async fn build_react_initial_state(
         user_message,
         async move {
             Ok(ReActState {
-                messages: vec![
-                    Message::system(prompt),
-                    Message::user(user_message_owned),
-                ],
+                messages: vec![Message::system(prompt), Message::user(user_message_owned)],
                 tool_calls: vec![],
                 tool_results: vec![],
                 turn_count: 0,

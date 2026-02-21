@@ -16,8 +16,13 @@ pub const TOOL_APPLY_PATCH: &str = "apply_patch";
 
 #[derive(Debug)]
 enum Hunk {
-    Add { path: String, contents: String },
-    Delete { path: String },
+    Add {
+        path: String,
+        contents: String,
+    },
+    Delete {
+        path: String,
+    },
     Update {
         path: String,
         move_path: Option<String>,
@@ -86,7 +91,10 @@ fn parse_patch(patch_text: &str) -> Result<Vec<Hunk>, String> {
                     i += 1;
                     let mut old_lines = Vec::new();
                     let mut new_lines = Vec::new();
-                    while i < lines.len() && !lines[i].trim().starts_with("@@") && !lines[i].trim().starts_with("***") {
+                    while i < lines.len()
+                        && !lines[i].trim().starts_with("@@")
+                        && !lines[i].trim().starts_with("***")
+                    {
                         let l = lines[i];
                         if l == "*** End of File" {
                             i += 1;
@@ -200,11 +208,19 @@ impl Tool for ApplyPatchTool {
                     if p.exists() {
                         if p.is_dir() {
                             std::fs::remove_dir_all(&p).map_err(|e| {
-                                ToolSourceError::Transport(format!("remove_dir {}: {}", p.display(), e))
+                                ToolSourceError::Transport(format!(
+                                    "remove_dir {}: {}",
+                                    p.display(),
+                                    e
+                                ))
                             })?;
                         } else {
                             std::fs::remove_file(&p).map_err(|e| {
-                                ToolSourceError::Transport(format!("remove_file {}: {}", p.display(), e))
+                                ToolSourceError::Transport(format!(
+                                    "remove_file {}: {}",
+                                    p.display(),
+                                    e
+                                ))
                             })?;
                         }
                         applied += 1;
@@ -251,7 +267,11 @@ impl Tool for ApplyPatchTool {
                             }
                         }
                         std::fs::rename(&p, &dest).map_err(|e| {
-                            ToolSourceError::Transport(format!("rename to {}: {}", dest.display(), e))
+                            ToolSourceError::Transport(format!(
+                                "rename to {}: {}",
+                                dest.display(),
+                                e
+                            ))
                         })?;
                     }
                     applied += 1;

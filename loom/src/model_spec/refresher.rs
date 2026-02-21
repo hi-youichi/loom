@@ -16,10 +16,7 @@ pub struct ResolverRefresher {
 
 impl ResolverRefresher {
     /// Create a refresher that will run every `interval`.
-    pub fn new(
-        cached: Arc<CachedResolver<ModelsDevResolver>>,
-        interval: Duration,
-    ) -> Self {
+    pub fn new(cached: Arc<CachedResolver<ModelsDevResolver>>, interval: Duration) -> Self {
         Self { cached, interval }
     }
 
@@ -72,8 +69,10 @@ mod tests {
             body: fixture_json(),
             calls: AtomicUsize::new(0),
         });
-        let resolver =
-            ModelsDevResolver::with_client("https://example.com/models.json".to_string(), client.clone());
+        let resolver = ModelsDevResolver::with_client(
+            "https://example.com/models.json".to_string(),
+            client.clone(),
+        );
         let cached = Arc::new(CachedResolver::new(resolver));
         let refresher = ResolverRefresher::new(cached.clone(), Duration::from_millis(10));
 

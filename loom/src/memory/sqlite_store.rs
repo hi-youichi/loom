@@ -494,7 +494,11 @@ mod tests {
 
     #[test]
     fn matches_condition_supports_prefix_suffix_and_wildcards() {
-        let ns = vec!["users".to_string(), "u1".to_string(), "memories".to_string()];
+        let ns = vec![
+            "users".to_string(),
+            "u1".to_string(),
+            "memories".to_string(),
+        ];
         assert!(SqliteStore::matches_condition(
             &ns,
             &MatchCondition::prefix(vec!["users".to_string(), "*".to_string()])
@@ -570,9 +574,18 @@ mod tests {
     async fn search_and_search_simple_apply_query_offset_and_limit() {
         let (store, _dir) = temp_store();
         let ns = vec!["u".to_string(), "mem".to_string()];
-        store.put(&ns, "alpha", &json!({"text":"hello"})).await.unwrap();
-        store.put(&ns, "beta", &json!({"text":"world"})).await.unwrap();
-        store.put(&ns, "gamma", &json!({"text":"hello again"})).await.unwrap();
+        store
+            .put(&ns, "alpha", &json!({"text":"hello"}))
+            .await
+            .unwrap();
+        store
+            .put(&ns, "beta", &json!({"text":"world"}))
+            .await
+            .unwrap();
+        store
+            .put(&ns, "gamma", &json!({"text":"hello again"}))
+            .await
+            .unwrap();
 
         let hits = store
             .search(
@@ -597,7 +610,10 @@ mod tests {
             .unwrap();
         assert!(offset_hits.is_empty());
 
-        let simple = store.search_simple(&ns, Some("beta"), Some(5)).await.unwrap();
+        let simple = store
+            .search_simple(&ns, Some("beta"), Some(5))
+            .await
+            .unwrap();
         assert_eq!(simple.len(), 1);
         assert_eq!(simple[0].key, "beta");
     }

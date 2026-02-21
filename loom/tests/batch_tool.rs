@@ -3,15 +3,11 @@
 mod init_logging;
 
 use loom::tool_source::{ToolSource, ToolSourceError};
-use loom::tools::{
-    BatchTool, ReadFileTool, Tool, AggregateToolSource, TOOL_BATCH,
-};
+use loom::tools::{AggregateToolSource, BatchTool, ReadFileTool, Tool, TOOL_BATCH};
 use serde_json::json;
 use std::sync::Arc;
 
-fn aggregate_with_read_and_batch(
-    dir: &tempfile::TempDir,
-) -> Arc<AggregateToolSource> {
+fn aggregate_with_read_and_batch(dir: &tempfile::TempDir) -> Arc<AggregateToolSource> {
     let wf = Arc::new(dir.path().canonicalize().unwrap());
     let agg = Arc::new(AggregateToolSource::new());
     agg.register_sync(Box::new(ReadFileTool::new(wf)));
@@ -88,9 +84,7 @@ async fn batch_tool_missing_calls_returns_error() {
 async fn batch_tool_empty_calls_returns_error() {
     let agg = Arc::new(AggregateToolSource::new());
     agg.register_sync(Box::new(BatchTool::new(Arc::clone(&agg))));
-    let result = agg
-        .call_tool(TOOL_BATCH, json!({ "calls": [] }))
-        .await;
+    let result = agg.call_tool(TOOL_BATCH, json!({ "calls": [] })).await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));
 }
@@ -100,10 +94,7 @@ async fn batch_tool_call_missing_tool_name_returns_error() {
     let dir = tempfile::tempdir().unwrap();
     let agg = aggregate_with_read_and_batch(&dir);
     let result = agg
-        .call_tool(
-            TOOL_BATCH,
-            json!({ "calls": [{ "parameters": {} }] }),
-        )
+        .call_tool(TOOL_BATCH, json!({ "calls": [{ "parameters": {} }] }))
         .await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));

@@ -2,9 +2,9 @@
 
 mod init_logging;
 
+use loom::tool_source::register_file_tools;
 use loom::tool_source::{ToolSource, ToolSourceError};
 use loom::tools::{AggregateToolSource, TOOL_APPLY_PATCH};
-use loom::tool_source::register_file_tools;
 use serde_json::json;
 
 fn aggregate_with_file_tools(dir: &tempfile::TempDir) -> AggregateToolSource {
@@ -76,9 +76,7 @@ async fn apply_patch_delete_file() {
 async fn apply_patch_missing_patch_text_returns_error() {
     let dir = tempfile::tempdir().unwrap();
     let agg = aggregate_with_file_tools(&dir);
-    let result = agg
-        .call_tool(TOOL_APPLY_PATCH, json!({}))
-        .await;
+    let result = agg.call_tool(TOOL_APPLY_PATCH, json!({})).await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));
 }

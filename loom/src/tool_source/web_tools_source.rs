@@ -232,9 +232,7 @@ mod tests {
     async fn web_tools_source_trait_methods_delegate_to_aggregate_source() {
         let aggregate = AggregateToolSource::new();
         aggregate.register_async(Box::new(DummyTool)).await;
-        let source = WebToolsSource {
-            _source: aggregate,
-        };
+        let source = WebToolsSource { _source: aggregate };
 
         let listed = source.list_tools().await.unwrap();
         assert_eq!(listed.len(), 1);

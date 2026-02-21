@@ -82,10 +82,14 @@ impl Tool for MultieditTool {
         let edits = args
             .get("edits")
             .and_then(|v| v.as_array())
-            .ok_or_else(|| ToolSourceError::InvalidInput("missing or invalid edits array".to_string()))?;
+            .ok_or_else(|| {
+                ToolSourceError::InvalidInput("missing or invalid edits array".to_string())
+            })?;
 
         if edits.is_empty() {
-            return Err(ToolSourceError::InvalidInput("edits must not be empty".to_string()));
+            return Err(ToolSourceError::InvalidInput(
+                "edits must not be empty".to_string(),
+            ));
         }
 
         let mut content = if path.exists() && !path.is_dir() {
@@ -101,8 +105,14 @@ impl Tool for MultieditTool {
             let first = edits[0].as_object().ok_or_else(|| {
                 ToolSourceError::InvalidInput("each edit must be an object".to_string())
             })?;
-            let old = first.get("oldString").and_then(|v| v.as_str()).unwrap_or("");
-            let new = first.get("newString").and_then(|v| v.as_str()).unwrap_or("");
+            let old = first
+                .get("oldString")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let new = first
+                .get("newString")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             if !old.is_empty() {
                 return Err(ToolSourceError::InvalidInput(
                     "file does not exist; first edit must have empty oldString with newString as full content".to_string(),
@@ -122,7 +132,10 @@ impl Tool for MultieditTool {
                 })?;
                 let old_s = obj.get("oldString").and_then(|v| v.as_str()).unwrap_or("");
                 let new_s = obj.get("newString").and_then(|v| v.as_str()).unwrap_or("");
-                let replace_all = obj.get("replaceAll").and_then(|v| v.as_bool()).unwrap_or(false);
+                let replace_all = obj
+                    .get("replaceAll")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 if old_s == new_s {
                     return Err(ToolSourceError::InvalidInput(format!(
                         "edit {}: oldString and newString must differ",
@@ -132,9 +145,8 @@ impl Tool for MultieditTool {
                 new_content = edit_replace(&new_content, old_s, new_s, replace_all)
                     .map_err(|e| ToolSourceError::InvalidInput(format!("edit {}: {}", i + 1, e)))?;
             }
-            std::fs::write(&path, &new_content).map_err(|e| {
-                ToolSourceError::Transport(format!("failed to write file: {}", e))
-            })?;
+            std::fs::write(&path, &new_content)
+                .map_err(|e| ToolSourceError::Transport(format!("failed to write file: {}", e)))?;
             return Ok(ToolCallContent {
                 text: format!("Created file with {} edit(s).", edits.len()),
             });
@@ -146,7 +158,10 @@ impl Tool for MultieditTool {
             })?;
             let old_s = obj.get("oldString").and_then(|v| v.as_str()).unwrap_or("");
             let new_s = obj.get("newString").and_then(|v| v.as_str()).unwrap_or("");
-            let replace_all = obj.get("replaceAll").and_then(|v| v.as_bool()).unwrap_or(false);
+            let replace_all = obj
+                .get("replaceAll")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             if old_s == new_s {
                 return Err(ToolSourceError::InvalidInput(format!(
                     "edit {}: oldString and newString must differ",

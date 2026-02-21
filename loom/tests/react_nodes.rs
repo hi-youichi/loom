@@ -15,7 +15,7 @@ use loom::{
     stream::{StreamEvent, StreamMode},
     tool_source::FileToolSource,
     ActNode, LlmUsage, Message, MockLlm, MockToolSource, Next, Node, ObserveNode, ReActState,
-    STEP_PROGRESS_EVENT_TYPE, ThinkNode, ToolCall, ToolResult,
+    ThinkNode, ToolCall, ToolResult, STEP_PROGRESS_EVENT_TYPE,
 };
 use tokio::sync::mpsc;
 
@@ -175,10 +175,7 @@ async fn think_node_usage_merge_some_plus_some() {
         out.total_usage.as_ref().map(|u| u.total_tokens),
         Some(15 + 28)
     );
-    assert_eq!(
-        out.total_usage.as_ref().map(|u| u.prompt_tokens),
-        Some(30)
-    );
+    assert_eq!(out.total_usage.as_ref().map(|u| u.prompt_tokens), Some(30));
 }
 
 #[tokio::test]
@@ -195,20 +192,21 @@ async fn think_node_fallback_when_empty_content_and_no_tools() {
         total_usage: None,
         message_count_after_last_think: None,
     };
-    let (out, _) = node.run_with_context(
-        state,
-        &RunContext::<ReActState> {
-            config: RunnableConfig::default(),
-            stream_tx: None,
-            stream_mode: HashSet::new(),
-            managed_values: Default::default(),
-            store: None,
-            previous: None,
-            runtime_context: None,
-        },
-    )
-    .await
-    .unwrap();
+    let (out, _) = node
+        .run_with_context(
+            state,
+            &RunContext::<ReActState> {
+                config: RunnableConfig::default(),
+                stream_tx: None,
+                stream_mode: HashSet::new(),
+                managed_values: Default::default(),
+                store: None,
+                previous: None,
+                runtime_context: None,
+            },
+        )
+        .await
+        .unwrap();
     let expected = "No text response from the model. Please try again or check the API.";
     assert!(matches!(&out.messages[1], Message::Assistant(s) if s == expected));
 }
@@ -245,7 +243,11 @@ async fn think_node_fallback_streaming_emits_messages_event() {
     }
     let expected = "No text response from the model. Please try again or check the API.";
     assert!(matches!(&out.messages[1], Message::Assistant(s) if s == expected));
-    assert_eq!(events.len(), 1, "should emit one Messages event for fallback");
+    assert_eq!(
+        events.len(),
+        1,
+        "should emit one Messages event for fallback"
+    );
     match &events[0] {
         StreamEvent::Messages { chunk, metadata } => {
             assert_eq!(chunk.content, expected);
@@ -262,7 +264,9 @@ async fn think_node_stream_emits_usage_when_available() {
         completion_tokens: 5,
         total_tokens: 15,
     };
-    let llm = MockLlm::with_no_tool_calls("Hello").with_usage(usage).with_stream_by_char();
+    let llm = MockLlm::with_no_tool_calls("Hello")
+        .with_usage(usage)
+        .with_stream_by_char();
     let node = ThinkNode::new(Arc::new(llm));
     let state = ReActState {
         messages: vec![Message::user("Hi")],

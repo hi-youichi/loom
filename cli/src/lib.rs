@@ -13,4 +13,6 @@ pub use backend::{
 };
 pub use loom::Envelope;
 pub use run::{run_agent_wrapper as run_agent, RunAgentResult, RunCmd, RunError, RunOptions};
-pub use tool_cmd::{format_tools_list, format_tool_show_output, list_tools, show_tool, ToolShowFormat};
+pub use tool_cmd::{
+    format_tool_show_output, format_tools_list, list_tools, show_tool, ToolShowFormat,
+};

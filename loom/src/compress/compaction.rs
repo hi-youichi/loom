@@ -35,8 +35,8 @@ pub fn prune(messages: Vec<Message>, config: &CompactionConfig) -> Vec<Message> 
     // Only apply pruning if we would remove at least this many tokens (avoids tiny, frequent edits)
     let min = config.prune_minimum.unwrap_or(20_000);
 
-    let mut total: u32 = 0;       // accumulated tool-result tokens (newest to oldest)
-    let mut pruned: u32 = 0;      // total tokens marked for pruning
+    let mut total: u32 = 0; // accumulated tool-result tokens (newest to oldest)
+    let mut pruned: u32 = 0; // total tokens marked for pruning
     let mut to_prune = Vec::new(); // indices of messages to replace with placeholder
 
     // Walk from newest to oldest; once total exceeds keep, mark older tool results for pruning
@@ -89,10 +89,7 @@ pub async fn compact(
     let content = response.content;
 
     // Prepend one System message with the summary, then the recent messages
-    let summary = Message::System(format!(
-        "[Summary of earlier conversation]: {}",
-        content
-    ));
+    let summary = Message::System(format!("[Summary of earlier conversation]: {}", content));
     let mut out = vec![summary];
     out.extend(recent.iter().cloned());
     Ok(out)
@@ -193,8 +190,8 @@ mod tests {
         };
         let msgs = vec![
             Message::User("user".to_string()),
-            tool_result_msg("old", "12345678901234567890"),  // "Tool old returned: " + 20 chars
-            tool_result_msg("new", "abcdefghijabcdefghij"),  // "Tool new returned: " + 20 chars
+            tool_result_msg("old", "12345678901234567890"), // "Tool old returned: " + 20 chars
+            tool_result_msg("new", "abcdefghijabcdefghij"), // "Tool new returned: " + 20 chars
         ];
         let out = prune(msgs, &config);
         assert_eq!(out.len(), 3);

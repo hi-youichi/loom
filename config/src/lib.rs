@@ -42,10 +42,7 @@ pub fn load_and_apply(app_name: &str, override_dir: Option<&Path>) -> Result<(),
         if std::env::var(&key).is_ok() {
             continue; // existing env wins
         }
-        let value = dotenv_map
-            .get(&key)
-            .or_else(|| xdg_map.get(&key))
-            .cloned();
+        let value = dotenv_map.get(&key).or_else(|| xdg_map.get(&key)).cloned();
         if let Some(v) = value {
             std::env::set_var(&key, v);
         }

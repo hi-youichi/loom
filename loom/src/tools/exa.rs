@@ -37,7 +37,10 @@ impl ExaSearchParams {
         );
         if self.request_highlights {
             let mut hi = serde_json::map::Map::new();
-            hi.insert("maxCharacters".to_string(), json!(self.highlights_max_chars.unwrap_or(2000)));
+            hi.insert(
+                "maxCharacters".to_string(),
+                json!(self.highlights_max_chars.unwrap_or(2000)),
+            );
             contents.insert("highlights".to_string(), json!(hi));
         }
 
@@ -110,7 +113,10 @@ fn format_results(value: &serde_json::Value, text_max_per_result: usize) -> Stri
         .unwrap_or(&[]);
     let mut s = String::new();
     for (i, r) in results.iter().enumerate() {
-        let title = r.get("title").and_then(|t| t.as_str()).unwrap_or("(no title)");
+        let title = r
+            .get("title")
+            .and_then(|t| t.as_str())
+            .unwrap_or("(no title)");
         let url = r.get("url").and_then(|u| u.as_str()).unwrap_or("");
         s.push_str(&format!("[{}] {}\n  URL: {}\n", i + 1, title, url));
 
@@ -118,11 +124,7 @@ fn format_results(value: &serde_json::Value, text_max_per_result: usize) -> Stri
         let highlights = r
             .get("highlights")
             .and_then(|h| h.as_array())
-            .map(|a| {
-                a.iter()
-                    .filter_map(|v| v.as_str())
-                    .collect::<Vec<_>>()
-            })
+            .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
             .unwrap_or_default();
         if !highlights.is_empty() {
             for line in &highlights {
@@ -145,7 +147,13 @@ fn format_results(value: &serde_json::Value, text_max_per_result: usize) -> Stri
 
         // Fallback or supplement: full text (truncated)
         let text = r.get("text").and_then(|t| t.as_str()).unwrap_or("");
-        if !text.is_empty() && highlights.is_empty() && r.get("summary").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
+        if !text.is_empty()
+            && highlights.is_empty()
+            && r.get("summary")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .is_empty()
+        {
             let excerpt = if text.len() > text_max_per_result {
                 format!("{}...", &text[..text_max_per_result])
             } else {
@@ -228,17 +236,29 @@ impl Tool for ExaWebsearchTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolSourceError::InvalidInput("missing query".to_string()))?
             .to_string();
-        let num_results = args.get("numResults").and_then(|v| v.as_u64()).unwrap_or(10);
+        let num_results = args
+            .get("numResults")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(10);
         let search_type = args
             .get("type")
             .and_then(|v| v.as_str())
             .unwrap_or("auto")
             .to_string();
-        let category = args.get("category").and_then(|v| v.as_str()).map(String::from);
+        let category = args
+            .get("category")
+            .and_then(|v| v.as_str())
+            .map(String::from);
         let include_domains = parse_optional_string_array(&args, "includeDomains");
         let exclude_domains = parse_optional_string_array(&args, "excludeDomains");
-        let start_published_date = args.get("startPublishedDate").and_then(|v| v.as_str()).map(String::from);
-        let end_published_date = args.get("endPublishedDate").and_then(|v| v.as_str()).map(String::from);
+        let start_published_date = args
+            .get("startPublishedDate")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let end_published_date = args
+            .get("endPublishedDate")
+            .and_then(|v| v.as_str())
+            .map(String::from);
 
         let params = ExaSearchParams {
             query,
@@ -307,7 +327,10 @@ impl Tool for ExaCodesearchTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolSourceError::InvalidInput("missing query".to_string()))?
             .to_string();
-        let num_results = args.get("numResults").and_then(|v| v.as_u64()).unwrap_or(10);
+        let num_results = args
+            .get("numResults")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(10);
         let include_domains = parse_optional_string_array(&args, "includeDomains");
 
         let params = ExaSearchParams {
@@ -454,7 +477,11 @@ mod tests {
         let code = ExaCodesearchTool::new("k".to_string());
         assert_eq!(web.name(), "websearch");
         assert_eq!(code.name(), "codesearch");
-        assert!(web.spec().description.unwrap_or_default().contains("Search the web"));
+        assert!(web
+            .spec()
+            .description
+            .unwrap_or_default()
+            .contains("Search the web"));
         assert!(code.spec().description.unwrap_or_default().contains("code"));
 
         let rt = tokio::runtime::Runtime::new().unwrap();

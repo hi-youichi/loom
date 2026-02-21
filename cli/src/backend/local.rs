@@ -1,8 +1,8 @@
 //! LocalBackend: run agent in-process.
 
+use crate::{list_tools, run_agent, show_tool, ToolShowFormat};
 use async_trait::async_trait;
 use loom::{RunCmd, RunError, RunOptions};
-use crate::{list_tools, run_agent, show_tool, ToolShowFormat};
 
 use super::RunBackend;
 

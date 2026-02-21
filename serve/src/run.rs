@@ -2,8 +2,8 @@
 
 use axum::extract::ws::WebSocket;
 use loom::{
-    run_agent, AgentType, AnyStreamEvent, EnvelopeState, ErrorResponse, RunCmd, RunEndResponse,
-    RunOptions, RunStreamEventResponse, ServerResponse,
+    run_agent, AgentType, AnyStreamEvent, EnvelopeState, ErrorResponse, ProtocolEventEnvelope,
+    RunCmd, RunEndResponse, RunOptions, RunStreamEventResponse, ServerResponse,
 };
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -44,7 +44,7 @@ pub(crate) async fn handle_run(
     let run_seq = NEXT_RUN_SEQ.fetch_add(1, Ordering::Relaxed);
     let session_id = format!("run-{}", run_seq);
     let run_id = session_id.clone();
-    let (tx, mut rx) = mpsc::channel::<serde_json::Value>(EVENT_QUEUE_CAPACITY);
+    let (tx, mut rx) = mpsc::channel::<ProtocolEventEnvelope>(EVENT_QUEUE_CAPACITY);
     let opts = opts.clone();
     let cmd = cmd.clone();
     let run_handle = tokio::spawn(async move {
@@ -52,7 +52,7 @@ pub(crate) async fn handle_run(
         let state_clone = state.clone();
         let on_event = Box::new(move |ev: AnyStreamEvent| {
             let v = match state_clone.lock() {
-                Ok(mut s) => ev.to_protocol_format(&mut *s),
+                Ok(mut s) => ev.to_protocol_event(&mut *s),
                 Err(_) => return,
             };
             let v = match v {

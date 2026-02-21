@@ -7,9 +7,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
+use crate::agent::react::{ActNode, HandleToolErrors, ObserveNode, ThinkNode};
 use crate::error::AgentError;
 use crate::graph::Next;
-use crate::agent::react::{ActNode, HandleToolErrors, ObserveNode, ThinkNode};
 use crate::Node;
 use crate::{helve::ApprovalPolicy, tool_source::ToolSource};
 

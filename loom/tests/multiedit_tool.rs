@@ -2,9 +2,9 @@
 
 mod init_logging;
 
+use loom::tool_source::register_file_tools;
 use loom::tool_source::{ToolSource, ToolSourceError};
 use loom::tools::{AggregateToolSource, TOOL_MULTIEDIT};
-use loom::tool_source::register_file_tools;
 use serde_json::json;
 
 fn aggregate_with_file_tools(dir: &tempfile::TempDir) -> AggregateToolSource {
@@ -79,10 +79,7 @@ async fn multiedit_empty_edits_returns_error() {
     std::fs::write(dir.path().join("f.txt"), "x").unwrap();
     let agg = aggregate_with_file_tools(&dir);
     let result = agg
-        .call_tool(
-            TOOL_MULTIEDIT,
-            json!({ "path": "f.txt", "edits": [] }),
-        )
+        .call_tool(TOOL_MULTIEDIT, json!({ "path": "f.txt", "edits": [] }))
         .await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));
@@ -121,5 +118,8 @@ async fn multiedit_old_string_not_found_returns_error_no_write() {
         .await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));
-    assert_eq!(std::fs::read_to_string(dir.path().join("f.txt")).unwrap(), "original");
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("f.txt")).unwrap(),
+        "original"
+    );
 }

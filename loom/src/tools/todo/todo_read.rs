@@ -61,10 +61,7 @@ impl Tool for TodoReadTool {
         } else {
             vec![]
         };
-        let incomplete = todos
-            .iter()
-            .filter(|t| t.status != "completed")
-            .count();
+        let incomplete = todos.iter().filter(|t| t.status != "completed").count();
         let output = serde_json::to_string_pretty(&todos).unwrap_or_else(|_| "[]".to_string());
         Ok(ToolCallContent {
             text: format!("{} todos\n{}", incomplete, output),
@@ -93,8 +90,14 @@ mod tests {
         let tool = TodoReadTool::new(Arc::new(std::path::PathBuf::from("/")));
         let spec = tool.spec();
         assert_eq!(spec.name, TOOL_TODO_READ);
-        assert!(spec.description.as_ref().map_or(false, |d| d.contains("todo")));
-        let required = spec.input_schema.get("required").and_then(serde_json::Value::as_array);
+        assert!(spec
+            .description
+            .as_ref()
+            .map_or(false, |d| d.contains("todo")));
+        let required = spec
+            .input_schema
+            .get("required")
+            .and_then(serde_json::Value::as_array);
         assert!(required.map_or(true, |a| a.is_empty()));
     }
 

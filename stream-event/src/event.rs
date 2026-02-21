@@ -1,7 +1,7 @@
 //! Protocol-level event types (protocol_spec §4: type + payload).
 //! State-carrying variants use `serde_json::Value`; the bridge in loom serializes `S` into that.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Protocol event: wire shape for one stream event (type + payload).
@@ -11,23 +11,35 @@ use serde_json::Value;
 /// - `id` in payload means node name (e.g. "think", "act")
 /// - `node_id` in envelope means node-run span id
 /// - `got_expand` keeps payload field name `node_id` by protocol definition
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProtocolEvent {
-    NodeEnter { id: String },
+    NodeEnter {
+        id: String,
+    },
     NodeExit {
         id: String,
         result: Value,
     },
-    MessageChunk { content: String, id: String },
+    MessageChunk {
+        content: String,
+        id: String,
+    },
     Usage {
         prompt_tokens: u32,
         completion_tokens: u32,
         total_tokens: u32,
     },
-    Values { state: Value },
-    Updates { id: String, state: Value },
-    Custom { value: Value },
+    Values {
+        state: Value,
+    },
+    Updates {
+        id: String,
+        state: Value,
+    },
+    Custom {
+        value: Value,
+    },
     Checkpoint {
         checkpoint_id: String,
         timestamp: String,
@@ -36,24 +48,67 @@ pub enum ProtocolEvent {
         thread_id: Option<String>,
         checkpoint_ns: Option<String>,
     },
-    TotExpand { candidates: Vec<String> },
-    TotEvaluate { chosen: usize, scores: Vec<f32> },
-    TotBacktrack { reason: String, to_depth: u32 },
+    TotExpand {
+        candidates: Vec<String>,
+    },
+    TotEvaluate {
+        chosen: usize,
+        scores: Vec<f32>,
+    },
+    TotBacktrack {
+        reason: String,
+        to_depth: u32,
+    },
     GotPlan {
         node_count: usize,
         edge_count: usize,
         node_ids: Vec<String>,
     },
-    GotNodeStart { id: String },
+    GotNodeStart {
+        id: String,
+    },
     GotNodeComplete {
         id: String,
         result_summary: String,
     },
-    GotNodeFailed { id: String, error: String },
+    GotNodeFailed {
+        id: String,
+        error: String,
+    },
     GotExpand {
         node_id: String,
         nodes_added: usize,
         edges_added: usize,
+    },
+    ToolCallChunk {
+        call_id: Option<String>,
+        name: Option<String>,
+        arguments_delta: String,
+    },
+    ToolCall {
+        call_id: Option<String>,
+        name: String,
+        arguments: Value,
+    },
+    ToolStart {
+        call_id: Option<String>,
+        name: String,
+    },
+    ToolOutput {
+        call_id: Option<String>,
+        name: String,
+        content: String,
+    },
+    ToolEnd {
+        call_id: Option<String>,
+        name: String,
+        result: String,
+        is_error: bool,
+    },
+    ToolApproval {
+        call_id: Option<String>,
+        name: String,
+        arguments: Value,
     },
 }
 
@@ -96,5 +151,129 @@ mod tests {
         assert_eq!(value["type"], "got_expand");
         assert_eq!(value["node_id"], "n-3");
         assert!(value.get("id").is_none());
+    }
+
+    #[test]
+    fn tool_call_chunk_format() {
+        let event = ProtocolEvent::ToolCallChunk {
+            call_id: Some("call_abc".to_string()),
+            name: Some("bash".to_string()),
+            arguments_delta: "{\"cmd\":\"cargo".to_string(),
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "tool_call_chunk");
+        assert_eq!(v["call_id"], "call_abc");
+        assert_eq!(v["name"], "bash");
+        assert_eq!(v["arguments_delta"], "{\"cmd\":\"cargo");
+    }
+
+    #[test]
+    fn tool_call_chunk_null_name_on_subsequent_delta() {
+        let event = ProtocolEvent::ToolCallChunk {
+            call_id: Some("call_abc".to_string()),
+            name: None,
+            arguments_delta: " build\"}".to_string(),
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "tool_call_chunk");
+        assert!(v["name"].is_null());
+        assert_eq!(v["arguments_delta"], " build\"}");
+    }
+
+    #[test]
+    fn tool_call_format() {
+        let event = ProtocolEvent::ToolCall {
+            call_id: Some("call_abc".to_string()),
+            name: "list_dir".to_string(),
+            arguments: json!({"path": "./src"}),
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "tool_call");
+        assert_eq!(v["call_id"], "call_abc");
+        assert_eq!(v["name"], "list_dir");
+        assert_eq!(v["arguments"]["path"], "./src");
+    }
+
+    #[test]
+    fn tool_call_without_call_id() {
+        let event = ProtocolEvent::ToolCall {
+            call_id: None,
+            name: "bash".to_string(),
+            arguments: json!({"cmd": "ls"}),
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "tool_call");
+        assert!(v["call_id"].is_null());
+        assert_eq!(v["name"], "bash");
+    }
+
+    #[test]
+    fn tool_start_format() {
+        let event = ProtocolEvent::ToolStart {
+            call_id: Some("call_1".to_string()),
+            name: "list_dir".to_string(),
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "tool_start");
+        assert_eq!(v["call_id"], "call_1");
+        assert_eq!(v["name"], "list_dir");
+    }
+
+    #[test]
+    fn tool_output_format() {
+        let event = ProtocolEvent::ToolOutput {
+            call_id: Some("call_1".to_string()),
+            name: "bash".to_string(),
+            content: "Compiling loom v0.1.0\n".to_string(),
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "tool_output");
+        assert_eq!(v["call_id"], "call_1");
+        assert_eq!(v["name"], "bash");
+        assert_eq!(v["content"], "Compiling loom v0.1.0\n");
+    }
+
+    #[test]
+    fn tool_end_success_format() {
+        let event = ProtocolEvent::ToolEnd {
+            call_id: Some("call_1".to_string()),
+            name: "list_dir".to_string(),
+            result: "main.rs, lib.rs (2 entries)".to_string(),
+            is_error: false,
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "tool_end");
+        assert_eq!(v["call_id"], "call_1");
+        assert_eq!(v["name"], "list_dir");
+        assert_eq!(v["result"], "main.rs, lib.rs (2 entries)");
+        assert_eq!(v["is_error"], false);
+    }
+
+    #[test]
+    fn tool_end_error_format() {
+        let event = ProtocolEvent::ToolEnd {
+            call_id: Some("call_2".to_string()),
+            name: "bash".to_string(),
+            result: "Error: command not found".to_string(),
+            is_error: true,
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "tool_end");
+        assert_eq!(v["is_error"], true);
+        assert_eq!(v["result"], "Error: command not found");
+    }
+
+    #[test]
+    fn tool_approval_format() {
+        let event = ProtocolEvent::ToolApproval {
+            call_id: Some("call_2".to_string()),
+            name: "delete_file".to_string(),
+            arguments: json!({"path": "./important.txt"}),
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "tool_approval");
+        assert_eq!(v["call_id"], "call_2");
+        assert_eq!(v["name"], "delete_file");
+        assert_eq!(v["arguments"]["path"], "./important.txt");
     }
 }

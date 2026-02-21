@@ -111,12 +111,15 @@ impl RunBackend for RemoteBackend {
                     if session_id.as_deref() != Some(r.id.as_str()) {
                         continue;
                     }
+                    let event_value = r.event.to_value().map_err(|e| {
+                        RunError::Remote(format!("invalid run_stream_event payload: {}", e))
+                    })?;
                     if let Some(ref out) = stream_out {
                         if let Ok(mut f) = out.lock() {
-                            f(r.event);
+                            f(event_value);
                         }
                     } else {
-                        events.push(r.event);
+                        events.push(event_value);
                     }
                 }
                 ServerResponse::RunEnd(r) => {
@@ -276,8 +279,8 @@ mod tests {
     use super::*;
     use futures_util::{SinkExt, StreamExt};
     use loom::{
-        ErrorResponse, RunEndResponse, RunStreamEventResponse, ToolShowResponse, ToolSpec,
-        ToolsListResponse,
+        ErrorResponse, ProtocolEvent, ProtocolEventEnvelope, RunEndResponse,
+        RunStreamEventResponse, ToolShowResponse, ToolSpec, ToolsListResponse,
     };
     use serde_json::Value;
     use std::path::PathBuf;
@@ -366,7 +369,14 @@ mod tests {
             let session_id = "run-0".to_string();
             let ev = ServerResponse::RunStreamEvent(RunStreamEventResponse {
                 id: session_id.clone(),
-                event: serde_json::json!({"type":"node_enter","id":"think"}),
+                event: ProtocolEventEnvelope {
+                    session_id: None,
+                    node_id: None,
+                    event_id: None,
+                    event: ProtocolEvent::NodeEnter {
+                        id: "think".to_string(),
+                    },
+                },
             });
             ws.send(Message::Text(serde_json::to_string(&ev).unwrap().into()))
                 .await
@@ -422,7 +432,16 @@ mod tests {
             let session_id = "run-0".to_string();
             let ev = ServerResponse::RunStreamEvent(RunStreamEventResponse {
                 id: session_id.clone(),
-                event: serde_json::json!({"type":"usage","total_tokens":7}),
+                event: ProtocolEventEnvelope {
+                    session_id: None,
+                    node_id: None,
+                    event_id: None,
+                    event: ProtocolEvent::Usage {
+                        prompt_tokens: 0,
+                        completion_tokens: 0,
+                        total_tokens: 7,
+                    },
+                },
             });
             ws.send(Message::Text(serde_json::to_string(&ev).unwrap().into()))
                 .await

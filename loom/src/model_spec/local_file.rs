@@ -49,7 +49,12 @@ impl LocalFileResolver {
         self.data.read().await.clone()
     }
 
-    fn resolve_from_json(&self, json: &Value, provider_id: &str, model_id: &str) -> Option<ModelSpec> {
+    fn resolve_from_json(
+        &self,
+        json: &Value,
+        provider_id: &str,
+        model_id: &str,
+    ) -> Option<ModelSpec> {
         let provider = json.get(provider_id)?;
         let models = provider.get("models")?.as_object()?;
 

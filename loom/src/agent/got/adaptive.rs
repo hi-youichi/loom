@@ -46,9 +46,7 @@ pub async fn complexity_score_via_llm(
 ) -> Result<ComplexityLevel, AgentError> {
     let user = format!(
         "{}\nNode id: {}\nDescription: {}",
-        AGOT_COMPLEXITY_PROMPT,
-        node.id,
-        node.description
+        AGOT_COMPLEXITY_PROMPT, node.id, node.description
     );
     let messages = vec![
         Message::system("Reply with exactly one word: simple or complex.".to_string()),
@@ -434,12 +432,19 @@ mod tests {
             .into_iter()
             .collect(),
         };
-        let r = maybe_expand(&mut state, "a", "r", true, Some(ComplexityLevel::Complex), |_| {
-            Some((
-                vec![node("a1", "step1"), node("a2", "step2")],
-                vec![("a".into(), "a1".into()), ("a".into(), "a2".into())],
-            ))
-        })
+        let r = maybe_expand(
+            &mut state,
+            "a",
+            "r",
+            true,
+            Some(ComplexityLevel::Complex),
+            |_| {
+                Some((
+                    vec![node("a1", "step1"), node("a2", "step2")],
+                    vec![("a".into(), "a1".into()), ("a".into(), "a2".into())],
+                ))
+            },
+        )
         .unwrap();
         let res = r.unwrap();
         assert_eq!(res.nodes_added, 2);

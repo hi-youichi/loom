@@ -4,9 +4,12 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
+use serde_json::Value;
+use tokio::sync::mpsc;
+
 use crate::error::AgentError;
 use crate::graph::{Next, RunContext};
-use crate::llm::LlmClient;
+use crate::llm::{LlmClient, ToolCallDelta};
 use crate::message::Message;
 use crate::state::{ReActState, ToolCall};
 use crate::stream::{ChunkToStreamSender, MessageChunk, StreamEvent, StreamMetadata, StreamMode};
@@ -83,14 +86,55 @@ impl Node<ReActState> for ThinkNode {
     ) -> Result<(ReActState, Next), AgentError> {
         let should_stream =
             ctx.stream_mode.contains(&StreamMode::Messages) && ctx.stream_tx.is_some();
+        let should_stream_tools = (ctx.stream_mode.contains(&StreamMode::Tools)
+            || ctx.stream_mode.contains(&StreamMode::Debug))
+            && ctx.stream_tx.is_some();
 
-        let (response, streamed_chunks) = if should_stream {
+        let (response, streamed_chunks) = if should_stream || should_stream_tools {
             let stream_tx = ctx.stream_tx.clone().unwrap();
-            let adapter = ChunkToStreamSender::new(stream_tx, self.id());
-            let (chunk_tx, chunk_rx) = adapter.channel();
-            let (result, forwarded_chunks) = tokio::join!(
-                self.llm.invoke_stream(&state.messages, Some(chunk_tx)),
-                adapter.forward(chunk_rx),
+
+            let (chunk_tx, chunk_rx) = if should_stream {
+                let adapter = ChunkToStreamSender::new(stream_tx.clone(), self.id());
+                let (tx, rx) = adapter.channel();
+                (Some(tx), Some((adapter, rx)))
+            } else {
+                (None, None)
+            };
+
+            let (tool_delta_tx, tool_delta_rx) = if should_stream_tools {
+                let (tx, rx) = mpsc::channel::<ToolCallDelta>(64);
+                (Some(tx), Some(rx))
+            } else {
+                (None, None)
+            };
+
+            let tool_forward = async {
+                if let Some(mut rx) = tool_delta_rx {
+                    while let Some(delta) = rx.recv().await {
+                        let _ = stream_tx
+                            .send(StreamEvent::ToolCallChunk {
+                                call_id: delta.call_id,
+                                name: delta.name,
+                                arguments_delta: delta.arguments_delta,
+                            })
+                            .await;
+                    }
+                }
+            };
+
+            let msg_forward = async {
+                if let Some((adapter, rx)) = chunk_rx {
+                    adapter.forward(rx).await
+                } else {
+                    0
+                }
+            };
+
+            let (result, forwarded_chunks, _) = tokio::join!(
+                self.llm
+                    .invoke_stream_with_tool_delta(&state.messages, chunk_tx, tool_delta_tx,),
+                msg_forward,
+                tool_forward,
             );
             (result?, forwarded_chunks)
         } else {
@@ -121,8 +165,6 @@ impl Node<ReActState> for ThinkNode {
                 .await;
         }
 
-        // Guarantee at least one Messages event with full reply when streaming only when
-        // upstream stream emitted no chunks at all.
         if should_stream && !used_fallback && !content.is_empty() && streamed_chunks == 0 {
             let _ = ctx
                 .stream_tx
@@ -139,12 +181,24 @@ impl Node<ReActState> for ThinkNode {
                 .await;
         }
 
-        let new_state = apply_think_response(
-            state,
-            content,
-            response.tool_calls,
-            response.usage.clone(),
-        );
+        // Emit complete tool_call events before applying state
+        if should_stream_tools && !response.tool_calls.is_empty() {
+            let tx = ctx.stream_tx.as_ref().unwrap();
+            for tc in &response.tool_calls {
+                let args: Value = serde_json::from_str(&tc.arguments)
+                    .unwrap_or_else(|_| Value::String(tc.arguments.clone()));
+                let _ = tx
+                    .send(StreamEvent::ToolCall {
+                        call_id: tc.id.clone(),
+                        name: tc.name.clone(),
+                        arguments: args,
+                    })
+                    .await;
+            }
+        }
+
+        let new_state =
+            apply_think_response(state, content, response.tool_calls, response.usage.clone());
 
         if let (Some(ref tx), Some(ref u)) = (ctx.stream_tx.as_ref(), response.usage.as_ref()) {
             let _ = tx

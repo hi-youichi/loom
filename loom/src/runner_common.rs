@@ -34,10 +34,7 @@ where
         let config = runnable_config.expect("runnable_config is Some");
         let tuple = cp.get_tuple(config).await?;
         if let Some((checkpoint, _)) = tuple {
-            return Ok(merge(
-                checkpoint.channel_values,
-                user_message.to_string(),
-            ));
+            return Ok(merge(checkpoint.channel_values, user_message.to_string()));
         }
     }
 
@@ -65,8 +62,9 @@ where
     F: FnMut(StreamEvent<S>),
 {
     let modes = HashSet::from([
-        StreamMode::Messages,   // LLM streamed chunks (流式输出)
+        StreamMode::Messages,
         StreamMode::Tasks,
+        StreamMode::Tools,
         StreamMode::Updates,
         StreamMode::Values,
         StreamMode::Custom,

@@ -2,11 +2,13 @@
 
 use crate::cli_run::build_helve_config;
 use crate::export::stream_event_to_format_a;
-use crate::protocol::stream::stream_event_to_protocol_value;
+use crate::protocol::stream::stream_event_to_protocol_envelope;
 use crate::protocol::EnvelopeState;
+use crate::protocol::ProtocolEventEnvelope;
 use crate::{
     build_dup_runner, build_got_runner, build_react_runner, build_tot_runner, DupRunner, DupState,
-    GotRunner, GotState, ReactBuildConfig, ReactRunner, ReActState, StreamEvent, TotRunner, TotState,
+    GotRunner, GotState, ReActState, ReactBuildConfig, ReactRunner, StreamEvent, TotRunner,
+    TotState,
 };
 use serde_json::Value;
 use std::path::PathBuf;
@@ -82,18 +84,27 @@ impl AnyStreamEvent {
         }
     }
 
+    /// Converts to protocol format with envelope as a typed event object.
+    pub fn to_protocol_event(
+        &self,
+        state: &mut EnvelopeState,
+    ) -> Result<ProtocolEventEnvelope, serde_json::Error> {
+        match self {
+            AnyStreamEvent::React(ev) => stream_event_to_protocol_envelope(ev, state),
+            AnyStreamEvent::Dup(ev) => stream_event_to_protocol_envelope(ev, state),
+            AnyStreamEvent::Tot(ev) => stream_event_to_protocol_envelope(ev, state),
+            AnyStreamEvent::Got(ev) => stream_event_to_protocol_envelope(ev, state),
+        }
+    }
+
     /// Converts to protocol format (protocol_spec §4: type + payload) and injects envelope.
     /// Returns the JSON value to send in `RunStreamEventResponse.event`.
     pub fn to_protocol_format(
         &self,
         state: &mut EnvelopeState,
     ) -> Result<Value, serde_json::Error> {
-        match self {
-            AnyStreamEvent::React(ev) => stream_event_to_protocol_value(ev, state),
-            AnyStreamEvent::Dup(ev) => stream_event_to_protocol_value(ev, state),
-            AnyStreamEvent::Tot(ev) => stream_event_to_protocol_value(ev, state),
-            AnyStreamEvent::Got(ev) => stream_event_to_protocol_value(ev, state),
-        }
+        let event = self.to_protocol_event(state)?;
+        event.to_value()
     }
 }
 
@@ -306,9 +317,11 @@ mod tests {
         assert!(build_runner(&cfg, &opts, &RunCmd::React).await.is_err());
         assert!(build_runner(&cfg, &opts, &RunCmd::Dup).await.is_err());
         assert!(build_runner(&cfg, &opts, &RunCmd::Tot).await.is_err());
-        assert!(build_runner(&cfg, &opts, &RunCmd::Got { got_adaptive: true })
-            .await
-            .is_err());
+        assert!(
+            build_runner(&cfg, &opts, &RunCmd::Got { got_adaptive: true })
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]

@@ -5,7 +5,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::error::AgentError;
-use crate::graph::{CompilationError, CompiledStateGraph, Next, Node, RunContext, StateGraph, END, START};
+use crate::graph::{
+    CompilationError, CompiledStateGraph, Next, Node, RunContext, StateGraph, END, START,
+};
 use crate::llm::LlmClient;
 use crate::state::ReActState;
 
@@ -21,10 +23,7 @@ pub fn build_graph(
     let prune_node = Arc::new(PruneNode {
         config: config.clone(),
     });
-    let compact_node = Arc::new(CompactNode {
-        config,
-        llm,
-    });
+    let compact_node = Arc::new(CompactNode { config, llm });
     let mut graph = StateGraph::<ReActState>::new();
     graph
         .add_node("prune", prune_node)

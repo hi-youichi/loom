@@ -9,9 +9,7 @@
 //! or `loom tool show <NAME>`. Uses [`RunOptions`](crate::run::RunOptions) with a
 //! placeholder message (not used for execution).
 
-use loom::{
-    build_react_run_context, tool_source::ToolSpec, AgentError, BuildRunnerError,
-};
+use loom::{build_react_run_context, tool_source::ToolSpec, AgentError, BuildRunnerError};
 use serde::Serialize;
 
 use crate::run::{build_helve_config, RunError, RunOptions};
@@ -109,26 +107,36 @@ pub fn format_tool_show_output(
                 })?;
                 print!("{}", yaml);
             } else {
-                return Err(RunError::Remote("no tool or tool_yaml in response".to_string()));
+                return Err(RunError::Remote(
+                    "no tool or tool_yaml in response".to_string(),
+                ));
             }
         }
         ToolShowFormat::Json => {
             if let Some(ref v) = r.tool {
-                println!("{}", serde_json::to_string_pretty(v).map_err(|e| {
-                    RunError::Build(BuildRunnerError::Context(AgentError::ExecutionFailed(
-                        e.to_string(),
-                    )))
-                })?);
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(v).map_err(|e| {
+                        RunError::Build(BuildRunnerError::Context(AgentError::ExecutionFailed(
+                            e.to_string(),
+                        )))
+                    })?
+                );
             } else if let Some(ref yaml) = r.tool_yaml {
                 let v: serde_json::Value =
                     serde_yaml::from_str(yaml).map_err(|e| RunError::Remote(e.to_string()))?;
-                println!("{}", serde_json::to_string_pretty(&v).map_err(|e| {
-                    RunError::Build(BuildRunnerError::Context(AgentError::ExecutionFailed(
-                        e.to_string(),
-                    )))
-                })?);
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&v).map_err(|e| {
+                        RunError::Build(BuildRunnerError::Context(AgentError::ExecutionFailed(
+                            e.to_string(),
+                        )))
+                    })?
+                );
             } else {
-                return Err(RunError::Remote("no tool or tool_yaml in response".to_string()));
+                return Err(RunError::Remote(
+                    "no tool or tool_yaml in response".to_string(),
+                ));
             }
         }
     }
@@ -147,7 +155,11 @@ struct ToolSpecOutput {
 /// Shows one tool by name: builds run context, finds the tool, prints full spec in YAML or JSON.
 ///
 /// Returns [`RunError::ToolNotFound`](crate::run::RunError::ToolNotFound) if name is not in the list.
-pub async fn show_tool(opts: &RunOptions, name: &str, format: ToolShowFormat) -> Result<(), RunError> {
+pub async fn show_tool(
+    opts: &RunOptions,
+    name: &str,
+    format: ToolShowFormat,
+) -> Result<(), RunError> {
     let (_helve, config) = build_helve_config(opts);
     let ctx = build_react_run_context(&config)
         .await

@@ -27,7 +27,7 @@ use tokio_stream::StreamExt;
 use tracing::{debug, trace};
 
 use crate::error::AgentError;
-use crate::llm::{LlmClient, LlmResponse, LlmUsage};
+use crate::llm::{LlmClient, LlmResponse, LlmUsage, ToolCallDelta};
 use crate::memory::uuid6;
 use crate::message::Message;
 use crate::state::ToolCall;
@@ -177,7 +177,9 @@ impl LlmClient for ChatOpenAI {
                 })
                 .collect();
             args.tools(chat_tools);
-            args.tool_choice(ChatCompletionToolChoiceOption::Mode(ToolChoiceOptions::Required));
+            args.tool_choice(ChatCompletionToolChoiceOption::Mode(
+                ToolChoiceOptions::Required,
+            ));
         }
 
         if let Some(t) = self.temperature {
@@ -264,15 +266,20 @@ impl LlmClient for ChatOpenAI {
         })
     }
 
-    /// Streaming variant: sends message chunks as they arrive from OpenAI.
-    ///
-    /// Uses OpenAI's streaming API to receive tokens incrementally. Each content
-    /// delta is sent through `chunk_tx` as a `MessageChunk`. Tool calls are
-    /// accumulated from stream chunks and returned in the final `LlmResponse`.
     async fn invoke_stream(
         &self,
         messages: &[Message],
         chunk_tx: Option<mpsc::Sender<MessageChunk>>,
+    ) -> Result<LlmResponse, AgentError> {
+        self.invoke_stream_with_tool_delta(messages, chunk_tx, None)
+            .await
+    }
+
+    async fn invoke_stream_with_tool_delta(
+        &self,
+        messages: &[Message],
+        chunk_tx: Option<mpsc::Sender<MessageChunk>>,
+        tool_delta_tx: Option<mpsc::Sender<ToolCallDelta>>,
     ) -> Result<LlmResponse, AgentError> {
         // If no streaming requested, use non-streaming path
         if chunk_tx.is_none() {
@@ -306,7 +313,9 @@ impl LlmClient for ChatOpenAI {
                 })
                 .collect();
             args.tools(chat_tools);
-            args.tool_choice(ChatCompletionToolChoiceOption::Mode(ToolChoiceOptions::Required));
+            args.tool_choice(ChatCompletionToolChoiceOption::Mode(
+                ToolChoiceOptions::Required,
+            ));
         }
 
         if let Some(t) = self.temperature {
@@ -415,6 +424,23 @@ impl LlmClient for ChatOpenAI {
                             }
                             if let Some(ref args) = func.arguments {
                                 entry.2.push_str(args);
+                            }
+                        }
+
+                        if let Some(ref tool_tx) = tool_delta_tx {
+                            let args_delta = tc
+                                .function
+                                .as_ref()
+                                .and_then(|f| f.arguments.clone())
+                                .unwrap_or_default();
+                            if !args_delta.is_empty() || tc.id.is_some() {
+                                let _ = tool_tx
+                                    .send(ToolCallDelta {
+                                        call_id: tc.id.clone(),
+                                        name: tc.function.as_ref().and_then(|f| f.name.clone()),
+                                        arguments_delta: args_delta,
+                                    })
+                                    .await;
                             }
                         }
                     }

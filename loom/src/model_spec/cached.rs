@@ -90,9 +90,8 @@ mod tests {
 
     #[tokio::test]
     async fn cache_hits_avoid_inner_calls() {
-        let body =
-            r#"{"zai":{"models":{"glm-5":{"limit":{"context":204800,"output":131072}}}}}"#
-                .to_string();
+        let body = r#"{"zai":{"models":{"glm-5":{"limit":{"context":204800,"output":131072}}}}}"#
+            .to_string();
         let client = Arc::new(CountingMockClient {
             body,
             call_count: AtomicUsize::new(0),

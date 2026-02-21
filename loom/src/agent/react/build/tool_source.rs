@@ -3,9 +3,7 @@
 use std::sync::Arc;
 
 use crate::error::AgentError;
-use crate::tool_source::{
-    register_file_tools, MemoryToolsSource, ToolSource, YamlSpecToolSource,
-};
+use crate::tool_source::{register_file_tools, MemoryToolsSource, ToolSource, YamlSpecToolSource};
 use crate::tools::{
     AggregateToolSource, BashTool, BatchTool, ExaCodesearchTool, ExaWebsearchTool, LspTool,
     TwitterSearchTool, WebFetcherTool,
@@ -34,8 +32,7 @@ pub(crate) async fn build_tool_source(
             .register_async(Box::new(WebFetcherTool::new()))
             .await;
         aggregate.register_async(Box::new(BashTool::new())).await;
-        aggregate
-            .register_sync(Box::new(BatchTool::new(Arc::clone(&aggregate))));
+        aggregate.register_sync(Box::new(BatchTool::new(Arc::clone(&aggregate))));
         aggregate.register_sync(Box::new(LspTool::new()));
         let inner: Box<dyn ToolSource> = Box::new(aggregate);
         let wrapped = YamlSpecToolSource::wrap(inner)

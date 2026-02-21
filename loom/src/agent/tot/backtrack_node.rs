@@ -97,10 +97,10 @@ impl Node<TotState> for BacktrackNode {
 
 #[cfg(test)]
 mod tests {
+    use super::super::state::{TotCandidate, TotExtension};
     use super::*;
     use crate::memory::RunnableConfig;
     use crate::state::{ReActState, ToolCall, ToolResult};
-    use super::super::state::{TotCandidate, TotExtension};
     use tokio::sync::mpsc;
 
     fn candidate(thought: &str, tool_name: &str) -> TotCandidate {

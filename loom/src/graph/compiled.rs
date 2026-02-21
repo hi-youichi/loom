@@ -643,7 +643,13 @@ mod tests {
     fn build_subgraph_b() -> Result<CompiledStateGraph<i32>, CompilationError> {
         let mut graph = StateGraph::<i32>::new();
         graph
-            .add_node("mul10", Arc::new(MulNode { id: "mul10", factor: 10 }))
+            .add_node(
+                "mul10",
+                Arc::new(MulNode {
+                    id: "mul10",
+                    factor: 10,
+                }),
+            )
             .add_edge(START, "mul10")
             .add_edge("mul10", END);
         graph.compile()
@@ -1064,9 +1070,15 @@ mod tests {
                 | StreamEvent::Checkpoint(_)
                 | StreamEvent::TaskStart { .. }
                 | StreamEvent::TaskEnd { .. }
-                | StreamEvent::Usage { .. } => {
+                | StreamEvent::Usage { .. }
+                | StreamEvent::ToolCallChunk { .. }
+                | StreamEvent::ToolCall { .. }
+                | StreamEvent::ToolStart { .. }
+                | StreamEvent::ToolOutput { .. }
+                | StreamEvent::ToolEnd { .. }
+                | StreamEvent::ToolApproval { .. } => {
                     panic!(
-                        "run_loop does not emit Messages/Custom/Checkpoint/Task/Usage events in this test, got {:?}",
+                        "run_loop does not emit Messages/Custom/Checkpoint/Task/Usage/Tool events in this test, got {:?}",
                         e
                     )
                 }

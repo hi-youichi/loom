@@ -19,7 +19,9 @@ async fn e2e_tools_list() {
         working_folder: None,
         thread_id: None,
     });
-    let (resp, received) = common::send_and_recv(&mut write, &mut read, &req).await.unwrap();
+    let (resp, received) = common::send_and_recv(&mut write, &mut read, &req)
+        .await
+        .unwrap();
 
     assert!(
         received.contains("\"type\":\"tools_list\"") && received.contains("\"tools\""),

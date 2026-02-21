@@ -7,10 +7,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
+use crate::agent::react::{ActNode, HandleToolErrors, ObserveNode, ThinkNode};
 use crate::error::AgentError;
 use crate::graph::{Next, RunContext};
 use crate::message::Message;
-use crate::agent::react::{ActNode, HandleToolErrors, ObserveNode, ThinkNode};
 use crate::state::ReActState;
 use crate::stream::{StreamEvent, StreamMode};
 use crate::tool_source::ToolSource;
@@ -304,8 +304,7 @@ impl Node<GotState> for ExecuteGraphNode {
                         true,
                         complexity_override,
                         |_| subgraph,
-                    )
-                    {
+                    ) {
                         if ctx.stream_mode.contains(&StreamMode::Custom) {
                             if let Some(tx) = &ctx.stream_tx {
                                 let _ = tx
@@ -376,22 +375,26 @@ mod tests {
                 nodes: vec![node("a", "Step A"), node("b", "Step B")],
                 edges: vec![("a".into(), "b".into())],
             },
-            node_states: [
-                (
-                    "a".to_string(),
-                    TaskNodeState {
-                        status: TaskStatus::Done,
-                        result: Some("result from A".to_string()),
-                        error: None,
-                    },
-                ),
-            ]
+            node_states: [(
+                "a".to_string(),
+                TaskNodeState {
+                    status: TaskStatus::Done,
+                    result: Some("result from A".to_string()),
+                    error: None,
+                },
+            )]
             .into_iter()
             .collect(),
         };
         let msg = build_sub_task_user_message(&state, "b", "Step B");
-        assert!(msg.contains("Predecessor results:"), "message should have predecessor section");
-        assert!(msg.contains("result from A"), "message should include predecessor result");
+        assert!(
+            msg.contains("Predecessor results:"),
+            "message should have predecessor section"
+        );
+        assert!(
+            msg.contains("result from A"),
+            "message should include predecessor result"
+        );
         assert!(msg.contains("Sub-task: Step B"));
         assert!(msg.contains("Overall task"));
     }
@@ -408,7 +411,10 @@ mod tests {
             node_states: std::collections::HashMap::new(),
         };
         let msg = build_sub_task_user_message(&state, "a", "Step A");
-        assert!(!msg.contains("Predecessor results:"), "no predecessor section when no preds");
+        assert!(
+            !msg.contains("Predecessor results:"),
+            "no predecessor section when no preds"
+        );
         assert!(msg.contains("Sub-task: Step A"));
     }
 }

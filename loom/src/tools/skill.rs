@@ -78,11 +78,13 @@ impl Tool for SkillTool {
         for ext in EXTENSIONS {
             let p = skills_dir.join(format!("{}.{}", name, ext));
             if p.is_file() {
-                let content = std::fs::read_to_string(&p).map_err(|e| {
-                    ToolSourceError::Transport(format!("read skill: {}", e))
-                })?;
+                let content = std::fs::read_to_string(&p)
+                    .map_err(|e| ToolSourceError::Transport(format!("read skill: {}", e)))?;
                 return Ok(ToolCallContent {
-                    text: format!("<skill_content name=\"{}\">\n{}\n</skill_content>", name, content),
+                    text: format!(
+                        "<skill_content name=\"{}\">\n{}\n</skill_content>",
+                        name, content
+                    ),
                 });
             }
         }
@@ -114,7 +116,10 @@ impl Tool for SkillTool {
             .map_err(|e| ToolSourceError::Transport(format!("read skill: {}", e)))?;
 
         Ok(ToolCallContent {
-            text: format!("<skill_content name=\"{}\">\n{}\n</skill_content>", name, content),
+            text: format!(
+                "<skill_content name=\"{}\">\n{}\n</skill_content>",
+                name, content
+            ),
         })
     }
 }

@@ -7,9 +7,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use loom::{
-    AgentError, CompilationError, CompiledStateGraph, Next, Node, StateGraph, END, START,
-};
+use loom::{AgentError, CompilationError, CompiledStateGraph, Next, Node, StateGraph, END, START};
 
 // --- Shared state and nodes for Graph A and Graph B ---
 
@@ -68,7 +66,13 @@ impl Node<i32> for SubgraphNode {
 fn build_graph_b() -> Result<CompiledStateGraph<i32>, CompilationError> {
     let mut graph = StateGraph::<i32>::new();
     graph
-        .add_node("mul10", Arc::new(MulNode { id: "mul10", factor: 10 }))
+        .add_node(
+            "mul10",
+            Arc::new(MulNode {
+                id: "mul10",
+                factor: 10,
+            }),
+        )
         .add_edge(START, "mul10")
         .add_edge("mul10", END);
     graph.compile()

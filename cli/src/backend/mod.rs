@@ -17,11 +17,11 @@ pub use auto_start::{ensure_server_or_spawn, spawn_serve, wait_for_server};
 pub use local::LocalBackend;
 pub use remote::RemoteBackend;
 
+use crate::ToolShowFormat;
 use async_trait::async_trait;
 use loom::{Envelope, RunCmd, RunError, RunOptions};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
-use crate::ToolShowFormat;
 
 /// Optional sink for JSON stream output (used by `--json`).
 ///

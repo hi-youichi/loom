@@ -274,12 +274,12 @@ impl Node<TotState> for ThinkExpandNode {
 
 #[cfg(test)]
 mod tests {
+    use super::super::state::TotExtension;
     use super::*;
     use crate::graph::RunContext;
     use crate::llm::MockLlm;
     use crate::memory::RunnableConfig;
     use crate::state::ReActState;
-    use super::super::state::TotExtension;
     use tokio::sync::mpsc;
 
     fn make_state() -> TotState {

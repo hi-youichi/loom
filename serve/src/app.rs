@@ -18,15 +18,10 @@ pub(crate) struct AppState {
 }
 
 pub(crate) fn router(state: Arc<AppState>) -> Router {
-    Router::new()
-        .route("/", get(ws_handler))
-        .with_state(state)
+    Router::new().route("/", get(ws_handler)).with_state(state)
 }
 
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<Arc<AppState>>,
-) -> Response {
+async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> Response {
     let shutdown_tx = state.shutdown_tx.lock().ok().and_then(|mut g| g.take());
     ws.on_upgrade(move |socket| handle_socket(socket, shutdown_tx))
 }

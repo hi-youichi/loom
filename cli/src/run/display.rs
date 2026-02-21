@@ -205,7 +205,10 @@ mod tests {
     #[test]
     fn format_react_state_display_contains_sections() {
         let state = ReActState {
-            messages: vec![Message::user("question"), Message::Assistant("answer".into())],
+            messages: vec![
+                Message::user("question"),
+                Message::Assistant("answer".into()),
+            ],
             tool_calls: vec![ToolCall {
                 name: "web_fetch".to_string(),
                 arguments: r#"{"url":"https://example.com/very/long/path"}"#.to_string(),

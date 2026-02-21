@@ -8,9 +8,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use super::{
-    DupPromptsFile, GotPromptsFile, HelvePromptsFile, ReactPromptsFile, TotPromptsFile,
-};
+use super::{DupPromptsFile, GotPromptsFile, HelvePromptsFile, ReactPromptsFile, TotPromptsFile};
 
 /// Embedded default YAML (canonical source: `loom/prompts/*.yaml`).
 macro_rules! embed_prompt_yaml {
@@ -103,14 +101,10 @@ pub fn load(dir: Option<&Path>) -> Result<super::resolve::AgentPrompts, LoadErro
     let react = read_yaml_file::<ReactPromptsFile>(&base, REACT_FILE)?
         .map(apply_react_env)
         .unwrap_or_default();
-    let tot = read_yaml_file::<TotPromptsFile>(&base, TOT_FILE)?
-        .unwrap_or_default();
-    let got = read_yaml_file::<GotPromptsFile>(&base, GOT_FILE)?
-        .unwrap_or_default();
-    let dup = read_yaml_file::<DupPromptsFile>(&base, DUP_FILE)?
-        .unwrap_or_default();
-    let helve = read_yaml_file::<HelvePromptsFile>(&base, HELVE_FILE)?
-        .unwrap_or_default();
+    let tot = read_yaml_file::<TotPromptsFile>(&base, TOT_FILE)?.unwrap_or_default();
+    let got = read_yaml_file::<GotPromptsFile>(&base, GOT_FILE)?.unwrap_or_default();
+    let dup = read_yaml_file::<DupPromptsFile>(&base, DUP_FILE)?.unwrap_or_default();
+    let helve = read_yaml_file::<HelvePromptsFile>(&base, HELVE_FILE)?.unwrap_or_default();
 
     Ok(super::resolve::AgentPrompts {
         react,
@@ -209,8 +203,10 @@ mod tests {
     fn load_missing_files_are_ignored() {
         let temp = tempfile::TempDir::new().unwrap();
         let p = load(Some(temp.path())).unwrap();
-        assert_eq!(p.react_system_prompt(), crate::agent::react::REACT_SYSTEM_PROMPT);
+        assert_eq!(
+            p.react_system_prompt(),
+            crate::agent::react::REACT_SYSTEM_PROMPT
+        );
         assert!(!p.tot_expand_system_addon().is_empty());
     }
-
 }

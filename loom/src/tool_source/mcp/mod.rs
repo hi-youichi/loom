@@ -282,9 +282,9 @@ impl ToolSource for McpToolSource {
 mod tests {
     use super::*;
     use mcp_core::ErrorObject;
+    use std::sync::{Arc, Mutex as StdMutex};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
-    use std::sync::{Arc, Mutex as StdMutex};
 
     async fn read_http_request(stream: &mut TcpStream) -> (String, String) {
         let mut buf = Vec::new();
@@ -390,10 +390,7 @@ mod tests {
 
     #[test]
     fn parse_list_tools_result_propagates_jsonrpc_error() {
-        let err = ResultMessage::failure(
-            "1",
-            ErrorObject::new(-32000, "rpc failed", None),
-        );
+        let err = ResultMessage::failure("1", ErrorObject::new(-32000, "rpc failed", None));
         assert!(matches!(
             parse_list_tools_result(err),
             Err(ToolSourceError::JsonRpc(msg)) if msg == "rpc failed"
@@ -533,7 +530,9 @@ mod tests {
         });
 
         let url = format!("http://{}", addr);
-        let source = McpToolSource::new_http(url, [("X-Test", "1")]).await.unwrap();
+        let source = McpToolSource::new_http(url, [("X-Test", "1")])
+            .await
+            .unwrap();
         let tools = source.list_tools().await.unwrap();
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].name, "http_tool");
@@ -585,9 +584,12 @@ mod tests {
             }
         });
 
-        let source = McpToolSource::new_http(format!("http://{}", addr), std::iter::empty::<(String, String)>())
-            .await
-            .unwrap();
+        let source = McpToolSource::new_http(
+            format!("http://{}", addr),
+            std::iter::empty::<(String, String)>(),
+        )
+        .await
+        .unwrap();
         let tools = source.list_tools().await.unwrap();
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].name, "sse_tool");
@@ -629,9 +631,12 @@ mod tests {
             }
         });
 
-        let source = McpToolSource::new_http(format!("http://{}", addr), std::iter::empty::<(String, String)>())
-            .await
-            .unwrap();
+        let source = McpToolSource::new_http(
+            format!("http://{}", addr),
+            std::iter::empty::<(String, String)>(),
+        )
+        .await
+        .unwrap();
         let err = source
             .call_tool("bad_tool", serde_json::json!({}))
             .await

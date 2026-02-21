@@ -14,7 +14,10 @@ use serde_json::json;
 // helpers
 // ---------------------------------------------------------------------------
 
-async fn grep(dir: &tempfile::TempDir, args: serde_json::Value) -> loom::tool_source::ToolCallContent {
+async fn grep(
+    dir: &tempfile::TempDir,
+    args: serde_json::Value,
+) -> loom::tool_source::ToolCallContent {
     FileToolSource::new(dir.path())
         .unwrap()
         .call_tool(TOOL_GREP, args)
@@ -45,14 +48,21 @@ async fn grep_basic_match_returns_path_and_line() {
     assert!(result.text.contains("a.txt"), "expected filename in output");
     assert!(result.text.contains("Line 1"), "expected line number");
     assert!(result.text.contains("hello world"), "expected matched line");
-    assert!(!result.text.contains("foo bar"), "non-matching line must not appear");
+    assert!(
+        !result.text.contains("foo bar"),
+        "non-matching line must not appear"
+    );
 }
 
 /// Scenario: pattern matches multiple lines in a single file.
 #[tokio::test]
 async fn grep_multiple_lines_in_one_file() {
     let dir = tempfile::tempdir().unwrap();
-    std::fs::write(dir.path().join("f.rs"), "fn foo() {}\nfn bar() {}\nfn baz() {}\n").unwrap();
+    std::fs::write(
+        dir.path().join("f.rs"),
+        "fn foo() {}\nfn bar() {}\nfn baz() {}\n",
+    )
+    .unwrap();
 
     let result = grep(&dir, json!({ "pattern": r"fn \w+" })).await;
 
@@ -182,7 +192,10 @@ async fn grep_include_filter_restricts_to_matching_extension() {
     let result = grep(&dir, json!({ "pattern": "search", "include": "*.rs" })).await;
 
     assert!(result.text.contains("lib.rs"), "lib.rs should match");
-    assert!(!result.text.contains("config.toml"), "config.toml must be excluded");
+    assert!(
+        !result.text.contains("config.toml"),
+        "config.toml must be excluded"
+    );
 }
 
 /// Scenario: include with brace expansion "*.{rs,toml}" matches both extensions.
@@ -193,7 +206,11 @@ async fn grep_include_brace_expansion_matches_multiple_extensions() {
     std::fs::write(dir.path().join("config.toml"), "token\n").unwrap();
     std::fs::write(dir.path().join("notes.txt"), "token\n").unwrap();
 
-    let result = grep(&dir, json!({ "pattern": "token", "include": "*.{rs,toml}" })).await;
+    let result = grep(
+        &dir,
+        json!({ "pattern": "token", "include": "*.{rs,toml}" }),
+    )
+    .await;
 
     assert!(result.text.contains("lib.rs"));
     assert!(result.text.contains("config.toml"));
@@ -236,7 +253,10 @@ async fn grep_path_restricts_to_subdirectory() {
     let result = grep(&dir, json!({ "pattern": "find_me", "path": "src" })).await;
 
     assert!(result.text.contains("lib.rs"), "src/lib.rs should be found");
-    assert!(!result.text.contains("root.rs"), "root.rs is outside path, must be excluded");
+    assert!(
+        !result.text.contains("root.rs"),
+        "root.rs is outside path, must be excluded"
+    );
 }
 
 /// Scenario: path defaults to "." and searches all files recursively.
@@ -253,7 +273,10 @@ async fn grep_default_path_searches_recursively() {
 
     let result = grep(&dir, json!({ "pattern": "buried_token" })).await;
 
-    assert!(result.text.contains("buried_token"), "nested file should be found");
+    assert!(
+        result.text.contains("buried_token"),
+        "nested file should be found"
+    );
     assert!(result.text.contains("file.txt"));
 }
 
@@ -274,7 +297,10 @@ async fn grep_binary_files_are_skipped() {
     let result = grep(&dir, json!({ "pattern": "binary_match" })).await;
 
     assert!(result.text.contains("text.txt"), "text file must appear");
-    assert!(!result.text.contains("data.bin"), "binary file must be skipped");
+    assert!(
+        !result.text.contains("data.bin"),
+        "binary file must be skipped"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -288,10 +314,16 @@ async fn grep_is_case_sensitive_by_default() {
     std::fs::write(dir.path().join("f.txt"), "Hello World\n").unwrap();
 
     let lower_result = grep(&dir, json!({ "pattern": "hello world" })).await;
-    assert_eq!(lower_result.text, "No files found", "lowercase should not match uppercase file");
+    assert_eq!(
+        lower_result.text, "No files found",
+        "lowercase should not match uppercase file"
+    );
 
     let upper_result = grep(&dir, json!({ "pattern": "Hello World" })).await;
-    assert!(upper_result.text.contains("f.txt"), "exact-case should match");
+    assert!(
+        upper_result.text.contains("f.txt"),
+        "exact-case should match"
+    );
 }
 
 /// Scenario: case-insensitive matching via inline flag (?i).
@@ -314,8 +346,14 @@ async fn grep_anchored_pattern_matches_exact_line() {
 
     let result = grep(&dir, json!({ "pattern": "^exact$" })).await;
 
-    assert!(result.text.contains("Line 1"), "line 1 'exact' should match");
-    assert!(!result.text.contains("Line 2"), "line 2 'exact match' must not match ^exact$");
+    assert!(
+        result.text.contains("Line 1"),
+        "line 1 'exact' should match"
+    );
+    assert!(
+        !result.text.contains("Line 2"),
+        "line 2 'exact match' must not match ^exact$"
+    );
     assert!(!result.text.contains("Line 3"));
 }
 
@@ -331,7 +369,11 @@ async fn grep_output_header_shows_match_count() {
 
     let result = grep(&dir, json!({ "pattern": "hit" })).await;
 
-    assert!(result.text.starts_with("Found 2 matches"), "output: {}", result.text);
+    assert!(
+        result.text.starts_with("Found 2 matches"),
+        "output: {}",
+        result.text
+    );
 }
 
 /// Scenario: results truncated at 100 matches; truncation notice appended.
@@ -344,7 +386,11 @@ async fn grep_results_truncated_at_100_matches() {
 
     let result = grep(&dir, json!({ "pattern": "match_line_" })).await;
 
-    assert!(result.text.contains("Found 100 matches"), "output: {}", result.text);
+    assert!(
+        result.text.contains("Found 100 matches"),
+        "output: {}",
+        result.text
+    );
     assert!(
         result.text.contains("Results are truncated"),
         "truncation notice missing"
@@ -360,8 +406,14 @@ async fn grep_long_lines_are_truncated() {
 
     let result = grep(&dir, json!({ "pattern": "START" })).await;
 
-    assert!(result.text.contains("..."), "long line should be truncated with '...'");
-    assert!(!result.text.contains("END"), "truncated part must not appear");
+    assert!(
+        result.text.contains("..."),
+        "long line should be truncated with '...'"
+    );
+    assert!(
+        !result.text.contains("END"),
+        "truncated part must not appear"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -380,8 +432,14 @@ async fn grep_results_sorted_by_modification_time_desc() {
 
     let result = grep(&dir, json!({ "pattern": "target" })).await;
 
-    let older_pos = result.text.find("older.txt").expect("older.txt must appear");
-    let newer_pos = result.text.find("newer.txt").expect("newer.txt must appear");
+    let older_pos = result
+        .text
+        .find("older.txt")
+        .expect("older.txt must appear");
+    let newer_pos = result
+        .text
+        .find("newer.txt")
+        .expect("newer.txt must appear");
     assert!(
         newer_pos < older_pos,
         "newer file should appear before older file; output:\n{}",

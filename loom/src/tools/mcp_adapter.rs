@@ -143,7 +143,8 @@ mod tests {
             for _ in 0..4 {
                 let (mut stream, _) = listener.accept().await.unwrap();
                 let body = read_http_request(&mut stream).await;
-                let json: serde_json::Value = serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
+                let json: serde_json::Value =
+                    serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
                 let method = json.get("method").and_then(|m| m.as_str()).unwrap_or("");
                 match method {
                     "initialize" => {
@@ -153,7 +154,8 @@ mod tests {
                             "result":{"protocolVersion":"2025-11-25"}
                         })
                         .to_string();
-                        write_http_response(&mut stream, "200 OK", Some("application/json"), &body).await;
+                        write_http_response(&mut stream, "200 OK", Some("application/json"), &body)
+                            .await;
                     }
                     "notifications/initialized" => {
                         write_http_response(&mut stream, "202 Accepted", None, "").await;
@@ -165,7 +167,8 @@ mod tests {
                             "result":{"tools":[{"name":"demo_mcp","description":"demo tool","inputSchema":{"type":"object"}}]}
                         })
                         .to_string();
-                        write_http_response(&mut stream, "200 OK", Some("application/json"), &body).await;
+                        write_http_response(&mut stream, "200 OK", Some("application/json"), &body)
+                            .await;
                     }
                     "tools/call" => {
                         let body = serde_json::json!({
@@ -174,7 +177,8 @@ mod tests {
                             "result":{"content":[{"type":"text","text":"adapter-ok"}]}
                         })
                         .to_string();
-                        write_http_response(&mut stream, "200 OK", Some("application/json"), &body).await;
+                        write_http_response(&mut stream, "200 OK", Some("application/json"), &body)
+                            .await;
                     }
                     _ => panic!("unexpected method: {}", method),
                 }

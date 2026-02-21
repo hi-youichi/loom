@@ -6,8 +6,7 @@
 mod init_logging;
 
 use loom::{
-    build_react_runner, MockLlm, ReactBuildConfig, ReactRunner,
-    TotRunnerConfig, GotRunnerConfig,
+    build_react_runner, GotRunnerConfig, MockLlm, ReactBuildConfig, ReactRunner, TotRunnerConfig,
 };
 
 fn minimal_config() -> ReactBuildConfig {
@@ -45,10 +44,7 @@ async fn build_react_runner_then_invoke_one_turn() {
     let runner: ReactRunner = build_react_runner(&config, Some(llm), false, None)
         .await
         .expect("build_react_runner");
-    let state = runner
-        .invoke("Hi")
-        .await
-        .expect("invoke");
+    let state = runner.invoke("Hi").await.expect("invoke");
     let last = state.last_assistant_reply();
     let ok = last
         .as_ref()

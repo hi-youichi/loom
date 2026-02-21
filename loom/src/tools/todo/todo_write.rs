@@ -38,12 +38,14 @@ fn parse_todos(args: &serde_json::Value) -> Result<Vec<TodoInfo>, ToolSourceErro
     let arr = args
         .get("todos")
         .and_then(|v| v.as_array())
-        .ok_or_else(|| ToolSourceError::InvalidInput("missing or invalid 'todos' array".to_string()))?;
+        .ok_or_else(|| {
+            ToolSourceError::InvalidInput("missing or invalid 'todos' array".to_string())
+        })?;
     let mut out = Vec::with_capacity(arr.len());
     for (i, v) in arr.iter().enumerate() {
-        let obj = v
-            .as_object()
-            .ok_or_else(|| ToolSourceError::InvalidInput(format!("todos[{}] must be an object", i)))?;
+        let obj = v.as_object().ok_or_else(|| {
+            ToolSourceError::InvalidInput(format!("todos[{}] must be an object", i))
+        })?;
         let id = obj
             .get("id")
             .and_then(|x| x.as_str())
@@ -53,7 +55,9 @@ fn parse_todos(args: &serde_json::Value) -> Result<Vec<TodoInfo>, ToolSourceErro
             .get("content")
             .and_then(|x| x.as_str())
             .map(String::from)
-            .ok_or_else(|| ToolSourceError::InvalidInput(format!("todos[{}] missing 'content'", i)))?;
+            .ok_or_else(|| {
+                ToolSourceError::InvalidInput(format!("todos[{}] missing 'content'", i))
+            })?;
         let status = obj
             .get("status")
             .and_then(|x| x.as_str())
@@ -107,16 +111,12 @@ impl Tool for TodoWriteTool {
                 })?;
             }
         }
-        let json_bytes = serde_json::to_string_pretty(&todos).map_err(|e| {
-            ToolSourceError::Transport(format!("failed to serialize todos: {}", e))
-        })?;
+        let json_bytes = serde_json::to_string_pretty(&todos)
+            .map_err(|e| ToolSourceError::Transport(format!("failed to serialize todos: {}", e)))?;
         std::fs::write(&path, json_bytes).map_err(|e| {
             ToolSourceError::Transport(format!("failed to write {}: {}", path.display(), e))
         })?;
-        let incomplete = todos
-            .iter()
-            .filter(|t| t.status != "completed")
-            .count();
+        let incomplete = todos.iter().filter(|t| t.status != "completed").count();
         let output = serde_json::to_string_pretty(&todos).unwrap_or_else(|_| "[]".to_string());
         Ok(ToolCallContent {
             text: format!("{} todos\n{}", incomplete, output),
@@ -201,7 +201,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("XDG_STATE_HOME", dir.path());
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
-        let result = tool.call(serde_json::json!({ "todos": "not array" }), None).await;
+        let result = tool
+            .call(serde_json::json!({ "todos": "not array" }), None)
+            .await;
         let err = result.unwrap_err();
         assert!(matches!(err, ToolSourceError::InvalidInput(_)));
     }
@@ -249,7 +251,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("XDG_STATE_HOME", dir.path());
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
-        let result = tool.call(serde_json::json!({ "todos": ["string item"] }), None).await;
+        let result = tool
+            .call(serde_json::json!({ "todos": ["string item"] }), None)
+            .await;
         let err = result.unwrap_err();
         assert!(matches!(err, ToolSourceError::InvalidInput(_)));
     }

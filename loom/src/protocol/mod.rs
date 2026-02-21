@@ -13,6 +13,7 @@ pub mod envelope_state;
 pub mod stream;
 
 pub use envelope_state::EnvelopeState;
+pub use stream_event::ProtocolEvent;
 
 use crate::llm::LlmUsage;
 use crate::tool_source::ToolSpec;
@@ -102,11 +103,37 @@ pub enum ClientRequest {
 // Responses (server → client)
 // -----------------------------------------------------------------------------
 
-/// One stream event (format A) for a run; server sends one per stream event before RunEnd.
+/// Typed protocol stream event payload with optional envelope fields.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ProtocolEventEnvelope {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_id: Option<u64>,
+    #[serde(flatten)]
+    pub event: ProtocolEvent,
+}
+
+impl ProtocolEventEnvelope {
+    /// Serializes the typed event envelope into a JSON object.
+    pub fn to_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+        serde_json::to_value(self)
+    }
+
+    /// Parses a typed event envelope from a JSON object.
+    pub fn from_value(value: serde_json::Value) -> Result<Self, serde_json::Error> {
+        serde_json::from_value(value)
+    }
+}
+
+/// One stream event (type-safe protocol event + optional envelope) for a run;
+/// server sends one per stream event before RunEnd.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RunStreamEventResponse {
     pub id: String,
-    pub event: serde_json::Value,
+    pub event: ProtocolEventEnvelope,
 }
 
 /// RunEnd: final reply for one run (format B from EXPORT_SPEC).
@@ -264,6 +291,35 @@ mod tests {
         assert!(json.contains("\"prompt_tokens\":10"));
         let parsed: ServerResponse = serde_json::from_str(&json).unwrap();
         assert!(matches!(parsed, ServerResponse::RunEnd(_)));
+    }
+
+    #[test]
+    fn response_run_stream_event_roundtrip() {
+        let resp = ServerResponse::RunStreamEvent(RunStreamEventResponse {
+            id: "run-1".to_string(),
+            event: ProtocolEventEnvelope {
+                session_id: Some("sess-1".to_string()),
+                node_id: Some("run-think-0".to_string()),
+                event_id: Some(1),
+                event: ProtocolEvent::NodeEnter {
+                    id: "think".to_string(),
+                },
+            },
+        });
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"type\":\"run_stream_event\""));
+        assert!(json.contains("\"session_id\":\"sess-1\""));
+        let parsed: ServerResponse = serde_json::from_str(&json).unwrap();
+        match parsed {
+            ServerResponse::RunStreamEvent(r) => {
+                assert_eq!(r.event.session_id.as_deref(), Some("sess-1"));
+                match r.event.event {
+                    ProtocolEvent::NodeEnter { id } => assert_eq!(id, "think"),
+                    _ => panic!("expected node_enter"),
+                }
+            }
+            _ => panic!("expected RunStreamEvent"),
+        }
     }
 
     #[test]

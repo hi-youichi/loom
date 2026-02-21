@@ -69,7 +69,12 @@ impl ModelsDevResolver {
         parse_all_models(&body)
     }
 
-    fn resolve_from_json(&self, json: &Value, provider_id: &str, model_id: &str) -> Option<ModelSpec> {
+    fn resolve_from_json(
+        &self,
+        json: &Value,
+        provider_id: &str,
+        model_id: &str,
+    ) -> Option<ModelSpec> {
         let provider = json.get(provider_id)?;
         let models = provider.get("models")?.as_object()?;
 
@@ -190,10 +195,8 @@ mod tests {
         let client = Arc::new(MockHttpClient {
             body: fixture_json(),
         });
-        let resolver = ModelsDevResolver::with_client(
-            "https://example.com/api.json".to_string(),
-            client,
-        );
+        let resolver =
+            ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
 
         let spec = resolver.resolve("zenmux", "openai/gpt-5").await.unwrap();
         assert_eq!(spec.context_limit, 400_000);
@@ -209,13 +212,14 @@ mod tests {
         let client = Arc::new(MockHttpClient {
             body: fixture_json(),
         });
-        let resolver = ModelsDevResolver::with_client(
-            "https://example.com/api.json".to_string(),
-            client,
-        );
+        let resolver =
+            ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
 
         assert!(resolver.resolve("zenmux", "unknown-model").await.is_none());
-        assert!(resolver.resolve("unknown-provider", "gpt-5").await.is_none());
+        assert!(resolver
+            .resolve("unknown-provider", "gpt-5")
+            .await
+            .is_none());
     }
 
     #[tokio::test]
@@ -223,10 +227,8 @@ mod tests {
         let client = Arc::new(MockHttpClient {
             body: fixture_json(),
         });
-        let resolver = ModelsDevResolver::with_client(
-            "https://example.com/api.json".to_string(),
-            client,
-        );
+        let resolver =
+            ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
 
         let all = resolver.fetch_all().await.unwrap();
         assert!(all.contains_key("zenmux/openai/gpt-5"));

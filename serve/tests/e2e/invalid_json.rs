@@ -14,7 +14,10 @@ async fn e2e_invalid_json_returns_error() {
     let (ws, _) = connect_async(&url).await.unwrap();
     let (mut write, mut read) = ws.split();
 
-    write.send(Message::Text("not valid json".to_string())).await.unwrap();
+    write
+        .send(Message::Text("not valid json".to_string()))
+        .await
+        .unwrap();
     let read_timeout = Duration::from_secs(5);
     let opt = timeout(read_timeout, read.next()).await.unwrap();
     let msg = opt.expect("expected one response").expect("ws message");

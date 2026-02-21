@@ -3,16 +3,16 @@
 
 use loom::{
     build_helve_config, build_react_run_context, run_agent, AnyStreamEvent, DupState, Envelope,
-    GotState, ReActState, TotState, ToolCall,
+    GotState, ReActState, ToolCall, TotState,
 };
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
-use crate::envelope::EnvelopeState;
 use super::display::{
     format_dup_state_display, format_got_state_display, format_react_state_display,
     format_tot_state_display, truncate_display,
 };
+use crate::envelope::EnvelopeState;
 use loom::{RunCmd, RunOptions, StreamEvent};
 
 use super::RunError;
@@ -330,7 +330,10 @@ fn on_event_got(
             node_ids,
         } => {
             if verbose {
-                eprintln!("--- GoT plan: {} nodes, {} edges ---", node_count, edge_count);
+                eprintln!(
+                    "--- GoT plan: {} nodes, {} edges ---",
+                    node_count, edge_count
+                );
                 for id in node_ids {
                     eprintln!("  node: {}", id);
                 }

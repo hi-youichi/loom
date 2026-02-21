@@ -137,9 +137,8 @@ impl Tool for EditFileTool {
                     })?;
                 }
             }
-            std::fs::write(&path, new_string).map_err(|e| {
-                ToolSourceError::Transport(format!("failed to write file: {}", e))
-            })?;
+            std::fs::write(&path, new_string)
+                .map_err(|e| ToolSourceError::Transport(format!("failed to write file: {}", e)))?;
             return Ok(ToolCallContent {
                 text: "Edit applied successfully.".to_string(),
             });
@@ -281,12 +280,11 @@ fn block_anchor_replacer(content: &str, find: &str) -> Vec<String> {
 
     let extract = |start: usize, end: usize| -> String {
         let s: usize = orig[..start].iter().map(|l| l.len() + 1).sum();
-        let e = s
-            + orig[start..=end]
-                .iter()
-                .enumerate()
-                .map(|(k, l)| l.len() + if k < end - start { 1 } else { 0 })
-                .sum::<usize>();
+        let e = s + orig[start..=end]
+            .iter()
+            .enumerate()
+            .map(|(k, l)| l.len() + if k < end - start { 1 } else { 0 })
+            .sum::<usize>();
         content[s..e].to_string()
     };
 
@@ -383,7 +381,11 @@ fn whitespace_normalized_replacer(content: &str, find: &str) -> Vec<String> {
 fn indentation_flexible_replacer(content: &str, find: &str) -> Vec<String> {
     let remove_indent = |text: &str| -> String {
         let ls: Vec<&str> = text.split('\n').collect();
-        let non_empty: Vec<&str> = ls.iter().filter(|l| !l.trim().is_empty()).copied().collect();
+        let non_empty: Vec<&str> = ls
+            .iter()
+            .filter(|l| !l.trim().is_empty())
+            .copied()
+            .collect();
         if non_empty.is_empty() {
             return text.to_string();
         }
@@ -615,9 +617,11 @@ pub fn replace(
     if not_found {
         Err("oldString not found in content".to_string())
     } else {
-        Err("Found multiple matches for oldString. Provide more surrounding lines in \
+        Err(
+            "Found multiple matches for oldString. Provide more surrounding lines in \
              oldString to identify the correct match."
-            .to_string())
+                .to_string(),
+        )
     }
 }
 

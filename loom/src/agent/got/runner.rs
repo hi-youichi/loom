@@ -241,7 +241,9 @@ mod tests {
 
     #[tokio::test]
     async fn build_got_initial_state_without_checkpoint_uses_input_message() {
-        let state = build_got_initial_state("hello got", None, None).await.unwrap();
+        let state = build_got_initial_state("hello got", None, None)
+            .await
+            .unwrap();
         assert_eq!(state.input_message, "hello got");
         assert!(state.task_graph.nodes.is_empty());
         assert!(state.node_states.is_empty());
@@ -249,7 +251,8 @@ mod tests {
 
     #[tokio::test]
     async fn got_runner_invoke_and_stream_with_mock_llm() {
-        let llm_response = r#"{"nodes":[{"id":"collect","description":"collect info"}],"edges":[]}"#;
+        let llm_response =
+            r#"{"nodes":[{"id":"collect","description":"collect info"}],"edges":[]}"#;
         let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(llm_response));
         let runner = GotRunner::new(
             llm,

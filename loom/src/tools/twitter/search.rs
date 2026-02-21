@@ -127,7 +127,10 @@ impl Tool for TwitterSearchTool {
         let cursor = args.get("cursor").and_then(|v| v.as_str()).unwrap_or("");
 
         let url = format!("{}/twitter/tweet/advanced_search", TWITTER_API_BASE);
-        let mut req = self.client.get(&url).header("x-api-key", self.api_key.as_ref());
+        let mut req = self
+            .client
+            .get(&url)
+            .header("x-api-key", self.api_key.as_ref());
 
         let params: Vec<(&str, &str)> = vec![
             ("query", query),
@@ -143,10 +146,7 @@ impl Tool for TwitterSearchTool {
 
         if !response.status().is_success() {
             let status = response.status();
-            let body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "".to_string());
+            let body = response.text().await.unwrap_or_else(|_| "".to_string());
             return Err(ToolSourceError::Transport(format!(
                 "API error {}: {}",
                 status, body

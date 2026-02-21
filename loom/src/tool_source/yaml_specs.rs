@@ -10,9 +10,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use thiserror::Error;
 
-use crate::tool_source::{
-    ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec,
-};
+use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec};
 
 /// Builds a static list of embedded YAML file contents. One entry per tool; paths relative to
 /// this source file (loom/src/tool_source/). Add a new line when you add a tool under
@@ -93,9 +91,7 @@ impl YamlSpecToolSource {
     /// Loads the embedded YAML files, gets the list from `inner`, then merges: for each tool in
     /// `inner`'s list, use the YAML spec if present, else keep the inner spec. Returns an
     /// error if any YAML fails to parse.
-    pub async fn wrap(
-        inner: Box<dyn ToolSource>,
-    ) -> Result<Self, YamlSpecError> {
+    pub async fn wrap(inner: Box<dyn ToolSource>) -> Result<Self, YamlSpecError> {
         let registered = inner
             .list_tools()
             .await
@@ -107,12 +103,7 @@ impl YamlSpecToolSource {
             .collect();
         let specs: Vec<ToolSpec> = registered
             .into_iter()
-            .map(|r| {
-                yaml_map
-                    .get(&r.name)
-                    .cloned()
-                    .unwrap_or(r)
-            })
+            .map(|r| yaml_map.get(&r.name).cloned().unwrap_or(r))
             .collect();
         Ok(Self { inner, specs })
     }
@@ -157,20 +148,12 @@ mod tests {
     fn load_tool_specs_returns_builtin_tools() {
         let specs = load_tool_specs().expect("tools/*.yaml must parse");
         let names: Vec<&str> = specs.iter().map(|s| s.name.as_str()).collect();
-        assert!(
-            names.contains(&"bash"),
-            "expected bash in {:?}",
-            names
-        );
+        assert!(names.contains(&"bash"), "expected bash in {:?}", names);
         assert!(
             names.contains(&"web_fetcher"),
             "expected web_fetcher in {:?}",
             names
         );
-        assert!(
-            names.contains(&"read"),
-            "expected read in {:?}",
-            names
-        );
+        assert!(names.contains(&"read"), "expected read in {:?}", names);
     }
 }

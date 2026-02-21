@@ -8,7 +8,7 @@ mod repl;
 
 use clap::{Parser, Subcommand};
 use cli::{
-    LocalBackend, RemoteBackend, RunBackend, RunOutput, RunOptions, StreamOut, ToolShowFormat,
+    LocalBackend, RemoteBackend, RunBackend, RunOptions, RunOutput, StreamOut, ToolShowFormat,
 };
 use repl::{run_one_turn, run_repl_loop};
 use std::path::PathBuf;
@@ -125,7 +125,10 @@ fn write_json_line_append(
     match file {
         Some(path) => {
             use std::io::Write;
-            let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path)?;
+            let mut f = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)?;
             f.write_all(line.as_bytes())?;
         }
         None => {
@@ -137,30 +140,37 @@ fn write_json_line_append(
 }
 
 /// Builds StreamOut for --json --stream: writes each event as one JSON line to file or stdout.
-fn make_stream_out(
-    file: Option<&PathBuf>,
-    pretty: bool,
-) -> StreamOut {
+fn make_stream_out(file: Option<&PathBuf>, pretty: bool) -> StreamOut {
     let file = file.cloned();
-    Some(std::sync::Arc::new(std::sync::Mutex::new(move |value: serde_json::Value| {
-        if value.get("type").and_then(|t| t.as_str()) == Some("node_enter") {
-            if let Some(id) = value.get("id").and_then(|v| v.as_str()) {
-                eprintln!("Entering: {}", id);
+    Some(std::sync::Arc::new(std::sync::Mutex::new(
+        move |value: serde_json::Value| {
+            if value.get("type").and_then(|t| t.as_str()) == Some("node_enter") {
+                if let Some(id) = value.get("id").and_then(|v| v.as_str()) {
+                    eprintln!("Entering: {}", id);
+                }
             }
-        }
-        let s = if pretty {
-            serde_json::to_string_pretty(&value).unwrap_or_default()
-        } else {
-            serde_json::to_string(&value).unwrap_or_default()
-        };
-        match &file {
-            Some(path) => drop(std::fs::OpenOptions::new().create(true).append(true).open(path).and_then(|mut f| std::io::Write::write_all(&mut f, format!("{}\n", s).as_bytes()))),
-            None => {
-                println!("{}", s);
-                let _ = std::io::Write::flush(&mut std::io::stdout());
+            let s = if pretty {
+                serde_json::to_string_pretty(&value).unwrap_or_default()
+            } else {
+                serde_json::to_string(&value).unwrap_or_default()
+            };
+            match &file {
+                Some(path) => drop(
+                    std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(path)
+                        .and_then(|mut f| {
+                            std::io::Write::write_all(&mut f, format!("{}\n", s).as_bytes())
+                        }),
+                ),
+                None => {
+                    println!("{}", s);
+                    let _ = std::io::Write::flush(&mut std::io::stdout());
+                }
             }
-        }
-    })))
+        },
+    )))
 }
 
 fn make_backend(args: &Args) -> Arc<dyn RunBackend> {
@@ -340,15 +350,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let message = args
-        .message
-        .or_else(|| {
-            if args.rest.is_empty() {
-                None
-            } else {
-                Some(args.rest.join(" "))
-            }
-        });
+    let message = args.message.or_else(|| {
+        if args.rest.is_empty() {
+            None
+        } else {
+            Some(args.rest.join(" "))
+        }
+    });
 
     let interactive = args.interactive;
     if !interactive && message.is_none() {
@@ -388,7 +396,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             if let Some(ref env) = reply_envelope {
                                 env.inject_into(&mut out);
                             }
-                            if let Err(e) = write_json_line_append(&out, args.file.as_deref(), args.pretty) {
+                            if let Err(e) =
+                                write_json_line_append(&out, args.file.as_deref(), args.pretty)
+                            {
                                 eprintln!("{}", e);
                                 std::process::exit(1);
                             }

@@ -299,7 +299,10 @@ fn parse_request_uses_default_system_prompt_when_no_system_message() {
     };
     let parsed = parse_chat_request(&req).unwrap();
     assert_eq!(parsed.user_message, "Hi");
-    assert_eq!(parsed.system_prompt, loom::agent::react::REACT_SYSTEM_PROMPT);
+    assert_eq!(
+        parsed.system_prompt,
+        loom::agent::react::REACT_SYSTEM_PROMPT
+    );
 }
 
 /// **Scenario**: thread_id in request is reflected in runnable_config.
@@ -385,8 +388,5 @@ fn parse_request_invalid_approval_policy_errors() {
         approval_policy: Some("invalid".to_string()),
     };
     let err = parse_chat_request(&req).unwrap_err();
-    assert!(matches!(
-        err,
-        loom::ParseError::InvalidApprovalPolicy(_)
-    ));
+    assert!(matches!(err, loom::ParseError::InvalidApprovalPolicy(_)));
 }

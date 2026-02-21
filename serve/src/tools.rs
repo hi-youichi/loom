@@ -54,11 +54,14 @@ pub(crate) async fn handle_tool_show(r: loom::ToolShowRequest) -> ServerResponse
                         let (tool, tool_yaml) = match r.output.as_ref() {
                             Some(ToolShowOutput::Yaml) => (
                                 None,
-                                Some(serde_yaml::to_string(&serde_json::json!({
-                                    "name": s.name,
-                                    "description": s.description,
-                                    "input_schema": s.input_schema
-                                })).unwrap_or_default()),
+                                Some(
+                                    serde_yaml::to_string(&serde_json::json!({
+                                        "name": s.name,
+                                        "description": s.description,
+                                        "input_schema": s.input_schema
+                                    }))
+                                    .unwrap_or_default(),
+                                ),
                             ),
                             _ => (
                                 Some(serde_json::json!({

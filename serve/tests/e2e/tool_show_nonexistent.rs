@@ -21,7 +21,9 @@ async fn e2e_tool_show_nonexistent() {
         working_folder: None,
         thread_id: None,
     });
-    let (resp, received) = common::send_and_recv(&mut write, &mut read, &req).await.unwrap();
+    let (resp, received) = common::send_and_recv(&mut write, &mut read, &req)
+        .await
+        .unwrap();
 
     assert!(
         received.contains("\"type\":\"error\"") && received.contains("not found"),

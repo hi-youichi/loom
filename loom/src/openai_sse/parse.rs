@@ -5,9 +5,9 @@
 
 use std::path::Path;
 
+use crate::agent::react::REACT_SYSTEM_PROMPT;
 use crate::helve::{ApprovalPolicy, HelveConfig};
 use crate::memory::RunnableConfig;
-use crate::agent::react::REACT_SYSTEM_PROMPT;
 
 use super::request::ChatCompletionRequest;
 use thiserror::Error;

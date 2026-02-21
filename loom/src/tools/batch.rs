@@ -69,7 +69,9 @@ impl Tool for BatchTool {
         let calls = args
             .get("calls")
             .and_then(|v| v.as_array())
-            .ok_or_else(|| ToolSourceError::InvalidInput("missing or invalid 'calls' array".to_string()))?;
+            .ok_or_else(|| {
+                ToolSourceError::InvalidInput("missing or invalid 'calls' array".to_string())
+            })?;
 
         if calls.is_empty() || calls.len() > MAX_CALLS {
             return Err(ToolSourceError::InvalidInput(format!(
@@ -84,7 +86,9 @@ impl Tool for BatchTool {
             let tool_name = call
                 .get("tool")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| ToolSourceError::InvalidInput(format!("call {}: missing 'tool'", i + 1)))?
+                .ok_or_else(|| {
+                    ToolSourceError::InvalidInput(format!("call {}: missing 'tool'", i + 1))
+                })?
                 .to_string();
             let params = call
                 .get("parameters")
@@ -103,9 +107,9 @@ impl Tool for BatchTool {
 
         let mut results = Vec::with_capacity(handles.len());
         for h in handles {
-            let r = h
-                .await
-                .map_err(|e| ToolSourceError::Transport(format!("batch task join failed: {}", e)))?;
+            let r = h.await.map_err(|e| {
+                ToolSourceError::Transport(format!("batch task join failed: {}", e))
+            })?;
             results.push(r);
         }
 

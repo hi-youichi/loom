@@ -16,7 +16,9 @@ async fn e2e_ping() {
     let req = ClientRequest::Ping(PingRequest {
         id: "ping-1".to_string(),
     });
-    let (resp, received) = common::send_and_recv(&mut write, &mut read, &req).await.unwrap();
+    let (resp, received) = common::send_and_recv(&mut write, &mut read, &req)
+        .await
+        .unwrap();
 
     assert!(
         received.contains("\"type\":\"pong\"") && received.contains("\"id\":\"ping-1\""),

@@ -100,7 +100,10 @@ pub async fn run_repl_loop(
                     match &json_file {
                         Some(p) => {
                             use std::io::Write;
-                            let mut f = std::fs::OpenOptions::new().create(true).append(true).open(p)?;
+                            let mut f = std::fs::OpenOptions::new()
+                                .create(true)
+                                .append(true)
+                                .open(p)?;
                             f.write_all(format!("{}\n", s).as_bytes())?;
                         }
                         None => println!("{}", s),
@@ -212,9 +215,6 @@ mod tests {
             .await
             .unwrap();
         assert!(matches!(out, cli::RunOutput::Reply(reply, _) if reply == "ok"));
-        assert!(matches!(
-            seen.lock().unwrap().first(),
-            Some(RunCmd::Dup)
-        ));
+        assert!(matches!(seen.lock().unwrap().first(), Some(RunCmd::Dup)));
     }
 }

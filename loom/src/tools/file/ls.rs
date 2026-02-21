@@ -118,7 +118,11 @@ impl Tool for LsTool {
             .and_then(|v| v.as_str())
             .map(|s| s.trim())
             .unwrap_or(".");
-        let path_param = if path_param.is_empty() { "." } else { path_param };
+        let path_param = if path_param.is_empty() {
+            "."
+        } else {
+            path_param
+        };
 
         let search_root = resolve_path_under(self.working_folder.as_ref(), path_param)?;
         if !search_root.is_dir() {
@@ -264,10 +268,7 @@ impl Tool for LsTool {
         output.push_str(&render_dir(".", 0, &dirs, &files_by_dir));
 
         if truncated {
-            output.push_str(&format!(
-                "\n(truncated: showing first {} files)\n",
-                LIMIT
-            ));
+            output.push_str(&format!("\n(truncated: showing first {} files)\n", LIMIT));
         }
 
         Ok(ToolCallContent { text: output })

@@ -115,35 +115,48 @@
 //! See the `loom-examples` crate: `echo`, `react_linear`, `react_mcp`, `react_exa`, `react_memory`,
 //! `memory_checkpoint`, `memory_persistence`, `openai_embedding`, `state_graph_echo`.
 
+pub mod agent;
 pub mod cache;
 pub mod channels;
 pub mod cli_run;
-pub mod protocol;
 pub mod compress;
-pub mod model_spec;
 pub mod config;
 pub mod error;
 pub mod export;
 pub mod graph;
 pub mod helve;
-pub mod runner_common;
 pub mod llm;
 pub mod managed;
 pub mod memory;
 pub mod message;
+pub mod model_spec;
 pub mod openai_sse;
 pub mod prompts;
-pub mod agent;
+pub mod protocol;
+pub mod runner_common;
 pub mod state;
 pub mod stream;
 pub mod tool_source;
 pub mod tools;
 pub mod traits;
 
+pub use agent::react::{
+    build_dup_runner, build_got_runner, build_react_initial_state, build_react_run_context,
+    build_react_runner, build_react_runner_with_openai, build_tot_runner, run_react_graph,
+    run_react_graph_stream, tools_condition, ActNode, BuildRunnerError, ErrorHandlerFn,
+    GotRunnerConfig, HandleToolErrors, ObserveNode, ReactBuildConfig, ReactRunContext, ReactRunner,
+    RunError as ReactRunError, ThinkNode, ToolsConditionResult, TotRunnerConfig, WithNodeLogging,
+    DEFAULT_EXECUTION_ERROR_TEMPLATE, DEFAULT_TOOL_ERROR_TEMPLATE, REACT_SYSTEM_PROMPT,
+    STEP_PROGRESS_EVENT_TYPE,
+};
 pub use cache::{Cache, CacheError, InMemoryCache};
 pub use channels::{
     BinaryOperatorAggregate, Channel, ChannelError, EphemeralValue, FieldBasedUpdater, LastValue,
     NamedBarrierValue, StateUpdater, Topic,
+};
+pub use cli_run::{
+    build_helve_config, load_agents_md, load_soul_md, run_agent, AnyRunner, AnyStreamEvent, RunCmd,
+    RunError, RunOptions, DEFAULT_WORKING_FOLDER,
 };
 pub use compress::CompactionConfig;
 pub use config::{
@@ -163,11 +176,7 @@ pub use helve::{
     tools_requiring_approval, ApprovalPolicy, HelveConfig, APPROVAL_REQUIRED_EVENT_TYPE,
 };
 pub use llm::ChatOpenAI;
-pub use llm::{LlmClient, LlmResponse, LlmUsage, MockLlm, ToolChoiceMode};
-pub use model_spec::{
-    CachedResolver, CompositeResolver, ConfigOverride, LocalFileResolver, ModelLimitResolver,
-    ModelSpec, ModelsDevResolver, ResolverRefresher,
-};
+pub use llm::{LlmClient, LlmResponse, LlmUsage, MockLlm, ToolCallDelta, ToolChoiceMode};
 pub use managed::{IsLastStep, ManagedValue};
 pub use memory::Embedder;
 #[cfg(feature = "lance")]
@@ -180,35 +189,28 @@ pub use memory::{
 };
 pub use memory::{SqliteSaver, SqliteStore};
 pub use message::Message;
+pub use model_spec::{
+    CachedResolver, CompositeResolver, ConfigOverride, LocalFileResolver, ModelLimitResolver,
+    ModelSpec, ModelsDevResolver, ResolverRefresher,
+};
 pub use openai_sse::{
     parse_chat_request, write_sse_line, ChatCompletionChunk, ChatCompletionRequest, ChatMessage,
     ChunkMeta, ChunkUsage, DeltaToolCall, MessageContent, ParseError, ParsedChatRequest,
     StreamOptions, StreamToSse,
 };
-pub use agent::react::{
-    build_dup_runner, build_got_runner, build_react_initial_state, build_react_run_context,
-    build_react_runner, build_react_runner_with_openai, build_tot_runner, run_react_graph,
-    run_react_graph_stream, tools_condition, ActNode, BuildRunnerError, ErrorHandlerFn,
-    GotRunnerConfig, HandleToolErrors, ObserveNode, ReactBuildConfig, ReactRunContext,
-    ReactRunner, RunError as ReactRunError, TotRunnerConfig,
-    STEP_PROGRESS_EVENT_TYPE, ThinkNode, ToolsConditionResult, WithNodeLogging,
-    DEFAULT_EXECUTION_ERROR_TEMPLATE, DEFAULT_TOOL_ERROR_TEMPLATE, REACT_SYSTEM_PROMPT,
-};
-pub use cli_run::{
-    build_helve_config, load_agents_md, load_soul_md, run_agent, AnyRunner, AnyStreamEvent,
-    RunCmd, RunError, RunOptions, DEFAULT_WORKING_FOLDER,
-};
-pub use protocol::stream::{
-    stream_event_to_protocol_format, stream_event_to_protocol_value, Envelope,
-};
-pub use protocol::{
-    AgentType, ClientRequest, EnvelopeState, ErrorResponse, PingRequest, PongResponse, RunEndResponse,
-    RunRequest, RunStreamEventResponse, ServerResponse, ToolShowOutput, ToolShowRequest,
-    ToolShowResponse, ToolsListRequest, ToolsListResponse,
-};
 pub use prompts::{
     default_from_embedded as default_agent_prompts_from_yaml, load as load_agent_prompts,
     load_or_default as load_agent_prompts_or_default, AgentPrompts, LoadError as PromptsLoadError,
+};
+pub use protocol::stream::{
+    stream_event_to_protocol_envelope, stream_event_to_protocol_format,
+    stream_event_to_protocol_value, Envelope,
+};
+pub use protocol::{
+    AgentType, ClientRequest, EnvelopeState, ErrorResponse, PingRequest, PongResponse,
+    ProtocolEvent, ProtocolEventEnvelope, RunEndResponse, RunRequest, RunStreamEventResponse,
+    ServerResponse, ToolShowOutput, ToolShowRequest, ToolShowResponse, ToolsListRequest,
+    ToolsListResponse,
 };
 pub use state::{ReActState, ToolCall, ToolResult};
 pub use stream::{

@@ -344,8 +344,7 @@ for raw in sys.stdin:
             vec![script_path],
             None::<Vec<(String, String)>>,
             false,
-        )
-        {
+        ) {
             Ok(_) => panic!("expected initialize error"),
             Err(e) => e,
         };

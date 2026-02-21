@@ -119,11 +119,7 @@ BAR = "baz"
         let dir = tempfile::tempdir().unwrap();
         let app_dir = dir.path().join("noenv");
         std::fs::create_dir_all(&app_dir).unwrap();
-        std::fs::write(
-            app_dir.join("config.toml"),
-            "[other]\nkey = \"ignored\"\n",
-        )
-        .unwrap();
+        std::fs::write(app_dir.join("config.toml"), "[other]\nkey = \"ignored\"\n").unwrap();
 
         let prev = env::var("XDG_CONFIG_HOME").ok();
         env::set_var("XDG_CONFIG_HOME", dir.path());

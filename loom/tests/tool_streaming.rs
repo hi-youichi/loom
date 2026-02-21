@@ -7,9 +7,7 @@ mod init_logging;
 
 use async_trait::async_trait;
 use loom::stream::{StreamEvent, ToolStreamWriter};
-use loom::tool_source::{
-    ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec,
-};
+use loom::tool_source::{ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec};
 use loom::tools::{AggregateToolSource, Tool};
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicUsize, Ordering};

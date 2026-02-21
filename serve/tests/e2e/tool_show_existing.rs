@@ -1,6 +1,6 @@
 use super::common;
 use futures_util::StreamExt;
-use loom::{ClientRequest, ServerResponse, ToolShowRequest, ToolShowOutput};
+use loom::{ClientRequest, ServerResponse, ToolShowOutput, ToolShowRequest};
 use std::time::Duration;
 use tokio::time::timeout;
 use tokio_tungstenite::connect_async;
@@ -21,7 +21,9 @@ async fn e2e_tool_show_existing() {
         working_folder: None,
         thread_id: None,
     });
-    let (resp, received) = common::send_and_recv(&mut write, &mut read, &req).await.unwrap();
+    let (resp, received) = common::send_and_recv(&mut write, &mut read, &req)
+        .await
+        .unwrap();
 
     assert!(
         received.contains("\"type\":\"tool_show\"") && received.contains("\"name\":\"read\""),

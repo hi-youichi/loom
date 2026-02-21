@@ -281,7 +281,11 @@ impl Node<ReActState> for ActNode {
         state: ReActState,
         run_ctx: &RunContext<ReActState>,
     ) -> Result<(ReActState, Next), AgentError> {
-        let tool_writer = if run_ctx.stream_mode.contains(&StreamMode::Custom) {
+        let tools_mode = run_ctx.stream_mode.contains(&StreamMode::Tools)
+            || run_ctx.stream_mode.contains(&StreamMode::Debug);
+
+        let base_custom_writer = if run_ctx.stream_mode.contains(&StreamMode::Custom) || tools_mode
+        {
             if let Some(tx) = &run_ctx.stream_tx {
                 let tx = tx.clone();
                 ToolStreamWriter::new(move |value| tx.try_send(StreamEvent::Custom(value)).is_ok())
@@ -292,14 +296,6 @@ impl Node<ReActState> for ActNode {
             ToolStreamWriter::noop()
         };
 
-        let ctx = ToolCallContext {
-            recent_messages: state.messages.clone(),
-            stream_writer: Some(tool_writer),
-            thread_id: run_ctx.config.thread_id.clone(),
-            user_id: run_ctx.config.user_id.clone(),
-        };
-        self.tools.set_call_context(Some(ctx.clone()));
-
         let mut tool_results = Vec::with_capacity(state.tool_calls.len());
         let mut approval_result_consumed = false;
 
@@ -309,8 +305,21 @@ impl Node<ReActState> for ActNode {
             if self.needs_approval(&tc.name) {
                 match state.approval_result {
                     None => {
+                        if tools_mode {
+                            if let Some(tx) = &run_ctx.stream_tx {
+                                let _ = tx
+                                    .send(StreamEvent::ToolApproval {
+                                        call_id: tc.id.clone(),
+                                        name: tc.name.clone(),
+                                        arguments: args.clone(),
+                                    })
+                                    .await;
+                            }
+                        } else {
+                            let payload = approval_required_payload(tc, &args);
+                            let _ = run_ctx.emit_custom(payload.clone()).await;
+                        }
                         let payload = approval_required_payload(tc, &args);
-                        let _ = run_ctx.emit_custom(payload.clone()).await;
                         self.tools.set_call_context(None);
                         return Err(AgentError::Interrupted(GraphInterrupt(Interrupt::new(
                             payload,
@@ -324,17 +333,78 @@ impl Node<ReActState> for ActNode {
                             is_error: true,
                         });
                         approval_result_consumed = true;
-                        let payload = step_progress_payload(
-                            &tc.name,
-                            tc.id.as_deref().unwrap_or(""),
-                            "User rejected.",
-                        );
-                        let _ = run_ctx.emit_custom(payload).await;
+                        if tools_mode {
+                            if let Some(tx) = &run_ctx.stream_tx {
+                                let _ = tx
+                                    .send(StreamEvent::ToolEnd {
+                                        call_id: tc.id.clone(),
+                                        name: tc.name.clone(),
+                                        result: "User rejected.".to_string(),
+                                        is_error: true,
+                                    })
+                                    .await;
+                            }
+                        } else {
+                            let payload = step_progress_payload(
+                                &tc.name,
+                                tc.id.as_deref().unwrap_or(""),
+                                "User rejected.",
+                            );
+                            let _ = run_ctx.emit_custom(payload).await;
+                        }
                         continue;
                     }
                     Some(true) => {
                         approval_result_consumed = true;
                     }
+                }
+            }
+
+            // Build per-tool writer with output_fn bound to this tool's call_id/name
+            let per_tool_writer = if tools_mode {
+                if let Some(tx) = &run_ctx.stream_tx {
+                    let out_tx = tx.clone();
+                    let out_call_id = tc.id.clone();
+                    let out_name = tc.name.clone();
+                    ToolStreamWriter::new_with_output(
+                        {
+                            let efn = base_custom_writer.emit_fn_clone();
+                            move |v| efn(v)
+                        },
+                        move |content| {
+                            out_tx
+                                .try_send(StreamEvent::ToolOutput {
+                                    call_id: out_call_id.clone(),
+                                    name: out_name.clone(),
+                                    content,
+                                })
+                                .is_ok()
+                        },
+                    )
+                } else {
+                    base_custom_writer.clone()
+                }
+            } else {
+                base_custom_writer.clone()
+            };
+
+            let ctx = ToolCallContext {
+                recent_messages: state.messages.clone(),
+                stream_writer: Some(per_tool_writer),
+                thread_id: run_ctx.config.thread_id.clone(),
+                user_id: run_ctx.config.user_id.clone(),
+            };
+            self.tools.set_call_context(Some(ctx));
+
+            // Emit tool_start
+            if tools_mode {
+                if let Some(tx) = &run_ctx.stream_tx {
+                    let _ = tx
+                        .send(StreamEvent::ToolStart {
+                            call_id: tc.id.clone(),
+                            name: tc.name.clone(),
+                        })
+                        .await;
                 }
             }
 
@@ -360,9 +430,22 @@ impl Node<ReActState> for ActNode {
                         content: content.text,
                         is_error: false,
                     });
-                    let call_id = tc.id.as_deref().unwrap_or("");
-                    let payload = step_progress_payload(&tc.name, call_id, &summary);
-                    let _ = run_ctx.emit_custom(payload).await;
+                    if tools_mode {
+                        if let Some(tx) = &run_ctx.stream_tx {
+                            let _ = tx
+                                .send(StreamEvent::ToolEnd {
+                                    call_id: tc.id.clone(),
+                                    name: tc.name.clone(),
+                                    result: summary.to_string(),
+                                    is_error: false,
+                                })
+                                .await;
+                        }
+                    } else {
+                        let call_id = tc.id.as_deref().unwrap_or("");
+                        let payload = step_progress_payload(&tc.name, call_id, &summary);
+                        let _ = run_ctx.emit_custom(payload).await;
+                    }
                 }
                 Err(e) => {
                     warn!(tool = %tc.name, error = %e, "Tool call failed");
@@ -374,9 +457,22 @@ impl Node<ReActState> for ActNode {
                             content: error_msg,
                             is_error: true,
                         });
-                        let call_id = tc.id.as_deref().unwrap_or("");
-                        let payload = step_progress_payload(&tc.name, call_id, &summary);
-                        let _ = run_ctx.emit_custom(payload).await;
+                        if tools_mode {
+                            if let Some(tx) = &run_ctx.stream_tx {
+                                let _ = tx
+                                    .send(StreamEvent::ToolEnd {
+                                        call_id: tc.id.clone(),
+                                        name: tc.name.clone(),
+                                        result: summary.to_string(),
+                                        is_error: true,
+                                    })
+                                    .await;
+                            }
+                        } else {
+                            let call_id = tc.id.as_deref().unwrap_or("");
+                            let payload = step_progress_payload(&tc.name, call_id, &summary);
+                            let _ = run_ctx.emit_custom(payload).await;
+                        }
                     } else {
                         self.tools.set_call_context(None);
                         return Err(AgentError::ExecutionFailed(e.to_string()));

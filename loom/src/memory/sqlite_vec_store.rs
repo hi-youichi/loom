@@ -713,7 +713,11 @@ mod tests {
 
     #[test]
     fn matches_condition_supports_prefix_suffix_and_wildcards() {
-        let ns = vec!["users".to_string(), "u1".to_string(), "memories".to_string()];
+        let ns = vec![
+            "users".to_string(),
+            "u1".to_string(),
+            "memories".to_string(),
+        ];
         assert!(SqliteVecStore::matches_condition(
             &ns,
             &MatchCondition::prefix(vec!["users".to_string(), "*".to_string()])
@@ -732,7 +736,10 @@ mod tests {
     async fn put_get_delete_list_and_get_item_work() {
         let (store, _dir) = temp_store(Arc::new(MockEmbedder::new(4, 0.3)));
         let ns = vec!["u".to_string(), "mem".to_string()];
-        store.put(&ns, "k1", &json!({"text":"hello"})).await.unwrap();
+        store
+            .put(&ns, "k1", &json!({"text":"hello"}))
+            .await
+            .unwrap();
         let got = store.get(&ns, "k1").await.unwrap().unwrap();
         assert_eq!(got["text"], "hello");
         let keys = store.list(&ns).await.unwrap();
@@ -740,7 +747,10 @@ mod tests {
 
         let item1 = store.get_item(&ns, "k1").await.unwrap().unwrap();
         tokio::time::sleep(Duration::from_millis(2)).await;
-        store.put(&ns, "k1", &json!({"text":"world"})).await.unwrap();
+        store
+            .put(&ns, "k1", &json!({"text":"world"}))
+            .await
+            .unwrap();
         let item2 = store.get_item(&ns, "k1").await.unwrap().unwrap();
         assert_eq!(item1.created_at, item2.created_at);
         assert!(item2.updated_at >= item1.updated_at);
@@ -754,9 +764,18 @@ mod tests {
         let (store, _dir) = temp_store(Arc::new(MockEmbedder::new(4, 0.1)));
         let ns1 = vec!["u1".to_string(), "mem".to_string()];
         let ns2 = vec!["u1".to_string(), "prefs".to_string()];
-        store.put(&ns1, "alpha", &json!({"text":"hello"})).await.unwrap();
-        store.put(&ns1, "beta", &json!({"text":"world"})).await.unwrap();
-        store.put(&ns2, "gamma", &json!({"text":"hello prefs"})).await.unwrap();
+        store
+            .put(&ns1, "alpha", &json!({"text":"hello"}))
+            .await
+            .unwrap();
+        store
+            .put(&ns1, "beta", &json!({"text":"world"}))
+            .await
+            .unwrap();
+        store
+            .put(&ns2, "gamma", &json!({"text":"hello prefs"}))
+            .await
+            .unwrap();
 
         let no_query_hits = store
             .search(
@@ -776,7 +795,10 @@ mod tests {
             .unwrap();
         assert!(!with_query_hits.is_empty());
 
-        let simple_hits = store.search_simple(&ns1, Some("alpha"), Some(5)).await.unwrap();
+        let simple_hits = store
+            .search_simple(&ns1, Some("alpha"), Some(5))
+            .await
+            .unwrap();
         assert!(simple_hits.iter().any(|h| h.key == "alpha"));
     }
 

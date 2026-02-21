@@ -2,9 +2,9 @@
 
 mod init_logging;
 
+use loom::tool_source::register_file_tools;
 use loom::tool_source::{ToolSource, ToolSourceError};
 use loom::tools::{AggregateToolSource, TOOL_SKILL};
-use loom::tool_source::register_file_tools;
 use serde_json::json;
 
 fn aggregate_with_file_tools(dir: &tempfile::TempDir) -> AggregateToolSource {
@@ -79,9 +79,7 @@ async fn skill_missing_name_returns_error() {
 async fn skill_no_skills_dir_returns_error() {
     let dir = tempfile::tempdir().unwrap();
     let agg = aggregate_with_file_tools(&dir);
-    let result = agg
-        .call_tool(TOOL_SKILL, json!({ "name": "any" }))
-        .await;
+    let result = agg.call_tool(TOOL_SKILL, json!({ "name": "any" })).await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));
     assert!(err.to_string().to_lowercase().contains("not found"));

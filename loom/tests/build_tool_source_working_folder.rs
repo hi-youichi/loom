@@ -6,8 +6,7 @@
 mod init_logging;
 
 use loom::tools::{
-    TOOL_CREATE_DIR, TOOL_DELETE_FILE, TOOL_LS, TOOL_MOVE_FILE, TOOL_READ_FILE,
-    TOOL_WRITE_FILE,
+    TOOL_CREATE_DIR, TOOL_DELETE_FILE, TOOL_LS, TOOL_MOVE_FILE, TOOL_READ_FILE, TOOL_WRITE_FILE,
 };
 use loom::{build_react_run_context, ReactBuildConfig};
 
@@ -41,11 +40,7 @@ async fn build_tool_source_with_working_folder_includes_file_tools() {
     let ctx = build_react_run_context(&config).await.unwrap();
     let tools = ctx.tool_source.list_tools().await.unwrap();
     let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
-    assert!(
-        names.contains(&TOOL_LS),
-        "expected ls in {:?}",
-        names
-    );
+    assert!(names.contains(&TOOL_LS), "expected ls in {:?}", names);
     assert!(names.contains(&TOOL_READ_FILE));
     assert!(names.contains(&TOOL_WRITE_FILE));
     assert!(names.contains(&TOOL_MOVE_FILE));

@@ -50,10 +50,7 @@ struct MemoryMockLlm;
 
 #[async_trait]
 impl LlmClient for MemoryMockLlm {
-    async fn invoke(
-        &self,
-        messages: &[Message],
-    ) -> Result<LlmResponse, loom::error::AgentError> {
+    async fn invoke(&self, messages: &[Message]) -> Result<LlmResponse, loom::error::AgentError> {
         let last_user_msg = messages
             .iter()
             .rev()
@@ -218,9 +215,7 @@ impl ToolSource for MemoryToolSource {
                 self.store
                     .put(&self.namespace, &key, &value)
                     .await
-                    .map_err(|e| {
-                        loom::tool_source::ToolSourceError::Transport(e.to_string())
-                    })?;
+                    .map_err(|e| loom::tool_source::ToolSourceError::Transport(e.to_string()))?;
                 Ok(ToolCallContent {
                     text: format!("Saved to memory: {}", info),
                 })
@@ -231,9 +226,7 @@ impl ToolSource for MemoryToolSource {
                     .store
                     .search(&self.namespace, Some(key), Some(5))
                     .await
-                    .map_err(|e| {
-                        loom::tool_source::ToolSourceError::Transport(e.to_string())
-                    })?;
+                    .map_err(|e| loom::tool_source::ToolSourceError::Transport(e.to_string()))?;
                 if hits.is_empty() {
                     Ok(ToolCallContent {
                         text: format!("No memories found for '{}'", key),
@@ -249,9 +242,10 @@ impl ToolSource for MemoryToolSource {
                 }
             }
             "list_memories" => {
-                let keys = self.store.list(&self.namespace).await.map_err(|e| {
-                    loom::tool_source::ToolSourceError::Transport(e.to_string())
-                })?;
+                let keys =
+                    self.store.list(&self.namespace).await.map_err(|e| {
+                        loom::tool_source::ToolSourceError::Transport(e.to_string())
+                    })?;
                 let mut memories = Vec::new();
                 for key in keys {
                     if let Some(value) =

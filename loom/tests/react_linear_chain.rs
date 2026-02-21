@@ -10,8 +10,8 @@ use std::collections::HashMap;
 
 use loom::{
     compress::{build_graph, CompactionConfig, CompressionGraphNode},
-    ActNode, CompiledStateGraph, LlmClient, Message, MockLlm, MockToolSource, ObserveNode,
-    ReActState, StateGraph, ThinkNode, END, START, tools_condition,
+    tools_condition, ActNode, CompiledStateGraph, LlmClient, Message, MockLlm, MockToolSource,
+    ObserveNode, ReActState, StateGraph, ThinkNode, END, START,
 };
 
 #[tokio::test]
@@ -65,11 +65,14 @@ async fn react_linear_chain_user_to_tool_result_in_messages() {
 #[tokio::test]
 async fn react_multi_round_loop_then_end() {
     let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::first_tools_then_end());
-    let compression_graph = build_graph(CompactionConfig::default(), Arc::clone(&llm)).expect("compress graph");
+    let compression_graph =
+        build_graph(CompactionConfig::default(), Arc::clone(&llm)).expect("compress graph");
     let compress_node = Arc::new(CompressionGraphNode::new(compression_graph));
 
     let think_path_map: HashMap<String, String> =
-        [("tools".into(), "act".into()), (END.into(), END.into())].into_iter().collect();
+        [("tools".into(), "act".into()), (END.into(), END.into())]
+            .into_iter()
+            .collect();
 
     let mut graph = StateGraph::<ReActState>::new();
     graph
