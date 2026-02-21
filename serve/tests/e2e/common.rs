@@ -56,6 +56,7 @@ where
 
 /// Sends a Run request and reads until RunEnd or Error for the same run session.
 /// Returns the final response and the raw JSON of that message so tests can assert on wire content.
+#[allow(dead_code)]
 pub async fn send_run_and_recv_end<W, R>(
     write: &mut W,
     read: &mut R,
