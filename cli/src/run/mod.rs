@@ -1,4 +1,4 @@
-//! Run orchestration: delegates to loom::run_agent with stderr display callback.
+//! Run orchestration: delegates to loom::run_agent_with_options with stderr display callback.
 
 mod agent;
 mod display;

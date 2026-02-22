@@ -39,7 +39,7 @@
 //! ## Main modules
 //!
 //! - [`graph`]: [`StateGraph`], [`CompiledStateGraph`], [`Node`], [`Next`], [`RunContext`] — build and run state graphs.
-//! - [`agent`]: [`agent::react`] — ReAct nodes ([`ThinkNode`], [`ActNode`], [`ObserveNode`]), [`run_react_graph`],
+//! - [`agent`]: [`agent::react`] — ReAct nodes ([`ThinkNode`], [`ActNode`], [`ObserveNode`]), [`run_agent`],
 //!   [`tools_condition`], [`ReactRunner`], [`ReactBuildConfig`], [`build_react_runner`], [`build_react_run_context`].
 //! - [`state`]: [`ReActState`], [`ToolCall`], [`ToolResult`] — state and tool types for ReAct.
 //! - [`llm`]: [`LlmClient`] trait, [`MockLlm`], [`ChatOpenAI`].
@@ -142,12 +142,12 @@ pub mod traits;
 
 pub use agent::react::{
     build_dup_runner, build_got_runner, build_react_initial_state, build_react_run_context,
-    build_react_runner, build_react_runner_with_openai, build_tot_runner, run_react_graph,
+    build_react_runner, build_react_runner_with_openai, build_tot_runner, run_agent,
     run_react_graph_stream, tools_condition, ActNode, BuildRunnerError, ErrorHandlerFn,
     GotRunnerConfig, HandleToolErrors, ObserveNode, ReactBuildConfig, ReactRunContext, ReactRunner,
-    RunError as ReactRunError, ThinkNode, ToolsConditionResult, TotRunnerConfig, WithNodeLogging,
-    DEFAULT_EXECUTION_ERROR_TEMPLATE, DEFAULT_TOOL_ERROR_TEMPLATE, REACT_SYSTEM_PROMPT,
-    STEP_PROGRESS_EVENT_TYPE,
+    AgentOptions, RunError as ReactRunError, ThinkNode, ToolsConditionResult, TotRunnerConfig,
+    WithNodeLogging, DEFAULT_EXECUTION_ERROR_TEMPLATE, DEFAULT_TOOL_ERROR_TEMPLATE,
+    REACT_SYSTEM_PROMPT, STEP_PROGRESS_EVENT_TYPE,
 };
 pub use cache::{Cache, CacheError, InMemoryCache};
 pub use channels::{
@@ -155,8 +155,8 @@ pub use channels::{
     NamedBarrierValue, StateUpdater, Topic,
 };
 pub use cli_run::{
-    build_helve_config, load_agents_md, load_soul_md, run_agent, AnyRunner, AnyStreamEvent, RunCmd,
-    RunError, RunOptions, DEFAULT_WORKING_FOLDER,
+    build_helve_config, load_agents_md, load_soul_md, run_agent as run_agent_with_options,
+    AnyRunner, AnyStreamEvent, RunCmd, RunError, RunOptions, DEFAULT_WORKING_FOLDER,
 };
 pub use compress::CompactionConfig;
 pub use config::{

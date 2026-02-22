@@ -24,6 +24,53 @@ use super::tools_condition;
 use super::with_node_logging::WithNodeLogging;
 use super::REACT_SYSTEM_PROMPT;
 
+/// Optional configuration for [`run_agent`] and [`run_react_graph_stream`].
+///
+/// When a field is `None`, defaults are used: `llm` and `tool_source` default to
+/// mock implementations (e.g. [`MockLlm::first_tools_then_end`], [`MockToolSource::get_time_example`])
+/// so that `run_agent("What time is it?", None)` works for quick demos.
+#[derive(Default)]
+pub struct AgentOptions {
+    /// LLM client. Defaults to a mock that returns one tool call then a final reply.
+    pub llm: Option<Box<dyn LlmClient>>,
+    /// Tool source. Defaults to a mock that provides `get_time`.
+    pub tool_source: Option<Box<dyn ToolSource>>,
+    /// Optional checkpointer for persisting/restoring conversation state.
+    pub checkpointer: Option<Arc<dyn Checkpointer<ReActState>>>,
+    /// Optional long-term memory store (e.g. LanceDB).
+    pub store: Option<Arc<dyn Store>>,
+    /// Optional runtime config (thread_id, user_id, etc.).
+    pub runnable_config: Option<RunnableConfig>,
+    /// If true, log node and state details to stderr.
+    pub verbose: bool,
+}
+
+struct ResolvedRunAgentOptions {
+    llm: Box<dyn LlmClient>,
+    tool_source: Box<dyn ToolSource>,
+    checkpointer: Option<Arc<dyn Checkpointer<ReActState>>>,
+    store: Option<Arc<dyn Store>>,
+    runnable_config: Option<RunnableConfig>,
+    verbose: bool,
+}
+
+fn resolve_run_agent_options(opts: AgentOptions) -> ResolvedRunAgentOptions {
+    let llm = opts
+        .llm
+        .unwrap_or_else(|| Box::new(crate::MockLlm::first_tools_then_end()));
+    let tool_source = opts
+        .tool_source
+        .unwrap_or_else(|| Box::new(crate::MockToolSource::get_time_example()));
+    ResolvedRunAgentOptions {
+        llm,
+        tool_source,
+        checkpointer: opts.checkpointer,
+        store: opts.store,
+        runnable_config: opts.runnable_config,
+        verbose: opts.verbose,
+    }
+}
+
 pub async fn build_react_initial_state(
     user_message: &str,
     checkpointer: Option<&dyn Checkpointer<ReActState>>,
@@ -58,52 +105,44 @@ pub async fn build_react_initial_state(
     .await
 }
 
-pub async fn run_react_graph(
+pub async fn run_agent(
     user_message: &str,
-    llm: Box<dyn LlmClient>,
-    tool_source: Box<dyn ToolSource>,
-    checkpointer: Option<Arc<dyn Checkpointer<ReActState>>>,
-    store: Option<Arc<dyn Store>>,
-    runnable_config: Option<RunnableConfig>,
-    verbose: bool,
+    options: Option<AgentOptions>,
 ) -> Result<ReActState, RunError> {
+    let opts = resolve_run_agent_options(options.unwrap_or_default());
     let runner = ReactRunner::new(
-        llm,
-        tool_source,
-        checkpointer,
-        store,
-        runnable_config,
+        opts.llm,
+        opts.tool_source,
+        opts.checkpointer,
+        opts.store,
+        opts.runnable_config,
         None,
         None,
         None,
-        verbose,
+        opts.verbose,
     )?;
     runner.invoke(user_message).await
 }
 
 pub async fn run_react_graph_stream<F>(
     user_message: &str,
-    llm: Box<dyn LlmClient>,
-    tool_source: Box<dyn ToolSource>,
-    checkpointer: Option<Arc<dyn Checkpointer<ReActState>>>,
-    store: Option<Arc<dyn Store>>,
-    runnable_config: Option<RunnableConfig>,
-    verbose: bool,
+    options: Option<AgentOptions>,
     on_event: Option<F>,
 ) -> Result<ReActState, RunError>
 where
     F: FnMut(StreamEvent<ReActState>),
 {
+    let opts = resolve_run_agent_options(options.unwrap_or_default());
     let runner = ReactRunner::new(
-        llm,
-        tool_source,
-        checkpointer,
-        store,
-        runnable_config,
+        opts.llm,
+        opts.tool_source,
+        opts.checkpointer,
+        opts.store,
+        opts.runnable_config,
         None,
         None,
         None,
-        verbose,
+        opts.verbose,
     )?;
     runner.stream_with_callback(user_message, on_event).await
 }

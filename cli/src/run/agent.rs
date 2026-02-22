@@ -1,8 +1,8 @@
-//! Wraps loom::run_agent with stderr display callback.
+//! Wraps loom::run_agent_with_options with stderr display callback.
 //! Uses protocol format (type + payload) and optional envelope per protocol_spec.
 
 use loom::{
-    build_helve_config, build_react_run_context, run_agent, AnyStreamEvent, DupState, Envelope,
+    build_helve_config, build_react_run_context, run_agent_with_options, AnyStreamEvent, DupState, Envelope,
     GotState, ReActState, ToolCall, TotState,
 };
 use serde_json::Value;
@@ -84,7 +84,7 @@ pub async fn run_agent_wrapper(
                     f(v);
                 }
             });
-            let reply = run_agent(opts, cmd, Some(on_event)).await?;
+            let reply = run_agent_with_options(opts, cmd, Some(on_event)).await?;
             let reply_env = state.lock().map(|s| s.reply_envelope()).ok();
             return Ok((reply, None, reply_env));
         }
@@ -114,7 +114,7 @@ pub async fn run_agent_wrapper(
                 }
             }
         });
-        let reply = run_agent(opts, cmd, Some(on_event)).await?;
+        let reply = run_agent_with_options(opts, cmd, Some(on_event)).await?;
         let events = events.lock().map(|v| v.clone()).unwrap_or_default();
         let reply_env = state.lock().map(|s| s.reply_envelope()).ok();
         return Ok((reply, Some(events), reply_env));
@@ -137,7 +137,7 @@ pub async fn run_agent_wrapper(
         }
     });
 
-    let reply = run_agent(opts, cmd, Some(on_event)).await?;
+    let reply = run_agent_with_options(opts, cmd, Some(on_event)).await?;
 
     if verbose {
         if let Some(ref from) = state.lock().unwrap().last_node {

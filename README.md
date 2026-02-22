@@ -40,9 +40,34 @@ cargo run -p cli -- --working-folder . "Summarize this repo"
 
 ## Library usage
 
+Run an agent with a user message. Pass `None` for options to use mock LLM and tool source (good for demos); pass `Some(AgentOptions { ... })` to supply your own `llm`, `tool_source`, and optional `checkpointer`, `store`, `runnable_config`, or `verbose`. Add `dotenv` to `Cargo.toml` if loading `.env`.
+
 ```rust
-use loom::{Agent, StateGraph, Message, ReActState};
-// See loom crate docs
+use loom::{run_agent, AgentOptions, ChatOpenAI, MockToolSource};
+
+// Minimal: mock LLM and get_time tool (no API key)
+let state = run_agent("What time is it?", None).await?;
+println!("{}", state.last_assistant_reply().unwrap_or_default());
+
+// OpenAI with get_time tool — API key from env or .env
+dotenv::dotenv().ok();  // load .env (OPENAI_API_KEY=sk-...)
+let tool_source = MockToolSource::get_time_example();
+let tools = tool_source.list_tools().await?;
+// Option A: key from OPENAI_API_KEY env (set in .env or shell)
+let llm = ChatOpenAI::new("gpt-4o-mini").with_tools(tools);
+// Option B: key set programmatically (add async-openai dep)
+// let config = async_openai::config::OpenAIConfig::new()
+//     .with_api_key(std::env::var("OPENAI_API_KEY")?);
+// let llm = ChatOpenAI::with_config(config, "gpt-4o-mini").with_tools(tools);
+let state = run_agent(
+    "What time is it?",
+    Some(AgentOptions {
+        llm: Some(Box::new(llm)),
+        tool_source: Some(Box::new(tool_source)),
+        ..Default::default()
+    }),
+).await?;
+println!("{}", state.last_assistant_reply().unwrap_or_default());
 ```
 
 ## License

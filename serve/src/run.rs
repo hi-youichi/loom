@@ -2,7 +2,7 @@
 
 use axum::extract::ws::WebSocket;
 use loom::{
-    run_agent, AgentType, AnyStreamEvent, EnvelopeState, ErrorResponse, ProtocolEventEnvelope,
+    run_agent_with_options, AgentType, AnyStreamEvent, EnvelopeState, ErrorResponse, ProtocolEventEnvelope,
     RunCmd, RunEndResponse, RunOptions, RunStreamEventResponse, ServerResponse,
 };
 use std::path::PathBuf;
@@ -66,7 +66,7 @@ pub(crate) async fn handle_run(
                 );
             }
         });
-        let result = run_agent(&opts, &cmd, Some(on_event)).await;
+        let result = run_agent_with_options(&opts, &cmd, Some(on_event)).await;
         (result, state)
     });
 
