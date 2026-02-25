@@ -205,6 +205,7 @@ mod tests {
             message: "hello".to_string(),
             working_folder: None,
             thread_id: None,
+            role_file: None,
             verbose: false,
             got_adaptive: false,
             display_max_len: 100,

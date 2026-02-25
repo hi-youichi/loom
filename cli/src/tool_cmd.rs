@@ -258,6 +258,7 @@ mod tests {
                 "/definitely/not/exist/loom-cli-tool-cmd-tests",
             )),
             thread_id: None,
+            role_file: None,
             verbose: false,
             got_adaptive: false,
             display_max_len: 100,

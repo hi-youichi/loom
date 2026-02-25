@@ -27,6 +27,7 @@ pub(crate) async fn handle_run(
         message: r.message,
         working_folder: r.working_folder.map(PathBuf::from),
         thread_id: r.thread_id,
+        role_file: None,
         verbose: r.verbose.unwrap_or(false),
         got_adaptive: r.got_adaptive.unwrap_or(false),
         display_max_len: 2000,

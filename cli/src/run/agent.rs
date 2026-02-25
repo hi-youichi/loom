@@ -754,6 +754,7 @@ mod tests {
                 "/definitely/not/exist/loom-cli-run-agent-tests",
             )),
             thread_id: None,
+            role_file: None,
             verbose: false,
             got_adaptive: false,
             display_max_len: 200,

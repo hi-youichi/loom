@@ -61,6 +61,28 @@ pub fn load_soul_md(working_folder: Option<&PathBuf>) -> Option<String> {
     }
 }
 
+/// Resolves role_setting: --role file if set and readable, else SOUL.md then built-in default.
+fn resolve_role_setting(opts: &RunOptions, working_folder: &PathBuf) -> Option<String> {
+    if let Some(ref path) = opts.role_file {
+        match std::fs::read_to_string(path) {
+            Ok(s) => {
+                let t = s.trim().to_string();
+                if !t.is_empty() {
+                    return Some(t);
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %e,
+                    "role file unreadable, falling back to SOUL.md/default"
+                );
+            }
+        }
+    }
+    load_soul_md(Some(working_folder)).or_else(|| Some(DEFAULT_SOUL.trim().to_string()))
+}
+
 /// Builds HelveConfig and ReactBuildConfig from RunOptions.
 pub fn build_helve_config(opts: &RunOptions) -> (HelveConfig, ReactBuildConfig) {
     let base = ReactBuildConfig::from_env();
@@ -73,8 +95,7 @@ pub fn build_helve_config(opts: &RunOptions) -> (HelveConfig, ReactBuildConfig) 
         thread_id: opts.thread_id.clone(),
         user_id: base.user_id.clone(),
         approval_policy: None,
-        role_setting: load_soul_md(Some(&working_folder))
-            .or_else(|| Some(DEFAULT_SOUL.trim().to_string())),
+        role_setting: resolve_role_setting(opts, &working_folder),
         agents_md: load_agents_md(Some(&working_folder)),
         system_prompt_override: None,
     };

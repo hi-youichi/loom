@@ -22,6 +22,9 @@ pub struct RunOptions {
     pub message: String,
     pub working_folder: Option<PathBuf>,
     pub thread_id: Option<String>,
+    /// When set, path to a file whose content is used as the agent's role/persona (SOUL).
+    /// Overrides SOUL.md and the built-in default. Read at build_helve_config time.
+    pub role_file: Option<PathBuf>,
     pub verbose: bool,
     pub got_adaptive: bool,
     pub display_max_len: usize,
@@ -243,6 +246,7 @@ mod tests {
                 "/definitely/not/exist/loom-cli-run-agent-tests",
             )),
             thread_id: None,
+            role_file: None,
             verbose: false,
             got_adaptive,
             display_max_len: 120,
@@ -309,6 +313,7 @@ mod tests {
             message: "m".to_string(),
             working_folder: cfg.working_folder.clone(),
             thread_id: None,
+            role_file: None,
             verbose: false,
             got_adaptive: false,
             display_max_len: 120,
