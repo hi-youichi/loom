@@ -44,7 +44,7 @@ pub async fn list_tools(opts: &RunOptions) -> Result<(), RunError> {
     format_tools_list(&tools, opts.output_json)
 }
 
-/// Formats tools list for display (used by both local and remote backend).
+/// Formats tools list for display.
 /// When `output_json` is true, prints a JSON array of tools; otherwise prints a table.
 pub fn format_tools_list(tools: &[ToolSpec], output_json: bool) -> Result<(), RunError> {
     if output_json {
@@ -90,7 +90,7 @@ pub fn format_tools_list(tools: &[ToolSpec], output_json: bool) -> Result<(), Ru
     Ok(())
 }
 
-/// Formats tool show output from ToolShowResponse (used by remote backend).
+/// Formats tool show output from ToolShowResponse.
 pub fn format_tool_show_output(
     r: &loom::ToolShowResponse,
     format: ToolShowFormat,

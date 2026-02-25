@@ -30,12 +30,27 @@ cargo run -p cli -- -m "What time is it?"
 cargo run -p cli -- --working-folder . "Summarize this repo"
 ```
 
+## WebSocket server
+
+Run the WebSocket server so other clients can connect (default: ws://127.0.0.1:8080, keeps running until killed):
+
+```bash
+cargo run -p cli -- serve
+
+# Custom address
+cargo run -p cli -- serve --addr 127.0.0.1:9000
+```
+
+
 ## Workspace
 
 | Crate | Description |
 |-------|-------------|
 | `loom` | Core library: graph, nodes, state, LLM, tools, memory |
-| `cli` | CLI binary with React / Dup / Tot / Got / Tool subcommands |
+| `cli` | CLI binary with React / Dup / Tot / Got / Tool / Serve subcommands |
+| `serve` | WebSocket server (used by `loom serve`) |
+| `stream-event` | Streaming event types and protocol |
+| `config` | Config loading |
 | `loom-examples` | Examples |
 
 ## Library usage

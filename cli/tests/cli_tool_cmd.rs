@@ -18,7 +18,7 @@ fn cli_help_succeeds() {
 
 #[test]
 fn cli_tool_list_local_json_succeeds() {
-    let out = run_loom(&["--local", "--json", "tool", "list"]);
+    let out = run_loom(&["--json", "tool", "list"]);
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.trim_start().starts_with('['));
@@ -27,7 +27,7 @@ fn cli_tool_list_local_json_succeeds() {
 
 #[test]
 fn cli_tool_show_existing_local_json_succeeds() {
-    let out = run_loom(&["--local", "--json", "tool", "show", "get_recent_messages"]);
+    let out = run_loom(&["--json", "tool", "show", "get_recent_messages"]);
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("\"name\""));
@@ -36,32 +36,9 @@ fn cli_tool_show_existing_local_json_succeeds() {
 
 #[test]
 fn cli_tool_show_missing_local_fails() {
-    let out = run_loom(&["--local", "tool", "show", "no_such_tool"]);
+    let out = run_loom(&["tool", "show", "no_such_tool"]);
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("tool not found"));
 }
 
-#[test]
-fn cli_remote_no_auto_start_reports_connection_error() {
-    let out = run_loom(&[
-        "--remote",
-        "not-a-valid-url",
-        "--no-auto-start",
-        "tool",
-        "list",
-    ]);
-    if out.status.success() {
-        // In some developer environments, config may force local backend.
-        let stdout = String::from_utf8_lossy(&out.stdout);
-        assert!(stdout.contains("NAME") || stdout.contains("\"name\""));
-    } else {
-        let stderr = String::from_utf8_lossy(&out.stderr).to_lowercase();
-        assert!(
-            stderr.contains("invalid")
-                || stderr.contains("url")
-                || stderr.contains("connection")
-                || stderr.contains("connect")
-        );
-    }
-}

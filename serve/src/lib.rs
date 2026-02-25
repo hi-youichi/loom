@@ -1,4 +1,4 @@
-//! WebSocket server for Loom CLI remote mode (axum + ws).
+//! WebSocket server for Loom (axum + ws).
 //!
 //! Listens on ws://127.0.0.1:8080, handles run, tools_list, tool_show, ping.
 //!
@@ -28,7 +28,7 @@ pub async fn run_serve_on_listener(
     let addr = listener.local_addr()?;
     info!("WebSocket server listening on ws://{}", addr);
     if once {
-        info!("will exit after first connection is done (use --keep-alive to run until killed)");
+        info!("will exit after first connection is done (once mode, used by tests)");
     }
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel();
@@ -48,7 +48,7 @@ pub async fn run_serve_on_listener(
                 let _ = shutdown_rx.await;
             })
             .await?;
-        info!("connection done, exiting (default: exit after first connection)");
+        info!("connection done, exiting (once mode)");
     } else {
         axum::serve(listener, app).await?;
     }

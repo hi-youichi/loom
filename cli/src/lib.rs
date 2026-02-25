@@ -8,9 +8,7 @@ pub mod envelope;
 pub mod run;
 pub mod tool_cmd;
 
-pub use backend::{
-    ensure_server_or_spawn, LocalBackend, RemoteBackend, RunBackend, RunOutput, StreamOut,
-};
+pub use backend::{LocalBackend, RunBackend, RunOutput, StreamOut};
 pub use loom::Envelope;
 pub use run::{run_agent_wrapper as run_agent, RunAgentResult, RunCmd, RunError, RunOptions};
 pub use tool_cmd::{

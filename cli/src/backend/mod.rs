@@ -1,21 +1,11 @@
 //! Backend abstraction used by the `loom` CLI.
 //!
-//! The CLI supports two execution modes:
-//! - **LocalBackend**: build the runner and execute in-process (default).
-//! - **RemoteBackend**: send a request over WebSocket to `loom serve`, which executes
-//!   the run and streams events back.
-//!
-//! This module keeps CLI orchestration (`main.rs`/`repl.rs`) independent of *how* a run
-//! is performed. Callers depend only on [`RunBackend`], so switching local/remote is a
-//! one-line decision. This also centralizes the JSON/NDJSON streaming contract.
+//! The CLI runs the agent in-process via [`LocalBackend`]. This module centralizes
+//! the JSON/NDJSON streaming contract and [`RunBackend`] trait.
 
-mod auto_start;
 mod local;
-mod remote;
 
-pub use auto_start::{ensure_server_or_spawn, spawn_serve, wait_for_server};
 pub use local::LocalBackend;
-pub use remote::RemoteBackend;
 
 use crate::ToolShowFormat;
 use async_trait::async_trait;

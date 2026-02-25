@@ -7,14 +7,10 @@ mod logging;
 mod repl;
 
 use clap::{Parser, Subcommand};
-use cli::{
-    LocalBackend, RemoteBackend, RunBackend, RunOptions, RunOutput, StreamOut, ToolShowFormat,
-};
+use cli::{LocalBackend, RunBackend, RunOptions, RunOutput, StreamOut, ToolShowFormat};
 use repl::{run_one_turn, run_repl_loop};
 use std::path::PathBuf;
 use std::sync::Arc;
-
-const DEFAULT_WS_URL: &str = "ws://127.0.0.1:8080";
 
 #[derive(Parser, Debug)]
 #[command(name = "loom")]
@@ -47,18 +43,6 @@ struct Args {
     #[arg(short, long)]
     interactive: bool,
 
-    /// Use local execution (default). Use --no-local for remote WebSocket
-    #[arg(long, default_value_t = true)]
-    local: bool,
-
-    /// Remote WebSocket URL (default: ws://127.0.0.1:8080 or LOOM_REMOTE_URL)
-    #[arg(long, value_name = "URL")]
-    remote: Option<String>,
-
-    /// Do not auto-start server when remote connection fails
-    #[arg(long)]
-    no_auto_start: bool,
-
     /// Output all data as JSON (stream events + reply for agent run; JSON array for tool list; JSON for tool show)
     #[arg(long)]
     json: bool,
@@ -70,23 +54,6 @@ struct Args {
     /// When using --json, pretty-print (multi-line). Default: compact, one line per event
     #[arg(long)]
     pretty: bool,
-}
-
-fn resolve_remote_url(args: &Args) -> String {
-    if let Some(ref u) = args.remote {
-        return u.clone();
-    }
-    std::env::var("LOOM_REMOTE_URL").unwrap_or_else(|_| DEFAULT_WS_URL.to_string())
-}
-
-fn resolve_auto_start(args: &Args) -> bool {
-    if args.no_auto_start {
-        return false;
-    }
-    !matches!(
-        std::env::var("LOOM_NO_AUTO_START").as_deref(),
-        Ok("1") | Ok("true") | Ok("yes")
-    )
 }
 
 /// Writes JSON to stdout or to the given file. When pretty is true, multi-line; else one line.
@@ -173,17 +140,9 @@ fn make_stream_out(file: Option<&PathBuf>, pretty: bool) -> StreamOut {
     )))
 }
 
-fn make_backend(args: &Args) -> Arc<dyn RunBackend> {
-    if args.local {
-        Arc::new(LocalBackend)
-    } else {
-        Arc::new(RemoteBackend::new(resolve_remote_url(args)))
-    }
-}
-
 #[derive(Subcommand, Debug, Clone)]
 enum Command {
-    /// Run WebSocket server for remote mode (ws://127.0.0.1:8080)
+    /// Run WebSocket server (ws://127.0.0.1:8080)
     Serve(ServeArgs),
     /// Run ReAct graph (think → act → observe)
     React,
@@ -277,9 +236,6 @@ struct ServeArgs {
     /// WebSocket listen address (default 127.0.0.1:8080)
     #[arg(long, value_name = "ADDR")]
     addr: Option<String>,
-    /// Keep server running after first connection (default: exit after first connection)
-    #[arg(long)]
-    keep_alive: bool,
 }
 
 /// Arguments for the `got` subcommand.
@@ -298,23 +254,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     if let Some(Command::Serve(sa)) = &args.cmd {
-        if let Err(e) = serve::run_serve(sa.addr.as_deref(), !sa.keep_alive).await {
+        if let Err(e) = serve::run_serve(sa.addr.as_deref(), false).await {
             eprintln!("serve error: {}", e);
             std::process::exit(1);
         }
         return Ok(());
     }
     let got_adaptive = matches!(args.cmd.as_ref(), Some(Command::Got(a)) if a.got_adaptive);
-    let backend = make_backend(&args);
-
-    // For remote backend, ensure server is running (unless --no-auto-start)
-    if !args.local && resolve_auto_start(&args) {
-        let url = resolve_remote_url(&args);
-        if let Err(e) = cli::ensure_server_or_spawn(&url).await {
-            eprintln!("loom: {}", e);
-            std::process::exit(1);
-        }
-    }
+    let backend: Arc<dyn RunBackend> = Arc::new(LocalBackend);
 
     // Tool subcommands do not require a message; handle them first.
     if let Some(Command::Tool(ta)) = &args.cmd {
@@ -534,79 +481,6 @@ mod tests {
     #[test]
     fn default_max_reply_len_is_zero() {
         assert_eq!(DEFAULT_MAX_REPLY_LEN, 0);
-    }
-
-    #[test]
-    fn resolve_remote_url_prefers_arg_then_env_then_default() {
-        let args = Args {
-            cmd: None,
-            message: None,
-            rest: vec![],
-            working_folder: None,
-            thread_id: None,
-            verbose: false,
-            interactive: false,
-            local: false,
-            remote: Some("ws://example:9999".to_string()),
-            no_auto_start: false,
-            json: false,
-            file: None,
-            pretty: false,
-        };
-        assert_eq!(resolve_remote_url(&args), "ws://example:9999");
-
-        let _guard = env_lock().lock().unwrap();
-        std::env::set_var("LOOM_REMOTE_URL", "ws://env:8081");
-        let args_no_remote = Args {
-            remote: None,
-            ..args
-        };
-        assert_eq!(resolve_remote_url(&args_no_remote), "ws://env:8081");
-        std::env::remove_var("LOOM_REMOTE_URL");
-        assert_eq!(resolve_remote_url(&args_no_remote), DEFAULT_WS_URL);
-    }
-
-    #[test]
-    fn resolve_auto_start_honors_flag_and_env() {
-        let base = Args {
-            cmd: None,
-            message: None,
-            rest: vec![],
-            working_folder: None,
-            thread_id: None,
-            verbose: false,
-            interactive: false,
-            local: false,
-            remote: None,
-            no_auto_start: false,
-            json: false,
-            file: None,
-            pretty: false,
-        };
-        assert!(resolve_auto_start(&base));
-        let no_auto = Args {
-            cmd: None,
-            message: None,
-            rest: vec![],
-            working_folder: None,
-            thread_id: None,
-            verbose: false,
-            interactive: false,
-            local: false,
-            remote: None,
-            no_auto_start: true,
-            json: false,
-            file: None,
-            pretty: false,
-        };
-        assert!(!resolve_auto_start(&no_auto));
-
-        let _guard = env_lock().lock().unwrap();
-        std::env::set_var("LOOM_NO_AUTO_START", "1");
-        assert!(!resolve_auto_start(&base));
-        std::env::set_var("LOOM_NO_AUTO_START", "true");
-        assert!(!resolve_auto_start(&base));
-        std::env::remove_var("LOOM_NO_AUTO_START");
     }
 
     #[test]

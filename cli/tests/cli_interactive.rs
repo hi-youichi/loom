@@ -21,7 +21,7 @@ fn run_with_stdin(args: &[&str], input: &str) -> std::process::Output {
 
 #[test]
 fn interactive_quit_immediately_exits_success() {
-    let out = run_with_stdin(&["--local", "-i"], "quit\n");
+    let out = run_with_stdin(&["-i"], "quit\n");
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("Bye."));
@@ -29,7 +29,7 @@ fn interactive_quit_immediately_exits_success() {
 
 #[test]
 fn interactive_empty_line_then_quit_exits_success() {
-    let out = run_with_stdin(&["--local", "-i"], "\nquit\n");
+    let out = run_with_stdin(&["-i"], "\nquit\n");
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("Bye."));
@@ -39,7 +39,6 @@ fn interactive_empty_line_then_quit_exits_success() {
 fn interactive_initial_message_with_invalid_working_folder_exits_error() {
     let out = run_with_stdin(
         &[
-            "--local",
             "-i",
             "-m",
             "hello",
