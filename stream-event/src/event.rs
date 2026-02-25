@@ -1,5 +1,22 @@
 //! Protocol-level event types (protocol_spec §4: type + payload).
 //! State-carrying variants use `serde_json::Value`; the bridge in loom serializes `S` into that.
+//!
+//! # Architecture
+//!
+//! Single pipeline (loom produces, this crate defines wire shape and envelope injection):
+//!
+//! ```text
+//!   [loom]                                    [stream-event]
+//!   Agent emits StreamEvent<S>                This crate
+//!
+//!   StreamEvent<S>  ──stream_event_to_protocol_event()──►  ProtocolEvent  ──to_json(ev, &mut state)──►  JSON frame
+//!   (internal)         (in loom)                           (this enum)    (envelope injected here)    (on wire)
+//! ```
+//!
+//! - **ProtocolEvent**: wire shape (type + payload only). Loom converts `StreamEvent<S>` into it; [`to_json`] takes it and produces the final frame.
+//! - **to_json(event, &mut EnvelopeState)**: serializes the event and injects `session_id`, `node_id`, `event_id` from state (see [`crate::envelope`]).
+//!
+//! [`to_json`]: crate::to_json
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -14,32 +31,53 @@ use serde_json::Value;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProtocolEvent {
+    /// Node run started. Emitted when the agent begins executing a node (e.g. think, act).
+    /// `id` is the node name; the envelope `node_id` is set from this until the next `NodeExit`.
     NodeEnter {
+        /// Node name (e.g. `"think"`, `"act"`).
         id: String,
     },
+    /// Node run ended. Emitted when a node finishes.
+    /// `result` is `"Ok"` or `{"Err": "<message>"}`.
     NodeExit {
+        /// Node name that just exited.
         id: String,
+        /// `"Ok"` on success, or `{"Err": string}` on failure.
         result: Value,
     },
+    /// One chunk of LLM-generated text. Streamed during completion.
+    /// `id` is the name of the node producing this content.
     MessageChunk {
+        /// Incremental text from the model.
         content: String,
+        /// Producing node name (e.g. `"think"`).
         id: String,
     },
+    /// Token usage for the last LLM call in this node.
     Usage {
         prompt_tokens: u32,
         completion_tokens: u32,
         total_tokens: u32,
     },
+    /// Full state snapshot. Emitted to replace client state with the given graph state.
+    /// Shape depends on agent type (ReAct, ToT, GoT, etc.).
     Values {
+        /// Serialized graph state.
         state: Value,
     },
+    /// State update after a node merge. Emitted when one node’s result is merged into state.
     Updates {
+        /// Node name that produced this update.
         id: String,
+        /// New or partial state after merge.
         state: Value,
     },
+    /// Custom JSON payload. For extension points or debugging.
     Custom {
+        /// Arbitrary JSON value.
         value: Value,
     },
+    /// Checkpoint for persistence. Contains a serialized state snapshot and metadata.
     Checkpoint {
         checkpoint_id: String,
         timestamp: String,
@@ -48,63 +86,89 @@ pub enum ProtocolEvent {
         thread_id: Option<String>,
         checkpoint_ns: Option<String>,
     },
+    /// **Tree of Thought**: expansion step. The model produced multiple candidate next steps.
     TotExpand {
+        /// Candidate strings (e.g. thought continuations).
         candidates: Vec<String>,
     },
+    /// **Tree of Thought**: evaluation step. One candidate was chosen; optional scores for all.
     TotEvaluate {
+        /// Index of the chosen candidate in the previous expand list.
         chosen: usize,
+        /// Scores for each candidate (may be empty).
         scores: Vec<f32>,
     },
+    /// **Tree of Thought**: backtrack. Search is rewinding to an earlier depth.
     TotBacktrack {
         reason: String,
+        /// Depth to rewind to.
         to_depth: u32,
     },
+    /// **Graph of Thought**: plan created. The execution graph has been laid out.
     GotPlan {
         node_count: usize,
         edge_count: usize,
+        /// IDs of all nodes in the plan.
         node_ids: Vec<String>,
     },
+    /// **Graph of Thought**: a plan node has started executing.
     GotNodeStart {
+        /// Node ID that started.
         id: String,
     },
+    /// **Graph of Thought**: a plan node completed successfully.
     GotNodeComplete {
         id: String,
         result_summary: String,
     },
+    /// **Graph of Thought**: a plan node failed.
     GotNodeFailed {
         id: String,
         error: String,
     },
+    /// **Graph of Thought**: adaptive expand. New nodes/edges were added from a node.
     GotExpand {
+        /// Node that triggered the expand.
         node_id: String,
         nodes_added: usize,
         edges_added: usize,
     },
+    /// Tool call arguments streamed incrementally (e.g. streaming JSON).
+    /// First chunk usually has `call_id` and `name`; later chunks may have only `arguments_delta`.
     ToolCallChunk {
         call_id: Option<String>,
         name: Option<String>,
+        /// Incremental JSON or text for the arguments.
         arguments_delta: String,
     },
+    /// Complete tool call: name and full arguments. Emitted when the model finishes the call.
     ToolCall {
         call_id: Option<String>,
         name: String,
         arguments: Value,
     },
+    /// Tool execution has started. The runner is about to invoke the tool.
     ToolStart {
         call_id: Option<String>,
         name: String,
     },
+    /// Content produced by the tool (e.g. stdout). May be sent multiple times per call.
     ToolOutput {
         call_id: Option<String>,
         name: String,
         content: String,
     },
+    /// Tool execution finished. Contains the final result or error text.
     ToolEnd {
         call_id: Option<String>,
         name: String,
+        /// Result text (success or error message).
         result: String,
+        /// Whether the tool reported an error.
         is_error: bool,
     },
+    /// Tool call awaiting user approval (e.g. destructive or privileged actions).
+    /// Contains the tool name and arguments for the client to confirm or reject.
     ToolApproval {
         call_id: Option<String>,
         name: String,
