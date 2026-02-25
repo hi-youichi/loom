@@ -52,7 +52,7 @@ Inside the event body, **id** denotes the node name (e.g. "think", "act"), and i
 
 - Event messages **must** include **type** (string) at the top level, indicating the event kind.
 - Aside from type, remaining fields are payload; they sit at the same level as envelope fields (session_id, node_id, event_id).
-- **Events** include run_start, node_enter, node_exit, message_chunk, usage, values, updates, custom, checkpoint, and ToT/GoT-related types (see §4.2).
+- **Events** include run_start, node_enter, node_exit, message_chunk, usage, values, updates, custom, checkpoint, ToT/GoT-related types, and tool-related types (tool_call_chunk, tool_call, tool_start, tool_output, tool_end, tool_approval) (see §4.2).
 
 ### 4.2 Event Types and Payloads
 
@@ -77,6 +77,14 @@ The table below lists all event types and their payload fields (excluding type).
 | **got_node_complete** | GoT node completed | `id`: string, `result_summary`: string |
 | **got_node_failed** | GoT node failed | `id`: string, `error`: string |
 | **got_expand** | AGoT expand | `node_id`: string, `nodes_added`, `edges_added` |
+| **tool_call_chunk** | Tool call arguments streamed incrementally (e.g. streaming JSON) | `call_id`: string (optional), `name`: string (optional), `arguments_delta`: string |
+| **tool_call** | Complete tool call: name and full arguments | `call_id`: string (optional), `name`: string, `arguments`: object |
+| **tool_start** | Tool execution started | `call_id`: string (optional), `name`: string |
+| **tool_output** | Content produced by the tool (e.g. stdout); may be sent multiple times per call | `call_id`: string (optional), `name`: string, `content`: string |
+| **tool_end** | Tool execution finished | `call_id`: string (optional), `name`: string, `result`: string, `is_error`: boolean |
+| **tool_approval** | Tool call awaiting user approval (e.g. destructive actions) | `call_id`: string (optional), `name`: string, `arguments`: object |
+
+Tool event order for a single call: typically **tool_call** (or **tool_call_chunk** stream) → **tool_start** → **tool_output** (zero or more) → **tool_end**; or **tool_approval** when the client must confirm before execution.
 
 ### 4.3 Example Event Messages (with envelope)
 
@@ -145,6 +153,12 @@ This protocol uses a uniform **type + payload** shape. The mapping to the “sin
 | got_node_complete | GotNodeComplete |
 | got_node_failed | GotNodeFailed |
 | got_expand | GotExpand |
+| tool_call_chunk | ToolCallChunk |
+| tool_call | ToolCall |
+| tool_start | ToolStart |
+| tool_output | ToolOutput |
+| tool_end | ToolEnd |
+| tool_approval | ToolApproval |
 
 ---
 

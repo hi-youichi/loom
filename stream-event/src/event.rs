@@ -1,4 +1,4 @@
-//! Protocol-level event types (protocol_spec §4: type + payload).
+//! Protocol-level event types ([protocol_spec §4](https://github.com/loom/loom/blob/main/docs/protocol_spec.md#4-message-structure-events): type + payload).
 //! State-carrying variants use `serde_json::Value`; the bridge in loom serializes `S` into that.
 //!
 //! # Architecture
@@ -14,30 +14,30 @@
 //! ```
 //!
 //! - **ProtocolEvent**: wire shape (type + payload only). Loom converts `StreamEvent<S>` into it; [`to_json`] takes it and produces the final frame.
-//! - **to_json(event, &mut EnvelopeState)**: serializes the event and injects `session_id`, `node_id`, `event_id` from state (see [`crate::envelope`]).
+//! - **to_json(event, &mut EnvelopeState)**: serializes the event and injects `session_id`, `node_id`, `event_id` from state (see [`crate::envelope`] and [`EnvelopeState`]).
 //!
 //! [`to_json`]: crate::to_json
+//! [`EnvelopeState`]: crate::EnvelopeState
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Protocol event: wire shape for one stream event (type + payload).
-/// Matches protocol_spec §4.2; envelope (session_id, node_id, event_id) is applied separately.
+/// Matches [protocol_spec §4.2](https://github.com/loom/loom/blob/main/docs/protocol_spec.md#42-event-types-and-payloads); envelope (`session_id`, `node_id`, `event_id`) is applied separately via [`to_json`](crate::to_json) and [`EnvelopeState`](crate::EnvelopeState).
 ///
 /// Note on naming:
-/// - `id` in payload means node name (e.g. "think", "act")
-/// - `node_id` in envelope means node-run span id
-/// - `got_expand` keeps payload field name `node_id` by protocol definition
+/// - `id` in payload = node name (e.g. "think", "act"); see [`EnvelopeState`](crate::EnvelopeState) for how envelope `node_id` is derived from `NodeEnter.id`.
+/// - `got_expand` keeps payload field name `node_id` by protocol definition.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProtocolEvent {
     /// Node run started. Emitted when the agent begins executing a node (e.g. think, act).
-    /// `id` is the node name; the envelope `node_id` is set from this until the next `NodeExit`.
+    /// `id` is the node name; the envelope `node_id` is set from this until the next [`NodeExit`](Self::NodeExit).
     NodeEnter {
         /// Node name (e.g. `"think"`, `"act"`).
         id: String,
     },
-    /// Node run ended. Emitted when a node finishes.
+    /// Node run ended. Emitted when a node finishes. Pairs with [`NodeEnter`](Self::NodeEnter).
     /// `result` is `"Ok"` or `{"Err": "<message>"}`.
     NodeExit {
         /// Node name that just exited.
@@ -60,12 +60,13 @@ pub enum ProtocolEvent {
         total_tokens: u32,
     },
     /// Full state snapshot. Emitted to replace client state with the given graph state.
-    /// Shape depends on agent type (ReAct, ToT, GoT, etc.).
+    /// Shape depends on agent type (ReAct, ToT, GoT, etc.). Contrast with [`Updates`](Self::Updates) (incremental).
     Values {
         /// Serialized graph state.
         state: Value,
     },
     /// State update after a node merge. Emitted when one node’s result is merged into state.
+    /// See [`Values`](Self::Values) for a full state snapshot.
     Updates {
         /// Node name that produced this update.
         id: String,
@@ -78,6 +79,7 @@ pub enum ProtocolEvent {
         value: Value,
     },
     /// Checkpoint for persistence. Contains a serialized state snapshot and metadata.
+    /// Reply envelope can be built with [`EnvelopeState::reply_envelope`](crate::EnvelopeState::reply_envelope).
     Checkpoint {
         checkpoint_id: String,
         timestamp: String,
@@ -92,6 +94,7 @@ pub enum ProtocolEvent {
         candidates: Vec<String>,
     },
     /// **Tree of Thought**: evaluation step. One candidate was chosen; optional scores for all.
+    /// References the candidate list from the previous [`TotExpand`](Self::TotExpand).
     TotEvaluate {
         /// Index of the chosen candidate in the previous expand list.
         chosen: usize,
@@ -105,13 +108,14 @@ pub enum ProtocolEvent {
         to_depth: u32,
     },
     /// **Graph of Thought**: plan created. The execution graph has been laid out.
+    /// Followed by [`GotNodeStart`](Self::GotNodeStart) / [`GotNodeComplete`](Self::GotNodeComplete) / [`GotNodeFailed`](Self::GotNodeFailed) for each node.
     GotPlan {
         node_count: usize,
         edge_count: usize,
         /// IDs of all nodes in the plan.
         node_ids: Vec<String>,
     },
-    /// **Graph of Thought**: a plan node has started executing.
+    /// **Graph of Thought**: a plan node has started executing. See [`GotPlan`](Self::GotPlan).
     GotNodeStart {
         /// Node ID that started.
         id: String,
@@ -127,6 +131,7 @@ pub enum ProtocolEvent {
         error: String,
     },
     /// **Graph of Thought**: adaptive expand. New nodes/edges were added from a node.
+    /// Payload uses `node_id` (not `id`) per protocol.
     GotExpand {
         /// Node that triggered the expand.
         node_id: String,
@@ -135,6 +140,7 @@ pub enum ProtocolEvent {
     },
     /// Tool call arguments streamed incrementally (e.g. streaming JSON).
     /// First chunk usually has `call_id` and `name`; later chunks may have only `arguments_delta`.
+    /// Complete call is then emitted as [`ToolCall`](Self::ToolCall).
     ToolCallChunk {
         call_id: Option<String>,
         name: Option<String>,
@@ -142,23 +148,24 @@ pub enum ProtocolEvent {
         arguments_delta: String,
     },
     /// Complete tool call: name and full arguments. Emitted when the model finishes the call.
+    /// Followed by [`ToolStart`](Self::ToolStart) → [`ToolOutput`](Self::ToolOutput) (zero or more) → [`ToolEnd`](Self::ToolEnd); or [`ToolApproval`](Self::ToolApproval) if approval is required.
     ToolCall {
         call_id: Option<String>,
         name: String,
         arguments: Value,
     },
-    /// Tool execution has started. The runner is about to invoke the tool.
+    /// Tool execution has started. The runner is about to invoke the tool. See [`ToolCall`](Self::ToolCall).
     ToolStart {
         call_id: Option<String>,
         name: String,
     },
-    /// Content produced by the tool (e.g. stdout). May be sent multiple times per call.
+    /// Content produced by the tool (e.g. stdout). May be sent multiple times per call. See [`ToolEnd`](Self::ToolEnd).
     ToolOutput {
         call_id: Option<String>,
         name: String,
         content: String,
     },
-    /// Tool execution finished. Contains the final result or error text.
+    /// Tool execution finished. Contains the final result or error text. Ends the sequence started by [`ToolStart`](Self::ToolStart).
     ToolEnd {
         call_id: Option<String>,
         name: String,
@@ -168,7 +175,7 @@ pub enum ProtocolEvent {
         is_error: bool,
     },
     /// Tool call awaiting user approval (e.g. destructive or privileged actions).
-    /// Contains the tool name and arguments for the client to confirm or reject.
+    /// Contains the tool name and arguments for the client to confirm or reject. See [`ToolCall`](Self::ToolCall).
     ToolApproval {
         call_id: Option<String>,
         name: String,

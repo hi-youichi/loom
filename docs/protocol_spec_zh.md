@@ -52,7 +52,7 @@
 
 - 事件消息**必须**在顶层包含 **type**（string），表示事件种类。
 - 除 type 外，其余字段为载荷；与信封字段（session_id、node_id、event_id）同级。
-- **事件**包括 run_start、node_enter、node_exit、message_chunk、usage、values、updates、custom、checkpoint，以及 ToT/GoT 相关类型（见 §4.2）。
+- **事件**包括 run_start、node_enter、node_exit、message_chunk、usage、values、updates、custom、checkpoint、ToT/GoT 相关类型，以及 tool 相关类型（tool_call_chunk、tool_call、tool_start、tool_output、tool_end、tool_approval）（见 §4.2）。
 
 ### 4.2 事件类型与载荷
 
@@ -77,6 +77,14 @@
 | **got_node_complete** | GoT 节点完成 | `id`: string，`result_summary`: string |
 | **got_node_failed** | GoT 节点失败 | `id`: string，`error`: string |
 | **got_expand** | AGoT 扩展 | `node_id`: string，`nodes_added`，`edges_added` |
+| **tool_call_chunk** | 工具调用参数流式增量（如流式 JSON） | `call_id`: string（可选），`name`: string（可选），`arguments_delta`: string |
+| **tool_call** | 完整工具调用：名称与完整参数 | `call_id`: string（可选），`name`: string，`arguments`: object |
+| **tool_start** | 工具执行开始 | `call_id`: string（可选），`name`: string |
+| **tool_output** | 工具产生的内容（如 stdout）；每次调用可发送多次 | `call_id`: string（可选），`name`: string，`content`: string |
+| **tool_end** | 工具执行结束 | `call_id`: string（可选），`name`: string，`result`: string，`is_error`: boolean |
+| **tool_approval** | 待用户确认的工具调用（如危险操作） | `call_id`: string（可选），`name`: string，`arguments`: object |
+
+单次工具调用的典型顺序：**tool_call**（或 **tool_call_chunk** 流）→ **tool_start** → **tool_output**（零次或多次）→ **tool_end**；或需要客户端先确认时为 **tool_approval**。
 
 ### 4.3 示例事件消息（含信封）
 
@@ -145,6 +153,12 @@
 | got_node_complete | GotNodeComplete |
 | got_node_failed | GotNodeFailed |
 | got_expand | GotExpand |
+| tool_call_chunk | ToolCallChunk |
+| tool_call | ToolCall |
+| tool_start | ToolStart |
+| tool_output | ToolOutput |
+| tool_end | ToolEnd |
+| tool_approval | ToolApproval |
 
 ---
 
