@@ -16,6 +16,9 @@ pub const DEFAULT_WORKING_FOLDER: &str = "/tmp";
 const AGENTS_MD_FILE: &str = "AGENTS.md";
 const SOUL_MD_FILE: &str = "SOUL.md";
 
+/// Default SOUL (agent persona) embedded at compile time. Used when no SOUL.md is found on disk.
+const DEFAULT_SOUL: &str = include_str!("../../prompts/SOUL.md");
+
 /// Reads AGENTS.md from current directory and optionally from working_folder.
 pub fn load_agents_md(working_folder: Option<&PathBuf>) -> Option<String> {
     let cwd = std::env::current_dir().ok()?;
@@ -70,7 +73,8 @@ pub fn build_helve_config(opts: &RunOptions) -> (HelveConfig, ReactBuildConfig) 
         thread_id: opts.thread_id.clone(),
         user_id: base.user_id.clone(),
         approval_policy: None,
-        role_setting: load_soul_md(Some(&working_folder)),
+        role_setting: load_soul_md(Some(&working_folder))
+            .or_else(|| Some(DEFAULT_SOUL.trim().to_string())),
         agents_md: load_agents_md(Some(&working_folder)),
         system_prompt_override: None,
     };
