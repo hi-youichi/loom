@@ -58,6 +58,7 @@
 //!   [`ApprovalPolicy`], [`tools_requiring_approval`], [`APPROVAL_REQUIRED_EVENT_TYPE`].
 //! - [`protocol`]: WebSocket message types for CLI remote mode ([`ClientRequest`], [`ServerResponse`]);
 //!   streaming output protocol in [`protocol::stream`] ([`stream_event_to_protocol_format`], [`Envelope`]).
+//! - [`user_message`]: [`UserMessageStore`] trait for per-thread message append/list ([`NoOpUserMessageStore`]).
 //!
 //! Key types are re-exported at crate root: `use loom::{Agent, StateGraph, Message, ReActState};`.
 //!
@@ -139,6 +140,7 @@ pub mod stream;
 pub mod tool_source;
 pub mod tools;
 pub mod traits;
+pub mod user_message;
 
 pub use agent::react::{
     build_dup_runner, build_got_runner, build_react_initial_state, build_react_run_context,
@@ -226,6 +228,7 @@ pub use tool_source::{
 };
 pub use tools::{register_mcp_tools, BashTool, McpToolAdapter};
 pub use traits::Agent;
+pub use user_message::{NoOpUserMessageStore, UserMessageStore, UserMessageStoreError};
 
 // Re-export DUP, GoT, ToT from agent for backward compatibility.
 pub use agent::{

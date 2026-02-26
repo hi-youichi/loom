@@ -111,6 +111,7 @@ pub async fn build_react_runner(
         system_prompt,
         config.approval_policy,
         config.compaction_config.clone(),
+        None,
         verbose,
     )?;
     Ok(runner)
