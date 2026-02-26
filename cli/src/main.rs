@@ -260,6 +260,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(Command::Serve(sa)) = &args.cmd {
         if let Err(e) = serve::run_serve(sa.addr.as_deref(), false).await {
             eprintln!("serve error: {}", e);
+            let msg = e.to_string();
+            if msg.contains("Address already in use") || msg.contains("already in use") {
+                eprintln!(
+                    "hint: 端口已被占用。可尝试：1) 使用 --addr 指定其他地址，如 --addr 127.0.0.1:8081；2) 结束占用该端口的进程（如 lsof -i :8080）。"
+                );
+            }
             std::process::exit(1);
         }
         return Ok(());

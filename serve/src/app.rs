@@ -15,6 +15,8 @@ use super::connection::handle_socket;
 #[derive(Clone)]
 pub(crate) struct AppState {
     pub(crate) shutdown_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
+    /// When set, Run requests with workspace_id + thread_id register the thread in this workspace.
+    pub(crate) workspace_store: Option<Arc<loom_workspace::Store>>,
 }
 
 pub(crate) fn router(state: Arc<AppState>) -> Router {
@@ -23,5 +25,6 @@ pub(crate) fn router(state: Arc<AppState>) -> Router {
 
 async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> Response {
     let shutdown_tx = state.shutdown_tx.lock().ok().and_then(|mut g| g.take());
-    ws.on_upgrade(move |socket| handle_socket(socket, shutdown_tx))
+    let workspace_store = state.workspace_store.clone();
+    ws.on_upgrade(move |socket| handle_socket(socket, shutdown_tx, workspace_store))
 }

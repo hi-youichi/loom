@@ -258,6 +258,7 @@ async fn e2e_run_react() {
         message: "Search the web for recent Rust programming language news and summarize one or two items in a short reply.".to_string(),
         agent: AgentType::React,
         thread_id: None,
+        workspace_id: None,
         working_folder: None,
         got_adaptive: None,
         verbose: Some(false),

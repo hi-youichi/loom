@@ -41,8 +41,10 @@ cargo run -p cli -- serve
 cargo run -p cli -- serve --addr 127.0.0.1:9000
 ```
 
+When a Run request includes both `workspace_id` and `thread_id`, the thread is associated with that workspace (see `loom-workspace`). The server uses a SQLite DB for workspaces; set `WORKSPACE_DB` to a file path (default: `workspace.db` in the current directory).
 
-## Workspace
+
+## Workspace (crates)
 
 | Crate | Description |
 |-------|-------------|
@@ -51,6 +53,7 @@ cargo run -p cli -- serve --addr 127.0.0.1:9000
 | `serve` | WebSocket server (used by `loom serve`) |
 | `stream-event` | Streaming event types and protocol |
 | `config` | Config loading |
+| `loom-workspace` | Workspace and thread association (own SQLite); list workspaces, list threads per workspace; Run with `workspace_id` + `thread_id` registers the thread |
 | `loom-examples` | Examples |
 
 ## Library usage

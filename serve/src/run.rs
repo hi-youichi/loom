@@ -22,7 +22,17 @@ static NEXT_RUN_SEQ: AtomicU64 = AtomicU64::new(0);
 pub(crate) async fn handle_run(
     r: loom::RunRequest,
     socket: &mut WebSocket,
+    workspace_store: Option<std::sync::Arc<loom_workspace::Store>>,
 ) -> Result<Option<ServerResponse>, Box<dyn std::error::Error + Send + Sync>> {
+    // When both workspace_id and thread_id are present, register thread in workspace (run-time association).
+    if let (Some(ref ws_id), Some(ref thread_id)) = (r.workspace_id.as_ref(), r.thread_id.as_ref()) {
+        if let Some(ref store) = workspace_store {
+            if let Err(e) = store.add_thread_to_workspace(ws_id, thread_id).await {
+                tracing::warn!("workspace add_thread_to_workspace: {}", e);
+            }
+        }
+    }
+
     let opts = RunOptions {
         message: r.message,
         working_folder: r.working_folder.map(PathBuf::from),

@@ -32,12 +32,17 @@ pub async fn run_serve_on_listener(
     }
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel();
+    let workspace_store = std::env::var("WORKSPACE_DB")
+        .ok()
+        .unwrap_or_else(|| "workspace.db".to_string());
+    let workspace_store = loom_workspace::Store::new(&workspace_store).ok().map(Arc::new);
     let state = Arc::new(AppState {
         shutdown_tx: Arc::new(std::sync::Mutex::new(if once {
             Some(shutdown_tx)
         } else {
             None
         })),
+        workspace_store,
     });
 
     let app = router(state);

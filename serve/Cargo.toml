@@ -12,6 +12,7 @@ path = "src/lib.rs"
 
 [dependencies]
 loom = { path = "../loom" }
+loom-workspace = { path = "../loom-workspace" }
 axum = { version = "0.7", features = ["ws", "json"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "net"] }
 serde_json = "1.0"

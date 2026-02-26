@@ -74,6 +74,9 @@ pub struct RunRequest {
     pub agent: AgentType,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thread_id: Option<String>,
+    /// When set with thread_id, the run's thread is associated with this workspace (see loom-workspace).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub working_folder: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -244,6 +247,7 @@ mod tests {
             message: "hello".to_string(),
             agent: AgentType::React,
             thread_id: Some("t1".to_string()),
+            workspace_id: None,
             working_folder: None,
             got_adaptive: None,
             verbose: Some(true),
