@@ -5,14 +5,18 @@ use loom::{ClientRequest, ErrorResponse, ServerResponse};
 use std::sync::Arc;
 use tokio::sync::oneshot;
 
+use super::app::RunConfig;
 use super::response::send_response;
 use super::run::handle_run;
 use super::tools::{handle_tool_show, handle_tools_list};
+use super::user_messages::handle_user_messages;
 
 pub(crate) async fn handle_socket(
     mut socket: WebSocket,
     shutdown_tx: Option<oneshot::Sender<()>>,
     workspace_store: Option<Arc<loom_workspace::Store>>,
+    user_message_store: Option<std::sync::Arc<dyn loom::UserMessageStore>>,
+    run_config: RunConfig,
 ) {
     while let Some(res) = socket.recv().await {
         let msg = match res {
@@ -29,7 +33,15 @@ pub(crate) async fn handle_socket(
             _ => continue,
         };
 
-        if let Err(e) = handle_request_and_send(&text, &mut socket, workspace_store.clone()).await {
+        if let Err(e) = handle_request_and_send(
+            &text,
+            &mut socket,
+            workspace_store.clone(),
+            user_message_store.clone(),
+            &run_config,
+        )
+        .await
+        {
             tracing::warn!("handle_request error: {}", e);
             let _ = socket.close().await;
             break;
@@ -44,6 +56,8 @@ async fn handle_request_and_send(
     text: &str,
     socket: &mut WebSocket,
     workspace_store: Option<Arc<loom_workspace::Store>>,
+    user_message_store: Option<std::sync::Arc<dyn loom::UserMessageStore>>,
+    run_config: &RunConfig,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let req: ClientRequest = match serde_json::from_str(text) {
         Ok(r) => r,
@@ -59,15 +73,21 @@ async fn handle_request_and_send(
 
     match req {
         ClientRequest::Run(r) => {
-            if let Some(resp) = handle_run(r, socket, workspace_store).await? {
+            if let Some(resp) =
+                handle_run(r, socket, workspace_store, user_message_store, run_config).await?
+            {
                 send_response(socket, &resp).await?;
             }
         }
         ClientRequest::ToolsList(r) => {
-            send_response(socket, &handle_tools_list(r).await).await?;
+            send_response(socket, &handle_tools_list(r, run_config).await).await?;
         }
         ClientRequest::ToolShow(r) => {
-            send_response(socket, &handle_tool_show(r).await).await?;
+            send_response(socket, &handle_tool_show(r, run_config).await).await?;
+        }
+        ClientRequest::UserMessages(r) => {
+            let resp = handle_user_messages(r, user_message_store.clone()).await;
+            send_response(socket, &resp).await?;
         }
         ClientRequest::Ping(r) => {
             send_response(

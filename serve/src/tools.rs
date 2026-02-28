@@ -6,7 +6,12 @@ use loom::{
 };
 use std::path::PathBuf;
 
-pub(crate) async fn handle_tools_list(r: loom::ToolsListRequest) -> ServerResponse {
+use crate::app::RunConfig;
+
+pub(crate) async fn handle_tools_list(
+    r: loom::ToolsListRequest,
+    run_config: &RunConfig,
+) -> ServerResponse {
     let id = r.id.clone();
     let opts = RunOptions {
         message: String::new(),
@@ -15,7 +20,7 @@ pub(crate) async fn handle_tools_list(r: loom::ToolsListRequest) -> ServerRespon
         role_file: None,
         verbose: false,
         got_adaptive: false,
-        display_max_len: 2000,
+        display_max_len: run_config.display_max_len,
         output_json: false,
     };
     let (_helve, config) = build_helve_config(&opts);
@@ -34,7 +39,10 @@ pub(crate) async fn handle_tools_list(r: loom::ToolsListRequest) -> ServerRespon
     }
 }
 
-pub(crate) async fn handle_tool_show(r: loom::ToolShowRequest) -> ServerResponse {
+pub(crate) async fn handle_tool_show(
+    r: loom::ToolShowRequest,
+    run_config: &RunConfig,
+) -> ServerResponse {
     let id = r.id.clone();
     let opts = RunOptions {
         message: String::new(),
@@ -43,7 +51,7 @@ pub(crate) async fn handle_tool_show(r: loom::ToolShowRequest) -> ServerResponse
         role_file: None,
         verbose: false,
         got_adaptive: false,
-        display_max_len: 2000,
+        display_max_len: run_config.display_max_len,
         output_json: false,
     };
     let (_helve, config) = build_helve_config(&opts);
@@ -103,11 +111,15 @@ mod tests {
     use super::*;
 
     async fn first_tool_name() -> String {
-        match handle_tools_list(loom::ToolsListRequest {
-            id: "lookup".to_string(),
-            working_folder: None,
-            thread_id: None,
-        })
+        let config = RunConfig::default();
+        match handle_tools_list(
+            loom::ToolsListRequest {
+                id: "lookup".to_string(),
+                working_folder: None,
+                thread_id: None,
+            },
+            &config,
+        )
         .await
         {
             ServerResponse::ToolsList(r) => r
@@ -121,11 +133,15 @@ mod tests {
 
     #[tokio::test]
     async fn handle_tools_list_returns_non_empty_tools() {
-        let resp = handle_tools_list(loom::ToolsListRequest {
-            id: "t1".to_string(),
-            working_folder: None,
-            thread_id: None,
-        })
+        let config = RunConfig::default();
+        let resp = handle_tools_list(
+            loom::ToolsListRequest {
+                id: "t1".to_string(),
+                working_folder: None,
+                thread_id: None,
+            },
+            &config,
+        )
         .await;
         match resp {
             ServerResponse::ToolsList(r) => {
@@ -138,14 +154,18 @@ mod tests {
 
     #[tokio::test]
     async fn handle_tool_show_json_returns_tool_object() {
+        let config = RunConfig::default();
         let tool_name = first_tool_name().await;
-        let resp = handle_tool_show(loom::ToolShowRequest {
-            id: "s1".to_string(),
-            name: tool_name,
-            output: Some(loom::ToolShowOutput::Json),
-            working_folder: None,
-            thread_id: None,
-        })
+        let resp = handle_tool_show(
+            loom::ToolShowRequest {
+                id: "s1".to_string(),
+                name: tool_name,
+                output: Some(loom::ToolShowOutput::Json),
+                working_folder: None,
+                thread_id: None,
+            },
+            &config,
+        )
         .await;
         match resp {
             ServerResponse::ToolShow(r) => {
@@ -159,14 +179,18 @@ mod tests {
 
     #[tokio::test]
     async fn handle_tool_show_yaml_returns_yaml_text() {
+        let config = RunConfig::default();
         let tool_name = first_tool_name().await;
-        let resp = handle_tool_show(loom::ToolShowRequest {
-            id: "s2".to_string(),
-            name: tool_name,
-            output: Some(loom::ToolShowOutput::Yaml),
-            working_folder: None,
-            thread_id: None,
-        })
+        let resp = handle_tool_show(
+            loom::ToolShowRequest {
+                id: "s2".to_string(),
+                name: tool_name,
+                output: Some(loom::ToolShowOutput::Yaml),
+                working_folder: None,
+                thread_id: None,
+            },
+            &config,
+        )
         .await;
         match resp {
             ServerResponse::ToolShow(r) => {
@@ -182,13 +206,17 @@ mod tests {
 
     #[tokio::test]
     async fn handle_tool_show_missing_returns_error() {
-        let resp = handle_tool_show(loom::ToolShowRequest {
-            id: "s3".to_string(),
-            name: "no_such_tool".to_string(),
-            output: None,
-            working_folder: None,
-            thread_id: None,
-        })
+        let config = RunConfig::default();
+        let resp = handle_tool_show(
+            loom::ToolShowRequest {
+                id: "s3".to_string(),
+                name: "no_such_tool".to_string(),
+                output: None,
+                working_folder: None,
+                thread_id: None,
+            },
+            &config,
+        )
         .await;
         match resp {
             ServerResponse::Error(e) => {

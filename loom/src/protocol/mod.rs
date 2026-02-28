@@ -122,6 +122,17 @@ pub struct PingRequest {
     pub id: String,
 }
 
+/// User messages list request: list stored messages for a thread (pagination).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UserMessagesRequest {
+    pub id: String,
+    pub thread_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub before: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+
 /// Client-to-server request envelope.
 ///
 /// Each variant maps to a JSON object with `"type": "<variant_name>"`.
@@ -131,6 +142,7 @@ pub enum ClientRequest {
     Run(RunRequest),
     ToolsList(ToolsListRequest),
     ToolShow(ToolShowRequest),
+    UserMessages(UserMessagesRequest),
     Ping(PingRequest),
 }
 
@@ -220,6 +232,23 @@ pub struct ErrorResponse {
     pub error: String,
 }
 
+/// One message in user messages list (role + content).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UserMessageItem {
+    pub role: String,
+    pub content: String,
+}
+
+/// User messages list response.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UserMessagesResponse {
+    pub id: String,
+    pub thread_id: String,
+    pub messages: Vec<UserMessageItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub has_more: Option<bool>,
+}
+
 /// Server-to-client response envelope.
 ///
 /// Each variant maps to a JSON object with `"type": "<variant_name>"`.
@@ -230,6 +259,7 @@ pub enum ServerResponse {
     RunEnd(RunEndResponse),
     ToolsList(ToolsListResponse),
     ToolShow(ToolShowResponse),
+    UserMessages(UserMessagesResponse),
     Pong(PongResponse),
     Error(ErrorResponse),
 }

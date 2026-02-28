@@ -14,10 +14,12 @@ path = "src/lib.rs"
 loom = { path = "../loom" }
 loom-workspace = { path = "../loom-workspace" }
 axum = { version = "0.7", features = ["ws", "json"] }
+async-trait = "0.1"
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "net"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
 tracing = "0.1"
+uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "time"] }
@@ -25,3 +27,4 @@ tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 futures-util = "0.3"
 dotenv = "0.15"
 loom = { path = "../loom" }
+tempfile = "3"

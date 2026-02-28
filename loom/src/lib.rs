@@ -212,7 +212,7 @@ pub use protocol::{
     AgentType, ClientRequest, EnvelopeState, ErrorResponse, PingRequest, PongResponse,
     ProtocolEvent, ProtocolEventEnvelope, RunEndResponse, RunRequest, RunStreamEventResponse,
     ServerResponse, ToolShowOutput, ToolShowRequest, ToolShowResponse, ToolsListRequest,
-    ToolsListResponse,
+    ToolsListResponse, UserMessageItem, UserMessagesRequest, UserMessagesResponse,
 };
 pub use state::{ReActState, ToolCall, ToolResult};
 pub use stream::{
@@ -228,7 +228,9 @@ pub use tool_source::{
 };
 pub use tools::{register_mcp_tools, BashTool, McpToolAdapter};
 pub use traits::Agent;
-pub use user_message::{NoOpUserMessageStore, UserMessageStore, UserMessageStoreError};
+pub use user_message::{
+    NoOpUserMessageStore, SqliteUserMessageStore, UserMessageStore, UserMessageStoreError,
+};
 
 // Re-export DUP, GoT, ToT from agent for backward compatibility.
 pub use agent::{

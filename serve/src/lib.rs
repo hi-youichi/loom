@@ -9,13 +9,14 @@ mod connection;
 mod response;
 mod run;
 mod tools;
+mod user_messages;
 
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tracing::info;
 
-use app::{router, AppState};
+use app::{router, run_config_from_env, AppState};
 
 const DEFAULT_WS_ADDR: &str = "127.0.0.1:8080";
 
@@ -36,6 +37,10 @@ pub async fn run_serve_on_listener(
         .ok()
         .unwrap_or_else(|| "workspace.db".to_string());
     let workspace_store = loom_workspace::Store::new(&workspace_store).ok().map(Arc::new);
+    let user_message_store = std::env::var("USER_MESSAGE_DB")
+        .ok()
+        .and_then(|path| loom::SqliteUserMessageStore::new(&path).ok())
+        .map(|store| Arc::new(store) as Arc<dyn loom::UserMessageStore>);
     let state = Arc::new(AppState {
         shutdown_tx: Arc::new(std::sync::Mutex::new(if once {
             Some(shutdown_tx)
@@ -43,6 +48,8 @@ pub async fn run_serve_on_listener(
             None
         })),
         workspace_store,
+        user_message_store,
+        run_config: run_config_from_env(),
     });
 
     let app = router(state);

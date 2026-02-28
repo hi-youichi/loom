@@ -3,7 +3,11 @@
 //! Used so that clients can read full, ordered message history by `thread_id`
 //! from a dedicated store instead of short-term memory or checkpoint.
 
+mod sqlite_store;
+
 use async_trait::async_trait;
+
+pub use sqlite_store::SqliteUserMessageStore;
 
 use crate::message::Message;
 

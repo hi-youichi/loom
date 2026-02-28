@@ -38,12 +38,13 @@ cargo run -p cli -- serve --addr 127.0.0.1:9000
 
 Every client message is a JSON object with a **`type`** field. Supported values:
 
-| type          | Description                    |
-|---------------|--------------------------------|
-| `run`         | Execute one agent run (streaming + final reply). |
-| `tools_list`  | List all tools.                |
-| `tool_show`   | Get one tool definition.       |
-| `ping`        | Health / keepalive.            |
+| type             | Description                    |
+|------------------|--------------------------------|
+| `run`            | Execute one agent run (streaming + final reply). |
+| `tools_list`     | List all tools.                |
+| `tool_show`      | Get one tool definition.       |
+| `user_messages`  | List stored messages for a thread (user message store). |
+| `ping`           | Health / keepalive.            |
 
 ### 3.1 `run`
 
@@ -96,7 +97,19 @@ Get a single tool definition (JSON or YAML).
 | `working_folder`  | string | No       | Working directory. |
 | `thread_id`       | string | No       | Thread id. |
 
-### 3.4 `ping`
+### 3.5 `user_messages`
+
+List stored messages for a thread. Used when the server is configured with a user message store (e.g. `USER_MESSAGE_DB`). When no store is configured, the server returns `messages: []` and `has_more: false` (no error).
+
+| Field       | Type   | Required | Description |
+|-------------|--------|----------|-------------|
+| `type`      | string | Yes      | `"user_messages"` |
+| `id`        | string | Yes      | Request id (echoed in response). |
+| `thread_id` | string | Yes      | Thread id; required. Missing or empty returns `error`. |
+| `before`    | number | No       | Pagination cursor (message seq/id); return only messages with seq &lt; `before`. |
+| `limit`     | number | No       | Max number of messages to return (default 100, capped). |
+
+### 3.6 `ping`
 
 Health / keepalive. Server responds with `pong` and the same `id`.
 
@@ -117,6 +130,7 @@ Every server message is a JSON object with a **`type`** field. Supported values:
 | `run_end`          | Final reply for one run; sent after all stream events for that run. |
 | `tools_list`       | Response to `tools_list`. |
 | `tool_show`        | Response to `tool_show`. |
+| `user_messages`    | Response to `user_messages`; list of messages for the thread. |
 | `pong`             | Response to `ping`. |
 | `error`            | Request failed (parse error, run error, etc.). |
 
@@ -184,14 +198,35 @@ Payload:
 
 Exactly one of `tool` or `tool_yaml` is present.
 
-### 4.5 `pong`
+### 4.5 `user_messages`
+
+Payload:
+
+| Field       | Type   | Description |
+|-------------|--------|--------------|
+| `type`      | string | `"user_messages"` |
+| `id`        | string | Request id from client. |
+| `thread_id` | string | Thread id. |
+| `messages`  | array  | List of message objects in order (oldest first). |
+| `has_more`  | bool   | Optional; `true` if more messages exist (pagination). |
+
+Each element of `messages`:
+
+| Field     | Type   | Description |
+|-----------|--------|-------------|
+| `role`    | string | `"system"`, `"user"`, or `"assistant"`. |
+| `content` | string | Message content. |
+
+When no user message store is configured, the server returns `messages: []` and `has_more: false`.
+
+### 4.6 `pong`
 
 | Field  | Type   | Description |
 |--------|--------|-------------|
 | `type` | string | `"pong"` |
 | `id`   | string | Same as in `ping`. |
 
-### 4.6 `error`
+### 4.7 `error`
 
 | Field   | Type   | Description |
 |---------|--------|-------------|
@@ -229,15 +264,17 @@ No request id is required for `run`; the server assigns a run `id` and returns i
 | Client | `run`            | `RunRequest` (message, agent, id?, thread_id?, working_folder?, got_adaptive?, verbose?) |
 | Client | `tools_list`     | `ToolsListRequest` (id, working_folder?, thread_id?) |
 | Client | `tool_show`      | `ToolShowRequest` (id, name, output?, working_folder?, thread_id?) |
+| Client | `user_messages`  | `UserMessagesRequest` (id, thread_id, before?, limit?) |
 | Client | `ping`           | `PingRequest` (id) |
 | Server | `run_stream_event` | `RunStreamEventResponse` (id, event: ProtocolEventEnvelope) |
 | Server | `run_end`        | `RunEndResponse` (id, reply, usage?, total_usage?, session_id?, node_id?, event_id?) |
 | Server | `tools_list`     | `ToolsListResponse` (id, tools: Vec&lt;ToolSpec&gt;) |
 | Server | `tool_show`      | `ToolShowResponse` (id, tool or tool_yaml) |
+| Server | `user_messages`  | `UserMessagesResponse` (id, thread_id, messages: Vec&lt;UserMessageItem&gt;, has_more?) |
 | Server | `pong`           | `PongResponse` (id) |
 | Server | `error`          | `ErrorResponse` (id?, error) |
 
 ## 8. References
 
 - [protocol_spec.md](./protocol_spec.md) — Streaming event types and envelope (session_id, node_id, event_id), reply message shape.
-- **Rust types**: `loom::protocol` — `ClientRequest`, `ServerResponse`, `RunRequest`, `AgentType`, `RunStreamEventResponse`, `RunEndResponse`, `ToolSpec`, `LlmUsage`, etc.
+- **Rust types**: `loom::protocol` — `ClientRequest`, `ServerResponse`, `RunRequest`, `AgentType`, `RunStreamEventResponse`, `RunEndResponse`, `UserMessagesRequest`, `UserMessagesResponse`, `UserMessageItem`, `ToolSpec`, `LlmUsage`, etc.

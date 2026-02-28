@@ -238,6 +238,34 @@ fn assert_protocol_event(
     }
 }
 
+/// Sends a Run request then immediately drops the connection so the server hits
+/// send failure when trying to stream the first event. Covers handle_run_stream send_err path.
+#[tokio::test]
+async fn e2e_run_then_disconnect() {
+    common::load_dotenv();
+    let (url, server_handle) = common::spawn_server_once().await;
+
+    let (ws, _) = connect_async(&url).await.unwrap();
+    let (mut write, read) = ws.split();
+
+    let req = ClientRequest::Run(RunRequest {
+        id: None,
+        message: "hi".to_string(),
+        agent: AgentType::React,
+        thread_id: None,
+        workspace_id: None,
+        working_folder: None,
+        got_adaptive: None,
+        verbose: Some(false),
+    });
+    let req_json = serde_json::to_string(&req).unwrap();
+    write.send(Message::Text(req_json)).await.unwrap();
+    drop(write);
+    drop(read);
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let _ = timeout(Duration::from_secs(5), server_handle).await;
+}
+
 #[tokio::test]
 async fn e2e_run_react() {
     common::load_dotenv();
