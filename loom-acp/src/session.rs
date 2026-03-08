@@ -1,0 +1,130 @@
+//! Session state: session_id mapping, cancel flag, working directory
+//!
+//! Each ACP `session/new` corresponds to one [`SessionEntry`], stored by [`SessionStore`] keyed by session_id.
+//! Protocol details are in [`crate::protocol`].
+//!
+//! ## NewSessionRequest -> SessionStore
+//!
+//! - **session_id**: Generated uniquely by Agent in new_session (e.g. `session-{nanos}` or UUID); all later prompt/cancel/load use this ID.
+//! - **thread_id**: Same as Loom's `RunOptions::thread_id`, usually the string form of session_id for checkpointer and multi-turn consistency.
+//! - **working_directory**: From `NewSessionRequest::working_directory` (protocol requires **absolute path**), maps to `RunOptions::working_folder`; if absent the caller may use process cwd or a temp dir.
+//! - **mcp_servers**: Connect in new_session; disconnect when session is "closed" or process exits; this module only stores session metadata; MCP connection table can live in Agent or a separate layer.
+//!
+//! ## Cancel semantics (session/cancel)
+//!
+//! - **cancelled**: Whether the session has been cancelled by the Client via `session/cancel`. On cancel call [`SessionStore::set_cancelled`]; the prompt path should **periodically** check [`SessionStore::is_cancelled`] and exit with StopReason::Cancelled when true. Any pending request_permission will get Cancelled from the Client.
+//!
+//! When integrated with ACP, session_id can use `agent_client_protocol::SessionId`; this module's [`SessionId`] is a placeholder type for unit tests without the ACP dependency.
+
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Unique session identifier.
+///
+/// Without ACP this type (inner `String`) is used; at the boundary it can be converted to/from
+/// `agent_client_protocol::SessionId`, or the protocol type can be used as the key directly.
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct SessionId(pub String);
+
+impl SessionId {
+    /// Create a SessionId from a string.
+    #[inline]
+    pub fn new(s: impl Into<String>) -> Self {
+        SessionId(s.into())
+    }
+
+    /// Return the underlying string.
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Metadata and cancel flag for a single session.
+///
+/// Written by [`SessionStore::create`], read by [`SessionStore::get`].
+/// Prompt handling uses `thread_id` and `working_directory` to build [`loom::RunOptions`]
+/// and [`SessionStore::is_cancelled`] to decide whether to abort with Cancelled.
+#[derive(Debug)]
+pub struct SessionEntry {
+    /// Thread/session id used by Loom; 1:1 with ACP session_id.
+    pub thread_id: String,
+    /// Working directory for this session (from NewSessionRequest); None lets the caller choose a default.
+    pub working_directory: Option<PathBuf>,
+    /// Whether this session has been cancelled via session/cancel; should be checked periodically in the prompt path.
+    pub cancelled: AtomicBool,
+}
+
+/// In-memory session table: session_id -> [`SessionEntry`].
+///
+/// Concurrent reads and single-writer (RwLock); cancel flag is atomic so it can be checked without the lock.
+/// Sessions live for the process; no persistence after exit.
+#[derive(Debug, Default)]
+pub struct SessionStore {
+    inner: std::sync::RwLock<std::collections::HashMap<SessionId, SessionEntry>>,
+}
+
+impl SessionStore {
+    /// Create an empty session store.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Create a new session and return its [`SessionId`].
+    ///
+    /// Corresponds to ACP `session/new`: Agent generates a unique session_id and adds an entry.
+    /// `working_directory` comes from `NewSessionRequest::working_directory` (protocol requires absolute path);
+    /// if not provided, pass `None`; prompt handling may use process cwd or another default.
+    pub fn create(&self, working_directory: Option<PathBuf>) -> SessionId {
+        let session_id = SessionId(format!(
+            "session-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let entry = SessionEntry {
+            thread_id: session_id.0.clone(),
+            working_directory,
+            cancelled: AtomicBool::new(false),
+        };
+        self.inner.write().unwrap().insert(session_id.clone(), entry);
+        session_id
+    }
+
+    /// Look up a session by session_id; returns `None` if not found.
+    pub fn get(&self, session_id: &SessionId) -> Option<SessionEntry> {
+        self.inner.read().unwrap().get(session_id).cloned()
+    }
+
+    /// Mark the given session as cancelled (call when receiving `session/cancel`).
+    ///
+    /// No-op if session_id is not in the store.
+    pub fn set_cancelled(&self, session_id: SessionId) {
+        if let Some(entry) = self.inner.read().unwrap().get(&session_id) {
+            entry.cancelled.store(true, Ordering::SeqCst);
+        }
+    }
+
+    /// Return whether this session has been cancelled.
+    ///
+    /// Returns `false` if session_id is not in the store.
+    pub fn is_cancelled(&self, session_id: &SessionId) -> bool {
+        self.inner
+            .read()
+            .unwrap()
+            .get(session_id)
+            .map(|e| e.cancelled.load(Ordering::SeqCst))
+            .unwrap_or(false)
+    }
+}
+
+impl Clone for SessionEntry {
+    fn clone(&self) -> Self {
+        SessionEntry {
+            thread_id: self.thread_id.clone(),
+            working_directory: self.working_directory.clone(),
+            cancelled: AtomicBool::new(self.cancelled.load(Ordering::SeqCst)),
+        }
+    }
+}

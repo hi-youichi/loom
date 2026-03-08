@@ -12,9 +12,12 @@ use repl::{run_one_turn, run_repl_loop};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+/// Config directory: $XDG_CONFIG_HOME/loom (default ~/.config/loom). config.toml [env] is applied as env vars; project .env overrides.
+const CONFIG_DIR_HELP: &str = "\nConfiguration:\n  Config directory: $XDG_CONFIG_HOME/loom (default: ~/.config/loom).\n  File: config.toml with [env] table; values are applied as environment variables.\n  Project .env in working directory overrides XDG config.";
+
 #[derive(Parser, Debug)]
 #[command(name = "loom")]
-#[command(about = "Loom — run ReAct or DUP agent from CLI")]
+#[command(about = "Loom — run ReAct or DUP agent from CLI", after_help = CONFIG_DIR_HELP)]
 struct Args {
     #[command(subcommand)]
     cmd: Option<Command>,
