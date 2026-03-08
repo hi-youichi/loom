@@ -64,17 +64,13 @@ fn adapter_emits_content_delta_per_messages_event() {
         node_id: "think".to_string(),
     });
     adapter.feed(StreamEvent::Messages {
-        chunk: MessageChunk {
-            content: "Hello".to_string(),
-        },
+        chunk: MessageChunk::message("Hello"),
         metadata: StreamMetadata {
             loom_node: "think".to_string(),
         },
     });
     adapter.feed(StreamEvent::Messages {
-        chunk: MessageChunk {
-            content: " world".to_string(),
-        },
+        chunk: MessageChunk::message(" world"),
         metadata: StreamMetadata {
             loom_node: "think".to_string(),
         },
@@ -100,9 +96,7 @@ fn adapter_finish_emits_stop_chunk() {
         node_id: "think".to_string(),
     });
     adapter.feed(StreamEvent::Messages {
-        chunk: MessageChunk {
-            content: "Hi".to_string(),
-        },
+        chunk: MessageChunk::message("Hi"),
         metadata: StreamMetadata {
             loom_node: "think".to_string(),
         },
@@ -162,9 +156,7 @@ async fn adapter_with_sink_sends_lines_to_channel() {
     assert!(first.contains(r#""role":"assistant""#));
 
     adapter.feed(StreamEvent::Messages {
-        chunk: MessageChunk {
-            content: "Hi".to_string(),
-        },
+        chunk: MessageChunk::message("Hi"),
         metadata: StreamMetadata {
             loom_node: "think".to_string(),
         },

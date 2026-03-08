@@ -11,7 +11,7 @@
 //! |---------|---------|-------------|
 //! | user_message_chunk | Chunk of user message | Usually not sent. |
 //! | **agent_message_chunk** | Chunk of agent reply (streamed text) | Think node output, streamed pieces of final reply. |
-//! | **agent_thought_chunk** | Chunk of agent reasoning | Same or "thinking" nodes. |
+//! | **agent_thought_chunk** | Chunk of agent reasoning | `StreamEvent::Messages` with `chunk.kind == Thinking`, or `TaskStart` (node entry). |
 //! | **tool_call** | New tool call started | Act node decides to call a tool: tool_call_id, name, input, kind, status: Pending. |
 //! | **tool_call_update** | Update to existing tool call | Start -> Pending/Running; done -> Success/Failure + output/content. |
 //! | plan / available_commands_update / current_mode_update | Plan, command list, mode | Optional; DUP/ToT/GoT etc. can map. |
@@ -32,7 +32,7 @@ use agent_client_protocol::{
     ContentChunk, SessionId, SessionNotification, SessionUpdate, ToolCall, ToolCallId,
     ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
 };
-use loom::{AnyStreamEvent, StreamEvent};
+use loom::{AnyStreamEvent, MessageChunkKind, StreamEvent};
 use serde_json::Value;
 
 /// A single "sendable to Client" stream update, corresponding to ACP SessionUpdate variants.
@@ -108,9 +108,17 @@ where
         StreamEvent::TaskStart { node_id } => vec![StreamUpdate::AgentThoughtChunk {
             text: format!("Entering {}", node_id),
         }],
-        StreamEvent::Messages { chunk, .. } => vec![StreamUpdate::AgentMessageChunk {
-            text: chunk.content.clone(),
-        }],
+        StreamEvent::Messages { chunk, .. } => {
+            if chunk.kind == MessageChunkKind::Thinking {
+                vec![StreamUpdate::AgentThoughtChunk {
+                    text: chunk.content.clone(),
+                }]
+            } else {
+                vec![StreamUpdate::AgentMessageChunk {
+                    text: chunk.content.clone(),
+                }]
+            }
+        }
         StreamEvent::ToolStart { call_id, name } => {
             let id = call_id
                 .clone()

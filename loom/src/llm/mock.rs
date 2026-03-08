@@ -182,18 +182,12 @@ impl LlmClient for MockLlm {
                 if self.stream_by_char.load(Ordering::SeqCst) {
                     // Character-by-character streaming
                     for c in response.content.chars() {
-                        let _ = tx
-                            .send(MessageChunk {
-                                content: c.to_string(),
-                            })
-                            .await;
+                        let _ = tx.send(MessageChunk::message(c.to_string())).await;
                     }
                 } else {
                     // Single chunk (default)
                     let _ = tx
-                        .send(MessageChunk {
-                            content: response.content.clone(),
-                        })
+                        .send(MessageChunk::message(response.content.clone()))
                         .await;
                 }
             }

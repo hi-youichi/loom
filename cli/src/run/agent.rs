@@ -676,9 +676,7 @@ mod tests {
         );
         on_event_tot(
             &StreamEvent::Messages {
-                chunk: loom::MessageChunk {
-                    content: "tok".to_string(),
-                },
+                chunk: loom::MessageChunk::message("tok"),
                 metadata: loom::StreamMetadata {
                     loom_node: "think_expand".to_string(),
                 },
@@ -726,9 +724,7 @@ mod tests {
         );
         on_event_got(
             &StreamEvent::Messages {
-                chunk: loom::MessageChunk {
-                    content: "chunk".to_string(),
-                },
+                chunk: loom::MessageChunk::message("chunk"),
                 metadata: loom::StreamMetadata {
                     loom_node: "execute_graph".to_string(),
                 },

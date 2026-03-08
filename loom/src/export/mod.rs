@@ -2,7 +2,7 @@
 //!
 //! Converts [`StreamEvent`] to a single JSON object per event for WebSocket streaming.
 
-use crate::stream::{MessageChunk, StreamEvent, StreamMetadata};
+use crate::stream::{StreamEvent, StreamMetadata};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::fmt::Debug;
@@ -25,11 +25,11 @@ where
             json!({ "Updates": { "node_id": node_id, "state": state_json } })
         }
         StreamEvent::Messages {
-            chunk: MessageChunk { content },
+            chunk,
             metadata: StreamMetadata { loom_node },
         } => json!({
             "Messages": {
-                "chunk": { "content": content },
+                "chunk": { "content": chunk.content, "kind": format!("{:?}", chunk.kind) },
                 "metadata": { "loom_node": loom_node }
             }
         }),
@@ -195,9 +195,7 @@ mod tests {
     #[test]
     fn messages_format() {
         let ev: StreamEvent<DummyState> = StreamEvent::Messages {
-            chunk: crate::stream::MessageChunk {
-                content: "hello".to_string(),
-            },
+            chunk: crate::stream::MessageChunk::message("hello"),
             metadata: StreamMetadata {
                 loom_node: "think".to_string(),
             },

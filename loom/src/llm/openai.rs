@@ -392,9 +392,7 @@ impl LlmClient for ChatOpenAI {
                         sent_any_content = true;
                         // Send chunk to channel (ignore errors if receiver dropped)
                         let _ = chunk_tx
-                            .send(MessageChunk {
-                                content: content.clone(),
-                            })
+                            .send(MessageChunk::message(content.clone()))
                             .await;
                     }
                 }
@@ -465,9 +463,7 @@ impl LlmClient for ChatOpenAI {
                     if !full_content.is_empty() {
                         sent_any_content = true;
                         let _ = chunk_tx
-                            .send(MessageChunk {
-                                content: full_content.clone(),
-                            })
+                            .send(MessageChunk::message(full_content.clone()))
                             .await;
                     }
                     if stream_usage.is_none() {
@@ -492,9 +488,7 @@ impl LlmClient for ChatOpenAI {
         // Send the full content as one chunk so the SSE stream still has assistant text.
         if !sent_any_content && !full_content.is_empty() {
             let _ = chunk_tx
-                .send(MessageChunk {
-                    content: full_content.clone(),
-                })
+                .send(MessageChunk::message(full_content.clone()))
                 .await;
         }
 

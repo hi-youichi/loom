@@ -149,9 +149,7 @@ impl Node<ReActState> for ThinkNode {
         };
 
         if used_fallback && ctx.stream_tx.is_some() {
-            let fallback_chunk = MessageChunk {
-                content: content.clone(),
-            };
+            let fallback_chunk = MessageChunk::message(content.clone());
             let _ = ctx
                 .stream_tx
                 .as_ref()
@@ -171,9 +169,7 @@ impl Node<ReActState> for ThinkNode {
                 .as_ref()
                 .unwrap()
                 .send(StreamEvent::Messages {
-                    chunk: MessageChunk {
-                        content: content.clone(),
-                    },
+                    chunk: MessageChunk::message(content.clone()),
                     metadata: StreamMetadata {
                         loom_node: self.id().to_string(),
                     },

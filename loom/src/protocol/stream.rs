@@ -37,10 +37,10 @@ where
             }
         }
         StreamEvent::Messages {
-            chunk: MessageChunk { content },
+            chunk,
             metadata: StreamMetadata { loom_node },
         } => ProtocolEvent::MessageChunk {
-            content: content.clone(),
+            content: chunk.content.clone(),
             id: loom_node.clone(),
         },
         StreamEvent::Usage {
@@ -238,9 +238,7 @@ mod tests {
     #[test]
     fn message_chunk_format() {
         let ev: StreamEvent<DummyState> = StreamEvent::Messages {
-            chunk: MessageChunk {
-                content: "hello".to_string(),
-            },
+            chunk: MessageChunk::message("hello"),
             metadata: StreamMetadata {
                 loom_node: "think".to_string(),
             },

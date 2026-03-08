@@ -216,8 +216,8 @@ pub use protocol::{
 };
 pub use state::{ReActState, ToolCall, ToolResult};
 pub use stream::{
-    CheckpointEvent, MessageChunk, StreamEvent, StreamMetadata, StreamMode, StreamWriter,
-    ToolStreamWriter,
+    CheckpointEvent, MessageChunk, MessageChunkKind, StreamEvent, StreamMetadata, StreamMode,
+    StreamWriter, ToolStreamWriter,
 };
 pub use tool_source::McpToolSource;
 pub use tool_source::{

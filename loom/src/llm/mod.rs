@@ -138,11 +138,7 @@ pub trait LlmClient: Send + Sync {
         // Default: send full content as single chunk if streaming is enabled
         if let Some(tx) = chunk_tx {
             if !response.content.is_empty() {
-                let _ = tx
-                    .send(MessageChunk {
-                        content: response.content.clone(),
-                    })
-                    .await;
+                let _ = tx.send(MessageChunk::message(response.content.clone())).await;
             }
         }
 
