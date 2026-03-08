@@ -9,8 +9,8 @@
 //!
 //! | Variant | Meaning | Loom source |
 //! |---------|---------|-------------|
-//! | user_message_chunk | Chunk of user message | Usually not sent. |
-//! | **agent_message_chunk** | Chunk of agent reply (streamed text) | Think node output, streamed pieces of final reply. |
+//! | **user_message_chunk** | Chunk of user message | Think node text output (so client can show it as user message). |
+//! | **agent_message_chunk** | Chunk of agent reply (streamed text) | Reply node / other non-think message output. |
 //! | **agent_thought_chunk** | Chunk of agent reasoning | `StreamEvent::Messages` with `chunk.kind == Thinking`, or `TaskStart` (node entry). |
 //! | **tool_call** | New tool call started | Act node decides to call a tool: tool_call_id, name, input, kind, status: Pending. |
 //! | **tool_call_update** | Update to existing tool call | Start -> Pending/Running; done -> Success/Failure + output/content. |
@@ -41,6 +41,9 @@ use serde_json::Value;
 /// convert to the protocol type and call `connection.send_notification(session/update)`.
 #[derive(Clone, Debug)]
 pub enum StreamUpdate {
+    /// Chunk of user message (ACP `user_message_chunk`). Used for think node text so client shows it as user message.
+    UserMessageChunk { text: String },
+
     /// Chunk of model output text (ACP `agent_message_chunk`).
     AgentMessageChunk { text: String },
 
@@ -108,9 +111,15 @@ where
         StreamEvent::TaskStart { node_id } => vec![StreamUpdate::AgentThoughtChunk {
             text: format!("Entering {}", node_id),
         }],
-        StreamEvent::Messages { chunk, .. } => {
+        StreamEvent::Messages { chunk, metadata } => {
+            // Only chunk.kind == Thinking (e.g. <think> tags) → thought.
             if chunk.kind == MessageChunkKind::Thinking {
                 vec![StreamUpdate::AgentThoughtChunk {
+                    text: chunk.content.clone(),
+                }]
+            } else if metadata.loom_node == "think" {
+                // Think node text → user_message_chunk (so client shows it as user message).
+                vec![StreamUpdate::UserMessageChunk {
                     text: chunk.content.clone(),
                 }]
             } else {
@@ -165,6 +174,9 @@ pub fn stream_update_to_session_notification(
     u: &StreamUpdate,
 ) -> Option<SessionNotification> {
     let update = match u {
+        StreamUpdate::UserMessageChunk { text } => {
+            SessionUpdate::UserMessageChunk(ContentChunk::new(text.clone().into()))
+        }
         StreamUpdate::AgentMessageChunk { text } => {
             SessionUpdate::AgentMessageChunk(ContentChunk::new(text.clone().into()))
         }
@@ -249,30 +261,43 @@ mod tests {
         })
     }
 
-    /// Messages + Thinking -> 单条 AgentThoughtChunk，且文本一致
+    /// Messages + Thinking kind -> AgentThoughtChunk
     #[test]
     fn loom_event_to_updates_messages_thinking_produces_agent_thought_chunk() {
         let ev = react_messages(MessageChunk::thinking("先分析语法再检查类型"));
         let updates = loom_event_to_updates(&ev);
-        assert_eq!(updates.len(), 1, "应产生 1 条 update");
+        assert_eq!(updates.len(), 1);
         match &updates[0] {
-            StreamUpdate::AgentThoughtChunk { text } => {
-                assert_eq!(text, "先分析语法再检查类型");
-            }
+            StreamUpdate::AgentThoughtChunk { text } => assert_eq!(text, "先分析语法再检查类型"),
             _ => panic!("应为 AgentThoughtChunk，得到 {:?}", updates[0]),
         }
     }
 
-    /// Messages + Message -> 单条 AgentMessageChunk，且文本一致
+    /// Messages + Message kind from think node -> UserMessageChunk（think 节点文本作为用户消息返回）
     #[test]
-    fn loom_event_to_updates_messages_message_produces_agent_message_chunk() {
+    fn loom_event_to_updates_messages_think_node_produces_user_message_chunk() {
         let ev = react_messages(MessageChunk::message("我会先检查语法。"));
         let updates = loom_event_to_updates(&ev);
-        assert_eq!(updates.len(), 1, "应产生 1 条 update");
+        assert_eq!(updates.len(), 1);
         match &updates[0] {
-            StreamUpdate::AgentMessageChunk { text } => {
-                assert_eq!(text, "我会先检查语法。");
-            }
+            StreamUpdate::UserMessageChunk { text } => assert_eq!(text, "我会先检查语法。"),
+            _ => panic!("应为 UserMessageChunk，得到 {:?}", updates[0]),
+        }
+    }
+
+    /// Messages + Message kind from non-think node -> AgentMessageChunk
+    #[test]
+    fn loom_event_to_updates_messages_reply_node_produces_agent_message_chunk() {
+        let ev = AnyStreamEvent::React(StreamEvent::Messages {
+            chunk: MessageChunk::message("这是最终回复。"),
+            metadata: StreamMetadata {
+                loom_node: "reply".to_string(),
+            },
+        });
+        let updates = loom_event_to_updates(&ev);
+        assert_eq!(updates.len(), 1);
+        match &updates[0] {
+            StreamUpdate::AgentMessageChunk { text } => assert_eq!(text, "这是最终回复。"),
             _ => panic!("应为 AgentMessageChunk，得到 {:?}", updates[0]),
         }
     }
@@ -382,7 +407,7 @@ mod tests {
         assert!(notif.is_none(), "当前 ToolOutput 映射空 id，应返回 None");
     }
 
-    /// AgentThoughtChunk / AgentMessageChunk 均可转为 SessionNotification
+    /// AgentThoughtChunk / UserMessageChunk / AgentMessageChunk 均可转为 SessionNotification
     #[test]
     fn stream_update_to_session_notification_thought_and_message_produce_some() {
         let session_id = SessionId::new("sess-2".to_string());
@@ -390,6 +415,10 @@ mod tests {
             text: "推理片段".to_string(),
         };
         assert!(stream_update_to_session_notification(&session_id, &thought).is_some());
+        let user_msg = StreamUpdate::UserMessageChunk {
+            text: "用户消息片段".to_string(),
+        };
+        assert!(stream_update_to_session_notification(&session_id, &user_msg).is_some());
         let message = StreamUpdate::AgentMessageChunk {
             text: "回复片段".to_string(),
         };
