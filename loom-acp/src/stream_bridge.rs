@@ -139,9 +139,12 @@ where
                 kind: None,
             }]
         }
-        StreamEvent::ToolOutput { content, .. } => {
+        StreamEvent::ToolOutput { call_id, content, .. } => {
+            // Prefer Loom's call_id so the client can attach streamed tool output to the right tool call.
+            // If call_id is missing, we keep an empty id; the notification layer will drop it.
+            let id = call_id.clone().unwrap_or_default();
             vec![StreamUpdate::ToolCallUpdated {
-                tool_call_id: String::new(), // caller fills from context
+                tool_call_id: id,
                 status: "running".to_string(),
                 output: Some(content.clone()),
             }]
@@ -391,9 +394,9 @@ mod tests {
         assert!(notif.is_some(), "ToolEnd 带 call_id 应产生 SessionNotification");
     }
 
-    /// ToolOutput 当前产生空 tool_call_id -> stream_update_to_session_notification 返回 None
+    /// ToolOutput 带 call_id -> ToolCallUpdated 使用该 id -> notification 为 Some
     #[test]
-    fn stream_update_to_session_notification_tool_output_empty_id_returns_none() {
+    fn stream_update_to_session_notification_tool_output_with_call_id_produces_notification() {
         let ev = AnyStreamEvent::React(StreamEvent::ToolOutput {
             call_id: Some("call_123".to_string()),
             name: "run_cmd".to_string(),
@@ -402,9 +405,8 @@ mod tests {
         let updates = loom_event_to_updates(&ev);
         assert_eq!(updates.len(), 1);
         let session_id = SessionId::new("sess-1".to_string());
-        // 当前实现 ToolOutput 映射为 tool_call_id: ""，故 notification 为 None
         let notif = stream_update_to_session_notification(&session_id, &updates[0]);
-        assert!(notif.is_none(), "当前 ToolOutput 映射空 id，应返回 None");
+        assert!(notif.is_some(), "ToolOutput 带 call_id 应产生 SessionNotification");
     }
 
     /// AgentThoughtChunk / UserMessageChunk / AgentMessageChunk 均可转为 SessionNotification
