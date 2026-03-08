@@ -85,7 +85,10 @@ fn resolve_role_setting(opts: &RunOptions, working_folder: &PathBuf) -> Option<S
 
 /// Builds HelveConfig and ReactBuildConfig from RunOptions.
 pub fn build_helve_config(opts: &RunOptions) -> (HelveConfig, ReactBuildConfig) {
-    let base = ReactBuildConfig::from_env();
+    let mut base = ReactBuildConfig::from_env();
+    if let Some(ref m) = opts.model {
+        base.model = Some(m.clone());
+    }
     let working_folder = opts
         .working_folder
         .clone()

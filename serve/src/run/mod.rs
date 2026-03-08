@@ -289,6 +289,7 @@ mod tests {
             got_adaptive: false,
             display_max_len: 2000,
             output_json: true,
+            model: None,
         };
         let (result, state, _dropped_events, _dropped_appends) = run_agent_task(
             "test-session".to_string(),
@@ -319,6 +320,7 @@ mod tests {
             got_adaptive: false,
             display_max_len: 2000,
             output_json: true,
+            model: None,
         };
         let (result, state, _dropped_events, _dropped_appends) = run_agent_task(
             "session-2".to_string(),

@@ -40,6 +40,13 @@ impl SessionId {
     }
 }
 
+/// Per-session configuration (e.g. model, max_tokens). Set via `session/set_config_option`.
+#[derive(Clone, Debug, Default)]
+pub struct SessionConfig {
+    /// LLM model id for this session (e.g. "gpt-4o", "gpt-4o-mini"). When set, overrides env at prompt time.
+    pub model: Option<String>,
+}
+
 /// Metadata and cancel flag for a single session.
 ///
 /// Written by [`SessionStore::create`], read by [`SessionStore::get`].
@@ -53,6 +60,8 @@ pub struct SessionEntry {
     pub working_directory: Option<PathBuf>,
     /// Whether this session has been cancelled via session/cancel; should be checked periodically in the prompt path.
     pub cancelled: AtomicBool,
+    /// Session-level config (model, etc.); updated by set_session_config_option.
+    pub session_config: SessionConfig,
 }
 
 /// In-memory session table: session_id -> [`SessionEntry`].
@@ -87,6 +96,7 @@ impl SessionStore {
             thread_id: session_id.0.clone(),
             working_directory,
             cancelled: AtomicBool::new(false),
+            session_config: SessionConfig::default(),
         };
         self.inner.write().unwrap().insert(session_id.clone(), entry);
         session_id
@@ -117,6 +127,18 @@ impl SessionStore {
             .map(|e| e.cancelled.load(Ordering::SeqCst))
             .unwrap_or(false)
     }
+
+    /// Update session config for the given session. No-op if session_id is not in the store.
+    pub fn update_session_config<F>(&self, session_id: &SessionId, f: F)
+    where
+        F: FnOnce(&mut SessionConfig),
+    {
+        if let Ok(mut guard) = self.inner.write() {
+            if let Some(entry) = guard.get_mut(session_id) {
+                f(&mut entry.session_config);
+            }
+        }
+    }
 }
 
 impl Clone for SessionEntry {
@@ -125,6 +147,25 @@ impl Clone for SessionEntry {
             thread_id: self.thread_id.clone(),
             working_directory: self.working_directory.clone(),
             cancelled: AtomicBool::new(self.cancelled.load(Ordering::SeqCst)),
+            session_config: self.session_config.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn session_config_model_updated_by_update_session_config() {
+        let store = SessionStore::new();
+        let id = store.create(None);
+        assert!(store.get(&id).unwrap().session_config.model.is_none());
+
+        store.update_session_config(&id, |c| c.model = Some("gpt-4o".to_string()));
+        assert_eq!(
+            store.get(&id).unwrap().session_config.model.as_deref(),
+            Some("gpt-4o")
+        );
     }
 }

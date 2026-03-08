@@ -234,3 +234,165 @@ fn name_to_tool_kind(name: &str) -> ToolKind {
         ToolKind::Other
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use loom::{MessageChunk, StreamMetadata};
+
+    fn react_messages(chunk: MessageChunk) -> AnyStreamEvent {
+        AnyStreamEvent::React(StreamEvent::Messages {
+            chunk,
+            metadata: StreamMetadata {
+                loom_node: "think".to_string(),
+            },
+        })
+    }
+
+    /// Messages + Thinking -> 单条 AgentThoughtChunk，且文本一致
+    #[test]
+    fn loom_event_to_updates_messages_thinking_produces_agent_thought_chunk() {
+        let ev = react_messages(MessageChunk::thinking("先分析语法再检查类型"));
+        let updates = loom_event_to_updates(&ev);
+        assert_eq!(updates.len(), 1, "应产生 1 条 update");
+        match &updates[0] {
+            StreamUpdate::AgentThoughtChunk { text } => {
+                assert_eq!(text, "先分析语法再检查类型");
+            }
+            _ => panic!("应为 AgentThoughtChunk，得到 {:?}", updates[0]),
+        }
+    }
+
+    /// Messages + Message -> 单条 AgentMessageChunk，且文本一致
+    #[test]
+    fn loom_event_to_updates_messages_message_produces_agent_message_chunk() {
+        let ev = react_messages(MessageChunk::message("我会先检查语法。"));
+        let updates = loom_event_to_updates(&ev);
+        assert_eq!(updates.len(), 1, "应产生 1 条 update");
+        match &updates[0] {
+            StreamUpdate::AgentMessageChunk { text } => {
+                assert_eq!(text, "我会先检查语法。");
+            }
+            _ => panic!("应为 AgentMessageChunk，得到 {:?}", updates[0]),
+        }
+    }
+
+    /// TaskStart -> 一条 AgentThoughtChunk，内容为 "Entering {node_id}"
+    #[test]
+    fn loom_event_to_updates_task_start_produces_agent_thought_chunk() {
+        let ev = AnyStreamEvent::React(StreamEvent::TaskStart {
+            node_id: "think".to_string(),
+        });
+        let updates = loom_event_to_updates(&ev);
+        assert_eq!(updates.len(), 1);
+        match &updates[0] {
+            StreamUpdate::AgentThoughtChunk { text } => {
+                assert_eq!(text, "Entering think");
+            }
+            _ => panic!("应为 AgentThoughtChunk，得到 {:?}", updates[0]),
+        }
+    }
+
+    /// ToolStart 带 call_id -> ToolCallStarted 使用该 id
+    #[test]
+    fn loom_event_to_updates_tool_start_with_call_id_uses_it() {
+        let ev = AnyStreamEvent::React(StreamEvent::ToolStart {
+            call_id: Some("call_abc".to_string()),
+            name: "read_file".to_string(),
+        });
+        let updates = loom_event_to_updates(&ev);
+        assert_eq!(updates.len(), 1);
+        match &updates[0] {
+            StreamUpdate::ToolCallStarted {
+                tool_call_id,
+                name,
+                ..
+            } => {
+                assert_eq!(tool_call_id, "call_abc");
+                assert_eq!(name, "read_file");
+            }
+            _ => panic!("应为 ToolCallStarted，得到 {:?}", updates[0]),
+        }
+    }
+
+    /// ToolStart 无 call_id -> ToolCallStarted 仍生成非空 id
+    #[test]
+    fn loom_event_to_updates_tool_start_without_call_id_generates_id() {
+        let ev = AnyStreamEvent::React(StreamEvent::ToolStart {
+            call_id: None,
+            name: "run_cmd".to_string(),
+        });
+        let updates = loom_event_to_updates(&ev);
+        assert_eq!(updates.len(), 1);
+        match &updates[0] {
+            StreamUpdate::ToolCallStarted {
+                tool_call_id,
+                name,
+                ..
+            } => {
+                assert!(!tool_call_id.is_empty(), "应生成非空 tool_call_id");
+                assert!(tool_call_id.starts_with("tool-"));
+                assert_eq!(name, "run_cmd");
+            }
+            _ => panic!("应为 ToolCallStarted，得到 {:?}", updates[0]),
+        }
+    }
+
+    /// ToolEnd 带 call_id -> ToolCallUpdated 使用该 id，且可转为 SessionNotification
+    #[test]
+    fn loom_event_to_updates_tool_end_with_call_id_produces_notification() {
+        let ev = AnyStreamEvent::React(StreamEvent::ToolEnd {
+            call_id: Some("call_xyz".to_string()),
+            name: "read_file".to_string(),
+            result: "file content".to_string(),
+            is_error: false,
+        });
+        let updates = loom_event_to_updates(&ev);
+        assert_eq!(updates.len(), 1);
+        match &updates[0] {
+            StreamUpdate::ToolCallUpdated {
+                tool_call_id,
+                status,
+                output,
+            } => {
+                assert_eq!(tool_call_id, "call_xyz");
+                assert_eq!(status, "success");
+                assert_eq!(output.as_deref(), Some("file content"));
+            }
+            _ => panic!("应为 ToolCallUpdated，得到 {:?}", updates[0]),
+        }
+        let session_id = SessionId::new("test-session".to_string());
+        let notif = stream_update_to_session_notification(&session_id, &updates[0]);
+        assert!(notif.is_some(), "ToolEnd 带 call_id 应产生 SessionNotification");
+    }
+
+    /// ToolOutput 当前产生空 tool_call_id -> stream_update_to_session_notification 返回 None
+    #[test]
+    fn stream_update_to_session_notification_tool_output_empty_id_returns_none() {
+        let ev = AnyStreamEvent::React(StreamEvent::ToolOutput {
+            call_id: Some("call_123".to_string()),
+            name: "run_cmd".to_string(),
+            content: "running...".to_string(),
+        });
+        let updates = loom_event_to_updates(&ev);
+        assert_eq!(updates.len(), 1);
+        let session_id = SessionId::new("sess-1".to_string());
+        // 当前实现 ToolOutput 映射为 tool_call_id: ""，故 notification 为 None
+        let notif = stream_update_to_session_notification(&session_id, &updates[0]);
+        assert!(notif.is_none(), "当前 ToolOutput 映射空 id，应返回 None");
+    }
+
+    /// AgentThoughtChunk / AgentMessageChunk 均可转为 SessionNotification
+    #[test]
+    fn stream_update_to_session_notification_thought_and_message_produce_some() {
+        let session_id = SessionId::new("sess-2".to_string());
+        let thought = StreamUpdate::AgentThoughtChunk {
+            text: "推理片段".to_string(),
+        };
+        assert!(stream_update_to_session_notification(&session_id, &thought).is_some());
+        let message = StreamUpdate::AgentMessageChunk {
+            text: "回复片段".to_string(),
+        };
+        assert!(stream_update_to_session_notification(&session_id, &message).is_some());
+    }
+}

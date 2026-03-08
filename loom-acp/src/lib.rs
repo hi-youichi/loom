@@ -193,7 +193,7 @@ pub mod stream_bridge;
 
 pub use agent::LoomAcpAgent;
 pub use content::{content_blocks_to_message, ContentBlockLike, ContentError};
-pub use session::{SessionEntry, SessionId, SessionStore};
+pub use session::{SessionConfig, SessionEntry, SessionId, SessionStore};
 pub use stream_bridge::{
     loom_event_to_updates, stream_update_to_session_notification, StreamUpdate,
 };

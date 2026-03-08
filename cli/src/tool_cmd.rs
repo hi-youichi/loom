@@ -263,6 +263,7 @@ mod tests {
             got_adaptive: false,
             display_max_len: 100,
             output_json: true,
+            model: None,
         }
     }
 

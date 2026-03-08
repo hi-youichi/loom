@@ -60,6 +60,36 @@ pub struct ChatOpenAI {
     tools: Option<Vec<ToolSpec>>,
     temperature: Option<f32>,
     tool_choice: Option<ToolChoiceMode>,
+    /// When true, parse content for thinking tags and emit as MessageChunk::thinking / message.
+    parse_thinking_tags: bool,
+}
+
+/// Tags used when `parse_thinking_tags` is enabled.
+const THINKING_START: &str = "<think>";
+const THINKING_END: &str = "</think>";
+
+/// State for incremental parsing of thinking-tag segments.
+#[derive(Clone, Copy)]
+enum ThinkingParseState {
+    Outside,
+    Inside,
+}
+
+/// Removes thinking-tag blocks (and the tags) from content for stored assistant message.
+fn strip_thinking_tags(s: &str) -> String {
+    let mut out = String::new();
+    let mut rest = s;
+    while let Some(start) = rest.find(THINKING_START) {
+        out.push_str(&rest[..start]);
+        rest = &rest[start + THINKING_START.len()..];
+        if let Some(end) = rest.find(THINKING_END) {
+            rest = &rest[end + THINKING_END.len()..];
+        } else {
+            break;
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 impl ChatOpenAI {
@@ -71,6 +101,7 @@ impl ChatOpenAI {
             tools: None,
             temperature: None,
             tool_choice: None,
+            parse_thinking_tags: false,
         }
     }
 
@@ -82,6 +113,7 @@ impl ChatOpenAI {
             tools: None,
             temperature: None,
             tool_choice: None,
+            parse_thinking_tags: false,
         }
     }
 
@@ -117,6 +149,15 @@ impl ChatOpenAI {
     /// Set tool choice mode (auto, none, required). Overrides API default when tools are present.
     pub fn with_tool_choice(mut self, mode: ToolChoiceMode) -> Self {
         self.tool_choice = Some(mode);
+        self
+    }
+
+    /// When true, parse streamed content for thinking tags and emit content inside as
+    /// [`MessageChunk::thinking`](crate::stream::MessageChunk::thinking), rest as
+    /// [`MessageChunk::message`](crate::stream::MessageChunk::message). Use with models/prompts
+    /// that output reasoning in these tags.
+    pub fn with_parse_thinking_tags(mut self, enable: bool) -> Self {
+        self.parse_thinking_tags = enable;
         self
     }
 
@@ -370,6 +411,10 @@ impl LlmClient for ChatOpenAI {
             std::collections::HashMap::new();
         let mut stream_usage: Option<LlmUsage> = None;
 
+        // When parse_thinking_tags: buffer and parse thinking-tag segments.
+        let mut segment_buf = String::new();
+        let mut think_state = ThinkingParseState::Outside;
+
         while let Some(result) = stream.next().await {
             let response = result
                 .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI stream error: {}", e)))?;
@@ -390,10 +435,67 @@ impl LlmClient for ChatOpenAI {
                     if !content.is_empty() {
                         full_content.push_str(content);
                         sent_any_content = true;
-                        // Send chunk to channel (ignore errors if receiver dropped)
-                        let _ = chunk_tx
-                            .send(MessageChunk::message(content.clone()))
-                            .await;
+
+                        if self.parse_thinking_tags {
+                            segment_buf.push_str(content);
+                            loop {
+                                match think_state {
+                                    ThinkingParseState::Outside => {
+                                        if let Some(i) = segment_buf.find(THINKING_START) {
+                                            let (before, after) = segment_buf.split_at(i);
+                                            if !before.is_empty() {
+                                                let _ = chunk_tx
+                                                    .send(MessageChunk::message(before.to_string()))
+                                                    .await;
+                                            }
+                                            segment_buf = after[THINKING_START.len()..].to_string();
+                                            think_state = ThinkingParseState::Inside;
+                                        } else {
+                                            // No full start tag yet; keep potential prefix for next delta
+                                            let keep = segment_buf
+                                                .len()
+                                                .saturating_sub(THINKING_START.len().saturating_sub(1));
+                                            let to_send = segment_buf[..keep].to_string();
+                                            segment_buf = segment_buf[keep..].to_string();
+                                            if !to_send.is_empty() {
+                                                let _ = chunk_tx
+                                                    .send(MessageChunk::message(to_send))
+                                                    .await;
+                                            }
+                                            break;
+                                        }
+                                    }
+                                    ThinkingParseState::Inside => {
+                                        if let Some(i) = segment_buf.find(THINKING_END) {
+                                            let (inside, after) = segment_buf.split_at(i);
+                                            if !inside.is_empty() {
+                                                let _ = chunk_tx
+                                                    .send(MessageChunk::thinking(inside.to_string()))
+                                                    .await;
+                                            }
+                                            segment_buf = after[THINKING_END.len()..].to_string();
+                                            think_state = ThinkingParseState::Outside;
+                                        } else {
+                                            let keep = segment_buf
+                                                .len()
+                                                .saturating_sub(THINKING_END.len().saturating_sub(1));
+                                            let to_send = segment_buf[..keep].to_string();
+                                            segment_buf = segment_buf[keep..].to_string();
+                                            if !to_send.is_empty() {
+                                                let _ = chunk_tx
+                                                    .send(MessageChunk::thinking(to_send))
+                                                    .await;
+                                            }
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            let _ = chunk_tx
+                                .send(MessageChunk::message(content.clone()))
+                                .await;
+                        }
                     }
                 }
 
@@ -441,6 +543,24 @@ impl LlmClient for ChatOpenAI {
                                     .await;
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        // Flush remaining segment buffer (thinking tags mode)
+        if self.parse_thinking_tags {
+            if !segment_buf.is_empty() {
+                match think_state {
+                    ThinkingParseState::Outside => {
+                        let _ = chunk_tx
+                            .send(MessageChunk::message(segment_buf.clone()))
+                            .await;
+                    }
+                    ThinkingParseState::Inside => {
+                        let _ = chunk_tx
+                            .send(MessageChunk::thinking(segment_buf.clone()))
+                            .await;
                     }
                 }
             }
@@ -516,7 +636,11 @@ impl LlmClient for ChatOpenAI {
         );
 
         Ok(LlmResponse {
-            content: full_content,
+            content: if self.parse_thinking_tags {
+                strip_thinking_tags(&full_content)
+            } else {
+                full_content
+            },
             tool_calls,
             usage: stream_usage,
         })
@@ -580,6 +704,17 @@ mod tests {
             body
         );
         stream.write_all(resp.as_bytes()).await.unwrap();
+    }
+
+    /// **Scenario**: strip_thinking_tags removes thinking-tag blocks for stored message.
+    #[test]
+    fn strip_thinking_tags_removes_blocks() {
+        use super::{strip_thinking_tags, THINKING_END, THINKING_START};
+        assert_eq!(strip_thinking_tags("hello"), "hello");
+        let with_block = format!("a {}think{} b", THINKING_START, THINKING_END);
+        assert_eq!(strip_thinking_tags(&with_block), "a  b");
+        let only_block = format!("{}only{}", THINKING_START, THINKING_END);
+        assert_eq!(strip_thinking_tags(&only_block), "");
     }
 
     /// **Scenario**: ChatOpenAI::new sets model; tools and temperature are None.

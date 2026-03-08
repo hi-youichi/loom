@@ -287,6 +287,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             got_adaptive,
             display_max_len: max_message_len(),
             output_json: args.json,
+            model: None,
         };
         match &ta.sub {
             ToolCommand::List => {
@@ -334,6 +335,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         got_adaptive,
         display_max_len: max_message_len(),
         output_json: args.json,
+        model: None,
     };
 
     let cmd = args.cmd.unwrap_or(Command::React);

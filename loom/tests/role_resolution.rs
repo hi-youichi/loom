@@ -14,6 +14,7 @@ fn opts(working_folder: Option<std::path::PathBuf>, role_file: Option<std::path:
         got_adaptive: false,
         display_max_len: 2000,
         output_json: false,
+        model: None,
     }
 }
 

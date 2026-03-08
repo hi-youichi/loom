@@ -9,7 +9,8 @@ use crate::stream_bridge::{loom_event_to_updates, stream_update_to_session_notif
 use agent_client_protocol::{
     Agent, AuthenticateRequest, AuthenticateResponse, CancelNotification, Implementation,
     InitializeRequest, InitializeResponse, NewSessionRequest, NewSessionResponse, PromptRequest,
-    PromptResponse, SessionId, SessionNotification, StopReason,
+    PromptResponse, SessionId, SessionNotification, SetSessionConfigOptionRequest,
+    SetSessionConfigOptionResponse, StopReason,
 };
 use async_trait::async_trait;
 use loom::{run_agent_with_options, AnyStreamEvent, RunCmd, RunError, RunOptions};
@@ -76,7 +77,12 @@ impl Agent for LoomAcpAgent {
     ) -> agent_client_protocol::Result<NewSessionResponse> {
         let working_directory = Some(args.cwd.clone());
         let our_id = self.sessions.create(working_directory);
-        Ok(NewSessionResponse::new(SessionId::new(our_id.as_str().to_string())))
+        let session_id = SessionId::new(our_id.as_str().to_string());
+        let current_model = std::env::var("MODEL")
+            .unwrap_or_else(|_| std::env::var("OPENAI_MODEL").unwrap_or_default());
+        let config_options = build_model_config_options(&current_model)
+            .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
+        Ok(NewSessionResponse::new(session_id).config_options(Some(config_options)))
     }
 
     async fn cancel(
@@ -86,6 +92,30 @@ impl Agent for LoomAcpAgent {
         let key = OurSessionId::new(args.session_id.to_string());
         self.sessions.set_cancelled(key);
         Ok(())
+    }
+
+    async fn set_session_config_option(
+        &self,
+        args: SetSessionConfigOptionRequest,
+    ) -> agent_client_protocol::Result<SetSessionConfigOptionResponse> {
+        let key = OurSessionId::new(args.session_id.to_string());
+        if self.sessions.get(&key).is_none() {
+            return Err(agent_client_protocol::Error::new(-32602, "unknown session"));
+        }
+        let config_id_str = args.config_id.to_string();
+        let current_model = if config_id_str == "model" {
+            let value_str = args.value.to_string();
+            self.sessions
+                .update_session_config(&key, |c| c.model = Some(value_str.clone()));
+            value_str
+        } else {
+            return Err(agent_client_protocol::Error::new(
+                -32602,
+                format!("unsupported config_id: {}", config_id_str),
+            ));
+        };
+        build_set_session_config_option_response(&current_model)
+            .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))
     }
 
     async fn prompt(&self, args: PromptRequest) -> agent_client_protocol::Result<PromptResponse> {
@@ -112,6 +142,7 @@ impl Agent for LoomAcpAgent {
             got_adaptive: false,
             display_max_len: 4096,
             output_json: false,
+            model: entry.session_config.model.clone(),
         };
 
         let session_id = args.session_id.clone();
@@ -137,4 +168,35 @@ impl Agent for LoomAcpAgent {
 
 fn map_run_error(e: RunError) -> agent_client_protocol::Error {
     agent_client_protocol::Error::internal_error().data(e.to_string())
+}
+
+/// Build config_options array with a single "model" option (protocol types are non_exhaustive, so we construct via serde).
+/// SessionConfigOption has kind flattened; SessionConfigKind uses tag "type" → "type": "select" and SessionConfigSelect fields at top level (camelCase).
+fn build_model_config_options(
+    current_model: &str,
+) -> Result<Vec<agent_client_protocol::SessionConfigOption>, serde_json::Error> {
+    let json = serde_json::json!([
+        {
+            "id": "model",
+            "name": "Model",
+            "description": "LLM model for this session.",
+            "category": "model",
+            "type": "select",
+            "currentValue": current_model,
+            "options": []
+        }
+    ]);
+    serde_json::from_value(json)
+}
+
+/// Build SetSessionConfigOptionResponse with a single "model" option (protocol types are non_exhaustive, so we construct via serde).
+fn build_set_session_config_option_response(
+    current_model: &str,
+) -> Result<SetSessionConfigOptionResponse, serde_json::Error> {
+    let config_options = build_model_config_options(current_model)?;
+    let json = serde_json::json!({
+        "config_options": config_options,
+        "meta": None::<()>
+    });
+    serde_json::from_value(json)
 }

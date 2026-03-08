@@ -22,6 +22,7 @@ pub(crate) async fn handle_tools_list(
         got_adaptive: false,
         display_max_len: run_config.display_max_len,
         output_json: false,
+        model: None,
     };
     let (_helve, config) = build_helve_config(&opts);
     match build_react_run_context(&config).await {
@@ -53,6 +54,7 @@ pub(crate) async fn handle_tool_show(
         got_adaptive: false,
         display_max_len: run_config.display_max_len,
         output_json: false,
+        model: None,
     };
     let (_helve, config) = build_helve_config(&opts);
     match build_react_run_context(&config).await {

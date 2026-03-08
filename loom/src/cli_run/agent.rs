@@ -30,6 +30,8 @@ pub struct RunOptions {
     pub display_max_len: usize,
     /// When true, stream events are collected and returned as JSON (CLI --json).
     pub output_json: bool,
+    /// When set, overrides env/config for this run's LLM model (e.g. "gpt-4o", "gpt-4o-mini").
+    pub model: Option<String>,
 }
 
 /// Error type for run operations.
@@ -251,6 +253,7 @@ mod tests {
             got_adaptive,
             display_max_len: 120,
             output_json: true,
+            model: None,
         }
     }
 
@@ -318,6 +321,7 @@ mod tests {
             got_adaptive: false,
             display_max_len: 120,
             output_json: false,
+            model: None,
         };
         assert!(build_runner(&cfg, &opts, &RunCmd::React).await.is_err());
         assert!(build_runner(&cfg, &opts, &RunCmd::Dup).await.is_err());

@@ -755,6 +755,7 @@ mod tests {
             got_adaptive: false,
             display_max_len: 200,
             output_json,
+            model: None,
         }
     }
 

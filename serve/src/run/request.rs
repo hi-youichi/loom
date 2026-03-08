@@ -85,6 +85,7 @@ pub(super) async fn prepare_run(
         got_adaptive: r.got_adaptive.unwrap_or(false),
         display_max_len: input.display_max_len,
         output_json: true,
+        model: None,
     };
     let cmd = match r.agent {
         AgentType::React => RunCmd::React,
