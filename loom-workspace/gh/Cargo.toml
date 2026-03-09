@@ -4,5 +4,33 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+description = "GitHub webhook handling and issue API (for Loom agent integration)"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "gh-webhook"
+path = "src/bin/webhook.rs"
 
 [dependencies]
+thiserror = { workspace = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+octocrab = "0.19"
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+subtle = "2.5"
+tracing = "0.1"
+tokio = { workspace = true, features = ["rt-multi-thread", "net", "macros"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+axum = { version = "0.7", features = ["json", "macros"] }
+tower-http = { version = "0.5", features = ["util"] }
+
+[dev-dependencies]
+hmac = "0.12"
+hex = "0.4"
+reqwest = { version = "0.11", features = ["json"] }
+sha2 = "0.10"
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net"] }
