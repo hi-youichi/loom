@@ -9,6 +9,7 @@ members = [
     "stream-event",
     "loom-workspace",
     "loom-acp",
+    "loom-workspace/gh",
 ]
 
 [workspace.package]
