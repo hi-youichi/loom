@@ -252,11 +252,6 @@ impl LlmClient for ChatOpenAI {
             tool_choice = ?self.tool_choice,
             "OpenAI chat create"
         );
-        if let Ok(js) = serde_json::to_string_pretty(&request) {
-            trace!(trace_id = %trace_id, url = %url, request = %js, "OpenAI request body");
-        } else {
-            trace!(trace_id = %trace_id, url = %url, request = ?request, "OpenAI request body (debug)");
-        }
 
         let response = self
             .client
@@ -264,12 +259,6 @@ impl LlmClient for ChatOpenAI {
             .create(request)
             .await
             .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI API error: {}", e)))?;
-
-        if let Ok(js) = serde_json::to_string_pretty(&response) {
-            trace!(trace_id = %trace_id, url = %url, response = %js, "OpenAI response body");
-        } else {
-            trace!(trace_id = %trace_id, url = %url, response = ?response, "OpenAI response body (debug)");
-        }
 
         let choice =
             response.choices.into_iter().next().ok_or_else(|| {
@@ -389,11 +378,6 @@ impl LlmClient for ChatOpenAI {
             tool_choice = ?self.tool_choice,
             "OpenAI chat create_stream"
         );
-        if let Ok(js) = serde_json::to_string_pretty(&request) {
-            trace!(trace_id = %trace_id, url = %url, request = %js, "OpenAI stream request body");
-        } else {
-            trace!(trace_id = %trace_id, url = %url, request = ?request, "OpenAI stream request body (debug)");
-        }
 
         let mut stream = self
             .client
@@ -452,9 +436,9 @@ impl LlmClient for ChatOpenAI {
                                             think_state = ThinkingParseState::Inside;
                                         } else {
                                             // No full start tag yet; keep potential prefix for next delta
-                                            let keep = segment_buf
-                                                .len()
-                                                .saturating_sub(THINKING_START.len().saturating_sub(1));
+                                            let keep = segment_buf.len().saturating_sub(
+                                                THINKING_START.len().saturating_sub(1),
+                                            );
                                             let to_send = segment_buf[..keep].to_string();
                                             segment_buf = segment_buf[keep..].to_string();
                                             if !to_send.is_empty() {
@@ -470,15 +454,17 @@ impl LlmClient for ChatOpenAI {
                                             let (inside, after) = segment_buf.split_at(i);
                                             if !inside.is_empty() {
                                                 let _ = chunk_tx
-                                                    .send(MessageChunk::thinking(inside.to_string()))
+                                                    .send(MessageChunk::thinking(
+                                                        inside.to_string(),
+                                                    ))
                                                     .await;
                                             }
                                             segment_buf = after[THINKING_END.len()..].to_string();
                                             think_state = ThinkingParseState::Outside;
                                         } else {
-                                            let keep = segment_buf
-                                                .len()
-                                                .saturating_sub(THINKING_END.len().saturating_sub(1));
+                                            let keep = segment_buf.len().saturating_sub(
+                                                THINKING_END.len().saturating_sub(1),
+                                            );
                                             let to_send = segment_buf[..keep].to_string();
                                             segment_buf = segment_buf[keep..].to_string();
                                             if !to_send.is_empty() {
@@ -492,9 +478,7 @@ impl LlmClient for ChatOpenAI {
                                 }
                             }
                         } else {
-                            let _ = chunk_tx
-                                .send(MessageChunk::message(content.clone()))
-                                .await;
+                            let _ = chunk_tx.send(MessageChunk::message(content.clone())).await;
                         }
                     }
                 }

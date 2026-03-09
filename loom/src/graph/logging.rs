@@ -17,7 +17,7 @@ pub fn log_node_start(node_id: &str) {
 /// Call this when a node is about to run so that each node execution
 /// logs the current state (input state for that node).
 pub fn log_node_state<S: Debug>(node_id: &str, state: &S) {
-    tracing::debug!(node_id = node_id, state = ?state, "Node execution: state");
+    // tracing::debug!(node_id = node_id, state = ?state, "Node execution: state");
 }
 
 /// Log node execution completion.

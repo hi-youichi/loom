@@ -38,6 +38,29 @@ mod tests {
     use super::*;
     use std::env;
 
+    struct EnvGuard {
+        key: &'static str,
+        prev: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: &std::path::Path) -> Self {
+            let prev = env::var(key).ok();
+            env::set_var(key, value);
+            Self { key, prev }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            if let Some(p) = self.prev.as_ref() {
+                env::set_var(self.key, p);
+            } else {
+                env::remove_var(self.key);
+            }
+        }
+    }
+
     #[test]
     fn missing_config_returns_empty_map() {
         // Use an app name that almost certainly has no config file
@@ -61,14 +84,8 @@ BAR = "baz"
         )
         .unwrap();
 
-        let prev = env::var("XDG_CONFIG_HOME").ok();
-        env::set_var("XDG_CONFIG_HOME", dir.path());
+        let _guard = EnvGuard::set("XDG_CONFIG_HOME", dir.path());
         let result = load_env_map("testapp");
-        if let Some(p) = prev.as_ref() {
-            env::set_var("XDG_CONFIG_HOME", p);
-        } else {
-            env::remove_var("XDG_CONFIG_HOME");
-        }
 
         let map = result.unwrap();
         assert_eq!(map.get("FOO"), Some(&"from_toml".to_string()));
@@ -82,14 +99,8 @@ BAR = "baz"
         std::fs::create_dir_all(&app_dir).unwrap();
         std::fs::write(app_dir.join("config.toml"), "[env]\n").unwrap();
 
-        let prev = env::var("XDG_CONFIG_HOME").ok();
-        env::set_var("XDG_CONFIG_HOME", dir.path());
+        let _guard = EnvGuard::set("XDG_CONFIG_HOME", dir.path());
         let result = load_env_map("emptyenv");
-        if let Some(p) = prev.as_ref() {
-            env::set_var("XDG_CONFIG_HOME", p);
-        } else {
-            env::remove_var("XDG_CONFIG_HOME");
-        }
 
         let map = result.unwrap();
         assert!(map.is_empty());
@@ -102,14 +113,8 @@ BAR = "baz"
         std::fs::create_dir_all(&app_dir).unwrap();
         std::fs::write(app_dir.join("config.toml"), "not valid toml [[[\n").unwrap();
 
-        let prev = env::var("XDG_CONFIG_HOME").ok();
-        env::set_var("XDG_CONFIG_HOME", dir.path());
+        let _guard = EnvGuard::set("XDG_CONFIG_HOME", dir.path());
         let result = load_env_map("badapp");
-        if let Some(p) = prev.as_ref() {
-            env::set_var("XDG_CONFIG_HOME", p);
-        } else {
-            env::remove_var("XDG_CONFIG_HOME");
-        }
 
         assert!(matches!(result, Err(crate::LoadError::XdgParse(_))));
     }
@@ -121,14 +126,8 @@ BAR = "baz"
         std::fs::create_dir_all(&app_dir).unwrap();
         std::fs::write(app_dir.join("config.toml"), "[other]\nkey = \"ignored\"\n").unwrap();
 
-        let prev = env::var("XDG_CONFIG_HOME").ok();
-        env::set_var("XDG_CONFIG_HOME", dir.path());
+        let _guard = EnvGuard::set("XDG_CONFIG_HOME", dir.path());
         let result = load_env_map("noenv");
-        if let Some(p) = prev.as_ref() {
-            env::set_var("XDG_CONFIG_HOME", p);
-        } else {
-            env::remove_var("XDG_CONFIG_HOME");
-        }
 
         let map = result.unwrap();
         assert!(map.is_empty());
