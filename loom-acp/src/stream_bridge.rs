@@ -200,6 +200,14 @@ pub fn stream_update_to_session_notification(
             if let Some(ref k) = kind {
                 tc = tc.kind(name_to_tool_kind(k));
             }
+            tracing::debug!(
+                tool_call_id = %tool_call_id,
+                name = %name,
+                input = ?input,
+                kind = ?kind,
+                tc = ?tc,
+                "tool_call session update"
+            );
             SessionUpdate::ToolCall(tc)
         }
         StreamUpdate::ToolCallUpdated {
