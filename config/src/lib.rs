@@ -4,7 +4,13 @@
 //! See workspace `docs/xdg_toml_config.md` for the design.
 
 mod dotenv;
+mod mcp_config;
 mod xdg_toml;
+
+pub use mcp_config::{
+    discover_mcp_config_path, load_mcp_config_from_path, parse_mcp_config, McpConfigError,
+    McpConfigFile, McpServerDef, McpServerEntry,
+};
 
 use std::path::Path;
 use thiserror::Error;
