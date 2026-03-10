@@ -107,6 +107,12 @@ async fn webhook_handler(
             "github push event payload"
         );
     } else {
+        tracing::trace!(
+            ?delivery,
+            event = %event,
+            payload = %String::from_utf8_lossy(&body),
+            "ignored event type (payload at trace)"
+        );
         tracing::info!(?delivery, event = %event, "ignored event type");
     }
 
