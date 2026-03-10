@@ -425,6 +425,7 @@ mod tests {
             compaction_config: None,
             tot_config: TotRunnerConfig::default(),
             got_config: GotRunnerConfig::default(),
+            mcp_servers: None,
         }
     }
 
@@ -756,6 +757,7 @@ mod tests {
             display_max_len: 200,
             output_json,
             model: None,
+            mcp_config_path: None,
         }
     }
 

@@ -61,6 +61,10 @@ struct Args {
     /// When using --json, pretty-print (multi-line). Default: compact, one line per event
     #[arg(long)]
     pretty: bool,
+
+    /// Path to MCP config JSON (overrides LOOM_MCP_CONFIG_PATH and default .loom/mcp.json discovery)
+    #[arg(long, value_name = "PATH")]
+    mcp_config: Option<PathBuf>,
 }
 
 /// Writes JSON to stdout or to the given file. When pretty is true, multi-line; else one line.
@@ -288,6 +292,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             display_max_len: max_message_len(),
             output_json: args.json,
             model: None,
+            mcp_config_path: args.mcp_config.clone(),
         };
         match &ta.sub {
             ToolCommand::List => {
@@ -336,6 +341,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         display_max_len: max_message_len(),
         output_json: args.json,
         model: None,
+        mcp_config_path: args.mcp_config,
     };
 
     let cmd = args.cmd.unwrap_or(Command::React);

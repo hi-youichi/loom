@@ -211,6 +211,7 @@ mod tests {
             display_max_len: 100,
             output_json: false,
             model: None,
+            mcp_config_path: None,
         };
 
         let out = run_one_turn(&backend, &opts, &Command::Dup, None)

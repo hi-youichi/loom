@@ -264,6 +264,7 @@ mod tests {
             display_max_len: 100,
             output_json: true,
             model: None,
+            mcp_config_path: None,
         }
     }
 
