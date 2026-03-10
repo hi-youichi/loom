@@ -1,0 +1,64 @@
+# Manual deploy: use latest successful build from selected branch.
+# Requires Secrets: DEPLOY_SSH_HOST, DEPLOY_SSH_KEY, DEPLOY_PATH.
+# See idea/gh-webhook-deploy-action-plan.md.
+
+name: Deploy Webhook
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch whose latest successful build to deploy'
+        required: true
+        default: 'main'
+        type: string
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Get latest successful build run ID
+        id: get_run_id
+        run: |
+          RUN_ID=$(gh run list \
+            --workflow=rust-release.yml \
+            --branch="${{ inputs.branch }}" \
+            --status=success \
+            --limit=1 \
+            --json databaseId \
+            -q '.[0].databaseId')
+          if [ -z "$RUN_ID" ]; then
+            echo "No successful build found for branch ${{ inputs.branch }}"
+            exit 1
+          fi
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifact
+          run-id: ${{ steps.get_run_id.outputs.run_id }}
+
+      - name: Deploy via SSH
+        env:
+          SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          if [ -z "$SSH_HOST" ] || [ -z "$SSH_KEY" ] || [ -z "$DEPLOY_PATH" ]; then
+            echo "Missing DEPLOY_SSH_HOST, DEPLOY_SSH_KEY, or DEPLOY_PATH secret"
+            exit 1
+          fi
+          KEY_FILE="$RUNNER_TEMP/deploy_key"
+          printf '%s' "$SSH_KEY" > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
+          rsync -avz --delete \
+            -e "ssh -i $KEY_FILE -o StrictHostKeyChecking=no" \
+            ./ "$SSH_HOST:$DEPLOY_PATH/"
+          rm -f "$KEY_FILE"
