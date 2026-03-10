@@ -28,6 +28,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 axum = { version = "0.7", features = ["json", "macros"] }
 tower-http = { version = "0.5", features = ["util"] }
 loom = { path = "../../loom" }
+clap = { workspace = true }
 
 [dev-dependencies]
 hmac = "0.12"

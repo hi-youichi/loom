@@ -24,5 +24,5 @@ async-trait = "0.1"
 thiserror = "1.0"
 dotenv = "0.15"
 futures = "0.3"
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
