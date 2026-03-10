@@ -50,6 +50,15 @@ pub struct ReactBuildConfig {
     pub mcp_exa_url: String,
     pub mcp_remote_cmd: String,
     pub mcp_remote_args: String,
+    /// When set, loom will spawn the GitHub MCP server (mcp_github_cmd + mcp_github_args) and pass
+    /// GITHUB_TOKEN so the agent can operate on issues (comment, close, labels, etc.).
+    pub github_token: Option<String>,
+    /// Command to run the GitHub MCP server (e.g. "npx"). Override with MCP_GITHUB_CMD.
+    pub mcp_github_cmd: String,
+    /// Args for the GitHub MCP server (e.g. ["-y", "@modelcontextprotocol/server-github"]). Override with MCP_GITHUB_ARGS (space-separated).
+    pub mcp_github_args: Vec<String>,
+    /// When set and http(s), use HTTP transport for GitHub MCP (e.g. https://api.githubcopilot.com/mcp/). Override with MCP_GITHUB_URL.
+    pub mcp_github_url: Option<String>,
     pub mcp_verbose: bool,
     pub openai_api_key: Option<String>,
     pub openai_base_url: Option<String>,
@@ -86,6 +95,13 @@ impl ReactBuildConfig {
             mcp_remote_cmd: std::env::var("MCP_REMOTE_CMD").unwrap_or_else(|_| "npx".to_string()),
             mcp_remote_args: std::env::var("MCP_REMOTE_ARGS")
                 .unwrap_or_else(|_| "-y mcp-remote".to_string()),
+            github_token: std::env::var("GITHUB_TOKEN").ok(),
+            mcp_github_cmd: std::env::var("MCP_GITHUB_CMD")
+                .unwrap_or_else(|_| "npx".to_string()),
+            mcp_github_args: std::env::var("MCP_GITHUB_ARGS")
+                .map(|s| s.split_whitespace().map(String::from).collect())
+                .unwrap_or_else(|_| vec!["-y".to_string(), "@modelcontextprotocol/server-github".to_string()]),
+            mcp_github_url: std::env::var("MCP_GITHUB_URL").ok(),
             mcp_verbose,
             openai_api_key: std::env::var("OPENAI_API_KEY").ok(),
             openai_base_url: std::env::var("OPENAI_BASE_URL").ok(),
@@ -128,5 +144,75 @@ impl ReactBuildConfig {
             },
             mcp_servers: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ReactBuildConfig;
+
+    fn with_env(key: &str, value: Option<&str>, f: impl FnOnce()) {
+        let prev = std::env::var(key).ok();
+        match value {
+            Some(v) => std::env::set_var(key, v),
+            None => std::env::remove_var(key),
+        }
+        f();
+        if let Some(p) = prev {
+            std::env::set_var(key, p);
+        } else {
+            std::env::remove_var(key);
+        }
+    }
+
+    /// Run all from_env GitHub-related tests in one test to avoid env races when tests run in parallel.
+    #[test]
+    fn from_env_github_token_and_mcp_override() {
+        // 1) With GITHUB_TOKEN set: github_token is_some and default cmd/args
+        with_env("GITHUB_TOKEN", Some("test-token"), || {
+            with_env("MCP_GITHUB_CMD", None, || {
+                with_env("MCP_GITHUB_ARGS", None, || {
+                    let config = ReactBuildConfig::from_env();
+                    assert!(config.github_token.is_some());
+                    assert_eq!(config.github_token.as_deref(), Some("test-token"));
+                    assert_eq!(config.mcp_github_cmd, "npx");
+                    assert!(config.mcp_github_args.contains(&"-y".to_string()));
+                    assert!(config
+                        .mcp_github_args
+                        .iter()
+                        .any(|a| a.contains("server-github")));
+                });
+            });
+        });
+
+        // 2) Without GITHUB_TOKEN: github_token is_none
+        with_env("GITHUB_TOKEN", None, || {
+            let config = ReactBuildConfig::from_env();
+            assert!(config.github_token.is_none());
+        });
+
+        // 3) With overrides: MCP_GITHUB_CMD and MCP_GITHUB_ARGS
+        with_env("GITHUB_TOKEN", Some("x"), || {
+            with_env("MCP_GITHUB_CMD", Some("custom-cmd"), || {
+                with_env("MCP_GITHUB_ARGS", Some("arg1 arg2"), || {
+                    let config = ReactBuildConfig::from_env();
+                    assert_eq!(config.mcp_github_cmd, "custom-cmd");
+                    assert_eq!(config.mcp_github_args, &["arg1", "arg2"]);
+                });
+            });
+        });
+
+        // 4) MCP_GITHUB_URL: when set, mcp_github_url is Some
+        with_env("MCP_GITHUB_URL", Some("https://api.githubcopilot.com/mcp/"), || {
+            let config = ReactBuildConfig::from_env();
+            assert_eq!(
+                config.mcp_github_url.as_deref(),
+                Some("https://api.githubcopilot.com/mcp/")
+            );
+        });
+        with_env("MCP_GITHUB_URL", None, || {
+            let config = ReactBuildConfig::from_env();
+            assert!(config.mcp_github_url.is_none());
+        });
     }
 }

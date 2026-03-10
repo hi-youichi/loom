@@ -66,6 +66,63 @@ pub(crate) async fn build_tool_source(
                 }
             }
         }
+        if let Some(ref token) = config.github_token {
+            let use_http = config
+                .mcp_github_url
+                .as_deref()
+                .map(|u| u.starts_with("http://") || u.starts_with("https://"))
+                .unwrap_or(false);
+            if use_http {
+                let url = config.mcp_github_url.as_deref().unwrap();
+                match McpToolSource::new_http(
+                    url,
+                    [("Authorization", format!("Bearer {}", token))],
+                )
+                .await
+                {
+                    Ok(mcp) => {
+                        if let Err(e) =
+                            register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
+                        {
+                            tracing::warn!(
+                                "GitHub MCP (HTTP) registered but list/call may fail: {}",
+                                e
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "GitHub MCP (HTTP) failed to connect, skipping: {}",
+                            e
+                        );
+                    }
+                }
+            } else {
+                match McpToolSource::new_with_env(
+                    config.mcp_github_cmd.clone(),
+                    config.mcp_github_args.clone(),
+                    [("GITHUB_TOKEN", token.as_str())],
+                    config.mcp_verbose,
+                ) {
+                    Ok(mcp) => {
+                        if let Err(e) =
+                            register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
+                        {
+                            tracing::warn!(
+                                "GitHub MCP registered but list/call may fail: {}",
+                                e
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "GitHub MCP failed to start, skipping: {}",
+                            e
+                        );
+                    }
+                }
+            }
+        }
         let inner: Box<dyn ToolSource> = Box::new(aggregate);
         let wrapped = YamlSpecToolSource::wrap(inner)
             .await
@@ -143,6 +200,60 @@ pub(crate) async fn build_tool_source(
                         "mcp server failed to start, skipping: {}",
                         e
                     );
+                }
+            }
+        }
+    }
+    if let Some(ref token) = config.github_token {
+        let use_http = config
+            .mcp_github_url
+            .as_deref()
+            .map(|u| u.starts_with("http://") || u.starts_with("https://"))
+            .unwrap_or(false);
+        if use_http {
+            let url = config.mcp_github_url.as_deref().unwrap();
+            match McpToolSource::new_http(
+                url,
+                [("Authorization", format!("Bearer {}", token))],
+            )
+            .await
+            {
+                Ok(mcp) => {
+                    if let Err(e) =
+                        register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
+                    {
+                        tracing::warn!(
+                            "GitHub MCP (HTTP) registered but list/call may fail: {}",
+                            e
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "GitHub MCP (HTTP) failed to connect, skipping: {}",
+                        e
+                    );
+                }
+            }
+        } else {
+            match McpToolSource::new_with_env(
+                config.mcp_github_cmd.clone(),
+                config.mcp_github_args.clone(),
+                [("GITHUB_TOKEN", token.as_str())],
+                config.mcp_verbose,
+            ) {
+                Ok(mcp) => {
+                    if let Err(e) =
+                        register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
+                    {
+                        tracing::warn!(
+                            "GitHub MCP registered but list/call may fail: {}",
+                            e
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("GitHub MCP failed to start, skipping: {}", e);
                 }
             }
         }
