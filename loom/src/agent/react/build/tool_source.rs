@@ -11,6 +11,8 @@ use crate::tools::{
     LspTool, TwitterSearchTool, WebFetcherTool,
 };
 
+use env_config::McpServerDef;
+
 use super::super::config::ReactBuildConfig;
 
 fn to_agent_error(e: impl std::fmt::Display) -> AgentError {
@@ -38,30 +40,63 @@ pub(crate) async fn build_tool_source(
         aggregate.register_sync(Box::new(LspTool::new()));
         if let Some(ref servers) = config.mcp_servers {
             for def in servers {
-                let env_iter = def.env.iter().map(|(k, v)| (k.as_str(), v.as_str()));
-                match McpToolSource::new_with_env(
-                    def.command.clone(),
-                    def.args.clone(),
-                    env_iter,
-                    config.mcp_verbose,
-                ) {
-                    Ok(mcp) => {
-                        if let Err(e) =
-                            register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
-                        {
-                            tracing::warn!(
-                                name = %def.name,
-                                "mcp server registered but list/call may fail: {}",
-                                e
-                            );
+                match def {
+                    McpServerDef::Stdio {
+                        name,
+                        command,
+                        args,
+                        env,
+                    } => {
+                        let env_iter = env.iter().map(|(k, v)| (k.as_str(), v.as_str()));
+                        match McpToolSource::new_with_env(
+                            command.clone(),
+                            args.clone(),
+                            env_iter,
+                            config.mcp_verbose,
+                        ) {
+                            Ok(mcp) => {
+                                if let Err(e) =
+                                    register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
+                                {
+                                    tracing::warn!(
+                                        name = %name,
+                                        "mcp server registered but list/call may fail: {}",
+                                        e
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    name = %name,
+                                    "mcp server failed to start, skipping: {}",
+                                    e
+                                );
+                            }
                         }
                     }
-                    Err(e) => {
-                        tracing::warn!(
-                            name = %def.name,
-                            "mcp server failed to start, skipping: {}",
-                            e
-                        );
+                    McpServerDef::Http { name, url, headers } => {
+                        let headers_iter =
+                            headers.iter().map(|(k, v)| (k.as_str(), v.as_str()));
+                        match McpToolSource::new_http(url.clone(), headers_iter).await {
+                            Ok(mcp) => {
+                                if let Err(e) =
+                                    register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
+                                {
+                                    tracing::warn!(
+                                        name = %name,
+                                        "mcp server (HTTP) registered but list/call may fail: {}",
+                                        e
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    name = %name,
+                                    "mcp server (HTTP) failed to connect, skipping: {}",
+                                    e
+                                );
+                            }
+                        }
                     }
                 }
             }
@@ -173,33 +208,63 @@ pub(crate) async fn build_tool_source(
 
     if let Some(ref servers) = config.mcp_servers {
         for def in servers {
-            let env_iter = def
-                .env
-                .iter()
-                .map(|(k, v)| (k.as_str(), v.as_str()));
-            match McpToolSource::new_with_env(
-                def.command.clone(),
-                def.args.clone(),
-                env_iter,
-                config.mcp_verbose,
-            ) {
-                Ok(mcp) => {
-                    if let Err(e) =
-                        register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
-                    {
-                        tracing::warn!(
-                            name = %def.name,
-                            "mcp server registered but list/call may fail: {}",
-                            e
-                        );
+            match def {
+                McpServerDef::Stdio {
+                    name,
+                    command,
+                    args,
+                    env,
+                } => {
+                    let env_iter = env.iter().map(|(k, v)| (k.as_str(), v.as_str()));
+                    match McpToolSource::new_with_env(
+                        command.clone(),
+                        args.clone(),
+                        env_iter,
+                        config.mcp_verbose,
+                    ) {
+                        Ok(mcp) => {
+                            if let Err(e) =
+                                register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
+                            {
+                                tracing::warn!(
+                                    name = %name,
+                                    "mcp server registered but list/call may fail: {}",
+                                    e
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                name = %name,
+                                "mcp server failed to start, skipping: {}",
+                                e
+                            );
+                        }
                     }
                 }
-                Err(e) => {
-                    tracing::warn!(
-                        name = %def.name,
-                        "mcp server failed to start, skipping: {}",
-                        e
-                    );
+                McpServerDef::Http { name, url, headers } => {
+                    let headers_iter =
+                        headers.iter().map(|(k, v)| (k.as_str(), v.as_str()));
+                    match McpToolSource::new_http(url.clone(), headers_iter).await {
+                        Ok(mcp) => {
+                            if let Err(e) =
+                                register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
+                            {
+                                tracing::warn!(
+                                    name = %name,
+                                    "mcp server (HTTP) registered but list/call may fail: {}",
+                                    e
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                name = %name,
+                                "mcp server (HTTP) failed to connect, skipping: {}",
+                                e
+                            );
+                        }
+                    }
                 }
             }
         }
