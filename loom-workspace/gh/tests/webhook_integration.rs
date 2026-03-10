@@ -95,7 +95,7 @@ async fn spawn_webhook_server(secret: &[u8]) -> (String, tokio::task::JoinHandle
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let base = format!("http://{}", addr);
-    let app = webhook_router(secret.to_vec());
+    let app = webhook_router(secret.to_vec(), None);
     let handle = tokio::spawn(async move {
         let _ = axum::serve(listener, app).await;
     });

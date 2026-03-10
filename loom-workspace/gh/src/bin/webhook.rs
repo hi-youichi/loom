@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(8080);
-    let app = gh::webhook_router(secret.into_bytes());
+    let app = gh::webhook_router(secret.into_bytes(), None);
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     info!(%addr, "listening for GitHub webhooks on POST /webhook");
     let listener = tokio::net::TcpListener::bind(addr).await?;

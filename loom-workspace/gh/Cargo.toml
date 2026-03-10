@@ -27,10 +27,12 @@ tokio = { workspace = true, features = ["rt-multi-thread", "net", "macros"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 axum = { version = "0.7", features = ["json", "macros"] }
 tower-http = { version = "0.5", features = ["util"] }
+loom = { path = "../../loom" }
 
 [dev-dependencies]
 hmac = "0.12"
 hex = "0.4"
 reqwest = { version = "0.11", features = ["json"] }
 sha2 = "0.10"
+tempfile = "3"
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net"] }
