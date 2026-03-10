@@ -10,6 +10,7 @@ pub use agent::run_options_from_issues_event;
 pub use issue::{add_labels, close_issue, create_comment, octocrab_from_token, IssueError};
 pub use server::{webhook_router, RunAgentCallback};
 pub use webhook::{
-    parse_issues_event, verify_signature, IssuesEvent, IssuePayload, LabelPayload, RepoRef,
-    SenderPayload, WebhookError,
+    parse_issues_event, verify_signature, ChangesPayload, EnterprisePayload, InstallationPayload,
+    IssuesEvent, IssuePayload, LabelPayload, MilestonePayload, OrganizationPayload,
+    PullRequestRef, RepoRef, SenderPayload, SimpleUser, WebhookError,
 };

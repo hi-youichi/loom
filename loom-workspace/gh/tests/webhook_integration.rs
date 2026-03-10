@@ -74,6 +74,42 @@ fn parse_issues_event_ok() {
     assert_eq!(ev.issue.state, "open");
 }
 
+/// Typed model fields are deserialized (repository, issue, sender with full types).
+#[test]
+fn parse_issues_event_typed_models() {
+    let payload = r#"{
+      "action": "opened",
+      "repository": {
+        "id": 1,
+        "name": "repo",
+        "full_name": "owner/repo",
+        "private": false,
+        "node_id": "MDEwOlJlcG9zaXRvcnkx",
+        "default_branch": "main"
+      },
+      "issue": {
+        "id": 1,
+        "number": 42,
+        "title": "Test",
+        "body": null,
+        "state": "open",
+        "html_url": "https://github.com/owner/repo/issues/42",
+        "labels": [],
+        "node_id": "MDExOlB1bGxSZXF1ZXN0MQ==",
+        "created_at": "2024-01-01T00:00:00Z"
+      },
+      "sender": { "login": "alice", "id": 100 }
+    }"#;
+    let ev = parse_issues_event(payload.as_bytes()).unwrap();
+    assert_eq!(ev.action, "opened");
+    assert_eq!(ev.repository.node_id.as_deref(), Some("MDEwOlJlcG9zaXRvcnkx"));
+    assert_eq!(ev.repository.default_branch.as_deref(), Some("main"));
+    assert_eq!(ev.issue.node_id.as_deref(), Some("MDExOlB1bGxSZXF1ZXN0MQ=="));
+    assert_eq!(ev.issue.created_at.as_deref(), Some("2024-01-01T00:00:00Z"));
+    assert_eq!(ev.sender.as_ref().map(|s| s.login.as_str()), Some("alice"));
+    assert_eq!(ev.sender.as_ref().and_then(|s| s.id), Some(100));
+}
+
 #[test]
 fn parse_issues_event_invalid_json() {
     let err = parse_issues_event(b"not json").unwrap_err();

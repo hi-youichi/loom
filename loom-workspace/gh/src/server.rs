@@ -67,6 +67,14 @@ async fn webhook_handler(
     }
 
     if event == "issues" {
+        let body_str = String::from_utf8_lossy(&body);
+        tracing::trace!(
+            delivery = ?delivery,
+            event = %event,
+            payload = %body_str,
+            "github issues event payload"
+        );
+
         match crate::parse_issues_event(body.as_ref()) {
             Ok(ev) => {
                 let delivery_id = delivery.map(String::from);
@@ -90,6 +98,14 @@ async fn webhook_handler(
                 return (StatusCode::BAD_REQUEST, "invalid payload").into_response();
             }
         }
+    } else if event == "push" {
+        let body_str = String::from_utf8_lossy(&body);
+        tracing::trace!(
+            delivery = ?delivery,
+            event = %event,
+            payload = %body_str,
+            "github push event payload"
+        );
     } else {
         tracing::info!(?delivery, event = %event, "ignored event type");
     }
