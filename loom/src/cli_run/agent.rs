@@ -5,6 +5,7 @@ use crate::export::stream_event_to_format_a;
 use crate::protocol::stream::stream_event_to_protocol_envelope;
 use crate::protocol::EnvelopeState;
 use crate::protocol::ProtocolEventEnvelope;
+use crate::llm::LlmClient;
 use crate::{
     build_dup_runner, build_got_runner, build_react_runner, build_tot_runner, DupRunner, DupState,
     GotRunner, GotState, ReActState, ReactBuildConfig, ReactRunner, StreamEvent, TotRunner,
@@ -32,6 +33,8 @@ pub struct RunOptions {
     pub output_json: bool,
     /// When set, overrides env/config for this run's LLM model (e.g. "gpt-4o", "gpt-4o-mini").
     pub model: Option<String>,
+    /// When set, use this path as MCP config (overrides LOOM_MCP_CONFIG_PATH and default discovery).
+    pub mcp_config_path: Option<PathBuf>,
 }
 
 /// Error type for run operations.
@@ -116,10 +119,14 @@ impl AnyStreamEvent {
 /// Runs the agent. When `on_event` is Some, it is invoked for each stream event.
 /// The server can pass a closure that converts to format A via `ev.to_format_a()` and sends over WebSocket.
 /// The CLI can pass a closure that formats to stderr.
+///
+/// When `llm_override` is Some (e.g. in tests with [`crate::MockLlm`]), that client is used instead of
+/// building one from config; otherwise the default LLM is built from env/OpenAI.
 pub async fn run_agent(
     opts: &RunOptions,
     cmd: &RunCmd,
     on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>>,
+    llm_override: Option<Box<dyn LlmClient>>,
 ) -> Result<String, RunError> {
     let (_helve, mut config) = build_helve_config(opts);
     let thread_id_log = config.thread_id.as_deref().unwrap_or("").to_string();
@@ -136,7 +143,7 @@ pub async fn run_agent(
         config.got_config.adaptive = *got_adaptive;
     }
 
-    let runner = build_runner(&config, opts, cmd)
+    let runner = build_runner(&config, opts, cmd, llm_override)
         .instrument(span.clone())
         .await?;
 
@@ -209,27 +216,50 @@ pub async fn run_agent(
     Ok(reply)
 }
 
+/// Convenience wrapper that runs the agent with no LLM override (default LLM from config).
+/// Used by CLI, serve, and ACP. For tests with a mock LLM, use [`run_agent_with_llm_override`].
+pub async fn run_agent_with_options(
+    opts: &RunOptions,
+    cmd: &RunCmd,
+    on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>>,
+) -> Result<String, RunError> {
+    run_agent(opts, cmd, on_event, None).await
+}
+
+/// Runs the agent with an optional LLM override (e.g. [`crate::MockLlm`] in tests).
+/// Same as [`run_agent`] but exposed under a distinct name to avoid clash with [`crate::agent::react::run_agent`].
+pub async fn run_agent_with_llm_override(
+    opts: &RunOptions,
+    cmd: &RunCmd,
+    on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>>,
+    llm_override: Option<Box<dyn LlmClient>>,
+) -> Result<String, RunError> {
+    run_agent(opts, cmd, on_event, llm_override).await
+}
+
 /// Builds the runner for the given command.
+/// When `llm_override` is Some, it is used instead of building the default LLM from config.
 pub async fn build_runner(
     config: &ReactBuildConfig,
     opts: &RunOptions,
     cmd: &RunCmd,
+    llm_override: Option<Box<dyn LlmClient>>,
 ) -> Result<AnyRunner, RunError> {
     match cmd {
         RunCmd::React => {
-            let r = build_react_runner(config, None, opts.verbose, None).await?;
+            let r = build_react_runner(config, llm_override, opts.verbose, None).await?;
             Ok(AnyRunner::React(r))
         }
         RunCmd::Dup => {
-            let r = build_dup_runner(config, None, opts.verbose).await?;
+            let r = build_dup_runner(config, llm_override, opts.verbose).await?;
             Ok(AnyRunner::Dup(r))
         }
         RunCmd::Tot => {
-            let r = build_tot_runner(config, None, opts.verbose).await?;
+            let r = build_tot_runner(config, llm_override, opts.verbose).await?;
             Ok(AnyRunner::Tot(r))
         }
         RunCmd::Got { .. } => {
-            let r = build_got_runner(config, None, opts.verbose).await?;
+            let r = build_got_runner(config, llm_override, opts.verbose).await?;
             Ok(AnyRunner::Got(r))
         }
     }
@@ -254,6 +284,7 @@ mod tests {
             display_max_len: 120,
             output_json: true,
             model: None,
+            mcp_config_path: None,
         }
     }
 
@@ -282,6 +313,7 @@ mod tests {
             compaction_config: None,
             tot_config: crate::TotRunnerConfig::default(),
             got_config: crate::GotRunnerConfig::default(),
+            mcp_servers: None,
         }
     }
 
@@ -322,12 +354,13 @@ mod tests {
             display_max_len: 120,
             output_json: false,
             model: None,
+            mcp_config_path: None,
         };
-        assert!(build_runner(&cfg, &opts, &RunCmd::React).await.is_err());
-        assert!(build_runner(&cfg, &opts, &RunCmd::Dup).await.is_err());
-        assert!(build_runner(&cfg, &opts, &RunCmd::Tot).await.is_err());
+        assert!(build_runner(&cfg, &opts, &RunCmd::React, None).await.is_err());
+        assert!(build_runner(&cfg, &opts, &RunCmd::Dup, None).await.is_err());
+        assert!(build_runner(&cfg, &opts, &RunCmd::Tot, None).await.is_err());
         assert!(
-            build_runner(&cfg, &opts, &RunCmd::Got { got_adaptive: true })
+            build_runner(&cfg, &opts, &RunCmd::Got { got_adaptive: true }, None)
                 .await
                 .is_err()
         );
@@ -341,7 +374,7 @@ mod tests {
             RunCmd::Tot,
             RunCmd::Got { got_adaptive: true },
         ] {
-            let res = run_agent(&opts_for_error(&cmd), &cmd, None).await;
+            let res = run_agent(&opts_for_error(&cmd), &cmd, None, None).await;
             assert!(res.is_err());
         }
     }

@@ -15,6 +15,7 @@ fn opts(working_folder: Option<std::path::PathBuf>, role_file: Option<std::path:
         display_max_len: 2000,
         output_json: false,
         model: None,
+        mcp_config_path: None,
     }
 }
 

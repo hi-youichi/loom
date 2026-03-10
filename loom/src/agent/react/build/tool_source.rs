@@ -3,10 +3,12 @@
 use std::sync::Arc;
 
 use crate::error::AgentError;
-use crate::tool_source::{register_file_tools, MemoryToolsSource, ToolSource, YamlSpecToolSource};
+use crate::tool_source::{
+    register_file_tools, McpToolSource, MemoryToolsSource, ToolSource, YamlSpecToolSource,
+};
 use crate::tools::{
-    AggregateToolSource, BashTool, BatchTool, ExaCodesearchTool, ExaWebsearchTool, LspTool,
-    TwitterSearchTool, WebFetcherTool,
+    register_mcp_tools, AggregateToolSource, BashTool, BatchTool, ExaCodesearchTool, ExaWebsearchTool,
+    LspTool, TwitterSearchTool, WebFetcherTool,
 };
 
 use super::super::config::ReactBuildConfig;
@@ -34,6 +36,36 @@ pub(crate) async fn build_tool_source(
         aggregate.register_async(Box::new(BashTool::new())).await;
         aggregate.register_sync(Box::new(BatchTool::new(Arc::clone(&aggregate))));
         aggregate.register_sync(Box::new(LspTool::new()));
+        if let Some(ref servers) = config.mcp_servers {
+            for def in servers {
+                let env_iter = def.env.iter().map(|(k, v)| (k.as_str(), v.as_str()));
+                match McpToolSource::new_with_env(
+                    def.command.clone(),
+                    def.args.clone(),
+                    env_iter,
+                    config.mcp_verbose,
+                ) {
+                    Ok(mcp) => {
+                        if let Err(e) =
+                            register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
+                        {
+                            tracing::warn!(
+                                name = %def.name,
+                                "mcp server registered but list/call may fail: {}",
+                                e
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            name = %def.name,
+                            "mcp server failed to start, skipping: {}",
+                            e
+                        );
+                    }
+                }
+            }
+        }
         let inner: Box<dyn ToolSource> = Box::new(aggregate);
         let wrapped = YamlSpecToolSource::wrap(inner)
             .await
@@ -81,6 +113,40 @@ pub(crate) async fn build_tool_source(
     }
     aggregate.register_sync(Box::new(BatchTool::new(Arc::clone(&aggregate))));
     aggregate.register_sync(Box::new(LspTool::new()));
+
+    if let Some(ref servers) = config.mcp_servers {
+        for def in servers {
+            let env_iter = def
+                .env
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.as_str()));
+            match McpToolSource::new_with_env(
+                def.command.clone(),
+                def.args.clone(),
+                env_iter,
+                config.mcp_verbose,
+            ) {
+                Ok(mcp) => {
+                    if let Err(e) =
+                        register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
+                    {
+                        tracing::warn!(
+                            name = %def.name,
+                            "mcp server registered but list/call may fail: {}",
+                            e
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        name = %def.name,
+                        "mcp server failed to start, skipping: {}",
+                        e
+                    );
+                }
+            }
+        }
+    }
 
     let inner: Box<dyn ToolSource> = Box::new(aggregate);
     let wrapped = YamlSpecToolSource::wrap(inner)

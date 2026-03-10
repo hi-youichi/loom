@@ -265,6 +265,7 @@ mod tests {
             compaction_config: None,
             tot_config: TotRunnerConfig::default(),
             got_config: GotRunnerConfig::default(),
+            mcp_servers: None,
         }
     }
 

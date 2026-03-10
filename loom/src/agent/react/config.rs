@@ -2,6 +2,8 @@
 
 use std::path::PathBuf;
 
+use env_config::McpServerDef;
+
 /// ToT-specific runner config (max depth, candidates per step, etc.).
 #[derive(Clone, Debug)]
 pub struct TotRunnerConfig {
@@ -60,6 +62,8 @@ pub struct ReactBuildConfig {
     pub compaction_config: Option<crate::compress::CompactionConfig>,
     pub tot_config: TotRunnerConfig,
     pub got_config: GotRunnerConfig,
+    /// MCP servers from mcp.json (discovered by CLI/ACP) or from ACP request.
+    pub mcp_servers: Option<Vec<McpServerDef>>,
 }
 
 impl ReactBuildConfig {
@@ -122,6 +126,7 @@ impl ReactBuildConfig {
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(false),
             },
+            mcp_servers: None,
         }
     }
 }

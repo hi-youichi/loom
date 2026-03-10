@@ -157,8 +157,9 @@ pub use channels::{
     NamedBarrierValue, StateUpdater, Topic,
 };
 pub use cli_run::{
-    build_helve_config, load_agents_md, load_soul_md, run_agent as run_agent_with_options,
-    AnyRunner, AnyStreamEvent, RunCmd, RunError, RunOptions, DEFAULT_WORKING_FOLDER,
+    build_helve_config, load_agents_md, load_soul_md, run_agent_with_options,
+    run_agent_with_llm_override, AnyRunner, AnyStreamEvent, RunCmd, RunError, RunOptions,
+    DEFAULT_WORKING_FOLDER,
 };
 pub use compress::CompactionConfig;
 pub use config::{

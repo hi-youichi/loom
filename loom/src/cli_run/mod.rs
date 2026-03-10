@@ -5,7 +5,10 @@
 
 mod agent;
 
-pub use agent::{run_agent, AnyRunner, AnyStreamEvent, RunCmd, RunError, RunOptions};
+pub use agent::{
+    run_agent, run_agent_with_options, run_agent_with_llm_override, AnyRunner, AnyStreamEvent,
+    RunCmd, RunError, RunOptions,
+};
 
 use crate::{to_react_build_config, HelveConfig, ReactBuildConfig};
 use std::path::PathBuf;
@@ -93,6 +96,22 @@ pub fn build_helve_config(opts: &RunOptions) -> (HelveConfig, ReactBuildConfig) 
         .working_folder
         .clone()
         .unwrap_or_else(|| PathBuf::from(DEFAULT_WORKING_FOLDER));
+
+    // MCP config: override path from opts or LOOM_MCP_CONFIG_PATH, else discover project/global
+    let override_path = opts
+        .mcp_config_path
+        .clone()
+        .or_else(|| std::env::var("LOOM_MCP_CONFIG_PATH").ok().map(PathBuf::from));
+    if let Some(path) = env_config::discover_mcp_config_path(
+        override_path.as_deref(),
+        Some(&working_folder),
+    ) {
+        match env_config::load_mcp_config_from_path(&path) {
+            Ok(servers) => base.mcp_servers = Some(servers),
+            Err(e) => tracing::warn!(path = %path.display(), "failed to load mcp config: {}", e),
+        }
+    }
+
     let helve = HelveConfig {
         working_folder: Some(working_folder.clone()),
         thread_id: opts.thread_id.clone(),
