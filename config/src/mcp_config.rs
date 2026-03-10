@@ -15,6 +15,8 @@ pub enum McpConfigError {
     Io(#[from] std::io::Error),
     #[error("parse mcp config: {0}")]
     Parse(#[from] serde_json::Error),
+    #[error("mcp server entry {name}: {message}")]
+    InvalidEntry { name: String, message: String },
 }
 
 /// Root structure of mcp.json; key `mcpServers` for Cursor/Claude compatibility.
@@ -24,29 +26,46 @@ pub struct McpConfigFile {
     pub mcp_servers: HashMap<String, McpServerEntry>,
 }
 
-/// One server entry in the JSON (command required; args/env/disabled optional).
+/// One server entry in the JSON. Cursor format: either `command` (stdio) or `url` (remote).
 #[derive(Debug, Deserialize)]
 pub struct McpServerEntry {
-    pub command: String,
+    #[serde(default)]
+    pub command: Option<String>,
     #[serde(default)]
     pub args: Vec<String>,
     #[serde(default)]
     pub env: HashMap<String, String>,
     #[serde(default)]
     pub disabled: bool,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub headers: HashMap<String, String>,
 }
 
-/// Parsed definition for one MCP server, used by loom to spawn and register.
+/// Parsed definition for one MCP server: stdio (spawn process) or HTTP (remote URL).
 #[derive(Clone, Debug)]
-pub struct McpServerDef {
-    pub name: String,
-    pub command: String,
-    pub args: Vec<String>,
-    pub env: HashMap<String, String>,
+pub enum McpServerDef {
+    Stdio {
+        name: String,
+        command: String,
+        args: Vec<String>,
+        env: HashMap<String, String>,
+    },
+    Http {
+        name: String,
+        url: String,
+        headers: HashMap<String, String>,
+    },
+}
+
+fn is_http_url(s: &str) -> bool {
+    s.starts_with("http://") || s.starts_with("https://")
 }
 
 /// Parses JSON content into a list of enabled MCP server definitions.
 /// Skips entries with `disabled: true`. Order follows the map iteration order.
+/// Cursor-compatible: each entry must have either `command` (stdio) or `url` (http(s)); url wins if both present.
 pub fn parse_mcp_config(content: &str) -> Result<Vec<McpServerDef>, McpConfigError> {
     let file: McpConfigFile = serde_json::from_str(content)?;
     let mut out = Vec::with_capacity(file.mcp_servers.len());
@@ -54,12 +73,38 @@ pub fn parse_mcp_config(content: &str) -> Result<Vec<McpServerDef>, McpConfigErr
         if entry.disabled {
             continue;
         }
-        out.push(McpServerDef {
-            name,
-            command: entry.command,
-            args: entry.args,
-            env: entry.env,
-        });
+        let def = if let Some(ref url) = entry.url {
+            if !is_http_url(url) {
+                return Err(McpConfigError::InvalidEntry {
+                    name: name.clone(),
+                    message: "url must start with http:// or https://".to_string(),
+                });
+            }
+            McpServerDef::Http {
+                name: name.clone(),
+                url: url.clone(),
+                headers: entry.headers,
+            }
+        } else if let Some(ref cmd) = entry.command {
+            if cmd.is_empty() {
+                return Err(McpConfigError::InvalidEntry {
+                    name: name.clone(),
+                    message: "command must be non-empty when present".to_string(),
+                });
+            }
+            McpServerDef::Stdio {
+                name: name.clone(),
+                command: cmd.clone(),
+                args: entry.args,
+                env: entry.env,
+            }
+        } else {
+            return Err(McpConfigError::InvalidEntry {
+                name: name.clone(),
+                message: "each server must have either 'command' or 'url'".to_string(),
+            });
+        };
+        out.push(def);
     }
     Ok(out)
 }
@@ -120,10 +165,15 @@ mod tests {
         }"#;
         let list = parse_mcp_config(json).unwrap();
         assert_eq!(list.len(), 1);
-        assert_eq!(list[0].name, "fs");
-        assert_eq!(list[0].command, "npx");
-        assert_eq!(list[0].args, ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]);
-        assert!(list[0].env.is_empty());
+        match &list[0] {
+            McpServerDef::Stdio { name, command, args, env } => {
+                assert_eq!(name, "fs");
+                assert_eq!(command, "npx");
+                assert_eq!(args.as_slice(), ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]);
+                assert!(env.is_empty());
+            }
+            McpServerDef::Http { .. } => panic!("expected Stdio"),
+        }
     }
 
     #[test]
@@ -144,10 +194,15 @@ mod tests {
         }"#;
         let list = parse_mcp_config(json).unwrap();
         assert_eq!(list.len(), 1);
-        assert_eq!(list[0].name, "enabled");
-        assert_eq!(list[0].command, "node");
-        assert_eq!(list[0].args, ["server.js"]);
-        assert_eq!(list[0].env.get("API_KEY"), Some(&"secret".to_string()));
+        match &list[0] {
+            McpServerDef::Stdio { name, command, args, env } => {
+                assert_eq!(name, "enabled");
+                assert_eq!(command, "node");
+                assert_eq!(args.as_slice(), ["server.js"]);
+                assert_eq!(env.get("API_KEY"), Some(&"secret".to_string()));
+            }
+            McpServerDef::Http { .. } => panic!("expected Stdio"),
+        }
     }
 
     #[test]
@@ -165,10 +220,91 @@ mod tests {
     }
 
     #[test]
-    fn parse_missing_command_returns_error() {
+    fn parse_missing_command_and_url_returns_invalid_entry() {
         let json = r#"{"mcpServers": {"x": {}}}"#;
         let err = parse_mcp_config(json).unwrap_err();
-        assert!(matches!(err, McpConfigError::Parse(_)));
+        assert!(matches!(err, McpConfigError::InvalidEntry { .. }));
+    }
+
+    #[test]
+    fn parse_url_only_http() {
+        let json = r#"{
+            "mcpServers": {
+                "my-service": {
+                    "url": "https://mcp.example.com/sse"
+                }
+            }
+        }"#;
+        let list = parse_mcp_config(json).unwrap();
+        assert_eq!(list.len(), 1);
+        match &list[0] {
+            McpServerDef::Http { name, url, headers } => {
+                assert_eq!(name, "my-service");
+                assert_eq!(url, "https://mcp.example.com/sse");
+                assert!(headers.is_empty());
+            }
+            McpServerDef::Stdio { .. } => panic!("expected Http"),
+        }
+    }
+
+    #[test]
+    fn parse_url_with_headers() {
+        let json = r#"{
+            "mcpServers": {
+                "my-service": {
+                    "url": "https://mcp.example.com/sse",
+                    "headers": {
+                        "Authorization": "Bearer your-token-here"
+                    }
+                }
+            }
+        }"#;
+        let list = parse_mcp_config(json).unwrap();
+        assert_eq!(list.len(), 1);
+        match &list[0] {
+            McpServerDef::Http { name, url, headers } => {
+                assert_eq!(name, "my-service");
+                assert_eq!(url, "https://mcp.example.com/sse");
+                assert_eq!(headers.get("Authorization").map(|s| s.as_str()), Some("Bearer your-token-here"));
+            }
+            McpServerDef::Stdio { .. } => panic!("expected Http"),
+        }
+    }
+
+    #[test]
+    fn parse_url_wins_when_both_command_and_url() {
+        let json = r#"{
+            "mcpServers": {
+                "hybrid": {
+                    "command": "npx",
+                    "args": ["-y", "mcp-server"],
+                    "url": "https://remote.example.com/mcp"
+                }
+            }
+        }"#;
+        let list = parse_mcp_config(json).unwrap();
+        assert_eq!(list.len(), 1);
+        match &list[0] {
+            McpServerDef::Http { name, url, .. } => {
+                assert_eq!(name, "hybrid");
+                assert_eq!(url, "https://remote.example.com/mcp");
+            }
+            McpServerDef::Stdio { .. } => panic!("url should win, expected Http"),
+        }
+    }
+
+    #[test]
+    fn parse_invalid_url_returns_error() {
+        let json = r#"{"mcpServers": {"x": {"url": "ftp://invalid.example.com"}}}"#;
+        let err = parse_mcp_config(json).unwrap_err();
+        assert!(matches!(err, McpConfigError::InvalidEntry { .. }));
+    }
+
+    #[test]
+    fn parse_empty_command_returns_error() {
+        let json = r#"{"mcpServers": {"x": {"command": ""}}}"#;
+        let err = parse_mcp_config(json).unwrap_err();
+        assert!(matches!(err, McpConfigError::InvalidEntry { .. }));
     }
 
     #[test]
@@ -240,9 +376,14 @@ mod tests {
 
         let list = load_mcp_config_from_path(&path).unwrap();
         assert_eq!(list.len(), 1);
-        assert_eq!(list[0].name, "a");
-        assert_eq!(list[0].command, "cmd");
-        assert_eq!(list[0].args, ["x"]);
+        match &list[0] {
+            McpServerDef::Stdio { name, command, args, .. } => {
+                assert_eq!(name, "a");
+                assert_eq!(command, "cmd");
+                assert_eq!(args.as_slice(), ["x"]);
+            }
+            McpServerDef::Http { .. } => panic!("expected Stdio"),
+        }
     }
 
     #[test]

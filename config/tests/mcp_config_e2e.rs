@@ -1,7 +1,7 @@
 //! L1 e2e: discover → read file → parse in real temp dirs and env.
 //! No dependency on loom.
 
-use config::{discover_mcp_config_path, load_mcp_config_from_path, McpConfigError};
+use config::{discover_mcp_config_path, load_mcp_config_from_path, McpConfigError, McpServerDef};
 use std::path::Path;
 
 fn restore_xdg(prev: Option<String>) {
@@ -26,9 +26,14 @@ fn e2e_discover_then_load_override() {
 
     let list = load_mcp_config_from_path(&path).unwrap();
     assert_eq!(list.len(), 1);
-    assert_eq!(list[0].name, "one");
-    assert_eq!(list[0].command, "cmd");
-    assert_eq!(list[0].args, ["a", "b"]);
+    match &list[0] {
+        McpServerDef::Stdio { name, command, args, .. } => {
+            assert_eq!(name, "one");
+            assert_eq!(command, "cmd");
+            assert_eq!(args.as_slice(), ["a", "b"]);
+        }
+        McpServerDef::Http { .. } => panic!("expected Stdio"),
+    }
 }
 
 #[test]
@@ -52,9 +57,14 @@ fn e2e_discover_then_load_project() {
 
     let list = load_mcp_config_from_path(&path).unwrap();
     assert_eq!(list.len(), 1);
-    assert_eq!(list[0].name, "proj-server");
-    assert_eq!(list[0].command, "node");
-    assert_eq!(list[0].args, ["server.js"]);
+    match &list[0] {
+        McpServerDef::Stdio { name, command, args, .. } => {
+            assert_eq!(name, "proj-server");
+            assert_eq!(command, "node");
+            assert_eq!(args.as_slice(), ["server.js"]);
+        }
+        McpServerDef::Http { .. } => panic!("expected Stdio"),
+    }
 }
 
 #[test]
@@ -77,9 +87,14 @@ fn e2e_discover_then_load_global() {
 
     let list = load_mcp_config_from_path(&path).unwrap();
     assert_eq!(list.len(), 1);
-    assert_eq!(list[0].name, "global");
-    assert_eq!(list[0].command, "npx");
-    assert_eq!(list[0].args, ["-y", "mcp-server"]);
+    match &list[0] {
+        McpServerDef::Stdio { name, command, args, .. } => {
+            assert_eq!(name, "global");
+            assert_eq!(command, "npx");
+            assert_eq!(args.as_slice(), ["-y", "mcp-server"]);
+        }
+        McpServerDef::Http { .. } => panic!("expected Stdio"),
+    }
 }
 
 #[test]
@@ -145,8 +160,13 @@ fn e2e_load_disabled_filtered_out() {
 
     let list = load_mcp_config_from_path(&path).unwrap();
     assert_eq!(list.len(), 1);
-    assert_eq!(list[0].name, "enabled");
-    assert_eq!(list[0].command, "c1");
+    match &list[0] {
+        McpServerDef::Stdio { name, command, .. } => {
+            assert_eq!(name, "enabled");
+            assert_eq!(command, "c1");
+        }
+        McpServerDef::Http { .. } => panic!("expected Stdio"),
+    }
 }
 
 #[test]
