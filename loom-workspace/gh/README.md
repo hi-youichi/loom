@@ -74,6 +74,8 @@ cargo run -p gh --bin gh-webhook
 | `--secret` | `-s` | `GITHUB_WEBHOOK_SECRET` | — | Webhook secret for `X-Hub-Signature-256`. If unset (and env unset), verification will fail. |
 | `--port` | `-p` | `GH_WEBHOOK_PORT` | `8080` | Port to listen on. |
 | `--bind` | `-b` | `GH_WEBHOOK_BIND` | `0.0.0.0` | Bind address (e.g. `127.0.0.1` for local only). |
+| `--log-level` | — | `GH_WEBHOOK_LOG_LEVEL` | `info` | Log level: `error`, `warn`, `info`, `debug`, `trace`. |
+| `--log-file` | — | `GH_WEBHOOK_LOG_FILE` | — | When set, logs are also appended to this file (in addition to stderr). |
 
 Examples:
 
@@ -81,6 +83,7 @@ Examples:
 gh-webhook --port 9000
 gh-webhook -b 127.0.0.1 -p 8080
 gh-webhook --secret "$GITHUB_WEBHOOK_SECRET"
+gh-webhook --log-level debug --log-file /var/log/gh-webhook.log
 ```
 
 Use `gh-webhook --help` for full help.
@@ -92,6 +95,8 @@ Use `gh-webhook --help` for full help.
 | `GITHUB_WEBHOOK_SECRET` | Webhook secret (prefer env in production to avoid shell history). |
 | `GH_WEBHOOK_PORT` | Port (default 8080). |
 | `GH_WEBHOOK_BIND` | Bind address (default 0.0.0.0). |
+| `GH_WEBHOOK_LOG_LEVEL` | Log level: error, warn, info, debug, trace (default info). |
+| `GH_WEBHOOK_LOG_FILE` | If set, append logs to this file in addition to stderr. |
 | `GITHUB_TOKEN` | Not used by the server; set if Loom or other tools need it for GitHub API. |
 | `WORKING_FOLDER` | Passed to Loom `RunOptions` as working directory. |
 | `MODEL` / `OPENAI_MODEL` | Passed to Loom for model selection. |
