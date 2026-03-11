@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use tracing::debug;
 
 use crate::error::AgentError;
 use crate::graph::{Next, Node};
@@ -26,6 +27,15 @@ impl Node<ReActState> for CompactNode {
     }
 
     async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
+        let message_count = state.messages.len();
+        debug!(
+            message_count,
+            auto = self.config.auto,
+            max_context_tokens = self.config.max_context_tokens,
+            reserve_tokens = self.config.reserve_tokens,
+            "compress compact node entered"
+        );
+
         let overflow_input = context_window::ContextWindowCheck {
             messages: &state.messages,
             usage: state
@@ -36,9 +46,25 @@ impl Node<ReActState> for CompactNode {
             max_context_tokens: self.config.max_context_tokens,
             reserve_tokens: self.config.reserve_tokens,
         };
-        let messages = if self.config.auto && context_window::is_overflow(&overflow_input) {
+        let current_tokens = context_window::current_tokens(&overflow_input);
+        let overflow = context_window::is_overflow(&overflow_input);
+        debug!(
+            current_tokens,
+            overflow,
+            max_context_tokens = self.config.max_context_tokens,
+            reserve_tokens = self.config.reserve_tokens,
+            "context window check"
+        );
+
+        let messages = if self.config.auto && overflow {
             compaction::compact(&state.messages, self.llm.as_ref(), &self.config).await?
         } else {
+            let reason = if !self.config.auto {
+                "auto_disabled"
+            } else {
+                "no_overflow"
+            };
+            debug!(reason, current_tokens, "compact skipped");
             state.messages
         };
         Ok((ReActState { messages, ..state }, Next::Continue))

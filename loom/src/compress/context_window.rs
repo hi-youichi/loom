@@ -37,20 +37,24 @@ pub struct ContextWindowCheck<'a> {
     pub reserve_tokens: u32,
 }
 
+/// Current token count for the given context (hybrid when usage + message_count_after_last_think available, else full estimate).
+/// Exposed for logging; see also `is_overflow`.
+pub fn current_tokens(input: &ContextWindowCheck<'_>) -> u32 {
+    match (input.usage, input.message_count_after_last_think) {
+        (Some((prompt, completion)), Some(count)) if count <= input.messages.len() => {
+            let base = prompt + completion;
+            let delta = estimate_tokens(&input.messages[count..]);
+            base + delta
+        }
+        _ => estimate_tokens(input.messages),
+    }
+}
+
 /// Hybrid overflow check: use last LLM usage + estimated delta for new messages when available.
 ///
 /// Only requires the fields in `ContextWindowCheck`; no dependency on `ReActState` or `CompactionConfig`.
 pub fn is_overflow(input: &ContextWindowCheck<'_>) -> bool {
-    // Current token count: hybrid (usage + delta) when we have last-Think usage and message count, else full estimate.
-    let current = match (input.usage, input.message_count_after_last_think) {
-        (Some((prompt, completion)), Some(count)) if count <= input.messages.len() => {
-            let base = prompt + completion; // Tokens consumed by the last Think round (from provider).
-            let delta = estimate_tokens(&input.messages[count..]); // Messages added after that round.
-            base + delta
-        }
-        _ => estimate_tokens(input.messages), // No usage or count → estimate entire history.
-    };
-    // Overflow when context + reserve for generation exceeds limit.
+    let current = current_tokens(input);
     current + input.reserve_tokens > input.max_context_tokens
 }
 

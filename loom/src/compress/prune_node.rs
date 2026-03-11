@@ -1,6 +1,7 @@
 //! Prune node: runs compaction::prune on state.messages when config.prune is true.
 
 use async_trait::async_trait;
+use tracing::debug;
 
 use crate::error::AgentError;
 use crate::graph::{Next, Node};
@@ -21,9 +22,16 @@ impl Node<ReActState> for PruneNode {
     }
 
     async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
+        let message_count = state.messages.len();
+        debug!(
+            message_count,
+            prune = self.config.prune,
+            "compress prune node entered"
+        );
         let messages = if self.config.prune {
             compaction::prune(state.messages, &self.config)
         } else {
+            debug!("prune disabled, passing through");
             state.messages
         };
         Ok((ReActState { messages, ..state }, Next::Continue))

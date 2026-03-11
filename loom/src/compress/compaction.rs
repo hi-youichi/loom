@@ -4,6 +4,8 @@
 //! - **prune**: Replace old tool results beyond a token limit with a placeholder to control context length.
 //! - **compact**: Summarize earlier messages into one System message via LLM and keep the most recent N as-is.
 
+use tracing::{debug, info};
+
 use crate::error::AgentError;
 use crate::llm::LlmClient;
 use crate::message::Message;
@@ -30,6 +32,12 @@ fn is_tool_result_message(m: &Message) -> bool {
 pub fn prune(messages: Vec<Message>, config: &CompactionConfig) -> Vec<Message> {
     // Skip when pruning is off or keep limit is zero
     if !config.prune || config.prune_keep_tokens == 0 {
+        let reason = if !config.prune {
+            "prune_disabled"
+        } else {
+            "keep_tokens_zero"
+        };
+        debug!(reason, "prune skipped");
         return messages;
     }
     // Only apply pruning if we would remove at least this many tokens (avoids tiny, frequent edits)
@@ -51,18 +59,34 @@ pub fn prune(messages: Vec<Message>, config: &CompactionConfig) -> Vec<Message> 
         }
     }
 
+    let to_prune_count = to_prune.len();
+    debug!(
+        tool_result_tokens_total = total,
+        pruned,
+        to_prune_count,
+        prune_keep_tokens = config.prune_keep_tokens,
+        prune_minimum = min,
+        "prune scan done"
+    );
+
     // Do nothing if we would prune fewer than min tokens
     if pruned < min {
+        debug!(pruned, min, "prune skipped: below minimum");
         return messages;
     }
 
     // Replace marked messages with placeholder
     let mut out = messages;
-    for i in to_prune {
-        if let Some(Message::User(_)) = out.get_mut(i) {
-            out[i] = Message::User(PRUNE_PLACEHOLDER.to_string());
+    for i in &to_prune {
+        if let Some(Message::User(_)) = out.get_mut(*i) {
+            out[*i] = Message::User(PRUNE_PLACEHOLDER.to_string());
         }
     }
+    info!(
+        replaced_count = to_prune_count,
+        tokens_cleared = pruned,
+        "prune applied"
+    );
     out
 }
 
@@ -75,12 +99,22 @@ pub async fn compact(
     config: &CompactionConfig,
 ) -> Result<Vec<Message>, AgentError> {
     let keep = config.compact_keep_recent;
-    if messages.len() <= keep {
+    let message_count = messages.len();
+    if message_count <= keep {
+        debug!(message_count, keep, "compact skipped: message count within keep");
         return Ok(messages.to_vec());
     }
     // Split: older messages to summarize, last `keep` messages to keep verbatim
     let split = messages.len().saturating_sub(keep);
     let (to_summarize, recent) = messages.split_at(split);
+    let estimated_tokens_to_summarize = estimate_tokens(to_summarize);
+
+    info!(
+        to_summarize_count = split,
+        keep_recent = keep,
+        estimated_tokens_to_summarize,
+        "compact summarization starting"
+    );
 
     // Ask LLM to summarize the older part
     let prompt = build_summary_prompt(to_summarize);
@@ -92,6 +126,16 @@ pub async fn compact(
     let summary = Message::System(format!("[Summary of earlier conversation]: {}", content));
     let mut out = vec![summary];
     out.extend(recent.iter().cloned());
+
+    let input_messages = message_count;
+    let output_messages = out.len();
+    info!(
+        input_messages,
+        output_messages,
+        summary_len = content.len(),
+        kept_recent = keep,
+        "compact applied"
+    );
     Ok(out)
 }
 
