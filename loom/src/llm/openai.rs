@@ -613,7 +613,6 @@ impl LlmClient for ChatOpenAI {
         trace!(
             trace_id = %trace_id,
             url = %url,
-            content = %full_content,
             tool_calls = ?tool_calls,
             usage = ?stream_usage,
             "OpenAI stream response"
