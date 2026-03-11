@@ -74,10 +74,13 @@ pub async fn build_react_run_context(
 ) -> Result<ReactRunContext, AgentError> {
     let db_path = config.db_path.as_deref().unwrap_or("memory.db");
 
+    tracing::debug!("build_react_run_context: checkpointer, store, runnable_config");
     let checkpointer = build_checkpointer(config, db_path)?;
     let store = build_store(config, db_path)?;
     let runnable_config = build_runnable_config(config);
+    tracing::debug!("build_react_run_context: building tool_source");
     let tool_source = build_tool_source(config, &store).await?;
+    tracing::debug!("build_react_run_context: tool_source ready");
 
     Ok(ReactRunContext {
         checkpointer,

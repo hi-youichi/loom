@@ -50,8 +50,10 @@ pub(crate) async fn build_default_llm_with_tool_source(
     tool_source: &dyn ToolSource,
 ) -> Result<Box<dyn LlmClient>, BuildRunnerError> {
     let (openai_config, model) = openai_config_from(config)?;
+    tracing::debug!("build_default_llm: fetching tools from tool_source for model");
     let client = ChatOpenAI::new_with_tool_source(openai_config, model, tool_source)
         .await
         .map_err(|e| BuildRunnerError::Context(AgentError::ExecutionFailed(e.to_string())))?;
+    tracing::debug!("build_default_llm: ready");
     Ok(Box::new(client))
 }
