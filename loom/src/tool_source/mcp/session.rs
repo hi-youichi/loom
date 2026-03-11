@@ -3,8 +3,9 @@
 //! Wraps `StdioClientTransport` from mcp_client; used by `McpToolSource` for
 //! `tools/list` and `tools/call`. Does not handle resources or prompts.
 
-use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, Instant};
+
+use crossbeam_channel::{RecvTimeoutError, unbounded};
 
 use mcp_client::stdio::{
     JsonRpcMessage, StdioClientTransport, StdioClientTransportError, StdioServerParameters,
@@ -22,11 +23,12 @@ const INITIALIZE_REQUEST_ID: &str = "loom-mcp-initialize";
 /// provides `send_request` and `wait_for_result` for JSON-RPC calls.
 ///
 /// **Interaction**: Created by `McpToolSource::new`; used internally for
-/// `tools/list` and `tools/call`. Holds `StdioClientTransport` and an `mpsc`
-/// receiver for incoming messages.
+/// `tools/list` and `tools/call`. Holds `StdioClientTransport` and a
+/// crossbeam receiver for incoming messages. Uses crossbeam (not std::sync::mpsc)
+/// so that the receiver is Send and session creation can run in spawn_blocking.
 pub struct McpSession {
     transport: StdioClientTransport,
-    receiver: mpsc::Receiver<JsonRpcMessage>,
+    receiver: crossbeam_channel::Receiver<JsonRpcMessage>,
 }
 
 impl McpSession {
@@ -45,7 +47,7 @@ impl McpSession {
         env: Option<impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>>,
         stderr_verbose: bool,
     ) -> Result<Self, McpSessionError> {
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = unbounded();
 
         let stderr_stream = if stderr_verbose {
             StdioStream::Inherit

@@ -25,6 +25,7 @@ dashmap = "6.0"
 
 async-openai = { version = "0.32", features = ["chat-completion", "embedding"] }
 dotenv = { workspace = true }
+crossbeam-channel = "0.5"
 mcp_client = { git = "https://github.com/graphweave/mcm-rust", package = "mcp_client" }
 mcp_core = { git = "https://github.com/graphweave/mcm-rust", package = "mcp_core" }
 rusqlite = { version = "0.31", features = ["bundled"] }

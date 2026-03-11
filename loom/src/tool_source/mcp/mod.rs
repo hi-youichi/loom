@@ -117,7 +117,8 @@ impl McpToolSource {
     }
 
     /// Lists tools by sending `tools/list` and mapping result to `Vec<ToolSpec>`.
-    fn list_tools_sync(&self) -> Result<Vec<ToolSpec>, ToolSourceError> {
+    /// Pub(crate) so that build_tool_source can pre-fetch specs inside spawn_blocking and avoid block_in_place on the async worker.
+    pub(crate) fn list_tools_sync(&self) -> Result<Vec<ToolSpec>, ToolSourceError> {
         let id = "loom-tools-list";
         let result = self.request(id, "tools/list", Value::Object(serde_json::Map::new()))?;
         let result = result

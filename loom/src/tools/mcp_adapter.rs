@@ -69,12 +69,22 @@ pub async fn register_mcp_tools(
     mcp: Arc<McpToolSource>,
 ) -> Result<(), ToolSourceError> {
     let specs = mcp.list_tools().await?;
+    register_mcp_tools_with_specs(aggregate, mcp, specs).await;
+    Ok(())
+}
+
+/// Registers pre-fetched MCP tool specs into the aggregate. Use when tools were
+/// already obtained (e.g. inside spawn_blocking for stdio MCP) to avoid block_in_place on the async worker.
+pub async fn register_mcp_tools_with_specs(
+    aggregate: &super::AggregateToolSource,
+    mcp: Arc<McpToolSource>,
+    specs: Vec<ToolSpec>,
+) {
     for spec in specs {
         let name = spec.name.clone();
         let adapter = McpToolAdapter::new(name, spec, Arc::clone(&mcp));
         aggregate.register_async(Box::new(adapter)).await;
     }
-    Ok(())
 }
 
 #[cfg(test)]

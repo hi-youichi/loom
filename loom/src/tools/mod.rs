@@ -37,4 +37,4 @@ pub use todo::{TodoReadTool, TodoWriteTool, TOOL_TODO_READ, TOOL_TODO_WRITE};
 pub use twitter::{TwitterSearchTool, TOOL_TWITTER_SEARCH};
 pub use web::{WebFetcherTool, TOOL_WEB_FETCHER};
 
-pub use mcp_adapter::{register_mcp_tools, McpToolAdapter};
+pub use mcp_adapter::{register_mcp_tools, register_mcp_tools_with_specs, McpToolAdapter};
