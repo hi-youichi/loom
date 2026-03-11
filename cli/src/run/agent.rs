@@ -182,6 +182,18 @@ fn on_event_react(
                 log_tools_used(&state.tool_calls);
             }
         }
+        StreamEvent::Usage {
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+        } => {
+            tracing::info!(
+                prompt_tokens,
+                completion_tokens,
+                total_tokens,
+                "LLM usage"
+            );
+        }
         _ => {}
     }
 }
@@ -231,6 +243,18 @@ fn on_event_dup(
                     }
                 }
             }
+        }
+        StreamEvent::Usage {
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+        } => {
+            tracing::info!(
+                prompt_tokens,
+                completion_tokens,
+                total_tokens,
+                "LLM usage"
+            );
         }
         _ => {}
     }
@@ -289,6 +313,18 @@ fn on_event_tot(
             } else if node_id == "act" && !state.core.tool_calls.is_empty() {
                 log_tools_used(&state.core.tool_calls);
             }
+        }
+        StreamEvent::Usage {
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+        } => {
+            tracing::info!(
+                prompt_tokens,
+                completion_tokens,
+                total_tokens,
+                "LLM usage"
+            );
         }
         _ => {}
     }
@@ -380,6 +416,18 @@ fn on_event_got(
                 eprintln!("--- state after {} ---", node_id);
                 eprintln!("{}", format_got_state_display(state, display_max_len));
             }
+        }
+        StreamEvent::Usage {
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+        } => {
+            tracing::info!(
+                prompt_tokens,
+                completion_tokens,
+                total_tokens,
+                "LLM usage"
+            );
         }
         _ => {}
     }

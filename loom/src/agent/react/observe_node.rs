@@ -1,6 +1,7 @@
 //! Observe node: read tool_results, merge into state (e.g. messages), clear tool_calls and tool_results.
 
 use async_trait::async_trait;
+use tracing::info;
 
 use crate::error::AgentError;
 use crate::graph::Next;
@@ -63,15 +64,22 @@ impl Node<ReActState> for ObserveNode {
             total_usage: state.total_usage,
             message_count_after_last_think: state.message_count_after_last_think,
         };
-        let next = if self.enable_loop && next_turn >= MAX_REACT_TURNS {
-            Next::End
+        let (next, exit_reason) = if self.enable_loop && next_turn >= MAX_REACT_TURNS {
+            (Next::End, "max_turns_reached")
         } else if self.enable_loop && had_tool_calls {
-            Next::Continue
+            (Next::Continue, "loop_back_to_think")
         } else if self.enable_loop && !had_tool_calls {
-            Next::End
+            (Next::End, "no_tool_calls_final_answer")
         } else {
-            Next::Continue
+            (Next::Continue, "linear_next")
         };
+        info!(
+            observe_exit = exit_reason,
+            next = ?next,
+            turn = next_turn,
+            had_tool_calls = had_tool_calls,
+            "observe exit"
+        );
         Ok((new_state, next))
     }
 }
