@@ -63,6 +63,8 @@ pub struct ReactBuildConfig {
     pub openai_api_key: Option<String>,
     pub openai_base_url: Option<String>,
     pub model: Option<String>,
+    /// When `Some("bigmodel")`, build layer uses ChatBigModel; otherwise default is OpenAI. Set via LLM_PROVIDER.
+    pub llm_provider: Option<String>,
     pub embedding_api_key: Option<String>,
     pub embedding_base_url: Option<String>,
     pub embedding_model: Option<String>,
@@ -108,8 +110,9 @@ impl ReactBuildConfig {
             model: std::env::var("MODEL")
                 .or_else(|_| std::env::var("OPENAI_MODEL"))
                 .ok(),
+            llm_provider: std::env::var("LLM_PROVIDER").ok(),
             embedding_api_key: std::env::var("EMBEDDING_API_KEY")
-                .or_else(|_| std::env::var("BIGMODEL_API_KEY"))
+                .or_else(|_| std::env::var("OPENAI_API_KEY"))
                 .ok(),
             embedding_base_url: std::env::var("EMBEDDING_API_BASE")
                 .or_else(|_| std::env::var("EMBEDDING_BASE_URL"))

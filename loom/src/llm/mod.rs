@@ -44,8 +44,10 @@ impl std::str::FromStr for ToolChoiceMode {
     }
 }
 
+mod bigmodel;
 mod openai;
 
+pub use bigmodel::ChatBigModel;
 pub use mock::MockLlm;
 pub use openai::ChatOpenAI;
 

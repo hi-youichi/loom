@@ -178,7 +178,7 @@ pub use helve::{
     assemble_system_prompt, assemble_system_prompt_with_prompts, to_react_build_config,
     tools_requiring_approval, ApprovalPolicy, HelveConfig, APPROVAL_REQUIRED_EVENT_TYPE,
 };
-pub use llm::ChatOpenAI;
+pub use llm::{ChatBigModel, ChatOpenAI};
 pub use llm::{LlmClient, LlmResponse, LlmUsage, MockLlm, ToolCallDelta, ToolChoiceMode};
 pub use managed::{IsLastStep, ManagedValue};
 pub use memory::Embedder;

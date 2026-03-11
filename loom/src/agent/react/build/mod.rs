@@ -264,6 +264,7 @@ mod tests {
             openai_api_key: None,
             openai_base_url: None,
             model: None,
+            llm_provider: None,
             embedding_api_key: None,
             embedding_base_url: None,
             embedding_model: None,
