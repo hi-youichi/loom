@@ -9,20 +9,34 @@ use crate::message::Message;
 use crate::state::ReActState;
 use crate::Node;
 
-/// Maximum number of ReAct loop rounds (observe passes) before forcing End.
-pub const MAX_REACT_TURNS: u32 = 10;
-
 pub struct ObserveNode {
     enable_loop: bool,
+    /// When `Some(n)`, end loop after n observe rounds. When `None` (default for with_loop), no limit.
+    max_turns: Option<u32>,
 }
 
 impl ObserveNode {
     pub fn new() -> Self {
-        Self { enable_loop: false }
+        Self {
+            enable_loop: false,
+            max_turns: None,
+        }
     }
 
+    /// ReAct loop: observe can continue back to think. No turn limit by default.
     pub fn with_loop() -> Self {
-        Self { enable_loop: true }
+        Self {
+            enable_loop: true,
+            max_turns: None,
+        }
+    }
+
+    /// ReAct loop with a maximum number of observe rounds; after this, exit with max_turns_reached.
+    pub fn with_loop_max_turns(max_turns: u32) -> Self {
+        Self {
+            enable_loop: true,
+            max_turns: Some(max_turns),
+        }
     }
 }
 
@@ -64,7 +78,8 @@ impl Node<ReActState> for ObserveNode {
             total_usage: state.total_usage,
             message_count_after_last_think: state.message_count_after_last_think,
         };
-        let (next, exit_reason) = if self.enable_loop && next_turn >= MAX_REACT_TURNS {
+        let max_turns_reached = self.max_turns.map_or(false, |m| next_turn >= m);
+        let (next, exit_reason) = if self.enable_loop && max_turns_reached {
             (Next::End, "max_turns_reached")
         } else if self.enable_loop && had_tool_calls {
             (Next::Continue, "loop_back_to_think")

@@ -622,12 +622,12 @@ async fn observe_node_with_loop_returns_end_when_no_tool_calls() {
     assert!(matches!(next, Next::End));
 }
 
-/// **Scenario**: When enable_loop and turn_count reaches max (10), observe returns End even if there were tool_calls.
+/// **Scenario**: When enable_loop and a max_turns limit is set, observe returns End once turn_count reaches it.
 #[tokio::test]
 async fn observe_node_with_loop_returns_end_when_max_turns_reached() {
     const MAX_TURNS: u32 = 10;
 
-    let node = ObserveNode::with_loop();
+    let node = ObserveNode::with_loop_max_turns(MAX_TURNS);
     let state = ReActState {
         messages: vec![
             Message::user("Hi"),
