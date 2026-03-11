@@ -165,7 +165,9 @@ fn run_server() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let _pid_guard = write_pid_file(&log_dir);
 
-    let rt = tokio::runtime::Builder::new_current_thread()
+    // Use multi_thread so blocking MCP stdio init (and block_in_place in list_tools) don't freeze or panic.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
         .enable_all()
         .build()?;
 

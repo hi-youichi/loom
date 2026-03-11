@@ -162,7 +162,10 @@ impl Agent for LoomAcpAgent {
 
         match run_agent_with_options(&opts, &RunCmd::React, on_event).await {
             Ok(_reply) => Ok(PromptResponse::new(StopReason::EndTurn)),
-            Err(e) => Err(map_run_error(e)),
+            Err(e) => {
+                tracing::error!(session_id = %args.session_id, error = %e, "run_agent failed");
+                Err(map_run_error(e))
+            }
         }
     }
 }
