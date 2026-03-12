@@ -1,8 +1,9 @@
-//! Unit tests for GrepTool: pure-Rust regex content search under working folder.
+//! Unit tests for GrepTool: regex content search under working folder (ripgrep lib + ignore).
 //!
 //! Scenarios: basic match; no match; missing/empty/invalid pattern; path escaping;
 //! include glob filter; brace expansion; subdirectory scoping; binary file skipping;
-//! multiple matches in one file; case sensitivity; mod-time sort order.
+//! multiple matches in one file; case sensitivity; mod-time sort order;
+//! .gitignore / .ignore (ripgrep-style) exclusion.
 
 mod init_logging;
 
@@ -414,6 +415,72 @@ async fn grep_long_lines_are_truncated() {
         !result.text.contains("END"),
         "truncated part must not appear"
     );
+}
+
+// ---------------------------------------------------------------------------
+// ignore (ripgrep-style: .gitignore / .ignore / .rgignore)
+// ---------------------------------------------------------------------------
+
+/// Scenario: files listed in .gitignore are not searched; other files are still matched.
+#[tokio::test]
+async fn grep_gitignore_excludes_listed_file() {
+    let dir = tempfile::tempdir().unwrap();
+    // ignore crate loads .gitignore when the walk root is inside a git repo; create .git so rules apply
+    std::fs::create_dir(dir.path().join(".git")).unwrap();
+    std::fs::write(dir.path().join(".gitignore"), "ignored.txt\n").unwrap();
+    std::fs::write(dir.path().join("ignored.txt"), "needle\n").unwrap();
+    std::fs::write(dir.path().join("ok.txt"), "needle\n").unwrap();
+
+    let result = grep(&dir, json!({ "pattern": "needle" })).await;
+
+    assert!(
+        result.text.contains("ok.txt"),
+        "non-ignored file must appear; output: {}",
+        result.text
+    );
+    assert!(
+        !result.text.contains("ignored.txt"),
+        "gitignored file must not be searched; output: {}",
+        result.text
+    );
+}
+
+/// Scenario: directories listed in .gitignore are not descended into.
+#[tokio::test]
+async fn grep_gitignore_excludes_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join(".git")).unwrap();
+    std::fs::write(dir.path().join(".gitignore"), "skip_dir/\n").unwrap();
+    std::fs::create_dir(dir.path().join("skip_dir")).unwrap();
+    std::fs::write(dir.path().join("skip_dir").join("secret.txt"), "needle\n").unwrap();
+    std::fs::write(dir.path().join("public.txt"), "needle\n").unwrap();
+
+    let result = grep(&dir, json!({ "pattern": "needle" })).await;
+
+    assert!(
+        result.text.contains("public.txt"),
+        "file outside ignored dir must appear; output: {}",
+        result.text
+    );
+    assert!(
+        !result.text.contains("skip_dir") && !result.text.contains("secret.txt"),
+        "files under gitignored dir must not be searched; output: {}",
+        result.text
+    );
+}
+
+/// Scenario: .ignore file (same semantics as .gitignore) excludes listed paths.
+#[tokio::test]
+async fn grep_dot_ignore_excludes_listed_file() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join(".ignore"), "ignored_by_ignore\n").unwrap();
+    std::fs::write(dir.path().join("ignored_by_ignore"), "needle\n").unwrap();
+    std::fs::write(dir.path().join("visible.txt"), "needle\n").unwrap();
+
+    let result = grep(&dir, json!({ "pattern": "needle" })).await;
+
+    assert!(result.text.contains("visible.txt"));
+    assert!(!result.text.contains("ignored_by_ignore"));
 }
 
 // ---------------------------------------------------------------------------

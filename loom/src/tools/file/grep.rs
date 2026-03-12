@@ -1,8 +1,8 @@
 //! Grep tool: search file contents under the working folder using regular expressions.
 //!
 //! Exposes `grep` as a tool with parameters `pattern`, `path`, and `include`.
-//! Pure-Rust implementation using [`regex`] for content matching and [`walkdir`] for
-//! recursive directory traversal; no external binary is required.
+//! Uses the ripgrep library stack ([`grep_regex`], [`grep_searcher`]) for content matching
+//! and [`ignore`] for recursive directory traversal (respects .gitignore, .ignore, .rgignore).
 //! Results are sorted by file modification time (most recently modified first)
 //! and capped at [`MAX_MATCHES`]. Binary files (detected by null bytes) are skipped.
 //! Interacts with [`Tool`](crate::tools::Tool),
@@ -14,9 +14,11 @@ use std::time::SystemTime;
 
 use async_trait::async_trait;
 use glob::Pattern;
-use regex::Regex;
+use grep_regex::RegexMatcher;
+use grep_searcher::sinks::UTF8;
+use grep_searcher::{BinaryDetection, SearcherBuilder};
+use ignore::WalkBuilder;
 use serde_json::json;
-use walkdir::WalkDir;
 
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError};
 use crate::tools::Tool;
@@ -42,9 +44,10 @@ struct Match {
 
 /// Tool that searches file contents under the working folder using regular expressions.
 ///
-/// Walks the directory tree with [`walkdir`], filters filenames with [`glob::Pattern`],
-/// and matches lines with [`regex::Regex`]. Results are sorted by file modification
-/// time descending and capped at [`MAX_MATCHES`].
+/// Walks the directory tree with [`ignore::WalkBuilder`] (ripgrep-style .gitignore/.ignore/.rgignore),
+/// filters filenames with [`glob::Pattern`], and matches lines with [`grep_regex::RegexMatcher`]
+/// and [`grep_searcher::Searcher`].
+/// Results are sorted by file modification time descending and capped at [`MAX_MATCHES`].
 pub struct GrepTool {
     /// Canonical working folder path (shared with other file tools).
     pub(crate) working_folder: Arc<std::path::PathBuf>,
@@ -88,11 +91,6 @@ fn build_include_patterns(include: &str) -> Result<Vec<Pattern>, ToolSourceError
                 .map_err(|e| ToolSourceError::InvalidInput(format!("invalid glob pattern: {}", e)))
         })
         .collect()
-}
-
-/// Returns `true` if the byte slice contains a null byte, indicating binary content.
-fn is_binary(bytes: &[u8]) -> bool {
-    bytes.contains(&0u8)
 }
 
 /// Truncates a string to at most `max_bytes` bytes, respecting UTF-8 char boundaries.
@@ -159,8 +157,12 @@ impl Tool for GrepTool {
             ));
         }
 
-        let re = Regex::new(pattern)
+        let matcher = RegexMatcher::new(pattern)
             .map_err(|e| ToolSourceError::InvalidInput(format!("invalid regex: {}", e)))?;
+
+        let mut searcher = SearcherBuilder::new()
+            .binary_detection(BinaryDetection::quit(0))
+            .build();
 
         let path_param = args
             .get("path")
@@ -192,12 +194,16 @@ impl Tool for GrepTool {
 
         let mut matches: Vec<Match> = Vec::new();
 
-        for entry in WalkDir::new(&search_root).follow_links(false) {
-            let entry = match entry {
+        for result in WalkBuilder::new(&search_root).follow_links(false).build() {
+            let entry = match result {
                 Ok(e) => e,
                 Err(_) => continue,
             };
-            if !entry.file_type().is_file() {
+            let file_type = match entry.file_type() {
+                Some(ft) => ft,
+                None => continue,
+            };
+            if !file_type.is_file() {
                 continue;
             }
 
@@ -220,27 +226,28 @@ impl Tool for GrepTool {
                 .and_then(|m| m.modified().ok())
                 .unwrap_or(SystemTime::UNIX_EPOCH);
 
-            // Read raw bytes first; skip binary files and unreadable entries.
-            let bytes = match std::fs::read(file_path) {
-                Ok(b) => b,
-                Err(_) => continue,
-            };
-            if is_binary(&bytes) {
+            let path_str = file_path.to_string_lossy().into_owned();
+            let mut file_matches: Vec<(u64, String)> = Vec::new();
+            if searcher
+                .search_path(
+                    &matcher,
+                    file_path,
+                    UTF8(|lnum, line| {
+                        file_matches.push((lnum, line.to_string()));
+                        Ok(true)
+                    }),
+                )
+                .is_err()
+            {
                 continue;
             }
-
-            let content = String::from_utf8_lossy(&bytes);
-            let path_str = file_path.to_string_lossy().into_owned();
-
-            for (line_idx, line) in content.lines().enumerate() {
-                if re.is_match(line) {
-                    matches.push(Match {
-                        path: path_str.clone(),
-                        mod_time,
-                        line_num: line_idx + 1,
-                        line_text: line.to_string(),
-                    });
-                }
+            for (line_num, line_text) in file_matches {
+                matches.push(Match {
+                    path: path_str.clone(),
+                    mod_time,
+                    line_num: line_num as usize,
+                    line_text,
+                });
             }
         }
 
