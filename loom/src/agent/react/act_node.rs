@@ -1,7 +1,7 @@
 //! Act node: read tool_calls, call ToolSource for each, write tool_results.
 //!
 //! ActNode holds a ToolSource (e.g. `Box<dyn ToolSource>`), implements `Node<ReActState>`.
-//! Run sets [`ToolCallContext`](crate::tool_source::ToolCallContext) via `set_call_context`, then
+//! Run sets [`ToolCallContext`](ToolCallContext) via `set_call_context`, then
 //! calls `call_tool_with_context(name, args, None)` for each tool so implementations use the stored context.
 //!
 //! # Error Handling
@@ -28,6 +28,7 @@ use tracing::{debug, trace, warn};
 use crate::error::AgentError;
 use crate::graph::{GraphInterrupt, Interrupt, Next, Node, RunContext};
 use crate::helve::{tools_requiring_approval, ApprovalPolicy, APPROVAL_REQUIRED_EVENT_TYPE};
+use crate::llm::context_persistence;
 use crate::state::{ReActState, ToolCall, ToolResult};
 use crate::stream::{StreamEvent, StreamMode, ToolStreamWriter};
 use crate::tool_source::{ToolCallContext, ToolSource, ToolSourceError};
@@ -234,6 +235,14 @@ impl Node<ReActState> for ActNode {
                         result_preview = %truncate_for_log(&content.text, 200),
                         "Tool returned"
                     );
+                    context_persistence::save_tool_result(
+                        "act",
+                        None,
+                        tc.id.as_deref(),
+                        &tc.name,
+                        &content.text,
+                        false,
+                    );
                     tool_results.push(ToolResult {
                         call_id: tc.id.clone(),
                         name: Some(tc.name.clone()),
@@ -243,6 +252,14 @@ impl Node<ReActState> for ActNode {
                 }
                 Err(e) => {
                     warn!(tool = %tc.name, error = %e, "Tool call failed");
+                    context_persistence::save_tool_result(
+                        "act",
+                        None,
+                        tc.id.as_deref(),
+                        &tc.name,
+                        &e.to_string(),
+                        true,
+                    );
                     if let Some(error_msg) = self.handle_error(&e, &tc.name, &args) {
                         tool_results.push(ToolResult {
                             call_id: tc.id.clone(),
@@ -424,6 +441,14 @@ impl Node<ReActState> for ActNode {
                         "Tool returned"
                     );
                     let summary = truncate_for_log(&content.text, 200);
+                    context_persistence::save_tool_result(
+                        "act",
+                        run_ctx.config.thread_id.as_deref(),
+                        tc.id.as_deref(),
+                        &tc.name,
+                        &content.text,
+                        false,
+                    );
                     tool_results.push(ToolResult {
                         call_id: tc.id.clone(),
                         name: Some(tc.name.clone()),
@@ -449,6 +474,14 @@ impl Node<ReActState> for ActNode {
                 }
                 Err(e) => {
                     warn!(tool = %tc.name, error = %e, "Tool call failed");
+                    context_persistence::save_tool_result(
+                        "act",
+                        run_ctx.config.thread_id.as_deref(),
+                        tc.id.as_deref(),
+                        &tc.name,
+                        &e.to_string(),
+                        true,
+                    );
                     if let Some(error_msg) = self.handle_error(&e, &tc.name, &args) {
                         let summary = truncate_for_log(&error_msg, 200);
                         tool_results.push(ToolResult {

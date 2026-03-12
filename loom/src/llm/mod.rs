@@ -51,6 +51,8 @@ pub use bigmodel::ChatBigModel;
 pub use mock::MockLlm;
 pub use openai::ChatOpenAI;
 
+pub mod context_persistence;
+
 use async_trait::async_trait;
 
 use crate::error::AgentError;

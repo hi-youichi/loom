@@ -50,7 +50,10 @@ serde_yaml = "0.9"
 walkdir = "2"
 glob = "0.3"
 
-# Grep tool: pure-Rust regex matching (no rg binary dependency)
+# Grep tool: ripgrep library stack (grep-regex + grep-searcher + ignore)
+grep-regex = "0.1"
+grep-searcher = "0.1"
+ignore = "0.4"
 regex = "1"
 
 # XDG base dirs for todo storage (cross-platform: Linux, Windows, macOS)
@@ -58,6 +61,9 @@ cross-xdg = "2"
 
 # Env + XDG config (load_and_apply, mcp.json discover/parse); local name avoids clash with loom's internal config module
 env_config = { path = "../config", package = "config" }
+
+# ISO timestamps (context_persistence; serde for future InteractionEntry)
+chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
 async-trait = { workspace = true }
