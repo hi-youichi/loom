@@ -32,6 +32,30 @@ impl Message {
     pub fn assistant(content: impl Into<String>) -> Self {
         Self::Assistant(content.into())
     }
+
+    /// Returns the role name as a string.
+    pub fn role(&self) -> &'static str {
+        match self {
+            Message::System(_) => "system",
+            Message::User(_) => "user",
+            Message::Assistant(_) => "assistant",
+        }
+    }
+
+    /// Returns the content of the message.
+    pub fn content(&self) -> &str {
+        match self {
+            Message::System(s) => s,
+            Message::User(s) => s,
+            Message::Assistant(s) => s,
+        }
+    }
+}
+
+impl std::fmt::Display for Message {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.role(), self.content())
+    }
 }
 
 #[cfg(test)]
