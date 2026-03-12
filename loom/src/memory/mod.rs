@@ -57,6 +57,7 @@ mod uuid6;
 mod lance_store;
 mod sqlite_saver;
 mod sqlite_store;
+pub(crate) mod sqlite_util;
 mod sqlite_vec_store;
 
 pub use checkpoint::{

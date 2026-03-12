@@ -45,8 +45,8 @@ impl SqliteStore {
     /// Creates a new SQLite store and ensures the table exists.
     pub fn new(path: impl AsRef<Path>) -> Result<Self, StoreError> {
         let db_path = path.as_ref().to_path_buf();
-        let conn =
-            rusqlite::Connection::open(&db_path).map_err(|e| StoreError::Storage(e.to_string()))?;
+        let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
+            .map_err(StoreError::Storage)?;
         conn.execute(
             r#"
             CREATE TABLE IF NOT EXISTS store_kv (
@@ -111,7 +111,7 @@ impl Store for SqliteStore {
         let now = system_time_to_millis(SystemTime::now());
 
         tokio::task::spawn_blocking(move || {
-            let conn = rusqlite::Connection::open(&db_path)
+            let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
                 .map_err(|e| StoreError::Storage(e.to_string()))?;
 
             // Check if exists to preserve created_at
@@ -144,7 +144,7 @@ impl Store for SqliteStore {
         let db_path = self.db_path.clone();
 
         let value_str_opt = tokio::task::spawn_blocking(move || {
-            let conn = rusqlite::Connection::open(&db_path)
+            let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
                 .map_err(|e| StoreError::Storage(e.to_string()))?;
             let mut stmt = conn
                 .prepare("SELECT value FROM store_kv WHERE ns = ?1 AND key = ?2")
@@ -180,7 +180,7 @@ impl Store for SqliteStore {
         let db_path = self.db_path.clone();
 
         let result = tokio::task::spawn_blocking(move || {
-            let conn = rusqlite::Connection::open(&db_path)
+            let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
                 .map_err(|e| StoreError::Storage(e.to_string()))?;
             let mut stmt = conn
                 .prepare(
@@ -222,7 +222,7 @@ impl Store for SqliteStore {
         let db_path = self.db_path.clone();
 
         tokio::task::spawn_blocking(move || {
-            let conn = rusqlite::Connection::open(&db_path)
+            let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
                 .map_err(|e| StoreError::Storage(e.to_string()))?;
             conn.execute(
                 "DELETE FROM store_kv WHERE ns = ?1 AND key = ?2",
@@ -240,7 +240,7 @@ impl Store for SqliteStore {
         let db_path = self.db_path.clone();
 
         let keys = tokio::task::spawn_blocking(move || {
-            let conn = rusqlite::Connection::open(&db_path)
+            let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
                 .map_err(|e| StoreError::Storage(e.to_string()))?;
             let mut stmt = conn
                 .prepare("SELECT key FROM store_kv WHERE ns = ?1 ORDER BY key")
@@ -269,7 +269,7 @@ impl Store for SqliteStore {
         let db_path = self.db_path.clone();
 
         let mut hits = tokio::task::spawn_blocking(move || {
-            let conn = rusqlite::Connection::open(&db_path)
+            let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
                 .map_err(|e| StoreError::Storage(e.to_string()))?;
             // For prefix matching, we use LIKE with the JSON-serialized namespace prefix
             // This is a simplified approach; in production you might use a more sophisticated method
@@ -341,7 +341,7 @@ impl Store for SqliteStore {
         let db_path = self.db_path.clone();
 
         let all_ns = tokio::task::spawn_blocking(move || {
-            let conn = rusqlite::Connection::open(&db_path)
+            let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
                 .map_err(|e| StoreError::Storage(e.to_string()))?;
             let mut stmt = conn
                 .prepare("SELECT DISTINCT ns FROM store_kv")

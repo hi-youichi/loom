@@ -35,8 +35,8 @@ impl SqliteUserMessageStore {
     /// Creates the store and ensures the table exists. `path` is the SQLite file path.
     pub fn new(path: impl AsRef<Path>) -> Result<Self, UserMessageStoreError> {
         let db_path = path.as_ref().to_path_buf();
-        let conn = rusqlite::Connection::open(&db_path)
-            .map_err(|e| UserMessageStoreError::Other(e.to_string()))?;
+        let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
+            .map_err(UserMessageStoreError::Other)?;
         conn.execute(
             r#"
             CREATE TABLE IF NOT EXISTS user_messages (
@@ -70,8 +70,8 @@ impl UserMessageStore for SqliteUserMessageStore {
         let content = content.to_string();
         let db_path = self.db_path.clone();
         tokio::task::spawn_blocking(move || {
-            let conn = rusqlite::Connection::open(&db_path)
-                .map_err(|e| UserMessageStoreError::Other(e.to_string()))?;
+            let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
+                .map_err(UserMessageStoreError::Other)?;
             conn.execute(
                 "INSERT INTO user_messages (thread_id, role, content) VALUES (?1, ?2, ?3)",
                 params![thread_id, role, content],
@@ -93,8 +93,8 @@ impl UserMessageStore for SqliteUserMessageStore {
         let limit = limit.unwrap_or(100).min(1000);
         let db_path = self.db_path.clone();
         let rows: Vec<(String, String)> = tokio::task::spawn_blocking(move || {
-            let conn = rusqlite::Connection::open(&db_path)
-                .map_err(|e| UserMessageStoreError::Other(e.to_string()))?;
+            let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
+                .map_err(UserMessageStoreError::Other)?;
             let sql = match before {
                 Some(_) => "SELECT role, content FROM user_messages WHERE thread_id = ?1 AND id < ?2 ORDER BY id ASC LIMIT ?3",
                 None => "SELECT role, content FROM user_messages WHERE thread_id = ?1 ORDER BY id ASC LIMIT ?2",

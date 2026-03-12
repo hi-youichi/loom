@@ -68,8 +68,8 @@ where
         serializer: Arc<dyn Serializer<S>>,
     ) -> Result<Self, CheckpointError> {
         let db_path = path.as_ref().to_path_buf();
-        let conn = rusqlite::Connection::open(&db_path)
-            .map_err(|e| CheckpointError::Storage(e.to_string()))?;
+        let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
+            .map_err(|e| CheckpointError::Storage(e))?;
         conn.execute(
             r#"
             CREATE TABLE IF NOT EXISTS checkpoints (
@@ -126,8 +126,8 @@ where
 
         let db_path = self.db_path.clone();
         tokio::task::spawn_blocking(move || {
-            let conn = rusqlite::Connection::open(&db_path)
-                .map_err(|e| CheckpointError::Storage(e.to_string()))?;
+            let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
+                .map_err(|e| CheckpointError::Storage(e))?;
             conn.execute(
                 r#"
                 INSERT OR REPLACE INTO checkpoints
@@ -165,8 +165,8 @@ where
 
         type RowData = (String, String, Vec<u8>, String, String, i64, Option<i64>);
         let row: Option<RowData> = tokio::task::spawn_blocking(move || -> Result<Option<RowData>, CheckpointError> {
-            let conn = rusqlite::Connection::open(&db_path)
-                .map_err(|e| CheckpointError::Storage(e.to_string()))?;
+            let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
+                .map_err(|e| CheckpointError::Storage(e))?;
             let sql = if want_id.is_some() {
                 "SELECT checkpoint_id, ts, payload, channel_versions, metadata_source, metadata_step, metadata_created_at
                  FROM checkpoints WHERE thread_id = ?1 AND checkpoint_ns = ?2 AND checkpoint_id = ?3"
@@ -256,8 +256,8 @@ where
         let after = after.map(String::from);
 
         let items = tokio::task::spawn_blocking(move || {
-            let conn = rusqlite::Connection::open(&db_path)
-                .map_err(|e| CheckpointError::Storage(e.to_string()))?;
+            let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
+                .map_err(|e| CheckpointError::Storage(e))?;
             let mut stmt = conn
                 .prepare(
                     "SELECT checkpoint_id, metadata_source, metadata_step, metadata_created_at

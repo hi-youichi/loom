@@ -79,8 +79,8 @@ impl SqliteVecStore {
         let dimension = embedder.dimension();
         let vec_table = "store_vec_embeddings".to_string();
 
-        let conn =
-            rusqlite::Connection::open(&db_path).map_err(|e| StoreError::Storage(e.to_string()))?;
+        let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
+            .map_err(StoreError::Storage)?;
 
         conn.execute(
             r#"
@@ -173,7 +173,7 @@ impl Store for SqliteVecStore {
         let now = system_time_to_millis(SystemTime::now());
 
         tokio::task::spawn_blocking(move || {
-            let conn = rusqlite::Connection::open(&db_path)
+            let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
                 .map_err(|e| StoreError::Storage(e.to_string()))?;
 
             let existing: Option<(i64, i64)> = conn
@@ -228,7 +228,7 @@ impl Store for SqliteVecStore {
         let db_path = self.db_path.clone();
 
         let value_str_opt = tokio::task::spawn_blocking(move || {
-            let conn = rusqlite::Connection::open(&db_path)
+            let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
                 .map_err(|e| StoreError::Storage(e.to_string()))?;
             let mut stmt = conn
                 .prepare("SELECT value FROM store_vec_meta WHERE ns = ?1 AND key = ?2")
@@ -265,7 +265,7 @@ impl Store for SqliteVecStore {
         let db_path = self.db_path.clone();
 
         let result = tokio::task::spawn_blocking(move || {
-            let conn = rusqlite::Connection::open(&db_path)
+            let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
                 .map_err(|e| StoreError::Storage(e.to_string()))?;
             let mut stmt = conn
                 .prepare(
@@ -304,7 +304,7 @@ impl Store for SqliteVecStore {
         let vec_table = self.vec_table.clone();
 
         tokio::task::spawn_blocking(move || {
-            let conn = rusqlite::Connection::open(&db_path)
+            let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
                 .map_err(|e| StoreError::Storage(e.to_string()))?;
             let id: Option<i64> = conn
                 .query_row(
@@ -333,7 +333,7 @@ impl Store for SqliteVecStore {
         let db_path = self.db_path.clone();
 
         let keys = tokio::task::spawn_blocking(move || {
-            let conn = rusqlite::Connection::open(&db_path)
+            let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
                 .map_err(|e| StoreError::Storage(e.to_string()))?;
             let mut stmt = conn
                 .prepare("SELECT key FROM store_vec_meta WHERE ns = ?1 ORDER BY key")
@@ -384,7 +384,7 @@ impl Store for SqliteVecStore {
                 let knn_limit = (limit + options.offset).max(50) * 3;
 
                 let hits = tokio::task::spawn_blocking(move || {
-                    let conn = rusqlite::Connection::open(&db_path)
+                    let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
                         .map_err(|e| StoreError::Storage(e.to_string()))?;
 
                     let knn_sql = format!(
@@ -475,7 +475,7 @@ impl Store for SqliteVecStore {
         }
 
         let hits = tokio::task::spawn_blocking(move || {
-            let conn = rusqlite::Connection::open(&db_path)
+            let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
                 .map_err(|e| StoreError::Storage(e.to_string()))?;
             let mut stmt = conn
                 .prepare(
@@ -525,7 +525,7 @@ impl Store for SqliteVecStore {
         let db_path = self.db_path.clone();
 
         let all_ns = tokio::task::spawn_blocking(move || {
-            let conn = rusqlite::Connection::open(&db_path)
+            let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
                 .map_err(|e| StoreError::Storage(e.to_string()))?;
             let mut stmt = conn
                 .prepare("SELECT DISTINCT ns FROM store_vec_meta")
