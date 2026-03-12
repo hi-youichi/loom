@@ -32,6 +32,15 @@ fn to_agent_error(e: impl std::fmt::Display) -> AgentError {
     AgentError::ExecutionFailed(e.to_string())
 }
 
+/// Resolves memory DB path: config value if set, otherwise XDG data home (e.g. ~/.local/share/loom/memory.db).
+fn resolve_memory_db_path(config: &ReactBuildConfig) -> String {
+    config.db_path.clone().unwrap_or_else(|| {
+        crate::memory::sqlite_util::default_memory_db_path()
+            .to_string_lossy()
+            .into_owned()
+    })
+}
+
 /// Builds an optional checkpointer for state type `S` when `config.thread_id` is set.
 /// Shared by ReAct, DUP, ToT, and GoT runners to avoid duplicating SqliteSaver construction.
 fn build_checkpointer_for_state<S>(
@@ -72,7 +81,8 @@ fn build_runnable_config(config: &ReactBuildConfig) -> Option<RunnableConfig> {
 pub async fn build_react_run_context(
     config: &ReactBuildConfig,
 ) -> Result<ReactRunContext, AgentError> {
-    let db_path = config.db_path.as_deref().unwrap_or("memory.db");
+    let db_path_owned = resolve_memory_db_path(config);
+    let db_path = db_path_owned.as_str();
 
     tracing::debug!("build_react_run_context: checkpointer, store, runnable_config");
     let checkpointer = build_checkpointer(config, db_path)?;
@@ -151,7 +161,8 @@ pub async fn build_dup_runner(
     };
     let llm_arc: Arc<dyn LlmClient> = Arc::new(BoxedLlmClient(llm));
 
-    let db_path = config.db_path.as_deref().unwrap_or("memory.db");
+    let db_path_owned = resolve_memory_db_path(config);
+    let db_path = db_path_owned.as_str();
     let dup_checkpointer = build_checkpointer_for_state::<DupState>(config, db_path)?;
 
     let runner = DupRunner::new(
@@ -179,7 +190,8 @@ pub async fn build_tot_runner(
     };
     let llm_arc: Arc<dyn LlmClient> = Arc::new(BoxedLlmClient(llm));
 
-    let db_path = config.db_path.as_deref().unwrap_or("memory.db");
+    let db_path_owned = resolve_memory_db_path(config);
+    let db_path = db_path_owned.as_str();
     let tot_checkpointer = build_checkpointer_for_state::<TotState>(config, db_path)?;
 
     let tot = &config.tot_config;
@@ -211,7 +223,8 @@ pub async fn build_got_runner(
     };
     let llm_arc: Arc<dyn LlmClient> = Arc::new(BoxedLlmClient(llm));
 
-    let db_path = config.db_path.as_deref().unwrap_or("memory.db");
+    let db_path_owned = resolve_memory_db_path(config);
+    let db_path = db_path_owned.as_str();
     let got_checkpointer = build_checkpointer_for_state::<GotState>(config, db_path)?;
 
     let got = &config.got_config;
