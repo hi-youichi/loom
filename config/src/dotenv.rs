@@ -4,7 +4,8 @@ use std::collections::HashMap;
 use std::path::Path;
 
 /// Paths to try for `.env`: `override_dir` if given, else current directory.
-fn dotenv_path(override_dir: Option<&Path>) -> Option<std::path::PathBuf> {
+/// Public for config load report (which file was used).
+pub fn env_file_path(override_dir: Option<&Path>) -> Option<std::path::PathBuf> {
     let dir = override_dir
         .map(std::path::Path::to_path_buf)
         .or_else(|| std::env::current_dir().ok())?;
@@ -54,7 +55,7 @@ fn parse_dotenv(content: &str) -> HashMap<String, String> {
 
 /// Load `.env` from override_dir or current directory into a map. Missing file returns empty map.
 pub fn load_env_map(override_dir: Option<&Path>) -> std::io::Result<HashMap<String, String>> {
-    let path = match dotenv_path(override_dir) {
+    let path = match env_file_path(override_dir) {
         Some(p) => p,
         None => return Ok(HashMap::new()),
     };

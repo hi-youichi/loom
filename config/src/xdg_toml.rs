@@ -5,7 +5,8 @@ use std::path::PathBuf;
 
 use crate::LoadError;
 
-fn xdg_config_path(app_name: &str) -> Result<Option<PathBuf>, LoadError> {
+/// Returns path to `config.toml` if it exists. Public for config load report.
+pub fn config_path(app_name: &str) -> Result<Option<PathBuf>, LoadError> {
     let base = cross_xdg::BaseDirs::new().map_err(|e| LoadError::XdgPath(e.to_string()))?;
     let config_dir = base.config_home();
     let path = config_dir.join(app_name).join("config.toml");
@@ -24,7 +25,7 @@ struct ConfigFile {
 
 /// Returns env key-value pairs from `[env]` section. Missing file or empty section returns empty map.
 pub fn load_env_map(app_name: &str) -> Result<HashMap<String, String>, LoadError> {
-    let path = match xdg_config_path(app_name)? {
+    let path = match config_path(app_name)? {
         Some(p) => p,
         None => return Ok(HashMap::new()),
     };
