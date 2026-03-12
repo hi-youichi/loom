@@ -259,7 +259,19 @@ struct GotArgs {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    config::load_and_apply("loom", None::<&std::path::Path>).ok();
+    if let Ok(report) = config::load_and_apply_with_report("loom", None::<&std::path::Path>) {
+        if let Some(p) = &report.dotenv_path {
+            let full = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
+            eprintln!("config: .env path={}", full.display());
+        }
+        if let Some(p) = &report.xdg_path {
+            let full = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
+            eprintln!("config: config.toml path={}", full.display());
+        }
+        if let Some(keys) = report.keys_summary() {
+            eprintln!("{}", keys);
+        }
+    }
     logging::init()?;
 
     let args = Args::parse();

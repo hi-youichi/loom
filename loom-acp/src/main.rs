@@ -108,7 +108,7 @@ fn run_reload() {
 }
 
 fn run_server() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    config::load_and_apply("loom", None::<&std::path::Path>).ok();
+    let config_report = config::load_and_apply_with_report("loom", None::<&std::path::Path>).ok();
 
     let env_filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
@@ -158,6 +158,38 @@ fn run_server() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 .init();
             None
         };
+
+    match &config_report {
+        Some(report) => {
+            if let Some(p) = &report.dotenv_path {
+                let full = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
+                tracing::info!(path = %full.display(), "config: .env");
+            }
+            if let Some(p) = &report.xdg_path {
+                let full = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
+                tracing::info!(path = %full.display(), "config: config.toml");
+            }
+            if let Some(keys) = report.keys_summary() {
+                tracing::info!("{}", keys);
+            }
+        }
+        None => {
+            let paths = config::config_file_paths("loom", None::<&std::path::Path>);
+            if let Some(p) = &paths.dotenv {
+                let full = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
+                tracing::warn!(path = %full.display(), "config: .env (load failed or not used)");
+            } else {
+                tracing::warn!("config: .env not found");
+            }
+            if let Some(p) = &paths.xdg {
+                let full = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
+                tracing::warn!(path = %full.display(), "config: config.toml (load failed or not used)");
+            } else {
+                tracing::warn!("config: config.toml not found");
+            }
+            tracing::warn!("set OPENAI_API_KEY and OPENAI_MODEL in env or config");
+        }
+    }
 
     if let Some(ref d) = log_dir {
         tracing::info!(log_dir = %d.display(), "ACP log directory");
