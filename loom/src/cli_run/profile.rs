@@ -66,6 +66,12 @@ pub struct SkillsConfig {
 const DEV_AGENT_INSTRUCTIONS: &str = include_str!("../../agents/dev/instructions.md");
 const DEV_AGENT_CONFIG_YAML: &str = include_str!("../../agents/dev/config.yaml");
 
+/// Built-in agent-builder: meta-agent that creates new agent profiles (loom/agents/agent-builder/).
+const AGENT_BUILDER_INSTRUCTIONS: &str =
+    include_str!("../../agents/agent-builder/instructions.md");
+const AGENT_BUILDER_CONFIG_YAML: &str =
+    include_str!("../../agents/agent-builder/config.yaml");
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct RoleConfig {
     #[serde(default)]
@@ -366,11 +372,11 @@ pub fn find_default_profile() -> Option<PathBuf> {
     None
 }
 
-/// Load profile from RunOptions: --agent name → built-in "dev" (compile-time) or resolve_named_profile; else find_default_profile. On error returns None (fallback to no profile).
+/// Load profile from RunOptions: --agent name → built-in agents (compile-time) or resolve_named_profile; else find_default_profile. On error returns None (fallback to no profile).
 pub fn load_profile_from_options(opts: &RunOptions) -> Option<AgentProfile> {
     if let Some(ref name) = opts.agent {
-        if name == "dev" {
-            return load_builtin_dev_profile();
+        if let Some(profile) = load_builtin_profile(name) {
+            return Some(profile);
         }
         let path = resolve_named_profile(name)?;
         return load_agent_profile(&path).ok();
@@ -379,14 +385,19 @@ pub fn load_profile_from_options(opts: &RunOptions) -> Option<AgentProfile> {
     load_agent_profile(&path).ok()
 }
 
-/// Built-in "dev" agent: parse embedded config and set role content from embedded instructions (compile-time loaded).
-fn load_builtin_dev_profile() -> Option<AgentProfile> {
-    let mut profile: AgentProfile = serde_yaml::from_str(DEV_AGENT_CONFIG_YAML).ok()?;
+/// Try to load a built-in agent by name. Returns None if not a built-in.
+fn load_builtin_profile(name: &str) -> Option<AgentProfile> {
+    let (config_yaml, instructions) = match name {
+        "dev" => (DEV_AGENT_CONFIG_YAML, DEV_AGENT_INSTRUCTIONS),
+        "agent-builder" => (AGENT_BUILDER_CONFIG_YAML, AGENT_BUILDER_INSTRUCTIONS),
+        _ => return None,
+    };
+    let mut profile: AgentProfile = serde_yaml::from_str(config_yaml).ok()?;
     profile
         .role
         .get_or_insert_with(RoleConfig::default)
         .content
-        .replace(DEV_AGENT_INSTRUCTIONS.trim().to_string());
+        .replace(instructions.trim().to_string());
     Some(profile)
 }
 
@@ -399,6 +410,7 @@ mod tests {
         let opts = RunOptions {
             message: String::new(),
             working_folder: None,
+            session_id: None,
             thread_id: None,
             role_file: None,
             agent: Some("dev".to_string()),
@@ -414,6 +426,35 @@ mod tests {
         let role = profile.role.as_ref().unwrap();
         assert!(role.content.as_ref().unwrap().contains("Editing constraints"));
         assert!(role.content.as_ref().unwrap().contains("agent"));
+    }
+
+    #[test]
+    fn builtin_agent_builder_loaded_with_embedded_instructions() {
+        let opts = RunOptions {
+            message: String::new(),
+            working_folder: None,
+            session_id: None,
+            thread_id: None,
+            role_file: None,
+            agent: Some("agent-builder".to_string()),
+            verbose: false,
+            got_adaptive: false,
+            display_max_len: 2000,
+            output_json: false,
+            model: None,
+            mcp_config_path: None,
+        };
+        let profile = load_profile_from_options(&opts).expect("built-in agent-builder profile");
+        assert_eq!(profile.name, "agent-builder");
+        let role = profile.role.as_ref().unwrap();
+        let content = role.content.as_ref().unwrap();
+        assert!(content.contains("Loom Agent Builder"));
+        assert!(content.contains("AgentProfile Schema Reference"));
+    }
+
+    #[test]
+    fn load_builtin_profile_returns_none_for_unknown() {
+        assert!(load_builtin_profile("nonexistent-agent").is_none());
     }
 
     #[test]
