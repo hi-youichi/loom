@@ -9,7 +9,7 @@ use serde_json::json;
 
 fn aggregate_with_file_tools(dir: &tempfile::TempDir) -> AggregateToolSource {
     let agg = AggregateToolSource::new();
-    register_file_tools(&agg, dir.path()).unwrap();
+    register_file_tools(&agg, dir.path(), None).unwrap();
     agg
 }
 

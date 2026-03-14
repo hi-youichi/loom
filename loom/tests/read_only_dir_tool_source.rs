@@ -75,7 +75,7 @@ async fn aggregate_file_tools_and_read_only_dir_tools() {
     .unwrap();
 
     let aggregate = AggregateToolSource::new();
-    register_file_tools(&aggregate, working.path()).unwrap();
+    register_file_tools(&aggregate, working.path(), None).unwrap();
     register_read_only_dir_tools(&aggregate, read_only_root.path()).unwrap();
 
     let tools = aggregate.list_tools().await.unwrap();

@@ -36,6 +36,7 @@ fn base_config(working_folder: std::path::PathBuf) -> ReactBuildConfig {
         tot_config: loom::TotRunnerConfig::default(),
         got_config: loom::GotRunnerConfig::default(),
         mcp_servers: None,
+        skill_registry: None,
     }
 }
 
