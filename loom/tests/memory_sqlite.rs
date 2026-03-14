@@ -23,10 +23,7 @@ async fn sqlite_saver_put_and_get_tuple() {
     let saver = SqliteSaver::<TestState>::new(&path, serializer).unwrap();
     let config = RunnableConfig {
         thread_id: Some("t1".into()),
-        checkpoint_id: None,
-        checkpoint_ns: String::new(),
-        user_id: None,
-        resume_from_node_id: None,
+        ..Default::default()
     };
     let checkpoint = Checkpoint {
         v: CHECKPOINT_VERSION,
@@ -63,10 +60,7 @@ async fn sqlite_saver_get_tuple_empty_returns_none() {
     let saver = SqliteSaver::<TestState>::new(&path, serializer).unwrap();
     let config = RunnableConfig {
         thread_id: Some("t2".into()),
-        checkpoint_id: None,
-        checkpoint_ns: String::new(),
-        user_id: None,
-        resume_from_node_id: None,
+        ..Default::default()
     };
     let tuple = saver.get_tuple(&config).await.unwrap();
     assert!(tuple.is_none());
@@ -80,10 +74,8 @@ async fn sqlite_saver_list() {
     let saver = SqliteSaver::<TestState>::new(&path, serializer).unwrap();
     let config = RunnableConfig {
         thread_id: Some("t3".into()),
-        checkpoint_id: None,
         checkpoint_ns: "ns".into(),
-        user_id: None,
-        resume_from_node_id: None,
+        ..Default::default()
     };
     let list = saver.list(&config, None, None, None).await.unwrap();
     assert!(list.is_empty());

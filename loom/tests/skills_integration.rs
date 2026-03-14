@@ -6,6 +6,7 @@ fn opts(working_folder: std::path::PathBuf) -> RunOptions {
     RunOptions {
         message: String::new(),
         working_folder: Some(working_folder),
+        session_id: None,
         thread_id: None,
         role_file: None,
         agent: None,

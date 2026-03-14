@@ -48,10 +48,7 @@ async fn main() {
     let checkpointer: Arc<MemorySaver<AgentState>> = Arc::new(MemorySaver::new());
     let config = RunnableConfig {
         thread_id: Some("session-1".into()),
-        checkpoint_id: None,
-        checkpoint_ns: String::new(),
-        user_id: None,
-        resume_from_node_id: None,
+        ..Default::default()
     };
 
     let mut graph = StateGraph::<AgentState>::new();

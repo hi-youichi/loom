@@ -8,6 +8,7 @@ fn opts(working_folder: Option<std::path::PathBuf>, role_file: Option<std::path:
     RunOptions {
         message: String::new(),
         working_folder,
+        session_id: None,
         thread_id: None,
         role_file,
         agent: None,

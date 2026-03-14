@@ -811,10 +811,7 @@ mod tests {
             .expect("graph compiles");
         let config = RunnableConfig {
             thread_id: Some("tid-cp".into()),
-            checkpoint_id: None,
-            checkpoint_ns: String::new(),
-            user_id: None,
-            resume_from_node_id: None,
+            ..Default::default()
         };
         let out = compiled.invoke(0, Some(config)).await.unwrap();
         assert_eq!(out, 3);
@@ -1027,10 +1024,8 @@ mod tests {
         let graph = build_two_step_graph();
         let config = RunnableConfig {
             thread_id: Some("tid".into()),
-            checkpoint_id: None,
-            checkpoint_ns: String::new(),
             user_id: Some("u1".into()),
-            resume_from_node_id: None,
+            ..Default::default()
         };
         let stream = graph.stream(0, Some(config), HashSet::from_iter([StreamMode::Values]));
         let events: Vec<_> = stream.collect().await;

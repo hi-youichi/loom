@@ -88,6 +88,7 @@ pub fn parse_chat_request(req: &ChatCompletionRequest) -> Result<ParsedChatReque
         checkpoint_ns: String::new(),
         user_id: None,
         resume_from_node_id: None,
+        depth: None,
     };
 
     let include_usage = req

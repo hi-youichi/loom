@@ -14,6 +14,7 @@ fn opts(working_folder: PathBuf) -> RunOptions {
     RunOptions {
         message: "Hi".to_string(),
         working_folder: Some(working_folder),
+        session_id: None,
         thread_id: None,
         role_file: None,
         agent: None,

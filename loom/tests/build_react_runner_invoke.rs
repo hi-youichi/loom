@@ -39,6 +39,7 @@ fn minimal_config() -> ReactBuildConfig {
         got_config: GotRunnerConfig::default(),
         mcp_servers: None,
         skill_registry: None,
+        max_sub_agent_depth: None,
     }
 }
 

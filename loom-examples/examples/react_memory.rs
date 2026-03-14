@@ -453,9 +453,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = RunnableConfig {
         thread_id: Some(format!("session_{}", user_id)),
-        checkpoint_id: None,
-        checkpoint_ns: String::new(),
         user_id: Some(user_id.to_string()),
+        ..Default::default()
     };
 
     let tools = Box::new(MemoryToolSource::new(store.clone(), namespace.clone()));

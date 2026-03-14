@@ -37,6 +37,7 @@ fn base_config(working_folder: std::path::PathBuf) -> ReactBuildConfig {
         got_config: loom::GotRunnerConfig::default(),
         mcp_servers: None,
         skill_registry: None,
+        max_sub_agent_depth: None,
     }
 }
 

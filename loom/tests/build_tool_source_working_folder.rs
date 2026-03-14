@@ -43,6 +43,7 @@ async fn build_tool_source_with_working_folder_includes_file_tools() {
         got_config: loom::GotRunnerConfig::default(),
         mcp_servers: None,
         skill_registry: None,
+        max_sub_agent_depth: None,
     };
     let ctx = build_react_run_context(&config).await.unwrap();
     let tools = ctx.tool_source.list_tools().await.unwrap();
