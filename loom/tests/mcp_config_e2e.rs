@@ -16,6 +16,7 @@ fn opts(working_folder: PathBuf) -> RunOptions {
         working_folder: Some(working_folder),
         thread_id: None,
         role_file: None,
+        agent: None,
         verbose: false,
         got_adaptive: false,
         display_max_len: 120,

@@ -1,0 +1,2 @@
+name: dev
+description: "Dev / coding agent with embedded instructions (compile-time loaded). Role content from instructions.md."

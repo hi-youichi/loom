@@ -63,6 +63,7 @@ pub fn run_options_from_issues_event(
         working_folder,
         thread_id,
         role_file: None,
+        agent: None,
         verbose: false,
         got_adaptive: false,
         display_max_len: 120,

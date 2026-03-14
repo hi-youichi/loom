@@ -34,9 +34,13 @@ struct Args {
     #[arg(short, long, value_name = "DIR")]
     working_folder: Option<PathBuf>,
 
-    /// Path to a file used as the agent's role/persona (SOUL). Overrides SOUL.md and the built-in default.
+    /// Path to a file used as the agent's role/persona (instructions). Overrides instructions.md and the built-in default.
     #[arg(long, value_name = "FILE")]
     role: Option<PathBuf>,
+
+    /// Named agent profile (e.g. coding). Loaded from .loom/agents/<NAME> or ~/.loom/agents/<NAME>.
+    #[arg(short('P'), long, value_name = "NAME")]
+    agent: Option<String>,
 
     /// Thread ID for conversation continuity (checkpointer)
     #[arg(long, value_name = "ID")]
@@ -299,6 +303,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             working_folder: args.working_folder.clone(),
             thread_id: args.thread_id.clone(),
             role_file: args.role.clone(),
+            agent: args.agent.clone(),
             verbose: args.verbose,
             got_adaptive,
             display_max_len: max_message_len(),
@@ -348,6 +353,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         working_folder: args.working_folder,
         thread_id: args.thread_id,
         role_file: args.role,
+        agent: args.agent,
         verbose: args.verbose,
         got_adaptive,
         display_max_len: max_message_len(),

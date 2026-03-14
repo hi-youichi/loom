@@ -81,6 +81,7 @@ pub(super) async fn prepare_run(
         working_folder: r.working_folder.map(PathBuf::from),
         thread_id: r.thread_id,
         role_file: None,
+        agent: None,
         verbose: r.verbose.unwrap_or(false),
         got_adaptive: r.got_adaptive.unwrap_or(false),
         display_max_len: input.display_max_len,

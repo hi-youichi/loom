@@ -46,7 +46,7 @@ pub async fn run_agent_wrapper(
     let (helve, config) = build_helve_config(opts);
     if !opts.output_json {
         if helve.role_setting.is_some() {
-            eprintln!("SOUL.md loaded; system prompt (including it) is in state.messages[0].");
+            eprintln!("instructions/role loaded; system prompt (including it) is in state.messages[0].");
         }
         if helve.agents_md.is_some() {
             eprintln!("AGENTS.md loaded; included in system prompt.");
@@ -805,6 +805,7 @@ mod tests {
             )),
             thread_id: None,
             role_file: None,
+            agent: None,
             verbose: false,
             got_adaptive: false,
             display_max_len: 200,

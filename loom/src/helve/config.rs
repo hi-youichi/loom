@@ -30,7 +30,7 @@ pub struct HelveConfig {
     pub user_id: Option<String>,
     /// When set, tools that require approval (e.g. delete_file) will interrupt before execution.
     pub approval_policy: Option<ApprovalPolicy>,
-    /// Role/persona setting (e.g. from SOUL.md): prepended to the assembled system prompt.
+    /// Role/persona setting (e.g. from instructions.md): prepended to the assembled system prompt.
     /// E.g. "You are a code review expert." Does not apply when `system_prompt_override` is set.
     pub role_setting: Option<String>,
     /// Project-level agent rules (e.g. from AGENTS.md): appended after role_setting, before base.

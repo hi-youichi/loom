@@ -138,6 +138,7 @@ impl Agent for LoomAcpAgent {
             working_folder: Some(working_folder),
             thread_id: Some(entry.thread_id.clone()),
             role_file: None,
+            agent: None,
             verbose: false,
             got_adaptive: false,
             display_max_len: 4096,

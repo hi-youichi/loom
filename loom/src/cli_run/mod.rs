@@ -4,6 +4,7 @@
 //! Used by both cli (local) and loom serve (remote).
 
 mod agent;
+mod profile;
 
 pub use agent::{
     run_agent, run_agent_with_options, run_agent_with_llm_override, AnyRunner, AnyStreamEvent,
@@ -13,14 +14,17 @@ pub use agent::{
 use crate::{to_react_build_config, HelveConfig, ReactBuildConfig};
 use std::path::PathBuf;
 
+pub use profile::{load_profile_from_options, AgentProfile, ProfileError};
+
 /// Default working folder when not set.
 pub const DEFAULT_WORKING_FOLDER: &str = "/tmp";
 
 const AGENTS_MD_FILE: &str = "AGENTS.md";
-const SOUL_MD_FILE: &str = "SOUL.md";
+const INSTRUCTIONS_MD_FILE: &str = "instructions.md";
+const SOUL_MD_FILE: &str = "SOUL.md"; // legacy; prefer instructions.md
 
-/// Default SOUL (agent persona) embedded at compile time. Used when no SOUL.md is found on disk.
-const DEFAULT_SOUL: &str = include_str!("../../prompts/SOUL.md");
+/// Default instructions (agent persona) embedded at compile time. Same as built-in dev agent (loom/agents/dev/instructions.md). Used when no instructions.md (or SOUL.md) is found on disk.
+const DEFAULT_SOUL: &str = include_str!("../../agents/dev/instructions.md");
 
 /// Reads AGENTS.md from current directory and optionally from working_folder.
 pub fn load_agents_md(working_folder: Option<&PathBuf>) -> Option<String> {
@@ -43,19 +47,21 @@ pub fn load_agents_md(working_folder: Option<&PathBuf>) -> Option<String> {
     }
 }
 
-/// Reads SOUL.md from current directory and optionally from working_folder.
+/// Reads instructions.md (or legacy SOUL.md) from current directory and optionally from working_folder.
 pub fn load_soul_md(working_folder: Option<&PathBuf>) -> Option<String> {
+    let read_instructions = |p: &std::path::Path| {
+        std::fs::read_to_string(p.join(INSTRUCTIONS_MD_FILE))
+            .or_else(|_| std::fs::read_to_string(p.join(SOUL_MD_FILE)))
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| s.trim().to_string())
+    };
     let cwd = std::env::current_dir().ok()?;
     let cwd_canon = cwd.canonicalize().unwrap_or(cwd.clone());
-    let cwd_soul = std::fs::read_to_string(cwd.join(SOUL_MD_FILE))
-        .ok()
-        .filter(|s| !s.trim().is_empty())
-        .map(|s| s.trim().to_string());
+    let cwd_soul = read_instructions(&cwd);
     let work_soul = working_folder
         .filter(|p| p.canonicalize().unwrap_or_else(|_| p.to_path_buf()) != cwd_canon)
-        .and_then(|p| std::fs::read_to_string(p.join(SOUL_MD_FILE)).ok())
-        .filter(|s| !s.trim().is_empty())
-        .map(|s| s.trim().to_string());
+        .and_then(|p| read_instructions(p));
     match (cwd_soul, work_soul) {
         (Some(c), Some(w)) => Some(format!("{}\n\n{}", c, w)),
         (Some(c), None) => Some(c),
@@ -64,8 +70,17 @@ pub fn load_soul_md(working_folder: Option<&PathBuf>) -> Option<String> {
     }
 }
 
-/// Resolves role_setting: --role file if set and readable, else SOUL.md then built-in default.
-fn resolve_role_setting(opts: &RunOptions, working_folder: &PathBuf) -> Option<String> {
+/// Resolves role_setting: profile role > --role file > instructions.md (or SOUL.md) > built-in default.
+fn resolve_role_setting(
+    opts: &RunOptions,
+    working_folder: &PathBuf,
+    profile_role: Option<String>,
+) -> Option<String> {
+    if let Some(s) = profile_role {
+        if !s.trim().is_empty() {
+            return Some(s);
+        }
+    }
     if let Some(ref path) = opts.role_file {
         match std::fs::read_to_string(path) {
             Ok(s) => {
@@ -78,7 +93,7 @@ fn resolve_role_setting(opts: &RunOptions, working_folder: &PathBuf) -> Option<S
                 tracing::warn!(
                     path = %path.display(),
                     error = %e,
-                    "role file unreadable, falling back to SOUL.md/default"
+                    "role file unreadable, falling back to instructions/default"
                 );
             }
         }
@@ -88,17 +103,27 @@ fn resolve_role_setting(opts: &RunOptions, working_folder: &PathBuf) -> Option<S
 
 /// Builds HelveConfig and ReactBuildConfig from RunOptions.
 pub fn build_helve_config(opts: &RunOptions) -> (HelveConfig, ReactBuildConfig) {
+    let profile = load_profile_from_options(opts);
+    let mut effective_opts = opts.clone();
+    if let Some(ref p) = profile {
+        apply_profile_to_run_options(p, &mut effective_opts);
+    }
+
     let mut base = ReactBuildConfig::from_env();
-    if let Some(ref m) = opts.model {
+    if let Some(ref m) = effective_opts.model {
         base.model = Some(m.clone());
     }
-    let working_folder = opts
+    let working_folder = effective_opts
         .working_folder
         .clone()
         .unwrap_or_else(|| PathBuf::from(DEFAULT_WORKING_FOLDER));
 
-    // MCP config: override path from opts or LOOM_MCP_CONFIG_PATH, else discover project/global
-    let override_path = opts
+    let profile_role = profile
+        .as_ref()
+        .and_then(|p| p.role.as_ref().and_then(|r| r.content.clone()));
+
+    // MCP config: CLI > profile > LOOM_MCP_CONFIG_PATH > discover
+    let override_path = effective_opts
         .mcp_config_path
         .clone()
         .or_else(|| std::env::var("LOOM_MCP_CONFIG_PATH").ok().map(PathBuf::from));
@@ -114,13 +139,45 @@ pub fn build_helve_config(opts: &RunOptions) -> (HelveConfig, ReactBuildConfig) 
 
     let helve = HelveConfig {
         working_folder: Some(working_folder.clone()),
-        thread_id: opts.thread_id.clone(),
+        thread_id: effective_opts.thread_id.clone(),
         user_id: base.user_id.clone(),
         approval_policy: None,
-        role_setting: resolve_role_setting(opts, &working_folder),
+        role_setting: resolve_role_setting(opts, &working_folder, profile_role),
         agents_md: load_agents_md(Some(&working_folder)),
         system_prompt_override: None,
     };
     let config = to_react_build_config(&helve, base);
     (helve, config)
+}
+
+fn apply_profile_to_run_options(profile: &AgentProfile, opts: &mut RunOptions) {
+    if let Some(ref role) = profile.role {
+        if opts.role_file.is_none() && role.content.is_some() {
+            // role_setting will be taken from profile in build_helve_config
+        }
+    }
+    if let Some(ref tools) = profile.tools {
+        if let Some(ref mcp) = tools.mcp {
+            if let Some(ref config) = mcp.config {
+                if opts.mcp_config_path.is_none() {
+                    opts.mcp_config_path = Some(config.clone());
+                }
+            }
+        }
+    }
+    if let Some(ref model) = profile.model {
+        if let Some(ref name) = model.name {
+            if opts.model.is_none() {
+                opts.model = Some(name.clone());
+            }
+        }
+    }
+    if let Some(ref env) = profile.environment {
+        if opts.working_folder.is_none() {
+            opts.working_folder = env.working_folder.clone();
+        }
+        if opts.thread_id.is_none() {
+            opts.thread_id = env.thread_id.clone();
+        }
+    }
 }

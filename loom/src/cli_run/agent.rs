@@ -23,9 +23,11 @@ pub struct RunOptions {
     pub message: String,
     pub working_folder: Option<PathBuf>,
     pub thread_id: Option<String>,
-    /// When set, path to a file whose content is used as the agent's role/persona (SOUL).
-    /// Overrides SOUL.md and the built-in default. Read at build_helve_config time.
+    /// When set, path to a file whose content is used as the agent's role/persona (instructions).
+    /// Overrides instructions.md (or SOUL.md) and the built-in default. Read at build_helve_config time.
     pub role_file: Option<PathBuf>,
+    /// Named agent profile (e.g. "coding"). Resolved from .loom/agents/<name> or ~/.loom/agents/<name>.
+    pub agent: Option<String>,
     pub verbose: bool,
     pub got_adaptive: bool,
     pub display_max_len: usize,
@@ -279,6 +281,7 @@ mod tests {
             )),
             thread_id: None,
             role_file: None,
+            agent: None,
             verbose: false,
             got_adaptive,
             display_max_len: 120,
@@ -354,6 +357,7 @@ mod tests {
             working_folder: cfg.working_folder.clone(),
             thread_id: None,
             role_file: None,
+            agent: None,
             verbose: false,
             got_adaptive: false,
             display_max_len: 120,

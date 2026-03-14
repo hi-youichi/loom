@@ -259,6 +259,7 @@ mod tests {
             )),
             thread_id: None,
             role_file: None,
+            agent: None,
             verbose: false,
             got_adaptive: false,
             display_max_len: 100,
