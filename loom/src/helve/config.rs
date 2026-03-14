@@ -38,6 +38,8 @@ pub struct HelveConfig {
     pub agents_md: Option<String>,
     /// When set, used as the full system prompt instead of assembling from workdir + approval.
     pub system_prompt_override: Option<String>,
+    /// Skills prompt: available_skills summary (and optionally preloaded content). Injected between agents_md and base_content.
+    pub skills_prompt: Option<String>,
 }
 
 /// Converts a HelveConfig and a base ReactBuildConfig into a single ReactBuildConfig.
@@ -73,12 +75,16 @@ pub fn to_react_build_config(helve: &HelveConfig, base: ReactBuildConfig) -> Rea
             .map(|p| assemble_system_prompt(p.as_path(), helve.approval_policy))
             .or_else(|| base.system_prompt.clone())
             .unwrap_or_else(|| REACT_SYSTEM_PROMPT.to_string());
-        let role_prefix: Vec<&str> = [helve.role_setting.as_deref(), helve.agents_md.as_deref()]
-            .into_iter()
-            .flatten()
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .collect();
+        let role_prefix: Vec<&str> = [
+            helve.role_setting.as_deref(),
+            helve.agents_md.as_deref(),
+            helve.skills_prompt.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
         Some(if role_prefix.is_empty() {
             base_content
         } else {
@@ -145,6 +151,7 @@ mod tests {
         assert!(c.role_setting.is_none());
         assert!(c.agents_md.is_none());
         assert!(c.system_prompt_override.is_none());
+        assert!(c.skills_prompt.is_none());
     }
 
     /// **Scenario**: role_setting is prepended to assembled prompt when no system_prompt_override.

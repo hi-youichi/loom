@@ -1,8 +1,11 @@
 //! Configuration for building a ReAct run context.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use env_config::McpServerDef;
+
+use crate::skill::SkillRegistry;
 
 /// ToT-specific runner config (max depth, candidates per step, etc.).
 #[derive(Clone, Debug)]
@@ -75,6 +78,8 @@ pub struct ReactBuildConfig {
     pub got_config: GotRunnerConfig,
     /// MCP servers from mcp.json (discovered by CLI/ACP) or from ACP request.
     pub mcp_servers: Option<Vec<McpServerDef>>,
+    /// Skill registry for the skill tool (built during helve config construction).
+    pub skill_registry: Option<Arc<SkillRegistry>>,
 }
 
 impl ReactBuildConfig {
@@ -146,6 +151,7 @@ impl ReactBuildConfig {
                     .unwrap_or(false),
             },
             mcp_servers: None,
+            skill_registry: None,
         }
     }
 }

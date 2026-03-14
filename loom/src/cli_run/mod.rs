@@ -11,8 +11,10 @@ pub use agent::{
     RunCmd, RunError, RunOptions,
 };
 
+use crate::skill::SkillRegistry;
 use crate::{to_react_build_config, HelveConfig, ReactBuildConfig};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 pub use profile::{load_profile_from_options, AgentProfile, ProfileError};
 
@@ -137,6 +139,50 @@ pub fn build_helve_config(opts: &RunOptions) -> (HelveConfig, ReactBuildConfig) 
         }
     }
 
+    let skill_registry = {
+        let extra_dirs: Vec<PathBuf> = profile
+            .as_ref()
+            .and_then(|p| p.skills.as_ref())
+            .and_then(|s| s.dirs.as_ref())
+            .map(|dirs| dirs.iter().map(PathBuf::from).collect())
+            .unwrap_or_default();
+        let mut registry = SkillRegistry::discover(&working_folder, &extra_dirs);
+        if let Some(ref p) = profile {
+            if let Some(ref sc) = p.skills {
+                registry.apply_filters(sc.enabled.as_deref(), sc.disabled.as_deref());
+            }
+        }
+        let arc = Arc::new(registry);
+        let prompt = arc.available_skills_prompt();
+        (arc, prompt)
+    };
+
+    let skills_prompt = if skill_registry.1.is_empty() {
+        None
+    } else {
+        let mut prompt = skill_registry.1.clone();
+        if let Some(ref p) = profile {
+            if let Some(preload) = p.skills.as_ref().and_then(|s| s.preload.as_ref()) {
+                let mut buf = String::new();
+                for name in preload {
+                    if let Ok(content) = skill_registry.0.load_skill(name) {
+                        buf.push_str(&format!(
+                            "<skill name=\"{}\">\n{}\n</skill>\n",
+                            name, content
+                        ));
+                    }
+                }
+                if !buf.is_empty() {
+                    prompt.push_str(&format!(
+                        "\n\n<preloaded_skills>\n{}</preloaded_skills>",
+                        buf
+                    ));
+                }
+            }
+        }
+        Some(prompt)
+    };
+
     let helve = HelveConfig {
         working_folder: Some(working_folder.clone()),
         thread_id: effective_opts.thread_id.clone(),
@@ -145,8 +191,10 @@ pub fn build_helve_config(opts: &RunOptions) -> (HelveConfig, ReactBuildConfig) 
         role_setting: resolve_role_setting(opts, &working_folder, profile_role),
         agents_md: load_agents_md(Some(&working_folder)),
         system_prompt_override: None,
+        skills_prompt,
     };
-    let config = to_react_build_config(&helve, base);
+    let mut config = to_react_build_config(&helve, base);
+    config.skill_registry = Some(skill_registry.0);
     (helve, config)
 }
 

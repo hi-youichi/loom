@@ -218,7 +218,12 @@ pub(crate) async fn build_tool_source(
             .await;
     }
     if let Some(ref wf) = config.working_folder {
-        register_file_tools(aggregate.as_ref(), wf).map_err(to_agent_error)?;
+        register_file_tools(
+            aggregate.as_ref(),
+            wf,
+            config.skill_registry.clone(),
+        )
+        .map_err(to_agent_error)?;
     }
     aggregate.register_sync(Box::new(BatchTool::new(Arc::clone(&aggregate))));
     aggregate.register_sync(Box::new(LspTool::new()));

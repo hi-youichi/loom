@@ -322,6 +322,7 @@ mod tests {
             tot_config: crate::TotRunnerConfig::default(),
             got_config: crate::GotRunnerConfig::default(),
             mcp_servers: None,
+            skill_registry: None,
         }
     }
 

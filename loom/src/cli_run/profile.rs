@@ -40,6 +40,26 @@ pub struct AgentProfile {
     pub environment: Option<EnvironmentConfig>,
     #[serde(default)]
     pub extends: Option<String>,
+    #[serde(default)]
+    pub skills: Option<SkillsConfig>,
+}
+
+/// Skills configuration within an agent profile.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct SkillsConfig {
+    /// Additional directories to scan for skills.
+    #[serde(default)]
+    pub dirs: Option<Vec<String>>,
+    /// Whitelist: only these skills are available (empty = all).
+    #[serde(default)]
+    pub enabled: Option<Vec<String>>,
+    /// Blacklist: these skills are excluded.
+    #[serde(default)]
+    pub disabled: Option<Vec<String>>,
+    /// Skills whose full content is injected into system prompt at startup.
+    #[serde(default)]
+    pub preload: Option<Vec<String>>,
 }
 
 /// Built-in dev agent: instructions embedded at compile time (loom/agents/dev/).
@@ -199,6 +219,9 @@ fn merge_profiles(mut base: AgentProfile, over: AgentProfile) -> AgentProfile {
             base.tools.take().unwrap_or_default(),
             over.tools.unwrap_or_default(),
         ));
+    }
+    if over.skills.is_some() {
+        base.skills = over.skills;
     }
     base.extends = None;
     base

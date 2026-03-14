@@ -287,6 +287,7 @@ mod tests {
             tot_config: TotRunnerConfig::default(),
             got_config: GotRunnerConfig::default(),
             mcp_servers: None,
+            skill_registry: None,
         }
     }
 
