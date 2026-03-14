@@ -16,8 +16,8 @@ use std::path::PathBuf;
 
 pub use profile::{load_profile_from_options, AgentProfile, ProfileError};
 
-/// Default working folder when not set.
-pub const DEFAULT_WORKING_FOLDER: &str = "/tmp";
+/// Default working folder when not set (current directory).
+pub const DEFAULT_WORKING_FOLDER: &str = ".";
 
 const AGENTS_MD_FILE: &str = "AGENTS.md";
 const INSTRUCTIONS_MD_FILE: &str = "instructions.md";

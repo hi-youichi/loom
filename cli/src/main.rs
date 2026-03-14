@@ -30,7 +30,7 @@ struct Args {
     #[arg(trailing_var_arg = true)]
     rest: Vec<String>,
 
-    /// Working folder (for file tools); default: /tmp when not set
+    /// Working folder (for file tools); default: current directory when not set
     #[arg(short, long, value_name = "DIR")]
     working_folder: Option<PathBuf>,
 
