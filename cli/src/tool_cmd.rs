@@ -257,6 +257,7 @@ mod tests {
             working_folder: Some(PathBuf::from(
                 "/definitely/not/exist/loom-cli-tool-cmd-tests",
             )),
+            session_id: None,
             thread_id: None,
             role_file: None,
             agent: None,

@@ -79,6 +79,7 @@ pub(super) async fn prepare_run(
     let opts = RunOptions {
         message: r.message,
         working_folder: r.working_folder.map(PathBuf::from),
+        session_id: None,
         thread_id: r.thread_id,
         role_file: None,
         agent: None,

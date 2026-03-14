@@ -16,6 +16,7 @@ pub(crate) async fn handle_tools_list(
     let opts = RunOptions {
         message: String::new(),
         working_folder: r.working_folder.as_ref().map(PathBuf::from),
+        session_id: None,
         thread_id: r.thread_id.clone(),
         role_file: None,
         agent: None,
@@ -50,6 +51,7 @@ pub(crate) async fn handle_tool_show(
     let opts = RunOptions {
         message: String::new(),
         working_folder: r.working_folder.as_ref().map(PathBuf::from),
+        session_id: None,
         thread_id: r.thread_id.clone(),
         role_file: None,
         agent: None,

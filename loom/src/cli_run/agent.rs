@@ -22,7 +22,7 @@ use tracing::{info_span, Instrument};
 pub struct RunOptions {
     pub message: String,
     pub working_folder: Option<PathBuf>,
-    pub thread_id: Option<String>,
+    pub session_id: Option<String>,
     /// When set, path to a file whose content is used as the agent's role/persona (instructions).
     /// Overrides instructions.md (or SOUL.md) and the built-in default. Read at build_helve_config time.
     pub role_file: Option<PathBuf>,
@@ -37,6 +37,8 @@ pub struct RunOptions {
     pub model: Option<String>,
     /// When set, use this path as MCP config (overrides LOOM_MCP_CONFIG_PATH and default discovery).
     pub mcp_config_path: Option<PathBuf>,
+    /// Thread ID for checkpointer (conversation / run identity).
+    pub thread_id: Option<String>,
 }
 
 /// Error type for run operations.
@@ -279,6 +281,7 @@ mod tests {
             working_folder: Some(PathBuf::from(
                 "/definitely/not/exist/loom-cli-run-agent-tests",
             )),
+            session_id: None,
             thread_id: None,
             role_file: None,
             agent: None,
@@ -356,6 +359,7 @@ mod tests {
         let opts = RunOptions {
             message: "m".to_string(),
             working_folder: cfg.working_folder.clone(),
+            session_id: None,
             thread_id: None,
             role_file: None,
             agent: None,

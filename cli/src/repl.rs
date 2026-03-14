@@ -1,6 +1,6 @@
 //! Interactive REPL loop: read stdin, run agent, print output, repeat until EOF or quit.
 //!
-//! Used when `-i/--interactive` is passed. Ensures a stable `thread_id` for multi-turn history.
+//! Used when `-i/--interactive` is passed. Ensures a stable `session_id` for multi-turn history.
 
 use std::io::Write;
 use std::path::PathBuf;

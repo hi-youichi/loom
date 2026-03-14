@@ -42,9 +42,9 @@ struct Args {
     #[arg(short('P'), long, value_name = "NAME")]
     agent: Option<String>,
 
-    /// Thread ID for conversation continuity (checkpointer)
+    /// Session ID for conversation continuity (checkpointer)
     #[arg(long, value_name = "ID")]
-    thread_id: Option<String>,
+    session_id: Option<String>,
 
     /// Print State info to stderr (node enter/exit, state after each step, flow)
     #[arg(short, long)]
@@ -227,10 +227,10 @@ fn max_message_len() -> usize {
         .unwrap_or(DEFAULT_MAX_MESSAGE_LEN)
 }
 
-/// Generates a session-unique thread ID for REPL mode when user does not provide one.
-fn generate_repl_thread_id() -> String {
+/// Generates a session-unique session ID when user does not provide one.
+fn generate_session_id() -> String {
     format!(
-        "thread-repl-{}",
+        "session-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -301,7 +301,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let opts = RunOptions {
             message: String::new(),
             working_folder: args.working_folder.clone(),
-            thread_id: args.thread_id.clone(),
+            session_id: None,
+            thread_id: args.session_id.clone(),
             role_file: args.role.clone(),
             agent: args.agent.clone(),
             verbose: args.verbose,
@@ -351,7 +352,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut opts = RunOptions {
         message: message.clone().unwrap_or_default(),
         working_folder: args.working_folder,
-        thread_id: args.thread_id,
+        session_id: None,
+        thread_id: args.session_id,
         role_file: args.role,
         agent: args.agent,
         verbose: args.verbose,
@@ -372,7 +374,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if interactive {
         if opts.thread_id.is_none() {
-            opts.thread_id = Some(generate_repl_thread_id());
+            opts.thread_id = Some(generate_session_id());
+        }
+        // Print session ID at startup for interactive mode
+        if !args.json {
+            if let Some(ref session_id) = opts.thread_id {
+                eprintln!("Session: {}", session_id);
+            }
         }
         if let Some(ref msg) = message {
             if !msg.trim().is_empty() {
@@ -383,6 +391,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let mut out = serde_json::json!({ "reply": reply });
                             if let Some(ref env) = reply_envelope {
                                 env.inject_into(&mut out);
+                            }
+                            if let Some(ref sid) = opts.thread_id {
+                                out["session_id"] = serde_json::json!(sid);
                             }
                             if let Err(e) =
                                 write_json_line_append(&out, args.file.as_deref(), args.pretty)
@@ -408,7 +419,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if let Some(ref env) = reply_envelope {
                             env.inject_into(&mut reply_obj);
                         }
-                        let out = serde_json::json!({ "events": events, "reply": reply_obj });
+                        let mut out = serde_json::json!({ "events": events, "reply": reply_obj });
+                        if let Some(ref sid) = opts.thread_id {
+                            out["session_id"] = serde_json::json!(sid);
+                        }
                         if let Err(e) = write_json_output(&out, args.file.as_deref(), args.pretty) {
                             eprintln!("{}", e);
                             std::process::exit(1);
@@ -431,12 +445,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             stream_out,
         )
         .await?;
+        // Print session ID at the end of interactive session
+        if let Some(ref session_id) = opts.thread_id {
+            eprintln!("Session ended: {}", session_id);
+        }
+        println!("Bye.");
     } else {
+        // Auto-generate session ID if not provided
+        if opts.thread_id.is_none() {
+            opts.thread_id = Some(generate_session_id());
+        }
+        
+        // Print session ID at startup for non-interactive mode
+        if !args.json {
+            if let Some(ref session_id) = opts.thread_id {
+                eprintln!("Session: {}", session_id);
+            }
+        }
+        
         let output = run_one_turn(&backend, &opts, &cmd, stream_out).await?;
         match output {
             RunOutput::Reply(reply, reply_envelope) => {
                 if args.json {
-                    let mut out = serde_json::json!({ "reply": reply });
+                    let mut out = serde_json::json!({ "session_id": opts.thread_id, "reply": reply });
                     if let Some(ref env) = reply_envelope {
                         env.inject_into(&mut out);
                     }
@@ -460,7 +491,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Some(ref env) = reply_envelope {
                     env.inject_into(&mut reply_obj);
                 }
-                let out = serde_json::json!({ "events": events, "reply": reply_obj });
+                let out = serde_json::json!({ "session_id": opts.thread_id, "events": events, "reply": reply_obj });
                 write_json_output(&out, args.file.as_deref(), args.pretty)?;
             }
         }
@@ -560,7 +591,7 @@ mod tests {
     }
 
     #[test]
-    fn env_len_and_thread_id_helpers_work() {
+    fn env_len_and_session_id_helpers_work() {
         let _guard = env_lock().lock().unwrap();
         std::env::set_var("HELVE_MAX_MESSAGE_LEN", "321");
         std::env::set_var("HELVE_MAX_REPLY_LEN", "654");
@@ -569,7 +600,7 @@ mod tests {
         std::env::remove_var("HELVE_MAX_MESSAGE_LEN");
         std::env::remove_var("HELVE_MAX_REPLY_LEN");
 
-        let id = generate_repl_thread_id();
-        assert!(id.starts_with("thread-repl-"));
+        let id = generate_session_id();
+        assert!(id.starts_with("session-"));
     }
 }

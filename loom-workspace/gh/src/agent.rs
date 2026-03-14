@@ -61,6 +61,7 @@ pub fn run_options_from_issues_event(
     loom::RunOptions {
         message,
         working_folder,
+        session_id: None,
         thread_id,
         role_file: None,
         agent: None,

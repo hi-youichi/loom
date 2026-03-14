@@ -283,6 +283,7 @@ mod tests {
         let opts = RunOptions {
             message: "ping".to_string(),
             working_folder: None,
+            session_id: None,
             thread_id: None,
             role_file: None,
             agent: None,
@@ -316,6 +317,7 @@ mod tests {
         let opts = RunOptions {
             message: "hi".to_string(),
             working_folder: None,
+            session_id: None,
             thread_id: Some("thread-append".to_string()),
             role_file: None,
             agent: None,

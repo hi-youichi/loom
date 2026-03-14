@@ -136,6 +136,7 @@ impl Agent for LoomAcpAgent {
         let opts = RunOptions {
             message,
             working_folder: Some(working_folder),
+            session_id: None,
             thread_id: Some(entry.thread_id.clone()),
             role_file: None,
             agent: None,

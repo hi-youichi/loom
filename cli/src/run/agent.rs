@@ -479,6 +479,7 @@ mod tests {
             tot_config: TotRunnerConfig::default(),
             got_config: GotRunnerConfig::default(),
             mcp_servers: None,
+            skill_registry: None,
         }
     }
 
@@ -803,6 +804,7 @@ mod tests {
             working_folder: Some(PathBuf::from(
                 "/definitely/not/exist/loom-cli-run-agent-tests",
             )),
+            session_id: None,
             thread_id: None,
             role_file: None,
             agent: None,
