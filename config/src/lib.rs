@@ -31,6 +31,27 @@ pub fn mask_key(key: &str, prefix_len: usize, suffix_len: usize) -> String {
     format!("{}***{}", prefix, suffix)
 }
 
+/// Masks a value for logging: returns `***` so secrets are never printed.
+pub fn mask_value(_value: &str) -> &'static str {
+    "***"
+}
+
+/// Returns true if the key looks like a secret (e.g. API key, token, password).
+/// Used to decide whether to mask the value in config summary; non-secret keys show value as-is.
+pub fn is_secret_key(key: &str) -> bool {
+    let k = key.to_uppercase();
+    k.ends_with("_KEY")
+        || k.ends_with("KEY") && k.len() <= 4
+        || k.contains("_KEY_")
+        || k.contains("TOKEN")
+        || k.contains("SECRET")
+        || k.contains("PASSWORD")
+        || k.contains("CREDENTIAL")
+        || k.starts_with("AUTH_")
+        || k.ends_with("_AUTH")
+        || k.contains("_AUTH_")
+}
+
 /// Source of a config key that was applied or already set.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConfigSource {
@@ -42,14 +63,16 @@ pub enum ConfigSource {
     Xdg,
 }
 
-/// One entry in the config load report (key masked, value not included).
+/// One entry in the config load report (key plain; value masked if secret, else plain for display).
 #[derive(Clone, Debug)]
 pub struct LoadedEntry {
-    pub key_masked: String,
+    pub key: String,
+    /// Value for display: masked as `***` when [`is_secret_key`] is true, otherwise the actual value.
+    pub value_masked: String,
     pub source: ConfigSource,
 }
 
-/// Result of loading config: which keys were effective and from where (keys masked).
+/// Result of loading config: which keys were effective and from where (secret values masked in summary).
 #[derive(Clone, Debug, Default)]
 pub struct ConfigLoadReport {
     pub entries: Vec<LoadedEntry>,
@@ -72,26 +95,30 @@ pub fn config_file_paths(app_name: &str, override_dir: Option<&Path>) -> ConfigF
 }
 
 impl ConfigLoadReport {
-    /// Keys summary line only (for separate logging).
+    /// One-line summary for logging: `config: KEY1=*** KEY2=value ...` (secret values masked, others plain).
+    fn format_entry(key: &str, value: &str) -> String {
+        let v = if value.contains(' ') || value.is_empty() {
+            format!("\"{}\"", value.replace('\"', "\\\""))
+        } else {
+            value.to_string()
+        };
+        format!("{}={}", key, v)
+    }
+
     pub fn keys_summary(&self) -> Option<String> {
         if self.entries.is_empty() {
             return None;
         }
-        let source_str = |s: ConfigSource| match s {
-            ConfigSource::ExistingEnv => "env",
-            ConfigSource::Dotenv => ".env",
-            ConfigSource::Xdg => "config.toml",
-        };
         let line = self
             .entries
             .iter()
-            .map(|e| format!("{} ({})", e.key_masked, source_str(e.source)))
+            .map(|e| Self::format_entry(&e.key, &e.value_masked))
             .collect::<Vec<_>>()
-            .join(", ");
-        Some(format!("config keys: {}", line))
+            .join(" ");
+        Some(format!("config: {}", line))
     }
 
-    /// Human-readable summary for logging (keys masked). Prefer logging each path separately with `dotenv_path`/`xdg_path` and then `keys_summary()`.
+    /// Human-readable summary for logging (keys plain, values masked). Prefer logging each path separately with `dotenv_path`/`xdg_path` and then `keys_summary()`.
     pub fn summary(&self) -> String {
         let mut lines = Vec::new();
         if let Some(p) = &self.dotenv_path {
@@ -142,7 +169,7 @@ pub fn load_and_apply(app_name: &str, override_dir: Option<&Path>) -> Result<(),
     Ok(())
 }
 
-/// Like `load_and_apply` but returns a report of which keys were applied and from where (keys masked).
+/// Like `load_and_apply` but returns a report of which keys were applied and from where (keys plain, values masked in report).
 pub fn load_and_apply_with_report(
     app_name: &str,
     override_dir: Option<&Path>,
@@ -168,17 +195,28 @@ pub fn load_and_apply_with_report(
         };
 
         let value = if source == ConfigSource::ExistingEnv {
-            None
+            std::env::var(&key).ok()
         } else {
             dotenv_map.get(&key).or_else(|| xdg_map.get(&key)).cloned()
         };
 
-        if let Some(v) = value {
-            std::env::set_var(&key, v);
+        if source != ConfigSource::ExistingEnv {
+            if let Some(ref v) = value {
+                std::env::set_var(&key, v);
+            }
         }
 
+        let value_display = value.as_deref().map_or("***".to_string(), |v| {
+            if is_secret_key(&key) {
+                mask_value(v).to_string()
+            } else {
+                v.to_string()
+            }
+        });
+
         entries.push(LoadedEntry {
-            key_masked: mask_key(&key, 3, 3),
+            key,
+            value_masked: value_display,
             source,
         });
     }
@@ -201,6 +239,46 @@ mod tests {
         assert_eq!(mask_key("GITLAB_TOKEN", 3, 3), "GIT***KEN");
         assert_eq!(mask_key("X", 3, 3), "X***");
         assert_eq!(mask_key("", 3, 3), "***");
+    }
+
+    #[test]
+    fn mask_value_always_returns_star() {
+        assert_eq!(mask_value("secret"), "***");
+        assert_eq!(mask_value(""), "***");
+    }
+
+    #[test]
+    fn is_secret_key_masks_credentials_only() {
+        assert!(is_secret_key("OPENAI_API_KEY"));
+        assert!(is_secret_key("GITLAB_TOKEN"));
+        assert!(is_secret_key("MY_SECRET"));
+        assert!(is_secret_key("PASSWORD"));
+        assert!(is_secret_key("AUTH_TOKEN"));
+        assert!(!is_secret_key("RUST_LOG"));
+        assert!(!is_secret_key("OPENAI_MODEL"));
+        assert!(!is_secret_key("PATH"));
+    }
+
+    #[test]
+    fn keys_summary_secret_masked_non_secret_plain_one_line() {
+        let report = ConfigLoadReport {
+            entries: vec![
+                LoadedEntry {
+                    key: "OPENAI_API_KEY".to_string(),
+                    value_masked: "***".to_string(),
+                    source: ConfigSource::Dotenv,
+                },
+                LoadedEntry {
+                    key: "RUST_LOG".to_string(),
+                    value_masked: "info".to_string(),
+                    source: ConfigSource::Xdg,
+                },
+            ],
+            dotenv_path: None,
+            xdg_path: None,
+        };
+        let s = report.keys_summary().unwrap();
+        assert_eq!(s, "config: OPENAI_API_KEY=*** RUST_LOG=info");
     }
 
     fn restore_var(key: &str, prev: Option<String>) {
