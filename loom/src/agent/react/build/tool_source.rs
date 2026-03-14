@@ -9,7 +9,8 @@ use crate::tool_source::{
 };
 use crate::tools::{
     register_mcp_tools, register_mcp_tools_with_specs, AggregateToolSource, BashTool, BatchTool,
-    ExaCodesearchTool, ExaWebsearchTool, LspTool, TwitterSearchTool, WebFetcherTool,
+    ExaCodesearchTool, ExaWebsearchTool, InvokeAgentTool, LspTool, TwitterSearchTool,
+    WebFetcherTool,
 };
 
 use env_config::McpServerDef;
@@ -175,6 +176,12 @@ pub(crate) async fn build_tool_source(
                 }
             }
         }
+        aggregate
+            .register_async(Box::new(InvokeAgentTool::new(
+                Arc::new(config.clone()),
+                config.max_sub_agent_depth,
+            )))
+            .await;
         let inner: Box<dyn ToolSource> = Box::new(aggregate);
         let wrapped = YamlSpecToolSource::wrap(inner)
             .await
@@ -364,6 +371,13 @@ pub(crate) async fn build_tool_source(
             }
         }
     }
+
+    aggregate
+        .register_async(Box::new(InvokeAgentTool::new(
+            Arc::new(config.clone()),
+            config.max_sub_agent_depth,
+        )))
+        .await;
 
     let inner: Box<dyn ToolSource> = Box::new(aggregate);
     let wrapped = YamlSpecToolSource::wrap(inner)

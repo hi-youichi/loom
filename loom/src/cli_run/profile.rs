@@ -72,6 +72,10 @@ const AGENT_BUILDER_INSTRUCTIONS: &str =
 const AGENT_BUILDER_CONFIG_YAML: &str =
     include_str!("../../agents/agent-builder/config.yaml");
 
+/// Built-in explore agent: file search specialist for codebase navigation (loom/agents/explore/).
+const EXPLORE_AGENT_INSTRUCTIONS: &str = include_str!("../../agents/explore/instructions.md");
+const EXPLORE_AGENT_CONFIG_YAML: &str = include_str!("../../agents/explore/config.yaml");
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct RoleConfig {
     #[serde(default)]
@@ -138,6 +142,9 @@ pub struct BehaviorConfig {
     pub max_iterations: Option<u32>,
     #[serde(default)]
     pub timeout: Option<u32>,
+    /// Maximum nesting depth for `invoke_agent` calls (default 3).
+    #[serde(default)]
+    pub max_sub_agent_depth: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -385,11 +392,115 @@ pub fn load_profile_from_options(opts: &RunOptions) -> Option<AgentProfile> {
     load_agent_profile(&path).ok()
 }
 
+/// Built-in agent names (compile-time embedded).
+const BUILTIN_AGENT_NAMES: &[&str] = &["dev", "agent-builder", "explore"];
+
+/// Resolve an agent profile by name at runtime. Tries built-in agents first,
+/// then project-level `.loom/agents/<name>/`, then user-level `~/.loom/agents/<name>/`.
+///
+/// This is the primary API for `InvokeAgentTool` to load a sub-agent profile
+/// without depending on `RunOptions`.
+pub fn resolve_profile(name: &str) -> Result<AgentProfile, ProfileError> {
+    if let Some(profile) = load_builtin_profile(name) {
+        return Ok(profile);
+    }
+    let path = resolve_named_profile(name)
+        .ok_or_else(|| ProfileError::NotFound(name.to_string()))?;
+    load_agent_profile(&path)
+}
+
+/// Where a profile was discovered.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProfileSource {
+    BuiltIn,
+    Project,
+    User,
+}
+
+/// Lightweight summary of a discovered agent profile.
+#[derive(Debug, Clone)]
+pub struct ProfileSummary {
+    pub name: String,
+    pub description: Option<String>,
+    pub source: ProfileSource,
+}
+
+/// List all available agent profiles (built-in + project + user).
+pub fn list_available_profiles() -> Vec<ProfileSummary> {
+    let mut profiles = Vec::new();
+
+    for &name in BUILTIN_AGENT_NAMES {
+        if let Some(p) = load_builtin_profile(name) {
+            profiles.push(ProfileSummary {
+                name: p.name.clone(),
+                description: p.description.clone(),
+                source: ProfileSource::BuiltIn,
+            });
+        }
+    }
+
+    let scan_dirs: Vec<(PathBuf, ProfileSource)> = {
+        let mut dirs = vec![(PathBuf::from(".loom/agents"), ProfileSource::Project)];
+        if let Ok(home) = std::env::var("HOME") {
+            dirs.push((
+                PathBuf::from(home).join(".loom/agents"),
+                ProfileSource::User,
+            ));
+        }
+        dirs
+    };
+
+    for (dir, source) in &scan_dirs {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let name = match path.file_stem().and_then(|s| s.to_str()) {
+                    Some(n) => n.to_string(),
+                    None => continue,
+                };
+                if profiles.iter().any(|p| p.name == name) {
+                    continue;
+                }
+                let profile = if path.is_dir() {
+                    let config = path.join("config.yaml");
+                    if config.exists() {
+                        load_agent_profile(&config).ok()
+                    } else {
+                        let config_yml = path.join("config.yml");
+                        if config_yml.exists() {
+                            load_agent_profile(&config_yml).ok()
+                        } else {
+                            None
+                        }
+                    }
+                } else if path.extension().and_then(|e| e.to_str()) == Some("yaml")
+                    || path.extension().and_then(|e| e.to_str()) == Some("yml")
+                    || path.extension().and_then(|e| e.to_str()) == Some("md")
+                {
+                    load_agent_profile(&path).ok()
+                } else {
+                    None
+                };
+                if let Some(p) = profile {
+                    profiles.push(ProfileSummary {
+                        name: if p.name.is_empty() { name } else { p.name },
+                        description: p.description,
+                        source: source.clone(),
+                    });
+                }
+            }
+        }
+    }
+
+    profiles
+}
+
 /// Try to load a built-in agent by name. Returns None if not a built-in.
 fn load_builtin_profile(name: &str) -> Option<AgentProfile> {
     let (config_yaml, instructions) = match name {
         "dev" => (DEV_AGENT_CONFIG_YAML, DEV_AGENT_INSTRUCTIONS),
         "agent-builder" => (AGENT_BUILDER_CONFIG_YAML, AGENT_BUILDER_INSTRUCTIONS),
+        "explore" => (EXPLORE_AGENT_CONFIG_YAML, EXPLORE_AGENT_INSTRUCTIONS),
         _ => return None,
     };
     let mut profile: AgentProfile = serde_yaml::from_str(config_yaml).ok()?;
@@ -619,5 +730,42 @@ tools:
         let disabled = loaded.tools.as_ref().unwrap().builtin.as_ref().unwrap().disabled.as_ref().unwrap();
         assert_eq!(disabled, &["websearch".to_string()]);
         assert!(loaded.extends.is_none());
+    }
+
+    #[test]
+    fn resolve_profile_returns_builtin_dev() {
+        let profile = resolve_profile("dev").expect("built-in dev profile");
+        assert_eq!(profile.name, "dev");
+        assert!(profile.role.as_ref().unwrap().content.is_some());
+    }
+
+    #[test]
+    fn resolve_profile_returns_builtin_agent_builder() {
+        let profile = resolve_profile("agent-builder").expect("built-in agent-builder profile");
+        assert_eq!(profile.name, "agent-builder");
+    }
+
+    #[test]
+    fn resolve_profile_returns_not_found_for_unknown() {
+        let result = resolve_profile("nonexistent-agent-xyz");
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), ProfileError::NotFound(_)));
+    }
+
+    #[test]
+    fn list_available_profiles_includes_builtins() {
+        let profiles = list_available_profiles();
+        let names: Vec<&str> = profiles.iter().map(|p| p.name.as_str()).collect();
+        assert!(names.contains(&"dev"), "missing dev in {:?}", names);
+        assert!(
+            names.contains(&"agent-builder"),
+            "missing agent-builder in {:?}",
+            names
+        );
+        for p in &profiles {
+            if p.name == "dev" || p.name == "agent-builder" {
+                assert_eq!(p.source, ProfileSource::BuiltIn);
+            }
+        }
     }
 }

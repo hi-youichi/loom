@@ -1,0 +1,36 @@
+name: explore
+description: "File search specialist for navigating and exploring codebases."
+tools:
+  builtin:
+    enabled:
+      [
+        read,
+        grep,
+        glob,
+        ls,
+        bash,
+        todo_write,
+        todo_read,
+        web_fetcher,
+        websearch,
+        codesearch,
+        skill,
+        batch,
+      ]
+    disabled:
+      [
+        write_file,
+        edit_file,
+        apply_patch,
+        multiedit,
+        delete_file,
+        move_file,
+        create_dir,
+        invoke_agent,
+        remember,
+        recall,
+        search_memories,
+        list_memories,
+        lsp,
+        get_recent_messages,
+      ]

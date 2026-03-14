@@ -75,6 +75,7 @@ fn build_runnable_config(config: &ReactBuildConfig) -> Option<RunnableConfig> {
         checkpoint_ns: String::new(),
         user_id: config.user_id.clone(),
         resume_from_node_id: None,
+        depth: None,
     })
 }
 
@@ -288,6 +289,7 @@ mod tests {
             got_config: GotRunnerConfig::default(),
             mcp_servers: None,
             skill_registry: None,
+            max_sub_agent_depth: None,
         }
     }
 

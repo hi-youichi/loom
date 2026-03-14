@@ -16,7 +16,10 @@ use crate::{to_react_build_config, HelveConfig, ReactBuildConfig};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-pub use profile::{load_profile_from_options, AgentProfile, ProfileError};
+pub use profile::{
+    list_available_profiles, load_profile_from_options, resolve_profile, AgentProfile,
+    ProfileError, ProfileSource, ProfileSummary,
+};
 
 /// Default working folder when not set (current directory).
 pub const DEFAULT_WORKING_FOLDER: &str = ".";
@@ -195,7 +198,109 @@ pub fn build_helve_config(opts: &RunOptions) -> (HelveConfig, ReactBuildConfig) 
     };
     let mut config = to_react_build_config(&helve, base);
     config.skill_registry = Some(skill_registry.0);
+    config.max_sub_agent_depth = profile
+        .as_ref()
+        .and_then(|p| p.behavior.as_ref())
+        .and_then(|b| b.max_sub_agent_depth);
     (helve, config)
+}
+
+/// Builds a `ReactBuildConfig` for a sub-agent from a resolved profile and
+/// the parent agent's config. The parent config provides LLM credentials,
+/// provider, and other environment-derived settings; the profile can override
+/// model name, working_folder, MCP config, and system prompt.
+///
+/// Used by `InvokeAgentTool` to construct a child `ReactRunner` at runtime.
+pub fn build_config_from_profile(
+    profile: &AgentProfile,
+    parent_config: &ReactBuildConfig,
+    working_folder_override: Option<&std::path::Path>,
+) -> ReactBuildConfig {
+    let mut config = parent_config.clone();
+
+    if let Some(ref model) = profile.model {
+        if let Some(ref name) = model.name {
+            config.model = Some(name.clone());
+        }
+    }
+
+    if let Some(wf) = working_folder_override {
+        config.working_folder = Some(wf.to_path_buf());
+    } else if let Some(ref env) = profile.environment {
+        if let Some(ref wf) = env.working_folder {
+            config.working_folder = Some(wf.clone());
+        }
+    }
+
+    let working_folder = config
+        .working_folder
+        .clone()
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_WORKING_FOLDER));
+
+    // MCP config from profile
+    if let Some(ref tools) = profile.tools {
+        if let Some(ref mcp) = tools.mcp {
+            if let Some(ref mcp_path) = mcp.config {
+                if let Some(path) = env_config::discover_mcp_config_path(
+                    Some(mcp_path.as_path()),
+                    Some(&working_folder),
+                ) {
+                    match env_config::load_mcp_config_from_path(&path) {
+                        Ok(servers) => config.mcp_servers = Some(servers),
+                        Err(e) => tracing::warn!(
+                            path = %path.display(),
+                            "sub-agent: failed to load mcp config: {}", e
+                        ),
+                    }
+                }
+            }
+        }
+    }
+
+    // System prompt from profile role
+    let role_content = profile
+        .role
+        .as_ref()
+        .and_then(|r| r.content.clone());
+    if let Some(role) = role_content {
+        let agents_md = load_agents_md(Some(&working_folder));
+        let parts: Vec<&str> = [Some(role.as_str()), agents_md.as_deref()]
+            .into_iter()
+            .flatten()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if !parts.is_empty() {
+            let base_prompt = config.system_prompt.take().unwrap_or_default();
+            let prefix = parts.join("\n\n");
+            config.system_prompt = Some(if base_prompt.is_empty() {
+                prefix
+            } else {
+                format!("{}\n\n{}", prefix, base_prompt)
+            });
+        }
+    }
+
+    // Skill registry for sub-agent
+    let extra_dirs: Vec<PathBuf> = profile
+        .skills
+        .as_ref()
+        .and_then(|s| s.dirs.as_ref())
+        .map(|dirs| dirs.iter().map(PathBuf::from).collect())
+        .unwrap_or_default();
+    let mut registry = SkillRegistry::discover(&working_folder, &extra_dirs);
+    if let Some(ref sc) = profile.skills {
+        registry.apply_filters(sc.enabled.as_deref(), sc.disabled.as_deref());
+    }
+    config.skill_registry = Some(Arc::new(registry));
+
+    config.max_sub_agent_depth = profile
+        .behavior
+        .as_ref()
+        .and_then(|b| b.max_sub_agent_depth)
+        .or(parent_config.max_sub_agent_depth);
+
+    config
 }
 
 fn apply_profile_to_run_options(profile: &AgentProfile, opts: &mut RunOptions) {

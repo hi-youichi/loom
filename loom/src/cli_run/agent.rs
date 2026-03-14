@@ -326,6 +326,7 @@ mod tests {
             got_config: crate::GotRunnerConfig::default(),
             mcp_servers: None,
             skill_registry: None,
+            max_sub_agent_depth: None,
         }
     }
 

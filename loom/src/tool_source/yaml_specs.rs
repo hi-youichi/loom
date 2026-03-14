@@ -47,6 +47,7 @@ const TOOL_YAML_FILES: &[&str] = embed_tool_yaml!(
     "../../tools/codesearch.yaml",
     "../../tools/skill.yaml",
     "../../tools/lsp.yaml",
+    "../../tools/invoke_agent.yaml",
 );
 
 /// Errors from loading or using YAML tool specs.

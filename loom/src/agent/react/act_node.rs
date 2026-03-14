@@ -410,6 +410,7 @@ impl Node<ReActState> for ActNode {
                 stream_writer: Some(per_tool_writer),
                 thread_id: run_ctx.config.thread_id.clone(),
                 user_id: run_ctx.config.user_id.clone(),
+                depth: run_ctx.config.depth.unwrap_or(0),
             };
             self.tools.set_call_context(Some(ctx));
 

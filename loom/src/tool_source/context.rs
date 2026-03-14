@@ -88,6 +88,13 @@ pub struct ToolCallContext {
     /// Injected by ActNode from `RunContext::config` when `run_with_context` is used.
     /// Use for multi-tenant or store namespace. See RunnableConfig::user_id.
     pub user_id: Option<String>,
+
+    /// Current sub-agent nesting depth (0 = top-level agent).
+    ///
+    /// Used by `InvokeAgentTool` to prevent infinite recursion. Each nested
+    /// invocation increments this counter; calls are rejected when `depth`
+    /// reaches the configured `max_sub_agent_depth`.
+    pub depth: u32,
 }
 
 impl ToolCallContext {
@@ -100,6 +107,7 @@ impl ToolCallContext {
             stream_writer: None,
             thread_id: None,
             user_id: None,
+            depth: 0,
         }
     }
 
@@ -116,6 +124,7 @@ impl ToolCallContext {
             stream_writer: Some(stream_writer),
             thread_id: None,
             user_id: None,
+            depth: 0,
         }
     }
 

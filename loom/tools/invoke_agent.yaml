@@ -1,0 +1,26 @@
+name: invoke_agent
+description: |
+  Delegate a task to another agent by profile name. The sub-agent runs a full
+  ReAct loop with its own tools and system prompt, then returns the final reply.
+
+  Available agents are discovered from:
+  - .loom/agents/<name>/  (project-level)
+  - ~/.loom/agents/<name>/ (user-level)
+  - Built-in: dev, agent-builder, explore
+
+  Use this when a specialized agent is better suited for the sub-task. Provide
+  full context in the task parameter; the sub-agent has no memory of the current
+  conversation.
+input_schema:
+  type: object
+  properties:
+    agent:
+      type: string
+      description: "Agent profile name (e.g. 'dev', 'agent-builder') or path to profile directory."
+    task:
+      type: string
+      description: "Natural-language task to delegate. Include full context; the sub-agent has no memory of the current conversation."
+    working_folder:
+      type: string
+      description: "Optional: override working folder for the sub-agent."
+  required: [agent, task]

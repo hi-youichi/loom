@@ -4,6 +4,7 @@ mod batch;
 mod conversation;
 pub mod exa;
 pub mod file;
+pub mod invoke_agent;
 mod lsp;
 mod mcp_adapter;
 pub mod memory;
@@ -37,4 +38,5 @@ pub use todo::{TodoReadTool, TodoWriteTool, TOOL_TODO_READ, TOOL_TODO_WRITE};
 pub use twitter::{TwitterSearchTool, TOOL_TWITTER_SEARCH};
 pub use web::{WebFetcherTool, TOOL_WEB_FETCHER};
 
+pub use invoke_agent::{InvokeAgentTool, TOOL_INVOKE_AGENT};
 pub use mcp_adapter::{register_mcp_tools, register_mcp_tools_with_specs, McpToolAdapter};

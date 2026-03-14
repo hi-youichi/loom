@@ -23,6 +23,9 @@ pub struct RunnableConfig {
     /// When set, the graph starts from this node instead of the first (e.g. resume after Interrupt at "act").
     /// Used when resuming after an approval_required interrupt: load checkpoint state, set state.approval_result, set this to "act".
     pub resume_from_node_id: Option<String>,
+    /// Current sub-agent nesting depth. Used by `InvokeAgentTool` to prevent
+    /// infinite recursion. `None` or `Some(0)` means top-level.
+    pub depth: Option<u32>,
 }
 
 #[cfg(test)]
@@ -48,6 +51,7 @@ mod tests {
             checkpoint_ns: "ns".into(),
             user_id: Some("u1".into()),
             resume_from_node_id: None,
+            depth: None,
         };
         let c2 = c.clone();
         assert_eq!(c.thread_id, c2.thread_id);

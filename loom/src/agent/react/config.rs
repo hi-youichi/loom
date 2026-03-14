@@ -80,6 +80,8 @@ pub struct ReactBuildConfig {
     pub mcp_servers: Option<Vec<McpServerDef>>,
     /// Skill registry for the skill tool (built during helve config construction).
     pub skill_registry: Option<Arc<SkillRegistry>>,
+    /// Maximum nesting depth for `invoke_agent` tool calls (default 3).
+    pub max_sub_agent_depth: Option<u32>,
 }
 
 impl ReactBuildConfig {
@@ -152,6 +154,9 @@ impl ReactBuildConfig {
             },
             mcp_servers: None,
             skill_registry: None,
+            max_sub_agent_depth: std::env::var("MAX_SUB_AGENT_DEPTH")
+                .ok()
+                .and_then(|s| s.parse().ok()),
         }
     }
 }
