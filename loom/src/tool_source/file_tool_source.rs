@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
+use crate::skill::SkillRegistry;
 use crate::tool_source::{ToolSource, ToolSourceError};
 use crate::tools::file::{
     ApplyPatchTool, CreateDirTool, DeleteFileTool, EditFileTool, GlobTool, GrepTool, LsTool,
@@ -33,9 +34,12 @@ use crate::tools::AggregateToolSource;
 ///
 /// Used by the ReAct builder when a working folder is set so file tools are
 /// aggregated with memory, web, and MCP tools.
+/// When `skill_registry` is `Some`, the skill tool uses the registry (discovery-based);
+/// otherwise it uses the working folder's `.loom/skills` directory (legacy).
 pub fn register_file_tools(
     aggregate: &AggregateToolSource,
     working_folder: impl AsRef<Path>,
+    skill_registry: Option<Arc<SkillRegistry>>,
 ) -> Result<(), ToolSourceError> {
     let path = working_folder.as_ref();
     let canonical = path.canonicalize().map_err(|e| {
@@ -63,7 +67,11 @@ pub fn register_file_tools(
     aggregate.register_sync(Box::new(GrepTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(TodoWriteTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(TodoReadTool::new(working_folder.clone())));
-    aggregate.register_sync(Box::new(SkillTool::new(working_folder)));
+    if let Some(registry) = skill_registry {
+        aggregate.register_sync(Box::new(SkillTool::new_with_registry(registry)));
+    } else {
+        aggregate.register_sync(Box::new(SkillTool::new(working_folder)));
+    }
     Ok(())
 }
 

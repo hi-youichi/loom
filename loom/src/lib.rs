@@ -120,6 +120,7 @@ pub mod agent;
 pub mod cache;
 pub mod channels;
 pub mod cli_run;
+pub mod skill;
 pub mod compress;
 pub mod config;
 pub mod error;
