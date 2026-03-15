@@ -1,4 +1,4 @@
-//! Load `[env]` table from `$XDG_CONFIG_HOME/<app>/config.toml`.
+//! Load `[env]` table from `~/.loom/config.toml`.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -6,10 +6,8 @@ use std::path::PathBuf;
 use crate::LoadError;
 
 /// Returns path to `config.toml` if it exists. Public for config load report.
-pub fn config_path(app_name: &str) -> Result<Option<PathBuf>, LoadError> {
-    let base = cross_xdg::BaseDirs::new().map_err(|e| LoadError::XdgPath(e.to_string()))?;
-    let config_dir = base.config_home();
-    let path = config_dir.join(app_name).join("config.toml");
+pub fn config_path(_app_name: &str) -> Result<Option<PathBuf>, LoadError> {
+    let path = crate::home::loom_home().join("config.toml");
     if path.exists() {
         Ok(Some(path))
     } else {
@@ -39,42 +37,40 @@ mod tests {
     use super::*;
     use std::env;
 
-    struct EnvGuard {
-        key: &'static str,
+    struct LoomHomeGuard {
         prev: Option<String>,
     }
 
-    impl EnvGuard {
-        fn set(key: &'static str, value: &std::path::Path) -> Self {
-            let prev = env::var(key).ok();
-            env::set_var(key, value);
-            Self { key, prev }
+    impl LoomHomeGuard {
+        fn set(value: &std::path::Path) -> Self {
+            let prev = env::var("LOOM_HOME").ok();
+            env::set_var("LOOM_HOME", value);
+            Self { prev }
         }
     }
 
-    impl Drop for EnvGuard {
+    impl Drop for LoomHomeGuard {
         fn drop(&mut self) {
             if let Some(p) = self.prev.as_ref() {
-                env::set_var(self.key, p);
+                env::set_var("LOOM_HOME", p);
             } else {
-                env::remove_var(self.key);
+                env::remove_var("LOOM_HOME");
             }
         }
     }
 
     #[test]
     fn missing_config_returns_empty_map() {
-        // Use an app name that almost certainly has no config file
-        let map = load_env_map("config-crate-test-nonexistent-12345").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let _guard = LoomHomeGuard::set(dir.path());
+        let map = load_env_map("loom").unwrap();
         assert!(map.is_empty());
     }
 
     #[test]
     fn load_env_map_reads_toml() {
         let dir = tempfile::tempdir().unwrap();
-        let app_dir = dir.path().join("testapp");
-        std::fs::create_dir_all(&app_dir).unwrap();
-        let config_path = app_dir.join("config.toml");
+        let config_path = dir.path().join("config.toml");
         std::fs::write(
             &config_path,
             r#"
@@ -85,8 +81,8 @@ BAR = "baz"
         )
         .unwrap();
 
-        let _guard = EnvGuard::set("XDG_CONFIG_HOME", dir.path());
-        let result = load_env_map("testapp");
+        let _guard = LoomHomeGuard::set(dir.path());
+        let result = load_env_map("loom");
 
         let map = result.unwrap();
         assert_eq!(map.get("FOO"), Some(&"from_toml".to_string()));
@@ -96,12 +92,10 @@ BAR = "baz"
     #[test]
     fn empty_env_section_returns_empty_map() {
         let dir = tempfile::tempdir().unwrap();
-        let app_dir = dir.path().join("emptyenv");
-        std::fs::create_dir_all(&app_dir).unwrap();
-        std::fs::write(app_dir.join("config.toml"), "[env]\n").unwrap();
+        std::fs::write(dir.path().join("config.toml"), "[env]\n").unwrap();
 
-        let _guard = EnvGuard::set("XDG_CONFIG_HOME", dir.path());
-        let result = load_env_map("emptyenv");
+        let _guard = LoomHomeGuard::set(dir.path());
+        let result = load_env_map("loom");
 
         let map = result.unwrap();
         assert!(map.is_empty());
@@ -110,12 +104,10 @@ BAR = "baz"
     #[test]
     fn invalid_toml_returns_xdg_parse_error() {
         let dir = tempfile::tempdir().unwrap();
-        let app_dir = dir.path().join("badapp");
-        std::fs::create_dir_all(&app_dir).unwrap();
-        std::fs::write(app_dir.join("config.toml"), "not valid toml [[[\n").unwrap();
+        std::fs::write(dir.path().join("config.toml"), "not valid toml [[[\n").unwrap();
 
-        let _guard = EnvGuard::set("XDG_CONFIG_HOME", dir.path());
-        let result = load_env_map("badapp");
+        let _guard = LoomHomeGuard::set(dir.path());
+        let result = load_env_map("loom");
 
         assert!(matches!(result, Err(crate::LoadError::XdgParse(_))));
     }
@@ -123,12 +115,10 @@ BAR = "baz"
     #[test]
     fn config_without_env_section_returns_empty_map() {
         let dir = tempfile::tempdir().unwrap();
-        let app_dir = dir.path().join("noenv");
-        std::fs::create_dir_all(&app_dir).unwrap();
-        std::fs::write(app_dir.join("config.toml"), "[other]\nkey = \"ignored\"\n").unwrap();
+        std::fs::write(dir.path().join("config.toml"), "[other]\nkey = \"ignored\"\n").unwrap();
 
-        let _guard = EnvGuard::set("XDG_CONFIG_HOME", dir.path());
-        let result = load_env_map("noenv");
+        let _guard = LoomHomeGuard::set(dir.path());
+        let result = load_env_map("loom");
 
         let map = result.unwrap();
         assert!(map.is_empty());

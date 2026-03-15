@@ -1,5 +1,5 @@
-# Example: ~/.config/loom/config.toml
-# Copy to $XDG_CONFIG_HOME/loom/config.toml and fill in your values.
+# Example: ~/.loom/config.toml
+# Copy to ~/.loom/config.toml (or $LOOM_HOME/config.toml) and fill in your values.
 # Keys match graphweave/.env; only [env] is read.
 
 [env]

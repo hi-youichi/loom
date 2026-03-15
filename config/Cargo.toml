@@ -2,7 +2,7 @@
 name = "config"
 version.workspace = true
 edition.workspace = true
-description = "Load .env and XDG TOML config for Loom (single place for all env/config)"
+description = "Load .env and TOML config for Loom (single place for all env/config under ~/.loom)"
 license.workspace = true
 authors.workspace = true
 
@@ -10,7 +10,6 @@ authors.workspace = true
 path = "src/lib.rs"
 
 [dependencies]
-cross-xdg = "2"
 toml = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

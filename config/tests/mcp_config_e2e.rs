@@ -3,11 +3,14 @@
 
 use config::{discover_mcp_config_path, load_mcp_config_from_path, McpConfigError, McpServerDef};
 use std::path::Path;
+use std::sync::Mutex;
 
-fn restore_xdg(prev: Option<String>) {
+static LOOM_HOME_LOCK: Mutex<()> = Mutex::new(());
+
+fn restore_loom_home(prev: Option<String>) {
     match prev {
-        Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
-        None => std::env::remove_var("XDG_CONFIG_HOME"),
+        Some(v) => std::env::set_var("LOOM_HOME", v),
+        None => std::env::remove_var("LOOM_HOME"),
     }
 }
 
@@ -38,6 +41,7 @@ fn e2e_discover_then_load_override() {
 
 #[test]
 fn e2e_discover_then_load_project() {
+    let _lock = LOOM_HOME_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let working = dir.path().join("proj");
     std::fs::create_dir_all(working.join(".loom")).unwrap();
@@ -45,14 +49,14 @@ fn e2e_discover_then_load_project() {
     let content = r#"{"mcpServers":{"proj-server":{"command":"node","args":["server.js"]}}}"#;
     std::fs::write(&project_mcp, content).unwrap();
 
-    let xdg = dir.path().join("xdg");
-    std::fs::create_dir_all(xdg.join("loom")).unwrap();
-    std::fs::write(xdg.join("loom").join("mcp.json"), "{}").unwrap();
-    let prev = std::env::var("XDG_CONFIG_HOME").ok();
-    std::env::set_var("XDG_CONFIG_HOME", xdg);
+    let loom_home = dir.path().join("loom_home");
+    std::fs::create_dir_all(&loom_home).unwrap();
+    std::fs::write(loom_home.join("mcp.json"), "{}").unwrap();
+    let prev = std::env::var("LOOM_HOME").ok();
+    std::env::set_var("LOOM_HOME", &loom_home);
 
     let path = discover_mcp_config_path(None::<&Path>, Some(working.as_path())).unwrap();
-    restore_xdg(prev);
+    restore_loom_home(prev);
     assert_eq!(path.as_path(), project_mcp);
 
     let list = load_mcp_config_from_path(&path).unwrap();
@@ -69,20 +73,21 @@ fn e2e_discover_then_load_project() {
 
 #[test]
 fn e2e_discover_then_load_global() {
+    let _lock = LOOM_HOME_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let working = dir.path().join("empty");
     std::fs::create_dir_all(&working).unwrap();
-    let xdg = dir.path().join("xdg");
-    std::fs::create_dir_all(xdg.join("loom")).unwrap();
-    let global_mcp = xdg.join("loom").join("mcp.json");
+    let loom_home = dir.path().join("loom_home");
+    std::fs::create_dir_all(&loom_home).unwrap();
+    let global_mcp = loom_home.join("mcp.json");
     let content = r#"{"mcpServers":{"global":{"command":"npx","args":["-y","mcp-server"]}}}"#;
     std::fs::write(&global_mcp, content).unwrap();
 
-    let prev = std::env::var("XDG_CONFIG_HOME").ok();
-    std::env::set_var("XDG_CONFIG_HOME", &xdg);
+    let prev = std::env::var("LOOM_HOME").ok();
+    std::env::set_var("LOOM_HOME", &loom_home);
 
     let path = discover_mcp_config_path(None::<&Path>, Some(working.as_path())).unwrap();
-    restore_xdg(prev);
+    restore_loom_home(prev);
     assert_eq!(path.as_path(), global_mcp);
 
     let list = load_mcp_config_from_path(&path).unwrap();
@@ -99,40 +104,42 @@ fn e2e_discover_then_load_global() {
 
 #[test]
 fn e2e_discover_order_override_over_project() {
+    let _lock = LOOM_HOME_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let override_path = dir.path().join("override.json");
     std::fs::write(&override_path, r#"{"mcpServers":{"ov":{"command":"ov"}}}"#).unwrap();
     let working = dir.path().join("proj");
     std::fs::create_dir_all(working.join(".loom")).unwrap();
     std::fs::write(working.join(".loom").join("mcp.json"), r#"{"mcpServers":{}}"#).unwrap();
-    let xdg = dir.path().join("xdg");
-    std::fs::create_dir_all(xdg.join("loom")).unwrap();
-    std::fs::write(xdg.join("loom").join("mcp.json"), "{}").unwrap();
+    let loom_home = dir.path().join("loom_home");
+    std::fs::create_dir_all(&loom_home).unwrap();
+    std::fs::write(loom_home.join("mcp.json"), "{}").unwrap();
 
-    let prev = std::env::var("XDG_CONFIG_HOME").ok();
-    std::env::set_var("XDG_CONFIG_HOME", &xdg);
+    let prev = std::env::var("LOOM_HOME").ok();
+    std::env::set_var("LOOM_HOME", &loom_home);
 
     let path = discover_mcp_config_path(Some(&override_path), Some(working.as_path())).unwrap();
-    restore_xdg(prev);
+    restore_loom_home(prev);
     assert_eq!(path.as_path(), override_path);
 }
 
 #[test]
 fn e2e_discover_order_project_over_global() {
+    let _lock = LOOM_HOME_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let working = dir.path().join("proj");
     std::fs::create_dir_all(working.join(".loom")).unwrap();
     let project_mcp = working.join(".loom").join("mcp.json");
     std::fs::write(&project_mcp, r#"{"mcpServers":{"p":{"command":"p"}}}"#).unwrap();
-    let xdg = dir.path().join("xdg");
-    std::fs::create_dir_all(xdg.join("loom")).unwrap();
-    std::fs::write(xdg.join("loom").join("mcp.json"), r#"{"mcpServers":{"g":{"command":"g"}}}"#).unwrap();
+    let loom_home = dir.path().join("loom_home");
+    std::fs::create_dir_all(&loom_home).unwrap();
+    std::fs::write(loom_home.join("mcp.json"), r#"{"mcpServers":{"g":{"command":"g"}}}"#).unwrap();
 
-    let prev = std::env::var("XDG_CONFIG_HOME").ok();
-    std::env::set_var("XDG_CONFIG_HOME", &xdg);
+    let prev = std::env::var("LOOM_HOME").ok();
+    std::env::set_var("LOOM_HOME", &loom_home);
 
     let path = discover_mcp_config_path(None::<&Path>, Some(working.as_path())).unwrap();
-    restore_xdg(prev);
+    restore_loom_home(prev);
     assert_eq!(path.as_path(), project_mcp);
 }
 
@@ -171,15 +178,18 @@ fn e2e_load_disabled_filtered_out() {
 
 #[test]
 fn e2e_discover_none_when_nothing_exists() {
+    let _lock = LOOM_HOME_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let working = dir.path().join("empty");
     std::fs::create_dir_all(&working).unwrap();
 
-    let prev = std::env::var("XDG_CONFIG_HOME").ok();
-    std::env::set_var("XDG_CONFIG_HOME", dir.path());
+    let loom_home = dir.path().join("loom_home");
+    std::fs::create_dir_all(&loom_home).unwrap();
+    let prev = std::env::var("LOOM_HOME").ok();
+    std::env::set_var("LOOM_HOME", &loom_home);
 
     let path = discover_mcp_config_path(None::<&Path>, Some(working.as_path()));
-    restore_xdg(prev);
+    restore_loom_home(prev);
 
     assert!(path.is_none());
 }

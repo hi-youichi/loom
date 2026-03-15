@@ -1,7 +1,7 @@
 //! MCP server config: parse JSON (Cursor/Claude-compatible) and discover config file path.
 //!
 //! Used by loom to load `mcp.json` from project `.loom/mcp.json` or
-//! `$XDG_CONFIG_HOME/loom/mcp.json`. No dependency on loom.
+//! `~/.loom/mcp.json`. No dependency on loom.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -118,7 +118,7 @@ pub fn load_mcp_config_from_path(path: &Path) -> Result<Vec<McpServerDef>, McpCo
 /// Returns the path to the MCP config file to use, or `None` if none exists.
 ///
 /// Order: if `override_path` is `Some` and that file exists, use it; else
-/// `working_dir/.loom/mcp.json` if it exists; else `$XDG_CONFIG_HOME/loom/mcp.json` if it exists.
+/// `working_dir/.loom/mcp.json` if it exists; else `~/.loom/mcp.json` if it exists.
 pub fn discover_mcp_config_path(
     override_path: Option<&Path>,
     working_dir: Option<&Path>,
@@ -134,8 +134,7 @@ pub fn discover_mcp_config_path(
             return Some(project);
         }
     }
-    let base = cross_xdg::BaseDirs::new().ok()?;
-    let global = base.config_home().join("loom").join("mcp.json");
+    let global = crate::home::loom_home().join("mcp.json");
     if global.exists() {
         return Some(global);
     }
@@ -329,16 +328,17 @@ mod tests {
         let project_mcp = working.join(".loom").join("mcp.json");
         std::fs::write(&project_mcp, "{}").unwrap();
 
-        let prev = std::env::var("XDG_CONFIG_HOME").ok();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path().join("xdg"));
-        std::fs::create_dir_all(dir.path().join("xdg").join("loom")).unwrap();
-        std::fs::write(dir.path().join("xdg").join("loom").join("mcp.json"), "{}").unwrap();
+        let loom_home = dir.path().join("loom_home");
+        std::fs::create_dir_all(&loom_home).unwrap();
+        std::fs::write(loom_home.join("mcp.json"), "{}").unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", &loom_home);
 
         let got = discover_mcp_config_path(Some(&override_path), Some(working.as_path()));
         if let Some(ref p) = prev {
-            std::env::set_var("XDG_CONFIG_HOME", p);
+            std::env::set_var("LOOM_HOME", p);
         } else {
-            std::env::remove_var("XDG_CONFIG_HOME");
+            std::env::remove_var("LOOM_HOME");
         }
 
         assert_eq!(got.as_deref(), Some(project_mcp.as_path()));
@@ -350,15 +350,16 @@ mod tests {
         let working = dir.path().join("empty");
         std::fs::create_dir_all(&working).unwrap();
 
-        let prev = std::env::var("XDG_CONFIG_HOME").ok();
-        std::env::set_var("XDG_CONFIG_HOME", dir.path());
-        // no loom/mcp.json under XDG_CONFIG_HOME
+        let loom_home = dir.path().join("loom_home");
+        std::fs::create_dir_all(&loom_home).unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", &loom_home);
 
         let got = discover_mcp_config_path(None, Some(working.as_path()));
         if let Some(ref p) = prev {
-            std::env::set_var("XDG_CONFIG_HOME", p);
+            std::env::set_var("LOOM_HOME", p);
         } else {
-            std::env::remove_var("XDG_CONFIG_HOME");
+            std::env::remove_var("LOOM_HOME");
         }
 
         assert!(got.is_none());
