@@ -12,8 +12,8 @@ use repl::{run_one_turn, run_repl_loop};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-/// Config directory: $XDG_CONFIG_HOME/loom (default ~/.config/loom). config.toml [env] is applied as env vars; project .env overrides.
-const CONFIG_DIR_HELP: &str = "\nConfiguration:\n  Config directory: $XDG_CONFIG_HOME/loom (default: ~/.config/loom).\n  File: config.toml with [env] table; values are applied as environment variables.\n  Project .env in working directory overrides XDG config.";
+/// Config directory: ~/.loom (or $LOOM_HOME). config.toml [env] is applied as env vars; project .env overrides.
+const CONFIG_DIR_HELP: &str = "\nConfiguration:\n  Config directory: ~/.loom (override with $LOOM_HOME).\n  File: config.toml with [env] table; values are applied as environment variables.\n  Project .env in working directory overrides config.toml.";
 
 #[derive(Parser, Debug)]
 #[command(name = "loom")]

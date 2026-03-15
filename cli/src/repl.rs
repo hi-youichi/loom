@@ -204,6 +204,7 @@ mod tests {
         let opts = RunOptions {
             message: "hello".to_string(),
             working_folder: None,
+            session_id: None,
             thread_id: None,
             role_file: None,
             agent: None,

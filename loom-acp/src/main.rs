@@ -1,8 +1,8 @@
 //! # loom-acp binary entrypoint
 //!
 //! IDEs (Zed, JetBrains, etc.) configure this executable as the ACP Agent command and communicate
-//! over stdio. On startup we load [config](config) (same as loom), init tracing (stderr + XDG log
-//! directory), write a PID file under XDG state, then run [`loom_acp::run_stdio_loop`] until stdin
+//! over stdio. On startup we load [config](config) (same as loom), init tracing (stderr + `~/.loom/acp`
+//! log directory), write a PID file, then run [`loom_acp::run_stdio_loop`] until stdin
 //! closes or an error occurs. SIGHUP triggers reload (exit with code 203 so the caller can restart).
 //!
 //! Subcommand `reload`: sends SIGHUP to the process whose PID is in the PID file (Unix only).
@@ -22,7 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match acp_log_dir() {
             Some(p) => println!("{}", p.display()),
             None => {
-                eprintln!("loom-acp: could not determine log directory (XDG state dir missing)");
+                eprintln!("loom-acp: could not determine log directory");
                 std::process::exit(1);
             }
         }
@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     run_server()
 }
 
-const HELP_LOG_DIR: &str = "\nLog and PID directory: $XDG_STATE_HOME/loom-acp (e.g. ~/.local/state/loom-acp on Linux). \
+const HELP_LOG_DIR: &str = "\nLog and PID directory: ~/.loom/acp (or $LOOM_HOME/acp). \
 Use --show-log-dir to print the actual path for this environment.";
 
 #[derive(clap::Parser, Debug)]
@@ -53,7 +53,7 @@ struct Args {
 
 #[derive(clap::Subcommand, Debug)]
 enum Cmd {
-    /// Send SIGHUP to the running loom-acp process (read PID from XDG state). Unix only.
+    /// Send SIGHUP to the running loom-acp process (read PID from `~/.loom/acp`). Unix only.
     Reload,
 }
 
@@ -61,7 +61,7 @@ fn run_reload() {
     let pid_path = match acp_pid_path() {
         Some(p) => p,
         None => {
-            eprintln!("loom-acp reload: could not determine PID file path (XDG state dir missing)");
+            eprintln!("loom-acp reload: could not determine PID file path");
             std::process::exit(1);
         }
     };
@@ -236,7 +236,7 @@ impl Drop for PidFileGuard {
     }
 }
 
-/// Writes current process PID to XDG state dir and returns a guard that removes it on drop.
+/// Writes current process PID to `~/.loom/acp` and returns a guard that removes it on drop.
 fn write_pid_file(log_dir: &Option<PathBuf>) -> Option<PidFileGuard> {
     let dir = log_dir.as_ref()?;
     std::fs::create_dir_all(dir).ok()?;
@@ -247,15 +247,12 @@ fn write_pid_file(log_dir: &Option<PathBuf>) -> Option<PidFileGuard> {
     Some(PidFileGuard(Some(path)))
 }
 
-/// Returns XDG state home directory for loom-acp (e.g. ~/.local/state/loom-acp on Linux).
-/// Used as the parent for rolling log files and the PID file.
+/// Returns `~/.loom/acp` as log/PID directory.
 fn acp_log_dir() -> Option<PathBuf> {
-    cross_xdg::BaseDirs::with_prefix("loom-acp")
-        .ok()
-        .map(|d| d.state_home().to_path_buf())
+    Some(config::home::loom_home().join("acp"))
 }
 
-/// Path to the PID file (loom-acp.pid in XDG state dir).
+/// Path to the PID file (`~/.loom/acp/loom-acp.pid`).
 fn acp_pid_path() -> Option<PathBuf> {
     acp_log_dir().map(|d| d.join("loom-acp.pid"))
 }
