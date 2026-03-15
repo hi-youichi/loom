@@ -2,8 +2,8 @@
 //! Uses protocol format (type + payload) and optional envelope per protocol_spec.
 
 use loom::{
-    build_helve_config, build_react_run_context, run_agent_with_options, AnyStreamEvent, DupState,
-    Envelope, GotState, ReActState, ResolvedAgent, ToolCall, TotState,
+    build_helve_config, build_react_run_context, list_available_profiles, run_agent_with_options,
+    AnyStreamEvent, DupState, Envelope, GotState, ReActState, ResolvedAgent, ToolCall, TotState,
 };
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
@@ -30,6 +30,16 @@ fn print_agent_banner(resolved: &Option<ResolvedAgent>) {
         }
         None => eprintln!("agent: (none)"),
     }
+}
+
+/// Prints available agent names to stderr (use -P/--agent to switch).
+fn print_available_agents() {
+    let profiles = list_available_profiles();
+    if profiles.is_empty() {
+        return;
+    }
+    let names: Vec<&str> = profiles.iter().map(|p| p.name.as_str()).collect();
+    eprintln!("available agents: {} (use -P/--agent to switch)", names.join(", "));
 }
 
 /// Single line when a node is entered (unified across agents).
@@ -61,6 +71,7 @@ pub async fn run_agent_wrapper(
     let (helve, config, resolved_agent) = build_helve_config(opts);
     if !opts.output_json {
         print_agent_banner(&resolved_agent);
+        print_available_agents();
         if helve.role_setting.is_some() {
             eprintln!("instructions/role loaded; system prompt (including it) is in state.messages[0].");
         }
