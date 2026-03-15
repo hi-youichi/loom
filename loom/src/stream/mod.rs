@@ -319,6 +319,7 @@ where
         let mut forwarded = 0usize;
         while let Some(chunk) = chunk_rx.recv().await {
             forwarded += 1;
+            tracing::trace!(delta = %chunk.content, "stream message chunk");
             let event = StreamEvent::Messages {
                 chunk,
                 metadata: StreamMetadata {
