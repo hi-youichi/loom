@@ -495,6 +495,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 write_json_output(&out, args.file.as_deref(), args.pretty)?;
             }
         }
+        // Print session ID at end of non-interactive run
+        if let Some(ref session_id) = opts.thread_id {
+            eprintln!("Session ended: {}", session_id);
+        }
     }
     Ok(())
 }

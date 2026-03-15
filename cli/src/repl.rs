@@ -116,7 +116,6 @@ pub async fn run_repl_loop(
         }
     }
 
-    println!("Bye.");
     Ok(())
 }
 

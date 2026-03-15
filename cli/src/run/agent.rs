@@ -2,8 +2,8 @@
 //! Uses protocol format (type + payload) and optional envelope per protocol_spec.
 
 use loom::{
-    build_helve_config, build_react_run_context, run_agent_with_options, AnyStreamEvent, DupState, Envelope,
-    GotState, ReActState, ToolCall, TotState,
+    build_helve_config, build_react_run_context, run_agent_with_options, AnyStreamEvent, DupState,
+    Envelope, GotState, ReActState, ResolvedAgent, ToolCall, TotState,
 };
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
@@ -16,6 +16,21 @@ use crate::envelope::EnvelopeState;
 use loom::{RunCmd, RunOptions, StreamEvent};
 
 use super::RunError;
+
+/// Prints agent profile info to stderr at startup.
+fn print_agent_banner(resolved: &Option<ResolvedAgent>) {
+    match resolved {
+        Some(ra) => {
+            let desc = ra
+                .description
+                .as_deref()
+                .map(|d| format!(" — {}", d))
+                .unwrap_or_default();
+            eprintln!("agent: {} ({}){}", ra.name, ra.source, desc);
+        }
+        None => eprintln!("agent: (none)"),
+    }
+}
 
 /// Single line when a node is entered (unified across agents).
 fn log_node_enter(from: Option<&str>, node_id: &str) {
@@ -43,8 +58,9 @@ pub async fn run_agent_wrapper(
     cmd: &RunCmd,
     stream_out: Option<Arc<Mutex<dyn FnMut(Value) + Send>>>,
 ) -> RunAgentResult {
-    let (helve, config) = build_helve_config(opts);
+    let (helve, config, resolved_agent) = build_helve_config(opts);
     if !opts.output_json {
+        print_agent_banner(&resolved_agent);
         if helve.role_setting.is_some() {
             eprintln!("instructions/role loaded; system prompt (including it) is in state.messages[0].");
         }
