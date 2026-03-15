@@ -21,6 +21,14 @@ pub use profile::{
     ProfileError, ProfileSource, ProfileSummary,
 };
 
+/// Metadata about the agent profile that was resolved for a run.
+#[derive(Debug, Clone)]
+pub struct ResolvedAgent {
+    pub name: String,
+    pub description: Option<String>,
+    pub source: ProfileSource,
+}
+
 /// Default working folder when not set (current directory).
 pub const DEFAULT_WORKING_FOLDER: &str = ".";
 
@@ -107,8 +115,15 @@ fn resolve_role_setting(
 }
 
 /// Builds HelveConfig and ReactBuildConfig from RunOptions.
-pub fn build_helve_config(opts: &RunOptions) -> (HelveConfig, ReactBuildConfig) {
-    let profile = load_profile_from_options(opts);
+/// Returns an optional `ResolvedAgent` describing which agent profile was loaded.
+pub fn build_helve_config(opts: &RunOptions) -> (HelveConfig, ReactBuildConfig, Option<ResolvedAgent>) {
+    let loaded = load_profile_from_options(opts);
+    let resolved_agent = loaded.as_ref().map(|(p, source)| ResolvedAgent {
+        name: p.name.clone(),
+        description: p.description.clone(),
+        source: source.clone(),
+    });
+    let profile = loaded.map(|(p, _)| p);
     let mut effective_opts = opts.clone();
     if let Some(ref p) = profile {
         apply_profile_to_run_options(p, &mut effective_opts);
@@ -151,6 +166,9 @@ pub fn build_helve_config(opts: &RunOptions) -> (HelveConfig, ReactBuildConfig) 
             .unwrap_or_default();
         let mut registry = SkillRegistry::discover(&working_folder, &extra_dirs);
         if let Some(ref p) = profile {
+            if let Some(ref src) = p.source_dir {
+                registry.add_agent_skills(&src.join("skills"));
+            }
             if let Some(ref sc) = p.skills {
                 registry.apply_filters(sc.enabled.as_deref(), sc.disabled.as_deref());
             }
@@ -202,7 +220,7 @@ pub fn build_helve_config(opts: &RunOptions) -> (HelveConfig, ReactBuildConfig) 
         .as_ref()
         .and_then(|p| p.behavior.as_ref())
         .and_then(|b| b.max_sub_agent_depth);
-    (helve, config)
+    (helve, config, resolved_agent)
 }
 
 /// Builds a `ReactBuildConfig` for a sub-agent from a resolved profile and
@@ -289,6 +307,9 @@ pub fn build_config_from_profile(
         .map(|dirs| dirs.iter().map(PathBuf::from).collect())
         .unwrap_or_default();
     let mut registry = SkillRegistry::discover(&working_folder, &extra_dirs);
+    if let Some(ref src) = profile.source_dir {
+        registry.add_agent_skills(&src.join("skills"));
+    }
     if let Some(ref sc) = profile.skills {
         registry.apply_filters(sc.enabled.as_deref(), sc.disabled.as_deref());
     }
@@ -619,9 +640,12 @@ mod tests {
             agent: Some("dev".to_string()),
             ..default_opts()
         };
-        let (helve, config) = build_helve_config(&opts);
+        let (helve, config, resolved_agent) = build_helve_config(&opts);
         assert!(helve.role_setting.is_some());
         assert!(config.skill_registry.is_some());
+        let ra = resolved_agent.expect("should resolve dev agent");
+        assert_eq!(ra.name, "dev");
+        assert_eq!(ra.source, ProfileSource::BuiltIn);
 
         if let Some(d) = prev_dir {
             let _ = std::env::set_current_dir(d);

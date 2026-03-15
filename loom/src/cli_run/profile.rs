@@ -42,6 +42,9 @@ pub struct AgentProfile {
     pub extends: Option<String>,
     #[serde(default)]
     pub skills: Option<SkillsConfig>,
+    /// Directory containing this agent's profile (set at load time, not from YAML).
+    #[serde(skip)]
+    pub source_dir: Option<PathBuf>,
 }
 
 /// Skills configuration within an agent profile.
@@ -75,6 +78,12 @@ const AGENT_BUILDER_CONFIG_YAML: &str =
 /// Built-in explore agent: file search specialist for codebase navigation (loom/agents/explore/).
 const EXPLORE_AGENT_INSTRUCTIONS: &str = include_str!("../../agents/explore/instructions.md");
 const EXPLORE_AGENT_CONFIG_YAML: &str = include_str!("../../agents/explore/config.yaml");
+
+/// Built-in orchestrator agent: task decomposition and multi-agent delegation (loom/agents/orchestrator/).
+const ORCHESTRATOR_AGENT_INSTRUCTIONS: &str =
+    include_str!("../../agents/orchestrator/instructions.md");
+const ORCHESTRATOR_AGENT_CONFIG_YAML: &str =
+    include_str!("../../agents/orchestrator/config.yaml");
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct RoleConfig {
@@ -304,6 +313,8 @@ pub fn load_agent_profile(path: &Path) -> Result<AgentProfile, ProfileError> {
         profile = merge_profiles(base, profile);
     }
 
+    profile.source_dir = Some(parent.to_path_buf());
+
     Ok(profile)
 }
 
@@ -376,20 +387,39 @@ pub fn find_default_profile() -> Option<PathBuf> {
 }
 
 /// Load profile from RunOptions: --agent name → built-in agents (compile-time) or resolve_named_profile; else find_default_profile. On error returns None (fallback to no profile).
-pub fn load_profile_from_options(opts: &RunOptions) -> Option<AgentProfile> {
+/// Returns the loaded profile together with its source (BuiltIn / Project / User / Default).
+pub fn load_profile_from_options(opts: &RunOptions) -> Option<(AgentProfile, ProfileSource)> {
     if let Some(ref name) = opts.agent {
-        if let Some(profile) = load_builtin_profile(name) {
-            return Some(profile);
+        if let Some(mut profile) = load_builtin_profile(name) {
+            let project_dir = PathBuf::from(".loom/agents").join(name);
+            if project_dir.is_dir() {
+                profile.source_dir = Some(project_dir);
+            }
+            return Some((profile, ProfileSource::BuiltIn));
         }
         let path = resolve_named_profile(name)?;
-        return load_agent_profile(&path).ok();
+        let source = classify_profile_path(&path);
+        return load_agent_profile(&path).ok().map(|p| (p, source));
     }
     let path = find_default_profile()?;
-    load_agent_profile(&path).ok()
+    let source = classify_profile_path(&path);
+    load_agent_profile(&path).ok().map(|p| (p, source))
+}
+
+/// Classify a profile path as Project or User based on its location.
+fn classify_profile_path(path: &Path) -> ProfileSource {
+    let abs = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let user_agents = env_config::home::loom_home().join("agents");
+    if let Ok(user_abs) = user_agents.canonicalize() {
+        if abs.starts_with(&user_abs) {
+            return ProfileSource::User;
+        }
+    }
+    ProfileSource::Project
 }
 
 /// Built-in agent names (compile-time embedded).
-const BUILTIN_AGENT_NAMES: &[&str] = &["dev", "agent-builder", "explore"];
+const BUILTIN_AGENT_NAMES: &[&str] = &["dev", "agent-builder", "explore", "orchestrator"];
 
 /// Resolve an agent profile by name at runtime. Tries built-in agents first,
 /// then project-level `.loom/agents/<name>/`, then user-level `~/.loom/agents/<name>/`.
@@ -397,7 +427,11 @@ const BUILTIN_AGENT_NAMES: &[&str] = &["dev", "agent-builder", "explore"];
 /// This is the primary API for `InvokeAgentTool` to load a sub-agent profile
 /// without depending on `RunOptions`.
 pub fn resolve_profile(name: &str) -> Result<AgentProfile, ProfileError> {
-    if let Some(profile) = load_builtin_profile(name) {
+    if let Some(mut profile) = load_builtin_profile(name) {
+        let project_dir = PathBuf::from(".loom/agents").join(name);
+        if project_dir.is_dir() {
+            profile.source_dir = Some(project_dir);
+        }
         return Ok(profile);
     }
     let path = resolve_named_profile(name)
@@ -411,6 +445,16 @@ pub enum ProfileSource {
     BuiltIn,
     Project,
     User,
+}
+
+impl std::fmt::Display for ProfileSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProfileSource::BuiltIn => write!(f, "built-in"),
+            ProfileSource::Project => write!(f, "project"),
+            ProfileSource::User => write!(f, "user"),
+        }
+    }
 }
 
 /// Lightweight summary of a discovered agent profile.
@@ -491,6 +535,7 @@ fn load_builtin_profile(name: &str) -> Option<AgentProfile> {
         "dev" => (DEV_AGENT_CONFIG_YAML, DEV_AGENT_INSTRUCTIONS),
         "agent-builder" => (AGENT_BUILDER_CONFIG_YAML, AGENT_BUILDER_INSTRUCTIONS),
         "explore" => (EXPLORE_AGENT_CONFIG_YAML, EXPLORE_AGENT_INSTRUCTIONS),
+        "orchestrator" => (ORCHESTRATOR_AGENT_CONFIG_YAML, ORCHESTRATOR_AGENT_INSTRUCTIONS),
         _ => return None,
     };
     let mut profile: AgentProfile = serde_yaml::from_str(config_yaml).ok()?;
@@ -522,8 +567,9 @@ mod tests {
             model: None,
             mcp_config_path: None,
         };
-        let profile = load_profile_from_options(&opts).expect("built-in dev profile");
+        let (profile, source) = load_profile_from_options(&opts).expect("built-in dev profile");
         assert_eq!(profile.name, "dev");
+        assert_eq!(source, ProfileSource::BuiltIn);
         let role = profile.role.as_ref().unwrap();
         assert!(role.content.as_ref().unwrap().contains("Editing constraints"));
         assert!(role.content.as_ref().unwrap().contains("agent"));
@@ -545,8 +591,9 @@ mod tests {
             model: None,
             mcp_config_path: None,
         };
-        let profile = load_profile_from_options(&opts).expect("built-in agent-builder profile");
+        let (profile, source) = load_profile_from_options(&opts).expect("built-in agent-builder profile");
         assert_eq!(profile.name, "agent-builder");
+        assert_eq!(source, ProfileSource::BuiltIn);
         let role = profile.role.as_ref().unwrap();
         let content = role.content.as_ref().unwrap();
         assert!(content.contains("Loom Agent Builder"));

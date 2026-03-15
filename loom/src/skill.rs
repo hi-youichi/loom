@@ -1,5 +1,6 @@
-//! Skill discovery and loading: scan .loom/skills (and ~/.loom/skills), parse SKILL.md
-//! front matter, and provide registry for system prompt injection and the skill tool.
+//! Skill discovery and loading: scan .loom/skills, ~/.loom/skills, and per-agent skills
+//! directories. Parse SKILL.md front matter and provide registry for system prompt
+//! injection and the skill tool.
 
 use serde::Deserialize;
 use std::collections::HashSet;
@@ -42,6 +43,8 @@ pub enum SkillSource {
     Project,
     User,
     ProfileDir,
+    /// Skills bundled inside an agent's own directory (`.loom/agents/<name>/skills/`).
+    Agent,
 }
 
 /// Registry of discovered skills. Built by [`SkillRegistry::discover`].
@@ -184,6 +187,17 @@ impl SkillRegistry {
         }
 
         Self { skills }
+    }
+
+    /// Adds agent-scoped skills from the given directory. These are private to the agent
+    /// whose profile directory contains them. Same-name dedup still applies (first wins).
+    pub fn add_agent_skills(&mut self, dir: &Path) {
+        let mut seen: HashSet<String> = self.skills.iter().map(|e| e.metadata.name.clone()).collect();
+        for entry in scan_skills_dir(dir, SkillSource::Agent) {
+            if seen.insert(entry.metadata.name.clone()) {
+                self.skills.push(entry);
+            }
+        }
     }
 
     /// Applies enabled/disabled filters. If enabled is non-empty, only those names are kept;

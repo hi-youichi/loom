@@ -1,0 +1,38 @@
+name: orchestrator
+description: "Task orchestrator that decomposes complex goals into sub-tasks and delegates them to specialized agents."
+tools:
+  builtin:
+    enabled:
+      [
+        invoke_agent,
+        todo_write,
+        todo_read,
+        read,
+        grep,
+        glob,
+        ls,
+        bash,
+        batch,
+        skill,
+        web_fetcher,
+        websearch,
+        codesearch,
+      ]
+    disabled:
+      [
+        write_file,
+        edit_file,
+        apply_patch,
+        multiedit,
+        delete_file,
+        move_file,
+        create_dir,
+        lsp,
+        remember,
+        recall,
+        search_memories,
+        list_memories,
+        get_recent_messages,
+      ]
+behavior:
+  max_sub_agent_depth: 2

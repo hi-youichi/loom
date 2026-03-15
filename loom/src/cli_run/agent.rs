@@ -132,7 +132,7 @@ pub async fn run_agent(
     on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>>,
     llm_override: Option<Box<dyn LlmClient>>,
 ) -> Result<String, RunError> {
-    let (_helve, mut config) = build_helve_config(opts);
+    let (_helve, mut config, _resolved_agent) = build_helve_config(opts);
     let thread_id_log = config.thread_id.as_deref().unwrap_or("").to_string();
     let kind = match cmd {
         RunCmd::React => "react",
