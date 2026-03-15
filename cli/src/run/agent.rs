@@ -1,6 +1,7 @@
 //! Wraps loom::run_agent_with_options with stderr display callback.
 //! Uses protocol format (type + payload) and optional envelope per protocol_spec.
 
+use chrono::Local;
 use loom::{
     build_helve_config, build_react_run_context, list_available_profiles, run_agent_with_options,
     AnyStreamEvent, DupState, Envelope, GotState, ReActState, ResolvedAgent, ToolCall, TotState,
@@ -30,6 +31,11 @@ fn print_agent_banner(resolved: &Option<ResolvedAgent>) {
         }
         None => eprintln!("agent: (none)"),
     }
+}
+
+/// Prints current local time to stderr (when --timestamp is set, before each reply).
+pub fn print_reply_timestamp() {
+    eprintln!("{}", Local::now().format("%Y-%m-%d %H:%M:%S"));
 }
 
 /// Prints available agent names to stderr (use -P/--agent to switch).
@@ -150,17 +156,27 @@ pub async fn run_agent_wrapper(
     let state = Arc::new(Mutex::new(EventState {
         turn: 0,
         last_node: None,
+        reply_started: false,
     }));
 
     let state_clone = state.clone();
     let verbose = opts.verbose;
+    let output_timestamp = opts.output_timestamp;
     let on_event = Box::new(move |ev: AnyStreamEvent| {
         let mut s = state_clone.lock().unwrap();
         match &ev {
-            AnyStreamEvent::React(e) => on_event_react(e, &mut *s, display_max_len, verbose),
-            AnyStreamEvent::Dup(e) => on_event_dup(e, &mut *s, display_max_len, verbose),
-            AnyStreamEvent::Tot(e) => on_event_tot(e, &mut *s, display_max_len, verbose),
-            AnyStreamEvent::Got(e) => on_event_got(e, &mut *s, display_max_len, verbose),
+            AnyStreamEvent::React(e) => {
+                on_event_react(e, &mut *s, display_max_len, verbose, output_timestamp)
+            }
+            AnyStreamEvent::Dup(e) => {
+                on_event_dup(e, &mut *s, display_max_len, verbose, output_timestamp)
+            }
+            AnyStreamEvent::Tot(e) => {
+                on_event_tot(e, &mut *s, display_max_len, verbose, output_timestamp)
+            }
+            AnyStreamEvent::Got(e) => {
+                on_event_got(e, &mut *s, display_max_len, verbose, output_timestamp)
+            }
         }
     });
 
@@ -179,6 +195,7 @@ fn on_event_react(
     s: &mut EventState,
     display_max_len: usize,
     verbose: bool,
+    output_timestamp: bool,
 ) {
     match ev {
         StreamEvent::TaskStart { node_id } => {
@@ -186,6 +203,10 @@ fn on_event_react(
             s.last_node = Some(node_id.clone());
         }
         StreamEvent::Messages { chunk, .. } => {
+            if output_timestamp && !s.reply_started {
+                print_reply_timestamp();
+                s.reply_started = true;
+            }
             print!("{}", chunk.content);
             let _ = std::io::Write::flush(&mut std::io::stdout());
         }
@@ -230,6 +251,7 @@ fn on_event_dup(
     s: &mut EventState,
     display_max_len: usize,
     verbose: bool,
+    output_timestamp: bool,
 ) {
     match ev {
         StreamEvent::TaskStart { node_id } => {
@@ -237,6 +259,10 @@ fn on_event_dup(
             s.last_node = Some(node_id.clone());
         }
         StreamEvent::Messages { chunk, .. } => {
+            if output_timestamp && !s.reply_started {
+                print_reply_timestamp();
+                s.reply_started = true;
+            }
             print!("{}", chunk.content);
             let _ = std::io::Write::flush(&mut std::io::stdout());
         }
@@ -292,6 +318,7 @@ fn on_event_tot(
     s: &mut EventState,
     display_max_len: usize,
     verbose: bool,
+    output_timestamp: bool,
 ) {
     match ev {
         StreamEvent::TaskStart { node_id } => {
@@ -323,6 +350,10 @@ fn on_event_tot(
             }
         }
         StreamEvent::Messages { chunk, .. } => {
+            if output_timestamp && !s.reply_started {
+                print_reply_timestamp();
+                s.reply_started = true;
+            }
             print!("{}", chunk.content);
             let _ = std::io::Write::flush(&mut std::io::stdout());
         }
@@ -360,6 +391,8 @@ fn on_event_tot(
 struct EventState {
     turn: u32,
     last_node: Option<String>,
+    /// When output_timestamp is true, we print timestamp once before the first reply chunk.
+    reply_started: bool,
 }
 
 async fn print_loaded_tools(config: &loom::ReactBuildConfig) -> Result<(), RunError> {
@@ -381,6 +414,7 @@ fn on_event_got(
     s: &mut EventState,
     display_max_len: usize,
     verbose: bool,
+    output_timestamp: bool,
 ) {
     match ev {
         StreamEvent::TaskStart { node_id } => {
@@ -435,6 +469,10 @@ fn on_event_got(
             }
         }
         StreamEvent::Messages { chunk, .. } => {
+            if output_timestamp && !s.reply_started {
+                print_reply_timestamp();
+                s.reply_started = true;
+            }
             print!("{}", chunk.content);
             let _ = std::io::Write::flush(&mut std::io::stdout());
         }
@@ -532,6 +570,7 @@ mod tests {
         let mut s = EventState {
             turn: 0,
             last_node: None,
+            reply_started: false,
         };
         on_event_react(
             &StreamEvent::TaskStart {
@@ -540,6 +579,7 @@ mod tests {
             &mut s,
             100,
             true,
+            false,
         );
         assert_eq!(s.last_node.as_deref(), Some("think"));
 
@@ -551,6 +591,7 @@ mod tests {
             &mut s,
             100,
             true,
+            false,
         );
         assert_eq!(s.turn, 1);
     }
@@ -560,6 +601,7 @@ mod tests {
         let mut s = EventState {
             turn: 0,
             last_node: None,
+            reply_started: false,
         };
 
         let dup_state = DupState {
@@ -573,6 +615,7 @@ mod tests {
             &mut s,
             120,
             true,
+            false,
         );
         on_event_dup(
             &StreamEvent::Updates {
@@ -582,6 +625,7 @@ mod tests {
             &mut s,
             120,
             true,
+            false,
         );
         assert_eq!(s.turn, 1);
 
@@ -596,6 +640,7 @@ mod tests {
             &mut s,
             120,
             true,
+            false,
         );
         on_event_tot(
             &StreamEvent::TotExpand {
@@ -604,6 +649,7 @@ mod tests {
             &mut s,
             120,
             true,
+            false,
         );
         on_event_tot(
             &StreamEvent::Updates {
@@ -613,6 +659,7 @@ mod tests {
             &mut s,
             120,
             true,
+            false,
         );
 
         let got_state = GotState {
@@ -647,6 +694,7 @@ mod tests {
             &mut s,
             120,
             true,
+            false,
         );
         on_event_got(
             &StreamEvent::GotPlan {
@@ -657,6 +705,7 @@ mod tests {
             &mut s,
             120,
             true,
+            false,
         );
         on_event_got(
             &StreamEvent::Updates {
@@ -666,6 +715,7 @@ mod tests {
             &mut s,
             120,
             true,
+            false,
         );
         assert_eq!(s.last_node.as_deref(), Some("plan_graph"));
     }
@@ -685,6 +735,7 @@ mod tests {
         let mut s = EventState {
             turn: 0,
             last_node: None,
+            reply_started: false,
         };
         let react_with_tool = ReActState {
             tool_calls: vec![ToolCall {
@@ -701,6 +752,7 @@ mod tests {
             },
             &mut s,
             120,
+            false,
             false,
         );
         assert_eq!(s.turn, 0);
@@ -728,6 +780,7 @@ mod tests {
             &mut s,
             120,
             false,
+            false,
         );
         assert_eq!(s.turn, 1);
     }
@@ -737,6 +790,7 @@ mod tests {
         let mut s = EventState {
             turn: 0,
             last_node: None,
+            reply_started: false,
         };
 
         on_event_tot(
@@ -747,6 +801,7 @@ mod tests {
             &mut s,
             80,
             true,
+            false,
         );
         on_event_tot(
             &StreamEvent::TotBacktrack {
@@ -756,6 +811,7 @@ mod tests {
             &mut s,
             80,
             true,
+            false,
         );
         on_event_tot(
             &StreamEvent::Messages {
@@ -767,6 +823,7 @@ mod tests {
             &mut s,
             80,
             true,
+            false,
         );
 
         on_event_got(
@@ -776,6 +833,7 @@ mod tests {
             &mut s,
             80,
             true,
+            false,
         );
         on_event_got(
             &StreamEvent::GotNodeComplete {
@@ -785,6 +843,7 @@ mod tests {
             &mut s,
             80,
             true,
+            false,
         );
         on_event_got(
             &StreamEvent::GotNodeFailed {
@@ -794,6 +853,7 @@ mod tests {
             &mut s,
             80,
             true,
+            false,
         );
         on_event_got(
             &StreamEvent::GotExpand {
@@ -804,6 +864,7 @@ mod tests {
             &mut s,
             80,
             true,
+            false,
         );
         on_event_got(
             &StreamEvent::Messages {
@@ -815,6 +876,7 @@ mod tests {
             &mut s,
             80,
             true,
+            false,
         );
     }
 
@@ -842,6 +904,7 @@ mod tests {
             output_json,
             model: None,
             mcp_config_path: None,
+            output_timestamp: false,
         }
     }
 

@@ -71,5 +71,6 @@ pub fn run_options_from_issues_event(
         output_json: false,
         model,
         mcp_config_path: None,
+        output_timestamp: false,
     }
 }

@@ -89,6 +89,7 @@ pub(super) async fn prepare_run(
         output_json: true,
         model: None,
         mcp_config_path: None,
+        output_timestamp: false,
     };
     let cmd = match r.agent {
         AgentType::React => RunCmd::React,

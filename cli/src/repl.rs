@@ -109,6 +109,9 @@ pub async fn run_repl_loop(
                         None => println!("{}", s),
                     }
                 } else {
+                    if base_opts.output_timestamp {
+                        cli::run::print_reply_timestamp();
+                    }
                     println!("{}", truncate_reply(&reply, max_reply_len));
                 }
             }
@@ -213,6 +216,7 @@ mod tests {
             output_json: false,
             model: None,
             mcp_config_path: None,
+            output_timestamp: false,
         };
 
         let out = run_one_turn(&backend, &opts, &Command::Dup, None)

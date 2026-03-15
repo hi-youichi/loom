@@ -293,6 +293,7 @@ mod tests {
             output_json: true,
             model: None,
             mcp_config_path: None,
+            output_timestamp: false,
         };
         let (result, state, _dropped_events, _dropped_appends) = run_agent_task(
             "test-session".to_string(),
@@ -327,6 +328,7 @@ mod tests {
             output_json: true,
             model: None,
             mcp_config_path: None,
+            output_timestamp: false,
         };
         let (result, state, _dropped_events, _dropped_appends) = run_agent_task(
             "session-2".to_string(),

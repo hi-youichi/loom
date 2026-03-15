@@ -66,6 +66,10 @@ struct Args {
     #[arg(long)]
     pretty: bool,
 
+    /// Print a timestamp to stderr before each reply (local time, e.g. 2025-03-15 10:30:00)
+    #[arg(long)]
+    timestamp: bool,
+
     /// Path to MCP config JSON (overrides LOOM_MCP_CONFIG_PATH and default .loom/mcp.json discovery)
     #[arg(long, value_name = "PATH")]
     mcp_config: Option<PathBuf>,
@@ -311,6 +315,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             output_json: args.json,
             model: None,
             mcp_config_path: args.mcp_config.clone(),
+            output_timestamp: false,
         };
         match &ta.sub {
             ToolCommand::List => {
@@ -362,6 +367,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         output_json: args.json,
         model: None,
         mcp_config_path: args.mcp_config,
+        output_timestamp: args.timestamp,
     };
 
     let cmd = args.cmd.unwrap_or(Command::React);
@@ -402,6 +408,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 std::process::exit(1);
                             }
                         } else {
+                            if opts.output_timestamp {
+                                cli::run::print_reply_timestamp();
+                            }
                             let out = if reply_len == 0 {
                                 reply
                             } else {
@@ -473,6 +482,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     write_json_line_append(&out, args.file.as_deref(), args.pretty)?;
                 } else {
+                    if opts.output_timestamp {
+                        cli::run::print_reply_timestamp();
+                    }
                     let out = if reply_len == 0 {
                         reply
                     } else {

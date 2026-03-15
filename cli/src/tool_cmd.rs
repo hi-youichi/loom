@@ -267,6 +267,7 @@ mod tests {
             output_json: true,
             model: None,
             mcp_config_path: None,
+            output_timestamp: false,
         }
     }
 

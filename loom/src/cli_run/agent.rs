@@ -39,6 +39,8 @@ pub struct RunOptions {
     pub mcp_config_path: Option<PathBuf>,
     /// Thread ID for checkpointer (conversation / run identity).
     pub thread_id: Option<String>,
+    /// When true, print a timestamp line to stderr before each reply output (CLI --timestamp).
+    pub output_timestamp: bool,
 }
 
 /// Error type for run operations.

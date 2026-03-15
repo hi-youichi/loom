@@ -26,6 +26,7 @@ pub(crate) async fn handle_tools_list(
         output_json: false,
         model: None,
         mcp_config_path: None,
+        output_timestamp: false,
     };
     let (_helve, config, _resolved_agent) = build_helve_config(&opts);
     match build_react_run_context(&config).await {
@@ -61,6 +62,7 @@ pub(crate) async fn handle_tool_show(
         output_json: false,
         model: None,
         mcp_config_path: None,
+        output_timestamp: false,
     };
     let (_helve, config, _resolved_agent) = build_helve_config(&opts);
     match build_react_run_context(&config).await {
