@@ -1,5 +1,5 @@
 # Tool: todo_write
-# Writes the full todo list to XDG state home (e.g. ~/.local/state/loom/todos.json).
+# Writes the full todo list to ~/.loom/todos.json.
 name: todo_write
 description: |
   Use this tool to create and manage a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.

@@ -163,7 +163,7 @@ mod tests {
     async fn todo_write_call_valid_todos_writes_and_returns() {
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_STATE_HOME", dir.path());
+        std::env::set_var("LOOM_HOME", dir.path());
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
         let args = serde_json::json!({
             "todos": [
@@ -186,7 +186,7 @@ mod tests {
     async fn todo_write_call_missing_todos_returns_invalid_input() {
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_STATE_HOME", dir.path());
+        std::env::set_var("LOOM_HOME", dir.path());
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
         let result = tool.call(serde_json::json!({}), None).await;
         let err = result.unwrap_err();
@@ -199,7 +199,7 @@ mod tests {
     async fn todo_write_call_todos_not_array_returns_invalid_input() {
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_STATE_HOME", dir.path());
+        std::env::set_var("LOOM_HOME", dir.path());
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
         let result = tool
             .call(serde_json::json!({ "todos": "not array" }), None)
@@ -213,7 +213,7 @@ mod tests {
     async fn todo_write_call_item_missing_id_returns_invalid_input() {
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_STATE_HOME", dir.path());
+        std::env::set_var("LOOM_HOME", dir.path());
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
         let result = tool
             .call(
@@ -231,7 +231,7 @@ mod tests {
     async fn todo_write_call_item_missing_content_returns_invalid_input() {
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_STATE_HOME", dir.path());
+        std::env::set_var("LOOM_HOME", dir.path());
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
         let result = tool
             .call(
@@ -249,7 +249,7 @@ mod tests {
     async fn todo_write_call_item_not_object_returns_invalid_input() {
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_STATE_HOME", dir.path());
+        std::env::set_var("LOOM_HOME", dir.path());
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
         let result = tool
             .call(serde_json::json!({ "todos": ["string item"] }), None)
@@ -263,7 +263,7 @@ mod tests {
     async fn todo_write_call_default_status_and_priority() {
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_STATE_HOME", dir.path());
+        std::env::set_var("LOOM_HOME", dir.path());
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
         let args = serde_json::json!({
             "todos": [{ "id": "1", "content": "Only required" }]

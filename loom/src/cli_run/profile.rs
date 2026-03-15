@@ -323,20 +323,18 @@ pub fn resolve_named_profile(name: &str) -> Option<PathBuf> {
             return Some(p.clone());
         }
     }
-    if let Ok(home) = std::env::var("HOME") {
-        let user_agents = PathBuf::from(home).join(".loom/agents");
-        let user_tries = [
-            user_agents.join(name).join("config.yaml"),
-            user_agents.join(name).join("config.yml"),
-            user_agents.join(name).join("config.md"),
-            user_agents.join(format!("{}.yaml", name)),
-            user_agents.join(format!("{}.yml", name)),
-            user_agents.join(format!("{}.md", name)),
-        ];
-        for p in &user_tries {
-            if p.exists() {
-                return Some(p.clone());
-            }
+    let user_agents = env_config::home::loom_home().join("agents");
+    let user_tries = [
+        user_agents.join(name).join("config.yaml"),
+        user_agents.join(name).join("config.yml"),
+        user_agents.join(name).join("config.md"),
+        user_agents.join(format!("{}.yaml", name)),
+        user_agents.join(format!("{}.yml", name)),
+        user_agents.join(format!("{}.md", name)),
+    ];
+    for p in &user_tries {
+        if p.exists() {
+            return Some(p.clone());
         }
     }
     None
@@ -360,20 +358,18 @@ pub fn find_default_profile() -> Option<PathBuf> {
             return Some(p.clone());
         }
     }
-    if let Ok(home) = std::env::var("HOME") {
-        let user_agents = PathBuf::from(home).join(".loom/agents");
-        let user_candidates = [
-            user_agents.join("default").join("config.yaml"),
-            user_agents.join("default").join("config.yml"),
-            user_agents.join("default").join("config.md"),
-            user_agents.join("default.yaml"),
-            user_agents.join("default.yml"),
-            user_agents.join("default.md"),
-        ];
-        for p in &user_candidates {
-            if p.exists() {
-                return Some(p.clone());
-            }
+    let user_agents = env_config::home::loom_home().join("agents");
+    let user_candidates = [
+        user_agents.join("default").join("config.yaml"),
+        user_agents.join("default").join("config.yml"),
+        user_agents.join("default").join("config.md"),
+        user_agents.join("default.yaml"),
+        user_agents.join("default.yml"),
+        user_agents.join("default.md"),
+    ];
+    for p in &user_candidates {
+        if p.exists() {
+            return Some(p.clone());
         }
     }
     None
@@ -439,16 +435,10 @@ pub fn list_available_profiles() -> Vec<ProfileSummary> {
         }
     }
 
-    let scan_dirs: Vec<(PathBuf, ProfileSource)> = {
-        let mut dirs = vec![(PathBuf::from(".loom/agents"), ProfileSource::Project)];
-        if let Ok(home) = std::env::var("HOME") {
-            dirs.push((
-                PathBuf::from(home).join(".loom/agents"),
-                ProfileSource::User,
-            ));
-        }
-        dirs
-    };
+    let scan_dirs: Vec<(PathBuf, ProfileSource)> = vec![
+        (PathBuf::from(".loom/agents"), ProfileSource::Project),
+        (env_config::home::loom_home().join("agents"), ProfileSource::User),
+    ];
 
     for (dir, source) in &scan_dirs {
         if let Ok(entries) = std::fs::read_dir(dir) {
@@ -767,5 +757,329 @@ tools:
                 assert_eq!(p.source, ProfileSource::BuiltIn);
             }
         }
+    }
+
+    #[test]
+    fn builtin_explore_agent_loaded() {
+        let profile = load_builtin_profile("explore").unwrap();
+        assert_eq!(profile.name, "explore");
+        assert!(profile.role.as_ref().unwrap().content.is_some());
+    }
+
+    #[test]
+    fn resolve_profile_explore() {
+        let profile = resolve_profile("explore").expect("built-in explore profile");
+        assert_eq!(profile.name, "explore");
+    }
+
+    #[test]
+    fn load_profile_from_options_no_agent_no_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let prev_dir = std::env::current_dir().ok();
+        let _ = std::env::set_current_dir(dir.path());
+        let prev_loom = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", dir.path());
+
+        let opts = RunOptions {
+            message: String::new(),
+            working_folder: None,
+            session_id: None,
+            thread_id: None,
+            role_file: None,
+            agent: None,
+            verbose: false,
+            got_adaptive: false,
+            display_max_len: 2000,
+            output_json: false,
+            model: None,
+            mcp_config_path: None,
+        };
+        let result = load_profile_from_options(&opts);
+
+        if let Some(d) = prev_dir {
+            let _ = std::env::set_current_dir(d);
+        }
+        match prev_loom {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn load_profile_from_options_unknown_agent() {
+        let prev_loom = std::env::var("LOOM_HOME").ok();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("LOOM_HOME", dir.path());
+
+        let opts = RunOptions {
+            message: String::new(),
+            working_folder: None,
+            session_id: None,
+            thread_id: None,
+            role_file: None,
+            agent: Some("nonexistent-agent-xyz".to_string()),
+            verbose: false,
+            got_adaptive: false,
+            display_max_len: 2000,
+            output_json: false,
+            model: None,
+            mcp_config_path: None,
+        };
+        let result = load_profile_from_options(&opts);
+        match prev_loom {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn merge_profiles_tools_none_none() {
+        let base = AgentProfile::default();
+        let over = AgentProfile::default();
+        let merged = merge_profiles(base, over);
+        assert!(merged.tools.is_none());
+    }
+
+    #[test]
+    fn merge_profiles_override_skills() {
+        let base = AgentProfile {
+            skills: Some(SkillsConfig {
+                dirs: Some(vec!["/base".to_string()]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let over = AgentProfile {
+            name: "over".to_string(),
+            skills: Some(SkillsConfig {
+                dirs: Some(vec!["/over".to_string()]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let merged = merge_profiles(base, over);
+        let dirs = merged.skills.unwrap().dirs.unwrap();
+        assert_eq!(dirs, vec!["/over".to_string()]);
+    }
+
+    #[test]
+    fn merge_tools_config_base_only_builtin() {
+        let base = ToolsConfig {
+            builtin: Some(BuiltinToolsConfig {
+                enabled: Some(vec!["bash".to_string()]),
+                disabled: None,
+            }),
+            mcp: None,
+        };
+        let over = ToolsConfig { builtin: None, mcp: None };
+        let merged = merge_tools_config(base, over);
+        assert_eq!(merged.builtin.unwrap().enabled, Some(vec!["bash".to_string()]));
+    }
+
+    #[test]
+    fn merge_tools_config_over_only_builtin() {
+        let base = ToolsConfig { builtin: None, mcp: None };
+        let over = ToolsConfig {
+            builtin: Some(BuiltinToolsConfig {
+                enabled: Some(vec!["read".to_string()]),
+                disabled: Some(vec!["bash".to_string()]),
+            }),
+            mcp: None,
+        };
+        let merged = merge_tools_config(base, over);
+        let b = merged.builtin.unwrap();
+        assert_eq!(b.enabled, Some(vec!["read".to_string()]));
+        assert_eq!(b.disabled, Some(vec!["bash".to_string()]));
+    }
+
+    #[test]
+    fn merge_disabled_lists_both_none() {
+        assert!(merge_disabled_lists(None, None).is_none());
+    }
+
+    #[test]
+    fn merge_disabled_lists_deduplicates() {
+        let result = merge_disabled_lists(
+            Some(vec!["a".to_string(), "b".to_string()]),
+            Some(vec!["b".to_string(), "c".to_string()]),
+        ).unwrap();
+        assert_eq!(result, vec!["a".to_string(), "b".to_string(), "c".to_string()]);
+    }
+
+    #[test]
+    fn resolve_extends_path_nonexistent() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = resolve_extends_path(dir.path(), "nonexistent");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn resolve_extends_path_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("base.yaml"), "name: base").unwrap();
+        let result = resolve_extends_path(dir.path(), "base");
+        assert!(result.is_some());
+        assert!(result.unwrap().ends_with("base.yaml"));
+    }
+
+    #[test]
+    fn resolve_extends_path_yml() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("base.yml"), "name: base").unwrap();
+        let result = resolve_extends_path(dir.path(), "base");
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn resolve_extends_path_subdir_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("parent");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("config.yaml"), "name: parent").unwrap();
+        let result = resolve_extends_path(dir.path(), "parent");
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn load_agent_profile_with_role_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("role.md"), "You are a test agent.").unwrap();
+        std::fs::write(
+            dir.path().join("config.yaml"),
+            "name: test\nrole:\n  file: role.md\n",
+        )
+        .unwrap();
+        let profile = load_agent_profile(&dir.path().join("config.yaml")).unwrap();
+        assert_eq!(profile.name, "test");
+        assert_eq!(
+            profile.role.as_ref().unwrap().content.as_deref(),
+            Some("You are a test agent.")
+        );
+    }
+
+    #[test]
+    fn load_agent_profile_read_error() {
+        let result = load_agent_profile(Path::new("/nonexistent/config.yaml"));
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), ProfileError::Read(_, _)));
+    }
+
+    #[test]
+    fn load_agent_profile_invalid_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("bad.yaml"), "name: [ unclosed").unwrap();
+        let result = load_agent_profile(&dir.path().join("bad.yaml"));
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), ProfileError::Parse(_, _)));
+    }
+
+    #[test]
+    fn profile_error_display() {
+        let e = ProfileError::NotFound("test".to_string());
+        assert!(e.to_string().contains("test"));
+        assert!(e.to_string().contains("not found"));
+    }
+
+    #[test]
+    fn profile_source_debug() {
+        let s = format!("{:?}", ProfileSource::BuiltIn);
+        assert!(s.contains("BuiltIn"));
+    }
+
+    #[test]
+    fn profile_summary_debug() {
+        let s = ProfileSummary {
+            name: "test".to_string(),
+            description: Some("desc".to_string()),
+            source: ProfileSource::Project,
+        };
+        let d = format!("{:?}", s);
+        assert!(d.contains("test"));
+    }
+
+    #[test]
+    fn deserialize_full_profile() {
+        let yaml = r#"
+name: full
+description: "Full profile"
+version: "1.0"
+role:
+  content: "You are helpful"
+model:
+  name: gpt-4
+  temperature: 0.7
+  max_tokens: 4096
+behavior:
+  approval_policy: auto
+  max_iterations: 10
+  timeout: 300
+  max_sub_agent_depth: 3
+environment:
+  working_folder: /tmp
+  thread_id: t1
+  user_id: u1
+skills:
+  dirs:
+    - /extra/skills
+  enabled:
+    - code-review
+  disabled:
+    - debug
+  preload:
+    - code-review
+tools:
+  builtin:
+    enabled: [bash, read]
+    disabled: [websearch]
+  mcp:
+    config: ./mcp.json
+"#;
+        let p: AgentProfile = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(p.name, "full");
+        assert_eq!(p.version.as_deref(), Some("1.0"));
+        assert!(p.model.as_ref().unwrap().temperature.is_some());
+        assert!(p.behavior.as_ref().unwrap().max_sub_agent_depth.is_some());
+        assert!(p.environment.as_ref().unwrap().working_folder.is_some());
+        assert!(p.skills.as_ref().unwrap().preload.is_some());
+    }
+
+    #[test]
+    fn resolve_named_profile_user_level() {
+        let loom_home = tempfile::tempdir().unwrap();
+        let agents_dir = loom_home.path().join("agents");
+        let agent_dir = agents_dir.join("custom-agent");
+        std::fs::create_dir_all(&agent_dir).unwrap();
+        std::fs::write(
+            agent_dir.join("config.yaml"),
+            "name: custom-agent\ndescription: Custom\n",
+        )
+        .unwrap();
+
+        let prev_loom = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", loom_home.path());
+
+        let prev_dir = std::env::current_dir().ok();
+        let empty = tempfile::tempdir().unwrap();
+        let _ = std::env::set_current_dir(empty.path());
+
+        let result = resolve_named_profile("custom-agent");
+
+        if let Some(d) = prev_dir {
+            let _ = std::env::set_current_dir(d);
+        }
+        match prev_loom {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn default_true_returns_true() {
+        assert!(default_true());
     }
 }

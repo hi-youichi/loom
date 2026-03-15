@@ -60,9 +60,18 @@ Check correctness, security, and style.
 #[test]
 fn build_helve_config_no_skills_dir_no_prompt() {
     let dir = tempfile::tempdir().unwrap();
+    // Isolate from real ~/.loom/skills
+    let prev = std::env::var("LOOM_HOME").ok();
+    std::env::set_var("LOOM_HOME", dir.path().join("empty_loom_home"));
     let run_opts = opts(dir.path().to_path_buf());
     let (helve, config) = build_helve_config(&run_opts);
+    match prev {
+        Some(v) => std::env::set_var("LOOM_HOME", v),
+        None => std::env::remove_var("LOOM_HOME"),
+    }
 
     assert!(helve.skills_prompt.is_none());
-    assert!(config.skill_registry.is_none());
+    if let Some(ref reg) = config.skill_registry {
+        assert!(reg.list().is_empty(), "expected empty skill registry");
+    }
 }

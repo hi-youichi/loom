@@ -106,7 +106,7 @@ mod tests {
     async fn todo_read_call_when_file_missing_returns_empty_list() {
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_STATE_HOME", dir.path());
+        std::env::set_var("LOOM_HOME", dir.path());
         let tool = TodoReadTool::new(Arc::new(dir.path().to_path_buf()));
         let out = tool.call(serde_json::json!({}), None).await.unwrap();
         assert!(out.text.starts_with("0 todos"));
@@ -118,7 +118,7 @@ mod tests {
     async fn todo_read_call_when_file_exists_returns_parsed_todos() {
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_STATE_HOME", dir.path());
+        std::env::set_var("LOOM_HOME", dir.path());
         let path = crate::tools::todo::todo_file_path().unwrap();
         if let Some(p) = path.parent() {
             std::fs::create_dir_all(p).unwrap();
@@ -141,7 +141,7 @@ mod tests {
     async fn todo_read_call_when_invalid_json_returns_empty_list() {
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("XDG_STATE_HOME", dir.path());
+        std::env::set_var("LOOM_HOME", dir.path());
         let path = crate::tools::todo::todo_file_path().unwrap();
         if let Some(p) = path.parent() {
             std::fs::create_dir_all(p).unwrap();

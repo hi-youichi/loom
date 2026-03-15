@@ -2,17 +2,12 @@
 
 use std::path::{Path, PathBuf};
 
-/// XDG app name for default memory db path (e.g. `$XDG_DATA_HOME/loom/memory.db`).
-const XDG_APP_NAME: &str = "loom";
 const MEMORY_DB_FILENAME: &str = "memory.db";
 
-/// Returns the default memory DB path under XDG data home (e.g. `$XDG_DATA_HOME/loom/memory.db`).
-/// Creates the parent directory if missing. Falls back to `memory.db` (cwd-relative) if XDG base dirs are unavailable.
+/// Returns the default memory DB path (`~/.loom/memory.db`).
+/// Creates the parent directory if missing. Falls back to `memory.db` (cwd-relative) if home is unavailable.
 pub(crate) fn default_memory_db_path() -> PathBuf {
-    let path = match cross_xdg::BaseDirs::new() {
-        Ok(base) => base.data_home().join(XDG_APP_NAME).join(MEMORY_DB_FILENAME),
-        Err(_) => PathBuf::from(MEMORY_DB_FILENAME),
-    };
+    let path = env_config::home::loom_home().join(MEMORY_DB_FILENAME);
     if let Some(parent) = path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
             tracing::warn!("Failed to create memory db directory: {}", e);
@@ -46,4 +41,80 @@ pub(crate) fn open_sqlite_with_wal(path: &Path) -> Result<rusqlite::Connection, 
     conn.execute_batch("PRAGMA journal_mode=WAL;")
         .map_err(|e| open_error_message(path, &e))?;
     Ok(conn)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn default_memory_db_path_uses_loom_home() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", dir.path());
+        let path = default_memory_db_path();
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+        assert_eq!(path, dir.path().join("memory.db"));
+    }
+
+    #[test]
+    fn default_memory_db_path_creates_parent_dir() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let nested = dir.path().join("sub").join("dir");
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", &nested);
+        let path = default_memory_db_path();
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+        assert!(nested.exists());
+        assert_eq!(path, nested.join("memory.db"));
+    }
+
+    #[test]
+    fn open_error_message_absolute_path() {
+        let msg = open_error_message(Path::new("/abs/path/db.sqlite"), &"some error");
+        assert!(msg.contains("/abs/path/db.sqlite"));
+        assert!(msg.contains("some error"));
+        assert!(msg.contains("resolved="));
+    }
+
+    #[test]
+    fn open_error_message_relative_path() {
+        let msg = open_error_message(Path::new("relative/db.sqlite"), &"oops");
+        assert!(msg.contains("relative/db.sqlite"));
+        assert!(msg.contains("oops"));
+    }
+
+    #[test]
+    fn open_sqlite_with_wal_creates_and_opens() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db");
+        let conn = open_sqlite_with_wal(&db_path).unwrap();
+        conn.execute_batch("CREATE TABLE t (id INTEGER PRIMARY KEY);")
+            .unwrap();
+        assert!(db_path.exists());
+    }
+
+    #[test]
+    fn open_sqlite_with_wal_invalid_path_returns_error() {
+        let result = open_sqlite_with_wal(Path::new("/nonexistent/dir/db.sqlite"));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("/nonexistent/dir/db.sqlite"));
+    }
+
+    #[test]
+    fn memory_db_filename_constant() {
+        assert_eq!(MEMORY_DB_FILENAME, "memory.db");
+    }
 }

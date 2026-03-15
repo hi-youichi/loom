@@ -1,5 +1,5 @@
 # Tool: todo_read
-# Reads the todo list from XDG state home (e.g. ~/.local/state/loom/todos.json).
+# Reads the todo list from ~/.loom/todos.json.
 name: todo_read
 description: |
   Use this tool to read the current to-do list for the session. This tool should be used proactively and frequently to ensure that you are aware of

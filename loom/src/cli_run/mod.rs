@@ -334,3 +334,307 @@ fn apply_profile_to_run_options(profile: &AgentProfile, opts: &mut RunOptions) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli_run::profile::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn default_opts() -> RunOptions {
+        RunOptions {
+            message: String::new(),
+            working_folder: None,
+            session_id: None,
+            thread_id: None,
+            role_file: None,
+            agent: None,
+            verbose: false,
+            got_adaptive: false,
+            display_max_len: 2000,
+            output_json: false,
+            model: None,
+            mcp_config_path: None,
+        }
+    }
+
+    #[test]
+    fn load_agents_md_in_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let prev = std::env::current_dir().ok();
+        let _ = std::env::set_current_dir(dir.path());
+        let result = load_agents_md(None);
+        if let Some(d) = prev {
+            let _ = std::env::set_current_dir(d);
+        }
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn load_agents_md_reads_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("AGENTS.md"), "# Agent rules").unwrap();
+        let prev = std::env::current_dir().ok();
+        let _ = std::env::set_current_dir(dir.path());
+        let result = load_agents_md(None);
+        if let Some(d) = prev {
+            let _ = std::env::set_current_dir(d);
+        }
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("Agent rules"));
+    }
+
+    #[test]
+    fn load_agents_md_with_working_folder() {
+        let cwd = tempfile::tempdir().unwrap();
+        let work = tempfile::tempdir().unwrap();
+        std::fs::write(work.path().join("AGENTS.md"), "# Work agents").unwrap();
+        let prev = std::env::current_dir().ok();
+        let _ = std::env::set_current_dir(cwd.path());
+        let wf = work.path().to_path_buf();
+        let result = load_agents_md(Some(&wf));
+        if let Some(d) = prev {
+            let _ = std::env::set_current_dir(d);
+        }
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("Work agents"));
+    }
+
+    #[test]
+    fn load_soul_md_in_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let prev = std::env::current_dir().ok();
+        let _ = std::env::set_current_dir(dir.path());
+        let result = load_soul_md(None);
+        if let Some(d) = prev {
+            let _ = std::env::set_current_dir(d);
+        }
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn resolve_role_setting_empty_profile_role_falls_through() {
+        let dir = tempfile::tempdir().unwrap();
+        let opts = default_opts();
+        let result = resolve_role_setting(&opts, &dir.path().to_path_buf(), Some("  ".to_string()));
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn resolve_role_setting_profile_role_wins() {
+        let dir = tempfile::tempdir().unwrap();
+        let opts = default_opts();
+        let result = resolve_role_setting(&opts, &dir.path().to_path_buf(), Some("Profile role".to_string()));
+        assert_eq!(result.as_deref(), Some("Profile role"));
+    }
+
+    #[test]
+    fn resolve_role_setting_role_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let role_file = dir.path().join("role.md");
+        std::fs::write(&role_file, "Custom role").unwrap();
+        let mut opts = default_opts();
+        opts.role_file = Some(role_file);
+        let result = resolve_role_setting(&opts, &dir.path().to_path_buf(), None);
+        assert_eq!(result.as_deref(), Some("Custom role"));
+    }
+
+    #[test]
+    fn resolve_role_setting_fallback_to_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let prev = std::env::current_dir().ok();
+        let _ = std::env::set_current_dir(dir.path());
+        let opts = default_opts();
+        let result = resolve_role_setting(&opts, &dir.path().to_path_buf(), None);
+        if let Some(d) = prev {
+            let _ = std::env::set_current_dir(d);
+        }
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn apply_profile_sets_model() {
+        let profile = AgentProfile {
+            model: Some(ModelConfig {
+                name: Some("gpt-5".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut opts = default_opts();
+        apply_profile_to_run_options(&profile, &mut opts);
+        assert_eq!(opts.model.as_deref(), Some("gpt-5"));
+    }
+
+    #[test]
+    fn apply_profile_does_not_override_existing_model() {
+        let profile = AgentProfile {
+            model: Some(ModelConfig {
+                name: Some("gpt-5".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut opts = default_opts();
+        opts.model = Some("gpt-4".to_string());
+        apply_profile_to_run_options(&profile, &mut opts);
+        assert_eq!(opts.model.as_deref(), Some("gpt-4"));
+    }
+
+    #[test]
+    fn apply_profile_sets_mcp_config() {
+        let profile = AgentProfile {
+            tools: Some(ToolsConfig {
+                mcp: Some(McpConfig {
+                    config: Some(PathBuf::from("./mcp.json")),
+                    servers: None,
+                }),
+                builtin: None,
+            }),
+            ..Default::default()
+        };
+        let mut opts = default_opts();
+        apply_profile_to_run_options(&profile, &mut opts);
+        assert_eq!(opts.mcp_config_path, Some(PathBuf::from("./mcp.json")));
+    }
+
+    #[test]
+    fn apply_profile_sets_environment() {
+        let profile = AgentProfile {
+            environment: Some(EnvironmentConfig {
+                working_folder: Some(PathBuf::from("/custom/dir")),
+                thread_id: Some("t-123".to_string()),
+                user_id: None,
+            }),
+            ..Default::default()
+        };
+        let mut opts = default_opts();
+        apply_profile_to_run_options(&profile, &mut opts);
+        assert_eq!(opts.working_folder, Some(PathBuf::from("/custom/dir")));
+        assert_eq!(opts.thread_id.as_deref(), Some("t-123"));
+    }
+
+    fn parent_config() -> ReactBuildConfig {
+        let mut c = ReactBuildConfig::from_env();
+        c.model = Some("parent-model".to_string());
+        c
+    }
+
+    #[test]
+    fn build_config_from_profile_minimal() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let loom_home = tempfile::tempdir().unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", loom_home.path());
+
+        let profile = AgentProfile::default();
+        let parent = parent_config();
+        let config = build_config_from_profile(&profile, &parent, None);
+        assert_eq!(config.model.as_deref(), Some("parent-model"));
+
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+    }
+
+    #[test]
+    fn build_config_from_profile_overrides_model() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let loom_home = tempfile::tempdir().unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", loom_home.path());
+
+        let profile = AgentProfile {
+            model: Some(ModelConfig {
+                name: Some("child-model".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let config = build_config_from_profile(&profile, &parent_config(), None);
+        assert_eq!(config.model.as_deref(), Some("child-model"));
+
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+    }
+
+    #[test]
+    fn build_config_from_profile_working_folder_override() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let loom_home = tempfile::tempdir().unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", loom_home.path());
+
+        let profile = AgentProfile::default();
+        let wf = tempfile::tempdir().unwrap();
+        let config = build_config_from_profile(&profile, &parent_config(), Some(wf.path()));
+        assert_eq!(config.working_folder, Some(wf.path().to_path_buf()));
+
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+    }
+
+    #[test]
+    fn build_config_from_profile_with_role() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let loom_home = tempfile::tempdir().unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", loom_home.path());
+
+        let profile = AgentProfile {
+            role: Some(RoleConfig {
+                file: None,
+                content: Some("You are a sub-agent.".to_string()),
+            }),
+            ..Default::default()
+        };
+        let config = build_config_from_profile(&profile, &parent_config(), None);
+        assert!(config.system_prompt.is_some());
+        assert!(config.system_prompt.unwrap().contains("sub-agent"));
+
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+    }
+
+    #[test]
+    fn build_helve_config_no_skills_dir_no_prompt() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let prev_dir = std::env::current_dir().ok();
+        let _ = std::env::set_current_dir(dir.path());
+        let prev_loom = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", dir.path());
+
+        let opts = RunOptions {
+            message: "hello".to_string(),
+            agent: Some("dev".to_string()),
+            ..default_opts()
+        };
+        let (helve, config) = build_helve_config(&opts);
+        assert!(helve.role_setting.is_some());
+        assert!(config.skill_registry.is_some());
+
+        if let Some(d) = prev_dir {
+            let _ = std::env::set_current_dir(d);
+        }
+        match prev_loom {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+    }
+
+    #[test]
+    fn constants_match() {
+        assert_eq!(DEFAULT_WORKING_FOLDER, ".");
+        assert_eq!(AGENTS_MD_FILE, "AGENTS.md");
+    }
+}

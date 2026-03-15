@@ -1,10 +1,10 @@
 //! BDD-style tests for todo_write and todo_read tools.
 //!
-//! Todo storage uses XDG state home; tests set XDG_STATE_HOME to a temp dir so the real home is not used.
+//! Todo storage uses ~/.loom; tests set LOOM_HOME to a temp dir so the real home is not used.
 //! Scenarios: todo_write then todo_read returns same list; todo_read when file missing returns empty;
 //! todo_write with invalid payload returns InvalidInput.
 //!
-//! Tests that set XDG_STATE_HOME are serialized with a lock to avoid env var races when tests run in parallel.
+//! Tests that set LOOM_HOME are serialized with a lock to avoid env var races when tests run in parallel.
 
 mod init_logging;
 
@@ -13,18 +13,18 @@ use loom::tools::{TOOL_TODO_READ, TOOL_TODO_WRITE};
 use serde_json::json;
 use std::sync::Mutex;
 
-/// Ensures only one test mutates XDG_STATE_HOME at a time so temp dirs are not overwritten or dropped early.
-static XDG_ENV_LOCK: Mutex<()> = Mutex::new(());
+/// Ensures only one test mutates LOOM_HOME at a time so temp dirs are not overwritten or dropped early.
+static LOOM_HOME_LOCK: Mutex<()> = Mutex::new(());
 
-/// Restores XDG_STATE_HOME on drop so env is cleaned up even on panic.
-struct RestoreXdgStateHome(Option<String>);
+/// Restores LOOM_HOME on drop so env is cleaned up even on panic.
+struct RestoreLoomHome(Option<String>);
 
-impl Drop for RestoreXdgStateHome {
+impl Drop for RestoreLoomHome {
     fn drop(&mut self) {
         if let Some(ref p) = self.0 {
-            std::env::set_var("XDG_STATE_HOME", p);
+            std::env::set_var("LOOM_HOME", p);
         } else {
-            std::env::remove_var("XDG_STATE_HOME");
+            std::env::remove_var("LOOM_HOME");
         }
     }
 }
@@ -32,10 +32,10 @@ impl Drop for RestoreXdgStateHome {
 /// Scenario: todo_write with valid todos then todo_read returns the same list (roundtrip).
 #[tokio::test]
 async fn todo_write_then_todo_read_roundtrip() {
-    let _guard = XDG_ENV_LOCK.lock().unwrap();
+    let _guard = LOOM_HOME_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
-    let _restore = RestoreXdgStateHome(std::env::var("XDG_STATE_HOME").ok());
-    std::env::set_var("XDG_STATE_HOME", dir.path());
+    let _restore = RestoreLoomHome(std::env::var("LOOM_HOME").ok());
+    std::env::set_var("LOOM_HOME", dir.path());
 
     let source = FileToolSource::new(dir.path()).unwrap();
     let todos = json!([
@@ -54,13 +54,13 @@ async fn todo_write_then_todo_read_roundtrip() {
     assert!(read_result.text.contains("completed"));
 }
 
-/// Scenario: todo_read when XDG todo file does not exist returns empty list (0 todos).
+/// Scenario: todo_read when todo file does not exist returns empty list (0 todos).
 #[tokio::test]
 async fn todo_read_when_file_missing_returns_empty() {
-    let _guard = XDG_ENV_LOCK.lock().unwrap();
+    let _guard = LOOM_HOME_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
-    let _restore = RestoreXdgStateHome(std::env::var("XDG_STATE_HOME").ok());
-    std::env::set_var("XDG_STATE_HOME", dir.path());
+    let _restore = RestoreLoomHome(std::env::var("LOOM_HOME").ok());
+    std::env::set_var("LOOM_HOME", dir.path());
 
     let source = FileToolSource::new(dir.path()).unwrap();
     let result = source.call_tool(TOOL_TODO_READ, json!({})).await.unwrap();
@@ -71,10 +71,10 @@ async fn todo_read_when_file_missing_returns_empty() {
 /// Scenario: todo_write with missing 'todos' returns InvalidInput.
 #[tokio::test]
 async fn todo_write_missing_todos_returns_invalid_input() {
-    let _guard = XDG_ENV_LOCK.lock().unwrap();
+    let _guard = LOOM_HOME_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
-    let _restore = RestoreXdgStateHome(std::env::var("XDG_STATE_HOME").ok());
-    std::env::set_var("XDG_STATE_HOME", dir.path());
+    let _restore = RestoreLoomHome(std::env::var("LOOM_HOME").ok());
+    std::env::set_var("LOOM_HOME", dir.path());
 
     let source = FileToolSource::new(dir.path()).unwrap();
     let result = source.call_tool(TOOL_TODO_WRITE, json!({})).await;

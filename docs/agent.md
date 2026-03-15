@@ -141,7 +141,7 @@ MCP (Model Context Protocol) servers provide external tools to the agent. The MC
 2. Profile `tools.mcp.config`
 3. `LOOM_MCP_CONFIG_PATH` environment variable
 4. `.loom/mcp.json` in working folder
-5. `$XDG_CONFIG_HOME/loom/mcp.json`
+5. `~/.loom/mcp.json`
 
 ### 5.1 MCP Config Format
 

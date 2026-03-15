@@ -176,12 +176,10 @@ impl SkillRegistry {
             }
         }
 
-        if let Ok(home) = std::env::var("HOME") {
-            let user_skills = PathBuf::from(home).join(SKILLS_SUBDIR);
-            for entry in scan_skills_dir(&user_skills, SkillSource::User) {
-                if seen.insert(entry.metadata.name.clone()) {
-                    skills.push(entry);
-                }
+        let user_skills = env_config::home::loom_home().join("skills");
+        for entry in scan_skills_dir(&user_skills, SkillSource::User) {
+            if seen.insert(entry.metadata.name.clone()) {
+                skills.push(entry);
             }
         }
 
@@ -274,6 +272,9 @@ impl SkillRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn parse_front_matter_splits() {
@@ -299,5 +300,434 @@ mod tests {
         let (meta, body) = parse_skill_front_matter(s);
         assert!(meta.is_none());
         assert_eq!(body, s);
+    }
+
+    #[test]
+    fn parse_front_matter_no_second_delimiter() {
+        let s = "---\nname: foo\nno closing";
+        let (yaml, body) = parse_front_matter(s);
+        assert_eq!(yaml, s);
+        assert_eq!(body, "");
+    }
+
+    #[test]
+    fn parse_front_matter_no_newline_after_first_delim() {
+        let s = "---name: foo\n---\nbody";
+        let (yaml, body) = parse_front_matter(s);
+        assert_eq!(yaml, s);
+        assert_eq!(body, "");
+    }
+
+    #[test]
+    fn parse_front_matter_empty_string() {
+        let (yaml, body) = parse_front_matter("");
+        assert_eq!(yaml, "");
+        assert_eq!(body, "");
+    }
+
+    #[test]
+    fn parse_skill_front_matter_empty_name_returns_none() {
+        let s = "---\nname: \"\"\ndescription: test\n---\nbody";
+        let (meta, body) = parse_skill_front_matter(s);
+        assert!(meta.is_none());
+        assert_eq!(body, s);
+    }
+
+    #[test]
+    fn parse_skill_front_matter_invalid_yaml_returns_none() {
+        let s = "---\n[invalid yaml\n---\nbody";
+        let (meta, body) = parse_skill_front_matter(s);
+        assert!(meta.is_none());
+        assert_eq!(body, s);
+    }
+
+    #[test]
+    fn scan_skills_dir_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let entries = scan_skills_dir(dir.path(), SkillSource::Project);
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn scan_skills_dir_nonexistent_dir() {
+        let entries = scan_skills_dir(Path::new("/nonexistent/skills"), SkillSource::User);
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn scan_skills_dir_finds_directory_skill() {
+        let dir = tempfile::tempdir().unwrap();
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: my-skill\ndescription: A test skill\n---\nInstructions here",
+        )
+        .unwrap();
+        let entries = scan_skills_dir(dir.path(), SkillSource::Project);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].metadata.name, "my-skill");
+        assert_eq!(entries[0].metadata.description, "A test skill");
+        assert_eq!(entries[0].source, SkillSource::Project);
+    }
+
+    #[test]
+    fn scan_skills_dir_finds_file_skill() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("quick-fix.md"),
+            "---\nname: quick-fix\ndescription: Fix things\n---\nDo the fix",
+        )
+        .unwrap();
+        let entries = scan_skills_dir(dir.path(), SkillSource::User);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].metadata.name, "quick-fix");
+        assert_eq!(entries[0].source, SkillSource::User);
+    }
+
+    #[test]
+    fn scan_skills_dir_file_without_front_matter_uses_filename() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("raw-skill.md"), "# Just instructions").unwrap();
+        let entries = scan_skills_dir(dir.path(), SkillSource::Project);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].metadata.name, "raw-skill");
+    }
+
+    #[test]
+    fn scan_skills_dir_ignores_non_skill_extensions() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("readme.json"), "{}").unwrap();
+        std::fs::write(dir.path().join("data.csv"), "a,b").unwrap();
+        let entries = scan_skills_dir(dir.path(), SkillSource::Project);
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn scan_skills_dir_directory_without_skill_md_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("no-skill");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("README.md"), "not a skill").unwrap();
+        let entries = scan_skills_dir(dir.path(), SkillSource::Project);
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn skill_registry_discover_project_and_user() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let loom_home = tempfile::tempdir().unwrap();
+        let project_skills = project.path().join(".loom").join("skills");
+        std::fs::create_dir_all(&project_skills).unwrap();
+        std::fs::write(
+            project_skills.join("proj-skill.md"),
+            "---\nname: proj-skill\ndescription: from project\n---\nbody",
+        )
+        .unwrap();
+
+        let user_skills = loom_home.path().join("skills");
+        std::fs::create_dir_all(&user_skills).unwrap();
+        std::fs::write(
+            user_skills.join("user-skill.md"),
+            "---\nname: user-skill\ndescription: from user\n---\nbody",
+        )
+        .unwrap();
+
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", loom_home.path());
+        let registry = SkillRegistry::discover(project.path(), &[]);
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+
+        assert_eq!(registry.list().len(), 2);
+        let names: Vec<&str> = registry.list().iter().map(|e| e.metadata.name.as_str()).collect();
+        assert!(names.contains(&"proj-skill"));
+        assert!(names.contains(&"user-skill"));
+    }
+
+    #[test]
+    fn skill_registry_project_wins_over_user_same_name() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let loom_home = tempfile::tempdir().unwrap();
+        let project_skills = project.path().join(".loom").join("skills");
+        std::fs::create_dir_all(&project_skills).unwrap();
+        std::fs::write(
+            project_skills.join("shared.md"),
+            "---\nname: shared\ndescription: project version\n---\nproject",
+        )
+        .unwrap();
+
+        let user_skills = loom_home.path().join("skills");
+        std::fs::create_dir_all(&user_skills).unwrap();
+        std::fs::write(
+            user_skills.join("shared.md"),
+            "---\nname: shared\ndescription: user version\n---\nuser",
+        )
+        .unwrap();
+
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", loom_home.path());
+        let registry = SkillRegistry::discover(project.path(), &[]);
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+
+        assert_eq!(registry.list().len(), 1);
+        assert_eq!(registry.list()[0].metadata.description, "project version");
+        assert_eq!(registry.list()[0].source, SkillSource::Project);
+    }
+
+    #[test]
+    fn skill_registry_extra_dirs() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let loom_home = tempfile::tempdir().unwrap();
+        let extra = tempfile::tempdir().unwrap();
+
+        std::fs::write(
+            extra.path().join("extra-skill.md"),
+            "---\nname: extra-skill\ndescription: from extra\n---\nbody",
+        )
+        .unwrap();
+
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", loom_home.path());
+        let registry = SkillRegistry::discover(project.path(), &[extra.path().to_path_buf()]);
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+
+        assert_eq!(registry.list().len(), 1);
+        assert_eq!(registry.list()[0].metadata.name, "extra-skill");
+        assert_eq!(registry.list()[0].source, SkillSource::ProfileDir);
+    }
+
+    #[test]
+    fn apply_filters_enabled_whitelist() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let skills_dir = dir.path().join(".loom").join("skills");
+        std::fs::create_dir_all(&skills_dir).unwrap();
+        for name in &["alpha", "beta", "gamma"] {
+            std::fs::write(
+                skills_dir.join(format!("{}.md", name)),
+                format!("---\nname: {}\ndescription: d\n---\nbody", name),
+            )
+            .unwrap();
+        }
+
+        let loom_home = tempfile::tempdir().unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", loom_home.path());
+        let mut registry = SkillRegistry::discover(dir.path(), &[]);
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+
+        registry.apply_filters(Some(&["alpha".to_string(), "beta".to_string()]), None);
+        let names: Vec<&str> = registry.list().iter().map(|e| e.metadata.name.as_str()).collect();
+        assert!(names.contains(&"alpha"));
+        assert!(names.contains(&"beta"));
+        assert!(!names.contains(&"gamma"));
+    }
+
+    #[test]
+    fn apply_filters_disabled_blacklist() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let skills_dir = dir.path().join(".loom").join("skills");
+        std::fs::create_dir_all(&skills_dir).unwrap();
+        for name in &["a", "b", "c"] {
+            std::fs::write(
+                skills_dir.join(format!("{}.md", name)),
+                format!("---\nname: {}\ndescription: d\n---\nbody", name),
+            )
+            .unwrap();
+        }
+
+        let loom_home = tempfile::tempdir().unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", loom_home.path());
+        let mut registry = SkillRegistry::discover(dir.path(), &[]);
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+
+        registry.apply_filters(None, Some(&["b".to_string()]));
+        let names: Vec<&str> = registry.list().iter().map(|e| e.metadata.name.as_str()).collect();
+        assert!(names.contains(&"a"));
+        assert!(!names.contains(&"b"));
+        assert!(names.contains(&"c"));
+    }
+
+    #[test]
+    fn apply_filters_empty_enabled_keeps_all() {
+        let mut registry = SkillRegistry { skills: vec![] };
+        registry.apply_filters(Some(&[]), None);
+        assert!(registry.list().is_empty());
+    }
+
+    #[test]
+    fn apply_filters_empty_disabled_keeps_all() {
+        let mut registry = SkillRegistry { skills: vec![] };
+        registry.apply_filters(None, Some(&[]));
+        assert!(registry.list().is_empty());
+    }
+
+    #[test]
+    fn available_skills_prompt_empty_registry() {
+        let registry = SkillRegistry { skills: vec![] };
+        assert_eq!(registry.available_skills_prompt(), "");
+    }
+
+    #[test]
+    fn available_skills_prompt_with_skills() {
+        let registry = SkillRegistry {
+            skills: vec![
+                SkillEntry {
+                    metadata: SkillMetadata {
+                        name: "code-review".to_string(),
+                        description: "Review code quality".to_string(),
+                    },
+                    base_path: PathBuf::from("/tmp"),
+                    skill_file: PathBuf::from("/tmp/SKILL.md"),
+                    source: SkillSource::Project,
+                },
+                SkillEntry {
+                    metadata: SkillMetadata {
+                        name: "no-desc".to_string(),
+                        description: String::new(),
+                    },
+                    base_path: PathBuf::from("/tmp"),
+                    skill_file: PathBuf::from("/tmp/no-desc.md"),
+                    source: SkillSource::User,
+                },
+            ],
+        };
+        let prompt = registry.available_skills_prompt();
+        assert!(prompt.contains("<available_skills>"));
+        assert!(prompt.contains("</available_skills>"));
+        assert!(prompt.contains("code-review: Review code quality"));
+        assert!(prompt.contains("no-desc: (no description)"));
+    }
+
+    #[test]
+    fn load_skill_not_found() {
+        let registry = SkillRegistry { skills: vec![] };
+        let err = registry.load_skill("nonexistent").unwrap_err();
+        assert!(matches!(err, SkillError::NotFound(_)));
+    }
+
+    #[test]
+    fn load_skill_reads_body() {
+        let dir = tempfile::tempdir().unwrap();
+        let skill_file = dir.path().join("SKILL.md");
+        std::fs::write(
+            &skill_file,
+            "---\nname: my-skill\ndescription: test\n---\n# Full instructions\nDo things.",
+        )
+        .unwrap();
+
+        let registry = SkillRegistry {
+            skills: vec![SkillEntry {
+                metadata: SkillMetadata {
+                    name: "my-skill".to_string(),
+                    description: "test".to_string(),
+                },
+                base_path: dir.path().to_path_buf(),
+                skill_file: skill_file.clone(),
+                source: SkillSource::Project,
+            }],
+        };
+        let body = registry.load_skill("my-skill").unwrap();
+        assert!(body.contains("Full instructions"));
+        assert!(body.contains("Do things."));
+    }
+
+    #[test]
+    fn load_skill_with_additional_resources() {
+        let dir = tempfile::tempdir().unwrap();
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: my-skill\ndescription: t\n---\nbody",
+        )
+        .unwrap();
+        std::fs::write(skill_dir.join("extra.txt"), "extra content").unwrap();
+
+        let registry = SkillRegistry {
+            skills: vec![SkillEntry {
+                metadata: SkillMetadata {
+                    name: "my-skill".to_string(),
+                    description: "t".to_string(),
+                },
+                base_path: skill_dir.clone(),
+                skill_file: skill_dir.join("SKILL.md"),
+                source: SkillSource::Project,
+            }],
+        };
+        let body = registry.load_skill("my-skill").unwrap();
+        assert!(body.contains("Additional resources"));
+        assert!(body.contains("extra.txt"));
+    }
+
+    #[test]
+    fn load_skill_file_skill_no_additional_resources() {
+        let dir = tempfile::tempdir().unwrap();
+        let skill_file = dir.path().join("standalone.md");
+        std::fs::write(
+            &skill_file,
+            "---\nname: standalone\ndescription: t\n---\njust body",
+        )
+        .unwrap();
+
+        let registry = SkillRegistry {
+            skills: vec![SkillEntry {
+                metadata: SkillMetadata {
+                    name: "standalone".to_string(),
+                    description: "t".to_string(),
+                },
+                base_path: dir.path().to_path_buf(),
+                skill_file,
+                source: SkillSource::User,
+            }],
+        };
+        let body = registry.load_skill("standalone").unwrap();
+        assert_eq!(body.trim(), "just body");
+        assert!(!body.contains("Additional resources"));
+    }
+
+    #[test]
+    fn skill_error_display() {
+        let e = SkillError::NotFound("test".to_string());
+        assert!(e.to_string().contains("test"));
+        assert!(e.to_string().contains("not found"));
+    }
+
+    #[test]
+    fn skill_source_equality() {
+        assert_eq!(SkillSource::Project, SkillSource::Project);
+        assert_ne!(SkillSource::Project, SkillSource::User);
+        assert_ne!(SkillSource::User, SkillSource::ProfileDir);
+    }
+
+    #[test]
+    fn scan_skills_dir_directory_skill_without_front_matter_uses_dirname() {
+        let dir = tempfile::tempdir().unwrap();
+        let skill_dir = dir.path().join("my-unnamed-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# Just raw instructions").unwrap();
+        let entries = scan_skills_dir(dir.path(), SkillSource::Project);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].metadata.name, "my-unnamed-skill");
     }
 }
