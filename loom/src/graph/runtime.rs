@@ -172,6 +172,7 @@ where
 mod tests {
     use super::*;
     use crate::memory::InMemoryStore;
+    use crate::stream::StreamEvent;
 
     #[test]
     fn test_runtime_new() {
@@ -200,6 +201,22 @@ mod tests {
     }
 
     #[test]
+    fn test_runtime_with_stream_writer() {
+        let config = RunnableConfig::default();
+        let runtime: Runtime<String, String> =
+            Runtime::new(config).with_stream_writer(|_e: StreamEvent<String>| {});
+        assert!(runtime.stream_writer.is_some());
+    }
+
+    #[test]
+    fn test_runtime_with_previous() {
+        let config = RunnableConfig::default();
+        let runtime: Runtime<String, String> =
+            Runtime::new(config).with_previous("prior_state".to_string());
+        assert_eq!(runtime.previous, Some("prior_state".to_string()));
+    }
+
+    #[test]
     fn test_runtime_merge() {
         let config1 = RunnableConfig::default();
         let config2 = RunnableConfig::default();
@@ -217,5 +234,79 @@ mod tests {
         assert_eq!(merged.context, Some("user_123".to_string()));
         assert!(merged.store.is_some());
         assert_eq!(merged.previous, Some("state2".to_string()));
+    }
+
+    /// **Scenario**: merge keeps self values when other has None.
+    #[test]
+    fn test_runtime_merge_keeps_self_when_other_empty() {
+        let config1 = RunnableConfig::default();
+        let config2 = RunnableConfig::default();
+
+        let store = Arc::new(InMemoryStore::new());
+        let runtime1: Runtime<String, String> = Runtime::new(config1)
+            .with_context("ctx".to_string())
+            .with_store(store.clone())
+            .with_previous("prev".to_string());
+
+        let runtime2: Runtime<String, String> = Runtime::new(config2);
+
+        let merged = runtime1.merge(runtime2);
+        assert_eq!(merged.context, Some("ctx".to_string()));
+        assert!(merged.store.is_some());
+        assert_eq!(merged.previous, Some("prev".to_string()));
+    }
+
+    /// **Scenario**: merge overwrites with other when other has values.
+    #[test]
+    fn test_runtime_merge_overwrites_with_other() {
+        let config1 = RunnableConfig::default();
+        let config2 = RunnableConfig::default();
+
+        let store1 = Arc::new(InMemoryStore::new());
+        let store2 = Arc::new(InMemoryStore::new());
+
+        let runtime1: Runtime<String, String> = Runtime::new(config1)
+            .with_context("old_ctx".to_string())
+            .with_store(store1)
+            .with_previous("old_prev".to_string());
+
+        let runtime2: Runtime<String, String> = Runtime::new(config2)
+            .with_context("new_ctx".to_string())
+            .with_store(store2)
+            .with_previous("new_prev".to_string());
+
+        let merged = runtime1.merge(runtime2);
+        assert_eq!(merged.context, Some("new_ctx".to_string()));
+        assert!(merged.store.is_some());
+        assert_eq!(merged.previous, Some("new_prev".to_string()));
+    }
+
+    /// **Scenario**: clone sets stream_writer to None.
+    #[test]
+    fn test_runtime_clone_stream_writer_none() {
+        let config = RunnableConfig::default();
+        let runtime: Runtime<String, String> =
+            Runtime::new(config).with_stream_writer(|_e: StreamEvent<String>| {});
+        assert!(runtime.stream_writer.is_some());
+
+        let cloned = runtime.clone();
+        assert!(cloned.stream_writer.is_none());
+        assert_eq!(cloned.context, runtime.context);
+        assert!(cloned.store.is_some() == runtime.store.is_some());
+    }
+
+    /// **Scenario**: Debug formats runtime.
+    #[test]
+    fn test_runtime_debug() {
+        let config = RunnableConfig::default();
+        let runtime: Runtime<String, String> =
+            Runtime::new(config).with_context("x".to_string());
+
+        let s = format!("{:?}", runtime);
+        assert!(s.contains("Runtime"));
+        assert!(s.contains("context"));
+        assert!(s.contains("store"));
+        assert!(s.contains("stream_writer"));
+        assert!(s.contains("previous"));
     }
 }

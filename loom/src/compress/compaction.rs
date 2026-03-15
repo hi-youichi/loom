@@ -163,15 +163,52 @@ fn build_summary_prompt(msgs: &[Message]) -> String {
 
 #[cfg(test)]
 mod tests {
-    //! Tests for prune: disabled, zero keep, no tool results, minimum threshold, and replacement.
-
     use crate::message::Message;
 
     use super::*;
 
-    /// Build a User message in tool-result form for tests.
     fn tool_result_msg(name: &str, content: &str) -> Message {
         Message::User(format!("Tool {} returned: {}", name, content))
+    }
+
+    #[test]
+    fn is_tool_result_user_with_prefix() {
+        assert!(is_tool_result_message(&Message::User("Tool bash returned: ok".to_string())));
+    }
+
+    #[test]
+    fn is_tool_result_plain_user() {
+        assert!(!is_tool_result_message(&Message::User("hello".to_string())));
+    }
+
+    #[test]
+    fn is_tool_result_system() {
+        assert!(!is_tool_result_message(&Message::System("Tool x returned: y".to_string())));
+    }
+
+    #[test]
+    fn is_tool_result_assistant() {
+        assert!(!is_tool_result_message(&Message::Assistant("Tool x returned: y".to_string())));
+    }
+
+    #[test]
+    fn build_summary_prompt_empty() {
+        let p = build_summary_prompt(&[]);
+        assert!(p.contains("Summarize the following conversation"));
+        assert!(p.contains("What was done"));
+    }
+
+    #[test]
+    fn build_summary_prompt_with_messages() {
+        let msgs = vec![
+            Message::System("sys msg".to_string()),
+            Message::User("user msg".to_string()),
+            Message::Assistant("asst msg".to_string()),
+        ];
+        let p = build_summary_prompt(&msgs);
+        assert!(p.contains("System: sys msg"));
+        assert!(p.contains("User: user msg"));
+        assert!(p.contains("Assistant: asst msg"));
     }
 
     #[test]

@@ -91,4 +91,28 @@ mod tests {
             }
         }
     }
+
+    /// **Scenario**: role() returns correct string for each variant.
+    #[test]
+    fn message_role() {
+        assert_eq!(Message::system("x").role(), "system");
+        assert_eq!(Message::user("x").role(), "user");
+        assert_eq!(Message::assistant("x").role(), "assistant");
+    }
+
+    /// **Scenario**: content() returns the inner string for each variant.
+    #[test]
+    fn message_content() {
+        assert_eq!(Message::system("hello").content(), "hello");
+        assert_eq!(Message::user("world").content(), "world");
+        assert_eq!(Message::assistant("reply").content(), "reply");
+    }
+
+    /// **Scenario**: Display formats as "role: content".
+    #[test]
+    fn message_display() {
+        assert_eq!(Message::system("sys").to_string(), "system: sys");
+        assert_eq!(Message::user("usr").to_string(), "user: usr");
+        assert_eq!(Message::assistant("ast").to_string(), "assistant: ast");
+    }
 }

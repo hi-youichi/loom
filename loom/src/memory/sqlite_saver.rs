@@ -305,3 +305,184 @@ where
         Ok(items)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn source_roundtrip() {
+        let sources = [
+            CheckpointSource::Input,
+            CheckpointSource::Loop,
+            CheckpointSource::Update,
+            CheckpointSource::Fork,
+        ];
+        for s in &sources {
+            let st = source_to_str(s);
+            let back = str_to_source(st);
+            assert_eq!(std::mem::discriminant(s), std::mem::discriminant(&back));
+        }
+    }
+
+    #[test]
+    fn str_to_source_unknown_defaults_to_update() {
+        assert!(matches!(str_to_source("unknown"), CheckpointSource::Update));
+    }
+
+    #[test]
+    fn created_at_roundtrip() {
+        let t = UNIX_EPOCH + Duration::from_millis(1700000000000);
+        let i = created_at_to_i64(&Some(t));
+        assert_eq!(i, Some(1700000000000));
+        let back = i64_to_created_at(i);
+        assert_eq!(back, Some(t));
+    }
+
+    #[test]
+    fn created_at_none_roundtrip() {
+        assert!(created_at_to_i64(&None).is_none());
+        assert!(i64_to_created_at(None).is_none());
+    }
+
+    #[test]
+    fn thread_id_required_ok() {
+        let config = RunnableConfig {
+            thread_id: Some("t1".to_string()),
+            ..RunnableConfig::default()
+        };
+        let tid = SqliteSaver::<Vec<u8>>::thread_id_required(&config).unwrap();
+        assert_eq!(tid, "t1");
+    }
+
+    #[test]
+    fn thread_id_required_missing() {
+        let config = RunnableConfig {
+            thread_id: None,
+            ..RunnableConfig::default()
+        };
+        let result = SqliteSaver::<Vec<u8>>::thread_id_required(&config);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn new_creates_table() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db");
+        let serializer: Arc<dyn Serializer<serde_json::Value>> = Arc::new(crate::memory::serializer::JsonSerializer);
+        let _saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
+        assert!(db_path.exists());
+    }
+
+    #[tokio::test]
+    async fn put_and_get_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("rt.db");
+        let serializer: Arc<dyn Serializer<serde_json::Value>> = Arc::new(crate::memory::serializer::JsonSerializer);
+        let saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
+
+        let config = RunnableConfig {
+            thread_id: Some("thread-1".to_string()),
+            ..RunnableConfig::default()
+        };
+        let now = SystemTime::now();
+        let checkpoint = Checkpoint {
+            v: CHECKPOINT_VERSION,
+            id: "ck-1".to_string(),
+            ts: "2024-01-01T00:00:00Z".to_string(),
+            channel_values: serde_json::json!({"key": "value"}),
+            channel_versions: HashMap::new(),
+            versions_seen: HashMap::new(),
+            updated_channels: None,
+            pending_sends: Vec::new(),
+            metadata: CheckpointMetadata {
+                source: CheckpointSource::Input,
+                step: 1,
+                created_at: Some(now),
+                parents: HashMap::new(),
+            },
+        };
+
+        let id = saver.put(&config, &checkpoint).await.unwrap();
+        assert_eq!(id, "ck-1");
+
+        let result = saver.get_tuple(&config).await.unwrap();
+        assert!(result.is_some());
+        let (ck, meta) = result.unwrap();
+        assert_eq!(ck.id, "ck-1");
+        assert_eq!(ck.channel_values, serde_json::json!({"key": "value"}));
+        assert!(matches!(meta.source, CheckpointSource::Input));
+        assert_eq!(meta.step, 1);
+    }
+
+    #[tokio::test]
+    async fn list_returns_checkpoints() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("list.db");
+        let serializer = Arc::new(crate::memory::serializer::JsonSerializer) as Arc<dyn Serializer<serde_json::Value>>;
+        let saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
+
+        let config = RunnableConfig {
+            thread_id: Some("thread-list".to_string()),
+            ..RunnableConfig::default()
+        };
+        let base = UNIX_EPOCH + Duration::from_millis(1700000000000);
+        for i in 0..3 {
+            let checkpoint = Checkpoint {
+                v: CHECKPOINT_VERSION,
+                id: format!("ck-{}", i),
+                ts: format!("2024-01-0{}T00:00:00Z", i + 1),
+                channel_values: serde_json::json!({"step": i}),
+                channel_versions: HashMap::new(),
+                versions_seen: HashMap::new(),
+                updated_channels: None,
+                pending_sends: Vec::new(),
+                metadata: CheckpointMetadata {
+                    source: CheckpointSource::Loop,
+                    step: i,
+                    created_at: Some(base + Duration::from_secs(i as u64)),
+                    parents: HashMap::new(),
+                },
+            };
+            saver.put(&config, &checkpoint).await.unwrap();
+        }
+
+        let items = saver.list(&config, None, None, None).await.unwrap();
+        assert_eq!(items.len(), 3);
+
+        let limited = saver.list(&config, Some(2), None, None).await.unwrap();
+        assert_eq!(limited.len(), 2);
+
+        let after = saver.list(&config, None, None, Some("ck-0")).await.unwrap();
+        assert_eq!(after.len(), 2);
+
+        let before = saver.list(&config, None, Some("ck-2"), None).await.unwrap();
+        assert_eq!(before.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn get_tuple_missing_thread_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("no_tid.db");
+        let serializer = Arc::new(crate::memory::serializer::JsonSerializer) as Arc<dyn Serializer<serde_json::Value>>;
+        let saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
+        let config = RunnableConfig::default();
+        let result = saver.get_tuple(&config).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn get_tuple_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("empty.db");
+        let serializer = Arc::new(crate::memory::serializer::JsonSerializer) as Arc<dyn Serializer<serde_json::Value>>;
+        let saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
+        let config = RunnableConfig {
+            thread_id: Some("nonexistent".to_string()),
+            ..RunnableConfig::default()
+        };
+        let result = saver.get_tuple(&config).await.unwrap();
+        assert!(result.is_none());
+    }
+}

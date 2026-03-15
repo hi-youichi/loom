@@ -534,3 +534,136 @@ impl Node<ReActState> for ActNode {
         Ok((new_state, Next::Continue))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truncate_short_string_unchanged() {
+        assert_eq!(truncate_for_log("hello", 10), "hello");
+    }
+
+    #[test]
+    fn truncate_long_string_adds_ellipsis() {
+        let long = "a".repeat(50);
+        let result = truncate_for_log(&long, 10);
+        assert!(result.ends_with("..."));
+        assert_eq!(result.len(), 13);
+    }
+
+    #[test]
+    fn parse_tool_arguments_valid_json() {
+        let v = parse_tool_arguments(r#"{"path": "/tmp"}"#);
+        assert_eq!(v["path"], "/tmp");
+    }
+
+    #[test]
+    fn parse_tool_arguments_empty_string() {
+        let v = parse_tool_arguments("");
+        assert!(v.is_object());
+    }
+
+    #[test]
+    fn parse_tool_arguments_whitespace_only() {
+        let v = parse_tool_arguments("   ");
+        assert!(v.is_object());
+    }
+
+    #[test]
+    fn parse_tool_arguments_invalid_json() {
+        let v = parse_tool_arguments("not json {");
+        assert!(v.is_object());
+    }
+
+    #[test]
+    fn parse_tool_arguments_nested_string_json() {
+        let v = parse_tool_arguments(r#""{\"key\": \"val\"}""#);
+        assert_eq!(v["key"], "val");
+    }
+
+    #[test]
+    fn step_progress_payload_structure() {
+        let p = step_progress_payload("bash", "c1", "done");
+        assert_eq!(p["type"], STEP_PROGRESS_EVENT_TYPE);
+        assert_eq!(p["node_id"], "act");
+        assert_eq!(p["tool_name"], "bash");
+        assert_eq!(p["call_id"], "c1");
+        assert_eq!(p["summary"], "done");
+    }
+
+    #[test]
+    fn handle_tool_errors_default_is_never() {
+        let h = HandleToolErrors::default();
+        assert!(matches!(h, HandleToolErrors::Never));
+    }
+
+    #[test]
+    fn handle_tool_errors_debug_format() {
+        assert!(format!("{:?}", HandleToolErrors::Never).contains("Never"));
+        assert!(format!("{:?}", HandleToolErrors::Always(None)).contains("Always"));
+        assert!(format!("{:?}", HandleToolErrors::Always(Some("msg".to_string()))).contains("msg"));
+        let custom = HandleToolErrors::Custom(Arc::new(|_, _, _| "err".to_string()));
+        assert!(format!("{:?}", custom).contains("Custom"));
+    }
+
+    #[test]
+    fn handle_error_never_returns_none() {
+        use crate::tool_source::MockToolSource;
+        let node = ActNode::new(Box::new(MockToolSource::default()));
+        let err = ToolSourceError::InvalidInput("test".to_string());
+        assert!(node.handle_error(&err, "bash", &serde_json::json!({})).is_none());
+    }
+
+    #[test]
+    fn handle_error_always_default_template() {
+        use crate::tool_source::MockToolSource;
+        let node = ActNode::new(Box::new(MockToolSource::default()))
+            .with_handle_tool_errors(HandleToolErrors::Always(None));
+        let err = ToolSourceError::InvalidInput("bad input".to_string());
+        let msg = node.handle_error(&err, "bash", &serde_json::json!({"cmd": "ls"})).unwrap();
+        assert!(msg.contains("bash"));
+        assert!(msg.contains("bad input"));
+    }
+
+    #[test]
+    fn handle_error_always_custom_message() {
+        use crate::tool_source::MockToolSource;
+        let node = ActNode::new(Box::new(MockToolSource::default()))
+            .with_handle_tool_errors(HandleToolErrors::Always(Some("custom error".to_string())));
+        let err = ToolSourceError::InvalidInput("test".to_string());
+        let msg = node.handle_error(&err, "bash", &serde_json::json!({})).unwrap();
+        assert_eq!(msg, "custom error");
+    }
+
+    #[test]
+    fn handle_error_custom_handler() {
+        use crate::tool_source::MockToolSource;
+        let handler: ErrorHandlerFn = Arc::new(|e, name, _args| format!("{}: {}", name, e));
+        let node = ActNode::new(Box::new(MockToolSource::default()))
+            .with_handle_tool_errors(HandleToolErrors::Custom(handler));
+        let err = ToolSourceError::InvalidInput("test".to_string());
+        let msg = node.handle_error(&err, "bash", &serde_json::json!({})).unwrap();
+        assert!(msg.contains("bash"));
+    }
+
+    #[test]
+    fn approval_required_payload_structure() {
+        let tc = ToolCall {
+            id: Some("c1".to_string()),
+            name: "delete_file".to_string(),
+            arguments: "{}".to_string(),
+        };
+        let p = approval_required_payload(&tc, &serde_json::json!({"path": "x.txt"}));
+        assert_eq!(p["type"], APPROVAL_REQUIRED_EVENT_TYPE);
+        assert_eq!(p["tool_name"], "delete_file");
+        assert_eq!(p["arguments"]["path"], "x.txt");
+    }
+
+    #[test]
+    fn act_node_id() {
+        use crate::tool_source::MockToolSource;
+        let node = ActNode::new(Box::new(MockToolSource::default()));
+        assert_eq!(Node::<ReActState>::id(&node), "act");
+    }
+}

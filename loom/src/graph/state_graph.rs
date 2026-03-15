@@ -506,4 +506,230 @@ mod tests {
             Ok(_) => panic!("expected compile error"),
         }
     }
+
+    /// **Scenario**: Compile fails when edge references unknown node (from).
+    #[test]
+    fn compile_fails_when_edge_from_unknown_node() {
+        let mut graph = StateGraph::<DummyState>::new();
+        graph.add_node("a", Arc::new(DummyNode("a")));
+        graph.add_edge(START, "unknown");
+        graph.add_edge("unknown", "a");
+        graph.add_edge("a", END);
+
+        let result = graph.compile();
+        match result {
+            Err(CompilationError::NodeNotFound(id)) => assert_eq!(id, "unknown"),
+            Err(e) => panic!("expected NodeNotFound(unknown), got {:?}", e),
+            Ok(_) => panic!("expected compile error"),
+        }
+    }
+
+    /// **Scenario**: Compile fails when edge references unknown node (to).
+    #[test]
+    fn compile_fails_when_edge_to_unknown_node() {
+        let mut graph = StateGraph::<DummyState>::new();
+        graph.add_node("a", Arc::new(DummyNode("a")));
+        graph.add_edge(START, "a");
+        graph.add_edge("a", "nonexistent");
+        graph.add_edge("nonexistent", END);
+
+        let result = graph.compile();
+        match result {
+            Err(CompilationError::NodeNotFound(id)) => assert_eq!(id, "nonexistent"),
+            Err(e) => panic!("expected NodeNotFound(nonexistent), got {:?}", e),
+            Ok(_) => panic!("expected compile error"),
+        }
+    }
+
+    /// **Scenario**: Compile fails when MissingStart.
+    #[test]
+    fn compile_fails_when_missing_start() {
+        let mut graph = StateGraph::<DummyState>::new();
+        graph.add_node("a", Arc::new(DummyNode("a")));
+        graph.add_node("b", Arc::new(DummyNode("b")));
+        graph.add_edge("a", "b");
+        graph.add_edge("b", END);
+
+        let result = graph.compile();
+        match result {
+            Err(CompilationError::MissingStart) => {}
+            Err(e) => panic!("expected MissingStart, got {:?}", e),
+            Ok(_) => panic!("expected compile error"),
+        }
+    }
+
+    /// **Scenario**: Compile fails when MissingEnd.
+    #[test]
+    fn compile_fails_when_missing_end() {
+        let mut graph = StateGraph::<DummyState>::new();
+        graph.add_node("a", Arc::new(DummyNode("a")));
+        graph.add_node("b", Arc::new(DummyNode("b")));
+        graph.add_edge(START, "a");
+        graph.add_edge("a", "b");
+
+        let result = graph.compile();
+        match result {
+            Err(CompilationError::MissingEnd) => {}
+            Err(e) => panic!("expected MissingEnd, got {:?}", e),
+            Ok(_) => panic!("expected compile error"),
+        }
+    }
+
+    /// **Scenario**: Compile fails when multiple edges from START.
+    #[test]
+    fn compile_fails_when_multiple_edges_from_start() {
+        let mut graph = StateGraph::<DummyState>::new();
+        graph.add_node("a", Arc::new(DummyNode("a")));
+        graph.add_node("b", Arc::new(DummyNode("b")));
+        graph.add_edge(START, "a");
+        graph.add_edge(START, "b");
+        graph.add_edge("a", END);
+        graph.add_edge("b", END);
+
+        let result = graph.compile();
+        match result {
+            Err(CompilationError::InvalidChain(msg)) => {
+                assert!(msg.contains("multiple") || msg.contains("START"));
+            }
+            Err(e) => panic!("expected InvalidChain, got {:?}", e),
+            Ok(_) => panic!("expected compile error"),
+        }
+    }
+
+    /// **Scenario**: Compile fails when cycle detected (a->b->a with no END).
+    #[test]
+    fn compile_fails_when_cycle_detected() {
+        let mut graph = StateGraph::<DummyState>::new();
+        graph.add_node("a", Arc::new(DummyNode("a")));
+        graph.add_node("b", Arc::new(DummyNode("b")));
+        graph.add_edge(START, "a");
+        graph.add_edge("a", "b");
+        graph.add_edge("b", "a");
+        // No edge to END - graph has cycle, so MissingEnd or InvalidChain
+
+        let result = graph.compile();
+        match result {
+            Err(CompilationError::MissingEnd) => {}
+            Err(CompilationError::InvalidChain(_)) => {}
+            Err(e) => panic!("expected MissingEnd or InvalidChain, got {:?}", e),
+            Ok(_) => panic!("expected compile error"),
+        }
+    }
+
+    /// **Scenario**: Compile fails when duplicate from (branch).
+    #[test]
+    fn compile_fails_when_duplicate_from_branch() {
+        let mut graph = StateGraph::<DummyState>::new();
+        graph.add_node("a", Arc::new(DummyNode("a")));
+        graph.add_node("b", Arc::new(DummyNode("b")));
+        graph.add_node("c", Arc::new(DummyNode("c")));
+        graph.add_edge(START, "a");
+        graph.add_edge("a", "b");
+        graph.add_edge("a", "c");
+        graph.add_edge("b", END);
+        graph.add_edge("c", END);
+
+        let result = graph.compile();
+        match result {
+            Err(CompilationError::InvalidChain(msg)) => {
+                assert!(msg.to_lowercase().contains("duplicate") || msg.to_lowercase().contains("branch"));
+            }
+            Err(e) => panic!("expected InvalidChain, got {:?}", e),
+            Ok(_) => panic!("expected compile error"),
+        }
+    }
+
+    /// **Scenario**: Default creates empty graph.
+    #[test]
+    fn default_creates_empty_graph() {
+        let graph = StateGraph::<DummyState>::default();
+        let result = graph.compile();
+        match result {
+            Err(CompilationError::MissingStart) => {}
+            Err(e) => panic!("expected MissingStart for empty graph, got {:?}", e),
+            Ok(_) => panic!("empty graph should not compile"),
+        }
+    }
+
+    /// **Scenario**: Compile succeeds with valid linear chain.
+    #[test]
+    fn compile_succeeds_linear_chain() {
+        let mut graph = StateGraph::<DummyState>::new();
+        graph.add_node("a", Arc::new(DummyNode("a")));
+        graph.add_node("b", Arc::new(DummyNode("b")));
+        graph.add_edge(START, "a");
+        graph.add_edge("a", "b");
+        graph.add_edge("b", END);
+
+        let result = graph.compile();
+        assert!(result.is_ok());
+    }
+
+    /// **Scenario**: Compile succeeds with conditional edges.
+    #[test]
+    fn compile_succeeds_conditional_edges() {
+        let mut graph = StateGraph::<DummyState>::new();
+        graph.add_node("a", Arc::new(DummyNode("a")));
+        graph.add_node("b", Arc::new(DummyNode("b")));
+        graph.add_edge(START, "a");
+        graph.add_edge("b", END);
+        graph.add_conditional_edges(
+            "a",
+            Arc::new(|_| "b".to_string()),
+            Some([("b".to_string(), "b".to_string())].into_iter().collect()),
+        );
+
+        let result = graph.compile();
+        assert!(result.is_ok());
+    }
+
+    /// **Scenario**: with_store, with_middleware, with_retry_policy are applied.
+    #[test]
+    fn builder_methods_apply() {
+        use crate::graph::node_middleware::NodeMiddleware;
+        use crate::graph::retry::RetryPolicy;
+        use crate::graph::Next;
+        use std::time::Duration;
+
+        struct NoopMiddleware;
+        #[async_trait]
+        impl NodeMiddleware<DummyState> for NoopMiddleware {
+            async fn around_run(
+                &self,
+                _node_id: &str,
+                state: DummyState,
+                inner: Box<
+                    dyn FnOnce(
+                            DummyState,
+                        ) -> std::pin::Pin<
+                            Box<
+                                dyn std::future::Future<Output = Result<(DummyState, Next), crate::error::AgentError>>
+                                    + Send,
+                            >,
+                        > + Send,
+                >,
+            ) -> Result<(DummyState, Next), crate::error::AgentError> {
+                inner(state).await
+            }
+        }
+
+        let store = Arc::new(crate::memory::InMemoryStore::new());
+        let graph = StateGraph::<DummyState>::new()
+            .with_store(store)
+            .with_middleware(Arc::new(NoopMiddleware))
+            .with_retry_policy(RetryPolicy::exponential(
+                2,
+                Duration::from_millis(10),
+                Duration::from_millis(100),
+                2.0,
+            ));
+
+        let mut g = graph;
+        g.add_node("a", Arc::new(DummyNode("a")));
+        g.add_edge(START, "a");
+        g.add_edge("a", END);
+
+        let result = g.compile();
+        assert!(result.is_ok());
+    }
 }

@@ -235,4 +235,163 @@ mod tests {
         assert!(all.contains_key("zenmux/anthropic/claude-sonnet-4"));
         assert!(all.contains_key("zai/glm-5"));
     }
+
+    #[test]
+    fn new_uses_default_url_and_reqwest_client() {
+        let resolver = ModelsDevResolver::new();
+        assert_eq!(resolver.base_url, DEFAULT_MODELS_DEV_URL);
+    }
+
+    #[test]
+    fn default_creates_same_as_new() {
+        let resolver = ModelsDevResolver::default();
+        assert_eq!(resolver.base_url, DEFAULT_MODELS_DEV_URL);
+    }
+
+    #[tokio::test]
+    async fn resolve_returns_none_when_http_client_fails() {
+        struct FailingHttpClient;
+        #[async_trait]
+        impl HttpClient for FailingHttpClient {
+            async fn get(&self, _url: &str) -> Result<String, String> {
+                Err("network error".to_string())
+            }
+        }
+        let resolver = ModelsDevResolver::with_client(
+            "https://example.com/api.json".to_string(),
+            Arc::new(FailingHttpClient),
+        );
+        assert!(resolver.resolve("zenmux", "openai/gpt-5").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn resolve_returns_none_when_json_is_invalid() {
+        let client = Arc::new(MockHttpClient {
+            body: "not valid json {{{".to_string(),
+        });
+        let resolver =
+            ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
+        assert!(resolver.resolve("zenmux", "openai/gpt-5").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn resolve_fallback_when_model_id_has_no_slash() {
+        // Provider "zai" has model key "zai/glm-5" (provider-prefixed); lookup with model_id "glm-5" uses fallback
+        let json = r#"{
+            "zai": {
+                "models": {
+                    "zai/glm-5": {
+                        "limit": { "context": 100000, "output": 50000 }
+                    }
+                }
+            }
+        }"#;
+        let client = Arc::new(MockHttpClient {
+            body: json.to_string(),
+        });
+        let resolver =
+            ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
+        let spec = resolver.resolve("zai", "glm-5").await.unwrap();
+        assert_eq!(spec.context_limit, 100_000);
+        assert_eq!(spec.output_limit, 50_000);
+    }
+
+    #[tokio::test]
+    async fn fetch_all_with_cache_read_and_cache_write() {
+        let json = r#"{
+            "provider": {
+                "models": {
+                    "model-with-cache": {
+                        "limit": {
+                            "context": 128000,
+                            "output": 16000,
+                            "cache_read": 100000,
+                            "cache_write": 8000
+                        }
+                    }
+                }
+            }
+        }"#;
+        let client = Arc::new(MockHttpClient {
+            body: json.to_string(),
+        });
+        let resolver =
+            ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
+        let all = resolver.fetch_all().await.unwrap();
+        let spec = all.get("provider/model-with-cache").unwrap();
+        assert_eq!(spec.context_limit, 128_000);
+        assert_eq!(spec.output_limit, 16_000);
+        assert_eq!(spec.cache_read, Some(100_000));
+        assert_eq!(spec.cache_write, Some(8_000));
+    }
+
+    #[tokio::test]
+    async fn fetch_all_fails_on_invalid_json() {
+        let client = Arc::new(MockHttpClient {
+            body: "invalid json {{{".to_string(),
+        });
+        let resolver =
+            ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
+        let result = resolver.fetch_all().await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn fetch_all_fails_when_root_is_not_object() {
+        let client = Arc::new(MockHttpClient {
+            body: "[1, 2, 3]".to_string(),
+        });
+        let resolver =
+            ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
+        let result = resolver.fetch_all().await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not an object"));
+    }
+
+    #[tokio::test]
+    async fn fetch_all_skips_providers_without_models() {
+        let json = r#"{
+            "valid": {
+                "models": {
+                    "m1": { "limit": { "context": 1000, "output": 500 } }
+                }
+            },
+            "no_models": {},
+            "models_not_object": {
+                "models": "not an object"
+            }
+        }"#;
+        let client = Arc::new(MockHttpClient {
+            body: json.to_string(),
+        });
+        let resolver =
+            ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
+        let all = resolver.fetch_all().await.unwrap();
+        assert!(all.contains_key("valid/m1"));
+        assert!(!all.contains_key("no_models/anything"));
+        assert_eq!(all.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn fetch_all_skips_models_with_invalid_limit() {
+        let json = r#"{
+            "p": {
+                "models": {
+                    "valid": { "limit": { "context": 1000, "output": 500 } },
+                    "no_limit": {},
+                    "bad_context": { "limit": { "context": "not number", "output": 500 } }
+                }
+            }
+        }"#;
+        let client = Arc::new(MockHttpClient {
+            body: json.to_string(),
+        });
+        let resolver =
+            ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
+        let all = resolver.fetch_all().await.unwrap();
+        assert!(all.contains_key("p/valid"));
+        assert!(!all.contains_key("p/no_limit"));
+        assert!(!all.contains_key("p/bad_context"));
+        assert_eq!(all.len(), 1);
+    }
 }

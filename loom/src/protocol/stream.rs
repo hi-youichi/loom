@@ -454,4 +454,129 @@ mod tests {
         assert_eq!(v["name"], "delete_file");
         assert_eq!(v["arguments"]["path"], "x.txt");
     }
+
+    #[test]
+    fn custom_format() {
+        let ev: StreamEvent<DummyState> = StreamEvent::Custom(json!({"key": "val"}));
+        let pe = stream_event_to_protocol_event(&ev).unwrap();
+        let v = pe.to_value().unwrap();
+        assert_eq!(v["type"], "custom");
+        assert_eq!(v["value"]["key"], "val");
+    }
+
+    #[test]
+    fn checkpoint_format() {
+        let ev: StreamEvent<DummyState> = StreamEvent::Checkpoint(crate::stream::CheckpointEvent {
+            checkpoint_id: "cp-1".to_string(),
+            timestamp: "2024-01-01T00:00:00Z".to_string(),
+            step: 5,
+            state: DummyState(99),
+            thread_id: Some("t1".to_string()),
+            checkpoint_ns: Some("ns".to_string()),
+        });
+        let pe = stream_event_to_protocol_event(&ev).unwrap();
+        let v = pe.to_value().unwrap();
+        assert_eq!(v["type"], "checkpoint");
+        assert_eq!(v["checkpoint_id"], "cp-1");
+        assert_eq!(v["step"], 5);
+    }
+
+    #[test]
+    fn tot_expand_format() {
+        let ev: StreamEvent<DummyState> = StreamEvent::TotExpand {
+            candidates: vec!["a".to_string(), "b".to_string()],
+        };
+        let pe = stream_event_to_protocol_event(&ev).unwrap();
+        let v = pe.to_value().unwrap();
+        assert_eq!(v["type"], "tot_expand");
+        assert_eq!(v["candidates"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn tot_evaluate_format() {
+        let ev: StreamEvent<DummyState> = StreamEvent::TotEvaluate {
+            chosen: 1,
+            scores: vec![0.5, 0.9],
+        };
+        let pe = stream_event_to_protocol_event(&ev).unwrap();
+        let v = pe.to_value().unwrap();
+        assert_eq!(v["type"], "tot_evaluate");
+        assert_eq!(v["chosen"], 1);
+    }
+
+    #[test]
+    fn tot_backtrack_format() {
+        let ev: StreamEvent<DummyState> = StreamEvent::TotBacktrack {
+            reason: "low score".to_string(),
+            to_depth: 2,
+        };
+        let pe = stream_event_to_protocol_event(&ev).unwrap();
+        let v = pe.to_value().unwrap();
+        assert_eq!(v["type"], "tot_backtrack");
+        assert_eq!(v["reason"], "low score");
+        assert_eq!(v["to_depth"], 2);
+    }
+
+    #[test]
+    fn got_plan_format() {
+        let ev: StreamEvent<DummyState> = StreamEvent::GotPlan {
+            node_count: 3,
+            edge_count: 2,
+            node_ids: vec!["n1".to_string(), "n2".to_string(), "n3".to_string()],
+        };
+        let pe = stream_event_to_protocol_event(&ev).unwrap();
+        let v = pe.to_value().unwrap();
+        assert_eq!(v["type"], "got_plan");
+        assert_eq!(v["node_count"], 3);
+        assert_eq!(v["edge_count"], 2);
+    }
+
+    #[test]
+    fn got_node_start_format() {
+        let ev: StreamEvent<DummyState> = StreamEvent::GotNodeStart {
+            node_id: "gn1".to_string(),
+        };
+        let pe = stream_event_to_protocol_event(&ev).unwrap();
+        let v = pe.to_value().unwrap();
+        assert_eq!(v["type"], "got_node_start");
+        assert_eq!(v["id"], "gn1");
+    }
+
+    #[test]
+    fn got_node_complete_format() {
+        let ev: StreamEvent<DummyState> = StreamEvent::GotNodeComplete {
+            node_id: "gn1".to_string(),
+            result_summary: "done".to_string(),
+        };
+        let pe = stream_event_to_protocol_event(&ev).unwrap();
+        let v = pe.to_value().unwrap();
+        assert_eq!(v["type"], "got_node_complete");
+        assert_eq!(v["result_summary"], "done");
+    }
+
+    #[test]
+    fn got_node_failed_format() {
+        let ev: StreamEvent<DummyState> = StreamEvent::GotNodeFailed {
+            node_id: "gn2".to_string(),
+            error: "timeout".to_string(),
+        };
+        let pe = stream_event_to_protocol_event(&ev).unwrap();
+        let v = pe.to_value().unwrap();
+        assert_eq!(v["type"], "got_node_failed");
+        assert_eq!(v["error"], "timeout");
+    }
+
+    #[test]
+    fn got_expand_format() {
+        let ev: StreamEvent<DummyState> = StreamEvent::GotExpand {
+            node_id: "gn1".to_string(),
+            nodes_added: 2,
+            edges_added: 1,
+        };
+        let pe = stream_event_to_protocol_event(&ev).unwrap();
+        let v = pe.to_value().unwrap();
+        assert_eq!(v["type"], "got_expand");
+        assert_eq!(v["nodes_added"], 2);
+        assert_eq!(v["edges_added"], 1);
+    }
 }

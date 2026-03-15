@@ -391,7 +391,9 @@ fn compare_json(a: &serde_json::Value, b: &serde_json::Value) -> Option<std::cmp
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::memory::store::FilterOp;
     use serde_json::json;
+    use std::collections::HashMap;
 
     /// **Scenario**: Put and get a value returns the stored value.
     #[tokio::test]
@@ -711,5 +713,346 @@ mod tests {
         assert_eq!(item1.created_at, item2.created_at);
         assert!(item2.updated_at >= item1.updated_at);
         assert_eq!(item2.value.get("v").and_then(|v| v.as_i64()), Some(2));
+    }
+
+    /// **Scenario**: List empty namespace returns empty vec.
+    #[tokio::test]
+    async fn list_empty_namespace() {
+        let store = InMemoryStore::new();
+        let ns: Namespace = vec!["empty".into()];
+
+        let keys = store.list(&ns).await.unwrap();
+        assert!(keys.is_empty());
+    }
+
+    /// **Scenario**: List with empty namespace prefix returns all top-level keys.
+    #[tokio::test]
+    async fn list_empty_namespace_prefix() {
+        let store = InMemoryStore::new();
+        let ns: Namespace = vec![];
+
+        store.put(&ns, "root1", &json!(1)).await.unwrap();
+        store.put(&ns, "root2", &json!(2)).await.unwrap();
+
+        let keys = store.list(&ns).await.unwrap();
+        assert_eq!(keys.len(), 2);
+        assert!(keys.contains(&"root1".to_string()));
+        assert!(keys.contains(&"root2".to_string()));
+    }
+
+    /// **Scenario**: Search with offset >= hits.len() returns empty.
+    #[tokio::test]
+    async fn search_offset_exceeds_hits() {
+        let store = InMemoryStore::new();
+        let ns: Namespace = vec!["items".into()];
+
+        store.put(&ns, "a", &json!(1)).await.unwrap();
+        store.put(&ns, "b", &json!(2)).await.unwrap();
+
+        let options = SearchOptions::new().with_offset(10).with_limit(10);
+        let results = store.search(&ns, options).await.unwrap();
+        assert!(results.is_empty());
+    }
+
+    /// **Scenario**: Search with empty query returns all items (no filtering).
+    #[tokio::test]
+    async fn search_empty_query_returns_all() {
+        let store = InMemoryStore::new();
+        let ns: Namespace = vec!["docs".into()];
+
+        store
+            .put(&ns, "doc1", &json!({"text": "hello"}))
+            .await
+            .unwrap();
+        store
+            .put(&ns, "doc2", &json!({"text": "world"}))
+            .await
+            .unwrap();
+
+        let options = SearchOptions::new().with_query("").with_limit(10);
+        let results = store.search(&ns, options).await.unwrap();
+        assert_eq!(results.len(), 2);
+    }
+
+    /// **Scenario**: Search with filter Eq matches items.
+    #[tokio::test]
+    async fn search_with_filter_eq() {
+        let store = InMemoryStore::new();
+        let ns: Namespace = vec!["items".into()];
+
+        store
+            .put(&ns, "a", &json!({"status": "active", "count": 5}))
+            .await
+            .unwrap();
+        store
+            .put(&ns, "b", &json!({"status": "inactive", "count": 3}))
+            .await
+            .unwrap();
+        store
+            .put(&ns, "c", &json!({"status": "active", "count": 7}))
+            .await
+            .unwrap();
+
+        let mut filter = HashMap::new();
+        filter.insert("status".to_string(), FilterOp::Eq(json!("active")));
+        let options = SearchOptions {
+            query: None,
+            filter: Some(filter),
+            limit: 10,
+            offset: 0,
+        };
+        let results = store.search(&ns, options).await.unwrap();
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().all(|r| r.item.value.get("status") == Some(&json!("active"))));
+    }
+
+    /// **Scenario**: Search with filter Ne excludes items.
+    #[tokio::test]
+    async fn search_with_filter_ne() {
+        let store = InMemoryStore::new();
+        let ns: Namespace = vec!["items".into()];
+
+        store
+            .put(&ns, "a", &json!({"x": 1}))
+            .await
+            .unwrap();
+        store
+            .put(&ns, "b", &json!({"x": 2}))
+            .await
+            .unwrap();
+
+        let mut filter = HashMap::new();
+        filter.insert("x".to_string(), FilterOp::Ne(json!(1)));
+        let options = SearchOptions {
+            query: None,
+            filter: Some(filter),
+            limit: 10,
+            offset: 0,
+        };
+        let results = store.search(&ns, options).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].item.value.get("x"), Some(&json!(2)));
+    }
+
+    /// **Scenario**: Search with filter Gt, Gte, Lt, Lte.
+    #[tokio::test]
+    async fn search_with_filter_comparisons() {
+        let store = InMemoryStore::new();
+        let ns: Namespace = vec!["nums".into()];
+
+        for i in 1..=5 {
+            store
+                .put(&ns, &format!("n{}", i), &json!({"val": i}))
+                .await
+                .unwrap();
+        }
+
+        let mut filter_gt = HashMap::new();
+        filter_gt.insert("val".to_string(), FilterOp::Gt(json!(3)));
+        let results = store
+            .search(
+                &ns,
+                SearchOptions {
+                    query: None,
+                    filter: Some(filter_gt),
+                    limit: 10,
+                    offset: 0,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 2); // 4, 5
+
+        let mut filter_gte = HashMap::new();
+        filter_gte.insert("val".to_string(), FilterOp::Gte(json!(3)));
+        let results = store
+            .search(
+                &ns,
+                SearchOptions {
+                    query: None,
+                    filter: Some(filter_gte),
+                    limit: 10,
+                    offset: 0,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 3); // 3, 4, 5
+
+        let mut filter_lt = HashMap::new();
+        filter_lt.insert("val".to_string(), FilterOp::Lt(json!(3)));
+        let results = store
+            .search(
+                &ns,
+                SearchOptions {
+                    query: None,
+                    filter: Some(filter_lt),
+                    limit: 10,
+                    offset: 0,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 2); // 1, 2
+
+        let mut filter_lte = HashMap::new();
+        filter_lte.insert("val".to_string(), FilterOp::Lte(json!(3)));
+        let results = store
+            .search(
+                &ns,
+                SearchOptions {
+                    query: None,
+                    filter: Some(filter_lte),
+                    limit: 10,
+                    offset: 0,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 3); // 1, 2, 3
+    }
+
+    /// **Scenario**: Search with filter on missing field excludes item.
+    #[tokio::test]
+    async fn search_filter_missing_field_excludes() {
+        let store = InMemoryStore::new();
+        let ns: Namespace = vec!["items".into()];
+
+        store
+            .put(&ns, "a", &json!({"other": 1}))
+            .await
+            .unwrap();
+
+        let mut filter = HashMap::new();
+        filter.insert("missing".to_string(), FilterOp::Eq(json!(1)));
+        let options = SearchOptions {
+            query: None,
+            filter: Some(filter),
+            limit: 10,
+            offset: 0,
+        };
+        let results = store.search(&ns, options).await.unwrap();
+        assert!(results.is_empty());
+    }
+
+    /// **Scenario**: list_namespaces with suffix filter.
+    #[tokio::test]
+    async fn list_namespaces_with_suffix() {
+        let store = InMemoryStore::new();
+
+        store
+            .put(&vec!["users".into(), "u1".into(), "memories".into()], "k1", &json!(1))
+            .await
+            .unwrap();
+        store
+            .put(&vec!["users".into(), "u2".into(), "memories".into()], "k2", &json!(2))
+            .await
+            .unwrap();
+        store
+            .put(&vec!["users".into(), "u1".into(), "prefs".into()], "k3", &json!(3))
+            .await
+            .unwrap();
+
+        let options = ListNamespacesOptions::new().with_suffix(vec!["memories".into()]);
+        let namespaces = store.list_namespaces(options).await.unwrap();
+        assert_eq!(namespaces.len(), 2);
+        assert!(namespaces
+            .iter()
+            .all(|ns| ns.last() == Some(&"memories".to_string())));
+    }
+
+    /// **Scenario**: list_namespaces with offset and limit.
+    #[tokio::test]
+    async fn list_namespaces_with_offset_limit() {
+        let store = InMemoryStore::new();
+
+        for i in 0..5 {
+            store
+                .put(&vec![format!("ns{}", i)], "k1", &json!(i))
+                .await
+                .unwrap();
+        }
+
+        let options = ListNamespacesOptions {
+            match_conditions: vec![],
+            max_depth: None,
+            limit: 2,
+            offset: 1,
+        };
+        let namespaces = store.list_namespaces(options).await.unwrap();
+        assert_eq!(namespaces.len(), 2);
+    }
+
+    /// **Scenario**: list_namespaces with offset >= result.len() returns empty.
+    #[tokio::test]
+    async fn list_namespaces_offset_exceeds_result() {
+        let store = InMemoryStore::new();
+        store.put(&vec!["a".into()], "k1", &json!(1)).await.unwrap();
+
+        let options = ListNamespacesOptions {
+            match_conditions: vec![],
+            max_depth: None,
+            limit: 100,
+            offset: 10,
+        };
+        let namespaces = store.list_namespaces(options).await.unwrap();
+        assert!(namespaces.is_empty());
+    }
+
+    /// **Scenario**: Default creates new store.
+    #[test]
+    fn default_creates_store() {
+        let store = InMemoryStore::default();
+        assert!(std::mem::size_of_val(&store) > 0);
+    }
+
+    /// **Scenario**: search_simple returns StoreSearchHit with key, value, score.
+    #[tokio::test]
+    async fn search_simple_returns_hits() {
+        let store = InMemoryStore::new();
+        let ns: Namespace = vec!["test".into()];
+
+        store
+            .put(&ns, "k1", &json!({"text": "hello"}))
+            .await
+            .unwrap();
+        store
+            .put(&ns, "k2", &json!({"text": "world"}))
+            .await
+            .unwrap();
+
+        let hits = store.search_simple(&ns, Some("hello"), Some(5)).await.unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].key, "k1");
+        assert_eq!(hits[0].value.get("text").and_then(|v| v.as_str()), Some("hello"));
+
+        let hits_none_limit = store.search_simple(&ns, None, None).await.unwrap();
+        assert_eq!(hits_none_limit.len(), 2);
+    }
+
+    /// **Scenario**: batch with ListNamespaces op.
+    #[tokio::test]
+    async fn batch_list_namespaces() {
+        let store = InMemoryStore::new();
+        store.put(&vec!["ns1".into()], "k1", &json!(1)).await.unwrap();
+
+        let ops = vec![StoreOp::ListNamespaces {
+            options: ListNamespacesOptions::new(),
+        }];
+        let results = store.batch(ops).await.unwrap();
+        match &results[0] {
+            StoreOpResult::ListNamespaces(ns) => assert_eq!(ns.len(), 1),
+            _ => panic!("expected ListNamespaces result"),
+        }
+    }
+
+    /// **Scenario**: get_item for non-existent key returns None.
+    #[tokio::test]
+    async fn get_item_nonexistent_returns_none() {
+        let store = InMemoryStore::new();
+        let ns: Namespace = vec!["test".into()];
+
+        let item = store.get_item(&ns, "nonexistent").await.unwrap();
+        assert!(item.is_none());
     }
 }

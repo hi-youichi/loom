@@ -180,3 +180,277 @@ impl Tool for MultieditTool {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tool_source::ToolSourceError;
+    use serde_json::json;
+    use std::sync::Arc;
+
+    fn tool(dir: &tempfile::TempDir) -> MultieditTool {
+        MultieditTool::new(Arc::new(dir.path().to_path_buf()))
+    }
+
+    #[test]
+    fn multiedit_name_returns_tool_name() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(tool(&dir).name(), TOOL_MULTIEDIT);
+    }
+
+    #[test]
+    fn multiedit_spec_has_required_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let spec = tool(&dir).spec();
+        assert_eq!(spec.name, TOOL_MULTIEDIT);
+        assert!(spec.description.is_some());
+        assert!(spec.input_schema.get("properties").is_some());
+    }
+
+    #[tokio::test]
+    async fn multiedit_call_missing_path_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let t = tool(&dir);
+        let err = t
+            .call(json!({ "edits": [{ "oldString": "", "newString": "x" }] }), None)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ToolSourceError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn multiedit_call_path_not_string_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let t = tool(&dir);
+        let err = t
+            .call(
+                json!({ "path": 123, "edits": [{ "oldString": "", "newString": "x" }] }),
+                None,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ToolSourceError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn multiedit_call_missing_edits_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let t = tool(&dir);
+        let err = t
+            .call(json!({ "path": "f.txt" }), None)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ToolSourceError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn multiedit_call_edits_not_array_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let t = tool(&dir);
+        let err = t
+            .call(json!({ "path": "f.txt", "edits": "not array" }), None)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ToolSourceError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn multiedit_call_empty_edits_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("f.txt"), "x").unwrap();
+        let t = tool(&dir);
+        let err = t
+            .call(json!({ "path": "f.txt", "edits": [] }), None)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ToolSourceError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn multiedit_call_path_is_directory_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("subdir")).unwrap();
+        let t = tool(&dir);
+        let err = t
+            .call(
+                json!({
+                    "path": "subdir",
+                    "edits": [{ "oldString": "", "newString": "x" }]
+                }),
+                None,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ToolSourceError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn multiedit_call_new_file_first_edit_not_object_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let t = tool(&dir);
+        let err = t
+            .call(
+                json!({
+                    "path": "new.txt",
+                    "edits": ["not an object"]
+                }),
+                None,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ToolSourceError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn multiedit_call_new_file_first_edit_non_empty_old_string_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let t = tool(&dir);
+        let err = t
+            .call(
+                json!({
+                    "path": "new.txt",
+                    "edits": [{ "oldString": "x", "newString": "y" }]
+                }),
+                None,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ToolSourceError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn multiedit_call_new_file_multiple_edits_old_eq_new_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let t = tool(&dir);
+        let err = t
+            .call(
+                json!({
+                    "path": "new.txt",
+                    "edits": [
+                        { "oldString": "", "newString": "initial" },
+                        { "oldString": "x", "newString": "x" }
+                    ]
+                }),
+                None,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ToolSourceError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn multiedit_call_new_file_single_edit_success() {
+        let dir = tempfile::tempdir().unwrap();
+        let t = tool(&dir);
+        let result = t
+            .call(
+                json!({
+                    "path": "new.txt",
+                    "edits": [{ "oldString": "", "newString": "hello" }]
+                }),
+                None,
+            )
+            .await
+            .unwrap();
+        assert!(result.text.contains("Created"));
+        assert_eq!(std::fs::read_to_string(dir.path().join("new.txt")).unwrap(), "hello");
+    }
+
+    #[tokio::test]
+    async fn multiedit_call_new_file_in_subdir_creates_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let t = tool(&dir);
+        let result = t
+            .call(
+                json!({
+                    "path": "a/b/new.txt",
+                    "edits": [{ "oldString": "", "newString": "content" }]
+                }),
+                None,
+            )
+            .await
+            .unwrap();
+        assert!(result.text.contains("Created"));
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("a/b/new.txt")).unwrap(),
+            "content"
+        );
+    }
+
+    #[tokio::test]
+    async fn multiedit_call_existing_file_edit_not_object_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("f.txt"), "x").unwrap();
+        let t = tool(&dir);
+        let err = t
+            .call(
+                json!({
+                    "path": "f.txt",
+                    "edits": [{ "oldString": "x", "newString": "y" }, "not object"]
+                }),
+                None,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ToolSourceError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn multiedit_call_existing_file_old_eq_new_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("f.txt"), "abc").unwrap();
+        let t = tool(&dir);
+        let err = t
+            .call(
+                json!({
+                    "path": "f.txt",
+                    "edits": [{ "oldString": "b", "newString": "b" }]
+                }),
+                None,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ToolSourceError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn multiedit_call_existing_file_old_not_found_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("f.txt"), "original").unwrap();
+        let t = tool(&dir);
+        let err = t
+            .call(
+                json!({
+                    "path": "f.txt",
+                    "edits": [{ "oldString": "not_in_file", "newString": "y" }]
+                }),
+                None,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ToolSourceError::InvalidInput(_)));
+        assert_eq!(std::fs::read_to_string(dir.path().join("f.txt")).unwrap(), "original");
+    }
+
+    #[tokio::test]
+    async fn multiedit_call_existing_file_success() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("f.txt"), "a\nb\nc").unwrap();
+        let t = tool(&dir);
+        let result = t
+            .call(
+                json!({
+                    "path": "f.txt",
+                    "edits": [
+                        { "oldString": "a", "newString": "A" },
+                        { "oldString": "c", "newString": "C" }
+                    ]
+                }),
+                None,
+            )
+            .await
+            .unwrap();
+        assert!(result.text.contains("Applied"));
+        assert_eq!(std::fs::read_to_string(dir.path().join("f.txt")).unwrap(), "A\nb\nC");
+    }
+}

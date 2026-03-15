@@ -689,4 +689,267 @@ mod tests {
             _ => panic!("expected Get result with item"),
         }
     }
+
+    /// **Scenario**: batch with ListNamespaces op.
+    #[tokio::test]
+    async fn test_batch_list_namespaces() {
+        let embedder = Arc::new(MockEmbedder::new(1536));
+        let store = InMemoryVectorStore::new(embedder);
+        let ns: Namespace = vec!["test".into()];
+
+        store
+            .put(&ns, "k1", &serde_json::json!({"text": "hello"}))
+            .await
+            .unwrap();
+
+        let ops = vec![StoreOp::ListNamespaces {
+            options: ListNamespacesOptions::new(),
+        }];
+        let results = store.batch(ops).await.unwrap();
+        match &results[0] {
+            StoreOpResult::ListNamespaces(ns_list) => assert_eq!(ns_list.len(), 1),
+            _ => panic!("expected ListNamespaces result"),
+        }
+    }
+
+    /// **Scenario**: batch with Search op.
+    #[tokio::test]
+    async fn test_batch_search() {
+        let embedder = Arc::new(MockEmbedder::new(1536));
+        let store = InMemoryVectorStore::new(embedder);
+        let ns: Namespace = vec!["test".into()];
+
+        store
+            .put(&ns, "k1", &serde_json::json!({"text": "hello"}))
+            .await
+            .unwrap();
+
+        let ops = vec![StoreOp::Search {
+            namespace_prefix: ns.clone(),
+            options: SearchOptions::new().with_limit(10),
+        }];
+        let results = store.batch(ops).await.unwrap();
+        match &results[0] {
+            StoreOpResult::Search(items) => assert_eq!(items.len(), 1),
+            _ => panic!("expected Search result"),
+        }
+    }
+
+    /// **Scenario**: batch with Put value=None deletes item.
+    #[tokio::test]
+    async fn test_batch_delete() {
+        let embedder = Arc::new(MockEmbedder::new(1536));
+        let store = InMemoryVectorStore::new(embedder);
+        let ns: Namespace = vec!["test".into()];
+
+        store
+            .put(&ns, "k1", &serde_json::json!({"text": "hello"}))
+            .await
+            .unwrap();
+
+        let ops = vec![
+            StoreOp::Put {
+                namespace: ns.clone(),
+                key: "k1".into(),
+                value: None,
+            },
+            StoreOp::Get {
+                namespace: ns.clone(),
+                key: "k1".into(),
+            },
+        ];
+        let results = store.batch(ops).await.unwrap();
+        match &results[1] {
+            StoreOpResult::Get(None) => {}
+            _ => panic!("expected Get None after delete"),
+        }
+    }
+
+    /// **Scenario**: list_namespaces with suffix filter.
+    #[tokio::test]
+    async fn test_list_namespaces_with_suffix() {
+        let embedder = Arc::new(MockEmbedder::new(1536));
+        let store = InMemoryVectorStore::new(embedder);
+
+        store
+            .put(
+                &vec!["users".into(), "u1".into(), "memories".into()],
+                "k1",
+                &serde_json::json!({"text": "a"}),
+            )
+            .await
+            .unwrap();
+        store
+            .put(
+                &vec!["users".into(), "u2".into(), "memories".into()],
+                "k2",
+                &serde_json::json!({"text": "b"}),
+            )
+            .await
+            .unwrap();
+        store
+            .put(
+                &vec!["users".into(), "u1".into(), "prefs".into()],
+                "k3",
+                &serde_json::json!({"text": "c"}),
+            )
+            .await
+            .unwrap();
+
+        let options = ListNamespacesOptions::new().with_suffix(vec!["memories".into()]);
+        let namespaces = store.list_namespaces(options).await.unwrap();
+        assert_eq!(namespaces.len(), 2);
+    }
+
+    /// **Scenario**: list_namespaces with max_depth truncates.
+    #[tokio::test]
+    async fn test_list_namespaces_with_max_depth() {
+        let embedder = Arc::new(MockEmbedder::new(1536));
+        let store = InMemoryVectorStore::new(embedder);
+
+        store
+            .put(
+                &vec!["a".into(), "b".into(), "c".into()],
+                "k1",
+                &serde_json::json!({"text": "x"}),
+            )
+            .await
+            .unwrap();
+
+        let options = ListNamespacesOptions::new().with_max_depth(2);
+        let namespaces = store.list_namespaces(options).await.unwrap();
+        assert_eq!(namespaces.len(), 1);
+        assert!(namespaces[0].len() <= 2);
+    }
+
+    /// **Scenario**: list_namespaces with offset and limit.
+    #[tokio::test]
+    async fn test_list_namespaces_offset_limit() {
+        let embedder = Arc::new(MockEmbedder::new(1536));
+        let store = InMemoryVectorStore::new(embedder);
+
+        for i in 0..4 {
+            store
+                .put(
+                    &vec![format!("ns{}", i)],
+                    "k1",
+                    &serde_json::json!({"text": "x"}),
+                )
+                .await
+                .unwrap();
+        }
+
+        let options = ListNamespacesOptions {
+            match_conditions: vec![],
+            max_depth: None,
+            limit: 2,
+            offset: 1,
+        };
+        let namespaces = store.list_namespaces(options).await.unwrap();
+        assert_eq!(namespaces.len(), 2);
+    }
+
+    /// **Scenario**: list_namespaces with offset >= result.len() returns empty.
+    #[tokio::test]
+    async fn test_list_namespaces_offset_exceeds() {
+        let embedder = Arc::new(MockEmbedder::new(1536));
+        let store = InMemoryVectorStore::new(embedder);
+
+        store
+            .put(&vec!["a".into()], "k1", &serde_json::json!({"text": "x"}))
+            .await
+            .unwrap();
+
+        let options = ListNamespacesOptions {
+            match_conditions: vec![],
+            max_depth: None,
+            limit: 100,
+            offset: 10,
+        };
+        let namespaces = store.list_namespaces(options).await.unwrap();
+        assert!(namespaces.is_empty());
+    }
+
+    /// **Scenario**: Search with offset skips results.
+    #[tokio::test]
+    async fn test_search_with_offset() {
+        let embedder = Arc::new(MockEmbedder::new(1536));
+        let store = InMemoryVectorStore::new(embedder);
+        let ns = vec!["test".into()];
+
+        store
+            .put(&ns, "key1", &serde_json::json!({"text": "a"}))
+            .await
+            .unwrap();
+        store
+            .put(&ns, "key2", &serde_json::json!({"text": "b"}))
+            .await
+            .unwrap();
+        store
+            .put(&ns, "key3", &serde_json::json!({"text": "c"}))
+            .await
+            .unwrap();
+
+        let options = SearchOptions::new().with_offset(1).with_limit(10);
+        let hits = store.search(&ns, options).await.unwrap();
+        assert_eq!(hits.len(), 2);
+    }
+
+    /// **Scenario**: search_simple returns StoreSearchHit.
+    #[tokio::test]
+    async fn test_search_simple() {
+        let embedder = Arc::new(MockEmbedder::new(1536));
+        let store = InMemoryVectorStore::new(embedder);
+        let ns = vec!["test".into()];
+
+        store
+            .put(&ns, "key1", &serde_json::json!({"text": "hello"}))
+            .await
+            .unwrap();
+
+        let hits = store.search_simple(&ns, Some("hello"), Some(5)).await.unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].key, "key1");
+
+        let hits_default = store.search_simple(&ns, None, None).await.unwrap();
+        assert_eq!(hits_default.len(), 1);
+    }
+
+    /// **Scenario**: put with value without "text" uses to_string for embedding.
+    #[tokio::test]
+    async fn test_put_value_without_text_field() {
+        let embedder = Arc::new(MockEmbedder::new(1536));
+        let store = InMemoryVectorStore::new(embedder);
+        let ns = vec!["test".into()];
+
+        store
+            .put(&ns, "k1", &serde_json::json!({"data": 123, "other": "x"}))
+            .await
+            .unwrap();
+
+        let value = store.get(&ns, "k1").await.unwrap().unwrap();
+        assert_eq!(value.get("data").and_then(|v| v.as_i64()), Some(123));
+    }
+
+    /// **Scenario**: get_item for non-existent key returns None.
+    #[tokio::test]
+    async fn test_get_item_nonexistent() {
+        let embedder = Arc::new(MockEmbedder::new(1536));
+        let store = InMemoryVectorStore::new(embedder);
+        let ns = vec!["test".into()];
+
+        let item = store.get_item(&ns, "nonexistent").await.unwrap();
+        assert!(item.is_none());
+    }
+
+    /// **Scenario**: list empty namespace returns empty.
+    #[tokio::test]
+    async fn test_list_empty_namespace() {
+        let embedder = Arc::new(MockEmbedder::new(1536));
+        let store = InMemoryVectorStore::new(embedder);
+        let ns = vec!["empty".into()];
+
+        let keys = store.list(&ns).await.unwrap();
+        assert!(keys.is_empty());
+    }
 }

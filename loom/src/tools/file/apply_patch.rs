@@ -284,3 +284,295 @@ impl Tool for ApplyPatchTool {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_patch_missing_begin() {
+        let err = parse_patch("no begin here").unwrap_err();
+        assert!(err.contains("Begin Patch"));
+    }
+
+    #[test]
+    fn parse_patch_missing_end() {
+        let err = parse_patch("*** Begin Patch\nstuff").unwrap_err();
+        assert!(err.contains("End Patch"));
+    }
+
+    #[test]
+    fn parse_patch_add_file() {
+        let patch = "*** Begin Patch\n*** Add File: src/new.rs\n+fn main() {}\n*** End Patch";
+        let hunks = parse_patch(patch).unwrap();
+        assert_eq!(hunks.len(), 1);
+        match &hunks[0] {
+            Hunk::Add { path, contents } => {
+                assert_eq!(path, "src/new.rs");
+                assert_eq!(contents, "fn main() {}");
+            }
+            _ => panic!("expected Add hunk"),
+        }
+    }
+
+    #[test]
+    fn parse_patch_delete_file() {
+        let patch = "*** Begin Patch\n*** Delete File: old.rs\n*** End Patch";
+        let hunks = parse_patch(patch).unwrap();
+        assert_eq!(hunks.len(), 1);
+        match &hunks[0] {
+            Hunk::Delete { path } => assert_eq!(path, "old.rs"),
+            _ => panic!("expected Delete hunk"),
+        }
+    }
+
+    #[test]
+    fn parse_patch_update_file() {
+        let patch = "\
+*** Begin Patch
+*** Update File: main.rs
+@@ context
+ fn main() {
+-    println!(\"old\");
++    println!(\"new\");
+ }
+*** End Patch";
+        let hunks = parse_patch(patch).unwrap();
+        assert_eq!(hunks.len(), 1);
+        match &hunks[0] {
+            Hunk::Update { path, move_path, chunks } => {
+                assert_eq!(path, "main.rs");
+                assert!(move_path.is_none());
+                assert_eq!(chunks.len(), 1);
+                assert_eq!(chunks[0].old_lines, vec!["fn main() {", "    println!(\"old\");", "}"]);
+                assert_eq!(chunks[0].new_lines, vec!["fn main() {", "    println!(\"new\");", "}"]);
+            }
+            _ => panic!("expected Update hunk"),
+        }
+    }
+
+    #[test]
+    fn parse_patch_update_with_move() {
+        let patch = "\
+*** Begin Patch
+*** Update File: a.rs
+*** Move to: b.rs
+@@ chunk
+ line
+*** End Patch";
+        let hunks = parse_patch(patch).unwrap();
+        assert_eq!(hunks.len(), 1);
+        match &hunks[0] {
+            Hunk::Update { path, move_path, .. } => {
+                assert_eq!(path, "a.rs");
+                assert_eq!(move_path.as_deref(), Some("b.rs"));
+            }
+            _ => panic!("expected Update hunk"),
+        }
+    }
+
+    #[test]
+    fn parse_patch_multiple_hunks() {
+        let patch = "\
+*** Begin Patch
+*** Add File: a.rs
++hello
+*** Delete File: b.rs
+*** Update File: c.rs
+@@ chunk
+-old
++new
+*** End Patch";
+        let hunks = parse_patch(patch).unwrap();
+        assert_eq!(hunks.len(), 3);
+        assert!(matches!(&hunks[0], Hunk::Add { .. }));
+        assert!(matches!(&hunks[1], Hunk::Delete { .. }));
+        assert!(matches!(&hunks[2], Hunk::Update { .. }));
+    }
+
+    #[test]
+    fn parse_patch_add_empty_path_skipped() {
+        let patch = "*** Begin Patch\n*** Add File:\n+content\n*** End Patch";
+        let hunks = parse_patch(patch).unwrap();
+        assert_eq!(hunks.len(), 0);
+    }
+
+    #[test]
+    fn parse_patch_delete_empty_path_skipped() {
+        let patch = "*** Begin Patch\n*** Delete File:\n*** End Patch";
+        let hunks = parse_patch(patch).unwrap();
+        assert_eq!(hunks.len(), 0);
+    }
+
+    #[test]
+    fn parse_patch_update_empty_path_skipped() {
+        let patch = "*** Begin Patch\n*** Update File:\n*** End Patch";
+        let hunks = parse_patch(patch).unwrap();
+        assert_eq!(hunks.len(), 0);
+    }
+
+    #[test]
+    fn parse_patch_end_of_file_marker() {
+        let patch = "\
+*** Begin Patch
+*** Update File: main.rs
+@@ chunk
+ keep
++add
+*** End of File
+*** End Patch";
+        let hunks = parse_patch(patch).unwrap();
+        assert_eq!(hunks.len(), 1);
+        match &hunks[0] {
+            Hunk::Update { chunks, .. } => {
+                assert_eq!(chunks[0].old_lines, vec!["keep"]);
+                assert_eq!(chunks[0].new_lines, vec!["keep", "add"]);
+            }
+            _ => panic!("expected Update"),
+        }
+    }
+
+    #[tokio::test]
+    async fn tool_call_missing_patch_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        let result = tool.call(json!({}), None).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn tool_call_empty_patch() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        let result = tool.call(json!({"patchText": "*** Begin Patch\n*** End Patch"}), None).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn tool_call_add_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        let patch = "*** Begin Patch\n*** Add File: hello.txt\n+hello world\n*** End Patch";
+        let result = tool.call(json!({"patchText": patch}), None).await.unwrap();
+        assert!(result.text.contains("1 hunk"));
+        assert_eq!(std::fs::read_to_string(dir.path().join("hello.txt")).unwrap(), "hello world");
+    }
+
+    #[tokio::test]
+    async fn tool_call_delete_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("to_delete.txt"), "content").unwrap();
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        let patch = "*** Begin Patch\n*** Delete File: to_delete.txt\n*** End Patch";
+        let result = tool.call(json!({"patchText": patch}), None).await.unwrap();
+        assert!(result.text.contains("1 hunk"));
+        assert!(!dir.path().join("to_delete.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn tool_call_delete_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("subdir")).unwrap();
+        std::fs::write(dir.path().join("subdir/f.txt"), "x").unwrap();
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        let patch = "*** Begin Patch\n*** Delete File: subdir\n*** End Patch";
+        let result = tool.call(json!({"patchText": patch}), None).await.unwrap();
+        assert!(result.text.contains("1 hunk"));
+        assert!(!dir.path().join("subdir").exists());
+    }
+
+    #[tokio::test]
+    async fn tool_call_update_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("main.rs"), "fn main() {\n    old();\n}\n").unwrap();
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        let patch = "\
+*** Begin Patch
+*** Update File: main.rs
+@@ chunk
+ fn main() {
+-    old();
++    new();
+ }
+*** End Patch";
+        let result = tool.call(json!({"patchText": patch}), None).await.unwrap();
+        assert!(result.text.contains("1 hunk"));
+        let content = std::fs::read_to_string(dir.path().join("main.rs")).unwrap();
+        assert!(content.contains("new()"));
+        assert!(!content.contains("old()"));
+    }
+
+    #[tokio::test]
+    async fn tool_call_update_with_move() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.txt"), "old line").unwrap();
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        let patch = "\
+*** Begin Patch
+*** Update File: a.txt
+*** Move to: b.txt
+@@ chunk
+-old line
++new line
+*** End Patch";
+        let result = tool.call(json!({"patchText": patch}), None).await.unwrap();
+        assert!(result.text.contains("1 hunk"));
+        assert!(!dir.path().join("a.txt").exists());
+        assert!(dir.path().join("b.txt").exists());
+        assert_eq!(std::fs::read_to_string(dir.path().join("b.txt")).unwrap(), "new line");
+    }
+
+    #[tokio::test]
+    async fn tool_call_update_nonexistent_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        let patch = "\
+*** Begin Patch
+*** Update File: nonexistent.rs
+@@ chunk
+-old
++new
+*** End Patch";
+        let result = tool.call(json!({"patchText": patch}), None).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn tool_call_add_creates_subdirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        let patch = "*** Begin Patch\n*** Add File: deep/nested/file.txt\n+content\n*** End Patch";
+        let result = tool.call(json!({"patchText": patch}), None).await.unwrap();
+        assert!(result.text.contains("1 hunk"));
+        assert!(dir.path().join("deep/nested/file.txt").exists());
+    }
+
+    #[test]
+    fn tool_name_and_spec() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        assert_eq!(tool.name(), "apply_patch");
+        let spec = tool.spec();
+        assert_eq!(spec.name, "apply_patch");
+        assert!(spec.description.unwrap().contains("patch"));
+        assert!(spec.input_schema["required"].as_array().unwrap().iter().any(|v| v == "patchText"));
+    }
+
+    #[tokio::test]
+    async fn tool_call_update_append_when_old_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("f.txt"), "existing").unwrap();
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        let patch = "\
+*** Begin Patch
+*** Update File: f.txt
+@@ chunk
++appended
+*** End Patch";
+        let result = tool.call(json!({"patchText": patch}), None).await.unwrap();
+        assert!(result.text.contains("1 hunk"));
+        let content = std::fs::read_to_string(dir.path().join("f.txt")).unwrap();
+        assert!(content.contains("existing"));
+        assert!(content.contains("appended"));
+    }
+}
