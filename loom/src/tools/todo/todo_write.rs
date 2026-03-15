@@ -1,7 +1,7 @@
-//! Todo-write tool: replace todo list at XDG state home (e.g. ~/.local/state/loom/todos.json).
+//! Todo-write tool: write todo list to thread context (~/.loom/context/{thread_id}/todo.json).
 //!
 //! Accepts a full list of todos (id, content, status, priority); writes JSON.
-//! Uses [`cross_xdg`] for path. Interacts with [`Tool`](crate::tools::Tool).
+//! Uses thread_id from ToolCallContext.config.thread_id for isolation.
 //! Effective definition for LLM comes from `loom/tools/todo_write.yaml` via [`YamlSpecToolSource`](crate::tool_source::YamlSpecToolSource) override.
 
 use std::sync::Arc;
@@ -18,9 +18,11 @@ use super::TodoInfo;
 /// Tool name for writing the todo list.
 pub const TOOL_TODO_WRITE: &str = "todo_write";
 
-/// Tool that writes the todo list to XDG state home.
+/// Tool that writes the todo list to thread context.
 ///
-/// Path is `state_home()/loom/todos.json`; creates parent dirs if needed.
+/// Path is `~/.loom/context/{thread_id}/todo.json` when thread_id is provided;
+/// falls back to `~/.loom/todo.json` for backward compatibility.
+/// Creates parent dirs if needed.
 pub struct TodoWriteTool {
     /// Kept for registration compatibility with file tool source; path uses XDG, not this.
     #[allow(dead_code)]
@@ -100,10 +102,11 @@ impl Tool for TodoWriteTool {
     async fn call(
         &self,
         args: serde_json::Value,
-        _ctx: Option<&ToolCallContext>,
+        ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
         let todos = parse_todos(&args)?;
-        let path = todo_file_path()?;
+        let thread_id = ctx.and_then(|c| c.thread_id.as_deref());
+        let path = todo_file_path(thread_id)?;
         if let Some(parent) = path.parent() {
             if !parent.exists() {
                 std::fs::create_dir_all(parent).map_err(|e| {
@@ -128,7 +131,7 @@ impl Tool for TodoWriteTool {
 mod tests {
     use std::sync::Arc;
 
-    use crate::tool_source::ToolSourceError;
+    use crate::tool_source::{ToolCallContext, ToolSourceError};
     use crate::tools::Tool;
 
     use super::{TodoWriteTool, TOOL_TODO_WRITE};
@@ -175,7 +178,7 @@ mod tests {
         assert!(out.text.contains("1 todos"));
         assert!(out.text.contains("First"));
         assert!(out.text.contains("Second"));
-        let path = crate::tools::todo::todo_file_path().unwrap();
+        let path = crate::tools::todo::todo_file_path(None).unwrap();
         let raw = std::fs::read_to_string(&path).unwrap();
         assert!(raw.contains("First"));
         assert!(raw.contains("completed"));
@@ -270,9 +273,40 @@ mod tests {
         });
         let out = tool.call(args, None).await.unwrap();
         assert!(out.text.contains("1 todos"));
-        let path = crate::tools::todo::todo_file_path().unwrap();
+        let path = crate::tools::todo::todo_file_path(None).unwrap();
         let raw = std::fs::read_to_string(&path).unwrap();
         assert!(raw.contains("pending"));
         assert!(raw.contains("medium"));
+    }
+
+    /// call with thread_id writes to thread-specific path.
+    #[tokio::test]
+    async fn todo_write_call_with_thread_id_writes_to_thread_path() {
+        let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("LOOM_HOME", dir.path());
+        
+        let thread_id = "thread-789";
+        let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
+        let args = serde_json::json!({
+            "todos": [{ "id": "1", "content": "Thread task", "status": "pending", "priority": "high" }]
+        });
+        
+        let ctx = ToolCallContext {
+            thread_id: Some(thread_id.to_string()),
+            ..Default::default()
+        };
+        
+        let out = tool.call(args, Some(&ctx)).await.unwrap();
+        assert!(out.text.contains("1 todos"));
+        
+        // Verify file is in thread-specific path
+        let thread_path = crate::tools::todo::todo_file_path(Some(thread_id)).unwrap();
+        assert!(thread_path.exists());
+        assert!(thread_path.to_str().unwrap().contains("context"));
+        assert!(thread_path.to_str().unwrap().contains(thread_id));
+        
+        let raw = std::fs::read_to_string(&thread_path).unwrap();
+        assert!(raw.contains("Thread task"));
     }
 }

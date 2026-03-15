@@ -1,8 +1,11 @@
-//! Todo-read tool: read todo list from XDG state home (e.g. ~/.local/state/loom/todos.json).
+//! Todo-read tool: read todo list from thread context (e.g. ~/.loom/context/{thread_id}/todo.json).
 //!
 //! Returns JSON array; returns empty array if file is missing or invalid.
 //! Uses [`cross_xdg`] for path. Interacts with [`Tool`](crate::tools::Tool).
 //! Effective definition for LLM comes from `loom/tools/todo_read.yaml` via [`YamlSpecToolSource`](crate::tool_source::YamlSpecToolSource) override.
+//!
+//! When thread_id is provided via context.config.thread_id, uses thread-specific path.
+//! Otherwise falls back to global ~/.loom/todo.json for backward compatibility.
 
 use std::sync::Arc;
 
@@ -52,9 +55,10 @@ impl Tool for TodoReadTool {
     async fn call(
         &self,
         _args: serde_json::Value,
-        _ctx: Option<&ToolCallContext>,
+        ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        let path = todo_file_path()?;
+        let thread_id = ctx.and_then(|c| c.thread_id.as_deref());
+        let path = todo_file_path(thread_id)?;
         let todos: Vec<TodoInfo> = if path.exists() && path.is_file() {
             let s = std::fs::read_to_string(&path).unwrap_or_default();
             serde_json::from_str(&s).unwrap_or_default()
@@ -113,13 +117,41 @@ mod tests {
         assert!(out.text.contains("[]"));
     }
 
-    /// When XDG todo file exists with valid JSON, call returns count and list.
+    /// When thread-specific todo file exists with valid JSON, call returns count and list.
     #[tokio::test]
-    async fn todo_read_call_when_file_exists_returns_parsed_todos() {
+    async fn todo_read_call_when_thread_file_exists_returns_parsed_todos() {
+        use crate::tool_source::ToolCallContext;
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
-        let path = crate::tools::todo::todo_file_path().unwrap();
+        
+        let thread_id = "test-thread-123";
+        let path = crate::tools::todo::todo_file_path(Some(thread_id)).unwrap();
+        if let Some(p) = path.parent() {
+            std::fs::create_dir_all(p).unwrap();
+        }
+        let todos = serde_json::json!([
+            { "id": "1", "content": "Thread task", "status": "pending", "priority": "high" }
+        ]);
+        std::fs::write(&path, serde_json::to_string_pretty(&todos).unwrap()).unwrap();
+        
+        let tool = TodoReadTool::new(Arc::new(dir.path().to_path_buf()));
+        let ctx = ToolCallContext {
+            thread_id: Some(thread_id.to_string()),
+            ..Default::default()
+        };
+        let out = tool.call(serde_json::json!({}), Some(&ctx)).await.unwrap();
+        assert!(out.text.contains("1 todos"));
+        assert!(out.text.contains("Thread task"));
+    }
+
+    /// When global todo file exists with valid JSON (no thread_id), call returns count and list.
+    #[tokio::test]
+    async fn todo_read_call_when_global_file_exists_returns_parsed_todos() {
+        let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("LOOM_HOME", dir.path());
+        let path = crate::tools::todo::todo_file_path(None).unwrap();
         if let Some(p) = path.parent() {
             std::fs::create_dir_all(p).unwrap();
         }
@@ -142,7 +174,7 @@ mod tests {
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
-        let path = crate::tools::todo::todo_file_path().unwrap();
+        let path = crate::tools::todo::todo_file_path(None).unwrap();
         if let Some(p) = path.parent() {
             std::fs::create_dir_all(p).unwrap();
         }

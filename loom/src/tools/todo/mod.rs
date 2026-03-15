@@ -1,6 +1,8 @@
 //! Todo tools: todo_write, todo_read.
 //!
-//! Persist todo list as JSON under `~/.loom/todos.json`.
+//! Persist todo list as JSON:
+//! - With thread_id: `~/.loom/context/{thread_id}/todo.json`
+//! - Without thread_id: `~/.loom/todo.json` (global fallback)
 
 mod todo_read;
 mod todo_write;
@@ -8,11 +10,18 @@ mod todo_write;
 pub use todo_read::{TodoReadTool, TOOL_TODO_READ};
 pub use todo_write::{TodoWriteTool, TOOL_TODO_WRITE};
 
-const TODOS_FILENAME: &str = "todos.json";
+const TODOS_FILENAME: &str = "todo.json";
+const CONTEXT_DIR: &str = "context";
 
-/// Returns the path to the todo list file (`~/.loom/todos.json`).
-pub fn todo_file_path() -> Result<std::path::PathBuf, crate::tool_source::ToolSourceError> {
-    Ok(env_config::home::loom_home().join(TODOS_FILENAME))
+/// Returns the path to the todo list file.
+/// - With thread_id: `~/.loom/context/{thread_id}/todo.json`
+/// - Without thread_id: `~/.loom/todo.json` (global fallback)
+pub fn todo_file_path(thread_id: Option<&str>) -> Result<std::path::PathBuf, crate::tool_source::ToolSourceError> {
+    let base = env_config::home::loom_home();
+    match thread_id {
+        Some(tid) => Ok(base.join(CONTEXT_DIR).join(tid).join(TODOS_FILENAME)),
+        None => Ok(base.join(TODOS_FILENAME)),
+    }
 }
 
 /// Single todo item.
@@ -31,14 +40,25 @@ pub(crate) static XDG_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(()
 mod tests {
     use super::{TodoInfo, TODOS_FILENAME};
 
-    /// Given LOOM_HOME is set, todo_file_path returns loom_home/todos.json.
+    /// Given LOOM_HOME is set, todo_file_path returns loom_home/todo.json.
     #[test]
     fn todo_file_path_uses_loom_home() {
         let _g = super::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
-        let path = super::todo_file_path().unwrap();
-        assert_eq!(path, dir.path().join("todos.json"));
+        let path = super::todo_file_path(None).unwrap();
+        assert_eq!(path, dir.path().join("todo.json"));
+        std::env::remove_var("LOOM_HOME");
+    }
+
+    /// Given LOOM_HOME and thread_id, todo_file_path returns loom_home/context/{thread_id}/todo.json.
+    #[test]
+    fn todo_file_path_with_thread_id() {
+        let _g = super::XDG_TEST_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("LOOM_HOME", dir.path());
+        let path = super::todo_file_path(Some("session-123")).unwrap();
+        assert_eq!(path, dir.path().join("context").join("session-123").join("todo.json"));
         std::env::remove_var("LOOM_HOME");
     }
 
@@ -61,6 +81,6 @@ mod tests {
 
     #[test]
     fn constants_match_docs() {
-        assert_eq!(TODOS_FILENAME, "todos.json");
+        assert_eq!(TODOS_FILENAME, "todo.json");
     }
 }
