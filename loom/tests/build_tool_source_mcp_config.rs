@@ -33,7 +33,7 @@ async fn mcp_config_injected_into_build_tool_source() {
     let mcp_json = r#"{"mcpServers":{"test":{"command":"true","args":[]}}}"#;
     std::fs::write(working.join(".loom").join("mcp.json"), mcp_json).unwrap();
 
-    let (_, config) = build_helve_config(&opts(working));
+    let (_, config, _) = build_helve_config(&opts(working));
     assert!(
         config.mcp_servers.as_ref().map(|s| !s.is_empty()).unwrap_or(false),
         "mcp_servers should be loaded from .loom/mcp.json"
@@ -56,7 +56,7 @@ async fn mcp_config_empty_when_no_file() {
     let prev = std::env::var("XDG_CONFIG_HOME").ok();
     std::env::set_var("XDG_CONFIG_HOME", xdg.path());
 
-    let (_, config) = build_helve_config(&opts(working));
+    let (_, config, _) = build_helve_config(&opts(working));
     assert!(
         config.mcp_servers.as_ref().map(|s| s.is_empty()).unwrap_or(true),
         "mcp_servers should be None or empty when no config file"
@@ -84,7 +84,7 @@ async fn mcp_config_invalid_json_logged_but_build_succeeds() {
 
     let mut run_opts = opts(working);
     run_opts.mcp_config_path = Some(bad_json);
-    let (_, config) = build_helve_config(&run_opts);
+    let (_, config, _) = build_helve_config(&run_opts);
     // load_mcp_config_from_path fails for that file; build_helve_config only sets mcp_servers on Ok, so we get None or from_env
     let ctx = build_react_run_context(&config).await.expect("build_react_run_context");
     let _ = ctx.tool_source.list_tools().await.expect("list_tools");

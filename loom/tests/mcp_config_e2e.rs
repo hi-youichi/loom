@@ -38,7 +38,7 @@ async fn mcp_config_discovered_and_run_with_mock_llm_returns_reply() {
     std::fs::write(loom_dir.join("mcp.json"), mcp_json).expect("write mcp.json");
 
     let opts = opts(working.clone());
-    let (_, config) = build_helve_config(&opts);
+    let (_, config, _) = build_helve_config(&opts);
     assert!(
         config.mcp_servers.as_ref().map(|s| !s.is_empty()).unwrap_or(false),
         "mcp_servers should be loaded from .loom/mcp.json"

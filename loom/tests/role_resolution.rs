@@ -30,7 +30,7 @@ fn role_file_readable_non_empty_used() {
     std::fs::write(&role_path, content).unwrap();
 
     let opts = opts(Some(dir.path().to_path_buf()), Some(role_path));
-    let (helve, _) = build_helve_config(&opts);
+    let (helve, _, _) = build_helve_config(&opts);
 
     assert_eq!(helve.role_setting.as_deref(), Some(content));
 }
@@ -43,7 +43,7 @@ fn role_file_empty_fallback_to_default() {
     std::fs::write(&role_path, "   \n\t  ").unwrap();
     // No instructions.md in working_folder → fallback to built-in default
     let opts = opts(Some(dir.path().to_path_buf()), Some(role_path));
-    let (helve, _) = build_helve_config(&opts);
+    let (helve, _, _) = build_helve_config(&opts);
 
     assert!(helve.role_setting.is_some());
     let s = helve.role_setting.unwrap();
@@ -58,7 +58,7 @@ fn no_role_file_instructions_in_working_folder_used() {
     std::fs::write(dir.path().join("instructions.md"), role_content).unwrap();
 
     let opts = opts(Some(dir.path().to_path_buf()), None);
-    let (helve, _) = build_helve_config(&opts);
+    let (helve, _, _) = build_helve_config(&opts);
 
     assert_eq!(helve.role_setting.as_deref(), Some(role_content));
 }
@@ -71,7 +71,7 @@ fn no_role_file_soul_md_legacy_used() {
     std::fs::write(dir.path().join("SOUL.md"), role_content).unwrap();
 
     let opts = opts(Some(dir.path().to_path_buf()), None);
-    let (helve, _) = build_helve_config(&opts);
+    let (helve, _, _) = build_helve_config(&opts);
 
     assert_eq!(helve.role_setting.as_deref(), Some(role_content));
 }
@@ -82,7 +82,7 @@ fn no_role_file_no_instructions_uses_default() {
     let dir = tempfile::tempdir().unwrap();
 
     let opts = opts(Some(dir.path().to_path_buf()), None);
-    let (helve, _) = build_helve_config(&opts);
+    let (helve, _, _) = build_helve_config(&opts);
 
     assert!(helve.role_setting.is_some());
     let s = helve.role_setting.unwrap();

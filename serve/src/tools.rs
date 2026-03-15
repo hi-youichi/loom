@@ -27,7 +27,7 @@ pub(crate) async fn handle_tools_list(
         model: None,
         mcp_config_path: None,
     };
-    let (_helve, config) = build_helve_config(&opts);
+    let (_helve, config, _resolved_agent) = build_helve_config(&opts);
     match build_react_run_context(&config).await {
         Ok(ctx) => match ctx.tool_source.list_tools().await {
             Ok(tools) => ServerResponse::ToolsList(ToolsListResponse { id, tools }),
@@ -62,7 +62,7 @@ pub(crate) async fn handle_tool_show(
         model: None,
         mcp_config_path: None,
     };
-    let (_helve, config) = build_helve_config(&opts);
+    let (_helve, config, _resolved_agent) = build_helve_config(&opts);
     match build_react_run_context(&config).await {
         Ok(ctx) => match ctx.tool_source.list_tools().await {
             Ok(tools) => {

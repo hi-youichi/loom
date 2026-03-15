@@ -39,7 +39,7 @@ Check correctness, security, and style.
     std::fs::write(skills_dir.join("code-review").join("SKILL.md"), skill_md).unwrap();
 
     let run_opts = opts(dir.path().to_path_buf());
-    let (helve, config) = build_helve_config(&run_opts);
+    let (helve, config, _resolved_agent) = build_helve_config(&run_opts);
 
     assert!(
         helve.skills_prompt.as_ref().map_or(false, |s| s.contains("code-review") && s.contains("Review code")),
@@ -64,7 +64,7 @@ fn build_helve_config_no_skills_dir_no_prompt() {
     let prev = std::env::var("LOOM_HOME").ok();
     std::env::set_var("LOOM_HOME", dir.path().join("empty_loom_home"));
     let run_opts = opts(dir.path().to_path_buf());
-    let (helve, config) = build_helve_config(&run_opts);
+    let (helve, config, _resolved_agent) = build_helve_config(&run_opts);
     match prev {
         Some(v) => std::env::set_var("LOOM_HOME", v),
         None => std::env::remove_var("LOOM_HOME"),
