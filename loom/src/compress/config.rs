@@ -24,8 +24,8 @@ pub struct CompactionConfig {
 impl Default for CompactionConfig {
     fn default() -> Self {
         Self {
-            auto: false,
-            prune: false,
+            auto: true,
+            prune: true,
             max_context_tokens: 128_000,
             reserve_tokens: 4096,
             prune_keep_tokens: 40_000,
@@ -40,10 +40,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_disables_auto_and_prune() {
+    fn default_enables_auto_and_prune() {
         let c = CompactionConfig::default();
-        assert!(!c.auto);
-        assert!(!c.prune);
+        assert!(c.auto);
+        assert!(c.prune);
         assert_eq!(c.max_context_tokens, 128_000);
         assert_eq!(c.reserve_tokens, 4096);
         assert_eq!(c.prune_keep_tokens, 40_000);
