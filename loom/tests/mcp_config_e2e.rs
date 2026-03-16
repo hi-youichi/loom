@@ -53,5 +53,5 @@ async fn mcp_config_discovered_and_run_with_mock_llm_returns_reply() {
     .await
     .expect("run_agent");
 
-    assert_eq!(reply.trim(), "Done");
+    assert_eq!(reply.reply.trim(), "Done");
 }
