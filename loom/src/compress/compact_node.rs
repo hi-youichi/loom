@@ -101,6 +101,7 @@ mod tests {
         };
         let state = ReActState {
             messages: vec![Message::User("a".repeat(200_000))], // would overflow if checked
+            last_reasoning_content: None,
             tool_calls: vec![],
             tool_results: vec![],
             turn_count: 0,
@@ -127,6 +128,7 @@ mod tests {
         };
         let state = ReActState {
             messages: vec![Message::User("short".to_string())],
+            last_reasoning_content: None,
             tool_calls: vec![],
             tool_results: vec![],
             turn_count: 0,

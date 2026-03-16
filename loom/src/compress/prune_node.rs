@@ -63,6 +63,7 @@ mod tests {
         };
         let state = ReActState {
             messages: vec![Message::User("Tool x returned: y".to_string())],
+            last_reasoning_content: None,
             tool_calls: vec![],
             tool_results: vec![],
             turn_count: 0,
@@ -92,6 +93,7 @@ mod tests {
                 Message::User("u".to_string()),
                 Message::User("Tool a returned: xxxxxxxxxxxxxxxxxxxx".to_string()), // 5 tokens
             ],
+            last_reasoning_content: None,
             tool_calls: vec![],
             tool_results: vec![],
             turn_count: 0,

@@ -9,6 +9,10 @@
 //! `data:` lines and `data: [DONE]`, accumulates content and tool_calls, and sends
 //! `MessageChunk` / `ToolCallDelta` through the provided channel.
 //!
+//! The response body is read with `res.chunk().await` in a loop; each chunk is appended
+//! to a line buffer and complete SSE lines (`data: ...` / `data: [DONE]`) are parsed and
+//! emitted to `chunk_tx` as they arrive, so the client sees tokens in real time.
+//!
 //! **Interaction**: Implements `LlmClient`; used by ThinkNode like `ChatOpenAI`.
 //! Depends on `reqwest` (no async_openai).
 
@@ -50,6 +54,25 @@ fn strip_thinking_tags(s: &str) -> String {
     }
     out.push_str(rest);
     out
+}
+
+fn collect_thinking_tags(s: &str) -> Option<String> {
+    let mut out = String::new();
+    let mut rest = s;
+    while let Some(start) = rest.find(THINKING_START) {
+        rest = &rest[start + THINKING_START.len()..];
+        if let Some(end) = rest.find(THINKING_END) {
+            out.push_str(&rest[..end]);
+            rest = &rest[end + THINKING_END.len()..];
+        } else {
+            break;
+        }
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
 }
 
 // ----- Request DTOs (OpenAI-compatible) -----
@@ -108,6 +131,8 @@ struct ResponseToolCall {
 #[derive(serde::Deserialize)]
 struct ResponseMessage {
     content: Option<String>,
+    #[serde(default, alias = "reasoning", alias = "reason_content")]
+    reasoning_content: Option<String>,
     tool_calls: Option<Vec<ResponseToolCall>>,
 }
 
@@ -147,12 +172,17 @@ struct StreamToolCallDelta {
 #[derive(serde::Deserialize, Default)]
 struct StreamDelta {
     content: Option<String>,
+    #[serde(default, alias = "reasoning", alias = "reason_content")]
+    reasoning_content: Option<String>,
     tool_calls: Option<Vec<StreamToolCallDelta>>,
 }
 
 #[derive(serde::Deserialize)]
 struct StreamChoice {
     delta: StreamDelta,
+    /// OpenAI-compatible; optional so we don't fail if the API omits it.
+    #[serde(default)]
+    finish_reason: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -182,8 +212,8 @@ impl ChatBigModel {
     pub fn new(model: impl Into<String>) -> Result<Self, AgentError> {
         let api_key = std::env::var("OPENAI_API_KEY")
             .map_err(|_| AgentError::ExecutionFailed("OPENAI_API_KEY is not set".to_string()))?;
-        let base_url = std::env::var("OPENAI_BASE_URL")
-            .unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
+        let base_url =
+            std::env::var("OPENAI_BASE_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
         let model = model.into();
         Ok(Self::with_config(base_url, api_key, model))
     }
@@ -337,23 +367,22 @@ impl LlmClient for ChatBigModel {
             let msg = String::from_utf8_lossy(&body_bytes);
             return Err(AgentError::ExecutionFailed(format!(
                 "BigModel API error {}: {}",
-                status,
-                msg
+                status, msg
             )));
         }
 
-        let response: ChatCompletionResponse = serde_json::from_slice(&body_bytes).map_err(|e| {
-            AgentError::ExecutionFailed(format!("BigModel response parse: {}", e))
-        })?;
+        let response: ChatCompletionResponse = serde_json::from_slice(&body_bytes)
+            .map_err(|e| AgentError::ExecutionFailed(format!("BigModel response parse: {}", e)))?;
 
-        let choice = response
-            .choices
-            .into_iter()
-            .next()
-            .ok_or_else(|| AgentError::ExecutionFailed("BigModel returned no choices".to_string()))?;
+        let choice = response.choices.into_iter().next().ok_or_else(|| {
+            AgentError::ExecutionFailed("BigModel returned no choices".to_string())
+        })?;
 
         let msg = choice.message;
         let content = msg.content.unwrap_or_default();
+        let reasoning_content = msg
+            .reasoning_content
+            .or_else(|| collect_thinking_tags(&content));
         let tool_calls: Vec<ToolCall> = msg
             .tool_calls
             .unwrap_or_default()
@@ -375,6 +404,7 @@ impl LlmClient for ChatBigModel {
 
         Ok(LlmResponse {
             content,
+            reasoning_content,
             tool_calls,
             usage,
         })
@@ -414,7 +444,7 @@ impl LlmClient for ChatBigModel {
             "BigModel chat create_stream"
         );
 
-        let res = self
+        let mut res = self
             .client
             .post(&url)
             .bearer_auth(&self.api_key)
@@ -429,160 +459,219 @@ impl LlmClient for ChatBigModel {
             let msg = String::from_utf8_lossy(&body_bytes);
             return Err(AgentError::ExecutionFailed(format!(
                 "BigModel stream error {}: {}",
-                status,
-                msg
+                status, msg
             )));
         }
 
-        let body_bytes = res
-            .bytes()
-            .await
-            .map_err(|e| AgentError::ExecutionFailed(format!("BigModel stream body: {}", e)))?;
-        let text = String::from_utf8_lossy(&body_bytes);
-
+        let mut buf = Vec::<u8>::new();
         let mut full_content = String::new();
+        let mut full_reasoning_content = String::new();
         let mut sent_any_content = false;
         let mut tool_call_map: std::collections::HashMap<u32, (String, String, String)> =
             std::collections::HashMap::new();
         let mut stream_usage: Option<LlmUsage> = None;
         let mut segment_buf = String::new();
         let mut think_state = ThinkingParseState::Outside;
+        let mut done = false;
 
-        for line in text.lines() {
-            let line = line.trim();
-            if !line.starts_with("data: ") {
-                continue;
-            }
-            let data = line.trim_start_matches("data: ").trim();
-            if data == "[DONE]" {
-                break;
-            }
-            let chunk: StreamChunk = match serde_json::from_str(data) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
+        while !done {
+            let chunk = res
+                .chunk()
+                .await
+                .map_err(|e| AgentError::ExecutionFailed(format!("BigModel stream body: {}", e)))?;
+            let Some(bytes) = chunk else { break };
 
-            if let Some(ref u) = chunk.usage {
-                stream_usage = Some(LlmUsage {
-                    prompt_tokens: u.prompt_tokens,
-                    completion_tokens: u.completion_tokens,
-                    total_tokens: u.total_tokens,
-                });
-            }
+            trace!(bytes_len = bytes.len(), "BigModel stream bytes");
+            buf.extend_from_slice(&bytes);
 
-            let choices = match chunk.choices {
-                Some(c) => c,
-                None => continue,
-            };
+            while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
+                let line_bytes: Vec<u8> = buf.drain(..=pos).collect();
+                let line = match std::str::from_utf8(&line_bytes) {
+                    Ok(s) => s.trim(),
+                    Err(_) => continue,
+                };
+                if line.is_empty() {
+                    continue;
+                }
+                if !line.starts_with("data: ") {
+                    continue;
+                }
+                let data = line.trim_start_matches("data: ").trim();
+                if data == "[DONE]" {
+                    done = true;
+                    break;
+                }
+                let stream_chunk: StreamChunk = match serde_json::from_str(data) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
 
-            for choice in choices {
-                let delta = choice.delta;
+                if let Some(ref u) = stream_chunk.usage {
+                    stream_usage = Some(LlmUsage {
+                        prompt_tokens: u.prompt_tokens,
+                        completion_tokens: u.completion_tokens,
+                        total_tokens: u.total_tokens,
+                    });
+                }
 
-                if let Some(ref content) = delta.content {
-                    if !content.is_empty() {
-                        full_content.push_str(content);
-                        sent_any_content = true;
+                let choices = match stream_chunk.choices {
+                    Some(c) => c,
+                    None => continue,
+                };
 
-                        if self.parse_thinking_tags {
-                            segment_buf.push_str(content);
-                            loop {
-                                match think_state {
-                                    ThinkingParseState::Outside => {
-                                        if let Some(i) = segment_buf.find(THINKING_START) {
-                                            let (before, after) = segment_buf.split_at(i);
-                                            if !before.is_empty() {
-                                                let _ = chunk_tx
-                                                    .send(MessageChunk::message(before.to_string()))
-                                                    .await;
+                trace!(data = %data, "BigModel stream data");
+
+                for choice in choices {
+                    let content_len = choice.delta.content.as_ref().map(|s| s.len()).unwrap_or(0);
+                    let reasoning_len = choice
+                        .delta
+                        .reasoning_content
+                        .as_ref()
+                        .map(|s| s.len())
+                        .unwrap_or(0);
+                    let tool_call_count = choice
+                        .delta
+                        .tool_calls
+                        .as_ref()
+                        .map(|calls| calls.len())
+                        .unwrap_or(0);
+                    trace!(
+                        content_len,
+                        reasoning_len,
+                        tool_call_count,
+                        finish_reason = ?choice.finish_reason,
+                        content = ?choice.delta.content,
+                        reasoning_content = ?choice.delta.reasoning_content,
+                        "BigModel stream chunk"
+                    );
+                    let delta = choice.delta;
+
+                    if let Some(ref reasoning_content) = delta.reasoning_content {
+                        if !reasoning_content.is_empty() {
+                            full_reasoning_content.push_str(reasoning_content);
+                            let _ = chunk_tx
+                                .send(MessageChunk::thinking(reasoning_content.clone()))
+                                .await;
+                        }
+                    }
+
+                    if let Some(ref content) = delta.content {
+                        if !content.is_empty() {
+                            full_content.push_str(content);
+                            sent_any_content = true;
+
+                            if self.parse_thinking_tags {
+                                segment_buf.push_str(content);
+                                loop {
+                                    match think_state {
+                                        ThinkingParseState::Outside => {
+                                            if let Some(i) = segment_buf.find(THINKING_START) {
+                                                let (before, after) = segment_buf.split_at(i);
+                                                if !before.is_empty() {
+                                                    let _ = chunk_tx
+                                                        .send(MessageChunk::message(
+                                                            before.to_string(),
+                                                        ))
+                                                        .await;
+                                                }
+                                                segment_buf =
+                                                    after[THINKING_START.len()..].to_string();
+                                                think_state = ThinkingParseState::Inside;
+                                            } else {
+                                                let keep = segment_buf.len().saturating_sub(
+                                                    THINKING_START.len().saturating_sub(1),
+                                                );
+                                                let to_send = segment_buf[..keep].to_string();
+                                                segment_buf = segment_buf[keep..].to_string();
+                                                if !to_send.is_empty() {
+                                                    let _ = chunk_tx
+                                                        .send(MessageChunk::message(to_send))
+                                                        .await;
+                                                }
+                                                break;
                                             }
-                                            segment_buf =
-                                                after[THINKING_START.len()..].to_string();
-                                            think_state = ThinkingParseState::Inside;
-                                        } else {
-                                            let keep = segment_buf.len().saturating_sub(
-                                                THINKING_START.len().saturating_sub(1),
-                                            );
-                                            let to_send = segment_buf[..keep].to_string();
-                                            segment_buf = segment_buf[keep..].to_string();
-                                            if !to_send.is_empty() {
-                                                let _ = chunk_tx
-                                                    .send(MessageChunk::message(to_send))
-                                                    .await;
-                                            }
-                                            break;
                                         }
-                                    }
-                                    ThinkingParseState::Inside => {
-                                        if let Some(i) = segment_buf.find(THINKING_END) {
-                                            let (inside, after) = segment_buf.split_at(i);
-                                            if !inside.is_empty() {
-                                                let _ = chunk_tx
-                                                    .send(MessageChunk::thinking(
-                                                        inside.to_string(),
-                                                    ))
-                                                    .await;
+                                        ThinkingParseState::Inside => {
+                                            if let Some(i) = segment_buf.find(THINKING_END) {
+                                                let (inside, after) = segment_buf.split_at(i);
+                                                if !inside.is_empty() {
+                                                    let _ = chunk_tx
+                                                        .send(MessageChunk::thinking(
+                                                            inside.to_string(),
+                                                        ))
+                                                        .await;
+                                                }
+                                                segment_buf =
+                                                    after[THINKING_END.len()..].to_string();
+                                                think_state = ThinkingParseState::Outside;
+                                            } else {
+                                                let keep = segment_buf.len().saturating_sub(
+                                                    THINKING_END.len().saturating_sub(1),
+                                                );
+                                                let to_send = segment_buf[..keep].to_string();
+                                                segment_buf = segment_buf[keep..].to_string();
+                                                if !to_send.is_empty() {
+                                                    let _ = chunk_tx
+                                                        .send(MessageChunk::thinking(to_send))
+                                                        .await;
+                                                }
+                                                break;
                                             }
-                                            segment_buf =
-                                                after[THINKING_END.len()..].to_string();
-                                            think_state = ThinkingParseState::Outside;
-                                        } else {
-                                            let keep = segment_buf.len().saturating_sub(
-                                                THINKING_END.len().saturating_sub(1),
-                                            );
-                                            let to_send = segment_buf[..keep].to_string();
-                                            segment_buf = segment_buf[keep..].to_string();
-                                            if !to_send.is_empty() {
-                                                let _ = chunk_tx
-                                                    .send(MessageChunk::thinking(to_send))
-                                                    .await;
-                                            }
-                                            break;
                                         }
                                     }
                                 }
+                            } else {
+                                let _ = chunk_tx.send(MessageChunk::message(content.clone())).await;
                             }
-                        } else {
-                            let _ = chunk_tx.send(MessageChunk::message(content.clone())).await;
                         }
                     }
-                }
 
-                if let Some(ref tool_calls) = delta.tool_calls {
-                    for tc in tool_calls {
-                        let entry = tool_call_map.entry(tc.index).or_insert_with(|| {
-                            (
-                                tc.id.clone().unwrap_or_default(),
-                                String::new(),
-                                String::new(),
-                            )
-                        });
-                        if let Some(ref id) = tc.id {
-                            if !id.is_empty() {
-                                entry.0 = id.clone();
-                            }
-                        }
-                        if let Some(ref func) = tc.function {
-                            if let Some(ref name) = func.name {
-                                entry.1.push_str(name);
-                            }
-                            if let Some(ref args) = func.arguments {
-                                entry.2.push_str(args);
-                            }
-                        }
-                        if let Some(ref tool_tx) = tool_delta_tx {
+                    if let Some(ref tool_calls) = delta.tool_calls {
+                        for tc in tool_calls {
+                            let tool_name = tc.function.as_ref().and_then(|f| f.name.clone());
                             let args_delta = tc
                                 .function
                                 .as_ref()
                                 .and_then(|f| f.arguments.clone())
                                 .unwrap_or_default();
-                            if !args_delta.is_empty() || tc.id.is_some() {
-                                let _ = tool_tx
-                                    .send(ToolCallDelta {
-                                        call_id: tc.id.clone(),
-                                        name: tc.function.as_ref().and_then(|f| f.name.clone()),
-                                        arguments_delta: args_delta,
-                                    })
-                                    .await;
+                            trace!(
+                                tool_index = tc.index,
+                                call_id = ?tc.id,
+                                name = ?tool_name,
+                                arguments_delta_len = args_delta.len(),
+                                arguments_delta = %args_delta,
+                                "BigModel stream tool chunk"
+                            );
+                            let entry = tool_call_map.entry(tc.index).or_insert_with(|| {
+                                (
+                                    tc.id.clone().unwrap_or_default(),
+                                    String::new(),
+                                    String::new(),
+                                )
+                            });
+                            if let Some(ref id) = tc.id {
+                                if !id.is_empty() {
+                                    entry.0 = id.clone();
+                                }
+                            }
+                            if let Some(ref func) = tc.function {
+                                if let Some(ref name) = func.name {
+                                    entry.1.push_str(name);
+                                }
+                                if let Some(ref args) = func.arguments {
+                                    entry.2.push_str(args);
+                                }
+                            }
+                            if let Some(ref tool_tx) = tool_delta_tx {
+                                if !args_delta.is_empty() || tc.id.is_some() {
+                                    let _ = tool_tx
+                                        .send(ToolCallDelta {
+                                            call_id: tc.id.clone(),
+                                            name: tool_name,
+                                            arguments_delta: args_delta,
+                                        })
+                                        .await;
+                                }
                             }
                         }
                     }
@@ -605,11 +694,27 @@ impl LlmClient for ChatBigModel {
             }
         }
 
-        let completion_tokens = stream_usage.as_ref().map(|u| u.completion_tokens).unwrap_or(0);
-        if full_content.is_empty() && tool_call_map.is_empty() && completion_tokens > 0 {
+        let completion_tokens = stream_usage
+            .as_ref()
+            .map(|u| u.completion_tokens)
+            .unwrap_or(0);
+        if full_content.is_empty()
+            && full_reasoning_content.is_empty()
+            && tool_call_map.is_empty()
+            && completion_tokens > 0
+        {
             if let Ok(fallback_resp) = self.invoke(messages).await {
-                if !fallback_resp.content.is_empty() || !fallback_resp.tool_calls.is_empty() {
+                if !fallback_resp.content.is_empty()
+                    || fallback_resp.reasoning_content.is_some()
+                    || !fallback_resp.tool_calls.is_empty()
+                {
                     full_content = fallback_resp.content.clone();
+                    if let Some(reasoning_content) = fallback_resp.reasoning_content.clone() {
+                        full_reasoning_content = reasoning_content.clone();
+                        let _ = chunk_tx
+                            .send(MessageChunk::thinking(reasoning_content))
+                            .await;
+                    }
                     if !full_content.is_empty() {
                         sent_any_content = true;
                         let _ = chunk_tx
@@ -650,10 +755,17 @@ impl LlmClient for ChatBigModel {
         trace!(
             trace_id = %trace_id,
             url = %url,
+            reasoning_len = full_reasoning_content.len(),
             tool_calls = ?tool_calls.len(),
             usage = ?stream_usage,
             "BigModel stream response"
         );
+
+        let reasoning_content = if full_reasoning_content.is_empty() {
+            collect_thinking_tags(&full_content)
+        } else {
+            Some(full_reasoning_content)
+        };
 
         Ok(LlmResponse {
             content: if self.parse_thinking_tags {
@@ -661,6 +773,7 @@ impl LlmClient for ChatBigModel {
             } else {
                 full_content
             },
+            reasoning_content,
             tool_calls,
             usage: stream_usage,
         })

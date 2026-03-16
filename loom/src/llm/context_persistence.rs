@@ -152,6 +152,7 @@ pub fn save_llm_response(
     node_id: &str,
     session_id: Option<&str>,
     content: &str,
+    reasoning_content: Option<&str>,
     tool_calls: &[crate::state::ToolCall],
     usage: Option<&crate::llm::LlmUsage>,
 ) {
@@ -159,6 +160,7 @@ pub fn save_llm_response(
     if let Some(mut writer) = get_llm_context_writer(session_id) {
         let data = serde_json::json!({
             "content": content,
+            "reasoning_content": reasoning_content,
             "tool_calls": tool_calls.iter().map(|tc| serde_json::json!({
                 "id": tc.id,
                 "name": tc.name,
@@ -392,7 +394,7 @@ mod tests {
             completion_tokens: 20,
             total_tokens: 30,
         };
-        save_llm_response("act", Some("sess2"), "response text", &[], Some(&usage));
+        save_llm_response("act", Some("sess2"), "response text", None, &[], Some(&usage));
 
         let path = dir.path().join("context").join("sess2").join("llm_context.jsonl");
         assert!(path.exists());
@@ -414,7 +416,7 @@ mod tests {
         let prev = std::env::var("LOOM_HOME").ok();
         std::env::set_var("LOOM_HOME", dir.path());
 
-        save_llm_response("act", Some("sess3"), "hi", &[], None);
+        save_llm_response("act", Some("sess3"), "hi", None, &[], None);
 
         let path = dir.path().join("context").join("sess3").join("llm_context.jsonl");
         let content = std::fs::read_to_string(&path).unwrap();
@@ -438,7 +440,7 @@ mod tests {
             name: "read_file".to_string(),
             arguments: "{\"path\": \"/tmp\"}".to_string(),
         }];
-        save_llm_response("act", Some("sess_tc"), "", &tool_calls, None);
+        save_llm_response("act", Some("sess_tc"), "", None, &tool_calls, None);
 
         match prev {
             Some(v) => std::env::set_var("LOOM_HOME", v),

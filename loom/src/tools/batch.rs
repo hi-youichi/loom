@@ -120,7 +120,11 @@ impl Tool for BatchTool {
                 Ok(c) => {
                     let t = c.text.trim();
                     if t.len() > 500 {
-                        text.push_str(&format!("{}... (truncated)\n", &t[..500]));
+                        let mut end = 500;
+                        while end > 0 && !t.is_char_boundary(end) {
+                            end -= 1;
+                        }
+                        text.push_str(&format!("{}... (truncated)\n", &t[..end]));
                     } else {
                         text.push_str(&format!("{}\n", t));
                     }

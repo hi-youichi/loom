@@ -59,6 +59,9 @@ pub struct ToolResult {
 pub struct ReActState {
     /// Conversation history (System, User, Assistant). Used by Think and extended by Observe.
     pub messages: Vec<Message>,
+    /// Most recent reasoning/thinking content returned by the LLM, if any.
+    #[serde(default)]
+    pub last_reasoning_content: Option<String>,
     /// Current round tool calls from the LLM (Think writes, Act reads).
     pub tool_calls: Vec<ToolCall>,
     /// Current round tool execution results (Act writes, Observe reads and merges).
@@ -86,6 +89,7 @@ impl Default for ReActState {
     fn default() -> Self {
         Self {
             messages: vec![],
+            last_reasoning_content: None,
             tool_calls: vec![],
             tool_results: vec![],
             turn_count: 0,
@@ -110,7 +114,30 @@ impl ReActState {
             _ => None,
         })
     }
+
+    /// Returns the most recent reasoning/thinking content captured from the LLM.
+    pub fn last_reasoning_content(&self) -> Option<String> {
+        self.last_reasoning_content.clone()
+    }
 }
 
 // ReActState, ToolCall, ToolResult: fields are standard types (String, Vec<Message>, Option<String>, etc.),
 // so they satisfy Clone + Send + Sync + 'static required by Node<S> and StateGraph<S>.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn last_reasoning_content_returns_latest_value() {
+        let state = ReActState {
+            messages: vec![],
+            last_reasoning_content: Some("step by step".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            state.last_reasoning_content().as_deref(),
+            Some("step by step")
+        );
+    }
+}

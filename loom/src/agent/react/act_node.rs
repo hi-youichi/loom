@@ -278,6 +278,7 @@ impl Node<ReActState> for ActNode {
         self.tools.set_call_context(None);
         let new_state = ReActState {
             messages: state.messages,
+            last_reasoning_content: state.last_reasoning_content,
             tool_calls: state.tool_calls,
             tool_results,
             turn_count: state.turn_count,
@@ -519,6 +520,7 @@ impl Node<ReActState> for ActNode {
 
         let new_state = ReActState {
             messages: state.messages,
+            last_reasoning_content: state.last_reasoning_content,
             tool_calls: state.tool_calls,
             tool_results,
             turn_count: state.turn_count,

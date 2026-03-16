@@ -92,6 +92,25 @@ fn strip_thinking_tags(s: &str) -> String {
     out
 }
 
+fn collect_thinking_tags(s: &str) -> Option<String> {
+    let mut out = String::new();
+    let mut rest = s;
+    while let Some(start) = rest.find(THINKING_START) {
+        rest = &rest[start + THINKING_START.len()..];
+        if let Some(end) = rest.find(THINKING_END) {
+            out.push_str(&rest[..end]);
+            rest = &rest[end + THINKING_END.len()..];
+        } else {
+            break;
+        }
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
 impl ChatOpenAI {
     /// Build client with default config (API key from `OPENAI_API_KEY` env).
     pub fn new(model: impl Into<String>) -> Self {
@@ -267,6 +286,7 @@ impl LlmClient for ChatOpenAI {
 
         let msg = choice.message;
         let content = msg.content.unwrap_or_default();
+        let reasoning_content = collect_thinking_tags(&content);
         let tool_calls: Vec<ToolCall> = msg
             .tool_calls
             .unwrap_or_default()
@@ -291,6 +311,7 @@ impl LlmClient for ChatOpenAI {
         });
         Ok(LlmResponse {
             content,
+            reasoning_content,
             tool_calls,
             usage,
         })
@@ -610,9 +631,11 @@ impl LlmClient for ChatOpenAI {
         tool_calls.sort_by(|a, b| a.name.cmp(&b.name));
 
         let url = Self::chat_completions_url();
+        let reasoning_content = collect_thinking_tags(&full_content);
         trace!(
             trace_id = %trace_id,
             url = %url,
+            reasoning_len = reasoning_content.as_ref().map(|s| s.len()).unwrap_or(0),
             tool_calls = ?tool_calls,
             usage = ?stream_usage,
             "OpenAI stream response"
@@ -624,6 +647,7 @@ impl LlmClient for ChatOpenAI {
             } else {
                 full_content
             },
+            reasoning_content,
             tool_calls,
             usage: stream_usage,
         })
@@ -698,6 +722,18 @@ mod tests {
         assert_eq!(strip_thinking_tags(&with_block), "a  b");
         let only_block = format!("{}only{}", THINKING_START, THINKING_END);
         assert_eq!(strip_thinking_tags(&only_block), "");
+    }
+
+    /// **Scenario**: collect_thinking_tags extracts inner thinking text without tags.
+    #[test]
+    fn collect_thinking_tags_extracts_inner_text() {
+        use super::{collect_thinking_tags, THINKING_END, THINKING_START};
+        let tagged = format!(
+            "before {}alpha{} middle {}beta{}",
+            THINKING_START, THINKING_END, THINKING_START, THINKING_END
+        );
+        assert_eq!(collect_thinking_tags(&tagged).as_deref(), Some("alphabeta"));
+        assert_eq!(collect_thinking_tags("plain text"), None);
     }
 
     /// **Scenario**: ChatOpenAI::new sets model; tools and temperature are None.

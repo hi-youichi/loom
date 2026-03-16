@@ -41,4 +41,9 @@ impl DupState {
     pub fn last_assistant_reply(&self) -> Option<String> {
         self.core.last_assistant_reply()
     }
+
+    /// Returns the most recent reasoning/thinking content from the core ReAct state.
+    pub fn last_reasoning_content(&self) -> Option<String> {
+        self.core.last_reasoning_content()
+    }
 }

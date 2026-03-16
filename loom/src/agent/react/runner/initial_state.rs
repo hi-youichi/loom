@@ -23,6 +23,7 @@ pub async fn build_react_initial_state(
         async move {
             Ok(ReActState {
                 messages: vec![Message::system(prompt), Message::user(user_message_owned)],
+                last_reasoning_content: None,
                 tool_calls: vec![],
                 tool_results: vec![],
                 turn_count: 0,

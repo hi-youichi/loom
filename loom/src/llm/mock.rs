@@ -158,6 +158,7 @@ impl LlmClient for MockLlm {
         };
         Ok(LlmResponse {
             content,
+            reasoning_content: None,
             tool_calls,
             usage: self.usage.clone(),
         })

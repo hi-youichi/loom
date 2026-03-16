@@ -190,6 +190,8 @@ pub struct RunEndResponse {
     pub id: String,
     pub reply: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<LlmUsage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_usage: Option<LlmUsage>,
@@ -386,6 +388,7 @@ mod tests {
         let resp = ServerResponse::RunEnd(RunEndResponse {
             id: "run-1".to_string(),
             reply: "Hi there".to_string(),
+            reasoning_content: Some("thinking".to_string()),
             usage: Some(LlmUsage {
                 prompt_tokens: 10,
                 completion_tokens: 5,

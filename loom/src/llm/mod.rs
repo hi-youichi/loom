@@ -89,6 +89,8 @@ pub struct LlmUsage {
 pub struct LlmResponse {
     /// Assistant message content (plain text).
     pub content: String,
+    /// Optional model reasoning/thinking content, separate from the final assistant reply.
+    pub reasoning_content: Option<String>,
     /// Tool calls from this turn; empty means no tools, observe → END.
     pub tool_calls: Vec<ToolCall>,
     /// Token usage for this call, when available (e.g. OpenAI returns this).
@@ -141,6 +143,11 @@ pub trait LlmClient: Send + Sync {
 
         // Default: send full content as single chunk if streaming is enabled
         if let Some(tx) = chunk_tx {
+            if let Some(ref reasoning_content) = response.reasoning_content {
+                if !reasoning_content.is_empty() {
+                    let _ = tx.send(MessageChunk::thinking(reasoning_content.clone())).await;
+                }
+            }
             if !response.content.is_empty() {
                 let _ = tx.send(MessageChunk::message(response.content.clone())).await;
             }
@@ -178,6 +185,7 @@ mod tests {
         async fn invoke(&self, _messages: &[Message]) -> Result<LlmResponse, AgentError> {
             Ok(LlmResponse {
                 content: self.content.clone(),
+                reasoning_content: None,
                 tool_calls: vec![],
                 usage: None,
             })

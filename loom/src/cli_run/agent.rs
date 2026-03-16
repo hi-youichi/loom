@@ -87,6 +87,13 @@ pub enum AnyStreamEvent {
     Got(StreamEvent<GotState>),
 }
 
+/// Final result of a single agent run.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AgentRunResult {
+    pub reply: String,
+    pub reasoning_content: Option<String>,
+}
+
 impl AnyStreamEvent {
     /// Converts to format A JSON (EXPORT_SPEC §2).
     pub fn to_format_a(&self) -> Result<Value, serde_json::Error> {
@@ -133,7 +140,7 @@ pub async fn run_agent(
     cmd: &RunCmd,
     on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>>,
     llm_override: Option<Box<dyn LlmClient>>,
-) -> Result<String, RunError> {
+) -> Result<AgentRunResult, RunError> {
     let (_helve, mut config, _resolved_agent) = build_helve_config(opts);
     let thread_id_log = config.thread_id.as_deref().unwrap_or("").to_string();
     let kind = match cmd {
@@ -156,7 +163,7 @@ pub async fn run_agent(
     let on_event: Option<Arc<Mutex<Box<dyn FnMut(AnyStreamEvent) + Send>>>> =
         on_event.map(|b| Arc::new(Mutex::new(b)));
 
-    let reply = match &runner {
+    let result = match &runner {
         AnyRunner::React(r) => {
             let sink = on_event.clone();
             let on_ev = sink.map(|s| {
@@ -170,7 +177,10 @@ pub async fn run_agent(
                 .stream_with_config(opts.message.as_str(), None, on_ev)
                 .instrument(span.clone())
                 .await?;
-            state.last_assistant_reply().unwrap_or_default()
+            AgentRunResult {
+                reply: state.last_assistant_reply().unwrap_or_default(),
+                reasoning_content: state.last_reasoning_content(),
+            }
         }
         AnyRunner::Dup(r) => {
             let sink = on_event.clone();
@@ -185,7 +195,10 @@ pub async fn run_agent(
                 .stream_with_config(opts.message.as_str(), None, on_ev)
                 .instrument(span.clone())
                 .await?;
-            state.last_assistant_reply().unwrap_or_default()
+            AgentRunResult {
+                reply: state.last_assistant_reply().unwrap_or_default(),
+                reasoning_content: state.last_reasoning_content(),
+            }
         }
         AnyRunner::Tot(r) => {
             let sink = on_event.clone();
@@ -200,7 +213,10 @@ pub async fn run_agent(
                 .stream_with_config(opts.message.as_str(), None, on_ev)
                 .instrument(span.clone())
                 .await?;
-            state.last_assistant_reply().unwrap_or_default()
+            AgentRunResult {
+                reply: state.last_assistant_reply().unwrap_or_default(),
+                reasoning_content: state.last_reasoning_content(),
+            }
         }
         AnyRunner::Got(r) => {
             let sink = on_event.clone();
@@ -215,11 +231,14 @@ pub async fn run_agent(
                 .stream_with_config(opts.message.as_str(), None, on_ev)
                 .instrument(span.clone())
                 .await?;
-            state.summary_result()
+            AgentRunResult {
+                reply: state.summary_result(),
+                reasoning_content: None,
+            }
         }
     };
 
-    Ok(reply)
+    Ok(result)
 }
 
 /// Convenience wrapper that runs the agent with no LLM override (default LLM from config).
@@ -228,7 +247,7 @@ pub async fn run_agent_with_options(
     opts: &RunOptions,
     cmd: &RunCmd,
     on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>>,
-) -> Result<String, RunError> {
+) -> Result<AgentRunResult, RunError> {
     run_agent(opts, cmd, on_event, None).await
 }
 
@@ -239,7 +258,7 @@ pub async fn run_agent_with_llm_override(
     cmd: &RunCmd,
     on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>>,
     llm_override: Option<Box<dyn LlmClient>>,
-) -> Result<String, RunError> {
+) -> Result<AgentRunResult, RunError> {
     run_agent(opts, cmd, on_event, llm_override).await
 }
 
@@ -291,6 +310,7 @@ mod tests {
             got_adaptive,
             display_max_len: 120,
             output_json: true,
+            output_timestamp: false,
             model: None,
             mcp_config_path: None,
         }
@@ -370,6 +390,7 @@ mod tests {
             got_adaptive: false,
             display_max_len: 120,
             output_json: false,
+            output_timestamp: false,
             model: None,
             mcp_config_path: None,
         };

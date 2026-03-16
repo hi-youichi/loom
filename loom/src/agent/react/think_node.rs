@@ -48,6 +48,7 @@ fn compute_usage(
 fn apply_think_response(
     state: ReActState,
     content: String,
+    reasoning_content: Option<String>,
     tool_calls: Vec<ToolCall>,
     response_usage: Option<crate::llm::LlmUsage>,
 ) -> ReActState {
@@ -57,6 +58,7 @@ fn apply_think_response(
     let message_count_after_last_think = Some(messages.len());
     ReActState {
         messages,
+        last_reasoning_content: reasoning_content,
         tool_calls,
         tool_results: state.tool_results,
         turn_count: state.turn_count,
@@ -81,12 +83,18 @@ impl Node<ReActState> for ThinkNode {
             "think",
             None,
             &response.content,
+            response.reasoning_content.as_deref(),
             &response.tool_calls,
             response.usage.as_ref(),
         );
         
-        let new_state =
-            apply_think_response(state, response.content, response.tool_calls, response.usage);
+        let new_state = apply_think_response(
+            state,
+            response.content,
+            response.reasoning_content,
+            response.tool_calls,
+            response.usage,
+        );
         Ok((new_state, Next::Continue))
     }
 
@@ -160,6 +168,7 @@ impl Node<ReActState> for ThinkNode {
             "think",
             session_id,
             &response.content,
+            response.reasoning_content.as_deref(),
             &response.tool_calls,
             response.usage.as_ref(),
         );
@@ -216,7 +225,13 @@ impl Node<ReActState> for ThinkNode {
         }
 
         let new_state =
-            apply_think_response(state, content, response.tool_calls, response.usage.clone());
+            apply_think_response(
+                state,
+                content,
+                response.reasoning_content.clone(),
+                response.tool_calls,
+                response.usage.clone(),
+            );
 
         if let (Some(ref tx), Some(ref u)) = (ctx.stream_tx.as_ref(), response.usage.as_ref()) {
             let _ = tx

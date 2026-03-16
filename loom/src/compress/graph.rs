@@ -89,6 +89,7 @@ mod tests {
         let compiled = build_graph(CompactionConfig::default(), llm).expect("compile");
         let state = ReActState {
             messages: vec![Message::User("hello".to_string())],
+            last_reasoning_content: None,
             tool_calls: vec![],
             tool_results: vec![],
             turn_count: 0,
@@ -117,6 +118,7 @@ mod tests {
         let node = CompressionGraphNode::new(inner);
         let state = ReActState {
             messages: vec![Message::User("test".to_string())],
+            last_reasoning_content: None,
             tool_calls: vec![],
             tool_results: vec![],
             turn_count: 1,

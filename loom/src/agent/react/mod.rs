@@ -81,6 +81,7 @@ mod tests {
     fn tools_condition_returns_end_when_no_tool_calls() {
         let state = ReActState {
             messages: vec![Message::User("hello".into())],
+            last_reasoning_content: None,
             tool_calls: vec![],
             tool_results: vec![],
             turn_count: 0,
@@ -97,6 +98,7 @@ mod tests {
     fn tools_condition_returns_tools_when_tool_calls_present() {
         let state = ReActState {
             messages: vec![Message::User("search".into())],
+            last_reasoning_content: None,
             tool_calls: vec![ToolCall {
                 id: Some("tc1".into()),
                 name: "search".into(),

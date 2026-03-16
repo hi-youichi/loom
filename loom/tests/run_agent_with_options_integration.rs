@@ -57,7 +57,7 @@ async fn run_agent_with_options_success_path_with_on_event_receives_events() {
         count.fetch_add(1, Ordering::Relaxed);
     }));
 
-    let reply = run_agent_with_llm_override(
+    let result = run_agent_with_llm_override(
         &opts,
         &RunCmd::React,
         on_event,
@@ -66,7 +66,8 @@ async fn run_agent_with_options_success_path_with_on_event_receives_events() {
     .await
     .expect("run_agent");
 
-    assert_eq!(reply.trim(), "Done");
+    assert_eq!(result.reply.trim(), "Done");
+    assert_eq!(result.reasoning_content, None);
     assert!(
         event_count.load(Ordering::Relaxed) >= 1,
         "on_event should have been called at least once"

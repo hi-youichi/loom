@@ -155,6 +155,7 @@ impl ExecuteGraphNode {
                 Message::system(SUB_TASK_SYSTEM),
                 Message::user(user_message.to_string()),
             ],
+            last_reasoning_content: None,
             tool_calls: vec![],
             tool_results: vec![],
             turn_count: 0,
