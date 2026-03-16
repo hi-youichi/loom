@@ -392,9 +392,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if !msg.trim().is_empty() {
                 opts.message = msg.clone();
                 match run_one_turn(&backend, &opts, &cmd, stream_out.clone()).await {
-                    Ok(RunOutput::Reply(reply, reply_envelope)) => {
+                    Ok(RunOutput::Reply {
+                        reply,
+                        reasoning_content,
+                        reply_envelope,
+                    }) => {
                         if args.json {
                             let mut out = serde_json::json!({ "reply": reply });
+                            if let Some(reasoning_content) = reasoning_content {
+                                out["reasoning_content"] = serde_json::json!(reasoning_content);
+                            }
                             if let Some(ref env) = reply_envelope {
                                 env.inject_into(&mut out);
                             }
@@ -422,9 +429,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Ok(RunOutput::Json {
                         events,
                         reply,
+                        reasoning_content,
                         reply_envelope,
                     }) => {
                         let mut reply_obj = serde_json::json!({ "reply": reply });
+                        if let Some(reasoning_content) = reasoning_content {
+                            reply_obj["reasoning_content"] = serde_json::json!(reasoning_content);
+                        }
                         if let Some(ref env) = reply_envelope {
                             env.inject_into(&mut reply_obj);
                         }
@@ -474,9 +485,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         
         let output = run_one_turn(&backend, &opts, &cmd, stream_out).await?;
         match output {
-            RunOutput::Reply(reply, reply_envelope) => {
+            RunOutput::Reply {
+                reply,
+                reasoning_content,
+                reply_envelope,
+            } => {
                 if args.json {
                     let mut out = serde_json::json!({ "session_id": opts.thread_id, "reply": reply });
+                    if let Some(reasoning_content) = reasoning_content {
+                        out["reasoning_content"] = serde_json::json!(reasoning_content);
+                    }
                     if let Some(ref env) = reply_envelope {
                         env.inject_into(&mut out);
                     }
@@ -497,9 +515,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             RunOutput::Json {
                 events,
                 reply,
+                reasoning_content,
                 reply_envelope,
             } => {
                 let mut reply_obj = serde_json::json!({ "reply": reply });
+                if let Some(reasoning_content) = reasoning_content {
+                    reply_obj["reasoning_content"] = serde_json::json!(reasoning_content);
+                }
                 if let Some(ref env) = reply_envelope {
                     env.inject_into(&mut reply_obj);
                 }

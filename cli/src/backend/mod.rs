@@ -30,10 +30,15 @@ pub type StreamOut = Option<Arc<Mutex<dyn FnMut(Value) + Send>>>;
 /// be correlated with the event stream.
 #[derive(Debug)]
 pub enum RunOutput {
-    Reply(String, Option<Envelope>),
+    Reply {
+        reply: String,
+        reasoning_content: Option<String>,
+        reply_envelope: Option<Envelope>,
+    },
     Json {
         events: Vec<Value>,
         reply: String,
+        reasoning_content: Option<String>,
         reply_envelope: Option<Envelope>,
     },
 }

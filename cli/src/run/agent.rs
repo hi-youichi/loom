@@ -4,10 +4,12 @@
 use chrono::Local;
 use loom::{
     build_helve_config, build_react_run_context, list_available_profiles, run_agent_with_options,
-    AnyStreamEvent, DupState, Envelope, GotState, ReActState, ResolvedAgent, ToolCall, TotState,
+    AnyStreamEvent, DupState, Envelope, GotState, MessageChunkKind, ReActState, ResolvedAgent,
+    ToolCall, TotState,
 };
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use super::display::{
     format_dup_state_display, format_got_state_display, format_react_state_display,
@@ -63,8 +65,9 @@ fn log_tools_used(tool_calls: &[ToolCall]) {
     eprintln!("tools: {}", names.join(", "));
 }
 
-/// Result of run_agent_wrapper: reply, optional events (when --json and no stream), optional envelope for reply line.
-pub type RunAgentResult = Result<(String, Option<Vec<Value>>, Option<Envelope>), RunError>;
+/// Result of run_agent_wrapper: reply, optional reasoning, optional events, optional envelope.
+pub type RunAgentResult =
+    Result<(String, Option<String>, Option<Vec<Value>>, Option<Envelope>), RunError>;
 
 /// Runs the agent with stderr display for stream events.
 /// When `opts.output_json` is true: if `stream_out` is Some, each event is written via it and returns (reply, None);
@@ -117,9 +120,9 @@ pub async fn run_agent_wrapper(
                     f(v);
                 }
             });
-            let reply = run_agent_with_options(opts, cmd, Some(on_event)).await?;
+            let result = run_agent_with_options(opts, cmd, Some(on_event)).await?;
             let reply_env = state.lock().map(|s| s.reply_envelope()).ok();
-            return Ok((reply, None, reply_env));
+            return Ok((result.reply, result.reasoning_content, None, reply_env));
         }
         let events: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
         let events_clone = events.clone();
@@ -147,16 +150,20 @@ pub async fn run_agent_wrapper(
                 }
             }
         });
-        let reply = run_agent_with_options(opts, cmd, Some(on_event)).await?;
+        let result = run_agent_with_options(opts, cmd, Some(on_event)).await?;
         let events = events.lock().map(|v| v.clone()).unwrap_or_default();
         let reply_env = state.lock().map(|s| s.reply_envelope()).ok();
-        return Ok((reply, Some(events), reply_env));
+        return Ok((result.reply, result.reasoning_content, Some(events), reply_env));
     }
 
+    let agent_display = resolved_agent.as_ref().map(|ra| format!("{} ({})", ra.name, ra.source));
     let state = Arc::new(Mutex::new(EventState {
         turn: 0,
         last_node: None,
         reply_started: false,
+        agent_display,
+        total_prompt_tokens: 0,
+        total_completion_tokens: 0,
     }));
 
     let state_clone = state.clone();
@@ -180,14 +187,39 @@ pub async fn run_agent_wrapper(
         }
     });
 
-    let reply = run_agent_with_options(opts, cmd, Some(on_event)).await?;
+    let start = Instant::now();
+    let result = run_agent_with_options(opts, cmd, Some(on_event)).await?;
+    let duration = start.elapsed();
 
     if verbose {
         if let Some(ref from) = state.lock().unwrap().last_node {
             eprintln!("flow: {} → END", from);
         }
     }
-    Ok((reply, None, None))
+    if let Ok(s) = state.lock() {
+        let total_tokens = s.total_prompt_tokens as u64 + s.total_completion_tokens as u64;
+        let secs = duration.as_secs_f64();
+        let tokens_per_sec = if secs > 0.0 {
+            total_tokens as f64 / secs
+        } else {
+            0.0
+        };
+        eprintln!(
+            "LLM: {:.2}s, {:.0} tokens/s (prompt: {}, completion: {})",
+            secs, tokens_per_sec, s.total_prompt_tokens, s.total_completion_tokens
+        );
+    }
+    Ok((result.reply, result.reasoning_content, None, None))
+}
+
+fn print_stream_chunk(chunk: &loom::MessageChunk) {
+    if chunk.kind == MessageChunkKind::Thinking {
+        eprint!("{}", chunk.content);
+        let _ = std::io::Write::flush(&mut std::io::stderr());
+    } else {
+        print!("{}", chunk.content);
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+    }
 }
 
 fn on_event_react(
@@ -203,12 +235,16 @@ fn on_event_react(
             s.last_node = Some(node_id.clone());
         }
         StreamEvent::Messages { chunk, .. } => {
-            if output_timestamp && !s.reply_started {
-                print_reply_timestamp();
+            if !s.reply_started {
+                if let Some(ref ad) = s.agent_display {
+                    eprintln!("AGENT: {}", ad);
+                }
+                if output_timestamp {
+                    print_reply_timestamp();
+                }
                 s.reply_started = true;
             }
-            print!("{}", chunk.content);
-            let _ = std::io::Write::flush(&mut std::io::stdout());
+            print_stream_chunk(chunk);
         }
         StreamEvent::Updates { node_id, state } => {
             if verbose {
@@ -233,12 +269,14 @@ fn on_event_react(
         StreamEvent::Usage {
             prompt_tokens,
             completion_tokens,
-            total_tokens,
+            total_tokens: _,
         } => {
+            s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
+            s.total_completion_tokens = s.total_completion_tokens.saturating_add(*completion_tokens);
             tracing::info!(
                 prompt_tokens,
                 completion_tokens,
-                total_tokens,
+                total_tokens = *prompt_tokens + *completion_tokens,
                 "LLM usage"
             );
         }
@@ -259,12 +297,16 @@ fn on_event_dup(
             s.last_node = Some(node_id.clone());
         }
         StreamEvent::Messages { chunk, .. } => {
-            if output_timestamp && !s.reply_started {
-                print_reply_timestamp();
+            if !s.reply_started {
+                if let Some(ref ad) = s.agent_display {
+                    eprintln!("AGENT: {}", ad);
+                }
+                if output_timestamp {
+                    print_reply_timestamp();
+                }
                 s.reply_started = true;
             }
-            print!("{}", chunk.content);
-            let _ = std::io::Write::flush(&mut std::io::stdout());
+            print_stream_chunk(chunk);
         }
         StreamEvent::Updates { node_id, state } => {
             if verbose {
@@ -300,12 +342,14 @@ fn on_event_dup(
         StreamEvent::Usage {
             prompt_tokens,
             completion_tokens,
-            total_tokens,
+            total_tokens: _,
         } => {
+            s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
+            s.total_completion_tokens = s.total_completion_tokens.saturating_add(*completion_tokens);
             tracing::info!(
                 prompt_tokens,
                 completion_tokens,
-                total_tokens,
+                total_tokens = *prompt_tokens + *completion_tokens,
                 "LLM usage"
             );
         }
@@ -350,12 +394,16 @@ fn on_event_tot(
             }
         }
         StreamEvent::Messages { chunk, .. } => {
-            if output_timestamp && !s.reply_started {
-                print_reply_timestamp();
+            if !s.reply_started {
+                if let Some(ref ad) = s.agent_display {
+                    eprintln!("AGENT: {}", ad);
+                }
+                if output_timestamp {
+                    print_reply_timestamp();
+                }
                 s.reply_started = true;
             }
-            print!("{}", chunk.content);
-            let _ = std::io::Write::flush(&mut std::io::stdout());
+            print_stream_chunk(chunk);
         }
         StreamEvent::Updates { node_id, state } => {
             if verbose {
@@ -375,12 +423,14 @@ fn on_event_tot(
         StreamEvent::Usage {
             prompt_tokens,
             completion_tokens,
-            total_tokens,
+            total_tokens: _,
         } => {
+            s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
+            s.total_completion_tokens = s.total_completion_tokens.saturating_add(*completion_tokens);
             tracing::info!(
                 prompt_tokens,
                 completion_tokens,
-                total_tokens,
+                total_tokens = *prompt_tokens + *completion_tokens,
                 "LLM usage"
             );
         }
@@ -393,6 +443,12 @@ struct EventState {
     last_node: Option<String>,
     /// When output_timestamp is true, we print timestamp once before the first reply chunk.
     reply_started: bool,
+    /// Agent name (source) to print before first reply chunk when set.
+    agent_display: Option<String>,
+    /// Accumulated prompt tokens from all StreamEvent::Usage in this run.
+    total_prompt_tokens: u32,
+    /// Accumulated completion tokens from all StreamEvent::Usage in this run.
+    total_completion_tokens: u32,
 }
 
 async fn print_loaded_tools(config: &loom::ReactBuildConfig) -> Result<(), RunError> {
@@ -469,12 +525,16 @@ fn on_event_got(
             }
         }
         StreamEvent::Messages { chunk, .. } => {
-            if output_timestamp && !s.reply_started {
-                print_reply_timestamp();
+            if !s.reply_started {
+                if let Some(ref ad) = s.agent_display {
+                    eprintln!("AGENT: {}", ad);
+                }
+                if output_timestamp {
+                    print_reply_timestamp();
+                }
                 s.reply_started = true;
             }
-            print!("{}", chunk.content);
-            let _ = std::io::Write::flush(&mut std::io::stdout());
+            print_stream_chunk(chunk);
         }
         StreamEvent::Updates { node_id, state } => {
             if verbose {
@@ -485,12 +545,14 @@ fn on_event_got(
         StreamEvent::Usage {
             prompt_tokens,
             completion_tokens,
-            total_tokens,
+            total_tokens: _,
         } => {
+            s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
+            s.total_completion_tokens = s.total_completion_tokens.saturating_add(*completion_tokens);
             tracing::info!(
                 prompt_tokens,
                 completion_tokens,
-                total_tokens,
+                total_tokens = *prompt_tokens + *completion_tokens,
                 "LLM usage"
             );
         }
@@ -571,6 +633,9 @@ mod tests {
             turn: 0,
             last_node: None,
             reply_started: false,
+            agent_display: None,
+            total_prompt_tokens: 0,
+            total_completion_tokens: 0,
         };
         on_event_react(
             &StreamEvent::TaskStart {
@@ -602,6 +667,9 @@ mod tests {
             turn: 0,
             last_node: None,
             reply_started: false,
+            agent_display: None,
+            total_prompt_tokens: 0,
+            total_completion_tokens: 0,
         };
 
         let dup_state = DupState {
@@ -736,6 +804,9 @@ mod tests {
             turn: 0,
             last_node: None,
             reply_started: false,
+            agent_display: None,
+            total_prompt_tokens: 0,
+            total_completion_tokens: 0,
         };
         let react_with_tool = ReActState {
             tool_calls: vec![ToolCall {
@@ -791,6 +862,9 @@ mod tests {
             turn: 0,
             last_node: None,
             reply_started: false,
+            agent_display: None,
+            total_prompt_tokens: 0,
+            total_completion_tokens: 0,
         };
 
         on_event_tot(

@@ -69,9 +69,13 @@ pub async fn run_repl_loop(
             Ok(cli::RunOutput::Json {
                 events,
                 reply,
+                reasoning_content,
                 reply_envelope,
             }) => {
                 let mut reply_obj = serde_json::json!({ "reply": reply });
+                if let Some(reasoning_content) = reasoning_content {
+                    reply_obj["reasoning_content"] = serde_json::json!(reasoning_content);
+                }
                 if let Some(ref env) = reply_envelope {
                     env.inject_into(&mut reply_obj);
                 }
@@ -86,9 +90,16 @@ pub async fn run_repl_loop(
                     None => println!("{}", s),
                 }
             }
-            Ok(cli::RunOutput::Reply(reply, reply_envelope)) => {
+            Ok(cli::RunOutput::Reply {
+                reply,
+                reasoning_content,
+                reply_envelope,
+            }) => {
                 if json_stream {
                     let mut out = serde_json::json!({ "reply": reply });
+                    if let Some(reasoning_content) = reasoning_content {
+                        out["reasoning_content"] = serde_json::json!(reasoning_content);
+                    }
                     if let Some(ref env) = reply_envelope {
                         env.inject_into(&mut out);
                     }
@@ -157,7 +168,11 @@ mod tests {
             _stream_out: cli::StreamOut,
         ) -> Result<cli::RunOutput, RunError> {
             self.seen.lock().unwrap().push(cmd.clone());
-            Ok(cli::RunOutput::Reply("ok".to_string(), None))
+            Ok(cli::RunOutput::Reply {
+                reply: "ok".to_string(),
+                reasoning_content: None,
+                reply_envelope: None,
+            })
         }
 
         async fn list_tools(&self, _opts: &RunOptions) -> Result<(), RunError> {
@@ -222,7 +237,10 @@ mod tests {
         let out = run_one_turn(&backend, &opts, &Command::Dup, None)
             .await
             .unwrap();
-        assert!(matches!(out, cli::RunOutput::Reply(reply, _) if reply == "ok"));
+        assert!(matches!(
+            out,
+            cli::RunOutput::Reply { reply, .. } if reply == "ok"
+        ));
         assert!(matches!(seen.lock().unwrap().first(), Some(RunCmd::Dup)));
     }
 }
