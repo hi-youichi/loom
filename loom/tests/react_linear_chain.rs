@@ -43,6 +43,7 @@ async fn react_linear_chain_user_to_tool_result_in_messages() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
 
     let out = compiled.invoke(state, None).await.unwrap();
@@ -104,6 +105,7 @@ async fn react_multi_round_loop_then_end() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
 
     let out = compiled.invoke(state, None).await.unwrap();

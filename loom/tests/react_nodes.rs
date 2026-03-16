@@ -41,6 +41,7 @@ async fn think_node_appends_assistant_message_and_sets_tool_calls() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
     let (out, _) = node.run(state).await.unwrap();
     assert_eq!(out.messages.len(), 2);
@@ -64,6 +65,7 @@ async fn think_node_with_no_tool_calls_sets_empty_tool_calls() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
     let (out, _) = node.run(state).await.unwrap();
     assert_eq!(out.messages.len(), 2);
@@ -90,6 +92,7 @@ async fn think_node_preserves_tool_results_from_input_state() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
     let (out, _) = node.run(state).await.unwrap();
     assert_eq!(out.tool_results.len(), 1);
@@ -109,6 +112,7 @@ async fn think_node_sets_message_count_after_last_think() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
     let (out, _) = node.run(state).await.unwrap();
     assert_eq!(out.messages.len(), 2);
@@ -133,6 +137,7 @@ async fn think_node_usage_merge_none_plus_some() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
     let (out, _) = node.run(state).await.unwrap();
     let u = out.usage.as_ref().expect("usage should be set");
@@ -168,6 +173,7 @@ async fn think_node_usage_merge_some_plus_some() {
         usage: None,
         total_usage: Some(prev),
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
     let (out, _) = node.run(state).await.unwrap();
     assert_eq!(out.usage.as_ref().map(|u| u.total_tokens), Some(28));
@@ -191,6 +197,7 @@ async fn think_node_fallback_when_empty_content_and_no_tools() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
     let (out, _) = node
         .run_with_context(
@@ -224,6 +231,7 @@ async fn think_node_fallback_streaming_emits_messages_event() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
     let (tx, mut rx) = mpsc::channel::<StreamEvent<ReActState>>(128);
     let ctx = RunContext::<ReActState> {
@@ -277,6 +285,7 @@ async fn think_node_stream_emits_usage_when_available() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
     let (tx, mut rx) = mpsc::channel::<StreamEvent<ReActState>>(128);
     let ctx = RunContext::<ReActState> {
@@ -333,6 +342,7 @@ async fn act_node_executes_tool_calls_and_writes_tool_results() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
     let (out, _) = node.run(state).await.unwrap();
     assert_eq!(out.messages.len(), 1);
@@ -356,6 +366,7 @@ async fn act_node_empty_tool_calls_leaves_tool_results_empty() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
     let (out, _) = node.run(state).await.unwrap();
     assert!(out.tool_results.is_empty());
@@ -380,6 +391,7 @@ async fn act_node_run_with_context_emits_step_progress_when_custom_mode() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
 
     let (tx, mut rx) = mpsc::channel::<StreamEvent<ReActState>>(8);
@@ -451,6 +463,7 @@ async fn act_node_approval_required_interrupts_then_executes_on_resume() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
 
     let err = node.run(state.clone()).await.unwrap_err();
@@ -495,6 +508,7 @@ async fn act_node_multiple_tool_calls_produces_multiple_results() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
     let (out, _) = node.run(state).await.unwrap();
     assert_eq!(out.tool_results.len(), 2);
@@ -534,6 +548,7 @@ async fn observe_node_appends_tool_results_as_user_messages_and_clears_tool_fiel
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
     let (out, _) = node.run(state).await.unwrap();
     assert_eq!(out.messages.len(), 3);
@@ -560,6 +575,7 @@ async fn observe_node_empty_tool_results_clears_tool_fields_only() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
     let (out, _) = node.run(state).await.unwrap();
     assert_eq!(out.messages.len(), 2);
@@ -597,6 +613,7 @@ async fn observe_node_with_loop_returns_node_think_when_had_tool_calls() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
     let (out, next) = node.run(state).await.unwrap();
     assert_eq!(out.messages.len(), 3);
@@ -616,6 +633,7 @@ async fn observe_node_with_loop_returns_end_when_no_tool_calls() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
     let (out, next) = node.run(state).await.unwrap();
     assert_eq!(out.messages.len(), 2);
@@ -649,6 +667,7 @@ async fn observe_node_with_loop_returns_end_when_max_turns_reached() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
     let (out, next) = node.run(state).await.unwrap();
     assert_eq!(out.messages.len(), 3);
@@ -673,6 +692,7 @@ async fn think_node_run_with_context_emits_messages_when_streaming() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
 
     // Create stream channel
@@ -744,6 +764,7 @@ async fn think_node_run_with_context_no_messages_when_mode_empty() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
 
     // Create stream channel
@@ -795,6 +816,7 @@ async fn think_node_run_with_context_no_panic_when_no_stream_tx() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
 
     // Create RunContext without stream_tx
@@ -829,6 +851,7 @@ async fn think_node_stream_chunks_concatenate_to_full_content() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
 
     let (tx, mut rx) = mpsc::channel::<StreamEvent<ReActState>>(128);

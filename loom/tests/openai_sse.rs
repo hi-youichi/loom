@@ -23,6 +23,7 @@ fn empty_state() -> ReActState {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     }
 }
 
@@ -206,6 +207,7 @@ fn adapter_emits_tool_calls_chunk_on_updates_with_tool_calls() {
             usage: None,
             total_usage: None,
             message_count_after_last_think: None,
+            last_reasoning_content: None,
         },
     });
 
