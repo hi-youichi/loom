@@ -11,8 +11,10 @@ use std::sync::Arc;
 use crate::agent::dup::{DupRunner, DupState};
 use crate::agent::got::{GotRunner, GotState};
 use crate::agent::tot::{TotRunner, TotState};
+use crate::compress::CompactionConfig;
 use crate::error::AgentError;
 use crate::memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
+use crate::model_spec::{ModelLimitResolver, ModelsDevResolver};
 use crate::state::ReActState;
 use crate::LlmClient;
 use serde::de::DeserializeOwned;
@@ -101,6 +103,34 @@ pub async fn build_react_run_context(
     })
 }
 
+/// Resolves CompactionConfig: uses config.compaction_config if set, otherwise attempts
+/// to infer max_context_tokens from models.dev when model is in "provider/model" format.
+async fn resolve_compaction_config(config: &ReactBuildConfig) -> CompactionConfig {
+    if let Some(ref cfg) = config.compaction_config {
+        return cfg.clone();
+    }
+
+    // Try to infer context limit from models.dev when model contains "/"
+    if let Some(ref model) = config.model {
+        if model.contains('/') {
+            let resolver = ModelsDevResolver::new();
+            if let Some(spec) = resolver.resolve_combined(model).await {
+                tracing::info!(
+                    model = %model,
+                    context_limit = spec.context_limit,
+                    output_limit = spec.output_limit,
+                    "resolved model spec from models.dev"
+                );
+                return CompactionConfig::with_max_context_tokens(spec.context_limit);
+            } else {
+                tracing::debug!(model = %model, "model not found in models.dev, using default config");
+            }
+        }
+    }
+
+    CompactionConfig::default()
+}
+
 pub async fn build_react_runner(
     config: &ReactBuildConfig,
     llm: Option<Box<dyn LlmClient>>,
@@ -116,6 +146,7 @@ pub async fn build_react_runner(
         .system_prompt
         .clone()
         .or_else(|| agent_prompts.map(|p| p.react_system_prompt()));
+    let compaction_config = resolve_compaction_config(config).await;
     let runner = ReactRunner::new(
         llm,
         ctx.tool_source,
@@ -124,7 +155,7 @@ pub async fn build_react_runner(
         ctx.runnable_config,
         system_prompt,
         config.approval_policy,
-        config.compaction_config.clone(),
+        Some(compaction_config),
         None,
         verbose,
     )?;

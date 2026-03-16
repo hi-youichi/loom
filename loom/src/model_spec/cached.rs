@@ -108,4 +108,27 @@ mod tests {
         assert_eq!(spec2.context_limit, 204_800);
         assert_eq!(client.call_count.load(Ordering::SeqCst), 1);
     }
+
+    #[tokio::test]
+    async fn resolve_combined_uses_cache() {
+        let body = r#"{"openai":{"models":{"gpt-4o":{"limit":{"context":128000,"output":16384}}}}}"#
+            .to_string();
+        let client = Arc::new(CountingMockClient {
+            body,
+            call_count: AtomicUsize::new(0),
+        });
+        let models_dev =
+            ModelsDevResolver::with_client("https://x.com/api.json".to_string(), client.clone());
+        let cached = CachedResolver::new(models_dev);
+
+        // First call via resolve_combined
+        let spec1 = cached.resolve_combined("openai/gpt-4o").await.unwrap();
+        assert_eq!(spec1.context_limit, 128_000);
+        assert_eq!(client.call_count.load(Ordering::SeqCst), 1);
+
+        // Second call should hit cache
+        let spec2 = cached.resolve_combined("openai/gpt-4o").await.unwrap();
+        assert_eq!(spec2.context_limit, 128_000);
+        assert_eq!(client.call_count.load(Ordering::SeqCst), 1);
+    }
 }

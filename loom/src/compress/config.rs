@@ -35,6 +35,18 @@ impl Default for CompactionConfig {
     }
 }
 
+impl CompactionConfig {
+    /// Create a config with a specific `max_context_tokens` (e.g., from models.dev).
+    ///
+    /// Other fields use defaults from `CompactionConfig::default()`.
+    pub fn with_max_context_tokens(max_context_tokens: u32) -> Self {
+        Self {
+            max_context_tokens,
+            ..Self::default()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -45,6 +57,18 @@ mod tests {
         assert!(c.auto);
         assert!(c.prune);
         assert_eq!(c.max_context_tokens, 128_000);
+        assert_eq!(c.reserve_tokens, 4096);
+        assert_eq!(c.prune_keep_tokens, 40_000);
+        assert_eq!(c.prune_minimum, Some(20_000));
+        assert_eq!(c.compact_keep_recent, 20);
+    }
+
+    #[test]
+    fn with_max_context_tokens_uses_defaults_for_other_fields() {
+        let c = CompactionConfig::with_max_context_tokens(200_000);
+        assert!(c.auto);
+        assert!(c.prune);
+        assert_eq!(c.max_context_tokens, 200_000);
         assert_eq!(c.reserve_tokens, 4096);
         assert_eq!(c.prune_keep_tokens, 40_000);
         assert_eq!(c.prune_minimum, Some(20_000));

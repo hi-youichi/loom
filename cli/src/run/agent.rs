@@ -4,8 +4,8 @@
 use chrono::Local;
 use loom::{
     build_helve_config, build_react_run_context, list_available_profiles, run_agent_with_options,
-    AnyStreamEvent, DupState, Envelope, GotState, MessageChunkKind, ReActState, ResolvedAgent,
-    ToolCall, TotState,
+    AnyStreamEvent, DupState, Envelope, GotState, MessageChunkKind, ModelLimitResolver,
+    ModelsDevResolver, ReActState, ResolvedAgent, ToolCall, TotState,
 };
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
@@ -51,7 +51,10 @@ fn print_available_agents() {
 }
 
 /// Single line when a node is entered (unified across agents).
-fn log_node_enter(from: Option<&str>, node_id: &str) {
+fn log_node_enter(from: Option<&str>, node_id: &str, verbose: bool) {
+    if !verbose {
+        return;
+    }
     let from = from.unwrap_or("START");
     eprintln!("Entering: {} (from {})", node_id, from);
 }
@@ -63,6 +66,52 @@ fn log_tools_used(tool_calls: &[ToolCall]) {
     }
     let names: Vec<&str> = tool_calls.iter().map(|tc| tc.name.as_str()).collect();
     eprintln!("tools: {}", names.join(", "));
+}
+
+/// Formats context limit for display (e.g., "128K" or "1.5M").
+fn format_context_limit(limit: u32) -> String {
+    if limit >= 1_000_000 {
+        format!("{:.1}M", limit as f64 / 1_000_000.0)
+    } else if limit >= 1000 {
+        format!("{}K", limit / 1000)
+    } else {
+        limit.to_string()
+    }
+}
+
+/// Prints model name and context limit to stderr at startup.
+async fn print_model_info(model: Option<&String>) {
+    let model_name = match model {
+        Some(m) if !m.is_empty() => m.as_str(),
+        _ => {
+            eprintln!("model: (default)");
+            return;
+        }
+    };
+
+    // Try to resolve context limit from models.dev
+    let resolver = ModelsDevResolver::new();
+    match resolver.resolve_combined(model_name).await {
+        Some(spec) => {
+            eprintln!(
+                "model: {} ({} context)",
+                model_name,
+                format_context_limit(spec.context_limit)
+            );
+        }
+        None => {
+            // Log detailed reason why resolution failed
+            tracing::debug!(
+                "Model spec resolution failed for '{}'. \
+                 This usually means: \
+                 1) The model name doesn't include a provider prefix (e.g., 'glm-5' instead of 'zai/glm-5'), \
+                 2) The provider/model combination is not in the models.dev database, or \
+                 3) Network error when fetching from models.dev", 
+                model_name
+            );
+            eprintln!("model: {} (context: unknown)", model_name);
+        }
+    }
 }
 
 /// Result of run_agent_wrapper: reply, optional reasoning, optional events, optional envelope.
@@ -87,6 +136,7 @@ pub async fn run_agent_wrapper(
         if helve.agents_md.is_some() {
             eprintln!("AGENTS.md loaded; included in system prompt.");
         }
+        print_model_info(config.model.as_ref()).await;
     }
     print_loaded_tools(&config).await?;
 
@@ -164,6 +214,7 @@ pub async fn run_agent_wrapper(
         agent_display,
         total_prompt_tokens: 0,
         total_completion_tokens: 0,
+        llm_start: None,
     }));
 
     let state_clone = state.clone();
@@ -231,8 +282,9 @@ fn on_event_react(
 ) {
     match ev {
         StreamEvent::TaskStart { node_id } => {
-            log_node_enter(s.last_node.as_deref(), node_id);
+            log_node_enter(s.last_node.as_deref(), node_id, verbose);
             s.last_node = Some(node_id.clone());
+            s.llm_start = Some(Instant::now());
         }
         StreamEvent::Messages { chunk, .. } => {
             if !s.reply_started {
@@ -273,6 +325,19 @@ fn on_event_react(
         } => {
             s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
             s.total_completion_tokens = s.total_completion_tokens.saturating_add(*completion_tokens);
+            
+            // Output stats for this LLM call
+            if let Some(start) = s.llm_start {
+                let duration = start.elapsed();
+                let secs = duration.as_secs_f64();
+                let total = *prompt_tokens + *completion_tokens;
+                let tokens_per_sec = if secs > 0.0 { total as f64 / secs } else { 0.0 };
+                eprintln!(
+                    "LLM: {:.2}s, {:.0} tokens/s (prompt: {}, completion: {})",
+                    secs, tokens_per_sec, prompt_tokens, completion_tokens
+                );
+            }
+            
             tracing::info!(
                 prompt_tokens,
                 completion_tokens,
@@ -293,7 +358,7 @@ fn on_event_dup(
 ) {
     match ev {
         StreamEvent::TaskStart { node_id } => {
-            log_node_enter(s.last_node.as_deref(), node_id);
+            log_node_enter(s.last_node.as_deref(), node_id, verbose);
             s.last_node = Some(node_id.clone());
         }
         StreamEvent::Messages { chunk, .. } => {
@@ -366,7 +431,7 @@ fn on_event_tot(
 ) {
     match ev {
         StreamEvent::TaskStart { node_id } => {
-            log_node_enter(s.last_node.as_deref(), node_id);
+            log_node_enter(s.last_node.as_deref(), node_id, verbose);
             s.last_node = Some(node_id.clone());
         }
         StreamEvent::TotExpand { candidates } => {
@@ -449,6 +514,8 @@ struct EventState {
     total_prompt_tokens: u32,
     /// Accumulated completion tokens from all StreamEvent::Usage in this run.
     total_completion_tokens: u32,
+    /// Start time of the current LLM call (set at TaskStart).
+    llm_start: Option<Instant>,
 }
 
 async fn print_loaded_tools(config: &loom::ReactBuildConfig) -> Result<(), RunError> {
@@ -474,7 +541,7 @@ fn on_event_got(
 ) {
     match ev {
         StreamEvent::TaskStart { node_id } => {
-            log_node_enter(s.last_node.as_deref(), node_id);
+            log_node_enter(s.last_node.as_deref(), node_id, verbose);
             s.last_node = Some(node_id.clone());
         }
         StreamEvent::GotPlan {
