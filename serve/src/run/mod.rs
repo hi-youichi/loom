@@ -67,7 +67,7 @@ pub(crate) async fn handle_run(
 mod tests {
     use async_trait::async_trait;
     use loom::{
-        EnvelopeState, ProtocolEvent, ProtocolEventEnvelope, RunCmd, RunError, RunOptions,
+        AgentRunResult, EnvelopeState, ProtocolEvent, ProtocolEventEnvelope, RunCmd, RunError, RunOptions,
         ServerResponse,
     };
     use std::sync::atomic::AtomicUsize;
@@ -117,7 +117,10 @@ mod tests {
         let run_handle = tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
             (
-                Ok("never".to_string()),
+                Ok(AgentRunResult {
+                    reply: "never".to_string(),
+                    reasoning_content: None,
+                }),
                 Arc::new(Mutex::new(EnvelopeState::new("s".into()))),
                 Arc::new(AtomicUsize::new(0)),
                 Arc::new(AtomicUsize::new(0)),
@@ -149,7 +152,10 @@ mod tests {
         let state = Arc::new(Mutex::new(EnvelopeState::new("run-1".into())));
         let run_handle = tokio::spawn(async move {
             (
-                Ok("reply text".to_string()),
+                Ok(AgentRunResult {
+                    reply: "reply text".to_string(),
+                    reasoning_content: Some("thinking".to_string()),
+                }),
                 state,
                 Arc::new(AtomicUsize::new(0)),
                 Arc::new(AtomicUsize::new(0)),

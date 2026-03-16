@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use axum::extract::ws::WebSocket;
 use loom::{
-    EnvelopeState, ErrorResponse, ProtocolEventEnvelope, RunEndResponse, RunError,
+    AgentRunResult, EnvelopeState, ErrorResponse, ProtocolEventEnvelope, RunEndResponse, RunError,
     RunStreamEventResponse, ServerResponse,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -38,7 +38,7 @@ impl RunStreamSender for WebSocketRunSender<'_> {
 
 /// Result of the run task (result, state, dropped_events, dropped_appends).
 pub(super) type RunTaskResult = (
-    Result<String, RunError>,
+    Result<AgentRunResult, RunError>,
     Arc<Mutex<EnvelopeState>>,
     Arc<AtomicUsize>,
     Arc<AtomicUsize>,
@@ -94,7 +94,7 @@ where
     }
 
     match result {
-        Ok(reply) => {
+        Ok(result) => {
             let reply_env = state.lock().map(|s| s.reply_envelope()).ok();
             let (session_id, node_id, event_id) = reply_env
                 .as_ref()
@@ -103,7 +103,8 @@ where
             sender
                 .send_response(&ServerResponse::RunEnd(RunEndResponse {
                     id: run_id.clone(),
-                    reply,
+                    reply: result.reply,
+                    reasoning_content: result.reasoning_content,
                     usage: None,
                     total_usage: None,
                     session_id,
