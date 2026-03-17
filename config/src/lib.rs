@@ -30,9 +30,17 @@ pub fn mask_key(key: &str, prefix_len: usize, suffix_len: usize) -> String {
     format!("{}***{}", prefix, suffix)
 }
 
-/// Masks a value for logging: returns `***` so secrets are never printed.
-pub fn mask_value(_value: &str) -> &'static str {
-    "***"
+/// Masks a secret value for logging: keeps first 2 and last 2 characters, middle becomes `***`.
+pub fn mask_value(value: &str) -> String {
+    const PREFIX_LEN: usize = 2;
+    const SUFFIX_LEN: usize = 2;
+    let n = value.len();
+    if n <= PREFIX_LEN + SUFFIX_LEN {
+        return "***".to_string();
+    }
+    let prefix = &value[..PREFIX_LEN];
+    let suffix = &value[n - SUFFIX_LEN..];
+    format!("{}***{}", prefix, suffix)
 }
 
 /// Returns true if the key looks like a secret (e.g. API key, token, password).
@@ -207,7 +215,7 @@ pub fn load_and_apply_with_report(
 
         let value_display = value.as_deref().map_or("***".to_string(), |v| {
             if is_secret_key(&key) {
-                mask_value(v).to_string()
+                mask_value(v)
             } else {
                 v.to_string()
             }
@@ -243,9 +251,14 @@ mod tests {
     }
 
     #[test]
-    fn mask_value_always_returns_star() {
-        assert_eq!(mask_value("secret"), "***");
+    fn mask_value_keeps_first_and_last_two_chars() {
+        assert_eq!(mask_value("secret"), "se***et");
+        assert_eq!(mask_value("abcde"), "ab***de");
+        assert_eq!(mask_value("sk-1234567890abcdef"), "sk***ef");
         assert_eq!(mask_value(""), "***");
+        assert_eq!(mask_value("a"), "***");
+        assert_eq!(mask_value("ab"), "***");
+        assert_eq!(mask_value("abcd"), "***");
     }
 
     #[test]
@@ -474,7 +487,7 @@ mod tests {
         restore_var("LOOM_HOME", prev_loom);
 
         let entry = report.entries.iter().find(|e| e.key == "CONFIG_TEST_API_KEY").unwrap();
-        assert_eq!(entry.value_masked, "***");
+        assert_eq!(entry.value_masked, "su***et");
     }
 
     #[test]
