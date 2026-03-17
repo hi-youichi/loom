@@ -130,6 +130,7 @@ pub fn build_helve_config(opts: &RunOptions) -> (HelveConfig, ReactBuildConfig, 
     }
 
     let mut base = ReactBuildConfig::from_env();
+    base.dry_run = effective_opts.dry_run;
     if let Some(ref m) = effective_opts.model {
         base.model = Some(m.clone());
     }
@@ -379,6 +380,7 @@ mod tests {
             model: None,
             mcp_config_path: None,
             output_timestamp: false,
+            dry_run: false,
         }
     }
 

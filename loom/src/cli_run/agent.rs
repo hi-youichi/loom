@@ -41,6 +41,8 @@ pub struct RunOptions {
     pub thread_id: Option<String>,
     /// When true, print a timestamp line to stderr before each reply output (CLI --timestamp).
     pub output_timestamp: bool,
+    /// When true, do not execute tools; LLM runs but tool calls return a placeholder (CLI --dry).
+    pub dry_run: bool,
 }
 
 /// Error type for run operations.
@@ -313,6 +315,7 @@ mod tests {
             output_timestamp: false,
             model: None,
             mcp_config_path: None,
+            dry_run: false,
         }
     }
 
@@ -349,6 +352,7 @@ mod tests {
             mcp_servers: None,
             skill_registry: None,
             max_sub_agent_depth: None,
+            dry_run: false,
         }
     }
 
@@ -393,6 +397,7 @@ mod tests {
             output_timestamp: false,
             model: None,
             mcp_config_path: None,
+            dry_run: false,
         };
         assert!(build_runner(&cfg, &opts, &RunCmd::React, None).await.is_err());
         assert!(build_runner(&cfg, &opts, &RunCmd::Dup, None).await.is_err());

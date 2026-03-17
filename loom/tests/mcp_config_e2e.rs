@@ -24,6 +24,8 @@ fn opts(working_folder: PathBuf) -> RunOptions {
         output_json: false,
         model: None,
         mcp_config_path: None,
+        output_timestamp: false,
+        dry_run: false,
     }
 }
 

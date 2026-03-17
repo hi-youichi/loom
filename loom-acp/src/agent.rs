@@ -147,6 +147,7 @@ impl Agent for LoomAcpAgent {
             model: entry.session_config.model.clone(),
             mcp_config_path: None,
             output_timestamp: false,
+            dry_run: false,
         };
 
         let session_id = args.session_id.clone();

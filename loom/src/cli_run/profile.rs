@@ -567,6 +567,7 @@ mod tests {
             model: None,
             mcp_config_path: None,
             output_timestamp: false,
+            dry_run: false,
         };
         let (profile, source) = load_profile_from_options(&opts).expect("built-in dev profile");
         assert_eq!(profile.name, "dev");
@@ -592,6 +593,7 @@ mod tests {
             model: None,
             mcp_config_path: None,
             output_timestamp: false,
+            dry_run: false,
         };
         let (profile, source) = load_profile_from_options(&opts).expect("built-in agent-builder profile");
         assert_eq!(profile.name, "agent-builder");
@@ -843,6 +845,7 @@ tools:
             model: None,
             mcp_config_path: None,
             output_timestamp: false,
+            dry_run: false,
         };
         let result = load_profile_from_options(&opts);
 
@@ -877,6 +880,7 @@ tools:
             model: None,
             mcp_config_path: None,
             output_timestamp: false,
+            dry_run: false,
         };
         let result = load_profile_from_options(&opts);
         match prev_loom {

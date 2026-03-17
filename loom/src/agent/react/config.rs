@@ -82,6 +82,8 @@ pub struct ReactBuildConfig {
     pub skill_registry: Option<Arc<SkillRegistry>>,
     /// Maximum nesting depth for `invoke_agent` tool calls (default 3).
     pub max_sub_agent_depth: Option<u32>,
+    /// When true, tools are not executed; call_tool returns a placeholder (CLI --dry).
+    pub dry_run: bool,
 }
 
 impl ReactBuildConfig {
@@ -157,6 +159,7 @@ impl ReactBuildConfig {
             max_sub_agent_depth: std::env::var("MAX_SUB_AGENT_DEPTH")
                 .ok()
                 .and_then(|s| s.parse().ok()),
+            dry_run: false,
         }
     }
 }

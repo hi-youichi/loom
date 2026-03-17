@@ -128,6 +128,9 @@ pub async fn run_agent_wrapper(
 ) -> RunAgentResult {
     let (helve, config, resolved_agent) = build_helve_config(opts);
     if !opts.output_json {
+        if opts.dry_run {
+            eprintln!("dry run: tools will not be executed");
+        }
         print_agent_banner(&resolved_agent);
         print_available_agents();
         if helve.role_setting.is_some() {
@@ -1046,6 +1049,7 @@ mod tests {
             model: None,
             mcp_config_path: None,
             output_timestamp: false,
+            dry_run: false,
         }
     }
 

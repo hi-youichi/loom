@@ -40,6 +40,7 @@ fn minimal_config() -> ReactBuildConfig {
         mcp_servers: None,
         skill_registry: None,
         max_sub_agent_depth: None,
+        dry_run: false,
     }
 }
 
