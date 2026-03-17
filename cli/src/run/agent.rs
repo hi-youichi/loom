@@ -284,6 +284,9 @@ fn on_event_react(
 ) {
     match ev {
         StreamEvent::TaskStart { node_id } => {
+            if node_id == "think" {
+                eprintln!("Think");
+            }
             log_node_enter(s.last_node.as_deref(), node_id, verbose);
             s.last_node = Some(node_id.clone());
         }
@@ -345,7 +348,7 @@ fn on_event_react(
                         0.0
                     };
                     eprintln!(
-                        "LLM: {:.2}s | prefill: {}t / {:.2}s = {:.0} t/s | decode: {}t / {:.2}s = {:.0} t/s",
+                        "\nLLM: {:.2}s | prefill: {}t / {:.2}s = {:.0} t/s | decode: {}t / {:.2}s = {:.0} t/s",
                         total_secs,
                         prompt_tokens, prefill_secs, prefill_rate,
                         completion_tokens, decode_secs, decode_rate
@@ -353,7 +356,7 @@ fn on_event_react(
                 }
                 _ => {
                     eprintln!(
-                        "LLM: prompt={}, completion={}",
+                        "\nLLM: prompt={}, completion={}",
                         prompt_tokens, completion_tokens
                     );
                 }
