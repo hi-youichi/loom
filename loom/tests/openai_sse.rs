@@ -127,6 +127,8 @@ fn adapter_finish_includes_usage_when_requested() {
         prompt_tokens: 10,
         completion_tokens: 5,
         total_tokens: 15,
+        prefill_duration: None,
+        decode_duration: None,
     });
     adapter.finish();
 

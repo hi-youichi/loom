@@ -92,6 +92,7 @@ where
             prompt_tokens,
             completion_tokens,
             total_tokens,
+            ..
         } => json!({
             "Usage": {
                 "prompt_tokens": prompt_tokens,
@@ -186,6 +187,8 @@ mod tests {
             prompt_tokens: 10,
             completion_tokens: 5,
             total_tokens: 15,
+            prefill_duration: None,
+            decode_duration: None,
         };
         let v = stream_event_to_format_a(&ev).unwrap();
         assert_eq!(v["Usage"]["prompt_tokens"], 10);

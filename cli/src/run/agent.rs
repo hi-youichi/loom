@@ -217,7 +217,6 @@ pub async fn run_agent_wrapper(
         agent_display,
         total_prompt_tokens: 0,
         total_completion_tokens: 0,
-        llm_start: None,
     }));
 
     let state_clone = state.clone();
@@ -287,7 +286,6 @@ fn on_event_react(
         StreamEvent::TaskStart { node_id } => {
             log_node_enter(s.last_node.as_deref(), node_id, verbose);
             s.last_node = Some(node_id.clone());
-            s.llm_start = Some(Instant::now());
         }
         StreamEvent::Messages { chunk, .. } => {
             if !s.reply_started {
@@ -324,23 +322,43 @@ fn on_event_react(
         StreamEvent::Usage {
             prompt_tokens,
             completion_tokens,
-            total_tokens: _,
+            prefill_duration,
+            decode_duration,
+            ..
         } => {
             s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
             s.total_completion_tokens = s.total_completion_tokens.saturating_add(*completion_tokens);
-            
-            // Output stats for this LLM call
-            if let Some(start) = s.llm_start {
-                let duration = start.elapsed();
-                let secs = duration.as_secs_f64();
-                let total = *prompt_tokens + *completion_tokens;
-                let tokens_per_sec = if secs > 0.0 { total as f64 / secs } else { 0.0 };
-                eprintln!(
-                    "LLM: {:.2}s, {:.0} tokens/s (prompt: {}, completion: {})",
-                    secs, tokens_per_sec, prompt_tokens, completion_tokens
-                );
+
+            match (prefill_duration, decode_duration) {
+                (Some(prefill), Some(decode)) => {
+                    let prefill_secs = prefill.as_secs_f64();
+                    let decode_secs = decode.as_secs_f64();
+                    let total_secs = prefill_secs + decode_secs;
+                    let prefill_rate = if prefill_secs > 0.0 {
+                        *prompt_tokens as f64 / prefill_secs
+                    } else {
+                        0.0
+                    };
+                    let decode_rate = if decode_secs > 0.0 {
+                        *completion_tokens as f64 / decode_secs
+                    } else {
+                        0.0
+                    };
+                    eprintln!(
+                        "LLM: {:.2}s | prefill: {}t / {:.2}s = {:.0} t/s | decode: {}t / {:.2}s = {:.0} t/s",
+                        total_secs,
+                        prompt_tokens, prefill_secs, prefill_rate,
+                        completion_tokens, decode_secs, decode_rate
+                    );
+                }
+                _ => {
+                    eprintln!(
+                        "LLM: prompt={}, completion={}",
+                        prompt_tokens, completion_tokens
+                    );
+                }
             }
-            
+
             tracing::info!(
                 prompt_tokens,
                 completion_tokens,
@@ -410,7 +428,7 @@ fn on_event_dup(
         StreamEvent::Usage {
             prompt_tokens,
             completion_tokens,
-            total_tokens: _,
+            ..
         } => {
             s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
             s.total_completion_tokens = s.total_completion_tokens.saturating_add(*completion_tokens);
@@ -491,7 +509,7 @@ fn on_event_tot(
         StreamEvent::Usage {
             prompt_tokens,
             completion_tokens,
-            total_tokens: _,
+            ..
         } => {
             s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
             s.total_completion_tokens = s.total_completion_tokens.saturating_add(*completion_tokens);
@@ -517,8 +535,6 @@ struct EventState {
     total_prompt_tokens: u32,
     /// Accumulated completion tokens from all StreamEvent::Usage in this run.
     total_completion_tokens: u32,
-    /// Start time of the current LLM call (set at TaskStart).
-    llm_start: Option<Instant>,
 }
 
 async fn print_loaded_tools(config: &loom::ReactBuildConfig) -> Result<(), RunError> {
@@ -615,7 +631,7 @@ fn on_event_got(
         StreamEvent::Usage {
             prompt_tokens,
             completion_tokens,
-            total_tokens: _,
+            ..
         } => {
             s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
             s.total_completion_tokens = s.total_completion_tokens.saturating_add(*completion_tokens);

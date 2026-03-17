@@ -1,6 +1,7 @@
 //! Think node: read messages, call LLM, write assistant message and optional tool_calls.
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use async_trait::async_trait;
 
@@ -109,7 +110,8 @@ impl Node<ReActState> for ThinkNode {
             || ctx.stream_mode.contains(&StreamMode::Debug))
             && ctx.stream_tx.is_some();
 
-        let (response, streamed_chunks) = if should_stream || should_stream_tools {
+        let call_start = Instant::now();
+        let (response, streamed_chunks, first_token_at) = if should_stream || should_stream_tools {
             let stream_tx = ctx.stream_tx.clone().unwrap();
 
             let (chunk_tx, chunk_rx) = if should_stream {
@@ -145,19 +147,19 @@ impl Node<ReActState> for ThinkNode {
                 if let Some((adapter, rx)) = chunk_rx {
                     adapter.forward(rx).await
                 } else {
-                    0
+                    (0, None)
                 }
             };
 
-            let (result, forwarded_chunks, _) = tokio::join!(
+            let (result, (forwarded_chunks, first_token_at), _) = tokio::join!(
                 self.llm
                     .invoke_stream_with_tool_delta(&state.messages, chunk_tx, tool_delta_tx,),
                 msg_forward,
                 tool_forward,
             );
-            (result?, forwarded_chunks)
+            (result?, forwarded_chunks, first_token_at)
         } else {
-            (self.llm.invoke(&state.messages).await?, 0)
+            (self.llm.invoke(&state.messages).await?, 0, None)
         };
 
         let used_fallback = response.content.is_empty() && response.tool_calls.is_empty();
@@ -234,11 +236,21 @@ impl Node<ReActState> for ThinkNode {
             );
 
         if let (Some(ref tx), Some(ref u)) = (ctx.stream_tx.as_ref(), response.usage.as_ref()) {
+            let (prefill_duration, decode_duration) = match first_token_at {
+                Some(ft) => {
+                    let prefill = ft.duration_since(call_start);
+                    let decode = call_start.elapsed().saturating_sub(prefill);
+                    (Some(prefill), Some(decode))
+                }
+                None => (None, None),
+            };
             let _ = tx
                 .send(StreamEvent::Usage {
                     prompt_tokens: u.prompt_tokens,
                     completion_tokens: u.completion_tokens,
                     total_tokens: u.total_tokens,
+                    prefill_duration,
+                    decode_duration,
                 })
                 .await;
         }

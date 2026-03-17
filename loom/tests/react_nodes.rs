@@ -305,12 +305,16 @@ async fn think_node_stream_emits_usage_when_available() {
             prompt_tokens,
             completion_tokens,
             total_tokens,
+            prefill_duration,
+            decode_duration,
         } = e
         {
             usage_events += 1;
             assert_eq!(prompt_tokens, 10);
             assert_eq!(completion_tokens, 5);
             assert_eq!(total_tokens, 15);
+            assert!(prefill_duration.is_some(), "prefill_duration should be set in streaming mode");
+            assert!(decode_duration.is_some(), "decode_duration should be set in streaming mode");
         }
     }
     assert_eq!(usage_events, 1, "should emit exactly one Usage event");

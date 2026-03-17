@@ -197,6 +197,7 @@ impl StreamToSse {
                 prompt_tokens,
                 completion_tokens,
                 total_tokens,
+                ..
             } => {
                 self.usage = Some(ChunkUsage {
                     prompt_tokens,
@@ -386,6 +387,8 @@ mod tests {
             prompt_tokens: 10,
             completion_tokens: 20,
             total_tokens: 30,
+            prefill_duration: None,
+            decode_duration: None,
         });
         adapter.finish();
         let lines = adapter.take_lines();
@@ -401,6 +404,8 @@ mod tests {
             prompt_tokens: 5,
             completion_tokens: 10,
             total_tokens: 15,
+            prefill_duration: None,
+            decode_duration: None,
         });
         adapter.finish();
         let lines = adapter.take_lines();
@@ -492,6 +497,8 @@ mod tests {
             prompt_tokens: 1,
             completion_tokens: 2,
             total_tokens: 3,
+            prefill_duration: None,
+            decode_duration: None,
         });
         adapter.finish();
         let lines = adapter.take_lines();

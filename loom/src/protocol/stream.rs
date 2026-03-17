@@ -47,6 +47,7 @@ where
             prompt_tokens,
             completion_tokens,
             total_tokens,
+            ..
         } => ProtocolEvent::Usage {
             prompt_tokens: *prompt_tokens,
             completion_tokens: *completion_tokens,
@@ -256,6 +257,8 @@ mod tests {
             prompt_tokens: 10,
             completion_tokens: 5,
             total_tokens: 15,
+            prefill_duration: None,
+            decode_duration: None,
         };
         let pe = stream_event_to_protocol_event(&ev).unwrap();
         let v = pe.to_value().unwrap();
@@ -310,6 +313,8 @@ mod tests {
             prompt_tokens: 1,
             completion_tokens: 2,
             total_tokens: 3,
+            prefill_duration: None,
+            decode_duration: None,
         };
 
         let first = stream_event_to_protocol_value(&enter, &mut state).unwrap();

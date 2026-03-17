@@ -311,13 +311,22 @@ where
     }
 
     /// Forwards chunks from `chunk_rx` to `stream_tx` as `StreamEvent::Messages`.
-    /// Completes when `chunk_rx` is closed (e.g. when invoke_stream drops its sender),
-    /// and returns the number of chunks successfully read from `chunk_rx`.
-    pub async fn forward(&self, mut chunk_rx: mpsc::Receiver<MessageChunk>) -> usize {
+    /// Completes when `chunk_rx` is closed (e.g. when invoke_stream drops its sender).
+    ///
+    /// Returns `(count, first_token_at)` where `first_token_at` is the `Instant` at which
+    /// the very first chunk was received (used by callers to compute prefill/decode durations).
+    pub async fn forward(
+        &self,
+        mut chunk_rx: mpsc::Receiver<MessageChunk>,
+    ) -> (usize, Option<std::time::Instant>) {
         let stream_tx = self.stream_tx.clone();
         let node_id = self.node_id.clone();
         let mut forwarded = 0usize;
+        let mut first_token_at: Option<std::time::Instant> = None;
         while let Some(chunk) = chunk_rx.recv().await {
+            if first_token_at.is_none() {
+                first_token_at = Some(std::time::Instant::now());
+            }
             forwarded += 1;
             tracing::debug!(chunk_len = chunk.content.len(), "stream chunk");
             let event = StreamEvent::Messages {
@@ -328,7 +337,7 @@ where
             };
             let _ = stream_tx.send(event).await;
         }
-        forwarded
+        (forwarded, first_token_at)
     }
 }
 
@@ -428,6 +437,12 @@ where
         completion_tokens: u32,
         /// Total tokens (prompt + completion).
         total_tokens: u32,
+        /// Time from LLM call start to first token received (prefill phase).
+        /// `None` in non-streaming mode where the two phases cannot be separated.
+        prefill_duration: Option<std::time::Duration>,
+        /// Time from first token received to generation complete (decode phase).
+        /// `None` in non-streaming mode.
+        decode_duration: Option<std::time::Duration>,
     },
     /// LLM streaming tool call argument delta (Think node, per chunk).
     ToolCallChunk {
