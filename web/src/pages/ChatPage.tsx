@@ -1,25 +1,22 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 
 import { MessageComposer } from '../components/MessageComposer'
 import { ThinkIndicator } from '../components/ThinkIndicator'
 import { sendMessage } from '../services/chat'
 import type { Message } from '../types/chat'
 
-const initialMessages: Message[] = [
-  {
-    id: 'user-demo',
-    role: 'user',
-    content: 'Can you help me refine the message composer layout?',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'welcome',
-    role: 'assistant',
-    content:
-      'Absolutely. Start with a clean single-column layout, smaller message text, and a compact send button.',
-    createdAt: new Date().toISOString(),
-  },
-]
+const THREAD_STORAGE_KEY = 'loom-web-thread-id'
+
+function getOrCreateThreadId() {
+  const existing = window.localStorage.getItem(THREAD_STORAGE_KEY)
+  if (existing) {
+    return existing
+  }
+
+  const nextThreadId = crypto.randomUUID()
+  window.localStorage.setItem(THREAD_STORAGE_KEY, nextThreadId)
+  return nextThreadId
+}
 
 function formatTime(timestamp: string) {
   return new Intl.DateTimeFormat('en', {
@@ -29,38 +26,68 @@ function formatTime(timestamp: string) {
 }
 
 export function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>(initialMessages)
+  const threadId = useMemo(() => getOrCreateThreadId(), [])
+  const [messages, setMessages] = useState<Message[]>([])
   const [sending, setSending] = useState(false)
+  const [pendingAssistantId, setPendingAssistantId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const handleSend = async (text: string) => {
+    const createdAt = new Date().toISOString()
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: 'user',
       content: text,
-      createdAt: new Date().toISOString(),
+      createdAt,
+    }
+    const assistantMessageId = crypto.randomUUID()
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      createdAt,
     }
 
-    setMessages((current) => [...current, userMessage])
+    setMessages((current) => [...current, userMessage, assistantMessage])
     setSending(true)
+    setPendingAssistantId(assistantMessageId)
     setError(null)
 
     try {
-      const reply = await sendMessage(text)
-
-      setMessages((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: reply.content,
-          createdAt: new Date().toISOString(),
+      const reply = await sendMessage(text, {
+        threadId,
+        onChunk: (chunk) => {
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === assistantMessageId
+                ? { ...message, content: message.content + chunk }
+                : message,
+            ),
+          )
         },
-      ])
-    } catch {
-      setError('Request failed. Try again, or send a message without the word "error".')
+      })
+
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === assistantMessageId
+            ? { ...message, content: reply.content || message.content }
+            : message,
+        ),
+      )
+    } catch (caughtError) {
+      const nextError =
+        caughtError instanceof Error
+          ? caughtError.message
+          : 'Request failed. Check whether `loom serve` is running.'
+
+      setMessages((current) =>
+        current.filter((message) => message.id !== assistantMessageId),
+      )
+      setError(nextError)
+      throw caughtError
     } finally {
       setSending(false)
+      setPendingAssistantId(null)
     }
   }
 
@@ -70,17 +97,19 @@ export function ChatPage() {
         <div className="message-list" role="log" aria-live="polite">
           {messages.map((message) => (
             <Fragment key={message.id}>
-              <article
-                className={`message message--${message.role}`}
-                aria-label={`${message.role} message`}
-              >
-                <div className="message__meta">
-                  <time dateTime={message.createdAt}>{formatTime(message.createdAt)}</time>
-                </div>
-                <p className="message__content">{message.content}</p>
-              </article>
+              {message.content ? (
+                <article
+                  className={`message message--${message.role}`}
+                  aria-label={`${message.role} message`}
+                >
+                  <div className="message__meta">
+                    <time dateTime={message.createdAt}>{formatTime(message.createdAt)}</time>
+                  </div>
+                  <p className="message__content">{message.content}</p>
+                </article>
+              ) : null}
 
-              {message.id === 'user-demo' ? <ThinkIndicator /> : null}
+              {message.id === pendingAssistantId && !message.content ? <ThinkIndicator /> : null}
             </Fragment>
           ))}
         </div>
