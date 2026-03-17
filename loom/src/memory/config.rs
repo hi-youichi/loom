@@ -10,7 +10,7 @@
 ///
 /// **Interaction**: Passed to `CompiledStateGraph::invoke(state, config)` and
 /// `Checkpointer::put` / `get_tuple` / `list`.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct RunnableConfig {
     /// Unique id for this conversation/thread. Required when using a checkpointer.
     pub thread_id: Option<String>,

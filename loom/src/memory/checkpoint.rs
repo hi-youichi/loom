@@ -46,7 +46,7 @@ pub type ChannelVersions = HashMap<String, String>;
 ///
 /// Checkpoint metadata. Used by Checkpointer implementations
 /// and by list() for time-travel UI.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct CheckpointMetadata {
     /// The source of the checkpoint (input, loop, update, fork).
     pub source: CheckpointSource,
@@ -61,7 +61,7 @@ pub struct CheckpointMetadata {
 /// Source of the checkpoint (input, loop, update, fork).
 ///
 /// Checkpoint metadata.source.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CheckpointSource {
     /// Created from an input to invoke/stream/batch.
     #[default]
@@ -233,6 +233,10 @@ mod tests {
     }
 }
 
+fn default_checkpoint_version() -> u32 {
+    CHECKPOINT_VERSION
+}
+
 /// One checkpoint: state snapshot + channel versions + id/ts.
 ///
 /// Stored by Checkpointer keyed by (thread_id, checkpoint_ns, checkpoint_id).
@@ -240,9 +244,10 @@ mod tests {
 ///
 /// **Interaction**: Produced by graph execution; consumed by Checkpointer::put,
 /// returned by get_tuple.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Checkpoint<S> {
     /// The version of the checkpoint format. Currently `2`.
+    #[serde(default = "default_checkpoint_version")]
     pub v: u32,
     /// The ID of the checkpoint. Unique and monotonically increasing.
     pub id: String,
@@ -251,20 +256,24 @@ pub struct Checkpoint<S> {
     /// The values of the channels at the time of the checkpoint (graph state).
     pub channel_values: S,
     /// The versions of the channels at the time of the checkpoint.
+    #[serde(default)]
     pub channel_versions: ChannelVersions,
     /// Map from node ID to map from channel name to version seen.
     /// Used to determine which nodes to execute next.
+    #[serde(default)]
     pub versions_seen: HashMap<String, ChannelVersions>,
     /// The channels that were updated in this checkpoint.
+    #[serde(default)]
     pub updated_channels: Option<Vec<String>>,
     /// Pending sends for message passing.
+    #[serde(default)]
     pub pending_sends: Vec<PendingWrite>,
     /// Metadata for the checkpoint.
     pub metadata: CheckpointMetadata,
 }
 
 /// Item returned by Checkpointer::list for history / time-travel.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CheckpointListItem {
     pub checkpoint_id: String,
     pub metadata: CheckpointMetadata,
@@ -273,7 +282,7 @@ pub struct CheckpointListItem {
 /// A tuple containing a checkpoint and its associated data.
 ///
 /// Returned by Checkpointer::get_tuple.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CheckpointTuple<S> {
     /// Configuration for the checkpoint.
     pub config: RunnableConfig,

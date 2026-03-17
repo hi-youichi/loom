@@ -5,10 +5,12 @@
 mod log_format;
 mod logging;
 mod repl;
+mod session;
 
 use clap::{Parser, Subcommand};
 use cli::{LocalBackend, RunBackend, RunOptions, RunOutput, StreamOut, ToolShowFormat};
 use repl::{run_one_turn, run_repl_loop};
+use session::{SessionArgs, SessionCommand};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -73,6 +75,10 @@ struct Args {
     /// Path to MCP config JSON (overrides LOOM_MCP_CONFIG_PATH and default .loom/mcp.json discovery)
     #[arg(long, value_name = "PATH")]
     mcp_config: Option<PathBuf>,
+
+    /// Dry run: LLM runs but tools are not executed (placeholder result returned)
+    #[arg(long)]
+    dry: bool,
 }
 
 /// Writes JSON to stdout or to the given file. When pretty is true, multi-line; else one line.
@@ -173,6 +179,8 @@ enum Command {
     Got(GotArgs),
     /// List or show tool definitions (same tools as used by react/dup/tot/got)
     Tool(ToolArgs),
+    /// Manage conversation sessions (list, show, delete)
+    Session(SessionArgs),
 }
 
 #[derive(clap::Args, Debug, Clone)]
@@ -300,6 +308,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let got_adaptive = matches!(args.cmd.as_ref(), Some(Command::Got(a)) if a.got_adaptive);
     let backend: Arc<dyn RunBackend> = Arc::new(LocalBackend);
 
+    // Session subcommands do not require a message; handle them first.
+    if let Some(Command::Session(sa)) = &args.cmd {
+        handle_session_command(sa, args.json).await?;
+        return Ok(());
+    }
+
     // Tool subcommands do not require a message; handle them first.
     if let Some(Command::Tool(ta)) = &args.cmd {
         let opts = RunOptions {
@@ -316,6 +330,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             model: None,
             mcp_config_path: args.mcp_config.clone(),
             output_timestamp: false,
+            dry_run: args.dry,
         };
         match &ta.sub {
             ToolCommand::List => {
@@ -368,6 +383,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         model: None,
         mcp_config_path: args.mcp_config,
         output_timestamp: args.timestamp,
+        dry_run: args.dry,
     };
 
     let cmd = args.cmd.unwrap_or(Command::React);
@@ -537,14 +553,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Handles session management commands (list, show, delete).
+async fn handle_session_command(sa: &SessionArgs, json: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let manager = session::SessionManager::with_default_path();
+    
+    match &sa.command {
+        SessionCommand::List => {
+            let sessions = manager.list_sessions()?;
+            manager.print_session_list(&sessions, json)?;
+        }
+        SessionCommand::Show { session_id } => {
+            match manager.show_session(session_id)? {
+                Some(detail) => manager.print_session_detail(&detail, json)?,
+                None => {
+                    eprintln!("Session not found: {}", session_id);
+                    std::process::exit(1);
+                }
+            }
+        }
+        SessionCommand::Delete { session_id } => {
+            let count = manager.delete_session(session_id)?;
+            if json {
+                let result = serde_json::json!({
+                    "session_id": session_id,
+                    "deleted_checkpoints": count
+                });
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                println!("Deleted session {} ({} checkpoints)", session_id, count);
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, OnceLock};
 
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
+    #[test]
+    fn default_max_message_len_is_200() {
+        assert_eq!(DEFAULT_MAX_MESSAGE_LEN, 200);
     }
 
     /// When message is shorter than max, returns unchanged.

@@ -56,11 +56,11 @@ pub struct ToolResult {
 /// **Interaction**: Consumed and produced by ThinkNode, ActNode, ObserveNode; passed
 /// through `StateGraph::invoke`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ReActState {
     /// Conversation history (System, User, Assistant). Used by Think and extended by Observe.
     pub messages: Vec<Message>,
     /// Most recent reasoning/thinking content returned by the LLM, if any.
-    #[serde(default)]
     pub last_reasoning_content: Option<String>,
     /// Current round tool calls from the LLM (Think writes, Act reads).
     pub tool_calls: Vec<ToolCall>,

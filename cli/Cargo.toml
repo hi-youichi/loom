@@ -31,6 +31,7 @@ tracing-core = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 futures-util = "0.3"
+rusqlite = { version = "0.31", features = ["bundled"] }
 
 [dev-dependencies]
 dotenv = { workspace = true }

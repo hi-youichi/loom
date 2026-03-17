@@ -22,6 +22,7 @@ fn cmd_to_runcmd(cmd: &Command) -> RunCmd {
             got_adaptive: a.got_adaptive,
         },
         Command::Tool(_) => unreachable!("tool handled in main"),
+        Command::Session(_) => unreachable!("session handled in main"),
     }
 }
 
@@ -232,6 +233,7 @@ mod tests {
             model: None,
             mcp_config_path: None,
             output_timestamp: false,
+            dry_run: false,
         };
 
         let out = run_one_turn(&backend, &opts, &Command::Dup, None)

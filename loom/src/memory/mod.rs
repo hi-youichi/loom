@@ -86,3 +86,8 @@ pub use openai_embedder::OpenAIEmbedder;
 pub use sqlite_saver::SqliteSaver;
 pub use sqlite_store::SqliteStore;
 pub use sqlite_vec_store::SqliteVecStore;
+
+/// Returns the default memory DB path (`~/.loom/memory.db`).
+pub fn default_memory_db_path() -> std::path::PathBuf {
+    sqlite_util::default_memory_db_path()
+}
