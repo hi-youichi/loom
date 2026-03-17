@@ -1,5 +1,5 @@
 //! Load configuration from `~/.loom/config.toml` and project `.env`, then apply to the process
-//! environment with priority: **existing env > .env > config.toml**.
+//! environment with priority: **existing env > .env > providers > config.toml `[env]`**.
 
 mod dotenv;
 pub mod home;
@@ -10,6 +10,7 @@ pub use mcp_config::{
     discover_mcp_config_path, load_mcp_config_from_path, parse_mcp_config, McpConfigError,
     McpConfigFile, McpServerDef, McpServerEntry,
 };
+pub use xdg_toml::ProviderDef;
 
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -66,6 +67,8 @@ pub enum ConfigSource {
     ExistingEnv,
     /// Loaded from project `.env`.
     Dotenv,
+    /// Loaded from an active `[[providers]]` entry in `config.toml`.
+    Provider,
     /// Loaded from XDG `config.toml` `[env]`.
     Xdg,
 }
@@ -85,6 +88,8 @@ pub struct ConfigLoadReport {
     pub entries: Vec<LoadedEntry>,
     pub dotenv_path: Option<PathBuf>,
     pub xdg_path: Option<PathBuf>,
+    /// Name of the active provider resolved from `[[providers]]`, if any.
+    pub active_provider: Option<String>,
 }
 
 /// Paths of config files (for logging when load fails). Paths are as resolved (not necessarily canonical).
@@ -177,17 +182,42 @@ pub fn load_and_apply(app_name: &str, override_dir: Option<&Path>) -> Result<(),
 }
 
 /// Like [`load_and_apply`] but returns a report of which keys were applied and from where (keys plain, values masked in report).
+///
+/// Priority (highest to lowest):
+/// 1. Existing process environment  
+/// 2. Project `.env`
+/// 3. Active `[[providers]]` entry (selected via `[default].provider` or `LOOM_PROVIDER` env var)
+/// 4. `[env]` table in `config.toml`
 pub fn load_and_apply_with_report(
     app_name: &str,
     override_dir: Option<&Path>,
 ) -> Result<ConfigLoadReport, LoadError> {
-    let xdg_map = xdg_toml::load_env_map(app_name)?;
+    let full_config = xdg_toml::load_full_config(app_name)?;
+    let xdg_map = full_config.env;
     let dotenv_map = dotenv::load_env_map(override_dir).map_err(LoadError::DotenvRead)?;
+
+    // Resolve active provider name (priority: process env > .env > [env] > [default].provider).
+    let active_provider_name = std::env::var("LOOM_PROVIDER")
+        .ok()
+        .or_else(|| dotenv_map.get("LOOM_PROVIDER").cloned())
+        .or_else(|| xdg_map.get("LOOM_PROVIDER").cloned())
+        .or(full_config.default_provider);
+    let provider_map: std::collections::HashMap<String, String> = active_provider_name
+        .as_deref()
+        .and_then(|name| {
+            full_config
+                .providers
+                .iter()
+                .find(|p| p.name.eq_ignore_ascii_case(name))
+        })
+        .map(|p| p.to_env_map())
+        .unwrap_or_default();
 
     let dotenv_path = dotenv::env_file_path(override_dir);
     let xdg_path = xdg_toml::config_path(app_name)?;
 
     let mut keys: std::collections::HashSet<String> = xdg_map.keys().cloned().collect();
+    keys.extend(provider_map.keys().cloned());
     keys.extend(dotenv_map.keys().cloned());
 
     let mut entries = Vec::with_capacity(keys.len());
@@ -197,6 +227,8 @@ pub fn load_and_apply_with_report(
             ConfigSource::ExistingEnv
         } else if dotenv_map.contains_key(&key) {
             ConfigSource::Dotenv
+        } else if provider_map.contains_key(&key) {
+            ConfigSource::Provider
         } else {
             ConfigSource::Xdg
         };
@@ -204,7 +236,11 @@ pub fn load_and_apply_with_report(
         let value = if source == ConfigSource::ExistingEnv {
             std::env::var(&key).ok()
         } else {
-            dotenv_map.get(&key).or_else(|| xdg_map.get(&key)).cloned()
+            dotenv_map
+                .get(&key)
+                .or_else(|| provider_map.get(&key))
+                .or_else(|| xdg_map.get(&key))
+                .cloned()
         };
 
         if source != ConfigSource::ExistingEnv {
@@ -232,6 +268,11 @@ pub fn load_and_apply_with_report(
         entries,
         dotenv_path,
         xdg_path,
+        active_provider: if provider_map.is_empty() {
+            None
+        } else {
+            active_provider_name
+        },
     })
 }
 
@@ -290,6 +331,7 @@ mod tests {
             ],
             dotenv_path: None,
             xdg_path: None,
+            active_provider: None,
         };
         let s = report.keys_summary().unwrap();
         assert_eq!(s, "config: OPENAI_API_KEY=*** RUST_LOG=info");
@@ -507,6 +549,7 @@ mod tests {
             }],
             dotenv_path: Some(PathBuf::from("/tmp/.env")),
             xdg_path: Some(PathBuf::from("/tmp/config.toml")),
+            active_provider: None,
         };
         let s = report.summary();
         assert!(s.contains(".env: /tmp/.env"));
@@ -524,6 +567,7 @@ mod tests {
             }],
             dotenv_path: None,
             xdg_path: None,
+            active_provider: None,
         };
         let s = report.summary();
         assert!(s.contains("config loaded (env only)"));
@@ -569,7 +613,225 @@ mod tests {
     fn config_source_derives() {
         assert_eq!(ConfigSource::ExistingEnv, ConfigSource::ExistingEnv);
         assert_ne!(ConfigSource::Dotenv, ConfigSource::Xdg);
+        assert_ne!(ConfigSource::Provider, ConfigSource::Xdg);
         let s = format!("{:?}", ConfigSource::Dotenv);
         assert!(s.contains("Dotenv"));
+        let s = format!("{:?}", ConfigSource::Provider);
+        assert!(s.contains("Provider"));
+    }
+
+    #[test]
+    fn provider_settings_applied_when_default_provider_set() {
+        let _g = CONFIG_ENV_LOCK.lock().unwrap();
+        let loom_home = tempfile::tempdir().unwrap();
+        std::fs::write(
+            loom_home.path().join("config.toml"),
+            r#"
+[default]
+provider = "my-llm"
+
+[[providers]]
+name = "my-llm"
+api_key = "sk-test-provider"
+base_url = "https://example.com/v1"
+model = "test-model"
+"#,
+        )
+        .unwrap();
+
+        let prev_loom = env::var("LOOM_HOME").ok();
+        env::set_var("LOOM_HOME", loom_home.path());
+        env::remove_var("OPENAI_API_KEY");
+        env::remove_var("OPENAI_BASE_URL");
+        env::remove_var("MODEL");
+        env::remove_var("LOOM_PROVIDER");
+
+        let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+
+        let api_key = env::var("OPENAI_API_KEY").unwrap_or_default();
+        let base_url = env::var("OPENAI_BASE_URL").unwrap_or_default();
+        let model = env::var("MODEL").unwrap_or_default();
+
+        env::remove_var("OPENAI_API_KEY");
+        env::remove_var("OPENAI_BASE_URL");
+        env::remove_var("MODEL");
+        restore_var("LOOM_HOME", prev_loom);
+
+        assert_eq!(api_key, "sk-test-provider");
+        assert_eq!(base_url, "https://example.com/v1");
+        assert_eq!(model, "test-model");
+
+        let api_key_entry = report.entries.iter().find(|e| e.key == "OPENAI_API_KEY");
+        assert!(api_key_entry.is_some());
+        assert_eq!(api_key_entry.unwrap().source, ConfigSource::Provider);
+    }
+
+    #[test]
+    fn provider_type_sets_llm_provider_env() {
+        let _g = CONFIG_ENV_LOCK.lock().unwrap();
+        let loom_home = tempfile::tempdir().unwrap();
+        std::fs::write(
+            loom_home.path().join("config.toml"),
+            r#"
+[default]
+provider = "bigmodel"
+
+[[providers]]
+name = "bigmodel"
+api_key = "bm-key"
+base_url = "https://open.bigmodel.cn/api/paas/v4"
+model = "glm-4-flash"
+type = "bigmodel"
+"#,
+        )
+        .unwrap();
+
+        let prev_loom = env::var("LOOM_HOME").ok();
+        env::set_var("LOOM_HOME", loom_home.path());
+        env::remove_var("OPENAI_API_KEY");
+        env::remove_var("LLM_PROVIDER");
+        env::remove_var("MODEL");
+        env::remove_var("LOOM_PROVIDER");
+
+        let _ = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+
+        let llm_provider = env::var("LLM_PROVIDER").unwrap_or_default();
+        let model = env::var("MODEL").unwrap_or_default();
+
+        env::remove_var("OPENAI_API_KEY");
+        env::remove_var("LLM_PROVIDER");
+        env::remove_var("MODEL");
+        restore_var("LOOM_HOME", prev_loom);
+
+        assert_eq!(llm_provider, "bigmodel");
+        assert_eq!(model, "glm-4-flash");
+    }
+
+    #[test]
+    fn dotenv_overrides_provider_settings() {
+        let _g = CONFIG_ENV_LOCK.lock().unwrap();
+        let loom_home = tempfile::tempdir().unwrap();
+        std::fs::write(
+            loom_home.path().join("config.toml"),
+            r#"
+[default]
+provider = "base"
+
+[[providers]]
+name = "base"
+model = "model-from-provider"
+"#,
+        )
+        .unwrap();
+
+        let dotenv_dir = tempfile::tempdir().unwrap();
+        std::fs::write(dotenv_dir.path().join(".env"), "MODEL=model-from-dotenv\n").unwrap();
+
+        let prev_loom = env::var("LOOM_HOME").ok();
+        env::set_var("LOOM_HOME", loom_home.path());
+        env::remove_var("MODEL");
+        env::remove_var("LOOM_PROVIDER");
+
+        let _ = load_and_apply_with_report("loom", Some(dotenv_dir.path())).unwrap();
+        let model = env::var("MODEL").unwrap_or_default();
+
+        env::remove_var("MODEL");
+        restore_var("LOOM_HOME", prev_loom);
+
+        assert_eq!(model, "model-from-dotenv");
+    }
+
+    #[test]
+    fn process_env_wins_over_provider() {
+        let _g = CONFIG_ENV_LOCK.lock().unwrap();
+        let loom_home = tempfile::tempdir().unwrap();
+        std::fs::write(
+            loom_home.path().join("config.toml"),
+            r#"
+[default]
+provider = "base"
+
+[[providers]]
+name = "base"
+model = "model-from-provider"
+"#,
+        )
+        .unwrap();
+
+        let prev_loom = env::var("LOOM_HOME").ok();
+        env::set_var("LOOM_HOME", loom_home.path());
+        env::set_var("MODEL", "model-from-env");
+        env::remove_var("LOOM_PROVIDER");
+
+        let _ = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+        let model = env::var("MODEL").unwrap_or_default();
+
+        env::remove_var("MODEL");
+        restore_var("LOOM_HOME", prev_loom);
+
+        assert_eq!(model, "model-from-env");
+    }
+
+    #[test]
+    fn unknown_provider_name_applies_nothing() {
+        let _g = CONFIG_ENV_LOCK.lock().unwrap();
+        let loom_home = tempfile::tempdir().unwrap();
+        std::fs::write(
+            loom_home.path().join("config.toml"),
+            r#"
+[default]
+provider = "nonexistent"
+
+[[providers]]
+name = "other"
+model = "other-model"
+"#,
+        )
+        .unwrap();
+
+        let prev_loom = env::var("LOOM_HOME").ok();
+        env::set_var("LOOM_HOME", loom_home.path());
+        env::remove_var("MODEL");
+        env::remove_var("LOOM_PROVIDER");
+
+        let _ = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+        let model = env::var("MODEL").ok();
+
+        restore_var("LOOM_HOME", prev_loom);
+
+        assert!(model.is_none());
+    }
+
+    #[test]
+    fn loom_provider_env_selects_provider() {
+        let _g = CONFIG_ENV_LOCK.lock().unwrap();
+        let loom_home = tempfile::tempdir().unwrap();
+        std::fs::write(
+            loom_home.path().join("config.toml"),
+            r#"
+[[providers]]
+name = "fast"
+model = "fast-model"
+
+[[providers]]
+name = "slow"
+model = "slow-model"
+"#,
+        )
+        .unwrap();
+
+        let prev_loom = env::var("LOOM_HOME").ok();
+        env::set_var("LOOM_HOME", loom_home.path());
+        env::set_var("LOOM_PROVIDER", "slow");
+        env::remove_var("MODEL");
+
+        let _ = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+        let model = env::var("MODEL").unwrap_or_default();
+
+        env::remove_var("MODEL");
+        env::remove_var("LOOM_PROVIDER");
+        restore_var("LOOM_HOME", prev_loom);
+
+        assert_eq!(model, "slow-model");
     }
 }

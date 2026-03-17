@@ -1,4 +1,4 @@
-//! Load `[env]` table from `~/.loom/config.toml`.
+//! Load `[env]` table and `[[providers]]` from `~/.loom/config.toml`.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -15,21 +15,113 @@ pub fn config_path(_app_name: &str) -> Result<Option<PathBuf>, LoadError> {
     }
 }
 
+/// A named LLM provider definition from `[[providers]]` in `config.toml`.
+///
+/// Example:
+/// ```toml
+/// [[providers]]
+/// name = "openai"
+/// api_key = "sk-..."
+/// base_url = "https://api.openai.com/v1"
+/// model = "gpt-4o-mini"
+///
+/// [[providers]]
+/// name = "local"
+/// api_key = "none"
+/// base_url = "http://localhost:11434/v1"
+/// model = "llama3.2"
+///
+/// [[providers]]
+/// name = "bigmodel"
+/// api_key = "xxx.yyy"
+/// base_url = "https://open.bigmodel.cn/api/paas/v4"
+/// model = "glm-4-flash"
+/// type = "bigmodel"
+/// ```
+#[derive(serde::Deserialize, Clone, Debug)]
+pub struct ProviderDef {
+    /// Unique name used to reference this provider (e.g. in `[default].provider`).
+    pub name: String,
+    /// API key (mapped to `OPENAI_API_KEY`).
+    pub api_key: Option<String>,
+    /// Base URL of the API endpoint (mapped to `OPENAI_BASE_URL`).
+    pub base_url: Option<String>,
+    /// Default model name (mapped to `MODEL`).
+    pub model: Option<String>,
+    /// Provider implementation type: `"openai"` (default) or `"bigmodel"` (mapped to `LLM_PROVIDER`).
+    #[serde(rename = "type")]
+    pub provider_type: Option<String>,
+}
+
+impl ProviderDef {
+    /// Returns env key→value pairs derived from this provider's settings.
+    /// Keys: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `MODEL`, `LLM_PROVIDER` (when type is set).
+    pub fn to_env_map(&self) -> HashMap<String, String> {
+        let mut map = HashMap::new();
+        if let Some(ref v) = self.api_key {
+            map.insert("OPENAI_API_KEY".to_string(), v.clone());
+        }
+        if let Some(ref v) = self.base_url {
+            map.insert("OPENAI_BASE_URL".to_string(), v.clone());
+        }
+        if let Some(ref v) = self.model {
+            map.insert("MODEL".to_string(), v.clone());
+        }
+        if let Some(ref v) = self.provider_type {
+            map.insert("LLM_PROVIDER".to_string(), v.clone());
+        }
+        map
+    }
+}
+
+#[derive(serde::Deserialize, Default)]
+struct DefaultSection {
+    provider: Option<String>,
+}
+
 #[derive(serde::Deserialize, Default)]
 struct ConfigFile {
     #[serde(default)]
     env: HashMap<String, String>,
+    #[serde(default)]
+    default: DefaultSection,
+    #[serde(default)]
+    providers: Vec<ProviderDef>,
+}
+
+/// Parsed content of `config.toml`: env map, default provider name, and provider definitions.
+pub struct FullConfig {
+    pub env: HashMap<String, String>,
+    pub default_provider: Option<String>,
+    pub providers: Vec<ProviderDef>,
 }
 
 /// Returns env key-value pairs from `[env]` section. Missing file or empty section returns empty map.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn load_env_map(app_name: &str) -> Result<HashMap<String, String>, LoadError> {
+    Ok(load_full_config(app_name)?.env)
+}
+
+/// Loads the full config: `[env]` table, `[default].provider`, and `[[providers]]` list.
+/// Missing file returns empty defaults.
+pub fn load_full_config(app_name: &str) -> Result<FullConfig, LoadError> {
     let path = match config_path(app_name)? {
         Some(p) => p,
-        None => return Ok(HashMap::new()),
+        None => {
+            return Ok(FullConfig {
+                env: HashMap::new(),
+                default_provider: None,
+                providers: vec![],
+            })
+        }
     };
     let content = std::fs::read_to_string(&path).map_err(LoadError::XdgRead)?;
     let config: ConfigFile = toml::from_str(&content)?;
-    Ok(config.env)
+    Ok(FullConfig {
+        env: config.env,
+        default_provider: config.default.provider,
+        providers: config.providers,
+    })
 }
 
 #[cfg(test)]

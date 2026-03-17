@@ -79,6 +79,10 @@ struct Args {
     /// Dry run: LLM runs but tools are not executed (placeholder result returned)
     #[arg(long)]
     dry: bool,
+
+    /// Provider name to use (overrides [default].provider in config.toml and LOOM_PROVIDER env var)
+    #[arg(long, value_name = "NAME")]
+    provider: Option<String>,
 }
 
 /// Writes JSON to stdout or to the given file. When pretty is true, multi-line; else one line.
@@ -275,6 +279,14 @@ struct GotArgs {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Parse args first so --provider can be applied before config is loaded.
+    let args = Args::parse();
+
+    // --provider flag takes highest priority: set LOOM_PROVIDER before config load.
+    if let Some(ref p) = args.provider {
+        std::env::set_var("LOOM_PROVIDER", p);
+    }
+
     if let Ok(report) = config::load_and_apply_with_report("loom", None::<&std::path::Path>) {
         if let Some(p) = &report.dotenv_path {
             let full = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
@@ -284,13 +296,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let full = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
             eprintln!("config: config.toml path={}", full.display());
         }
+        if let Some(ref provider) = report.active_provider {
+            eprintln!("config: provider={}", provider);
+        }
         if let Some(keys) = report.keys_summary() {
             eprintln!("{}", keys);
         }
     }
     logging::init()?;
-
-    let args = Args::parse();
 
     if let Some(Command::Serve(sa)) = &args.cmd {
         if let Err(e) = serve::run_serve(sa.addr.as_deref(), false).await {
