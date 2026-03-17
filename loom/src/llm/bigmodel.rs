@@ -34,6 +34,25 @@ const DEFAULT_BASE_URL: &str = "https://open.bigmodel.cn/api/paas/v4";
 const THINKING_START: &str = "<think>";
 const THINKING_END: &str = "</think>";
 
+/// Max retries for retryable 5xx (500, 502, 503, 504). Total attempts = 1 + this.
+const BIGMODEL_5XX_MAX_RETRIES: u32 = 3;
+/// Initial backoff before first retry.
+const BIGMODEL_5XX_INITIAL_BACKOFF: std::time::Duration = std::time::Duration::from_secs(1);
+/// Max backoff cap.
+const BIGMODEL_5XX_MAX_BACKOFF: std::time::Duration = std::time::Duration::from_secs(16);
+
+/// Returns true for transient 5xx where retry is reasonable: 500, 502, 503, 504.
+/// Other 5xx (501 Not Implemented, 505 HTTP Version Not Supported, etc.) are not retried.
+fn is_retryable_5xx(status: reqwest::StatusCode) -> bool {
+    matches!(status.as_u16(), 500 | 502 | 503 | 504)
+}
+
+fn backoff_for_attempt(attempt: u32) -> std::time::Duration {
+    let secs = BIGMODEL_5XX_INITIAL_BACKOFF.as_secs_f64() * 2_f64.powi(attempt as i32);
+    let d = std::time::Duration::from_secs_f64(secs);
+    d.min(BIGMODEL_5XX_MAX_BACKOFF)
+}
+
 #[derive(Clone, Copy)]
 enum ThinkingParseState {
     Outside,
@@ -348,28 +367,79 @@ impl LlmClient for ChatBigModel {
             "BigModel chat create"
         );
 
-        let res = self
-            .client
-            .post(&url)
-            .bearer_auth(&self.api_key)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| AgentError::ExecutionFailed(format!("BigModel request failed: {}", e)))?;
+        let (_status, body_bytes) = 'request: loop {
+            let res = self
+                .client
+                .post(&url)
+                .bearer_auth(&self.api_key)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| AgentError::ExecutionFailed(format!("BigModel request failed: {}", e)))?;
 
-        let status = res.status();
-        let body_bytes = res
-            .bytes()
-            .await
-            .map_err(|e| AgentError::ExecutionFailed(format!("BigModel response read: {}", e)))?;
+            let status = res.status();
+            let body_bytes = res
+                .bytes()
+                .await
+                .map_err(|e| AgentError::ExecutionFailed(format!("BigModel response read: {}", e)))?;
 
-        if !status.is_success() {
+            if status.is_success() {
+                break 'request (status, body_bytes);
+            }
+            if !is_retryable_5xx(status) {
+                let msg = String::from_utf8_lossy(&body_bytes);
+                return Err(AgentError::ExecutionFailed(format!(
+                    "BigModel API error {}: {}",
+                    status, msg
+                )));
+            }
+            for attempt in 0..BIGMODEL_5XX_MAX_RETRIES {
+                let delay = backoff_for_attempt(attempt);
+                tracing::warn!(
+                    status = %status,
+                    attempt = attempt + 1,
+                    max_retries = BIGMODEL_5XX_MAX_RETRIES,
+                    delay_secs = delay.as_secs_f64(),
+                    "BigModel 5xx, retrying"
+                );
+                tokio::time::sleep(delay).await;
+                let retry_res = self
+                    .client
+                    .post(&url)
+                    .bearer_auth(&self.api_key)
+                    .json(&body)
+                    .send()
+                    .await
+                    .map_err(|e| AgentError::ExecutionFailed(format!("BigModel request failed: {}", e)))?;
+                let retry_status = retry_res.status();
+                let retry_bytes = retry_res
+                    .bytes()
+                    .await
+                    .map_err(|e| AgentError::ExecutionFailed(format!("BigModel response read: {}", e)))?;
+                if retry_status.is_success() {
+                    break 'request (retry_status, retry_bytes);
+                }
+                if !is_retryable_5xx(retry_status) {
+                    let msg = String::from_utf8_lossy(&retry_bytes);
+                    return Err(AgentError::ExecutionFailed(format!(
+                        "BigModel API error {}: {}",
+                        retry_status, msg
+                    )));
+                }
+                if attempt == BIGMODEL_5XX_MAX_RETRIES - 1 {
+                    let msg = String::from_utf8_lossy(&retry_bytes);
+                    return Err(AgentError::ExecutionFailed(format!(
+                        "BigModel API error {}: {} (after {} retries)",
+                        retry_status, msg, BIGMODEL_5XX_MAX_RETRIES
+                    )));
+                }
+            }
             let msg = String::from_utf8_lossy(&body_bytes);
             return Err(AgentError::ExecutionFailed(format!(
                 "BigModel API error {}: {}",
                 status, msg
             )));
-        }
+        };
 
         let response: ChatCompletionResponse = serde_json::from_slice(&body_bytes)
             .map_err(|e| AgentError::ExecutionFailed(format!("BigModel response parse: {}", e)))?;
@@ -444,24 +514,74 @@ impl LlmClient for ChatBigModel {
             "BigModel chat create_stream"
         );
 
-        let mut res = self
-            .client
-            .post(&url)
-            .bearer_auth(&self.api_key)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| AgentError::ExecutionFailed(format!("BigModel stream request: {}", e)))?;
+        let mut res = 'stream_request: loop {
+            let response = self
+                .client
+                .post(&url)
+                .bearer_auth(&self.api_key)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| AgentError::ExecutionFailed(format!("BigModel stream request: {}", e)))?;
 
-        let status = res.status();
-        if !status.is_success() {
-            let body_bytes = res.bytes().await.unwrap_or_default();
+            let status = response.status();
+            if status.is_success() {
+                break 'stream_request response;
+            }
+            if !is_retryable_5xx(status) {
+                let body_bytes = response.bytes().await.unwrap_or_default();
+                let msg = String::from_utf8_lossy(&body_bytes);
+                return Err(AgentError::ExecutionFailed(format!(
+                    "BigModel stream error {}: {}",
+                    status, msg
+                )));
+            }
+            for attempt in 0..BIGMODEL_5XX_MAX_RETRIES {
+                let delay = backoff_for_attempt(attempt);
+                tracing::warn!(
+                    status = %status,
+                    attempt = attempt + 1,
+                    max_retries = BIGMODEL_5XX_MAX_RETRIES,
+                    delay_secs = delay.as_secs_f64(),
+                    "BigModel stream 5xx, retrying"
+                );
+                tokio::time::sleep(delay).await;
+                let retry_res = self
+                    .client
+                    .post(&url)
+                    .bearer_auth(&self.api_key)
+                    .json(&body)
+                    .send()
+                    .await
+                    .map_err(|e| AgentError::ExecutionFailed(format!("BigModel stream request: {}", e)))?;
+                let retry_status = retry_res.status();
+                if retry_status.is_success() {
+                    break 'stream_request retry_res;
+                }
+                if !is_retryable_5xx(retry_status) {
+                    let body_bytes = retry_res.bytes().await.unwrap_or_default();
+                    let msg = String::from_utf8_lossy(&body_bytes);
+                    return Err(AgentError::ExecutionFailed(format!(
+                        "BigModel stream error {}: {}",
+                        retry_status, msg
+                    )));
+                }
+                if attempt == BIGMODEL_5XX_MAX_RETRIES - 1 {
+                    let body_bytes = retry_res.bytes().await.unwrap_or_default();
+                    let msg = String::from_utf8_lossy(&body_bytes);
+                    return Err(AgentError::ExecutionFailed(format!(
+                        "BigModel stream error {}: {} (after {} retries)",
+                        retry_status, msg, BIGMODEL_5XX_MAX_RETRIES
+                    )));
+                }
+            }
+            let body_bytes = response.bytes().await.unwrap_or_default();
             let msg = String::from_utf8_lossy(&body_bytes);
             return Err(AgentError::ExecutionFailed(format!(
                 "BigModel stream error {}: {}",
                 status, msg
             )));
-        }
+        };
 
         let mut buf = Vec::<u8>::new();
         let mut full_content = String::new();
