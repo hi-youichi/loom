@@ -121,11 +121,8 @@ export function sendMessage(
         options.onEvent?.(message.event)
 
         if (isMessageChunkEvent(message.event) && message.event.content) {
-          const chunkId = message.event.id
-          if (chunkId !== 'think') {
-            streamedReply += message.event.content
-            options.onChunk?.(message.event.content)
-          }
+          streamedReply += message.event.content
+          options.onChunk?.(message.event.content)
         }
         return
       }

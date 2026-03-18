@@ -61,6 +61,7 @@ function formatThinkLine(event: LoomStreamEvent): string | null {
     case 'updates':
     case 'checkpoint':
     case 'message_chunk':
+    case 'thought_chunk':
     case 'tool_call_chunk':
     case 'tool_call':
     case 'tool_start':
@@ -142,7 +143,7 @@ export function useChat() {
     (event: LoomStreamEvent) => {
       handleToolEvent(event)
 
-      if (event.type === 'message_chunk' && event.id === 'think' && event.content) {
+      if (event.type === 'thought_chunk' && event.content) {
         setThinkingLines((current) =>
           (current.join('\n') + event.content).split('\n'),
         )

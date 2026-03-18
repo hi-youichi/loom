@@ -64,6 +64,14 @@ fn assert_protocol_event(
                 content
             );
         }
+        ProtocolEvent::ThoughtChunk { content, id } => {
+            assert_non_empty("event.id", id);
+            assert!(
+                !content.is_empty(),
+                "expected non-empty raw event.content, got {:?}",
+                content
+            );
+        }
         ProtocolEvent::Usage {
             prompt_tokens,
             completion_tokens,

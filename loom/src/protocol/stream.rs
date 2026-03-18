@@ -9,7 +9,7 @@
 pub use stream_event::{to_json as stream_event_to_json, Envelope, ProtocolEvent};
 
 use super::ProtocolEventEnvelope;
-use crate::stream::{MessageChunk, StreamEvent, StreamMetadata};
+use crate::stream::{MessageChunkKind, StreamEvent, StreamMetadata};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::fmt::Debug;
@@ -39,10 +39,19 @@ where
         StreamEvent::Messages {
             chunk,
             metadata: StreamMetadata { loom_node },
-        } => ProtocolEvent::MessageChunk {
-            content: chunk.content.clone(),
-            id: loom_node.clone(),
-        },
+        } => {
+            if chunk.kind == MessageChunkKind::Thinking {
+                ProtocolEvent::ThoughtChunk {
+                    content: chunk.content.clone(),
+                    id: loom_node.clone(),
+                }
+            } else {
+                ProtocolEvent::MessageChunk {
+                    content: chunk.content.clone(),
+                    id: loom_node.clone(),
+                }
+            }
+        }
         StreamEvent::Usage {
             prompt_tokens,
             completion_tokens,
@@ -207,7 +216,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::stream::StreamMetadata;
+    use crate::stream::{MessageChunk, StreamMetadata};
 
     #[derive(Clone, Debug, serde::Serialize)]
     struct DummyState(i32);
@@ -248,6 +257,21 @@ mod tests {
         let v = pe.to_value().unwrap();
         assert_eq!(v["type"], "message_chunk");
         assert_eq!(v["content"], "hello");
+        assert_eq!(v["id"], "think");
+    }
+
+    #[test]
+    fn thought_chunk_format() {
+        let ev: StreamEvent<DummyState> = StreamEvent::Messages {
+            chunk: MessageChunk::thinking("reasoning step"),
+            metadata: StreamMetadata {
+                loom_node: "think".to_string(),
+            },
+        };
+        let pe = stream_event_to_protocol_event(&ev).unwrap();
+        let v = pe.to_value().unwrap();
+        assert_eq!(v["type"], "thought_chunk");
+        assert_eq!(v["content"], "reasoning step");
         assert_eq!(v["id"], "think");
     }
 
@@ -329,6 +353,53 @@ mod tests {
         assert_eq!(second["session_id"], "sess-1");
         assert_eq!(second["node_id"], "run-think-0");
         assert_eq!(second["event_id"], 2);
+    }
+
+    #[test]
+    fn stream_event_to_protocol_value_thought_chunk_injects_envelope() {
+        let mut state = crate::protocol::EnvelopeState::new("sess-1".to_string());
+        let enter: StreamEvent<DummyState> = StreamEvent::TaskStart {
+            node_id: "think".to_string(),
+        };
+        let thought: StreamEvent<DummyState> = StreamEvent::Messages {
+            chunk: MessageChunk::thinking("reasoning content"),
+            metadata: StreamMetadata {
+                loom_node: "think".to_string(),
+            },
+        };
+
+        let _ = stream_event_to_protocol_value(&enter, &mut state).unwrap();
+        let v = stream_event_to_protocol_value(&thought, &mut state).unwrap();
+
+        assert_eq!(v["type"], "thought_chunk");
+        assert_eq!(v["content"], "reasoning content");
+        assert_eq!(v["id"], "think");
+        assert_eq!(v["session_id"], "sess-1");
+        assert_eq!(v["node_id"], "run-think-0");
+        assert_eq!(v["event_id"], 2);
+    }
+
+    #[test]
+    fn stream_event_to_protocol_value_message_chunk_injects_envelope() {
+        let mut state = crate::protocol::EnvelopeState::new("sess-1".to_string());
+        let enter: StreamEvent<DummyState> = StreamEvent::TaskStart {
+            node_id: "think".to_string(),
+        };
+        let msg: StreamEvent<DummyState> = StreamEvent::Messages {
+            chunk: MessageChunk::message("final reply"),
+            metadata: StreamMetadata {
+                loom_node: "think".to_string(),
+            },
+        };
+
+        let _ = stream_event_to_protocol_value(&enter, &mut state).unwrap();
+        let v = stream_event_to_protocol_value(&msg, &mut state).unwrap();
+
+        assert_eq!(v["type"], "message_chunk");
+        assert_eq!(v["content"], "final reply");
+        assert_eq!(v["id"], "think");
+        assert_eq!(v["session_id"], "sess-1");
+        assert_eq!(v["node_id"], "run-think-0");
     }
 
     #[test]

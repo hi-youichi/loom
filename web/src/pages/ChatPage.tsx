@@ -65,6 +65,7 @@ function formatThinkLine(event: Record<string, unknown>) {
     case 'updates':
     case 'checkpoint':
     case 'message_chunk':
+    case 'thought_chunk':
     case 'tool_call':
     case 'tool_start':
     case 'tool_output':
@@ -189,7 +190,19 @@ export function ChatPage() {
             return
           }
 
-          // Handle other thinking events
+          // thought_chunk: append reasoning content to thinking lines
+          if (evt.type === 'thought_chunk' && typeof evt.content === 'string') {
+            setStreamEvents((current) =>
+              current.map((e) =>
+                e.type === 'assistant_thinking' && e.id === thinkingId
+                  ? { ...e, lines: (e.lines.join('\n') + evt.content).split('\n') }
+                  : e,
+              ),
+            )
+            return
+          }
+
+          // Handle other thinking events (run_start, node_enter, etc.)
           const line = formatThinkLine(evt)
           if (!line) {
             return

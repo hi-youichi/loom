@@ -5,11 +5,12 @@
 
 import type { 
   LoomMessageChunkEvent,
+  LoomThoughtChunkEvent,
   LoomToolCallEvent,
   LoomRunStreamEventResponse,
   LoomRunEndResponse,
   LoomErrorResponse
-} from '../types/protocol/loom'
+} from '../../types/protocol/loom'
 import type { UIMessageItemProps, UITextContent, UIToolContent } from '../types/ui/message'
 
 /**
@@ -22,6 +23,20 @@ export function createLoomMessageChunkEvent(
     type: 'message_chunk',
     id: 'think',
     content: 'Hello',
+    ...overrides,
+  }
+}
+
+/**
+ * 创建思考片段事件 (thought_chunk，对应 ACP agent_thought_chunk)
+ */
+export function createLoomThoughtChunkEvent(
+  overrides: Partial<LoomThoughtChunkEvent> = {},
+): LoomThoughtChunkEvent {
+  return {
+    type: 'thought_chunk',
+    id: 'think',
+    content: 'Consider the options first.',
     ...overrides,
   }
 }
@@ -43,7 +58,7 @@ export function createLoomToolCallEvent(overrides: Partial<LoomToolCallEvent> = 
  * 创建流事件响应
  */
 export function createRunStreamEventResponse(
-  event: LoomMessageChunkEvent | LoomToolCallEvent
+  event: LoomMessageChunkEvent | LoomThoughtChunkEvent | LoomToolCallEvent
 ): LoomRunStreamEventResponse {
   return {
     type: 'run_stream_event',

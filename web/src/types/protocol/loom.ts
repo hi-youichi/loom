@@ -19,6 +19,13 @@ export type LoomMessageChunkEvent = LoomEnvelope & {
   id?: string
 }
 
+/** Chunk of reasoning/thinking (ACP agent_thought_chunk). Use for thinking UI only. */
+export type LoomThoughtChunkEvent = LoomEnvelope & {
+  type: 'thought_chunk'
+  content: string
+  id?: string
+}
+
 export type LoomToolCallChunkEvent = LoomEnvelope & {
   type: 'tool_call_chunk'
   call_id?: string
@@ -117,6 +124,7 @@ export type LoomStreamEvent =
   | LoomNodeEnterEvent
   | LoomNodeExitEvent
   | LoomMessageChunkEvent
+  | LoomThoughtChunkEvent
   | LoomUsageEvent
   | LoomValuesEvent
   | LoomUpdatesEvent
@@ -162,6 +170,10 @@ export function isError(msg: LoomServerMessage): msg is LoomErrorResponse {
 
 export function isMessageChunkEvent(event: LoomStreamEvent): event is LoomMessageChunkEvent {
   return event.type === 'message_chunk'
+}
+
+export function isThoughtChunkEvent(event: LoomStreamEvent): event is LoomThoughtChunkEvent {
+  return event.type === 'thought_chunk'
 }
 
 export function isToolEvent(event: LoomStreamEvent): event is LoomToolEvent {
