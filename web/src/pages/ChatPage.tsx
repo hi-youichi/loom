@@ -110,6 +110,29 @@ type ThinkingState = {
   active: boolean
 }
 
+type UserEvent = {
+  type: 'user'
+  id: string
+  createdAt: string
+  text: string
+}
+
+type AssistantTextEvent = {
+  type: 'assistant_text'
+  id: string
+  createdAt: string
+  text: string
+}
+
+type AssistantThinkingEvent = {
+  type: 'assistant_thinking'
+  id: string
+  lines: string[]
+  active: boolean
+}
+
+type StreamEvent = UserEvent | AssistantTextEvent | AssistantThinkingEvent
+
 function formatThinkLine(event: Record<string, unknown>) {
   switch (event.type) {
     case 'run_start':
@@ -149,26 +172,24 @@ function formatThinkLine(event: Record<string, unknown>) {
 
 export function ChatPage() {
   const threadId = useMemo(() => getOrCreateThreadId(), [])
-  const [messages, setMessages] = useState<Message[]>([])
+  const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([])
   const [sending, setSending] = useState(false)
-  const [thinkingByMessageId, setThinkingByMessageId] = useState<Record<string, ThinkingState>>({})
   const [error, setError] = useState<string | null>(null)
 
   const handleSend = async (text: string) => {
     const createdAt = new Date().toISOString()
-    const userMessage = createTextMessage('user', text, createdAt)
-    const assistantMessage = createTextMessage('assistant', '', createdAt)
-    const assistantMessageId = assistantMessage.id
+    const userId = crypto.randomUUID()
+    const thinkingId = crypto.randomUUID()
+    const textId = crypto.randomUUID()
 
-    setMessages((current) => [...current, userMessage, assistantMessage])
-    setSending(true)
-    setThinkingByMessageId((current) => ({
+    // Add user message and assistant placeholder events
+    setStreamEvents((current) => [
       ...current,
-      [assistantMessageId]: {
-        lines: [],
-        active: true,
-      },
-    }))
+      { type: 'user', id: userId, createdAt, text },
+      { type: 'assistant_thinking', id: thinkingId, lines: [], active: true },
+      { type: 'assistant_text', id: textId, createdAt, text: '' },
+    ])
+    setSending(true)
     setError(null)
 
     try {
@@ -180,57 +201,47 @@ export function ChatPage() {
             return
           }
 
-          setThinkingByMessageId((current) => {
-            const existing = current[assistantMessageId] ?? { lines: [], active: true }
-
-            return {
-              ...current,
-              [assistantMessageId]: {
-                ...existing,
-                lines: [...existing.lines, line],
-              },
-            }
-          })
+          setStreamEvents((current) =>
+            current.map((e) =>
+              e.type === 'assistant_thinking' && e.id === thinkingId
+                ? { ...e, lines: [...e.lines, line] }
+                : e,
+            ),
+          )
         },
         onChunk: (chunk) => {
-          setMessages((current) =>
-            current.map((message) =>
-              message.id === assistantMessageId
-                ? appendMessageChunk(message, chunk)
-                : message,
+          setStreamEvents((current) =>
+            current.map((e) =>
+              e.type === 'assistant_text' && e.id === textId
+                ? { ...e, text: e.text + chunk }
+                : e,
             ),
           )
         },
       })
 
-      setMessages((current) =>
-        current.map((message) =>
-          message.id === assistantMessageId
-            ? replaceMessageText(message, reply.content || getMessageText(message))
-            : message,
-        ),
+      // Mark thinking as inactive and finalize text
+      setStreamEvents((current) =>
+        current.map((e) => {
+          if (e.type === 'assistant_thinking' && e.id === thinkingId) {
+            return { ...e, active: false }
+          }
+          if (e.type === 'assistant_text' && e.id === textId) {
+            return { ...e, text: reply.content || e.text }
+          }
+          return e
+        }),
       )
-      setThinkingByMessageId((current) => ({
-        ...current,
-        [assistantMessageId]: {
-          ...(current[assistantMessageId] ?? { lines: [] }),
-          active: false,
-        },
-      }))
     } catch (caughtError) {
       const nextError =
         caughtError instanceof Error
           ? caughtError.message
           : 'Request failed. Check whether `loom serve` is running.'
 
-      setMessages((current) =>
-        current.filter((message) => message.id !== assistantMessageId),
+      // Remove assistant events on error
+      setStreamEvents((current) =>
+        current.filter((e) => !(e.type === 'assistant_thinking' && e.id === thinkingId) && !(e.type === 'assistant_text' && e.id === textId)),
       )
-      setThinkingByMessageId((current) => {
-        const nextState = { ...current }
-        delete nextState[assistantMessageId]
-        return nextState
-      })
       setError(nextError)
       throw caughtError
     } finally {
@@ -242,31 +253,37 @@ export function ChatPage() {
     <main className="shell">
       <section className="chat-panel" aria-label="Chat demo">
         <div className="message-list" role="log" aria-live="polite">
-          {messages.map((message) => {
-            const messageText = getMessageText(message)
+          {streamEvents.map((event) => {
+            if (event.type === 'user') {
+              return (
+                <article key={event.id} className="message message--user" aria-label="user message">
+                  <div className="message__meta">
+                    <time dateTime={event.createdAt}>{formatTime(event.createdAt)}</time>
+                  </div>
+                  <p className="message__content">{event.text}</p>
+                </article>
+              )
+            }
 
-            return (
-              <Fragment key={message.id}>
-                {messageText ? (
-                  <article
-                    className={`message message--${message.role}`}
-                    aria-label={`${message.role} message`}
-                  >
-                    <div className="message__meta">
-                      <time dateTime={message.createdAt}>{formatTime(message.createdAt)}</time>
-                    </div>
-                    <p className="message__content">{messageText}</p>
-                  </article>
-                ) : null}
+            if (event.type === 'assistant_thinking') {
+              return (
+                <ThinkIndicator key={event.id} lines={event.lines} active={event.active} />
+              )
+            }
 
-                {thinkingByMessageId[message.id] ? (
-                  <ThinkIndicator
-                    lines={thinkingByMessageId[message.id].lines}
-                    active={thinkingByMessageId[message.id].active}
-                  />
-                ) : null}
-              </Fragment>
-            )
+            if (event.type === 'assistant_text') {
+              if (!event.text) return null
+              return (
+                <article key={event.id} className="message message--assistant" aria-label="assistant message">
+                  <div className="message__meta">
+                    <time dateTime={event.createdAt}>{formatTime(event.createdAt)}</time>
+                  </div>
+                  <p className="message__content">{event.text}</p>
+                </article>
+              )
+            }
+
+            return null
           })}
         </div>
 
