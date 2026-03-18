@@ -2,10 +2,10 @@
 
 use crate::cli_run::build_helve_config;
 use crate::export::stream_event_to_format_a;
+use crate::llm::LlmClient;
 use crate::protocol::stream::stream_event_to_protocol_envelope;
 use crate::protocol::EnvelopeState;
 use crate::protocol::ProtocolEventEnvelope;
-use crate::llm::LlmClient;
 use crate::{
     build_dup_runner, build_got_runner, build_react_runner, build_tot_runner, DupRunner, DupState,
     GotRunner, GotState, ReActState, ReactBuildConfig, ReactRunner, StreamEvent, TotRunner,
@@ -332,7 +332,10 @@ mod tests {
             mcp_remote_args: "-y mcp-remote".to_string(),
             github_token: None,
             mcp_github_cmd: "npx".to_string(),
-            mcp_github_args: vec!["-y".to_string(), "@modelcontextprotocol/server-github".to_string()],
+            mcp_github_args: vec![
+                "-y".to_string(),
+                "@modelcontextprotocol/server-github".to_string(),
+            ],
             mcp_github_url: None,
             mcp_verbose: false,
             openai_api_key: None,
@@ -399,7 +402,9 @@ mod tests {
             mcp_config_path: None,
             dry_run: false,
         };
-        assert!(build_runner(&cfg, &opts, &RunCmd::React, None).await.is_err());
+        assert!(build_runner(&cfg, &opts, &RunCmd::React, None)
+            .await
+            .is_err());
         assert!(build_runner(&cfg, &opts, &RunCmd::Dup, None).await.is_err());
         assert!(build_runner(&cfg, &opts, &RunCmd::Tot, None).await.is_err());
         assert!(

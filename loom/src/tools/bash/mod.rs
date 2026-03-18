@@ -11,6 +11,7 @@ use serde_json::json;
 
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError};
 use crate::tools::Tool;
+use crate::{ToolOutputHint, ToolOutputStrategy};
 
 /// Tool name for the bash/shell execution operation.
 pub const TOOL_BASH: &str = "bash";
@@ -114,6 +115,9 @@ impl Tool for BashTool {
                 },
                 "required": ["command"]
             }),
+            output_hint: Some(
+                ToolOutputHint::preferred(ToolOutputStrategy::HeadTail).prefer_head_tail(),
+            ),
         }
     }
 

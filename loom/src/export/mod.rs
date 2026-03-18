@@ -228,23 +228,21 @@ mod tests {
 
     #[test]
     fn custom_format() {
-        let ev: StreamEvent<DummyState> =
-            StreamEvent::Custom(serde_json::json!({"key": "value"}));
+        let ev: StreamEvent<DummyState> = StreamEvent::Custom(serde_json::json!({"key": "value"}));
         let v = stream_event_to_format_a(&ev).unwrap();
         assert_eq!(v["Custom"]["key"], "value");
     }
 
     #[test]
     fn checkpoint_format() {
-        let ev: StreamEvent<DummyState> =
-            StreamEvent::Checkpoint(crate::stream::CheckpointEvent {
-                checkpoint_id: "cp1".to_string(),
-                timestamp: "2024-01-01T00:00:00Z".to_string(),
-                step: 5,
-                state: DummyState(99),
-                thread_id: Some("t1".to_string()),
-                checkpoint_ns: None,
-            });
+        let ev: StreamEvent<DummyState> = StreamEvent::Checkpoint(crate::stream::CheckpointEvent {
+            checkpoint_id: "cp1".to_string(),
+            timestamp: "2024-01-01T00:00:00Z".to_string(),
+            step: 5,
+            state: DummyState(99),
+            thread_id: Some("t1".to_string()),
+            checkpoint_ns: None,
+        });
         let v = stream_event_to_format_a(&ev).unwrap();
         assert_eq!(v["Checkpoint"]["checkpoint_id"], "cp1");
         assert_eq!(v["Checkpoint"]["step"], 5);

@@ -72,7 +72,10 @@ mod tests {
     async fn resolve_combined_handles_nested_model_id() {
         let resolver = MockResolver;
         // "zenmux/openai/gpt-5" -> provider="zenmux", model="openai/gpt-5"
-        let spec = resolver.resolve_combined("zenmux/openai/gpt-5").await.unwrap();
+        let spec = resolver
+            .resolve_combined("zenmux/openai/gpt-5")
+            .await
+            .unwrap();
         assert_eq!(spec.context_limit, 400_000);
         assert_eq!(spec.output_limit, 64_000);
     }

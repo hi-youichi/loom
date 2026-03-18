@@ -92,6 +92,7 @@ impl Tool for SearchMemoriesTool {
                     "limit": { "type": "integer", "description": "Max results (optional)" }
                 }
             }),
+            output_hint: None,
         }
     }
 

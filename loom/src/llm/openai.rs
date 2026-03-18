@@ -27,6 +27,9 @@ use tokio_stream::StreamExt;
 use tracing::{debug, trace};
 
 use crate::error::AgentError;
+use crate::http_retry::{
+    looks_like_transient_http_error_message, retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES,
+};
 use crate::llm::{LlmClient, LlmResponse, LlmUsage, ToolCallDelta};
 use crate::memory::uuid6;
 use crate::message::Message;
@@ -217,47 +220,49 @@ impl ChatOpenAI {
 impl LlmClient for ChatOpenAI {
     async fn invoke(&self, messages: &[Message]) -> Result<LlmResponse, AgentError> {
         let trace_id = uuid6().to_string();
-        let openai_messages = Self::messages_to_request(messages);
-        let mut args = CreateChatCompletionRequestArgs::default();
-        args.model(self.model.clone());
-        args.messages(openai_messages);
+        let build_request = || {
+            let openai_messages = Self::messages_to_request(messages);
+            let mut args = CreateChatCompletionRequestArgs::default();
+            args.model(self.model.clone());
+            args.messages(openai_messages);
 
-        if let Some(ref tools) = self.tools {
-            let chat_tools: Vec<ChatCompletionTools> = tools
-                .iter()
-                .map(|t| {
-                    ChatCompletionTools::Function(ChatCompletionTool {
-                        function: FunctionObject {
-                            name: t.name.clone(),
-                            description: t.description.clone(),
-                            parameters: Some(t.input_schema.clone()),
-                            ..Default::default()
-                        },
+            if let Some(ref tools) = self.tools {
+                let chat_tools: Vec<ChatCompletionTools> = tools
+                    .iter()
+                    .map(|t| {
+                        ChatCompletionTools::Function(ChatCompletionTool {
+                            function: FunctionObject {
+                                name: t.name.clone(),
+                                description: t.description.clone(),
+                                parameters: Some(t.input_schema.clone()),
+                                ..Default::default()
+                            },
+                        })
                     })
-                })
-                .collect();
-            args.tools(chat_tools);
-            args.tool_choice(ChatCompletionToolChoiceOption::Mode(
-                ToolChoiceOptions::Required,
-            ));
-        }
+                    .collect();
+                args.tools(chat_tools);
+                args.tool_choice(ChatCompletionToolChoiceOption::Mode(
+                    ToolChoiceOptions::Required,
+                ));
+            }
 
-        if let Some(t) = self.temperature {
-            args.temperature(t);
-        }
+            if let Some(t) = self.temperature {
+                args.temperature(t);
+            }
 
-        if let Some(mode) = self.tool_choice {
-            let opt = match mode {
-                ToolChoiceMode::Auto => ToolChoiceOptions::Auto,
-                ToolChoiceMode::None => ToolChoiceOptions::None,
-                ToolChoiceMode::Required => ToolChoiceOptions::Required,
-            };
-            args.tool_choice(ChatCompletionToolChoiceOption::Mode(opt));
-        }
+            if let Some(mode) = self.tool_choice {
+                let opt = match mode {
+                    ToolChoiceMode::Auto => ToolChoiceOptions::Auto,
+                    ToolChoiceMode::None => ToolChoiceOptions::None,
+                    ToolChoiceMode::Required => ToolChoiceOptions::Required,
+                };
+                args.tool_choice(ChatCompletionToolChoiceOption::Mode(opt));
+            }
 
-        let request = args.build().map_err(|e| {
-            AgentError::ExecutionFailed(format!("OpenAI request build failed: {}", e))
-        })?;
+            args.build().map_err(|e| {
+                AgentError::ExecutionFailed(format!("OpenAI request build failed: {}", e))
+            })
+        };
 
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         let url = Self::chat_completions_url();
@@ -272,12 +277,35 @@ impl LlmClient for ChatOpenAI {
             "OpenAI chat create"
         );
 
-        let response = self
-            .client
-            .chat()
-            .create(request)
-            .await
-            .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI API error: {}", e)))?;
+        let mut attempt = 0;
+        let response = loop {
+            let request = build_request()?;
+            match self.client.chat().create(request).await {
+                Ok(response) => break response,
+                Err(e)
+                    if looks_like_transient_http_error_message(&e.to_string())
+                        && attempt < TRANSIENT_HTTP_MAX_RETRIES =>
+                {
+                    let delay = retry_backoff_for_attempt(attempt);
+                    tracing::warn!(
+                        url = %url,
+                        attempt = attempt + 1,
+                        max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                        delay_secs = delay.as_secs_f64(),
+                        error = %e,
+                        "OpenAI API request failed, retrying"
+                    );
+                    attempt += 1;
+                    tokio::time::sleep(delay).await;
+                }
+                Err(e) => {
+                    return Err(AgentError::ExecutionFailed(format!(
+                        "OpenAI API error: {}",
+                        e
+                    )));
+                }
+            }
+        };
 
         let choice =
             response.choices.into_iter().next().ok_or_else(|| {
@@ -339,52 +367,54 @@ impl LlmClient for ChatOpenAI {
 
         let trace_id = uuid6().to_string();
         let chunk_tx = chunk_tx.unwrap();
-        let openai_messages = Self::messages_to_request(messages);
-        let mut args = CreateChatCompletionRequestArgs::default();
-        args.model(self.model.clone());
-        args.messages(openai_messages);
-        args.stream(true);
-        // Do not set stream_options so the request matches typical OpenAI clients. When
-        // stream_options.include_usage is true, the last chunk may have empty choices and
-        // usage; we already handle empty choices. Some proxies (e.g. GPTProto) return
-        // broken streams when stream_options is sent, so omit it for compatibility.
+        let build_request = || {
+            let openai_messages = Self::messages_to_request(messages);
+            let mut args = CreateChatCompletionRequestArgs::default();
+            args.model(self.model.clone());
+            args.messages(openai_messages);
+            args.stream(true);
+            // Do not set stream_options so the request matches typical OpenAI clients. When
+            // stream_options.include_usage is true, the last chunk may have empty choices and
+            // usage; we already handle empty choices. Some proxies (e.g. GPTProto) return
+            // broken streams when stream_options is sent, so omit it for compatibility.
 
-        if let Some(ref tools) = self.tools {
-            let chat_tools: Vec<ChatCompletionTools> = tools
-                .iter()
-                .map(|t| {
-                    ChatCompletionTools::Function(ChatCompletionTool {
-                        function: FunctionObject {
-                            name: t.name.clone(),
-                            description: t.description.clone(),
-                            parameters: Some(t.input_schema.clone()),
-                            ..Default::default()
-                        },
+            if let Some(ref tools) = self.tools {
+                let chat_tools: Vec<ChatCompletionTools> = tools
+                    .iter()
+                    .map(|t| {
+                        ChatCompletionTools::Function(ChatCompletionTool {
+                            function: FunctionObject {
+                                name: t.name.clone(),
+                                description: t.description.clone(),
+                                parameters: Some(t.input_schema.clone()),
+                                ..Default::default()
+                            },
+                        })
                     })
-                })
-                .collect();
-            args.tools(chat_tools);
-            args.tool_choice(ChatCompletionToolChoiceOption::Mode(
-                ToolChoiceOptions::Required,
-            ));
-        }
+                    .collect();
+                args.tools(chat_tools);
+                args.tool_choice(ChatCompletionToolChoiceOption::Mode(
+                    ToolChoiceOptions::Required,
+                ));
+            }
 
-        if let Some(t) = self.temperature {
-            args.temperature(t);
-        }
+            if let Some(t) = self.temperature {
+                args.temperature(t);
+            }
 
-        if let Some(mode) = self.tool_choice {
-            let opt = match mode {
-                ToolChoiceMode::Auto => ToolChoiceOptions::Auto,
-                ToolChoiceMode::None => ToolChoiceOptions::None,
-                ToolChoiceMode::Required => ToolChoiceOptions::Required,
-            };
-            args.tool_choice(ChatCompletionToolChoiceOption::Mode(opt));
-        }
+            if let Some(mode) = self.tool_choice {
+                let opt = match mode {
+                    ToolChoiceMode::Auto => ToolChoiceOptions::Auto,
+                    ToolChoiceMode::None => ToolChoiceOptions::None,
+                    ToolChoiceMode::Required => ToolChoiceOptions::Required,
+                };
+                args.tool_choice(ChatCompletionToolChoiceOption::Mode(opt));
+            }
 
-        let request = args.build().map_err(|e| {
-            AgentError::ExecutionFailed(format!("OpenAI request build failed: {}", e))
-        })?;
+            args.build().map_err(|e| {
+                AgentError::ExecutionFailed(format!("OpenAI request build failed: {}", e))
+            })
+        };
 
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         let url = Self::chat_completions_url();
@@ -400,12 +430,35 @@ impl LlmClient for ChatOpenAI {
             "OpenAI chat create_stream"
         );
 
-        let mut stream = self
-            .client
-            .chat()
-            .create_stream(request)
-            .await
-            .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI stream error: {}", e)))?;
+        let mut attempt = 0;
+        let mut stream = loop {
+            let request = build_request()?;
+            match self.client.chat().create_stream(request).await {
+                Ok(stream) => break stream,
+                Err(e)
+                    if looks_like_transient_http_error_message(&e.to_string())
+                        && attempt < TRANSIENT_HTTP_MAX_RETRIES =>
+                {
+                    let delay = retry_backoff_for_attempt(attempt);
+                    tracing::warn!(
+                        url = %url,
+                        attempt = attempt + 1,
+                        max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                        delay_secs = delay.as_secs_f64(),
+                        error = %e,
+                        "OpenAI stream request failed, retrying"
+                    );
+                    attempt += 1;
+                    tokio::time::sleep(delay).await;
+                }
+                Err(e) => {
+                    return Err(AgentError::ExecutionFailed(format!(
+                        "OpenAI stream error: {}",
+                        e
+                    )));
+                }
+            }
+        };
 
         // Accumulate content, tool calls, and usage from stream
         let mut full_content = String::new();

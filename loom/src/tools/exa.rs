@@ -3,8 +3,12 @@
 use async_trait::async_trait;
 use serde_json::json;
 
+use crate::http_retry::{
+    is_retryable_reqwest_error, retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES,
+};
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError};
 use crate::tools::Tool;
+use crate::{ToolOutputHint, ToolOutputStrategy};
 
 const EXA_SEARCH_URL: &str = "https://api.exa.ai/search";
 const NUM_RESULTS_MAX: u64 = 100;
@@ -82,27 +86,60 @@ async fn exa_search_request(
 ) -> Result<serde_json::Value, ToolSourceError> {
     let body = params.build_body();
     let client = reqwest::Client::new();
-    let res = client
-        .post(exa_search_url())
-        .header("x-api-key", api_key)
-        .header("Content-Type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
-    if !res.status().is_success() {
-        let status = res.status();
-        let err_body = res.text().await.unwrap_or_default();
-        return Err(ToolSourceError::Transport(format!(
-            "Exa API error {}: {}",
-            status, err_body
-        )));
+    let url = exa_search_url();
+    let mut attempt = 0;
+    loop {
+        let res = match client
+            .post(&url)
+            .header("x-api-key", api_key)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(res) => res,
+            Err(e) if is_retryable_reqwest_error(&e) && attempt < TRANSIENT_HTTP_MAX_RETRIES => {
+                let delay = retry_backoff_for_attempt(attempt);
+                tracing::warn!(
+                    url = %url,
+                    attempt = attempt + 1,
+                    max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                    delay_secs = delay.as_secs_f64(),
+                    error = %e,
+                    "Exa request transport failed, retrying"
+                );
+                attempt += 1;
+                tokio::time::sleep(delay).await;
+                continue;
+            }
+            Err(e) => return Err(ToolSourceError::Transport(e.to_string())),
+        };
+        if !res.status().is_success() {
+            let status = res.status();
+            let err_body = res.text().await.unwrap_or_default();
+            return Err(ToolSourceError::Transport(format!(
+                "Exa API error {}: {}",
+                status, err_body
+            )));
+        }
+        match res.json().await {
+            Ok(out) => return Ok(out),
+            Err(e) if is_retryable_reqwest_error(&e) && attempt < TRANSIENT_HTTP_MAX_RETRIES => {
+                let delay = retry_backoff_for_attempt(attempt);
+                tracing::warn!(
+                    url = %url,
+                    attempt = attempt + 1,
+                    max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                    delay_secs = delay.as_secs_f64(),
+                    error = %e,
+                    "Exa response read failed, retrying"
+                );
+                attempt += 1;
+                tokio::time::sleep(delay).await;
+            }
+            Err(e) => return Err(ToolSourceError::Transport(e.to_string())),
+        }
     }
-    let out: serde_json::Value = res
-        .json()
-        .await
-        .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
-    Ok(out)
 }
 
 fn format_results(value: &serde_json::Value, text_max_per_result: usize) -> String {
@@ -223,6 +260,9 @@ impl Tool for ExaWebsearchTool {
                 },
                 "required": ["query"]
             }),
+            output_hint: Some(ToolOutputHint::preferred(
+                ToolOutputStrategy::FileRefWithExcerpt,
+            )),
         }
     }
 
@@ -314,6 +354,9 @@ impl Tool for ExaCodesearchTool {
                 },
                 "required": ["query"]
             }),
+            output_hint: Some(ToolOutputHint::preferred(
+                ToolOutputStrategy::FileRefWithExcerpt,
+            )),
         }
     }
 

@@ -7,7 +7,7 @@ mod agent;
 mod profile;
 
 pub use agent::{
-    run_agent, run_agent_with_options, run_agent_with_llm_override, AgentRunResult, AnyRunner,
+    run_agent, run_agent_with_llm_override, run_agent_with_options, AgentRunResult, AnyRunner,
     AnyStreamEvent, RunCmd, RunError, RunOptions,
 };
 
@@ -116,7 +116,9 @@ fn resolve_role_setting(
 
 /// Builds HelveConfig and ReactBuildConfig from RunOptions.
 /// Returns an optional `ResolvedAgent` describing which agent profile was loaded.
-pub fn build_helve_config(opts: &RunOptions) -> (HelveConfig, ReactBuildConfig, Option<ResolvedAgent>) {
+pub fn build_helve_config(
+    opts: &RunOptions,
+) -> (HelveConfig, ReactBuildConfig, Option<ResolvedAgent>) {
     let loaded = load_profile_from_options(opts);
     let resolved_agent = loaded.as_ref().map(|(p, source)| ResolvedAgent {
         name: p.name.clone(),
@@ -144,14 +146,14 @@ pub fn build_helve_config(opts: &RunOptions) -> (HelveConfig, ReactBuildConfig, 
         .and_then(|p| p.role.as_ref().and_then(|r| r.content.clone()));
 
     // MCP config: CLI > profile > LOOM_MCP_CONFIG_PATH > discover
-    let override_path = effective_opts
-        .mcp_config_path
-        .clone()
-        .or_else(|| std::env::var("LOOM_MCP_CONFIG_PATH").ok().map(PathBuf::from));
-    if let Some(path) = env_config::discover_mcp_config_path(
-        override_path.as_deref(),
-        Some(&working_folder),
-    ) {
+    let override_path = effective_opts.mcp_config_path.clone().or_else(|| {
+        std::env::var("LOOM_MCP_CONFIG_PATH")
+            .ok()
+            .map(PathBuf::from)
+    });
+    if let Some(path) =
+        env_config::discover_mcp_config_path(override_path.as_deref(), Some(&working_folder))
+    {
         match env_config::load_mcp_config_from_path(&path) {
             Ok(servers) => base.mcp_servers = Some(servers),
             Err(e) => tracing::warn!(path = %path.display(), "failed to load mcp config: {}", e),
@@ -277,10 +279,7 @@ pub fn build_config_from_profile(
     }
 
     // System prompt from profile role
-    let role_content = profile
-        .role
-        .as_ref()
-        .and_then(|r| r.content.clone());
+    let role_content = profile.role.as_ref().and_then(|r| r.content.clone());
     if let Some(role) = role_content {
         let agents_md = load_agents_md(Some(&working_folder));
         let parts: Vec<&str> = [Some(role.as_str()), agents_md.as_deref()]
@@ -450,7 +449,11 @@ mod tests {
     fn resolve_role_setting_profile_role_wins() {
         let dir = tempfile::tempdir().unwrap();
         let opts = default_opts();
-        let result = resolve_role_setting(&opts, &dir.path().to_path_buf(), Some("Profile role".to_string()));
+        let result = resolve_role_setting(
+            &opts,
+            &dir.path().to_path_buf(),
+            Some("Profile role".to_string()),
+        );
         assert_eq!(result.as_deref(), Some("Profile role"));
     }
 

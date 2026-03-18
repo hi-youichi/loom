@@ -5,6 +5,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::Value;
 
+use crate::http_retry::{
+    is_retryable_reqwest_error, retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES,
+};
+
 use super::resolver::ModelLimitResolver;
 use super::spec::ModelSpec;
 
@@ -25,17 +29,49 @@ pub struct ReqwestHttpClient;
 impl HttpClient for ReqwestHttpClient {
     async fn get(&self, url: &str) -> Result<String, String> {
         let client = reqwest::Client::new();
-        let body = client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?
-            .error_for_status()
-            .map_err(|e| e.to_string())?
-            .text()
-            .await
-            .map_err(|e| e.to_string())?;
-        Ok(body)
+        let mut attempt = 0;
+        loop {
+            let response = match client.get(url).send().await {
+                Ok(response) => response,
+                Err(e)
+                    if is_retryable_reqwest_error(&e) && attempt < TRANSIENT_HTTP_MAX_RETRIES =>
+                {
+                    let delay = retry_backoff_for_attempt(attempt);
+                    tracing::warn!(
+                        url = %url,
+                        attempt = attempt + 1,
+                        max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                        delay_secs = delay.as_secs_f64(),
+                        error = %e,
+                        "models.dev request failed, retrying"
+                    );
+                    attempt += 1;
+                    tokio::time::sleep(delay).await;
+                    continue;
+                }
+                Err(e) => return Err(e.to_string()),
+            };
+            let response = response.error_for_status().map_err(|e| e.to_string())?;
+            match response.text().await {
+                Ok(body) => return Ok(body),
+                Err(e)
+                    if is_retryable_reqwest_error(&e) && attempt < TRANSIENT_HTTP_MAX_RETRIES =>
+                {
+                    let delay = retry_backoff_for_attempt(attempt);
+                    tracing::warn!(
+                        url = %url,
+                        attempt = attempt + 1,
+                        max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                        delay_secs = delay.as_secs_f64(),
+                        error = %e,
+                        "models.dev response read failed, retrying"
+                    );
+                    attempt += 1;
+                    tokio::time::sleep(delay).await;
+                }
+                Err(e) => return Err(e.to_string()),
+            }
+        }
     }
 }
 

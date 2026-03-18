@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 use crate::message::Message;
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError};
 use crate::tools::Tool;
+use crate::{ToolOutputHint, ToolOutputStrategy};
 
 /// Tool name for the get_recent_messages operation.
 pub const TOOL_GET_RECENT_MESSAGES: &str = "get_recent_messages";
@@ -98,6 +99,9 @@ impl Tool for GetRecentMessagesTool {
                     "limit": { "type": "integer", "description": "Max number of messages to return (optional)" }
                 }
             }),
+            output_hint: Some(
+                ToolOutputHint::preferred(ToolOutputStrategy::SummaryOnly).safe_inline_chars(1_000),
+            ),
         }
     }
 

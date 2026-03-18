@@ -120,13 +120,13 @@ pub mod agent;
 pub mod cache;
 pub mod channels;
 pub mod cli_run;
-pub mod skill;
 pub mod compress;
 pub mod config;
 pub mod error;
 pub mod export;
 pub mod graph;
 pub mod helve;
+mod http_retry;
 pub mod llm;
 pub mod managed;
 pub mod memory;
@@ -136,8 +136,10 @@ pub mod openai_sse;
 pub mod prompts;
 pub mod protocol;
 pub mod runner_common;
+pub mod skill;
 pub mod state;
 pub mod stream;
+
 pub mod tool_source;
 pub mod tools;
 pub mod traits;
@@ -146,11 +148,11 @@ pub mod user_message;
 pub use agent::react::{
     build_dup_runner, build_got_runner, build_react_initial_state, build_react_run_context,
     build_react_runner, build_react_runner_with_openai, build_tot_runner, run_agent,
-    run_react_graph_stream, tools_condition, ActNode, BuildRunnerError, ErrorHandlerFn,
-    GotRunnerConfig, HandleToolErrors, ObserveNode, ReactBuildConfig, ReactRunContext, ReactRunner,
-    AgentOptions, RunError as ReactRunError, ThinkNode, ToolsConditionResult, TotRunnerConfig,
-    WithNodeLogging, DEFAULT_EXECUTION_ERROR_TEMPLATE, DEFAULT_TOOL_ERROR_TEMPLATE,
-    REACT_SYSTEM_PROMPT, STEP_PROGRESS_EVENT_TYPE,
+    run_react_graph_stream, tools_condition, ActNode, AgentOptions, BuildRunnerError,
+    ErrorHandlerFn, GotRunnerConfig, HandleToolErrors, ObserveNode, ReactBuildConfig,
+    ReactRunContext, ReactRunner, RunError as ReactRunError, ThinkNode, ToolsConditionResult,
+    TotRunnerConfig, WithNodeLogging, DEFAULT_EXECUTION_ERROR_TEMPLATE,
+    DEFAULT_TOOL_ERROR_TEMPLATE, REACT_SYSTEM_PROMPT, STEP_PROGRESS_EVENT_TYPE,
 };
 pub use cache::{Cache, CacheError, InMemoryCache};
 pub use channels::{
@@ -159,9 +161,9 @@ pub use channels::{
 };
 pub use cli_run::{
     build_config_from_profile, build_helve_config, list_available_profiles, load_agents_md,
-    load_soul_md, resolve_profile, run_agent_with_options, run_agent_with_llm_override,
-    AgentProfile, AgentRunResult, AnyRunner, AnyStreamEvent, ProfileError, ProfileSource, ProfileSummary,
-    ResolvedAgent, RunCmd, RunError, RunOptions, DEFAULT_WORKING_FOLDER,
+    load_soul_md, resolve_profile, run_agent_with_llm_override, run_agent_with_options,
+    AgentProfile, AgentRunResult, AnyRunner, AnyStreamEvent, ProfileError, ProfileSource,
+    ProfileSummary, ResolvedAgent, RunCmd, RunError, RunOptions, DEFAULT_WORKING_FOLDER,
 };
 pub use compress::CompactionConfig;
 pub use config::{
@@ -216,6 +218,10 @@ pub use protocol::{
     ProtocolEvent, ProtocolEventEnvelope, RunEndResponse, RunRequest, RunStreamEventResponse,
     ServerResponse, ToolShowOutput, ToolShowRequest, ToolShowResponse, ToolsListRequest,
     ToolsListResponse, UserMessageItem, UserMessagesRequest, UserMessagesResponse,
+};
+pub use state::{
+    normalize_tool_output, NormalizationConfig, NormalizedToolOutput, ToolOutputHint,
+    ToolOutputStrategy, ToolStorageRef,
 };
 pub use state::{ReActState, ToolCall, ToolResult};
 pub use stream::{

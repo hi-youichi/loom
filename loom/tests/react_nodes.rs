@@ -5,19 +5,66 @@
 
 mod init_logging;
 
+use async_trait::async_trait;
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use loom::{
     graph::RunContext,
     helve::ApprovalPolicy,
     memory::RunnableConfig,
     stream::{StreamEvent, StreamMode},
-    tool_source::FileToolSource,
+    tool_source::{FileToolSource, ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec},
     ActNode, LlmUsage, Message, MockLlm, MockToolSource, Next, Node, ObserveNode, ReActState,
-    ThinkNode, ToolCall, ToolResult, STEP_PROGRESS_EVENT_TYPE,
+    ThinkNode, ToolCall, ToolOutputHint, ToolOutputStrategy, ToolResult, STEP_PROGRESS_EVENT_TYPE,
 };
+use serde_json::{json, Value};
 use tokio::sync::mpsc;
+
+struct RecordingToolSource {
+    seen_contexts: Arc<Mutex<Vec<ToolCallContext>>>,
+}
+
+#[async_trait]
+impl ToolSource for RecordingToolSource {
+    async fn list_tools(&self) -> Result<Vec<ToolSpec>, ToolSourceError> {
+        Ok(vec![ToolSpec {
+            name: "record_context".to_string(),
+            description: Some("Records the tool call context for testing.".to_string()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+            output_hint: None,
+        }])
+    }
+
+    async fn call_tool(
+        &self,
+        _name: &str,
+        _arguments: Value,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+        Ok(ToolCallContent {
+            text: "ok".to_string(),
+        })
+    }
+
+    async fn call_tool_with_context(
+        &self,
+        _name: &str,
+        _arguments: Value,
+        ctx: Option<&ToolCallContext>,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+        if let Some(ctx) = ctx {
+            self.seen_contexts.lock().unwrap().push(ctx.clone());
+        }
+        Ok(ToolCallContent {
+            text: "ok".to_string(),
+        })
+    }
+}
 
 // --- ThinkNode ---
 
@@ -86,6 +133,7 @@ async fn think_node_preserves_tool_results_from_input_state() {
             name: Some("get_time".into()),
             content: "12:00".into(),
             is_error: false,
+            ..Default::default()
         }],
         turn_count: 0,
         approval_result: None,
@@ -443,6 +491,118 @@ async fn act_node_run_with_context_emits_step_progress_when_custom_mode() {
         .contains("2025"));
 }
 
+#[tokio::test]
+async fn act_node_run_with_context_propagates_thread_user_and_depth() {
+    let seen_contexts = Arc::new(Mutex::new(Vec::new()));
+    let tools = RecordingToolSource {
+        seen_contexts: seen_contexts.clone(),
+    };
+    let node = ActNode::new(Box::new(tools));
+    let state = ReActState {
+        messages: vec![Message::user("Track tool context")],
+        tool_calls: vec![ToolCall {
+            name: "record_context".into(),
+            arguments: "{}".into(),
+            id: Some("ctx-1".into()),
+        }],
+        tool_results: vec![],
+        turn_count: 0,
+        approval_result: None,
+        usage: None,
+        total_usage: None,
+        message_count_after_last_think: None,
+        last_reasoning_content: None,
+    };
+
+    let ctx = RunContext::<ReActState> {
+        config: RunnableConfig {
+            thread_id: Some("thread-123".into()),
+            checkpoint_id: None,
+            checkpoint_ns: String::new(),
+            user_id: Some("user-456".into()),
+            resume_from_node_id: None,
+            depth: Some(2),
+        },
+        stream_tx: None,
+        stream_mode: HashSet::new(),
+        managed_values: Default::default(),
+        store: None,
+        previous: None,
+        runtime_context: None,
+    };
+
+    let (out, _) = node.run_with_context(state, &ctx).await.unwrap();
+    assert_eq!(out.tool_results.len(), 1);
+
+    let recorded = seen_contexts.lock().unwrap();
+    assert_eq!(recorded.len(), 1, "tool should receive exactly one context");
+    assert_eq!(recorded[0].thread_id.as_deref(), Some("thread-123"));
+    assert_eq!(recorded[0].user_id.as_deref(), Some("user-456"));
+    assert_eq!(recorded[0].depth, 2);
+    assert_eq!(recorded[0].recent_messages.len(), 1);
+}
+
+struct HintingToolSource {
+    result: String,
+}
+
+#[async_trait]
+impl ToolSource for HintingToolSource {
+    async fn list_tools(&self) -> Result<Vec<ToolSpec>, ToolSourceError> {
+        Ok(vec![ToolSpec {
+            name: "hinted_tool".to_string(),
+            description: Some("Tool with explicit output hint".to_string()),
+            input_schema: json!({ "type": "object", "properties": {}, "required": [] }),
+            output_hint: Some(ToolOutputHint::preferred(
+                ToolOutputStrategy::SummaryOnly,
+            )),
+        }])
+    }
+
+    async fn call_tool(
+        &self,
+        _name: &str,
+        _arguments: Value,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+        Ok(ToolCallContent {
+            text: self.result.clone(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn act_node_uses_tool_spec_output_hint() {
+    let large_result = (0..400)
+        .map(|i| format!("line {} {}", i, "x".repeat(20)))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let node = ActNode::new(Box::new(HintingToolSource {
+        result: large_result,
+    }));
+    let state = ReActState {
+        messages: vec![],
+        tool_calls: vec![ToolCall {
+            name: "hinted_tool".into(),
+            arguments: "{}".into(),
+            id: Some("hint-1".into()),
+        }],
+        tool_results: vec![],
+        turn_count: 0,
+        approval_result: None,
+        usage: None,
+        total_usage: None,
+        message_count_after_last_think: None,
+        last_reasoning_content: None,
+    };
+
+    let (out, _) = node.run(state).await.unwrap();
+    assert_eq!(out.tool_results.len(), 1);
+    assert_eq!(
+        out.tool_results[0].strategy,
+        Some(ToolOutputStrategy::SummaryOnly)
+    );
+}
+
 /// **Scenario**: ActNode with approval_policy DestructiveOnly and delete_file tool_call
 /// interrupts when approval_result is None; with approval_result Some(true) it executes.
 #[tokio::test]
@@ -546,6 +706,7 @@ async fn observe_node_appends_tool_results_as_user_messages_and_clears_tool_fiel
             name: Some("get_time".into()),
             content: "2025-01-29 12:00:00".into(),
             is_error: false,
+            ..Default::default()
         }],
         turn_count: 0,
         approval_result: None,
@@ -588,6 +749,45 @@ async fn observe_node_empty_tool_results_clears_tool_fields_only() {
 }
 
 #[tokio::test]
+async fn observe_node_prefers_observation_text_over_raw_content() {
+    let node = ObserveNode::new();
+    let raw = "RAW CONTENT SHOULD NOT REENTER CONTEXT";
+    let observation = "Short normalized summary";
+    let state = ReActState {
+        messages: vec![Message::user("Hi")],
+        tool_calls: vec![ToolCall {
+            name: "bash".into(),
+            arguments: "{}".into(),
+            id: Some("c1".into()),
+        }],
+        tool_results: vec![ToolResult {
+            call_id: Some("c1".into()),
+            name: Some("bash".into()),
+            content: observation.into(),
+            is_error: false,
+            raw_content: Some(raw.into()),
+            observation_text: Some(observation.into()),
+            display_text: Some(observation.into()),
+            ..Default::default()
+        }],
+        turn_count: 0,
+        approval_result: None,
+        usage: None,
+        total_usage: None,
+        message_count_after_last_think: None,
+        last_reasoning_content: None,
+    };
+
+    let (out, _) = node.run(state).await.unwrap();
+    let injected = match &out.messages[1] {
+        Message::User(text) => text,
+        other => panic!("expected user observation message, got {:?}", other),
+    };
+    assert!(injected.contains(observation));
+    assert!(!injected.contains(raw));
+}
+
+#[tokio::test]
 async fn observe_node_default_constructible() {
     let node = ObserveNode::default();
     assert_eq!(node.id(), "observe");
@@ -611,6 +811,7 @@ async fn observe_node_with_loop_returns_node_think_when_had_tool_calls() {
             name: Some("get_time".into()),
             content: "12:00".into(),
             is_error: false,
+            ..Default::default()
         }],
         turn_count: 0,
         approval_result: None,
@@ -665,6 +866,7 @@ async fn observe_node_with_loop_returns_end_when_max_turns_reached() {
             name: Some("get_time".into()),
             content: "12:00".into(),
             is_error: false,
+            ..Default::default()
         }],
         turn_count: MAX_TURNS - 1,
         approval_result: None,

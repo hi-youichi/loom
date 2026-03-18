@@ -9,10 +9,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::{build_react_runner, BuildRunnerError, ReactBuildConfig};
 use crate::cli_run::{build_config_from_profile, list_available_profiles, resolve_profile};
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 use crate::tools::Tool;
+use crate::{build_react_runner, ReactBuildConfig, ToolOutputHint, ToolOutputStrategy};
 
 pub const TOOL_INVOKE_AGENT: &str = "invoke_agent";
 const DEFAULT_MAX_DEPTH: u32 = 3;
@@ -82,6 +82,9 @@ impl Tool for InvokeAgentTool {
                 },
                 "required": ["agent", "task"]
             }),
+            output_hint: Some(ToolOutputHint::preferred(
+                ToolOutputStrategy::SummaryOnly,
+            )),
         }
     }
 
@@ -98,15 +101,13 @@ impl Tool for InvokeAgentTool {
             )));
         }
 
-        let agent_name = args
-            .get("agent")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolSourceError::InvalidInput("missing required argument: agent".into()))?;
+        let agent_name = args.get("agent").and_then(|v| v.as_str()).ok_or_else(|| {
+            ToolSourceError::InvalidInput("missing required argument: agent".into())
+        })?;
 
-        let task = args
-            .get("task")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolSourceError::InvalidInput("missing required argument: task".into()))?;
+        let task = args.get("task").and_then(|v| v.as_str()).ok_or_else(|| {
+            ToolSourceError::InvalidInput("missing required argument: task".into())
+        })?;
 
         let working_folder_override = args
             .get("working_folder")
@@ -114,7 +115,10 @@ impl Tool for InvokeAgentTool {
             .map(std::path::PathBuf::from);
 
         let profile = resolve_profile(agent_name).map_err(|e| {
-            ToolSourceError::InvalidInput(format!("failed to resolve agent '{}': {}", agent_name, e))
+            ToolSourceError::InvalidInput(format!(
+                "failed to resolve agent '{}': {}",
+                agent_name, e
+            ))
         })?;
 
         let mut sub_config = build_config_from_profile(
@@ -128,9 +132,12 @@ impl Tool for InvokeAgentTool {
 
         let runner = build_react_runner(&sub_config, None, false, None)
             .await
-            .map_err(|e| ToolSourceError::Transport(format!(
-                "failed to build sub-agent '{}': {}", agent_name, e
-            )))?;
+            .map_err(|e| {
+                ToolSourceError::Transport(format!(
+                    "failed to build sub-agent '{}': {}",
+                    agent_name, e
+                ))
+            })?;
 
         let on_event = ctx.and_then(|c| c.stream_writer.clone()).map(|writer| {
             let agent = agent_name.to_string();
@@ -146,7 +153,9 @@ impl Tool for InvokeAgentTool {
         let final_state = runner
             .stream_with_config(task, None, on_event)
             .await
-            .map_err(|e| ToolSourceError::Transport(format!("sub-agent '{}' failed: {}", agent_name, e)))?;
+            .map_err(|e| {
+                ToolSourceError::Transport(format!("sub-agent '{}' failed: {}", agent_name, e))
+            })?;
 
         let reply = final_state
             .last_assistant_reply()

@@ -93,8 +93,7 @@ pub(crate) async fn build_tool_source(
                         }
                     }
                     McpServerDef::Http { name, url, headers } => {
-                        let headers_iter =
-                            headers.iter().map(|(k, v)| (k.as_str(), v.as_str()));
+                        let headers_iter = headers.iter().map(|(k, v)| (k.as_str(), v.as_str()));
                         match McpToolSource::new_http(url.clone(), headers_iter).await {
                             Ok(mcp) => {
                                 if let Err(e) =
@@ -127,15 +126,11 @@ pub(crate) async fn build_tool_source(
                 .unwrap_or(false);
             if use_http {
                 let url = config.mcp_github_url.as_deref().unwrap();
-                match McpToolSource::new_http(
-                    url,
-                    [("Authorization", format!("Bearer {}", token))],
-                )
-                .await
+                match McpToolSource::new_http(url, [("Authorization", format!("Bearer {}", token))])
+                    .await
                 {
                     Ok(mcp) => {
-                        if let Err(e) =
-                            register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
+                        if let Err(e) = register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
                         {
                             tracing::warn!(
                                 "GitHub MCP (HTTP) registered but list/call may fail: {}",
@@ -144,10 +139,7 @@ pub(crate) async fn build_tool_source(
                         }
                     }
                     Err(e) => {
-                        tracing::warn!(
-                            "GitHub MCP (HTTP) failed to connect, skipping: {}",
-                            e
-                        );
+                        tracing::warn!("GitHub MCP (HTTP) failed to connect, skipping: {}", e);
                     }
                 }
             } else {
@@ -157,15 +149,17 @@ pub(crate) async fn build_tool_source(
                 let env_github = vec![("GITHUB_TOKEN".to_string(), token.clone())];
                 let mcp_verbose = config.mcp_verbose;
                 let create_result = tokio::task::spawn_blocking(move || {
-                    let mcp = McpToolSource::new_with_env(cmd, args, env_github.into_iter(), mcp_verbose)
-                        .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
+                    let mcp =
+                        McpToolSource::new_with_env(cmd, args, env_github.into_iter(), mcp_verbose)
+                            .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
                     let specs = mcp.list_tools_sync()?;
                     Ok::<_, ToolSourceError>((mcp, specs))
                 })
                 .await;
                 match create_result {
                     Ok(Ok((mcp, specs))) => {
-                        register_mcp_tools_with_specs(aggregate.as_ref(), Arc::new(mcp), specs).await;
+                        register_mcp_tools_with_specs(aggregate.as_ref(), Arc::new(mcp), specs)
+                            .await;
                     }
                     Ok(Err(e)) => {
                         tracing::warn!("GitHub MCP failed to start or list tools, skipping: {}", e);
@@ -225,12 +219,8 @@ pub(crate) async fn build_tool_source(
             .await;
     }
     if let Some(ref wf) = config.working_folder {
-        register_file_tools(
-            aggregate.as_ref(),
-            wf,
-            config.skill_registry.clone(),
-        )
-        .map_err(to_agent_error)?;
+        register_file_tools(aggregate.as_ref(), wf, config.skill_registry.clone())
+            .map_err(to_agent_error)?;
     }
     aggregate.register_sync(Box::new(BatchTool::new(Arc::clone(&aggregate))));
     aggregate.register_sync(Box::new(LspTool::new()));
@@ -264,12 +254,8 @@ pub(crate) async fn build_tool_source(
                     .await;
                     match create_result {
                         Ok(Ok((mcp, specs))) => {
-                            register_mcp_tools_with_specs(
-                                aggregate.as_ref(),
-                                Arc::new(mcp),
-                                specs,
-                            )
-                            .await;
+                            register_mcp_tools_with_specs(aggregate.as_ref(), Arc::new(mcp), specs)
+                                .await;
                         }
                         Ok(Err(e)) => {
                             tracing::warn!(
@@ -288,8 +274,7 @@ pub(crate) async fn build_tool_source(
                     }
                 }
                 McpServerDef::Http { name, url, headers } => {
-                    let headers_iter =
-                        headers.iter().map(|(k, v)| (k.as_str(), v.as_str()));
+                    let headers_iter = headers.iter().map(|(k, v)| (k.as_str(), v.as_str()));
                     match McpToolSource::new_http(url.clone(), headers_iter).await {
                         Ok(mcp) => {
                             if let Err(e) =
@@ -322,16 +307,11 @@ pub(crate) async fn build_tool_source(
             .unwrap_or(false);
         if use_http {
             let url = config.mcp_github_url.as_deref().unwrap();
-            match McpToolSource::new_http(
-                url,
-                [("Authorization", format!("Bearer {}", token))],
-            )
-            .await
+            match McpToolSource::new_http(url, [("Authorization", format!("Bearer {}", token))])
+                .await
             {
                 Ok(mcp) => {
-                    if let Err(e) =
-                        register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
-                    {
+                    if let Err(e) = register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await {
                         tracing::warn!(
                             "GitHub MCP (HTTP) registered but list/call may fail: {}",
                             e
@@ -339,10 +319,7 @@ pub(crate) async fn build_tool_source(
                     }
                 }
                 Err(e) => {
-                    tracing::warn!(
-                        "GitHub MCP (HTTP) failed to connect, skipping: {}",
-                        e
-                    );
+                    tracing::warn!("GitHub MCP (HTTP) failed to connect, skipping: {}", e);
                 }
             }
         } else {
@@ -352,8 +329,9 @@ pub(crate) async fn build_tool_source(
             let env_github = vec![("GITHUB_TOKEN".to_string(), token.clone())];
             let mcp_verbose = config.mcp_verbose;
             let create_result = tokio::task::spawn_blocking(move || {
-                let mcp = McpToolSource::new_with_env(cmd, args, env_github.into_iter(), mcp_verbose)
-                    .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
+                let mcp =
+                    McpToolSource::new_with_env(cmd, args, env_github.into_iter(), mcp_verbose)
+                        .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
                 let specs = mcp.list_tools_sync()?;
                 Ok::<_, ToolSourceError>((mcp, specs))
             })

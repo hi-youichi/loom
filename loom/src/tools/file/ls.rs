@@ -105,6 +105,7 @@ impl Tool for LsTool {
                     }
                 }
             }),
+            output_hint: None,
         }
     }
 

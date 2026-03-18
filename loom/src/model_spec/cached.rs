@@ -111,8 +111,9 @@ mod tests {
 
     #[tokio::test]
     async fn resolve_combined_uses_cache() {
-        let body = r#"{"openai":{"models":{"gpt-4o":{"limit":{"context":128000,"output":16384}}}}}"#
-            .to_string();
+        let body =
+            r#"{"openai":{"models":{"gpt-4o":{"limit":{"context":128000,"output":16384}}}}}"#
+                .to_string();
         let client = Arc::new(CountingMockClient {
             body,
             call_count: AtomicUsize::new(0),

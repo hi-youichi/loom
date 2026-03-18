@@ -61,6 +61,7 @@ impl Tool for MoveFileTool {
                 },
                 "required": ["source", "target"]
             }),
+            output_hint: None,
         }
     }
 

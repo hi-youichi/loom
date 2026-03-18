@@ -81,6 +81,7 @@ impl Tool for GlobTool {
                 },
                 "required": ["pattern"]
             }),
+            output_hint: None,
         }
     }
 

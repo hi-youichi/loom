@@ -76,6 +76,7 @@ impl Tool for ReadFileTool {
                 },
                 "required": ["path"]
             }),
+            output_hint: None,
         }
     }
 

@@ -26,11 +26,8 @@ pub enum UserMessageStoreError {
 #[async_trait]
 pub trait UserMessageStore: Send + Sync {
     /// Appends one message for the given thread.
-    async fn append(
-        &self,
-        thread_id: &str,
-        message: &Message,
-    ) -> Result<(), UserMessageStoreError>;
+    async fn append(&self, thread_id: &str, message: &Message)
+        -> Result<(), UserMessageStoreError>;
 
     /// Lists messages for the thread in order.
     ///

@@ -21,6 +21,9 @@ use tokio::sync::mpsc;
 use tracing::{debug, trace};
 
 use crate::error::AgentError;
+use crate::http_retry::{
+    is_retryable_reqwest_error, retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES,
+};
 use crate::llm::{LlmClient, LlmResponse, LlmUsage, ToolCallDelta};
 use crate::memory::uuid6;
 use crate::message::Message;
@@ -367,21 +370,73 @@ impl LlmClient for ChatBigModel {
             "BigModel chat create"
         );
 
+        let mut transport_attempt = 0;
         let (_status, body_bytes) = 'request: loop {
-            let res = self
-                .client
-                .post(&url)
-                .bearer_auth(&self.api_key)
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| AgentError::ExecutionFailed(format!("BigModel request failed: {}", e)))?;
+            let res = {
+                let mut attempt = 0;
+                loop {
+                    match self
+                        .client
+                        .post(&url)
+                        .bearer_auth(&self.api_key)
+                        .json(&body)
+                        .send()
+                        .await
+                    {
+                        Ok(res) => break res,
+                        Err(e)
+                            if is_retryable_reqwest_error(&e)
+                                && attempt < TRANSIENT_HTTP_MAX_RETRIES =>
+                        {
+                            let delay = retry_backoff_for_attempt(attempt);
+                            tracing::warn!(
+                                url = %url,
+                                attempt = attempt + 1,
+                                max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                                delay_secs = delay.as_secs_f64(),
+                                error = %e,
+                                "BigModel request transport failed, retrying"
+                            );
+                            attempt += 1;
+                            tokio::time::sleep(delay).await;
+                        }
+                        Err(e) => {
+                            return Err(AgentError::ExecutionFailed(format!(
+                                "BigModel request failed: {}",
+                                e
+                            )));
+                        }
+                    }
+                }
+            };
 
             let status = res.status();
-            let body_bytes = res
-                .bytes()
-                .await
-                .map_err(|e| AgentError::ExecutionFailed(format!("BigModel response read: {}", e)))?;
+            let body_bytes = match res.bytes().await {
+                Ok(body_bytes) => body_bytes,
+                Err(e)
+                    if is_retryable_reqwest_error(&e)
+                        && transport_attempt < TRANSIENT_HTTP_MAX_RETRIES =>
+                {
+                    let delay = retry_backoff_for_attempt(transport_attempt);
+                    tracing::warn!(
+                        url = %url,
+                        attempt = transport_attempt + 1,
+                        max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                        delay_secs = delay.as_secs_f64(),
+                        error = %e,
+                        "BigModel response body read failed, retrying"
+                    );
+                    transport_attempt += 1;
+                    tokio::time::sleep(delay).await;
+                    continue 'request;
+                }
+                Err(e) => {
+                    return Err(AgentError::ExecutionFailed(format!(
+                        "BigModel response read: {}",
+                        e
+                    )));
+                }
+            };
 
             if status.is_success() {
                 break 'request (status, body_bytes);
@@ -410,12 +465,13 @@ impl LlmClient for ChatBigModel {
                     .json(&body)
                     .send()
                     .await
-                    .map_err(|e| AgentError::ExecutionFailed(format!("BigModel request failed: {}", e)))?;
+                    .map_err(|e| {
+                        AgentError::ExecutionFailed(format!("BigModel request failed: {}", e))
+                    })?;
                 let retry_status = retry_res.status();
-                let retry_bytes = retry_res
-                    .bytes()
-                    .await
-                    .map_err(|e| AgentError::ExecutionFailed(format!("BigModel response read: {}", e)))?;
+                let retry_bytes = retry_res.bytes().await.map_err(|e| {
+                    AgentError::ExecutionFailed(format!("BigModel response read: {}", e))
+                })?;
                 if retry_status.is_success() {
                     break 'request (retry_status, retry_bytes);
                 }
@@ -515,14 +571,43 @@ impl LlmClient for ChatBigModel {
         );
 
         let mut res = 'stream_request: loop {
-            let response = self
-                .client
-                .post(&url)
-                .bearer_auth(&self.api_key)
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| AgentError::ExecutionFailed(format!("BigModel stream request: {}", e)))?;
+            let response = {
+                let mut attempt = 0;
+                loop {
+                    match self
+                        .client
+                        .post(&url)
+                        .bearer_auth(&self.api_key)
+                        .json(&body)
+                        .send()
+                        .await
+                    {
+                        Ok(response) => break response,
+                        Err(e)
+                            if is_retryable_reqwest_error(&e)
+                                && attempt < TRANSIENT_HTTP_MAX_RETRIES =>
+                        {
+                            let delay = retry_backoff_for_attempt(attempt);
+                            tracing::warn!(
+                                url = %url,
+                                attempt = attempt + 1,
+                                max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                                delay_secs = delay.as_secs_f64(),
+                                error = %e,
+                                "BigModel stream request failed, retrying"
+                            );
+                            attempt += 1;
+                            tokio::time::sleep(delay).await;
+                        }
+                        Err(e) => {
+                            return Err(AgentError::ExecutionFailed(format!(
+                                "BigModel stream request: {}",
+                                e
+                            )));
+                        }
+                    }
+                }
+            };
 
             let status = response.status();
             if status.is_success() {
@@ -553,7 +638,9 @@ impl LlmClient for ChatBigModel {
                     .json(&body)
                     .send()
                     .await
-                    .map_err(|e| AgentError::ExecutionFailed(format!("BigModel stream request: {}", e)))?;
+                    .map_err(|e| {
+                        AgentError::ExecutionFailed(format!("BigModel stream request: {}", e))
+                    })?;
                 let retry_status = retry_res.status();
                 if retry_status.is_success() {
                     break 'stream_request retry_res;

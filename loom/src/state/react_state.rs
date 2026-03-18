@@ -8,6 +8,8 @@ use crate::message::Message;
 use crate::LlmUsage;
 use serde::{Deserialize, Serialize};
 
+use crate::state::tool_output_normalizer::{ToolOutputStrategy, ToolStorageRef};
+
 /// A single tool invocation produced by the LLM (Think node) and consumed by Act.
 ///
 /// Aligns with MCP `tools/call`: `name` and `arguments` (JSON string or object).
@@ -32,18 +34,139 @@ pub struct ToolCall {
 ///
 /// **Interaction**: Written by ActNode from `ToolSource::call_tool` result; read by
 /// ObserveNode to append to messages or internal state and then clear.
+///
+/// ## Unified Output Control
+///
+/// The struct now supports multiple semantic views of tool output:
+/// - `raw_content`: Original tool output (may be `None` for large results)
+/// - `observation_text`: Text injected into next LLM turn (ObserveNode uses this)
+/// - `display_text`: Text shown in stream/UI (stream events use this)
+/// - `storage_ref`: Reference to persisted large output (file path, etc.)
+/// - `strategy`: Normalization strategy applied (Inline, HeadTail, FileRef, etc.)
+///
+/// For backward compatibility, `content` field is populated with `observation_text`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ToolResult {
     /// Id of the tool call this result belongs to (if ToolCall had `id`).
     pub call_id: Option<String>,
     /// Tool name; alternative to call_id for matching.
     pub name: Option<String>,
-    /// Result content (e.g. text from MCP result.content[].text).
+    /// Result content for backward compatibility (populated with observation_text).
+    /// Prefer using `observation_text()` method for new code.
     pub content: String,
     /// Whether this result represents an error (tool execution failed or user rejected).
     /// Observe uses this to include error context in the message sent to the LLM.
     #[serde(default)]
     pub is_error: bool,
+
+    // === Unified Output Control Fields ===
+    /// Original raw tool output; `None` if too large and only persisted to storage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_content: Option<String>,
+    /// Text to inject into next LLM turn (ObserveNode uses this).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observation_text: Option<String>,
+    /// Text to show in stream/UI events.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_text: Option<String>,
+    /// Reference to persisted storage for large outputs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage_ref: Option<ToolStorageRef>,
+    /// Normalization strategy applied to this result.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strategy: Option<ToolOutputStrategy>,
+    /// Character count of original raw output.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_chars: Option<usize>,
+    /// Character count of observation text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observation_chars: Option<usize>,
+    /// Whether the output was truncated.
+    #[serde(default)]
+    pub truncated: bool,
+}
+
+impl ToolResult {
+    /// Returns the text to inject into the next LLM turn.
+    /// Falls back to `content` for backward compatibility.
+    pub fn observation(&self) -> &str {
+        self.observation_text.as_deref().unwrap_or(&self.content)
+    }
+
+    /// Returns the text to display in stream/UI.
+    /// Falls back to observation_text, then content.
+    pub fn display(&self) -> &str {
+        self.display_text
+            .as_deref()
+            .or(self.observation_text.as_deref())
+            .unwrap_or(&self.content)
+    }
+
+    /// Returns the raw original output if available.
+    pub fn raw(&self) -> Option<&str> {
+        self.raw_content.as_deref()
+    }
+
+    /// Creates a simple ToolResult with just content (backward compatible).
+    pub fn simple(
+        call_id: Option<String>,
+        name: Option<String>,
+        content: String,
+        is_error: bool,
+    ) -> Self {
+        let content_chars = content.chars().count();
+        Self {
+            call_id,
+            name,
+            content: content.clone(),
+            is_error,
+            raw_content: Some(content.clone()),
+            observation_text: Some(content.clone()),
+            display_text: Some(content.clone()),
+            storage_ref: None,
+            strategy: Some(ToolOutputStrategy::Inline),
+            raw_chars: Some(content_chars),
+            observation_chars: Some(content_chars),
+            truncated: false,
+        }
+    }
+
+    /// Sets the call_id field.
+    pub fn with_call_id(mut self, call_id: impl Into<Option<String>>) -> Self {
+        self.call_id = call_id.into();
+        self
+    }
+
+    /// Sets the name field.
+    pub fn with_name(mut self, name: impl Into<Option<String>>) -> Self {
+        self.name = name.into();
+        self
+    }
+
+    /// Sets the is_error field.
+    pub fn with_is_error(mut self, is_error: bool) -> Self {
+        self.is_error = is_error;
+        self
+    }
+}
+
+impl From<crate::state::tool_output_normalizer::NormalizedToolOutput> for ToolResult {
+    fn from(normalized: crate::state::tool_output_normalizer::NormalizedToolOutput) -> Self {
+        Self {
+            call_id: None,
+            name: None,
+            content: normalized.observation_text.clone(),
+            is_error: false,
+            raw_content: normalized.raw_content,
+            observation_text: Some(normalized.observation_text),
+            display_text: Some(normalized.display_text),
+            storage_ref: normalized.storage_ref,
+            strategy: Some(normalized.strategy),
+            raw_chars: Some(normalized.raw_chars),
+            observation_chars: Some(normalized.observation_chars),
+            truncated: normalized.truncated,
+        }
+    }
 }
 
 /// State for the minimal ReAct graph: Think → Act → Observe.

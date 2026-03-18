@@ -58,6 +58,7 @@ impl Tool for BatchTool {
                 },
                 "required": ["calls"]
             }),
+            output_hint: None,
         }
     }
 

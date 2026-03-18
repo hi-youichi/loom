@@ -27,10 +27,7 @@ fn open_error_message(path: &Path, e: &impl std::fmt::Display) -> String {
             .map(|cwd| cwd.join(path).display().to_string())
             .unwrap_or_else(|| path_display.to_string())
     };
-    format!(
-        "path='{}' resolved='{}': {}",
-        path_display, resolved, e
-    )
+    format!("path='{}' resolved='{}': {}", path_display, resolved, e)
 }
 
 /// Opens a SQLite database and enables WAL mode for better concurrent read/write.

@@ -62,6 +62,7 @@ impl Tool for DeleteFileTool {
                 },
                 "required": ["path"]
             }),
+            output_hint: None,
         }
     }
 

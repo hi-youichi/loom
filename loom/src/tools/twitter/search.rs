@@ -11,8 +11,12 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::json;
 
+use crate::http_retry::{
+    is_retryable_reqwest_error, retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES,
+};
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError};
 use crate::tools::Tool;
+use crate::{ToolOutputHint, ToolOutputStrategy};
 
 /// Tool name for Twitter search.
 pub const TOOL_TWITTER_SEARCH: &str = "twitter_search";
@@ -94,6 +98,9 @@ impl Tool for TwitterSearchTool {
                 },
                 "required": ["query"]
             }),
+            output_hint: Some(ToolOutputHint::preferred(
+                ToolOutputStrategy::FileRefWithExcerpt,
+            )),
         }
     }
 
@@ -139,25 +146,67 @@ impl Tool for TwitterSearchTool {
         ];
         req = req.query(&params);
 
-        let response = req
-            .send()
-            .await
-            .map_err(|e| ToolSourceError::Transport(format!("request failed: {}", e)))?;
+        let mut attempt = 0;
+        loop {
+            let request = req.try_clone().ok_or_else(|| {
+                ToolSourceError::Transport("failed to clone Twitter request for retry".to_string())
+            })?;
+            let response = match request.send().await {
+                Ok(response) => response,
+                Err(e)
+                    if is_retryable_reqwest_error(&e) && attempt < TRANSIENT_HTTP_MAX_RETRIES =>
+                {
+                    let delay = retry_backoff_for_attempt(attempt);
+                    tracing::warn!(
+                        url = %url,
+                        attempt = attempt + 1,
+                        max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                        delay_secs = delay.as_secs_f64(),
+                        error = %e,
+                        "Twitter search request failed, retrying"
+                    );
+                    attempt += 1;
+                    tokio::time::sleep(delay).await;
+                    continue;
+                }
+                Err(e) => {
+                    return Err(ToolSourceError::Transport(format!("request failed: {}", e)));
+                }
+            };
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_else(|_| "".to_string());
-            return Err(ToolSourceError::Transport(format!(
-                "API error {}: {}",
-                status, body
-            )));
+            if !response.status().is_success() {
+                let status = response.status();
+                let body = response.text().await.unwrap_or_else(|_| "".to_string());
+                return Err(ToolSourceError::Transport(format!(
+                    "API error {}: {}",
+                    status, body
+                )));
+            }
+
+            match response.text().await {
+                Ok(body) => return Ok(ToolCallContent { text: body }),
+                Err(e)
+                    if is_retryable_reqwest_error(&e) && attempt < TRANSIENT_HTTP_MAX_RETRIES =>
+                {
+                    let delay = retry_backoff_for_attempt(attempt);
+                    tracing::warn!(
+                        url = %url,
+                        attempt = attempt + 1,
+                        max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                        delay_secs = delay.as_secs_f64(),
+                        error = %e,
+                        "Twitter search response read failed, retrying"
+                    );
+                    attempt += 1;
+                    tokio::time::sleep(delay).await;
+                }
+                Err(e) => {
+                    return Err(ToolSourceError::Transport(format!(
+                        "failed to read response: {}",
+                        e
+                    )));
+                }
+            }
         }
-
-        let body = response
-            .text()
-            .await
-            .map_err(|e| ToolSourceError::Transport(format!("failed to read response: {}", e)))?;
-
-        Ok(ToolCallContent { text: body })
     }
 }

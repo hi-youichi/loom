@@ -70,10 +70,8 @@ const DEV_AGENT_INSTRUCTIONS: &str = include_str!("../../agents/dev/instructions
 const DEV_AGENT_CONFIG_YAML: &str = include_str!("../../agents/dev/config.yaml");
 
 /// Built-in agent-builder: meta-agent that creates new agent profiles (loom/agents/agent-builder/).
-const AGENT_BUILDER_INSTRUCTIONS: &str =
-    include_str!("../../agents/agent-builder/instructions.md");
-const AGENT_BUILDER_CONFIG_YAML: &str =
-    include_str!("../../agents/agent-builder/config.yaml");
+const AGENT_BUILDER_INSTRUCTIONS: &str = include_str!("../../agents/agent-builder/instructions.md");
+const AGENT_BUILDER_CONFIG_YAML: &str = include_str!("../../agents/agent-builder/config.yaml");
 
 /// Built-in explore agent: file search specialist for codebase navigation (loom/agents/explore/).
 const EXPLORE_AGENT_INSTRUCTIONS: &str = include_str!("../../agents/explore/instructions.md");
@@ -82,8 +80,7 @@ const EXPLORE_AGENT_CONFIG_YAML: &str = include_str!("../../agents/explore/confi
 /// Built-in orchestrator agent: task decomposition and multi-agent delegation (loom/agents/orchestrator/).
 const ORCHESTRATOR_AGENT_INSTRUCTIONS: &str =
     include_str!("../../agents/orchestrator/instructions.md");
-const ORCHESTRATOR_AGENT_CONFIG_YAML: &str =
-    include_str!("../../agents/orchestrator/config.yaml");
+const ORCHESTRATOR_AGENT_CONFIG_YAML: &str = include_str!("../../agents/orchestrator/config.yaml");
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct RoleConfig {
@@ -285,7 +282,8 @@ fn merge_disabled_lists(a: Option<Vec<String>>, b: Option<Vec<String>>) -> Optio
 /// Load a single profile from path. Supports pure YAML or front matter (---\nYAML\n---\nbody).
 /// Resolves role.file relative to profile dir. If `extends` is set, loads base and merges.
 pub fn load_agent_profile(path: &Path) -> Result<AgentProfile, ProfileError> {
-    let content = std::fs::read_to_string(path).map_err(|e| ProfileError::Read(path.to_path_buf(), e))?;
+    let content =
+        std::fs::read_to_string(path).map_err(|e| ProfileError::Read(path.to_path_buf(), e))?;
     let (yaml_str, role_body) = parse_front_matter(&content);
     let mut profile: AgentProfile =
         serde_yaml::from_str(yaml_str).map_err(|e| ProfileError::Parse(path.to_path_buf(), e))?;
@@ -434,8 +432,8 @@ pub fn resolve_profile(name: &str) -> Result<AgentProfile, ProfileError> {
         }
         return Ok(profile);
     }
-    let path = resolve_named_profile(name)
-        .ok_or_else(|| ProfileError::NotFound(name.to_string()))?;
+    let path =
+        resolve_named_profile(name).ok_or_else(|| ProfileError::NotFound(name.to_string()))?;
     load_agent_profile(&path)
 }
 
@@ -481,7 +479,10 @@ pub fn list_available_profiles() -> Vec<ProfileSummary> {
 
     let scan_dirs: Vec<(PathBuf, ProfileSource)> = vec![
         (PathBuf::from(".loom/agents"), ProfileSource::Project),
-        (env_config::home::loom_home().join("agents"), ProfileSource::User),
+        (
+            env_config::home::loom_home().join("agents"),
+            ProfileSource::User,
+        ),
     ];
 
     for (dir, source) in &scan_dirs {
@@ -535,7 +536,10 @@ fn load_builtin_profile(name: &str) -> Option<AgentProfile> {
         "dev" => (DEV_AGENT_CONFIG_YAML, DEV_AGENT_INSTRUCTIONS),
         "agent-builder" => (AGENT_BUILDER_CONFIG_YAML, AGENT_BUILDER_INSTRUCTIONS),
         "explore" => (EXPLORE_AGENT_CONFIG_YAML, EXPLORE_AGENT_INSTRUCTIONS),
-        "orchestrator" => (ORCHESTRATOR_AGENT_CONFIG_YAML, ORCHESTRATOR_AGENT_INSTRUCTIONS),
+        "orchestrator" => (
+            ORCHESTRATOR_AGENT_CONFIG_YAML,
+            ORCHESTRATOR_AGENT_INSTRUCTIONS,
+        ),
         _ => return None,
     };
     let mut profile: AgentProfile = serde_yaml::from_str(config_yaml).ok()?;
@@ -573,7 +577,11 @@ mod tests {
         assert_eq!(profile.name, "dev");
         assert_eq!(source, ProfileSource::BuiltIn);
         let role = profile.role.as_ref().unwrap();
-        assert!(role.content.as_ref().unwrap().contains("Editing constraints"));
+        assert!(role
+            .content
+            .as_ref()
+            .unwrap()
+            .contains("Editing constraints"));
         assert!(role.content.as_ref().unwrap().contains("agent"));
     }
 
@@ -595,7 +603,8 @@ mod tests {
             output_timestamp: false,
             dry_run: false,
         };
-        let (profile, source) = load_profile_from_options(&opts).expect("built-in agent-builder profile");
+        let (profile, source) =
+            load_profile_from_options(&opts).expect("built-in agent-builder profile");
         assert_eq!(profile.name, "agent-builder");
         assert_eq!(source, ProfileSource::BuiltIn);
         let role = profile.role.as_ref().unwrap();
@@ -630,7 +639,10 @@ role:
   content: "You are helpful."
 "#;
         let p: AgentProfile = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(p.role.as_ref().unwrap().content.as_deref(), Some("You are helpful."));
+        assert_eq!(
+            p.role.as_ref().unwrap().content.as_deref(),
+            Some("You are helpful.")
+        );
     }
 
     #[test]
@@ -689,7 +701,11 @@ You are a helpful assistant.
             description: Some("Base".to_string()),
             tools: Some(ToolsConfig {
                 builtin: Some(BuiltinToolsConfig {
-                    enabled: Some(vec!["bash".to_string(), "read".to_string(), "websearch".to_string()]),
+                    enabled: Some(vec![
+                        "bash".to_string(),
+                        "read".to_string(),
+                        "websearch".to_string(),
+                    ]),
                     disabled: Some(vec!["web_fetcher".to_string()]),
                 }),
                 mcp: Some(McpConfig {
@@ -715,12 +731,33 @@ You are a helpful assistant.
         assert_eq!(merged.name, "override");
         assert_eq!(merged.description.as_deref(), Some("Over"));
         let builtin = merged.tools.as_ref().unwrap().builtin.as_ref().unwrap();
-        assert_eq!(builtin.enabled, Some(vec!["bash".to_string(), "read".to_string()]));
-        let disabled: Vec<_> = builtin.disabled.as_ref().unwrap().iter().map(String::as_str).collect();
+        assert_eq!(
+            builtin.enabled,
+            Some(vec!["bash".to_string(), "read".to_string()])
+        );
+        let disabled: Vec<_> = builtin
+            .disabled
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(String::as_str)
+            .collect();
         assert!(disabled.contains(&"web_fetcher"));
         assert!(disabled.contains(&"websearch"));
         assert_eq!(disabled.len(), 2);
-        assert_eq!(merged.tools.as_ref().unwrap().mcp.as_ref().unwrap().config.as_ref().unwrap(), &PathBuf::from("./mcp.json"));
+        assert_eq!(
+            merged
+                .tools
+                .as_ref()
+                .unwrap()
+                .mcp
+                .as_ref()
+                .unwrap()
+                .config
+                .as_ref()
+                .unwrap(),
+            &PathBuf::from("./mcp.json")
+        );
     }
 
     #[test]
@@ -739,7 +776,10 @@ You are a helpful assistant.
         };
         let merged = merge_profiles(base, over);
         assert_eq!(merged.name, "child");
-        assert_eq!(merged.model.as_ref().unwrap().name.as_deref(), Some("gpt-4"));
+        assert_eq!(
+            merged.model.as_ref().unwrap().name.as_deref(),
+            Some("gpt-4")
+        );
     }
 
     #[test]
@@ -766,9 +806,29 @@ tools:
         let loaded = load_agent_profile(&dir.path().join("child.yaml")).unwrap();
         assert_eq!(loaded.name, "child");
         assert_eq!(loaded.description.as_deref(), Some("Child profile"));
-        assert_eq!(loaded.model.as_ref().unwrap().name.as_deref(), Some("gpt-4"));
-        assert!(loaded.tools.as_ref().unwrap().mcp.as_ref().unwrap().config.is_some());
-        let disabled = loaded.tools.as_ref().unwrap().builtin.as_ref().unwrap().disabled.as_ref().unwrap();
+        assert_eq!(
+            loaded.model.as_ref().unwrap().name.as_deref(),
+            Some("gpt-4")
+        );
+        assert!(loaded
+            .tools
+            .as_ref()
+            .unwrap()
+            .mcp
+            .as_ref()
+            .unwrap()
+            .config
+            .is_some());
+        let disabled = loaded
+            .tools
+            .as_ref()
+            .unwrap()
+            .builtin
+            .as_ref()
+            .unwrap()
+            .disabled
+            .as_ref()
+            .unwrap();
         assert_eq!(disabled, &["websearch".to_string()]);
         assert!(loaded.extends.is_none());
     }
@@ -929,14 +989,23 @@ tools:
             }),
             mcp: None,
         };
-        let over = ToolsConfig { builtin: None, mcp: None };
+        let over = ToolsConfig {
+            builtin: None,
+            mcp: None,
+        };
         let merged = merge_tools_config(base, over);
-        assert_eq!(merged.builtin.unwrap().enabled, Some(vec!["bash".to_string()]));
+        assert_eq!(
+            merged.builtin.unwrap().enabled,
+            Some(vec!["bash".to_string()])
+        );
     }
 
     #[test]
     fn merge_tools_config_over_only_builtin() {
-        let base = ToolsConfig { builtin: None, mcp: None };
+        let base = ToolsConfig {
+            builtin: None,
+            mcp: None,
+        };
         let over = ToolsConfig {
             builtin: Some(BuiltinToolsConfig {
                 enabled: Some(vec!["read".to_string()]),
@@ -960,8 +1029,12 @@ tools:
         let result = merge_disabled_lists(
             Some(vec!["a".to_string(), "b".to_string()]),
             Some(vec!["b".to_string(), "c".to_string()]),
-        ).unwrap();
-        assert_eq!(result, vec!["a".to_string(), "b".to_string(), "c".to_string()]);
+        )
+        .unwrap();
+        assert_eq!(
+            result,
+            vec!["a".to_string(), "b".to_string(), "c".to_string()]
+        );
     }
 
     #[test]

@@ -632,7 +632,10 @@ mod tests {
         let result = graph.compile();
         match result {
             Err(CompilationError::InvalidChain(msg)) => {
-                assert!(msg.to_lowercase().contains("duplicate") || msg.to_lowercase().contains("branch"));
+                assert!(
+                    msg.to_lowercase().contains("duplicate")
+                        || msg.to_lowercase().contains("branch")
+                );
             }
             Err(e) => panic!("expected InvalidChain, got {:?}", e),
             Ok(_) => panic!("expected compile error"),
@@ -703,8 +706,12 @@ mod tests {
                             DummyState,
                         ) -> std::pin::Pin<
                             Box<
-                                dyn std::future::Future<Output = Result<(DummyState, Next), crate::error::AgentError>>
-                                    + Send,
+                                dyn std::future::Future<
+                                        Output = Result<
+                                            (DummyState, Next),
+                                            crate::error::AgentError,
+                                        >,
+                                    > + Send,
                             >,
                         > + Send,
                 >,

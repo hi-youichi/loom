@@ -69,6 +69,7 @@ impl Tool for SkillTool {
                 },
                 "required": ["name"]
             }),
+            output_hint: None,
         }
     }
 

@@ -6,17 +6,14 @@
 //!
 //! # Storage Location
 //!
-//! Context is stored under `~/.loom/context/{session_id}/`:
+//! Context is stored under `~/.loom/context/$session-id/`:
 //! - `llm_context.jsonl`: LLM requests and responses
 //! - `tool_context.jsonl`: Tool call invocations and results
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::{
-    fs::OpenOptions,
-    io::Write,
-};
+use std::{fs::OpenOptions, io::Write};
 use tracing::{debug, warn};
 
 /// Context writer that writes to a file in JSON Lines format.
@@ -34,15 +31,9 @@ impl ContextWriter {
             }
         }
 
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)?;
+        let file = OpenOptions::new().create(true).append(true).open(&path)?;
 
-        Ok(Self {
-            file,
-            path,
-        })
+        Ok(Self { file, path })
     }
 
     fn write(&mut self, entry: &ContextEntry) {
@@ -55,7 +46,11 @@ impl ContextWriter {
         };
 
         if let Err(e) = writeln!(self.file, "{}", json) {
-            warn!("Failed to write context to file {}: {}", self.path.display(), e);
+            warn!(
+                "Failed to write context to file {}: {}",
+                self.path.display(),
+                e
+            );
         }
     }
 }
@@ -94,14 +89,23 @@ fn get_llm_context_writer(session_id: &str) -> Option<ContextWriter> {
     let path = get_base_context_dir()
         .join(session_id)
         .join("llm_context.jsonl");
-    
+
     match ContextWriter::new(path.clone()) {
         Ok(writer) => {
-            debug!("LLM context writer created for session {}: {}", session_id, path.display());
+            debug!(
+                "LLM context writer created for session {}: {}",
+                session_id,
+                path.display()
+            );
             Some(writer)
         }
         Err(e) => {
-            warn!("Failed to create LLM context writer for session {} at {}: {}", session_id, path.display(), e);
+            warn!(
+                "Failed to create LLM context writer for session {} at {}: {}",
+                session_id,
+                path.display(),
+                e
+            );
             None
         }
     }
@@ -112,14 +116,23 @@ fn get_tool_context_writer(session_id: &str) -> Option<ContextWriter> {
     let path = get_base_context_dir()
         .join(session_id)
         .join("tool_context.jsonl");
-    
+
     match ContextWriter::new(path.clone()) {
         Ok(writer) => {
-            debug!("Tool context writer created for session {}: {}", session_id, path.display());
+            debug!(
+                "Tool context writer created for session {}: {}",
+                session_id,
+                path.display()
+            );
             Some(writer)
         }
         Err(e) => {
-            warn!("Failed to create tool context writer for session {} at {}: {}", session_id, path.display(), e);
+            warn!(
+                "Failed to create tool context writer for session {} at {}: {}",
+                session_id,
+                path.display(),
+                e
+            );
             None
         }
     }
@@ -139,7 +152,7 @@ pub fn save_llm_request(
             "messages": messages.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>(),
             "message_count": messages.len(),
         });
-        
+
         let entry = ContextEntry::new("llm_request", node_id, data);
         writer.write(&entry);
     }
@@ -173,7 +186,7 @@ pub fn save_llm_response(
                 "total_tokens": u.total_tokens,
             })),
         });
-        
+
         let entry = ContextEntry::new("llm_response", node_id, data);
         writer.write(&entry);
     }
@@ -196,7 +209,7 @@ pub fn save_tool_call(
             "tool_name": tool_name,
             "arguments": arguments,
         });
-        
+
         let entry = ContextEntry::new("tool_call", node_id, data);
         writer.write(&entry);
     }
@@ -213,6 +226,24 @@ pub fn save_tool_result(
     result: &str,
     is_error: bool,
 ) {
+    save_tool_result_value(
+        node_id,
+        session_id,
+        call_id,
+        tool_name,
+        serde_json::json!(result),
+        is_error,
+    );
+}
+
+pub fn save_tool_result_value(
+    node_id: &str,
+    session_id: Option<&str>,
+    call_id: Option<&str>,
+    tool_name: &str,
+    result: serde_json::Value,
+    is_error: bool,
+) {
     let session_id = session_id.unwrap_or("default");
     if let Some(mut writer) = get_tool_context_writer(session_id) {
         let data = serde_json::json!({
@@ -221,7 +252,7 @@ pub fn save_tool_result(
             "result": result,
             "is_error": is_error,
         });
-        
+
         let entry = ContextEntry::new("tool_result", node_id, data);
         writer.write(&entry);
     }
@@ -258,11 +289,7 @@ mod tests {
 
     #[test]
     fn test_context_entry_serialization() {
-        let entry = ContextEntry::new(
-            "llm_request",
-            "think",
-            serde_json::json!({"test": "data"}),
-        );
+        let entry = ContextEntry::new("llm_request", "think", serde_json::json!({"test": "data"}));
 
         let json = serde_json::to_string(&entry).unwrap();
         assert!(json.contains("llm_request"));
@@ -352,7 +379,11 @@ mod tests {
         let messages = vec![crate::message::Message::user("hello")];
         save_llm_request("think", Some("sess1"), &messages);
 
-        let path = dir.path().join("context").join("sess1").join("llm_context.jsonl");
+        let path = dir
+            .path()
+            .join("context")
+            .join("sess1")
+            .join("llm_context.jsonl");
         assert!(path.exists());
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("llm_request"));
@@ -373,7 +404,11 @@ mod tests {
 
         save_llm_request("think", None, &[]);
 
-        let path = dir.path().join("context").join("default").join("llm_context.jsonl");
+        let path = dir
+            .path()
+            .join("context")
+            .join("default")
+            .join("llm_context.jsonl");
         assert!(path.exists());
 
         match prev {
@@ -394,9 +429,20 @@ mod tests {
             completion_tokens: 20,
             total_tokens: 30,
         };
-        save_llm_response("act", Some("sess2"), "response text", None, &[], Some(&usage));
+        save_llm_response(
+            "act",
+            Some("sess2"),
+            "response text",
+            None,
+            &[],
+            Some(&usage),
+        );
 
-        let path = dir.path().join("context").join("sess2").join("llm_context.jsonl");
+        let path = dir
+            .path()
+            .join("context")
+            .join("sess2")
+            .join("llm_context.jsonl");
         assert!(path.exists());
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("llm_response"));
@@ -418,7 +464,11 @@ mod tests {
 
         save_llm_response("act", Some("sess3"), "hi", None, &[], None);
 
-        let path = dir.path().join("context").join("sess3").join("llm_context.jsonl");
+        let path = dir
+            .path()
+            .join("context")
+            .join("sess3")
+            .join("llm_context.jsonl");
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("llm_response"));
 
@@ -447,7 +497,11 @@ mod tests {
             None => std::env::remove_var("LOOM_HOME"),
         }
 
-        let path = dir.path().join("context").join("sess_tc").join("llm_context.jsonl");
+        let path = dir
+            .path()
+            .join("context")
+            .join("sess_tc")
+            .join("llm_context.jsonl");
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("read_file"));
         assert!(content.contains("tc1"));
@@ -468,7 +522,11 @@ mod tests {
             &serde_json::json!({"command": "ls"}),
         );
 
-        let path = dir.path().join("context").join("sess4").join("tool_context.jsonl");
+        let path = dir
+            .path()
+            .join("context")
+            .join("sess4")
+            .join("tool_context.jsonl");
         assert!(path.exists());
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("tool_call"));
@@ -490,7 +548,11 @@ mod tests {
 
         save_tool_call("act", None, None, "test_tool", &serde_json::json!({}));
 
-        let path = dir.path().join("context").join("default").join("tool_context.jsonl");
+        let path = dir
+            .path()
+            .join("context")
+            .join("default")
+            .join("tool_context.jsonl");
         assert!(path.exists());
 
         match prev {
@@ -506,9 +568,20 @@ mod tests {
         let prev = std::env::var("LOOM_HOME").ok();
         std::env::set_var("LOOM_HOME", dir.path());
 
-        save_tool_result("act", Some("sess5"), Some("call-2"), "bash", "output text", false);
+        save_tool_result(
+            "act",
+            Some("sess5"),
+            Some("call-2"),
+            "bash",
+            "output text",
+            false,
+        );
 
-        let path = dir.path().join("context").join("sess5").join("tool_context.jsonl");
+        let path = dir
+            .path()
+            .join("context")
+            .join("sess5")
+            .join("tool_context.jsonl");
         assert!(path.exists());
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("tool_result"));
@@ -530,7 +603,11 @@ mod tests {
 
         save_tool_result("act", Some("sess6"), None, "bash", "error msg", true);
 
-        let path = dir.path().join("context").join("sess6").join("tool_context.jsonl");
+        let path = dir
+            .path()
+            .join("context")
+            .join("sess6")
+            .join("tool_context.jsonl");
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("\"is_error\":true"));
 

@@ -49,6 +49,7 @@ impl Tool for TodoReadTool {
             name: TOOL_TODO_READ.to_string(),
             description: Some("Read the current todo list.".to_string()),
             input_schema: json!({ "type": "object", "properties": {}, "required": [] }),
+            output_hint: None,
         }
     }
 
@@ -124,7 +125,7 @@ mod tests {
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
-        
+
         let thread_id = "test-thread-123";
         let path = crate::tools::todo::todo_file_path(Some(thread_id)).unwrap();
         if let Some(p) = path.parent() {
@@ -134,7 +135,7 @@ mod tests {
             { "id": "1", "content": "Thread task", "status": "pending", "priority": "high" }
         ]);
         std::fs::write(&path, serde_json::to_string_pretty(&todos).unwrap()).unwrap();
-        
+
         let tool = TodoReadTool::new(Arc::new(dir.path().to_path_buf()));
         let ctx = ToolCallContext {
             thread_id: Some(thread_id.to_string()),

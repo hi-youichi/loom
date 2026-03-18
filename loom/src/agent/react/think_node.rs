@@ -10,12 +10,12 @@ use tokio::sync::mpsc;
 
 use crate::error::AgentError;
 use crate::graph::{Next, RunContext};
+use crate::llm::context_persistence;
 use crate::llm::{LlmClient, ToolCallDelta};
 use crate::message::Message;
 use crate::state::{ReActState, ToolCall};
 use crate::stream::{ChunkToStreamSender, MessageChunk, StreamEvent, StreamMetadata, StreamMode};
 use crate::Node;
-use crate::llm::context_persistence;
 
 pub struct ThinkNode {
     llm: Arc<dyn LlmClient>,
@@ -78,7 +78,7 @@ impl Node<ReActState> for ThinkNode {
 
     async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
         let response = self.llm.invoke(&state.messages).await?;
-        
+
         // Save LLM response (no session_id available in run())
         context_persistence::save_llm_response(
             "think",
@@ -88,7 +88,7 @@ impl Node<ReActState> for ThinkNode {
             &response.tool_calls,
             response.usage.as_ref(),
         );
-        
+
         let new_state = apply_think_response(
             state,
             response.content,
@@ -163,7 +163,7 @@ impl Node<ReActState> for ThinkNode {
         };
 
         let used_fallback = response.content.is_empty() && response.tool_calls.is_empty();
-        
+
         // Save LLM response with session_id from context
         let session_id = ctx.config.thread_id.as_deref();
         crate::llm::context_persistence::save_llm_response(
@@ -174,7 +174,7 @@ impl Node<ReActState> for ThinkNode {
             &response.tool_calls,
             response.usage.as_ref(),
         );
-        
+
         let content = if used_fallback {
             "No text response from the model. Please try again or check the API.".to_string()
         } else {
@@ -226,14 +226,13 @@ impl Node<ReActState> for ThinkNode {
             }
         }
 
-        let new_state =
-            apply_think_response(
-                state,
-                content,
-                response.reasoning_content.clone(),
-                response.tool_calls,
-                response.usage.clone(),
-            );
+        let new_state = apply_think_response(
+            state,
+            content,
+            response.reasoning_content.clone(),
+            response.tool_calls,
+            response.usage.clone(),
+        );
 
         if let (Some(ref tx), Some(ref u)) = (ctx.stream_tx.as_ref(), response.usage.as_ref()) {
             let (prefill_duration, decode_duration) = match first_token_at {

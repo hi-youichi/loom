@@ -2,8 +2,12 @@ use async_trait::async_trait;
 
 use serde_json::json;
 
+use crate::http_retry::{
+    is_retryable_reqwest_error, retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES,
+};
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError};
 use crate::tools::Tool;
+use crate::{ToolOutputHint, ToolOutputStrategy};
 
 /// Tool name for the web fetcher operation.
 pub const TOOL_WEB_FETCHER: &str = "web_fetcher";
@@ -144,6 +148,9 @@ impl Tool for WebFetcherTool {
                 },
                 "required": ["url"]
             }),
+            output_hint: Some(ToolOutputHint::preferred(
+                ToolOutputStrategy::FileRefWithExcerpt,
+            )),
         }
     }
 
@@ -219,23 +226,72 @@ impl Tool for WebFetcherTool {
             }
         }
 
-        let response = request
-            .send()
-            .await
-            .map_err(|e| ToolSourceError::Transport(format!("request failed: {}", e)))?;
+        let allow_retry = method == "GET";
+        let mut attempt = 0;
+        loop {
+            let req = request.try_clone().ok_or_else(|| {
+                ToolSourceError::Transport("failed to clone request for retry".to_string())
+            })?;
+            let response = match req.send().await {
+                Ok(response) => response,
+                Err(e)
+                    if allow_retry
+                        && is_retryable_reqwest_error(&e)
+                        && attempt < TRANSIENT_HTTP_MAX_RETRIES =>
+                {
+                    let delay = retry_backoff_for_attempt(attempt);
+                    tracing::warn!(
+                        url = %url,
+                        method = %method,
+                        attempt = attempt + 1,
+                        max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                        delay_secs = delay.as_secs_f64(),
+                        error = %e,
+                        "web request transport failed, retrying"
+                    );
+                    attempt += 1;
+                    tokio::time::sleep(delay).await;
+                    continue;
+                }
+                Err(e) => {
+                    return Err(ToolSourceError::Transport(format!("request failed: {}", e)));
+                }
+            };
 
-        if !response.status().is_success() {
-            return Err(ToolSourceError::Transport(format!(
-                "request failed with status: {}",
-                response.status()
-            )));
+            if !response.status().is_success() {
+                return Err(ToolSourceError::Transport(format!(
+                    "request failed with status: {}",
+                    response.status()
+                )));
+            }
+
+            match response.text().await {
+                Ok(content) => return Ok(ToolCallContent { text: content }),
+                Err(e)
+                    if allow_retry
+                        && is_retryable_reqwest_error(&e)
+                        && attempt < TRANSIENT_HTTP_MAX_RETRIES =>
+                {
+                    let delay = retry_backoff_for_attempt(attempt);
+                    tracing::warn!(
+                        url = %url,
+                        method = %method,
+                        attempt = attempt + 1,
+                        max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                        delay_secs = delay.as_secs_f64(),
+                        error = %e,
+                        "web response body read failed, retrying"
+                    );
+                    attempt += 1;
+                    tokio::time::sleep(delay).await;
+                }
+                Err(e) => {
+                    return Err(ToolSourceError::Transport(format!(
+                        "failed to read response: {}",
+                        e
+                    )));
+                }
+            }
         }
-
-        let content = response
-            .text()
-            .await
-            .map_err(|e| ToolSourceError::Transport(format!("failed to read response: {}", e)))?;
-
-        Ok(ToolCallContent { text: content })
     }
 }

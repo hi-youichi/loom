@@ -263,8 +263,8 @@ pub fn write_sse_line(chunk: &ChatCompletionChunk) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::stream::{MessageChunk, StreamMetadata};
     use crate::state::{ReActState, ToolCall};
+    use crate::stream::{MessageChunk, StreamMetadata};
 
     fn meta_with_created(created: u64) -> ChunkMeta {
         ChunkMeta {

@@ -94,6 +94,7 @@ impl Tool for EditFileTool {
                 },
                 "required": ["path", "oldString", "newString"]
             }),
+            output_hint: None,
         }
     }
 

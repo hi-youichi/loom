@@ -101,7 +101,10 @@ pub async fn compact(
     let keep = config.compact_keep_recent;
     let message_count = messages.len();
     if message_count <= keep {
-        debug!(message_count, keep, "compact skipped: message count within keep");
+        debug!(
+            message_count,
+            keep, "compact skipped: message count within keep"
+        );
         return Ok(messages.to_vec());
     }
     // Split: older messages to summarize, last `keep` messages to keep verbatim
@@ -173,7 +176,9 @@ mod tests {
 
     #[test]
     fn is_tool_result_user_with_prefix() {
-        assert!(is_tool_result_message(&Message::User("Tool bash returned: ok".to_string())));
+        assert!(is_tool_result_message(&Message::User(
+            "Tool bash returned: ok".to_string()
+        )));
     }
 
     #[test]
@@ -183,12 +188,16 @@ mod tests {
 
     #[test]
     fn is_tool_result_system() {
-        assert!(!is_tool_result_message(&Message::System("Tool x returned: y".to_string())));
+        assert!(!is_tool_result_message(&Message::System(
+            "Tool x returned: y".to_string()
+        )));
     }
 
     #[test]
     fn is_tool_result_assistant() {
-        assert!(!is_tool_result_message(&Message::Assistant("Tool x returned: y".to_string())));
+        assert!(!is_tool_result_message(&Message::Assistant(
+            "Tool x returned: y".to_string()
+        )));
     }
 
     #[test]

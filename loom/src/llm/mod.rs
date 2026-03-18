@@ -145,11 +145,15 @@ pub trait LlmClient: Send + Sync {
         if let Some(tx) = chunk_tx {
             if let Some(ref reasoning_content) = response.reasoning_content {
                 if !reasoning_content.is_empty() {
-                    let _ = tx.send(MessageChunk::thinking(reasoning_content.clone())).await;
+                    let _ = tx
+                        .send(MessageChunk::thinking(reasoning_content.clone()))
+                        .await;
                 }
             }
             if !response.content.is_empty() {
-                let _ = tx.send(MessageChunk::message(response.content.clone())).await;
+                let _ = tx
+                    .send(MessageChunk::message(response.content.clone()))
+                    .await;
             }
         }
 

@@ -96,6 +96,7 @@ impl Tool for TodoWriteTool {
                 "properties": { "todos": { "type": "array" } },
                 "required": ["todos"]
             }),
+            output_hint: None,
         }
     }
 
@@ -285,27 +286,27 @@ mod tests {
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
-        
+
         let thread_id = "thread-789";
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
         let args = serde_json::json!({
             "todos": [{ "id": "1", "content": "Thread task", "status": "pending", "priority": "high" }]
         });
-        
+
         let ctx = ToolCallContext {
             thread_id: Some(thread_id.to_string()),
             ..Default::default()
         };
-        
+
         let out = tool.call(args, Some(&ctx)).await.unwrap();
         assert!(out.text.contains("1 todos"));
-        
+
         // Verify file is in thread-specific path
         let thread_path = crate::tools::todo::todo_file_path(Some(thread_id)).unwrap();
         assert!(thread_path.exists());
         assert!(thread_path.to_str().unwrap().contains("context"));
         assert!(thread_path.to_str().unwrap().contains(thread_id));
-        
+
         let raw = std::fs::read_to_string(&thread_path).unwrap();
         assert!(raw.contains("Thread task"));
     }

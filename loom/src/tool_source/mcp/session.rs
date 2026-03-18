@@ -5,7 +5,7 @@
 
 use std::time::{Duration, Instant};
 
-use crossbeam_channel::{RecvTimeoutError, unbounded};
+use crossbeam_channel::{unbounded, RecvTimeoutError};
 
 use mcp_client::stdio::{
     JsonRpcMessage, StdioClientTransport, StdioClientTransportError, StdioServerParameters,

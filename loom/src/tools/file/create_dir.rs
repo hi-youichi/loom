@@ -63,6 +63,7 @@ impl Tool for CreateDirTool {
                 },
                 "required": ["path"]
             }),
+            output_hint: None,
         }
     }
 

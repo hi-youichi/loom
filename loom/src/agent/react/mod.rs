@@ -36,7 +36,7 @@ pub use build::{
 pub use config::{GotRunnerConfig, ReactBuildConfig, TotRunnerConfig};
 pub use observe_node::ObserveNode;
 pub use runner::{
-    build_react_initial_state, run_agent, run_react_graph_stream, ReactRunner, AgentOptions,
+    build_react_initial_state, run_agent, run_react_graph_stream, AgentOptions, ReactRunner,
     RunError,
 };
 pub use think_node::ThinkNode;

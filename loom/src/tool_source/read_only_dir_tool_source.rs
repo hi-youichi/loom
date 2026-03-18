@@ -79,6 +79,7 @@ impl Tool for ReadOnlyListDirTool {
                 },
                 "required": ["path"]
             }),
+            output_hint: None,
         }
     }
 
@@ -135,6 +136,7 @@ impl Tool for ReadOnlyReadFileTool {
                 },
                 "required": ["path"]
             }),
+            output_hint: None,
         }
     }
 

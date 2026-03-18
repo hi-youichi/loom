@@ -370,7 +370,8 @@ mod tests {
     fn new_creates_table() {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("test.db");
-        let serializer: Arc<dyn Serializer<serde_json::Value>> = Arc::new(crate::memory::serializer::JsonSerializer);
+        let serializer: Arc<dyn Serializer<serde_json::Value>> =
+            Arc::new(crate::memory::serializer::JsonSerializer);
         let _saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
         assert!(db_path.exists());
     }
@@ -379,7 +380,8 @@ mod tests {
     async fn put_and_get_roundtrip() {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("rt.db");
-        let serializer: Arc<dyn Serializer<serde_json::Value>> = Arc::new(crate::memory::serializer::JsonSerializer);
+        let serializer: Arc<dyn Serializer<serde_json::Value>> =
+            Arc::new(crate::memory::serializer::JsonSerializer);
         let saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
 
         let config = RunnableConfig {
@@ -420,7 +422,8 @@ mod tests {
     async fn list_returns_checkpoints() {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("list.db");
-        let serializer = Arc::new(crate::memory::serializer::JsonSerializer) as Arc<dyn Serializer<serde_json::Value>>;
+        let serializer = Arc::new(crate::memory::serializer::JsonSerializer)
+            as Arc<dyn Serializer<serde_json::Value>>;
         let saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
 
         let config = RunnableConfig {
@@ -465,7 +468,8 @@ mod tests {
     async fn get_tuple_missing_thread_id() {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("no_tid.db");
-        let serializer = Arc::new(crate::memory::serializer::JsonSerializer) as Arc<dyn Serializer<serde_json::Value>>;
+        let serializer = Arc::new(crate::memory::serializer::JsonSerializer)
+            as Arc<dyn Serializer<serde_json::Value>>;
         let saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
         let config = RunnableConfig::default();
         let result = saver.get_tuple(&config).await;
@@ -476,7 +480,8 @@ mod tests {
     async fn get_tuple_not_found() {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("empty.db");
-        let serializer = Arc::new(crate::memory::serializer::JsonSerializer) as Arc<dyn Serializer<serde_json::Value>>;
+        let serializer = Arc::new(crate::memory::serializer::JsonSerializer)
+            as Arc<dyn Serializer<serde_json::Value>>;
         let saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
         let config = RunnableConfig {
             thread_id: Some("nonexistent".to_string()),

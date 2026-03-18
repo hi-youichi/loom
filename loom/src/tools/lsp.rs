@@ -47,6 +47,7 @@ impl Tool for LspTool {
                     "position": { "type": "object", "description": "Optional line/character." }
                 }
             }),
+            output_hint: None,
         }
     }
 

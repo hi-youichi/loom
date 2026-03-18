@@ -65,6 +65,7 @@ impl Tool for MultieditTool {
                 },
                 "required": ["path", "edits"]
             }),
+            output_hint: None,
         }
     }
 
@@ -212,7 +213,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let t = tool(&dir);
         let err = t
-            .call(json!({ "edits": [{ "oldString": "", "newString": "x" }] }), None)
+            .call(
+                json!({ "edits": [{ "oldString": "", "newString": "x" }] }),
+                None,
+            )
             .await
             .unwrap_err();
         assert!(matches!(err, ToolSourceError::InvalidInput(_)));
@@ -236,10 +240,7 @@ mod tests {
     async fn multiedit_call_missing_edits_returns_error() {
         let dir = tempfile::tempdir().unwrap();
         let t = tool(&dir);
-        let err = t
-            .call(json!({ "path": "f.txt" }), None)
-            .await
-            .unwrap_err();
+        let err = t.call(json!({ "path": "f.txt" }), None).await.unwrap_err();
         assert!(matches!(err, ToolSourceError::InvalidInput(_)));
     }
 
@@ -353,7 +354,10 @@ mod tests {
             .await
             .unwrap();
         assert!(result.text.contains("Created"));
-        assert_eq!(std::fs::read_to_string(dir.path().join("new.txt")).unwrap(), "hello");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("new.txt")).unwrap(),
+            "hello"
+        );
     }
 
     #[tokio::test]
@@ -429,7 +433,10 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, ToolSourceError::InvalidInput(_)));
-        assert_eq!(std::fs::read_to_string(dir.path().join("f.txt")).unwrap(), "original");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("f.txt")).unwrap(),
+            "original"
+        );
     }
 
     #[tokio::test]
@@ -451,6 +458,9 @@ mod tests {
             .await
             .unwrap();
         assert!(result.text.contains("Applied"));
-        assert_eq!(std::fs::read_to_string(dir.path().join("f.txt")).unwrap(), "A\nb\nC");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("f.txt")).unwrap(),
+            "A\nb\nC"
+        );
     }
 }

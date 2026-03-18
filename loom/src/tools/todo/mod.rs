@@ -16,7 +16,9 @@ const CONTEXT_DIR: &str = "context";
 /// Returns the path to the todo list file.
 /// - With thread_id: `~/.loom/context/{thread_id}/todo.json`
 /// - Without thread_id: `~/.loom/todo.json` (global fallback)
-pub fn todo_file_path(thread_id: Option<&str>) -> Result<std::path::PathBuf, crate::tool_source::ToolSourceError> {
+pub fn todo_file_path(
+    thread_id: Option<&str>,
+) -> Result<std::path::PathBuf, crate::tool_source::ToolSourceError> {
     let base = env_config::home::loom_home();
     match thread_id {
         Some(tid) => Ok(base.join(CONTEXT_DIR).join(tid).join(TODOS_FILENAME)),
@@ -58,7 +60,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
         let path = super::todo_file_path(Some("session-123")).unwrap();
-        assert_eq!(path, dir.path().join("context").join("session-123").join("todo.json"));
+        assert_eq!(
+            path,
+            dir.path()
+                .join("context")
+                .join("session-123")
+                .join("todo.json")
+        );
         std::env::remove_var("LOOM_HOME");
     }
 

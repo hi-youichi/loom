@@ -299,8 +299,7 @@ mod tests {
     #[test]
     fn test_runtime_debug() {
         let config = RunnableConfig::default();
-        let runtime: Runtime<String, String> =
-            Runtime::new(config).with_context("x".to_string());
+        let runtime: Runtime<String, String> = Runtime::new(config).with_context("x".to_string());
 
         let s = format!("{:?}", runtime);
         assert!(s.contains("Runtime"));

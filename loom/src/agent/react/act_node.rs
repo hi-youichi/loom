@@ -2,7 +2,7 @@
 //!
 //! ActNode holds a ToolSource (e.g. `Box<dyn ToolSource>`), implements `Node<ReActState>`.
 //! Run sets [`ToolCallContext`](ToolCallContext) via `set_call_context`, then
-//! calls `call_tool_with_context(name, args, None)` for each tool so implementations use the stored context.
+//! calls `call_tool_with_context(name, args, Some(&ctx))` for each tool so implementations use the stored context.
 //!
 //! # Error Handling
 //!
@@ -22,6 +22,7 @@
 
 use async_trait::async_trait;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{debug, trace, warn};
 
@@ -29,6 +30,9 @@ use crate::error::AgentError;
 use crate::graph::{GraphInterrupt, Interrupt, Next, Node, RunContext};
 use crate::helve::{tools_requiring_approval, ApprovalPolicy, APPROVAL_REQUIRED_EVENT_TYPE};
 use crate::llm::context_persistence;
+use crate::state::tool_output_normalizer::{
+    normalize_tool_output, NormalizationConfig, NormalizedToolOutput, ToolOutputHint,
+};
 use crate::state::{ReActState, ToolCall, ToolResult};
 use crate::stream::{StreamEvent, StreamMode, ToolStreamWriter};
 use crate::tool_source::{ToolCallContext, ToolSource, ToolSourceError};
@@ -44,6 +48,31 @@ fn truncate_for_log(s: &str, max_len: usize) -> String {
     } else {
         format!("{}...", s.chars().take(max_len).collect::<String>())
     }
+}
+
+fn truncate_for_display(s: &str, max_chars: usize) -> String {
+    if max_chars == 0 {
+        return String::new();
+    }
+    if s.chars().count() <= max_chars {
+        s.to_string()
+    } else {
+        let truncated: String = s.chars().take(max_chars).collect();
+        format!("{}...", truncated)
+    }
+}
+
+fn normalized_tool_result_payload(normalized: &NormalizedToolOutput) -> serde_json::Value {
+    serde_json::json!({
+        "strategy": normalized.strategy,
+        "truncated": normalized.truncated,
+        "raw_chars": normalized.raw_chars,
+        "observation_chars": normalized.observation_chars,
+        "raw_content": normalized.raw_content,
+        "observation_text": normalized.observation_text,
+        "display_text": normalized.display_text,
+        "storage_ref": normalized.storage_ref,
+    })
 }
 
 /// Parses ToolCall.arguments string to JSON Value. Logs a warning on parse failure.
@@ -178,6 +207,19 @@ impl ActNode {
             HandleToolErrors::Custom(handler) => Some(handler(error, tool_name, tool_args)),
         }
     }
+
+    async fn load_tool_output_hints(&self) -> HashMap<String, ToolOutputHint> {
+        match self.tools.list_tools().await {
+            Ok(specs) => specs
+                .into_iter()
+                .filter_map(|spec| spec.output_hint.map(|hint| (spec.name, hint)))
+                .collect(),
+            Err(error) => {
+                warn!(error = %error, "failed to load tool specs for output hints");
+                HashMap::new()
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -189,8 +231,10 @@ impl Node<ReActState> for ActNode {
     async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
         let ctx = ToolCallContext::new(state.messages.clone());
         self.tools.set_call_context(Some(ctx.clone()));
+        let tool_output_hints = self.load_tool_output_hints().await;
         let mut tool_results = Vec::with_capacity(state.tool_calls.len());
         let mut approval_result_consumed = false;
+        let mut used_observation_chars = 0usize;
 
         for tc in &state.tool_calls {
             let args: Value = parse_tool_arguments(&tc.arguments);
@@ -205,12 +249,22 @@ impl Node<ReActState> for ActNode {
                         ))));
                     }
                     Some(false) => {
-                        tool_results.push(ToolResult {
-                            call_id: tc.id.clone(),
-                            name: Some(tc.name.clone()),
-                            content: "User rejected.".to_string(),
-                            is_error: true,
-                        });
+                        let normalized = normalize_tool_output(
+                            &tc.name,
+                            &args,
+                            "User rejected.",
+                            true,
+                            tool_output_hints.get(&tc.name),
+                            NormalizationConfig::runtime_default()
+                                .with_used_observation_chars(used_observation_chars),
+                        );
+                        used_observation_chars += normalized.observation_chars;
+                        tool_results.push(
+                            ToolResult::from(normalized)
+                                .with_call_id(tc.id.clone())
+                                .with_name(Some(tc.name.clone()))
+                                .with_is_error(true),
+                        );
                         approval_result_consumed = true;
                         continue;
                     }
@@ -224,7 +278,7 @@ impl Node<ReActState> for ActNode {
 
             let result = self
                 .tools
-                .call_tool_with_context(&tc.name, args.clone(), None)
+                .call_tool_with_context(&tc.name, args.clone(), Some(&ctx))
                 .await;
 
             match result {
@@ -235,47 +289,75 @@ impl Node<ReActState> for ActNode {
                         result_preview = %truncate_for_log(&content.text, 200),
                         "Tool returned"
                     );
-                    context_persistence::save_tool_result(
+                    let normalized = normalize_tool_output(
+                        &tc.name,
+                        &args,
+                        &content.text,
+                        false,
+                        tool_output_hints.get(&tc.name),
+                        NormalizationConfig::runtime_default()
+                            .with_used_observation_chars(used_observation_chars),
+                    );
+                    used_observation_chars += normalized.observation_chars;
+
+                    context_persistence::save_tool_result_value(
                         "act",
                         None,
                         tc.id.as_deref(),
                         &tc.name,
-                        &content.text,
+                        normalized_tool_result_payload(&normalized),
                         false,
                     );
-                    tool_results.push(ToolResult {
-                        call_id: tc.id.clone(),
-                        name: Some(tc.name.clone()),
-                        content: content.text,
-                        is_error: false,
-                    });
+
+                    tool_results.push(
+                        ToolResult::from(normalized)
+                            .with_call_id(tc.id.clone())
+                            .with_name(Some(tc.name.clone())),
+                    );
                 }
                 Err(e) => {
                     warn!(tool = %tc.name, error = %e, "Tool call failed");
-                    context_persistence::save_tool_result(
+                    let error_text = if let Some(error_msg) = self.handle_error(&e, &tc.name, &args)
+                    {
+                        error_msg
+                    } else {
+                        self.tools.set_call_context(None);
+                        return Err(AgentError::ExecutionFailed(e.to_string()));
+                    };
+
+                    // Use unified tool output normalization for errors
+                    let normalized = normalize_tool_output(
+                        &tc.name,
+                        &args,
+                        &error_text,
+                        true,
+                        tool_output_hints.get(&tc.name),
+                        NormalizationConfig::runtime_default()
+                            .with_used_observation_chars(used_observation_chars),
+                    );
+                    used_observation_chars += normalized.observation_chars;
+
+                    context_persistence::save_tool_result_value(
                         "act",
                         None,
                         tc.id.as_deref(),
                         &tc.name,
-                        &e.to_string(),
+                        normalized_tool_result_payload(&normalized),
                         true,
                     );
-                    if let Some(error_msg) = self.handle_error(&e, &tc.name, &args) {
-                        tool_results.push(ToolResult {
-                            call_id: tc.id.clone(),
-                            name: Some(tc.name.clone()),
-                            content: error_msg,
-                            is_error: true,
-                        });
-                    } else {
-                        self.tools.set_call_context(None);
-                        return Err(AgentError::ExecutionFailed(e.to_string()));
-                    }
+
+                    tool_results.push(
+                        ToolResult::from(normalized)
+                            .with_call_id(tc.id.clone())
+                            .with_name(tc.name.clone())
+                            .with_is_error(true),
+                    );
                 }
             }
         }
 
         self.tools.set_call_context(None);
+
         let new_state = ReActState {
             messages: state.messages,
             last_reasoning_content: state.last_reasoning_content,
@@ -301,6 +383,8 @@ impl Node<ReActState> for ActNode {
     ) -> Result<(ReActState, Next), AgentError> {
         let tools_mode = run_ctx.stream_mode.contains(&StreamMode::Tools)
             || run_ctx.stream_mode.contains(&StreamMode::Debug);
+        let display_limit = NormalizationConfig::default().display_limit;
+        let tool_output_hints = self.load_tool_output_hints().await;
 
         let base_custom_writer = if run_ctx.stream_mode.contains(&StreamMode::Custom) || tools_mode
         {
@@ -316,6 +400,7 @@ impl Node<ReActState> for ActNode {
 
         let mut tool_results = Vec::with_capacity(state.tool_calls.len());
         let mut approval_result_consumed = false;
+        let mut used_observation_chars = 0usize;
 
         for tc in &state.tool_calls {
             let args: Value = parse_tool_arguments(&tc.arguments);
@@ -344,12 +429,23 @@ impl Node<ReActState> for ActNode {
                         ))));
                     }
                     Some(false) => {
-                        tool_results.push(ToolResult {
-                            call_id: tc.id.clone(),
-                            name: Some(tc.name.clone()),
-                            content: "User rejected.".to_string(),
-                            is_error: true,
-                        });
+                        let normalized = normalize_tool_output(
+                            &tc.name,
+                            &args,
+                            "User rejected.",
+                            true,
+                            tool_output_hints.get(&tc.name),
+                            NormalizationConfig::runtime_default()
+                                .with_used_observation_chars(used_observation_chars),
+                        );
+                        let summary = truncate_for_log(&normalized.display_text, 200);
+                        used_observation_chars += normalized.observation_chars;
+                        tool_results.push(
+                            ToolResult::from(normalized)
+                                .with_call_id(tc.id.clone())
+                                .with_name(Some(tc.name.clone()))
+                                .with_is_error(true),
+                        );
                         approval_result_consumed = true;
                         if tools_mode {
                             if let Some(tx) = &run_ctx.stream_tx {
@@ -357,7 +453,7 @@ impl Node<ReActState> for ActNode {
                                     .send(StreamEvent::ToolEnd {
                                         call_id: tc.id.clone(),
                                         name: tc.name.clone(),
-                                        result: "User rejected.".to_string(),
+                                        result: summary.clone(),
                                         is_error: true,
                                     })
                                     .await;
@@ -366,7 +462,7 @@ impl Node<ReActState> for ActNode {
                             let payload = step_progress_payload(
                                 &tc.name,
                                 tc.id.as_deref().unwrap_or(""),
-                                "User rejected.",
+                                &summary,
                             );
                             let _ = run_ctx.emit_custom(payload).await;
                         }
@@ -378,7 +474,6 @@ impl Node<ReActState> for ActNode {
                 }
             }
 
-            // Build per-tool writer with output_fn bound to this tool's call_id/name
             let per_tool_writer = if tools_mode {
                 if let Some(tx) = &run_ctx.stream_tx {
                     let out_tx = tx.clone();
@@ -386,15 +481,15 @@ impl Node<ReActState> for ActNode {
                     let out_name = tc.name.clone();
                     ToolStreamWriter::new_with_output(
                         {
-                            let efn = base_custom_writer.emit_fn_clone();
-                            move |v| efn(v)
+                            let emit_custom = base_custom_writer.emit_fn_clone();
+                            move |value| emit_custom(value)
                         },
                         move |content| {
                             out_tx
                                 .try_send(StreamEvent::ToolOutput {
                                     call_id: out_call_id.clone(),
                                     name: out_name.clone(),
-                                    content,
+                                    content: truncate_for_display(&content, display_limit),
                                 })
                                 .is_ok()
                         },
@@ -406,16 +501,15 @@ impl Node<ReActState> for ActNode {
                 base_custom_writer.clone()
             };
 
-            let ctx = ToolCallContext {
+            let tool_ctx = ToolCallContext {
                 recent_messages: state.messages.clone(),
                 stream_writer: Some(per_tool_writer),
                 thread_id: run_ctx.config.thread_id.clone(),
                 user_id: run_ctx.config.user_id.clone(),
                 depth: run_ctx.config.depth.unwrap_or(0),
             };
-            self.tools.set_call_context(Some(ctx));
+            self.tools.set_call_context(Some(tool_ctx.clone()));
 
-            // Emit tool_start
             if tools_mode {
                 if let Some(tx) = &run_ctx.stream_tx {
                     let _ = tx
@@ -431,7 +525,7 @@ impl Node<ReActState> for ActNode {
 
             let result = self
                 .tools
-                .call_tool_with_context(&tc.name, args.clone(), None)
+                .call_tool_with_context(&tc.name, args.clone(), Some(&tool_ctx))
                 .await;
 
             match result {
@@ -442,28 +536,40 @@ impl Node<ReActState> for ActNode {
                         result_preview = %truncate_for_log(&content.text, 200),
                         "Tool returned"
                     );
-                    let summary = truncate_for_log(&content.text, 200);
-                    context_persistence::save_tool_result(
+                    let normalized = normalize_tool_output(
+                        &tc.name,
+                        &args,
+                        &content.text,
+                        false,
+                        tool_output_hints.get(&tc.name),
+                        NormalizationConfig::runtime_default()
+                            .with_used_observation_chars(used_observation_chars),
+                    );
+                    let summary = truncate_for_log(&normalized.display_text, 200);
+                    used_observation_chars += normalized.observation_chars;
+
+                    context_persistence::save_tool_result_value(
                         "act",
                         run_ctx.config.thread_id.as_deref(),
                         tc.id.as_deref(),
                         &tc.name,
-                        &content.text,
+                        normalized_tool_result_payload(&normalized),
                         false,
                     );
-                    tool_results.push(ToolResult {
-                        call_id: tc.id.clone(),
-                        name: Some(tc.name.clone()),
-                        content: content.text,
-                        is_error: false,
-                    });
+
+                    tool_results.push(
+                        ToolResult::from(normalized)
+                            .with_call_id(tc.id.clone())
+                            .with_name(Some(tc.name.clone())),
+                    );
+
                     if tools_mode {
                         if let Some(tx) = &run_ctx.stream_tx {
                             let _ = tx
                                 .send(StreamEvent::ToolEnd {
                                     call_id: tc.id.clone(),
                                     name: tc.name.clone(),
-                                    result: summary.to_string(),
+                                    result: summary.clone(),
                                     is_error: false,
                                 })
                                 .await;
@@ -476,41 +582,57 @@ impl Node<ReActState> for ActNode {
                 }
                 Err(e) => {
                     warn!(tool = %tc.name, error = %e, "Tool call failed");
-                    context_persistence::save_tool_result(
+                    let error_text = if let Some(error_msg) = self.handle_error(&e, &tc.name, &args)
+                    {
+                        error_msg
+                    } else {
+                        self.tools.set_call_context(None);
+                        return Err(AgentError::ExecutionFailed(e.to_string()));
+                    };
+
+                    let normalized = normalize_tool_output(
+                        &tc.name,
+                        &args,
+                        &error_text,
+                        true,
+                        tool_output_hints.get(&tc.name),
+                        NormalizationConfig::runtime_default()
+                            .with_used_observation_chars(used_observation_chars),
+                    );
+                    let summary = truncate_for_log(&normalized.display_text, 200);
+                    used_observation_chars += normalized.observation_chars;
+
+                    context_persistence::save_tool_result_value(
                         "act",
                         run_ctx.config.thread_id.as_deref(),
                         tc.id.as_deref(),
                         &tc.name,
-                        &e.to_string(),
+                        normalized_tool_result_payload(&normalized),
                         true,
                     );
-                    if let Some(error_msg) = self.handle_error(&e, &tc.name, &args) {
-                        let summary = truncate_for_log(&error_msg, 200);
-                        tool_results.push(ToolResult {
-                            call_id: tc.id.clone(),
-                            name: Some(tc.name.clone()),
-                            content: error_msg,
-                            is_error: true,
-                        });
-                        if tools_mode {
-                            if let Some(tx) = &run_ctx.stream_tx {
-                                let _ = tx
-                                    .send(StreamEvent::ToolEnd {
-                                        call_id: tc.id.clone(),
-                                        name: tc.name.clone(),
-                                        result: summary.to_string(),
-                                        is_error: true,
-                                    })
-                                    .await;
-                            }
-                        } else {
-                            let call_id = tc.id.as_deref().unwrap_or("");
-                            let payload = step_progress_payload(&tc.name, call_id, &summary);
-                            let _ = run_ctx.emit_custom(payload).await;
+
+                    tool_results.push(
+                        ToolResult::from(normalized)
+                            .with_call_id(tc.id.clone())
+                            .with_name(Some(tc.name.clone()))
+                            .with_is_error(true),
+                    );
+
+                    if tools_mode {
+                        if let Some(tx) = &run_ctx.stream_tx {
+                            let _ = tx
+                                .send(StreamEvent::ToolEnd {
+                                    call_id: tc.id.clone(),
+                                    name: tc.name.clone(),
+                                    result: summary.clone(),
+                                    is_error: true,
+                                })
+                                .await;
                         }
                     } else {
-                        self.tools.set_call_context(None);
-                        return Err(AgentError::ExecutionFailed(e.to_string()));
+                        let call_id = tc.id.as_deref().unwrap_or("");
+                        let payload = step_progress_payload(&tc.name, call_id, &summary);
+                        let _ = run_ctx.emit_custom(payload).await;
                     }
                 }
             }
@@ -614,7 +736,9 @@ mod tests {
         use crate::tool_source::MockToolSource;
         let node = ActNode::new(Box::new(MockToolSource::default()));
         let err = ToolSourceError::InvalidInput("test".to_string());
-        assert!(node.handle_error(&err, "bash", &serde_json::json!({})).is_none());
+        assert!(node
+            .handle_error(&err, "bash", &serde_json::json!({}))
+            .is_none());
     }
 
     #[test]
@@ -623,7 +747,9 @@ mod tests {
         let node = ActNode::new(Box::new(MockToolSource::default()))
             .with_handle_tool_errors(HandleToolErrors::Always(None));
         let err = ToolSourceError::InvalidInput("bad input".to_string());
-        let msg = node.handle_error(&err, "bash", &serde_json::json!({"cmd": "ls"})).unwrap();
+        let msg = node
+            .handle_error(&err, "bash", &serde_json::json!({"cmd": "ls"}))
+            .unwrap();
         assert!(msg.contains("bash"));
         assert!(msg.contains("bad input"));
     }
@@ -634,7 +760,9 @@ mod tests {
         let node = ActNode::new(Box::new(MockToolSource::default()))
             .with_handle_tool_errors(HandleToolErrors::Always(Some("custom error".to_string())));
         let err = ToolSourceError::InvalidInput("test".to_string());
-        let msg = node.handle_error(&err, "bash", &serde_json::json!({})).unwrap();
+        let msg = node
+            .handle_error(&err, "bash", &serde_json::json!({}))
+            .unwrap();
         assert_eq!(msg, "custom error");
     }
 
@@ -645,7 +773,9 @@ mod tests {
         let node = ActNode::new(Box::new(MockToolSource::default()))
             .with_handle_tool_errors(HandleToolErrors::Custom(handler));
         let err = ToolSourceError::InvalidInput("test".to_string());
-        let msg = node.handle_error(&err, "bash", &serde_json::json!({})).unwrap();
+        let msg = node
+            .handle_error(&err, "bash", &serde_json::json!({}))
+            .unwrap();
         assert!(msg.contains("bash"));
     }
 

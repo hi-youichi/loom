@@ -907,7 +907,10 @@ mod tests {
             .await
             .unwrap();
 
-        let hits = store.search_simple(&ns, Some("hello"), Some(5)).await.unwrap();
+        let hits = store
+            .search_simple(&ns, Some("hello"), Some(5))
+            .await
+            .unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].key, "key1");
 

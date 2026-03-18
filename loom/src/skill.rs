@@ -192,7 +192,11 @@ impl SkillRegistry {
     /// Adds agent-scoped skills from the given directory. These are private to the agent
     /// whose profile directory contains them. Same-name dedup still applies (first wins).
     pub fn add_agent_skills(&mut self, dir: &Path) {
-        let mut seen: HashSet<String> = self.skills.iter().map(|e| e.metadata.name.clone()).collect();
+        let mut seen: HashSet<String> = self
+            .skills
+            .iter()
+            .map(|e| e.metadata.name.clone())
+            .collect();
         for entry in scan_skills_dir(dir, SkillSource::Agent) {
             if seen.insert(entry.metadata.name.clone()) {
                 self.skills.push(entry);
@@ -202,11 +206,7 @@ impl SkillRegistry {
 
     /// Applies enabled/disabled filters. If enabled is non-empty, only those names are kept;
     /// then any in disabled are removed.
-    pub fn apply_filters(
-        &mut self,
-        enabled: Option<&[String]>,
-        disabled: Option<&[String]>,
-    ) {
+    pub fn apply_filters(&mut self, enabled: Option<&[String]>, disabled: Option<&[String]>) {
         if let Some(en) = enabled {
             if !en.is_empty() {
                 let set: HashSet<_> = en.iter().cloned().collect();
@@ -256,7 +256,12 @@ impl SkillRegistry {
             .map_err(|e| SkillError::ReadFailed(entry.skill_file.clone(), e))?;
         let (_, body) = parse_skill_front_matter(&content);
         let mut out = body;
-        if entry.skill_file.file_name().map(|f| f == SKILL_MD).unwrap_or(false) {
+        if entry
+            .skill_file
+            .file_name()
+            .map(|f| f == SKILL_MD)
+            .unwrap_or(false)
+        {
             if let Ok(rd) = std::fs::read_dir(&entry.base_path) {
                 let others: Vec<String> = rd
                     .flatten()
@@ -457,7 +462,11 @@ mod tests {
         }
 
         assert_eq!(registry.list().len(), 2);
-        let names: Vec<&str> = registry.list().iter().map(|e| e.metadata.name.as_str()).collect();
+        let names: Vec<&str> = registry
+            .list()
+            .iter()
+            .map(|e| e.metadata.name.as_str())
+            .collect();
         assert!(names.contains(&"proj-skill"));
         assert!(names.contains(&"user-skill"));
     }
@@ -546,7 +555,11 @@ mod tests {
         }
 
         registry.apply_filters(Some(&["alpha".to_string(), "beta".to_string()]), None);
-        let names: Vec<&str> = registry.list().iter().map(|e| e.metadata.name.as_str()).collect();
+        let names: Vec<&str> = registry
+            .list()
+            .iter()
+            .map(|e| e.metadata.name.as_str())
+            .collect();
         assert!(names.contains(&"alpha"));
         assert!(names.contains(&"beta"));
         assert!(!names.contains(&"gamma"));
@@ -576,7 +589,11 @@ mod tests {
         }
 
         registry.apply_filters(None, Some(&["b".to_string()]));
-        let names: Vec<&str> = registry.list().iter().map(|e| e.metadata.name.as_str()).collect();
+        let names: Vec<&str> = registry
+            .list()
+            .iter()
+            .map(|e| e.metadata.name.as_str())
+            .collect();
         assert!(names.contains(&"a"));
         assert!(!names.contains(&"b"));
         assert!(names.contains(&"c"));

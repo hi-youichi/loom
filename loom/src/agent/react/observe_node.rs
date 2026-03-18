@@ -62,10 +62,21 @@ impl Node<ReActState> for ObserveNode {
                 .or(tr.call_id.as_deref())
                 .unwrap_or("tool");
             let label = if tr.is_error { "error" } else { "result" };
-            messages.push(Message::User(format!(
-                "Tool {} {label}:\n{}",
-                name, tr.content
-            )));
+
+            // Observe only consumes the normalized observation view.
+            let observation = tr.observation();
+
+            let mut msg = format!("Tool {} {}:\n{}", name, label, observation);
+
+            // Add storage reference hint if available
+            if let Some(ref storage_ref) = tr.storage_ref {
+                msg.push_str(&format!(
+                    "\n\nFull output saved to: {}",
+                    storage_ref.path.display()
+                ));
+            }
+
+            messages.push(Message::User(msg));
         }
         let next_turn = state.turn_count.saturating_add(1);
         let new_state = ReActState {

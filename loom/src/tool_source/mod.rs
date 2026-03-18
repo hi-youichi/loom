@@ -56,6 +56,8 @@ use async_trait::async_trait;
 use serde_json::Value;
 use thiserror::Error;
 
+use crate::state::tool_output_normalizer::{ToolOutputHint, ToolOutputStrategy};
+
 /// Tool specification, aligned with MCP `tools/list` result item.
 ///
 /// Used by ReAct/Think to build tool descriptions for the LLM.
@@ -71,6 +73,36 @@ pub struct ToolSpec {
     pub description: Option<String>,
     /// JSON Schema for arguments (MCP inputSchema).
     pub input_schema: Value,
+    /// Optional output normalization hint used by the unified tool output controller.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_hint: Option<ToolOutputHint>,
+}
+
+impl ToolSpec {
+    pub fn with_output_hint(mut self, output_hint: ToolOutputHint) -> Self {
+        self.output_hint = Some(output_hint);
+        self
+    }
+}
+
+impl ToolOutputHint {
+    pub fn preferred(preferred_strategy: ToolOutputStrategy) -> Self {
+        Self {
+            preferred_strategy: Some(preferred_strategy),
+            safe_inline_chars: None,
+            prefer_head_tail: false,
+        }
+    }
+
+    pub fn safe_inline_chars(mut self, safe_inline_chars: usize) -> Self {
+        self.safe_inline_chars = Some(safe_inline_chars);
+        self
+    }
+
+    pub fn prefer_head_tail(mut self) -> Self {
+        self.prefer_head_tail = true;
+        self
+    }
 }
 
 /// Result of a single tool call; aligns with MCP `tools/call` content.
@@ -131,6 +163,7 @@ mod tests {
             name: "get_time".into(),
             description: Some("Get time".into()),
             input_schema: serde_json::json!({}),
+            output_hint: None,
         };
         assert_eq!(spec.name, "get_time");
         let _ = spec.clone();

@@ -16,6 +16,7 @@ use tokio::task;
 use mcp_core::ResultMessage;
 
 use crate::tool_source::{ToolCallContent, ToolSource, ToolSourceError, ToolSpec};
+use crate::{ToolOutputHint, ToolOutputStrategy};
 
 pub use session::{McpSession, McpSessionError};
 pub use session_http::McpHttpSession;
@@ -175,6 +176,9 @@ fn parse_list_tools_result(result: ResultMessage) -> Result<Vec<ToolSpec>, ToolS
             name,
             description,
             input_schema,
+            output_hint: Some(ToolOutputHint::preferred(
+                ToolOutputStrategy::FileRefWithExcerpt,
+            )),
         });
     }
     Ok(specs)

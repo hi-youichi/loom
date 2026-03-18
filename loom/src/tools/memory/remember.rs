@@ -93,6 +93,7 @@ impl Tool for RememberTool {
                 },
                 "required": ["key", "value"]
             }),
+            output_hint: None,
         }
     }
 

@@ -166,6 +166,7 @@ impl Tool for ApplyPatchTool {
                 },
                 "required": ["patchText"]
             }),
+            output_hint: None,
         }
     }
 
@@ -340,12 +341,22 @@ mod tests {
         let hunks = parse_patch(patch).unwrap();
         assert_eq!(hunks.len(), 1);
         match &hunks[0] {
-            Hunk::Update { path, move_path, chunks } => {
+            Hunk::Update {
+                path,
+                move_path,
+                chunks,
+            } => {
                 assert_eq!(path, "main.rs");
                 assert!(move_path.is_none());
                 assert_eq!(chunks.len(), 1);
-                assert_eq!(chunks[0].old_lines, vec!["fn main() {", "    println!(\"old\");", "}"]);
-                assert_eq!(chunks[0].new_lines, vec!["fn main() {", "    println!(\"new\");", "}"]);
+                assert_eq!(
+                    chunks[0].old_lines,
+                    vec!["fn main() {", "    println!(\"old\");", "}"]
+                );
+                assert_eq!(
+                    chunks[0].new_lines,
+                    vec!["fn main() {", "    println!(\"new\");", "}"]
+                );
             }
             _ => panic!("expected Update hunk"),
         }
@@ -363,7 +374,9 @@ mod tests {
         let hunks = parse_patch(patch).unwrap();
         assert_eq!(hunks.len(), 1);
         match &hunks[0] {
-            Hunk::Update { path, move_path, .. } => {
+            Hunk::Update {
+                path, move_path, ..
+            } => {
                 assert_eq!(path, "a.rs");
                 assert_eq!(move_path.as_deref(), Some("b.rs"));
             }
@@ -444,7 +457,9 @@ mod tests {
     async fn tool_call_empty_patch() {
         let dir = tempfile::tempdir().unwrap();
         let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
-        let result = tool.call(json!({"patchText": "*** Begin Patch\n*** End Patch"}), None).await;
+        let result = tool
+            .call(json!({"patchText": "*** Begin Patch\n*** End Patch"}), None)
+            .await;
         assert!(result.is_err());
     }
 
@@ -455,7 +470,10 @@ mod tests {
         let patch = "*** Begin Patch\n*** Add File: hello.txt\n+hello world\n*** End Patch";
         let result = tool.call(json!({"patchText": patch}), None).await.unwrap();
         assert!(result.text.contains("1 hunk"));
-        assert_eq!(std::fs::read_to_string(dir.path().join("hello.txt")).unwrap(), "hello world");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("hello.txt")).unwrap(),
+            "hello world"
+        );
     }
 
     #[tokio::test]
@@ -519,7 +537,10 @@ mod tests {
         assert!(result.text.contains("1 hunk"));
         assert!(!dir.path().join("a.txt").exists());
         assert!(dir.path().join("b.txt").exists());
-        assert_eq!(std::fs::read_to_string(dir.path().join("b.txt")).unwrap(), "new line");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("b.txt")).unwrap(),
+            "new line"
+        );
     }
 
     #[tokio::test]
@@ -555,7 +576,11 @@ mod tests {
         let spec = tool.spec();
         assert_eq!(spec.name, "apply_patch");
         assert!(spec.description.unwrap().contains("patch"));
-        assert!(spec.input_schema["required"].as_array().unwrap().iter().any(|v| v == "patchText"));
+        assert!(spec.input_schema["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v == "patchText"));
     }
 
     #[tokio::test]

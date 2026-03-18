@@ -91,6 +91,7 @@ impl Tool for ListMemoriesTool {
                 "type": "object",
                 "properties": {}
             }),
+            output_hint: None,
         }
     }
 

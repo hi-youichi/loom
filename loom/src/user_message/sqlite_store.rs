@@ -133,7 +133,10 @@ mod tests {
         let file = NamedTempFile::new().unwrap();
         let store = SqliteUserMessageStore::new(file.path()).unwrap();
         store.append("t1", &Message::user("hi")).await.unwrap();
-        store.append("t1", &Message::assistant("hello")).await.unwrap();
+        store
+            .append("t1", &Message::assistant("hello"))
+            .await
+            .unwrap();
         store.append("t1", &Message::user("bye")).await.unwrap();
         let msgs = store.list("t1", None, Some(10)).await.unwrap();
         assert_eq!(msgs.len(), 3);
@@ -156,7 +159,10 @@ mod tests {
         let file = NamedTempFile::new().unwrap();
         let store = SqliteUserMessageStore::new(file.path()).unwrap();
         for i in 0..5 {
-            store.append("t2", &Message::user(format!("m{}", i))).await.unwrap();
+            store
+                .append("t2", &Message::user(format!("m{}", i)))
+                .await
+                .unwrap();
         }
         let page1 = store.list("t2", None, Some(2)).await.unwrap();
         assert_eq!(page1.len(), 2);

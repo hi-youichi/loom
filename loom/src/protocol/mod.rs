@@ -473,7 +473,9 @@ mod tests {
     fn response_tool_show_roundtrip() {
         let resp = ServerResponse::ToolShow(ToolShowResponse {
             id: "req-show".to_string(),
-            tool: Some(serde_json::json!({"name":"read","description":"Read file","input_schema":{"type":"object"}})),
+            tool: Some(
+                serde_json::json!({"name":"read","description":"Read file","input_schema":{"type":"object"}}),
+            ),
             tool_yaml: None,
         });
         let json = serde_json::to_string(&resp).unwrap();
@@ -504,7 +506,10 @@ mod tests {
         if let ServerResponse::ToolShow(r) = parsed {
             assert_eq!(r.id, "req-show-yaml");
             assert!(r.tool.is_none());
-            assert_eq!(r.tool_yaml.as_deref(), Some("name: read\ndescription: Read file\n"));
+            assert_eq!(
+                r.tool_yaml.as_deref(),
+                Some("name: read\ndescription: Read file\n")
+            );
         } else {
             panic!("expected ToolShow");
         }

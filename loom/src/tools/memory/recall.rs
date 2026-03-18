@@ -91,6 +91,7 @@ impl Tool for RecallTool {
                 },
                 "required": ["key"]
             }),
+            output_hint: None,
         }
     }
 

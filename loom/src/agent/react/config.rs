@@ -107,11 +107,15 @@ impl ReactBuildConfig {
             mcp_remote_args: std::env::var("MCP_REMOTE_ARGS")
                 .unwrap_or_else(|_| "-y mcp-remote".to_string()),
             github_token: std::env::var("GITHUB_TOKEN").ok(),
-            mcp_github_cmd: std::env::var("MCP_GITHUB_CMD")
-                .unwrap_or_else(|_| "npx".to_string()),
+            mcp_github_cmd: std::env::var("MCP_GITHUB_CMD").unwrap_or_else(|_| "npx".to_string()),
             mcp_github_args: std::env::var("MCP_GITHUB_ARGS")
                 .map(|s| s.split_whitespace().map(String::from).collect())
-                .unwrap_or_else(|_| vec!["-y".to_string(), "@modelcontextprotocol/server-github".to_string()]),
+                .unwrap_or_else(|_| {
+                    vec![
+                        "-y".to_string(),
+                        "@modelcontextprotocol/server-github".to_string(),
+                    ]
+                }),
             mcp_github_url: std::env::var("MCP_GITHUB_URL").ok(),
             mcp_verbose,
             openai_api_key: std::env::var("OPENAI_API_KEY").ok(),
@@ -220,13 +224,17 @@ mod tests {
         });
 
         // 4) MCP_GITHUB_URL: when set, mcp_github_url is Some
-        with_env("MCP_GITHUB_URL", Some("https://api.githubcopilot.com/mcp/"), || {
-            let config = ReactBuildConfig::from_env();
-            assert_eq!(
-                config.mcp_github_url.as_deref(),
-                Some("https://api.githubcopilot.com/mcp/")
-            );
-        });
+        with_env(
+            "MCP_GITHUB_URL",
+            Some("https://api.githubcopilot.com/mcp/"),
+            || {
+                let config = ReactBuildConfig::from_env();
+                assert_eq!(
+                    config.mcp_github_url.as_deref(),
+                    Some("https://api.githubcopilot.com/mcp/")
+                );
+            },
+        );
         with_env("MCP_GITHUB_URL", None, || {
             let config = ReactBuildConfig::from_env();
             assert!(config.mcp_github_url.is_none());

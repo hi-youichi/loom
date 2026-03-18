@@ -803,7 +803,9 @@ mod tests {
         };
         let results = store.search(&ns, options).await.unwrap();
         assert_eq!(results.len(), 2);
-        assert!(results.iter().all(|r| r.item.value.get("status") == Some(&json!("active"))));
+        assert!(results
+            .iter()
+            .all(|r| r.item.value.get("status") == Some(&json!("active"))));
     }
 
     /// **Scenario**: Search with filter Ne excludes items.
@@ -812,14 +814,8 @@ mod tests {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["items".into()];
 
-        store
-            .put(&ns, "a", &json!({"x": 1}))
-            .await
-            .unwrap();
-        store
-            .put(&ns, "b", &json!({"x": 2}))
-            .await
-            .unwrap();
+        store.put(&ns, "a", &json!({"x": 1})).await.unwrap();
+        store.put(&ns, "b", &json!({"x": 2})).await.unwrap();
 
         let mut filter = HashMap::new();
         filter.insert("x".to_string(), FilterOp::Ne(json!(1)));
@@ -918,10 +914,7 @@ mod tests {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["items".into()];
 
-        store
-            .put(&ns, "a", &json!({"other": 1}))
-            .await
-            .unwrap();
+        store.put(&ns, "a", &json!({"other": 1})).await.unwrap();
 
         let mut filter = HashMap::new();
         filter.insert("missing".to_string(), FilterOp::Eq(json!(1)));
@@ -941,15 +934,27 @@ mod tests {
         let store = InMemoryStore::new();
 
         store
-            .put(&vec!["users".into(), "u1".into(), "memories".into()], "k1", &json!(1))
+            .put(
+                &vec!["users".into(), "u1".into(), "memories".into()],
+                "k1",
+                &json!(1),
+            )
             .await
             .unwrap();
         store
-            .put(&vec!["users".into(), "u2".into(), "memories".into()], "k2", &json!(2))
+            .put(
+                &vec!["users".into(), "u2".into(), "memories".into()],
+                "k2",
+                &json!(2),
+            )
             .await
             .unwrap();
         store
-            .put(&vec!["users".into(), "u1".into(), "prefs".into()], "k3", &json!(3))
+            .put(
+                &vec!["users".into(), "u1".into(), "prefs".into()],
+                "k3",
+                &json!(3),
+            )
             .await
             .unwrap();
 
@@ -1021,10 +1026,16 @@ mod tests {
             .await
             .unwrap();
 
-        let hits = store.search_simple(&ns, Some("hello"), Some(5)).await.unwrap();
+        let hits = store
+            .search_simple(&ns, Some("hello"), Some(5))
+            .await
+            .unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].key, "k1");
-        assert_eq!(hits[0].value.get("text").and_then(|v| v.as_str()), Some("hello"));
+        assert_eq!(
+            hits[0].value.get("text").and_then(|v| v.as_str()),
+            Some("hello")
+        );
 
         let hits_none_limit = store.search_simple(&ns, None, None).await.unwrap();
         assert_eq!(hits_none_limit.len(), 2);
@@ -1034,7 +1045,10 @@ mod tests {
     #[tokio::test]
     async fn batch_list_namespaces() {
         let store = InMemoryStore::new();
-        store.put(&vec!["ns1".into()], "k1", &json!(1)).await.unwrap();
+        store
+            .put(&vec!["ns1".into()], "k1", &json!(1))
+            .await
+            .unwrap();
 
         let ops = vec![StoreOp::ListNamespaces {
             options: ListNamespacesOptions::new(),

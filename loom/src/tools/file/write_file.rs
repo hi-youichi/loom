@@ -66,6 +66,7 @@ impl Tool for WriteFileTool {
                 },
                 "required": ["path", "content"]
             }),
+            output_hint: None,
         }
     }
 
