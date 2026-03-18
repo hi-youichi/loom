@@ -5,11 +5,21 @@ type ChatReply = {
 type SendMessageOptions = {
   threadId?: string
   onChunk?: (chunk: string) => void
+  onEvent?: (event: LoomStreamEvent) => void
 }
 
 type LoomStreamEvent = {
   type: string
   content?: string
+  id?: string
+  name?: string
+  message?: string
+  result?: unknown
+  error?: string
+  prompt_tokens?: number
+  completion_tokens?: number
+  total_tokens?: number
+  [key: string]: unknown
 }
 
 type LoomRunStreamEventResponse = {
@@ -151,6 +161,8 @@ export function sendMessage(
         if (message.id !== runId) {
           return
         }
+
+        options.onEvent?.(message.event)
 
         if (message.event.type === 'message_chunk' && message.event.content) {
           streamedReply += message.event.content
