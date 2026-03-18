@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import type { WebSocketStatus } from '../../types/ui/message'
+import type { WebSocketStatus } from '../../types/protocol/loom'
 
 interface ConnectionStatusProps {
   status: WebSocketStatus
@@ -10,6 +10,10 @@ export const ConnectionStatus = memo(function ConnectionStatus({
   status,
   className = '',
 }: ConnectionStatusProps) {
+  if (status === 'connected') {
+    return null
+  }
+
   const statusConfig = {
     connecting: {
       label: '连接中',

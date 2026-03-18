@@ -10,6 +10,7 @@ export function ChatPage() {
   const {
     messages,
     isStreaming,
+    thinkingLines,
     connectionStatus,
     error,
     sendMessage,
@@ -36,7 +37,9 @@ export function ChatPage() {
         
         <MessageList messages={messages} />
         
-        <ThinkIndicator lines={[]} active={isStreaming} />
+        {thinkingLines.length > 0 ? (
+          <ThinkIndicator lines={thinkingLines} active={isStreaming} />
+        ) : null}
         
         <MessageComposer
           disabled={isStreaming || connectionStatus !== 'connected'}

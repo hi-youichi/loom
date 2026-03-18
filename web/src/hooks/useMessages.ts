@@ -72,7 +72,11 @@ export function useMessages() {
           ...msg,
           content: msg.content.map(block => {
             if (!('id' in block) || block.id !== blockId) return block
-            return { ...block, ...updates }
+
+            return {
+              ...block,
+              ...(updates as Partial<Extract<UIMessageContent, { type: 'tool' }>>),
+            }
           })
         }
       })

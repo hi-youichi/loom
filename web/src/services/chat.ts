@@ -1,50 +1,20 @@
-type ChatReply = {
-  content: string
-}
+import type {
+  ChatReply,
+  LoomServerMessage,
+  LoomStreamEvent,
+} from '../types/protocol/loom'
+import {
+  isError,
+  isMessageChunkEvent,
+  isRunEnd,
+  isRunStreamEvent,
+} from '../types/protocol/loom'
 
 type SendMessageOptions = {
   threadId?: string
   onChunk?: (chunk: string) => void
   onEvent?: (event: LoomStreamEvent) => void
 }
-
-type LoomStreamEvent = {
-  type: string
-  content?: string
-  id?: string
-  name?: string
-  message?: string
-  result?: unknown
-  error?: string
-  prompt_tokens?: number
-  completion_tokens?: number
-  total_tokens?: number
-  [key: string]: unknown
-}
-
-type LoomRunStreamEventResponse = {
-  type: 'run_stream_event'
-  id: string
-  event: LoomStreamEvent
-}
-
-type LoomRunEndResponse = {
-  type: 'run_end'
-  id: string
-  reply: string
-}
-
-type LoomErrorResponse = {
-  type: 'error'
-  id?: string
-  error: string
-}
-
-type LoomServerMessage =
-  | LoomRunStreamEventResponse
-  | LoomRunEndResponse
-  | LoomErrorResponse
-  | { type: string }
 
 function getEnvValue(name: string) {
   return (import.meta.env as Record<string, string | undefined>)[name]?.trim()
@@ -61,20 +31,6 @@ function getWorkingFolder() {
 
 function parseServerMessage(data: string): LoomServerMessage {
   return JSON.parse(data) as LoomServerMessage
-}
-
-function isRunStreamEvent(
-  message: LoomServerMessage,
-): message is LoomRunStreamEventResponse {
-  return message.type === 'run_stream_event'
-}
-
-function isRunEnd(message: LoomServerMessage): message is LoomRunEndResponse {
-  return message.type === 'run_end'
-}
-
-function isErrorResponse(message: LoomServerMessage): message is LoomErrorResponse {
-  return message.type === 'error'
 }
 
 export function sendMessage(
@@ -164,9 +120,12 @@ export function sendMessage(
 
         options.onEvent?.(message.event)
 
-        if (message.event.type === 'message_chunk' && message.event.content) {
-          streamedReply += message.event.content
-          options.onChunk?.(message.event.content)
+        if (isMessageChunkEvent(message.event) && message.event.content) {
+          const chunkId = message.event.id
+          if (chunkId !== 'think') {
+            streamedReply += message.event.content
+            options.onChunk?.(message.event.content)
+          }
         }
         return
       }
@@ -181,7 +140,7 @@ export function sendMessage(
         return
       }
 
-      if (isErrorResponse(message)) {
+      if (isError(message)) {
         if (message.id && runId && message.id !== runId) {
           return
         }

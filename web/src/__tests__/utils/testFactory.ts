@@ -4,9 +4,8 @@
  */
 
 import type { 
-  LoomUserEvent, 
-  LoomAssistantTextEvent, 
-  LoomAssistantToolEvent,
+  LoomMessageChunkEvent,
+  LoomToolCallEvent,
   LoomRunStreamEventResponse,
   LoomRunEndResponse,
   LoomErrorResponse
@@ -16,45 +15,27 @@ import type { UIMessageItemProps, UITextContent, UIToolContent } from '../types/
 /**
  * 创建用户事件
  */
-export function createLoomUserEvent(overrides: Partial<LoomUserEvent> = {}): LoomUserEvent {
+export function createLoomMessageChunkEvent(
+  overrides: Partial<LoomMessageChunkEvent> = {},
+): LoomMessageChunkEvent {
   return {
-    type: 'user',
-    id: 'user-1',
-    createdAt: new Date().toISOString(),
-    text: 'Hello',
-    ...overrides
-  }
-}
-
-/**
- * 创建助手文本事件
- */
-export function createLoomAssistantTextEvent(overrides: Partial<LoomAssistantTextEvent> = {}): LoomAssistantTextEvent {
-  return {
-    type: 'assistant_text',
-    id: 'assistant-1',
-    createdAt: new Date().toISOString(),
-    text: 'Hi there!',
-    ...overrides
+    type: 'message_chunk',
+    id: 'think',
+    content: 'Hello',
+    ...overrides,
   }
 }
 
 /**
  * 创建助手工具事件
  */
-export function createLoomAssistantToolEvent(overrides: Partial<LoomAssistantToolEvent> = {}): LoomAssistantToolEvent {
+export function createLoomToolCallEvent(overrides: Partial<LoomToolCallEvent> = {}): LoomToolCallEvent {
   return {
-    type: 'assistant_tool',
-    id: 'tool-1',
-    createdAt: new Date().toISOString(),
-    callId: 'call-1',
+    type: 'tool_call',
+    call_id: 'call-1',
     name: 'test_tool',
-    status: 'done',
-    argumentsText: '{"arg": "value"}',
-    outputText: 'Tool output',
-    resultText: 'Tool result',
-    isError: false,
-    ...overrides
+    arguments: { arg: 'value' },
+    ...overrides,
   }
 }
 
@@ -62,12 +43,12 @@ export function createLoomAssistantToolEvent(overrides: Partial<LoomAssistantToo
  * 创建流事件响应
  */
 export function createRunStreamEventResponse(
-  event: LoomUserEvent | LoomAssistantTextEvent | LoomAssistantToolEvent
+  event: LoomMessageChunkEvent | LoomToolCallEvent
 ): LoomRunStreamEventResponse {
   return {
     type: 'run_stream_event',
     id: 'response-1',
-    event
+    event,
   }
 }
 
@@ -79,7 +60,7 @@ export function createRunEndResponse(overrides: Partial<LoomRunEndResponse> = {}
     type: 'run_end',
     id: 'run-1',
     reply: 'Done',
-    ...overrides
+    ...overrides,
   }
 }
 
@@ -91,7 +72,7 @@ export function createErrorResponse(overrides: Partial<LoomErrorResponse> = {}):
     type: 'error',
     id: 'error-1',
     error: 'Something went wrong',
-    ...overrides
+    ...overrides,
   }
 }
 
@@ -104,7 +85,7 @@ export function createUIMessage(overrides: Partial<UIMessageItemProps> = {}): UI
     sender: 'user',
     timestamp: new Date().toISOString(),
     content: [createUITextContent()],
-    ...overrides
+    ...overrides,
   }
 }
 
@@ -116,7 +97,7 @@ export function createUITextContent(overrides: Partial<UITextContent> = {}): UIT
     type: 'text',
     text: 'Test message',
     format: 'plain',
-    ...overrides
+    ...overrides,
   }
 }
 
@@ -133,7 +114,7 @@ export function createUIToolContent(overrides: Partial<UIToolContent> = {}): UIT
     outputText: 'Tool output',
     resultText: 'Tool result',
     isError: false,
-    ...overrides
+    ...overrides,
   }
 }
 
@@ -145,7 +126,7 @@ export function createUIMessageList(count: number = 3): UIMessageItemProps[] {
     createUIMessage({
       id: `msg-${i + 1}`,
       sender: i % 2 === 0 ? 'user' : 'assistant',
-      content: [createUITextContent({ text: `Message ${i + 1}` })]
+      content: [createUITextContent({ text: `Message ${i + 1}` })],
     })
   )
 }
@@ -162,8 +143,8 @@ export function createMixedContentMessage(): UIMessageItemProps {
       createUITextContent({ text: 'Let me help you with that.' }),
       createUIToolContent({ name: 'search', status: 'running' }),
       createUIToolContent({ name: 'search', status: 'success' }),
-      createUITextContent({ text: 'Here are the results.' })
-    ]
+      createUITextContent({ text: 'Here are the results.' }),
+    ],
   }
 }
 
@@ -172,7 +153,7 @@ export function createMixedContentMessage(): UIMessageItemProps {
  */
 export function createMessageEvent(data: unknown): MessageEvent {
   return new MessageEvent('message', {
-    data: JSON.stringify(data)
+    data: JSON.stringify(data),
   })
 }
 
@@ -180,7 +161,7 @@ export function createMessageEvent(data: unknown): MessageEvent {
  * 等待指定毫秒
  */
 export function wait(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 /**
@@ -199,7 +180,7 @@ export function createMockWebSocket(): {
     open: [] as EventListener[],
     message: [] as EventListener[],
     error: [] as EventListener[],
-    close: [] as EventListener[]
+    close: [] as EventListener[],
   }
 
   const send = vi.fn()
@@ -218,7 +199,7 @@ export function createMockWebSocket(): {
         const index = arr.indexOf(listener)
         if (index > -1) arr.splice(index, 1)
       }
-    })
+    }),
   } as unknown as WebSocket
 
   return {
@@ -231,15 +212,15 @@ export function createMockWebSocket(): {
     },
     triggerMessage: (data: unknown) => {
       const event = createMessageEvent(data)
-      listeners.message.forEach(l => l(event))
+      listeners.message.forEach((listener) => listener(event))
     },
-    triggerError: (error: Error) => {
+    triggerError: () => {
       const event = new Event('error') as ErrorEvent
-      listeners.error.forEach(l => l(event))
+      listeners.error.forEach((listener) => listener(event))
     },
     triggerClose: () => {
       socket.readyState = WebSocket.CLOSED
-      listeners.close.forEach(l => l(new Event('close')))
-    }
+      listeners.close.forEach((listener) => listener(new Event('close')))
+    },
   }
 }

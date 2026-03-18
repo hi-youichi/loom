@@ -7,10 +7,10 @@ export { ToolMessage } from './chat/ToolMessage'
 
 // Common components
 export { ChatLayout } from './layout/ChatLayout'
-export { ConnectionStatus } from './layout/ConnectionStatus'
+export { ConnectionStatus } from './common/ConnectionStatus'
 
 // Error components
 export { ChatErrorBoundary } from './error/ErrorBoundary'
 
 // Composer
-export { MessageComposer } from './composer/MessageComposer'
+export { MessageComposer } from './MessageComposer'

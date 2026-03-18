@@ -50,6 +50,12 @@ export const MessageItem = memo(function MessageItem({
               <pre>{item.outputText}</pre>
             </div>
           )}
+          {item.resultText && !item.isError && (
+            <div className="tool__result">
+              <strong>结果:</strong>
+              <pre>{item.resultText}</pre>
+            </div>
+          )}
           {item.isError && (
             <div className="tool__error">
               <strong>错误:</strong>

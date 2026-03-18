@@ -1,5 +1,5 @@
 import { ChatErrorBoundary } from './components/error/ErrorBoundary'
-import { ChatPage } from './pages/ChatPage'
+import { ChatPage } from './pages/ChatPage-new'
 
 function App() {
   return (

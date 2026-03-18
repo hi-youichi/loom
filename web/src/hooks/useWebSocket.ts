@@ -18,7 +18,6 @@ export interface UseWebSocketReturn {
   connect: () => void
   disconnect: () => void
   send: (data: string | object) => void
-  socket: WebSocket | null
 }
 
 export function useWebSocket({
@@ -34,6 +33,7 @@ export function useWebSocket({
   const [error, setError] = useState<string | null>(null)
   
   const socketRef = useRef<WebSocket | null>(null)
+  const connectRef = useRef<() => void>(() => {})
   const reconnectCountRef = useRef(0)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -74,7 +74,7 @@ export function useWebSocket({
         if (reconnectCountRef.current < reconnectAttempts) {
           reconnectCountRef.current++
           reconnectTimeoutRef.current = setTimeout(() => {
-            connect()
+            connectRef.current()
           }, reconnectInterval)
         }
       }
@@ -83,6 +83,10 @@ export function useWebSocket({
       setError(err instanceof Error ? err.message : 'Failed to connect')
     }
   }, [url, onMessage, onError, onOpen, onClose, reconnectAttempts, reconnectInterval])
+
+  useEffect(() => {
+    connectRef.current = connect
+  }, [connect])
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -125,6 +129,5 @@ export function useWebSocket({
     connect,
     disconnect,
     send,
-    socket: socketRef.current,
   }
 }
