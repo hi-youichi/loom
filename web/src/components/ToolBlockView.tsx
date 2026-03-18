@@ -53,10 +53,10 @@ export function ToolBlockView({ tool, defaultExpanded = false }: ToolBlockViewPr
   const [expanded, setExpanded] = useState(defaultExpanded)
   const [showFullOutput, setShowFullOutput] = useState(false)
 
-  const { truncated, hasMore } = truncateOutput(tool.outputText, MAX_OUTPUT_LINES)
-  const displayOutput = showFullOutput ? tool.outputText : truncated
-  const hasOutput = tool.outputText.length > 0
-  const hasArgs = tool.argumentsText.length > 0
+  const { truncated, hasMore } = truncateOutput(tool.outputText || '', MAX_OUTPUT_LINES)
+  const displayOutput = showFullOutput ? (tool.outputText || '') : truncated
+  const hasOutput = (tool.outputText?.length || 0) > 0
+  const hasArgs = (tool.argumentsText?.length || 0) > 0
 
   return (
     <article
