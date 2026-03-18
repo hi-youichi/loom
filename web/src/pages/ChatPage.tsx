@@ -1,9 +1,10 @@
-import { Fragment, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { MessageComposer } from '../components/MessageComposer'
 import { ThinkIndicator } from '../components/ThinkIndicator'
+import { ToolBlockView } from '../components/ToolBlockView'
 import { sendMessage } from '../services/chat'
-import type { Message, MessageBlock } from '../types/chat'
+import type { ToolBlock, ToolStatus } from '../types/chat'
 
 const THREAD_STORAGE_KEY = 'loom-web-thread-id'
 
@@ -23,91 +24,6 @@ function formatTime(timestamp: string) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(timestamp))
-}
-
-function createTextMessage(role: Message['role'], text: string, createdAt: string): Message {
-  return {
-    id: crypto.randomUUID(),
-    role,
-    createdAt,
-    blocks: text
-      ? [
-          {
-            id: crypto.randomUUID(),
-            type: 'text',
-            text,
-          },
-        ]
-      : [],
-  }
-}
-
-function isTextBlock(block: MessageBlock): block is Extract<MessageBlock, { type: 'text' }> {
-  return block.type === 'text'
-}
-
-function getMessageText(message: Message) {
-  return message.blocks
-    .filter(isTextBlock)
-    .map((block) => block.text)
-    .join('')
-}
-
-function appendMessageChunk(message: Message, chunk: string): Message {
-  const textBlock = message.blocks.find((block) => block.type === 'text')
-
-  if (!textBlock) {
-    return {
-      ...message,
-      blocks: [
-        ...message.blocks,
-        {
-          id: crypto.randomUUID(),
-          type: 'text',
-          text: chunk,
-        },
-      ],
-    }
-  }
-
-  return {
-    ...message,
-    blocks: message.blocks.map((block) =>
-      block.id === textBlock.id && block.type === 'text'
-        ? { ...block, text: block.text + chunk }
-        : block,
-    ),
-  }
-}
-
-function replaceMessageText(message: Message, text: string): Message {
-  const textBlock = message.blocks.find((block) => block.type === 'text')
-
-  if (!textBlock) {
-    return {
-      ...message,
-      blocks: [
-        ...message.blocks,
-        {
-          id: crypto.randomUUID(),
-          type: 'text',
-          text,
-        },
-      ],
-    }
-  }
-
-  return {
-    ...message,
-    blocks: message.blocks.map((block) =>
-      block.id === textBlock.id && block.type === 'text' ? { ...block, text } : block,
-    ),
-  }
-}
-
-type ThinkingState = {
-  lines: string[]
-  active: boolean
 }
 
 type UserEvent = {
@@ -131,26 +47,17 @@ type AssistantThinkingEvent = {
   active: boolean
 }
 
-type StreamEvent = UserEvent | AssistantTextEvent | AssistantThinkingEvent
+type ToolBlockEvent = {
+  type: 'tool_block'
+  tool: ToolBlock
+}
+
+type StreamEvent = UserEvent | AssistantTextEvent | AssistantThinkingEvent | ToolBlockEvent
 
 function formatThinkLine(event: Record<string, unknown>) {
   switch (event.type) {
     case 'run_start':
       return `run_start${typeof event.agent === 'string' ? ` · ${event.agent}` : ''}`
-    case 'tool_call':
-      return `tool_call${typeof event.name === 'string' ? ` · ${event.name}` : ''}`
-    case 'tool_start':
-      return `tool_start${typeof event.name === 'string' ? ` · ${event.name}` : ''}`
-    case 'tool_output':
-      if (typeof event.name === 'string' && typeof event.content === 'string') {
-        return `tool_output · ${event.name} · ${event.content}`
-      }
-      return `tool_output${typeof event.name === 'string' ? ` · ${event.name}` : ''}`
-    case 'tool_end': {
-      const name = typeof event.name === 'string' ? ` · ${event.name}` : ''
-      const result = typeof event.result === 'string' ? ` · ${event.result}` : ''
-      return `tool_end${name}${result}`
-    }
     case 'node_enter':
     case 'node_exit':
     case 'usage':
@@ -158,9 +65,27 @@ function formatThinkLine(event: Record<string, unknown>) {
     case 'updates':
     case 'checkpoint':
     case 'message_chunk':
+    case 'tool_call':
+    case 'tool_start':
+    case 'tool_output':
+    case 'tool_end':
       return null
     default:
       return typeof event.type === 'string' ? event.type : null
+  }
+}
+
+function createToolBlock(callId: string, name: string, args: string): ToolBlock {
+  return {
+    id: crypto.randomUUID(),
+    type: 'tool',
+    callId,
+    name,
+    status: 'queued' as ToolStatus,
+    argumentsText: args,
+    outputText: '',
+    resultText: '',
+    isError: false,
   }
 }
 
@@ -190,7 +115,82 @@ export function ChatPage() {
       const reply = await sendMessage(text, {
         threadId,
         onEvent: (event) => {
-          const line = formatThinkLine(event)
+          const evt = event as Record<string, unknown>
+          
+          // Handle tool events separately
+          if (evt.type === 'tool_call') {
+            const callId = typeof evt.id === 'string' ? evt.id : crypto.randomUUID()
+            const name = typeof evt.name === 'string' ? evt.name : 'unknown'
+            const args = typeof evt.input === 'string' 
+              ? evt.input 
+              : JSON.stringify(evt.input, null, 2)
+            
+            const toolBlock = createToolBlock(callId, name, args)
+            setStreamEvents((current) => [...current, { type: 'tool_block', tool: toolBlock }])
+            return
+          }
+          
+          if (evt.type === 'tool_start') {
+            const callId = typeof evt.id === 'string' ? evt.id : ''
+            setStreamEvents((current) =>
+              current.map((e) => {
+                if (e.type === 'tool_block' && e.tool.callId === callId) {
+                  return { ...e, tool: { ...e.tool, status: 'running' as ToolStatus } }
+                }
+                return e
+              }),
+            )
+            return
+          }
+          
+          if (evt.type === 'tool_output') {
+            const callId = typeof evt.id === 'string' ? evt.id : ''
+            const content = typeof evt.content === 'string' ? evt.content : ''
+            setStreamEvents((current) =>
+              current.map((e) => {
+                if (e.type === 'tool_block' && e.tool.callId === callId) {
+                  return { 
+                    ...e, 
+                    tool: { 
+                      ...e.tool, 
+                      outputText: e.tool.outputText + content 
+                    } 
+                  }
+                }
+                return e
+              }),
+            )
+            return
+          }
+          
+          if (evt.type === 'tool_end') {
+            const callId = typeof evt.id === 'string' ? evt.id : ''
+            const result = typeof evt.result === 'string' 
+              ? evt.result 
+              : JSON.stringify(evt.result, null, 2)
+            const isError = evt.error !== undefined && evt.error !== null
+            
+            setStreamEvents((current) =>
+              current.map((e) => {
+                if (e.type === 'tool_block' && e.tool.callId === callId) {
+                  return { 
+                    ...e, 
+                    tool: { 
+                      ...e.tool, 
+                      status: (isError ? 'error' : 'done') as ToolStatus,
+                      resultText: result,
+                      isError
+                    } 
+                  }
+                }
+                return e
+              }),
+            )
+            return
+          }
+
+          // Handle other thinking events
+          const line = formatThinkLine(evt)
           if (!line) {
             return
           }
@@ -234,7 +234,11 @@ export function ChatPage() {
 
       // Remove assistant events on error
       setStreamEvents((current) =>
-        current.filter((e) => !(e.type === 'assistant_thinking' && e.id === thinkingId) && !(e.type === 'assistant_text' && e.id === textId)),
+        current.filter(
+          (e) =>
+            !(e.type === 'assistant_thinking' && e.id === thinkingId) &&
+            !(e.type === 'assistant_text' && e.id === textId),
+        ),
       )
       setError(nextError)
       throw caughtError
@@ -260,21 +264,27 @@ export function ChatPage() {
             }
 
             if (event.type === 'assistant_thinking') {
-              return (
-                <ThinkIndicator key={event.id} lines={event.lines} active={event.active} />
-              )
+              return <ThinkIndicator key={event.id} lines={event.lines} active={event.active} />
             }
 
             if (event.type === 'assistant_text') {
               if (!event.text) return null
               return (
-                <article key={event.id} className="message message--assistant" aria-label="assistant message">
+                <article
+                  key={event.id}
+                  className="message message--assistant"
+                  aria-label="assistant message"
+                >
                   <div className="message__meta">
                     <time dateTime={event.createdAt}>{formatTime(event.createdAt)}</time>
                   </div>
                   <p className="message__content">{event.text}</p>
                 </article>
               )
+            }
+
+            if (event.type === 'tool_block') {
+              return <ToolBlockView key={event.tool.id} tool={event.tool} />
             }
 
             return null
