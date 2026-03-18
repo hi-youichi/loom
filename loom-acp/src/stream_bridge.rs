@@ -108,9 +108,7 @@ where
     S: std::fmt::Debug + Clone + Send + Sync + 'static,
 {
     match ev {
-        StreamEvent::TaskStart { node_id } => vec![StreamUpdate::AgentThoughtChunk {
-            text: format!("Entering {}", node_id),
-        }],
+        StreamEvent::TaskStart { .. } => vec![],
         StreamEvent::Messages { chunk, metadata } => {
             // Only chunk.kind == Thinking (e.g. <think> tags) → thought.
             if chunk.kind == MessageChunkKind::Thinking {
