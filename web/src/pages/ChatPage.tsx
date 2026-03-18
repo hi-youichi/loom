@@ -137,14 +137,6 @@ function formatThinkLine(event: Record<string, unknown>) {
   switch (event.type) {
     case 'run_start':
       return `run_start${typeof event.agent === 'string' ? ` · ${event.agent}` : ''}`
-    case 'node_enter':
-      return `node_enter${typeof event.id === 'string' ? ` · ${event.id}` : ''}`
-    case 'node_exit': {
-      const node = typeof event.id === 'string' ? ` · ${event.id}` : ''
-      const result =
-        typeof event.result === 'string' ? event.result : JSON.stringify(event.result)
-      return `node_exit${node}${result ? ` · ${result}` : ''}`
-    }
     case 'tool_call':
       return `tool_call${typeof event.name === 'string' ? ` · ${event.name}` : ''}`
     case 'tool_start':
@@ -159,10 +151,12 @@ function formatThinkLine(event: Record<string, unknown>) {
       const result = typeof event.result === 'string' ? ` · ${event.result}` : ''
       return `tool_end${name}${result}`
     }
+    case 'node_enter':
+    case 'node_exit':
     case 'usage':
-      return typeof event.total_tokens === 'number'
-        ? `usage · total tokens ${event.total_tokens}`
-        : 'usage'
+    case 'values':
+    case 'updates':
+    case 'checkpoint':
     case 'message_chunk':
       return null
     default:
