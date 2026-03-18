@@ -7,7 +7,6 @@ export { ToolMessage } from './chat/ToolMessage'
 
 // Common components
 export { ChatLayout } from './layout/ChatLayout'
-export { ConnectionStatus } from './common/ConnectionStatus'
 
 // Error components
 export { ChatErrorBoundary } from './error/ErrorBoundary'

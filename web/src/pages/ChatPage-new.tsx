@@ -1,7 +1,6 @@
 import { ChatErrorBoundary } from '../components/error/ErrorBoundary'
 import { ChatLayout } from '../components/layout/ChatLayout'
 import { MessageList } from '../components/chat/MessageList'
-import { ConnectionStatus } from '../components/common/ConnectionStatus'
 import { MessageComposer } from '../components/MessageComposer'
 import { ThinkIndicator } from '../components/ThinkIndicator'
 import { useChat } from '../hooks/useChat'
@@ -33,8 +32,6 @@ export function ChatPage() {
   return (
     <ChatErrorBoundary>
       <ChatLayout>
-        <ConnectionStatus status={connectionStatus} />
-        
         <MessageList messages={messages} />
         
         {thinkingLines.length > 0 ? (
