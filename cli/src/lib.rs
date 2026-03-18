@@ -10,7 +10,9 @@ pub mod tool_cmd;
 
 pub use backend::{LocalBackend, RunBackend, RunOutput, StreamOut};
 pub use loom::Envelope;
-pub use run::{run_agent_wrapper as run_agent, RunAgentResult, RunCmd, RunError, RunOptions};
+pub use run::{
+    run_agent_wrapper as run_agent, RunAgentOutput, RunAgentResult, RunCmd, RunError, RunOptions,
+};
 pub use tool_cmd::{
     format_tool_show_output, format_tools_list, list_tools, show_tool, ToolShowFormat,
 };

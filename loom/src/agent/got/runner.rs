@@ -3,6 +3,7 @@
 //! Graph: START → plan_graph → execute_graph → [has_pending] → execute_graph | END.
 
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 
 use crate::error::AgentError;
 use crate::graph::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
@@ -70,9 +71,15 @@ pub struct GotRunner {
     compiled: CompiledStateGraph<GotState>,
     checkpointer: Option<Arc<dyn Checkpointer<GotState>>>,
     runnable_config: Option<RunnableConfig>,
+    cancellation: Option<CancellationToken>,
 }
 
 impl GotRunner {
+    pub fn with_cancellation(mut self, cancellation: Option<CancellationToken>) -> Self {
+        self.cancellation = cancellation;
+        self
+    }
+
     /// Creates a GoT runner with the given LLM, tool source, and optional persistence.
     ///
     /// When `adaptive` is true, enables AGoT: complex nodes may be expanded into subgraphs
@@ -84,6 +91,7 @@ impl GotRunner {
         checkpointer: Option<Arc<dyn Checkpointer<GotState>>>,
         store: Option<Arc<dyn Store>>,
         runnable_config: Option<RunnableConfig>,
+        cancellation: Option<CancellationToken>,
         verbose: bool,
         adaptive: bool,
         agot_llm_complexity: bool,
@@ -133,6 +141,7 @@ impl GotRunner {
             compiled,
             checkpointer,
             runnable_config,
+            cancellation,
         })
     }
 
@@ -163,7 +172,7 @@ impl GotRunner {
         &self,
         user_message: &str,
         on_event: Option<F>,
-    ) -> Result<GotState, GotRunError>
+    ) -> Result<runner_common::StreamRunOutcome<GotState>, GotRunError>
     where
         F: FnMut(StreamEvent<GotState>),
     {
@@ -176,7 +185,7 @@ impl GotRunner {
         user_message: &str,
         config: Option<RunnableConfig>,
         on_event: Option<F>,
-    ) -> Result<GotState, GotRunError>
+    ) -> Result<runner_common::StreamRunOutcome<GotState>, GotRunError>
     where
         F: FnMut(StreamEvent<GotState>),
     {
@@ -187,9 +196,21 @@ impl GotRunner {
             run_config.as_ref(),
         )
         .await?;
-        runner_common::run_stream_with_config(&self.compiled, state, run_config, on_event)
-            .await
-            .map_err(|_| GotRunError::StreamEndedWithoutState)
+        runner_common::run_stream_with_config(
+            &self.compiled,
+            state,
+            run_config,
+            on_event,
+            self.cancellation.clone(),
+            None,
+        )
+        .await
+        .map_err(|e| match e {
+            runner_common::StreamRunError::Execution(err) => GotRunError::Execution(err),
+            runner_common::StreamRunError::StreamEndedWithoutState(_) => {
+                GotRunError::StreamEndedWithoutState
+            }
+        })
     }
 }
 

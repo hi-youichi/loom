@@ -150,16 +150,21 @@ impl Tool for InvokeAgentTool {
             }
         });
 
-        let final_state = runner
+        let outcome = runner
             .stream_with_config(task, None, on_event)
             .await
             .map_err(|e| {
                 ToolSourceError::Transport(format!("sub-agent '{}' failed: {}", agent_name, e))
             })?;
 
-        let reply = final_state
-            .last_assistant_reply()
-            .unwrap_or_else(|| "(no reply from sub-agent)".to_string());
+        let reply = match outcome {
+            crate::runner_common::StreamRunOutcome::Finished(final_state) => final_state
+                .last_assistant_reply()
+                .unwrap_or_else(|| "(no reply from sub-agent)".to_string()),
+            crate::runner_common::StreamRunOutcome::Cancelled => {
+                "(sub-agent cancelled)".to_string()
+            }
+        };
 
         Ok(ToolCallContent { text: reply })
     }

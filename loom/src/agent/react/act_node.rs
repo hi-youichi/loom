@@ -21,11 +21,13 @@
 //! or intermediate results during execution.
 
 use async_trait::async_trait;
+use futures_util::future::{abortable, Aborted};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{debug, trace, warn};
 
+use crate::cli_run::ActiveOperationKind;
 use crate::error::AgentError;
 use crate::graph::{GraphInterrupt, Interrupt, Next, Node, RunContext};
 use crate::helve::{tools_requiring_approval, ApprovalPolicy, APPROVAL_REQUIRED_EVENT_TYPE};
@@ -381,6 +383,15 @@ impl Node<ReActState> for ActNode {
         state: ReActState,
         run_ctx: &RunContext<ReActState>,
     ) -> Result<(ReActState, Next), AgentError> {
+        let is_cancelled = || {
+            run_ctx
+                .cancellation
+                .as_ref()
+                .is_some_and(tokio_util::sync::CancellationToken::is_cancelled)
+        };
+        if is_cancelled() {
+            return Err(AgentError::Cancelled);
+        }
         let tools_mode = run_ctx.stream_mode.contains(&StreamMode::Tools)
             || run_ctx.stream_mode.contains(&StreamMode::Debug);
         let display_limit = NormalizationConfig::default().display_limit;
@@ -403,6 +414,10 @@ impl Node<ReActState> for ActNode {
         let mut used_observation_chars = 0usize;
 
         for tc in &state.tool_calls {
+            if is_cancelled() {
+                self.tools.set_call_context(None);
+                return Err(AgentError::Cancelled);
+            }
             let args: Value = parse_tool_arguments(&tc.arguments);
 
             if self.needs_approval(&tc.name) {
@@ -507,6 +522,7 @@ impl Node<ReActState> for ActNode {
                 thread_id: run_ctx.config.thread_id.clone(),
                 user_id: run_ctx.config.user_id.clone(),
                 depth: run_ctx.config.depth.unwrap_or(0),
+                run_cancellation: run_ctx.run_cancellation.clone(),
             };
             self.tools.set_call_context(Some(tool_ctx.clone()));
 
@@ -523,10 +539,45 @@ impl Node<ReActState> for ActNode {
 
             debug!(tool = %tc.name, args = ?args, "Calling tool");
 
-            let result = self
+            let tool_call = self
                 .tools
-                .call_tool_with_context(&tc.name, args.clone(), Some(&tool_ctx))
-                .await;
+                .call_tool_with_context(&tc.name, args.clone(), Some(&tool_ctx));
+            let (tool_call, abort_handle) = abortable(tool_call);
+            if let Some(run_cancellation) = run_ctx.run_cancellation.as_ref() {
+                run_cancellation
+                    .set_abortable_operation(ActiveOperationKind::ToolTask, abort_handle);
+            }
+            let result = if let Some(token) = run_ctx.cancellation.as_ref() {
+                tokio::select! {
+                    _ = token.cancelled() => {
+                        self.tools.set_call_context(None);
+                        return Err(AgentError::Cancelled);
+                    }
+                    result = tool_call => match result {
+                        Ok(result) => result,
+                        Err(Aborted) => {
+                            self.tools.set_call_context(None);
+                            return Err(AgentError::Cancelled);
+                        }
+                    },
+                }
+            } else {
+                match tool_call.await {
+                    Ok(result) => result,
+                    Err(Aborted) => {
+                        self.tools.set_call_context(None);
+                        return Err(AgentError::Cancelled);
+                    }
+                }
+            };
+            if let Some(run_cancellation) = run_ctx.run_cancellation.as_ref() {
+                run_cancellation.clear_active_operation();
+            }
+
+            if is_cancelled() {
+                self.tools.set_call_context(None);
+                return Err(AgentError::Cancelled);
+            }
 
             match result {
                 Ok(content) => {

@@ -13,7 +13,7 @@ use agent_client_protocol::{
     SetSessionConfigOptionResponse, StopReason,
 };
 use async_trait::async_trait;
-use loom::{run_agent_with_options, AnyStreamEvent, RunCmd, RunError, RunOptions};
+use loom::{run_agent_with_options, AnyStreamEvent, RunCmd, RunCompletion, RunError, RunOptions};
 use std::path::PathBuf;
 use tokio::sync::mpsc;
 
@@ -90,7 +90,7 @@ impl Agent for LoomAcpAgent {
         args: CancelNotification,
     ) -> agent_client_protocol::Result<()> {
         let key = OurSessionId::new(args.session_id.to_string());
-        self.sessions.set_cancelled(key);
+        self.sessions.cancel_current_generation(&key);
         Ok(())
     }
 
@@ -124,6 +124,10 @@ impl Agent for LoomAcpAgent {
             .sessions
             .get(&key)
             .ok_or_else(|| agent_client_protocol::Error::new(-32602, "unknown session"))?;
+        let cancellation = self
+            .sessions
+            .begin_prompt(&key)
+            .ok_or_else(|| agent_client_protocol::Error::new(-32602, "unknown session"))?;
 
         let message = content_blocks_to_message(args.prompt.as_slice())
             .map_err(|_| agent_client_protocol::Error::new(-32602, "content_blocks parse failed"))?;
@@ -137,6 +141,7 @@ impl Agent for LoomAcpAgent {
             message,
             working_folder: Some(working_folder),
             session_id: None,
+            cancellation: Some(cancellation.clone()),
             thread_id: Some(entry.thread_id.clone()),
             role_file: None,
             agent: None,
@@ -164,8 +169,11 @@ impl Agent for LoomAcpAgent {
             Box::new(closure) as Box<dyn FnMut(AnyStreamEvent) + Send>
         });
 
-        match run_agent_with_options(&opts, &RunCmd::React, on_event).await {
-            Ok(_reply) => Ok(PromptResponse::new(StopReason::EndTurn)),
+        let result = run_agent_with_options(&opts, &RunCmd::React, on_event).await;
+        self.sessions.finish_prompt(&key, cancellation.generation());
+        match result {
+            Ok(RunCompletion::Finished(_reply)) => Ok(PromptResponse::new(StopReason::EndTurn)),
+            Ok(RunCompletion::Cancelled) => Ok(PromptResponse::new(StopReason::Cancelled)),
             Err(e) => {
                 tracing::error!(session_id = %args.session_id, error = %e, "run_agent failed");
                 Err(map_run_error(e))

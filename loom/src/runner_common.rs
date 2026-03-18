@@ -7,7 +7,10 @@ use std::collections::HashSet;
 use std::future::Future;
 
 use tokio_stream::StreamExt;
+use tokio_util::sync::CancellationToken;
 
+use crate::cli_run::RunCancellation;
+use crate::error::AgentError;
 use crate::graph::CompiledStateGraph;
 use crate::memory::{CheckpointError, Checkpointer, RunnableConfig};
 use crate::stream::{StreamEvent, StreamMode};
@@ -46,6 +49,22 @@ where
 #[error("stream ended without final state")]
 pub struct StreamEndedWithoutState;
 
+/// Final outcome of a stream run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StreamRunOutcome<S> {
+    Finished(S),
+    Cancelled,
+}
+
+/// Error when stream execution fails for reasons other than cancellation.
+#[derive(Debug, thiserror::Error)]
+pub enum StreamRunError {
+    #[error(transparent)]
+    Execution(#[from] AgentError),
+    #[error(transparent)]
+    StreamEndedWithoutState(#[from] StreamEndedWithoutState),
+}
+
 /// Runs the compiled graph in streaming mode, consuming events and returning the final state.
 ///
 /// Uses fixed stream modes (Messages, Tasks, Updates, Values, Custom). When `on_event`
@@ -56,7 +75,9 @@ pub async fn run_stream_with_config<S, F>(
     initial_state: S,
     run_config: Option<RunnableConfig>,
     mut on_event: Option<F>,
-) -> Result<S, StreamEndedWithoutState>
+    cancellation: Option<CancellationToken>,
+    run_cancellation: Option<RunCancellation>,
+) -> Result<StreamRunOutcome<S>, StreamRunError>
 where
     S: Clone + Send + Sync + std::fmt::Debug + 'static,
     F: FnMut(StreamEvent<S>),
@@ -70,7 +91,14 @@ where
         StreamMode::Custom,
         StreamMode::Checkpoints,
     ]);
-    let mut stream = compiled.stream(initial_state, run_config, modes);
+    let graph_stream = compiled.stream(
+        initial_state,
+        run_config,
+        modes,
+        cancellation,
+        run_cancellation,
+    );
+    let mut stream = graph_stream.events;
     let mut final_state: Option<S> = None;
     while let Some(event) = stream.next().await {
         if let Some(ref mut f) = on_event {
@@ -80,5 +108,18 @@ where
             final_state = Some(s);
         }
     }
-    final_state.ok_or(StreamEndedWithoutState)
+    let completion = graph_stream
+        .completion
+        .await
+        .map_err(|e| StreamRunError::Execution(AgentError::ExecutionFailed(format!(
+            "graph stream task failed: {}",
+            e
+        ))))?;
+    match completion {
+        Ok(()) => final_state
+            .map(StreamRunOutcome::Finished)
+            .ok_or(StreamEndedWithoutState.into()),
+        Err(AgentError::Cancelled) => Ok(StreamRunOutcome::Cancelled),
+        Err(e) => Err(StreamRunError::Execution(e)),
+    }
 }

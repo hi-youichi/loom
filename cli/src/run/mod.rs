@@ -3,5 +3,5 @@
 mod agent;
 mod display;
 
-pub use agent::{print_reply_timestamp, run_agent_wrapper, RunAgentResult};
+pub use agent::{print_reply_timestamp, run_agent_wrapper, RunAgentOutput, RunAgentResult};
 pub use loom::{build_helve_config, RunCmd, RunError, RunOptions};

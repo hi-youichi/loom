@@ -219,6 +219,7 @@ mod tests {
                 name: Some("web_fetch".to_string()),
                 content: "very long tool content output".to_string(),
                 is_error: false,
+                ..ToolResult::default()
             }],
             turn_count: 2,
             approval_result: Some(true),

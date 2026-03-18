@@ -28,7 +28,9 @@ use std::sync::Arc;
 
 use serde_json::Value;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
+use crate::cli_run::RunCancellation;
 use crate::managed::ManagedValue;
 use crate::memory::{RunnableConfig, Store};
 use crate::stream::{StreamEvent, StreamMode, StreamWriter};
@@ -96,6 +98,11 @@ where
     /// This is a JSON value to support arbitrary context data without requiring
     /// additional type parameters.
     pub runtime_context: Option<serde_json::Value>,
+
+    /// Cancellation token for the current run.
+    pub cancellation: Option<CancellationToken>,
+    /// Shared cancellation handle with active-operation tracking for the current run.
+    pub run_cancellation: Option<RunCancellation>,
 }
 
 impl<S> RunContext<S>
@@ -112,6 +119,8 @@ where
             store: None,
             previous: None,
             runtime_context: None,
+            cancellation: None,
+            run_cancellation: None,
         }
     }
 

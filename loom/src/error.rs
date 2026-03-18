@@ -16,6 +16,10 @@ pub enum AgentError {
     #[error("execution failed: {0}")]
     ExecutionFailed(String),
 
+    /// Graph execution was cancelled by runtime.
+    #[error("run cancelled")]
+    Cancelled,
+
     /// Graph execution was interrupted.
     ///
     /// This error is raised when a node requests an interrupt for human-in-the-loop

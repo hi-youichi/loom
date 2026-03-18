@@ -16,9 +16,19 @@ use super::display::{
     format_tot_state_display, truncate_display,
 };
 use crate::envelope::EnvelopeState;
+use crate::backend::RunStopReason;
 use loom::{RunCmd, RunOptions, StreamEvent};
 
 use super::RunError;
+
+fn completion_reply(result: loom::RunCompletion) -> (String, Option<String>, RunStopReason) {
+    match result {
+        loom::RunCompletion::Finished(result) => {
+            (result.reply, result.reasoning_content, RunStopReason::EndTurn)
+        }
+        loom::RunCompletion::Cancelled => (String::new(), None, RunStopReason::Cancelled),
+    }
+}
 
 /// Prints agent profile info to stderr at startup.
 fn print_agent_banner(resolved: &Option<ResolvedAgent>) {
@@ -114,9 +124,17 @@ async fn print_model_info(model: Option<&String>) {
     }
 }
 
-/// Result of run_agent_wrapper: reply, optional reasoning, optional events, optional envelope.
-pub type RunAgentResult =
-    Result<(String, Option<String>, Option<Vec<Value>>, Option<Envelope>), RunError>;
+#[derive(Debug)]
+pub struct RunAgentOutput {
+    pub reply: String,
+    pub reasoning_content: Option<String>,
+    pub events: Option<Vec<Value>>,
+    pub reply_envelope: Option<Envelope>,
+    pub stop_reason: RunStopReason,
+}
+
+/// Result of run_agent_wrapper.
+pub type RunAgentResult = Result<RunAgentOutput, RunError>;
 
 /// Runs the agent with stderr display for stream events.
 /// When `opts.output_json` is true: if `stream_out` is Some, each event is written via it and returns (reply, None);
@@ -175,7 +193,14 @@ pub async fn run_agent_wrapper(
             });
             let result = run_agent_with_options(opts, cmd, Some(on_event)).await?;
             let reply_env = state.lock().map(|s| s.reply_envelope()).ok();
-            return Ok((result.reply, result.reasoning_content, None, reply_env));
+            let (reply, reasoning_content, stop_reason) = completion_reply(result);
+            return Ok(RunAgentOutput {
+                reply,
+                reasoning_content,
+                events: None,
+                reply_envelope: reply_env,
+                stop_reason,
+            });
         }
         let events: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
         let events_clone = events.clone();
@@ -206,7 +231,14 @@ pub async fn run_agent_wrapper(
         let result = run_agent_with_options(opts, cmd, Some(on_event)).await?;
         let events = events.lock().map(|v| v.clone()).unwrap_or_default();
         let reply_env = state.lock().map(|s| s.reply_envelope()).ok();
-        return Ok((result.reply, result.reasoning_content, Some(events), reply_env));
+        let (reply, reasoning_content, stop_reason) = completion_reply(result);
+        return Ok(RunAgentOutput {
+            reply,
+            reasoning_content,
+            events: Some(events),
+            reply_envelope: reply_env,
+            stop_reason,
+        });
     }
 
     let agent_display = resolved_agent.as_ref().map(|ra| format!("{} ({})", ra.name, ra.source));
@@ -262,7 +294,14 @@ pub async fn run_agent_wrapper(
             secs, tokens_per_sec, s.total_prompt_tokens, s.total_completion_tokens
         );
     }
-    Ok((result.reply, result.reasoning_content, None, None))
+    let (reply, reasoning_content, stop_reason) = completion_reply(result);
+    Ok(RunAgentOutput {
+        reply,
+        reasoning_content,
+        events: None,
+        reply_envelope: None,
+        stop_reason,
+    })
 }
 
 fn print_stream_chunk(chunk: &loom::MessageChunk) {
@@ -697,6 +736,7 @@ mod tests {
             mcp_servers: None,
             skill_registry: None,
             max_sub_agent_depth: None,
+            dry_run: false,
         }
     }
 
@@ -1058,6 +1098,7 @@ mod tests {
                 "/definitely/not/exist/loom-cli-run-agent-tests",
             )),
             session_id: None,
+            cancellation: None,
             thread_id: None,
             role_file: None,
             agent: None,

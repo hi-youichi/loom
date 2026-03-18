@@ -4,10 +4,12 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
+use futures_util::future::{abortable, Aborted};
 
 use serde_json::Value;
 use tokio::sync::mpsc;
 
+use crate::cli_run::ActiveOperationKind;
 use crate::error::AgentError;
 use crate::graph::{Next, RunContext};
 use crate::llm::context_persistence;
@@ -104,6 +106,14 @@ impl Node<ReActState> for ThinkNode {
         state: ReActState,
         ctx: &RunContext<ReActState>,
     ) -> Result<(ReActState, Next), AgentError> {
+        let is_cancelled = || {
+            ctx.cancellation
+                .as_ref()
+                .is_some_and(tokio_util::sync::CancellationToken::is_cancelled)
+        };
+        if is_cancelled() {
+            return Err(AgentError::Cancelled);
+        }
         let should_stream =
             ctx.stream_mode.contains(&StreamMode::Messages) && ctx.stream_tx.is_some();
         let should_stream_tools = (ctx.stream_mode.contains(&StreamMode::Tools)
@@ -111,56 +121,83 @@ impl Node<ReActState> for ThinkNode {
             && ctx.stream_tx.is_some();
 
         let call_start = Instant::now();
-        let (response, streamed_chunks, first_token_at) = if should_stream || should_stream_tools {
-            let stream_tx = ctx.stream_tx.clone().unwrap();
+        let llm_call = async {
+            if should_stream || should_stream_tools {
+                let stream_tx = ctx.stream_tx.clone().unwrap();
 
-            let (chunk_tx, chunk_rx) = if should_stream {
-                let adapter = ChunkToStreamSender::new(stream_tx.clone(), self.id());
-                let (tx, rx) = adapter.channel();
-                (Some(tx), Some((adapter, rx)))
-            } else {
-                (None, None)
-            };
-
-            let (tool_delta_tx, tool_delta_rx) = if should_stream_tools {
-                let (tx, rx) = mpsc::channel::<ToolCallDelta>(64);
-                (Some(tx), Some(rx))
-            } else {
-                (None, None)
-            };
-
-            let tool_forward = async {
-                if let Some(mut rx) = tool_delta_rx {
-                    while let Some(delta) = rx.recv().await {
-                        let _ = stream_tx
-                            .send(StreamEvent::ToolCallChunk {
-                                call_id: delta.call_id,
-                                name: delta.name,
-                                arguments_delta: delta.arguments_delta,
-                            })
-                            .await;
-                    }
-                }
-            };
-
-            let msg_forward = async {
-                if let Some((adapter, rx)) = chunk_rx {
-                    adapter.forward(rx).await
+                let (chunk_tx, chunk_rx) = if should_stream {
+                    let adapter = ChunkToStreamSender::new(stream_tx.clone(), self.id());
+                    let (tx, rx) = adapter.channel();
+                    (Some(tx), Some((adapter, rx)))
                 } else {
-                    (0, None)
-                }
-            };
+                    (None, None)
+                };
 
-            let (result, (forwarded_chunks, first_token_at), _) = tokio::join!(
-                self.llm
-                    .invoke_stream_with_tool_delta(&state.messages, chunk_tx, tool_delta_tx,),
-                msg_forward,
-                tool_forward,
-            );
-            (result?, forwarded_chunks, first_token_at)
-        } else {
-            (self.llm.invoke(&state.messages).await?, 0, None)
+                let (tool_delta_tx, tool_delta_rx) = if should_stream_tools {
+                    let (tx, rx) = mpsc::channel::<ToolCallDelta>(64);
+                    (Some(tx), Some(rx))
+                } else {
+                    (None, None)
+                };
+
+                let tool_forward = async {
+                    if let Some(mut rx) = tool_delta_rx {
+                        while let Some(delta) = rx.recv().await {
+                            let _ = stream_tx
+                                .send(StreamEvent::ToolCallChunk {
+                                    call_id: delta.call_id,
+                                    name: delta.name,
+                                    arguments_delta: delta.arguments_delta,
+                                })
+                                .await;
+                        }
+                    }
+                };
+
+                let msg_forward = async {
+                    if let Some((adapter, rx)) = chunk_rx {
+                        adapter.forward(rx).await
+                    } else {
+                        (0, None)
+                    }
+                };
+
+                let (result, (forwarded_chunks, first_token_at), _) = tokio::join!(
+                    self.llm
+                        .invoke_stream_with_tool_delta(&state.messages, chunk_tx, tool_delta_tx,),
+                    msg_forward,
+                    tool_forward,
+                );
+                Ok::<_, AgentError>((result?, forwarded_chunks, first_token_at))
+            } else {
+                Ok::<_, AgentError>((self.llm.invoke(&state.messages).await?, 0, None))
+            }
         };
+        let (llm_call, abort_handle) = abortable(llm_call);
+        if let Some(run_cancellation) = ctx.run_cancellation.as_ref() {
+            run_cancellation.set_abortable_operation(ActiveOperationKind::Llm, abort_handle);
+        }
+        let (response, streamed_chunks, first_token_at) = if let Some(token) = ctx.cancellation.as_ref() {
+            tokio::select! {
+                _ = token.cancelled() => return Err(AgentError::Cancelled),
+                result = llm_call => match result {
+                    Ok(result) => result?,
+                    Err(Aborted) => return Err(AgentError::Cancelled),
+                },
+            }
+        } else {
+            match llm_call.await {
+                Ok(result) => result?,
+                Err(Aborted) => return Err(AgentError::Cancelled),
+            }
+        };
+        if let Some(run_cancellation) = ctx.run_cancellation.as_ref() {
+            run_cancellation.clear_active_operation();
+        }
+
+        if is_cancelled() {
+            return Err(AgentError::Cancelled);
+        }
 
         let used_fallback = response.content.is_empty() && response.tool_calls.is_empty();
 
@@ -214,6 +251,9 @@ impl Node<ReActState> for ThinkNode {
         if should_stream_tools && !response.tool_calls.is_empty() {
             let tx = ctx.stream_tx.as_ref().unwrap();
             for tc in &response.tool_calls {
+                if is_cancelled() {
+                    return Err(AgentError::Cancelled);
+                }
                 let args: Value = serde_json::from_str(&tc.arguments)
                     .unwrap_or_else(|_| Value::String(tc.arguments.clone()));
                 let _ = tx

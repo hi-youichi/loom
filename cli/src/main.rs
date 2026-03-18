@@ -333,6 +333,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             message: String::new(),
             working_folder: args.working_folder.clone(),
             session_id: None,
+            cancellation: None,
             thread_id: args.session_id.clone(),
             role_file: args.role.clone(),
             agent: args.agent.clone(),
@@ -386,6 +387,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         message: message.clone().unwrap_or_default(),
         working_folder: args.working_folder,
         session_id: None,
+        cancellation: None,
         thread_id: args.session_id,
         role_file: args.role,
         agent: args.agent,
@@ -425,9 +427,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         reply,
                         reasoning_content,
                         reply_envelope,
+                        stop_reason,
                     }) => {
                         if args.json {
                             let mut out = serde_json::json!({ "reply": reply });
+                            out["stop_reason"] = serde_json::json!(match stop_reason {
+                                cli::backend::RunStopReason::EndTurn => "end_turn",
+                                cli::backend::RunStopReason::Cancelled => "cancelled",
+                            });
                             if let Some(reasoning_content) = reasoning_content {
                                 out["reasoning_content"] = serde_json::json!(reasoning_content);
                             }
@@ -460,6 +467,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         reply,
                         reasoning_content,
                         reply_envelope,
+                        stop_reason,
                     }) => {
                         let mut reply_obj = serde_json::json!({ "reply": reply });
                         if let Some(reasoning_content) = reasoning_content {
@@ -468,7 +476,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if let Some(ref env) = reply_envelope {
                             env.inject_into(&mut reply_obj);
                         }
-                        let mut out = serde_json::json!({ "events": events, "reply": reply_obj });
+                        let mut out = serde_json::json!({
+                            "events": events,
+                            "reply": reply_obj,
+                            "stop_reason": match stop_reason {
+                                cli::backend::RunStopReason::EndTurn => "end_turn",
+                                cli::backend::RunStopReason::Cancelled => "cancelled",
+                            }
+                        });
                         if let Some(ref sid) = opts.thread_id {
                             out["session_id"] = serde_json::json!(sid);
                         }
@@ -518,9 +533,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 reply,
                 reasoning_content,
                 reply_envelope,
+                stop_reason,
             } => {
                 if args.json {
                     let mut out = serde_json::json!({ "session_id": opts.thread_id, "reply": reply });
+                    out["stop_reason"] = serde_json::json!(match stop_reason {
+                        cli::backend::RunStopReason::EndTurn => "end_turn",
+                        cli::backend::RunStopReason::Cancelled => "cancelled",
+                    });
                     if let Some(reasoning_content) = reasoning_content {
                         out["reasoning_content"] = serde_json::json!(reasoning_content);
                     }
@@ -546,6 +566,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 reply,
                 reasoning_content,
                 reply_envelope,
+                stop_reason,
             } => {
                 let mut reply_obj = serde_json::json!({ "reply": reply });
                 if let Some(reasoning_content) = reasoning_content {
@@ -554,7 +575,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Some(ref env) = reply_envelope {
                     env.inject_into(&mut reply_obj);
                 }
-                let out = serde_json::json!({ "session_id": opts.thread_id, "events": events, "reply": reply_obj });
+                let out = serde_json::json!({
+                    "session_id": opts.thread_id,
+                    "events": events,
+                    "reply": reply_obj,
+                    "stop_reason": match stop_reason {
+                        cli::backend::RunStopReason::EndTurn => "end_turn",
+                        cli::backend::RunStopReason::Cancelled => "cancelled",
+                    }
+                });
                 write_json_output(&out, args.file.as_deref(), args.pretty)?;
             }
         }
@@ -603,6 +632,12 @@ async fn handle_session_command(sa: &SessionArgs, json: bool) -> Result<(), Box<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     #[test]
     fn default_max_message_len_is_200() {
@@ -641,12 +676,6 @@ mod tests {
         let got = truncate_message(&s, 200);
         assert_eq!(got.chars().count(), 200);
         assert!(got.ends_with("..."));
-    }
-
-    /// Default max length constant is 200.
-    #[test]
-    fn default_max_message_len_is_200() {
-        assert_eq!(DEFAULT_MAX_MESSAGE_LEN, 200);
     }
 
     /// Default reply length is 0 (no truncation; full assistant output).

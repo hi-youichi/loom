@@ -9,8 +9,11 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 use tokio_stream::wrappers::ReceiverStream;
+use tokio_util::sync::CancellationToken;
 
+use crate::cli_run::RunCancellation;
 use crate::channels::BoxedStateUpdater;
 use crate::error::AgentError;
 use crate::memory::{Checkpoint, CheckpointSource, Checkpointer, RunnableConfig, Store};
@@ -55,10 +58,25 @@ pub struct CompiledStateGraph<S> {
     pub(super) interrupt_handler: Option<Arc<dyn InterruptHandler>>,
 }
 
+/// Streaming graph execution: event stream plus final completion result.
+pub struct GraphStream<S>
+where
+    S: Clone + Send + Sync + Debug + 'static,
+{
+    pub events: ReceiverStream<StreamEvent<S>>,
+    pub completion: JoinHandle<Result<(), AgentError>>,
+}
+
 impl<S> CompiledStateGraph<S>
 where
     S: Clone + Send + Sync + Debug + 'static,
 {
+    fn is_cancelled(run_ctx: Option<&RunContext<S>>) -> bool {
+        run_ctx
+            .and_then(|ctx| ctx.cancellation.as_ref())
+            .is_some_and(CancellationToken::is_cancelled)
+    }
+
     /// Execute a node with retry logic.
     ///
     /// Attempts to run the node, retrying according to the configured retry policy
@@ -133,6 +151,10 @@ where
         log_graph_start();
 
         loop {
+            if Self::is_cancelled(run_ctx) {
+                log_graph_error(&AgentError::Cancelled);
+                return Err(AgentError::Cancelled);
+            }
             let node = self
                 .nodes
                 .get(current_id)
@@ -278,6 +300,11 @@ where
 
             // Log state update
             log_state_update(current_id);
+
+            if Self::is_cancelled(run_ctx) {
+                log_graph_error(&AgentError::Cancelled);
+                return Err(AgentError::Cancelled);
+            }
 
             if let Some(ctx) = run_ctx {
                 if let Some(tx) = &ctx.stream_tx {
@@ -454,27 +481,34 @@ where
         state: S,
         config: Option<RunnableConfig>,
         stream_mode: impl Into<HashSet<StreamMode>>,
-    ) -> ReceiverStream<StreamEvent<S>> {
+        cancellation: Option<CancellationToken>,
+        run_cancellation: Option<RunCancellation>,
+    ) -> GraphStream<S> {
         let (tx, rx) = mpsc::channel(128);
         let graph = self.clone();
         let mode_set: HashSet<StreamMode> = stream_mode.into();
 
-        tokio::spawn(async move {
+        let completion = tokio::spawn(async move {
             let mut state = state;
             let mut current_id = match graph.edge_order.first().cloned() {
                 Some(id) => id,
-                None => return,
+                None => return Ok(()),
             };
             let mut run_ctx = RunContext::new(config.clone().unwrap_or_default());
             run_ctx.stream_tx = Some(tx);
             run_ctx.stream_mode = mode_set;
+            run_ctx.cancellation = cancellation;
+            run_ctx.run_cancellation = run_cancellation;
 
-            let _ = graph
+            graph
                 .run_loop_inner(&mut state, &config, &mut current_id, Some(&run_ctx))
-                .await;
+                .await
         });
 
-        ReceiverStream::new(rx)
+        GraphStream {
+            events: ReceiverStream::new(rx),
+            completion,
+        }
     }
 
     /// Returns the long-term store if the graph was compiled with `with_store(store)`.
@@ -637,6 +671,33 @@ mod tests {
         async fn run(&self, state: i32) -> Result<(i32, Next), AgentError> {
             let new_state = self.inner.invoke(state, None).await?;
             Ok((new_state, Next::Continue))
+        }
+    }
+
+    #[derive(Clone)]
+    struct CancelAtEndNode {
+        id: &'static str,
+    }
+
+    #[async_trait]
+    impl Node<i32> for CancelAtEndNode {
+        fn id(&self) -> &str {
+            self.id
+        }
+
+        async fn run(&self, state: i32) -> Result<(i32, Next), AgentError> {
+            Ok((state + 1, Next::End))
+        }
+
+        async fn run_with_context(
+            &self,
+            state: i32,
+            ctx: &crate::graph::RunContext<i32>,
+        ) -> Result<(i32, Next), AgentError> {
+            if let Some(token) = ctx.cancellation.as_ref() {
+                token.cancel();
+            }
+            Ok((state + 1, Next::End))
         }
     }
 
@@ -895,8 +956,8 @@ mod tests {
     #[tokio::test]
     async fn stream_values_emits_states() {
         let graph = build_two_step_graph();
-        let stream = graph.stream(0, None, HashSet::from_iter([StreamMode::Values]));
-        let events: Vec<_> = stream.collect().await;
+        let stream = graph.stream(0, None, HashSet::from_iter([StreamMode::Values]), None);
+        let events: Vec<_> = stream.events.collect().await;
         assert!(!events.is_empty(), "expected at least one Values event");
         assert!(
             matches!(events.last(), Some(StreamEvent::Values(v)) if *v == 3),
@@ -908,8 +969,8 @@ mod tests {
     #[tokio::test]
     async fn stream_updates_emit_node_ids_in_order() {
         let graph = build_two_step_graph();
-        let stream = graph.stream(0, None, HashSet::from_iter([StreamMode::Updates]));
-        let events: Vec<_> = stream.collect().await;
+        let stream = graph.stream(0, None, HashSet::from_iter([StreamMode::Updates]), None);
+        let events: Vec<_> = stream.events.collect().await;
         let ids: Vec<_> = events
             .iter()
             .map(|e| match e {
@@ -942,8 +1003,8 @@ mod tests {
             retry_policy: RetryPolicy::None,
             interrupt_handler: None,
         };
-        let stream = graph.stream(0, None, HashSet::from_iter([StreamMode::Values]));
-        let events: Vec<_> = stream.collect().await;
+        let stream = graph.stream(0, None, HashSet::from_iter([StreamMode::Values]), None);
+        let events: Vec<_> = stream.events.collect().await;
         assert!(
             events.is_empty(),
             "empty graph should emit 0 events, got {}",
@@ -973,8 +1034,9 @@ mod tests {
             0,
             None,
             HashSet::from_iter([StreamMode::Values, StreamMode::Updates]),
+            None,
         );
-        let events: Vec<_> = stream.collect().await;
+        let events: Vec<_> = stream.events.collect().await;
         assert_eq!(events.len(), 2, "single node: one Values + one Updates");
         match &events[0] {
             StreamEvent::Values(s) => assert_eq!(*s, 10),
@@ -997,8 +1059,9 @@ mod tests {
             0,
             None,
             HashSet::from_iter([StreamMode::Values, StreamMode::Updates]),
+            None,
         );
-        let events: Vec<_> = stream.collect().await;
+        let events: Vec<_> = stream.events.collect().await;
         assert_eq!(events.len(), 4, "two nodes: two Values + two Updates");
         match &events[0] {
             StreamEvent::Values(s) => assert_eq!(*s, 1),
@@ -1027,8 +1090,8 @@ mod tests {
             user_id: Some("u1".into()),
             ..Default::default()
         };
-        let stream = graph.stream(0, Some(config), HashSet::from_iter([StreamMode::Values]));
-        let events: Vec<_> = stream.collect().await;
+        let stream = graph.stream(0, Some(config), HashSet::from_iter([StreamMode::Values]), None);
+        let events: Vec<_> = stream.events.collect().await;
         assert!(!events.is_empty());
         assert!(matches!(events.last(), Some(StreamEvent::Values(v)) if *v == 3));
     }
@@ -1046,8 +1109,9 @@ mod tests {
                 StreamMode::Messages,
                 StreamMode::Custom,
             ]),
+            None,
         );
-        let events: Vec<_> = stream.collect().await;
+        let events: Vec<_> = stream.events.collect().await;
         assert!(!events.is_empty());
         for e in &events {
             match e {
@@ -1429,8 +1493,9 @@ mod tests {
                 StreamMode::Updates,
                 StreamMode::Checkpoints,
             ]),
+            None,
         );
-        let events: Vec<_> = stream.collect().await;
+        let events: Vec<_> = stream.events.collect().await;
 
         // Should have Values, Updates, and at least one Checkpoint event
         let checkpoint_events: Vec<_> = events
@@ -1489,8 +1554,9 @@ mod tests {
             0,
             Some(config),
             HashSet::from_iter([StreamMode::Values, StreamMode::Updates]),
+            None,
         );
-        let events: Vec<_> = stream.collect().await;
+        let events: Vec<_> = stream.events.collect().await;
 
         // Should NOT have any Checkpoint events
         let checkpoint_events: Vec<_> = events
@@ -1535,8 +1601,9 @@ mod tests {
                 StreamMode::Updates,
                 StreamMode::Checkpoints,
             ]),
+            None,
         );
-        let events: Vec<_> = stream.collect().await;
+        let events: Vec<_> = stream.events.collect().await;
 
         // Should NOT have any Checkpoint events (no checkpointer)
         let checkpoint_events: Vec<_> = events
@@ -1580,8 +1647,9 @@ mod tests {
             0,
             None,
             HashSet::from_iter([StreamMode::Values, StreamMode::Tasks]),
+            None,
         );
-        let events: Vec<_> = stream.collect().await;
+        let events: Vec<_> = stream.events.collect().await;
 
         // Should have TaskStart and TaskEnd for each node (2 nodes = 4 task events)
         let task_start_events: Vec<_> = events
@@ -1640,8 +1708,8 @@ mod tests {
         let compiled = graph.compile().expect("graph compiles");
 
         // Stream without Tasks mode
-        let stream = compiled.stream(0, None, HashSet::from_iter([StreamMode::Values]));
-        let events: Vec<_> = stream.collect().await;
+        let stream = compiled.stream(0, None, HashSet::from_iter([StreamMode::Values]), None);
+        let events: Vec<_> = stream.events.collect().await;
 
         // Should NOT have any TaskStart or TaskEnd events
         let task_events: Vec<_> = events
@@ -1687,8 +1755,8 @@ mod tests {
         };
 
         // Stream with Debug mode only (should emit both checkpoints and tasks)
-        let stream = compiled.stream(0, Some(config), HashSet::from_iter([StreamMode::Debug]));
-        let events: Vec<_> = stream.collect().await;
+        let stream = compiled.stream(0, Some(config), HashSet::from_iter([StreamMode::Debug]), None);
+        let events: Vec<_> = stream.events.collect().await;
 
         // Should have Checkpoint events (debug includes checkpoints)
         let checkpoint_events: Vec<_> = events
@@ -1811,6 +1879,40 @@ mod tests {
         assert_eq!(cp.channel_values, 1, "State should be 1 after add_one node");
     }
 
+    /// **Scenario**: Cancellation during node execution returns Cancelled and does not save checkpoint.
+    #[tokio::test]
+    async fn invoke_with_cancellation_does_not_save_checkpoint() {
+        use crate::memory::MemorySaver;
+
+        let mut graph = StateGraph::<i32>::new();
+        graph.add_node("cancel", Arc::new(CancelAtEndNode { id: "cancel" }));
+        graph.add_edge(START, "cancel");
+        graph.add_edge("cancel", END);
+
+        let checkpointer = Arc::new(MemorySaver::<i32>::new());
+        let compiled = graph
+            .compile_with_checkpointer(checkpointer.clone())
+            .expect("graph compiles");
+
+        let config = RunnableConfig {
+            thread_id: Some("tid-cancel".into()),
+            ..Default::default()
+        };
+        let token = CancellationToken::new();
+        let mut ctx = crate::graph::RunContext::<i32>::new(config.clone());
+        ctx.cancellation = Some(token);
+
+        let result = compiled.invoke_with_context(0, ctx).await;
+        assert!(matches!(result, Err(AgentError::Cancelled)));
+
+        use crate::memory::Checkpointer;
+        let checkpoint = checkpointer.get_tuple(&config).await.unwrap();
+        assert!(
+            checkpoint.is_none(),
+            "cancelled run should not save a resume checkpoint"
+        );
+    }
+
     /// **Scenario**: Stream with interrupting node emits TaskEnd with error.
     #[tokio::test]
     async fn stream_with_interrupt_emits_task_end_with_error() {
@@ -1826,8 +1928,8 @@ mod tests {
         graph.add_edge("interrupt", END);
 
         let compiled = graph.compile().expect("graph compiles");
-        let stream = compiled.stream(0, None, HashSet::from_iter([StreamMode::Tasks]));
-        let events: Vec<_> = stream.collect().await;
+        let stream = compiled.stream(0, None, HashSet::from_iter([StreamMode::Tasks]), None);
+        let events: Vec<_> = stream.events.collect().await;
 
         // Should have TaskStart and TaskEnd events
         let task_end_events: Vec<_> = events

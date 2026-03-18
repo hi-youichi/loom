@@ -27,6 +27,7 @@
 
 use crate::message::Message;
 use crate::stream::ToolStreamWriter;
+use crate::RunCancellation;
 
 /// Per-step context available to tools during execution.
 ///
@@ -95,6 +96,9 @@ pub struct ToolCallContext {
     /// invocation increments this counter; calls are rejected when `depth`
     /// reaches the configured `max_sub_agent_depth`.
     pub depth: u32,
+
+    /// Shared cancellation handle for the current run, including active-operation tracking.
+    pub run_cancellation: Option<RunCancellation>,
 }
 
 impl ToolCallContext {
@@ -108,6 +112,7 @@ impl ToolCallContext {
             thread_id: None,
             user_id: None,
             depth: 0,
+            run_cancellation: None,
         }
     }
 
@@ -125,6 +130,7 @@ impl ToolCallContext {
             thread_id: None,
             user_id: None,
             depth: 0,
+            run_cancellation: None,
         }
     }
 

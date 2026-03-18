@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 
 use crate::agent::react::{build_react_initial_state, REACT_SYSTEM_PROMPT};
 use crate::error::AgentError;
@@ -97,6 +98,7 @@ pub struct TotRunner {
     checkpointer: Option<Arc<dyn Checkpointer<TotState>>>,
     runnable_config: Option<RunnableConfig>,
     system_prompt: Option<String>,
+    cancellation: Option<CancellationToken>,
 }
 
 /// Wraps Arc<dyn LlmClient> to share one LLM between ThinkExpandNode and potential future nodes.
@@ -120,6 +122,11 @@ impl LlmClient for SharedLlm {
 }
 
 impl TotRunner {
+    pub fn with_cancellation(mut self, cancellation: Option<CancellationToken>) -> Self {
+        self.cancellation = cancellation;
+        self
+    }
+
     /// Creates a ToT runner with the given LLM, tool source, and optional persistence.
     pub fn new(
         llm: Arc<dyn LlmClient>,
@@ -129,6 +136,7 @@ impl TotRunner {
         runnable_config: Option<RunnableConfig>,
         system_prompt: Option<String>,
         approval_policy: Option<ApprovalPolicy>,
+        cancellation: Option<CancellationToken>,
         verbose: bool,
         max_depth: u32,
         candidates_per_step: u32,
@@ -202,6 +210,7 @@ impl TotRunner {
             checkpointer,
             runnable_config,
             system_prompt,
+            cancellation,
         })
     }
 
@@ -233,7 +242,7 @@ impl TotRunner {
         &self,
         user_message: &str,
         on_event: Option<F>,
-    ) -> Result<TotState, TotRunError>
+    ) -> Result<runner_common::StreamRunOutcome<TotState>, TotRunError>
     where
         F: FnMut(StreamEvent<TotState>),
     {
@@ -246,7 +255,7 @@ impl TotRunner {
         user_message: &str,
         config: Option<RunnableConfig>,
         on_event: Option<F>,
-    ) -> Result<TotState, TotRunError>
+    ) -> Result<runner_common::StreamRunOutcome<TotState>, TotRunError>
     where
         F: FnMut(StreamEvent<TotState>),
     {
@@ -258,9 +267,21 @@ impl TotRunner {
             self.system_prompt.as_deref(),
         )
         .await?;
-        runner_common::run_stream_with_config(&self.compiled, state, run_config, on_event)
-            .await
-            .map_err(|_| TotRunError::StreamEndedWithoutState)
+        runner_common::run_stream_with_config(
+            &self.compiled,
+            state,
+            run_config,
+            on_event,
+            self.cancellation.clone(),
+            None,
+        )
+        .await
+        .map_err(|e| match e {
+            runner_common::StreamRunError::Execution(err) => TotRunError::Execution(err),
+            runner_common::StreamRunError::StreamEndedWithoutState(_) => {
+                TotRunError::StreamEndedWithoutState
+            }
+        })
     }
 }
 

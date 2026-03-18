@@ -22,6 +22,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio-stream = { workspace = true }
 dashmap = "6.0"
+futures-util = "0.3"
 
 async-openai = { version = "0.32", features = ["chat-completion", "embedding"] }
 dotenv = { workspace = true }
@@ -61,6 +62,7 @@ env_config = { path = "../config", package = "config" }
 
 # ISO timestamps (context_persistence; serde for future InteractionEntry)
 chrono = { version = "0.4", features = ["serde"] }
+tokio-util = { version = "0.7.18", features = ["rt"] }
 
 [dev-dependencies]
 async-trait = { workspace = true }

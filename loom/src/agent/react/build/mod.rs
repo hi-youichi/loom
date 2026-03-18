@@ -160,6 +160,7 @@ pub async fn build_react_runner(
         config.approval_policy,
         Some(compaction_config),
         None,
+        None,
         verbose,
     )?;
     Ok(runner)
@@ -208,6 +209,7 @@ pub async fn build_dup_runner(
         ctx.runnable_config,
         config.system_prompt.clone(),
         config.approval_policy,
+        None,
         verbose,
     )?;
     Ok(runner)
@@ -238,6 +240,7 @@ pub async fn build_tot_runner(
         ctx.runnable_config,
         config.system_prompt.clone(),
         config.approval_policy,
+        None,
         verbose,
         tot.max_depth,
         tot.candidates_per_step,
@@ -269,6 +272,7 @@ pub async fn build_got_runner(
         got_checkpointer,
         ctx.store,
         ctx.runnable_config,
+        None,
         verbose,
         got.adaptive,
         got.agot_llm_complexity,

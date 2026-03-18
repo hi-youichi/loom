@@ -16,19 +16,27 @@ impl RunBackend for LocalBackend {
         cmd: &RunCmd,
         stream_out: super::StreamOut,
     ) -> Result<super::RunOutput, RunError> {
-        let (reply, reasoning_content, events, reply_envelope) =
-            run_agent(opts, cmd, stream_out).await?;
+        let output = run_agent(opts, cmd, stream_out).await?;
+        let crate::run::RunAgentOutput {
+            reply,
+            reasoning_content,
+            events,
+            reply_envelope,
+            stop_reason,
+        } = output;
         Ok(match events {
             Some(ev) => super::RunOutput::Json {
                 events: ev,
                 reply,
                 reasoning_content,
                 reply_envelope,
+                stop_reason,
             },
             None => super::RunOutput::Reply {
                 reply,
                 reasoning_content,
                 reply_envelope,
+                stop_reason,
             },
         })
     }

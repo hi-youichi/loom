@@ -16,8 +16,10 @@
 //!
 //! When integrated with ACP, session_id can use `agent_client_protocol::SessionId`; this module's [`SessionId`] is a placeholder type for unit tests without the ACP dependency.
 
+use loom::RunCancellation;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 
 /// Unique session identifier.
 ///
@@ -62,6 +64,20 @@ pub struct SessionEntry {
     pub cancelled: AtomicBool,
     /// Session-level config (model, etc.); updated by set_session_config_option.
     pub session_config: SessionConfig,
+    /// Shared cancellation state for the current turn.
+    pub cancellation: Arc<SessionCancellationState>,
+}
+
+#[derive(Debug, Default)]
+pub struct SessionCancellationState {
+    pub current_generation: AtomicU64,
+    pub current_turn: std::sync::RwLock<Option<Arc<RunningTurn>>>,
+}
+
+#[derive(Debug)]
+pub struct RunningTurn {
+    pub generation: u64,
+    pub cancellation: RunCancellation,
 }
 
 /// In-memory session table: session_id -> [`SessionEntry`].
@@ -97,6 +113,7 @@ impl SessionStore {
             working_directory,
             cancelled: AtomicBool::new(false),
             session_config: SessionConfig::default(),
+            cancellation: Arc::new(SessionCancellationState::default()),
         };
         self.inner.write().unwrap().insert(session_id.clone(), entry);
         session_id
@@ -111,8 +128,55 @@ impl SessionStore {
     ///
     /// No-op if session_id is not in the store.
     pub fn set_cancelled(&self, session_id: SessionId) {
+        self.cancel_current_generation(&session_id);
+    }
+
+    /// Begin a new prompt generation and return a fresh runtime cancellation handle.
+    pub fn begin_prompt(&self, session_id: &SessionId) -> Option<RunCancellation> {
         if let Some(entry) = self.inner.read().unwrap().get(&session_id) {
+            let generation = entry
+                .cancellation
+                .current_generation
+                .fetch_add(1, Ordering::SeqCst)
+                + 1;
+            let cancellation = RunCancellation::new(generation);
+            let turn = Arc::new(RunningTurn {
+                generation,
+                cancellation: cancellation.clone(),
+            });
+            if let Ok(mut current_turn) = entry.cancellation.current_turn.write() {
+                *current_turn = Some(turn);
+            }
+            entry.cancelled.store(false, Ordering::SeqCst);
+            return Some(cancellation);
+        }
+        None
+    }
+
+    /// Mark the current generation as cancelled and trigger its runtime token.
+    pub fn cancel_current_generation(&self, session_id: &SessionId) {
+        if let Some(entry) = self.inner.read().unwrap().get(session_id) {
             entry.cancelled.store(true, Ordering::SeqCst);
+            if let Ok(current_turn) = entry.cancellation.current_turn.read() {
+                if let Some(turn) = current_turn.as_ref() {
+                    turn.cancellation.cancel();
+                }
+            }
+        }
+    }
+
+    /// Clear the current running turn when the prompt owner finishes.
+    pub fn finish_prompt(&self, session_id: &SessionId, generation: u64) {
+        if let Some(entry) = self.inner.read().unwrap().get(session_id) {
+            if let Ok(mut current_turn) = entry.cancellation.current_turn.write() {
+                let should_clear = current_turn
+                    .as_ref()
+                    .map(|turn| turn.generation == generation)
+                    .unwrap_or(false);
+                if should_clear {
+                    *current_turn = None;
+                }
+            }
         }
     }
 
@@ -148,6 +212,7 @@ impl Clone for SessionEntry {
             working_directory: self.working_directory.clone(),
             cancelled: AtomicBool::new(self.cancelled.load(Ordering::SeqCst)),
             session_config: self.session_config.clone(),
+            cancellation: Arc::clone(&self.cancellation),
         }
     }
 }
@@ -166,6 +231,31 @@ mod tests {
         assert_eq!(
             store.get(&id).unwrap().session_config.model.as_deref(),
             Some("gpt-4o")
+        );
+    }
+
+    #[test]
+    fn begin_prompt_cancel_and_finish_manage_current_turn() {
+        let store = SessionStore::new();
+        let id = store.create(None);
+
+        let cancellation = store.begin_prompt(&id).expect("begin prompt");
+        assert!(!cancellation.token().is_cancelled());
+        assert!(!store.is_cancelled(&id));
+
+        store.cancel_current_generation(&id);
+        assert!(store.is_cancelled(&id));
+        assert!(cancellation.token().is_cancelled());
+
+        store.finish_prompt(&id, cancellation.generation());
+        let entry = store.get(&id).expect("session entry");
+        assert!(
+            entry
+                .cancellation
+                .current_turn
+                .read()
+                .expect("read current turn")
+                .is_none()
         );
     }
 }

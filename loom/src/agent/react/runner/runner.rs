@@ -14,7 +14,7 @@ use crate::state::ReActState;
 use crate::stream::StreamEvent;
 use crate::tool_source::ToolSource;
 use crate::user_message::UserMessageStore;
-use crate::LlmClient;
+use crate::{LlmClient, RunCancellation};
 
 use super::error::RunError;
 use super::initial_state::build_react_initial_state;
@@ -30,9 +30,15 @@ pub struct ReactRunner {
     checkpointer: Option<Arc<dyn Checkpointer<ReActState>>>,
     runnable_config: Option<RunnableConfig>,
     system_prompt: Option<String>,
+    cancellation: Option<RunCancellation>,
 }
 
 impl ReactRunner {
+    pub fn with_cancellation(mut self, cancellation: Option<RunCancellation>) -> Self {
+        self.cancellation = cancellation;
+        self
+    }
+
     pub fn new(
         llm: Box<dyn LlmClient>,
         tool_source: Box<dyn ToolSource>,
@@ -43,6 +49,7 @@ impl ReactRunner {
         approval_policy: Option<ApprovalPolicy>,
         compaction_config: Option<CompactionConfig>,
         _user_message_store: Option<Arc<dyn UserMessageStore>>,
+        cancellation: Option<RunCancellation>,
         verbose: bool,
     ) -> Result<Self, CompilationError> {
         let llm = Arc::from(llm);
@@ -100,6 +107,7 @@ impl ReactRunner {
             checkpointer,
             runnable_config,
             system_prompt,
+            cancellation,
         })
     }
 
@@ -128,7 +136,7 @@ impl ReactRunner {
         &self,
         user_message: &str,
         on_event: Option<F>,
-    ) -> Result<ReActState, RunError>
+    ) -> Result<runner_common::StreamRunOutcome<ReActState>, RunError>
     where
         F: FnMut(StreamEvent<ReActState>),
     {
@@ -140,7 +148,7 @@ impl ReactRunner {
         user_message: &str,
         config: Option<RunnableConfig>,
         on_event: Option<F>,
-    ) -> Result<ReActState, RunError>
+    ) -> Result<runner_common::StreamRunOutcome<ReActState>, RunError>
     where
         F: FnMut(StreamEvent<ReActState>),
     {
@@ -152,9 +160,21 @@ impl ReactRunner {
             self.system_prompt.as_deref(),
         )
         .await?;
-        runner_common::run_stream_with_config(&self.compiled, state, run_config, on_event)
-            .await
-            .map_err(|_| RunError::StreamEndedWithoutState)
+        runner_common::run_stream_with_config(
+            &self.compiled,
+            state,
+            run_config,
+            on_event,
+            self.cancellation.as_ref().map(RunCancellation::token),
+            self.cancellation.clone(),
+        )
+        .await
+        .map_err(|e| match e {
+            runner_common::StreamRunError::Execution(err) => RunError::Execution(err),
+            runner_common::StreamRunError::StreamEndedWithoutState(_) => {
+                RunError::StreamEndedWithoutState
+            }
+        })
     }
 }
 
@@ -173,6 +193,7 @@ pub async fn run_agent(
         None,
         None,
         opts.user_message_store,
+        None,
         opts.verbose,
     )?;
     runner.invoke(user_message).await
@@ -182,7 +203,7 @@ pub async fn run_react_graph_stream<F>(
     user_message: &str,
     options: Option<AgentOptions>,
     on_event: Option<F>,
-) -> Result<ReActState, RunError>
+) -> Result<runner_common::StreamRunOutcome<ReActState>, RunError>
 where
     F: FnMut(StreamEvent<ReActState>),
 {
@@ -197,6 +218,7 @@ where
         None,
         None,
         opts.user_message_store,
+        None,
         opts.verbose,
     )?;
     runner.stream_with_callback(user_message, on_event).await

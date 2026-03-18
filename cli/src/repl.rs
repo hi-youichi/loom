@@ -72,6 +72,7 @@ pub async fn run_repl_loop(
                 reply,
                 reasoning_content,
                 reply_envelope,
+                stop_reason,
             }) => {
                 let mut reply_obj = serde_json::json!({ "reply": reply });
                 if let Some(reasoning_content) = reasoning_content {
@@ -80,7 +81,14 @@ pub async fn run_repl_loop(
                 if let Some(ref env) = reply_envelope {
                     env.inject_into(&mut reply_obj);
                 }
-                let out = serde_json::json!({ "events": events, "reply": reply_obj });
+                let out = serde_json::json!({
+                    "events": events,
+                    "reply": reply_obj,
+                    "stop_reason": match stop_reason {
+                        cli::backend::RunStopReason::EndTurn => "end_turn",
+                        cli::backend::RunStopReason::Cancelled => "cancelled",
+                    }
+                });
                 let s = if json_pretty {
                     serde_json::to_string_pretty(&out).unwrap_or_default()
                 } else {
@@ -95,9 +103,14 @@ pub async fn run_repl_loop(
                 reply,
                 reasoning_content,
                 reply_envelope,
+                stop_reason,
             }) => {
                 if json_stream {
                     let mut out = serde_json::json!({ "reply": reply });
+                    out["stop_reason"] = serde_json::json!(match stop_reason {
+                        cli::backend::RunStopReason::EndTurn => "end_turn",
+                        cli::backend::RunStopReason::Cancelled => "cancelled",
+                    });
                     if let Some(reasoning_content) = reasoning_content {
                         out["reasoning_content"] = serde_json::json!(reasoning_content);
                     }
@@ -173,6 +186,7 @@ mod tests {
                 reply: "ok".to_string(),
                 reasoning_content: None,
                 reply_envelope: None,
+                stop_reason: cli::backend::RunStopReason::EndTurn,
             })
         }
 
@@ -230,6 +244,7 @@ mod tests {
             got_adaptive: false,
             display_max_len: 100,
             output_json: false,
+            cancellation: None,
             model: None,
             mcp_config_path: None,
             output_timestamp: false,

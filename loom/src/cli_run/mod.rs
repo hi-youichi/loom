@@ -7,8 +7,9 @@ mod agent;
 mod profile;
 
 pub use agent::{
-    run_agent, run_agent_with_llm_override, run_agent_with_options, AgentRunResult, AnyRunner,
-    AnyStreamEvent, RunCmd, RunError, RunOptions,
+    run_agent, run_agent_with_llm_override, run_agent_with_options, ActiveOperation,
+    ActiveOperationCanceller, ActiveOperationKind, AgentRunResult, AnyRunner, AnyStreamEvent,
+    RunCancellation, RunCmd, RunCompletion, RunError, RunOptions,
 };
 
 use crate::skill::SkillRegistry;

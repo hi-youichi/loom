@@ -80,6 +80,7 @@ pub(super) async fn prepare_run(
         message: r.message,
         working_folder: r.working_folder.map(PathBuf::from),
         session_id: None,
+        cancellation: None,
         thread_id: r.thread_id,
         role_file: None,
         agent: None,

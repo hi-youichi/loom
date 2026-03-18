@@ -13,6 +13,12 @@ use loom::{Envelope, RunCmd, RunError, RunOptions};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunStopReason {
+    EndTurn,
+    Cancelled,
+}
+
 /// Optional sink for JSON stream output (used by `--json`).
 ///
 /// - `Some(...)`: events are forwarded immediately as they arrive (stdout or a file).
@@ -34,12 +40,14 @@ pub enum RunOutput {
         reply: String,
         reasoning_content: Option<String>,
         reply_envelope: Option<Envelope>,
+        stop_reason: RunStopReason,
     },
     Json {
         events: Vec<Value>,
         reply: String,
         reasoning_content: Option<String>,
         reply_envelope: Option<Envelope>,
+        stop_reason: RunStopReason,
     },
 }
 

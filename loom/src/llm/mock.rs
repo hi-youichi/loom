@@ -10,6 +10,7 @@
 //! - Character-by-character: splits content into individual character chunks (for stream testing)
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use tokio::sync::mpsc;
@@ -44,6 +45,8 @@ pub struct MockLlm {
     second_content: Option<String>,
     /// When true, invoke_stream sends each character as a separate chunk.
     stream_by_char: AtomicBool,
+    /// Optional per-chunk delay for streaming tests.
+    stream_delay_ms: Option<u64>,
     /// Token usage to return when set (for testing usage merge in ThinkNode).
     usage: Option<LlmUsage>,
 }
@@ -63,6 +66,7 @@ impl MockLlm {
             call_count: None,
             second_content: None,
             stream_by_char: AtomicBool::new(false),
+            stream_delay_ms: None,
             usage: None,
         }
     }
@@ -75,6 +79,7 @@ impl MockLlm {
             call_count: None,
             second_content: None,
             stream_by_char: AtomicBool::new(false),
+            stream_delay_ms: None,
             usage: None,
         }
     }
@@ -87,6 +92,7 @@ impl MockLlm {
             call_count: None,
             second_content: None,
             stream_by_char: AtomicBool::new(false),
+            stream_delay_ms: None,
             usage: None,
         }
     }
@@ -104,6 +110,7 @@ impl MockLlm {
             call_count: Some(AtomicUsize::new(0)),
             second_content: Some("The time is as above.".to_string()),
             stream_by_char: AtomicBool::new(false),
+            stream_delay_ms: None,
             usage: None,
         }
     }
@@ -126,6 +133,12 @@ impl MockLlm {
     /// This is useful for testing streaming behavior.
     pub fn with_stream_by_char(self) -> Self {
         self.stream_by_char.store(true, Ordering::SeqCst);
+        self
+    }
+
+    /// Add an artificial per-chunk streaming delay in milliseconds.
+    pub fn with_stream_delay_ms(mut self, delay_ms: u64) -> Self {
+        self.stream_delay_ms = Some(delay_ms);
         self
     }
 
@@ -183,10 +196,16 @@ impl LlmClient for MockLlm {
                 if self.stream_by_char.load(Ordering::SeqCst) {
                     // Character-by-character streaming
                     for c in response.content.chars() {
+                        if let Some(delay_ms) = self.stream_delay_ms {
+                            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                        }
                         let _ = tx.send(MessageChunk::message(c.to_string())).await;
                     }
                 } else {
                     // Single chunk (default)
+                    if let Some(delay_ms) = self.stream_delay_ms {
+                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                    }
                     let _ = tx
                         .send(MessageChunk::message(response.content.clone()))
                         .await;

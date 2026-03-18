@@ -1,8 +1,8 @@
 //! Agent run task: stream events to protocol envelopes and optional message store append.
 
 use loom::{
-    run_agent_with_options, AgentRunResult, AnyStreamEvent, EnvelopeState, Message,
-    ProtocolEventEnvelope, RunCmd, RunError, RunOptions, StreamEvent,
+    run_agent_with_options, AnyStreamEvent, EnvelopeState, Message, ProtocolEventEnvelope,
+    RunCmd, RunCompletion, RunError, RunOptions, StreamEvent,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -104,7 +104,7 @@ pub(super) async fn run_agent_task(
     thread_id: Option<String>,
     append_queue_capacity: usize,
 ) -> (
-    Result<AgentRunResult, RunError>,
+    Result<RunCompletion, RunError>,
     Arc<Mutex<EnvelopeState>>,
     Arc<AtomicUsize>,
     Arc<AtomicUsize>,

@@ -6,11 +6,15 @@
 //! and [`AggregateToolSource`].
 
 use async_trait::async_trait;
+use std::sync::Arc;
 
 use serde_json::json;
+use tokio::io::AsyncReadExt;
+use tokio::sync::watch;
 
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError};
 use crate::tools::Tool;
+use crate::{ActiveOperation, ActiveOperationCanceller, ActiveOperationKind};
 use crate::{ToolOutputHint, ToolOutputStrategy};
 
 /// Tool name for the bash/shell execution operation.
@@ -44,6 +48,17 @@ pub const TOOL_BASH: &str = "bash";
 /// - **ToolSourceError**: Invalid input or command execution failure.
 /// - **ToolCallContext**: Not used by this tool.
 pub struct BashTool;
+
+#[derive(Debug)]
+struct ChildProcessCanceller {
+    kill_tx: watch::Sender<bool>,
+}
+
+impl ActiveOperationCanceller for ChildProcessCanceller {
+    fn cancel(&self) {
+        let _ = self.kill_tx.send(true);
+    }
+}
 
 impl Default for BashTool {
     fn default() -> Self {
@@ -145,7 +160,7 @@ impl Tool for BashTool {
     async fn call(
         &self,
         args: serde_json::Value,
-        _ctx: Option<&ToolCallContext>,
+        ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
         let command = args
             .get("command")
@@ -157,7 +172,7 @@ impl Tool for BashTool {
             .and_then(|v| v.as_u64())
             .unwrap_or(120_000);
 
-        let output = run_shell_command(command, workdir, timeout_ms).await?;
+        let output = run_shell_command(command, workdir, timeout_ms, ctx).await?;
 
         let text = if output.stderr.is_empty() {
             output.stdout
@@ -182,26 +197,16 @@ async fn run_shell_command(
     command: &str,
     workdir: Option<&str>,
     timeout_ms: u64,
+    ctx: Option<&ToolCallContext>,
 ) -> Result<ShellOutput, ToolSourceError> {
     let mut cmd = tokio::process::Command::new("sh");
     cmd.arg("-c").arg(command);
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
     if let Some(dir) = workdir {
         cmd.current_dir(dir);
     }
-    let output = if timeout_ms == 0 {
-        cmd.output()
-            .await
-            .map_err(|e| ToolSourceError::Transport(format!("failed to run command: {}", e)))?
-    } else {
-        tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), cmd.output())
-            .await
-            .map_err(|_| ToolSourceError::Transport("command timed out".to_string()))?
-            .map_err(|e| ToolSourceError::Transport(format!("failed to run command: {}", e)))?
-    };
-
-    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-    Ok(ShellOutput { stdout, stderr })
+    run_spawned_shell_command(cmd, timeout_ms, ctx).await
 }
 
 #[cfg(windows)]
@@ -209,24 +214,81 @@ async fn run_shell_command(
     command: &str,
     workdir: Option<&str>,
     timeout_ms: u64,
+    ctx: Option<&ToolCallContext>,
 ) -> Result<ShellOutput, ToolSourceError> {
     let mut cmd = tokio::process::Command::new("cmd");
     cmd.args(["/C", command]);
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
     if let Some(dir) = workdir {
         cmd.current_dir(dir);
     }
-    let output = if timeout_ms == 0 {
-        cmd.output()
-            .await
-            .map_err(|e| ToolSourceError::Transport(format!("failed to run command: {}", e)))?
-    } else {
-        tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), cmd.output())
-            .await
-            .map_err(|_| ToolSourceError::Transport("command timed out".to_string()))?
-            .map_err(|e| ToolSourceError::Transport(format!("failed to run command: {}", e)))?
-    };
+    run_spawned_shell_command(cmd, timeout_ms, ctx).await
+}
 
-    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+async fn run_spawned_shell_command(
+    mut cmd: tokio::process::Command,
+    timeout_ms: u64,
+    ctx: Option<&ToolCallContext>,
+) -> Result<ShellOutput, ToolSourceError> {
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| ToolSourceError::Transport(format!("failed to run command: {}", e)))?;
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let stdout_reader = tokio::spawn(async move { read_pipe(stdout).await });
+    let stderr_reader = tokio::spawn(async move { read_pipe(stderr).await });
+
+    let (kill_tx, mut kill_rx) = watch::channel(false);
+    if let Some(run_cancellation) = ctx.and_then(|ctx| ctx.run_cancellation.clone()) {
+        run_cancellation.set_active_operation(ActiveOperation::new(
+            ActiveOperationKind::ChildProcess,
+            Arc::new(ChildProcessCanceller { kill_tx }),
+        ));
+    }
+
+    let status = if timeout_ms == 0 {
+        tokio::select! {
+            _ = kill_rx.changed() => {
+                let _ = child.kill().await;
+                return Err(ToolSourceError::Transport("command cancelled".to_string()));
+            }
+            status = child.wait() => status,
+        }
+    } else {
+        tokio::select! {
+            _ = kill_rx.changed() => {
+                let _ = child.kill().await;
+                return Err(ToolSourceError::Transport("command cancelled".to_string()));
+            }
+            _ = tokio::time::sleep(std::time::Duration::from_millis(timeout_ms)) => {
+                let _ = child.kill().await;
+                return Err(ToolSourceError::Transport("command timed out".to_string()));
+            }
+            status = child.wait() => status,
+        }
+    }
+    .map_err(|e| ToolSourceError::Transport(format!("failed to run command: {}", e)))?;
+
+    let stdout = stdout_reader
+        .await
+        .map_err(|e| ToolSourceError::Transport(format!("failed to read stdout: {}", e)))?;
+    let stderr = stderr_reader
+        .await
+        .map_err(|e| ToolSourceError::Transport(format!("failed to read stderr: {}", e)))?;
+    let _ = status;
     Ok(ShellOutput { stdout, stderr })
+}
+
+async fn read_pipe<R>(pipe: Option<R>) -> String
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    if let Some(mut pipe) = pipe {
+        let mut buf = Vec::new();
+        let _ = pipe.read_to_end(&mut buf).await;
+        String::from_utf8_lossy(&buf).into_owned()
+    } else {
+        String::new()
+    }
 }

@@ -12,10 +12,148 @@ use crate::{
     TotState,
 };
 use serde_json::Value;
+use std::fmt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
+use tokio_util::sync::CancellationToken;
 use tracing::{info_span, Instrument};
+
+pub trait ActiveOperationCanceller: Send + Sync {
+    fn cancel(&self);
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ActiveOperationKind {
+    Llm,
+    ToolTask,
+    McpRequest,
+    ChildProcess,
+}
+
+#[derive(Clone)]
+pub struct ActiveOperation {
+    kind: ActiveOperationKind,
+    canceller: Arc<dyn ActiveOperationCanceller>,
+}
+
+impl ActiveOperation {
+    pub fn new(
+        kind: ActiveOperationKind,
+        canceller: Arc<dyn ActiveOperationCanceller>,
+    ) -> Self {
+        Self { kind, canceller }
+    }
+
+    pub fn kind(&self) -> ActiveOperationKind {
+        self.kind
+    }
+
+    pub fn cancel(&self) {
+        self.canceller.cancel();
+    }
+}
+
+impl fmt::Debug for ActiveOperation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ActiveOperation")
+            .field("kind", &self.kind)
+            .finish()
+    }
+}
+
+#[derive(Debug)]
+struct CancellationState {
+    active_operation: Mutex<Option<ActiveOperation>>,
+}
+
+#[derive(Debug)]
+struct AbortHandleCanceller {
+    handle: futures_util::future::AbortHandle,
+}
+
+impl ActiveOperationCanceller for AbortHandleCanceller {
+    fn cancel(&self) {
+        self.handle.abort();
+    }
+}
+
+/// Runtime cancellation handle for one run generation.
+#[derive(Debug, Clone)]
+pub struct RunCancellation {
+    generation: u64,
+    token: CancellationToken,
+    state: Arc<CancellationState>,
+}
+
+impl RunCancellation {
+    pub fn new(generation: u64) -> Self {
+        Self {
+            generation,
+            token: CancellationToken::new(),
+            state: Arc::new(CancellationState {
+                active_operation: Mutex::new(None),
+            }),
+        }
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    pub fn token(&self) -> CancellationToken {
+        self.token.clone()
+    }
+
+    pub fn cancel(&self) {
+        self.token.cancel();
+        self.cancel_active_operation();
+    }
+
+    pub fn set_active_operation(&self, operation: ActiveOperation) {
+        if let Ok(mut active_operation) = self.state.active_operation.lock() {
+            *active_operation = Some(operation);
+        }
+    }
+
+    pub fn set_abortable_operation(
+        &self,
+        kind: ActiveOperationKind,
+        handle: futures_util::future::AbortHandle,
+    ) {
+        self.set_active_operation(ActiveOperation::new(
+            kind,
+            Arc::new(AbortHandleCanceller { handle }),
+        ));
+    }
+
+    pub fn clear_active_operation(&self) {
+        if let Ok(mut active_operation) = self.state.active_operation.lock() {
+            *active_operation = None;
+        }
+    }
+
+    pub fn active_operation_kind(&self) -> Option<ActiveOperationKind> {
+        self.state
+            .active_operation
+            .lock()
+            .ok()
+            .and_then(|active_operation| active_operation.as_ref().map(ActiveOperation::kind))
+    }
+
+    pub fn cancel_active_operation(&self) {
+        let active_operation = self
+            .state
+            .active_operation
+            .lock()
+            .ok()
+            .and_then(|active_operation| active_operation.clone());
+        if let Some(active_operation) = active_operation {
+            active_operation.cancel();
+            self.clear_active_operation();
+        }
+    }
+}
 
 /// Options for running the Helve agent.
 #[derive(Debug, Clone)]
@@ -37,6 +175,8 @@ pub struct RunOptions {
     pub model: Option<String>,
     /// When set, use this path as MCP config (overrides LOOM_MCP_CONFIG_PATH and default discovery).
     pub mcp_config_path: Option<PathBuf>,
+    /// Optional cancellation handle for this run.
+    pub cancellation: Option<RunCancellation>,
     /// Thread ID for checkpointer (conversation / run identity).
     pub thread_id: Option<String>,
     /// When true, print a timestamp line to stderr before each reply output (CLI --timestamp).
@@ -96,6 +236,13 @@ pub struct AgentRunResult {
     pub reasoning_content: Option<String>,
 }
 
+/// Final completion state of a run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RunCompletion {
+    Finished(AgentRunResult),
+    Cancelled,
+}
+
 impl AnyStreamEvent {
     /// Converts to format A JSON (EXPORT_SPEC §2).
     pub fn to_format_a(&self) -> Result<Value, serde_json::Error> {
@@ -142,7 +289,7 @@ pub async fn run_agent(
     cmd: &RunCmd,
     on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>>,
     llm_override: Option<Box<dyn LlmClient>>,
-) -> Result<AgentRunResult, RunError> {
+) -> Result<RunCompletion, RunError> {
     let (_helve, mut config, _resolved_agent) = build_helve_config(opts);
     let thread_id_log = config.thread_id.as_deref().unwrap_or("").to_string();
     let kind = match cmd {
@@ -175,13 +322,18 @@ pub async fn run_agent(
                     }
                 }
             });
-            let state = r
+            let outcome = r
                 .stream_with_config(opts.message.as_str(), None, on_ev)
                 .instrument(span.clone())
                 .await?;
-            AgentRunResult {
-                reply: state.last_assistant_reply().unwrap_or_default(),
-                reasoning_content: state.last_reasoning_content(),
+            match outcome {
+                crate::runner_common::StreamRunOutcome::Finished(state) => RunCompletion::Finished(
+                    AgentRunResult {
+                        reply: state.last_assistant_reply().unwrap_or_default(),
+                        reasoning_content: state.last_reasoning_content(),
+                    },
+                ),
+                crate::runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
             }
         }
         AnyRunner::Dup(r) => {
@@ -193,13 +345,18 @@ pub async fn run_agent(
                     }
                 }
             });
-            let state = r
+            let outcome = r
                 .stream_with_config(opts.message.as_str(), None, on_ev)
                 .instrument(span.clone())
                 .await?;
-            AgentRunResult {
-                reply: state.last_assistant_reply().unwrap_or_default(),
-                reasoning_content: state.last_reasoning_content(),
+            match outcome {
+                crate::runner_common::StreamRunOutcome::Finished(state) => RunCompletion::Finished(
+                    AgentRunResult {
+                        reply: state.last_assistant_reply().unwrap_or_default(),
+                        reasoning_content: state.last_reasoning_content(),
+                    },
+                ),
+                crate::runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
             }
         }
         AnyRunner::Tot(r) => {
@@ -211,13 +368,18 @@ pub async fn run_agent(
                     }
                 }
             });
-            let state = r
+            let outcome = r
                 .stream_with_config(opts.message.as_str(), None, on_ev)
                 .instrument(span.clone())
                 .await?;
-            AgentRunResult {
-                reply: state.last_assistant_reply().unwrap_or_default(),
-                reasoning_content: state.last_reasoning_content(),
+            match outcome {
+                crate::runner_common::StreamRunOutcome::Finished(state) => RunCompletion::Finished(
+                    AgentRunResult {
+                        reply: state.last_assistant_reply().unwrap_or_default(),
+                        reasoning_content: state.last_reasoning_content(),
+                    },
+                ),
+                crate::runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
             }
         }
         AnyRunner::Got(r) => {
@@ -229,13 +391,18 @@ pub async fn run_agent(
                     }
                 }
             });
-            let state = r
+            let outcome = r
                 .stream_with_config(opts.message.as_str(), None, on_ev)
                 .instrument(span.clone())
                 .await?;
-            AgentRunResult {
-                reply: state.summary_result(),
-                reasoning_content: None,
+            match outcome {
+                crate::runner_common::StreamRunOutcome::Finished(state) => RunCompletion::Finished(
+                    AgentRunResult {
+                        reply: state.summary_result(),
+                        reasoning_content: None,
+                    },
+                ),
+                crate::runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
             }
         }
     };
@@ -249,7 +416,7 @@ pub async fn run_agent_with_options(
     opts: &RunOptions,
     cmd: &RunCmd,
     on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>>,
-) -> Result<AgentRunResult, RunError> {
+) -> Result<RunCompletion, RunError> {
     run_agent(opts, cmd, on_event, None).await
 }
 
@@ -260,7 +427,7 @@ pub async fn run_agent_with_llm_override(
     cmd: &RunCmd,
     on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>>,
     llm_override: Option<Box<dyn LlmClient>>,
-) -> Result<AgentRunResult, RunError> {
+) -> Result<RunCompletion, RunError> {
     run_agent(opts, cmd, on_event, llm_override).await
 }
 
@@ -272,21 +439,30 @@ pub async fn build_runner(
     cmd: &RunCmd,
     llm_override: Option<Box<dyn LlmClient>>,
 ) -> Result<AnyRunner, RunError> {
+    let cancellation = opts.cancellation.as_ref().map(RunCancellation::token);
     match cmd {
         RunCmd::React => {
-            let r = build_react_runner(config, llm_override, opts.verbose, None).await?;
+            let r = build_react_runner(config, llm_override, opts.verbose, None)
+                .await?
+                .with_cancellation(opts.cancellation.clone());
             Ok(AnyRunner::React(r))
         }
         RunCmd::Dup => {
-            let r = build_dup_runner(config, llm_override, opts.verbose).await?;
+            let r = build_dup_runner(config, llm_override, opts.verbose)
+                .await?
+                .with_cancellation(cancellation.clone());
             Ok(AnyRunner::Dup(r))
         }
         RunCmd::Tot => {
-            let r = build_tot_runner(config, llm_override, opts.verbose).await?;
+            let r = build_tot_runner(config, llm_override, opts.verbose)
+                .await?
+                .with_cancellation(cancellation.clone());
             Ok(AnyRunner::Tot(r))
         }
         RunCmd::Got { .. } => {
-            let r = build_got_runner(config, llm_override, opts.verbose).await?;
+            let r = build_got_runner(config, llm_override, opts.verbose)
+                .await?
+                .with_cancellation(cancellation);
             Ok(AnyRunner::Got(r))
         }
     }
@@ -305,6 +481,7 @@ mod tests {
                 "/definitely/not/exist/loom-cli-run-agent-tests",
             )),
             session_id: None,
+            cancellation: None,
             thread_id: None,
             role_file: None,
             agent: None,
@@ -390,6 +567,7 @@ mod tests {
             message: "m".to_string(),
             working_folder: cfg.working_folder.clone(),
             session_id: None,
+            cancellation: None,
             thread_id: None,
             role_file: None,
             agent: None,

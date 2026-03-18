@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 
 use crate::agent::react::{build_react_initial_state, REACT_SYSTEM_PROMPT};
 use crate::error::AgentError;
@@ -87,6 +88,7 @@ pub struct DupRunner {
     checkpointer: Option<Arc<dyn Checkpointer<DupState>>>,
     runnable_config: Option<RunnableConfig>,
     system_prompt: Option<String>,
+    cancellation: Option<CancellationToken>,
 }
 
 /// Wraps Arc<dyn LlmClient> to share one LLM between UnderstandNode and PlanNode.
@@ -110,6 +112,11 @@ impl LlmClient for SharedLlm {
 }
 
 impl DupRunner {
+    pub fn with_cancellation(mut self, cancellation: Option<CancellationToken>) -> Self {
+        self.cancellation = cancellation;
+        self
+    }
+
     /// Creates a DUP runner with the given LLM, tool source, and optional persistence.
     pub fn new(
         llm: Arc<dyn LlmClient>,
@@ -119,6 +126,7 @@ impl DupRunner {
         runnable_config: Option<RunnableConfig>,
         system_prompt: Option<String>,
         approval_policy: Option<ApprovalPolicy>,
+        cancellation: Option<CancellationToken>,
         verbose: bool,
     ) -> Result<Self, CompilationError> {
         let understand = UnderstandNode::new(Box::new(SharedLlm(Arc::clone(&llm))));
@@ -171,6 +179,7 @@ impl DupRunner {
             checkpointer,
             runnable_config,
             system_prompt,
+            cancellation,
         })
     }
 
@@ -202,7 +211,7 @@ impl DupRunner {
         &self,
         user_message: &str,
         on_event: Option<F>,
-    ) -> Result<DupState, DupRunError>
+    ) -> Result<runner_common::StreamRunOutcome<DupState>, DupRunError>
     where
         F: FnMut(StreamEvent<DupState>),
     {
@@ -215,7 +224,7 @@ impl DupRunner {
         user_message: &str,
         config: Option<RunnableConfig>,
         on_event: Option<F>,
-    ) -> Result<DupState, DupRunError>
+    ) -> Result<runner_common::StreamRunOutcome<DupState>, DupRunError>
     where
         F: FnMut(StreamEvent<DupState>),
     {
@@ -227,9 +236,21 @@ impl DupRunner {
             self.system_prompt.as_deref(),
         )
         .await?;
-        runner_common::run_stream_with_config(&self.compiled, state, run_config, on_event)
-            .await
-            .map_err(|_| DupRunError::StreamEndedWithoutState)
+        runner_common::run_stream_with_config(
+            &self.compiled,
+            state,
+            run_config,
+            on_event,
+            self.cancellation.clone(),
+            None,
+        )
+        .await
+        .map_err(|e| match e {
+            runner_common::StreamRunError::Execution(err) => DupRunError::Execution(err),
+            runner_common::StreamRunError::StreamEndedWithoutState(_) => {
+                DupRunError::StreamEndedWithoutState
+            }
+        })
     }
 }
 

@@ -217,6 +217,7 @@ mod tests {
             name: "read_file".to_string(),
             description: Some("Read file content".to_string()),
             input_schema: serde_json::json!({"type":"object"}),
+            output_hint: None,
         }];
         format_tools_list(&specs, true).unwrap();
     }
@@ -258,6 +259,7 @@ mod tests {
                 "/definitely/not/exist/loom-cli-tool-cmd-tests",
             )),
             session_id: None,
+            cancellation: None,
             thread_id: None,
             role_file: None,
             agent: None,

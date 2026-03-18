@@ -10,12 +10,14 @@ mod session_http;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use futures_util::future::{abortable, Aborted};
 use serde_json::Value;
 use tokio::task;
 
 use mcp_core::ResultMessage;
 
-use crate::tool_source::{ToolCallContent, ToolSource, ToolSourceError, ToolSpec};
+use crate::cli_run::ActiveOperationKind;
+use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec};
 use crate::{ToolOutputHint, ToolOutputStrategy};
 
 pub use session::{McpSession, McpSessionError};
@@ -280,6 +282,38 @@ impl ToolSource for McpToolSource {
         let id = format!("loom-call-{}", name);
         let result = arc.request(&id, "tools/call", params).await?;
         parse_call_tool_result(result)
+    }
+
+    async fn call_tool_with_context(
+        &self,
+        name: &str,
+        arguments: Value,
+        ctx: Option<&ToolCallContext>,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+        let session = {
+            let guard = self
+                .session
+                .lock()
+                .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
+            match &*guard {
+                McpSessionKind::Stdio(_) => None,
+                McpSessionKind::Http(h) => Some(Arc::clone(h)),
+            }
+        };
+        let Some(arc) = session else {
+            return self.call_tool(name, arguments).await;
+        };
+        let params = serde_json::json!({ "name": name, "arguments": arguments });
+        let id = format!("loom-call-{}", name);
+        let request = arc.request(&id, "tools/call", params);
+        let (request, abort_handle) = abortable(request);
+        if let Some(run_cancellation) = ctx.and_then(|ctx| ctx.run_cancellation.clone()) {
+            run_cancellation.set_abortable_operation(ActiveOperationKind::McpRequest, abort_handle);
+        }
+        match request.await {
+            Ok(result) => parse_call_tool_result(result?),
+            Err(Aborted) => Err(ToolSourceError::Transport("MCP request cancelled".into())),
+        }
     }
 }
 
