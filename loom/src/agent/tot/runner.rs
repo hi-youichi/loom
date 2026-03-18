@@ -357,6 +357,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             false,
             3,
             2,
@@ -378,7 +379,10 @@ mod tests {
             )
             .await
             .unwrap();
-        assert!(streamed.last_assistant_reply().is_some());
+        assert!(matches!(
+            &streamed,
+            crate::runner_common::StreamRunOutcome::Finished(s) if s.last_assistant_reply().is_some()
+        ));
         assert!(!events.lock().unwrap().is_empty());
     }
 }

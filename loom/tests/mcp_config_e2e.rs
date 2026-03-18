@@ -24,6 +24,7 @@ fn opts(working_folder: PathBuf) -> RunOptions {
         output_json: false,
         model: None,
         mcp_config_path: None,
+        cancellation: None,
         output_timestamp: false,
         dry_run: false,
     }
@@ -46,7 +47,7 @@ async fn mcp_config_discovered_and_run_with_mock_llm_returns_reply() {
         "mcp_servers should be loaded from .loom/mcp.json"
     );
 
-    let reply = run_agent_with_llm_override(
+    let result = run_agent_with_llm_override(
         &opts,
         &RunCmd::React,
         None,
@@ -55,5 +56,8 @@ async fn mcp_config_discovered_and_run_with_mock_llm_returns_reply() {
     .await
     .expect("run_agent");
 
-    assert_eq!(reply.reply.trim(), "Done");
+    match &result {
+        loom::RunCompletion::Finished(r) => assert_eq!(r.reply.trim(), "Done"),
+        loom::RunCompletion::Cancelled => panic!("expected finished run"),
+    }
 }

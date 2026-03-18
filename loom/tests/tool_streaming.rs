@@ -45,6 +45,7 @@ impl Tool for StreamingTool {
                 "properties": {},
                 "required": []
             }),
+            output_hint: None,
         }
     }
 

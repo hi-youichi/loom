@@ -810,6 +810,7 @@ mod tests {
             name: "get_time".into(),
             description: None,
             input_schema: serde_json::json!({}),
+            output_hint: None,
         }];
         let _ = ChatOpenAI::new("gpt-4")
             .with_tools(tools)
@@ -947,6 +948,7 @@ mod tests {
             name: "get_time".into(),
             description: Some("time".into()),
             input_schema: serde_json::json!({"type":"object"}),
+            output_hint: None,
         }];
         let client = ChatOpenAI::with_config(config, "gpt-4o-mini")
             .with_tools(tools)

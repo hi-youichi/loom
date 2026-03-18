@@ -199,6 +199,7 @@ mod tests {
                     "type": "object",
                     "properties": { "x": { "type": "number" } }
                 }),
+                output_hint: None,
             }
         }
 

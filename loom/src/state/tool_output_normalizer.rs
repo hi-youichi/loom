@@ -744,7 +744,8 @@ mod tests {
 
     #[test]
     fn test_normalize_bash_head_tail() {
-        let text = "line1\n".repeat(100);
+        // Need > inline_limit (4000) to get HeadTail; 700 * 6 = 4200
+        let text = "line1\n".repeat(700);
         let result = normalize_tool_output(
             "bash",
             &json!({"command": "test"}),
@@ -761,7 +762,8 @@ mod tests {
 
     #[test]
     fn test_normalize_get_recent_messages_summary() {
-        let text = "message\n".repeat(100);
+        // get_recent_messages uses inline_limit/2 (2000); need > 2000. 300 * 9 = 2700
+        let text = "message\n".repeat(300);
         let result = normalize_tool_output(
             "get_recent_messages",
             &json!({"limit": 100}),
@@ -790,12 +792,14 @@ mod tests {
 
         assert_eq!(result.strategy, ToolOutputStrategy::FileRefWithExcerpt);
         assert!(result.truncated);
-        assert!(result.observation_text.contains("20,000 chars"));
+        // Format uses raw number (e.g. "20000 chars"), not comma-separated
+        assert!(result.observation_text.contains("20000 chars"));
     }
 
     #[test]
     fn test_normalize_error_gets_head_tail() {
-        let text = "error line\n".repeat(100);
+        // Unknown tool + error: need > inline_limit (4000) for HeadTail. 400 * 11 = 4400
+        let text = "error line\n".repeat(400);
         let result = normalize_tool_output(
             "unknown_tool",
             &json!({}),

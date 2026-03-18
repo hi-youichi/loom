@@ -27,11 +27,12 @@ fn cli_tool_list_local_json_succeeds() {
 
 #[test]
 fn cli_tool_show_existing_local_json_succeeds() {
-    let out = run_loom(&["--json", "tool", "show", "get_recent_messages"]);
-    assert!(out.status.success());
+    // Use "read" (file tool) — always present when working_folder defaults to "."
+    let out = run_loom(&["--json", "tool", "show", "read"]);
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("\"name\""));
-    assert!(stdout.contains("get_recent_messages"));
+    assert!(stdout.contains("read"));
 }
 
 #[test]

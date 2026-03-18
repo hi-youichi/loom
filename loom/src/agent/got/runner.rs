@@ -281,6 +281,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             false,
             false,
             false,
@@ -302,7 +303,10 @@ mod tests {
             )
             .await
             .unwrap();
-        assert!(!streamed.task_graph.nodes.is_empty());
+        assert!(matches!(
+            &streamed,
+            crate::runner_common::StreamRunOutcome::Finished(s) if !s.task_graph.nodes.is_empty()
+        ));
         assert!(!events.lock().unwrap().is_empty());
     }
 }

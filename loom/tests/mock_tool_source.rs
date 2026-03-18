@@ -54,6 +54,7 @@ async fn mock_tool_source_new_custom_tools_and_result() {
             name: "search".to_string(),
             description: Some("Search.".to_string()),
             input_schema: json!({ "type": "object", "properties": { "q": {} } }),
+            output_hint: None,
         }],
         "[]".to_string(),
     );

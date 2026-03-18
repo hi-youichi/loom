@@ -956,7 +956,7 @@ mod tests {
     #[tokio::test]
     async fn stream_values_emits_states() {
         let graph = build_two_step_graph();
-        let stream = graph.stream(0, None, HashSet::from_iter([StreamMode::Values]), None);
+        let stream = graph.stream(0, None, HashSet::from_iter([StreamMode::Values]), None, None);
         let events: Vec<_> = stream.events.collect().await;
         assert!(!events.is_empty(), "expected at least one Values event");
         assert!(
@@ -969,7 +969,7 @@ mod tests {
     #[tokio::test]
     async fn stream_updates_emit_node_ids_in_order() {
         let graph = build_two_step_graph();
-        let stream = graph.stream(0, None, HashSet::from_iter([StreamMode::Updates]), None);
+        let stream = graph.stream(0, None, HashSet::from_iter([StreamMode::Updates]), None, None);
         let events: Vec<_> = stream.events.collect().await;
         let ids: Vec<_> = events
             .iter()
@@ -1003,7 +1003,7 @@ mod tests {
             retry_policy: RetryPolicy::None,
             interrupt_handler: None,
         };
-        let stream = graph.stream(0, None, HashSet::from_iter([StreamMode::Values]), None);
+        let stream = graph.stream(0, None, HashSet::from_iter([StreamMode::Values]), None, None);
         let events: Vec<_> = stream.events.collect().await;
         assert!(
             events.is_empty(),
@@ -1035,6 +1035,7 @@ mod tests {
             None,
             HashSet::from_iter([StreamMode::Values, StreamMode::Updates]),
             None,
+            None,
         );
         let events: Vec<_> = stream.events.collect().await;
         assert_eq!(events.len(), 2, "single node: one Values + one Updates");
@@ -1059,6 +1060,7 @@ mod tests {
             0,
             None,
             HashSet::from_iter([StreamMode::Values, StreamMode::Updates]),
+            None,
             None,
         );
         let events: Vec<_> = stream.events.collect().await;
@@ -1090,7 +1092,7 @@ mod tests {
             user_id: Some("u1".into()),
             ..Default::default()
         };
-        let stream = graph.stream(0, Some(config), HashSet::from_iter([StreamMode::Values]), None);
+        let stream = graph.stream(0, Some(config), HashSet::from_iter([StreamMode::Values]), None, None);
         let events: Vec<_> = stream.events.collect().await;
         assert!(!events.is_empty());
         assert!(matches!(events.last(), Some(StreamEvent::Values(v)) if *v == 3));
@@ -1109,6 +1111,7 @@ mod tests {
                 StreamMode::Messages,
                 StreamMode::Custom,
             ]),
+            None,
             None,
         );
         let events: Vec<_> = stream.events.collect().await;
@@ -1494,6 +1497,7 @@ mod tests {
                 StreamMode::Checkpoints,
             ]),
             None,
+            None,
         );
         let events: Vec<_> = stream.events.collect().await;
 
@@ -1555,6 +1559,7 @@ mod tests {
             Some(config),
             HashSet::from_iter([StreamMode::Values, StreamMode::Updates]),
             None,
+            None,
         );
         let events: Vec<_> = stream.events.collect().await;
 
@@ -1602,6 +1607,7 @@ mod tests {
                 StreamMode::Checkpoints,
             ]),
             None,
+            None,
         );
         let events: Vec<_> = stream.events.collect().await;
 
@@ -1647,6 +1653,7 @@ mod tests {
             0,
             None,
             HashSet::from_iter([StreamMode::Values, StreamMode::Tasks]),
+            None,
             None,
         );
         let events: Vec<_> = stream.events.collect().await;
@@ -1708,7 +1715,7 @@ mod tests {
         let compiled = graph.compile().expect("graph compiles");
 
         // Stream without Tasks mode
-        let stream = compiled.stream(0, None, HashSet::from_iter([StreamMode::Values]), None);
+        let stream = compiled.stream(0, None, HashSet::from_iter([StreamMode::Values]), None, None);
         let events: Vec<_> = stream.events.collect().await;
 
         // Should NOT have any TaskStart or TaskEnd events
@@ -1755,7 +1762,7 @@ mod tests {
         };
 
         // Stream with Debug mode only (should emit both checkpoints and tasks)
-        let stream = compiled.stream(0, Some(config), HashSet::from_iter([StreamMode::Debug]), None);
+        let stream = compiled.stream(0, Some(config), HashSet::from_iter([StreamMode::Debug]), None, None);
         let events: Vec<_> = stream.events.collect().await;
 
         // Should have Checkpoint events (debug includes checkpoints)
@@ -1928,7 +1935,7 @@ mod tests {
         graph.add_edge("interrupt", END);
 
         let compiled = graph.compile().expect("graph compiles");
-        let stream = compiled.stream(0, None, HashSet::from_iter([StreamMode::Tasks]), None);
+        let stream = compiled.stream(0, None, HashSet::from_iter([StreamMode::Tasks]), None, None);
         let events: Vec<_> = stream.events.collect().await;
 
         // Should have TaskStart and TaskEnd events

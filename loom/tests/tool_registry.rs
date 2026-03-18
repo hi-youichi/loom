@@ -27,6 +27,7 @@ impl Tool for MockTool {
             name: self.name.clone(),
             description: None,
             input_schema: serde_json::json!({}),
+            output_hint: None,
         }
     }
 

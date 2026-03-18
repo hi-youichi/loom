@@ -95,6 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        last_reasoning_content: None,
     };
 
     println!("User: {}", user_input);

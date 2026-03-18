@@ -18,6 +18,7 @@ fn opts(working_folder: Option<std::path::PathBuf>, role_file: Option<std::path:
         output_json: false,
         model: None,
         mcp_config_path: None,
+        cancellation: None,
         output_timestamp: false,
         dry_run: false,
     }

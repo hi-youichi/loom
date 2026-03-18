@@ -67,8 +67,8 @@ pub(crate) async fn handle_run(
 mod tests {
     use async_trait::async_trait;
     use loom::{
-        AgentRunResult, EnvelopeState, ProtocolEvent, ProtocolEventEnvelope, RunCmd, RunError, RunOptions,
-        ServerResponse,
+        AgentRunResult, EnvelopeState, ProtocolEvent, ProtocolEventEnvelope, RunCmd, RunCompletion,
+        RunError, RunOptions, ServerResponse,
     };
     use std::sync::atomic::AtomicUsize;
     use std::sync::{Arc, Mutex};
@@ -117,10 +117,10 @@ mod tests {
         let run_handle = tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
             (
-                Ok(AgentRunResult {
+                Ok(RunCompletion::Finished(AgentRunResult {
                     reply: "never".to_string(),
                     reasoning_content: None,
-                }),
+                })),
                 Arc::new(Mutex::new(EnvelopeState::new("s".into()))),
                 Arc::new(AtomicUsize::new(0)),
                 Arc::new(AtomicUsize::new(0)),
@@ -152,10 +152,10 @@ mod tests {
         let state = Arc::new(Mutex::new(EnvelopeState::new("run-1".into())));
         let run_handle = tokio::spawn(async move {
             (
-                Ok(AgentRunResult {
+                Ok(RunCompletion::Finished(AgentRunResult {
                     reply: "reply text".to_string(),
                     reasoning_content: Some("thinking".to_string()),
-                }),
+                })),
                 state,
                 Arc::new(AtomicUsize::new(0)),
                 Arc::new(AtomicUsize::new(0)),
@@ -299,6 +299,7 @@ mod tests {
             output_json: true,
             model: None,
             mcp_config_path: None,
+            cancellation: None,
             output_timestamp: false,
             dry_run: false,
         };
@@ -335,6 +336,7 @@ mod tests {
             output_json: true,
             model: None,
             mcp_config_path: None,
+            cancellation: None,
             output_timestamp: false,
             dry_run: false,
         };

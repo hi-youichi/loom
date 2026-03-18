@@ -445,11 +445,13 @@ mod tests {
                     name: "read".to_string(),
                     description: Some("Read a file".to_string()),
                     input_schema: serde_json::json!({"type":"object","properties":{"path":{"type":"string"}}}),
+                    output_hint: None,
                 },
                 ToolSpec {
                     name: "write".to_string(),
                     description: None,
                     input_schema: serde_json::json!({"type":"object"}),
+                    output_hint: None,
                 },
             ],
         });
