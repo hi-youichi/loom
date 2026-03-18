@@ -62,6 +62,7 @@ pub fn run_options_from_issues_event(
         message,
         working_folder,
         session_id: None,
+        cancellation: None,
         thread_id,
         role_file: None,
         agent: None,
