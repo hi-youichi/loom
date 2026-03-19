@@ -8,9 +8,9 @@ OPENAI_BASE_URL = "https://api.openai.com/v1"
 OPENAI_API_KEY = "sk-your-key"
 LANGGRAPH_API_KEY = "your-secret-key"
 
-# Logging
+# Logging (CLI writes to LOG_FILE when set; path relative to cwd)
 RUST_LOG = "info"
-LOG_FILE = "./logs/helve-tui.log"
+LOG_FILE = "logs/loom.log"
 
 # Model
 MODEL = "gpt-4o"
