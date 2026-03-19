@@ -228,6 +228,7 @@ impl Node<ReActState> for ThinkNode {
                     chunk: fallback_chunk,
                     metadata: StreamMetadata {
                         loom_node: self.id().to_string(),
+                        namespace: None,
                     },
                 })
                 .await;
@@ -242,6 +243,7 @@ impl Node<ReActState> for ThinkNode {
                     chunk: MessageChunk::message(content.clone()),
                     metadata: StreamMetadata {
                         loom_node: self.id().to_string(),
+                        namespace: None,
                     },
                 })
                 .await;

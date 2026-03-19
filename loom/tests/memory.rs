@@ -33,11 +33,13 @@ async fn memory_saver_put_and_get_tuple() {
         versions_seen: HashMap::new(),
         updated_channels: None,
         pending_sends: Vec::new(),
+        pending_interrupts: Vec::new(),
         metadata: CheckpointMetadata {
             source: CheckpointSource::Update,
             step: 0,
             created_at: None,
             parents: HashMap::new(),
+            children: HashMap::new(),
         },
     };
     let id = saver.put(&config, &checkpoint).await.unwrap();

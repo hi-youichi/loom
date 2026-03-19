@@ -203,6 +203,8 @@ pub enum StreamMode {
 pub struct StreamMetadata {
     /// Loom node id that produced the message.
     pub loom_node: String,
+    /// Optional namespace for subgraph events.
+    pub namespace: Option<String>,
 }
 
 /// Checkpoint event emitted when a checkpoint is created.
@@ -290,6 +292,7 @@ where
 {
     stream_tx: mpsc::Sender<StreamEvent<S>>,
     node_id: String,
+    namespace: Option<String>,
 }
 
 impl<S> ChunkToStreamSender<S>
@@ -300,6 +303,19 @@ where
         Self {
             stream_tx,
             node_id: node_id.into(),
+            namespace: None,
+        }
+    }
+
+    pub fn new_with_namespace(
+        stream_tx: mpsc::Sender<StreamEvent<S>>,
+        node_id: impl Into<String>,
+        namespace: Option<String>,
+    ) -> Self {
+        Self {
+            stream_tx,
+            node_id: node_id.into(),
+            namespace,
         }
     }
 
@@ -321,6 +337,7 @@ where
     ) -> (usize, Option<std::time::Instant>) {
         let stream_tx = self.stream_tx.clone();
         let node_id = self.node_id.clone();
+        let namespace = self.namespace.clone();
         let mut forwarded = 0usize;
         let mut first_token_at: Option<std::time::Instant> = None;
         while let Some(chunk) = chunk_rx.recv().await {
@@ -333,6 +350,7 @@ where
                 chunk,
                 metadata: StreamMetadata {
                     loom_node: node_id.clone(),
+                    namespace: namespace.clone(),
                 },
             };
             let _ = stream_tx.send(event).await;
@@ -350,7 +368,7 @@ where
     /// Full state snapshot after a node finishes.
     Values(S),
     /// Incremental update with the node id and state after that node.
-    Updates { node_id: String, state: S },
+    Updates { node_id: String, state: S, namespace: Option<String> },
     /// Message chunk emitted by a node (e.g. ThinkNode streaming LLM output).
     Messages {
         chunk: MessageChunk,
@@ -364,6 +382,8 @@ where
     TaskStart {
         /// Node ID that is starting execution.
         node_id: String,
+        /// Optional namespace for subgraph events.
+        namespace: Option<String>,
     },
     /// Task end event emitted when a node finishes execution.
     TaskEnd {
@@ -371,6 +391,8 @@ where
         node_id: String,
         /// Result of the task: Ok(()) for success, Err(message) for failure.
         result: Result<(), String>,
+        /// Optional namespace for subgraph events.
+        namespace: Option<String>,
     },
     /// ToT (Tree of Thoughts): expand node produced multiple candidates.
     TotExpand {
@@ -614,6 +636,7 @@ where
                 chunk: MessageChunk::message(content.into()),
                 metadata: StreamMetadata {
                     loom_node: node_id.into(),
+                    namespace: None,
                 },
             };
             tx.send(event).await.is_ok()
@@ -634,6 +657,7 @@ where
                 chunk: MessageChunk::message(content.into()),
                 metadata: StreamMetadata {
                     loom_node: node_id.into(),
+                    namespace: None,
                 },
             };
             tx.try_send(event).is_ok()
@@ -665,7 +689,7 @@ where
     /// Returns `true` if the event was sent, `false` otherwise.
     ///
     /// Note: This is typically used by the graph execution loop, not by nodes directly.
-    pub async fn emit_updates(&self, node_id: impl Into<String>, state: S) -> bool {
+    pub async fn emit_updates(&self, node_id: impl Into<String>, state: S, namespace: Option<String>) -> bool {
         if !self.modes.contains(&StreamMode::Updates) {
             return false;
         }
@@ -673,6 +697,7 @@ where
             let event = StreamEvent::Updates {
                 node_id: node_id.into(),
                 state,
+                namespace,
             };
             tx.send(event).await.is_ok()
         } else {
@@ -734,13 +759,14 @@ where
     /// # Arguments
     ///
     /// * `node_id` - The ID of the node that is starting execution
-    pub async fn emit_task_start(&self, node_id: impl Into<String>) -> bool {
+    pub async fn emit_task_start(&self, node_id: impl Into<String>, namespace: Option<String>) -> bool {
         if !self.modes.contains(&StreamMode::Tasks) && !self.modes.contains(&StreamMode::Debug) {
             return false;
         }
         if let Some(tx) = &self.tx {
             let event = StreamEvent::TaskStart {
                 node_id: node_id.into(),
+                namespace,
             };
             tx.send(event).await.is_ok()
         } else {
@@ -763,6 +789,7 @@ where
         &self,
         node_id: impl Into<String>,
         result: Result<(), String>,
+        namespace: Option<String>,
     ) -> bool {
         if !self.modes.contains(&StreamMode::Tasks) && !self.modes.contains(&StreamMode::Debug) {
             return false;
@@ -771,6 +798,7 @@ where
             let event = StreamEvent::TaskEnd {
                 node_id: node_id.into(),
                 result,
+                namespace,
             };
             tx.send(event).await.is_ok()
         } else {
@@ -988,9 +1016,10 @@ mod tests {
         let updates = StreamEvent::Updates {
             node_id: "n1".into(),
             state: DummyState(2),
+            namespace: None,
         };
         match updates {
-            StreamEvent::Updates { node_id, state } => {
+            StreamEvent::Updates { node_id, state, .. } => {
                 assert_eq!(node_id, "n1");
                 assert_eq!(state, DummyState(2));
             }
@@ -1001,6 +1030,7 @@ mod tests {
             chunk: MessageChunk::message("chunk"),
             metadata: StreamMetadata {
                 loom_node: "think".into(),
+                namespace: None,
             },
         };
         match messages {
@@ -1039,18 +1069,20 @@ mod tests {
 
         let task_start: StreamEvent<DummyState> = StreamEvent::TaskStart {
             node_id: "think".into(),
+            namespace: None,
         };
         match task_start {
-            StreamEvent::TaskStart { node_id } => assert_eq!(node_id, "think"),
+            StreamEvent::TaskStart { node_id, .. } => assert_eq!(node_id, "think"),
             _ => panic!("expected TaskStart variant"),
         }
 
         let task_end_ok: StreamEvent<DummyState> = StreamEvent::TaskEnd {
             node_id: "act".into(),
             result: Ok(()),
+            namespace: None,
         };
         match task_end_ok {
-            StreamEvent::TaskEnd { node_id, result } => {
+            StreamEvent::TaskEnd { node_id, result, .. } => {
                 assert_eq!(node_id, "act");
                 assert!(result.is_ok());
             }
@@ -1060,9 +1092,10 @@ mod tests {
         let task_end_err: StreamEvent<DummyState> = StreamEvent::TaskEnd {
             node_id: "failing".into(),
             result: Err("execution failed".into()),
+            namespace: None,
         };
         match task_end_err {
-            StreamEvent::TaskEnd { node_id, result } => {
+            StreamEvent::TaskEnd { node_id, result, .. } => {
                 assert_eq!(node_id, "failing");
                 assert!(result.is_err());
                 assert_eq!(result.unwrap_err(), "execution failed");
@@ -1265,13 +1298,13 @@ mod tests {
         // With Updates mode - should send
         let modes = HashSet::from_iter([StreamMode::Updates]);
         let writer = StreamWriter::new(Some(tx), modes);
-        let sent = writer.emit_updates("node1", DummyState(100)).await;
+        let sent = writer.emit_updates("node1", DummyState(100), None).await;
         assert!(sent, "should send when Updates mode is enabled");
 
         // Verify the event
         let event = rx.recv().await.expect("should receive event");
         match event {
-            StreamEvent::Updates { node_id, state } => {
+            StreamEvent::Updates { node_id, state, .. } => {
                 assert_eq!(node_id, "node1");
                 assert_eq!(state, DummyState(100));
             }
@@ -1312,14 +1345,14 @@ mod tests {
         assert!(!writer.emit_custom(serde_json::json!({})).await);
         assert!(!writer.emit_message("", "").await);
         assert!(!writer.emit_values(DummyState(0)).await);
-        assert!(!writer.emit_updates("", DummyState(0)).await);
+        assert!(!writer.emit_updates("", DummyState(0), None).await);
         assert!(
             !writer
                 .emit_checkpoint("", "", 0, DummyState(0), None, None)
                 .await
         );
-        assert!(!writer.emit_task_start("").await);
-        assert!(!writer.emit_task_end("", Ok(())).await);
+        assert!(!writer.emit_task_start("", None).await);
+        assert!(!writer.emit_task_end("", Ok(()), None).await);
         assert!(
             !writer
                 .emit_tool_call(None, "".into(), serde_json::json!({}))
@@ -1384,19 +1417,19 @@ mod tests {
         // Without Tasks mode - should not send
         let modes_without_tasks = HashSet::from_iter([StreamMode::Values]);
         let writer = StreamWriter::new(Some(tx.clone()), modes_without_tasks);
-        let sent = writer.emit_task_start("node1").await;
+        let sent = writer.emit_task_start("node1", None).await;
         assert!(!sent, "should not send when Tasks mode is disabled");
 
         // With Tasks mode - should send
         let modes_with_tasks = HashSet::from_iter([StreamMode::Tasks]);
         let writer = StreamWriter::new(Some(tx.clone()), modes_with_tasks);
-        let sent = writer.emit_task_start("think").await;
+        let sent = writer.emit_task_start("think", None).await;
         assert!(sent, "should send when Tasks mode is enabled");
 
         // Verify the event
         let event = rx.recv().await.expect("should receive event");
         match event {
-            StreamEvent::TaskStart { node_id } => {
+            StreamEvent::TaskStart { node_id, .. } => {
                 assert_eq!(node_id, "think");
             }
             _ => panic!("expected TaskStart event"),
@@ -1405,12 +1438,12 @@ mod tests {
         // With Debug mode - should also send (debug includes tasks)
         let modes_with_debug = HashSet::from_iter([StreamMode::Debug]);
         let writer = StreamWriter::new(Some(tx), modes_with_debug);
-        let sent = writer.emit_task_start("act").await;
+        let sent = writer.emit_task_start("act", None).await;
         assert!(sent, "should send when Debug mode is enabled");
 
         let event = rx.recv().await.expect("should receive event");
         match event {
-            StreamEvent::TaskStart { node_id } => {
+            StreamEvent::TaskStart { node_id, .. } => {
                 assert_eq!(node_id, "act");
             }
             _ => panic!("expected TaskStart event"),
@@ -1425,19 +1458,19 @@ mod tests {
         // Without Tasks mode - should not send
         let modes_without_tasks = HashSet::from_iter([StreamMode::Values]);
         let writer = StreamWriter::new(Some(tx.clone()), modes_without_tasks);
-        let sent = writer.emit_task_end("node1", Ok(())).await;
+        let sent = writer.emit_task_end("node1", Ok(()), None).await;
         assert!(!sent, "should not send when Tasks mode is disabled");
 
         // With Tasks mode - should send success
         let modes_with_tasks = HashSet::from_iter([StreamMode::Tasks]);
         let writer = StreamWriter::new(Some(tx.clone()), modes_with_tasks);
-        let sent = writer.emit_task_end("think", Ok(())).await;
+        let sent = writer.emit_task_end("think", Ok(()), None).await;
         assert!(sent, "should send when Tasks mode is enabled");
 
         // Verify the success event
         let event = rx.recv().await.expect("should receive event");
         match event {
-            StreamEvent::TaskEnd { node_id, result } => {
+            StreamEvent::TaskEnd { node_id, result, .. } => {
                 assert_eq!(node_id, "think");
                 assert!(result.is_ok());
             }
@@ -1446,14 +1479,14 @@ mod tests {
 
         // With Tasks mode - should send failure
         let sent = writer
-            .emit_task_end("act", Err("execution failed".into()))
+            .emit_task_end("act", Err("execution failed".into()), None)
             .await;
         assert!(sent, "should send failure when Tasks mode is enabled");
 
         // Verify the failure event
         let event = rx.recv().await.expect("should receive event");
         match event {
-            StreamEvent::TaskEnd { node_id, result } => {
+            StreamEvent::TaskEnd { node_id, result, .. } => {
                 assert_eq!(node_id, "act");
                 assert!(result.is_err());
                 assert_eq!(result.unwrap_err(), "execution failed");

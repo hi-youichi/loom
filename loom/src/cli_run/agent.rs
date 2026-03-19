@@ -540,15 +540,19 @@ mod tests {
     fn any_stream_event_conversion_covers_all_variants() {
         let react = AnyStreamEvent::React(StreamEvent::TaskStart {
             node_id: "think".to_string(),
+            namespace: None,
         });
         let dup = AnyStreamEvent::Dup(StreamEvent::TaskStart {
             node_id: "plan".to_string(),
+            namespace: None,
         });
         let tot = AnyStreamEvent::Tot(StreamEvent::TaskStart {
             node_id: "think_expand".to_string(),
+            namespace: None,
         });
         let got = AnyStreamEvent::Got(StreamEvent::TaskStart {
             node_id: "plan_graph".to_string(),
+            namespace: None,
         });
 
         let mut env = EnvelopeState::new("sess-1".to_string());

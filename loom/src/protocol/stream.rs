@@ -23,10 +23,10 @@ where
     S: Serialize + Clone + Send + Sync + Debug + 'static,
 {
     let pe = match ev {
-        StreamEvent::TaskStart { node_id } => ProtocolEvent::NodeEnter {
+        StreamEvent::TaskStart { node_id, .. } => ProtocolEvent::NodeEnter {
             id: node_id.clone(),
         },
-        StreamEvent::TaskEnd { node_id, result } => {
+        StreamEvent::TaskEnd { node_id, result, .. } => {
             let result_json = match result {
                 Ok(()) => json!("Ok"),
                 Err(e) => json!({ "Err": e }),
@@ -38,7 +38,7 @@ where
         }
         StreamEvent::Messages {
             chunk,
-            metadata: StreamMetadata { loom_node },
+            metadata: StreamMetadata { loom_node, .. },
         } => {
             if chunk.kind == MessageChunkKind::Thinking {
                 ProtocolEvent::ThoughtChunk {
@@ -65,7 +65,7 @@ where
         StreamEvent::Values(state) => ProtocolEvent::Values {
             state: serde_json::to_value(state)?,
         },
-        StreamEvent::Updates { node_id, state } => ProtocolEvent::Updates {
+        StreamEvent::Updates { node_id, state, .. } => ProtocolEvent::Updates {
             id: node_id.clone(),
             state: serde_json::to_value(state)?,
         },
@@ -225,6 +225,7 @@ mod tests {
     fn node_enter_format() {
         let ev: StreamEvent<DummyState> = StreamEvent::TaskStart {
             node_id: "think".to_string(),
+            namespace: None,
         };
         let pe = stream_event_to_protocol_event(&ev).unwrap();
         let v = pe.to_value().unwrap();
@@ -237,6 +238,7 @@ mod tests {
         let ev: StreamEvent<DummyState> = StreamEvent::TaskEnd {
             node_id: "act".to_string(),
             result: Ok(()),
+            namespace: None,
         };
         let pe = stream_event_to_protocol_event(&ev).unwrap();
         let v = pe.to_value().unwrap();
@@ -251,6 +253,7 @@ mod tests {
             chunk: MessageChunk::message("hello"),
             metadata: StreamMetadata {
                 loom_node: "think".to_string(),
+                namespace: None,
             },
         };
         let pe = stream_event_to_protocol_event(&ev).unwrap();
@@ -266,6 +269,7 @@ mod tests {
             chunk: MessageChunk::thinking("reasoning step"),
             metadata: StreamMetadata {
                 loom_node: "think".to_string(),
+                namespace: None,
             },
         };
         let pe = stream_event_to_protocol_event(&ev).unwrap();
@@ -305,6 +309,7 @@ mod tests {
         let ev: StreamEvent<DummyState> = StreamEvent::Updates {
             node_id: "think".to_string(),
             state: DummyState(7),
+            namespace: None,
         };
         let pe = stream_event_to_protocol_event(&ev).unwrap();
         let v = pe.to_value().unwrap();
@@ -319,6 +324,7 @@ mod tests {
         let ev: StreamEvent<DummyState> = StreamEvent::TaskEnd {
             node_id: "fail".to_string(),
             result: Err("boom".to_string()),
+            namespace: None,
         };
         let pe = stream_event_to_protocol_event(&ev).unwrap();
         let v = pe.to_value().unwrap();
@@ -332,6 +338,7 @@ mod tests {
         let mut state = crate::protocol::EnvelopeState::new("sess-1".to_string());
         let enter: StreamEvent<DummyState> = StreamEvent::TaskStart {
             node_id: "think".to_string(),
+            namespace: None,
         };
         let usage: StreamEvent<DummyState> = StreamEvent::Usage {
             prompt_tokens: 1,
@@ -360,11 +367,13 @@ mod tests {
         let mut state = crate::protocol::EnvelopeState::new("sess-1".to_string());
         let enter: StreamEvent<DummyState> = StreamEvent::TaskStart {
             node_id: "think".to_string(),
+            namespace: None,
         };
         let thought: StreamEvent<DummyState> = StreamEvent::Messages {
             chunk: MessageChunk::thinking("reasoning content"),
             metadata: StreamMetadata {
                 loom_node: "think".to_string(),
+                namespace: None,
             },
         };
 
@@ -384,11 +393,13 @@ mod tests {
         let mut state = crate::protocol::EnvelopeState::new("sess-1".to_string());
         let enter: StreamEvent<DummyState> = StreamEvent::TaskStart {
             node_id: "think".to_string(),
+            namespace: None,
         };
         let msg: StreamEvent<DummyState> = StreamEvent::Messages {
             chunk: MessageChunk::message("final reply"),
             metadata: StreamMetadata {
                 loom_node: "think".to_string(),
+                namespace: None,
             },
         };
 
@@ -407,6 +418,7 @@ mod tests {
         let mut state = crate::protocol::EnvelopeState::new("sess-1".to_string());
         let enter: StreamEvent<DummyState> = StreamEvent::TaskStart {
             node_id: "think".to_string(),
+            namespace: None,
         };
 
         let event = stream_event_to_protocol_envelope(&enter, &mut state).unwrap();

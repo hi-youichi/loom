@@ -39,6 +39,7 @@ fn adapter_emits_initial_chunk_on_task_start_think() {
 
     adapter.feed(StreamEvent::TaskStart {
         node_id: "think".to_string(),
+        namespace: None,
     });
 
     let lines = adapter.take_lines();
@@ -63,17 +64,20 @@ fn adapter_emits_content_delta_per_messages_event() {
 
     adapter.feed(StreamEvent::TaskStart {
         node_id: "think".to_string(),
+        namespace: None,
     });
     adapter.feed(StreamEvent::Messages {
         chunk: MessageChunk::message("Hello"),
         metadata: StreamMetadata {
             loom_node: "think".to_string(),
+            namespace: None,
         },
     });
     adapter.feed(StreamEvent::Messages {
         chunk: MessageChunk::message(" world"),
         metadata: StreamMetadata {
             loom_node: "think".to_string(),
+            namespace: None,
         },
     });
 
@@ -95,11 +99,13 @@ fn adapter_finish_emits_stop_chunk() {
 
     adapter.feed(StreamEvent::TaskStart {
         node_id: "think".to_string(),
+        namespace: None,
     });
     adapter.feed(StreamEvent::Messages {
         chunk: MessageChunk::message("Hi"),
         metadata: StreamMetadata {
             loom_node: "think".to_string(),
+            namespace: None,
         },
     });
     adapter.finish();
@@ -122,6 +128,7 @@ fn adapter_finish_includes_usage_when_requested() {
 
     adapter.feed(StreamEvent::TaskStart {
         node_id: "think".to_string(),
+        namespace: None,
     });
     adapter.feed(StreamEvent::Usage {
         prompt_tokens: 10,
@@ -153,6 +160,7 @@ async fn adapter_with_sink_sends_lines_to_channel() {
 
     adapter.feed(StreamEvent::TaskStart {
         node_id: "think".to_string(),
+        namespace: None,
     });
     let first = rx.recv().await.expect("one line for initial chunk");
     assert!(first.starts_with("data: "));
@@ -162,6 +170,7 @@ async fn adapter_with_sink_sends_lines_to_channel() {
         chunk: MessageChunk::message("Hi"),
         metadata: StreamMetadata {
             loom_node: "think".to_string(),
+            namespace: None,
         },
     });
     let second = rx.recv().await.expect("one line for content");
@@ -211,6 +220,7 @@ fn adapter_emits_tool_calls_chunk_on_updates_with_tool_calls() {
             message_count_after_last_think: None,
             last_reasoning_content: None,
         },
+        namespace: None,
     });
 
     let lines = adapter.take_lines();
@@ -234,6 +244,7 @@ fn adapter_values_does_not_emit_finish_chunk() {
 
     adapter.feed(StreamEvent::TaskStart {
         node_id: "think".to_string(),
+        namespace: None,
     });
     adapter.feed(StreamEvent::Values(empty_state()));
     adapter.feed(StreamEvent::Values(empty_state()));

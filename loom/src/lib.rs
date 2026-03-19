@@ -134,6 +134,7 @@ pub mod message;
 pub mod model_spec;
 pub mod openai_sse;
 pub mod prompts;
+pub mod pregel;
 pub mod protocol;
 pub mod runner_common;
 pub mod skill;

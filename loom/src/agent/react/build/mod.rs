@@ -78,6 +78,9 @@ fn build_runnable_config(config: &ReactBuildConfig) -> Option<RunnableConfig> {
         user_id: config.user_id.clone(),
         resume_from_node_id: None,
         depth: None,
+        resume_value: None,
+        resume_values_by_namespace: Default::default(),
+        resume_values_by_interrupt_id: Default::default(),
     })
 }
 

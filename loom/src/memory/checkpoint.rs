@@ -55,7 +55,11 @@ pub struct CheckpointMetadata {
     /// Timestamp when this checkpoint was created.
     pub created_at: Option<std::time::SystemTime>,
     /// Parent checkpoint IDs (checkpoint_ns -> checkpoint_id).
+    #[serde(default)]
     pub parents: HashMap<String, String>,
+    /// Child checkpoint IDs grouped by child checkpoint namespace.
+    #[serde(default)]
+    pub children: HashMap<String, Vec<String>>,
 }
 
 /// Source of the checkpoint (input, loop, update, fork).
@@ -93,6 +97,7 @@ mod tests {
             step: 0,
             created_at: None,
             parents: HashMap::new(),
+            children: HashMap::new(),
         };
     }
 
@@ -230,6 +235,7 @@ mod tests {
         assert_eq!(metadata.step, 0);
         assert!(metadata.created_at.is_none());
         assert!(metadata.parents.is_empty());
+        assert!(metadata.children.is_empty());
     }
 }
 
@@ -268,6 +274,9 @@ pub struct Checkpoint<S> {
     /// Pending sends for message passing.
     #[serde(default)]
     pub pending_sends: Vec<PendingWrite>,
+    /// Pending interrupts persisted for resume.
+    #[serde(default)]
+    pub pending_interrupts: Vec<Value>,
     /// Metadata for the checkpoint.
     pub metadata: CheckpointMetadata,
 }
@@ -325,11 +334,13 @@ impl<S> Checkpoint<S> {
             versions_seen: HashMap::new(),
             updated_channels: None,
             pending_sends: Vec::new(),
+            pending_interrupts: Vec::new(),
             metadata: CheckpointMetadata {
                 source,
                 step,
                 created_at: Some(now),
                 parents: HashMap::new(),
+                children: HashMap::new(),
             },
         }
     }
@@ -354,11 +365,13 @@ impl<S> Checkpoint<S> {
             versions_seen: HashMap::new(),
             updated_channels: None,
             pending_sends: Vec::new(),
+            pending_interrupts: Vec::new(),
             metadata: CheckpointMetadata {
                 source,
                 step,
                 created_at: Some(now),
                 parents: HashMap::new(),
+                children: HashMap::new(),
             },
         }
     }
@@ -382,6 +395,7 @@ impl<S: Clone> Checkpoint<S> {
                 .collect(),
             updated_channels: self.updated_channels.clone(),
             pending_sends: self.pending_sends.clone(),
+            pending_interrupts: self.pending_interrupts.clone(),
             metadata: self.metadata.clone(),
         }
     }
@@ -407,6 +421,7 @@ impl<S: Default> Default for Checkpoint<S> {
             versions_seen: HashMap::new(),
             updated_channels: None,
             pending_sends: Vec::new(),
+            pending_interrupts: Vec::new(),
             metadata: CheckpointMetadata::default(),
         }
     }
