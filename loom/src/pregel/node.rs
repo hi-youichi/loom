@@ -142,6 +142,15 @@ impl PregelNodeContext {
         config.checkpoint_id = None;
         config.resume_from_node_id = None;
         let child_namespace = invocation.child_namespace.0.clone();
+        
+        // Ensure parent checkpoint ID is set if available
+        let mut invocation = invocation.clone();
+        if invocation.parent_checkpoint_id.is_none() {
+            if let Ok(Some(state)) = parent_runtime.get_state(self.run_config.clone()).await {
+                invocation.parent_checkpoint_id = Some(state.checkpoint_id);
+            }
+        }
+        
         let result = parent_runtime
             .invoke_subgraph_with_stream(
                 child_runtime,
@@ -171,7 +180,7 @@ impl PregelNodeContext {
         child_runtime: &PregelRuntime,
         invocation: SubgraphInvocation,
     ) -> Result<ChannelValue, AgentError> {
-        match self.invoke_subgraph(child_runtime, invocation).await? {
+        match self.invoke_subgraph(child_runtime, invocation.clone()).await? {
             SubgraphResult::Completed(value) => Ok(value),
             SubgraphResult::Interrupted(record) => Err(AgentError::Interrupted(GraphInterrupt(
                 Interrupt::with_id(interrupt_value_from_record(&record), record.interrupt_id),

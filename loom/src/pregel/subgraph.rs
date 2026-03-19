@@ -24,6 +24,7 @@ impl CheckpointNamespace {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SubgraphInvocation {
     pub parent_task_id: TaskId,
+    pub parent_checkpoint_id: Option<String>,
     pub child_namespace: CheckpointNamespace,
     pub entry_input: ChannelValue,
 }

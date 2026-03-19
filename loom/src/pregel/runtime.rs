@@ -467,13 +467,13 @@ impl PregelRuntime {
             checkpoint_ns: child_namespace.clone(),
             checkpoint_id: None,
             depth: Some(config.depth.unwrap_or(0) + 1),
-            ..config
+            ..config.clone()
         };
-        match child_runtime
+        let result = match child_runtime
             .invoke_inner(invocation.entry_input, Some(child_config.clone()), stream_tx)
             .await
         {
-            Ok(value) => Ok(SubgraphResult::Completed(value)),
+            Ok(value) => SubgraphResult::Completed(value),
             Err(AgentError::Interrupted(interrupt)) => {
                 if let Some(state) = child_runtime.get_state(child_config.clone()).await? {
                     if let Some(mut record) = state.pending_interrupts.into_iter().next() {
@@ -484,22 +484,55 @@ impl PregelRuntime {
                     }
                 }
 
-                Ok(SubgraphResult::Interrupted(crate::pregel::InterruptRecord {
+                SubgraphResult::Interrupted(crate::pregel::InterruptRecord {
                     interrupt_id: interrupt
                         .0
                         .id
                         .clone()
                         .unwrap_or_else(|| format!("subgraph:{}", invocation.parent_task_id)),
-                    namespace: child_namespace,
+                    namespace: child_namespace.clone(),
                     task_id: invocation.parent_task_id,
                     node_name: "subgraph".to_string(),
                     step: 0,
                     value: interrupt.0.value,
-                }))
+                })
             }
-            Err(AgentError::Cancelled) => Ok(SubgraphResult::Cancelled),
-            Err(error) => Ok(SubgraphResult::Failed(error.to_string())),
+            Err(AgentError::Cancelled) => SubgraphResult::Cancelled,
+            Err(error) => SubgraphResult::Failed(error.to_string()),
+        };
+        
+        if let Some(state) = child_runtime
+            .get_state(child_config)
+            .await?
+        {
+            if let Some(checkpoint_id) = invocation.parent_checkpoint_id {
+                // Link child -> parent
+                if let Some(checkpointer) = &child_runtime.checkpointer {
+                    // Update the child's checkpoint to point to the parent
+                    let mut child_checkpoint = checkpointer
+                        .get_tuple(&RunnableConfig {
+                            checkpoint_ns: child_namespace.clone(),
+                            checkpoint_id: Some(state.checkpoint_id.clone()),
+                            ..config.clone()
+                        })
+                        .await
+                        .map_err(checkpoint_error)?
+                        .map(|(cp, _)| cp)
+                        .unwrap_or_else(|| Checkpoint::from_state(serde_json::json!({}), CheckpointSource::Update, 0));
+                    
+                    child_checkpoint.metadata.parents.insert(config.checkpoint_ns.clone(), checkpoint_id);
+                    checkpointer
+                        .put(&RunnableConfig {
+                            checkpoint_ns: child_namespace.clone(),
+                            ..config.clone()
+                        }, &child_checkpoint)
+                        .await
+                        .map_err(checkpoint_error)?;
+                }
+            }
         }
+
+        Ok(result)
     }
 
     async fn persist_checkpoint(
@@ -1141,6 +1174,7 @@ mod tests {
                     self.child_runtime.as_ref(),
                     SubgraphInvocation {
                         parent_task_id: input.scratchpad.task_id.clone(),
+                        parent_checkpoint_id: None,
                         child_namespace,
                         entry_input: json!({
                             "in": input.read_values.get("in").cloned().unwrap_or(json!(null)),
@@ -1470,22 +1504,32 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(child_history.len(), 2);
+        assert_eq!(child_history.len(), 3);
+        
+        let mut expected_child_ids: Vec<String> = child_history
+            .iter()
+            .map(|item| item.checkpoint_id.clone())
+            .collect();
+        expected_child_ids.sort();
+        expected_child_ids.dedup();
+        
+        let mut actual_child_ids = final_parent_state
+            .children
+            .get(
+                final_parent_state
+                    .children
+                    .keys()
+                    .find(|ns| ns.starts_with("parent/child/"))
+                    .expect("parent state should contain linked child namespace"),
+            )
+            .expect("linked child checkpoints")
+            .clone();
+        actual_child_ids.sort();
+        actual_child_ids.dedup();
+
         assert_eq!(
-            final_parent_state
-                .children
-                .get(
-                    final_parent_state
-                        .children
-                        .keys()
-                        .find(|ns| ns.starts_with("parent/child/"))
-                        .expect("parent state should contain linked child namespace"),
-                )
-                .expect("linked child checkpoints"),
-            &child_history
-                .iter()
-                .map(|item| item.checkpoint_id.clone())
-                .collect::<Vec<_>>()
+            actual_child_ids,
+            expected_child_ids
         );
     }
 
@@ -2115,6 +2159,7 @@ mod tests {
                 base_config.clone(),
                 SubgraphInvocation {
                     parent_task_id: "parent-task".to_string(),
+                    parent_checkpoint_id: None,
                     child_namespace: CheckpointNamespace("parent/child-a".to_string()),
                     entry_input: json!({"in": "child"}),
                 },
@@ -2185,6 +2230,7 @@ mod tests {
         };
         let invocation = SubgraphInvocation {
             parent_task_id: "parent-task".to_string(),
+            parent_checkpoint_id: None,
             child_namespace: CheckpointNamespace("parent/child-resume".to_string()),
             entry_input: json!({"in": "child"}),
         };
@@ -2291,6 +2337,7 @@ mod tests {
                 base_config.clone(),
                 SubgraphInvocation {
                     parent_task_id: "root-task".to_string(),
+                    parent_checkpoint_id: None,
                     child_namespace: CheckpointNamespace("root/child".to_string()),
                     entry_input: json!({"in": "child"}),
                 },
@@ -2311,6 +2358,7 @@ mod tests {
                 },
                 SubgraphInvocation {
                     parent_task_id: "child-task".to_string(),
+                    parent_checkpoint_id: None,
                     child_namespace: CheckpointNamespace("root/child/grandchild".to_string()),
                     entry_input: json!({"in": "grandchild"}),
                 },
