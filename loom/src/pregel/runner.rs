@@ -26,10 +26,18 @@ impl PregelRunner {
         graph: Arc<PregelGraph>,
         ctx: PregelNodeContext,
     ) -> Vec<TaskOutcome> {
+        if is_cancelled(&ctx) {
+            return vec![cancelled_outcome(tasks.first().cloned())];
+        }
         let mut outcomes = Vec::with_capacity(tasks.len());
         let mut join_set = tokio::task::JoinSet::new();
+        let cancel_fallback_task = tasks.first().cloned();
 
         for task in tasks {
+            if is_cancelled(&ctx) {
+                join_set.abort_all();
+                return vec![cancelled_outcome(cancel_fallback_task)];
+            }
             if should_emit_task_events(&ctx) {
                 if let Some(tx) = &ctx.stream_tx {
                     let _ = tx
@@ -53,7 +61,24 @@ impl PregelRunner {
             });
         }
 
-        while let Some(result) = join_set.join_next().await {
+        loop {
+            let result = if let Some(cancellation) = ctx.cancellation.as_ref() {
+                let token = cancellation.token();
+                tokio::select! {
+                    biased;
+                    _ = token.cancelled() => {
+                        join_set.abort_all();
+                        outcomes.push(cancelled_outcome(cancel_fallback_task.clone()));
+                        break;
+                    }
+                    result = join_set.join_next() => result,
+                }
+            } else {
+                join_set.join_next().await
+            };
+            let Some(result) = result else {
+                break;
+            };
             let outcome = match result {
                 Ok(outcome) => outcome,
                 Err(join_error) => TaskOutcome::Failed {
@@ -108,8 +133,7 @@ impl PregelRunner {
 
             let stop_early = matches!(
                 outcome,
-                TaskOutcome::Interrupted { .. }
-                    | TaskOutcome::Cancelled { .. }
+                TaskOutcome::Cancelled { .. }
                     | TaskOutcome::Failed { .. }
             );
             outcomes.push(outcome);
@@ -129,6 +153,15 @@ impl PregelRunner {
         graph: Arc<PregelGraph>,
         ctx: &PregelNodeContext,
     ) -> TaskOutcome {
+        if is_cancelled(ctx) {
+            return TaskOutcome::Cancelled {
+                task: ExecutableTask {
+                    writes: Vec::new(),
+                    prepared,
+                    attempt: 0,
+                },
+            };
+        }
         if !prepared.cached_writes.is_empty() {
             return TaskOutcome::Success {
                 task: ExecutableTask {
@@ -157,8 +190,26 @@ impl PregelRunner {
 
         let mut attempt: u32 = 0;
         loop {
+            if is_cancelled(ctx) {
+                return TaskOutcome::Cancelled {
+                    task: ExecutableTask {
+                        writes: Vec::new(),
+                        prepared,
+                        attempt,
+                    },
+                };
+            }
             match node.run(input.clone(), ctx).await {
                 Ok(output) => {
+                    if is_cancelled(ctx) {
+                        return TaskOutcome::Cancelled {
+                            task: ExecutableTask {
+                                writes: Vec::new(),
+                                prepared,
+                                attempt,
+                            },
+                        };
+                    }
                     return TaskOutcome::Success {
                         task: ExecutableTask {
                             writes: output.writes,
@@ -199,7 +250,9 @@ impl PregelRunner {
         }
     }
 
-    /// Placeholder for future abort logic when tasks become concurrently scheduled.
+    /// Aborts inflight tasks. Currently a no-op since tasks run sequentially
+    /// via `JoinSet`; will be extended when parallel scheduling is added.
+    #[allow(dead_code)]
     pub fn abort_inflight(&self) {}
 }
 
@@ -236,12 +289,57 @@ fn should_emit_task_events(ctx: &PregelNodeContext) -> bool {
     ctx.stream_mode.contains(&StreamMode::Tasks) || ctx.stream_mode.contains(&StreamMode::Debug)
 }
 
+fn is_cancelled(ctx: &PregelNodeContext) -> bool {
+    ctx.cancellation
+        .as_ref()
+        .map(|cancellation| cancellation.token().is_cancelled())
+        .unwrap_or(false)
+}
+
+fn cancelled_outcome(prepared: Option<PreparedTask>) -> TaskOutcome {
+    TaskOutcome::Cancelled {
+        task: ExecutableTask {
+            writes: Vec::new(),
+            prepared: prepared.unwrap_or_else(|| PreparedTask {
+                id: "cancelled".to_string(),
+                kind: crate::pregel::TaskKind::Pull,
+                node_name: "cancelled".to_string(),
+                step: 0,
+                triggers: Vec::new(),
+                input: serde_json::Value::Null,
+                packet_id: None,
+                origin_task_id: None,
+                cached_writes: Vec::new(),
+            }),
+            attempt: 0,
+        },
+    }
+}
+
 fn resolve_resume_value(
     prepared: &PreparedTask,
     ctx: &PregelNodeContext,
 ) -> Option<serde_json::Value> {
     ctx.pending_interrupts.iter().find_map(|record| {
-        if record.task_id != prepared.id && record.node_name != prepared.node_name {
+        if record.task_id != prepared.id {
+            return None;
+        }
+        ctx.resume_map
+            .values_by_interrupt_id
+            .get(&record.interrupt_id)
+            .cloned()
+            .or_else(|| {
+                ctx.resume_map
+                    .values_by_namespace
+                    .get(&record.namespace)
+                    .cloned()
+            })
+    }).or_else(|| {
+        if ctx.pending_interrupts.len() != 1 {
+            return None;
+        }
+        let record = &ctx.pending_interrupts[0];
+        if record.node_name != prepared.node_name {
             return None;
         }
         ctx.resume_map

@@ -1,21 +1,29 @@
 //! ReAct: graph nodes (Think, Act, Observe), runner, config-driven builder.
 //!
-//! This module provides the three nodes and runner for the minimal ReAct chain
-//! think → act → observe, plus a config-driven builder for CLIs.
+//! This module packages Loom's default ReAct loop as a small graph:
+//!
+//! 1. [`ThinkNode`] asks the model for the next action.
+//! 2. [`tools_condition`] decides whether the turn should end or route to tools.
+//! 3. [`ActNode`] executes tool calls through a [`crate::ToolSource`].
+//! 4. [`ObserveNode`] converts tool results back into messages so the next think
+//!    step can continue.
+//!
+//! You can use it at two levels:
+//!
+//! - Low level: wire [`ThinkNode`], [`ActNode`], and [`ObserveNode`] into a
+//!   graph yourself.
+//! - High level: use [`ReactBuildConfig`], [`build_react_runner`], or
+//!   [`build_react_run_context`] to construct a ready-to-run CLI/runtime setup.
 //!
 //! # Main types
 //!
-//! - **[`ThinkNode`]**: Calls the LLM with current messages; may output tool calls.
-//! - **[`ActNode`]**: Executes tool_calls via ToolSource and fills tool_results.
-//! - **[`ObserveNode`]**: Merges tool results into messages, clears tool_calls/tool_results.
-//! - **[`ReactRunner`]**: Holds compiled graph, checkpointer, store, LLM, tool source.
-//! - **[`ReactBuildConfig`]**: Configuration for building run context and runners.
-//! - **[`ReactRunContext`]**: Built checkpointer, store, runnable_config, tool_source.
-//!
-//! # Builder API
-//!
-//! Use [`ReactBuildConfig::from_env`] or build config programmatically, then call
-//! [`build_react_runner`] or [`build_react_run_context`].
+//! - [`ThinkNode`]: calls the LLM with the current conversation state.
+//! - [`ActNode`]: executes tool calls and records tool results.
+//! - [`ObserveNode`]: appends tool results to the message list and clears the
+//!   tool buffers for the next turn.
+//! - [`ReactRunner`]: owns the compiled graph plus the services needed to run it.
+//! - [`ReactBuildConfig`]: configuration for building runners from env or files.
+//! - [`ReactRunContext`]: resolved checkpointer, store, tool source, and run config.
 
 mod act_node;
 mod build;
@@ -54,6 +62,7 @@ pub enum ToolsConditionResult {
 }
 
 impl ToolsConditionResult {
+    /// Returns the edge label used by the compiled graph.
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Tools => "tools",
@@ -62,7 +71,10 @@ impl ToolsConditionResult {
     }
 }
 
-/// Conditional routing: if tool_calls present, route to act; else end.
+/// Chooses the next ReAct edge after a think step.
+///
+/// Returns [`ToolsConditionResult::Tools`] when the model produced at least one
+/// tool call; otherwise returns [`ToolsConditionResult::End`] to finish the turn.
 pub fn tools_condition(state: &ReActState) -> ToolsConditionResult {
     if state.tool_calls.is_empty() {
         ToolsConditionResult::End
@@ -116,25 +128,24 @@ mod tests {
     }
 }
 
-/// Default system prompt for ReAct agents.
-pub const REACT_SYSTEM_PROMPT: &str = r#""#;
+/// Default system prompt for ReAct agents. Used as a fallback when no
+/// `config.system_prompt` or agent prompt file is provided.
+pub const REACT_SYSTEM_PROMPT: &str = r#"You are an agent that follows the ReAct pattern (Reasoning + Acting).
 
-// pub const REACT_SYSTEM_PROMPT: &str = r#"You are an agent that follows the ReAct pattern (Reasoning + Acting).
+RULES:
+0. LANGUAGE: Reply in the same language the user used (e.g. if they write in Chinese, reply in Chinese; if in English, reply in English).
+1. THOUGHT first: Before any action, reason "Do I need external information?"
+   - If the question can be answered with your knowledge (math, general knowledge, reasoning) → give FINAL_ANSWER directly. Do NOT call tools.
+   - Only call tools when the user explicitly needs data you cannot know from training: current time, weather, search results, local file system content, etc.
+2. Use ACTION: call tools only when truly needed, or give FINAL_ANSWER when you have enough.
+3. After each tool result (OBSERVATION), reason about what you learned and decide the next step.
+4. Be thorough but concise in your reasoning.
+5. When using tool data, cite or summarize it clearly in your final answer.
+6. RESEARCH/HOW-TO: For research or how-to questions (e.g. "how to do X", "best practices for Y"), you MUST use search tools at least 2–3 times with different queries or angles. Do NOT give FINAL_ANSWER after only one search. Synthesize from the gathered content, then give your final answer.
 
-// RULES:
-// 0. LANGUAGE: Reply in the same language the user used (e.g. if they write in Chinese, reply in Chinese; if in English, reply in English).
-// 1. THOUGHT first: Before any action, reason "Do I need external information?"
-//    - If the question can be answered with your knowledge (math, general knowledge, reasoning) → give FINAL_ANSWER directly. Do NOT call tools.
-//    - Only call tools when the user explicitly needs data you cannot know from training: current time, weather, search results, local file system content, etc.
-// 2. Use ACTION: call tools only when truly needed, or give FINAL_ANSWER when you have enough.
-// 3. After each tool result (OBSERVATION), reason about what you learned and decide the next step.
-// 4. Be thorough but concise in your reasoning.
-// 5. When using tool data, cite or summarize it clearly in your final answer.
-// 6. RESEARCH/HOW-TO: For research or how-to questions (e.g. "how to do X", "best practices for Y"), you MUST use search tools at least 2–3 times with different queries or angles. Do NOT give FINAL_ANSWER after only one search. Synthesize from the gathered content, then give your final answer.
+PHASES:
+- THOUGHT: Reason about what the user needs, what you already have, and whether any tool would help.
+- ACTION: Execute one tool at a time, or give FINAL_ANSWER with your complete response.
+- OBSERVATION: After seeing tool output, analyze it and either call another tool or answer.
 
-// PHASES:
-// - THOUGHT: Reason about what the user needs, what you already have, and whether any tool would help.
-// - ACTION: Execute one tool at a time, or give FINAL_ANSWER with your complete response.
-// - OBSERVATION: After seeing tool output, analyze it and either call another tool or answer.
-
-// Explain your reasoning clearly. Use tools only when they can help; for simple questions, answer directly. Do not make up facts; use tool results when available."#;
+Explain your reasoning clearly. Use tools only when they can help; for simple questions, answer directly. Do not make up facts; use tool results when available."#;

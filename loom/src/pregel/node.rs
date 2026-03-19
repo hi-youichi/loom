@@ -11,7 +11,7 @@ use crate::graph::{GraphInterrupt, Interrupt};
 use crate::memory::RunnableConfig;
 use crate::pregel::channel::ChannelSpec;
 use crate::pregel::runtime::PregelRuntime;
-use crate::pregel::subgraph::{SubgraphInvocation, SubgraphResult};
+use crate::pregel::subgraph::{PregelSubgraph, SubgraphInvocation, SubgraphResult};
 use crate::pregel::types::{
     ChannelName, ChannelValue, InterruptRecord, ManagedValues, NodeName, PregelScratchpad,
     ResumeMap,
@@ -252,6 +252,11 @@ pub trait PregelNode: Send + Sync {
 
     /// Channels this node reads when building input.
     fn reads(&self) -> &[ChannelName];
+
+    /// Child Pregel runtimes exposed for inspection or recursive graph export.
+    fn subgraphs(&self) -> Vec<PregelSubgraph> {
+        Vec::new()
+    }
 
     /// Executes the node once for the prepared input.
     async fn run(

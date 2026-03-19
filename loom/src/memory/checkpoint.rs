@@ -1,6 +1,8 @@
 //! Checkpoint and metadata types.
 //!
-//! Checkpoint (id, ts, channel_values, channel_versions, metadata).
+//! A [`Checkpoint`] captures one persisted snapshot of graph or Pregel runtime
+//! state, along with the frontier metadata needed to resume execution or inspect
+//! history.
 
 use super::config::RunnableConfig;
 use super::uuid6::uuid6;
@@ -8,7 +10,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::time::SystemTime;
 
-/// Current version of checkpoint format.
+/// Current version of the serialized checkpoint format.
 pub const CHECKPOINT_VERSION: u32 = 2;
 
 /// Special write type for errors.
@@ -20,8 +22,10 @@ pub const INTERRUPT: &str = "__interrupt__";
 /// Special write type for resume operations.
 pub const RESUME: &str = "__resume__";
 
-/// Mapping from special write types to negative indices.
-/// Used by Checkpointer implementations in put_writes.
+/// Maps reserved write-channel names to the synthetic indices used by storage backends.
+///
+/// Checkpointer implementations use negative indices so reserved writes can be
+/// persisted alongside normal writes without colliding with user channels.
 pub fn writes_idx_map(write_type: &str) -> Option<i32> {
     match write_type {
         ERROR => Some(-1),
@@ -32,20 +36,18 @@ pub fn writes_idx_map(write_type: &str) -> Option<i32> {
     }
 }
 
-/// A pending write to be stored with a checkpoint.
+/// A pending write stored alongside a checkpoint.
 ///
-/// Tuple of (task_id, channel, value).
+/// Tuple layout: `(task_id, channel, value)`.
 pub type PendingWrite = (String, String, Value);
 
-/// Channel versions map (channel name -> version).
+/// Channel versions map (`channel_name -> version`).
 ///
-/// Versions can be string, integer, or float but we use String for simplicity.
+/// Versions are stored as strings so different backends can serialize them
+/// without committing to one numeric type.
 pub type ChannelVersions = HashMap<String, String>;
 
-/// Metadata for a single checkpoint (source, step, created_at, parents).
-///
-/// Checkpoint metadata. Used by Checkpointer implementations
-/// and by list() for time-travel UI.
+/// Metadata describing where a checkpoint came from and how it relates to others.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct CheckpointMetadata {
     /// The source of the checkpoint (input, loop, update, fork).
@@ -62,9 +64,7 @@ pub struct CheckpointMetadata {
     pub children: HashMap<String, Vec<String>>,
 }
 
-/// Source of the checkpoint (input, loop, update, fork).
-///
-/// Checkpoint metadata.source.
+/// Why a checkpoint was created.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CheckpointSource {
     /// Created from an input to invoke/stream/batch.
@@ -243,79 +243,79 @@ fn default_checkpoint_version() -> u32 {
     CHECKPOINT_VERSION
 }
 
-/// One checkpoint: state snapshot + channel versions + id/ts.
+/// One persisted checkpoint snapshot.
 ///
-/// Stored by Checkpointer keyed by (thread_id, checkpoint_ns, checkpoint_id).
-/// channel_values is the graph state S; channel_versions used for reducer/merge.
-///
-/// **Interaction**: Produced by graph execution; consumed by Checkpointer::put,
-/// returned by get_tuple.
+/// Checkpoints are keyed by `(thread_id, checkpoint_ns, checkpoint_id)` inside
+/// a [`crate::memory::Checkpointer`]. `channel_values` stores the user-visible
+/// state snapshot, while the version and pending-write fields preserve enough
+/// runtime context to continue execution or inspect lineage later.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Checkpoint<S> {
     /// The version of the checkpoint format. Currently `2`.
     #[serde(default = "default_checkpoint_version")]
     pub v: u32,
-    /// The ID of the checkpoint. Unique and monotonically increasing.
+    /// Unique checkpoint id.
+    ///
+    /// Newly created checkpoints use UUID6 so lexicographic ordering generally
+    /// tracks creation time.
     pub id: String,
-    /// The timestamp of the checkpoint in ISO 8601 format (milliseconds since epoch).
+    /// Creation timestamp expressed as milliseconds since the Unix epoch.
     pub ts: String,
-    /// The values of the channels at the time of the checkpoint (graph state).
+    /// Materialized graph state at the time the checkpoint was written.
     pub channel_values: S,
-    /// The versions of the channels at the time of the checkpoint.
+    /// Channel frontier at the time of the checkpoint.
     #[serde(default)]
     pub channel_versions: ChannelVersions,
-    /// Map from node ID to map from channel name to version seen.
-    /// Used to determine which nodes to execute next.
+    /// Per-node view of channel versions already observed.
+    ///
+    /// Runtimes use this to decide which nodes still need to react to newer channel values.
     #[serde(default)]
     pub versions_seen: HashMap<String, ChannelVersions>,
-    /// The channels that were updated in this checkpoint.
+    /// Channels updated at the barrier that produced this checkpoint.
     #[serde(default)]
     pub updated_channels: Option<Vec<String>>,
-    /// Pending sends for message passing.
+    /// Pending sends that should be materialized in future execution steps.
     #[serde(default)]
     pub pending_sends: Vec<PendingWrite>,
-    /// Pending interrupts persisted for resume.
+    /// Pending reserved writes that are not represented as normal channel state.
+    #[serde(default)]
+    pub pending_writes: Vec<PendingWrite>,
+    /// Pending interrupts persisted so a later run can resume them.
     #[serde(default)]
     pub pending_interrupts: Vec<Value>,
-    /// Metadata for the checkpoint.
+    /// Metadata describing the checkpoint's source and lineage.
     pub metadata: CheckpointMetadata,
 }
 
-/// Item returned by Checkpointer::list for history / time-travel.
+/// Lightweight checkpoint list item for history and time-travel UIs.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CheckpointListItem {
+    /// Unique checkpoint id.
     pub checkpoint_id: String,
+    /// Metadata associated with the checkpoint.
     pub metadata: CheckpointMetadata,
 }
 
-/// A tuple containing a checkpoint and its associated data.
-///
-/// Returned by Checkpointer::get_tuple.
+/// Expanded checkpoint record returned by [`crate::memory::Checkpointer::get_tuple`].
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CheckpointTuple<S> {
-    /// Configuration for the checkpoint.
+    /// Configuration used to load this checkpoint.
     pub config: RunnableConfig,
     /// The checkpoint snapshot.
     pub checkpoint: Checkpoint<S>,
-    /// Metadata for the checkpoint.
+    /// Metadata duplicated for convenience.
     pub metadata: CheckpointMetadata,
-    /// Parent configuration (if any).
+    /// Parent configuration, when the backend can reconstruct it.
     pub parent_config: Option<RunnableConfig>,
-    /// Pending writes (if any).
+    /// Pending writes returned separately by some backends.
     pub pending_writes: Option<Vec<PendingWrite>>,
 }
 
 impl<S> Checkpoint<S> {
-    /// Creates a checkpoint from current state for saving after invoke.
+    /// Creates a fresh checkpoint from state, source, and step metadata.
     ///
-    /// Uses UUID6 for the checkpoint ID, ensuring time-ordered and unique identifiers.
-    /// Uses UUID6 for checkpoint IDs.
-    ///
-    /// # Arguments
-    ///
-    /// - `state`: The state to checkpoint
-    /// - `source`: The source of the checkpoint (Input, Loop, Update, Fork)
-    /// - `step`: The step number (-1 for input, 0+ for loop steps)
+    /// The checkpoint id is generated with UUID6 so new checkpoints are unique
+    /// and roughly time-ordered.
     pub fn from_state(state: S, source: CheckpointSource, step: i64) -> Self {
         let now = SystemTime::now();
         let id = uuid6().to_string();
@@ -334,6 +334,7 @@ impl<S> Checkpoint<S> {
             versions_seen: HashMap::new(),
             updated_channels: None,
             pending_sends: Vec::new(),
+            pending_writes: Vec::new(),
             pending_interrupts: Vec::new(),
             metadata: CheckpointMetadata {
                 source,
@@ -345,9 +346,9 @@ impl<S> Checkpoint<S> {
         }
     }
 
-    /// Creates a checkpoint with a specific ID.
+    /// Creates a fresh checkpoint with a caller-provided id.
     ///
-    /// Useful for restoring checkpoints or creating checkpoints with known IDs.
+    /// This is mainly useful for import, restore, or backend-specific migration flows.
     pub fn with_id(id: String, state: S, source: CheckpointSource, step: i64) -> Self {
         let now = SystemTime::now();
         let ts = format!(
@@ -365,6 +366,7 @@ impl<S> Checkpoint<S> {
             versions_seen: HashMap::new(),
             updated_channels: None,
             pending_sends: Vec::new(),
+            pending_writes: Vec::new(),
             pending_interrupts: Vec::new(),
             metadata: CheckpointMetadata {
                 source,
@@ -378,9 +380,7 @@ impl<S> Checkpoint<S> {
 }
 
 impl<S: Clone> Checkpoint<S> {
-    /// Creates a deep copy of the checkpoint.
-    ///
-    /// Used for forking checkpoints or creating mutable copies.
+    /// Returns a deep copy of the checkpoint.
     pub fn copy(&self) -> Self {
         Self {
             v: self.v,
@@ -395,14 +395,37 @@ impl<S: Clone> Checkpoint<S> {
                 .collect(),
             updated_channels: self.updated_channels.clone(),
             pending_sends: self.pending_sends.clone(),
+            pending_writes: self.pending_writes.clone(),
             pending_interrupts: self.pending_interrupts.clone(),
             metadata: self.metadata.clone(),
         }
     }
+
+    /// Creates a forked checkpoint with a new id but the same execution frontier.
+    ///
+    /// The resulting checkpoint records the provided parent namespace/id in its
+    /// lineage metadata so replay tooling can navigate the fork relationship.
+    pub fn fork_from(&self, parent_namespace: String, parent_checkpoint_id: String) -> Self {
+        let mut forked =
+            Checkpoint::from_state(self.channel_values.clone(), CheckpointSource::Fork, self.metadata.step);
+        forked.channel_versions = self.channel_versions.clone();
+        forked.versions_seen = self.versions_seen.clone();
+        forked.updated_channels = self.updated_channels.clone();
+        forked.pending_sends = self.pending_sends.clone();
+        forked.pending_writes = self.pending_writes.clone();
+        forked.pending_interrupts = self.pending_interrupts.clone();
+        forked.metadata.parents = self.metadata.parents.clone();
+        forked
+            .metadata
+            .parents
+            .insert(parent_namespace, parent_checkpoint_id);
+        forked.metadata.children = self.metadata.children.clone();
+        forked
+    }
 }
 
 impl<S: Default> Default for Checkpoint<S> {
-    /// Creates an empty checkpoint with default values.
+    /// Creates an empty checkpoint with default state and fresh metadata.
     fn default() -> Self {
         let now = SystemTime::now();
         let id = uuid6().to_string();
@@ -421,6 +444,7 @@ impl<S: Default> Default for Checkpoint<S> {
             versions_seen: HashMap::new(),
             updated_channels: None,
             pending_sends: Vec::new(),
+            pending_writes: Vec::new(),
             pending_interrupts: Vec::new(),
             metadata: CheckpointMetadata::default(),
         }

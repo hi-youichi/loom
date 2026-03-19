@@ -13,6 +13,7 @@ pub struct PregelStateSnapshot {
     pub children: std::collections::HashMap<String, Vec<String>>,
     pub updated_channels: Vec<ChannelName>,
     pub pending_sends: Vec<PendingWrite>,
+    pub pending_writes: Vec<PendingWrite>,
     pub pending_interrupts: Vec<InterruptRecord>,
 }
 
@@ -27,6 +28,7 @@ impl PregelStateSnapshot {
             children: checkpoint.metadata.children.clone(),
             updated_channels: checkpoint.updated_channels.clone().unwrap_or_default(),
             pending_sends: checkpoint.pending_sends.clone(),
+            pending_writes: checkpoint.pending_writes.clone(),
             pending_interrupts: checkpoint
                 .pending_interrupts
                 .iter()

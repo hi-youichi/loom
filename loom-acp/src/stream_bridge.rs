@@ -108,7 +108,7 @@ where
     S: std::fmt::Debug + Clone + Send + Sync + 'static,
 {
     match ev {
-        StreamEvent::TaskStart { node_id: _ } => vec![],
+        StreamEvent::TaskStart { node_id: _, .. } => vec![],
         StreamEvent::Messages { chunk, metadata } => {
             // Only chunk.kind == Thinking (e.g. <think> tags) → thought.
             if chunk.kind == MessageChunkKind::Thinking {
@@ -266,6 +266,7 @@ mod tests {
             chunk,
             metadata: StreamMetadata {
                 loom_node: "think".to_string(),
+                namespace: None,
             },
         })
     }
@@ -301,6 +302,7 @@ mod tests {
             chunk: MessageChunk::message("这是最终回复。"),
             metadata: StreamMetadata {
                 loom_node: "reply".to_string(),
+                namespace: None,
             },
         });
         let updates = loom_event_to_updates(&ev);
@@ -316,6 +318,7 @@ mod tests {
     fn loom_event_to_updates_task_start_produces_nothing() {
         let ev = AnyStreamEvent::React(StreamEvent::TaskStart {
             node_id: "think".to_string(),
+            namespace: None,
         });
         let updates = loom_event_to_updates(&ev);
         assert_eq!(updates.len(), 0);

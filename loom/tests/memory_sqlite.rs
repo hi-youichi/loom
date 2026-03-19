@@ -36,6 +36,7 @@ async fn sqlite_saver_put_and_get_tuple() {
         versions_seen: HashMap::new(),
         updated_channels: None,
         pending_sends: Vec::new(),
+        pending_writes: Vec::new(),
         pending_interrupts: Vec::new(),
         metadata: CheckpointMetadata {
             source: CheckpointSource::Update,
@@ -93,6 +94,7 @@ async fn sqlite_saver_list() {
         versions_seen: HashMap::new(),
         updated_channels: None,
         pending_sends: Vec::new(),
+        pending_writes: Vec::new(),
         pending_interrupts: Vec::new(),
         metadata: CheckpointMetadata {
             source: CheckpointSource::Input,

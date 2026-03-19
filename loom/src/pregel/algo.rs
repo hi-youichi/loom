@@ -1,14 +1,15 @@
 //! Core Pregel algorithms.
 
-use std::collections::{hash_map::DefaultHasher, BTreeMap, HashMap};
+use std::collections::{hash_map::DefaultHasher, BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
+use crate::memory::RunnableConfig;
 use crate::pregel::cache::TaskCacheKey;
 use crate::pregel::channel::{build_channel, BoxedChannel};
 use crate::pregel::node::PregelGraph;
 use crate::pregel::types::{
-    ChannelName, ChannelValue, ChannelVersion, ReservedWrite, SendPacket, TaskId, TaskKind,
-    TASKS_CHANNEL,
+    ChannelName, ChannelValue, ChannelVersion, InterruptRecord, ReservedWrite, SendPacket,
+    TaskId, TaskKind, TASKS_CHANNEL,
 };
 
 /// A task prepared for execution in the next Pregel step.
@@ -66,33 +67,123 @@ pub fn prepare_next_tasks(
     tasks_by_id.into_values().collect()
 }
 
+/// Normalizes persisted pending send records using packet identity semantics.
+pub fn normalize_pending_sends(
+    pending_sends: &mut Vec<(TaskId, ChannelName, ChannelValue)>,
+) {
+    let mut normalized = Vec::with_capacity(pending_sends.len());
+    for (task_id, channel_name, value) in pending_sends.drain(..) {
+        if channel_name != TASKS_CHANNEL {
+            normalized.push((task_id, channel_name, value));
+            continue;
+        }
+        if let Some(packet) = decode_send_packet(value.clone(), None, 0) {
+            push_unique_pending_send(&mut normalized, task_id, packet);
+        } else {
+            normalized.push((task_id, channel_name, value));
+        }
+    }
+    *pending_sends = normalized;
+}
+
+/// Normalizes persisted pending reserved writes.
+///
+/// Most pending writes should preserve multiple entries per task/channel so replay can
+/// faithfully reproduce multi-write task outputs (for example multiple scheduled packets
+/// or multiple topic-channel writes). A small set of singleton control writes keeps
+/// last-write-wins semantics by task/channel.
+pub fn normalize_pending_writes(
+    pending_writes: &mut Vec<(TaskId, ChannelName, ChannelValue)>,
+) {
+    let mut normalized = Vec::with_capacity(pending_writes.len());
+    for (task_id, channel_name, value) in pending_writes.drain(..) {
+        push_unique_pending_write(&mut normalized, task_id, channel_name, value);
+    }
+    *pending_writes = normalized;
+}
+
+/// Extracts a stable packet id from a pending send record value.
+pub fn pending_send_packet_id(value: &ChannelValue) -> Option<String> {
+    decode_send_packet(value.clone(), None, 0).map(|packet| packet.id)
+}
+
+/// Rebuilds interrupted tasks when a checkpoint already carries resume values.
+pub fn prepare_resume_tasks_from_interrupts(
+    checkpoint: &crate::memory::Checkpoint<serde_json::Value>,
+    channels: &HashMap<ChannelName, BoxedChannel>,
+    graph: &PregelGraph,
+    step: u64,
+    resume_interrupt_ids: &HashSet<String>,
+) -> Vec<PreparedTask> {
+    checkpoint
+        .pending_interrupts
+        .iter()
+        .filter_map(|value| serde_json::from_value::<InterruptRecord>(value.clone()).ok())
+        .filter(|record| resume_interrupt_ids.contains(record.interrupt_id.as_str()))
+        .filter_map(|record| {
+            let node = graph.nodes.get(&record.node_name)?;
+            Some(PreparedTask {
+                id: record.task_id,
+                kind: TaskKind::Pull,
+                node_name: record.node_name,
+                step,
+                triggers: node.triggers().to_vec(),
+                input: build_task_input(node.triggers(), node.reads(), channels),
+                packet_id: None,
+                origin_task_id: None,
+                cached_writes: Vec::new(),
+            })
+        })
+        .collect()
+}
+
 /// Applies task writes to channels and returns the channels updated this step.
 pub fn apply_writes(
     checkpoint: &mut crate::memory::Checkpoint<serde_json::Value>,
     channels: &mut HashMap<ChannelName, BoxedChannel>,
     tasks: &[ExecutableTask],
-    _graph: &PregelGraph,
+    graph: &PregelGraph,
     next_version: impl Fn(Option<&str>) -> ChannelVersion,
 ) -> Vec<ChannelName> {
     let mut grouped: BTreeMap<ChannelName, Vec<ChannelValue>> = BTreeMap::new();
     let mut updated_channels = Vec::new();
     let mut pending_sends = Vec::new();
+    let mut pending_writes = Vec::new();
 
     for task in tasks {
         for (channel, value) in &task.writes {
             match classify_reserved_write(channel) {
-                Some(ReservedWrite::Tasks) | Some(ReservedWrite::Push) => {
-                    if let Some(packet) =
-                        decode_send_packet(value.clone(), Some(task.prepared.id.clone()), task.prepared.step)
-                    {
-                        pending_sends.push((
+                Some(ReservedWrite::Tasks)
+                | Some(ReservedWrite::Push)
+                | Some(ReservedWrite::Scheduled) => {
+                    if let Some(packet) = decode_send_packet(
+                        value.clone(),
+                        Some(task.prepared.id.clone()),
+                        task.prepared.step,
+                    ) {
+                        push_unique_pending_send(
+                            &mut pending_sends,
                             task.prepared.id.clone(),
-                            TASKS_CHANNEL.to_string(),
-                            serde_json::to_value(packet).expect("send packet serializes"),
-                        ));
+                            packet,
+                        );
+                    } else {
+                        push_unique_pending_write(
+                            &mut pending_writes,
+                            task.prepared.id.clone(),
+                            channel.clone(),
+                            value.clone(),
+                        );
                     }
                 }
-                Some(_) => {}
+                Some(ReservedWrite::NoWrites) => {}
+                Some(_) => {
+                    push_unique_pending_write(
+                        &mut pending_writes,
+                        task.prepared.id.clone(),
+                        channel.clone(),
+                        value.clone(),
+                    );
+                }
                 None => {
                     grouped.entry(channel.clone()).or_default().push(value.clone());
                 }
@@ -119,6 +210,17 @@ pub fn apply_writes(
     }
 
     for task in tasks {
+        let node_channels: HashSet<&str> = graph
+            .nodes
+            .get(&task.prepared.node_name)
+            .map(|n| {
+                n.reads()
+                    .iter()
+                    .chain(n.triggers().iter())
+                    .map(String::as_str)
+                    .collect()
+            })
+            .unwrap_or_default();
         checkpoint
             .versions_seen
             .entry(task.prepared.node_name.clone())
@@ -126,11 +228,13 @@ pub fn apply_writes(
             .extend(
                 updated_channels
                     .iter()
+                    .filter(|ch| node_channels.contains(ch.as_str()))
                     .map(|ch| (ch.clone(), version.clone())),
             );
     }
 
     checkpoint.pending_sends = pending_sends;
+    checkpoint.pending_writes = pending_writes;
 
     for channel in channels.values_mut() {
         channel.consume();
@@ -198,8 +302,10 @@ pub fn task_id_for(namespace: &str, node_name: &str, step: u64, kind: TaskKind) 
     format!("task-{step}-{:#x}", hasher.finish())
 }
 
-/// Derives a stable task-cache key for a prepared task.
-pub fn task_cache_key(task: &PreparedTask) -> TaskCacheKey {
+/// Derives a stable task-cache key for a prepared task, scoped to the
+/// current thread and checkpoint namespace so that different runs never
+/// share cached writes.
+pub fn task_cache_key(task: &PreparedTask, config: &RunnableConfig) -> TaskCacheKey {
     let mut hasher = DefaultHasher::new();
     stable_hash_value(&task.input, &mut hasher);
     TaskCacheKey {
@@ -207,6 +313,8 @@ pub fn task_cache_key(task: &PreparedTask) -> TaskCacheKey {
         step: task.step,
         input_hash: format!("{:#x}", hasher.finish()),
         kind: task.kind,
+        thread_id: config.thread_id.clone(),
+        checkpoint_ns: config.checkpoint_ns.clone(),
     }
 }
 
@@ -321,6 +429,67 @@ fn decode_send_packet(
             ))
         }
     }
+}
+
+fn push_unique_pending_send(
+    pending_sends: &mut Vec<(TaskId, ChannelName, ChannelValue)>,
+    task_id: TaskId,
+    packet: SendPacket,
+) {
+    let value = serde_json::to_value(packet.clone()).expect("send packet serializes");
+    if let Some(existing) = pending_sends.iter_mut().find(|(_, channel, existing_value)| {
+        if channel != TASKS_CHANNEL {
+            return false;
+        }
+        decode_send_packet(existing_value.clone(), None, packet.origin_step)
+            .map(|existing_packet| existing_packet.id == packet.id)
+            .unwrap_or(false)
+    }) {
+        *existing = (task_id, TASKS_CHANNEL.to_string(), value);
+        return;
+    }
+    pending_sends.push((task_id, TASKS_CHANNEL.to_string(), value));
+}
+
+fn push_unique_pending_write(
+    pending_writes: &mut Vec<(TaskId, ChannelName, ChannelValue)>,
+    task_id: TaskId,
+    channel: ChannelName,
+    value: ChannelValue,
+) {
+    if !pending_write_is_singleton(channel.as_str()) {
+        if pending_writes.iter().any(|(existing_task_id, existing_channel, existing_value)| {
+            existing_task_id == &task_id
+                && existing_channel == &channel
+                && existing_value == &value
+        }) {
+            return;
+        }
+        pending_writes.push((task_id, channel, value));
+        return;
+    }
+    if let Some(existing) = pending_writes
+        .iter_mut()
+        .find(|(existing_task_id, existing_channel, _)| {
+            existing_task_id == &task_id && existing_channel == &channel
+        })
+    {
+        *existing = (task_id, channel, value);
+        return;
+    }
+    pending_writes.push((task_id, channel, value));
+}
+
+fn pending_write_is_singleton(channel: &str) -> bool {
+    matches!(
+        classify_reserved_write(channel),
+        Some(
+            ReservedWrite::Return
+                | ReservedWrite::Error
+                | ReservedWrite::Resume
+                | ReservedWrite::NoWrites
+        )
+    )
 }
 
 fn prepare_pull_tasks(
@@ -542,5 +711,243 @@ mod tests {
         assert!(updated.is_empty());
         assert_eq!(checkpoint.pending_sends.len(), 1);
         assert_eq!(checkpoint.pending_sends[0].1, TASKS_CHANNEL);
+    }
+
+    #[test]
+    fn apply_writes_routes_scheduled_packets_to_pending_sends() {
+        let graph = PregelGraph::new();
+        let mut checkpoint = crate::memory::Checkpoint::from_state(
+            serde_json::json!({}),
+            crate::memory::CheckpointSource::Loop,
+            0,
+        );
+        let mut channels = HashMap::new();
+        let task = ExecutableTask {
+            prepared: PreparedTask {
+                id: "task-1".to_string(),
+                kind: TaskKind::Pull,
+                node_name: "scheduler".to_string(),
+                step: 0,
+                triggers: vec![],
+                input: serde_json::json!({}),
+                packet_id: None,
+                origin_task_id: None,
+                cached_writes: vec![],
+            },
+            writes: vec![(
+                ReservedWrite::Scheduled.as_str().to_string(),
+                serde_json::json!({"id": "pkt-1", "target": "worker", "payload": {"x": 1}}),
+            )],
+            attempt: 0,
+        };
+
+        let updated = apply_writes(&mut checkpoint, &mut channels, &[task], &graph, |current| {
+            let next = current.and_then(|v| v.parse::<u64>().ok()).unwrap_or(0) + 1;
+            next.to_string()
+        });
+
+        assert!(updated.is_empty());
+        assert_eq!(checkpoint.pending_sends.len(), 1);
+        assert_eq!(checkpoint.pending_sends[0].1, TASKS_CHANNEL);
+        assert!(checkpoint.pending_writes.is_empty());
+    }
+
+    #[test]
+    fn apply_writes_ignores_no_writes_marker() {
+        let graph = PregelGraph::new();
+        let mut checkpoint = crate::memory::Checkpoint::from_state(
+            serde_json::json!({}),
+            crate::memory::CheckpointSource::Loop,
+            0,
+        );
+        let mut channels = HashMap::new();
+        let task = ExecutableTask {
+            prepared: PreparedTask {
+                id: "task-1".to_string(),
+                kind: TaskKind::Pull,
+                node_name: "no-op".to_string(),
+                step: 0,
+                triggers: vec![],
+                input: serde_json::json!({}),
+                packet_id: None,
+                origin_task_id: None,
+                cached_writes: vec![],
+            },
+            writes: vec![(
+                ReservedWrite::NoWrites.as_str().to_string(),
+                serde_json::json!(true),
+            )],
+            attempt: 0,
+        };
+
+        let updated = apply_writes(&mut checkpoint, &mut channels, &[task], &graph, |current| {
+            let next = current.and_then(|v| v.parse::<u64>().ok()).unwrap_or(0) + 1;
+            next.to_string()
+        });
+
+        assert!(updated.is_empty());
+        assert!(checkpoint.pending_sends.is_empty());
+        assert!(checkpoint.pending_writes.is_empty());
+    }
+
+    #[test]
+    fn apply_writes_dedupes_reserved_writes_by_task_and_channel() {
+        let graph = PregelGraph::new();
+        let mut checkpoint = crate::memory::Checkpoint::from_state(
+            serde_json::json!({}),
+            crate::memory::CheckpointSource::Loop,
+            0,
+        );
+        let mut channels = HashMap::new();
+        let task = ExecutableTask {
+            prepared: PreparedTask {
+                id: "task-1".to_string(),
+                kind: TaskKind::Pull,
+                node_name: "reserved".to_string(),
+                step: 0,
+                triggers: vec![],
+                input: serde_json::json!({}),
+                packet_id: None,
+                origin_task_id: None,
+                cached_writes: vec![],
+            },
+            writes: vec![
+                (
+                    ReservedWrite::Return.as_str().to_string(),
+                    serde_json::json!("first"),
+                ),
+                (
+                    ReservedWrite::Return.as_str().to_string(),
+                    serde_json::json!("second"),
+                ),
+            ],
+            attempt: 0,
+        };
+
+        apply_writes(&mut checkpoint, &mut channels, &[task], &graph, |current| {
+            let next = current.and_then(|v| v.parse::<u64>().ok()).unwrap_or(0) + 1;
+            next.to_string()
+        });
+
+        assert_eq!(checkpoint.pending_writes.len(), 1);
+        assert_eq!(checkpoint.pending_writes[0].2, serde_json::json!("second"));
+    }
+
+    #[test]
+    fn apply_writes_dedupes_send_packets_by_packet_id() {
+        let graph = PregelGraph::new();
+        let mut checkpoint = crate::memory::Checkpoint::from_state(
+            serde_json::json!({}),
+            crate::memory::CheckpointSource::Loop,
+            0,
+        );
+        let mut channels = HashMap::new();
+        let task = ExecutableTask {
+            prepared: PreparedTask {
+                id: "task-1".to_string(),
+                kind: TaskKind::Pull,
+                node_name: "sender".to_string(),
+                step: 0,
+                triggers: vec![],
+                input: serde_json::json!({}),
+                packet_id: None,
+                origin_task_id: None,
+                cached_writes: vec![],
+            },
+            writes: vec![
+                (
+                    TASKS_CHANNEL.to_string(),
+                    serde_json::json!({"id": "pkt-1", "target": "worker", "payload": {"x": 1}}),
+                ),
+                (
+                    TASKS_CHANNEL.to_string(),
+                    serde_json::json!({"id": "pkt-1", "target": "worker", "payload": {"x": 2}}),
+                ),
+            ],
+            attempt: 0,
+        };
+
+        apply_writes(&mut checkpoint, &mut channels, &[task], &graph, |current| {
+            let next = current.and_then(|v| v.parse::<u64>().ok()).unwrap_or(0) + 1;
+            next.to_string()
+        });
+
+        assert_eq!(checkpoint.pending_sends.len(), 1);
+        let packet = decode_send_packet(checkpoint.pending_sends[0].2.clone(), None, 0)
+            .expect("packet should decode");
+        assert_eq!(packet.id, "pkt-1");
+        assert_eq!(packet.payload["x"], serde_json::json!(2));
+    }
+
+    #[test]
+    fn normalize_pending_sends_dedupes_existing_packet_ids() {
+        let mut pending_sends = vec![
+            (
+                "task-1".to_string(),
+                TASKS_CHANNEL.to_string(),
+                serde_json::json!({"id": "pkt-1", "target": "worker", "payload": {"x": 1}}),
+            ),
+            (
+                "task-2".to_string(),
+                TASKS_CHANNEL.to_string(),
+                serde_json::json!({"id": "pkt-1", "target": "worker", "payload": {"x": 2}}),
+            ),
+        ];
+
+        normalize_pending_sends(&mut pending_sends);
+
+        assert_eq!(pending_sends.len(), 1);
+        let packet = decode_send_packet(pending_sends[0].2.clone(), None, 0)
+            .expect("packet should decode");
+        assert_eq!(packet.payload["x"], serde_json::json!(2));
+    }
+
+    #[test]
+    fn normalize_pending_writes_dedupes_existing_task_channel_pairs() {
+        let mut pending_writes = vec![
+            (
+                "task-1".to_string(),
+                ReservedWrite::Return.as_str().to_string(),
+                serde_json::json!("first"),
+            ),
+            (
+                "task-1".to_string(),
+                ReservedWrite::Return.as_str().to_string(),
+                serde_json::json!("second"),
+            ),
+        ];
+
+        normalize_pending_writes(&mut pending_writes);
+
+        assert_eq!(pending_writes.len(), 1);
+        assert_eq!(pending_writes[0].2, serde_json::json!("second"));
+    }
+
+    #[test]
+    fn normalize_pending_writes_preserves_multiple_scheduled_packets_from_same_task() {
+        let mut pending_writes = vec![
+            (
+                "task-1".to_string(),
+                ReservedWrite::Scheduled.as_str().to_string(),
+                serde_json::json!({
+                    "id": "pkt-a",
+                    "target": "worker_a",
+                    "payload": {"value": "hello"},
+                }),
+            ),
+            (
+                "task-1".to_string(),
+                ReservedWrite::Scheduled.as_str().to_string(),
+                serde_json::json!({
+                    "id": "pkt-b",
+                    "target": "worker_b",
+                    "payload": {"value": "hello"},
+                }),
+            ),
+        ];
+
+        normalize_pending_writes(&mut pending_writes);
+
+        assert_eq!(pending_writes.len(), 2);
     }
 }

@@ -59,6 +59,8 @@
 //! - [`protocol`]: WebSocket message types for CLI remote mode ([`ClientRequest`], [`ServerResponse`]);
 //!   streaming output protocol in [`protocol::stream`] ([`stream_event_to_protocol_format`], [`Envelope`]).
 //! - [`user_message`]: [`UserMessageStore`] trait for per-thread message append/list ([`NoOpUserMessageStore`]).
+//! - [`pregel`]: Low-level Pregel graph runtime with channels, checkpointing, task cache, and subgraph support.
+//! - [`runner_common`]: Shared helpers for stream-based graph runs ([`StreamRunOutcome`], [`run_stream_with_config`]).
 //!
 //! Key types are re-exported at crate root: `use loom::{Agent, StateGraph, Message, ReActState};`.
 //!

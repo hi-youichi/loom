@@ -1,15 +1,21 @@
-//! LLM client abstraction for ReAct Think node.
+//! LLM client abstraction for ReAct think steps.
 //!
-//! ThinkNode depends on a callable that returns assistant text and optional
-//! tool_calls; this module defines the trait and a mock implementation.
+//! The types in this module define the contract between Loom's ReAct runtime and
+//! model providers:
 //!
-//! # Streaming Support
+//! - [`LlmClient`] is the provider trait used by [`crate::agent::react::ThinkNode`].
+//! - [`LlmResponse`] carries assistant text, optional reasoning content, tool
+//!   calls, and optional usage.
+//! - [`ToolChoiceMode`] configures whether a provider may emit tool calls when
+//!   tools are available.
+//! - [`ChatOpenAI`] and [`ChatBigModel`] are concrete provider implementations.
 //!
-//! The `LlmClient` trait supports streaming via `invoke_stream()`, which accepts
-//! an optional `Sender<MessageChunk>` for emitting tokens as they arrive.
-//! Implementations that support streaming (like `ChatOpenAI`) will send chunks
-//! through the channel; others (like `MockLlm`) can use the default implementation
-//! that calls `invoke()` and optionally sends the full content as one chunk.
+//! # Streaming
+//!
+//! [`LlmClient::invoke_stream`] and
+//! [`LlmClient::invoke_stream_with_tool_delta`] let providers surface tokens and
+//! incremental tool-call arguments while still returning a fully assembled
+//! [`LlmResponse`] at the end of the turn.
 
 mod mock;
 
@@ -63,8 +69,11 @@ use crate::stream::MessageChunk;
 /// Delta for one tool call from LLM streaming (for tool_call_chunk events).
 #[derive(Clone, Debug)]
 pub struct ToolCallDelta {
+    /// Stable tool call id when the provider emits one.
     pub call_id: Option<String>,
+    /// Tool/function name when the provider emits it.
     pub name: Option<String>,
+    /// Incremental argument fragment for this tool call.
     pub arguments_delta: String,
 }
 
@@ -99,8 +108,9 @@ pub struct LlmResponse {
 
 /// LLM client: given messages, returns assistant text and optional tool_calls.
 ///
-/// ThinkNode calls this to produce the next assistant message and any tool
-/// invocations. Implementations: `MockLlm` (fixed response), `ChatOpenAI` (real API, feature `openai`).
+/// [`crate::agent::react::ThinkNode`] calls this trait to produce the next
+/// assistant message and any tool invocations. Implementations may wrap remote
+/// APIs, local models, or test doubles such as [`MockLlm`].
 ///
 /// # Streaming
 ///
@@ -110,12 +120,12 @@ pub struct LlmResponse {
 ///
 /// Default implementation calls `invoke()` and optionally sends the full content
 /// as a single chunk.
-///
-/// **Interaction**: Used by ThinkNode.
 #[async_trait]
 pub trait LlmClient: Send + Sync {
-    /// Invoke one turn: read messages, return assistant content and optional tool_calls.
-    /// Aligns with LangChain's `invoke` / `ainvoke` (single-call API).
+    /// Invokes the model for one turn.
+    ///
+    /// Implementations should treat `messages` as the full prompt context for
+    /// the current turn and return the fully assembled assistant response.
     async fn invoke(&self, messages: &[Message]) -> Result<LlmResponse, AgentError>;
 
     /// Streaming variant: invoke with optional chunk sender for token streaming.
@@ -126,14 +136,8 @@ pub trait LlmClient: Send + Sync {
     ///
     /// Default implementation calls `invoke()` and sends the full content as one chunk.
     ///
-    /// # Arguments
-    ///
-    /// * `messages` - Input messages (system, user, assistant history)
-    /// * `chunk_tx` - Optional sender for streaming message chunks
-    ///
-    /// # Returns
-    ///
-    /// Complete `LlmResponse` with full content and any tool_calls.
+    /// `messages` is the same full prompt context passed to [`Self::invoke`].
+    /// `chunk_tx` is an opportunistic side channel for incremental output.
     async fn invoke_stream(
         &self,
         messages: &[Message],
@@ -165,7 +169,8 @@ pub trait LlmClient: Send + Sync {
     /// Like `invoke_stream`, but additionally sends `ToolCallDelta` through
     /// `tool_delta_tx` as the LLM produces tool call arguments incrementally.
     ///
-    /// Default implementation delegates to `invoke_stream` (no deltas emitted).
+    /// The default implementation delegates to [`Self::invoke_stream`] and emits
+    /// no tool deltas.
     async fn invoke_stream_with_tool_delta(
         &self,
         messages: &[Message],

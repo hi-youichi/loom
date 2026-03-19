@@ -1,8 +1,9 @@
-//! OpenAI Chat Completions client implementing `LlmClient` (ChatOpenAI).
+//! OpenAI Chat Completions client implementing [`crate::llm::LlmClient`].
 //!
-//! Uses the real OpenAI Chat Completions API. Requires `OPENAI_API_KEY` (or
-//! explicit config). Optional tools can be set for function/tool calling;
-//! when present, API may return `tool_calls` in the response.
+//! [`ChatOpenAI`] is the default production client for OpenAI-compatible chat
+//! completions. It can be constructed directly from environment-backed defaults
+//! with [`ChatOpenAI::new`] or with an explicit [`OpenAIConfig`] via
+//! [`ChatOpenAI::with_config`].
 //!
 //! # Streaming
 //!
@@ -50,13 +51,12 @@ use async_openai::{
 
 use super::ToolChoiceMode;
 
-/// OpenAI Chat Completions client implementing `LlmClient` (aligns with LangChain ChatOpenAI).
+/// OpenAI Chat Completions client.
 ///
-/// Uses `OPENAI_API_KEY` from the environment by default; or provide
-/// config via `ChatOpenAI::with_config`. Optionally set tools (e.g. from
-/// `ToolSource::list_tools()`) to enable tool_calls in the response.
-///
-/// **Interaction**: Implements `LlmClient`; used by ThinkNode.
+/// This type owns provider configuration plus optional tool metadata that will
+/// be advertised to the model on each request. Use the builder-style `with_*`
+/// methods to enable tools, configure temperature, or force a particular tool
+/// choice policy.
 pub struct ChatOpenAI {
     client: Client<OpenAIConfig>,
     model: String,
@@ -115,7 +115,10 @@ fn collect_thinking_tags(s: &str) -> Option<String> {
 }
 
 impl ChatOpenAI {
-    /// Build client with default config (API key from `OPENAI_API_KEY` env).
+    /// Builds a client with the default OpenAI configuration.
+    ///
+    /// Authentication and base URL are resolved by `async_openai`, which
+    /// typically reads `OPENAI_API_KEY` and related environment variables.
     pub fn new(model: impl Into<String>) -> Self {
         Self {
             client: Client::new(),
@@ -127,7 +130,10 @@ impl ChatOpenAI {
         }
     }
 
-    /// Build client with custom config (e.g. custom API key or base URL).
+    /// Builds a client with an explicit OpenAI configuration.
+    ///
+    /// Use this when targeting a custom base URL, organization, project, or API
+    /// key instead of the process environment.
     pub fn with_config(config: OpenAIConfig, model: impl Into<String>) -> Self {
         Self {
             client: Client::with_config(config),
@@ -139,14 +145,13 @@ impl ChatOpenAI {
         }
     }
 
-    /// Build client with tools from the given ToolSource.
+    /// Builds a client with tools loaded from a [`ToolSource`].
     ///
-    /// Calls `tool_source.list_tools().await` and sets them via `with_tools`.
-    /// Use the same ToolSource for ActNode so the LLM and execution see the same tools
-    /// (e.g. memory + MCP when exa_api_key is set).
-    ///
-    /// **Interaction**: Caller builds a ToolSource (e.g. AggregateToolSource with memory
-    /// and optional MCP); this constructor fetches the full list and enables tool_calls.
+    /// This eagerly calls `tool_source.list_tools().await` and then stores the
+    /// resulting tool definitions in the client. In most setups you should use
+    /// the same `ToolSource` for both the LLM-facing tool list and the
+    /// [`crate::agent::react::ActNode`] execution layer so advertised tools and
+    /// executable tools stay in sync.
     pub async fn new_with_tool_source(
         config: OpenAIConfig,
         model: impl Into<String>,
@@ -156,28 +161,34 @@ impl ChatOpenAI {
         Ok(Self::with_config(config, model).with_tools(tools))
     }
 
-    /// Set tools for this completion (enables tool_calls in response).
+    /// Sets the tools advertised to the model for each completion.
+    ///
+    /// Passing a non-empty tool list allows the provider to return tool calls.
     pub fn with_tools(mut self, tools: Vec<ToolSpec>) -> Self {
         self.tools = Some(tools);
         self
     }
 
-    /// Set temperature (0–2). Lower values are more deterministic.
+    /// Sets the sampling temperature for requests made by this client.
     pub fn with_temperature(mut self, temperature: f32) -> Self {
         self.temperature = Some(temperature);
         self
     }
 
-    /// Set tool choice mode (auto, none, required). Overrides API default when tools are present.
+    /// Sets the tool choice mode used when tools are present.
+    ///
+    /// This overrides the provider default and can be used to prohibit tool
+    /// calls or require them for every turn.
     pub fn with_tool_choice(mut self, mode: ToolChoiceMode) -> Self {
         self.tool_choice = Some(mode);
         self
     }
 
-    /// When true, parse streamed content for thinking tags and emit content inside as
-    /// [`MessageChunk::thinking`](crate::stream::MessageChunk::thinking), rest as
-    /// [`MessageChunk::message`](crate::stream::MessageChunk::message). Use with models/prompts
-    /// that output reasoning in these tags.
+    /// Enables parsing of `<think>...</think>` segments in streamed output.
+    ///
+    /// Content inside thinking tags is emitted as
+    /// [`MessageChunk::thinking`](crate::stream::MessageChunk::thinking), while
+    /// the remaining content is emitted as normal message text.
     pub fn with_parse_thinking_tags(mut self, enable: bool) -> Self {
         self.parse_thinking_tags = enable;
         self
@@ -366,7 +377,7 @@ impl LlmClient for ChatOpenAI {
         }
 
         let trace_id = uuid6().to_string();
-        let chunk_tx = chunk_tx.unwrap();
+        let chunk_tx = chunk_tx.expect("chunk_tx must be Some when streaming");
         let build_request = || {
             let openai_messages = Self::messages_to_request(messages);
             let mut args = CreateChatCompletionRequestArgs::default();

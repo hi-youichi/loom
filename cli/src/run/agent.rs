@@ -322,7 +322,7 @@ fn on_event_react(
     output_timestamp: bool,
 ) {
     match ev {
-        StreamEvent::TaskStart { node_id } => {
+        StreamEvent::TaskStart { node_id, .. } => {
             if node_id == "think" {
                 eprintln!("Think");
             }
@@ -341,7 +341,7 @@ fn on_event_react(
             }
             print_stream_chunk(chunk);
         }
-        StreamEvent::Updates { node_id, state } => {
+        StreamEvent::Updates { node_id, state, .. } => {
             if verbose {
                 let label = match node_id.as_str() {
                     "think" => {
@@ -420,7 +420,7 @@ fn on_event_dup(
     output_timestamp: bool,
 ) {
     match ev {
-        StreamEvent::TaskStart { node_id } => {
+        StreamEvent::TaskStart { node_id, .. } => {
             log_node_enter(s.last_node.as_deref(), node_id, verbose);
             s.last_node = Some(node_id.clone());
         }
@@ -436,7 +436,7 @@ fn on_event_dup(
             }
             print_stream_chunk(chunk);
         }
-        StreamEvent::Updates { node_id, state } => {
+        StreamEvent::Updates { node_id, state, .. } => {
             if verbose {
                 match node_id.as_str() {
                     "understand" => {
@@ -493,7 +493,7 @@ fn on_event_tot(
     output_timestamp: bool,
 ) {
     match ev {
-        StreamEvent::TaskStart { node_id } => {
+        StreamEvent::TaskStart { node_id, .. } => {
             log_node_enter(s.last_node.as_deref(), node_id, verbose);
             s.last_node = Some(node_id.clone());
         }
@@ -533,7 +533,7 @@ fn on_event_tot(
             }
             print_stream_chunk(chunk);
         }
-        StreamEvent::Updates { node_id, state } => {
+        StreamEvent::Updates { node_id, state, .. } => {
             if verbose {
                 let label = match node_id.as_str() {
                     "think_expand" => "state after think_expand".to_string(),
@@ -601,7 +601,7 @@ fn on_event_got(
     output_timestamp: bool,
 ) {
     match ev {
-        StreamEvent::TaskStart { node_id } => {
+        StreamEvent::TaskStart { node_id, .. } => {
             log_node_enter(s.last_node.as_deref(), node_id, verbose);
             s.last_node = Some(node_id.clone());
         }
@@ -664,7 +664,7 @@ fn on_event_got(
             }
             print_stream_chunk(chunk);
         }
-        StreamEvent::Updates { node_id, state } => {
+        StreamEvent::Updates { node_id, state, .. } => {
             if verbose {
                 eprintln!("--- state after {} ---", node_id);
                 eprintln!("{}", format_got_state_display(state, display_max_len));
@@ -744,6 +744,7 @@ mod tests {
     fn any_stream_event_to_format_a_and_protocol_format() {
         let ev = AnyStreamEvent::React(StreamEvent::TaskStart {
             node_id: "think".to_string(),
+            namespace: None,
         });
         let a = ev.to_format_a().unwrap();
         assert!(a.get("TaskStart").is_some());
@@ -769,6 +770,7 @@ mod tests {
         on_event_react(
             &StreamEvent::TaskStart {
                 node_id: "think".to_string(),
+                namespace: None,
             },
             &mut s,
             100,
@@ -781,6 +783,7 @@ mod tests {
             &StreamEvent::Updates {
                 node_id: "think".to_string(),
                 state: react_state(),
+                namespace: None,
             },
             &mut s,
             100,
@@ -808,6 +811,7 @@ mod tests {
         on_event_dup(
             &StreamEvent::TaskStart {
                 node_id: "understand".to_string(),
+                namespace: None,
             },
             &mut s,
             120,
@@ -818,6 +822,7 @@ mod tests {
             &StreamEvent::Updates {
                 node_id: "plan".to_string(),
                 state: dup_state,
+                namespace: None,
             },
             &mut s,
             120,
@@ -833,6 +838,7 @@ mod tests {
         on_event_tot(
             &StreamEvent::TaskStart {
                 node_id: "think_expand".to_string(),
+                namespace: None,
             },
             &mut s,
             120,
@@ -852,6 +858,7 @@ mod tests {
             &StreamEvent::Updates {
                 node_id: "observe".to_string(),
                 state: tot_state,
+                namespace: None,
             },
             &mut s,
             120,
@@ -887,6 +894,7 @@ mod tests {
         on_event_got(
             &StreamEvent::TaskStart {
                 node_id: "plan_graph".to_string(),
+                namespace: None,
             },
             &mut s,
             120,
@@ -908,6 +916,7 @@ mod tests {
             &StreamEvent::Updates {
                 node_id: "execute_graph".to_string(),
                 state: got_state,
+                namespace: None,
             },
             &mut s,
             120,
@@ -949,6 +958,7 @@ mod tests {
             &StreamEvent::Updates {
                 node_id: "think".to_string(),
                 state: react_with_tool,
+                namespace: None,
             },
             &mut s,
             120,
@@ -976,6 +986,7 @@ mod tests {
             &StreamEvent::Updates {
                 node_id: "plan".to_string(),
                 state: dup_state,
+                namespace: None,
             },
             &mut s,
             120,
@@ -1021,6 +1032,7 @@ mod tests {
                 chunk: loom::MessageChunk::message("tok"),
                 metadata: loom::StreamMetadata {
                     loom_node: "think_expand".to_string(),
+                    namespace: None,
                 },
             },
             &mut s,
@@ -1074,6 +1086,7 @@ mod tests {
                 chunk: loom::MessageChunk::message("chunk"),
                 metadata: loom::StreamMetadata {
                     loom_node: "execute_graph".to_string(),
+                    namespace: None,
                 },
             },
             &mut s,

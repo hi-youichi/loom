@@ -1,7 +1,9 @@
-//! BigModel (智谱) Chat Completions client implementing `LlmClient`.
+//! BigModel (智谱) chat completions client implementing [`crate::llm::LlmClient`].
 //!
-//! Uses the BigModel API at <https://open.bigmodel.cn/api/paas/v4/> (OpenAI-compatible).
-//! Uses the same config as OpenAI: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `MODEL` (set `LLM_PROVIDER=bigmodel` to use this client). Optional tools enable function calling.
+//! [`ChatBigModel`] targets BigModel's OpenAI-compatible API at
+//! <https://open.bigmodel.cn/api/paas/v4/>. Its builder surface intentionally
+//! mirrors [`crate::llm::ChatOpenAI`] so higher-level Loom code can switch
+//! providers with minimal branching.
 //!
 //! # Streaming
 //!
@@ -213,11 +215,12 @@ struct StreamChunk {
     usage: Option<ResponseUsage>,
 }
 
-/// BigModel (智谱) Chat Completions client implementing `LlmClient`.
+/// BigModel chat completions client.
 ///
-/// Uses the same env as OpenAI: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `MODEL` when built via `new()`; or provide config via `ChatBigModel::with_config`. Optionally set tools to enable tool_calls.
-///
-/// **Interaction**: Implements `LlmClient`; used by ThinkNode.
+/// This client uses OpenAI-compatible request and response shapes, including
+/// tool calling and SSE streaming. Use the builder-style `with_*` methods to
+/// align request behavior with the tool source and prompting strategy used by
+/// the surrounding ReAct runtime.
 pub struct ChatBigModel {
     client: reqwest::Client,
     base_url: String,
@@ -230,7 +233,10 @@ pub struct ChatBigModel {
 }
 
 impl ChatBigModel {
-    /// Build client from environment (same as OpenAI: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `MODEL`).
+    /// Builds a client from environment-backed defaults.
+    ///
+    /// This reads `OPENAI_API_KEY` and optionally `OPENAI_BASE_URL`. The model
+    /// name is still provided explicitly so callers can choose it at runtime.
     pub fn new(model: impl Into<String>) -> Result<Self, AgentError> {
         let api_key = std::env::var("OPENAI_API_KEY")
             .map_err(|_| AgentError::ExecutionFailed("OPENAI_API_KEY is not set".to_string()))?;
@@ -240,7 +246,7 @@ impl ChatBigModel {
         Ok(Self::with_config(base_url, api_key, model))
     }
 
-    /// Build client with explicit base URL, API key, and model.
+    /// Builds a client with an explicit base URL, API key, and model.
     pub fn with_config(
         base_url: impl Into<String>,
         api_key: impl Into<String>,
@@ -258,7 +264,10 @@ impl ChatBigModel {
         }
     }
 
-    /// Build client with tools from the given ToolSource.
+    /// Builds a client with tools loaded from a [`ToolSource`].
+    ///
+    /// This eagerly calls `tool_source.list_tools().await` and then stores the
+    /// resulting tool definitions in the client.
     pub async fn new_with_tool_source(
         base_url: impl Into<String>,
         api_key: impl Into<String>,
@@ -269,25 +278,33 @@ impl ChatBigModel {
         Ok(Self::with_config(base_url, api_key, model).with_tools(tools))
     }
 
-    /// Set tools for this completion (enables tool_calls in response).
+    /// Sets the tools advertised to the model for each completion.
+    ///
+    /// Passing tools allows the provider to return function calls in the
+    /// response payload.
     pub fn with_tools(mut self, tools: Vec<ToolSpec>) -> Self {
         self.tools = Some(tools);
         self
     }
 
-    /// Set temperature (0–1 for BigModel). Clamped to [0.0, 1.0].
+    /// Sets the sampling temperature for requests made by this client.
+    ///
+    /// BigModel expects values in `[0.0, 1.0]`, so inputs are clamped into that range.
     pub fn with_temperature(mut self, temperature: f32) -> Self {
         self.temperature = Some(temperature.clamp(0.0, 1.0));
         self
     }
 
-    /// Set tool choice mode (auto, none, required).
+    /// Sets the tool choice mode used when tools are present.
     pub fn with_tool_choice(mut self, mode: ToolChoiceMode) -> Self {
         self.tool_choice = Some(mode);
         self
     }
 
-    /// When true, parse streamed content for `<think>...</think>` and emit as MessageChunk::thinking / message.
+    /// Enables parsing of `<think>...</think>` segments in streamed output.
+    ///
+    /// Content inside thinking tags is emitted separately from normal assistant
+    /// message text so callers can render reasoning and final output differently.
     pub fn with_parse_thinking_tags(mut self, enable: bool) -> Self {
         self.parse_thinking_tags = enable;
         self
@@ -556,7 +573,7 @@ impl LlmClient for ChatBigModel {
         }
 
         let trace_id = uuid6().to_string();
-        let chunk_tx = chunk_tx.unwrap();
+        let chunk_tx = chunk_tx.expect("chunk_tx must be Some when streaming");
         let url = self.chat_completions_url();
         let body = self.build_request(messages, true);
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
