@@ -697,12 +697,36 @@ impl LlmClient for ChatBigModel {
         let mut segment_buf = String::new();
         let mut think_state = ThinkingParseState::Outside;
         let mut done = false;
+        let mut stream_read_attempt = 0;
 
         while !done {
-            let chunk = res
-                .chunk()
-                .await
-                .map_err(|e| AgentError::ExecutionFailed(format!("BigModel stream body: {}", e)))?;
+            let chunk = match res.chunk().await {
+                Ok(Some(bytes)) => Some(bytes),
+                Ok(None) => None,
+                Err(e)
+                    if is_retryable_reqwest_error(&e)
+                        && stream_read_attempt < TRANSIENT_HTTP_MAX_RETRIES =>
+                {
+                    let delay = retry_backoff_for_attempt(stream_read_attempt);
+                    tracing::warn!(
+                        url = %url,
+                        attempt = stream_read_attempt + 1,
+                        max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                        delay_secs = delay.as_secs_f64(),
+                        error = %e,
+                        "BigModel stream body read failed, retrying"
+                    );
+                    stream_read_attempt += 1;
+                    tokio::time::sleep(delay).await;
+                    continue;
+                }
+                Err(e) => {
+                    return Err(AgentError::ExecutionFailed(format!(
+                        "BigModel stream body: {}",
+                        e
+                    )));
+                }
+            };
             let Some(bytes) = chunk else { break };
 
             trace!(bytes_len = bytes.len(), "BigModel stream bytes");
