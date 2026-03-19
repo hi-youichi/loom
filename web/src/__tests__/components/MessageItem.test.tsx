@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MessageItem } from '../../components/chat/MessageItem'
-import type { UIMessageItemProps } from '../../types/ui/message'
+import type { UIMessageItemProps } from '../../../types/ui/message'
 
 describe('MessageItem', () => {
   const defaultProps: UIMessageItemProps = {
@@ -106,5 +106,28 @@ describe('MessageItem', () => {
     
     const article = screen.getByRole('article')
     expect(article).toHaveAttribute('aria-label', '用户消息')
+  })
+
+  it('应该处理工具错误状态', () => {
+    const props: UIMessageItemProps = {
+      ...defaultProps,
+      content: [{
+        type: 'tool',
+        id: 'tool-1',
+        name: 'failing-tool',
+        status: 'error',
+        argumentsText: '{"arg": "value"}',
+        outputText: 'error output',
+        resultText: 'error result',
+        isError: true,
+      }],
+    }
+    
+    render(<MessageItem {...props} />)
+    
+    expect(screen.getByText('failing-tool')).toBeInTheDocument()
+    expect(screen.getByText('error')).toBeInTheDocument()
+    expect(screen.getByText('错误:')).toBeInTheDocument()
+    expect(screen.getByText('error result')).toBeInTheDocument()
   })
 })

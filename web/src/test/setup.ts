@@ -22,9 +22,10 @@ Object.defineProperty(window, 'localStorage', {
 })
 
 // Mock crypto.randomUUID
+let uuidCounter = 0
 Object.defineProperty(global, 'crypto', {
   value: {
-    randomUUID: () => 'test-uuid-1234',
+    randomUUID: () => `test-uuid-${++uuidCounter}`,
   },
 })
 

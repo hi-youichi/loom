@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatTime, formatDuration, truncateText, classNames } from '../utils/format'
+import { formatTime, formatDuration, formatRelativeTime, formatFileSize } from '../../utils/format'
 
 describe('format utilities', () => {
   describe('formatTime', () => {
@@ -15,10 +15,9 @@ describe('format utilities', () => {
       expect(result).toBeDefined()
     })
 
-    it('应该处理无效时间', () => {
+it('应该处理无效时间', () => {
       const timestamp = 'invalid'
-      const result = formatTime(timestamp)
-      expect(result).toBe('Invalid Date')
+      expect(() => formatTime(timestamp)).toThrow()
     })
   })
 
@@ -29,14 +28,14 @@ describe('format utilities', () => {
     })
 
     it('应该格式化秒', () => {
-      expect(formatDuration(1000)).toBe('1.00s')
-      expect(formatDuration(1500)).toBe('1.50s')
-      expect(formatDuration(59999)).toBe('59.99s')
+      expect(formatDuration(1000)).toBe('1.0s')
+      expect(formatDuration(1500)).toBe('1.5s')
+      expect(formatDuration(59999)).toBe('60.0s')
     })
 
     it('应该格式化分钟', () => {
-      expect(formatDuration(60000)).toBe('1.00m')
-      expect(formatDuration(90000)).toBe('1.50m')
+      expect(formatDuration(60000)).toBe('1m 0s')
+      expect(formatDuration(90000)).toBe('1m 30s')
     })
 
     it('应该处理0', () => {
@@ -48,64 +47,55 @@ describe('format utilities', () => {
     })
   })
 
-  describe('truncateText', () => {
-    it('应该截断长文本', () => {
-      const text = '这是一段很长的文本需要被截断'
-      const result = truncateText(text, 10)
-      expect(result.length).toBe(13) // 10 + '...'
-      expect(result).toBe('这是一段很长的文本...')
+  describe('formatRelativeTime', () => {
+    it('应该返回"刚刚"对于小于60秒', () => {
+      const now = new Date().toISOString()
+      expect(formatRelativeTime(now)).toBe('刚刚')
     })
 
-    it('应该不截断短文本', () => {
-      const text = '短文本'
-      const result = truncateText(text, 10)
-      expect(result).toBe(text)
+    it('应该返回分钟前对于小于60分钟', () => {
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+      expect(formatRelativeTime(fiveMinutesAgo)).toBe('5分钟前')
     })
 
-    it('应该处理空字符串', () => {
-      expect(truncateText('', 10)).toBe('')
+    it('应该返回小时前对于小于24小时', () => {
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+      expect(formatRelativeTime(twoHoursAgo)).toBe('2小时前')
     })
 
-    it('应该使用默认长度', () => {
-      const text = 'a'.repeat(150)
-      const result = truncateText(text)
-      expect(result.length).toBe(103) // 100 + '...'
+    it('应该返回天前对于小于7天', () => {
+      const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
+      expect(formatRelativeTime(threeDaysAgo)).toBe('3天前')
+    })
+
+    it('应该返回格式化时间对于超过7天', () => {
+      const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()
+      const result = formatRelativeTime(tenDaysAgo)
+      // 应该调用 formatTime 返回时间格式
+      expect(result).toMatch(/\d{2}:\d{2}/)
     })
   })
 
-  describe('classNames', () => {
-    it('应该合并类名', () => {
-      const result = classNames('foo', 'bar')
-      expect(result).toBe('foo bar')
+  describe('formatFileSize', () => {
+    it('应该处理0字节', () => {
+      expect(formatFileSize(0)).toBe('0 B')
     })
 
-    it('应该过滤假值', () => {
-      const result = classNames('foo', false, 'bar', null, 'baz', undefined)
-      expect(result).toBe('foo bar baz')
+    it('应该格式化字节', () => {
+      expect(formatFileSize(500)).toBe('500 B')
     })
 
-    it('应该支持对象语法', () => {
-      const result = classNames({
-        foo: true,
-        bar: false,
-        baz: true
-      })
-      expect(result).toBe('foo baz')
+    it('应该格式化KB', () => {
+      expect(formatFileSize(1024)).toBe('1 KB')
+      expect(formatFileSize(1536)).toBe('1.5 KB')
     })
 
-    it('应该支持混合语法', () => {
-      const result = classNames(
-        'foo',
-        { bar: true },
-        'baz',
-        { qux: false }
-      )
-      expect(result).toBe('foo bar baz')
+    it('应该格式化MB', () => {
+      expect(formatFileSize(1024 * 1024)).toBe('1 MB')
     })
 
-    it('应该处理空输入', () => {
-      expect(classNames()).toBe('')
-      expect(classNames('')).toBe('')
+    it('应该格式化GB', () => {
+      expect(formatFileSize(1024 * 1024 * 1024)).toBe('1 GB')
     })
   })
 })

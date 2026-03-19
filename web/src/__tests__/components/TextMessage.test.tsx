@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { TextMessage } from '../components/chat/TextMessage'
+import { TextMessage } from '../../components/chat/TextMessage'
 
 describe('TextMessage', () => {
   it('应该渲染文本内容', () => {
