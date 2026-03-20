@@ -7,6 +7,7 @@ pub mod backend;
 pub mod envelope;
 pub mod run;
 pub mod tool_cmd;
+pub mod tui;
 
 pub use backend::{LocalBackend, RunBackend, RunOutput, StreamOut};
 pub use loom::Envelope;
