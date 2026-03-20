@@ -149,6 +149,14 @@ fn ensure_checkpoint_runtime_columns(conn: &rusqlite::Connection) -> Result<(), 
         .map_err(|e| CheckpointError::Storage(e.to_string()))?;
     }
 
+    if !columns.iter().any(|column| column == "metadata_summary") {
+        conn.execute(
+            "ALTER TABLE checkpoints ADD COLUMN metadata_summary TEXT",
+            [],
+        )
+        .map_err(|e| CheckpointError::Storage(e.to_string()))?;
+    }
+
     Ok(())
 }
 
@@ -189,6 +197,7 @@ where
                 metadata_created_at INTEGER,
                 metadata_parents TEXT NOT NULL DEFAULT '{}',
                 metadata_children TEXT NOT NULL DEFAULT '{}',
+                metadata_summary TEXT,
                 updated_channels TEXT NOT NULL DEFAULT '[]',
                 pending_sends TEXT NOT NULL DEFAULT '[]',
                 pending_writes TEXT NOT NULL DEFAULT '[]',
@@ -236,6 +245,7 @@ where
         let metadata_created_at = created_at_to_i64(&checkpoint.metadata.created_at);
         let metadata_parents = serialize_parents(&checkpoint.metadata.parents)?;
         let metadata_children = serialize_children(&checkpoint.metadata.children)?;
+        let metadata_summary = checkpoint.metadata.summary.clone();
         let updated_channels = serialize_json_field(&checkpoint.updated_channels)?;
         let pending_sends = serialize_json_field(&checkpoint.pending_sends)?;
         let pending_writes = serialize_json_field(&checkpoint.pending_writes)?;
@@ -252,8 +262,8 @@ where
                 INSERT OR REPLACE INTO checkpoints
                 (thread_id, checkpoint_ns, checkpoint_id, ts, payload, channel_versions, versions_seen,
                  metadata_source, metadata_step, metadata_created_at, metadata_parents, metadata_children,
-                 updated_channels, pending_sends, pending_writes, pending_interrupts)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+                 metadata_summary, updated_channels, pending_sends, pending_writes, pending_interrupts)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
                 "#,
                 params![
                     thread_id,
@@ -268,6 +278,7 @@ where
                     metadata_created_at,
                     metadata_parents,
                     metadata_children,
+                    metadata_summary,
                     updated_channels,
                     pending_sends,
                     pending_writes,
@@ -301,6 +312,7 @@ where
             Option<i64>,
             String,
             String,
+            Option<String>,  // metadata_summary
             String,
             String,
             String,
@@ -310,11 +322,11 @@ where
             let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
                 .map_err(|e| CheckpointError::Storage(e))?;
             let sql = if want_id.is_some() {
-                "SELECT checkpoint_id, ts, payload, channel_versions, versions_seen, metadata_source, metadata_step, metadata_created_at, metadata_parents, metadata_children,
+                "SELECT checkpoint_id, ts, payload, channel_versions, versions_seen, metadata_source, metadata_step, metadata_created_at, metadata_parents, metadata_children, metadata_summary,
                         updated_channels, pending_sends, pending_writes, pending_interrupts
                  FROM checkpoints WHERE thread_id = ?1 AND checkpoint_ns = ?2 AND checkpoint_id = ?3"
             } else {
-                "SELECT checkpoint_id, ts, payload, channel_versions, versions_seen, metadata_source, metadata_step, metadata_created_at, metadata_parents, metadata_children,
+                "SELECT checkpoint_id, ts, payload, channel_versions, versions_seen, metadata_source, metadata_step, metadata_created_at, metadata_parents, metadata_children, metadata_summary,
                         updated_channels, pending_sends, pending_writes, pending_interrupts
                  FROM checkpoints WHERE thread_id = ?1 AND checkpoint_ns = ?2
                  ORDER BY metadata_created_at DESC LIMIT 1"
@@ -340,10 +352,11 @@ where
             let metadata_created_at: Option<i64> = row.get(7).map_err(|e| CheckpointError::Storage(e.to_string()))?;
             let metadata_parents: String = row.get(8).map_err(|e| CheckpointError::Storage(e.to_string()))?;
             let metadata_children: String = row.get(9).map_err(|e| CheckpointError::Storage(e.to_string()))?;
-            let updated_channels: String = row.get(10).map_err(|e| CheckpointError::Storage(e.to_string()))?;
-            let pending_sends: String = row.get(11).map_err(|e| CheckpointError::Storage(e.to_string()))?;
-            let pending_writes: String = row.get(12).map_err(|e| CheckpointError::Storage(e.to_string()))?;
-            let pending_interrupts: String = row.get(13).map_err(|e| CheckpointError::Storage(e.to_string()))?;
+            let metadata_summary: Option<String> = row.get(10).map_err(|e| CheckpointError::Storage(e.to_string()))?;
+            let updated_channels: String = row.get(11).map_err(|e| CheckpointError::Storage(e.to_string()))?;
+            let pending_sends: String = row.get(12).map_err(|e| CheckpointError::Storage(e.to_string()))?;
+            let pending_writes: String = row.get(13).map_err(|e| CheckpointError::Storage(e.to_string()))?;
+            let pending_interrupts: String = row.get(14).map_err(|e| CheckpointError::Storage(e.to_string()))?;
             Ok(Some((
                 checkpoint_id,
                 ts,
@@ -355,6 +368,7 @@ where
                 metadata_created_at,
                 metadata_parents,
                 metadata_children,
+                metadata_summary,
                 updated_channels,
                 pending_sends,
                 pending_writes,
@@ -375,6 +389,7 @@ where
             metadata_created_at,
             metadata_parents,
             metadata_children,
+            metadata_summary,
             updated_channels_json,
             pending_sends_json,
             pending_writes_json,
@@ -395,6 +410,7 @@ where
             created_at: i64_to_created_at(metadata_created_at),
             parents: deserialize_parents(&metadata_parents)?,
             children: deserialize_children(&metadata_children)?,
+            summary: metadata_summary,
         };
         let checkpoint = Checkpoint {
             v: CHECKPOINT_VERSION,
@@ -430,7 +446,7 @@ where
                 .map_err(|e| CheckpointError::Storage(e))?;
             let mut stmt = conn
                 .prepare(
-                    "SELECT checkpoint_id, metadata_source, metadata_step, metadata_created_at, metadata_parents, metadata_children
+                    "SELECT checkpoint_id, metadata_source, metadata_step, metadata_created_at, metadata_parents, metadata_children, metadata_summary
                      FROM checkpoints WHERE thread_id = ?1 AND checkpoint_ns = ?2
                      ORDER BY metadata_created_at ASC",
                 )
@@ -443,10 +459,11 @@ where
                             source: str_to_source(&row.get::<_, String>(1)?),
                             step: row.get::<_, i64>(2)?,
                             created_at: i64_to_created_at(row.get(3)?),
-                parents: serde_json::from_str::<HashMap<String, String>>(&row.get::<_, String>(4)?)
-                    .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
-                children: serde_json::from_str::<HashMap<String, Vec<String>>>(&row.get::<_, String>(5)?)
-                    .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
+                            parents: serde_json::from_str::<HashMap<String, String>>(&row.get::<_, String>(4)?)
+                                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
+                            children: serde_json::from_str::<HashMap<String, Vec<String>>>(&row.get::<_, String>(5)?)
+                                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
+                            summary: row.get(6)?,
                         },
                     })
                 })
@@ -599,6 +616,7 @@ mod tests {
                 )]
                 .into_iter()
                 .collect(),
+                summary: None,
             },
         };
 
@@ -662,7 +680,8 @@ mod tests {
                     step: i,
                     created_at: Some(base + Duration::from_secs(i as u64)),
                     parents: HashMap::new(),
-                children: HashMap::new(),
+                    children: HashMap::new(),
+                    summary: None,
                 },
             };
             saver.put(&config, &checkpoint).await.unwrap();
