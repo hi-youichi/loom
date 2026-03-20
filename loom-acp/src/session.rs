@@ -108,15 +108,33 @@ impl SessionStore {
                 .unwrap()
                 .as_nanos()
         ));
+        self.create_with_id(session_id.clone(), working_directory, session_id.0.clone());
+        session_id
+    }
+
+    /// Create a session with a specific session_id and thread_id.
+    ///
+    /// Used by `session/load` when loading an existing session.
+    /// If a session with the same id already exists, returns the existing entry.
+    pub fn create_with_id(
+        &self,
+        session_id: SessionId,
+        working_directory: Option<PathBuf>,
+        thread_id: String,
+    ) -> SessionEntry {
+        let mut guard = self.inner.write().unwrap();
+        if let Some(existing) = guard.get(&session_id) {
+            return existing.clone();
+        }
         let entry = SessionEntry {
-            thread_id: session_id.0.clone(),
+            thread_id,
             working_directory,
             cancelled: AtomicBool::new(false),
             session_config: SessionConfig::default(),
             cancellation: Arc::new(SessionCancellationState::default()),
         };
-        self.inner.write().unwrap().insert(session_id.clone(), entry);
-        session_id
+        guard.insert(session_id.clone(), entry.clone());
+        entry
     }
 
     /// Look up a session by session_id; returns `None` if not found.
