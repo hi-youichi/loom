@@ -374,6 +374,8 @@ impl Node<ReActState> for ActNode {
             usage: state.usage,
             total_usage: state.total_usage,
             message_count_after_last_think: state.message_count_after_last_think,
+            summary: state.summary,
+            think_count: state.think_count,
         };
         Ok((new_state, Next::Continue))
     }
@@ -705,6 +707,8 @@ impl Node<ReActState> for ActNode {
             usage: state.usage,
             total_usage: state.total_usage,
             message_count_after_last_think: state.message_count_after_last_think,
+            summary: state.summary,
+            think_count: state.think_count,
         };
         Ok((new_state, Next::Continue))
     }

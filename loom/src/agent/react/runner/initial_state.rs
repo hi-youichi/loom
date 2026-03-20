@@ -31,6 +31,8 @@ pub async fn build_react_initial_state(
                 usage: None,
                 total_usage: None,
                 message_count_after_last_think: None,
+                summary: None,
+                think_count: 0,
             })
         },
         |mut state, msg| {

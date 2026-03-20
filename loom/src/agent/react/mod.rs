@@ -30,6 +30,7 @@ mod build;
 mod config;
 mod observe_node;
 mod runner;
+mod summarize_node;
 mod think_node;
 mod with_node_logging;
 
@@ -47,6 +48,7 @@ pub use runner::{
     build_react_initial_state, run_agent, run_react_graph_stream, AgentOptions, ReactRunner,
     RunError,
 };
+pub use summarize_node::{is_first_think, SummarizeNode};
 pub use think_node::ThinkNode;
 pub use with_node_logging::WithNodeLogging;
 
@@ -93,14 +95,7 @@ mod tests {
     fn tools_condition_returns_end_when_no_tool_calls() {
         let state = ReActState {
             messages: vec![Message::User("hello".into())],
-            last_reasoning_content: None,
-            tool_calls: vec![],
-            tool_results: vec![],
-            turn_count: 0,
-            approval_result: None,
-            usage: None,
-            total_usage: None,
-            message_count_after_last_think: None,
+            ..Default::default()
         };
         assert_eq!(tools_condition(&state), ToolsConditionResult::End);
         assert_eq!(tools_condition(&state).as_str(), "__end__");
@@ -109,19 +104,13 @@ mod tests {
     #[test]
     fn tools_condition_returns_tools_when_tool_calls_present() {
         let state = ReActState {
-            messages: vec![Message::User("search".into())],
-            last_reasoning_content: None,
+            messages: vec![Message::User("hello".into())],
             tool_calls: vec![ToolCall {
-                id: Some("tc1".into()),
-                name: "search".into(),
+                name: "test".into(),
                 arguments: "{}".into(),
+                id: None,
             }],
-            tool_results: vec![],
-            turn_count: 0,
-            approval_result: None,
-            usage: None,
-            total_usage: None,
-            message_count_after_last_think: None,
+            ..Default::default()
         };
         assert_eq!(tools_condition(&state), ToolsConditionResult::Tools);
         assert_eq!(tools_condition(&state).as_str(), "tools");
