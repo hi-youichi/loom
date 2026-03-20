@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crossterm::event::{Event, KeyEvent, KeyCode, KeyModifiers, poll, read};
+use crossterm::event::{Event, KeyEvent, poll, read};
 use tokio::sync::mpsc;
 
 /// TUI 事件类型
@@ -38,6 +38,62 @@ pub enum TuiEvent {
     Key(KeyEvent),
     /// 用户输入文本（Enter 提交）
     InputSubmitted(String),
+    /// 用户消息已加入会话
+    UserMessageAdded {
+        content: String,
+    },
+    /// 助手消息开始
+    AssistantMessageStarted {
+        agent_id: String,
+        message_id: String,
+    },
+    /// 助手消息增量
+    AssistantMessageChunk {
+        agent_id: String,
+        message_id: String,
+        chunk: String,
+    },
+    /// 助手消息结束
+    AssistantMessageCompleted {
+        agent_id: String,
+        message_id: String,
+    },
+    /// 思考消息开始
+    ThinkingStarted {
+        agent_id: String,
+        message_id: String,
+    },
+    /// 思考消息增量
+    ThinkingChunk {
+        agent_id: String,
+        message_id: String,
+        chunk: String,
+    },
+    /// 思考消息结束
+    ThinkingCompleted {
+        agent_id: String,
+        message_id: String,
+    },
+    /// 工具调用开始
+    ToolCallStarted {
+        agent_id: String,
+        call_id: String,
+        name: String,
+        arguments: String,
+    },
+    /// 工具输出增量
+    ToolCallOutput {
+        agent_id: String,
+        call_id: String,
+        content: String,
+    },
+    /// 工具调用结束
+    ToolCallCompleted {
+        agent_id: String,
+        call_id: String,
+        result: String,
+        is_error: bool,
+    },
 }
 
 /// 事件通道
@@ -151,8 +207,20 @@ impl EventHandler {
     /// # Returns
     /// * `Some(TuiEvent)` - 收到事件
     /// * `None` - 发送端已关闭
-    pub async fn next(&mut self) -> Option<TuiEvent> {
+    pub async fn next(&mut self) -> Option<TuiEvent>{
         self.receiver.recv().await
+    }
+
+    /// 等待下一个事件（同步，阻塞）
+    ///
+    /// # Returns
+    /// * `Ok(TuiEvent)` - 收到事件
+    /// * `Err(...)` - 发送端已关闭或错误
+    pub fn next_event(&mut self) -> Result<TuiEvent, Box<dyn std::error::Error + Send + Sync>> {
+        // 使用 tokio::runtime::Runtime 来在同步上下文中运行异步代码
+        // 或者直接使用 recv() 方法（如果 receiver 支持）
+        // 这里我们使用 try_recv() 来非阻塞地检查是否有事件
+        self.receiver.try_recv().map_err(|e| format!("Event receive error: {}", e).into())
     }
 }
 

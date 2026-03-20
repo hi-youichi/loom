@@ -1,14 +1,18 @@
 //! TUI Runner - Main event loop and orchestration for the TUI application.
-//!
-//! This module provides the main entry point for running the TUI dashboard.
 
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::thread;
 use std::time::Duration;
 
-use crossterm::event::{self, Event};
-use ratatui::{backend::CrosstermBackend, Terminal};
+use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use tokio::sync::mpsc;
+use uuid::Uuid;
 
-use super::{App, EventHandler, TuiEvent, TerminalManager};
+use crate::{LocalBackend, RunBackend, RunCmd, RunOptions};
+
+use super::runtime::spawn_agent_run;
+use super::{App, EventChannel, EventHandler, TuiEvent, TerminalManager};
 
 /// Configuration for the TUI runner
 pub struct TuiConfig {
@@ -16,6 +20,20 @@ pub struct TuiConfig {
     pub tick_rate: Duration,
     /// Whether to show demo mode with simulated agents
     pub demo_mode: bool,
+    /// Working folder for file tools
+    pub working_folder: Option<PathBuf>,
+    /// Optional role/instructions file
+    pub role_file: Option<PathBuf>,
+    /// Optional named agent profile
+    pub agent: Option<String>,
+    /// Enable verbose backend logging
+    pub verbose: bool,
+    /// Optional model override
+    pub model: Option<String>,
+    /// Optional MCP config path
+    pub mcp_config_path: Option<PathBuf>,
+    /// Run tools in dry-run mode
+    pub dry_run: bool,
 }
 
 impl Default for TuiConfig {
@@ -23,6 +41,13 @@ impl Default for TuiConfig {
         Self {
             tick_rate: Duration::from_millis(250),
             demo_mode: false,
+            working_folder: None,
+            role_file: None,
+            agent: None,
+            verbose: false,
+            model: None,
+            mcp_config_path: None,
+            dry_run: false,
         }
     }
 }
@@ -31,6 +56,8 @@ impl Default for TuiConfig {
 pub struct TuiRunner {
     app: App,
     config: TuiConfig,
+    backend: Arc<dyn RunBackend>,
+    thread_id: Option<String>,
 }
 
 impl TuiRunner {
@@ -39,64 +66,106 @@ impl TuiRunner {
         Self {
             app: App::new(),
             config,
+            backend: Arc::new(LocalBackend),
+            thread_id: None,
         }
     }
 
     /// Run the TUI application
-    pub fn run(mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         // Setup terminal
         let mut terminal_manager = TerminalManager::new()?;
-        terminal_manager.enable_raw_mode();
-        terminal_manager.enter_alternate_screen();
-        
-        let terminal = terminal_manager.terminal();
 
-        // Create event channel for external events
-        let (event_sender, mut event_receiver) = mpsc::unbounded_channel();
-
-        // Start event handler to capture keyboard events
-        // Start event handler to capture keyboard events
-        let _event_handler = EventHandler::with_sender(self.config.tick_rate, event_sender.clone());
-
-        // If demo mode, spawn a task to generate demo events
-        let demo_task = if self.config.demo_mode {
-            Some(tokio::spawn(run_demo_mode(event_sender)))
+        // Run demo mode if enabled
+        if self.config.demo_mode {
+            self.run_demo_mode(&mut terminal_manager)?;
         } else {
-            None
-        };
-
-        // Main event loop
-        let res = self.main_loop(terminal, &mut event_receiver);
-
-        // Wait for demo task to finish (if running)
-        if let Some(task) = demo_task {
-            task.abort();
+            let (event_channel, mut event_rx) = EventChannel::new();
+            let event_tx = event_channel.sender().clone();
+            let _event_handler = EventHandler::with_sender(self.config.tick_rate, event_tx.clone());
+            self.run_main_loop(&mut terminal_manager, &mut event_rx, event_tx)?;
         }
 
-        // Restore terminal
-        drop(terminal_manager);
-
-        res
+        Ok(())
     }
 
     /// Main event loop
-    fn main_loop(
+    fn run_main_loop(
         &mut self,
-        terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
-        event_receiver: &mut mpsc::UnboundedReceiver<TuiEvent>,
+        terminal_manager: &mut TerminalManager,
+        event_rx: &mut mpsc::UnboundedReceiver<TuiEvent>,
+        event_tx: mpsc::UnboundedSender<TuiEvent>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         loop {
-            // Draw the UI
-            terminal.draw(|f| {
-                super::ui::render(&self.app, f);
+            // Draw UI
+            terminal_manager.terminal().draw(|f| {
+                crate::tui::ui::render(f, &self.app);
             })?;
 
-            // Handle events from channel (includes keyboard and tick events from EventHandler)
-            while let Ok(event) = event_receiver.try_recv() {
-                self.app.handle_event(event);
+            // Handle events
+            match event_rx.try_recv() {
+                Ok(event) => {
+                    match event {
+                        TuiEvent::Key(key) => {
+                            match self.app.input_mode {
+                                crate::tui::app::InputMode::Normal => {
+                                    match key.code {
+                                        KeyCode::Char('q') => {
+                                            self.app.should_quit = true;
+                                        }
+                                        KeyCode::Char('i') => {
+                                            self.app.input_mode = crate::tui::app::InputMode::Editing;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                crate::tui::app::InputMode::Editing => {
+                                    match key.code {
+                                        KeyCode::Char(c) => {
+                                            if key.modifiers.is_empty()
+                                                || key.modifiers == KeyModifiers::SHIFT
+                                            {
+                                                self.app.input.push(c);
+                                                self.app.cursor_position += 1;
+                                            }
+                                        }
+                                        KeyCode::Backspace => {
+                                            if self.app.cursor_position > 0 {
+                                                self.app.cursor_position -= 1;
+                                                self.app.input.remove(self.app.cursor_position);
+                                            }
+                                        }
+                                        KeyCode::Enter => {
+                                            if !self.app.input.is_empty() {
+                                                self.submit_current_input(event_tx.clone());
+                                                self.app.input.clear();
+                                                self.app.cursor_position = 0;
+                                            }
+                                        }
+                                        KeyCode::Esc => {
+                                            self.app.input_mode = crate::tui::app::InputMode::Normal;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+                        TuiEvent::Quit => {
+                            self.app.should_quit = true;
+                        }
+                        _ => {
+                            self.app.handle_event(&event);
+                        }
+                    }
+                }
+                Err(mpsc::error::TryRecvError::Empty) => {
+                    thread::sleep(Duration::from_millis(16));
+                }
+                Err(mpsc::error::TryRecvError::Disconnected) => {
+                    break;
+                }
             }
 
-            // Check if we should quit
             if self.app.should_quit {
                 break;
             }
@@ -104,55 +173,104 @@ impl TuiRunner {
 
         Ok(())
     }
-}
 
-/// Run demo mode with simulated agents
-async fn run_demo_mode(sender: mpsc::UnboundedSender<TuiEvent>) {
-    use std::time::Duration;
-    use tokio::time::sleep;
+    /// Run demo mode with simulated agents
+    fn run_demo_mode(
+        &mut self,
+        terminal_manager: &mut TerminalManager,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Create demo events
+        let demo_events = vec![
+            TuiEvent::AgentStarted {
+                id: "agent-1".to_string(),
+                name: "Research Agent".to_string(),
+                task: "Analyze codebase structure".to_string(),
+            },
+            TuiEvent::AgentStarted {
+                id: "agent-2".to_string(),
+                name: "Code Agent".to_string(),
+                task: "Implement new feature".to_string(),
+            },
+            TuiEvent::AgentProgress {
+                id: "agent-1".to_string(),
+                node: "analyzing".to_string(),
+                message: "Scanning source files...".to_string(),
+            },
+            TuiEvent::AgentProgress {
+                id: "agent-2".to_string(),
+                node: "implementing".to_string(),
+                message: "Writing code...".to_string(),
+            },
+        ];
 
-    // Simulate a few agents starting
-    let agents = vec![
-        ("dev-agent-1", "dev", "Implement user authentication feature"),
-        ("code-review", "review", "Review PR #123 for security issues"),
-        ("test-runner", "test", "Run integration test suite"),
-    ];
+        // Send demo events
+        for event in demo_events {
+            self.app.handle_event(&event);
+        }
 
-    let mut agent_ids = Vec::new();
+        loop {
+            // Draw UI
+            terminal_manager.terminal().draw(|f| {
+                crate::tui::ui::render(f, &self.app);
+            })?;
 
-    // Start agents with delays
-    for (i, (name, agent_type, task)) in agents.into_iter().enumerate() {
-        sleep(Duration::from_millis(500 * (i as u64 + 1))).await;
-        
-        let id = format!("{}-{}", name, chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
-        agent_ids.push(id.clone());
+            // Check for quit event
+            if event::poll(self.config.tick_rate)? {
+                if let Event::Key(key) = event::read()? {
+                    if key.code == KeyCode::Char('q') {
+                        break;
+                    }
+                }
+            }
+        }
 
-        let _ = sender.send(TuiEvent::AgentStarted {
-            id: id.clone(),
-            name: name.to_string(),
-            task: task.to_string(),
-        });
-
-        // Simulate progress updates
-        let sender_clone = sender.clone();
-        let id_clone = id.clone();
-        tokio::spawn(async move {
-            sleep(Duration::from_secs(2)).await;
-            let _ = sender_clone.send(TuiEvent::AgentProgress {
-                id: id_clone,
-                node: "processing".to_string(),
-                message: "Working on task...".to_string(),
-            });
-        });
+        Ok(())
     }
 
-    // Wait a bit, then complete some agents
-    sleep(Duration::from_secs(5)).await;
-    
-    if let Some(id) = agent_ids.first() {
-        let _ = sender.send(TuiEvent::AgentCompleted {
-            id: id.clone(),
-            result: "Task completed successfully!".to_string(),
+    fn submit_current_input(&mut self, event_tx: mpsc::UnboundedSender<TuiEvent>) {
+        let content = self.app.input.trim().to_string();
+        if content.is_empty() {
+            return;
+        }
+
+        let _ = event_tx.send(TuiEvent::UserMessageAdded {
+            content: content.clone(),
         });
+
+        let thread_id = self
+            .thread_id
+            .get_or_insert_with(|| format!("session-{}", Uuid::new_v4()))
+            .clone();
+        let agent_id = format!("agent-{}", Uuid::new_v4());
+        let opts = self.build_run_options(content.clone(), thread_id);
+
+        spawn_agent_run(
+            event_tx,
+            Arc::clone(&self.backend),
+            opts,
+            RunCmd::React,
+            agent_id,
+            content,
+        );
+    }
+
+    fn build_run_options(&self, message: String, thread_id: String) -> RunOptions {
+        RunOptions {
+            message,
+            working_folder: self.config.working_folder.clone(),
+            session_id: None,
+            cancellation: None,
+            thread_id: Some(thread_id),
+            role_file: self.config.role_file.clone(),
+            agent: self.config.agent.clone(),
+            verbose: self.config.verbose,
+            got_adaptive: false,
+            display_max_len: 200,
+            output_json: true,
+            model: self.config.model.clone(),
+            mcp_config_path: self.config.mcp_config_path.clone(),
+            output_timestamp: false,
+            dry_run: self.config.dry_run,
+        }
     }
 }

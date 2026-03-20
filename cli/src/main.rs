@@ -333,9 +333,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(Command::Tui) = &args.cmd {
         let config = cli::tui::TuiConfig {
             demo_mode: args.verbose,
+            working_folder: args.working_folder.clone(),
+            role_file: args.role.clone(),
+            agent: args.agent.clone(),
+            verbose: args.verbose,
+            model: None,
+            mcp_config_path: args.mcp_config.clone(),
+            dry_run: args.dry,
             ..Default::default()
         };
-        let runner = cli::tui::TuiRunner::new(config);
+        let mut runner = cli::tui::TuiRunner::new(config);
         if let Err(e) = runner.run() {
             eprintln!("TUI error: {}", e);
             std::process::exit(1);
