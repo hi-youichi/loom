@@ -79,6 +79,12 @@
 //! - Only when capabilities.loadSession: true. Request: session_id, working_directory, mcp_servers.
 //! - Agent uses request **session_id as thread_id** to load messages/state from storage; send **user_message_chunk / agent_message_chunk** etc. via session/update until history is sent; connect mcp_servers from request; return LoadSessionResponse.
 //!
+//! ## session/list
+//!
+//! - Only when capabilities.sessionCapabilities.list is present. Request: optional `cwd` (filter by working directory), optional `cursor` (pagination).
+//! - Agent queries SQLite checkpoints table to find all unique thread_ids; returns array of SessionInfo with sessionId, cwd, title (from summary), updatedAt, and optional _meta (checkpoint_count, latest_step, latest_source).
+//! - Response includes `sessions` array and optional `nextCursor` for pagination. Currently pagination is not implemented (returns all sessions).
+//!
 //! ## Session mode and session config
 //!
 //! - Mode: e.g. ask/architect/code, mappable to ReAct/DUP/ToT/GoT; set_session_mode switches RunCmd.
