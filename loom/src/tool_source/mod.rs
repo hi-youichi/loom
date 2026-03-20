@@ -1,7 +1,9 @@
 //! Tool source abstraction: list tools and call a tool.
 //!
-//! ReAct/Agent depends on `ToolSource` instead of a concrete tool registry;
-//! implementations include `MockToolSource` (tests), `StoreToolSource`, `ShortTermMemoryToolSource`, `WebToolsSource`, and `McpToolSource` (feature mcp).
+//! Loom routes all tool use through [`ToolSource`] rather than a concrete tool
+//! registry. This keeps the ReAct runtime provider-agnostic: the think step only
+//! needs a list of tool specs, and the act step only needs a way to call one by
+//! name.
 //!
 //! ## Memory tools
 //!
@@ -58,13 +60,10 @@ use thiserror::Error;
 
 use crate::state::tool_output_normalizer::{ToolOutputHint, ToolOutputStrategy};
 
-/// Tool specification, aligned with MCP `tools/list` result item.
+/// Tool specification aligned with an MCP `tools/list` item.
 ///
-/// Used by ReAct/Think to build tool descriptions for the LLM.
-/// Supports deserialization from YAML for tool definitions.
-///
-/// **Interaction**: Returned by `ToolSource::list_tools()`; consumed by ThinkNode
-/// to build prompts (future).
+/// This is the schema-facing description shown to the model during tool-aware
+/// thinking. It can also be deserialized from YAML-backed tool definitions.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ToolSpec {
     /// Tool name (e.g. used in MCP tools/call).
@@ -79,6 +78,7 @@ pub struct ToolSpec {
 }
 
 impl ToolSpec {
+    /// Attaches a tool-output normalization hint.
     pub fn with_output_hint(mut self, output_hint: ToolOutputHint) -> Self {
         self.output_hint = Some(output_hint);
         self
@@ -86,6 +86,7 @@ impl ToolSpec {
 }
 
 impl ToolOutputHint {
+    /// Creates a hint with a preferred output strategy.
     pub fn preferred(preferred_strategy: ToolOutputStrategy) -> Self {
         Self {
             preferred_strategy: Some(preferred_strategy),
@@ -94,31 +95,30 @@ impl ToolOutputHint {
         }
     }
 
+    /// Sets the maximum size that is considered safe to inline directly.
     pub fn safe_inline_chars(mut self, safe_inline_chars: usize) -> Self {
         self.safe_inline_chars = Some(safe_inline_chars);
         self
     }
 
+    /// Prefers head/tail summarization when truncation is needed.
     pub fn prefer_head_tail(mut self) -> Self {
         self.prefer_head_tail = true;
         self
     }
 }
 
-/// Result of a single tool call; aligns with MCP `tools/call` content.
+/// Result of a single tool call.
 ///
-/// **Interaction**: Returned by `ToolSource::call_tool()`; ActNode maps this to
-/// `ToolResult` and writes into `ReActState::tool_results`.
+/// This is the normalized text payload returned to the ReAct runtime after a
+/// tool invocation.
 #[derive(Debug, Clone)]
 pub struct ToolCallContent {
     /// Result text (e.g. from MCP result.content[].text).
     pub text: String,
 }
 
-/// Errors from listing or calling tools (ToolSource or MCP).
-///
-/// **Interaction**: Returned by `ToolSource::list_tools()` and `call_tool()`;
-/// nodes may map to `AgentError` when running the graph.
+/// Errors from listing or calling tools.
 #[derive(Debug, Error)]
 pub enum ToolSourceError {
     #[error("tool not found: {0}")]
@@ -175,34 +175,29 @@ mod tests {
     }
 }
 
-/// Tool source: list tools and call a tool.
+/// Tool source contract used by ReAct runners.
 ///
-/// ReAct/Agent depends on this instead of a concrete ToolRegistry. Think node
-/// uses `list_tools()` to build prompts; Act node uses `call_tool(name, args)`.
-/// Implementations: `MockToolSource` (tests), `StoreToolSource`, `ShortTermMemoryToolSource`, `McpToolSource`.
-///
-/// **Call context**: Tools that need current-step state (e.g. recent messages) receive
-/// it via `set_call_context`; ActNode calls it before each round of tool execution.
-/// Default implementation is no-op.
-///
-/// **Interaction**: Used by ThinkNode (list_tools) and ActNode (call_tool, set_call_context).
+/// [`crate::agent::react::ThinkNode`] consumes [`Self::list_tools`] to advertise
+/// available tools to the model. [`crate::agent::react::ActNode`] uses
+/// [`Self::call_tool`] or [`Self::call_tool_with_context`] to execute the model's
+/// requested tool calls.
 #[async_trait]
 pub trait ToolSource: Send + Sync {
-    /// List available tools (e.g. MCP tools/list).
+    /// Lists the tools available to the current runtime.
     async fn list_tools(&self) -> Result<Vec<ToolSpec>, ToolSourceError>;
 
-    /// Call a tool by name with JSON arguments (e.g. MCP tools/call).
+    /// Calls a tool by name with JSON arguments.
     async fn call_tool(
         &self,
         name: &str,
         arguments: Value,
     ) -> Result<ToolCallContent, ToolSourceError>;
 
-    /// Call a tool with optional per-step context (e.g. current messages).
-    /// Default implementation ignores `ctx` and calls `call_tool(name, arguments)`.
-    /// Implementations that need context (e.g. ShortTermMemoryToolSource for get_recent_messages)
-    /// override and use `ctx.recent_messages`. ActNode calls this with `Some(&ToolCallContext)`
-    /// so context is explicit and no cross-call state is needed.
+    /// Calls a tool with optional per-step context.
+    ///
+    /// The default implementation ignores `ctx` and delegates to
+    /// [`Self::call_tool`]. Tool sources that need access to ephemeral
+    /// per-turn state, such as recent messages, can override this method.
     async fn call_tool_with_context(
         &self,
         name: &str,
@@ -213,8 +208,9 @@ pub trait ToolSource: Send + Sync {
         self.call_tool(name, arguments).await
     }
 
-    /// Injects per-step context before tool calls (e.g. current messages).
-    /// ActNode calls this before executing tool_calls; implementations that need
-    /// context (e.g. ShortTermMemoryToolSource) override; others use this default no-op.
+    /// Injects per-step context before tool execution.
+    ///
+    /// This hook exists for implementations that prefer explicit stateful setup
+    /// before one round of tool calls. The default implementation is a no-op.
     fn set_call_context(&self, _ctx: Option<ToolCallContext>) {}
 }

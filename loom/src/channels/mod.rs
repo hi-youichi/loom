@@ -1,7 +1,8 @@
-//! Channels for state management with different update strategies.
+//! Channels for graph-state aggregation strategies.
 //!
-//! Channels provide different ways to aggregate and manage state updates in a graph.
-//! Each channel type implements a specific update strategy:
+//! A [`Channel`] defines how concurrent or repeated writes to one logical state
+//! slot are merged between graph steps. Different implementations model
+//! different semantics:
 //!
 //! - `LastValue`: Keeps only the last written value
 //! - `EphemeralValue`: Value is cleared after reading
@@ -9,14 +10,12 @@
 //! - `Topic`: Accumulates values into a list (for message history, etc.)
 //! - `NamedBarrierValue`: Waits until all named values are received
 //!
-//! Additionally, `StateUpdater` provides a way to customize how node outputs are
-//! merged into the graph state:
+//! Additionally, [`StateUpdater`] customizes how whole-node outputs are merged
+//! back into the graph state:
 //!
 //! - `ReplaceUpdater`: Default, replaces entire state
 //! - `FieldBasedUpdater`: Custom per-field update logic
 //!
-//! See the implementation plans document for more details.
-
 mod binop;
 mod ephemeral_value;
 mod error;
@@ -37,35 +36,26 @@ pub use updater::{
 
 use std::fmt::Debug;
 
-/// Channel trait for state management with different update strategies.
+/// Aggregation contract for one state slot.
 ///
-/// Channels are used to manage how state values are updated when multiple nodes
-/// write to the same state field. Each channel type implements a specific aggregation strategy.
+/// Channel implementations decide how a sequence of writes should be combined
+/// before the next graph step observes them.
 pub trait Channel<T>: Send + Sync + Debug
 where
     T: Clone + Send + Sync + Debug + 'static,
 {
-    /// Read the current value from the channel.
-    ///
-    /// Returns `None` if the channel has no value.
+    /// Reads the current channel value, if any.
     fn read(&self) -> Option<T>;
 
-    /// Write a new value to the channel.
+    /// Applies one write to the channel.
     ///
-    /// The behavior depends on the channel type:
-    /// - `LastValue`: Replaces the current value
-    /// - `EphemeralValue`: Sets the value (will be cleared after read)
-    /// - `BinaryOperatorAggregate`: Aggregates with existing value using the reducer
+    /// The merge behavior is implementation-defined.
     fn write(&mut self, value: T);
 
-    /// Update the channel with multiple values.
-    ///
-    /// The aggregation strategy depends on the channel implementation.
-    /// For example, `LastValue` keeps only the last value, while
-    /// `BinaryOperatorAggregate` applies the reducer sequentially.
+    /// Applies multiple writes to the channel in one batch.
     fn update(&mut self, updates: Vec<T>) -> Result<(), ChannelError>;
 
-    /// Get the channel type name for debugging and introspection.
+    /// Returns a stable channel type name for debugging and introspection.
     fn channel_type(&self) -> &'static str;
 }
 

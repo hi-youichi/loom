@@ -175,6 +175,7 @@ where
                         let _ = tx
                             .send(StreamEvent::TaskStart {
                                 node_id: current_id.clone(),
+                                namespace: None,
                             })
                             .await;
                     }
@@ -245,6 +246,7 @@ where
                                             "interrupted: {:?}",
                                             interrupt.0.value
                                         )),
+                                        namespace: None,
                                     })
                                     .await;
                             }
@@ -266,6 +268,7 @@ where
                                     .send(StreamEvent::TaskEnd {
                                         node_id: current_id.clone(),
                                         result: Err(e.to_string()),
+                                        namespace: None,
                                     })
                                     .await;
                             }
@@ -286,6 +289,7 @@ where
                             .send(StreamEvent::TaskEnd {
                                 node_id: current_id.clone(),
                                 result: Ok(()),
+                                namespace: None,
                             })
                             .await;
                     }
@@ -316,6 +320,7 @@ where
                             .send(StreamEvent::Updates {
                                 node_id: current_id.clone(),
                                 state: state.clone(),
+                                namespace: None,
                             })
                             .await;
                     }
@@ -974,7 +979,7 @@ mod tests {
         let ids: Vec<_> = events
             .iter()
             .map(|e| match e {
-                StreamEvent::Updates { node_id, state } => {
+                StreamEvent::Updates { node_id, state, .. } => {
                     assert!(
                         *state == 1 || *state == 3,
                         "unexpected state value {}",
@@ -1044,7 +1049,7 @@ mod tests {
             other => panic!("first event should be Values(10), got {:?}", other),
         }
         match &events[1] {
-            StreamEvent::Updates { node_id, state } => {
+            StreamEvent::Updates { node_id, state, .. } => {
                 assert_eq!(node_id, "only");
                 assert_eq!(*state, 10);
             }
@@ -1681,18 +1686,18 @@ mod tests {
 
         // Verify order: TaskStart -> TaskEnd for each node
         // First node: add_one
-        if let StreamEvent::TaskStart { node_id } = task_start_events[0] {
+        if let StreamEvent::TaskStart { node_id, .. } = task_start_events[0] {
             assert_eq!(node_id, "add_one");
         }
-        if let StreamEvent::TaskEnd { node_id, result } = task_end_events[0] {
+        if let StreamEvent::TaskEnd { node_id, result, .. } = task_end_events[0] {
             assert_eq!(node_id, "add_one");
             assert!(result.is_ok());
         }
         // Second node: add_two
-        if let StreamEvent::TaskStart { node_id } = task_start_events[1] {
+        if let StreamEvent::TaskStart { node_id, .. } = task_start_events[1] {
             assert_eq!(node_id, "add_two");
         }
-        if let StreamEvent::TaskEnd { node_id, result } = task_end_events[1] {
+        if let StreamEvent::TaskEnd { node_id, result, .. } = task_end_events[1] {
             assert_eq!(node_id, "add_two");
             assert!(result.is_ok());
         }
@@ -1946,7 +1951,7 @@ mod tests {
 
         assert_eq!(task_end_events.len(), 1, "Should have 1 TaskEnd event");
 
-        if let StreamEvent::TaskEnd { node_id, result } = &task_end_events[0] {
+        if let StreamEvent::TaskEnd { node_id, result, .. } = &task_end_events[0] {
             assert_eq!(node_id, "interrupt");
             assert!(result.is_err(), "TaskEnd should have error result");
             assert!(

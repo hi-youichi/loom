@@ -75,11 +75,12 @@ where
         let mut guard = self.inner.write().await;
         let next_id = guard.next_id;
         guard.next_id = next_id.wrapping_add(1);
-        guard
-            .by_thread
-            .entry(key)
-            .or_default()
-            .push((id.clone(), cp));
+        let entries = guard.by_thread.entry(key).or_default();
+        if let Some(existing) = entries.iter_mut().find(|(existing_id, _)| existing_id == &id) {
+            *existing = (id.clone(), cp);
+        } else {
+            entries.push((id.clone(), cp));
+        }
         Ok(id)
     }
 
@@ -140,5 +141,60 @@ where
             }
         }
         Ok(items)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::memory::checkpoint::{Checkpoint, CheckpointMetadata, CheckpointSource, CHECKPOINT_VERSION};
+
+    #[tokio::test]
+    async fn put_replaces_existing_checkpoint_id_instead_of_appending() {
+        let saver = MemorySaver::<serde_json::Value>::new();
+        let config = RunnableConfig {
+            thread_id: Some("thread-memory-replace".to_string()),
+            checkpoint_ns: "main".to_string(),
+            ..Default::default()
+        };
+
+        let checkpoint = Checkpoint {
+            v: CHECKPOINT_VERSION,
+            id: "ck-1".to_string(),
+            ts: "1".to_string(),
+            channel_values: serde_json::json!({"value": 1}),
+            channel_versions: HashMap::new(),
+            versions_seen: HashMap::new(),
+            updated_channels: None,
+            pending_sends: Vec::new(),
+            pending_writes: Vec::new(),
+            pending_interrupts: Vec::new(),
+            metadata: CheckpointMetadata {
+                source: CheckpointSource::Loop,
+                step: 1,
+                created_at: None,
+                parents: HashMap::new(),
+                children: HashMap::new(),
+            },
+        };
+        saver.put(&config, &checkpoint).await.unwrap();
+
+        let mut updated = checkpoint.clone();
+        updated.channel_values = serde_json::json!({"value": 2});
+        updated.metadata.children.insert(
+            "fork".to_string(),
+            vec!["child-1".to_string()],
+        );
+        saver.put(&config, &updated).await.unwrap();
+
+        let history = saver.list(&config, None, None, None).await.unwrap();
+        assert_eq!(history.len(), 1);
+
+        let latest = saver.get_tuple(&config).await.unwrap().unwrap().0;
+        assert_eq!(latest.channel_values["value"], serde_json::json!(2));
+        assert_eq!(
+            latest.metadata.children.get("fork"),
+            Some(&vec!["child-1".to_string()])
+        );
     }
 }

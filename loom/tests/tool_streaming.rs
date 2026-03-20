@@ -225,7 +225,7 @@ async fn aggregate_tool_source_passes_context_to_tools() {
 #[tokio::test]
 async fn tool_stream_writer_forwards_to_stream_event_channel() {
     #[derive(Clone, Debug)]
-    struct TestState(i32);
+    struct TestState(#[allow(dead_code)] i32);
 
     let (tx, mut rx) = mpsc::channel::<StreamEvent<TestState>>(16);
 

@@ -1,6 +1,11 @@
-//! # Memory: Checkpointing and Long-term Store
+//! # Memory: checkpointing and long-term store
 //!
-//! [Checkpointer] + [Store] for persistence.
+//! This module groups Loom's two persistence layers:
+//!
+//! - [`Checkpointer`] stores per-run snapshots for resume, replay, branching,
+//!   and inspection.
+//! - [`Store`] stores user or application data outside a single run, such as
+//!   memories, preferences, and search indexes.
 //!
 //! ## Overview
 //!
@@ -13,7 +18,8 @@
 //!
 //! ## Config
 //!
-//! [`RunnableConfig`] is passed to `CompiledStateGraph::invoke`. When using a checkpointer:
+//! [`RunnableConfig`] is passed to graph and Pregel runtime execution methods.
+//! When using a checkpointer:
 //! - `thread_id`: Required. Identifies the conversation/thread.
 //! - `checkpoint_id`: Optional. Load a specific checkpoint (time-travel / branch).
 //! - `checkpoint_ns`: Optional namespace for subgraphs.
@@ -39,7 +45,8 @@
 //! | [`LanceStore`]      | LanceDB     | Vector similarity (semantic)| `lance`  |
 //! | [`InMemoryVectorStore`] | In-memory | Vector similarity (semantic) | — |
 //!
-//! `SqliteVecStore`, `LanceStore`, and `InMemoryVectorStore` require an `Embedder` for vector indexing; search with `query` uses semantic similarity.
+//! `SqliteVecStore`, `LanceStore`, and `InMemoryVectorStore` require an
+//! [`Embedder`] for vector indexing; search with `query` uses semantic similarity.
 
 mod checkpoint;
 mod checkpointer;
@@ -87,7 +94,10 @@ pub use sqlite_saver::SqliteSaver;
 pub use sqlite_store::SqliteStore;
 pub use sqlite_vec_store::SqliteVecStore;
 
-/// Returns the default memory DB path (`~/.loom/memory.db`).
+/// Returns the default SQLite memory database path.
+///
+/// This is the path used by helpers that need a conventional on-disk location
+/// for the built-in memory store implementations.
 pub fn default_memory_db_path() -> std::path::PathBuf {
     sqlite_util::default_memory_db_path()
 }

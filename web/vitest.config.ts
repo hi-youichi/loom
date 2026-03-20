@@ -25,10 +25,12 @@ export default defineConfig({
     projects: [{
       extends: true,
       test: {
+        name: 'unit',
         globals: true,
         environment: 'jsdom',
-        setupFiles: ['./src/__tests__/setup.ts'],
-        css: true
+        setupFiles: ['./src/test/setup.ts'],
+        css: true,
+        pool: 'threads'
       }
     }, {
       extends: true,

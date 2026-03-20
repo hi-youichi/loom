@@ -20,17 +20,17 @@ where
             let state_json = serde_json::to_value(state)?;
             json!({ "Values": state_json })
         }
-        StreamEvent::Updates { node_id, state } => {
+        StreamEvent::Updates { node_id, state, namespace } => {
             let state_json = serde_json::to_value(state)?;
-            json!({ "Updates": { "node_id": node_id, "state": state_json } })
+            json!({ "Updates": { "node_id": node_id, "state": state_json, "namespace": namespace } })
         }
         StreamEvent::Messages {
             chunk,
-            metadata: StreamMetadata { loom_node },
+            metadata: StreamMetadata { loom_node, namespace },
         } => json!({
             "Messages": {
                 "chunk": { "content": chunk.content, "kind": format!("{:?}", chunk.kind) },
-                "metadata": { "loom_node": loom_node }
+                "metadata": { "loom_node": loom_node, "namespace": namespace }
             }
         }),
         StreamEvent::Custom(v) => json!({ "Custom": v }),
@@ -47,13 +47,13 @@ where
                 }
             })
         }
-        StreamEvent::TaskStart { node_id } => json!({ "TaskStart": { "node_id": node_id } }),
-        StreamEvent::TaskEnd { node_id, result } => {
+        StreamEvent::TaskStart { node_id, namespace } => json!({ "TaskStart": { "node_id": node_id, "namespace": namespace } }),
+        StreamEvent::TaskEnd { node_id, result, namespace } => {
             let result_json = match result {
                 Ok(()) => json!("Ok"),
                 Err(e) => json!({ "Err": e }),
             };
-            json!({ "TaskEnd": { "node_id": node_id, "result": result_json } })
+            json!({ "TaskEnd": { "node_id": node_id, "result": result_json, "namespace": namespace } })
         }
         StreamEvent::TotExpand { candidates } => {
             json!({ "TotExpand": { "candidates": candidates } })
@@ -155,6 +155,7 @@ mod tests {
     fn task_start_format() {
         let ev: StreamEvent<DummyState> = StreamEvent::TaskStart {
             node_id: "think".to_string(),
+            namespace: None,
         };
         let v = stream_event_to_format_a(&ev).unwrap();
         assert_eq!(v["TaskStart"]["node_id"], "think");
@@ -165,6 +166,7 @@ mod tests {
         let ev: StreamEvent<DummyState> = StreamEvent::TaskEnd {
             node_id: "act".to_string(),
             result: Ok(()),
+            namespace: None,
         };
         let v = stream_event_to_format_a(&ev).unwrap();
         assert_eq!(v["TaskEnd"]["node_id"], "act");
@@ -176,6 +178,7 @@ mod tests {
         let ev: StreamEvent<DummyState> = StreamEvent::TaskEnd {
             node_id: "fail".to_string(),
             result: Err("boom".to_string()),
+            namespace: None,
         };
         let v = stream_event_to_format_a(&ev).unwrap();
         assert_eq!(v["TaskEnd"]["result"]["Err"], "boom");
@@ -201,6 +204,7 @@ mod tests {
             chunk: crate::stream::MessageChunk::message("hello"),
             metadata: StreamMetadata {
                 loom_node: "think".to_string(),
+                namespace: None,
             },
         };
         let v = stream_event_to_format_a(&ev).unwrap();
@@ -220,6 +224,7 @@ mod tests {
         let ev: StreamEvent<DummyState> = StreamEvent::Updates {
             node_id: "think".to_string(),
             state: DummyState(7),
+            namespace: None,
         };
         let v = stream_event_to_format_a(&ev).unwrap();
         assert_eq!(v["Updates"]["node_id"], "think");

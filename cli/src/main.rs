@@ -251,7 +251,7 @@ fn generate_session_id() -> String {
         "session-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("system clock before Unix epoch")
             .as_millis()
     )
 }

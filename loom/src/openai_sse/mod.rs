@@ -121,7 +121,7 @@ impl StreamToSse {
         let model = self.meta.model.clone();
 
         match event {
-            StreamEvent::TaskStart { node_id } if node_id == "think" && !self.sent_initial => {
+            StreamEvent::TaskStart { node_id, .. } if node_id == "think" && !self.sent_initial => {
                 self.sent_initial = true;
                 let chunk = Chunk {
                     id: id.clone(),
@@ -321,6 +321,7 @@ mod tests {
         let mut adapter = StreamToSse::new(meta_with_created(1000), false);
         adapter.feed(StreamEvent::TaskStart {
             node_id: "think".into(),
+            namespace: None,
         });
         let lines = adapter.take_lines();
         assert_eq!(lines.len(), 1);
@@ -333,6 +334,7 @@ mod tests {
         let mut adapter = StreamToSse::new(meta_with_created(1000), false);
         adapter.feed(StreamEvent::TaskStart {
             node_id: "act".into(),
+            namespace: None,
         });
         assert!(adapter.take_lines().is_empty());
     }
@@ -344,6 +346,7 @@ mod tests {
             chunk: MessageChunk::message("hello world"),
             metadata: StreamMetadata {
                 loom_node: "think".into(),
+                namespace: None,
             },
         });
         let lines = adapter.take_lines();
@@ -363,6 +366,7 @@ mod tests {
         adapter.feed(StreamEvent::Updates {
             node_id: "act".into(),
             state,
+            namespace: None,
         });
         let lines = adapter.take_lines();
         assert_eq!(lines.len(), 1);
@@ -376,6 +380,7 @@ mod tests {
         adapter.feed(StreamEvent::Updates {
             node_id: "act".into(),
             state: ReActState::default(),
+            namespace: None,
         });
         assert!(adapter.take_lines().is_empty());
     }
@@ -436,9 +441,11 @@ mod tests {
         adapter.feed(StreamEvent::TaskEnd {
             node_id: "think".into(),
             result: Ok(()),
+            namespace: None,
         });
         adapter.feed(StreamEvent::TaskStart {
             node_id: "other".into(),
+            namespace: None,
         });
         assert!(adapter.take_lines().is_empty());
     }
@@ -450,6 +457,7 @@ mod tests {
             chunk: MessageChunk::message("x"),
             metadata: StreamMetadata {
                 loom_node: "think".into(),
+                namespace: None,
             },
         });
         let lines1 = adapter.take_lines();
@@ -466,6 +474,7 @@ mod tests {
             chunk: MessageChunk::message("sink test"),
             metadata: StreamMetadata {
                 loom_node: "think".into(),
+                namespace: None,
             },
         });
         let lines = adapter.take_lines();
@@ -480,17 +489,20 @@ mod tests {
         let mut adapter = StreamToSse::new(meta_with_created(1000), true);
         adapter.feed(StreamEvent::TaskStart {
             node_id: "think".into(),
+            namespace: None,
         });
         adapter.feed(StreamEvent::Messages {
             chunk: MessageChunk::message("Hi"),
             metadata: StreamMetadata {
                 loom_node: "think".into(),
+                namespace: None,
             },
         });
         adapter.feed(StreamEvent::Messages {
             chunk: MessageChunk::message(" there"),
             metadata: StreamMetadata {
                 loom_node: "think".into(),
+                namespace: None,
             },
         });
         adapter.feed(StreamEvent::Usage {

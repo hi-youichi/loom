@@ -29,6 +29,7 @@ use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, Tool
 ///             name: "my_tool".to_string(),
 ///             description: Some("A sample tool".to_string()),
 ///             input_schema: serde_json::json!({}),
+///             output_hint: None,
 ///         }
 ///     }
 ///

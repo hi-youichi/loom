@@ -26,6 +26,14 @@ pub struct RunnableConfig {
     /// Current sub-agent nesting depth. Used by `InvokeAgentTool` to prevent
     /// infinite recursion. `None` or `Some(0)` means top-level.
     pub depth: Option<u32>,
+    /// Default resume value used when resuming a single pending interrupt.
+    pub resume_value: Option<serde_json::Value>,
+    /// Resume values keyed by checkpoint namespace.
+    #[serde(default)]
+    pub resume_values_by_namespace: std::collections::HashMap<String, serde_json::Value>,
+    /// Resume values keyed by interrupt id.
+    #[serde(default)]
+    pub resume_values_by_interrupt_id: std::collections::HashMap<String, serde_json::Value>,
 }
 
 #[cfg(test)]
@@ -40,6 +48,7 @@ mod tests {
         assert!(c.checkpoint_id.is_none());
         assert!(c.checkpoint_ns.is_empty());
         assert!(c.user_id.is_none());
+        assert!(c.resume_value.is_none());
     }
 
     /// **Scenario**: After setting fields and cloning, cloned values match.
@@ -52,6 +61,9 @@ mod tests {
             user_id: Some("u1".into()),
             resume_from_node_id: None,
             depth: None,
+            resume_value: None,
+            resume_values_by_namespace: Default::default(),
+            resume_values_by_interrupt_id: Default::default(),
         };
         let c2 = c.clone();
         assert_eq!(c.thread_id, c2.thread_id);
@@ -59,5 +71,6 @@ mod tests {
         assert_eq!(c.checkpoint_ns, c2.checkpoint_ns);
         assert_eq!(c.user_id, c2.user_id);
         assert_eq!(c.resume_from_node_id, c2.resume_from_node_id);
+        assert_eq!(c.resume_value, c2.resume_value);
     }
 }

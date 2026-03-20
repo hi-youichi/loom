@@ -603,7 +603,9 @@ pub fn replace(
             }
 
             // Reject if the search string appears more than once.
-            let last_index = content.rfind(&search).unwrap();
+            let last_index = content
+                .rfind(&search)
+                .expect("rfind must succeed when find already matched");
             if index != last_index {
                 continue;
             }

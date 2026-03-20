@@ -1,6 +1,8 @@
-//! Store trait and StoreError for cross-thread memory.
+//! Store trait and store-side data model for cross-run memory.
 //!
-//! Aligns with BaseStore pattern (namespace, put, get, list, search).
+//! Unlike [`crate::memory::Checkpointer`], which stores one run's execution
+//! snapshots, [`Store`] is meant for durable application data such as user
+//! preferences, memories, or indexed documents.
 //!
 //! ## Core Types
 //!
@@ -28,10 +30,10 @@
 use async_trait::async_trait;
 use std::time::SystemTime;
 
-/// Namespace for Store: e.g. (user_id, "memories") or (user_id, "preferences").
+/// Hierarchical namespace for store items.
 ///
-/// Namespace tuple for store keys. Each element in the vector represents
-/// one level in the hierarchy, allowing for nested categorization.
+/// Each element represents one level in the namespace path, which lets callers
+/// partition data by user, tenant, feature, or collection.
 ///
 /// ## Example
 ///
@@ -43,9 +45,6 @@ use std::time::SystemTime;
 pub type Namespace = Vec<String>;
 
 /// Error for store operations.
-///
-/// Callers do not depend on underlying backend errors (e.g. rusqlite, lancedb).
-/// Use `?` with `serde_json::Error` via `From` impl for serialization failures.
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
     /// JSON or namespace serialization/deserialization failed.
@@ -71,15 +70,7 @@ impl From<serde_json::Error> for StoreError {
     }
 }
 
-/// Represents a stored item with metadata.
-///
-/// Item with metadata for store operations. Contains the stored value along with
-/// key, namespace, and timestamps for creation and last update.
-///
-/// ## Interaction
-///
-/// - Returned by [`Store::get`] and [`Store::batch`] (for GetOp).
-/// - Stored via [`Store::put`] and [`Store::batch`] (for PutOp).
+/// Stored value plus metadata.
 #[derive(Debug, Clone)]
 pub struct Item {
     /// The stored data as a JSON value. Keys are filterable.
@@ -95,7 +86,7 @@ pub struct Item {
 }
 
 impl Item {
-    /// Creates a new Item with the current timestamp for both created_at and updated_at.
+    /// Creates a new item with the current time for both timestamps.
     pub fn new(namespace: Namespace, key: String, value: serde_json::Value) -> Self {
         let now = SystemTime::now();
         Self {
@@ -107,7 +98,10 @@ impl Item {
         }
     }
 
-    /// Creates an Item with explicit timestamps (useful for restoration from storage).
+    /// Creates an item with explicit timestamps.
+    ///
+    /// This is mainly useful for restoring items from a backend that persists
+    /// its own timestamps.
     pub fn with_timestamps(
         namespace: Namespace,
         key: String,
@@ -125,11 +119,7 @@ impl Item {
     }
 }
 
-/// Represents an item returned from a search operation with additional metadata.
-///
-/// Extends [`Item`] with an optional relevance/similarity score. For key-value
-/// or string-filter search, `score` is `None`. For semantic/vector search,
-/// `score` is the similarity (e.g., cosine or L2).
+/// Search result item with an optional ranking score.
 #[derive(Debug, Clone)]
 pub struct SearchItem {
     /// The base item data.
@@ -139,12 +129,12 @@ pub struct SearchItem {
 }
 
 impl SearchItem {
-    /// Creates a SearchItem from an Item without a score (non-ranked search).
+    /// Wraps an item from an unranked search.
     pub fn from_item(item: Item) -> Self {
         Self { item, score: None }
     }
 
-    /// Creates a SearchItem from an Item with a relevance score.
+    /// Wraps an item from a ranked search with its score.
     pub fn with_score(item: Item, score: f64) -> Self {
         Self {
             item,
@@ -153,9 +143,7 @@ impl SearchItem {
     }
 }
 
-/// Filter operators for search operations.
-///
-/// Supports exact matches and comparison operators.
+/// Filter operators used by [`SearchOptions`].
 #[derive(Debug, Clone, PartialEq)]
 pub enum FilterOp {
     /// Equal to (same as direct value comparison).
@@ -172,9 +160,7 @@ pub enum FilterOp {
     Lte(serde_json::Value),
 }
 
-/// Options for search operations.
-///
-/// Used to configure [`Store::search`] behavior.
+/// Options for [`Store::search`].
 #[derive(Debug, Clone)]
 pub struct SearchOptions {
     /// Natural language search query for semantic search capabilities.
@@ -194,7 +180,7 @@ impl Default for SearchOptions {
 }
 
 impl SearchOptions {
-    /// Creates default search options with limit=10 and offset=0.
+    /// Creates default search options with `limit = 10` and `offset = 0`.
     pub fn new() -> Self {
         Self {
             query: None,
@@ -204,26 +190,26 @@ impl SearchOptions {
         }
     }
 
-    /// Sets the query for semantic search.
+    /// Sets the free-text or semantic-search query.
     pub fn with_query(mut self, query: impl Into<String>) -> Self {
         self.query = Some(query.into());
         self
     }
 
-    /// Sets the limit.
+    /// Sets the maximum number of results to return.
     pub fn with_limit(mut self, limit: usize) -> Self {
         self.limit = limit;
         self
     }
 
-    /// Sets the offset for pagination.
+    /// Sets the pagination offset.
     pub fn with_offset(mut self, offset: usize) -> Self {
         self.offset = offset;
         self
     }
 }
 
-/// Match type for namespace filtering in list operations.
+/// Match type used when filtering namespaces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NamespaceMatchType {
     /// Match from the start of the namespace.
@@ -259,7 +245,7 @@ impl MatchCondition {
     }
 }
 
-/// Options for listing namespaces.
+/// Options for [`Store::list_namespaces`].
 #[derive(Debug, Clone, Default)]
 pub struct ListNamespacesOptions {
     /// Optional conditions for filtering namespaces.
@@ -273,7 +259,7 @@ pub struct ListNamespacesOptions {
 }
 
 impl ListNamespacesOptions {
-    /// Creates default options with limit=100 and offset=0.
+    /// Creates default options with `limit = 100` and `offset = 0`.
     pub fn new() -> Self {
         Self {
             match_conditions: Vec::new(),
@@ -295,23 +281,20 @@ impl ListNamespacesOptions {
         self
     }
 
-    /// Sets the maximum depth.
+    /// Sets the maximum namespace depth to return.
     pub fn with_max_depth(mut self, depth: usize) -> Self {
         self.max_depth = Some(depth);
         self
     }
 
-    /// Sets the limit.
+    /// Sets the maximum number of namespaces to return.
     pub fn with_limit(mut self, limit: usize) -> Self {
         self.limit = limit;
         self
     }
 }
 
-/// Operations for batch execution.
-///
-/// Op types for store operations (GetOp, PutOp, SearchOp, ListNamespacesOp).
-/// Used with [`Store::batch`] for executing multiple operations efficiently.
+/// Operations accepted by [`Store::batch`].
 #[derive(Debug, Clone)]
 pub enum StoreOp {
     /// Retrieve a specific item by namespace and key.
@@ -331,9 +314,7 @@ pub enum StoreOp {
     ListNamespaces { options: ListNamespacesOptions },
 }
 
-/// Result from a batch operation.
-///
-/// Each variant corresponds to the result of a specific [`StoreOp`].
+/// Result from one [`Store::batch`] operation.
 #[derive(Debug, Clone)]
 pub enum StoreOpResult {
     /// Result of a Get operation: the item if found, or None.
@@ -574,13 +555,11 @@ pub struct StoreSearchHit {
     pub score: Option<f64>,
 }
 
-/// Long-term cross-session store: namespace-isolated key-value with optional search.
+/// Long-term cross-session store with namespace isolation and optional search.
 ///
-/// Used for user preferences, long-term memories, and retrievable facts. Not tied to a single
-/// thread; use [`Namespace`] (e.g. `[user_id, "memories"]`) for multi-tenant isolation. Differs
-/// from [`crate::memory::Checkpointer`], which is per-thread checkpoint state.
-///
-/// Base trait for store backends.
+/// Use this trait for durable data that should outlive a single run. In
+/// contrast, [`crate::memory::Checkpointer`] is for execution snapshots and
+/// resume state.
 ///
 /// ## Core Operations
 ///
@@ -611,9 +590,9 @@ pub struct StoreSearchHit {
 /// ```
 #[async_trait]
 pub trait Store: Send + Sync {
-    /// Stores `value` under `namespace` and `key`. Replaces any existing value for that key.
+    /// Stores `value` under `namespace` and `key`.
     ///
-    /// Creates a new [`Item`] with current timestamp or updates an existing one.
+    /// Implementations should replace any existing value for that key.
     async fn put(
         &self,
         namespace: &Namespace,
@@ -623,7 +602,8 @@ pub trait Store: Send + Sync {
 
     /// Returns the value for `(namespace, key)`, or `None` if not found.
     ///
-    /// This is the simple API that returns only the value. Use [`get_item`] for full item metadata.
+    /// This is the lightweight API that returns only the JSON payload. Use
+    /// [`Self::get_item`] when callers also need timestamps or namespace info.
     async fn get(
         &self,
         namespace: &Namespace,
@@ -631,24 +611,24 @@ pub trait Store: Send + Sync {
     ) -> Result<Option<serde_json::Value>, StoreError>;
 
     /// Returns the full [`Item`] for `(namespace, key)`, or `None` if not found.
-    ///
-    /// Unlike [`get`], this returns the complete item with metadata (timestamps, namespace, key).
     async fn get_item(&self, namespace: &Namespace, key: &str) -> Result<Option<Item>, StoreError>;
 
     /// Deletes the item at `(namespace, key)`.
     ///
-    /// Returns `Ok(())` even if the item does not exist (idempotent delete).
+    /// Implementations should treat this as idempotent and return `Ok(())` even
+    /// if the item does not exist.
     async fn delete(&self, namespace: &Namespace, key: &str) -> Result<(), StoreError>;
 
-    /// Returns all keys in the given namespace (order is implementation-defined).
+    /// Returns all keys in the given namespace.
+    ///
+    /// Ordering is implementation-defined.
     async fn list(&self, namespace: &Namespace) -> Result<Vec<String>, StoreError>;
 
     /// Searches within the namespace prefix with the given options.
     ///
-    /// - If `options.query` is `None`, returns items up to `options.limit`.
-    /// - If `options.query` is set, filters by string match or semantic similarity
-    ///   (implementation-defined).
-    /// - Results include optional relevance scores for ranked search.
+    /// The exact matching strategy is backend-defined. Some stores only support
+    /// filter-based search, while vector stores may rank results semantically
+    /// when `options.query` is present.
     async fn search(
         &self,
         namespace_prefix: &Namespace,
@@ -656,10 +636,6 @@ pub trait Store: Send + Sync {
     ) -> Result<Vec<SearchItem>, StoreError>;
 
     /// Lists namespaces matching the given options.
-    ///
-    /// - Filter by prefix/suffix using `options.match_conditions`.
-    /// - Limit depth using `options.max_depth`.
-    /// - Paginate using `options.limit` and `options.offset`.
     async fn list_namespaces(
         &self,
         options: ListNamespacesOptions,
@@ -667,15 +643,14 @@ pub trait Store: Send + Sync {
 
     /// Executes multiple operations in a single batch.
     ///
-    /// The order of results matches the order of input operations.
-    /// More efficient than calling individual operations for bulk data manipulation.
+    /// The order of results must match the order of input operations.
     async fn batch(&self, ops: Vec<StoreOp>) -> Result<Vec<StoreOpResult>, StoreError>;
 
     // --- Legacy API for backward compatibility ---
 
-    /// Searches within the namespace (legacy API).
+    /// Searches within the namespace using the legacy simplified API.
     ///
-    /// Use [`search`] for the full-featured API with [`SearchOptions`].
+    /// Prefer [`Self::search`] for new code.
     async fn search_simple(
         &self,
         namespace: &Namespace,

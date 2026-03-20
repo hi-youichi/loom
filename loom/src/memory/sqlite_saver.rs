@@ -48,6 +48,110 @@ fn i64_to_created_at(v: Option<i64>) -> Option<std::time::SystemTime> {
     v.and_then(|ms| std::time::UNIX_EPOCH.checked_add(std::time::Duration::from_millis(ms as u64)))
 }
 
+fn serialize_parents(
+    parents: &HashMap<String, String>,
+) -> Result<String, CheckpointError> {
+    serde_json::to_string(parents).map_err(|e| CheckpointError::Serialization(e.to_string()))
+}
+
+fn deserialize_parents(
+    parents_json: &str,
+) -> Result<HashMap<String, String>, CheckpointError> {
+    serde_json::from_str(parents_json).map_err(|e| CheckpointError::Serialization(e.to_string()))
+}
+
+fn serialize_children(
+    children: &HashMap<String, Vec<String>>,
+) -> Result<String, CheckpointError> {
+    serde_json::to_string(children).map_err(|e| CheckpointError::Serialization(e.to_string()))
+}
+
+fn deserialize_children(
+    children_json: &str,
+) -> Result<HashMap<String, Vec<String>>, CheckpointError> {
+    serde_json::from_str(children_json).map_err(|e| CheckpointError::Serialization(e.to_string()))
+}
+
+fn serialize_json_field<T: serde::Serialize>(value: &T) -> Result<String, CheckpointError> {
+    serde_json::to_string(value).map_err(|e| CheckpointError::Serialization(e.to_string()))
+}
+
+fn deserialize_json_field<T: serde::de::DeserializeOwned>(
+    value: &str,
+) -> Result<T, CheckpointError> {
+    serde_json::from_str(value).map_err(|e| CheckpointError::Serialization(e.to_string()))
+}
+
+fn ensure_checkpoint_runtime_columns(conn: &rusqlite::Connection) -> Result<(), CheckpointError> {
+    let mut stmt = conn
+        .prepare("PRAGMA table_info(checkpoints)")
+        .map_err(|e| CheckpointError::Storage(e.to_string()))?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| CheckpointError::Storage(e.to_string()))?;
+    let columns = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| CheckpointError::Storage(e.to_string()))?;
+
+    if !columns.iter().any(|column| column == "metadata_parents") {
+        conn.execute(
+            "ALTER TABLE checkpoints ADD COLUMN metadata_parents TEXT NOT NULL DEFAULT '{}'",
+            [],
+        )
+        .map_err(|e| CheckpointError::Storage(e.to_string()))?;
+    }
+
+    if !columns.iter().any(|column| column == "metadata_children") {
+        conn.execute(
+            "ALTER TABLE checkpoints ADD COLUMN metadata_children TEXT NOT NULL DEFAULT '{}'",
+            [],
+        )
+        .map_err(|e| CheckpointError::Storage(e.to_string()))?;
+    }
+
+    if !columns.iter().any(|column| column == "updated_channels") {
+        conn.execute(
+            "ALTER TABLE checkpoints ADD COLUMN updated_channels TEXT NOT NULL DEFAULT '[]'",
+            [],
+        )
+        .map_err(|e| CheckpointError::Storage(e.to_string()))?;
+    }
+
+    if !columns.iter().any(|column| column == "pending_sends") {
+        conn.execute(
+            "ALTER TABLE checkpoints ADD COLUMN pending_sends TEXT NOT NULL DEFAULT '[]'",
+            [],
+        )
+        .map_err(|e| CheckpointError::Storage(e.to_string()))?;
+    }
+
+    if !columns.iter().any(|column| column == "pending_writes") {
+        conn.execute(
+            "ALTER TABLE checkpoints ADD COLUMN pending_writes TEXT NOT NULL DEFAULT '[]'",
+            [],
+        )
+        .map_err(|e| CheckpointError::Storage(e.to_string()))?;
+    }
+
+    if !columns.iter().any(|column| column == "pending_interrupts") {
+        conn.execute(
+            "ALTER TABLE checkpoints ADD COLUMN pending_interrupts TEXT NOT NULL DEFAULT '[]'",
+            [],
+        )
+        .map_err(|e| CheckpointError::Storage(e.to_string()))?;
+    }
+
+    if !columns.iter().any(|column| column == "versions_seen") {
+        conn.execute(
+            "ALTER TABLE checkpoints ADD COLUMN versions_seen TEXT NOT NULL DEFAULT '{}'",
+            [],
+        )
+        .map_err(|e| CheckpointError::Storage(e.to_string()))?;
+    }
+
+    Ok(())
+}
+
 /// SQLite-backed checkpointer. Key: (thread_id, checkpoint_ns, checkpoint_id).
 ///
 /// Persistent; for single-node and dev. Uses spawn_blocking for async.
@@ -79,15 +183,23 @@ where
                 ts TEXT NOT NULL,
                 payload BLOB NOT NULL,
                 channel_versions TEXT NOT NULL,
+                versions_seen TEXT NOT NULL DEFAULT '{}',
                 metadata_source TEXT NOT NULL,
                 metadata_step INTEGER NOT NULL,
                 metadata_created_at INTEGER,
+                metadata_parents TEXT NOT NULL DEFAULT '{}',
+                metadata_children TEXT NOT NULL DEFAULT '{}',
+                updated_channels TEXT NOT NULL DEFAULT '[]',
+                pending_sends TEXT NOT NULL DEFAULT '[]',
+                pending_writes TEXT NOT NULL DEFAULT '[]',
+                pending_interrupts TEXT NOT NULL DEFAULT '[]',
                 PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
             )
             "#,
             [],
         )
         .map_err(|e| CheckpointError::Storage(e.to_string()))?;
+        ensure_checkpoint_runtime_columns(&conn)?;
         Ok(Self {
             db_path,
             serializer,
@@ -118,9 +230,16 @@ where
         let payload = self.serializer.serialize(&checkpoint.channel_values)?;
         let channel_versions = serde_json::to_string(&checkpoint.channel_versions)
             .map_err(|e| CheckpointError::Serialization(e.to_string()))?;
+        let versions_seen = serialize_json_field(&checkpoint.versions_seen)?;
         let metadata_source = source_to_str(&checkpoint.metadata.source).to_string();
         let metadata_step = checkpoint.metadata.step as i64;
         let metadata_created_at = created_at_to_i64(&checkpoint.metadata.created_at);
+        let metadata_parents = serialize_parents(&checkpoint.metadata.parents)?;
+        let metadata_children = serialize_children(&checkpoint.metadata.children)?;
+        let updated_channels = serialize_json_field(&checkpoint.updated_channels)?;
+        let pending_sends = serialize_json_field(&checkpoint.pending_sends)?;
+        let pending_writes = serialize_json_field(&checkpoint.pending_writes)?;
+        let pending_interrupts = serialize_json_field(&checkpoint.pending_interrupts)?;
         let id = checkpoint.id.clone();
         let ts = checkpoint.ts.clone();
 
@@ -131,9 +250,10 @@ where
             conn.execute(
                 r#"
                 INSERT OR REPLACE INTO checkpoints
-                (thread_id, checkpoint_ns, checkpoint_id, ts, payload, channel_versions,
-                 metadata_source, metadata_step, metadata_created_at)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                (thread_id, checkpoint_ns, checkpoint_id, ts, payload, channel_versions, versions_seen,
+                 metadata_source, metadata_step, metadata_created_at, metadata_parents, metadata_children,
+                 updated_channels, pending_sends, pending_writes, pending_interrupts)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
                 "#,
                 params![
                     thread_id,
@@ -142,9 +262,16 @@ where
                     ts,
                     payload,
                     channel_versions,
+                    versions_seen,
                     metadata_source,
                     metadata_step,
                     metadata_created_at,
+                    metadata_parents,
+                    metadata_children,
+                    updated_channels,
+                    pending_sends,
+                    pending_writes,
+                    pending_interrupts,
                 ],
             )
             .map_err(|e| CheckpointError::Storage(e.to_string()))?;
@@ -163,15 +290,32 @@ where
         let want_id = config.checkpoint_id.clone();
         let db_path = self.db_path.clone();
 
-        type RowData = (String, String, Vec<u8>, String, String, i64, Option<i64>);
+        type RowData = (
+            String,
+            String,
+            Vec<u8>,
+            String,
+            String,
+            String,
+            i64,
+            Option<i64>,
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+        );
         let row: Option<RowData> = tokio::task::spawn_blocking(move || -> Result<Option<RowData>, CheckpointError> {
             let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
                 .map_err(|e| CheckpointError::Storage(e))?;
             let sql = if want_id.is_some() {
-                "SELECT checkpoint_id, ts, payload, channel_versions, metadata_source, metadata_step, metadata_created_at
+                "SELECT checkpoint_id, ts, payload, channel_versions, versions_seen, metadata_source, metadata_step, metadata_created_at, metadata_parents, metadata_children,
+                        updated_channels, pending_sends, pending_writes, pending_interrupts
                  FROM checkpoints WHERE thread_id = ?1 AND checkpoint_ns = ?2 AND checkpoint_id = ?3"
             } else {
-                "SELECT checkpoint_id, ts, payload, channel_versions, metadata_source, metadata_step, metadata_created_at
+                "SELECT checkpoint_id, ts, payload, channel_versions, versions_seen, metadata_source, metadata_step, metadata_created_at, metadata_parents, metadata_children,
+                        updated_channels, pending_sends, pending_writes, pending_interrupts
                  FROM checkpoints WHERE thread_id = ?1 AND checkpoint_ns = ?2
                  ORDER BY metadata_created_at DESC LIMIT 1"
             };
@@ -190,17 +334,31 @@ where
             let ts: String = row.get(1).map_err(|e| CheckpointError::Storage(e.to_string()))?;
             let payload: Vec<u8> = row.get(2).map_err(|e| CheckpointError::Storage(e.to_string()))?;
             let channel_versions_json: String = row.get(3).map_err(|e| CheckpointError::Storage(e.to_string()))?;
-            let metadata_source: String = row.get(4).map_err(|e| CheckpointError::Storage(e.to_string()))?;
-            let metadata_step: i64 = row.get(5).map_err(|e| CheckpointError::Storage(e.to_string()))?;
-            let metadata_created_at: Option<i64> = row.get(6).map_err(|e| CheckpointError::Storage(e.to_string()))?;
+            let versions_seen_json: String = row.get(4).map_err(|e| CheckpointError::Storage(e.to_string()))?;
+            let metadata_source: String = row.get(5).map_err(|e| CheckpointError::Storage(e.to_string()))?;
+            let metadata_step: i64 = row.get(6).map_err(|e| CheckpointError::Storage(e.to_string()))?;
+            let metadata_created_at: Option<i64> = row.get(7).map_err(|e| CheckpointError::Storage(e.to_string()))?;
+            let metadata_parents: String = row.get(8).map_err(|e| CheckpointError::Storage(e.to_string()))?;
+            let metadata_children: String = row.get(9).map_err(|e| CheckpointError::Storage(e.to_string()))?;
+            let updated_channels: String = row.get(10).map_err(|e| CheckpointError::Storage(e.to_string()))?;
+            let pending_sends: String = row.get(11).map_err(|e| CheckpointError::Storage(e.to_string()))?;
+            let pending_writes: String = row.get(12).map_err(|e| CheckpointError::Storage(e.to_string()))?;
+            let pending_interrupts: String = row.get(13).map_err(|e| CheckpointError::Storage(e.to_string()))?;
             Ok(Some((
                 checkpoint_id,
                 ts,
                 payload,
                 channel_versions_json,
+                versions_seen_json,
                 metadata_source,
                 metadata_step,
                 metadata_created_at,
+                metadata_parents,
+                metadata_children,
+                updated_channels,
+                pending_sends,
+                pending_writes,
+                pending_interrupts,
             )))
         })
         .await
@@ -211,9 +369,16 @@ where
             ts,
             payload,
             channel_versions_json,
+            versions_seen_json,
             metadata_source,
             metadata_step,
             metadata_created_at,
+            metadata_parents,
+            metadata_children,
+            updated_channels_json,
+            pending_sends_json,
+            pending_writes_json,
+            pending_interrupts_json,
         ): RowData = match row {
             Some(r) => r,
             None => return Ok(None),
@@ -222,11 +387,14 @@ where
         let channel_values = self.serializer.deserialize(&payload)?;
         let channel_versions: ChannelVersions = serde_json::from_str(&channel_versions_json)
             .map_err(|e| CheckpointError::Serialization(e.to_string()))?;
+        let versions_seen: HashMap<String, ChannelVersions> =
+            deserialize_json_field(&versions_seen_json)?;
         let metadata = CheckpointMetadata {
             source: str_to_source(&metadata_source),
             step: metadata_step,
             created_at: i64_to_created_at(metadata_created_at),
-            parents: HashMap::new(),
+            parents: deserialize_parents(&metadata_parents)?,
+            children: deserialize_children(&metadata_children)?,
         };
         let checkpoint = Checkpoint {
             v: CHECKPOINT_VERSION,
@@ -234,9 +402,11 @@ where
             ts,
             channel_values,
             channel_versions,
-            versions_seen: HashMap::new(),
-            updated_channels: None,
-            pending_sends: Vec::new(),
+            versions_seen,
+            updated_channels: deserialize_json_field(&updated_channels_json)?,
+            pending_sends: deserialize_json_field(&pending_sends_json)?,
+            pending_writes: deserialize_json_field(&pending_writes_json)?,
+            pending_interrupts: deserialize_json_field(&pending_interrupts_json)?,
             metadata: metadata.clone(),
         };
         Ok(Some((checkpoint, metadata)))
@@ -260,7 +430,7 @@ where
                 .map_err(|e| CheckpointError::Storage(e))?;
             let mut stmt = conn
                 .prepare(
-                    "SELECT checkpoint_id, metadata_source, metadata_step, metadata_created_at
+                    "SELECT checkpoint_id, metadata_source, metadata_step, metadata_created_at, metadata_parents, metadata_children
                      FROM checkpoints WHERE thread_id = ?1 AND checkpoint_ns = ?2
                      ORDER BY metadata_created_at ASC",
                 )
@@ -273,7 +443,10 @@ where
                             source: str_to_source(&row.get::<_, String>(1)?),
                             step: row.get::<_, i64>(2)?,
                             created_at: i64_to_created_at(row.get(3)?),
-                            parents: HashMap::new(),
+                parents: serde_json::from_str::<HashMap<String, String>>(&row.get::<_, String>(4)?)
+                    .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
+                children: serde_json::from_str::<HashMap<String, Vec<String>>>(&row.get::<_, String>(5)?)
+                    .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
                         },
                     })
                 })
@@ -395,14 +568,37 @@ mod tests {
             ts: "2024-01-01T00:00:00Z".to_string(),
             channel_values: serde_json::json!({"key": "value"}),
             channel_versions: HashMap::new(),
-            versions_seen: HashMap::new(),
-            updated_channels: None,
-            pending_sends: Vec::new(),
+            versions_seen: [(
+                "node-a".to_string(),
+                [("key".to_string(), "3".to_string())].into_iter().collect(),
+            )]
+            .into_iter()
+            .collect(),
+            updated_channels: Some(vec!["key".to_string()]),
+            pending_sends: vec![(
+                "task-send".to_string(),
+                "__tasks__".to_string(),
+                serde_json::json!({"target": "worker", "payload": {"x": 1}}),
+            )],
+            pending_writes: vec![(
+                "task-interrupt".to_string(),
+                "__interrupt__".to_string(),
+                serde_json::json!({"kind": "approval_required"}),
+            )],
+            pending_interrupts: vec![serde_json::json!({"interrupt_id": "int-1"})],
             metadata: CheckpointMetadata {
                 source: CheckpointSource::Input,
                 step: 1,
                 created_at: Some(now),
-                parents: HashMap::new(),
+                parents: [("parent".to_string(), "cp-0".to_string())]
+                    .into_iter()
+                    .collect(),
+                children: [(
+                    "parent/child".to_string(),
+                    vec!["child-cp-1".to_string(), "child-cp-2".to_string()],
+                )]
+                .into_iter()
+                .collect(),
             },
         };
 
@@ -414,8 +610,26 @@ mod tests {
         let (ck, meta) = result.unwrap();
         assert_eq!(ck.id, "ck-1");
         assert_eq!(ck.channel_values, serde_json::json!({"key": "value"}));
+        assert_eq!(ck.updated_channels.as_deref(), Some(&["key".to_string()][..]));
+        assert_eq!(
+            ck.versions_seen
+                .get("node-a")
+                .and_then(|seen| seen.get("key"))
+                .map(String::as_str),
+            Some("3")
+        );
+        assert_eq!(ck.pending_sends.len(), 1);
+        assert_eq!(ck.pending_writes.len(), 1);
+        assert_eq!(ck.pending_interrupts.len(), 1);
         assert!(matches!(meta.source, CheckpointSource::Input));
         assert_eq!(meta.step, 1);
+        assert_eq!(meta.parents.get("parent").map(String::as_str), Some("cp-0"));
+        assert_eq!(
+            meta.children
+                .get("parent/child")
+                .expect("child links should roundtrip"),
+            &vec!["child-cp-1".to_string(), "child-cp-2".to_string()]
+        );
     }
 
     #[tokio::test]
@@ -441,11 +655,14 @@ mod tests {
                 versions_seen: HashMap::new(),
                 updated_channels: None,
                 pending_sends: Vec::new(),
+                pending_writes: Vec::new(),
+                pending_interrupts: Vec::new(),
                 metadata: CheckpointMetadata {
                     source: CheckpointSource::Loop,
                     step: i,
                     created_at: Some(base + Duration::from_secs(i as u64)),
                     parents: HashMap::new(),
+                children: HashMap::new(),
                 },
             };
             saver.put(&config, &checkpoint).await.unwrap();
@@ -453,6 +670,7 @@ mod tests {
 
         let items = saver.list(&config, None, None, None).await.unwrap();
         assert_eq!(items.len(), 3);
+        assert!(items.iter().all(|item| item.metadata.children.is_empty()));
 
         let limited = saver.list(&config, Some(2), None, None).await.unwrap();
         assert_eq!(limited.len(), 2);

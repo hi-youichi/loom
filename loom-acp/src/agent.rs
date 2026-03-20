@@ -7,11 +7,16 @@ use crate::content::content_blocks_to_message;
 use crate::session::{SessionId as OurSessionId, SessionStore};
 use crate::stream_bridge::{loom_event_to_updates, stream_update_to_session_notification};
 use agent_client_protocol::{
-    Agent, AuthenticateRequest, AuthenticateResponse, CancelNotification, Implementation,
-    InitializeRequest, InitializeResponse, NewSessionRequest, NewSessionResponse, PromptRequest,
+    Agent, AuthenticateRequest, AuthenticateResponse, CancelNotification,
+    InitializeRequest, InitializeResponse, LoadSessionRequest, LoadSessionResponse,
+    NewSessionRequest, NewSessionResponse, PromptRequest,
     PromptResponse, SessionId, SessionNotification, SetSessionConfigOptionRequest,
-    SetSessionConfigOptionResponse, StopReason,
+    SetSessionConfigOptionResponse, StopReason, ContentChunk,
 };
+use loom::memory::{Checkpointer, RunnableConfig, JsonSerializer, SqliteSaver};
+use loom::state::ReActState;
+use loom::message::Message;
+use std::sync::Arc;
 use async_trait::async_trait;
 use loom::{run_agent_with_options, AnyStreamEvent, RunCmd, RunCompletion, RunError, RunOptions};
 use std::path::PathBuf;
@@ -60,8 +65,27 @@ impl Default for LoomAcpAgent {
 #[async_trait(?Send)]
 impl Agent for LoomAcpAgent {
     async fn initialize(&self, args: InitializeRequest) -> agent_client_protocol::Result<InitializeResponse> {
-        Ok(InitializeResponse::new(args.protocol_version)
-            .agent_info(Implementation::new("loom", env!("CARGO_PKG_VERSION"))))
+        // Build base response using the standard builder
+        let base_response = InitializeResponse::new(args.protocol_version)
+            .agent_info(agent_client_protocol::Implementation::new("loom", env!("CARGO_PKG_VERSION")));
+        
+        // Add loadSession capability by serializing, modifying, and deserializing
+        // This is necessary because agent_client_protocol types are non_exhaustive
+        let mut json = serde_json::to_value(&base_response)
+            .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
+        
+        // Add agentCapabilities with loadSession
+        if let Some(obj) = json.as_object_mut() {
+            obj.insert(
+                "agentCapabilities".to_string(),
+                serde_json::json!({
+                    "loadSession": true
+                })
+            );
+        }
+        
+        serde_json::from_value(json)
+            .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))
     }
 
     async fn authenticate(
@@ -179,6 +203,120 @@ impl Agent for LoomAcpAgent {
                 Err(map_run_error(e))
             }
         }
+    }
+
+    async fn load_session(
+        &self,
+        args: LoadSessionRequest,
+    ) -> agent_client_protocol::Result<LoadSessionResponse> {
+        let session_id = args.session_id.clone();
+        let our_session_id = OurSessionId::new(session_id.to_string());
+        let working_directory = Some(args.cwd.clone()); // Convert to Option<PathBuf>
+        
+        // Create or get session entry
+        let entry = if let Some(existing) = self.sessions.get(&our_session_id) {
+            existing
+        } else {
+            // Create new session entry with the provided working directory
+            let thread_id = session_id.to_string();
+            self.sessions.create_with_id(our_session_id.clone(), working_directory, thread_id.clone());
+            self.sessions.get(&our_session_id).expect("Session should exist after create_with_id")
+        };
+
+        // Build checkpointer to load history
+        let db_path = loom::memory::default_memory_db_path();
+        let serializer = Arc::new(JsonSerializer);
+        let checkpointer: Arc<dyn Checkpointer<ReActState>> = Arc::new(
+            SqliteSaver::new(
+                db_path.to_string_lossy().as_ref(),
+                serializer,
+            ).map_err(|e| agent_client_protocol::Error::internal_error()
+                .data(format!("Failed to create checkpointer: {}", e)))?
+        );
+
+        // Load checkpoint using thread_id
+        let config = RunnableConfig {
+            thread_id: Some(entry.thread_id.clone()),
+            checkpoint_id: None,
+            checkpoint_ns: String::new(),
+            user_id: None,
+            resume_from_node_id: None,
+            depth: None,
+            resume_value: None,
+            resume_values_by_namespace: Default::default(),
+            resume_values_by_interrupt_id: Default::default(),
+        };
+
+        // Try to load checkpoint
+        match checkpointer.get_tuple(&config).await {
+            Ok(Some((checkpoint, _metadata))) => {
+                // Extract messages from state
+                let state: ReActState = checkpoint.channel_values;
+                
+                // Send history via session/update notifications
+                if let Some(ref tx) = self.session_update_tx {
+                    for message in &state.messages {
+                        let update = match message {
+                            Message::User(content) => {
+                                SessionNotification::new(
+                                    session_id.clone(),
+                                    agent_client_protocol::SessionUpdate::UserMessageChunk(
+                                        ContentChunk::new(content.clone().into())
+                                    )
+                                )
+                            }
+                            Message::Assistant(content) => {
+                                SessionNotification::new(
+                                    session_id.clone(),
+                                    agent_client_protocol::SessionUpdate::AgentMessageChunk(
+                                        ContentChunk::new(content.clone().into())
+                                    )
+                                )
+                            }
+                            Message::System(_) => {
+                                // System messages are typically not sent to client
+                                continue;
+                            }
+                        };
+                        let _ = tx.try_send(update);
+                    }
+                }
+                
+                tracing::info!(
+                    session_id = %session_id,
+                    message_count = state.messages.len(),
+                    "Loaded and replayed session history"
+                );
+            }
+            Ok(None) => {
+                tracing::debug!(
+                    session_id = %session_id,
+                    "No checkpoint found for session, starting fresh"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    session_id = %session_id,
+                    error = %e,
+                    "Failed to load checkpoint, starting fresh"
+                );
+                // Continue without error - session can start fresh
+            }
+        }
+
+        // TODO: Connect MCP servers from request
+        // This would require storing MCP connections per session
+        // For now, we just log that they were requested
+        if !args.mcp_servers.is_empty() {
+            tracing::debug!(
+                session_id = %session_id,
+                mcp_server_count = args.mcp_servers.len(),
+                "MCP servers requested for loaded session"
+            );
+        }
+
+        // Return LoadSessionResponse
+        Ok(LoadSessionResponse::default())
     }
 }
 

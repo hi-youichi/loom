@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { MessageList } from '../components/chat/MessageList'
+import { MessageList } from '../../components/chat/MessageList'
 
 describe('MessageList', () => {
   const mockMessages = [

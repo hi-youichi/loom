@@ -1,7 +1,8 @@
-//! Checkpointer trait and CheckpointError.
+//! Checkpointer trait and checkpoint persistence errors.
 //!
-//! Saves and loads checkpoints by (thread_id, checkpoint_ns, checkpoint_id).
-//! Base trait for checkpoint persistence.
+//! A [`Checkpointer`] persists and retrieves per-run checkpoints addressed by
+//! `(thread_id, checkpoint_ns, checkpoint_id)`. Higher-level runtimes use it to
+//! resume runs, inspect history, and fork execution from earlier snapshots.
 
 use async_trait::async_trait;
 
@@ -9,8 +10,6 @@ use crate::memory::checkpoint::{Checkpoint, CheckpointListItem, CheckpointMetada
 use crate::memory::config::RunnableConfig;
 
 /// Error type for checkpoint operations.
-///
-/// Used by Checkpointer::put, get_tuple, list and by Serializer.
 #[derive(Debug, thiserror::Error)]
 pub enum CheckpointError {
     #[error("thread_id required")]
@@ -49,32 +48,40 @@ mod tests {
     }
 }
 
-/// Saves and loads checkpoints by (thread_id, checkpoint_ns, checkpoint_id).
+/// Persists and retrieves checkpoints for one state type.
 ///
-/// Base checkpoint saver (put, get_tuple, list).
-/// Implementations: MemorySaver (in-memory). Future: SqliteSaver, PostgresSaver.
-///
-/// **Interaction**: Injected at compile via StateGraph::compile_with_checkpointer;
-/// CompiledStateGraph::invoke uses it when config.thread_id is set.
+/// Implementations are expected to treat `thread_id` plus checkpoint namespace as
+/// the primary partition key. When `config.checkpoint_id` is absent,
+/// [`Self::get_tuple`] should return the latest checkpoint in that lineage.
 #[async_trait]
 pub trait Checkpointer<S>: Send + Sync
 where
     S: Clone + Send + Sync + 'static,
 {
-    /// Persist a checkpoint for the thread and config. Returns the checkpoint id used.
+    /// Persists a checkpoint for the selected run lineage.
+    ///
+    /// Returns the checkpoint id that was stored, which is usually
+    /// `checkpoint.id` but may be backend-normalized if needed.
     async fn put(
         &self,
         config: &RunnableConfig,
         checkpoint: &Checkpoint<S>,
     ) -> Result<String, CheckpointError>;
 
-    /// Load the latest checkpoint for the thread (or the one given by config.checkpoint_id).
+    /// Loads one checkpoint plus its metadata.
+    ///
+    /// When `config.checkpoint_id` is set, implementations should resolve that
+    /// specific checkpoint. Otherwise they should return the latest checkpoint in
+    /// the selected thread and namespace.
     async fn get_tuple(
         &self,
         config: &RunnableConfig,
     ) -> Result<Option<(Checkpoint<S>, CheckpointMetadata)>, CheckpointError>;
 
-    /// List checkpoint ids for the thread (e.g. for get_state_history, time travel).
+    /// Lists checkpoint history metadata for the selected lineage.
+    ///
+    /// `before` and `after` are backend-defined cursors or checkpoint ids used
+    /// for paging through time-travel history.
     async fn list(
         &self,
         config: &RunnableConfig,
