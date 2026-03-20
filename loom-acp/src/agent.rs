@@ -9,7 +9,7 @@ use crate::stream_bridge::{loom_event_to_updates, stream_update_to_session_notif
 use agent_client_protocol::{
     Agent, AuthenticateRequest, AuthenticateResponse, CancelNotification,
     InitializeRequest, InitializeResponse, LoadSessionRequest, LoadSessionResponse,
-    NewSessionRequest, NewSessionResponse, PromptRequest,
+    ListSessionsRequest, ListSessionsResponse, NewSessionRequest, NewSessionResponse, PromptRequest,
     PromptResponse, SessionId, SessionNotification, SetSessionConfigOptionRequest,
     SetSessionConfigOptionResponse, StopReason, ContentChunk,
 };
@@ -324,9 +324,71 @@ impl Agent for LoomAcpAgent {
         Ok(LoadSessionResponse::default())
     }
 
-    // Note: list_sessions method may not be in Agent trait yet in agent-client-protocol 0.10
-    // If compilation fails, we'll need to handle JSON-RPC manually or upgrade the crate version
-    // For now, we provide the implementation method that can be called manually if needed
+    async fn list_sessions(
+        &self,
+        args: ListSessionsRequest,
+    ) -> agent_client_protocol::Result<ListSessionsResponse> {
+        // Convert PathBuf cwd to Option<&str> for our internal function
+        let cwd_filter = args.cwd.as_ref()
+            .and_then(|p| p.to_str());
+        
+        // Get sessions from database
+        let our_sessions = self.list_sessions_from_db(cwd_filter, args.cursor.as_deref()).await?;
+        
+        // Convert our SessionInfo to JSON and then deserialize to protocol types
+        // This is necessary because agent_client_protocol types are non_exhaustive
+        let protocol_sessions: Vec<agent_client_protocol::SessionInfo> = our_sessions
+            .into_iter()
+            .map(|s| {
+                // Convert cwd: Option<String> to PathBuf string (use default if None)
+                let cwd_str = s.cwd
+                    .unwrap_or_else(|| loom::DEFAULT_WORKING_FOLDER.to_string());
+                
+                // Build JSON for SessionInfo
+                let mut session_json = serde_json::json!({
+                    "sessionId": s.session_id,
+                    "cwd": cwd_str,
+                });
+                
+                if let Some(title) = s.title {
+                    session_json.as_object_mut().unwrap().insert("title".to_string(), serde_json::Value::String(title));
+                }
+                if let Some(updated_at) = s.updated_at {
+                    session_json.as_object_mut().unwrap().insert("updatedAt".to_string(), serde_json::Value::String(updated_at));
+                }
+                
+                // Convert our SessionMeta to Map<String, Value> for _meta
+                if let Some(meta) = s.meta {
+                    let mut meta_map = serde_json::Map::new();
+                    if let Some(count) = meta.checkpoint_count {
+                        meta_map.insert("checkpoint_count".to_string(), serde_json::Value::Number(count.into()));
+                    }
+                    if let Some(count) = meta.message_count {
+                        meta_map.insert("message_count".to_string(), serde_json::Value::Number(count.into()));
+                    }
+                    if let Some(step) = meta.latest_step {
+                        meta_map.insert("latest_step".to_string(), serde_json::Value::Number(step.into()));
+                    }
+                    if let Some(source) = meta.latest_source {
+                        meta_map.insert("latest_source".to_string(), serde_json::Value::String(source));
+                    }
+                    session_json.as_object_mut().unwrap().insert("_meta".to_string(), serde_json::Value::Object(meta_map));
+                }
+                
+                serde_json::from_value(session_json)
+                    .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        
+        // Build response JSON (pagination not implemented yet, so next_cursor is None)
+        let response_json = serde_json::json!({
+            "sessions": protocol_sessions,
+            "nextCursor": None::<()>,
+        });
+        
+        serde_json::from_value(response_json)
+            .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))
+    }
 }
 
 /// Session information for ACP session/list response.
@@ -411,7 +473,7 @@ impl LoomAcpAgent {
                 .query_map([], |row: &rusqlite::Row| {
                     let session_id: String = row.get(0)?;
                     let checkpoint_count: usize = row.get(1)?;
-                    let created_at_ms: Option<i64> = row.get(2)?;
+                    let _created_at_ms: Option<i64> = row.get(2)?;
                     let last_updated_ms: Option<i64> = row.get(3)?;
                     let latest_step: i64 = row.get(4)?;
                     let latest_source: String = row.get(5)?;
