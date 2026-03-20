@@ -252,9 +252,9 @@ impl LlmClient for ChatOpenAI {
                     })
                     .collect();
                 args.tools(chat_tools);
-                args.tool_choice(ChatCompletionToolChoiceOption::Mode(
-                    ToolChoiceOptions::Required,
-                ));
+                // args.tool_choice(ChatCompletionToolChoiceOption::Mode(
+                //     ToolChoiceOptions::Required,
+                // ));
             }
 
             if let Some(t) = self.temperature {
@@ -267,7 +267,7 @@ impl LlmClient for ChatOpenAI {
                     ToolChoiceMode::None => ToolChoiceOptions::None,
                     ToolChoiceMode::Required => ToolChoiceOptions::Required,
                 };
-                args.tool_choice(ChatCompletionToolChoiceOption::Mode(opt));
+                // args.tool_choice(ChatCompletionToolChoiceOption::Mode(opt));
             }
 
             args.build().map_err(|e| {
@@ -419,7 +419,7 @@ impl LlmClient for ChatOpenAI {
                     ToolChoiceMode::None => ToolChoiceOptions::None,
                     ToolChoiceMode::Required => ToolChoiceOptions::Required,
                 };
-                args.tool_choice(ChatCompletionToolChoiceOption::Mode(opt));
+                // args.tool_choice(ChatCompletionToolChoiceOption::Mode(opt));
             }
 
             args.build().map_err(|e| {

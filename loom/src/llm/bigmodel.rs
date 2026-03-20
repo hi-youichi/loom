@@ -356,16 +356,16 @@ impl ChatBigModel {
                     })
                     .collect(),
             );
-            req.tool_choice = Some(
-                self.tool_choice
-                    .map(|m| match m {
-                        ToolChoiceMode::Auto => "auto",
-                        ToolChoiceMode::None => "none",
-                        ToolChoiceMode::Required => "required",
-                    })
-                    .unwrap_or("required")
-                    .to_string(),
-            );
+            // req.tool_choice = Some(
+            //     self.tool_choice
+            //         .map(|m| match m {
+            //             ToolChoiceMode::Auto => "auto",
+            //             ToolChoiceMode::None => "none",
+            //             ToolChoiceMode::Required => "required",
+            //         })
+            //         .unwrap_or("required")
+            //         .to_string(),
+            // );
         }
         req
     }

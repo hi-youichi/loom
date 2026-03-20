@@ -23,6 +23,7 @@ fn cmd_to_runcmd(cmd: &Command) -> RunCmd {
         },
         Command::Tool(_) => unreachable!("tool handled in main"),
         Command::Session(_) => unreachable!("session handled in main"),
+        Command::Tui => unreachable!("tui handled in main"),
     }
 }
 
