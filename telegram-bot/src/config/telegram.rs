@@ -135,6 +135,10 @@ pub struct Settings {
     /// Retry timeout on network errors
     #[serde(default = "default_retry_timeout")]
     pub retry_timeout: u64,
+
+    /// Only respond when bot is mentioned (@username)
+    #[serde(default)]
+    pub only_respond_when_mentioned: bool,
 }
 
 impl Default for Settings {
@@ -145,6 +149,7 @@ impl Default for Settings {
             log_file: None,
             polling_timeout: default_polling_timeout(),
             retry_timeout: default_retry_timeout(),
+            only_respond_when_mentioned: false,
         }
     }
 }

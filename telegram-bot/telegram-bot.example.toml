@@ -13,6 +13,8 @@ log_level = "info"
 organize_by_date = false
 # 按聊天 ID 分目录（可选）
 organize_by_chat = false
+# 仅在机器人被 @ 时才响应（群聊场景）
+only_respond_when_mentioned = false
 
 # 机器人配置
 # 每个机器人需要一个唯一的名称

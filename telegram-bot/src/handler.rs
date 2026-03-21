@@ -2,6 +2,7 @@
 //!
 //! This module provides flexible message handling using teloxide's dptree system.
 
+use crate::config::Settings;
 use loom::{
     run_agent_with_options, RunOptions, RunCmd, RunCompletion, AnyStreamEvent,
 };
@@ -10,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 use teloxide::prelude::*;
-use teloxide::types::{Message, MessageKind, PhotoSize, Document, Video};
+use teloxide::types::{Message, MessageKind, PhotoSize, Document, Video, ReplyParameters, MessageId};
 use teloxide::net::Download;
 use tokio::fs;
 
@@ -175,15 +176,19 @@ async fn run_loom_agent_streaming(
     message: &str,
     chat_id: i64,
     bot: Bot,
+    reply_to: Option<i32>,
 ) -> Result<String, String> {
     tracing::info!("Running Loom agent (streaming) for chat {}", chat_id);
     
     let thread_id = format!("telegram_{}", chat_id);
     let chat_id = teloxide::types::ChatId(chat_id);
     
-    // Send initial message
-    let initial_msg = bot.send_message(chat_id, "...")
-        .await
+    // Send initial message (reply to original if available)
+    let mut send_msg = bot.send_message(chat_id, "...");
+    if let Some(msg_id) = reply_to {
+        send_msg = send_msg.reply_parameters(ReplyParameters::new(MessageId(msg_id)));
+    }
+    let initial_msg = send_msg.await
         .map_err(|e| format!("Failed to send initial message: {}", e))?;
     
     // Create shared state
@@ -287,10 +292,29 @@ async fn run_loom_agent_streaming(
     }
 }
 
+/// Check if the message mentions the bot
+fn is_bot_mentioned(msg: &Message, bot_username: &str) -> bool {
+    if bot_username.is_empty() {
+        return false;
+    }
+
+    if let Some(text) = msg.text() {
+        let mention = format!("@{}", bot_username.to_lowercase());
+        return text.to_lowercase().contains(&mention);
+    }
+
+    false
+}
+
 /// Default message handler with download support
 /// 
 /// This handler processes incoming messages and downloads media files.
-pub async fn default_handler(bot: Bot, msg: Message) -> Result<(), teloxide::RequestError> {
+pub async fn default_handler(
+    bot: Bot, 
+    msg: Message,
+    settings: Arc<Settings>,
+    bot_username: Arc<String>,
+) -> Result<(), teloxide::RequestError> {
     // Message basic info
     let message_id = msg.id;
     let chat_id = msg.chat.id;
@@ -319,7 +343,19 @@ pub async fn default_handler(bot: Bot, msg: Message) -> Result<(), teloxide::Req
             if let Some(text) = msg.text() {
                 tracing::info!("Text: {}", text);
                 
-                match run_loom_agent_streaming(text, chat_id.0, bot.clone()).await {
+                if settings.only_respond_when_mentioned && !is_bot_mentioned(&msg, &bot_username) {
+                    tracing::debug!("Ignoring message (bot not mentioned)");
+                    return Ok(());
+                }
+
+                let clean_text = if !bot_username.is_empty() {
+                    let mention = format!("@{} ", bot_username);
+                    text.replace(&mention, "").replace(&format!("@{}", bot_username), "")
+                } else {
+                    text.to_string()
+                };
+                
+                match run_loom_agent_streaming(&clean_text, chat_id.0, bot.clone(), Some(message_id.0)).await {
                     Ok(_reply) => {
                         // Message already updated in streaming function
                     }

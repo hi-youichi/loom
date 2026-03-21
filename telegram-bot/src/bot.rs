@@ -1,7 +1,8 @@
 //! Bot instance management and long polling support
 
-use crate::config::{load_config, BotConfig, TelegramBotConfig};
+use crate::config::{load_config, BotConfig, Settings, TelegramBotConfig};
 use crate::handler::default_handler;
+use std::sync::Arc;
 use teloxide::dispatching::Dispatcher;
 use teloxide::prelude::*;
 use tokio::task::JoinHandle;
@@ -23,10 +24,17 @@ impl BotManager {
         }
     }
 
-    pub fn start(&mut self) {
+    pub async fn start(&mut self, settings: Arc<Settings>) {
         let bot = self.bot.clone();
         let name = self.name.clone();
         let span_name = name.clone();
+
+        let me = bot.get_me().await;
+        let bot_username = match me {
+            Ok(m) => m.username.clone().unwrap_or_default(),
+            Err(_) => String::new(),
+        };
+        let bot_username = Arc::new(bot_username);
 
         let handle = tokio::spawn(
             async move {
@@ -36,6 +44,7 @@ impl BotManager {
                     .endpoint(default_handler);
 
                 let mut dispatcher = Dispatcher::builder(bot, handler)
+                    .dependencies(dptree::deps![settings, bot_username])
                     .build();
 
                 dispatcher.dispatch().await;
@@ -63,6 +72,7 @@ pub async fn run_with_config(config: TelegramBotConfig) -> Result<(), Box<dyn st
         return Err("No bots configured".into());
     }
 
+    let settings = Arc::new(config.settings.clone());
     let mut managers: Vec<BotManager> = Vec::new();
 
     for (name, bot_config) in &config.bots {
@@ -72,7 +82,7 @@ pub async fn run_with_config(config: TelegramBotConfig) -> Result<(), Box<dyn st
         }
 
         let mut manager = BotManager::new(name.clone(), bot_config);
-        manager.start();
+        manager.start(Arc::clone(&settings)).await;
         managers.push(manager);
         
         info!(bot = %name, "Bot initialized");
