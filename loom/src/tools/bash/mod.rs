@@ -5,8 +5,9 @@
 //! Interacts with [`Tool`], [`ToolRegistry`](crate::tools::ToolRegistryLocked),
 //! and [`AggregateToolSource`].
 
-use async_trait::async_trait;
 use std::sync::Arc;
+
+use async_trait::async_trait;
 
 use serde_json::json;
 use tokio::io::AsyncReadExt;
@@ -32,6 +33,8 @@ pub const TOOL_BASH: &str = "bash";
 /// ```no_run
 /// use loom::tools::{BashTool, Tool};
 /// use serde_json::json;
+/// use std::sync::Arc;
+/// use std::path::PathBuf;
 ///
 /// # #[tokio::main]
 /// # async fn main() {
@@ -39,6 +42,9 @@ pub const TOOL_BASH: &str = "bash";
 /// let args = json!({ "command": "echo hello" });
 /// let result = tool.call(args, None).await.unwrap();
 /// assert!(result.text.contains("hello"));
+///
+/// // With working folder
+/// let tool = BashTool::with_working_folder(Arc::new(PathBuf::from("/tmp")));
 /// # }
 /// ```
 ///
@@ -47,7 +53,9 @@ pub const TOOL_BASH: &str = "bash";
 /// - **Tool**: Implements this trait for registration with [`AggregateToolSource`].
 /// - **ToolSourceError**: Invalid input or command execution failure.
 /// - **ToolCallContext**: Not used by this tool.
-pub struct BashTool;
+pub struct BashTool {
+    working_folder: Option<Arc<std::path::PathBuf>>,
+}
 
 #[derive(Debug)]
 struct ChildProcessCanceller {
@@ -67,17 +75,18 @@ impl Default for BashTool {
 }
 
 impl BashTool {
-    /// Creates a new BashTool.
+    /// Creates a new BashTool without a default working folder.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// use loom::tools::bash::BashTool;
-    ///
-    /// let tool = BashTool::new();
-    /// ```
+    /// Commands will run in the process's current directory unless `workdir` is specified.
     pub fn new() -> Self {
-        Self
+        Self { working_folder: None }
+    }
+
+    /// Creates a new BashTool with a default working folder.
+    ///
+    /// When `workdir` is not specified in the call, commands will run in this folder.
+    pub fn with_working_folder(working_folder: Arc<std::path::PathBuf>) -> Self {
+        Self { working_folder: Some(working_folder) }
     }
 }
 
@@ -166,13 +175,19 @@ impl Tool for BashTool {
             .get("command")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolSourceError::InvalidInput("missing command".to_string()))?;
-        let workdir = args.get("workdir").and_then(|v| v.as_str());
+        let workdir_arg = args.get("workdir").and_then(|v| v.as_str());
         let timeout_ms = args
             .get("timeout")
             .and_then(|v| v.as_u64())
             .unwrap_or(120_000);
 
-        let output = run_shell_command(command, workdir, timeout_ms, ctx).await?;
+        let workdir = match workdir_arg {
+            Some(w) => Some(w.to_string()),
+            None => self.working_folder.as_ref().map(|p| p.to_string_lossy().into_owned()),
+        };
+        let workdir_str = workdir.as_deref();
+
+        let output = run_shell_command(command, workdir_str, timeout_ms, ctx).await?;
 
         let text = if output.stderr.is_empty() {
             output.stdout
