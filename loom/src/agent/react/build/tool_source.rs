@@ -31,13 +31,18 @@ pub(crate) async fn build_tool_source(
     let has_exa = config.exa_api_key.is_some();
     let has_working_folder = config.working_folder.is_some();
     let has_twitter = config.twitter_api_key.is_some();
+    let working_folder_arc = config.working_folder.as_ref().map(|p| Arc::new(p.clone()));
 
     if !has_memory && !has_exa && !has_working_folder && !has_twitter {
         let aggregate = Arc::new(AggregateToolSource::new());
         aggregate
             .register_async(Box::new(WebFetcherTool::new()))
             .await;
-        aggregate.register_async(Box::new(BashTool::new())).await;
+        let bash_tool = match &working_folder_arc {
+            Some(wf) => BashTool::with_working_folder(Arc::clone(wf)),
+            None => BashTool::new(),
+        };
+        aggregate.register_async(Box::new(bash_tool)).await;
         aggregate.register_sync(Box::new(BatchTool::new(Arc::clone(&aggregate))));
         aggregate.register_sync(Box::new(LspTool::new()));
         if let Some(ref servers) = config.mcp_servers {
@@ -204,7 +209,11 @@ pub(crate) async fn build_tool_source(
     aggregate
         .register_async(Box::new(WebFetcherTool::new()))
         .await;
-    aggregate.register_async(Box::new(BashTool::new())).await;
+    let bash_tool = match &working_folder_arc {
+        Some(wf) => BashTool::with_working_folder(Arc::clone(wf)),
+        None => BashTool::new(),
+    };
+    aggregate.register_async(Box::new(bash_tool)).await;
     if let Some(ref key) = config.twitter_api_key {
         aggregate
             .register_async(Box::new(TwitterSearchTool::new(key.clone())))

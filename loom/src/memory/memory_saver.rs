@@ -175,6 +175,7 @@ mod tests {
                 created_at: None,
                 parents: HashMap::new(),
                 children: HashMap::new(),
+                summary: None,
             },
         };
         saver.put(&config, &checkpoint).await.unwrap();

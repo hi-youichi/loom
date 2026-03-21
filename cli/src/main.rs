@@ -1,9 +1,10 @@
 //! Loom CLI binary: run ReAct or DUP agent from the command line.
 //!
-//! Subcommands: `react` (default ReAct), `dup` (DUP), `tot` (ToT), `got` (GoT), `tool` (list/show tools).
+//! Subcommands: `react` (default ReAct), `dup` (DUP), `tot` (ToT), `got` (GoT), `tool` (list/show tools), `models` (list models).
 
 mod log_format;
 mod logging;
+mod model_cmd;
 mod repl;
 mod session;
 
@@ -185,6 +186,10 @@ enum Command {
     Tool(ToolArgs),
     /// Manage conversation sessions (list, show, delete)
     Session(SessionArgs),
+    /// Launch terminal UI dashboard for monitoring agents
+    Tui,
+    /// List available models from configured providers
+    Models(ModelsArgs),
 }
 
 #[derive(clap::Args, Debug, Clone)]
@@ -208,6 +213,26 @@ struct ShowToolArgs {
     /// Output format: yaml (default) or json
     #[arg(long, value_name = "FORMAT", default_value = "yaml")]
     output: String,
+}
+
+#[derive(clap::Args, Debug, Clone)]
+struct ModelsArgs {
+    #[command(subcommand)]
+    sub: ModelsCommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+enum ModelsCommand {
+    /// List available models from all configured providers
+    List,
+    /// List models from a specific provider
+    Show(ShowModelsArgs),
+}
+
+#[derive(clap::Args, Debug, Clone)]
+struct ShowModelsArgs {
+    /// Provider name (e.g., openai, bigmodel)
+    name: String,
 }
 
 /// Default max length for the *user message* sent to the agent (input truncation).
@@ -327,6 +352,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    // TUI command launches the terminal UI dashboard.
+    if let Some(Command::Tui) = &args.cmd {
+        let config = cli::tui::TuiConfig {
+            demo_mode: args.verbose,
+            working_folder: args.working_folder.clone(),
+            role_file: args.role.clone(),
+            agent: args.agent.clone(),
+            verbose: args.verbose,
+            model: None,
+            mcp_config_path: args.mcp_config.clone(),
+            dry_run: args.dry,
+            ..Default::default()
+        };
+        let mut runner = cli::tui::TuiRunner::new(config);
+        if let Err(e) = runner.run() {
+            eprintln!("TUI error: {}", e);
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+
     // Tool subcommands do not require a message; handle them first.
     if let Some(Command::Tool(ta)) = &args.cmd {
         let opts = RunOptions {
@@ -361,6 +407,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ToolShowFormat::Yaml
                 };
                 if let Err(e) = backend.show_tool(&opts, &show_args.name, format).await {
+                    eprintln!("{}", e);
+                    std::process::exit(1);
+                }
+                return Ok(());
+            }
+        }
+    }
+
+    // Handle `loom models` command
+    if let Some(Command::Models(ma)) = &args.cmd {
+        let opts = RunOptions {
+            message: String::new(),
+            working_folder: args.working_folder.clone(),
+            session_id: None,
+            cancellation: None,
+            thread_id: args.session_id.clone(),
+            role_file: args.role.clone(),
+            agent: args.agent.clone(),
+            verbose: args.verbose,
+            got_adaptive,
+            display_max_len: max_message_len(),
+            output_json: args.json,
+            model: None,
+            mcp_config_path: args.mcp_config.clone(),
+            output_timestamp: false,
+            dry_run: args.dry,
+        };
+        match &ma.sub {
+            ModelsCommand::List => {
+                if let Err(e) = backend.list_models(&opts, None).await {
+                    eprintln!("{}", e);
+                    std::process::exit(1);
+                }
+                return Ok(());
+            }
+            ModelsCommand::Show(show_args) => {
+                if let Err(e) = backend.list_models(&opts, Some(&show_args.name)).await {
                     eprintln!("{}", e);
                     std::process::exit(1);
                 }

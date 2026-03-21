@@ -165,6 +165,7 @@ pub async fn build_react_runner(
         None,
         None,
         verbose,
+        None, // summarize_config uses default
     )?;
     Ok(runner)
 }

@@ -215,4 +215,13 @@ impl LlmClient for MockLlm {
 
         Ok(response)
     }
+
+    async fn list_models(&self) -> Result<Vec<crate::llm::ModelInfo>, AgentError> {
+        // Return a mock model for testing
+        Ok(vec![crate::llm::ModelInfo {
+            id: "mock-model".to_string(),
+            created: None,
+            owned_by: Some("mock".to_string()),
+        }])
+    }
 }

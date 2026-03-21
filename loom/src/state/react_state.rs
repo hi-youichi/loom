@@ -206,6 +206,12 @@ pub struct ReActState {
     /// Number of messages at the time of the last Think; used for hybrid token estimate in compression.
     #[serde(default)]
     pub message_count_after_last_think: Option<usize>,
+    /// Number of times ThinkNode has been executed; used to detect first think for summary generation.
+    #[serde(default)]
+    pub think_count: u32,
+    /// Session summary generated after the first think; used for session list display.
+    #[serde(default)]
+    pub summary: Option<String>,
 }
 
 impl Default for ReActState {
@@ -220,6 +226,8 @@ impl Default for ReActState {
             usage: None,
             total_usage: None,
             message_count_after_last_think: None,
+            think_count: 0,
+            summary: None,
         }
     }
 }

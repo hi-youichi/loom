@@ -21,6 +21,8 @@ use super::initial_state::build_react_initial_state;
 use super::options::{resolve_run_agent_options, AgentOptions};
 use crate::agent::react::act_node::{ActNode, HandleToolErrors};
 use crate::agent::react::observe_node::ObserveNode;
+use crate::agent::react::summarize_node::SummarizeNode;
+use super::options::SummarizeConfig;
 use crate::agent::react::think_node::ThinkNode;
 use crate::agent::react::tools_condition;
 use crate::agent::react::with_node_logging::WithNodeLogging;
@@ -51,6 +53,7 @@ impl ReactRunner {
         _user_message_store: Option<Arc<dyn UserMessageStore>>,
         cancellation: Option<RunCancellation>,
         verbose: bool,
+        summarize_config: Option<SummarizeConfig>,
     ) -> Result<Self, CompilationError> {
         let llm = Arc::from(llm);
         let think = ThinkNode::new(Arc::clone(&llm));
@@ -67,25 +70,82 @@ impl ReactRunner {
         if let Some(s) = store {
             graph = graph.with_store(s);
         }
-        let think_condition_path_map: HashMap<String, String> =
-            [("tools".into(), "act".into()), (END.into(), END.into())]
-                .into_iter()
-                .collect();
+        
+        // Build graph with or without summarize node based on config
+        let summarize_enabled = summarize_config.as_ref().map_or(true, |c| c.enabled);
+        
+        if summarize_enabled {
+            // Summarize node for generating session summaries after first think
+            let summarize_node = SummarizeNode::new(Arc::clone(&llm));
 
-        graph
-            .add_node("think", Arc::new(think))
-            .add_node("act", Arc::new(act))
-            .add_node("observe", Arc::new(observe))
-            .add_node("compress", compress_node)
-            .add_edge(START, "think")
-            .add_conditional_edges(
-                "think",
-                Arc::new(|state: &ReActState| tools_condition(state).as_str().to_string()),
-                Some(think_condition_path_map),
-            )
-            .add_edge("act", "observe")
-            .add_edge("observe", "compress")
-            .add_edge("compress", "think");
+            // Path maps for conditional edges
+            let think_condition_path_map: HashMap<String, String> =
+                [("summarize".into(), "summarize".into()),
+                 ("tools".into(), "act".into()),
+                 (END.into(), END.into())]
+                    .into_iter()
+                    .collect();
+
+            let summarize_condition_path_map: HashMap<String, String> =
+                [("tools".into(), "act".into()), (END.into(), END.into())]
+                    .into_iter()
+                    .collect();
+
+            graph
+                .add_node("think", Arc::new(think))
+                .add_node("summarize", Arc::new(summarize_node))
+                .add_node("act", Arc::new(act))
+                .add_node("observe", Arc::new(observe))
+                .add_node("compress", compress_node)
+                .add_edge(START, "think")
+                // think -> summarize (first time) or tools_condition (subsequent)
+                .add_conditional_edges(
+                    "think",
+                    Arc::new(|state: &ReActState| {
+                        // Check if this is the first think and summary hasn't been generated
+                        let user_msg_count = state.messages.iter()
+                            .filter(|m| matches!(m, crate::message::Message::User(_)))
+                            .count();
+                        
+                        if user_msg_count == 1 && state.summary.is_none() && state.think_count == 1 {
+                            "summarize".to_string()
+                        } else {
+                            tools_condition(state).as_str().to_string()
+                        }
+                    }),
+                    Some(think_condition_path_map),
+                )
+                // summarize -> tools_condition after generating summary
+                .add_conditional_edges(
+                    "summarize",
+                    Arc::new(|state: &ReActState| tools_condition(state).as_str().to_string()),
+                    Some(summarize_condition_path_map),
+                )
+                .add_edge("act", "observe")
+                .add_edge("observe", "compress")
+                .add_edge("compress", "think");
+        } else {
+            // No summarize node - original graph structure
+            let think_condition_path_map: HashMap<String, String> =
+                [("tools".into(), "act".into()), (END.into(), END.into())]
+                    .into_iter()
+                    .collect();
+
+            graph
+                .add_node("think", Arc::new(think))
+                .add_node("act", Arc::new(act))
+                .add_node("observe", Arc::new(observe))
+                .add_node("compress", compress_node)
+                .add_edge(START, "think")
+                .add_conditional_edges(
+                    "think",
+                    Arc::new(|state: &ReActState| tools_condition(state).as_str().to_string()),
+                    Some(think_condition_path_map),
+                )
+                .add_edge("act", "observe")
+                .add_edge("observe", "compress")
+                .add_edge("compress", "think");
+        }
 
         let graph = if verbose {
             graph.with_node_logging()
@@ -195,6 +255,7 @@ pub async fn run_agent(
         opts.user_message_store,
         None,
         opts.verbose,
+        Some(opts.summarize_config),
     )?;
     runner.invoke(user_message).await
 }
@@ -220,6 +281,7 @@ where
         opts.user_message_store,
         None,
         opts.verbose,
+        Some(opts.summarize_config),
     )?;
     runner.stream_with_callback(user_message, on_event).await
 }
