@@ -1,0 +1,29 @@
+# Telegram Bot 多机器人配置示例
+# 复制此文件为 config.toml 并填写实际值
+
+# 全局设置
+[settings]
+# 下载目录（相对于工作目录或绝对路径）
+download_dir = "downloads"
+# 日志级别: trace, debug, info, warn, error
+log_level = "info"
+
+# 机器人配置
+# 每个机器人需要一个唯一的名称
+[bots.assistant]
+# 从 @BotFather 获取的 token
+token = "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+# 是否启用此机器人
+enabled = true
+# 机器人描述（可选）
+description = "助手机器人"
+
+[bots.notification]
+token = "987654321:XYZabcDEFghiJKLmnoPQRstuVWXyz"
+enabled = true
+description = "通知机器人"
+
+[bots.test_bot]
+token = "111222333:TESTtokenHERE"
+enabled = false
+description = "测试机器人（已禁用）"

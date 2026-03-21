@@ -10,6 +10,7 @@ members = [
     "loom-workspace",
     "loom-acp",
     "loom-workspace/gh",
+    "telegram-bot",
 ]
 
 [workspace.package]
