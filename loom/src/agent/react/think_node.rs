@@ -69,6 +69,8 @@ fn apply_think_response(
         usage,
         total_usage,
         message_count_after_last_think,
+        think_count: state.think_count + 1,
+        summary: state.summary,
     }
 }
 
