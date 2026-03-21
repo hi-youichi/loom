@@ -53,3 +53,6 @@ coverage/
 coverage.lcov
 *.profraw
 *.profdata
+
+# Telegram bot local config
+telegram-bot.toml
