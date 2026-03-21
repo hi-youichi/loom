@@ -168,7 +168,7 @@ impl Agent for LoomAcpAgent {
             cancellation: Some(cancellation.clone()),
             thread_id: Some(entry.thread_id.clone()),
             role_file: None,
-            agent: None,
+            agent: Some("dev".to_string()),
             verbose: false,
             got_adaptive: false,
             display_max_len: 4096,

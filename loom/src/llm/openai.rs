@@ -33,7 +33,7 @@ use crate::http_retry::{
 };
 use crate::llm::{LlmClient, LlmResponse, LlmUsage, ToolCallDelta};
 use crate::memory::uuid6;
-use crate::message::Message;
+use crate::message::{assistant_content_for_chat_api, Message};
 use crate::state::ToolCall;
 use crate::stream::MessageChunk;
 use crate::tool_source::{ToolSource, ToolSourceError, ToolSpec};
@@ -177,8 +177,10 @@ impl ChatOpenAI {
 
     /// Sets the tool choice mode used when tools are present.
     ///
-    /// This overrides the provider default and can be used to prohibit tool
-    /// calls or require them for every turn.
+    /// If unset, the request omits `tool_choice` and the API default applies
+    /// (typically `auto`). Note: OpenAI rejects `tool_choice: required` when
+    /// the model has thinking/reasoning enabled; use [`ToolChoiceMode::Auto`]
+    /// in that case.
     pub fn with_tool_choice(mut self, mode: ToolChoiceMode) -> Self {
         self.tool_choice = Some(mode);
         self
@@ -220,7 +222,8 @@ impl ChatOpenAI {
                     ChatCompletionRequestUserMessage::from(s.as_str()),
                 ),
                 Message::Assistant(s) => {
-                    ChatCompletionRequestMessage::Assistant((s.as_str()).into())
+                    let c = assistant_content_for_chat_api(s.as_str());
+                    ChatCompletionRequestMessage::Assistant((c.as_ref()).into())
                 }
             })
             .collect()
@@ -252,9 +255,6 @@ impl LlmClient for ChatOpenAI {
                     })
                     .collect();
                 args.tools(chat_tools);
-                args.tool_choice(ChatCompletionToolChoiceOption::Mode(
-                    ToolChoiceOptions::Required,
-                ));
             }
 
             if let Some(t) = self.temperature {
@@ -404,9 +404,6 @@ impl LlmClient for ChatOpenAI {
                     })
                     .collect();
                 args.tools(chat_tools);
-                args.tool_choice(ChatCompletionToolChoiceOption::Mode(
-                    ToolChoiceOptions::Required,
-                ));
             }
 
             if let Some(t) = self.temperature {
