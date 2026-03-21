@@ -180,13 +180,14 @@
 //! | [`content`] | Parse ContentBlock into user message string |
 //! | [`stream_bridge`] | Loom stream events -> ACP SessionUpdate |
 //! | [`protocol`] | Protocol and Loom mapping summary (initialize/prompt/update/cancel, etc.) |
-//!
-//! [loom]: https://docs.rs/loom
+//! | [`logging`] | Delayed log initialization with working_folder from ACP session |
 
 use agent_client_protocol::Client;
+use std::sync::OnceLock;
 
 pub mod agent;
 pub mod content;
+pub mod logging;
 pub mod protocol;
 pub mod session;
 pub mod stream_bridge;
@@ -197,6 +198,18 @@ pub use session::{SessionConfig, SessionEntry, SessionId, SessionStore};
 pub use stream_bridge::{
     loom_event_to_updates, stream_update_to_session_notification, StreamUpdate,
 };
+
+static LOG_CONFIG: OnceLock<logging::LogConfig> = OnceLock::new();
+
+/// Set log config from CLI args (called once at startup).
+pub fn set_log_config(config: logging::LogConfig) {
+    let _ = LOG_CONFIG.set(config);
+}
+
+/// Get log config (returns None if not set).
+pub fn get_log_config() -> Option<&'static logging::LogConfig> {
+    LOG_CONFIG.get()
+}
 
 /// Run the ACP stdio main loop: read JSON-RPC requests from stdin, dispatch to the Agent, write responses and notifications to stdout.
 ///
@@ -223,8 +236,9 @@ pub async fn run_stdio_loop() -> Result<(), Box<dyn std::error::Error + Send + S
     use std::sync::Arc;
     use tokio::sync::mpsc;
     use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
+    tracing::info!("run_stdio_loop starting");
     let local = tokio::task::LocalSet::new();
-    local
+    let result = local
         .run_until(async {
             let (tx, mut rx) = mpsc::channel::<agent_client_protocol::SessionNotification>(64);
             let agent = LoomAcpAgent::with_session_update_tx(tx);
@@ -249,10 +263,21 @@ pub async fn run_stdio_loop() -> Result<(), Box<dyn std::error::Error + Send + S
                 }
             };
             tokio::select! {
-                res = io_future => res,
-                _ = drain => Ok(()),
+                res = io_future => {
+                    tracing::info!(?res, "io_future completed");
+                    res
+                },
+                _ = drain => {
+                    tracing::info!("drain completed");
+                    Ok(())
+                },
             }
         })
         .await
-        .map_err(|e: agent_client_protocol::Error| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+        .map_err(|e: agent_client_protocol::Error| {
+            tracing::error!(?e, "run_stdio_loop error");
+            Box::new(e) as Box<dyn std::error::Error + Send + Sync>
+        });
+    tracing::info!("run_stdio_loop finished");
+    result
 }

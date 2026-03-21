@@ -67,6 +67,7 @@ impl Default for LoomAcpAgent {
 #[async_trait(?Send)]
 impl Agent for LoomAcpAgent {
     async fn initialize(&self, args: InitializeRequest) -> agent_client_protocol::Result<InitializeResponse> {
+        tracing::info!(protocol_version = ?args.protocol_version, "initialize called");
         // Build base response using the standard builder
         let base_response = InitializeResponse::new(args.protocol_version)
             .agent_info(agent_client_protocol::Implementation::new("loom", env!("CARGO_PKG_VERSION")));
@@ -89,8 +90,10 @@ impl Agent for LoomAcpAgent {
             );
         }
         
-        serde_json::from_value(json)
-            .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))
+        let response: InitializeResponse = serde_json::from_value(json)
+            .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
+        tracing::info!("initialize completed");
+        Ok(response)
     }
 
     async fn authenticate(
@@ -104,6 +107,9 @@ impl Agent for LoomAcpAgent {
         &self,
         args: NewSessionRequest,
     ) -> agent_client_protocol::Result<NewSessionResponse> {
+        // Initialize logging with working_folder from ACP session
+        crate::logging::init_with_working_folder(&args.cwd);
+
         let working_directory = Some(args.cwd.clone());
         let our_id = self.sessions.create(working_directory);
         let session_id = SessionId::new(our_id.as_str().to_string());
