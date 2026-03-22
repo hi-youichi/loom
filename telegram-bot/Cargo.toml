@@ -20,6 +20,7 @@ tracing-appender = "0.2"
 thiserror = { workspace = true }
 anyhow = "1.0"
 chrono = "0.4"
+rusqlite = { version = "0.31", features = ["bundled"] }
 config = { path = "../config" }
 loom = { path = "../loom" }
 

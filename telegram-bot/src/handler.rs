@@ -440,7 +440,7 @@ async fn run_loom_agent_streaming(
                     
                     // 发送新的 Think 消息
                     let emoji = &s.settings.think_emoji;
-                    let header = format!("{} Think #{}", emoji, think_count);
+                    let header = format!("{} Think #{}\n\n", emoji, think_count);
                     if let Ok(msg) = bot.send_message(chat_id, &header).await {
                         s.current_msg_id = Some(msg.id.0);
                         s.current_text = header;
@@ -486,7 +486,7 @@ async fn run_loom_agent_streaming(
                     
                     // 发送新的 Act 消息
                     let emoji = &s.settings.act_emoji;
-                    let header = format!("{} Act #{}", emoji, act_count);
+                    let header = format!("{} Act #{}\n", emoji, act_count);
                     if let Ok(msg) = bot.send_message(chat_id, &header).await {
                         s.current_msg_id = Some(msg.id.0);
                         s.current_text = header;
@@ -586,13 +586,14 @@ async fn run_loom_agent_streaming(
             }
             
             // 工具执行完成（实时）
-            AnyStreamEvent::React(loom::StreamEvent::ToolEnd { name, is_error, .. }) 
+            AnyStreamEvent::React(loom::StreamEvent::ToolEnd { name, result, is_error, .. }) 
                 if settings.show_act_phase =>
             {
                 let state = state.clone();
                 let bot = bot.clone();
                 let chat_id = chat_id;
                 let tool_name = name.clone();
+                let tool_result = result.clone();
                 let error = *is_error;
                 
                 // 在 spawn 之前读取阶段状态
@@ -606,9 +607,22 @@ async fn run_loom_agent_streaming(
                         return;
                     }
                     
-                    // 更新工具状态：将 "🔧 xxx..." 替换为 "✅ xxx" 或 "❌ xxx"
+                    // 更新工具状态：将 "🔧 xxx..." 替换为完整结果
                     let status = if error { "❌" } else { "✅" };
-                    let completed = format!("{} {}", status, tool_name);
+                    
+                    // 截断结果显示（最多200字符）
+                    let truncated_result = if tool_result.len() > 200 {
+                        format!("{}...", &tool_result[..200])
+                    } else {
+                        tool_result.clone()
+                    };
+                    
+                    // 转义换行符，保持单行显示
+                    let single_line_result = truncated_result
+                        .replace('\n', "\\n")
+                        .replace('\r', "");
+                    
+                    let completed = format!("{} {}: {}", status, tool_name, single_line_result);
                     
                     // 查找并替换对应的 "🔧 xxx..." 条目
                     if let Some(pos) = s.current_tools.iter().position(|t| t.starts_with(&format!("🔧 {}...", tool_name))) {
@@ -742,6 +756,23 @@ async fn run_loom_agent_streaming(
     }
 }
 
+/// Reset a session by deleting all checkpoints
+fn reset_session(thread_id: &str) -> Result<usize, String> {
+    let db_path = loom::memory::default_memory_db_path();
+    
+    let conn = rusqlite::Connection::open(&db_path)
+        .map_err(|e| format!("Failed to open database: {}", e))?;
+    
+    let count = conn
+        .execute(
+            "DELETE FROM checkpoints WHERE thread_id = ?1",
+            [thread_id],
+        )
+        .map_err(|e| format!("Failed to delete session: {}", e))?;
+    
+    Ok(count)
+}
+
 /// Check if the message mentions the bot
 fn is_bot_mentioned(msg: &Message, bot_username: &str) -> bool {
     if bot_username.is_empty() {
@@ -805,6 +836,30 @@ pub async fn default_handler(
             // Handle text messages
             if let Some(text) = msg.text() {
                 tracing::info!("Text: {}", text);
+                
+                // Handle /reset command
+                if text.trim() == "/reset" || text.trim().starts_with("/reset ") {
+                    let thread_id = format!("telegram_{}", chat_id.0);
+                    match reset_session(&thread_id) {
+                        Ok(count) => {
+                            bot.send_message(chat_id, format!("🔄 Session reset! Deleted {} checkpoints.", count))
+                                .await?;
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to reset session: {}", e);
+                            bot.send_message(chat_id, format!("❌ Reset failed: {}", e))
+                                .await?;
+                        }
+                    }
+                    return Ok(());
+                }
+                
+                // Handle /status command
+                if text.trim() == "/status" {
+                    bot.send_message(chat_id, "✅ Bot is running!")
+                        .await?;
+                    return Ok(());
+                }
                 
                 // Check if we should respond: mention OR reply to bot
                 let should_respond = is_bot_mentioned(&msg, &bot_username) || is_reply_to_bot(&msg, &bot_username);
