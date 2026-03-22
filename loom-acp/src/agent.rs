@@ -89,7 +89,8 @@ impl LoomAcpAgent {
                     for model in models {
                         all_models.push(ModelOption {
                             id: model.id.clone(),
-                            name: model.id,
+                            name: model.id.clone(),
+                            provider: provider.name.clone(),
                         });
                     }
                 }
@@ -102,6 +103,14 @@ impl LoomAcpAgent {
                     // Continue to next provider instead of failing entirely
                 }
             }
+        }
+
+        tracing::info!(
+            total_models = all_models.len(),
+            "Fetched available models from all providers"
+        );
+        for m in &all_models {
+            tracing::info!(provider = %m.provider, model_id = %m.id, model_name = %m.name, "Available model");
         }
 
         all_models
@@ -379,8 +388,23 @@ impl Agent for LoomAcpAgent {
             );
         }
 
-        // Return LoadSessionResponse
-        Ok(LoadSessionResponse::default())
+        // Return LoadSessionResponse with config_options
+        let current_model = entry.session_config.model.clone().unwrap_or_else(|| {
+            std::env::var("MODEL")
+                .unwrap_or_else(|_| std::env::var("OPENAI_MODEL").unwrap_or_default())
+        });
+        let model_options = self.get_available_models().await;
+        let config_options = build_model_config_options(&current_model, &model_options)
+            .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
+        
+        // Build LoadSessionResponse with configOptions (protocol types are non_exhaustive)
+        let json = serde_json::json!({
+            "configOptions": config_options,
+            "meta": None::<()>
+        });
+        let response: LoadSessionResponse = serde_json::from_value(json)
+            .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
+        Ok(response)
     }
 
     async fn list_sessions(
@@ -585,6 +609,8 @@ struct ModelOption {
     id: String,
     /// Display name for the model
     name: String,
+    /// Provider name (e.g., "openai", "anthropic")
+    provider: String,
 }
 
 /// Build config_options array with a single "model" option (protocol types are non_exhaustive, so we construct via serde).
@@ -667,6 +693,18 @@ mod tests {
         let options = model_config["options"].as_array().expect("options should be an array");
         assert_eq!(options.len(), 2);
         assert_eq!(options[0]["value"], "gpt-4o");
+    }
+
+    #[test]
+    fn test_load_session_response_has_config_options() {
+        // Check if LoadSessionResponse supports config_options field
+        let response = LoadSessionResponse::default();
+        let json = serde_json::to_value(&response).unwrap();
+        println!("LoadSessionResponse default JSON: {}", serde_json::to_string_pretty(&json).unwrap());
+        
+        // Check if configOptions field exists (it should be optional)
+        let has_config_options = json.get("configOptions").is_some();
+        println!("Has configOptions field: {}", has_config_options);
     }
 
     #[test]
