@@ -14,24 +14,57 @@ use teloxide::prelude::*;
 use teloxide::types::{Message, MessageKind, PhotoSize, Document, Video, ReplyParameters, MessageId};
 use teloxide::net::Download;
 use tokio::fs;
+use serde::{Deserialize, Serialize};
+
+/// File type enum for metadata
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum FileType {
+    Photo,
+    Document,
+    Video,
+    Audio,
+    Other,
+}
+
+/// Metadata for downloaded files
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileMetadata {
+    /// Telegram chat ID
+    pub chat_id: i64,
+    /// Telegram message ID
+    pub message_id: i32,
+    /// Telegram file ID
+    pub file_id: String,
+    /// Telegram file unique ID (for deduplication)
+    pub file_unique_id: String,
+    /// Type of file
+    pub file_type: FileType,
+    /// Original filename (if available)
+    pub original_name: Option<String>,
+    /// MIME type
+    pub mime_type: Option<String>,
+    /// File size in bytes
+    pub file_size: Option<u64>,
+    /// Sender's user ID
+    pub user_id: Option<i64>,
+    /// Download timestamp (ISO 8601)
+    pub downloaded_at: String,
+}
 
 /// Download configuration
 #[derive(Debug, Clone)]
 pub struct DownloadConfig {
     /// Directory to save downloaded files
     pub dir: PathBuf,
-    /// Create subdirectories by date (YYYY-MM-DD)
-    pub organize_by_date: bool,
-    /// Create subdirectories by chat ID
-    pub organize_by_chat: bool,
+    /// Save metadata file alongside downloaded file
+    pub save_metadata: bool,
 }
 
 impl Default for DownloadConfig {
     fn default() -> Self {
         Self {
             dir: PathBuf::from("downloads"),
-            organize_by_date: false,
-            organize_by_chat: false,
+            save_metadata: false,
         }
     }
 }
@@ -45,33 +78,66 @@ impl DownloadConfig {
         }
     }
     
-    /// Get the full path for a file
-    pub fn get_path(&self, filename: &str, chat_id: Option<i64>) -> PathBuf {
+    /// Generate file path: downloads/{chat_id}/{message_id}_{file_id}.{ext}
+    pub fn get_file_path(&self, chat_id: i64, message_id: i32, file_id: &str, ext: &str) -> PathBuf {
+        let truncated_id = if file_id.len() > 24 { &file_id[..24] } else { file_id };
+        let filename = format!("{}_{}.{}", message_id, truncated_id, ext);
+        
         let mut path = self.dir.clone();
-        
-        // Add chat subdirectory if enabled
-        if self.organize_by_chat {
-            if let Some(id) = chat_id {
-                path.push(format!("chat_{}", id));
-            }
-        }
-        
-        // Add date subdirectory if enabled
-        if self.organize_by_date {
-            let now = std::time::SystemTime::now();
-            let datetime: chrono::DateTime<chrono::Utc> = now.into();
-            let date = datetime.format("%Y-%m-%d").to_string();
-            path.push(&date);
-        }
-        
-        path.push(filename);
+        path.push(format!("{}", chat_id));
+        path.push(&filename);
         path
+    }
+    
+    /// Get metadata file path for a given file path
+    pub fn get_metadata_path(&self, file_path: &Path) -> PathBuf {
+        file_path.with_extension("json")
     }
     
     /// Initialize download directory
     pub async fn init(&self) -> std::io::Result<()> {
         fs::create_dir_all(&self.dir).await
     }
+}
+
+/// Extract file extension from filename or MIME type
+fn get_file_extension(filename: Option<&str>, mime_type: Option<&str>) -> String {
+    // Try to get extension from filename first
+    if let Some(name) = filename {
+        if let Some(dot_pos) = name.rfind('.') {
+            let ext = &name[dot_pos + 1..];
+            if !ext.is_empty() && ext.len() <= 10 {
+                return ext.to_lowercase();
+            }
+        }
+    }
+    
+    // Fallback to MIME type
+    if let Some(mime) = mime_type {
+        match mime {
+            "image/jpeg" | "image/jpg" => return "jpg".to_string(),
+            "image/png" => return "png".to_string(),
+            "image/gif" => return "gif".to_string(),
+            "image/webp" => return "webp".to_string(),
+            "video/mp4" => return "mp4".to_string(),
+            "video/webm" => return "webm".to_string(),
+            "audio/mpeg" | "audio/mp3" => return "mp3".to_string(),
+            "audio/ogg" => return "ogg".to_string(),
+            "application/pdf" => return "pdf".to_string(),
+            "application/zip" => return "zip".to_string(),
+            _ => {}
+        }
+    }
+    
+    // Default fallback
+    "bin".to_string()
+}
+
+/// Save metadata to JSON file
+async fn save_metadata(path: &Path, metadata: &FileMetadata) -> std::io::Result<()> {
+    let json = serde_json::to_string_pretty(metadata)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    fs::write(path, json).await
 }
 
 /// Download a file from Telegram by file_id
@@ -113,22 +179,44 @@ pub async fn download_file(
 /// * `bot` - Telegram bot instance
 /// * `photos` - Photo sizes array (Telegram sends multiple sizes)
 /// * `config` - Download configuration
-/// * `chat_id` - Optional chat ID for organizing files
-/// * `prefix` - Filename prefix
+/// * `chat_id` - Chat ID
+/// * `message_id` - Message ID
 pub async fn download_photo(
     bot: &Bot,
     photos: &[PhotoSize],
     config: &DownloadConfig,
-    chat_id: Option<i64>,
-    prefix: &str
-) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
-    // Select the largest photo (last in array)
+    chat_id: i64,
+    message_id: i32
+) -> Result<(PathBuf, FileMetadata), Box<dyn std::error::Error + Send + Sync>> {
     let largest = photos.last().ok_or("No photo sizes available")?;
+    let file_id = &largest.file.id;
+    let file_unique_id = &largest.file.unique_id;
     
-    let filename = format!("{}_{}x{}.jpg", prefix, largest.width, largest.height);
-    let path = config.get_path(&filename, chat_id);
+    let path = config.get_file_path(chat_id, message_id, file_id, "jpg");
     
-    download_file(bot, &largest.file.id, &path).await
+    download_file(bot, file_id, &path).await?;
+    
+    let metadata = FileMetadata {
+        chat_id,
+        message_id,
+        file_id: file_id.clone(),
+        file_unique_id: file_unique_id.clone(),
+        file_type: FileType::Photo,
+        mime_type: Some("image/jpeg".to_string()),
+        file_size: Some(largest.file.size as u64),
+        original_name: None,
+        user_id: None,
+        downloaded_at: chrono::Utc::now().to_rfc3339(),
+    };
+    
+    if config.save_metadata {
+        let meta_path = config.get_metadata_path(&path);
+        if let Err(e) = save_metadata(&meta_path, &metadata).await {
+            tracing::warn!("Failed to save metadata: {}", e);
+        }
+    }
+    
+    Ok((path, metadata))
 }
 
 /// Download a document
@@ -137,31 +225,95 @@ pub async fn download_photo(
 /// * `bot` - Telegram bot instance
 /// * `doc` - Document object
 /// * `config` - Download configuration
-/// * `chat_id` - Optional chat ID for organizing files
+/// * `chat_id` - Chat ID
+/// * `message_id` - Message ID
 pub async fn download_document(
     bot: &Bot,
     doc: &Document,
     config: &DownloadConfig,
-    chat_id: Option<i64>
-) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
-    let filename = doc.file_name.as_deref().unwrap_or("unknown_file");
-    let path = config.get_path(filename, chat_id);
+    chat_id: i64,
+    message_id: i32
+) -> Result<(PathBuf, FileMetadata), Box<dyn std::error::Error + Send + Sync>> {
+    let file_id = &doc.file.id;
+    let file_unique_id = &doc.file.unique_id;
     
-    download_file(bot, &doc.file.id, &path).await
+    let mime_str = doc.mime_type.as_ref().map(|m| m.to_string());
+    let ext = get_file_extension(doc.file_name.as_deref(), mime_str.as_deref());
+    
+    let path = config.get_file_path(chat_id, message_id, file_id, &ext);
+    
+    download_file(bot, file_id, &path).await?;
+    
+    let metadata = FileMetadata {
+        chat_id,
+        message_id,
+        file_id: file_id.clone(),
+        file_unique_id: file_unique_id.clone(),
+        file_type: FileType::Document,
+        mime_type: doc.mime_type.as_ref().map(|m| m.to_string()),
+        file_size: Some(doc.file.size as u64),
+        original_name: doc.file_name.clone(),
+        user_id: None,
+        downloaded_at: chrono::Utc::now().to_rfc3339(),
+    };
+    
+    if config.save_metadata {
+        let meta_path = config.get_metadata_path(&path);
+        if let Err(e) = save_metadata(&meta_path, &metadata).await {
+            tracing::warn!("Failed to save metadata: {}", e);
+        }
+    }
+    
+    Ok((path, metadata))
 }
 
 /// Download a video
+/// 
+/// # Arguments
+/// * `bot` - Telegram bot instance
+/// * `video` - Video object
+/// * `config` - Download configuration
+/// * `chat_id` - Chat ID
+/// * `message_id` - Message ID
 pub async fn download_video(
     bot: &Bot,
     video: &Video,
     config: &DownloadConfig,
-    chat_id: Option<i64>,
-    prefix: &str
-) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
-    let filename = format!("{}_{}.mp4", prefix, video.width);
-    let path = config.get_path(&filename, chat_id);
+    chat_id: i64,
+    message_id: i32
+) -> Result<(PathBuf, FileMetadata), Box<dyn std::error::Error + Send + Sync>> {
+    let file_id = &video.file.id;
+    let file_unique_id = &video.file.unique_id;
     
-    download_file(bot, &video.file.id, &path).await
+    let mime_str = video.mime_type.as_ref().map(|m| m.to_string());
+    let ext = get_file_extension(None, mime_str.as_deref());
+    let ext = if ext == "bin" { "mp4" } else { &ext };
+    
+    let path = config.get_file_path(chat_id, message_id, file_id, ext);
+    
+    download_file(bot, file_id, &path).await?;
+    
+    let metadata = FileMetadata {
+        chat_id,
+        message_id,
+        file_id: file_id.clone(),
+        file_unique_id: file_unique_id.clone(),
+        file_type: FileType::Video,
+        mime_type: video.mime_type.as_ref().map(|m| m.to_string()),
+        file_size: Some(video.file.size as u64),
+        original_name: None,
+        user_id: None,
+        downloaded_at: chrono::Utc::now().to_rfc3339(),
+    };
+    
+    if config.save_metadata {
+        let meta_path = config.get_metadata_path(&path);
+        if let Err(e) = save_metadata(&meta_path, &metadata).await {
+            tracing::warn!("Failed to save metadata: {}", e);
+        }
+    }
+    
+    Ok((path, metadata))
 }
 
 /// Streaming state for typewriter effect
@@ -368,8 +520,9 @@ pub async fn default_handler(
             
             // Handle photos
             if let Some(photos) = msg.photo() {
-                match download_photo(&bot, photos, &config, Some(chat_id.0), &format!("photo_{}", message_id.0)).await {
-                    Ok(path) => {
+                match download_photo(&bot, photos, &config, chat_id.0, message_id.0).await {
+                    Ok((path, metadata)) => {
+                        tracing::info!(?metadata, "Photo downloaded");
                         bot.send_message(chat_id, format!("📷 图片已保存: {:?}", path))
                             .await?;
                     }
@@ -383,8 +536,9 @@ pub async fn default_handler(
             
             // Handle documents
             if let Some(doc) = msg.document() {
-                match download_document(&bot, doc, &config, Some(chat_id.0)).await {
-                    Ok(path) => {
+                match download_document(&bot, doc, &config, chat_id.0, message_id.0).await {
+                    Ok((path, metadata)) => {
+                        tracing::info!(?metadata, "Document downloaded");
                         bot.send_message(chat_id, format!("📁 文件已保存: {:?}", path))
                             .await?;
                     }
@@ -398,8 +552,9 @@ pub async fn default_handler(
             
             // Handle videos
             if let Some(video) = msg.video() {
-                match download_video(&bot, video, &config, Some(chat_id.0), &format!("video_{}", message_id.0)).await {
-                    Ok(path) => {
+                match download_video(&bot, video, &config, chat_id.0, message_id.0).await {
+                    Ok((path, metadata)) => {
+                        tracing::info!(?metadata, "Video downloaded");
                         bot.send_message(chat_id, format!("🎬 视频已保存: {:?}", path))
                             .await?;
                     }
@@ -436,8 +591,8 @@ pub fn create_handler_with_config(config: Arc<DownloadConfig>) -> impl Fn(Bot, M
             
             // Handle photos
             if let Some(photos) = msg.photo() {
-                match download_photo(&bot, photos, &config, Some(chat_id.0), &format!("photo_{}", message_id.0)).await {
-                    Ok(path) => {
+                match download_photo(&bot, photos, &config, chat_id.0, message_id.0).await {
+                    Ok((path, _metadata)) => {
                         bot.send_message(chat_id, format!("📷 图片已保存: {:?}", path))
                             .await?;
                     }
@@ -449,8 +604,8 @@ pub fn create_handler_with_config(config: Arc<DownloadConfig>) -> impl Fn(Bot, M
             
             // Handle documents
             if let Some(doc) = msg.document() {
-                match download_document(&bot, doc, &config, Some(chat_id.0)).await {
-                    Ok(path) => {
+                match download_document(&bot, doc, &config, chat_id.0, message_id.0).await {
+                    Ok((path, _metadata)) => {
                         bot.send_message(chat_id, format!("📁 文件已保存: {:?}", path))
                             .await?;
                     }
@@ -478,30 +633,205 @@ mod tests {
     fn test_download_config_default() {
         let config = DownloadConfig::default();
         assert_eq!(config.dir, PathBuf::from("downloads"));
-        assert!(!config.organize_by_date);
-        assert!(!config.organize_by_chat);
+        assert!(!config.save_metadata);
     }
     
     #[test]
-    fn test_download_config_path() {
+    fn test_download_config_new() {
+        let config = DownloadConfig::new("/custom/path");
+        assert_eq!(config.dir, PathBuf::from("/custom/path"));
+        assert!(!config.save_metadata);
+    }
+    
+    #[test]
+    fn test_download_config_clone() {
+        let config = DownloadConfig::new("/test");
+        let cloned = config.clone();
+        assert_eq!(config.dir, cloned.dir);
+        assert_eq!(config.save_metadata, cloned.save_metadata);
+    }
+    
+    #[test]
+    fn test_download_config_file_path() {
         let config = DownloadConfig::new("/tmp/bot_downloads");
-        let path = config.get_path("test.jpg", None);
-        assert_eq!(path, PathBuf::from("/tmp/bot_downloads/test.jpg"));
+        let path = config.get_file_path(123456789, 42, "AgACAgIAAxkBAAI", "jpg");
+        assert_eq!(path, PathBuf::from("/tmp/bot_downloads/123456789/42_AgACAgIAAxkBAAI.jpg"));
     }
     
     #[test]
-    fn test_download_config_path_with_chat() {
-        let mut config = DownloadConfig::new("/tmp/bot_downloads");
-        config.organize_by_chat = true;
-        let path = config.get_path("test.jpg", Some(12345));
-        assert_eq!(path, PathBuf::from("/tmp/bot_downloads/chat_12345/test.jpg"));
+    fn test_download_config_file_path_truncated() {
+        let config = DownloadConfig::default();
+        let long_file_id = "AgACAgIAAxkBAAIRbGQyAAMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        let path = config.get_file_path(123, 1, long_file_id, "jpg");
+        let filename = path.file_name().unwrap().to_str().unwrap();
+        assert!(filename.starts_with("1_"));
+        assert!(filename.ends_with(".jpg"));
+        assert!(filename.len() < 50);
     }
     
     #[test]
-    fn test_download_config_path_with_date() {
-        let mut config = DownloadConfig::new("/tmp/bot_downloads");
-        config.organize_by_date = true;
-        let path = config.get_path("test.jpg", None);
-        assert!(path.to_str().unwrap().contains("/tmp/bot_downloads/"));
+    fn test_download_config_file_path_short_id() {
+        let config = DownloadConfig::default();
+        let short_id = "abc";
+        let path = config.get_file_path(123, 1, short_id, "pdf");
+        let filename = path.file_name().unwrap().to_str().unwrap();
+        assert_eq!(filename, "1_abc.pdf");
+    }
+    
+    #[test]
+    fn test_download_config_file_path_negative_ids() {
+        let config = DownloadConfig::default();
+        let path = config.get_file_path(-1001234567890, 999, "fid", "mp4");
+        assert!(path.to_str().unwrap().contains("-1001234567890"));
+        assert!(path.to_str().unwrap().contains("999_fid.mp4"));
+    }
+    
+    #[test]
+    fn test_download_config_metadata_path() {
+        let config = DownloadConfig::default();
+        let file_path = PathBuf::from("downloads/123/42_photo.jpg");
+        let meta_path = config.get_metadata_path(&file_path);
+        assert_eq!(meta_path, PathBuf::from("downloads/123/42_photo.json"));
+    }
+    
+    #[test]
+    fn test_download_config_metadata_path_nested() {
+        let config = DownloadConfig::default();
+        let file_path = PathBuf::from("downloads/123/456/78_video.mp4");
+        let meta_path = config.get_metadata_path(&file_path);
+        assert_eq!(meta_path, PathBuf::from("downloads/123/456/78_video.json"));
+    }
+    
+    #[test]
+    fn test_get_file_extension_from_filename() {
+        assert_eq!(get_file_extension(Some("test.jpg"), None), "jpg");
+        assert_eq!(get_file_extension(Some("document.PDF"), None), "pdf");
+        assert_eq!(get_file_extension(Some("file.TAR.GZ"), None), "gz");
+        assert_eq!(get_file_extension(Some("photo.jpeg"), None), "jpeg");
+    }
+    
+    #[test]
+    fn test_get_file_extension_from_mime() {
+        assert_eq!(get_file_extension(None, Some("image/jpeg")), "jpg");
+        assert_eq!(get_file_extension(None, Some("image/png")), "png");
+        assert_eq!(get_file_extension(None, Some("image/gif")), "gif");
+        assert_eq!(get_file_extension(None, Some("image/webp")), "webp");
+        assert_eq!(get_file_extension(None, Some("video/mp4")), "mp4");
+        assert_eq!(get_file_extension(None, Some("video/webm")), "webm");
+        assert_eq!(get_file_extension(None, Some("audio/mpeg")), "mp3");
+        assert_eq!(get_file_extension(None, Some("audio/mp3")), "mp3");
+        assert_eq!(get_file_extension(None, Some("audio/ogg")), "ogg");
+        assert_eq!(get_file_extension(None, Some("application/pdf")), "pdf");
+        assert_eq!(get_file_extension(None, Some("application/zip")), "zip");
+    }
+    
+    #[test]
+    fn test_get_file_extension_unknown_mime() {
+        assert_eq!(get_file_extension(None, Some("application/octet-stream")), "bin");
+        assert_eq!(get_file_extension(None, Some("text/plain")), "bin");
+    }
+    
+    #[test]
+    fn test_get_file_extension_fallback() {
+        assert_eq!(get_file_extension(None, None), "bin");
+        assert_eq!(get_file_extension(Some("noextension"), None), "bin");
+        assert_eq!(get_file_extension(Some("dot."), None), "bin");
+    }
+    
+    #[test]
+    fn test_get_file_extension_long_extension() {
+        assert_eq!(get_file_extension(Some("file.verylongextension"), None), "bin");
+    }
+    
+    #[test]
+    fn test_get_file_extension_filename_priority() {
+        assert_eq!(get_file_extension(Some("test.png"), Some("image/jpeg")), "png");
+    }
+    
+    #[test]
+    fn test_file_type_serialization() {
+        let types = vec![
+            FileType::Photo,
+            FileType::Document,
+            FileType::Video,
+            FileType::Audio,
+            FileType::Other,
+        ];
+        for ft in types {
+            let json = serde_json::to_string(&ft).unwrap();
+            let parsed: FileType = serde_json::from_str(&json).unwrap();
+            assert_eq!(ft, parsed);
+        }
+    }
+    
+    #[test]
+    fn test_file_metadata_serialization() {
+        let metadata = FileMetadata {
+            chat_id: 123456789,
+            message_id: 42,
+            file_id: "AgACAgIAAxkBAAI".to_string(),
+            file_unique_id: "AQADeN1x".to_string(),
+            file_type: FileType::Photo,
+            mime_type: Some("image/jpeg".to_string()),
+            file_size: Some(102400),
+            original_name: None,
+            user_id: Some(987654321),
+            downloaded_at: "2026-03-21T09:00:00Z".to_string(),
+        };
+        
+        let json = serde_json::to_string(&metadata).unwrap();
+        let parsed: FileMetadata = serde_json::from_str(&json).unwrap();
+        
+        assert_eq!(metadata.chat_id, parsed.chat_id);
+        assert_eq!(metadata.message_id, parsed.message_id);
+        assert_eq!(metadata.file_id, parsed.file_id);
+        assert_eq!(metadata.file_unique_id, parsed.file_unique_id);
+        assert_eq!(metadata.file_type, parsed.file_type);
+        assert_eq!(metadata.mime_type, parsed.mime_type);
+        assert_eq!(metadata.file_size, parsed.file_size);
+        assert_eq!(metadata.original_name, parsed.original_name);
+        assert_eq!(metadata.user_id, parsed.user_id);
+        assert_eq!(metadata.downloaded_at, parsed.downloaded_at);
+    }
+    
+    #[test]
+    fn test_file_metadata_json_format() {
+        let metadata = FileMetadata {
+            chat_id: 123,
+            message_id: 1,
+            file_id: "fid".to_string(),
+            file_unique_id: "uid".to_string(),
+            file_type: FileType::Document,
+            mime_type: None,
+            file_size: None,
+            original_name: Some("test.pdf".to_string()),
+            user_id: None,
+            downloaded_at: "2026-03-21T09:00:00Z".to_string(),
+        };
+        
+        let json = serde_json::to_string_pretty(&metadata).unwrap();
+        assert!(json.contains("\"chat_id\": 123"));
+        assert!(json.contains("\"message_id\": 1"));
+        assert!(json.contains("\"file_id\": \"fid\""));
+        assert!(json.contains("\"file_unique_id\": \"uid\""));
+        assert!(json.contains("\"file_type\": \"Document\""));
+    }
+    
+    #[test]
+    fn test_check_text_for_bot_mention() {
+        fn check_mention(text: &str, bot_username: &str) -> bool {
+            if bot_username.is_empty() {
+                return false;
+            }
+            let mention = format!("@{}", bot_username.to_lowercase());
+            text.to_lowercase().contains(&mention)
+        }
+        
+        assert!(check_mention("@testbot hello", "testbot"));
+        assert!(check_mention("hello @TestBot world", "testbot"));
+        assert!(check_mention("@TESTBOT", "testbot"));
+        assert!(!check_mention("hello world", "testbot"));
+        assert!(!check_mention("@otherbot hello", "testbot"));
+        assert!(!check_mention("@testbot hello", ""));
     }
 }
