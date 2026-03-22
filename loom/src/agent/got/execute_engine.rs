@@ -163,6 +163,8 @@ impl ExecuteGraphNode {
             usage: None,
             total_usage: None,
             message_count_after_last_think: None,
+            summary: None,
+            think_count: 0,
         };
 
         for _ in 0..MAX_SUB_TASK_TURNS {

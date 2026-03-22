@@ -109,6 +109,8 @@ mod tests {
             usage: None,
             total_usage: None,
             message_count_after_last_think: None,
+            think_count: 0,
+            summary: None,
         };
         let (out, next) = node.run(state).await.unwrap();
         assert_eq!(out.messages.len(), 1);
@@ -136,6 +138,8 @@ mod tests {
             usage: None,
             total_usage: None,
             message_count_after_last_think: None,
+            think_count: 0,
+            summary: None,
         };
         let (out, next) = node.run(state).await.unwrap();
         assert_eq!(out.messages.len(), 1);

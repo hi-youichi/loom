@@ -39,11 +39,23 @@
 //! }
 //! ```
 //!
+//! ### Async Invocation (Fire-and-Forget)
+//! ```json
+//! {
+//!   "agent": "dev",
+//!   "task": "Run background analysis",
+//!   "async": true
+//! }
+//! ```
+//! When `async: true`, the agent starts in the background and the call returns immediately
+//! without waiting for results. Useful for long-running tasks that don't need immediate feedback.
+//!
 //! ## Error Handling
 //!
 //! - **Single mode**: Errors are returned immediately
 //! - **Batch mode with fail_fast=true**: Stops on first error, other running agents continue
 //! - **Batch mode with fail_fast=false**: Collects all errors and returns aggregated result
+//! - **Async mode**: Errors are logged but not returned (fire-and-forget behavior)
 
 use std::sync::Arc;
 
@@ -174,6 +186,11 @@ impl Tool for InvokeAgentTool {
                         "type": "boolean",
                         "description": "If true, stop on first error. If false (default), continue and collect all results.",
                         "default": false
+                    },
+                    "async": {
+                        "type": "boolean",
+                        "description": "If true, start agent(s) in background and return immediately without waiting for results. Useful for fire-and-forget tasks. Default: false.",
+                        "default": false
                     }
                 },
                 "oneOf": [
@@ -192,11 +209,21 @@ impl Tool for InvokeAgentTool {
         args: Value,
         ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
+        let is_async = args.get("async").and_then(|v| v.as_bool()).unwrap_or(false);
+        
         // Check if this is a batch invocation
         if args.get("agents").is_some() {
-            self.call_multiple(args, ctx).await
+            if is_async {
+                self.call_multiple_async(args, ctx).await
+            } else {
+                self.call_multiple(args, ctx).await
+            }
         } else {
-            self.call_single(args, ctx).await
+            if is_async {
+                self.call_single_async(args, ctx).await
+            } else {
+                self.call_single(args, ctx).await
+            }
         }
     }
 }
@@ -287,6 +314,132 @@ impl InvokeAgentTool {
         };
 
         Ok(ToolCallContent { text: reply })
+    }
+
+    /// Invoke a single agent asynchronously (fire-and-forget)
+    async fn call_single_async(
+        &self,
+        args: Value,
+        ctx: Option<&ToolCallContext>,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+        let current_depth = ctx.map(|c| c.depth).unwrap_or(0);
+        if current_depth >= self.max_depth {
+            return Err(ToolSourceError::InvalidInput(format!(
+                "max sub-agent depth ({}) reached; cannot invoke further agents",
+                self.max_depth,
+            )));
+        }
+
+        let agent_name = args.get("agent").and_then(|v| v.as_str()).ok_or_else(|| {
+            ToolSourceError::InvalidInput("missing required argument: agent".into())
+        })?;
+
+        let task = args.get("task").and_then(|v| v.as_str()).ok_or_else(|| {
+            ToolSourceError::InvalidInput("missing required argument: task".into())
+        })?;
+
+        let working_folder_override = args
+            .get("working_folder")
+            .and_then(|v| v.as_str())
+            .map(std::path::PathBuf::from);
+
+        // Validate agent exists before spawning
+        let profile = resolve_profile(agent_name).map_err(|e| {
+            ToolSourceError::InvalidInput(format!(
+                "failed to resolve agent '{}': {}",
+                agent_name, e
+            ))
+        })?;
+
+        // Clone necessary data for background task
+        let profile_clone = profile.clone();
+        let base_config = self.base_config.clone();
+        let max_depth = self.max_depth;
+        let agent_name_str = agent_name.to_string();
+        let task_str = task.to_string();
+        let ctx_clone = ctx.cloned();
+        let working_folder_clone = working_folder_override.clone();
+
+        // Spawn background task
+        tokio::spawn(async move {
+            // Acquire global semaphore permit
+            let _permit = match INVOKE_AGENT_SEMAPHORE.acquire().await {
+                Ok(p) => p,
+                Err(e) => {
+                    tracing::error!(
+                        agent = %agent_name_str,
+                        error = %e,
+                        "failed to acquire semaphore for async agent invocation"
+                    );
+                    return;
+                }
+            };
+
+            // Build config and runner in background
+            let mut sub_config = build_config_from_profile(
+                &profile_clone,
+                &base_config,
+                working_folder_clone.as_deref(),
+            );
+            sub_config.thread_id = None;
+
+            let runner = match build_react_runner(&sub_config, None, false, None).await {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::error!(
+                        agent = %agent_name_str,
+                        error = %e,
+                        "failed to build sub-agent for async invocation"
+                    );
+                    return;
+                }
+            };
+
+            // Run agent in background
+            let on_event = ctx_clone.and_then(|c| c.stream_writer.clone()).map(|writer| {
+                let agent = agent_name_str.clone();
+                move |event: crate::stream::StreamEvent<crate::state::ReActState>| {
+                    let payload = serde_json::json!({
+                        "sub_agent": agent,
+                        "event": format!("{:?}", event),
+                    });
+                    writer.emit_custom(payload);
+                }
+            });
+
+            match runner.stream_with_config(&task_str, None, on_event).await {
+                Ok(outcome) => {
+                    match outcome {
+                        crate::runner_common::StreamRunOutcome::Finished(_) => {
+                            tracing::info!(
+                                agent = %agent_name_str,
+                                "async agent invocation completed successfully"
+                            );
+                        }
+                        crate::runner_common::StreamRunOutcome::Cancelled => {
+                            tracing::warn!(
+                                agent = %agent_name_str,
+                                "async agent invocation was cancelled"
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(
+                        agent = %agent_name_str,
+                        error = %e,
+                        "async agent invocation failed"
+                    );
+                }
+            }
+        });
+
+        Ok(ToolCallContent {
+            text: format!(
+                "Agent '{}' started in background. Task: {}",
+                agent_name, task
+            ),
+        })
     }
 
     /// Invoke multiple agents concurrently with global concurrency limit
@@ -398,6 +551,98 @@ impl InvokeAgentTool {
         }
 
         Ok(ToolCallContent { text: output })
+    }
+
+    /// Invoke multiple agents asynchronously (fire-and-forget)
+    async fn call_multiple_async(
+        &self,
+        args: Value,
+        ctx: Option<&ToolCallContext>,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+        let agents = args.get("agents").and_then(|v| v.as_array()).ok_or_else(|| {
+            ToolSourceError::InvalidInput("agents must be an array".into())
+        })?;
+
+        if agents.is_empty() {
+            return Err(ToolSourceError::InvalidInput(
+                "agents array cannot be empty".into(),
+            ));
+        }
+
+        // Validate all agent specs before spawning tasks
+        let mut agent_names = vec![];
+        for (idx, agent_spec) in agents.iter().enumerate() {
+            if agent_spec.get("agent").and_then(|v| v.as_str()).is_none() {
+                return Err(ToolSourceError::InvalidInput(format!(
+                    "agent spec at index {} missing required field: agent",
+                    idx
+                )));
+            }
+            if agent_spec.get("task").and_then(|v| v.as_str()).is_none() {
+                return Err(ToolSourceError::InvalidInput(format!(
+                    "agent spec at index {} missing required field: task",
+                    idx
+                )));
+            }
+            if let Some(name) = agent_spec.get("agent").and_then(|v| v.as_str()) {
+                // Validate agent exists
+                resolve_profile(name).map_err(|e| {
+                    ToolSourceError::InvalidInput(format!(
+                        "failed to resolve agent '{}' at index {}: {}",
+                        name, idx, e
+                    ))
+                })?;
+                agent_names.push(name.to_string());
+            }
+        }
+
+        // Spawn all agents in background
+        let base_config = self.base_config.clone();
+        let max_depth = self.max_depth;
+        let ctx_clone = ctx.cloned();
+
+        for agent_spec in agents {
+            let args = agent_spec.clone();
+            let ctx = ctx_clone.clone();
+            let base_config = base_config.clone();
+            let max_depth = max_depth;
+
+            tokio::spawn(async move {
+                // Acquire global semaphore permit
+                let _permit = match INVOKE_AGENT_SEMAPHORE.acquire().await {
+                    Ok(p) => p,
+                    Err(e) => {
+                        if let Some(agent_name) = args.get("agent").and_then(|v| v.as_str()) {
+                            tracing::error!(
+                                agent = %agent_name,
+                                error = %e,
+                                "failed to acquire semaphore for async agent invocation"
+                            );
+                        }
+                        return;
+                    }
+                };
+
+                // Invoke single agent in background
+                if let Err(e) = invoke_single_agent(&base_config, args, ctx.as_ref(), max_depth).await {
+                    if let Some(agent_name) = e.to_string().split("'").nth(1) {
+                        tracing::error!(
+                            agent = %agent_name,
+                            error = %e,
+                            "async agent invocation failed"
+                        );
+                    }
+                }
+            });
+        }
+
+        Ok(ToolCallContent {
+            text: format!(
+                "Started {} agent(s) in background: {}",
+                agent_names.len(),
+                agent_names.join(", ")
+            ),
+        })
     }
 }
 

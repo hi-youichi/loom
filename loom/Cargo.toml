@@ -26,7 +26,7 @@ futures-util = "0.3"
 futures = "0.3"
 once_cell = "1.19"
 
-async-openai = { version = "0.32", features = ["chat-completion", "embedding"] }
+async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
 dotenv = { workspace = true }
 crossbeam-channel = "0.5"
 mcp_client = { git = "https://github.com/graphweave/mcm-rust", package = "mcp_client" }

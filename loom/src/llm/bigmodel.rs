@@ -18,6 +18,8 @@
 //! **Interaction**: Implements `LlmClient`; used by ThinkNode like `ChatOpenAI`.
 //! Depends on `reqwest` (no async_openai).
 
+use std::borrow::Cow;
+
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 use tracing::{debug, trace};
@@ -28,7 +30,7 @@ use crate::http_retry::{
 };
 use crate::llm::{LlmClient, LlmResponse, LlmUsage, ToolCallDelta};
 use crate::memory::uuid6;
-use crate::message::Message;
+use crate::message::{assistant_content_for_chat_api, Message};
 use crate::state::ToolCall;
 use crate::stream::MessageChunk;
 use crate::tool_source::{ToolSource, ToolSourceError, ToolSpec};
@@ -296,6 +298,9 @@ impl ChatBigModel {
     }
 
     /// Sets the tool choice mode used when tools are present.
+    ///
+    /// If unset, `tool_choice` is omitted from the request (provider default,
+    /// usually `auto`). `required` conflicts with thinking/reasoning on some APIs.
     pub fn with_tool_choice(mut self, mode: ToolChoiceMode) -> Self {
         self.tool_choice = Some(mode);
         self
@@ -320,13 +325,16 @@ impl ChatBigModel {
             .iter()
             .map(|m| {
                 let (role, content) = match m {
-                    Message::System(s) => ("system", s.as_str()),
-                    Message::User(s) => ("user", s.as_str()),
-                    Message::Assistant(s) => ("assistant", s.as_str()),
+                    Message::System(s) => ("system", Cow::Borrowed(s.as_str())),
+                    Message::User(s) => ("user", Cow::Borrowed(s.as_str())),
+                    Message::Assistant(s) => (
+                        "assistant",
+                        assistant_content_for_chat_api(s.as_str()),
+                    ),
                 };
                 ChatMessageRequest {
                     role: role.to_string(),
-                    content: content.to_string(),
+                    content: content.into_owned(),
                 }
             })
             .collect()
@@ -356,16 +364,16 @@ impl ChatBigModel {
                     })
                     .collect(),
             );
-            req.tool_choice = Some(
-                self.tool_choice
-                    .map(|m| match m {
+            if let Some(mode) = self.tool_choice {
+                req.tool_choice = Some(
+                    match mode {
                         ToolChoiceMode::Auto => "auto",
                         ToolChoiceMode::None => "none",
                         ToolChoiceMode::Required => "required",
-                    })
-                    .unwrap_or("required")
+                    }
                     .to_string(),
-            );
+                );
+            }
         }
         req
     }
@@ -1026,4 +1034,57 @@ impl LlmClient for ChatBigModel {
             usage: stream_usage,
         })
     }
+
+    async fn list_models(&self) -> Result<Vec<crate::llm::ModelInfo>, AgentError> {
+        // BigModel base URL already includes version path (e.g., /api/paas/v4)
+        // so we only append /models, not /v1/models
+        let url = format!("{}/models", self.base_url);
+        let res = self
+            .client
+            .get(&url)
+            .bearer_auth(&self.api_key)
+            .send()
+            .await
+            .map_err(|e| AgentError::ExecutionFailed(format!("list_models request failed: {}", e)))?;
+
+        if !res.status().is_success() {
+            let status = res.status();
+            let body = res.text().await.unwrap_or_default();
+            return Err(AgentError::ExecutionFailed(format!(
+                "list_models failed: {} - {}",
+                status, body
+            )));
+        }
+
+        let body = res
+            .text()
+            .await
+            .map_err(|e| AgentError::ExecutionFailed(format!("list_models read body failed: {}", e)))?;
+
+        let models_resp: ModelsResponse = serde_json::from_str(&body)
+            .map_err(|e| AgentError::ExecutionFailed(format!("list_models parse failed: {}", e)))?;
+
+        Ok(models_resp
+            .data
+            .into_iter()
+            .map(|m| crate::llm::ModelInfo {
+                id: m.id,
+                created: m.created,
+                owned_by: m.owned_by,
+            })
+            .collect())
+    }
+}
+
+/// Response from /v1/models endpoint
+#[derive(serde::Deserialize)]
+struct ModelsResponse {
+    data: Vec<ModelData>,
+}
+
+#[derive(serde::Deserialize)]
+struct ModelData {
+    id: String,
+    created: Option<i64>,
+    owned_by: Option<String>,
 }

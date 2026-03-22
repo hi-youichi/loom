@@ -2,7 +2,7 @@
 //!
 //! This module provides flexible message handling using teloxide's dptree system.
 
-use crate::config::Settings;
+use crate::config::{Settings, StreamingConfig};
 use loom::{
     run_agent_with_options, RunOptions, RunCmd, RunCompletion, AnyStreamEvent,
 };
@@ -316,38 +316,60 @@ pub async fn download_video(
     Ok((path, metadata))
 }
 
-/// Streaming state for typewriter effect
+/// Streaming state for multi-phase typewriter effect
 struct StreamingState {
-    text: String,
+    /// Message ID for current phase (Think or Act)
+    current_msg_id: Option<i32>,
+    /// Text accumulated for current phase
+    current_text: String,
+    /// Current phase: "think" or "act"
+    current_phase: String,
+    /// Think round counter
+    think_count: u32,
+    /// Act round counter
+    act_count: u32,
+    /// Last update time for throttling
     last_update: Instant,
-    msg_id: Option<i32>,
+    /// Streaming display settings
+    settings: StreamingConfig,
 }
 
-/// Run Loom agent with streaming support
+/// Truncate text to max characters, adding "..." if truncated
+/// Note: Uses char count (not bytes) for proper UTF-8 handling
+fn truncate_text(text: &str, max_chars: usize) -> String {
+    if max_chars == 0 || text.chars().count() <= max_chars {
+        text.to_string()
+    } else {
+        let truncated: String = text.chars().take(max_chars.saturating_sub(3)).collect();
+        format!("{}...", truncated)
+    }
+}
+
+/// Run Loom agent with streaming support (multi-phase: Think/Act)
+///
+/// Note: `reply_to` is currently unused. In multi-phase mode, each phase sends
+/// a new message. TODO: Consider using reply_to for the first Think message.
 async fn run_loom_agent_streaming(
     message: &str,
     chat_id: i64,
     bot: Bot,
     reply_to: Option<i32>,
+    settings: &Settings,
 ) -> Result<String, String> {
     tracing::info!("Running Loom agent (streaming) for chat {}", chat_id);
     
     let thread_id = format!("telegram_{}", chat_id);
     let chat_id = teloxide::types::ChatId(chat_id);
     
-    // Send initial message (reply to original if available)
-    let mut send_msg = bot.send_message(chat_id, "...");
-    if let Some(msg_id) = reply_to {
-        send_msg = send_msg.reply_parameters(ReplyParameters::new(MessageId(msg_id)));
-    }
-    let initial_msg = send_msg.await
-        .map_err(|e| format!("Failed to send initial message: {}", e))?;
-    
-    // Create shared state
+    // Create shared state for multi-phase streaming
     let state = Arc::new(Mutex::new(StreamingState {
-        text: String::new(),
+        current_phase: String::new(),
+        think_count: 0,
+        act_count: 0,
+        current_msg_id: None,
+        current_text: String::new(),
         last_update: Instant::now(),
-        msg_id: Some(initial_msg.id.0),
+        settings: settings.streaming.clone(),
     }));
     
     let opts = RunOptions {
@@ -368,7 +390,8 @@ async fn run_loom_agent_streaming(
         dry_run: false,
     };
     
-    // Create event callback
+    // Create event callback for multi-phase streaming
+    let streaming_settings = settings.streaming.clone();
     let state_clone = state.clone();
     let bot_clone = bot.clone();
     let chat_id_clone = chat_id;
@@ -377,65 +400,157 @@ async fn run_loom_agent_streaming(
         let state = state_clone.clone();
         let bot = bot_clone.clone();
         let chat_id = chat_id_clone;
+        let settings = streaming_settings.clone();
         
-        // Extract text from streaming events
-        let text_delta = match &ev {
-            AnyStreamEvent::React(loom::StreamEvent::Messages { chunk, .. }) => {
-                Some(chunk.content.clone())
-            }
-            _ => None,
-        };
-        
-        if let Some(delta) = text_delta {
-            let state = state.clone();
-            let bot = bot.clone();
-            let chat_id = chat_id;
-            
-            // Use blocking task to update state and message
-            tokio::spawn(async move {
-                let mut s = state.lock().await;
-                s.text.push_str(&delta);
+        match &ev {
+            // ThinkNode 开始
+            AnyStreamEvent::React(loom::StreamEvent::TaskStart { node_id, .. }) 
+                if node_id == "think" && settings.show_think_phase => 
+            {
+                let state = state.clone();
+                let bot = bot.clone();
+                let chat_id = chat_id;
                 
-                // Throttle updates: at most every 300ms
-                let should_update = s.last_update.elapsed() > Duration::from_millis(300);
-                
-                if should_update && s.text.len() <= 4000 {
-                    // Truncate if too long (Telegram limit is 4096)
-                    let display_text = if s.text.len() > 4000 {
-                        format!("{}...", &s.text[..3950])
-                    } else {
-                        s.text.clone()
-                    };
+                tokio::spawn(async move {
+                    let mut s = state.lock().await;
+                    s.think_count += 1;
+                    s.current_phase = "think".to_string();
                     
-                    if let Some(msg_id) = s.msg_id {
-                        let _ = bot.edit_message_text(chat_id, teloxide::types::MessageId(msg_id), &display_text).await;
+                    // 发送新的 Think 消息
+                    let emoji = &s.settings.think_emoji;
+                    let header = format!("{} Think #{}", emoji, s.think_count);
+                    if let Ok(msg) = bot.send_message(chat_id, &header).await {
+                        s.current_msg_id = Some(msg.id.0);
+                        s.current_text = header;
+                        s.last_update = Instant::now();
+                    }
+                });
+            }
+            
+            // ActNode 开始
+            AnyStreamEvent::React(loom::StreamEvent::TaskStart { node_id, .. }) 
+                if node_id == "act" && settings.show_act_phase =>
+            {
+                let state = state.clone();
+                let bot = bot.clone();
+                let chat_id = chat_id;
+                
+                tokio::spawn(async move {
+                    let mut s = state.lock().await;
+                    s.act_count += 1;
+                    s.current_phase = "act".to_string();
+                    
+                    // 发送新的 Act 消息
+                    let emoji = &s.settings.act_emoji;
+                    let header = format!("{} Act #{}", emoji, s.act_count);
+                    if let Ok(msg) = bot.send_message(chat_id, &header).await {
+                        s.current_msg_id = Some(msg.id.0);
+                        s.current_text = header;
+                        s.last_update = Instant::now();
+                    }
+                });
+            }
+            
+            // Think 阶段：显示思考内容
+            AnyStreamEvent::React(loom::StreamEvent::Messages { chunk, .. }) => {
+                let state = state.clone();
+                let bot = bot.clone();
+                let chat_id = chat_id;
+                
+                // 克隆需要的数据以满足 'static 生命周期要求
+                let content = chunk.content.clone();
+                
+                tokio::spawn(async move {
+                    let mut s = state.lock().await;
+                    
+                    // 只在 Think 阶段处理
+                    if s.current_phase != "think" || !s.settings.show_think_phase {
+                        return;
+                    }
+                    
+                    // 添加内容
+                    s.current_text.push_str(&content);
+                    
+                    // Throttle: at most every 500ms
+                    if s.last_update.elapsed() < Duration::from_millis(500) {
+                        return;
+                    }
+                    
+                    // 截断显示
+                    let display_text = truncate_text(&s.current_text, s.settings.max_think_chars);
+                    
+                    // 更新消息
+                    if let Some(msg_id) = s.current_msg_id {
+                        let _ = bot.edit_message_text(
+                            chat_id, 
+                            teloxide::types::MessageId(msg_id), 
+                            &display_text
+                        ).await;
                     }
                     s.last_update = Instant::now();
-                }
-            });
+                });
+            }
+            
+            // Act 阶段：显示工具调用和结果
+            AnyStreamEvent::React(loom::StreamEvent::Updates { state: react_state, .. }) => {
+                let state = state.clone();
+                let bot = bot.clone();
+                let chat_id = chat_id;
+                
+                // 克隆需要的数据以满足 'static 生命周期要求
+                let tool_calls = react_state.tool_calls.clone();
+                let tool_results = react_state.tool_results.clone();
+                
+                tokio::spawn(async move {
+                    let mut s = state.lock().await;
+                    
+                    // 只在 Act 阶段处理
+                    if s.current_phase != "act" || !s.settings.show_act_phase {
+                        return;
+                    }
+                    
+                    // Throttle: at most every 500ms
+                    if s.last_update.elapsed() < Duration::from_millis(500) {
+                        return;
+                    }
+                    
+                    // 构建工具调用显示文本
+                    let mut display_parts = Vec::new();
+                    for tc in &tool_calls {
+                        display_parts.push(format!("🔧 {}", tc.name));
+                    }
+                    for tr in &tool_results {
+                        let status = if tr.is_error { "❌" } else { "✅" };
+                        display_parts.push(format!("{} {}", status, tr.name.as_deref().unwrap_or("unknown")));
+                    }
+                    let display_text = display_parts.join("\n");
+                    
+                    // 截断总长度
+                    let final_text = truncate_text(&display_text, s.settings.max_act_chars);
+                    
+                    // 更新消息
+                    if let Some(msg_id) = s.current_msg_id {
+                        let _ = bot.edit_message_text(
+                            chat_id, 
+                            teloxide::types::MessageId(msg_id), 
+                            &final_text
+                        ).await;
+                    }
+                    s.last_update = Instant::now();
+                });
+            }
+            
+            _ => {}
         }
     };
     
+    // Run the agent with streaming callback
     let result = run_agent_with_options(&opts, &RunCmd::React, Some(Box::new(on_event))).await;
     
     // Get final text
     let final_state = state.lock().await;
-    let final_text = final_state.text.clone();
-    let msg_id = final_state.msg_id;
+    let final_text = final_state.current_text.clone();
     drop(final_state);
-    
-    // Update with final message
-    if let Some(msg_id) = msg_id {
-        let display_text = if final_text.len() > 4000 {
-            format!("{}...", &final_text[..3950])
-        } else if final_text.is_empty() {
-            "(empty response)".to_string()
-        } else {
-            final_text.clone()
-        };
-        
-        let _ = bot.edit_message_text(chat_id, teloxide::types::MessageId(msg_id), &display_text).await;
-    }
     
     match result {
         Ok(RunCompletion::Finished(_)) => Ok(final_text),
@@ -507,7 +622,7 @@ pub async fn default_handler(
                     text.to_string()
                 };
                 
-                match run_loom_agent_streaming(&clean_text, chat_id.0, bot.clone(), Some(message_id.0)).await {
+                match run_loom_agent_streaming(&clean_text, chat_id.0, bot.clone(), Some(message_id.0), &settings).await {
                     Ok(_reply) => {
                         // Message already updated in streaming function
                     }
@@ -833,5 +948,94 @@ mod tests {
         assert!(!check_mention("hello world", "testbot"));
         assert!(!check_mention("@otherbot hello", "testbot"));
         assert!(!check_mention("@testbot hello", ""));
+    }
+    
+    // ========== truncate_text tests ==========
+    
+    #[test]
+    fn test_truncate_text_no_limit() {
+        let text = "Hello, world!";
+        let result = truncate_text(text, 0);
+        assert_eq!(result, text);
+    }
+    
+    #[test]
+    fn test_truncate_text_short_enough() {
+        let text = "Hello";
+        let result = truncate_text(text, 10);
+        assert_eq!(result, text);
+    }
+    
+    #[test]
+    fn test_truncate_text_needs_truncation() {
+        let text = "Hello, world!";
+        let result = truncate_text(text, 8);
+        assert_eq!(result, "Hello...");
+        assert!(result.len() <= 8);
+    }
+    
+    #[test]
+    fn test_truncate_text_exact_length() {
+        let text = "Hello";
+        let result = truncate_text(text, 5);
+        assert_eq!(result, "Hello");
+    }
+    
+    #[test]
+    fn test_truncate_text_utf8_ascii() {
+        let text = "Hello, world!";
+        let result = truncate_text(text, 5);
+        assert_eq!(result, "He...");
+    }
+    
+    #[test]
+    fn test_truncate_text_utf8_chinese() {
+        let text = "你好世界测试";
+        let result = truncate_text(text, 3);
+        assert_eq!(result, "..."); // Only room for "..." when max_chars is 3
+    }
+    
+    #[test]
+    fn test_truncate_text_utf8_chinese_more() {
+        let text = "你好世界测试";
+        let result = truncate_text(text, 5);
+        assert_eq!(result, "你好..."); // "你好" is 2 chars, + "..." = 5
+    }
+    
+    #[test]
+    fn test_truncate_text_utf8_mixed() {
+        let text = "Hello世界"; // 7 chars
+        let result = truncate_text(text, 6);
+        // max_chars=6, so we take 6-3=3 chars and add "..." = "Hel..."
+        assert_eq!(result, "Hel...");
+    }
+    
+    #[test]
+    fn test_truncate_text_empty() {
+        let text = "";
+        let result = truncate_text(text, 10);
+        assert_eq!(result, "");
+    }
+    
+    // ========== StreamingConfig tests ==========
+    
+    #[test]
+    fn test_streaming_config_default() {
+        use crate::config::StreamingConfig;
+        
+        let config = StreamingConfig::default();
+        assert_eq!(config.max_think_chars, 500);
+        assert_eq!(config.max_act_chars, 500);
+        assert!(config.show_think_phase);
+        assert!(config.show_act_phase);
+        assert_eq!(config.think_emoji, "🤔");
+        assert_eq!(config.act_emoji, "⚡");
+    }
+    
+    #[test]
+    fn test_settings_default_streaming() {
+        let settings = Settings::default();
+        assert_eq!(settings.streaming.max_think_chars, 500);
+        assert!(settings.streaming.show_think_phase);
     }
 }

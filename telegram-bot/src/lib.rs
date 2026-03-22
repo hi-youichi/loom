@@ -23,6 +23,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+//!     // Runs bots from ~/.loom/telegram-bot.toml
 //!     run_bots().await
 //! }
 //! ```

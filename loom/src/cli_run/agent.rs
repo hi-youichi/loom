@@ -202,6 +202,8 @@ pub enum RunError {
     ToolNotFound(String),
     #[error("remote: {0}")]
     Remote(String),
+    #[error("config: {0}")]
+    ConfigError(String),
 }
 
 /// Command mode for running an agent.

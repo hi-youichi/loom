@@ -74,4 +74,10 @@ pub trait RunBackend: Send + Sync {
         name: &str,
         format: ToolShowFormat,
     ) -> Result<(), RunError>;
+    /// List available models from configured providers.
+    async fn list_models(
+        &self,
+        opts: &RunOptions,
+        provider_name: Option<&str>,
+    ) -> Result<(), RunError>;
 }

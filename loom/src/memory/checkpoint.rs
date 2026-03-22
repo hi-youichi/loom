@@ -62,6 +62,10 @@ pub struct CheckpointMetadata {
     /// Child checkpoint IDs grouped by child checkpoint namespace.
     #[serde(default)]
     pub children: HashMap<String, Vec<String>>,
+    /// Optional session summary for display in session list.
+    /// Generated after the first think in ReAct loop.
+    #[serde(default)]
+    pub summary: Option<String>,
 }
 
 /// Why a checkpoint was created.
@@ -98,6 +102,7 @@ mod tests {
             created_at: None,
             parents: HashMap::new(),
             children: HashMap::new(),
+            summary: None,
         };
     }
 
@@ -342,6 +347,7 @@ impl<S> Checkpoint<S> {
                 created_at: Some(now),
                 parents: HashMap::new(),
                 children: HashMap::new(),
+                summary: None,
             },
         }
     }
@@ -374,6 +380,7 @@ impl<S> Checkpoint<S> {
                 created_at: Some(now),
                 parents: HashMap::new(),
                 children: HashMap::new(),
+                summary: None,
             },
         }
     }

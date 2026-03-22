@@ -1,6 +1,6 @@
 //! LocalBackend: run agent in-process.
 
-use crate::{list_tools, run_agent, show_tool, ToolShowFormat};
+use crate::{list_all_models, list_provider_models, list_tools, run_agent, show_tool, ToolShowFormat};
 use async_trait::async_trait;
 use loom::{RunCmd, RunError, RunOptions};
 
@@ -52,5 +52,16 @@ impl RunBackend for LocalBackend {
         format: ToolShowFormat,
     ) -> Result<(), RunError> {
         show_tool(opts, name, format).await
+    }
+
+    async fn list_models(
+        &self,
+        _opts: &RunOptions,
+        provider_name: Option<&str>,
+    ) -> Result<(), RunError> {
+        match provider_name {
+            Some(name) => list_provider_models(name, false).await,
+            None => list_all_models(false).await,
+        }
     }
 }

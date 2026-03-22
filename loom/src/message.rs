@@ -3,6 +3,8 @@
 //! Message roles: System (usually first in the list), User, Assistant.
 //! Used by `AgentState::messages` and by agents that read/append messages in `Agent::run`.
 
+use std::borrow::Cow;
+
 /// A single message in the conversation.
 ///
 /// Roles: system prompt, user input, assistant reply.
@@ -49,6 +51,20 @@ impl Message {
             Message::User(s) => s,
             Message::Assistant(s) => s,
         }
+    }
+}
+
+/// Assistant `content` for chat-completion HTTP requests.
+///
+/// Loom stores tool rounds as a (possibly empty) assistant turn followed by user
+/// text with tool output. Providers such as OpenAI reject assistant messages whose
+/// `content` is empty when that turn did not include `tool_calls` in the same payload.
+/// A single WORD JOINER is non-empty for validators and invisible in typical UIs.
+pub(crate) fn assistant_content_for_chat_api(s: &str) -> Cow<'_, str> {
+    if s.trim().is_empty() {
+        Cow::Borrowed("\u{2060}")
+    } else {
+        Cow::Borrowed(s)
     }
 }
 
@@ -114,5 +130,13 @@ mod tests {
         assert_eq!(Message::system("sys").to_string(), "system: sys");
         assert_eq!(Message::user("usr").to_string(), "user: usr");
         assert_eq!(Message::assistant("ast").to_string(), "assistant: ast");
+    }
+
+    /// **Scenario**: empty assistant text is mapped to a non-empty placeholder for APIs.
+    #[test]
+    fn assistant_content_for_chat_api_maps_empty() {
+        assert_eq!(super::assistant_content_for_chat_api("").as_ref(), "\u{2060}");
+        assert_eq!(super::assistant_content_for_chat_api("   ").as_ref(), "\u{2060}");
+        assert_eq!(super::assistant_content_for_chat_api("hi").as_ref(), "hi");
     }
 }

@@ -11,16 +11,49 @@ description: |
   Use this when a specialized agent is better suited for the sub-task. Provide
   full context in the task parameter; the sub-agent has no memory of the current
   conversation.
+
+  Supports three modes:
+  1. Single invocation: use 'agent' and 'task' parameters
+  2. Batch concurrent invocation: use 'agents' array to run multiple agents in parallel
+     (with global concurrency control via INVOKE_AGENT_MAX_CONCURRENT env var, default: 3)
+  3. Async invocation: set 'async' to true to start agent(s) in background and return immediately
+     (useful for fire-and-forget tasks that don't need immediate results)
 input_schema:
   type: object
   properties:
     agent:
       type: string
-      description: "Agent profile name (e.g. 'dev', 'agent-builder') or path to profile directory."
+      description: "Agent profile name (e.g. 'dev', 'agent-builder') or path to profile directory. Use this for single agent invocation."
     task:
       type: string
       description: "Natural-language task to delegate. Include full context; the sub-agent has no memory of the current conversation."
     working_folder:
       type: string
       description: "Optional: override working folder for the sub-agent."
-  required: [agent, task]
+    agents:
+      type: array
+      description: "Array of agent invocations for batch concurrent execution. Each item should have 'agent', 'task', and optional 'working_folder'."
+      items:
+        type: object
+        properties:
+          agent:
+            type: string
+            description: "Agent profile name"
+          task:
+            type: string
+            description: "Task to delegate to this agent"
+          working_folder:
+            type: string
+            description: "Optional: override working folder"
+        required: [agent, task]
+    fail_fast:
+      type: boolean
+      description: "If true, stop on first error. If false (default), continue and collect all results."
+      default: false
+    async:
+      type: boolean
+      description: "If true, start agent(s) in background and return immediately without waiting for results. Useful for fire-and-forget tasks. Default: false."
+      default: false
+  oneOf:
+    - required: [agent, task]
+    - required: [agents]
