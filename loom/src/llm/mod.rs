@@ -18,6 +18,7 @@
 //! [`LlmResponse`] at the end of the turn.
 
 mod mock;
+mod model_cache;
 
 use tokio::sync::mpsc;
 
@@ -56,6 +57,7 @@ mod openai;
 pub use bigmodel::ChatBigModel;
 pub use mock::MockLlm;
 pub use openai::ChatOpenAI;
+pub use model_cache::{fetch_provider_models, ModelCache, ProviderModels};
 
 pub mod context_persistence;
 
@@ -65,6 +67,30 @@ use crate::error::AgentError;
 use crate::message::Message;
 use crate::state::ToolCall;
 use crate::stream::MessageChunk;
+
+/// Model information returned by provider's /v1/models endpoint.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelInfo {
+    /// Model identifier (e.g., "gpt-4", "claude-3-opus")
+    pub id: String,
+    /// Unix timestamp when the model was created
+    pub created: Option<i64>,
+    /// Owner/organization of the model
+    pub owned_by: Option<String>,
+}
+
+/// Capability flags for a model.
+#[derive(Debug, Clone, Default)]
+pub struct ModelCapabilities {
+    /// Supports chat completions (/v1/chat/completions)
+    pub chat_completions: bool,
+    /// Supports streaming responses
+    pub streaming: bool,
+    /// Supports function/tool calling
+    pub tools: bool,
+    /// Supports vision/image inputs
+    pub vision: bool,
+}
 
 /// Delta for one tool call from LLM streaming (for tool_call_chunk events).
 #[derive(Clone, Debug)]
@@ -162,6 +188,16 @@ pub trait LlmClient: Send + Sync {
         }
 
         Ok(response)
+    }
+
+    /// List available models from the provider's /v1/models endpoint.
+    ///
+    /// Returns a list of models available from this provider. Not all providers
+    /// support this endpoint; implementations should return an empty Vec or
+    /// an appropriate error if unsupported.
+    async fn list_models(&self) -> Result<Vec<ModelInfo>, AgentError> {
+        // Default: not supported, return empty list
+        Ok(Vec::new())
     }
 
     /// Streaming variant with tool call delta support.

@@ -10,7 +10,7 @@ pub use mcp_config::{
     discover_mcp_config_path, load_mcp_config_from_path, parse_mcp_config, McpConfigError,
     McpConfigFile, McpServerDef, McpServerEntry,
 };
-pub use xdg_toml::ProviderDef;
+pub use xdg_toml::{load_full_config, FullConfig, ProviderDef};
 
 use std::path::{Path, PathBuf};
 use thiserror::Error;

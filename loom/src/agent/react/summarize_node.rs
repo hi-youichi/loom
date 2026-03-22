@@ -14,6 +14,23 @@ use crate::message::Message;
 use crate::state::ReActState;
 use crate::Node;
 
+/// Max characters for stored session summary (matches prompt "不超过50字"; total includes "..." when truncated).
+const MAX_SUMMARY_CHARS: usize = 50;
+
+fn clamp_summary_chars(s: &str) -> String {
+    let count = s.chars().count();
+    if count <= MAX_SUMMARY_CHARS {
+        return s.to_string();
+    }
+    let ellipsis = "...";
+    let keep = MAX_SUMMARY_CHARS.saturating_sub(ellipsis.chars().count());
+    format!(
+        "{}{}",
+        s.chars().take(keep).collect::<String>(),
+        ellipsis
+    )
+}
+
 /// Node that generates a session summary after the first think.
 ///
 /// Uses a separate LLM call to create a concise summary (≤50 chars)
@@ -74,12 +91,7 @@ impl Node<ReActState> for SummarizeNode {
 
         match self.llm.invoke(&summary_messages).await {
             Ok(response) => {
-                let summary = response.content.trim().to_string();
-                let summary = if summary.len() > 60 {
-                    format!("{}...", &summary[..57])
-                } else {
-                    summary
-                };
+                let summary = clamp_summary_chars(response.content.trim());
 
                 // Update state with summary
                 let new_state = ReActState {
@@ -151,5 +163,20 @@ mod tests {
             ..Default::default()
         };
         assert!(!is_first_think(&state));
+    }
+
+    /// **Scenario**: summary clamp uses char boundaries (no panic on CJK).
+    #[test]
+    fn clamp_summary_chars_utf8_safe() {
+        // Long enough to force truncation; byte index 57 used to split inside '点' and panic.
+        let s = "确认配置文件多provider设置中，API的models端点是否用于查询所有模型。请检查多区域部署与密钥轮换策略，并验证限流与审计日志是否完整。";
+        let out = super::clamp_summary_chars(s);
+        assert!(out.chars().count() <= super::MAX_SUMMARY_CHARS);
+        assert!(out.ends_with("..."));
+    }
+
+    #[test]
+    fn clamp_summary_chars_short_unchanged() {
+        assert_eq!(super::clamp_summary_chars("hi"), "hi");
     }
 }

@@ -5,12 +5,14 @@
 
 pub mod backend;
 pub mod envelope;
+pub mod model_cmd;
 pub mod run;
 pub mod tool_cmd;
 pub mod tui;
 
 pub use backend::{LocalBackend, RunBackend, RunOutput, StreamOut};
 pub use loom::Envelope;
+pub use model_cmd::{list_all_models, list_provider_models};
 pub use run::{
     run_agent_wrapper as run_agent, RunAgentOutput, RunAgentResult, RunCmd, RunError, RunOptions,
 };

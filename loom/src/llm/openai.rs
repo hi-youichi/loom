@@ -713,6 +713,25 @@ impl LlmClient for ChatOpenAI {
             usage: stream_usage,
         })
     }
+
+    async fn list_models(&self) -> Result<Vec<crate::llm::ModelInfo>, AgentError> {
+        use async_openai::Models;
+
+        let models = Models::new(&self.client)
+            .list()
+            .await
+            .map_err(|e| AgentError::ExecutionFailed(format!("Failed to list models: {}", e)))?;
+
+        Ok(models
+            .data
+            .into_iter()
+            .map(|m| crate::llm::ModelInfo {
+                id: m.id,
+                created: Some(m.created as i64),
+                owned_by: Some(m.owned_by),
+            })
+            .collect())
+    }
 }
 
 #[cfg(test)]

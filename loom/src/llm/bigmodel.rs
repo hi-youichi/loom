@@ -1034,4 +1034,57 @@ impl LlmClient for ChatBigModel {
             usage: stream_usage,
         })
     }
+
+    async fn list_models(&self) -> Result<Vec<crate::llm::ModelInfo>, AgentError> {
+        // BigModel base URL already includes version path (e.g., /api/paas/v4)
+        // so we only append /models, not /v1/models
+        let url = format!("{}/models", self.base_url);
+        let res = self
+            .client
+            .get(&url)
+            .bearer_auth(&self.api_key)
+            .send()
+            .await
+            .map_err(|e| AgentError::ExecutionFailed(format!("list_models request failed: {}", e)))?;
+
+        if !res.status().is_success() {
+            let status = res.status();
+            let body = res.text().await.unwrap_or_default();
+            return Err(AgentError::ExecutionFailed(format!(
+                "list_models failed: {} - {}",
+                status, body
+            )));
+        }
+
+        let body = res
+            .text()
+            .await
+            .map_err(|e| AgentError::ExecutionFailed(format!("list_models read body failed: {}", e)))?;
+
+        let models_resp: ModelsResponse = serde_json::from_str(&body)
+            .map_err(|e| AgentError::ExecutionFailed(format!("list_models parse failed: {}", e)))?;
+
+        Ok(models_resp
+            .data
+            .into_iter()
+            .map(|m| crate::llm::ModelInfo {
+                id: m.id,
+                created: m.created,
+                owned_by: m.owned_by,
+            })
+            .collect())
+    }
+}
+
+/// Response from /v1/models endpoint
+#[derive(serde::Deserialize)]
+struct ModelsResponse {
+    data: Vec<ModelData>,
+}
+
+#[derive(serde::Deserialize)]
+struct ModelData {
+    id: String,
+    created: Option<i64>,
+    owned_by: Option<String>,
 }
