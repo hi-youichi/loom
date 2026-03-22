@@ -16,6 +16,8 @@ use agent_client_protocol::{
 use loom::memory::{Checkpointer, RunnableConfig, JsonSerializer, SqliteSaver};
 use loom::state::ReActState;
 use loom::message::Message;
+use loom::llm::fetch_provider_models;
+use config::load_full_config;
 use std::sync::Arc;
 use async_trait::async_trait;
 use loom::{run_agent_with_options, AnyStreamEvent, RunCmd, RunCompletion, RunError, RunOptions};
@@ -55,6 +57,54 @@ impl LoomAcpAgent {
     #[inline]
     pub fn sessions(&self) -> &SessionStore {
         &self.sessions
+    }
+
+    /// Fetch available models from all configured providers.
+    /// Returns a list of ModelOption for the ACP config_options response.
+    async fn get_available_models(&self) -> Vec<ModelOption> {
+        let config = match load_full_config("loom") {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("Failed to load config for model list: {}", e);
+                return vec![];
+            }
+        };
+
+        if config.providers.is_empty() {
+            tracing::debug!("No providers configured");
+            return vec![];
+        }
+
+        let mut all_models = vec![];
+
+        for provider in config.providers {
+            match fetch_provider_models(
+                provider.provider_type.as_deref(),
+                provider.base_url.as_deref(),
+                provider.api_key.as_deref(),
+            )
+            .await
+            {
+                Ok(models) => {
+                    for model in models {
+                        all_models.push(ModelOption {
+                            id: model.id.clone(),
+                            name: model.id,
+                        });
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        provider = %provider.name,
+                        error = %e,
+                        "Failed to fetch models from provider"
+                    );
+                    // Continue to next provider instead of failing entirely
+                }
+            }
+        }
+
+        all_models
     }
 }
 
@@ -115,9 +165,11 @@ impl Agent for LoomAcpAgent {
         let session_id = SessionId::new(our_id.as_str().to_string());
         let current_model = std::env::var("MODEL")
             .unwrap_or_else(|_| std::env::var("OPENAI_MODEL").unwrap_or_default());
-        let config_options = build_model_config_options(&current_model)
+        // Fetch available models from providers
+        let model_options = self.get_available_models().await;
+        let config_options = build_model_config_options(&current_model, &model_options)
             .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
-        Ok(NewSessionResponse::new(session_id).config_options(Some(config_options)))
+        Ok(NewSessionResponse::new(session_id).config_options(config_options))
     }
 
     async fn cancel(
@@ -149,7 +201,8 @@ impl Agent for LoomAcpAgent {
                 format!("unsupported config_id: {}", config_id_str),
             ));
         };
-        build_set_session_config_option_response(&current_model)
+        let model_options = self.get_available_models().await;
+        build_set_session_config_option_response(&current_model, &model_options)
             .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))
     }
 
@@ -525,11 +578,29 @@ fn map_run_error(e: RunError) -> agent_client_protocol::Error {
     agent_client_protocol::Error::internal_error().data(e.to_string())
 }
 
+/// Model option for ACP config dropdown.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct ModelOption {
+    /// Model identifier (e.g., "gpt-4o", "claude-3-opus")
+    id: String,
+    /// Display name for the model
+    name: String,
+}
+
 /// Build config_options array with a single "model" option (protocol types are non_exhaustive, so we construct via serde).
 /// SessionConfigOption has kind flattened; SessionConfigKind uses tag "type" → "type": "select" and SessionConfigSelect fields at top level (camelCase).
 fn build_model_config_options(
     current_model: &str,
+    model_options: &[ModelOption],
 ) -> Result<Vec<agent_client_protocol::SessionConfigOption>, serde_json::Error> {
+    // Build options array with the correct structure for SessionConfigSelectOptions::Ungrouped
+    // Each option needs "value" (not "id") and "name" fields
+    // The options field should be an array directly (ungrouped variant is untagged)
+    let options: Vec<_> = model_options
+        .iter()
+        .map(|m| serde_json::json!({ "value": &m.id, "name": &m.name }))
+        .collect();
+    
     let json = serde_json::json!([
         {
             "id": "model",
@@ -538,7 +609,7 @@ fn build_model_config_options(
             "category": "model",
             "type": "select",
             "currentValue": current_model,
-            "options": []
+            "options": options
         }
     ]);
     serde_json::from_value(json)
@@ -547,11 +618,91 @@ fn build_model_config_options(
 /// Build SetSessionConfigOptionResponse with a single "model" option (protocol types are non_exhaustive, so we construct via serde).
 fn build_set_session_config_option_response(
     current_model: &str,
+    model_options: &[ModelOption],
 ) -> Result<SetSessionConfigOptionResponse, serde_json::Error> {
-    let config_options = build_model_config_options(current_model)?;
+    let config_options = build_model_config_options(current_model, model_options)?;
     let json = serde_json::json!({
-        "config_options": config_options,
+        "configOptions": config_options,
         "meta": None::<()>
     });
     serde_json::from_value(json)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_session_config_select_option_structure() {
+        use agent_client_protocol::{SessionConfigSelectOption, SessionConfigValueId};
+        
+        let option_id = SessionConfigValueId::new("gpt-4o".to_string());
+        let select_option = SessionConfigSelectOption::new(option_id, "GPT-4o".to_string());
+        
+        let json = serde_json::to_value(&select_option).unwrap();
+        assert_eq!(json["value"], "gpt-4o");
+        assert_eq!(json["name"], "GPT-4o");
+    }
+
+    #[test]
+    fn test_build_model_config_options_populates_options() {
+        let model_options = vec![
+            ModelOption { id: "gpt-4o".to_string(), name: "GPT-4o".to_string() },
+            ModelOption { id: "gpt-4o-mini".to_string(), name: "GPT-4o Mini".to_string() },
+        ];
+        
+        let result = build_model_config_options("gpt-4o", &model_options);
+        assert!(result.is_ok(), "Expected Ok, got Err: {:?}", result.err());
+        
+        let config_options = result.unwrap();
+        assert_eq!(config_options.len(), 1);
+        
+        // Verify the JSON structure by serializing back
+        let json = serde_json::to_value(&config_options).unwrap();
+        let model_config = &json[0];
+        assert_eq!(model_config["id"], "model");
+        assert_eq!(model_config["currentValue"], "gpt-4o");
+        
+        // Check options - untagged enum means options is directly an array
+        let options = model_config["options"].as_array().expect("options should be an array");
+        assert_eq!(options.len(), 2);
+        assert_eq!(options[0]["value"], "gpt-4o");
+    }
+
+    #[test]
+    fn test_build_model_config_options_handles_empty_list() {
+        let result = build_model_config_options("", &[]);
+        assert!(result.is_ok(), "Expected Ok, got Err: {:?}", result.err());
+        
+        let config_options = result.unwrap();
+        let json = serde_json::to_value(&config_options).unwrap();
+        let options = json[0]["options"].as_array().unwrap();
+        assert!(options.is_empty());
+    }
+
+    #[test]
+    fn test_model_option_serialization() {
+        let option = ModelOption {
+            id: "claude-3-opus".to_string(),
+            name: "Claude 3 Opus".to_string(),
+        };
+        
+        let json = serde_json::to_value(&option).unwrap();
+        assert_eq!(json["id"], "claude-3-opus");
+        assert_eq!(json["name"], "Claude 3 Opus");
+    }
+
+    #[test]
+    fn test_build_set_session_config_option_response() {
+        let model_options = vec![
+            ModelOption { id: "gpt-4o".to_string(), name: "GPT-4o".to_string() },
+        ];
+        
+        let result = build_set_session_config_option_response("gpt-4o", &model_options);
+        assert!(result.is_ok());
+        
+        let response = result.unwrap();
+        let json = serde_json::to_value(&response).unwrap();
+        assert!(json["configOptions"].is_array());
+    }
 }
