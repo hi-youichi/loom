@@ -19,17 +19,12 @@
 //! # Usage
 //!
 //! ```rust,no_run
-//! use telegram_bot::{run_bots, load_config};
+//! use telegram_bot::run_bots;
 //!
 //! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Load config from ~/.loom/telegram-bot.toml
-//!     let config = load_config()?;
-//!     
-//!     // Or from custom path
-//!     // let config = load_config_from("path/to/config.toml")?;
-//!     
-//!     run_bots(config).await
+//! async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+//!     // Runs bots from ~/.loom/telegram-bot.toml
+//!     run_bots().await
 //! }
 //! ```
 

@@ -9,5 +9,5 @@ mod telegram;
 
 pub use loader::{load_config, load_from_path};
 pub use telegram::{
-    AgentConfig, BotConfig, ConfigError, Settings, TelegramBotConfig,
+    AgentConfig, BotConfig, ConfigError, Settings, StreamingConfig, TelegramBotConfig,
 };

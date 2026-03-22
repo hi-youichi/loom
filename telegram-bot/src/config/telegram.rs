@@ -139,6 +139,38 @@ pub struct Settings {
     /// Only respond when bot is mentioned (@username)
     #[serde(default)]
     pub only_respond_when_mentioned: bool,
+
+    /// Streaming display configuration
+    #[serde(default)]
+    pub streaming: StreamingConfig,
+}
+
+/// Streaming display configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamingConfig {
+    /// Maximum characters to display in Think phase (0 = unlimited)
+    #[serde(default = "default_max_think_chars")]
+    pub max_think_chars: usize,
+
+    /// Maximum characters to display in Act phase (0 = unlimited)
+    #[serde(default = "default_max_act_chars")]
+    pub max_act_chars: usize,
+
+    /// Whether to show Think phase
+    #[serde(default = "default_show_think_phase")]
+    pub show_think_phase: bool,
+
+    /// Whether to show Act phase
+    #[serde(default = "default_show_act_phase")]
+    pub show_act_phase: bool,
+
+    /// Emoji for Think messages
+    #[serde(default = "default_think_emoji")]
+    pub think_emoji: String,
+
+    /// Emoji for Act messages
+    #[serde(default = "default_act_emoji")]
+    pub act_emoji: String,
 }
 
 impl Default for Settings {
@@ -150,8 +182,46 @@ impl Default for Settings {
             polling_timeout: default_polling_timeout(),
             retry_timeout: default_retry_timeout(),
             only_respond_when_mentioned: false,
+            streaming: StreamingConfig::default(),
         }
     }
+}
+
+impl Default for StreamingConfig {
+    fn default() -> Self {
+        Self {
+            max_think_chars: default_max_think_chars(),
+            max_act_chars: default_max_act_chars(),
+            show_think_phase: default_show_think_phase(),
+            show_act_phase: default_show_act_phase(),
+            think_emoji: default_think_emoji(),
+            act_emoji: default_act_emoji(),
+        }
+    }
+}
+
+fn default_max_think_chars() -> usize {
+    500
+}
+
+fn default_max_act_chars() -> usize {
+    500
+}
+
+fn default_show_think_phase() -> bool {
+    true
+}
+
+fn default_show_act_phase() -> bool {
+    true
+}
+
+fn default_think_emoji() -> String {
+    "🤔".to_string()
+}
+
+fn default_act_emoji() -> String {
+    "⚡".to_string()
 }
 
 fn default_download_dir() -> PathBuf {
