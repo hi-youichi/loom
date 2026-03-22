@@ -316,22 +316,30 @@ pub async fn download_video(
     Ok((path, metadata))
 }
 
-/// Streaming state for multi-phase typewriter effect
-struct StreamingState {
-    /// Message ID for current phase (Think or Act)
-    current_msg_id: Option<i32>,
-    /// Text accumulated for current phase
-    current_text: String,
+/// Phase state that needs synchronous updates (uses std::sync::RwLock for sync access)
+struct PhaseState {
     /// Current phase: "think" or "act"
     current_phase: String,
     /// Think round counter
     think_count: u32,
     /// Act round counter
     act_count: u32,
+}
+
+/// Streaming state for multi-phase typewriter effect
+struct StreamingState {
+    /// Message ID for current phase (Think or Act)
+    current_msg_id: Option<i32>,
+    /// Text accumulated for current phase
+    current_text: String,
     /// Last update time for throttling
     last_update: Instant,
     /// Streaming display settings
     settings: StreamingConfig,
+    /// Current tool calls for Act phase display
+    current_tools: Vec<String>,
+    /// Length of text that has been sent (to detect pending content)
+    last_sent_length: usize,
 }
 
 /// Truncate text to max characters, adding "..." if truncated
@@ -363,13 +371,19 @@ async fn run_loom_agent_streaming(
     
     // Create shared state for multi-phase streaming
     let state = Arc::new(Mutex::new(StreamingState {
+        current_msg_id: None,
+        current_text: String::new(),
+        current_tools: Vec::new(),
+        last_update: Instant::now(),
+        last_sent_length: 0,
+        settings: settings.streaming.clone(),
+    }));
+    
+    // Phase state uses std::sync::RwLock for synchronous updates in on_event callback
+    let phase_state = Arc::new(std::sync::RwLock::new(PhaseState {
         current_phase: String::new(),
         think_count: 0,
         act_count: 0,
-        current_msg_id: None,
-        current_text: String::new(),
-        last_update: Instant::now(),
-        settings: settings.streaming.clone(),
     }));
     
     let opts = RunOptions {
@@ -393,11 +407,13 @@ async fn run_loom_agent_streaming(
     // Create event callback for multi-phase streaming
     let streaming_settings = settings.streaming.clone();
     let state_clone = state.clone();
+    let phase_state_clone = phase_state.clone();
     let bot_clone = bot.clone();
     let chat_id_clone = chat_id;
     
     let on_event = move |ev: AnyStreamEvent| {
         let state = state_clone.clone();
+        let phase_state = phase_state_clone.clone();
         let bot = bot_clone.clone();
         let chat_id = chat_id_clone;
         let settings = streaming_settings.clone();
@@ -407,18 +423,24 @@ async fn run_loom_agent_streaming(
             AnyStreamEvent::React(loom::StreamEvent::TaskStart { node_id, .. }) 
                 if node_id == "think" && settings.show_think_phase => 
             {
+                // 同步更新阶段状态
+                let think_count = {
+                    let mut ps = phase_state.write().unwrap();
+                    ps.think_count += 1;
+                    ps.current_phase = "think".to_string();
+                    ps.think_count
+                };
+                
                 let state = state.clone();
                 let bot = bot.clone();
                 let chat_id = chat_id;
                 
                 tokio::spawn(async move {
                     let mut s = state.lock().await;
-                    s.think_count += 1;
-                    s.current_phase = "think".to_string();
                     
                     // 发送新的 Think 消息
                     let emoji = &s.settings.think_emoji;
-                    let header = format!("{} Think #{}", emoji, s.think_count);
+                    let header = format!("{} Think #{}", emoji, think_count);
                     if let Ok(msg) = bot.send_message(chat_id, &header).await {
                         s.current_msg_id = Some(msg.id.0);
                         s.current_text = header;
@@ -431,18 +453,40 @@ async fn run_loom_agent_streaming(
             AnyStreamEvent::React(loom::StreamEvent::TaskStart { node_id, .. }) 
                 if node_id == "act" && settings.show_act_phase =>
             {
+                // 同步更新阶段状态
+                let (act_count, prev_phase) = {
+                    let mut ps = phase_state.write().unwrap();
+                    let prev = ps.current_phase.clone();
+                    ps.act_count += 1;
+                    ps.current_phase = "act".to_string();
+                    (ps.act_count, prev)
+                };
+                
                 let state = state.clone();
                 let bot = bot.clone();
                 let chat_id = chat_id;
                 
                 tokio::spawn(async move {
                     let mut s = state.lock().await;
-                    s.act_count += 1;
-                    s.current_phase = "act".to_string();
+                    
+                    // 先更新 Think 阶段的最终内容（如果之前是 Think 阶段）
+                    if prev_phase == "think" && s.settings.show_think_phase {
+                        if let Some(msg_id) = s.current_msg_id {
+                            let display_text = truncate_text(&s.current_text, s.settings.max_think_chars);
+                            let _ = bot.edit_message_text(
+                                chat_id, 
+                                teloxide::types::MessageId(msg_id), 
+                                &display_text
+                            ).await;
+                        }
+                    }
+                    
+                    // 清空工具列表，准备新的 Act 阶段
+                    s.current_tools.clear();
                     
                     // 发送新的 Act 消息
                     let emoji = &s.settings.act_emoji;
-                    let header = format!("{} Act #{}", emoji, s.act_count);
+                    let header = format!("{} Act #{}", emoji, act_count);
                     if let Ok(msg) = bot.send_message(chat_id, &header).await {
                         s.current_msg_id = Some(msg.id.0);
                         s.current_text = header;
@@ -451,7 +495,8 @@ async fn run_loom_agent_streaming(
                 });
             }
             
-            // Think 阶段：显示思考内容
+            // Think 阶段：显示思考内容（包括 Thinking 和 Message 类型的 chunk）
+            // 注意：某些 LLM 只返回 content，不返回 reasoning_content
             AnyStreamEvent::React(loom::StreamEvent::Messages { chunk, .. }) => {
                 let state = state.clone();
                 let bot = bot.clone();
@@ -460,11 +505,14 @@ async fn run_loom_agent_streaming(
                 // 克隆需要的数据以满足 'static 生命周期要求
                 let content = chunk.content.clone();
                 
+                // 在 spawn 之前读取阶段状态
+                let current_phase = phase_state.read().unwrap().current_phase.clone();
+                
                 tokio::spawn(async move {
                     let mut s = state.lock().await;
                     
                     // 只在 Think 阶段处理
-                    if s.current_phase != "think" || !s.settings.show_think_phase {
+                    if current_phase != "think" || !s.settings.show_think_phase {
                         return;
                     }
                     
@@ -488,10 +536,110 @@ async fn run_loom_agent_streaming(
                         ).await;
                     }
                     s.last_update = Instant::now();
+                    s.last_sent_length = s.current_text.len();
                 });
             }
             
-            // Act 阶段：显示工具调用和结果
+            // 工具开始执行（实时）
+            AnyStreamEvent::React(loom::StreamEvent::ToolStart { name, .. }) 
+                if settings.show_act_phase =>
+            {
+                let state = state.clone();
+                let bot = bot.clone();
+                let chat_id = chat_id;
+                let tool_name = name.clone();
+                
+                // 在 spawn 之前读取阶段状态
+                let current_phase = phase_state.read().unwrap().current_phase.clone();
+                
+                tokio::spawn(async move {
+                    let mut s = state.lock().await;
+                    
+                    // 只在 Act 阶段处理
+                    if current_phase != "act" {
+                        return;
+                    }
+                    
+                    // 添加工具调用到显示
+                    s.current_tools.push(format!("🔧 {}...", tool_name));
+                    
+                    // Throttle: at most every 300ms
+                    if s.last_update.elapsed() < Duration::from_millis(300) {
+                        return;
+                    }
+                    
+                    // 构建显示文本
+                    let display_text = s.current_tools.join("\n");
+                    let final_text = truncate_text(&display_text, s.settings.max_act_chars);
+                    
+                    // 更新消息
+                    if let Some(msg_id) = s.current_msg_id {
+                        let _ = bot.edit_message_text(
+                            chat_id, 
+                            teloxide::types::MessageId(msg_id), 
+                            &final_text
+                        ).await;
+                    }
+                    s.last_update = Instant::now();
+                    s.last_sent_length = display_text.len();
+                });
+            }
+            
+            // 工具执行完成（实时）
+            AnyStreamEvent::React(loom::StreamEvent::ToolEnd { name, is_error, .. }) 
+                if settings.show_act_phase =>
+            {
+                let state = state.clone();
+                let bot = bot.clone();
+                let chat_id = chat_id;
+                let tool_name = name.clone();
+                let error = *is_error;
+                
+                // 在 spawn 之前读取阶段状态
+                let current_phase = phase_state.read().unwrap().current_phase.clone();
+                
+                tokio::spawn(async move {
+                    let mut s = state.lock().await;
+                    
+                    // 只在 Act 阶段处理
+                    if current_phase != "act" {
+                        return;
+                    }
+                    
+                    // 更新工具状态：将 "🔧 xxx..." 替换为 "✅ xxx" 或 "❌ xxx"
+                    let status = if error { "❌" } else { "✅" };
+                    let completed = format!("{} {}", status, tool_name);
+                    
+                    // 查找并替换对应的 "🔧 xxx..." 条目
+                    if let Some(pos) = s.current_tools.iter().position(|t| t.starts_with(&format!("🔧 {}...", tool_name))) {
+                        s.current_tools[pos] = completed;
+                    } else {
+                        // 如果没找到，直接添加
+                        s.current_tools.push(completed);
+                    }
+                    
+                    // Throttle: at most every 300ms
+                    if s.last_update.elapsed() < Duration::from_millis(300) {
+                        return;
+                    }
+                    
+                    // 构建显示文本
+                    let display_text = s.current_tools.join("\n");
+                    let final_text = truncate_text(&display_text, s.settings.max_act_chars);
+                    
+                    // 更新消息
+                    if let Some(msg_id) = s.current_msg_id {
+                        let _ = bot.edit_message_text(
+                            chat_id, 
+                            teloxide::types::MessageId(msg_id), 
+                            &final_text
+                        ).await;
+                    }
+                    s.last_update = Instant::now();
+                });
+            }
+            
+            // Act 阶段：显示工具调用和结果（通过 Updates 事件，作为备用）
             AnyStreamEvent::React(loom::StreamEvent::Updates { state: react_state, .. }) => {
                 let state = state.clone();
                 let bot = bot.clone();
@@ -501,11 +649,14 @@ async fn run_loom_agent_streaming(
                 let tool_calls = react_state.tool_calls.clone();
                 let tool_results = react_state.tool_results.clone();
                 
+                // 在 spawn 之前读取阶段状态
+                let current_phase = phase_state.read().unwrap().current_phase.clone();
+                
                 tokio::spawn(async move {
                     let mut s = state.lock().await;
                     
-                    // 只在 Act 阶段处理
-                    if s.current_phase != "act" || !s.settings.show_act_phase {
+                    // 只在 Act 阶段处理，且 current_tools 为空时才使用 Updates 数据
+                    if current_phase != "act" || !s.settings.show_act_phase || !s.current_tools.is_empty() {
                         return;
                     }
                     
@@ -514,7 +665,7 @@ async fn run_loom_agent_streaming(
                         return;
                     }
                     
-                    // 构建工具调用显示文本
+                    // 构建工具调用显示文本（仅在没有实时事件时使用）
                     let mut display_parts = Vec::new();
                     for tc in &tool_calls {
                         display_parts.push(format!("🔧 {}", tc.name));
@@ -547,6 +698,38 @@ async fn run_loom_agent_streaming(
     // Run the agent with streaming callback
     let result = run_agent_with_options(&opts, &RunCmd::React, Some(Box::new(on_event))).await;
     
+    // Send any remaining unsent content (fix for throttle-induced content loss)
+    {
+        let mut s = state.lock().await;
+        let has_unsent = s.current_text.len() > s.last_sent_length;
+        
+        if has_unsent {
+            // Determine which phase we're in and get appropriate settings
+            let current_phase = phase_state.read().unwrap().current_phase.clone();
+            let (max_chars, show_phase) = if current_phase == "think" {
+                (s.settings.max_think_chars, s.settings.show_think_phase)
+            } else {
+                (s.settings.max_act_chars, s.settings.show_act_phase)
+            };
+            
+            if show_phase {
+                let display_text = truncate_text(&s.current_text, max_chars);
+                
+                if let Some(msg_id) = s.current_msg_id {
+                    let _ = bot.edit_message_text(
+                        chat_id, 
+                        teloxide::types::MessageId(msg_id), 
+                        &display_text
+                    ).await;
+                    tracing::debug!("Sent final unsent content: {} chars", 
+                        s.current_text.len() - s.last_sent_length);
+                }
+            }
+            
+            s.last_sent_length = s.current_text.len();
+        }
+    }
+    
     // Get final text
     let final_state = state.lock().await;
     let final_text = final_state.current_text.clone();
@@ -570,6 +753,19 @@ fn is_bot_mentioned(msg: &Message, bot_username: &str) -> bool {
         return text.to_lowercase().contains(&mention);
     }
 
+    false
+}
+
+/// Check if the message is a reply to the bot
+fn is_reply_to_bot(msg: &Message, bot_username: &str) -> bool {
+    if let Some(replied_msg) = msg.reply_to_message() {
+        // Check if replied message is from the bot
+        if let Some(from) = &replied_msg.from {
+            if let Some(username) = &from.username {
+                return username.to_lowercase() == bot_username.to_lowercase();
+            }
+        }
+    }
     false
 }
 
@@ -610,8 +806,11 @@ pub async fn default_handler(
             if let Some(text) = msg.text() {
                 tracing::info!("Text: {}", text);
                 
-                if settings.only_respond_when_mentioned && !is_bot_mentioned(&msg, &bot_username) {
-                    tracing::debug!("Ignoring message (bot not mentioned)");
+                // Check if we should respond: mention OR reply to bot
+                let should_respond = is_bot_mentioned(&msg, &bot_username) || is_reply_to_bot(&msg, &bot_username);
+                
+                if settings.only_respond_when_mentioned && !should_respond {
+                    tracing::debug!("Ignoring message (bot not mentioned and not a reply)");
                     return Ok(());
                 }
 

@@ -8,6 +8,21 @@ download_dir = "downloads"
 # 日志级别: trace, debug, info, warn, error
 log_level = "info"
 
+# 流式显示配置
+[settings.streaming]
+# Think 阶段最大显示字符数 (0 = 无限制)
+max_think_chars = 500
+# Act 阶段最大显示字符数 (0 = 无限制)
+max_act_chars = 500
+# 是否显示 Think 阶段
+show_think_phase = true
+# 是否显示 Act 阶段
+show_act_phase = true
+# Think 消息的 emoji
+think_emoji = "🤔"
+# Act 消息的 emoji
+act_emoji = "⚡"
+
 # 机器人配置
 # 每个机器人需要一个唯一的名称
 [bots.assistant]
