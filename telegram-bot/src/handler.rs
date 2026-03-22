@@ -3,15 +3,12 @@
 //! This module provides flexible message handling using teloxide's dptree system.
 
 use crate::config::{Settings, StreamingConfig};
-use loom::{
-    run_agent_with_options, RunOptions, RunCmd, RunCompletion, AnyStreamEvent,
-};
 use std::sync::Arc;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use tokio::sync::Mutex;
+use tokio::sync::mpsc;
 use teloxide::prelude::*;
-use teloxide::types::{Message, MessageKind, PhotoSize, Document, Video, ReplyParameters, MessageId};
+use teloxide::types::{Message, MessageKind, PhotoSize, Document, Video, MessageId};
 use teloxide::net::Download;
 use tokio::fs;
 use serde::{Deserialize, Serialize};
@@ -316,6 +313,265 @@ pub async fn download_video(
     Ok((path, metadata))
 }
 
+// ============================================================================
+// Message Queue Architecture (Phase 3 - Long-term solution)
+// ============================================================================
+
+/// Commands for the message handler
+enum StreamCommand {
+    /// Start a new Think phase
+    StartThink { think_count: u32 },
+    /// Start a new Act phase  
+    StartAct { act_count: u32 },
+    /// Add content to current Think message
+    ThinkContent { content: String },
+    /// Tool started executing
+    ToolStart { name: String },
+    /// Tool finished executing
+    ToolEnd { name: String, result: String, is_error: bool },
+    /// Flush any remaining content (end of stream)
+    Flush,
+}
+
+/// State for the message handler
+struct MessageState {
+    /// Current message ID
+    msg_id: Option<i32>,
+    /// Current phase ("think" or "act")
+    phase: String,
+    /// Accumulated text for Think phase
+    think_text: String,
+    /// Tool calls for Act phase
+    tools: Vec<String>,
+    /// Last sent length (for detecting pending content)
+    last_sent_length: usize,
+    /// Last update time (for throttling)
+    last_update: Instant,
+    /// Streaming settings
+    settings: StreamingConfig,
+}
+
+impl MessageState {
+    fn new(settings: StreamingConfig) -> Self {
+        Self {
+            msg_id: None,
+            phase: String::new(),
+            think_text: String::new(),
+            tools: Vec::new(),
+            last_sent_length: 0,
+            last_update: Instant::now(),
+            settings,
+        }
+    }
+    
+    /// Check if we should update the message (throttle)
+    fn should_update(&self, min_interval_ms: u64) -> bool {
+        self.last_update.elapsed() >= Duration::from_millis(min_interval_ms)
+    }
+    
+    /// Flush remaining content and return true if there was anything to flush
+    fn has_pending_content(&self) -> bool {
+        if self.phase == "think" {
+            self.think_text.len() > self.last_sent_length
+        } else {
+            !self.tools.is_empty()
+        }
+    }
+}
+
+/// Single-consumer message handler that processes stream commands sequentially.
+/// This eliminates race conditions and ensures all messages are sent in order.
+async fn stream_message_handler(
+    mut rx: mpsc::Receiver<StreamCommand>,
+    bot: Bot,
+    chat_id: teloxide::types::ChatId,
+    settings: StreamingConfig,
+) {
+    let mut state = MessageState::new(settings);
+    
+    while let Some(cmd) = rx.recv().await {
+        match cmd {
+            StreamCommand::StartThink { think_count } => {
+                // Flush any previous phase content first
+                if state.has_pending_content() && state.msg_id.is_some() {
+                    if state.phase == "act" {
+                        let display = state.tools.join("\n");
+                        let text = truncate_text(&display, state.settings.max_act_chars);
+                        if let Some(msg_id) = state.msg_id {
+                            let _ = bot.edit_message_text(
+                                chat_id,
+                                MessageId(msg_id),
+                                &text,
+                            ).await;
+                        }
+                    } else if state.phase == "think" {
+                        let text = truncate_text(&state.think_text, state.settings.max_think_chars);
+                        if let Some(msg_id) = state.msg_id {
+                            let _ = bot.edit_message_text(
+                                chat_id,
+                                MessageId(msg_id),
+                                &text,
+                            ).await;
+                        }
+                    }
+                }
+                
+                // Start new Think phase
+                if state.settings.show_think_phase {
+                    let header = format!("{} Think #{}\n\n", state.settings.think_emoji, think_count);
+                    if let Ok(msg) = bot.send_message(chat_id, &header).await {
+                        state.msg_id = Some(msg.id.0);
+                        state.phase = "think".to_string();
+                        state.think_text = header.clone();
+                        state.last_sent_length = header.len();
+                        state.last_update = Instant::now();
+                    }
+                }
+            }
+            
+            StreamCommand::StartAct { act_count } => {
+                // Flush Think phase content
+                if state.phase == "think" && state.think_text.len() > state.last_sent_length {
+                    let text = truncate_text(&state.think_text, state.settings.max_think_chars);
+                    if let Some(msg_id) = state.msg_id {
+                        let _ = bot.edit_message_text(
+                            chat_id,
+                            MessageId(msg_id),
+                            &text,
+                        ).await;
+                    }
+                }
+                
+                // Start new Act phase
+                if state.settings.show_act_phase {
+                    let header = format!("{} Act #{}\n\n", state.settings.act_emoji, act_count);
+                    if let Ok(msg) = bot.send_message(chat_id, &header).await {
+                        state.msg_id = Some(msg.id.0);
+                        state.phase = "act".to_string();
+                        state.tools.clear();
+                        state.last_sent_length = 0;
+                        state.last_update = Instant::now();
+                    }
+                }
+            }
+            
+            StreamCommand::ThinkContent { content } => {
+                if state.phase != "think" || !state.settings.show_think_phase {
+                    continue;
+                }
+                
+                state.think_text.push_str(&content);
+                
+                // Throttle: update at most every 500ms
+                if state.should_update(500) {
+                    let text = truncate_text(&state.think_text, state.settings.max_think_chars);
+                    if let Some(msg_id) = state.msg_id {
+                        let _ = bot.edit_message_text(
+                            chat_id,
+                            MessageId(msg_id),
+                            &text,
+                        ).await;
+                    }
+                    state.last_sent_length = state.think_text.len();
+                    state.last_update = Instant::now();
+                }
+            }
+            
+            StreamCommand::ToolStart { name } => {
+                if state.phase != "act" || !state.settings.show_act_phase {
+                    continue;
+                }
+                
+                state.tools.push(format!("🔧 {}...", name));
+                
+                // Throttle: update at most every 300ms
+                if state.should_update(300) {
+                    let display = state.tools.join("\n");
+                    let text = truncate_text(&display, state.settings.max_act_chars);
+                    if let Some(msg_id) = state.msg_id {
+                        let _ = bot.edit_message_text(
+                            chat_id,
+                            MessageId(msg_id),
+                            &text,
+                        ).await;
+                    }
+                    state.last_update = Instant::now();
+                }
+            }
+            
+            StreamCommand::ToolEnd { name, result, is_error } => {
+                if state.phase != "act" || !state.settings.show_act_phase {
+                    continue;
+                }
+                
+                // Update tool status
+                let status = if is_error { "❌" } else { "✅" };
+                let truncated_result = if result.len() > 200 {
+                    format!("{}...", &result[..200])
+                } else {
+                    result.clone()
+                };
+                let single_line = truncated_result.replace('\n', "\\n").replace('\r', "");
+                let completed = format!("{} {}: {}", status, name, single_line);
+                
+                // Replace or add
+                if let Some(pos) = state.tools.iter().position(|t| t.starts_with(&format!("🔧 {}...", name))) {
+                    state.tools[pos] = completed;
+                } else {
+                    state.tools.push(completed);
+                }
+                
+                // Throttle: update at most every 300ms
+                if state.should_update(300) {
+                    let display = state.tools.join("\n");
+                    let text = truncate_text(&display, state.settings.max_act_chars);
+                    if let Some(msg_id) = state.msg_id {
+                        let _ = bot.edit_message_text(
+                            chat_id,
+                            MessageId(msg_id),
+                            &text,
+                        ).await;
+                    }
+                    state.last_update = Instant::now();
+                }
+            }
+            
+            StreamCommand::Flush => {
+                // Send any remaining content
+                if state.phase == "think" && state.think_text.len() > state.last_sent_length {
+                    let text = truncate_text(&state.think_text, state.settings.max_think_chars);
+                    if let Some(msg_id) = state.msg_id {
+                        let _ = bot.edit_message_text(
+                            chat_id,
+                            MessageId(msg_id),
+                            &text,
+                        ).await;
+                        tracing::debug!("Flushed {} chars of think content", 
+                            state.think_text.len() - state.last_sent_length);
+                    }
+                } else if state.phase == "act" && !state.tools.is_empty() {
+                    let display = state.tools.join("\n");
+                    let text = truncate_text(&display, state.settings.max_act_chars);
+                    if let Some(msg_id) = state.msg_id {
+                        let _ = bot.edit_message_text(
+                            chat_id,
+                            MessageId(msg_id),
+                            &text,
+                        ).await;
+                        tracing::debug!("Flushed {} tools", state.tools.len());
+                    }
+                }
+            }
+        }
+    }
+    
+    tracing::debug!("Message handler stopped");
+}
+
+// ============================================================================
+// Legacy structures (will be removed after migration)
+// ============================================================================
+
 /// Phase state that needs synchronous updates (uses std::sync::RwLock for sync access)
 struct PhaseState {
     /// Current phase: "think" or "act"
@@ -353,408 +609,12 @@ fn truncate_text(text: &str, max_chars: usize) -> String {
     }
 }
 
-/// Run Loom agent with streaming support (multi-phase: Think/Act)
-///
-/// Note: `reply_to` is currently unused. In multi-phase mode, each phase sends
-/// a new message. TODO: Consider using reply_to for the first Think message.
-async fn run_loom_agent_streaming(
-    message: &str,
-    chat_id: i64,
-    bot: Bot,
-    reply_to: Option<i32>,
-    settings: &Settings,
-) -> Result<String, String> {
-    tracing::info!("Running Loom agent (streaming) for chat {}", chat_id);
-    
-    let thread_id = format!("telegram_{}", chat_id);
-    let chat_id = teloxide::types::ChatId(chat_id);
-    
-    // Create shared state for multi-phase streaming
-    let state = Arc::new(Mutex::new(StreamingState {
-        current_msg_id: None,
-        current_text: String::new(),
-        current_tools: Vec::new(),
-        last_update: Instant::now(),
-        last_sent_length: 0,
-        settings: settings.streaming.clone(),
-    }));
-    
-    // Phase state uses std::sync::RwLock for synchronous updates in on_event callback
-    let phase_state = Arc::new(std::sync::RwLock::new(PhaseState {
-        current_phase: String::new(),
-        think_count: 0,
-        act_count: 0,
-    }));
-    
-    let opts = RunOptions {
-        message: message.to_string(),
-        thread_id: Some(thread_id),
-        working_folder: Some(PathBuf::from(".")),
-        session_id: None,
-        role_file: None,
-        agent: None,
-        verbose: false,
-        got_adaptive: false,
-        display_max_len: 2000,
-        output_json: false,
-        model: None,
-        mcp_config_path: None,
-        cancellation: None,
-        output_timestamp: false,
-        dry_run: false,
-    };
-    
-    // Create event callback for multi-phase streaming
-    let streaming_settings = settings.streaming.clone();
-    let state_clone = state.clone();
-    let phase_state_clone = phase_state.clone();
-    let bot_clone = bot.clone();
-    let chat_id_clone = chat_id;
-    
-    let on_event = move |ev: AnyStreamEvent| {
-        let state = state_clone.clone();
-        let phase_state = phase_state_clone.clone();
-        let bot = bot_clone.clone();
-        let chat_id = chat_id_clone;
-        let settings = streaming_settings.clone();
-        
-        match &ev {
-            // ThinkNode 开始
-            AnyStreamEvent::React(loom::StreamEvent::TaskStart { node_id, .. }) 
-                if node_id == "think" && settings.show_think_phase => 
-            {
-                // 同步更新阶段状态
-                let think_count = {
-                    let mut ps = phase_state.write().unwrap();
-                    ps.think_count += 1;
-                    ps.current_phase = "think".to_string();
-                    ps.think_count
-                };
-                
-                let state = state.clone();
-                let bot = bot.clone();
-                let chat_id = chat_id;
-                
-                tokio::spawn(async move {
-                    let mut s = state.lock().await;
-                    
-                    // 发送新的 Think 消息
-                    let emoji = &s.settings.think_emoji;
-                    let header = format!("{} Think #{}\n\n", emoji, think_count);
-                    if let Ok(msg) = bot.send_message(chat_id, &header).await {
-                        s.current_msg_id = Some(msg.id.0);
-                        s.current_text = header;
-                        s.last_update = Instant::now();
-                    }
-                });
-            }
-            
-            // ActNode 开始
-            AnyStreamEvent::React(loom::StreamEvent::TaskStart { node_id, .. }) 
-                if node_id == "act" && settings.show_act_phase =>
-            {
-                // 同步更新阶段状态
-                let (act_count, prev_phase) = {
-                    let mut ps = phase_state.write().unwrap();
-                    let prev = ps.current_phase.clone();
-                    ps.act_count += 1;
-                    ps.current_phase = "act".to_string();
-                    (ps.act_count, prev)
-                };
-                
-                let state = state.clone();
-                let bot = bot.clone();
-                let chat_id = chat_id;
-                
-                tokio::spawn(async move {
-                    let mut s = state.lock().await;
-                    
-                    // 先更新 Think 阶段的最终内容（如果之前是 Think 阶段）
-                    if prev_phase == "think" && s.settings.show_think_phase {
-                        if let Some(msg_id) = s.current_msg_id {
-                            let display_text = truncate_text(&s.current_text, s.settings.max_think_chars);
-                            let _ = bot.edit_message_text(
-                                chat_id, 
-                                teloxide::types::MessageId(msg_id), 
-                                &display_text
-                            ).await;
-                        }
-                    }
-                    
-                    // 清空工具列表，准备新的 Act 阶段
-                    s.current_tools.clear();
-                    
-                    // 发送新的 Act 消息
-                    let emoji = &s.settings.act_emoji;
-                    let header = format!("{} Act #{}\n", emoji, act_count);
-                    if let Ok(msg) = bot.send_message(chat_id, &header).await {
-                        s.current_msg_id = Some(msg.id.0);
-                        s.current_text = header;
-                        s.last_update = Instant::now();
-                    }
-                });
-            }
-            
-            // Think 阶段：显示思考内容（包括 Thinking 和 Message 类型的 chunk）
-            // 注意：某些 LLM 只返回 content，不返回 reasoning_content
-            AnyStreamEvent::React(loom::StreamEvent::Messages { chunk, .. }) => {
-                let state = state.clone();
-                let bot = bot.clone();
-                let chat_id = chat_id;
-                
-                // 克隆需要的数据以满足 'static 生命周期要求
-                let content = chunk.content.clone();
-                
-                // 在 spawn 之前读取阶段状态
-                let current_phase = phase_state.read().unwrap().current_phase.clone();
-                
-                tokio::spawn(async move {
-                    let mut s = state.lock().await;
-                    
-                    // 只在 Think 阶段处理
-                    if current_phase != "think" || !s.settings.show_think_phase {
-                        return;
-                    }
-                    
-                    // 添加内容
-                    s.current_text.push_str(&content);
-                    
-                    // Throttle: at most every 500ms
-                    if s.last_update.elapsed() < Duration::from_millis(500) {
-                        return;
-                    }
-                    
-                    // 截断显示
-                    let display_text = truncate_text(&s.current_text, s.settings.max_think_chars);
-                    
-                    // 更新消息
-                    if let Some(msg_id) = s.current_msg_id {
-                        let _ = bot.edit_message_text(
-                            chat_id, 
-                            teloxide::types::MessageId(msg_id), 
-                            &display_text
-                        ).await;
-                    }
-                    s.last_update = Instant::now();
-                    s.last_sent_length = s.current_text.len();
-                });
-            }
-            
-            // 工具开始执行（实时）
-            AnyStreamEvent::React(loom::StreamEvent::ToolStart { name, .. }) 
-                if settings.show_act_phase =>
-            {
-                let state = state.clone();
-                let bot = bot.clone();
-                let chat_id = chat_id;
-                let tool_name = name.clone();
-                
-                // 在 spawn 之前读取阶段状态
-                let current_phase = phase_state.read().unwrap().current_phase.clone();
-                
-                tokio::spawn(async move {
-                    let mut s = state.lock().await;
-                    
-                    // 只在 Act 阶段处理
-                    if current_phase != "act" {
-                        return;
-                    }
-                    
-                    // 添加工具调用到显示
-                    s.current_tools.push(format!("🔧 {}...", tool_name));
-                    
-                    // Throttle: at most every 300ms
-                    if s.last_update.elapsed() < Duration::from_millis(300) {
-                        return;
-                    }
-                    
-                    // 构建显示文本
-                    let display_text = s.current_tools.join("\n");
-                    let final_text = truncate_text(&display_text, s.settings.max_act_chars);
-                    
-                    // 更新消息
-                    if let Some(msg_id) = s.current_msg_id {
-                        let _ = bot.edit_message_text(
-                            chat_id, 
-                            teloxide::types::MessageId(msg_id), 
-                            &final_text
-                        ).await;
-                    }
-                    s.last_update = Instant::now();
-                    s.last_sent_length = display_text.len();
-                });
-            }
-            
-            // 工具执行完成（实时）
-            AnyStreamEvent::React(loom::StreamEvent::ToolEnd { name, result, is_error, .. }) 
-                if settings.show_act_phase =>
-            {
-                let state = state.clone();
-                let bot = bot.clone();
-                let chat_id = chat_id;
-                let tool_name = name.clone();
-                let tool_result = result.clone();
-                let error = *is_error;
-                
-                // 在 spawn 之前读取阶段状态
-                let current_phase = phase_state.read().unwrap().current_phase.clone();
-                
-                tokio::spawn(async move {
-                    let mut s = state.lock().await;
-                    
-                    // 只在 Act 阶段处理
-                    if current_phase != "act" {
-                        return;
-                    }
-                    
-                    // 更新工具状态：将 "🔧 xxx..." 替换为完整结果
-                    let status = if error { "❌" } else { "✅" };
-                    
-                    // 截断结果显示（最多200字符）
-                    let truncated_result = if tool_result.len() > 200 {
-                        format!("{}...", &tool_result[..200])
-                    } else {
-                        tool_result.clone()
-                    };
-                    
-                    // 转义换行符，保持单行显示
-                    let single_line_result = truncated_result
-                        .replace('\n', "\\n")
-                        .replace('\r', "");
-                    
-                    let completed = format!("{} {}: {}", status, tool_name, single_line_result);
-                    
-                    // 查找并替换对应的 "🔧 xxx..." 条目
-                    if let Some(pos) = s.current_tools.iter().position(|t| t.starts_with(&format!("🔧 {}...", tool_name))) {
-                        s.current_tools[pos] = completed;
-                    } else {
-                        // 如果没找到，直接添加
-                        s.current_tools.push(completed);
-                    }
-                    
-                    // Throttle: at most every 300ms
-                    if s.last_update.elapsed() < Duration::from_millis(300) {
-                        return;
-                    }
-                    
-                    // 构建显示文本
-                    let display_text = s.current_tools.join("\n");
-                    let final_text = truncate_text(&display_text, s.settings.max_act_chars);
-                    
-                    // 更新消息
-                    if let Some(msg_id) = s.current_msg_id {
-                        let _ = bot.edit_message_text(
-                            chat_id, 
-                            teloxide::types::MessageId(msg_id), 
-                            &final_text
-                        ).await;
-                    }
-                    s.last_update = Instant::now();
-                });
-            }
-            
-            // Act 阶段：显示工具调用和结果（通过 Updates 事件，作为备用）
-            AnyStreamEvent::React(loom::StreamEvent::Updates { state: react_state, .. }) => {
-                let state = state.clone();
-                let bot = bot.clone();
-                let chat_id = chat_id;
-                
-                // 克隆需要的数据以满足 'static 生命周期要求
-                let tool_calls = react_state.tool_calls.clone();
-                let tool_results = react_state.tool_results.clone();
-                
-                // 在 spawn 之前读取阶段状态
-                let current_phase = phase_state.read().unwrap().current_phase.clone();
-                
-                tokio::spawn(async move {
-                    let mut s = state.lock().await;
-                    
-                    // 只在 Act 阶段处理，且 current_tools 为空时才使用 Updates 数据
-                    if current_phase != "act" || !s.settings.show_act_phase || !s.current_tools.is_empty() {
-                        return;
-                    }
-                    
-                    // Throttle: at most every 500ms
-                    if s.last_update.elapsed() < Duration::from_millis(500) {
-                        return;
-                    }
-                    
-                    // 构建工具调用显示文本（仅在没有实时事件时使用）
-                    let mut display_parts = Vec::new();
-                    for tc in &tool_calls {
-                        display_parts.push(format!("🔧 {}", tc.name));
-                    }
-                    for tr in &tool_results {
-                        let status = if tr.is_error { "❌" } else { "✅" };
-                        display_parts.push(format!("{} {}", status, tr.name.as_deref().unwrap_or("unknown")));
-                    }
-                    let display_text = display_parts.join("\n");
-                    
-                    // 截断总长度
-                    let final_text = truncate_text(&display_text, s.settings.max_act_chars);
-                    
-                    // 更新消息
-                    if let Some(msg_id) = s.current_msg_id {
-                        let _ = bot.edit_message_text(
-                            chat_id, 
-                            teloxide::types::MessageId(msg_id), 
-                            &final_text
-                        ).await;
-                    }
-                    s.last_update = Instant::now();
-                });
-            }
-            
-            _ => {}
-        }
-    };
-    
-    // Run the agent with streaming callback
-    let result = run_agent_with_options(&opts, &RunCmd::React, Some(Box::new(on_event))).await;
-    
-    // Send any remaining unsent content (fix for throttle-induced content loss)
-    {
-        let mut s = state.lock().await;
-        let has_unsent = s.current_text.len() > s.last_sent_length;
-        
-        if has_unsent {
-            // Determine which phase we're in and get appropriate settings
-            let current_phase = phase_state.read().unwrap().current_phase.clone();
-            let (max_chars, show_phase) = if current_phase == "think" {
-                (s.settings.max_think_chars, s.settings.show_think_phase)
-            } else {
-                (s.settings.max_act_chars, s.settings.show_act_phase)
-            };
-            
-            if show_phase {
-                let display_text = truncate_text(&s.current_text, max_chars);
-                
-                if let Some(msg_id) = s.current_msg_id {
-                    let _ = bot.edit_message_text(
-                        chat_id, 
-                        teloxide::types::MessageId(msg_id), 
-                        &display_text
-                    ).await;
-                    tracing::debug!("Sent final unsent content: {} chars", 
-                        s.current_text.len() - s.last_sent_length);
-                }
-            }
-            
-            s.last_sent_length = s.current_text.len();
-        }
-    }
-    
-    // Get final text
-    let final_state = state.lock().await;
-    let final_text = final_state.current_text.clone();
-    drop(final_state);
-    
-    match result {
-        Ok(RunCompletion::Finished(_)) => Ok(final_text),
-        Ok(RunCompletion::Cancelled) => Err("Agent run was cancelled".to_string()),
-        Err(e) => Err(format!("Agent error: {}", e)),
-    }
-}
+
+// ============================================================================
+// Streaming function - imported from handler_new module
+// Uses message queue to ensure updates are processed in order (no race conditions)
+// ============================================================================
+use crate::handler_new::run_loom_agent_streaming;
 
 /// Reset a session by deleting all checkpoints
 fn reset_session(thread_id: &str) -> Result<usize, String> {

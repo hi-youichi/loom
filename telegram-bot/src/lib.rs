@@ -31,6 +31,7 @@
 mod bot;
 mod config;
 mod handler;
+mod handler_new;
 
 // Re-export config types
 pub mod bot_config {
