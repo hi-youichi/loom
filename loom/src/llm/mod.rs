@@ -19,6 +19,7 @@
 
 mod mock;
 mod model_cache;
+mod model_registry;
 
 use tokio::sync::mpsc;
 
@@ -58,6 +59,7 @@ pub use bigmodel::ChatBigModel;
 pub use mock::MockLlm;
 pub use openai::ChatOpenAI;
 pub use model_cache::{fetch_provider_models, ModelCache, ProviderModels};
+pub use model_registry::{create_llm_client, ModelEntry, ModelRegistry, ProviderConfig};
 
 pub mod context_persistence;
 

@@ -7,9 +7,9 @@ mod agent;
 mod profile;
 
 pub use agent::{
-    run_agent, run_agent_with_llm_override, run_agent_with_options, ActiveOperation,
-    ActiveOperationCanceller, ActiveOperationKind, AgentRunResult, AnyRunner, AnyStreamEvent,
-    RunCancellation, RunCmd, RunCompletion, RunError, RunOptions,
+    run_agent, run_agent_with_llm_override, run_agent_with_options, run_agent_with_provider,
+    ActiveOperation, ActiveOperationCanceller, ActiveOperationKind, AgentRunResult, AnyRunner,
+    AnyStreamEvent, RunCancellation, RunCmd, RunCompletion, RunError, RunOptions,
 };
 
 use crate::skill::SkillRegistry;
@@ -137,6 +137,18 @@ pub fn build_helve_config(
     if let Some(ref m) = effective_opts.model {
         base.model = Some(m.clone());
     }
+
+    // Provider configuration from RunOptions (used by ACP to specify provider-specific settings)
+    if let Some(ref url) = effective_opts.base_url {
+        base.openai_base_url = Some(url.clone());
+    }
+    if let Some(ref key) = effective_opts.api_key {
+        base.openai_api_key = Some(key.clone());
+    }
+    if let Some(ref t) = effective_opts.provider_type {
+        base.llm_provider = Some(t.clone());
+    }
+
     let working_folder = effective_opts
         .working_folder
         .clone()
@@ -370,18 +382,22 @@ mod tests {
             message: String::new(),
             working_folder: None,
             session_id: None,
+            cancellation: None,
             thread_id: None,
             role_file: None,
             agent: None,
             verbose: false,
             got_adaptive: false,
-            display_max_len: 2000,
+            display_max_len: 120,
             output_json: false,
             model: None,
             mcp_config_path: None,
-            cancellation: None,
             output_timestamp: false,
             dry_run: false,
+            provider: None,
+            base_url: None,
+            api_key: None,
+            provider_type: None,
         }
     }
 
