@@ -243,7 +243,9 @@ impl Agent for LoomAcpAgent {
                 (Some(model_entry.name.clone()), Some(model_entry))
             } else if let Some((provider_name, model_id)) = model_str.split_once('/') {
                 // Fallback: load provider config directly if not in registry
-                tracing::debug!(provider = %provider_name, model_id = %model_id, "Model not in registry, loading provider config");
+                // For nested model names like "provider/path/model", use the last segment as the actual model id
+                let actual_model_id = model_id.rsplit_once('/').map(|(_, m)| m).unwrap_or(model_id);
+                tracing::debug!(provider = %provider_name, model_id = %model_id, actual_model_id = %actual_model_id, "Model not in registry, loading provider config");
                 let provider_cfg = load_full_config("loom")
                     .ok()
                     .and_then(|c| {
@@ -253,14 +255,14 @@ impl Agent for LoomAcpAgent {
                     })
                     .map(|p| loom::llm::ModelEntry {
                         id: model_str.clone(),
-                        name: model_id.to_string(),
+                        name: actual_model_id.to_string(),
                         provider: p.name,
                         base_url: p.base_url,
                         api_key: p.api_key,
                         provider_type: p.provider_type,
                         ..Default::default()
                     });
-                (Some(model_id.to_string()), provider_cfg)
+                (Some(actual_model_id.to_string()), provider_cfg)
             } else {
                 // No provider prefix, use as-is (backward compatibility)
                 (Some(model_str.clone()), None)
