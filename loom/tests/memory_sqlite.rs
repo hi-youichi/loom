@@ -44,6 +44,7 @@ async fn sqlite_saver_put_and_get_tuple() {
             created_at: None,
             parents: HashMap::new(),
             children: HashMap::new(),
+            summary: None,
         },
     };
     let id = saver.put(&config, &checkpoint).await.unwrap();
@@ -102,6 +103,7 @@ async fn sqlite_saver_list() {
             created_at: None,
             parents: HashMap::new(),
             children: HashMap::new(),
+            summary: None,
         },
     };
     saver.put(&config, &checkpoint).await.unwrap();
