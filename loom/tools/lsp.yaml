@@ -1,13 +1,29 @@
 name: lsp
 description: |
-  (Experimental) LSP-based code completions and diagnostics. Currently not implemented;
-  use read, edit, grep, and glob for code navigation and edits.
+  LSP-based code completions and diagnostics. Provides intelligent code completion,
+  diagnostics, go-to-definition, find references, hover information, and document symbols.
 input_schema:
   type: object
   properties:
-    filePath:
+    action:
       type: string
-      description: Path to the file.
-    position:
-      type: object
-      description: Optional line/character position.
+      enum:
+        - completion
+        - diagnostics
+        - gotoDefinition
+        - findReferences
+        - hover
+        - documentSymbols
+      description: "LSP action to perform"
+    file_path:
+      type: string
+      description: "Path to the file"
+    line:
+      type: integer
+      description: "Line number (0-based). Required for completion, gotoDefinition, findReferences, hover."
+    character:
+      type: integer
+      description: "Character position (0-based). Required for completion, gotoDefinition, findReferences, hover."
+  required:
+    - action
+    - file_path

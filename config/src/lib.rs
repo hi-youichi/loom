@@ -3,9 +3,14 @@
 
 mod dotenv;
 pub mod home;
+mod lsp_config;
 mod mcp_config;
 mod xdg_toml;
 
+pub use lsp_config::{
+    get_default_lsp_servers, discover_lsp_config_path, load_default_lsp_config, load_lsp_config,
+    LspConfig, LspConfigError, LspGlobalSettings, LspServerConfig, AutoInstallConfig,
+};
 pub use mcp_config::{
     discover_mcp_config_path, load_mcp_config_from_path, parse_mcp_config, McpConfigError,
     McpConfigFile, McpServerDef, McpServerEntry,

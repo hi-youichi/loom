@@ -130,6 +130,7 @@ pub mod graph;
 pub mod helve;
 mod http_retry;
 pub mod llm;
+pub mod lsp;
 pub mod managed;
 pub mod memory;
 pub mod message;
