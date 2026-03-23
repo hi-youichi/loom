@@ -3,15 +3,20 @@
 use crate::config::{load_config, BotConfig, Settings, TelegramBotConfig};
 use crate::handler::default_handler;
 use std::sync::Arc;
+use std::time::Duration;
 use teloxide::dispatching::Dispatcher;
 use teloxide::prelude::*;
 use tokio::task::JoinHandle;
-use tracing::{info, Instrument};
+use tokio_util::sync::CancellationToken;
+use tracing::{info, error, Instrument};
 
 pub struct BotManager {
     pub name: String,
     pub bot: Bot,
     handle: Option<JoinHandle<()>>,
+    cancellation_token: CancellationToken,
+    max_restarts: u32,
+    restart_delay: Duration,
 }
 
 impl BotManager {
@@ -21,6 +26,9 @@ impl BotManager {
             name,
             bot,
             handle: None,
+            cancellation_token: CancellationToken::new(),
+            max_restarts: 3,
+            restart_delay: Duration::from_secs(5),
         }
     }
 
@@ -28,6 +36,7 @@ impl BotManager {
         let bot = self.bot.clone();
         let name = self.name.clone();
         let span_name = name.clone();
+        let cancellation_token = self.cancellation_token.clone();
 
         let me = bot.get_me().await;
         let bot_username = match me {
@@ -47,12 +56,27 @@ impl BotManager {
                     .dependencies(dptree::deps![settings, bot_username])
                     .build();
 
-                dispatcher.dispatch().await;
+                tokio::select! {
+                    _ = cancellation_token.cancelled() => {
+                        info!(bot = %name, "Bot shutting down gracefully");
+                    }
+                    _ = dispatcher.dispatch() => {}
+                }
             }
             .instrument(tracing::info_span!("bot", name = %span_name)),
         );
 
         self.handle = Some(handle);
+    }
+
+    pub async fn shutdown(mut self) {
+        self.cancellation_token.cancel();
+        if let Some(handle) = self.handle.take() {
+            match tokio::time::timeout(Duration::from_secs(10), handle).await {
+                Ok(_) => info!(bot = %self.name, "Bot shutdown complete"),
+                Err(_) => error!(bot = %self.name, "Bot shutdown timeout"),
+            }
+        }
     }
 
     pub async fn join(mut self) {

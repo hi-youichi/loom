@@ -171,6 +171,14 @@ pub struct StreamingConfig {
     /// Emoji for Act messages
     #[serde(default = "default_act_emoji")]
     pub act_emoji: String,
+
+    /// Message update throttle interval in milliseconds
+    #[serde(default = "default_throttle_ms")]
+    pub throttle_ms: u64,
+
+    /// Maximum retry attempts for network operations
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
 }
 
 impl Default for Settings {
@@ -196,6 +204,8 @@ impl Default for StreamingConfig {
             show_act_phase: default_show_act_phase(),
             think_emoji: default_think_emoji(),
             act_emoji: default_act_emoji(),
+            throttle_ms: default_throttle_ms(),
+            max_retries: default_max_retries(),
         }
     }
 }
@@ -222,6 +232,14 @@ fn default_think_emoji() -> String {
 
 fn default_act_emoji() -> String {
     "⚡".to_string()
+}
+
+fn default_throttle_ms() -> u64 {
+    300
+}
+
+fn default_max_retries() -> u32 {
+    3
 }
 
 fn default_download_dir() -> PathBuf {

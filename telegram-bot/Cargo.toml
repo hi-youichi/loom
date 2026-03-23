@@ -23,6 +23,8 @@ chrono = "0.4"
 rusqlite = { version = "0.31", features = ["bundled"] }
 config = { path = "../config" }
 loom = { path = "../loom" }
+axum = "0.7"
+tokio-util = "0.7"
 
 [[bin]]
 name = "telegram-bot"

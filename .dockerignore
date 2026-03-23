@@ -1,43 +1,43 @@
-# Exclude from Docker build context (faster builds, smaller images)
+# Build artifacts
+target/
+*.exe
+*.dll
+*.so
+*.dylib
 
 # Git
-.git
+.git/
 .gitignore
 
-# Build output
-target/
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 
-# Third-party (not in repo)
-thirdparty/
-
-# Env and secrets
-.env
-.env.*
-!.env.example
-
-# Docs and IDE (not needed for build)
-docs/
-idea/
+# Documentation
 *.md
-!README.md
+docs/
 
-# Tests (optional: remove if you want tests in image)
-# tests/ - keep for cargo check, but exclude large fixtures if any
+# Scripts (not needed in container)
+scripts/
+*.bat
+*.sh
 
-# OS
-.DS_Store
-Thumbs.db
+# Temp files
+*.tmp
+*.log
+*.txt
+temp_commit_msg.txt
 
-# Coverage and debug
-coverage/
-*.profraw
-*.profdata
-**/mutants.out*/
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
 
-# Database files (local dev)
-*.db
-*.db-journal
-*.sqlite
-*.sqlite3
-lancedb_data/
-loom/data/
+# Node modules (if any)
+node_modules/
+
+# Test files
+tests/
+*.test.rs

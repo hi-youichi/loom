@@ -23,27 +23,39 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-//!     // Runs bots from ~/.loom/telegram-bot.toml
-//!     run_bots().await
+//!     run_bots().await?;
+//!     Ok(())
 //! }
 //! ```
+//! 
 
+mod agent;
 mod bot;
 mod config;
+mod download;
+mod error;
 mod handler;
-mod handler_new;
+mod router;
+mod sender;
+mod session;
+mod streaming;
+mod traits;
+pub mod utils;
 
-// Re-export config types
-pub mod bot_config {
-    pub use crate::config::{
-        load_config, load_from_path, TelegramBotConfig, BotConfig, Settings, AgentConfig,
-        ConfigError,
-    };
-}
+/// Test doubles for integration tests and harnesses. Not used by the production binary.
+pub mod mock;
 
-pub use bot::{run_bots, run_with_config, BotManager};
 pub use config::{
     load_config, load_from_path, TelegramBotConfig, BotConfig, Settings, AgentConfig,
     ConfigError,
+    StreamingConfig,
 };
-pub use handler::{default_handler, DownloadConfig};
+pub use bot::{run_bots, run_with_config, BotManager};
+pub use error::{BotError, Result};
+pub use download::{DownloadConfig, FileMetadata, FileType};
+pub use handler::default_handler;
+pub use streaming::{run_loom_agent_streaming};
+pub use traits::{MessageSender, AgentRunner, SessionManager, FileDownloader};
+pub use sender::TeloxideSender;
+pub use agent::LoomAgentRunner;
+pub use session::SqliteSessionManager;

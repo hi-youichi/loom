@@ -1,6 +1,7 @@
 .loom
 internal
 downloads
+bot-runtime
 
 CLAUDE.md
 AGENTS.md
