@@ -2,7 +2,9 @@
 //!
 //! Provides functions for downloading files from Telegram.
 
+use async_trait::async_trait;
 use crate::error::BotError;
+use crate::traits::FileDownloader;
 use std::path::{Path, PathBuf};
 use teloxide::prelude::*;
 use teloxide::types::{PhotoSize, Document, Video};
@@ -311,4 +313,49 @@ pub fn is_reply_to_bot(msg: &teloxide::types::Message, bot_username: &str) -> bo
         }
     }
     false
+}
+
+/// Production [`FileDownloader`] backed by Telegram Bot API (`getFile` + download).
+pub struct TeloxideDownloader {
+    bot: Bot,
+    config: DownloadConfig,
+}
+
+impl TeloxideDownloader {
+    pub fn new(bot: Bot, download_dir: impl Into<PathBuf>) -> Self {
+        Self {
+            bot,
+            config: DownloadConfig::new(download_dir),
+        }
+    }
+}
+
+#[async_trait]
+impl FileDownloader for TeloxideDownloader {
+    async fn download_photo(
+        &self,
+        chat_id: i64,
+        message_id: i32,
+        photos: &[PhotoSize],
+    ) -> Result<(PathBuf, FileMetadata), BotError> {
+        download_photo(&self.bot, photos, &self.config, chat_id, message_id).await
+    }
+
+    async fn download_document(
+        &self,
+        chat_id: i64,
+        message_id: i32,
+        document: &Document,
+    ) -> Result<(PathBuf, FileMetadata), BotError> {
+        download_document(&self.bot, document, &self.config, chat_id, message_id).await
+    }
+
+    async fn download_video(
+        &self,
+        chat_id: i64,
+        message_id: i32,
+        video: &Video,
+    ) -> Result<(PathBuf, FileMetadata), BotError> {
+        download_video(&self.bot, video, &self.config, chat_id, message_id).await
+    }
 }

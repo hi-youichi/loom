@@ -2,8 +2,6 @@
 //!
 //! Tests the message processing logic without requiring Telegram API.
 
-mod common;
-
 use std::sync::Arc;
 use telegram_bot::{Settings, StreamingConfig};
 

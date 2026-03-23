@@ -2,41 +2,38 @@
 //!
 //! Provides functions for running Loom agent with real-time streaming.
 
-use crate::config::{Settings, StreamingConfig};
+use crate::config::Settings;
 use crate::error::{BotError, Result};
 use crate::streaming::message_handler::StreamCommand;
+use crate::traits::MessageSender;
 use loom::{run_agent_with_options, RunOptions, RunCmd, RunCompletion, AnyStreamEvent};
-use std::sync::Arc;
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::sync::Arc;
 use tokio::sync::mpsc;
-use teloxide::prelude::*;
-use teloxide::types::{MessageId, Message, ChatId};
 
 pub async fn run_loom_agent_streaming(
     message: &str,
     chat_id: i64,
-    bot: Bot,
+    sender: Arc<dyn MessageSender>,
     _reply_to: Option<i32>,
     settings: &Settings,
 ) -> Result<String> {
     tracing::info!("Running Loom agent (streaming) for chat {}", chat_id);
-    
+
     let thread_id = format!("telegram_{}", chat_id);
-    let chat_id = ChatId(chat_id);
-    
+
     let (tx, rx) = mpsc::channel::<StreamCommand>(100);
-    
-    let handler_bot = bot.clone();
-    let handler_chat_id = chat_id;
+
+    let handler_sender = sender.clone();
     let handler_settings = settings.streaming.clone();
     let handler_task = tokio::spawn(async move {
         crate::streaming::message_handler::stream_message_handler(
             rx,
-            handler_bot,
-            handler_chat_id,
-            handler_settings
-        ).await
+            handler_sender,
+            chat_id,
+            handler_settings,
+        )
+        .await
     });
     
     let phase_state = Arc::new(std::sync::RwLock::new((

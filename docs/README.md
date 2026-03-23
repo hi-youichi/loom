@@ -107,3 +107,5 @@ cargo run -p loom-examples --example echo -- "hello, world!"
 | Configuration | [guides/configuration.md](guides/configuration.md) |
 | Visualization | [guides/visualization.md](guides/visualization.md) |
 | Testing | [guides/testing.md](guides/testing.md) |
+| Telegram Bot | [guides/telegram-bot.md](guides/telegram-bot.md) |
+| Telegram Bot E2E tests | [guides/telegram-bot-e2e-tests.md](guides/telegram-bot-e2e-tests.md) |

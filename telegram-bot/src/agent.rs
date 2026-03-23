@@ -1,10 +1,14 @@
 //! Agent runner implementations
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use teloxide::Bot;
-use crate::traits::AgentRunner;
-use crate::error::BotError;
+
 use crate::config::Settings;
+use crate::error::BotError;
+use crate::sender::TeloxideSender;
+use crate::traits::{AgentRunner, MessageSender};
 
 pub struct LoomAgentRunner {
     bot: Bot,
@@ -25,10 +29,11 @@ impl AgentRunner for LoomAgentRunner {
         chat_id: i64,
         message_id: Option<i32>,
     ) -> Result<String, BotError> {
+        let sender: Arc<dyn MessageSender> = Arc::new(TeloxideSender::new(self.bot.clone()));
         crate::streaming::run_loom_agent_streaming(
             prompt,
             chat_id,
-            self.bot.clone(),
+            sender,
             message_id,
             &self.settings,
         )

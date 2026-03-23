@@ -18,12 +18,13 @@ impl TeloxideSender {
 
 #[async_trait]
 impl MessageSender for TeloxideSender {
-    async fn send_text(&self, chat_id: i64, text: &str) -> Result<(), BotError> {
-        self.bot
+    async fn send_text_returning_id(&self, chat_id: i64, text: &str) -> Result<i32, BotError> {
+        let msg = self
+            .bot
             .send_message(ChatId(chat_id), text)
             .await
             .map_err(BotError::from)?;
-        Ok(())
+        Ok(msg.id.0)
     }
 
     async fn send_text_with_parse_mode(

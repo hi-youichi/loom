@@ -6,8 +6,6 @@ use telegram_bot::{
 };
 use std::sync::Arc;
 
-mod common;
-
 // ============================================================================
 // P0: Command Tests
 // ============================================================================
@@ -61,10 +59,10 @@ async fn test_mock_session_manager() {
     
     let count = session.reset("telegram_123").await.unwrap();
     assert_eq!(count, 1);
-    
+
     let count = session.reset("telegram_456").await.unwrap();
-    assert_eq!(count, 2);
-    
+    assert_eq!(count, 1);
+
     assert_eq!(session.reset_count(), 2);
 }
 

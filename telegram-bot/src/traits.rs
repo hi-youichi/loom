@@ -13,8 +13,14 @@ use crate::error::BotError;
 /// Message sending interface
 #[async_trait]
 pub trait MessageSender: Send + Sync {
+    /// Send plain text and return the message id for subsequent [`Self::edit_message`] calls.
+    async fn send_text_returning_id(&self, chat_id: i64, text: &str) -> Result<i32, BotError>;
+
     /// Send a plain text message
-    async fn send_text(&self, chat_id: i64, text: &str) -> Result<(), BotError>;
+    async fn send_text(&self, chat_id: i64, text: &str) -> Result<(), BotError> {
+        let _ = self.send_text_returning_id(chat_id, text).await?;
+        Ok(())
+    }
 
     /// Send a message with formatting (Markdown/HTML)
     async fn send_text_with_parse_mode(
