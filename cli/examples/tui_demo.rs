@@ -2,7 +2,7 @@
 //!
 //! Run with: cargo run --example tui_demo
 
-use cli::tui::{App, EventChannel, TuiEvent, TuiRunner};
+use cli::tui::{EventChannel, TuiConfig, TuiEvent, TuiRunner};
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -118,8 +118,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // Run TUI
-    let mut runner = TuiRunner::new();
-    runner.run().await?;
+    let config = TuiConfig {
+        demo_mode: true,
+        ..Default::default()
+    };
+    let mut runner = TuiRunner::new(config);
+    runner.run()?;
 
     Ok(())
 }
