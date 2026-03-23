@@ -129,6 +129,8 @@ pub enum ToolSourceError {
     Transport(String),
     #[error("JSON-RPC error: {0}")]
     JsonRpc(String),
+    #[error("tool execution error: {0}")]
+    ToolError(String),
 }
 
 #[cfg(test)]

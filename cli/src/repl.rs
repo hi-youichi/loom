@@ -204,6 +204,14 @@ mod tests {
         ) -> Result<(), RunError> {
             Ok(())
         }
+
+        async fn list_models(
+            &self,
+            _opts: &RunOptions,
+            _provider_name: Option<&str>,
+        ) -> Result<(), RunError> {
+            Ok(())
+        }
     }
 
     #[test]
