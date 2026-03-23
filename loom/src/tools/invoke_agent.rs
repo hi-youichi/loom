@@ -192,11 +192,7 @@ impl Tool for InvokeAgentTool {
                         "description": "If true, start agent(s) in background and return immediately without waiting for results. Useful for fire-and-forget tasks. Default: false.",
                         "default": false
                     }
-                },
-                "oneOf": [
-                    {"required": ["agent", "task"]},
-                    {"required": ["agents"]}
-                ]
+                }
             }),
             output_hint: Some(ToolOutputHint::preferred(
                 ToolOutputStrategy::SummaryOnly,

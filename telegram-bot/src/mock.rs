@@ -3,7 +3,7 @@
 //! Simple mock implementations for unit testing
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
@@ -18,6 +18,8 @@ use crate::traits::MessageSender;
 pub struct MockSender {
     messages: Arc<RwLock<Vec<(i64, String)>>>,
     next_message_id: Arc<AtomicI32>,
+    /// Next N calls to [`MessageSender::send_text_returning_id`] return [`BotError::Unknown`].
+    fail_send_remaining: Arc<AtomicU32>,
 }
 
 impl MockSender {
@@ -25,13 +27,19 @@ impl MockSender {
         Self {
             messages: Arc::new(RwLock::new(Vec::new())),
             next_message_id: Arc::new(AtomicI32::new(1)),
+            fail_send_remaining: Arc::new(AtomicU32::new(0)),
         }
     }
-    
+
+    /// Simulate send failures for the next `count` `send_text_returning_id` calls (tests only).
+    pub fn fail_next_n_sends(&self, count: u32) {
+        self.fail_send_remaining.store(count, Ordering::SeqCst);
+    }
+
     pub fn get_messages(&self) -> Vec<(i64, String)> {
         self.messages.read().unwrap().clone()
     }
-    
+
     pub fn clear(&self) {
         self.messages.write().unwrap().clear();
     }
@@ -46,6 +54,25 @@ impl Default for MockSender {
 #[async_trait]
 impl crate::traits::MessageSender for MockSender {
     async fn send_text_returning_id(&self, chat_id: i64, text: &str) -> Result<i32, BotError> {
+        loop {
+            let remaining = self.fail_send_remaining.load(Ordering::SeqCst);
+            if remaining == 0 {
+                break;
+            }
+            match self.fail_send_remaining.compare_exchange(
+                remaining,
+                remaining - 1,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => {
+                    return Err(BotError::Unknown(
+                        "mock send_text_returning_id failure".to_string(),
+                    ));
+                }
+                Err(_) => continue,
+            }
+        }
         let id = self.next_message_id.fetch_add(1, Ordering::SeqCst);
         self.messages.write().unwrap().push((chat_id, text.to_string()));
         Ok(id)

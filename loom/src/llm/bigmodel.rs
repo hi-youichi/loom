@@ -998,7 +998,10 @@ impl LlmClient for ChatBigModel {
                 .await;
         }
 
-        let mut tool_calls: Vec<ToolCall> = tool_call_map
+        let mut tool_calls_with_index: Vec<(u32, (String, String, String))> =
+            tool_call_map.into_iter().collect();
+        tool_calls_with_index.sort_by_key(|(index, _)| *index);
+        let tool_calls: Vec<ToolCall> = tool_calls_with_index
             .into_iter()
             .map(|(_, (id, name, arguments))| ToolCall {
                 name,
@@ -1006,7 +1009,6 @@ impl LlmClient for ChatBigModel {
                 id: if id.is_empty() { None } else { Some(id) },
             })
             .collect();
-        tool_calls.sort_by(|a, b| a.name.cmp(&b.name));
 
         trace!(
             trace_id = %trace_id,

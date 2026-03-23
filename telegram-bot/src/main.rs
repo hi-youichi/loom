@@ -3,6 +3,8 @@ use telegram_bot::{load_config, run_with_config, TelegramBotConfig};
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+const TELEGRAM_BOT_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 fn setup_logging(config: &TelegramBotConfig) -> Option<tracing_appender::non_blocking::WorkerGuard> {
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(&config.settings.log_level));
@@ -71,7 +73,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let _guard = setup_logging(&config);
 
-    info!("Starting Telegram Bot Manager...");
+    info!("Starting Telegram Bot Manager v{}...", TELEGRAM_BOT_VERSION);
+    info!("telegram-bot version: {}", TELEGRAM_BOT_VERSION);
     info!("Log level: {}", config.settings.log_level);
 
     if let Err(e) = run_with_config(config).await {

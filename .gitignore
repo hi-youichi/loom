@@ -14,6 +14,7 @@ lancedb_data/
 author-name.txt
 
 # Cargo
+target
 .cargo/
 /target
 **/*.rs.bk

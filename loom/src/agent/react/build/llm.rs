@@ -3,7 +3,7 @@
 //! Default is OpenAI. Use BigModel only when `LLM_PROVIDER=bigmodel` is set.
 
 use crate::error::AgentError;
-use crate::llm::{ChatBigModel, ChatOpenAI};
+use crate::llm::{ChatBigModel, ChatOpenAI, ToolChoiceMode};
 use crate::tool_source::ToolSource;
 use crate::LlmClient;
 
@@ -73,17 +73,61 @@ fn openai_config_from(
     Ok((openai_config, model))
 }
 
+fn env_temperature() -> Result<Option<f32>, BuildRunnerError> {
+    let Some(raw) = std::env::var("OPENAI_TEMPERATURE").ok() else {
+        return Ok(None);
+    };
+    if raw.trim().is_empty() {
+        return Ok(None);
+    }
+    raw.parse::<f32>().map(Some).map_err(|e| {
+        BuildRunnerError::Context(AgentError::ExecutionFailed(format!(
+            "invalid OPENAI_TEMPERATURE '{}': {}",
+            raw, e
+        )))
+    })
+}
+
+fn env_tool_choice_mode() -> Result<Option<ToolChoiceMode>, BuildRunnerError> {
+    let Some(raw) = std::env::var("OPENAI_TOOL_CHOICE").ok() else {
+        return Ok(None);
+    };
+    if raw.trim().is_empty() {
+        return Ok(None);
+    }
+    raw.parse::<ToolChoiceMode>().map(Some).map_err(|e| {
+        BuildRunnerError::Context(AgentError::ExecutionFailed(format!(
+            "invalid OPENAI_TOOL_CHOICE '{}': {}",
+            raw, e
+        )))
+    })
+}
+
 #[allow(dead_code)]
 pub(crate) fn build_default_llm(
     config: &ReactBuildConfig,
 ) -> Result<Box<dyn LlmClient>, BuildRunnerError> {
+    let temperature = env_temperature()?;
+    let tool_choice = env_tool_choice_mode()?;
     if use_bigmodel(config) {
         let (base_url, api_key, model) = bigmodel_config_from(config)?;
-        let client = ChatBigModel::with_config(base_url, api_key, model);
+        let mut client = ChatBigModel::with_config(base_url, api_key, model);
+        if let Some(t) = temperature {
+            client = client.with_temperature(t);
+        }
+        if let Some(mode) = tool_choice {
+            client = client.with_tool_choice(mode);
+        }
         Ok(Box::new(client))
     } else {
         let (openai_config, model) = openai_config_from(config)?;
-        let client = ChatOpenAI::with_config(openai_config, model);
+        let mut client = ChatOpenAI::with_config(openai_config, model);
+        if let Some(t) = temperature {
+            client = client.with_temperature(t);
+        }
+        if let Some(mode) = tool_choice {
+            client = client.with_tool_choice(mode);
+        }
         Ok(Box::new(client))
     }
 }
@@ -92,20 +136,34 @@ pub(crate) async fn build_default_llm_with_tool_source(
     config: &ReactBuildConfig,
     tool_source: &dyn ToolSource,
 ) -> Result<Box<dyn LlmClient>, BuildRunnerError> {
+    let temperature = env_temperature()?;
+    let tool_choice = env_tool_choice_mode()?;
     if use_bigmodel(config) {
         let (base_url, api_key, model) = bigmodel_config_from(config)?;
         tracing::debug!("build_default_llm: BigModel, fetching tools from tool_source");
-        let client = ChatBigModel::new_with_tool_source(base_url, api_key, model, tool_source)
+        let mut client = ChatBigModel::new_with_tool_source(base_url, api_key, model, tool_source)
             .await
             .map_err(|e| BuildRunnerError::Context(AgentError::ExecutionFailed(e.to_string())))?;
+        if let Some(t) = temperature {
+            client = client.with_temperature(t);
+        }
+        if let Some(mode) = tool_choice {
+            client = client.with_tool_choice(mode);
+        }
         tracing::debug!("build_default_llm: ready (BigModel)");
         Ok(Box::new(client))
     } else {
         let (openai_config, model) = openai_config_from(config)?;
         tracing::debug!("build_default_llm: fetching tools from tool_source for model");
-        let client = ChatOpenAI::new_with_tool_source(openai_config, model, tool_source)
+        let mut client = ChatOpenAI::new_with_tool_source(openai_config, model, tool_source)
             .await
             .map_err(|e| BuildRunnerError::Context(AgentError::ExecutionFailed(e.to_string())))?;
+        if let Some(t) = temperature {
+            client = client.with_temperature(t);
+        }
+        if let Some(mode) = tool_choice {
+            client = client.with_tool_choice(mode);
+        }
         tracing::debug!("build_default_llm: ready");
         Ok(Box::new(client))
     }

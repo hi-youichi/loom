@@ -568,6 +568,20 @@ impl LlmClient for ChatOpenAI {
                 // Handle tool calls delta (accumulated by index)
                 if let Some(ref tool_calls) = delta.tool_calls {
                     for tc in tool_calls {
+                        let tool_name = tc.function.as_ref().and_then(|f| f.name.clone());
+                        let args_delta = tc
+                            .function
+                            .as_ref()
+                            .and_then(|f| f.arguments.clone())
+                            .unwrap_or_default();
+                        trace!(
+                            tool_index = tc.index,
+                            call_id = ?tc.id,
+                            name = ?tool_name,
+                            arguments_delta_len = args_delta.len(),
+                            arguments_delta = %args_delta,
+                            "OpenAI stream tool chunk"
+                        );
                         let entry = tool_call_map.entry(tc.index).or_insert_with(|| {
                             (
                                 tc.id.clone().unwrap_or_default(),
@@ -594,16 +608,11 @@ impl LlmClient for ChatOpenAI {
                         }
 
                         if let Some(ref tool_tx) = tool_delta_tx {
-                            let args_delta = tc
-                                .function
-                                .as_ref()
-                                .and_then(|f| f.arguments.clone())
-                                .unwrap_or_default();
                             if !args_delta.is_empty() || tc.id.is_some() {
                                 let _ = tool_tx
                                     .send(ToolCallDelta {
                                         call_id: tc.id.clone(),
-                                        name: tc.function.as_ref().and_then(|f| f.name.clone()),
+                                        name: tool_name.clone(),
                                         arguments_delta: args_delta,
                                     })
                                     .await;
@@ -678,8 +687,11 @@ impl LlmClient for ChatOpenAI {
                 .await;
         }
 
-        // Convert accumulated tool calls to our format
-        let mut tool_calls: Vec<ToolCall> = tool_call_map
+        // Convert accumulated tool calls to our format in original index order.
+        let mut tool_calls_with_index: Vec<(u32, (String, String, String))> =
+            tool_call_map.into_iter().collect();
+        tool_calls_with_index.sort_by_key(|(index, _)| *index);
+        let tool_calls: Vec<ToolCall> = tool_calls_with_index
             .into_iter()
             .map(|(_, (id, name, arguments))| ToolCall {
                 name,
@@ -687,9 +699,6 @@ impl LlmClient for ChatOpenAI {
                 id: if id.is_empty() { None } else { Some(id) },
             })
             .collect();
-
-        // Sort by name for deterministic order
-        tool_calls.sort_by(|a, b| a.name.cmp(&b.name));
 
         let url = Self::chat_completions_url();
         let reasoning_content = collect_thinking_tags(&full_content);

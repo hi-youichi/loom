@@ -1,6 +1,8 @@
-//! Mock tests for [`telegram_bot::stream_message_handler`] (E2E-TG-018 / 024 / 026 / 031 / 032).
+//! Mock tests for [`telegram_bot::stream_message_handler`] (E2E-TG-018 / 024 / 026 / 031 / 032)
+//! plus streaming-act-fix regressions (header send failure, Act chunk, tool timing, flush/throttle).
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use telegram_bot::{
     mock::MockSender,
@@ -170,6 +172,7 @@ async fn e2e_tg_032_act_shows_tool_start_and_end_lines() {
     tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
     tx.send(StreamCommand::ToolStart {
         name: "list_dir".to_string(),
+        arguments: None,
     })
     .await
     .unwrap();
@@ -189,4 +192,577 @@ async fn e2e_tg_032_act_shows_tool_start_and_end_lines() {
     assert!(joined.contains("🔧"));
     assert!(joined.contains("list_dir"));
     assert!(joined.contains('✅'));
+}
+
+#[tokio::test]
+async fn act_tools_recorded_when_act_header_send_fails() {
+    let sender = Arc::new(MockSender::new());
+    sender.fail_next_n_sends(1);
+    let settings = streaming_config_zero_throttle(StreamingConfig {
+        show_think_phase: false,
+        show_act_phase: true,
+        ..Default::default()
+    });
+    let (tx, rx) = tokio::sync::mpsc::channel(16);
+
+    let h = tokio::spawn(stream_message_handler(
+        rx,
+        sender.clone(),
+        100,
+        settings,
+    ));
+
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
+    tx.send(StreamCommand::ToolStart {
+        name: "grep".to_string(),
+        arguments: None,
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::ToolEnd {
+        name: "grep".to_string(),
+        result: "hits".to_string(),
+        is_error: false,
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::Flush).await.unwrap();
+    drop(tx);
+
+    let final_text = h.await.unwrap();
+    assert!(
+        final_text.contains("grep") && final_text.contains('✅'),
+        "expected tools in returned final_text, got {:?}",
+        final_text
+    );
+}
+
+#[tokio::test]
+async fn think_content_recorded_when_think_header_send_fails() {
+    let sender = Arc::new(MockSender::new());
+    sender.fail_next_n_sends(1);
+    let settings = streaming_config_zero_throttle(StreamingConfig {
+        show_think_phase: true,
+        show_act_phase: false,
+        ..Default::default()
+    });
+    let (tx, rx) = tokio::sync::mpsc::channel(16);
+
+    let h = tokio::spawn(stream_message_handler(
+        rx,
+        sender.clone(),
+        101,
+        settings,
+    ));
+
+    tx.send(StreamCommand::StartThink { count: 1 })
+        .await
+        .unwrap();
+    tx.send(StreamCommand::ThinkContent {
+        content: "planning".to_string(),
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::Flush).await.unwrap();
+    drop(tx);
+
+    let final_text = h.await.unwrap();
+    assert!(
+        final_text.contains("planning"),
+        "expected think content in final_text, got {:?}",
+        final_text
+    );
+}
+
+#[tokio::test]
+async fn tool_start_before_act_start_enters_act_fallback() {
+    let sender = Arc::new(MockSender::new());
+    let settings = streaming_config_zero_throttle(StreamingConfig {
+        show_think_phase: false,
+        show_act_phase: true,
+        ..Default::default()
+    });
+    let (tx, rx) = tokio::sync::mpsc::channel(16);
+
+    let h = tokio::spawn(stream_message_handler(
+        rx,
+        sender.clone(),
+        102,
+        settings,
+    ));
+
+    tx.send(StreamCommand::ToolStart {
+        name: "early".to_string(),
+        arguments: None,
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
+    tx.send(StreamCommand::Flush).await.unwrap();
+    drop(tx);
+
+    h.await.unwrap();
+    let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
+    assert!(joined.contains("early"));
+}
+
+#[tokio::test]
+async fn fallback_act_then_startact_does_not_clear_existing_tool_state() {
+    let sender = Arc::new(MockSender::new());
+    let settings = streaming_config_zero_throttle(StreamingConfig {
+        show_think_phase: false,
+        show_act_phase: true,
+        ..Default::default()
+    });
+    let (tx, rx) = tokio::sync::mpsc::channel(32);
+
+    let h = tokio::spawn(stream_message_handler(
+        rx,
+        sender.clone(),
+        109,
+        settings,
+    ));
+
+    // Out-of-order: tool start arrives before StartAct and triggers fallback act mode.
+    tx.send(StreamCommand::ToolStart {
+        name: "ls".to_string(),
+        arguments: None,
+    })
+    .await
+    .unwrap();
+    // Canonical StartAct for the same phase arrives later.
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
+    tx.send(StreamCommand::ToolEnd {
+        name: "ls".to_string(),
+        result: "ok".to_string(),
+        is_error: false,
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::Flush).await.unwrap();
+    drop(tx);
+
+    let final_text = h.await.unwrap();
+    assert!(
+        final_text.contains("✅ ls") && !final_text.contains("🔧 ls"),
+        "expected completed tool result to survive StartAct reorder, got {:?}",
+        final_text
+    );
+}
+
+#[tokio::test]
+async fn tool_start_shows_arguments_in_act_message() {
+    let sender = Arc::new(MockSender::new());
+    let settings = streaming_config_zero_throttle(StreamingConfig {
+        show_think_phase: false,
+        show_act_phase: true,
+        ..Default::default()
+    });
+    let (tx, rx) = tokio::sync::mpsc::channel(16);
+
+    let h = tokio::spawn(stream_message_handler(
+        rx,
+        sender.clone(),
+        110,
+        settings,
+    ));
+
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
+    tx.send(StreamCommand::ToolStart {
+        name: "ls".to_string(),
+        arguments: Some("{\"path\":\".\"}".to_string()),
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::Flush).await.unwrap();
+    drop(tx);
+
+    h.await.unwrap();
+    let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
+    assert!(joined.contains("🔧 ls {\"path\":\".\"}"), "{}", joined);
+}
+
+#[tokio::test]
+async fn tool_end_keeps_arguments_in_final_line() {
+    let sender = Arc::new(MockSender::new());
+    let settings = streaming_config_zero_throttle(StreamingConfig {
+        show_think_phase: false,
+        show_act_phase: true,
+        ..Default::default()
+    });
+    let (tx, rx) = tokio::sync::mpsc::channel(16);
+
+    let h = tokio::spawn(stream_message_handler(
+        rx,
+        sender.clone(),
+        112,
+        settings,
+    ));
+
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
+    tx.send(StreamCommand::ToolStart {
+        name: "ls".to_string(),
+        arguments: Some("{\"path\":\".\"}".to_string()),
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::ToolEnd {
+        name: "ls".to_string(),
+        result: "ok".to_string(),
+        is_error: false,
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::Flush).await.unwrap();
+    drop(tx);
+
+    h.await.unwrap();
+    let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
+    assert!(joined.contains("✅ ls {\"path\":\".\"}"), "{}", joined);
+}
+
+#[tokio::test]
+async fn tool_end_result_preserves_newlines() {
+    let sender = Arc::new(MockSender::new());
+    let settings = streaming_config_zero_throttle(StreamingConfig {
+        show_think_phase: false,
+        show_act_phase: true,
+        ..Default::default()
+    });
+    let (tx, rx) = tokio::sync::mpsc::channel(16);
+
+    let h = tokio::spawn(stream_message_handler(
+        rx,
+        sender.clone(),
+        113,
+        settings,
+    ));
+
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
+    tx.send(StreamCommand::ToolStart {
+        name: "ls".to_string(),
+        arguments: Some("{}".to_string()),
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::ToolEnd {
+        name: "ls".to_string(),
+        result: "line1\nline2".to_string(),
+        is_error: false,
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::Flush).await.unwrap();
+    drop(tx);
+
+    h.await.unwrap();
+    let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
+    assert!(joined.contains("line1\nline2"), "{}", joined);
+}
+
+#[tokio::test]
+async fn act_content_appended_to_act_message() {
+    let sender = Arc::new(MockSender::new());
+    let settings = streaming_config_zero_throttle(StreamingConfig {
+        show_think_phase: false,
+        show_act_phase: true,
+        ..Default::default()
+    });
+    let (tx, rx) = tokio::sync::mpsc::channel(16);
+
+    let h = tokio::spawn(stream_message_handler(
+        rx,
+        sender.clone(),
+        103,
+        settings,
+    ));
+
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
+    tx.send(StreamCommand::ActContent {
+        content: "hello act".to_string(),
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::Flush).await.unwrap();
+    drop(tx);
+
+    h.await.unwrap();
+    let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
+    assert!(joined.contains("hello act"));
+}
+
+#[tokio::test]
+async fn tool_end_error_shows_cross_mark() {
+    let sender = Arc::new(MockSender::new());
+    let settings = streaming_config_zero_throttle(StreamingConfig {
+        show_think_phase: false,
+        show_act_phase: true,
+        ..Default::default()
+    });
+    let (tx, rx) = tokio::sync::mpsc::channel(16);
+
+    let h = tokio::spawn(stream_message_handler(
+        rx,
+        sender.clone(),
+        104,
+        settings,
+    ));
+
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
+    tx.send(StreamCommand::ToolEnd {
+        name: "broken".to_string(),
+        result: "nope".to_string(),
+        is_error: true,
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::Flush).await.unwrap();
+    drop(tx);
+
+    h.await.unwrap();
+    let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
+    assert!(joined.contains('❌') && joined.contains("broken"));
+}
+
+#[tokio::test]
+async fn second_act_clears_tools_from_first_act() {
+    let sender = Arc::new(MockSender::new());
+    let settings = streaming_config_zero_throttle(StreamingConfig {
+        show_think_phase: false,
+        show_act_phase: true,
+        ..Default::default()
+    });
+    let (tx, rx) = tokio::sync::mpsc::channel(32);
+
+    let h = tokio::spawn(stream_message_handler(
+        rx,
+        sender.clone(),
+        105,
+        settings,
+    ));
+
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
+    tx.send(StreamCommand::ToolStart {
+        name: "a".to_string(),
+        arguments: None,
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::ToolEnd {
+        name: "a".to_string(),
+        result: "1".to_string(),
+        is_error: false,
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::StartAct { count: 2 }).await.unwrap();
+    tx.send(StreamCommand::ToolStart {
+        name: "b".to_string(),
+        arguments: None,
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::ToolEnd {
+        name: "b".to_string(),
+        result: "2".to_string(),
+        is_error: false,
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::Flush).await.unwrap();
+    drop(tx);
+
+    h.await.unwrap();
+    let messages = sender.get_messages();
+    let last = messages
+        .last()
+        .map(|(_, text)| text.clone())
+        .unwrap_or_default();
+    assert!(
+        last.contains("✅ b") && !last.contains("✅ a"),
+        "second act message should only show second tool; last={}",
+        last
+    );
+}
+
+#[tokio::test]
+async fn tool_end_without_prior_start_has_no_duration_suffix() {
+    let sender = Arc::new(MockSender::new());
+    let settings = streaming_config_zero_throttle(StreamingConfig {
+        show_think_phase: false,
+        show_act_phase: true,
+        ..Default::default()
+    });
+    let (tx, rx) = tokio::sync::mpsc::channel(16);
+
+    let h = tokio::spawn(stream_message_handler(
+        rx,
+        sender.clone(),
+        106,
+        settings,
+    ));
+
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
+    tx.send(StreamCommand::ToolEnd {
+        name: "orphan".to_string(),
+        result: "x".to_string(),
+        is_error: false,
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::Flush).await.unwrap();
+    drop(tx);
+
+    h.await.unwrap();
+    let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
+    assert!(
+        joined.contains("✅ orphan: x") && !joined.contains("ms)") && !joined.contains("s)"),
+        "{}",
+        joined
+    );
+}
+
+#[tokio::test]
+async fn think_header_fails_then_act_header_succeeds_and_tools_show() {
+    let sender = Arc::new(MockSender::new());
+    sender.fail_next_n_sends(1);
+    let settings = streaming_config_zero_throttle(StreamingConfig {
+        show_think_phase: true,
+        show_act_phase: true,
+        ..Default::default()
+    });
+    let (tx, rx) = tokio::sync::mpsc::channel(32);
+
+    let h = tokio::spawn(stream_message_handler(
+        rx,
+        sender.clone(),
+        107,
+        settings,
+    ));
+
+    tx.send(StreamCommand::StartThink { count: 1 })
+        .await
+        .unwrap();
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
+    tx.send(StreamCommand::ToolStart {
+        name: "ls".to_string(),
+        arguments: None,
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::ToolEnd {
+        name: "ls".to_string(),
+        result: "ok".to_string(),
+        is_error: false,
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::Flush).await.unwrap();
+    drop(tx);
+
+    h.await.unwrap();
+    let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
+    assert!(joined.contains("Act #"));
+    assert!(joined.contains("ls"));
+}
+
+#[tokio::test]
+async fn high_throttle_skips_intermediate_edits_flush_updates() {
+    let sender = Arc::new(MockSender::new());
+    let settings = StreamingConfig {
+        throttle_ms: 60_000,
+        show_think_phase: false,
+        show_act_phase: true,
+        ..Default::default()
+    };
+    let (tx, rx) = tokio::sync::mpsc::channel(16);
+
+    let h = tokio::spawn(stream_message_handler(
+        rx,
+        sender.clone(),
+        108,
+        settings,
+    ));
+
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
+    tx.send(StreamCommand::ToolStart {
+        name: "t".to_string(),
+        arguments: None,
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::ToolEnd {
+        name: "t".to_string(),
+        result: "done".to_string(),
+        is_error: false,
+    })
+    .await
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    tx.send(StreamCommand::Flush).await.unwrap();
+    drop(tx);
+
+    h.await.unwrap();
+    let msgs = sender.get_messages();
+    let edits: Vec<_> = msgs
+        .iter()
+        .filter(|(_, t)| t.contains("✅ t"))
+        .collect();
+    assert!(
+        !edits.is_empty(),
+        "Flush should emit at least one edit with tool result"
+    );
+}
+
+#[tokio::test]
+async fn act_to_think_transition_flushes_pending_act_update() {
+    let sender = Arc::new(MockSender::new());
+    let settings = StreamingConfig {
+        throttle_ms: 60_000,
+        show_think_phase: true,
+        show_act_phase: true,
+        ..Default::default()
+    };
+    let (tx, rx) = tokio::sync::mpsc::channel(32);
+
+    let h = tokio::spawn(stream_message_handler(
+        rx,
+        sender.clone(),
+        111,
+        settings,
+    ));
+
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
+    tx.send(StreamCommand::ToolStart {
+        name: "ls".to_string(),
+        arguments: Some("{\"path\":\".\"}".to_string()),
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::ToolEnd {
+        name: "ls".to_string(),
+        result: "ok".to_string(),
+        is_error: false,
+    })
+    .await
+    .unwrap();
+    // ReAct loop continues quickly to the next think round.
+    tx.send(StreamCommand::StartThink { count: 2 })
+        .await
+        .unwrap();
+    tx.send(StreamCommand::ThinkContent {
+        content: "next reasoning".to_string(),
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::Flush).await.unwrap();
+    drop(tx);
+
+    h.await.unwrap();
+    let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
+    assert!(
+        joined.contains("✅ ls") && joined.contains("Think #2"),
+        "{}",
+        joined
+    );
 }

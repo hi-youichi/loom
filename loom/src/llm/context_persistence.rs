@@ -84,6 +84,18 @@ fn get_base_context_dir() -> PathBuf {
     env_config::home::loom_home().join("context")
 }
 
+fn messages_to_prompt(messages: &[crate::message::Message]) -> String {
+    messages
+        .iter()
+        .map(|message| match message {
+            crate::message::Message::System(content) => format!("system: {}", content),
+            crate::message::Message::User(content) => format!("user: {}", content),
+            crate::message::Message::Assistant(content) => format!("assistant: {}", content),
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
 /// Create or get LLM context writer for a session.
 fn get_llm_context_writer(session_id: &str) -> Option<ContextWriter> {
     let path = get_base_context_dir()
@@ -148,7 +160,9 @@ pub fn save_llm_request(
 ) {
     let session_id = session_id.unwrap_or("default");
     if let Some(mut writer) = get_llm_context_writer(session_id) {
+        let prompt = messages_to_prompt(messages);
         let data = serde_json::json!({
+            "prompt": prompt,
             "messages": messages.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>(),
             "message_count": messages.len(),
         });
@@ -387,6 +401,8 @@ mod tests {
         assert!(path.exists());
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("llm_request"));
+        assert!(content.contains("\"prompt\""));
+        assert!(content.contains("user: hello"));
         assert!(content.contains("message_count"));
 
         match prev {
@@ -415,6 +431,18 @@ mod tests {
             Some(v) => std::env::set_var("LOOM_HOME", v),
             None => std::env::remove_var("LOOM_HOME"),
         }
+    }
+
+    #[test]
+    fn messages_to_prompt_formats_roles() {
+        let prompt = messages_to_prompt(&[
+            crate::message::Message::system("rules".to_string()),
+            crate::message::Message::user("hello".to_string()),
+            crate::message::Message::assistant("hi".to_string()),
+        ]);
+        assert!(prompt.contains("system: rules"));
+        assert!(prompt.contains("user: hello"));
+        assert!(prompt.contains("assistant: hi"));
     }
 
     #[test]
