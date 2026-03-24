@@ -92,6 +92,10 @@ pub(super) async fn prepare_run(
         mcp_config_path: None,
         output_timestamp: false,
         dry_run: false,
+        provider: None,
+        base_url: None,
+        api_key: None,
+        provider_type: None,
     };
     let cmd = match r.agent {
         AgentType::React => RunCmd::React,

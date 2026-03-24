@@ -271,6 +271,10 @@ impl TuiRunner {
             mcp_config_path: self.config.mcp_config_path.clone(),
             output_timestamp: false,
             dry_run: self.config.dry_run,
+            provider: None,
+            base_url: None,
+            api_key: None,
+            provider_type: None,
         }
     }
 }

@@ -15,6 +15,8 @@ use session::{SessionArgs, SessionCommand};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::logging::LogRotate;
+
 /// Config directory: ~/.loom (or $LOOM_HOME). config.toml [env] is applied as env vars; project .env overrides.
 const CONFIG_DIR_HELP: &str = "\nConfiguration:\n  Config directory: ~/.loom (override with $LOOM_HOME).\n  File: config.toml with [env] table; values are applied as environment variables.\n  Project .env in working directory overrides config.toml.";
 
@@ -84,6 +86,18 @@ struct Args {
     /// Provider name to use (overrides [default].provider in config.toml and LOOM_PROVIDER env var)
     #[arg(long, value_name = "NAME")]
     provider: Option<String>,
+
+    /// Log level: trace, debug, info, warn, error
+    #[arg(long, global = true, default_value = "info")]
+    log_level: String,
+
+    /// Log file path. When set, logs are written to this file; otherwise logs are dropped.
+    #[arg(long, global = true, value_name = "PATH")]
+    log_file: Option<PathBuf>,
+
+    /// Log rotation strategy: none, daily, hourly, minutely (requires --log-file)
+    #[arg(long, global = true, default_value = "daily", value_name = "STRATEGY")]
+    log_rotate: String,
 }
 
 /// Writes JSON to stdout or to the given file. When pretty is true, multi-line; else one line.
@@ -328,7 +342,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("{}", keys);
         }
     }
-    logging::init()?;
+    let log_args = logging::LogArgs::new(
+        args.log_level.clone(),
+        args.log_file.clone(),
+        &args.log_rotate,
+        args.working_folder.clone(),
+    );
+    let _log_guard = logging::init(&log_args);
 
     if let Some(Command::Serve(sa)) = &args.cmd {
         if let Err(e) = serve::run_serve(sa.addr.as_deref(), false).await {
@@ -384,13 +404,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             role_file: args.role.clone(),
             agent: args.agent.clone(),
             verbose: args.verbose,
-            got_adaptive,
+            got_adaptive: false,
             display_max_len: max_message_len(),
             output_json: args.json,
             model: None,
             mcp_config_path: args.mcp_config.clone(),
-            output_timestamp: false,
+            output_timestamp: args.timestamp,
             dry_run: args.dry,
+            provider: None,
+            base_url: None,
+            api_key: None,
+            provider_type: None,
         };
         match &ta.sub {
             ToolCommand::List => {
@@ -426,13 +450,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             role_file: args.role.clone(),
             agent: args.agent.clone(),
             verbose: args.verbose,
-            got_adaptive,
+            got_adaptive: false,
             display_max_len: max_message_len(),
             output_json: args.json,
             model: None,
             mcp_config_path: args.mcp_config.clone(),
-            output_timestamp: false,
+            output_timestamp: args.timestamp,
             dry_run: args.dry,
+            provider: None,
+            base_url: None,
+            api_key: None,
+            provider_type: None,
         };
         match &ma.sub {
             ModelsCommand::List => {
@@ -482,6 +510,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         mcp_config_path: args.mcp_config,
         output_timestamp: args.timestamp,
         dry_run: args.dry,
+        provider: None,
+        base_url: None,
+        api_key: None,
+        provider_type: None,
     };
 
     let cmd = args.cmd.unwrap_or(Command::React);

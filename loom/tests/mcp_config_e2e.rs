@@ -27,6 +27,10 @@ fn opts(working_folder: PathBuf) -> RunOptions {
         cancellation: None,
         output_timestamp: false,
         dry_run: false,
+        provider: None,
+        base_url: None,
+        api_key: None,
+        provider_type: None,
     }
 }
 

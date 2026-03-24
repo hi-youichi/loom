@@ -138,6 +138,18 @@ pub struct ModelConfig {
     pub temperature: Option<f32>,
     #[serde(default)]
     pub max_tokens: Option<u32>,
+    /// Provider name (e.g., "openai", "bigmodel")
+    #[serde(default)]
+    pub provider: Option<String>,
+    /// Base URL of the API endpoint
+    #[serde(default)]
+    pub base_url: Option<String>,
+    /// API key for authentication
+    #[serde(default)]
+    pub api_key: Option<String>,
+    /// Provider type: "openai" (default) or "bigmodel"
+    #[serde(default, rename = "type")]
+    pub provider_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -561,18 +573,22 @@ mod tests {
             message: String::new(),
             working_folder: None,
             session_id: None,
+            cancellation: None,
             thread_id: None,
             role_file: None,
             agent: Some("dev".to_string()),
             verbose: false,
             got_adaptive: false,
-            display_max_len: 2000,
+            display_max_len: 200,
             output_json: false,
             model: None,
             mcp_config_path: None,
-            cancellation: None,
             output_timestamp: false,
             dry_run: false,
+            provider: None,
+            base_url: None,
+            api_key: None,
+            provider_type: None,
         };
         let (profile, source) = load_profile_from_options(&opts).expect("built-in dev profile");
         assert_eq!(profile.name, "dev");
@@ -592,18 +608,22 @@ mod tests {
             message: String::new(),
             working_folder: None,
             session_id: None,
+            cancellation: None,
             thread_id: None,
             role_file: None,
             agent: Some("agent-builder".to_string()),
             verbose: false,
             got_adaptive: false,
-            display_max_len: 2000,
+            display_max_len: 200,
             output_json: false,
             model: None,
             mcp_config_path: None,
-            cancellation: None,
             output_timestamp: false,
             dry_run: false,
+            provider: None,
+            base_url: None,
+            api_key: None,
+            provider_type: None,
         };
         let (profile, source) =
             load_profile_from_options(&opts).expect("built-in agent-builder profile");
@@ -897,18 +917,22 @@ tools:
             message: String::new(),
             working_folder: None,
             session_id: None,
+            cancellation: None,
             thread_id: None,
             role_file: None,
             agent: None,
             verbose: false,
             got_adaptive: false,
-            display_max_len: 2000,
+            display_max_len: 200,
             output_json: false,
             model: None,
             mcp_config_path: None,
-            cancellation: None,
             output_timestamp: false,
             dry_run: false,
+            provider: None,
+            base_url: None,
+            api_key: None,
+            provider_type: None,
         };
         let result = load_profile_from_options(&opts);
 
@@ -933,18 +957,22 @@ tools:
             message: String::new(),
             working_folder: None,
             session_id: None,
+            cancellation: None,
             thread_id: None,
             role_file: None,
             agent: Some("nonexistent-agent-xyz".to_string()),
             verbose: false,
             got_adaptive: false,
-            display_max_len: 2000,
+            display_max_len: 200,
             output_json: false,
             model: None,
             mcp_config_path: None,
-            cancellation: None,
             output_timestamp: false,
             dry_run: false,
+            provider: None,
+            base_url: None,
+            api_key: None,
+            provider_type: None,
         };
         let result = load_profile_from_options(&opts);
         match prev_loom {

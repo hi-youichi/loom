@@ -1,16 +1,13 @@
 //! # loom-acp binary entrypoint
 //!
 //! IDEs (Zed, JetBrains, etc.) configure this executable as the ACP Agent command and communicate
-//! over stdio. On startup we load [config](config) (same as loom), init tracing (stderr + `~/.loom/acp`
-//! log directory), write a PID file, then run [`loom_acp::run_stdio_loop`] until stdin
+//! over stdio. On startup we load [config](config) (same as loom), set log config for delayed init,
+//! write a PID file, then run [`loom_acp::run_stdio_loop`] until stdin
 //! closes or an error occurs. SIGHUP triggers reload (exit with code 203 so the caller can restart).
 //!
 //! Subcommand `reload`: sends SIGHUP to the process whose PID is in the PID file (Unix only).
 
 use std::path::PathBuf;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::EnvFilter;
 
 /// Exit code used when exiting for reload (caller should restart the process).
 pub const RELOAD_EXIT_CODE: i32 = 203;
@@ -34,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         return Ok(());
     }
 
-    run_server()
+    run_server(args)
 }
 
 const HELP_LOG_DIR: &str = "\nLog and PID directory: ~/.loom/acp (or $LOOM_HOME/acp). \
@@ -46,6 +43,18 @@ struct Args {
     /// Print the log (and PID) file directory and exit.
     #[arg(long)]
     show_log_dir: bool,
+
+    /// Log level: trace, debug, info, warn, error
+    #[arg(long, default_value = "info")]
+    log_level: String,
+
+    /// Log file path. Supports {working_folder} variable. Default: ~/.loom/acp/loom-acp.log
+    #[arg(long, value_name = "PATH")]
+    log_file: Option<PathBuf>,
+
+    /// Log rotation strategy: none, daily, hourly, minutely
+    #[arg(long, default_value = "daily", value_name = "STRATEGY")]
+    log_rotate: String,
 
     #[command(subcommand)]
     cmd: Option<Cmd>,
@@ -73,7 +82,7 @@ fn run_reload() {
         }
     };
     let pid_str = content.trim().lines().next().unwrap_or("").trim();
-    let pid: i32 = match pid_str.parse() {
+    let _pid: i32 = match pid_str.parse() {
         Ok(p) => p,
         Err(_) => {
             eprintln!("loom-acp reload: invalid PID in {}", pid_path.display());
@@ -85,12 +94,12 @@ fn run_reload() {
     {
         let status = std::process::Command::new("kill")
             .arg("-HUP")
-            .arg(pid.to_string())
+            .arg(_pid.to_string())
             .status();
         match status {
             Ok(s) if s.success() => std::process::exit(0),
             Ok(s) => {
-                eprintln!("loom-acp reload: kill -HUP {} failed with {}", pid, s);
+                eprintln!("loom-acp reload: kill -HUP {} failed with {}", _pid, s);
                 std::process::exit(1);
             }
             Err(e) => {
@@ -107,97 +116,19 @@ fn run_reload() {
     }
 }
 
-fn run_server() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let config_report = config::load_and_apply_with_report("loom", None::<&std::path::Path>).ok();
+fn run_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let _ = config::load_and_apply_with_report("loom", None::<&std::path::Path>).ok();
 
-    let env_filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    let fmt_stderr = tracing_subscriber::fmt::layer()
-        .with_ansi(true)
-        .with_writer(std::io::stderr);
+    // Set log config for delayed initialization (actual init happens on first new_session)
+    loom_acp::set_log_config(loom_acp::logging::LogConfig {
+        level: args.log_level.clone(),
+        file: args.log_file.clone(),
+        rotate: loom_acp::logging::LogRotate::from_str(&args.log_rotate),
+    });
 
-    let log_dir = acp_log_dir();
-    let _guard: Option<Box<tracing_appender::non_blocking::WorkerGuard>> =
-        if let Some(dir) = &log_dir {
-            if std::fs::create_dir_all(dir).is_ok() {
-                if let Ok(file_appender) =
-                    tracing_appender::rolling::RollingFileAppender::builder()
-                        .rotation(tracing_appender::rolling::Rotation::DAILY)
-                        .filename_prefix("loom-acp")
-                        .filename_suffix("log")
-                        .build(dir)
-                {
-                    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-                    let fmt_file = tracing_subscriber::fmt::layer()
-                        .with_ansi(false)
-                        .with_writer(non_blocking);
-                    tracing_subscriber::registry()
-                        .with(env_filter)
-                        .with(fmt_stderr)
-                        .with(fmt_file)
-                        .init();
-                    Some(Box::new(guard))
-                } else {
-                    tracing_subscriber::registry()
-                        .with(env_filter)
-                        .with(fmt_stderr)
-                        .init();
-                    None
-                }
-            } else {
-                tracing_subscriber::registry()
-                    .with(env_filter)
-                    .with(fmt_stderr)
-                    .init();
-                None
-            }
-        } else {
-            tracing_subscriber::registry()
-                .with(env_filter)
-                .with(fmt_stderr)
-                .init();
-            None
-        };
+    // Write PID file to default location
+    let _pid_guard = write_pid_file(&acp_log_dir());
 
-    match &config_report {
-        Some(report) => {
-            if let Some(p) = &report.dotenv_path {
-                let full = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
-                tracing::info!(path = %full.display(), "config: .env");
-            }
-            if let Some(p) = &report.xdg_path {
-                let full = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
-                tracing::info!(path = %full.display(), "config: config.toml");
-            }
-            if let Some(keys) = report.keys_summary() {
-                tracing::info!("{}", keys);
-            }
-        }
-        None => {
-            let paths = config::config_file_paths("loom", None::<&std::path::Path>);
-            if let Some(p) = &paths.dotenv {
-                let full = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
-                tracing::warn!(path = %full.display(), "config: .env (load failed or not used)");
-            } else {
-                tracing::warn!("config: .env not found");
-            }
-            if let Some(p) = &paths.xdg {
-                let full = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
-                tracing::warn!(path = %full.display(), "config: config.toml (load failed or not used)");
-            } else {
-                tracing::warn!("config: config.toml not found");
-            }
-            tracing::warn!("set OPENAI_API_KEY and OPENAI_MODEL in env or config");
-        }
-    }
-
-    if let Some(ref d) = log_dir {
-        tracing::info!(log_dir = %d.display(), "ACP log directory");
-    }
-
-    let _pid_guard = write_pid_file(&log_dir);
-
-    // Use multi_thread so blocking MCP stdio init (and block_in_place in list_tools) don't freeze or panic.
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
@@ -222,7 +153,10 @@ fn run_server() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     #[cfg(not(unix))]
     let run = loom_acp::run_stdio_loop();
 
-    rt.block_on(run)
+    rt.block_on(run)?;
+
+    tracing::info!("loom-acp exiting normally");
+    Ok(())
 }
 
 /// Removes the PID file on drop (normal exit or reload).
