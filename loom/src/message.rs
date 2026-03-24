@@ -62,7 +62,7 @@ impl Message {
 /// A single WORD JOINER is non-empty for validators and invisible in typical UIs.
 pub(crate) fn assistant_content_for_chat_api(s: &str) -> Cow<'_, str> {
     if s.trim().is_empty() {
-        Cow::Borrowed("\u{2060}")
+        Cow::Borrowed("")
     } else {
         Cow::Borrowed(s)
     }
@@ -135,8 +135,14 @@ mod tests {
     /// **Scenario**: empty assistant text is mapped to a non-empty placeholder for APIs.
     #[test]
     fn assistant_content_for_chat_api_maps_empty() {
-        assert_eq!(super::assistant_content_for_chat_api("").as_ref(), "\u{2060}");
-        assert_eq!(super::assistant_content_for_chat_api("   ").as_ref(), "\u{2060}");
+        assert_eq!(
+            super::assistant_content_for_chat_api("").as_ref(),
+            "\u{2060}"
+        );
+        assert_eq!(
+            super::assistant_content_for_chat_api("   ").as_ref(),
+            "\u{2060}"
+        );
         assert_eq!(super::assistant_content_for_chat_api("hi").as_ref(), "hi");
     }
 }
