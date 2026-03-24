@@ -91,6 +91,7 @@ impl Node<ReActState> for ObserveNode {
             message_count_after_last_think: state.message_count_after_last_think,
             summary: state.summary,
             think_count: state.think_count,
+            should_continue: state.should_continue,
         };
         let max_turns_reached = self.max_turns.map_or(false, |m| next_turn >= m);
         let (next, exit_reason) = if self.enable_loop && max_turns_reached {

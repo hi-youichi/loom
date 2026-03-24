@@ -99,6 +99,7 @@ mod tests {
             message_count_after_last_think: None,
             summary: None,
             think_count: 0,
+            should_continue: true,
         };
         let out = compiled.invoke(state, None).await.unwrap();
         assert_eq!(out.messages.len(), 1);
@@ -130,6 +131,7 @@ mod tests {
             message_count_after_last_think: None,
             summary: None,
             think_count: 1,
+            should_continue: true,
         };
         let (out, next) = node.run(state).await.unwrap();
         assert_eq!(out.messages.len(), 1);

@@ -376,6 +376,7 @@ impl Node<ReActState> for ActNode {
             message_count_after_last_think: state.message_count_after_last_think,
             summary: state.summary,
             think_count: state.think_count,
+            should_continue: state.should_continue,
         };
         Ok((new_state, Next::Continue))
     }
@@ -709,6 +710,7 @@ impl Node<ReActState> for ActNode {
             message_count_after_last_think: state.message_count_after_last_think,
             summary: state.summary,
             think_count: state.think_count,
+            should_continue: state.should_continue,
         };
         Ok((new_state, Next::Continue))
     }

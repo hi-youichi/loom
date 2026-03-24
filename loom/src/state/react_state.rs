@@ -212,6 +212,10 @@ pub struct ReActState {
     /// Session summary generated after the first think; used for session list display.
     #[serde(default)]
     pub summary: Option<String>,
+    /// Flag set by CompletionCheckNode to indicate whether the task should continue.
+    /// Used by conditional routing after completion_check node.
+    #[serde(default)]
+    pub should_continue: bool,
 }
 
 impl Default for ReActState {
@@ -228,6 +232,7 @@ impl Default for ReActState {
             message_count_after_last_think: None,
             think_count: 0,
             summary: None,
+            should_continue: true,
         }
     }
 }

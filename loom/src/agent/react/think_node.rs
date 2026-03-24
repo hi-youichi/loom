@@ -71,6 +71,7 @@ fn apply_think_response(
         message_count_after_last_think,
         think_count: state.think_count + 1,
         summary: state.summary,
+        should_continue: state.should_continue,
     }
 }
 

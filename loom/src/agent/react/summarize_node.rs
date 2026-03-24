@@ -106,6 +106,7 @@ impl Node<ReActState> for SummarizeNode {
                     message_count_after_last_think: state.message_count_after_last_think,
                     summary: Some(summary),
                     think_count: state.think_count,
+                    should_continue: state.should_continue,
                 };
 
                 Ok((new_state, Next::Continue))
