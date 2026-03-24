@@ -327,10 +327,9 @@ impl ChatBigModel {
                 let (role, content) = match m {
                     Message::System(s) => ("system", Cow::Borrowed(s.as_str())),
                     Message::User(s) => ("user", Cow::Borrowed(s.as_str())),
-                    Message::Assistant(s) => (
-                        "assistant",
-                        assistant_content_for_chat_api(s.as_str()),
-                    ),
+                    Message::Assistant(s) => {
+                        ("assistant", assistant_content_for_chat_api(s.as_str()))
+                    }
                 };
                 ChatMessageRequest {
                     role: role.to_string(),
@@ -791,15 +790,7 @@ impl LlmClient for ChatBigModel {
                         .as_ref()
                         .map(|calls| calls.len())
                         .unwrap_or(0);
-                    trace!(
-                        content_len,
-                        reasoning_len,
-                        tool_call_count,
-                        finish_reason = ?choice.finish_reason,
-                        content = ?choice.delta.content,
-                        reasoning_content = ?choice.delta.reasoning_content,
-                        "BigModel stream chunk"
-                    );
+
                     let delta = choice.delta;
 
                     if let Some(ref reasoning_content) = delta.reasoning_content {
@@ -1045,7 +1036,9 @@ impl LlmClient for ChatBigModel {
             .bearer_auth(&self.api_key)
             .send()
             .await
-            .map_err(|e| AgentError::ExecutionFailed(format!("list_models request failed: {}", e)))?;
+            .map_err(|e| {
+                AgentError::ExecutionFailed(format!("list_models request failed: {}", e))
+            })?;
 
         if !res.status().is_success() {
             let status = res.status();
@@ -1056,10 +1049,9 @@ impl LlmClient for ChatBigModel {
             )));
         }
 
-        let body = res
-            .text()
-            .await
-            .map_err(|e| AgentError::ExecutionFailed(format!("list_models read body failed: {}", e)))?;
+        let body = res.text().await.map_err(|e| {
+            AgentError::ExecutionFailed(format!("list_models read body failed: {}", e))
+        })?;
 
         let models_resp: ModelsResponse = serde_json::from_str(&body)
             .map_err(|e| AgentError::ExecutionFailed(format!("list_models parse failed: {}", e)))?;
