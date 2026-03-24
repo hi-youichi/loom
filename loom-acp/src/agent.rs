@@ -16,7 +16,7 @@ use agent_client_protocol::{
 use loom::memory::{Checkpointer, RunnableConfig, JsonSerializer, SqliteSaver};
 use loom::state::ReActState;
 use loom::message::Message;
-use loom::llm::fetch_provider_models;
+
 use config::load_full_config;
 use std::sync::Arc;
 use async_trait::async_trait;
@@ -61,56 +61,43 @@ impl LoomAcpAgent {
 
     /// Fetch available models from all configured providers.
     /// Returns a list of ModelOption for the ACP config_options response.
+    /// Uses ModelRegistry for caching and unified model access.
     async fn get_available_models(&self) -> Vec<ModelOption> {
-        let config = match load_full_config("loom") {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::warn!("Failed to load config for model list: {}", e);
-                return vec![];
-            }
+        let registry = loom::llm::ModelRegistry::global();
+        
+        // Load provider configs from config file
+        let providers: Vec<loom::llm::ProviderConfig> = match load_full_config("loom") {
+            Ok(config) => config
+                .providers
+                .into_iter()
+                .map(|p| loom::llm::ProviderConfig {
+                    name: p.name,
+                    base_url: p.base_url,
+                    api_key: p.api_key,
+                    provider_type: p.provider_type,
+                })
+                .collect(),
+            Err(_) => vec![],
         };
+        
+        let entries = registry.list_all_models(&providers).await;
 
-        if config.providers.is_empty() {
-            tracing::debug!("No providers configured");
-            return vec![];
-        }
-
-        let mut all_models = vec![];
-
-        for provider in config.providers {
-            match fetch_provider_models(
-                provider.provider_type.as_deref(),
-                provider.base_url.as_deref(),
-                provider.api_key.as_deref(),
-            )
-            .await
-            {
-                Ok(models) => {
-                    for model in models {
-                        all_models.push(ModelOption {
-                            id: model.id.clone(),
-                            name: model.id.clone(),
-                            provider: provider.name.clone(),
-                        });
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        provider = %provider.name,
-                        error = %e,
-                        "Failed to fetch models from provider"
-                    );
-                    // Continue to next provider instead of failing entirely
-                }
-            }
-        }
+        let all_models: Vec<ModelOption> = entries
+            .into_iter()
+            .map(|entry| ModelOption {
+                // ACP select value + label: "provider/model" so the UI matches registry / RunOptions.
+                id: entry.id.clone(),
+                name: entry.id,
+                provider: entry.provider,
+            })
+            .collect();
 
         tracing::info!(
             total_models = all_models.len(),
             "Fetched available models from all providers"
         );
         for m in &all_models {
-            tracing::info!(provider = %m.provider, model_id = %m.id, model_name = %m.name, "Available model");
+            tracing::info!(model_id = %m.id, model_name = %m.name, provider = %m.provider, "Available model");
         }
 
         all_models
@@ -234,6 +221,56 @@ impl Agent for LoomAcpAgent {
             .clone()
             .unwrap_or_else(|| PathBuf::from(loom::DEFAULT_WORKING_FOLDER));
 
+        // Load provider configs from config file
+        let providers: Vec<loom::llm::ProviderConfig> = match load_full_config("loom") {
+            Ok(config) => config
+                .providers
+                .into_iter()
+                .map(|p| loom::llm::ProviderConfig {
+                    name: p.name,
+                    base_url: p.base_url,
+                    api_key: p.api_key,
+                    provider_type: p.provider_type,
+                })
+                .collect(),
+            Err(_) => vec![],
+        };
+
+        // Parse provider/model format and resolve provider config using ModelRegistry
+        let (model, provider_config) = if let Some(ref model_str) = entry.session_config.model {
+            // Try to get full model config from ModelRegistry
+            if let Some(model_entry) = loom::llm::ModelRegistry::global().get_model(model_str, &providers).await {
+                (Some(model_entry.name.clone()), Some(model_entry))
+            } else if let Some((provider_name, model_id)) = model_str.split_once('/') {
+                // Fallback: load provider config directly if not in registry
+                // For nested model names like "provider/path/model", use the last segment as the actual model id
+                let actual_model_id = model_id.rsplit_once('/').map(|(_, m)| m).unwrap_or(model_id);
+                tracing::debug!(provider = %provider_name, model_id = %model_id, actual_model_id = %actual_model_id, "Model not in registry, loading provider config");
+                let provider_cfg = load_full_config("loom")
+                    .ok()
+                    .and_then(|c| {
+                        c.providers
+                            .into_iter()
+                            .find(|p| p.name == provider_name)
+                    })
+                    .map(|p| loom::llm::ModelEntry {
+                        id: model_str.clone(),
+                        name: actual_model_id.to_string(),
+                        provider: p.name,
+                        base_url: p.base_url,
+                        api_key: p.api_key,
+                        provider_type: p.provider_type,
+                        ..Default::default()
+                    });
+                (Some(actual_model_id.to_string()), provider_cfg)
+            } else {
+                // No provider prefix, use as-is (backward compatibility)
+                (Some(model_str.clone()), None)
+            }
+        } else {
+            (None, None)
+        };
+
         let opts = RunOptions {
             message,
             working_folder: Some(working_folder),
@@ -246,10 +283,15 @@ impl Agent for LoomAcpAgent {
             got_adaptive: false,
             display_max_len: 4096,
             output_json: false,
-            model: entry.session_config.model.clone(),
+            model,
             mcp_config_path: None,
             output_timestamp: false,
             dry_run: false,
+            // Provider config from resolved model entry
+            provider: provider_config.as_ref().map(|p| p.provider.clone()),
+            base_url: provider_config.as_ref().and_then(|p| p.base_url.clone()),
+            api_key: provider_config.as_ref().and_then(|p| p.api_key.clone()),
+            provider_type: provider_config.as_ref().and_then(|p| p.provider_type.clone()),
         };
 
         let session_id = args.session_id.clone();
@@ -605,12 +647,29 @@ fn map_run_error(e: RunError) -> agent_client_protocol::Error {
 /// Model option for ACP config dropdown.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct ModelOption {
-    /// Model identifier (e.g., "gpt-4o", "claude-3-opus")
+    /// Combined id `provider/model` (select value and display; matches [`loom::llm::ModelEntry::id`]).
     id: String,
-    /// Display name for the model
+    /// Same as `id` for the select row label (ACP shows `provider/model`).
     name: String,
-    /// Provider name (e.g., "openai", "anthropic")
+    /// Provider name (e.g., "openai", "bigmodel")
     provider: String,
+}
+
+/// If `current_model` is a bare model id (e.g. from `MODEL=`) but options use `provider/model`,
+/// rewrite to the single matching option when unambiguous.
+fn normalize_current_model_for_acp(current_model: &str, options: &[ModelOption]) -> String {
+    if current_model.is_empty() {
+        return String::new();
+    }
+    if options.iter().any(|m| m.id == current_model) {
+        return current_model.to_string();
+    }
+    let suffix = format!("/{}", current_model);
+    let matches: Vec<_> = options.iter().filter(|m| m.id.ends_with(&suffix)).collect();
+    if matches.len() == 1 {
+        return matches[0].id.clone();
+    }
+    current_model.to_string()
 }
 
 /// Build config_options array with a single "model" option (protocol types are non_exhaustive, so we construct via serde).
@@ -619,6 +678,7 @@ fn build_model_config_options(
     current_model: &str,
     model_options: &[ModelOption],
 ) -> Result<Vec<agent_client_protocol::SessionConfigOption>, serde_json::Error> {
+    let current_model = normalize_current_model_for_acp(current_model, model_options);
     // Build options array with the correct structure for SessionConfigSelectOptions::Ungrouped
     // Each option needs "value" (not "id") and "name" fields
     // The options field should be an array directly (ungrouped variant is untagged)
@@ -673,26 +733,58 @@ mod tests {
     #[test]
     fn test_build_model_config_options_populates_options() {
         let model_options = vec![
-            ModelOption { id: "gpt-4o".to_string(), name: "GPT-4o".to_string() },
-            ModelOption { id: "gpt-4o-mini".to_string(), name: "GPT-4o Mini".to_string() },
+            ModelOption {
+                id: "openai/gpt-4o".to_string(),
+                name: "openai/gpt-4o".to_string(),
+                provider: "openai".to_string(),
+            },
+            ModelOption {
+                id: "openai/gpt-4o-mini".to_string(),
+                name: "openai/gpt-4o-mini".to_string(),
+                provider: "openai".to_string(),
+            },
         ];
-        
+
+        // Bare MODEL= id normalizes to the unique provider/model match
         let result = build_model_config_options("gpt-4o", &model_options);
         assert!(result.is_ok(), "Expected Ok, got Err: {:?}", result.err());
-        
+
         let config_options = result.unwrap();
         assert_eq!(config_options.len(), 1);
-        
-        // Verify the JSON structure by serializing back
+
         let json = serde_json::to_value(&config_options).unwrap();
         let model_config = &json[0];
         assert_eq!(model_config["id"], "model");
-        assert_eq!(model_config["currentValue"], "gpt-4o");
-        
-        // Check options - untagged enum means options is directly an array
+        assert_eq!(model_config["currentValue"], "openai/gpt-4o");
+
         let options = model_config["options"].as_array().expect("options should be an array");
         assert_eq!(options.len(), 2);
-        assert_eq!(options[0]["value"], "gpt-4o");
+        assert_eq!(options[0]["value"], "openai/gpt-4o");
+        assert_eq!(options[0]["name"], "openai/gpt-4o");
+    }
+
+    #[test]
+    fn test_normalize_current_model_for_acp_ambiguous_bare_id() {
+        let model_options = vec![
+            ModelOption {
+                id: "openai/gpt-4o".to_string(),
+                name: "openai/gpt-4o".to_string(),
+                provider: "openai".to_string(),
+            },
+            ModelOption {
+                id: "azure/gpt-4o".to_string(),
+                name: "azure/gpt-4o".to_string(),
+                provider: "azure".to_string(),
+            },
+        ];
+        assert_eq!(
+            normalize_current_model_for_acp("gpt-4o", &model_options),
+            "gpt-4o"
+        );
+        assert_eq!(
+            normalize_current_model_for_acp("openai/gpt-4o", &model_options),
+            "openai/gpt-4o"
+        );
     }
 
     #[test]
@@ -721,20 +813,23 @@ mod tests {
     #[test]
     fn test_model_option_serialization() {
         let option = ModelOption {
-            id: "claude-3-opus".to_string(),
-            name: "Claude 3 Opus".to_string(),
+            id: "anthropic/claude-3-opus".to_string(),
+            name: "anthropic/claude-3-opus".to_string(),
+            provider: "anthropic".to_string(),
         };
-        
+
         let json = serde_json::to_value(&option).unwrap();
-        assert_eq!(json["id"], "claude-3-opus");
-        assert_eq!(json["name"], "Claude 3 Opus");
+        assert_eq!(json["id"], "anthropic/claude-3-opus");
+        assert_eq!(json["name"], "anthropic/claude-3-opus");
     }
 
     #[test]
     fn test_build_set_session_config_option_response() {
-        let model_options = vec![
-            ModelOption { id: "gpt-4o".to_string(), name: "GPT-4o".to_string() },
-        ];
+        let model_options = vec![ModelOption {
+            id: "openai/gpt-4o".to_string(),
+            name: "openai/gpt-4o".to_string(),
+            provider: "openai".to_string(),
+        }];
         
         let result = build_set_session_config_option_response("gpt-4o", &model_options);
         assert!(result.is_ok());

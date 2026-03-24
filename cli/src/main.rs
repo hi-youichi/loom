@@ -404,13 +404,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             role_file: args.role.clone(),
             agent: args.agent.clone(),
             verbose: args.verbose,
-            got_adaptive,
+            got_adaptive: false,
             display_max_len: max_message_len(),
             output_json: args.json,
             model: None,
             mcp_config_path: args.mcp_config.clone(),
-            output_timestamp: false,
+            output_timestamp: args.timestamp,
             dry_run: args.dry,
+            provider: None,
+            base_url: None,
+            api_key: None,
+            provider_type: None,
         };
         match &ta.sub {
             ToolCommand::List => {
@@ -446,13 +450,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             role_file: args.role.clone(),
             agent: args.agent.clone(),
             verbose: args.verbose,
-            got_adaptive,
+            got_adaptive: false,
             display_max_len: max_message_len(),
             output_json: args.json,
             model: None,
             mcp_config_path: args.mcp_config.clone(),
-            output_timestamp: false,
+            output_timestamp: args.timestamp,
             dry_run: args.dry,
+            provider: None,
+            base_url: None,
+            api_key: None,
+            provider_type: None,
         };
         match &ma.sub {
             ModelsCommand::List => {
@@ -502,6 +510,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         mcp_config_path: args.mcp_config,
         output_timestamp: args.timestamp,
         dry_run: args.dry,
+        provider: None,
+        base_url: None,
+        api_key: None,
+        provider_type: None,
     };
 
     let cmd = args.cmd.unwrap_or(Command::React);

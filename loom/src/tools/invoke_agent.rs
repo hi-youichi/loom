@@ -354,7 +354,7 @@ impl InvokeAgentTool {
         // Clone necessary data for background task
         let profile_clone = profile.clone();
         let base_config = self.base_config.clone();
-        let max_depth = self.max_depth;
+        let _max_depth = self.max_depth;
         let agent_name_str = agent_name.to_string();
         let task_str = task.to_string();
         let ctx_clone = ctx.cloned();
@@ -482,7 +482,7 @@ impl InvokeAgentTool {
             let args = agent_spec.clone();
             let ctx = ctx.cloned();
             let base_config = self.base_config.clone();
-            let max_depth = self.max_depth;
+        let max_depth = self.max_depth;
 
             let handle = tokio::spawn(async move {
                 // Acquire global semaphore permit

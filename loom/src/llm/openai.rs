@@ -39,7 +39,7 @@ use crate::stream::MessageChunk;
 use crate::tool_source::{ToolSource, ToolSourceError, ToolSpec};
 
 use async_openai::{
-    config::OpenAIConfig,
+    config::{Config, OpenAIConfig},
     types::chat::{
         ChatCompletionMessageToolCalls, ChatCompletionRequestMessage,
         ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage, ChatCompletionTool,
@@ -715,23 +715,76 @@ impl LlmClient for ChatOpenAI {
     }
 
     async fn list_models(&self) -> Result<Vec<crate::llm::ModelInfo>, AgentError> {
-        use async_openai::Models;
-
-        let models = Models::new(&self.client)
-            .list()
+        // OpenAI-compatible gateways often omit `created` on each model; `async-openai`'s
+        // `Model` type requires it and fails to deserialize. Parse permissively instead.
+        let cfg = self.client.config();
+        let url = cfg.url("/models");
+        let res = reqwest::Client::new()
+            .get(&url)
+            .headers(cfg.headers())
+            .send()
             .await
             .map_err(|e| AgentError::ExecutionFailed(format!("Failed to list models: {}", e)))?;
 
-        Ok(models
+        if !res.status().is_success() {
+            let status = res.status();
+            let body = res.text().await.unwrap_or_default();
+            return Err(AgentError::ExecutionFailed(format!(
+                "Failed to list models: {} - {}",
+                status, body
+            )));
+        }
+
+        let body = res
+            .text()
+            .await
+            .map_err(|e| AgentError::ExecutionFailed(format!("Failed to list models: {}", e)))?;
+
+        let parsed: OpenAiListModelsBody = serde_json::from_str(&body).map_err(|e| {
+            AgentError::ExecutionFailed(format!(
+                "Failed to list models: failed to deserialize api response: {} content:{}",
+                e, body
+            ))
+        })?;
+
+        Ok(parsed
             .data
             .into_iter()
             .map(|m| crate::llm::ModelInfo {
                 id: m.id,
-                created: Some(m.created as i64),
-                owned_by: Some(m.owned_by),
+                created: m.created,
+                owned_by: m.owned_by,
             })
             .collect())
     }
+}
+
+/// `/v1/models` list payload: tolerate missing `created` and other gateway quirks.
+#[derive(serde::Deserialize)]
+struct OpenAiListModelsBody {
+    data: Vec<OpenAiModelListRow>,
+}
+
+#[derive(serde::Deserialize)]
+struct OpenAiModelListRow {
+    id: String,
+    #[serde(default, deserialize_with = "deserialize_optional_model_created")]
+    created: Option<i64>,
+    #[serde(default)]
+    owned_by: Option<String>,
+}
+
+fn deserialize_optional_model_created<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Deserialize;
+    let v: Option<serde_json::Value> = Option::deserialize(deserializer)?;
+    Ok(v.and_then(|v| match v {
+        serde_json::Value::Number(n) => n.as_i64().or_else(|| n.as_u64().map(|u| u as i64)),
+        serde_json::Value::String(s) => s.parse().ok(),
+        _ => None,
+    }))
 }
 
 #[cfg(test)]
@@ -828,6 +881,29 @@ mod tests {
     fn chat_openai_with_config_creates_client() {
         let config = OpenAIConfig::new().with_api_key("test-key");
         let _ = ChatOpenAI::with_config(config, "gpt-4");
+    }
+
+    /// **Scenario**: `/v1/models` payloads without per-model `created` deserialize (OpenAI-compatible gateways).
+    #[test]
+    fn openai_list_models_body_allows_missing_created() {
+        let json = r#"{"data":[{"id":"chatgpt-4o-latest","object":"model","owned_by":"openai","permission":[],"root":"chatgpt-4o-latest","parent":null}]}"#;
+        let parsed: super::OpenAiListModelsBody = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.data.len(), 1);
+        assert_eq!(parsed.data[0].id, "chatgpt-4o-latest");
+        assert_eq!(parsed.data[0].created, None);
+        assert_eq!(parsed.data[0].owned_by.as_deref(), Some("openai"));
+    }
+
+    /// **Scenario**: `created` may be a JSON number or string depending on the gateway.
+    #[test]
+    fn openai_list_models_body_parses_created_number_or_string() {
+        let with_num = r#"{"data":[{"id":"a","created":1700000000}]}"#;
+        let p: super::OpenAiListModelsBody = serde_json::from_str(with_num).unwrap();
+        assert_eq!(p.data[0].created, Some(1_700_000_000));
+
+        let with_str = r#"{"data":[{"id":"b","created":"1700000001"}]}"#;
+        let p2: super::OpenAiListModelsBody = serde_json::from_str(with_str).unwrap();
+        assert_eq!(p2.data[0].created, Some(1_700_000_001));
     }
 
     /// **Scenario**: Builder chain with_tools and with_temperature builds without panic.
