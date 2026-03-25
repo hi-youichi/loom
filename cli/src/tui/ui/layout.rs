@@ -34,38 +34,4 @@ impl LayoutCalculator {
 
         (chunks[0], chunks[1])
     }
-
-    /// 计算 Agent 网格布局（根据 Agent 数量动态计算）
-    /// 
-    /// 返回每个 Agent 卡片的区域
-    pub fn calculate_agent_grid(area: Rect, agent_count: usize) -> Vec<Rect> {
-        if agent_count == 0 {
-            return vec![];
-        }
-
-        // 计算列数（每行最多 2 个）
-        let cols = if agent_count == 1 { 1 } else { 2 };
-        
-        // 计算行数
-        let rows = (agent_count + cols - 1) / cols;
-
-        // 创建行布局
-        let row_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Length(8); rows])
-            .split(area);
-
-        // 为每行创建列布局
-        let mut result = Vec::new();
-        for row_chunk in row_chunks.iter() {
-            let col_chunks = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints(vec![Constraint::Percentage(50); cols])
-                .split(*row_chunk);
-            
-            result.extend(col_chunks.iter().cloned());
-        }
-
-        result
-    }
 }

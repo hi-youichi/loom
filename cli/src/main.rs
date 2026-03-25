@@ -2,9 +2,7 @@
 //!
 //! Subcommands: `react` (default ReAct), `dup` (DUP), `tot` (ToT), `got` (GoT), `tool` (list/show tools), `models` (list models).
 
-mod log_format;
 mod logging;
-mod model_cmd;
 mod repl;
 mod session;
 

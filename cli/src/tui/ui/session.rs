@@ -1,9 +1,9 @@
 //! Session 面板组件 - 显示会话历史和消息列表
 
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect, Alignment},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Line, Span, Text},
+    text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph},
     Frame,
 };
@@ -20,6 +20,7 @@ pub struct SessionPanel {
     show_details: bool,
 }
 
+#[allow(dead_code)]
 impl SessionPanel {
     pub fn new() -> Self {
         Self {
@@ -35,7 +36,7 @@ impl SessionPanel {
         frame: &mut Frame,
         area: Rect,
         messages: &[Message],
-        input_mode: &InputMode,
+        _input_mode: &InputMode,
     ) {
         // 创建布局：标题 + 消息列表
         let chunks = Layout::default()
@@ -85,13 +86,18 @@ impl SessionPanel {
         }
 
         // 将消息转换为显示项
-        let items: Vec<ListItem> = messages
+        let items: Vec<ListItem<'_>> = messages
             .iter()
             .flat_map(|msg| self.message_to_list_items(msg))
             .collect();
 
+        let start = self
+            .scroll_offset
+            .min(items.len().saturating_sub(1));
+        let visible: Vec<ListItem<'_>> = items.into_iter().skip(start).collect();
+
         // 创建列表 widget
-        let list = List::new(items)
+        let list = List::new(visible)
             .block(Block::default().borders(Borders::ALL))
             .highlight_style(Style::default().bg(Color::DarkGray));
 
@@ -102,7 +108,7 @@ impl SessionPanel {
     }
 
     /// 将消息转换为 ListItem
-    fn message_to_list_items(&self, message: &Message) -> Vec<ListItem> {
+    fn message_to_list_items(&self, message: &Message) -> Vec<ListItem<'_>> {
         let mut items = Vec::new();
 
         // 消息头部
@@ -210,9 +216,9 @@ impl SessionPanel {
         items
     }
 
-    /// 向下滚动
-    pub fn scroll_down(&mut self, messages: &[Message]) {
-        // TODO: 实现虚拟滚动
+    /// 向下滚动（偏移在 `render_messages` 中与列表长度裁剪对齐）
+    pub fn scroll_down(&mut self, _messages: &[Message]) {
+        self.scroll_offset = self.scroll_offset.saturating_add(1);
     }
 
     /// 向上滚动

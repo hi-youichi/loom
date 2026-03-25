@@ -1,9 +1,10 @@
 //! Message block component for displaying messages
+#![allow(dead_code)]
 
 use ratatui::{
     layout::Rect,
-    style::{Color, Modifier, Style},
-    text::{Line, Text},
+    style::{Color, Style},
+    text::Text,
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
