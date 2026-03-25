@@ -52,7 +52,8 @@ pub const TOOL_BASH: &str = "bash";
 ///
 /// - **Tool**: Implements this trait for registration with [`AggregateToolSource`].
 /// - **ToolSourceError**: Invalid input or command execution failure.
-/// - **ToolCallContext**: Not used by this tool.
+/// - **ToolCallContext**: When `run_cancellation` is set (ReAct act node), registers
+///   child-process cancellation so user cancel kills the shell (`sh`/`cmd`) subprocess.
 pub struct BashTool {
     working_folder: Option<Arc<std::path::PathBuf>>,
 }
@@ -150,7 +151,7 @@ impl Tool for BashTool {
     /// # Parameters
     ///
     /// - `args`: JSON with required `"command"` string.
-    /// - `_ctx`: Optional per-call context (not used by this tool).
+    /// - `ctx`: Optional per-call context; `run_cancellation` enables killing the shell on cancel.
     ///
     /// # Returns
     ///

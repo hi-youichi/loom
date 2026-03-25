@@ -321,7 +321,8 @@ impl ChatBigModel {
         format!("{}/chat/completions", base)
     }
 
-    fn messages_to_request(messages: &[Message]) -> Vec<ChatMessageRequest> {
+    fn messages_to_request(messages: &[Message], model: &str) -> Vec<ChatMessageRequest> {
+        let use_space_for_empty_assistant = model.to_lowercase().starts_with("kimi");
         messages
             .iter()
             .map(|m| {
@@ -329,7 +330,13 @@ impl ChatBigModel {
                     Message::System(s) => ("system", Cow::Borrowed(s.as_str())),
                     Message::User(s) => ("user", Cow::Borrowed(s.as_str())),
                     Message::Assistant(s) => {
-                        ("assistant", assistant_content_for_chat_api(s.as_str()))
+                        let c = assistant_content_for_chat_api(s.as_str());
+                        let content = if use_space_for_empty_assistant && c.trim().is_empty() {
+                            Cow::Borrowed(" ")
+                        } else {
+                            c
+                        };
+                        ("assistant", content)
                     }
                 };
                 ChatMessageRequest {
@@ -341,7 +348,7 @@ impl ChatBigModel {
     }
 
     fn build_request(&self, messages: &[Message], stream: bool) -> ChatCompletionRequest {
-        let messages = Self::messages_to_request(messages);
+        let messages = Self::messages_to_request(messages, &self.model);
         let mut req = ChatCompletionRequest {
             model: self.model.clone(),
             messages,
