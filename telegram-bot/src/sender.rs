@@ -1,10 +1,13 @@
 //! Teloxide message sender implementation
 
 use async_trait::async_trait;
-use teloxide::prelude::*;
-use teloxide::types::{ParseMode, MessageId};
-use crate::traits::MessageSender;
 use crate::error::BotError;
+use crate::streaming::retry::{edit_message_with_retry, send_message_with_retry};
+use crate::traits::MessageSender;
+use teloxide::prelude::*;
+use teloxide::types::{MessageId, ParseMode};
+
+const TELEGRAM_API_RETRIES: u32 = 3;
 
 pub struct TeloxideSender {
     bot: Bot,
@@ -19,11 +22,13 @@ impl TeloxideSender {
 #[async_trait]
 impl MessageSender for TeloxideSender {
     async fn send_text_returning_id(&self, chat_id: i64, text: &str) -> Result<i32, BotError> {
-        let msg = self
-            .bot
-            .send_message(ChatId(chat_id), text)
-            .await
-            .map_err(BotError::from)?;
+        let msg = send_message_with_retry(
+            &self.bot,
+            ChatId(chat_id),
+            text,
+            TELEGRAM_API_RETRIES,
+        )
+        .await?;
         Ok(msg.id.0)
     }
 
@@ -60,10 +65,13 @@ impl MessageSender for TeloxideSender {
         message_id: i32,
         text: &str,
     ) -> Result<(), BotError> {
-        self.bot
-            .edit_message_text(ChatId(chat_id), MessageId(message_id), text)
-            .await
-            .map_err(BotError::from)?;
-        Ok(())
+        edit_message_with_retry(
+            &self.bot,
+            ChatId(chat_id),
+            MessageId(message_id),
+            text,
+            TELEGRAM_API_RETRIES,
+        )
+        .await
     }
 }

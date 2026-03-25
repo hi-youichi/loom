@@ -1,15 +1,11 @@
-//! Message routing and command handling
-//!
-//! Provides functions for routing incoming messages to appropriate handlers.
+//! Message routing: teloxide entrypoints delegate to [`crate::pipeline`].
 
 use crate::config::Settings;
-use crate::config::InteractionMode;
 use crate::download::{download_photo, download_document, DownloadConfig};
 use crate::error::BotError;
-use crate::download::{is_bot_mentioned, is_reply_to_bot};
 use crate::handler_deps::ChatRunRegistry;
 use crate::handler_deps::HandlerDeps;
-use crate::traits::AgentRunContext;
+use crate::pipeline::{handle_common_message, MessageContext};
 use std::sync::Arc;
 use teloxide::prelude::*;
 use teloxide::types::Message;
@@ -21,223 +17,10 @@ pub async fn handle_message_with_deps(deps: &HandlerDeps, msg: &Message) -> Resu
 
     tracing::info!("Message #{} in chat {}", message_id, chat_id);
 
-    let chat_id_numeric = chat_id.0;
-
-    if let Err(e) = tokio::fs::create_dir_all(&deps.settings.download_dir).await {
-        tracing::error!("Failed to create download directory: {}", e);
-    }
-
     match &msg.kind {
         teloxide::types::MessageKind::Common(_) => {
-            if let Some(text) = msg.text() {
-                tracing::info!("Text: {}", text);
-
-                if text.trim() == "/reset" || text.trim().starts_with("/reset ") {
-                    let thread_id = format!("telegram_{}", chat_id_numeric);
-                    match deps.session.reset(&thread_id).await {
-                        Ok(count) => {
-                            deps.sender
-                                .send_text(
-                                    chat_id_numeric,
-                                    &format!("🔄 Session reset! Deleted {} checkpoints.", count),
-                                )
-                                .await?;
-                        }
-                        Err(e) => {
-                            tracing::error!("Failed to reset session: {}", e);
-                            deps.sender
-                                .send_text(
-                                    chat_id_numeric,
-                                    &format!("❌ Reset failed: {}", e),
-                                )
-                                .await?;
-                        }
-                    }
-                    return Ok(());
-                }
-
-                if text.trim() == "/status" {
-                    deps.sender
-                        .send_text(chat_id_numeric, "✅ Bot is running!")
-                        .await?;
-                    return Ok(());
-                }
-
-                let should_respond = is_bot_mentioned(msg, &deps.bot_username)
-                    || is_reply_to_bot(msg, &deps.bot_username);
-
-                if deps.settings.only_respond_when_mentioned && !should_respond {
-                    tracing::debug!("Ignoring message (bot not mentioned and not a reply)");
-                    return Ok(());
-                }
-
-                let clean_text = if !deps.bot_username.is_empty() {
-                    let mention = format!("@{} ", deps.bot_username);
-                    text.replace(&mention, "")
-                        .replace(&format!("@{}", deps.bot_username), "")
-                } else {
-                    text.to_string()
-                };
-
-                let prompt = if let Some(replied_msg) = msg.reply_to_message() {
-                    if let Some(replied_text) = replied_msg.text() {
-                        format!(
-                            "[Replying to this message]:\n{}\n\n[User's reply]:\n{}",
-                            replied_text, clean_text
-                        )
-                    } else {
-                        clean_text.clone()
-                    }
-                } else {
-                    clean_text.clone()
-                };
-
-                tracing::info!("Agent prompt:\n{}", prompt);
-
-                let Some(chat_run_guard) = deps.run_registry.try_acquire(chat_id_numeric).await else {
-                    deps.sender
-                        .send_text(chat_id_numeric, &deps.settings.streaming.busy_text)
-                        .await?;
-                    return Ok(());
-                };
-
-                let ack_message_id = if deps.settings.streaming.interaction_mode
-                    == InteractionMode::PeriodicSummary
-                {
-                    Some(
-                        deps.sender
-                            .send_text_returning_id(
-                                chat_id_numeric,
-                                &deps.settings.streaming.ack_placeholder_text,
-                            )
-                            .await?,
-                    )
-                } else {
-                    None
-                };
-
-                let run_result = deps
-                    .agent
-                    .run(
-                        &prompt,
-                        chat_id_numeric,
-                        AgentRunContext {
-                            user_message_id: Some(message_id.0),
-                            ack_message_id,
-                            interaction_mode: deps.settings.streaming.interaction_mode,
-                        },
-                    )
-                    .await;
-
-                let mut outbound: Result<(), BotError> = Ok(());
-                match run_result {
-                    Ok(reply) => {
-                        if !reply.trim().is_empty() {
-                            let skip_final_send =
-                                deps.settings.streaming.interaction_mode
-                                    == InteractionMode::Streaming
-                                    && (deps.settings.streaming.show_act_phase
-                                        || deps.settings.streaming.show_think_phase);
-                            if !skip_final_send {
-                                outbound = deps
-                                    .sender
-                                    .send_text(chat_id_numeric, &reply)
-                                    .await;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        tracing::error!("Agent error: {}", e);
-                        let _ = deps
-                            .sender
-                            .send_text(chat_id_numeric, &format!("Error: {}", e))
-                            .await;
-                    }
-                }
-                chat_run_guard.release().await;
-                outbound?;
-            }
-
-            if let Some(photos) = msg.photo() {
-                match deps
-                    .downloader
-                    .download_photo(chat_id_numeric, message_id.0, photos)
-                    .await
-                {
-                    Ok((path, metadata)) => {
-                        tracing::info!(?metadata, "Photo downloaded");
-                        deps.sender
-                            .send_text(
-                                chat_id_numeric,
-                                &format!("📷 图片已保存: {:?}", path),
-                            )
-                            .await?;
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to download photo: {}", e);
-                        deps.sender
-                            .send_text(
-                                chat_id_numeric,
-                                &format!("❌ 下载失败: {}", e),
-                            )
-                            .await?;
-                    }
-                }
-            }
-
-            if let Some(doc) = msg.document() {
-                match deps
-                    .downloader
-                    .download_document(chat_id_numeric, message_id.0, doc)
-                    .await
-                {
-                    Ok((path, metadata)) => {
-                        tracing::info!(?metadata, "Document downloaded");
-                        deps.sender
-                            .send_text(
-                                chat_id_numeric,
-                                &format!("📁 文件已保存: {:?}", path),
-                            )
-                            .await?;
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to download document: {}", e);
-                        deps.sender
-                            .send_text(
-                                chat_id_numeric,
-                                &format!("❌ 下载失败: {}", e),
-                            )
-                            .await?;
-                    }
-                }
-            }
-
-            if let Some(video) = msg.video() {
-                match deps
-                    .downloader
-                    .download_video(chat_id_numeric, message_id.0, video)
-                    .await
-                {
-                    Ok((path, metadata)) => {
-                        tracing::info!(?metadata, "Video downloaded");
-                        deps.sender
-                            .send_text(
-                                chat_id_numeric,
-                                &format!("🎬 视频已保存: {:?}", path),
-                            )
-                            .await?;
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to download video: {}", e);
-                        deps.sender
-                            .send_text(
-                                chat_id_numeric,
-                                &format!("❌ 下载失败: {}", e),
-                            )
-                            .await?;
-                    }
-                }
-            }
+            let ctx = MessageContext::new(deps, msg);
+            handle_common_message(&ctx).await?;
         }
 
         _ => {
@@ -267,11 +50,11 @@ pub fn create_handler_with_config(config: Arc<DownloadConfig>) -> impl Fn(Bot, M
         Box::pin(async move {
             let chat_id = msg.chat.id;
             let message_id = msg.id;
-            
+
             if let Err(e) = config.init().await {
                 tracing::error!("Failed to create download directory: {}", e);
             }
-            
+
             if let Some(photos) = msg.photo() {
                 match download_photo(&bot, photos, &config, chat_id.0, message_id.0).await {
                     Ok((path, _metadata)) => {
@@ -283,7 +66,7 @@ pub fn create_handler_with_config(config: Arc<DownloadConfig>) -> impl Fn(Bot, M
                     }
                 }
             }
-            
+
             if let Some(doc) = msg.document() {
                 match download_document(&bot, doc, &config, chat_id.0, message_id.0).await {
                     Ok((path, _metadata)) => {
@@ -295,11 +78,11 @@ pub fn create_handler_with_config(config: Arc<DownloadConfig>) -> impl Fn(Bot, M
                     }
                 }
             }
-            
+
             if let Some(text) = msg.text() {
                 bot.send_message(chat_id, format!("收到: {}", text)).await?;
             }
-            
+
             Ok(())
         })
     }

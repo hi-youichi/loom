@@ -31,17 +31,31 @@
 
 mod agent;
 mod bot;
+mod command;
 mod config;
 mod download;
 mod error;
 mod handler;
 mod handler_deps;
+mod health;
+mod metrics;
+mod pipeline;
 mod router;
 mod sender;
 mod session;
 mod streaming;
 mod traits;
 pub mod utils;
+
+/// Narrow re-exports for typical embedders and binaries.
+pub mod prelude {
+    pub use crate::config::{
+        load_config, AgentConfig, BotConfig, ConfigError, InteractionMode, Settings,
+        StreamingConfig, TelegramBotConfig,
+    };
+    pub use crate::error::{BotError, Result};
+    pub use crate::{run_bots, run_with_config, BotManager};
+}
 
 /// Test doubles for integration tests and harnesses. Not used by the production binary.
 pub mod mock;
@@ -52,6 +66,8 @@ pub use config::{
 };
 pub use bot::{run_bots, run_with_config, BotManager};
 pub use error::{BotError, Result};
+pub use health::{create_health_router, start_health_server, HealthState};
+pub use metrics::{create_metrics_middleware, BotMetrics, MetricsSnapshot};
 pub use download::{DownloadConfig, FileMetadata, FileType, TeloxideDownloader};
 pub use handler::default_handler;
 pub use handler_deps::{ChatRunRegistry, HandlerDeps};
