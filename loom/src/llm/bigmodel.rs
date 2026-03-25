@@ -327,10 +327,9 @@ impl ChatBigModel {
                 let (role, content) = match m {
                     Message::System(s) => ("system", Cow::Borrowed(s.as_str())),
                     Message::User(s) => ("user", Cow::Borrowed(s.as_str())),
-                    Message::Assistant(s) => (
-                        "assistant",
-                        assistant_content_for_chat_api(s.as_str()),
-                    ),
+                    Message::Assistant(s) => {
+                        ("assistant", assistant_content_for_chat_api(s.as_str()))
+                    }
                 };
                 ChatMessageRequest {
                     role: role.to_string(),
@@ -775,8 +774,6 @@ impl LlmClient for ChatBigModel {
                     None => continue,
                 };
 
-                trace!(data = %data, "BigModel stream data");
-
                 for choice in choices {
                     let content_len = choice.delta.content.as_ref().map(|s| s.len()).unwrap_or(0);
                     let reasoning_len = choice
@@ -1045,7 +1042,9 @@ impl LlmClient for ChatBigModel {
             .bearer_auth(&self.api_key)
             .send()
             .await
-            .map_err(|e| AgentError::ExecutionFailed(format!("list_models request failed: {}", e)))?;
+            .map_err(|e| {
+                AgentError::ExecutionFailed(format!("list_models request failed: {}", e))
+            })?;
 
         if !res.status().is_success() {
             let status = res.status();
@@ -1056,10 +1055,9 @@ impl LlmClient for ChatBigModel {
             )));
         }
 
-        let body = res
-            .text()
-            .await
-            .map_err(|e| AgentError::ExecutionFailed(format!("list_models read body failed: {}", e)))?;
+        let body = res.text().await.map_err(|e| {
+            AgentError::ExecutionFailed(format!("list_models read body failed: {}", e))
+        })?;
 
         let models_resp: ModelsResponse = serde_json::from_str(&body)
             .map_err(|e| AgentError::ExecutionFailed(format!("list_models parse failed: {}", e)))?;
