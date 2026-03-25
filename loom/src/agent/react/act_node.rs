@@ -31,9 +31,8 @@ use crate::cli_run::ActiveOperationKind;
 use crate::error::AgentError;
 use crate::graph::{GraphInterrupt, Interrupt, Next, Node, RunContext};
 use crate::helve::{tools_requiring_approval, ApprovalPolicy, APPROVAL_REQUIRED_EVENT_TYPE};
-use crate::llm::context_persistence;
 use crate::state::tool_output_normalizer::{
-    normalize_tool_output, NormalizationConfig, NormalizedToolOutput, ToolOutputHint,
+    normalize_tool_output, NormalizationConfig, ToolOutputHint,
 };
 use crate::memory::uuid6;
 use crate::state::{ReActState, ToolCall, ToolResult};
@@ -63,19 +62,6 @@ fn truncate_for_display(s: &str, max_chars: usize) -> String {
         let truncated: String = s.chars().take(max_chars).collect();
         format!("{}...", truncated)
     }
-}
-
-fn normalized_tool_result_payload(normalized: &NormalizedToolOutput) -> serde_json::Value {
-    serde_json::json!({
-        "strategy": normalized.strategy,
-        "truncated": normalized.truncated,
-        "raw_chars": normalized.raw_chars,
-        "observation_chars": normalized.observation_chars,
-        "raw_content": normalized.raw_content,
-        "observation_text": normalized.observation_text,
-        "display_text": normalized.display_text,
-        "storage_ref": normalized.storage_ref,
-    })
 }
 
 /// Parses ToolCall.arguments string to JSON Value. Logs a warning on parse failure.
@@ -339,15 +325,6 @@ impl Node<ReActState> for ActNode {
                     );
                     used_observation_chars += normalized.observation_chars;
 
-                    context_persistence::save_tool_result_value(
-                        "act",
-                        None,
-                        tc.id.as_deref(),
-                        &tc.name,
-                        normalized_tool_result_payload(&normalized),
-                        false,
-                    );
-
                     tool_results.push(
                         ToolResult::from(normalized)
                             .with_call_id(tc.id.clone())
@@ -375,15 +352,6 @@ impl Node<ReActState> for ActNode {
                             .with_used_observation_chars(used_observation_chars),
                     );
                     used_observation_chars += normalized.observation_chars;
-
-                    context_persistence::save_tool_result_value(
-                        "act",
-                        None,
-                        tc.id.as_deref(),
-                        &tc.name,
-                        normalized_tool_result_payload(&normalized),
-                        true,
-                    );
 
                     tool_results.push(
                         ToolResult::from(normalized)
@@ -640,15 +608,6 @@ impl Node<ReActState> for ActNode {
                     let summary = truncate_for_log(&normalized.display_text, 200);
                     used_observation_chars += normalized.observation_chars;
 
-                    context_persistence::save_tool_result_value(
-                        "act",
-                        run_ctx.config.thread_id.as_deref(),
-                        tc.id.as_deref(),
-                        &tc.name,
-                        normalized_tool_result_payload(&normalized),
-                        false,
-                    );
-
                     tool_results.push(
                         ToolResult::from(normalized)
                             .with_call_id(tc.id.clone())
@@ -693,15 +652,6 @@ impl Node<ReActState> for ActNode {
                     );
                     let summary = truncate_for_log(&normalized.display_text, 200);
                     used_observation_chars += normalized.observation_chars;
-
-                    context_persistence::save_tool_result_value(
-                        "act",
-                        run_ctx.config.thread_id.as_deref(),
-                        tc.id.as_deref(),
-                        &tc.name,
-                        normalized_tool_result_payload(&normalized),
-                        true,
-                    );
 
                     tool_results.push(
                         ToolResult::from(normalized)
