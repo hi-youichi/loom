@@ -1,5 +1,9 @@
 # 方案：OpenAI 兼容的多轮工具对话格式
 
+> **状态**：✅ 已实施（2026-03-25）  
+> **变更范围**：37 个文件，+627 / −155 行  
+> **后续加固**：见 [tool-message-followup.md](./tool-message-followup.md)
+
 ## 1. 背景与问题
 
 在相同 ReAct 流程下，使用 **智谱 BigModel**（`ChatBigModel`）时工具链路可正常工作，而使用 **OpenAI Chat Completions**（`ChatOpenAI`）时容易出现：
@@ -9,23 +13,27 @@
 
 现象并非必然来自 `openai.rs` / `bigmodel.rs` 中「是否附带 `tools` 列表」的差异：ReAct 构建路径里两者都会 `with_tools`。根因在于 **对话历史在 HTTP 请求中的编码方式** 与 **OpenAI 的校验规则** 不一致。
 
-## 2. 现状摘要
+## 2. 实施前后对比
 
-| 环节 | 当前行为 |
-|------|----------|
-| `Message` | 仅 `System` / `User` / `Assistant` 三种，内容为字符串。 |
-| Think 落盘 | `apply_think_response` 只追加 `Message::Assistant(content)`，**不保存**当轮 `tool_calls`（含 `id`）。 |
-| Observe 落盘 | 将每条 `ToolResult` 格式化为 `User` 文案：`Tool {name} result/error:\n{observation}`。 |
-| `ChatOpenAI` | `messages_to_request` 仅映射为带文本的 assistant，**不发出** `tool_calls` / `tool` 角色。 |
-| `ChatBigModel` | 同样只发 `role` + `content` 字符串；依赖网关对非严格格式的容忍。 |
+| 环节 | 实施前 | 实施后 |
+|------|--------|--------|
+| `Message` | 仅 `System` / `User` / `Assistant(String)` 三种纯文本。 | `Assistant(AssistantPayload)` 含 `content` + `tool_calls`；新增 `Tool { tool_call_id, content }` 变体。 |
+| Think 落盘 | `apply_think_response` 只追加 `Message::Assistant(content)`，**不保存** `tool_calls`。 | 追加 `Message::assistant_with_tool_calls(content, tool_calls)`，`normalize_tool_call_ids` 保证每个 id 非空。 |
+| Observe 落盘 | 将 `ToolResult` 格式化为 `Message::User` 文案。 | 写入 `Message::Tool { tool_call_id, content }`，id 从 `ToolResult.call_id` 获取。 |
+| `ChatOpenAI` | `messages_to_request` 仅映射纯文本 assistant。 | assistant 含 `tool_calls` 时映射为 `ChatCompletionRequestAssistantMessage` 的完整结构；`Tool` 映射为 `ChatCompletionRequestToolMessage`。 |
+| `ChatBigModel` | 只发 `role` + `content` 字符串。 | 新增 `BigModelToolCall` / `BigModelToolFunction` DTO；assistant 带 `tool_calls` 时正确序列化；tool 消息用 `role: "tool"`。 |
+| Serde 兼容 | — | 自定义 `assistant_payload_serde`：无 tool_calls 时序列化为纯字符串（向后兼容）；反序列化同时接受旧字符串和新结构体。 |
+| 空 assistant | `assistant_content_for_chat_api` 返回 `""`。 | 返回 WORD JOINER `\u{2060}`（仅在无 tool_calls 时使用；有 tool_calls 时 content 可为 `None`）。 |
 
 相关代码位置（便于对照）：
 
-- `loom/src/message.rs` — `Message` 定义与 `assistant_content_for_chat_api`
-- `loom/src/agent/react/think_node.rs` — `apply_think_response`
-- `loom/src/agent/react/observe_node.rs` — 工具结果写入 `messages`
-- `loom/src/llm/openai.rs` — `messages_to_request`
-- `loom/src/llm/bigmodel.rs` — `messages_to_request`
+- `loom/src/message.rs` — `Message`、`AssistantPayload`、`AssistantToolCall` 定义与自定义 serde
+- `loom/src/agent/react/think_node.rs` — `apply_think_response`、`normalize_tool_call_ids`
+- `loom/src/agent/react/observe_node.rs` — 工具结果写入 `Message::Tool`
+- `loom/src/llm/openai.rs` — `messages_to_request`（含 `ChatCompletionRequestToolMessage`）
+- `loom/src/llm/bigmodel.rs` — `messages_to_request`（含 `BigModelToolCall`）
+- `loom/src/user_message/sqlite_store.rs` — 持久化读写新格式
+- `loom/src/compress/compaction.rs` — 摘要与裁剪逻辑适配 `Tool` 变体
 
 ## 3. 根因说明
 
@@ -251,24 +259,51 @@ Content-Type: application/json
 2. **Mock HTTP**：本地 TCP/mock server 接收 POST body，断言含 `tool_calls` 与 `role":"tool"`。
 3. **集成**（可选 `ignored`）：真实 `OPENAI_API_KEY` 两轮工具调用（例如先调只读工具再基于结果回答）。
 
+### 6.1 已落地的测试覆盖
+
+| 测试 | 文件 | 验证内容 |
+|------|------|----------|
+| `messages_to_request_serializes_assistant_tool_calls_and_tool_role` | `openai.rs` | assistant JSON 含 `tool_calls` 数组、tool 消息含 `role: "tool"` + `tool_call_id` |
+| `assistant_plain_serializes_as_string` | `message.rs` | 无 tool_calls 的 assistant 序列化为 `{"Assistant": "..."}` 字符串（向后兼容） |
+| `message_serialize_deserialize_roundtrip` | `message.rs` | 所有变体（含 `assistant_with_tool_calls` 和 `Tool`）的序列化 round-trip |
+| `message_role` / `message_content` | `message.rs` | `Tool` 变体返回正确的 role 和 content |
+| `observe_node_appends_tool_results_as_tool_messages_and_clears_tool_fields` | `react_nodes.rs` | ObserveNode 输出 `Message::Tool` 且 `tool_call_id` 正确 |
+| `think_node_appends_assistant_message_and_sets_tool_calls` | `react_nodes.rs` | ThinkNode 输出的 assistant 消息含 tool_calls 且 id 非空 |
+| 多处 `..Default::default()` 测试 | `react_nodes.rs` | ReActState 新字段的默认值兼容 |
+
 ## 7. 风险与开放问题
 
-- **破坏性变更**：`Message` 的 serde 形状变化会影响已存 session/checkpoint；需版本字段或迁移脚本。
-- **多工具并行**：同一 assistant 多条 `tool_calls` 时，`Tool` 消息顺序通常需与规范一致；需与当前 Act 顺序对齐。
-- **流式 Think**：确保流式结束态写入状态的 `tool_calls` 与 non-stream 一致。
-- **第三方网关**：部分代理对 `tool` 支持不完整，可能需要白名单或回退策略。
+| 风险项 | 状态 | 说明 |
+|--------|------|------|
+| **serde 破坏性变更** | ✅ 已解决 | 自定义 `assistant_payload_serde` 实现向后兼容：旧字符串格式可反序列化为 `AssistantPayload`。 |
+| **多工具并行** | ✅ 已支持 | `AssistantPayload.tool_calls` 为 `Vec`，支持多个并行工具调用。 |
+| **流式 Think** | ⚠️ 待验证 | 流式路径的 `tool_calls` 写入逻辑需与 non-stream `apply_think_response` 一致。 |
+| **第三方网关** | ⚠️ 可观察 | BigModel 已统一为新格式；Kimi 有独立的空 content 处理分支。 |
+| **tool_call_id 一致性** | ✅ 已加固 | ActNode `backfill_tool_result_call_ids`；ObserveNode 不再按索引回退。详见 [followup](./tool-message-followup.md)。 |
+| **SQLite 脏数据降级** | ✅ 已加固 | 读库失败路径生成 fallback id；`append` 空 `tool_call_id` 经 `to_role_content_pair_for_store` 补全。 |
 
 ## 8. 文档与后续
 
 - 实施后更新 [LLM Integration](../guides/llm-integration.md) 中 ChatOpenAI 小节，说明 **工具多轮必须使用 `Tool` 消息**。
 - 可更新 [Tool System Architecture](../architecture/tool-system.md) 中 ReAct 数据流描述，与 Observe 写入格式一致。
+- 剩余加固项与优化跟踪：[tool-message-followup.md](./tool-message-followup.md)。
 
-## 9. 小结
+## 9. 实施总结
 
-| 项目 | 说明 |
-|------|------|
-| 问题性质 | OpenAI 严格校验 Chat 消息序列；当前用 `User` 承载工具结果且 assistant 未带 `tool_calls`。 |
-| 方向 | 扩展 `Message`，Think/Observe 写入规范语义；OpenAI 客户端按 API 序列化。 |
-| BigModel | 现状宽松；建议统一新格式并在必要时保留降级。 |
+| 项目 | 方案设计 | 实施结果 |
+|------|----------|----------|
+| `Message` 扩展 | `Assistant(AssistantPayload)` + `Tool { tool_call_id, content }` | ✅ 已落地。`AssistantPayload` 含 `content` + `tool_calls`；自定义 serde 保持向后兼容。 |
+| ThinkNode | 写入 assistant 含 tool_calls | ✅ `apply_think_response` 使用 `assistant_with_tool_calls`；`normalize_tool_call_ids` 保证 id 非空。 |
+| ObserveNode | 写入 `Message::Tool` | ✅ 不再伪装为 `Message::User`。tool_call_id 从 `ToolResult.call_id` 或索引回退获取。 |
+| `ChatOpenAI` | 完整 assistant + tool 序列化 | ✅ 使用 `async_openai` 类型；新增 `messages_to_request_serializes_assistant_tool_calls_and_tool_role` 测试。 |
+| `ChatBigModel` | 统一新格式 | ✅ 新增 `BigModelToolCall` / `BigModelToolFunction` DTO；tool 消息用 `role: "tool"`。 |
+| 持久化 | 识别新旧格式 | ✅ `sqlite_store` 写入 JSON / 读取时兼容纯文本与结构体。 |
+| 压缩 / 摘要 | 识别 `Tool` 变体 | ✅ `compaction.rs`、`context_window.rs` 已适配。 |
+| 全量消费端迁移 | 所有 `Message::Assistant(String)` 调用点 | ✅ 37 个文件完成迁移，11 个 examples + 20+ 测试统一使用新构造函数。 |
 
-本方案为实施蓝图；具体类型命名、特性开关与迁移步骤可在开发 PR 中细化并与此文档交叉引用。
+### 遗留 / 后续
+
+已落实项见 [tool-message-followup.md](./tool-message-followup.md)（Phase 1–2）。仍待：
+
+1. **ACP（Phase 3）** — 协议支持后，将 `Message::Tool` 从 `UserMessageChunk` 迁到专用更新类型。
+2. **流式 Think** — 核对流式路径与 `apply_think_response` 的 `tool_calls` 写入是否一致（§7 表中仍为待验证时可单独排查）。
