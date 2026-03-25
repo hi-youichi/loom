@@ -82,16 +82,26 @@ impl Node<ReActState> for ThinkNode {
     }
 
     async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
+        context_persistence::save_llm_request(
+            "think",
+            None,
+            state.turn_count,
+            &state.messages,
+            None,
+        );
         let response = self.llm.invoke(&state.messages).await?;
 
         // Save LLM response (no session_id available in run())
         context_persistence::save_llm_response(
             "think",
             None,
+            state.turn_count,
             &response.content,
             response.reasoning_content.as_deref(),
             &response.tool_calls,
             response.usage.as_ref(),
+            response.raw_request.as_deref(),
+            response.raw_response.as_deref(),
         );
 
         let new_state = apply_think_response(
@@ -122,6 +132,15 @@ impl Node<ReActState> for ThinkNode {
         let should_stream_tools = (ctx.stream_mode.contains(&StreamMode::Tools)
             || ctx.stream_mode.contains(&StreamMode::Debug))
             && ctx.stream_tx.is_some();
+
+        let session_id = ctx.config.thread_id.as_deref();
+        crate::llm::context_persistence::save_llm_request(
+            "think",
+            session_id,
+            state.turn_count,
+            &state.messages,
+            None,
+        );
 
         let call_start = Instant::now();
         let llm_call = async {
@@ -205,14 +224,16 @@ impl Node<ReActState> for ThinkNode {
         let used_fallback = response.content.is_empty() && response.tool_calls.is_empty();
 
         // Save LLM response with session_id from context
-        let session_id = ctx.config.thread_id.as_deref();
         crate::llm::context_persistence::save_llm_response(
             "think",
             session_id,
+            state.turn_count,
             &response.content,
             response.reasoning_content.as_deref(),
             &response.tool_calls,
             response.usage.as_ref(),
+            response.raw_request.as_deref(),
+            response.raw_response.as_deref(),
         );
 
         let content = if used_fallback {

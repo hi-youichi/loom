@@ -132,6 +132,12 @@ pub struct LlmResponse {
     pub tool_calls: Vec<ToolCall>,
     /// Token usage for this call, when available (e.g. OpenAI returns this).
     pub usage: Option<LlmUsage>,
+    /// Raw HTTP request body (JSON string), for debugging and logging.
+    /// Streaming clients may set this when the outbound body is serialized once (see implementations).
+    pub raw_request: Option<String>,
+    /// Raw HTTP response body (JSON string), for debugging and logging.
+    /// Typically `None` for SSE streaming, where the wire response is not reassembled.
+    pub raw_response: Option<String>,
 }
 
 /// LLM client: given messages, returns assistant text and optional tool_calls.
@@ -235,6 +241,8 @@ mod tests {
                 reasoning_content: None,
                 tool_calls: vec![],
                 usage: None,
+                raw_request: None,
+                raw_response: None,
             })
         }
     }

@@ -207,6 +207,7 @@ struct StreamDelta {
 struct StreamChoice {
     delta: StreamDelta,
     /// OpenAI-compatible; optional so we don't fail if the API omits it.
+    #[allow(dead_code)]
     #[serde(default)]
     finish_reason: Option<String>,
 }
@@ -384,6 +385,7 @@ impl LlmClient for ChatBigModel {
         let trace_id = uuid6().to_string();
         let url = self.chat_completions_url();
         let body = self.build_request(messages, false);
+        let raw_request = serde_json::to_string(&body).ok();
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         debug!(
             trace_id = %trace_id,
@@ -524,6 +526,10 @@ impl LlmClient for ChatBigModel {
         let response: ChatCompletionResponse = serde_json::from_slice(&body_bytes)
             .map_err(|e| AgentError::ExecutionFailed(format!("BigModel response parse: {}", e)))?;
 
+        let raw_response = std::str::from_utf8(&body_bytes)
+            .ok()
+            .map(std::string::ToString::to_string);
+
         let choice = response.choices.into_iter().next().ok_or_else(|| {
             AgentError::ExecutionFailed("BigModel returned no choices".to_string())
         })?;
@@ -557,6 +563,8 @@ impl LlmClient for ChatBigModel {
             reasoning_content,
             tool_calls,
             usage,
+            raw_request,
+            raw_response,
         })
     }
 
@@ -583,6 +591,7 @@ impl LlmClient for ChatBigModel {
         let chunk_tx = chunk_tx.expect("chunk_tx must be Some when streaming");
         let url = self.chat_completions_url();
         let body = self.build_request(messages, true);
+        let raw_request = serde_json::to_string(&body).ok();
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         debug!(
             trace_id = %trace_id,
@@ -736,7 +745,6 @@ impl LlmClient for ChatBigModel {
             };
             let Some(bytes) = chunk else { break };
 
-            trace!(bytes_len = bytes.len(), "BigModel stream bytes");
             buf.extend_from_slice(&bytes);
 
             while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
@@ -775,28 +783,6 @@ impl LlmClient for ChatBigModel {
                 };
 
                 for choice in choices {
-                    let content_len = choice.delta.content.as_ref().map(|s| s.len()).unwrap_or(0);
-                    let reasoning_len = choice
-                        .delta
-                        .reasoning_content
-                        .as_ref()
-                        .map(|s| s.len())
-                        .unwrap_or(0);
-                    let tool_call_count = choice
-                        .delta
-                        .tool_calls
-                        .as_ref()
-                        .map(|calls| calls.len())
-                        .unwrap_or(0);
-                    trace!(
-                        content_len,
-                        reasoning_len,
-                        tool_call_count,
-                        finish_reason = ?choice.finish_reason,
-                        content = ?choice.delta.content,
-                        reasoning_content = ?choice.delta.reasoning_content,
-                        "BigModel stream chunk"
-                    );
                     let delta = choice.delta;
 
                     if let Some(ref reasoning_content) = delta.reasoning_content {
@@ -887,14 +873,7 @@ impl LlmClient for ChatBigModel {
                                 .as_ref()
                                 .and_then(|f| f.arguments.clone())
                                 .unwrap_or_default();
-                            trace!(
-                                tool_index = tc.index,
-                                call_id = ?tc.id,
-                                name = ?tool_name,
-                                arguments_delta_len = args_delta.len(),
-                                arguments_delta = %args_delta,
-                                "BigModel stream tool chunk"
-                            );
+
                             let entry = tool_call_map.entry(tc.index).or_insert_with(|| {
                                 (
                                     tc.id.clone().unwrap_or_default(),
@@ -1008,7 +987,9 @@ impl LlmClient for ChatBigModel {
         trace!(
             trace_id = %trace_id,
             url = %url,
+            model = %self.model,
             reasoning_len = full_reasoning_content.len(),
+            content_len = full_content.len(),
             tool_calls = ?tool_calls.len(),
             usage = ?stream_usage,
             "BigModel stream response"
@@ -1029,6 +1010,8 @@ impl LlmClient for ChatBigModel {
             reasoning_content,
             tool_calls,
             usage: stream_usage,
+            raw_request,
+            raw_response: None, // SSE stream: full wire response not reassembled
         })
     }
 

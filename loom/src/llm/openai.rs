@@ -289,10 +289,11 @@ impl LlmClient for ChatOpenAI {
         );
 
         let mut attempt = 0;
-        let response = loop {
+        let (response, raw_request) = loop {
             let request = build_request()?;
+            let raw_request = serde_json::to_string(&request).ok();
             match self.client.chat().create(request).await {
-                Ok(response) => break response,
+                Ok(response) => break (response, raw_request),
                 Err(e)
                     if looks_like_transient_http_error_message(&e.to_string())
                         && attempt < TRANSIENT_HTTP_MAX_RETRIES =>
@@ -317,6 +318,8 @@ impl LlmClient for ChatOpenAI {
                 }
             }
         };
+
+        let raw_response = serde_json::to_string(&response).ok();
 
         let choice =
             response.choices.into_iter().next().ok_or_else(|| {
@@ -353,6 +356,8 @@ impl LlmClient for ChatOpenAI {
             reasoning_content,
             tool_calls,
             usage,
+            raw_request,
+            raw_response,
         })
     }
 
@@ -439,10 +444,11 @@ impl LlmClient for ChatOpenAI {
         );
 
         let mut attempt = 0;
-        let mut stream = loop {
+        let (mut stream, raw_request) = loop {
             let request = build_request()?;
+            let raw_request = serde_json::to_string(&request).ok();
             match self.client.chat().create_stream(request).await {
-                Ok(stream) => break stream,
+                Ok(stream) => break (stream, raw_request),
                 Err(e)
                     if looks_like_transient_http_error_message(&e.to_string())
                         && attempt < TRANSIENT_HTTP_MAX_RETRIES =>
@@ -711,6 +717,8 @@ impl LlmClient for ChatOpenAI {
             reasoning_content,
             tool_calls,
             usage: stream_usage,
+            raw_request,
+            raw_response: None, // SSE: full response body not captured
         })
     }
 

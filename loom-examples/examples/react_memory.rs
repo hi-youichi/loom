@@ -96,7 +96,11 @@ impl LlmClient for MemoryMockLlm {
 
         Ok(LlmResponse {
             content,
+            reasoning_content: None,
             tool_calls,
+            usage: None,
+            raw_request: None,
+            raw_response: None,
         })
     }
 }
