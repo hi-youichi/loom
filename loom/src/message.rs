@@ -1,22 +1,98 @@
 //! Minimal message types for agent state.
 //!
-//! Message roles: System (usually first in the list), User, Assistant.
+//! Message roles: System, User, Assistant, and Tool (tool outputs for strict chat APIs).
 //! Used by `AgentState::messages` and by agents that read/append messages in `Agent::run`.
 
 use std::borrow::Cow;
 
+use serde::{Deserialize, Serialize};
+use tracing::warn;
+
+use crate::memory::uuid6;
+
+/// One function tool call the model requested (aligned with OpenAI `tool_calls[]`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AssistantToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
+}
+
+/// Assistant turn: optional visible text plus optional parallel tool calls.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AssistantPayload {
+    pub content: String,
+    #[serde(default)]
+    pub tool_calls: Vec<AssistantToolCall>,
+}
+
+mod assistant_payload_serde {
+    use super::{AssistantPayload, AssistantToolCall};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum AssistantSerde {
+        Legacy(String),
+        Structured {
+            content: String,
+            #[serde(default)]
+            tool_calls: Vec<AssistantToolCall>,
+        },
+    }
+
+    #[derive(Serialize)]
+    struct AssistantStruct<'a> {
+        content: &'a str,
+        tool_calls: &'a [AssistantToolCall],
+    }
+
+    pub fn serialize<S>(payload: &AssistantPayload, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if payload.tool_calls.is_empty() {
+            payload.content.serialize(serializer)
+        } else {
+            AssistantStruct {
+                content: payload.content.as_str(),
+                tool_calls: payload.tool_calls.as_slice(),
+            }
+            .serialize(serializer)
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<AssistantPayload, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        match AssistantSerde::deserialize(deserializer)? {
+            AssistantSerde::Legacy(content) => Ok(AssistantPayload {
+                content,
+                tool_calls: vec![],
+            }),
+            AssistantSerde::Structured { content, tool_calls } => {
+                Ok(AssistantPayload { content, tool_calls })
+            }
+        }
+    }
+}
+
 /// A single message in the conversation.
-///
-/// Roles: system prompt, user input, assistant reply.
-/// No separate Tool role in this minimal design; extend in later Sprints.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Message {
     /// System prompt; typically placed first in the message list.
     System(String),
     /// User input.
     User(String),
-    /// Model/agent reply.
-    Assistant(String),
+    /// Model reply, optionally including tool calls for the next round.
+    #[serde(with = "assistant_payload_serde")]
+    Assistant(AssistantPayload),
+    /// Tool execution result (OpenAI `role: tool`); pairs with a prior assistant `tool_calls` id.
+    Tool {
+        tool_call_id: String,
+        content: String,
+    },
 }
 
 impl Message {
@@ -30,9 +106,20 @@ impl Message {
         Self::User(content.into())
     }
 
-    /// Creates an assistant message.
+    /// Creates an assistant message with text only (no tool calls).
     pub fn assistant(content: impl Into<String>) -> Self {
-        Self::Assistant(content.into())
+        Self::Assistant(AssistantPayload {
+            content: content.into(),
+            tool_calls: vec![],
+        })
+    }
+
+    /// Creates an assistant message that includes tool calls (and optional text).
+    pub fn assistant_with_tool_calls(content: String, tool_calls: Vec<AssistantToolCall>) -> Self {
+        Self::Assistant(AssistantPayload {
+            content,
+            tool_calls,
+        })
     }
 
     /// Returns the role name as a string.
@@ -41,28 +128,77 @@ impl Message {
             Message::System(_) => "system",
             Message::User(_) => "user",
             Message::Assistant(_) => "assistant",
+            Message::Tool { .. } => "tool",
         }
     }
 
-    /// Returns the content of the message.
+    /// Returns the primary text content (assistant text, user/system string, or tool output body).
     pub fn content(&self) -> &str {
         match self {
-            Message::System(s) => s,
-            Message::User(s) => s,
-            Message::Assistant(s) => s,
+            Message::System(s) | Message::User(s) => s,
+            Message::Assistant(p) => p.content.as_str(),
+            Message::Tool { content, .. } => content,
         }
+    }
+
+    /// Role plus a single `content` string for HTTP/API or SQLite `(role, content)` rows.
+    ///
+    /// Assistant messages with `tool_calls` serialize the payload as JSON. Tool messages use
+    /// `{"tool_call_id","content"}`.
+    pub fn to_role_content_pair(&self) -> (&'static str, String) {
+        match self {
+            Message::System(c) => ("system", c.clone()),
+            Message::User(c) => ("user", c.clone()),
+            Message::Assistant(p) => {
+                if p.tool_calls.is_empty() {
+                    ("assistant", p.content.clone())
+                } else {
+                    (
+                        "assistant",
+                        serde_json::to_string(p).unwrap_or_else(|_| p.content.clone()),
+                    )
+                }
+            }
+            Message::Tool {
+                tool_call_id,
+                content,
+            } => (
+                "tool",
+                serde_json::json!({ "tool_call_id": tool_call_id, "content": content }).to_string(),
+            ),
+        }
+    }
+
+    /// Like [`to_role_content_pair`], but empty `tool_call_id` on tool messages gets a generated id
+    /// before persistence (avoids invalid rows for strict chat APIs).
+    pub fn to_role_content_pair_for_store(&self) -> (&'static str, String) {
+        if let Message::Tool {
+            tool_call_id,
+            content,
+        } = self
+        {
+            if tool_call_id.is_empty() {
+                warn!("tool message with empty tool_call_id on persist; generating id");
+                let id = format!("call_{}", uuid6());
+                return (
+                    "tool",
+                    serde_json::json!({ "tool_call_id": id, "content": content }).to_string(),
+                );
+            }
+        }
+        self.to_role_content_pair()
     }
 }
 
-/// Assistant `content` for chat-completion HTTP requests.
+/// Assistant `content` for chat-completion HTTP requests when the turn has **no** `tool_calls`.
 ///
-/// Loom stores tool rounds as a (possibly empty) assistant turn followed by user
-/// text with tool output. Providers such as OpenAI reject assistant messages whose
-/// `content` is empty when that turn did not include `tool_calls` in the same payload.
-/// A single WORD JOINER is non-empty for validators and invisible in typical UIs.
+/// OpenAI rejects assistant messages whose `content` is empty when that turn did not include
+/// `tool_calls`. A single WORD JOINER (`U+2060`) is non-empty for validators and invisible in typical UIs.
+/// **Note:** older code returned `""` for whitespace-only content; that failed API validation—this
+/// function now always yields a non-empty string for trim-empty input.
 pub(crate) fn assistant_content_for_chat_api(s: &str) -> Cow<'_, str> {
     if s.trim().is_empty() {
-        Cow::Borrowed("")
+        Cow::Borrowed("\u{2060}")
     } else {
         Cow::Borrowed(s)
     }
@@ -70,7 +206,18 @@ pub(crate) fn assistant_content_for_chat_api(s: &str) -> Cow<'_, str> {
 
 impl std::fmt::Display for Message {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.role(), self.content())
+        match self {
+            Message::Tool {
+                tool_call_id,
+                content,
+            } => write!(
+                f,
+                "tool[{}]: {}",
+                tool_call_id,
+                content.chars().take(200).collect::<String>()
+            ),
+            _ => write!(f, "{}: {}", self.role(), self.content()),
+        }
     }
 }
 
@@ -86,7 +233,7 @@ mod tests {
         let usr = Message::user("u");
         assert!(matches!(&usr, Message::User(c) if c == "u"));
         let ast = Message::assistant("a");
-        assert!(matches!(&ast, Message::Assistant(c) if c == "a"));
+        assert!(matches!(&ast, Message::Assistant(p) if p.content == "a" && p.tool_calls.is_empty()));
     }
 
     /// **Scenario**: Each Message variant round-trips through serde.
@@ -96,16 +243,31 @@ mod tests {
             Message::system("sys"),
             Message::user("usr"),
             Message::assistant("ast"),
+            Message::assistant_with_tool_calls(
+                "".into(),
+                vec![AssistantToolCall {
+                    id: "c1".into(),
+                    name: "fn".into(),
+                    arguments: "{}".into(),
+                }],
+            ),
+            Message::Tool {
+                tool_call_id: "c1".into(),
+                content: r#"{"ok":true}"#.into(),
+            },
         ] {
             let json = serde_json::to_string(&msg).expect("serialize");
             let back: Message = serde_json::from_str(&json).expect("deserialize");
-            match (&msg, &back) {
-                (Message::System(a), Message::System(b)) => assert_eq!(a, b),
-                (Message::User(a), Message::User(b)) => assert_eq!(a, b),
-                (Message::Assistant(a), Message::Assistant(b)) => assert_eq!(a, b),
-                _ => panic!("variant mismatch: {:?} vs {:?}", msg, back),
-            }
+            assert_eq!(msg, back);
         }
+    }
+
+    /// **Scenario**: Plain assistant still serializes as a JSON string for backward compatibility.
+    #[test]
+    fn assistant_plain_serializes_as_string() {
+        let msg = Message::assistant("hi");
+        let v: serde_json::Value = serde_json::to_value(&msg).unwrap();
+        assert_eq!(v, serde_json::json!({"Assistant": "hi"}));
     }
 
     /// **Scenario**: role() returns correct string for each variant.
@@ -114,6 +276,14 @@ mod tests {
         assert_eq!(Message::system("x").role(), "system");
         assert_eq!(Message::user("x").role(), "user");
         assert_eq!(Message::assistant("x").role(), "assistant");
+        assert_eq!(
+            Message::Tool {
+                tool_call_id: "c".into(),
+                content: "y".into(),
+            }
+            .role(),
+            "tool"
+        );
     }
 
     /// **Scenario**: content() returns the inner string for each variant.
@@ -122,6 +292,14 @@ mod tests {
         assert_eq!(Message::system("hello").content(), "hello");
         assert_eq!(Message::user("world").content(), "world");
         assert_eq!(Message::assistant("reply").content(), "reply");
+        assert_eq!(
+            Message::Tool {
+                tool_call_id: "c".into(),
+                content: "out".into(),
+            }
+            .content(),
+            "out"
+        );
     }
 
     /// **Scenario**: Display formats as "role: content".
@@ -130,6 +308,57 @@ mod tests {
         assert_eq!(Message::system("sys").to_string(), "system: sys");
         assert_eq!(Message::user("usr").to_string(), "user: usr");
         assert_eq!(Message::assistant("ast").to_string(), "assistant: ast");
+    }
+
+    #[test]
+    fn message_display_tool_short() {
+        let msg = Message::Tool {
+            tool_call_id: "c1".into(),
+            content: "ok".into(),
+        };
+        assert_eq!(msg.to_string(), "tool[c1]: ok");
+    }
+
+    #[test]
+    fn message_display_tool_truncates_at_200() {
+        let long = "x".repeat(300);
+        let msg = Message::Tool {
+            tool_call_id: "c1".into(),
+            content: long,
+        };
+        let display = msg.to_string();
+        assert!(display.starts_with("tool[c1]: "));
+        assert_eq!(display.chars().count(), "tool[c1]: ".chars().count() + 200);
+    }
+
+    #[test]
+    fn to_role_content_pair_matches_variants() {
+        let (r, c) = Message::user("u").to_role_content_pair();
+        assert_eq!(r, "user");
+        assert_eq!(c, "u");
+        let (r, c) = Message::Tool {
+            tool_call_id: "t1".into(),
+            content: "body".into(),
+        }
+        .to_role_content_pair();
+        assert_eq!(r, "tool");
+        let v: serde_json::Value = serde_json::from_str(&c).unwrap();
+        assert_eq!(v["tool_call_id"], "t1");
+        assert_eq!(v["content"], "body");
+    }
+
+    #[test]
+    fn to_role_content_pair_for_store_fills_empty_tool_call_id() {
+        let (r, c) = Message::Tool {
+            tool_call_id: String::new(),
+            content: "x".into(),
+        }
+        .to_role_content_pair_for_store();
+        assert_eq!(r, "tool");
+        let v: serde_json::Value = serde_json::from_str(&c).unwrap();
+        let id = v["tool_call_id"].as_str().expect("id");
+        assert!(!id.is_empty());
+        assert_eq!(v["content"], "x");
     }
 
     /// **Scenario**: empty assistant text is mapped to a non-empty placeholder for APIs.

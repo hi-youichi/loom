@@ -35,6 +35,7 @@ use crate::llm::context_persistence;
 use crate::state::tool_output_normalizer::{
     normalize_tool_output, NormalizationConfig, NormalizedToolOutput, ToolOutputHint,
 };
+use crate::memory::uuid6;
 use crate::state::{ReActState, ToolCall, ToolResult};
 use crate::stream::{StreamEvent, StreamMode, ToolStreamWriter};
 use crate::tool_source::{ToolCallContext, ToolSource, ToolSourceError};
@@ -224,6 +225,42 @@ impl ActNode {
     }
 }
 
+/// Ensures each [`ToolResult`] has a non-empty `call_id`, preferring the paired [`ToolCall::id`].
+fn backfill_tool_result_call_ids(tool_calls: &[ToolCall], tool_results: &mut Vec<ToolResult>) {
+    for (tc, tr) in tool_calls.iter().zip(tool_results.iter_mut()) {
+        let needs_fill = tr.call_id.as_deref().map_or(true, |s| s.is_empty());
+        if !needs_fill {
+            continue;
+        }
+        if let Some(ref id) = tc.id {
+            if !id.is_empty() {
+                tr.call_id = Some(id.clone());
+                continue;
+            }
+        }
+        tr.call_id = Some(format!("call_{}", uuid6()));
+        warn!(
+            tool_name = %tc.name,
+            "ToolResult missing call_id; generated fallback id (ToolCall.id also empty)"
+        );
+    }
+    let paired = tool_calls.len().min(tool_results.len());
+    for tr in tool_results.iter_mut().skip(paired) {
+        let needs_fill = tr.call_id.as_deref().map_or(true, |s| s.is_empty());
+        if needs_fill {
+            tr.call_id = Some(format!("call_{}", uuid6()));
+            warn!("unpaired ToolResult missing call_id; generated fallback id");
+        }
+    }
+    if tool_results.len() != tool_calls.len() {
+        warn!(
+            tool_calls_len = tool_calls.len(),
+            tool_results_len = tool_results.len(),
+            "tool_calls and tool_results length mismatch"
+        );
+    }
+}
+
 #[async_trait]
 impl Node<ReActState> for ActNode {
     fn id(&self) -> &str {
@@ -358,6 +395,7 @@ impl Node<ReActState> for ActNode {
             }
         }
 
+        backfill_tool_result_call_ids(&state.tool_calls, &mut tool_results);
         self.tools.set_call_context(None);
 
         let new_state = ReActState {
@@ -692,6 +730,7 @@ impl Node<ReActState> for ActNode {
             }
         }
 
+        backfill_tool_result_call_ids(&state.tool_calls, &mut tool_results);
         self.tools.set_call_context(None);
 
         let new_state = ReActState {
@@ -854,5 +893,37 @@ mod tests {
         use crate::tool_source::MockToolSource;
         let node = ActNode::new(Box::new(MockToolSource::default()));
         assert_eq!(Node::<ReActState>::id(&node), "act");
+    }
+
+    #[test]
+    fn backfill_tool_result_call_ids_from_toolcall_id() {
+        let tcs = vec![ToolCall {
+            id: Some("call-1".into()),
+            name: "get_time".into(),
+            arguments: "{}".into(),
+        }];
+        let mut results = vec![ToolResult::simple(
+            None,
+            Some("get_time".into()),
+            "ok".into(),
+            false,
+        )];
+        backfill_tool_result_call_ids(&tcs, &mut results);
+        assert_eq!(results[0].call_id.as_deref(), Some("call-1"));
+    }
+
+    #[test]
+    fn backfill_tool_result_call_ids_generates_when_both_missing() {
+        let tcs = vec![ToolCall {
+            id: None,
+            name: "x".into(),
+            arguments: "{}".into(),
+        }];
+        let mut results = vec![ToolResult::simple(None, None, "y".into(), false)];
+        backfill_tool_result_call_ids(&tcs, &mut results);
+        assert!(results[0]
+            .call_id
+            .as_deref()
+            .is_some_and(|s| !s.is_empty()));
     }
 }

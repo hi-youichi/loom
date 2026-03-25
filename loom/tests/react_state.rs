@@ -267,7 +267,7 @@ fn react_state_with_all_message_variants() {
         _ => panic!("expected User"),
     }
     match &state.messages[2] {
-        Message::Assistant(s) => assert_eq!(s, "Assistant reply"),
+        Message::Assistant(p) => assert_eq!(p.content, "Assistant reply"),
         _ => panic!("expected Assistant"),
     }
 }

@@ -147,7 +147,7 @@ impl Node<TotState> for ThinkEvaluateNode {
         let mut core = state.core;
         let chosen = tot.candidates.get(chosen_index).unwrap();
         core.messages
-            .push(Message::Assistant(chosen.thought.clone()));
+            .push(Message::assistant(chosen.thought.clone()));
         core.tool_calls = chosen.tool_calls.clone();
 
         let out = TotState { core, tot };
@@ -248,7 +248,7 @@ mod tests {
         assert_eq!(out.tot.tried_indices, vec![1]);
         assert!(matches!(
             out.core.messages.last(),
-            Some(Message::Assistant(s)) if s == "use search and summarize"
+            Some(Message::Assistant(p)) if p.content == "use search and summarize"
         ));
         assert_eq!(out.core.tool_calls.len(), 1);
     }

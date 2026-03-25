@@ -241,12 +241,13 @@ impl ReActState {
     /// Returns the content of the chronologically last Assistant message, if any.
     ///
     /// Used by callers (e.g. bot, CLI) to get the final reply without scanning `messages`.
-    /// Semantics: last message in `messages` that is `Message::Assistant(content)`; empty
-    /// content (e.g. assistant turn with only tool_calls) returns `Some("")`. Returns
+    /// Semantics: last message in `messages` that is `Message::Assistant`; returns that turn's
+    /// text `content` only (ignores embedded `tool_calls`). Empty text (e.g. tool-only turn)
+    /// returns `Some("")`. Returns
     /// `None` only when there is no Assistant message at all.
     pub fn last_assistant_reply(&self) -> Option<String> {
         self.messages.iter().rev().find_map(|m| match m {
-            Message::Assistant(s) => Some(s.clone()),
+            Message::Assistant(p) => Some(p.content.clone()),
             _ => None,
         })
     }

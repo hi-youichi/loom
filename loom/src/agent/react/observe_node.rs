@@ -1,10 +1,11 @@
 //! Observe node: read tool_results, merge into state (e.g. messages), clear tool_calls and tool_results.
 
 use async_trait::async_trait;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::error::AgentError;
 use crate::graph::Next;
+use crate::memory::uuid6;
 use crate::message::Message;
 use crate::state::ReActState;
 use crate::Node;
@@ -66,17 +67,32 @@ impl Node<ReActState> for ObserveNode {
             // Observe only consumes the normalized observation view.
             let observation = tr.observation();
 
-            let mut msg = format!("Tool {} {}:\n{}", name, label, observation);
+            let mut body = format!("Tool {} {}:\n{}", name, label, observation);
 
             // Add storage reference hint if available
             if let Some(ref storage_ref) = tr.storage_ref {
-                msg.push_str(&format!(
+                body.push_str(&format!(
                     "\n\nFull output saved to: {}",
                     storage_ref.path.display()
                 ));
             }
 
-            messages.push(Message::User(msg));
+            let tool_call_id = tr
+                .call_id
+                .clone()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| {
+                    warn!(
+                        tool_name = %name,
+                        "ToolResult missing call_id in observe; generating synthetic id"
+                    );
+                    format!("call_{}", uuid6())
+                });
+
+            messages.push(Message::Tool {
+                tool_call_id,
+                content: body,
+            });
         }
         let next_turn = state.turn_count.saturating_add(1);
         let new_state = ReActState {

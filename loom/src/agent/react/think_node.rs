@@ -14,7 +14,8 @@ use crate::error::AgentError;
 use crate::graph::{Next, RunContext};
 use crate::llm::context_persistence;
 use crate::llm::{LlmClient, ToolCallDelta};
-use crate::message::Message;
+use crate::memory::uuid6;
+use crate::message::{AssistantToolCall, Message};
 use crate::state::{ReActState, ToolCall};
 use crate::stream::{ChunkToStreamSender, MessageChunk, StreamEvent, StreamMetadata, StreamMode};
 use crate::Node;
@@ -48,6 +49,15 @@ fn compute_usage(
     }
 }
 
+fn normalize_tool_call_ids(mut calls: Vec<ToolCall>) -> Vec<ToolCall> {
+    for tc in &mut calls {
+        if tc.id.as_deref().map_or(true, |s| s.is_empty()) {
+            tc.id = Some(format!("call_{}", uuid6()));
+        }
+    }
+    calls
+}
+
 fn apply_think_response(
     state: ReActState,
     content: String,
@@ -56,8 +66,22 @@ fn apply_think_response(
     response_usage: Option<crate::llm::LlmUsage>,
 ) -> ReActState {
     let (usage, total_usage) = compute_usage(&state, &response_usage);
+    let tool_calls = normalize_tool_call_ids(tool_calls);
+    let assistant_tool_calls: Vec<AssistantToolCall> = tool_calls
+        .iter()
+        .map(|tc| AssistantToolCall {
+            id: tc.id.clone().unwrap_or_default(),
+            name: tc.name.clone(),
+            arguments: tc.arguments.clone(),
+        })
+        .collect();
     let mut messages = state.messages;
-    messages.push(Message::Assistant(content));
+    let think_message = if assistant_tool_calls.is_empty() {
+        Message::assistant(content)
+    } else {
+        Message::assistant_with_tool_calls(content, assistant_tool_calls)
+    };
+    messages.push(think_message);
     let message_count_after_last_think = Some(messages.len());
     ReActState {
         messages,

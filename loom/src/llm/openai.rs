@@ -41,10 +41,13 @@ use crate::tool_source::{ToolSource, ToolSourceError, ToolSpec};
 use async_openai::{
     config::{Config, OpenAIConfig},
     types::chat::{
-        ChatCompletionMessageToolCalls, ChatCompletionRequestMessage,
-        ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage, ChatCompletionTool,
-        ChatCompletionToolChoiceOption, ChatCompletionTools, CreateChatCompletionRequestArgs,
-        FunctionObject, ToolChoiceOptions,
+        ChatCompletionMessageToolCall, ChatCompletionMessageToolCalls,
+        ChatCompletionRequestAssistantMessage, ChatCompletionRequestAssistantMessageContent,
+        ChatCompletionRequestMessage, ChatCompletionRequestSystemMessage,
+        ChatCompletionRequestToolMessage, ChatCompletionRequestToolMessageContent,
+        ChatCompletionRequestUserMessage, ChatCompletionTool, ChatCompletionToolChoiceOption,
+        ChatCompletionTools, CreateChatCompletionRequestArgs, FunctionCall, FunctionObject,
+        ToolChoiceOptions,
     },
     Client,
 };
@@ -210,7 +213,7 @@ impl ChatOpenAI {
         }
     }
 
-    /// Convert our `Message` list to OpenAI request messages (system/user/assistant text only).
+    /// Convert our `Message` list to OpenAI Chat Completions `messages` (incl. `tool_calls` / `tool`).
     fn messages_to_request(messages: &[Message]) -> Vec<ChatCompletionRequestMessage> {
         messages
             .iter()
@@ -221,10 +224,54 @@ impl ChatOpenAI {
                 Message::User(s) => ChatCompletionRequestMessage::User(
                     ChatCompletionRequestUserMessage::from(s.as_str()),
                 ),
-                Message::Assistant(s) => {
-                    let c = assistant_content_for_chat_api(s.as_str());
-                    ChatCompletionRequestMessage::Assistant((c.as_ref()).into())
+                Message::Assistant(payload) => {
+                    let tool_calls: Option<Vec<ChatCompletionMessageToolCalls>> =
+                        if payload.tool_calls.is_empty() {
+                            None
+                        } else {
+                            Some(
+                                payload
+                                    .tool_calls
+                                    .iter()
+                                    .map(|tc| {
+                                        ChatCompletionMessageToolCalls::Function(
+                                            ChatCompletionMessageToolCall {
+                                                id: tc.id.clone(),
+                                                function: FunctionCall {
+                                                    name: tc.name.clone(),
+                                                    arguments: tc.arguments.clone(),
+                                                },
+                                            },
+                                        )
+                                    })
+                                    .collect(),
+                            )
+                        };
+                    let content = if payload.tool_calls.is_empty() {
+                        let c = assistant_content_for_chat_api(payload.content.as_str());
+                        Some(ChatCompletionRequestAssistantMessageContent::Text(
+                            c.into_owned(),
+                        ))
+                    } else if payload.content.trim().is_empty() {
+                        None
+                    } else {
+                        Some(ChatCompletionRequestAssistantMessageContent::Text(
+                            payload.content.clone(),
+                        ))
+                    };
+                    ChatCompletionRequestMessage::Assistant(ChatCompletionRequestAssistantMessage {
+                        content,
+                        tool_calls,
+                        ..Default::default()
+                    })
                 }
+                Message::Tool {
+                    tool_call_id,
+                    content,
+                } => ChatCompletionRequestMessage::Tool(ChatCompletionRequestToolMessage {
+                    tool_call_id: tool_call_id.clone(),
+                    content: ChatCompletionRequestToolMessageContent::Text(content.clone()),
+                }),
             })
             .collect()
     }
@@ -974,9 +1021,35 @@ mod tests {
         let req = ChatOpenAI::messages_to_request(&[
             Message::System("s".to_string()),
             Message::User("u".to_string()),
-            Message::Assistant("a".to_string()),
+            Message::assistant("a"),
         ]);
         assert_eq!(req.len(), 3);
+    }
+
+    #[test]
+    fn messages_to_request_serializes_assistant_tool_calls_and_tool_role() {
+        use crate::message::{AssistantToolCall, Message};
+        let req = ChatOpenAI::messages_to_request(&[
+            Message::user("now?"),
+            Message::assistant_with_tool_calls(
+                String::new(),
+                vec![AssistantToolCall {
+                    id: "call_1".into(),
+                    name: "get_time".into(),
+                    arguments: "{}".into(),
+                }],
+            ),
+            Message::Tool {
+                tool_call_id: "call_1".into(),
+                content: r#"{"iso":"2025"}"#.into(),
+            },
+        ]);
+        let v = serde_json::to_value(&req).expect("json");
+        assert_eq!(v[1]["role"], "assistant");
+        assert!(v[1]["tool_calls"].is_array());
+        assert_eq!(v[1]["tool_calls"][0]["id"], "call_1");
+        assert_eq!(v[2]["role"], "tool");
+        assert_eq!(v[2]["tool_call_id"], "call_1");
     }
 
     /// **Scenario**: invoke() against an unreachable API base returns an error (no real API key needed).

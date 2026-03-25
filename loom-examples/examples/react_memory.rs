@@ -303,7 +303,7 @@ impl Node<MemoryReActState> for MemoryThinkNode {
         let response = self.llm.invoke(&state.messages).await?;
 
         let mut messages = state.messages;
-        messages.push(Message::Assistant(response.content));
+        messages.push(Message::assistant(response.content));
 
         Ok((
             MemoryReActState {
@@ -566,7 +566,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     match msg {
                         Message::System(s) => println!("[System] {}", s),
                         Message::User(s) => println!("[User] {}", s),
-                        Message::Assistant(s) => println!("[Assistant] {}", s),
+                        Message::Assistant(p) => println!("[Assistant] {}", p.content),
+                        Message::Tool { tool_call_id, content } => {
+                            println!("[Tool {}] {}", tool_call_id, content)
+                        }
                     }
                 }
 

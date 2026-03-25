@@ -104,9 +104,28 @@ fn collect_thinking_tags(s: &str) -> Option<String> {
 // ----- Request DTOs (OpenAI-compatible) -----
 
 #[derive(serde::Serialize)]
+struct BigModelToolFunction {
+    name: String,
+    arguments: String,
+}
+
+#[derive(serde::Serialize)]
+struct BigModelToolCall {
+    id: String,
+    #[serde(rename = "type")]
+    call_type: &'static str,
+    function: BigModelToolFunction,
+}
+
+#[derive(serde::Serialize)]
 struct ChatMessageRequest {
     role: String,
-    content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_calls: Option<Vec<BigModelToolCall>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_call_id: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -325,24 +344,67 @@ impl ChatBigModel {
         let use_space_for_empty_assistant = model.to_lowercase().starts_with("kimi");
         messages
             .iter()
-            .map(|m| {
-                let (role, content) = match m {
-                    Message::System(s) => ("system", Cow::Borrowed(s.as_str())),
-                    Message::User(s) => ("user", Cow::Borrowed(s.as_str())),
-                    Message::Assistant(s) => {
-                        let c = assistant_content_for_chat_api(s.as_str());
-                        let content = if use_space_for_empty_assistant && c.trim().is_empty() {
+            .map(|m| match m {
+                Message::System(s) => ChatMessageRequest {
+                    role: "system".to_string(),
+                    content: Some(s.clone()),
+                    tool_calls: None,
+                    tool_call_id: None,
+                },
+                Message::User(s) => ChatMessageRequest {
+                    role: "user".to_string(),
+                    content: Some(s.clone()),
+                    tool_calls: None,
+                    tool_call_id: None,
+                },
+                Message::Assistant(payload) => {
+                    let tool_calls = if payload.tool_calls.is_empty() {
+                        None
+                    } else {
+                        Some(
+                            payload
+                                .tool_calls
+                                .iter()
+                                .map(|tc| BigModelToolCall {
+                                    id: tc.id.clone(),
+                                    call_type: "function",
+                                    function: BigModelToolFunction {
+                                        name: tc.name.clone(),
+                                        arguments: tc.arguments.clone(),
+                                    },
+                                })
+                                .collect(),
+                        )
+                    };
+                    let content = if payload.tool_calls.is_empty() {
+                        let c = assistant_content_for_chat_api(payload.content.as_str());
+                        let c = if use_space_for_empty_assistant && c.trim().is_empty() {
                             Cow::Borrowed(" ")
                         } else {
                             c
                         };
-                        ("assistant", content)
+                        Some(c.into_owned())
+                    } else if payload.content.trim().is_empty() {
+                        None
+                    } else {
+                        Some(payload.content.clone())
+                    };
+                    ChatMessageRequest {
+                        role: "assistant".to_string(),
+                        content,
+                        tool_calls,
+                        tool_call_id: None,
                     }
-                };
-                ChatMessageRequest {
-                    role: role.to_string(),
-                    content: content.into_owned(),
                 }
+                Message::Tool {
+                    tool_call_id,
+                    content,
+                } => ChatMessageRequest {
+                    role: "tool".to_string(),
+                    content: Some(content.clone()),
+                    tool_calls: None,
+                    tool_call_id: Some(tool_call_id.clone()),
+                },
             })
             .collect()
     }

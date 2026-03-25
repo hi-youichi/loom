@@ -46,7 +46,7 @@
 //! - [`memory`]: Checkpointing ([`Checkpointer`], [`MemorySaver`], [`SqliteSaver`]), [`Store`]; optional LanceDB.
 //! - [`tool_source`]: [`ToolSource`], [`ToolSpec`]; MCP ([`McpToolSource`]); [`WebToolsSource`], [`BashToolsSource`].
 //! - [`traits`]: Core [`Agent`] trait — implement for custom agents.
-//! - [`message`]: [`Message`] (System / User / Assistant).
+//! - [`message`]: [`Message`] (System / User / Assistant / Tool).
 //! - [`stream`]: [`StreamWriter`], [`StreamEvent`], [`StreamMode`] for graph runs.
 //! - [`config`]: Config summaries ([`RunConfigSummary`], [`build_config_summary`]).
 //! - [`cache`]: [`Cache`], [`InMemoryCache`].
@@ -199,7 +199,7 @@ pub use memory::{
     StoreError, StoreSearchHit,
 };
 pub use memory::{SqliteSaver, SqliteStore};
-pub use message::Message;
+pub use message::{AssistantPayload, AssistantToolCall, Message};
 pub use model_spec::{
     CachedResolver, CompositeResolver, ConfigOverride, LocalFileResolver, ModelLimitResolver,
     ModelSpec, ModelsDevResolver, ResolverRefresher,

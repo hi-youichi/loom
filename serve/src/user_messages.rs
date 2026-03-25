@@ -44,10 +44,9 @@ pub(crate) async fn handle_user_messages(
 }
 
 fn message_to_item(m: &Message) -> UserMessageItem {
-    let (role, content) = match m {
-        Message::System(c) => ("system".to_string(), c.clone()),
-        Message::User(c) => ("user".to_string(), c.clone()),
-        Message::Assistant(c) => ("assistant".to_string(), c.clone()),
-    };
-    UserMessageItem { role, content }
+    let (role, content) = m.to_role_content_pair();
+    UserMessageItem {
+        role: role.to_string(),
+        content,
+    }
 }

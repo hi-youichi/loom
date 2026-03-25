@@ -700,7 +700,7 @@ mod tests {
 
     fn react_state() -> ReActState {
         ReActState {
-            messages: vec![Message::user("hi"), Message::Assistant("hello".into())],
+            messages: vec![Message::user("hi"), Message::assistant("hello")],
             ..ReActState::default()
         }
     }

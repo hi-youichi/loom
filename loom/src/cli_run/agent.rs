@@ -736,7 +736,7 @@ mod tests {
 
         let _tot = TotState {
             core: ReActState {
-                messages: vec![Message::user("u"), Message::Assistant("a".to_string())],
+                messages: vec![Message::user("u"), Message::assistant("a")],
                 ..ReActState::default()
             },
             tot: TotExtension::default(),
