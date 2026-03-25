@@ -1,9 +1,9 @@
-//! BigModel (智谱) chat completions client implementing [`crate::llm::LlmClient`].
+//! OpenAI-compatible chat completions client using plain `reqwest`, implementing [`crate::llm::LlmClient`].
 //!
-//! [`ChatBigModel`] targets BigModel's OpenAI-compatible API at
-//! <https://open.bigmodel.cn/api/paas/v4/>. Its builder surface intentionally
-//! mirrors [`crate::llm::ChatOpenAI`] so higher-level Loom code can switch
-//! providers with minimal branching.
+//! [`ChatOpenAICompat`] speaks the standard `/chat/completions` HTTP + SSE protocol used by OpenAI,
+//! Zhipu (BigModel), Kimi, DeepSeek, Ollama, vLLM, LiteLLM, and similar gateways. The default
+//! [`DEFAULT_BASE_URL`] matches Zhipu's public endpoint as a common default; pass any other base URL
+//! via [`ChatOpenAICompat::with_config`]. The builder surface mirrors [`crate::llm::ChatOpenAI`].
 //!
 //! # Streaming
 //!
@@ -35,18 +35,19 @@ use crate::state::ToolCall;
 use crate::stream::MessageChunk;
 use crate::tool_source::{ToolSource, ToolSourceError, ToolSpec};
 
+use super::thinking::{collect_thinking_tags, strip_thinking_tags, ThinkingSegment, ThinkingTagParser};
+use super::tool_call_accumulator::{RawToolCallDelta, ToolCallAccumulator};
 use super::ToolChoiceMode;
 
+/// Example default base URL (Zhipu BigModel OpenAI-compatible API).
 const DEFAULT_BASE_URL: &str = "https://open.bigmodel.cn/api/paas/v4";
-const THINKING_START: &str = "<think>";
-const THINKING_END: &str = "</think>";
 
 /// Max retries for retryable 5xx (500, 502, 503, 504). Total attempts = 1 + this.
-const BIGMODEL_5XX_MAX_RETRIES: u32 = 3;
+const COMPAT_5XX_MAX_RETRIES: u32 = 3;
 /// Initial backoff before first retry.
-const BIGMODEL_5XX_INITIAL_BACKOFF: std::time::Duration = std::time::Duration::from_secs(1);
+const COMPAT_5XX_INITIAL_BACKOFF: std::time::Duration = std::time::Duration::from_secs(1);
 /// Max backoff cap.
-const BIGMODEL_5XX_MAX_BACKOFF: std::time::Duration = std::time::Duration::from_secs(16);
+const COMPAT_5XX_MAX_BACKOFF: std::time::Duration = std::time::Duration::from_secs(16);
 
 /// Returns true for transient 5xx where retry is reasonable: 500, 502, 503, 504.
 /// Other 5xx (501 Not Implemented, 505 HTTP Version Not Supported, etc.) are not retried.
@@ -55,50 +56,9 @@ fn is_retryable_5xx(status: reqwest::StatusCode) -> bool {
 }
 
 fn backoff_for_attempt(attempt: u32) -> std::time::Duration {
-    let secs = BIGMODEL_5XX_INITIAL_BACKOFF.as_secs_f64() * 2_f64.powi(attempt as i32);
+    let secs = COMPAT_5XX_INITIAL_BACKOFF.as_secs_f64() * 2_f64.powi(attempt as i32);
     let d = std::time::Duration::from_secs_f64(secs);
-    d.min(BIGMODEL_5XX_MAX_BACKOFF)
-}
-
-#[derive(Clone, Copy)]
-enum ThinkingParseState {
-    Outside,
-    Inside,
-}
-
-fn strip_thinking_tags(s: &str) -> String {
-    let mut out = String::new();
-    let mut rest = s;
-    while let Some(start) = rest.find(THINKING_START) {
-        out.push_str(&rest[..start]);
-        rest = &rest[start + THINKING_START.len()..];
-        if let Some(end) = rest.find(THINKING_END) {
-            rest = &rest[end + THINKING_END.len()..];
-        } else {
-            break;
-        }
-    }
-    out.push_str(rest);
-    out
-}
-
-fn collect_thinking_tags(s: &str) -> Option<String> {
-    let mut out = String::new();
-    let mut rest = s;
-    while let Some(start) = rest.find(THINKING_START) {
-        rest = &rest[start + THINKING_START.len()..];
-        if let Some(end) = rest.find(THINKING_END) {
-            out.push_str(&rest[..end]);
-            rest = &rest[end + THINKING_END.len()..];
-        } else {
-            break;
-        }
-    }
-    if out.is_empty() {
-        None
-    } else {
-        Some(out)
-    }
+    d.min(COMPAT_5XX_MAX_BACKOFF)
 }
 
 // ----- Request DTOs (OpenAI-compatible) -----
@@ -237,13 +197,13 @@ struct StreamChunk {
     usage: Option<ResponseUsage>,
 }
 
-/// BigModel chat completions client.
+/// OpenAI-compatible chat completions client (`reqwest`).
 ///
 /// This client uses OpenAI-compatible request and response shapes, including
 /// tool calling and SSE streaming. Use the builder-style `with_*` methods to
 /// align request behavior with the tool source and prompting strategy used by
 /// the surrounding ReAct runtime.
-pub struct ChatBigModel {
+pub struct ChatOpenAICompat {
     client: reqwest::Client,
     base_url: String,
     api_key: String,
@@ -254,7 +214,7 @@ pub struct ChatBigModel {
     parse_thinking_tags: bool,
 }
 
-impl ChatBigModel {
+impl ChatOpenAICompat {
     /// Builds a client from environment-backed defaults.
     ///
     /// This reads `OPENAI_API_KEY` and optionally `OPENAI_BASE_URL`. The model
@@ -311,7 +271,7 @@ impl ChatBigModel {
 
     /// Sets the sampling temperature for requests made by this client.
     ///
-    /// BigModel expects values in `[0.0, 1.0]`, so inputs are clamped into that range.
+    /// Some gateways expect temperature in `[0.0, 1.0]`; inputs are clamped into that range.
     pub fn with_temperature(mut self, temperature: f32) -> Self {
         self.temperature = Some(temperature.clamp(0.0, 1.0));
         self
@@ -449,7 +409,7 @@ impl ChatBigModel {
 }
 
 #[async_trait]
-impl LlmClient for ChatBigModel {
+impl LlmClient for ChatOpenAICompat {
     async fn invoke(&self, messages: &[Message]) -> Result<LlmResponse, AgentError> {
         let trace_id = uuid6().to_string();
         let url = self.chat_completions_url();
@@ -462,7 +422,7 @@ impl LlmClient for ChatBigModel {
             model = %self.model,
             message_count = messages.len(),
             tools_count = tools_count,
-            "BigModel chat create"
+            "OpenAI-compat chat create"
         );
 
         let mut transport_attempt = 0;
@@ -490,14 +450,14 @@ impl LlmClient for ChatBigModel {
                                 max_retries = TRANSIENT_HTTP_MAX_RETRIES,
                                 delay_secs = delay.as_secs_f64(),
                                 error = %e,
-                                "BigModel request transport failed, retrying"
+                                "OpenAI-compat request transport failed, retrying"
                             );
                             attempt += 1;
                             tokio::time::sleep(delay).await;
                         }
                         Err(e) => {
                             return Err(AgentError::ExecutionFailed(format!(
-                                "BigModel request failed: {}",
+                                "OpenAI-compat request failed: {}",
                                 e
                             )));
                         }
@@ -519,7 +479,7 @@ impl LlmClient for ChatBigModel {
                         max_retries = TRANSIENT_HTTP_MAX_RETRIES,
                         delay_secs = delay.as_secs_f64(),
                         error = %e,
-                        "BigModel response body read failed, retrying"
+                        "OpenAI-compat response body read failed, retrying"
                     );
                     transport_attempt += 1;
                     tokio::time::sleep(delay).await;
@@ -527,7 +487,7 @@ impl LlmClient for ChatBigModel {
                 }
                 Err(e) => {
                     return Err(AgentError::ExecutionFailed(format!(
-                        "BigModel response read: {}",
+                        "OpenAI-compat response read: {}",
                         e
                     )));
                 }
@@ -539,18 +499,18 @@ impl LlmClient for ChatBigModel {
             if !is_retryable_5xx(status) {
                 let msg = String::from_utf8_lossy(&body_bytes);
                 return Err(AgentError::ExecutionFailed(format!(
-                    "BigModel API error {}: {}",
+                    "OpenAI-compat API error {}: {}",
                     status, msg
                 )));
             }
-            for attempt in 0..BIGMODEL_5XX_MAX_RETRIES {
+            for attempt in 0..COMPAT_5XX_MAX_RETRIES {
                 let delay = backoff_for_attempt(attempt);
                 tracing::warn!(
                     status = %status,
                     attempt = attempt + 1,
-                    max_retries = BIGMODEL_5XX_MAX_RETRIES,
+                    max_retries = COMPAT_5XX_MAX_RETRIES,
                     delay_secs = delay.as_secs_f64(),
-                    "BigModel 5xx, retrying"
+                    "OpenAI-compat 5xx, retrying"
                 );
                 tokio::time::sleep(delay).await;
                 let retry_res = self
@@ -561,11 +521,11 @@ impl LlmClient for ChatBigModel {
                     .send()
                     .await
                     .map_err(|e| {
-                        AgentError::ExecutionFailed(format!("BigModel request failed: {}", e))
+                        AgentError::ExecutionFailed(format!("OpenAI-compat request failed: {}", e))
                     })?;
                 let retry_status = retry_res.status();
                 let retry_bytes = retry_res.bytes().await.map_err(|e| {
-                    AgentError::ExecutionFailed(format!("BigModel response read: {}", e))
+                    AgentError::ExecutionFailed(format!("OpenAI-compat response read: {}", e))
                 })?;
                 if retry_status.is_success() {
                     break 'request (retry_status, retry_bytes);
@@ -573,34 +533,34 @@ impl LlmClient for ChatBigModel {
                 if !is_retryable_5xx(retry_status) {
                     let msg = String::from_utf8_lossy(&retry_bytes);
                     return Err(AgentError::ExecutionFailed(format!(
-                        "BigModel API error {}: {}",
+                        "OpenAI-compat API error {}: {}",
                         retry_status, msg
                     )));
                 }
-                if attempt == BIGMODEL_5XX_MAX_RETRIES - 1 {
+                if attempt == COMPAT_5XX_MAX_RETRIES - 1 {
                     let msg = String::from_utf8_lossy(&retry_bytes);
                     return Err(AgentError::ExecutionFailed(format!(
-                        "BigModel API error {}: {} (after {} retries)",
-                        retry_status, msg, BIGMODEL_5XX_MAX_RETRIES
+                        "OpenAI-compat API error {}: {} (after {} retries)",
+                        retry_status, msg, COMPAT_5XX_MAX_RETRIES
                     )));
                 }
             }
             let msg = String::from_utf8_lossy(&body_bytes);
             return Err(AgentError::ExecutionFailed(format!(
-                "BigModel API error {}: {}",
+                "OpenAI-compat API error {}: {}",
                 status, msg
             )));
         };
 
         let response: ChatCompletionResponse = serde_json::from_slice(&body_bytes)
-            .map_err(|e| AgentError::ExecutionFailed(format!("BigModel response parse: {}", e)))?;
+            .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI-compat response parse: {}", e)))?;
 
         let raw_response = std::str::from_utf8(&body_bytes)
             .ok()
             .map(std::string::ToString::to_string);
 
         let choice = response.choices.into_iter().next().ok_or_else(|| {
-            AgentError::ExecutionFailed("BigModel returned no choices".to_string())
+            AgentError::ExecutionFailed("OpenAI-compat returned no choices".to_string())
         })?;
 
         let msg = choice.message;
@@ -669,7 +629,7 @@ impl LlmClient for ChatBigModel {
             message_count = messages.len(),
             stream = true,
             tools_count = tools_count,
-            "BigModel chat create_stream"
+            "OpenAI-compat chat create_stream"
         );
 
         let mut res = 'stream_request: loop {
@@ -696,14 +656,14 @@ impl LlmClient for ChatBigModel {
                                 max_retries = TRANSIENT_HTTP_MAX_RETRIES,
                                 delay_secs = delay.as_secs_f64(),
                                 error = %e,
-                                "BigModel stream request failed, retrying"
+                                "OpenAI-compat stream request failed, retrying"
                             );
                             attempt += 1;
                             tokio::time::sleep(delay).await;
                         }
                         Err(e) => {
                             return Err(AgentError::ExecutionFailed(format!(
-                                "BigModel stream request: {}",
+                                "OpenAI-compat stream request: {}",
                                 e
                             )));
                         }
@@ -719,18 +679,18 @@ impl LlmClient for ChatBigModel {
                 let body_bytes = response.bytes().await.unwrap_or_default();
                 let msg = String::from_utf8_lossy(&body_bytes);
                 return Err(AgentError::ExecutionFailed(format!(
-                    "BigModel stream error {}: {}",
+                    "OpenAI-compat stream error {}: {}",
                     status, msg
                 )));
             }
-            for attempt in 0..BIGMODEL_5XX_MAX_RETRIES {
+            for attempt in 0..COMPAT_5XX_MAX_RETRIES {
                 let delay = backoff_for_attempt(attempt);
                 tracing::warn!(
                     status = %status,
                     attempt = attempt + 1,
-                    max_retries = BIGMODEL_5XX_MAX_RETRIES,
+                    max_retries = COMPAT_5XX_MAX_RETRIES,
                     delay_secs = delay.as_secs_f64(),
-                    "BigModel stream 5xx, retrying"
+                    "OpenAI-compat stream 5xx, retrying"
                 );
                 tokio::time::sleep(delay).await;
                 let retry_res = self
@@ -741,7 +701,7 @@ impl LlmClient for ChatBigModel {
                     .send()
                     .await
                     .map_err(|e| {
-                        AgentError::ExecutionFailed(format!("BigModel stream request: {}", e))
+                        AgentError::ExecutionFailed(format!("OpenAI-compat stream request: {}", e))
                     })?;
                 let retry_status = retry_res.status();
                 if retry_status.is_success() {
@@ -751,23 +711,23 @@ impl LlmClient for ChatBigModel {
                     let body_bytes = retry_res.bytes().await.unwrap_or_default();
                     let msg = String::from_utf8_lossy(&body_bytes);
                     return Err(AgentError::ExecutionFailed(format!(
-                        "BigModel stream error {}: {}",
+                        "OpenAI-compat stream error {}: {}",
                         retry_status, msg
                     )));
                 }
-                if attempt == BIGMODEL_5XX_MAX_RETRIES - 1 {
+                if attempt == COMPAT_5XX_MAX_RETRIES - 1 {
                     let body_bytes = retry_res.bytes().await.unwrap_or_default();
                     let msg = String::from_utf8_lossy(&body_bytes);
                     return Err(AgentError::ExecutionFailed(format!(
-                        "BigModel stream error {}: {} (after {} retries)",
-                        retry_status, msg, BIGMODEL_5XX_MAX_RETRIES
+                        "OpenAI-compat stream error {}: {} (after {} retries)",
+                        retry_status, msg, COMPAT_5XX_MAX_RETRIES
                     )));
                 }
             }
             let body_bytes = response.bytes().await.unwrap_or_default();
             let msg = String::from_utf8_lossy(&body_bytes);
             return Err(AgentError::ExecutionFailed(format!(
-                "BigModel stream error {}: {}",
+                "OpenAI-compat stream error {}: {}",
                 status, msg
             )));
         };
@@ -776,11 +736,11 @@ impl LlmClient for ChatBigModel {
         let mut full_content = String::new();
         let mut full_reasoning_content = String::new();
         let mut sent_any_content = false;
-        let mut tool_call_map: std::collections::HashMap<u32, (String, String, String)> =
-            std::collections::HashMap::new();
+        let mut tool_calls_acc = ToolCallAccumulator::new();
         let mut stream_usage: Option<LlmUsage> = None;
-        let mut segment_buf = String::new();
-        let mut think_state = ThinkingParseState::Outside;
+        let mut thinking_parser = self
+            .parse_thinking_tags
+            .then(ThinkingTagParser::new);
         let mut done = false;
         let mut stream_read_attempt = 0;
 
@@ -799,7 +759,7 @@ impl LlmClient for ChatBigModel {
                         max_retries = TRANSIENT_HTTP_MAX_RETRIES,
                         delay_secs = delay.as_secs_f64(),
                         error = %e,
-                        "BigModel stream body read failed, retrying"
+                        "OpenAI-compat stream body read failed, retrying"
                     );
                     stream_read_attempt += 1;
                     tokio::time::sleep(delay).await;
@@ -807,7 +767,7 @@ impl LlmClient for ChatBigModel {
                 }
                 Err(e) => {
                     return Err(AgentError::ExecutionFailed(format!(
-                        "BigModel stream body: {}",
+                        "OpenAI-compat stream body: {}",
                         e
                     )));
                 }
@@ -868,63 +828,15 @@ impl LlmClient for ChatBigModel {
                             full_content.push_str(content);
                             sent_any_content = true;
 
-                            if self.parse_thinking_tags {
-                                segment_buf.push_str(content);
-                                loop {
-                                    match think_state {
-                                        ThinkingParseState::Outside => {
-                                            if let Some(i) = segment_buf.find(THINKING_START) {
-                                                let (before, after) = segment_buf.split_at(i);
-                                                if !before.is_empty() {
-                                                    let _ = chunk_tx
-                                                        .send(MessageChunk::message(
-                                                            before.to_string(),
-                                                        ))
-                                                        .await;
-                                                }
-                                                segment_buf =
-                                                    after[THINKING_START.len()..].to_string();
-                                                think_state = ThinkingParseState::Inside;
-                                            } else {
-                                                let keep = segment_buf.len().saturating_sub(
-                                                    THINKING_START.len().saturating_sub(1),
-                                                );
-                                                let to_send = segment_buf[..keep].to_string();
-                                                segment_buf = segment_buf[keep..].to_string();
-                                                if !to_send.is_empty() {
-                                                    let _ = chunk_tx
-                                                        .send(MessageChunk::message(to_send))
-                                                        .await;
-                                                }
-                                                break;
-                                            }
+                            if let Some(ref mut parser) = thinking_parser {
+                                for seg in parser.feed(content) {
+                                    match seg {
+                                        ThinkingSegment::Message(s) => {
+                                            let _ = chunk_tx.send(MessageChunk::message(s)).await;
                                         }
-                                        ThinkingParseState::Inside => {
-                                            if let Some(i) = segment_buf.find(THINKING_END) {
-                                                let (inside, after) = segment_buf.split_at(i);
-                                                if !inside.is_empty() {
-                                                    let _ = chunk_tx
-                                                        .send(MessageChunk::thinking(
-                                                            inside.to_string(),
-                                                        ))
-                                                        .await;
-                                                }
-                                                segment_buf =
-                                                    after[THINKING_END.len()..].to_string();
-                                                think_state = ThinkingParseState::Outside;
-                                            } else {
-                                                let keep = segment_buf.len().saturating_sub(
-                                                    THINKING_END.len().saturating_sub(1),
-                                                );
-                                                let to_send = segment_buf[..keep].to_string();
-                                                segment_buf = segment_buf[keep..].to_string();
-                                                if !to_send.is_empty() {
-                                                    let _ = chunk_tx
-                                                        .send(MessageChunk::thinking(to_send))
-                                                        .await;
-                                                }
-                                                break;
-                                            }
+                                        ThinkingSegment::Thinking(s) => {
+                                            let _ =
+                                                chunk_tx.send(MessageChunk::thinking(s)).await;
                                         }
                                     }
                                 }
@@ -943,26 +855,12 @@ impl LlmClient for ChatBigModel {
                                 .and_then(|f| f.arguments.clone())
                                 .unwrap_or_default();
 
-                            let entry = tool_call_map.entry(tc.index).or_insert_with(|| {
-                                (
-                                    tc.id.clone().unwrap_or_default(),
-                                    String::new(),
-                                    String::new(),
-                                )
+                            tool_calls_acc.push(RawToolCallDelta {
+                                index: tc.index,
+                                id: tc.id.clone(),
+                                name: tc.function.as_ref().and_then(|f| f.name.clone()),
+                                arguments: tc.function.as_ref().and_then(|f| f.arguments.clone()),
                             });
-                            if let Some(ref id) = tc.id {
-                                if !id.is_empty() {
-                                    entry.0 = id.clone();
-                                }
-                            }
-                            if let Some(ref func) = tc.function {
-                                if let Some(ref name) = func.name {
-                                    entry.1.push_str(name);
-                                }
-                                if let Some(ref args) = func.arguments {
-                                    entry.2.push_str(args);
-                                }
-                            }
                             if let Some(ref tool_tx) = tool_delta_tx {
                                 if !args_delta.is_empty() || tc.id.is_some() {
                                     let _ = tool_tx
@@ -980,17 +878,15 @@ impl LlmClient for ChatBigModel {
             }
         }
 
-        if self.parse_thinking_tags && !segment_buf.is_empty() {
-            match think_state {
-                ThinkingParseState::Outside => {
-                    let _ = chunk_tx
-                        .send(MessageChunk::message(segment_buf.clone()))
-                        .await;
-                }
-                ThinkingParseState::Inside => {
-                    let _ = chunk_tx
-                        .send(MessageChunk::thinking(segment_buf.clone()))
-                        .await;
+        if let Some(parser) = thinking_parser {
+            if let Some(seg) = parser.flush() {
+                match seg {
+                    ThinkingSegment::Message(s) => {
+                        let _ = chunk_tx.send(MessageChunk::message(s)).await;
+                    }
+                    ThinkingSegment::Thinking(s) => {
+                        let _ = chunk_tx.send(MessageChunk::thinking(s)).await;
+                    }
                 }
             }
         }
@@ -1001,7 +897,7 @@ impl LlmClient for ChatBigModel {
             .unwrap_or(0);
         if full_content.is_empty()
             && full_reasoning_content.is_empty()
-            && tool_call_map.is_empty()
+            && tool_calls_acc.is_empty()
             && completion_tokens > 0
         {
             if let Ok(fallback_resp) = self.invoke(messages).await {
@@ -1025,14 +921,7 @@ impl LlmClient for ChatBigModel {
                     if stream_usage.is_none() {
                         stream_usage = fallback_resp.usage;
                     }
-                    tool_call_map = fallback_resp
-                        .tool_calls
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, tc)| {
-                            (i as u32, (tc.id.unwrap_or_default(), tc.name, tc.arguments))
-                        })
-                        .collect();
+                    tool_calls_acc.replace_from_vec(fallback_resp.tool_calls);
                 }
             }
         }
@@ -1043,15 +932,7 @@ impl LlmClient for ChatBigModel {
                 .await;
         }
 
-        let mut tool_calls: Vec<ToolCall> = tool_call_map
-            .into_iter()
-            .map(|(_, (id, name, arguments))| ToolCall {
-                name,
-                arguments,
-                id: if id.is_empty() { None } else { Some(id) },
-            })
-            .collect();
-        tool_calls.sort_by(|a, b| a.name.cmp(&b.name));
+        let tool_calls = tool_calls_acc.finish();
 
         trace!(
             trace_id = %trace_id,
@@ -1061,7 +942,7 @@ impl LlmClient for ChatBigModel {
             content_len = full_content.len(),
             tool_calls = ?tool_calls.len(),
             usage = ?stream_usage,
-            "BigModel stream response"
+            "OpenAI-compat stream response"
         );
 
         let reasoning_content = if full_reasoning_content.is_empty() {
@@ -1085,7 +966,7 @@ impl LlmClient for ChatBigModel {
     }
 
     async fn list_models(&self) -> Result<Vec<crate::llm::ModelInfo>, AgentError> {
-        // BigModel base URL already includes version path (e.g., /api/paas/v4)
+        // Base URL often already includes a version path (e.g., /api/paas/v4)
         // so we only append /models, not /v1/models
         let url = format!("{}/models", self.base_url);
         let res = self

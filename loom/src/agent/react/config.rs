@@ -66,7 +66,7 @@ pub struct ReactBuildConfig {
     pub openai_api_key: Option<String>,
     pub openai_base_url: Option<String>,
     pub model: Option<String>,
-    /// When `Some("bigmodel")`, build layer uses ChatBigModel; otherwise default is OpenAI. Set via LLM_PROVIDER.
+    /// When `Some("openai_compat")` or `Some("bigmodel")`, build layer uses [`crate::llm::ChatOpenAICompat`]; otherwise default is OpenAI. Set via LLM_PROVIDER.
     pub llm_provider: Option<String>,
     /// Chat Completions `tool_choice`: `auto`, `none`, or `required`. Set via `OPENAI_TOOL_CHOICE`.
     pub openai_tool_choice: Option<String>,

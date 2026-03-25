@@ -8,7 +8,7 @@
 //!   calls, and optional usage.
 //! - [`ToolChoiceMode`] configures whether a provider may emit tool calls when
 //!   tools are available.
-//! - [`ChatOpenAI`] and [`ChatBigModel`] are concrete provider implementations.
+//! - [`ChatOpenAI`] and [`ChatOpenAICompat`] are concrete provider implementations.
 //!
 //! # Streaming
 //!
@@ -52,10 +52,18 @@ impl std::str::FromStr for ToolChoiceMode {
     }
 }
 
-mod bigmodel;
-mod openai;
+pub(crate) mod thinking;
+pub(crate) mod tool_call_accumulator;
 
-pub use bigmodel::ChatBigModel;
+mod openai;
+mod openai_compat;
+
+pub use openai_compat::ChatOpenAICompat;
+
+/// Deprecated alias for [`ChatOpenAICompat`].
+#[deprecated(note = "renamed to ChatOpenAICompat")]
+pub type ChatBigModel = ChatOpenAICompat;
+
 pub use mock::MockLlm;
 pub use openai::ChatOpenAI;
 pub use model_cache::{fetch_provider_models, ModelCache, ProviderModels};

@@ -88,7 +88,7 @@
 //!     async fn run(&self, state: Self::State) -> Result<Self::State, AgentError> {
 //!         let mut messages = state.messages;
 //!         if let Some(Message::User(s)) = messages.last() {
-//!             messages.push(Message::Assistant(s.clone()));
+//!             messages.push(Message::assistant(s.clone()));
 //!         }
 //!         Ok(MyState { messages })
 //!     }
@@ -102,8 +102,8 @@
 //! let agent = EchoAgent;
 //! match agent.run(state).await {
 //!     Ok(s) => {
-//!         if let Some(Message::Assistant(content)) = s.messages.last() {
-//!             println!("{}", content);
+//!         if let Some(Message::Assistant(p)) = s.messages.last() {
+//!             println!("{}", p.content);
 //!         }
 //!     }
 //!     Err(e) => eprintln!("error: {}", e),
@@ -186,7 +186,7 @@ pub use helve::{
     assemble_system_prompt, assemble_system_prompt_with_prompts, to_react_build_config,
     tools_requiring_approval, ApprovalPolicy, HelveConfig, APPROVAL_REQUIRED_EVENT_TYPE,
 };
-pub use llm::{ChatBigModel, ChatOpenAI};
+pub use llm::{ChatOpenAI, ChatOpenAICompat};
 pub use llm::{LlmClient, LlmResponse, LlmUsage, MockLlm, ToolCallDelta, ToolChoiceMode};
 pub use managed::{IsLastStep, ManagedValue};
 pub use memory::Embedder;

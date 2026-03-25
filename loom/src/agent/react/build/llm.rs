@@ -1,9 +1,9 @@
-//! Builds the default LLM from ReactBuildConfig (OpenAI or BigModel).
+//! Builds the default LLM from ReactBuildConfig (OpenAI or OpenAI-compat HTTP client).
 //!
-//! Default is OpenAI. Use BigModel only when `LLM_PROVIDER=bigmodel` is set.
+//! Default is OpenAI. Use the compat client when `LLM_PROVIDER=openai_compat` or `=bigmodel`.
 
 use crate::error::AgentError;
-use crate::llm::{ChatBigModel, ChatOpenAI, ModelEntry};
+use crate::llm::{ChatOpenAI, ChatOpenAICompat, ModelEntry};
 use crate::tool_source::ToolSource;
 use crate::LlmClient;
 
@@ -53,6 +53,7 @@ pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<Model
     // Determine provider name based on type
     let provider = match provider_type.as_deref() {
         Some("bigmodel") => "bigmodel".to_string(),
+        Some("openai_compat") => "openai_compat".to_string(),
         _ => "openai".to_string(),
     };
 
@@ -125,14 +126,14 @@ pub(crate) async fn build_default_llm_with_tool_source(
     })?;
 
     match provider_type {
-        "bigmodel" => {
+        "openai_compat" | "bigmodel" => {
             let base_url = entry.base_url.clone().unwrap_or_else(|| {
                 "https://open.bigmodel.cn/api/paas/v4".to_string()
             });
             let api_key = entry.api_key.clone().unwrap();
-            tracing::debug!("build_default_llm: BigModel with tools");
+            tracing::debug!("build_default_llm: OpenAI-compat with tools");
             let mut client =
-                ChatBigModel::with_config(base_url, api_key, entry.name).with_tools(tools);
+                ChatOpenAICompat::with_config(base_url, api_key, entry.name).with_tools(tools);
             if let Some(mode) = entry.tool_choice {
                 client = client.with_tool_choice(mode);
             }
@@ -166,16 +167,27 @@ pub(crate) async fn build_default_llm_with_tool_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     #[test]
     fn test_model_entry_from_react_build_config() {
-        // Test that we can create a ModelEntry from ReactBuildConfig
-        // This verifies the Phase 2 refactoring
+        let _guard = env_lock().lock().unwrap();
+        let had_key = std::env::var("OPENAI_API_KEY").ok();
+        std::env::set_var("OPENAI_API_KEY", "test-key-for-model-entry");
         let config = crate::agent::react::config::ReactBuildConfig::from_env();
         let entry = model_entry_from_config(&config);
-        
-        // Should have a model name (either from env or default)
-        assert!(entry.is_ok());
+        match had_key {
+            Some(v) => std::env::set_var("OPENAI_API_KEY", v),
+            None => std::env::remove_var("OPENAI_API_KEY"),
+        }
+        drop(_guard);
+
+        assert!(entry.is_ok(), "model_entry_from_config: {:?}", entry.err());
         let entry = entry.unwrap();
         assert!(!entry.name.is_empty());
     }
