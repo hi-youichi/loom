@@ -10,7 +10,7 @@ mod tests;
 
 use async_openai::{
     config::OpenAIConfig,
-    types::chat::{ChatCompletionMessageToolCalls, CreateChatCompletionRequest},
+    types::chat::{ChatCompletionMessageToolCalls, CompletionUsage, CreateChatCompletionRequest},
     Client,
 };
 use async_trait::async_trait;
@@ -31,6 +31,29 @@ use crate::stream::MessageChunk;
 use crate::tool_source::{ToolSource, ToolSourceError, ToolSpec};
 
 use super::ToolChoiceMode;
+
+pub(super) fn completion_usage_to_llm(u: &CompletionUsage) -> LlmUsage {
+    use crate::llm::{CompletionTokensDetails, PromptTokensDetails};
+
+    LlmUsage {
+        prompt_tokens: u.prompt_tokens,
+        completion_tokens: u.completion_tokens,
+        total_tokens: u.total_tokens,
+        prompt_tokens_details: u.prompt_tokens_details.as_ref().map(|d| PromptTokensDetails {
+            cached_tokens: d.cached_tokens,
+            audio_tokens: d.audio_tokens,
+        }),
+        completion_tokens_details: u
+            .completion_tokens_details
+            .as_ref()
+            .map(|d| CompletionTokensDetails {
+                reasoning_tokens: d.reasoning_tokens,
+                audio_tokens: d.audio_tokens,
+                accepted_prediction_tokens: d.accepted_prediction_tokens,
+                rejected_prediction_tokens: d.rejected_prediction_tokens,
+            }),
+    }
+}
 
 /// OpenAI Chat Completions client.
 ///
@@ -234,11 +257,7 @@ impl LlmClient for ChatOpenAI {
             })
             .collect();
 
-        let usage = response.usage.map(|u| LlmUsage {
-            prompt_tokens: u.prompt_tokens,
-            completion_tokens: u.completion_tokens,
-            total_tokens: u.total_tokens,
-        });
+        let usage = response.usage.as_ref().map(completion_usage_to_llm);
         Ok(LlmResponse {
             content,
             reasoning_content,
@@ -324,14 +343,6 @@ impl LlmClient for ChatOpenAI {
         }
 
         acc.flush(&chunk_tx).await;
-
-        if acc.needs_fallback() {
-            if let Ok(fallback) = self.invoke(messages).await {
-                if !fallback.content.is_empty() || !fallback.tool_calls.is_empty() {
-                    acc.apply_fallback(fallback, &chunk_tx).await;
-                }
-            }
-        }
 
         acc.emit_full_if_needed(&chunk_tx).await;
 

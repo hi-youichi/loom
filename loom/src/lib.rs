@@ -187,7 +187,10 @@ pub use helve::{
     tools_requiring_approval, ApprovalPolicy, HelveConfig, APPROVAL_REQUIRED_EVENT_TYPE,
 };
 pub use llm::{ChatOpenAI, ChatOpenAICompat};
-pub use llm::{LlmClient, LlmResponse, LlmUsage, MockLlm, ToolCallDelta, ToolChoiceMode};
+pub use llm::{
+    CompletionTokensDetails, LlmClient, LlmResponse, LlmUsage, MockLlm, PromptTokensDetails,
+    ToolCallDelta, ToolChoiceMode,
+};
 pub use managed::{IsLastStep, ManagedValue};
 pub use memory::Embedder;
 #[cfg(feature = "lance")]

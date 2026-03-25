@@ -308,6 +308,7 @@ mod tests {
             user_id: None,
             system_prompt: None,
             exa_api_key: None,
+            exa_codesearch_enabled: false,
             twitter_api_key: None,
             mcp_exa_url: "https://mcp.exa.ai/mcp".to_string(),
             mcp_remote_cmd: "npx".to_string(),
@@ -380,6 +381,30 @@ mod tests {
         assert!(ctx.runnable_config.is_none());
         let tools = ctx.tool_source.list_tools().await.unwrap();
         assert!(!tools.is_empty());
+    }
+
+    #[tokio::test]
+    async fn exa_codesearch_off_by_default_when_exa_key_set() {
+        let mut cfg = base_config();
+        cfg.exa_api_key = Some("k".to_string());
+        cfg.exa_codesearch_enabled = false;
+        let ctx = build_react_run_context(&cfg).await.unwrap();
+        let tools = ctx.tool_source.list_tools().await.unwrap();
+        let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+        assert!(names.contains(&"websearch"));
+        assert!(!names.contains(&"codesearch"));
+    }
+
+    #[tokio::test]
+    async fn exa_codesearch_registered_when_flag_enabled() {
+        let mut cfg = base_config();
+        cfg.exa_api_key = Some("k".to_string());
+        cfg.exa_codesearch_enabled = true;
+        let ctx = build_react_run_context(&cfg).await.unwrap();
+        let tools = ctx.tool_source.list_tools().await.unwrap();
+        let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+        assert!(names.contains(&"websearch"));
+        assert!(names.contains(&"codesearch"));
     }
 
     #[tokio::test]

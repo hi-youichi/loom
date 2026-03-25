@@ -113,11 +113,38 @@ pub struct ToolCallDelta {
     pub arguments_delta: String,
 }
 
+/// Breakdown of prompt tokens (OpenAI `prompt_tokens_details`).
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PromptTokensDetails {
+    /// Cached tokens present in the prompt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cached_tokens: Option<u32>,
+    /// Audio tokens present in the prompt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_tokens: Option<u32>,
+}
+
+/// Breakdown of completion tokens (OpenAI `completion_tokens_details`).
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CompletionTokensDetails {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_tokens: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_tokens: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepted_prediction_tokens: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rejected_prediction_tokens: Option<u32>,
+}
+
 /// Token usage for one LLM call (prompt + completion).
+///
+/// Aligns with OpenAI Chat Completions [`CompletionUsage`](https://platform.openai.com/docs/api-reference/completions/object):
+/// three top-level counts plus optional detail objects when the provider returns them.
 ///
 /// **Interaction**: Optional part of `LlmResponse`; emitted as `StreamEvent::Usage`
 /// when streaming so CLI can print usage when `--verbose`.
-#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LlmUsage {
     /// Tokens in the prompt (input).
     pub prompt_tokens: u32,
@@ -125,6 +152,10 @@ pub struct LlmUsage {
     pub completion_tokens: u32,
     /// Total tokens (prompt + completion).
     pub total_tokens: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_details: Option<PromptTokensDetails>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_tokens_details: Option<CompletionTokensDetails>,
 }
 
 /// Response from an LLM completion: assistant message text and optional tool calls.

@@ -4,12 +4,12 @@
 //! emits [`MessageChunk`] / [`ToolCallDelta`](crate::llm::ToolCallDelta) through channels, while
 //! assembling the final [`LlmResponse`](crate::llm::LlmResponse) content.
 
-use async_openai::types::chat::CreateChatCompletionStreamResponse;
+use async_openai::types::chat::{ChatCompletionMessageToolCallChunk, CreateChatCompletionStreamResponse};
 use tokio::sync::mpsc;
 
 use crate::llm::thinking::{collect_thinking_tags, strip_thinking_tags, ThinkingSegment, ThinkingTagParser};
 use crate::llm::tool_call_accumulator::{RawToolCallDelta, ToolCallAccumulator};
-use crate::llm::{LlmResponse, LlmUsage, ToolCallDelta};
+use crate::llm::{LlmUsage, ToolCallDelta};
 use crate::stream::MessageChunk;
 
 /// Accumulates streaming SSE chunks into a complete response.
@@ -56,11 +56,7 @@ impl StreamAccumulator {
         tool_delta_tx: Option<&mpsc::Sender<ToolCallDelta>>,
     ) {
         if let Some(ref u) = response.usage {
-            self.usage = Some(LlmUsage {
-                prompt_tokens: u.prompt_tokens,
-                completion_tokens: u.completion_tokens,
-                total_tokens: u.total_tokens,
-            });
+            self.usage = Some(super::completion_usage_to_llm(u));
         }
 
         for choice in response.choices {
@@ -68,51 +64,67 @@ impl StreamAccumulator {
 
             if let Some(ref content) = delta.content {
                 if !content.is_empty() {
-                    self.full_content.push_str(content);
-                    self.sent_any_content = true;
-
-                    if let Some(ref mut parser) = self.thinking_parser {
-                        for seg in parser.feed(content) {
-                            match seg {
-                                ThinkingSegment::Message(s) => {
-                                    let _ = chunk_tx.send(MessageChunk::message(s)).await;
-                                }
-                                ThinkingSegment::Thinking(s) => {
-                                    let _ = chunk_tx.send(MessageChunk::thinking(s)).await;
-                                }
-                            }
-                        }
-                    } else {
-                        let _ = chunk_tx.send(MessageChunk::message(content.clone())).await;
-                    }
+                    self.process_content_delta(content, chunk_tx).await;
                 }
             }
 
             if let Some(ref tool_calls) = delta.tool_calls {
-                for tc in tool_calls {
-                    self.tool_calls.push(RawToolCallDelta {
-                        index: tc.index,
-                        id: tc.id.clone(),
-                        name: tc.function.as_ref().and_then(|f| f.name.clone()),
-                        arguments: tc.function.as_ref().and_then(|f| f.arguments.clone()),
-                    });
+                self.process_tool_calls_delta(tool_calls, tool_delta_tx).await;
+            }
+        }
+    }
 
-                    if let Some(tool_tx) = tool_delta_tx {
-                        let args_delta = tc
-                            .function
-                            .as_ref()
-                            .and_then(|f| f.arguments.clone())
-                            .unwrap_or_default();
-                        if !args_delta.is_empty() || tc.id.is_some() {
-                            let _ = tool_tx
-                                .send(ToolCallDelta {
-                                    call_id: tc.id.clone(),
-                                    name: tc.function.as_ref().and_then(|f| f.name.clone()),
-                                    arguments_delta: args_delta,
-                                })
-                                .await;
-                        }
-                    }
+    async fn send_thinking_segment(chunk_tx: &mpsc::Sender<MessageChunk>, seg: ThinkingSegment) {
+        match seg {
+            ThinkingSegment::Message(s) => {
+                let _ = chunk_tx.send(MessageChunk::message(s)).await;
+            }
+            ThinkingSegment::Thinking(s) => {
+                let _ = chunk_tx.send(MessageChunk::thinking(s)).await;
+            }
+        }
+    }
+
+    async fn process_content_delta(&mut self, content: &str, chunk_tx: &mpsc::Sender<MessageChunk>) {
+        self.full_content.push_str(content);
+        self.sent_any_content = true;
+
+        if let Some(ref mut parser) = self.thinking_parser {
+            for seg in parser.feed(content) {
+                Self::send_thinking_segment(chunk_tx, seg).await;
+            }
+        } else {
+            let _ = chunk_tx.send(MessageChunk::message(content.to_owned())).await;
+        }
+    }
+
+    async fn process_tool_calls_delta(
+        &mut self,
+        tool_calls: &[ChatCompletionMessageToolCallChunk],
+        tool_delta_tx: Option<&mpsc::Sender<ToolCallDelta>>,
+    ) {
+        for tc in tool_calls {
+            self.tool_calls.push(RawToolCallDelta {
+                index: tc.index,
+                id: tc.id.clone(),
+                name: tc.function.as_ref().and_then(|f| f.name.clone()),
+                arguments: tc.function.as_ref().and_then(|f| f.arguments.clone()),
+            });
+
+            if let Some(tool_tx) = tool_delta_tx {
+                let args_delta = tc
+                    .function
+                    .as_ref()
+                    .and_then(|f| f.arguments.clone())
+                    .unwrap_or_default();
+                if !args_delta.is_empty() || tc.id.is_some() {
+                    let _ = tool_tx
+                        .send(ToolCallDelta {
+                            call_id: tc.id.clone(),
+                            name: tc.function.as_ref().and_then(|f| f.name.clone()),
+                            arguments_delta: args_delta,
+                        })
+                        .await;
                 }
             }
         }
@@ -124,48 +136,9 @@ impl StreamAccumulator {
     pub async fn flush(&mut self, chunk_tx: &mpsc::Sender<MessageChunk>) {
         if let Some(parser) = self.thinking_parser.take() {
             if let Some(seg) = parser.flush() {
-                match seg {
-                    ThinkingSegment::Message(s) => {
-                        let _ = chunk_tx.send(MessageChunk::message(s)).await;
-                    }
-                    ThinkingSegment::Thinking(s) => {
-                        let _ = chunk_tx.send(MessageChunk::thinking(s)).await;
-                    }
-                }
+                Self::send_thinking_segment(chunk_tx, seg).await;
             }
         }
-    }
-
-    /// True if no content and no tool calls were accumulated but usage
-    /// indicates the model did generate tokens (proxy edge case).
-    pub fn needs_fallback(&self) -> bool {
-        let completion_tokens = self
-            .usage
-            .as_ref()
-            .map(|u| u.completion_tokens)
-            .unwrap_or(0);
-        self.full_content.is_empty()
-            && self.tool_calls.is_empty()
-            && completion_tokens > 0
-    }
-
-    /// Replace accumulated data with a non-stream fallback response.
-    pub async fn apply_fallback(
-        &mut self,
-        fallback: LlmResponse,
-        chunk_tx: &mpsc::Sender<MessageChunk>,
-    ) {
-        self.full_content = fallback.content.clone();
-        if !self.full_content.is_empty() {
-            self.sent_any_content = true;
-            let _ = chunk_tx
-                .send(MessageChunk::message(self.full_content.clone()))
-                .await;
-        }
-        if self.usage.is_none() {
-            self.usage = fallback.usage;
-        }
-        self.tool_calls.replace_from_vec(fallback.tool_calls);
     }
 
     /// Send full content as one chunk if no incremental content was sent
@@ -196,20 +169,6 @@ impl StreamAccumulator {
 }
 
 #[cfg(test)]
-impl StreamAccumulator {
-    fn test_empty_with_usage(usage: LlmUsage) -> Self {
-        Self {
-            full_content: String::new(),
-            tool_calls: ToolCallAccumulator::new(),
-            usage: Some(usage),
-            sent_any_content: false,
-            thinking_parser: None,
-            parse_thinking_tags: false,
-        }
-    }
-}
-
-#[cfg(test)]
 mod tests {
     #![allow(deprecated)]
 
@@ -218,6 +177,7 @@ mod tests {
         ChatChoiceStream, ChatCompletionMessageToolCallChunk, ChatCompletionStreamResponseDelta,
         CreateChatCompletionStreamResponse, FunctionCallStream,
     };
+    use crate::llm::thinking::ThinkingSegment;
     use crate::stream::MessageChunkKind;
 
     fn empty_stream_response() -> CreateChatCompletionStreamResponse {
@@ -241,6 +201,135 @@ mod tests {
             role: None,
             tool_calls: None,
         }
+    }
+
+    #[tokio::test]
+    async fn send_thinking_segment_emits_message_chunk() {
+        let (tx, mut rx) = mpsc::channel(4);
+        StreamAccumulator::send_thinking_segment(&tx, ThinkingSegment::Message("hi".into())).await;
+        let c = rx.recv().await.unwrap();
+        assert_eq!(c.content, "hi");
+        assert_eq!(c.kind, MessageChunkKind::Message);
+    }
+
+    #[tokio::test]
+    async fn send_thinking_segment_emits_thinking_chunk() {
+        let (tx, mut rx) = mpsc::channel(4);
+        StreamAccumulator::send_thinking_segment(&tx, ThinkingSegment::Thinking("r".into())).await;
+        let c = rx.recv().await.unwrap();
+        assert_eq!(c.content, "r");
+        assert_eq!(c.kind, MessageChunkKind::Thinking);
+    }
+
+    #[tokio::test]
+    async fn process_content_delta_plain_accumulates_and_sends_one_chunk() {
+        let mut acc = StreamAccumulator::new(false);
+        let (tx, mut rx) = mpsc::channel(4);
+        acc.process_content_delta("ab", &tx).await;
+        assert_eq!(acc.full_content, "ab");
+        assert!(acc.sent_any_content);
+        let c = rx.recv().await.unwrap();
+        assert_eq!(c.content, "ab");
+        assert_eq!(c.kind, MessageChunkKind::Message);
+    }
+
+    #[tokio::test]
+    async fn process_content_delta_with_thinking_parser_splits_kinds() {
+        let mut acc = StreamAccumulator::new(true);
+        let (tx, mut rx) = mpsc::channel(16);
+        let tag_s = crate::llm::thinking::THINKING_START;
+        let tag_e = crate::llm::thinking::THINKING_END;
+        acc.process_content_delta(&format!("a {}x{} b", tag_s, tag_e), &tx)
+            .await;
+        assert!(acc.sent_any_content);
+        assert!(!acc.full_content.is_empty());
+        let mut saw_message = false;
+        let mut saw_thinking = false;
+        while let Ok(c) = rx.try_recv() {
+            match c.kind {
+                MessageChunkKind::Message => saw_message = true,
+                MessageChunkKind::Thinking => saw_thinking = true,
+            }
+        }
+        assert!(saw_message);
+        assert!(saw_thinking);
+    }
+
+    #[tokio::test]
+    async fn process_tool_calls_delta_accumulates_without_tool_channel() {
+        let mut acc = StreamAccumulator::new(false);
+        let (_tx, _rx) = mpsc::channel::<MessageChunk>(4);
+        let chunks = [ChatCompletionMessageToolCallChunk {
+            index: 0,
+            id: Some("id1".into()),
+            function: Some(FunctionCallStream {
+                name: Some("n".into()),
+                arguments: Some(r#"{"a":1}"#.into()),
+            }),
+            r#type: None,
+        }];
+        acc.process_tool_calls_delta(&chunks, None).await;
+        let r = acc.finish();
+        assert_eq!(r.tool_calls.len(), 1);
+        assert_eq!(r.tool_calls[0].name, "n");
+    }
+
+    #[tokio::test]
+    async fn process_tool_calls_delta_sends_delta_when_id_present_and_args_empty() {
+        let mut acc = StreamAccumulator::new(false);
+        let (ttx, mut trx) = mpsc::channel(4);
+        let chunks = [ChatCompletionMessageToolCallChunk {
+            index: 0,
+            id: Some("call-1".into()),
+            function: Some(FunctionCallStream {
+                name: Some("fn".into()),
+                arguments: Some(String::new()),
+            }),
+            r#type: None,
+        }];
+        acc.process_tool_calls_delta(&chunks, Some(&ttx)).await;
+        let d = trx.recv().await.unwrap();
+        assert_eq!(d.call_id.as_deref(), Some("call-1"));
+        assert_eq!(d.name.as_deref(), Some("fn"));
+        assert!(d.arguments_delta.is_empty());
+    }
+
+    #[tokio::test]
+    async fn process_tool_calls_delta_sends_delta_when_args_non_empty_without_id() {
+        let mut acc = StreamAccumulator::new(false);
+        let (ttx, mut trx) = mpsc::channel(4);
+        let chunks = [ChatCompletionMessageToolCallChunk {
+            index: 0,
+            id: None,
+            function: Some(FunctionCallStream {
+                name: Some("fn".into()),
+                arguments: Some("{}".into()),
+            }),
+            r#type: None,
+        }];
+        acc.process_tool_calls_delta(&chunks, Some(&ttx)).await;
+        let d = trx.recv().await.unwrap();
+        assert_eq!(d.call_id, None);
+        assert_eq!(d.arguments_delta, "{}");
+    }
+
+    #[tokio::test]
+    async fn process_tool_calls_delta_skips_tool_channel_when_no_id_and_empty_args() {
+        let mut acc = StreamAccumulator::new(false);
+        let (ttx, mut trx) = mpsc::channel(4);
+        let chunks = [ChatCompletionMessageToolCallChunk {
+            index: 0,
+            id: None,
+            function: Some(FunctionCallStream {
+                name: Some("fn".into()),
+                arguments: Some(String::new()),
+            }),
+            r#type: None,
+        }];
+        acc.process_tool_calls_delta(&chunks, Some(&ttx)).await;
+        assert!(trx.try_recv().is_err());
+        let r = acc.finish();
+        assert_eq!(r.tool_calls.len(), 1);
     }
 
     #[tokio::test]
@@ -320,15 +409,5 @@ mod tests {
         let r = acc.finish();
         assert_eq!(r.content, "a  b");
         assert_eq!(r.reasoning_content.as_deref(), Some("x"));
-    }
-
-    #[tokio::test]
-    async fn accumulator_needs_fallback() {
-        let acc = StreamAccumulator::test_empty_with_usage(LlmUsage {
-            prompt_tokens: 1,
-            completion_tokens: 2,
-            total_tokens: 3,
-        });
-        assert!(acc.needs_fallback());
     }
 }

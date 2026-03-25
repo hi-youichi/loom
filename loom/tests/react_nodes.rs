@@ -16,7 +16,8 @@ use loom::{
     memory::RunnableConfig,
     stream::{StreamEvent, StreamMode},
     tool_source::{FileToolSource, ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec},
-    ActNode, LlmUsage, Message, MockLlm, MockToolSource, Next, Node, ObserveNode, ReActState,
+    ActNode, LlmUsage, Message, MockLlm, MockToolSource, Next, Node, ObserveNode, PromptTokensDetails,
+    ReActState,
     ThinkNode, ToolCall, ToolOutputHint, ToolOutputStrategy, ToolResult, STEP_PROGRESS_EVENT_TYPE,
 };
 use serde_json::{json, Value};
@@ -183,6 +184,7 @@ async fn think_node_usage_merge_none_plus_some() {
         prompt_tokens: 10,
         completion_tokens: 5,
         total_tokens: 15,
+        ..Default::default()
     };
     let llm = MockLlm::with_no_tool_calls("Ok.").with_usage(usage.clone());
     let node = ThinkNode::new(Arc::new(llm));
@@ -215,11 +217,17 @@ async fn think_node_usage_merge_some_plus_some() {
         prompt_tokens: 10,
         completion_tokens: 5,
         total_tokens: 15,
+        ..Default::default()
     };
     let curr = LlmUsage {
         prompt_tokens: 20,
         completion_tokens: 8,
         total_tokens: 28,
+        prompt_tokens_details: Some(PromptTokensDetails {
+            cached_tokens: Some(100),
+            audio_tokens: None,
+        }),
+        completion_tokens_details: None,
     };
     let llm = MockLlm::with_no_tool_calls("Ok.").with_usage(curr);
     let node = ThinkNode::new(Arc::new(llm));
@@ -242,6 +250,19 @@ async fn think_node_usage_merge_some_plus_some() {
         Some(15 + 28)
     );
     assert_eq!(out.total_usage.as_ref().map(|u| u.prompt_tokens), Some(30));
+    assert!(
+        out.usage
+            .as_ref()
+            .and_then(|u| u.prompt_tokens_details.as_ref())
+            .and_then(|d| d.cached_tokens)
+            .is_some()
+    );
+    assert!(out
+        .total_usage
+        .as_ref()
+        .expect("total_usage")
+        .prompt_tokens_details
+        .is_none());
 }
 
 #[tokio::test]
@@ -337,6 +358,7 @@ async fn think_node_stream_emits_usage_when_available() {
         prompt_tokens: 10,
         completion_tokens: 5,
         total_tokens: 15,
+        ..Default::default()
     };
     let llm = MockLlm::with_no_tool_calls("Hello")
         .with_usage(usage)

@@ -589,6 +589,7 @@ mod tests {
             user_id: None,
             system_prompt: None,
             exa_api_key: None,
+            exa_codesearch_enabled: false,
             twitter_api_key: None,
             mcp_exa_url: "https://mcp.exa.ai/mcp".to_string(),
             mcp_remote_cmd: "npx".to_string(),

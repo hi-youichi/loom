@@ -151,6 +151,10 @@ struct ResponseUsage {
     prompt_tokens: u32,
     completion_tokens: u32,
     total_tokens: u32,
+    #[serde(default)]
+    prompt_tokens_details: Option<crate::llm::PromptTokensDetails>,
+    #[serde(default)]
+    completion_tokens_details: Option<crate::llm::CompletionTokensDetails>,
 }
 
 #[derive(serde::Deserialize)]
@@ -585,6 +589,8 @@ impl LlmClient for ChatOpenAICompat {
             prompt_tokens: u.prompt_tokens,
             completion_tokens: u.completion_tokens,
             total_tokens: u.total_tokens,
+            prompt_tokens_details: u.prompt_tokens_details,
+            completion_tokens_details: u.completion_tokens_details,
         });
 
         Ok(LlmResponse {
@@ -803,6 +809,8 @@ impl LlmClient for ChatOpenAICompat {
                         prompt_tokens: u.prompt_tokens,
                         completion_tokens: u.completion_tokens,
                         total_tokens: u.total_tokens,
+                        prompt_tokens_details: u.prompt_tokens_details.clone(),
+                        completion_tokens_details: u.completion_tokens_details.clone(),
                     });
                 }
 

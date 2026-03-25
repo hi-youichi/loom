@@ -34,6 +34,8 @@ fn compute_usage(
     state: &ReActState,
     response_usage: &Option<crate::llm::LlmUsage>,
 ) -> (Option<crate::llm::LlmUsage>, Option<crate::llm::LlmUsage>) {
+    // `total_usage` sums only the three headline counts across turns. Per-turn breakdown
+    // (`*_details`) is not summed (OpenAI usage is per request); keep details on `usage`.
     match (&state.total_usage, response_usage) {
         (Some(t), Some(u)) => (
             response_usage.clone(),
@@ -41,6 +43,8 @@ fn compute_usage(
                 prompt_tokens: t.prompt_tokens + u.prompt_tokens,
                 completion_tokens: t.completion_tokens + u.completion_tokens,
                 total_tokens: t.total_tokens + u.total_tokens,
+                prompt_tokens_details: None,
+                completion_tokens_details: None,
             }),
         ),
         (None, Some(u)) => (response_usage.clone(), Some(u.clone())),

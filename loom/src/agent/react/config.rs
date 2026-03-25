@@ -49,6 +49,9 @@ pub struct ReactBuildConfig {
     pub user_id: Option<String>,
     pub system_prompt: Option<String>,
     pub exa_api_key: Option<String>,
+    /// When `EXA_API_KEY` is set, register the Exa `codesearch` tool only if this is true.
+    /// Opt-in via env `LOOM_EXA_CODESEARCH` (`1`, `true`, or `yes`, case-insensitive). Default off.
+    pub exa_codesearch_enabled: bool,
     pub twitter_api_key: Option<String>,
     pub mcp_exa_url: String,
     pub mcp_remote_cmd: String,
@@ -104,6 +107,13 @@ impl ReactBuildConfig {
             user_id: std::env::var("USER_ID").ok(),
             system_prompt: std::env::var("REACT_SYSTEM_PROMPT").ok(),
             exa_api_key: std::env::var("EXA_API_KEY").ok(),
+            exa_codesearch_enabled: std::env::var("LOOM_EXA_CODESEARCH")
+                .ok()
+                .is_some_and(|s| {
+                    matches!(s.as_str(), "1")
+                        || s.eq_ignore_ascii_case("true")
+                        || s.eq_ignore_ascii_case("yes")
+                }),
             twitter_api_key: std::env::var("TWITTER_API_KEY").ok(),
             mcp_exa_url: std::env::var("MCP_EXA_URL")
                 .unwrap_or_else(|_| "https://mcp.exa.ai/mcp".to_string()),

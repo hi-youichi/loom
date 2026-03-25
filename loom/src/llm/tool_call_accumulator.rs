@@ -76,9 +76,7 @@ impl ToolCallAccumulator {
         tool_calls
     }
 
-    /// Replace all accumulated tool calls with an externally-provided list
-    /// (used by the proxy-fallback path when stream was empty but non-stream
-    /// returned real tool calls).
+    /// Replace all accumulated tool calls with an externally-provided list.
     pub fn replace_from_vec(&mut self, tool_calls: Vec<ToolCall>) {
         self.map.clear();
         for (i, tc) in tool_calls.into_iter().enumerate() {
