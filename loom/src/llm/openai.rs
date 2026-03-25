@@ -261,13 +261,25 @@ impl LlmClient for ChatOpenAI {
                 args.temperature(t);
             }
 
+            // OpenAI Chat Completions: `tool_choice` is only valid when `tools` is non-empty.
+            let tools_nonempty = self
+                .tools
+                .as_ref()
+                .map_or(false, |t| !t.is_empty());
             if let Some(mode) = self.tool_choice {
-                let opt = match mode {
-                    ToolChoiceMode::Auto => ToolChoiceOptions::Auto,
-                    ToolChoiceMode::None => ToolChoiceOptions::None,
-                    ToolChoiceMode::Required => ToolChoiceOptions::Required,
-                };
-                args.tool_choice(ChatCompletionToolChoiceOption::Mode(opt));
+                if tools_nonempty {
+                    let opt = match mode {
+                        ToolChoiceMode::Auto => ToolChoiceOptions::Auto,
+                        ToolChoiceMode::None => ToolChoiceOptions::None,
+                        ToolChoiceMode::Required => ToolChoiceOptions::Required,
+                    };
+                    args.tool_choice(ChatCompletionToolChoiceOption::Mode(opt));
+                } else {
+                    trace!(
+                        mode = ?mode,
+                        "omitting tool_choice: no tools advertised (API requires tools when tool_choice is set)"
+                    );
+                }
             }
 
             args.build().map_err(|e| {
@@ -415,13 +427,24 @@ impl LlmClient for ChatOpenAI {
                 args.temperature(t);
             }
 
+            let tools_nonempty = self
+                .tools
+                .as_ref()
+                .map_or(false, |t| !t.is_empty());
             if let Some(mode) = self.tool_choice {
-                let opt = match mode {
-                    ToolChoiceMode::Auto => ToolChoiceOptions::Auto,
-                    ToolChoiceMode::None => ToolChoiceOptions::None,
-                    ToolChoiceMode::Required => ToolChoiceOptions::Required,
-                };
-                args.tool_choice(ChatCompletionToolChoiceOption::Mode(opt));
+                if tools_nonempty {
+                    let opt = match mode {
+                        ToolChoiceMode::Auto => ToolChoiceOptions::Auto,
+                        ToolChoiceMode::None => ToolChoiceOptions::None,
+                        ToolChoiceMode::Required => ToolChoiceOptions::Required,
+                    };
+                    args.tool_choice(ChatCompletionToolChoiceOption::Mode(opt));
+                } else {
+                    trace!(
+                        mode = ?mode,
+                        "omitting tool_choice: no tools advertised (API requires tools when tool_choice is set)"
+                    );
+                }
             }
 
             args.build().map_err(|e| {

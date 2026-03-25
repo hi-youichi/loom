@@ -13,8 +13,8 @@ use super::error::BuildRunnerError;
 /// Extract model configuration from ReactBuildConfig into a ModelEntry.
 ///
 /// Priority (highest to lowest):
-/// 1. ReactBuildConfig fields (openai_api_key, openai_base_url, model, llm_provider)
-/// 2. Environment variables (OPENAI_API_KEY, OPENAI_BASE_URL, MODEL, LLM_PROVIDER)
+/// 1. ReactBuildConfig fields (credentials, model, provider, openai_tool_choice, openai_temperature)
+/// 2. Environment variables for any unset fields above (including `OPENAI_TEMPERATURE`)
 /// 3. Default values
 pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<ModelEntry, BuildRunnerError> {
     // API key: config > env
@@ -56,6 +56,43 @@ pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<Model
         _ => "openai".to_string(),
     };
 
+    let tool_choice = match config
+        .openai_tool_choice
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(s) => match s.parse::<crate::llm::ToolChoiceMode>() {
+            Ok(m) => Some(m),
+            Err(_) => {
+                tracing::warn!(
+                    value = %s,
+                    "ignoring invalid OPENAI_TOOL_CHOICE (use auto, none, or required)"
+                );
+                None
+            }
+        },
+        None => None,
+    };
+
+    let temperature = config
+        .openai_temperature
+        .clone()
+        .or_else(|| std::env::var("OPENAI_TEMPERATURE").ok())
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .and_then(|s| match s.parse::<f32>() {
+            Ok(v) if v.is_finite() => Some(v),
+            _ => {
+                tracing::warn!(
+                    value = %s,
+                    "ignoring invalid OPENAI_TEMPERATURE (expected a finite number)"
+                );
+                None
+            }
+        });
+
     // Build ModelEntry
     Ok(ModelEntry {
         id: format!("{}/{}", provider, model),
@@ -64,9 +101,9 @@ pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<Model
         base_url,
         api_key: Some(api_key),
         provider_type,
-        temperature: None,
+        temperature,
         max_tokens: None,
-        tool_choice: None,
+        tool_choice,
     })
 }
 
@@ -94,7 +131,14 @@ pub(crate) async fn build_default_llm_with_tool_source(
             });
             let api_key = entry.api_key.clone().unwrap();
             tracing::debug!("build_default_llm: BigModel with tools");
-            let client = ChatBigModel::with_config(base_url, api_key, entry.name).with_tools(tools);
+            let mut client =
+                ChatBigModel::with_config(base_url, api_key, entry.name).with_tools(tools);
+            if let Some(mode) = entry.tool_choice {
+                client = client.with_tool_choice(mode);
+            }
+            if let Some(t) = entry.temperature {
+                client = client.with_temperature(t);
+            }
             Ok(Box::new(client))
         }
         _ => {
@@ -107,7 +151,13 @@ pub(crate) async fn build_default_llm_with_tool_source(
                 openai_config = openai_config.with_api_base(base_url);
             }
             tracing::debug!("build_default_llm: OpenAI with tools");
-            let client = ChatOpenAI::with_config(openai_config, entry.name).with_tools(tools);
+            let mut client = ChatOpenAI::with_config(openai_config, entry.name).with_tools(tools);
+            if let Some(mode) = entry.tool_choice {
+                client = client.with_tool_choice(mode);
+            }
+            if let Some(t) = entry.temperature {
+                client = client.with_temperature(t);
+            }
             Ok(Box::new(client))
         }
     }

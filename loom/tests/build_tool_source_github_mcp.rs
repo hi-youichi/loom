@@ -27,6 +27,8 @@ fn base_config(working_folder: std::path::PathBuf) -> ReactBuildConfig {
         openai_base_url: None,
         model: None,
         llm_provider: None,
+        openai_tool_choice: None,
+        openai_temperature: None,
         embedding_api_key: None,
         embedding_base_url: None,
         embedding_model: None,

@@ -149,6 +149,12 @@ pub fn build_helve_config(
         base.llm_provider = Some(t.clone());
     }
 
+    if let Some(ref prof) = profile {
+        if let Some(t) = prof.model.as_ref().and_then(|m| m.temperature) {
+            base.openai_temperature = Some(t.to_string());
+        }
+    }
+
     let working_folder = effective_opts
         .working_folder
         .clone()
@@ -255,6 +261,9 @@ pub fn build_config_from_profile(
     if let Some(ref model) = profile.model {
         if let Some(ref name) = model.name {
             config.model = Some(name.clone());
+        }
+        if let Some(t) = model.temperature {
+            config.openai_temperature = Some(t.to_string());
         }
     }
 

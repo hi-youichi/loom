@@ -68,6 +68,10 @@ pub struct ReactBuildConfig {
     pub model: Option<String>,
     /// When `Some("bigmodel")`, build layer uses ChatBigModel; otherwise default is OpenAI. Set via LLM_PROVIDER.
     pub llm_provider: Option<String>,
+    /// Chat Completions `tool_choice`: `auto`, `none`, or `required`. Set via `OPENAI_TOOL_CHOICE`.
+    pub openai_tool_choice: Option<String>,
+    /// Sampling temperature for chat completions. Set via `OPENAI_TEMPERATURE`.
+    pub openai_temperature: Option<String>,
     pub embedding_api_key: Option<String>,
     pub embedding_base_url: Option<String>,
     pub embedding_model: Option<String>,
@@ -124,6 +128,8 @@ impl ReactBuildConfig {
                 .or_else(|_| std::env::var("OPENAI_MODEL"))
                 .ok(),
             llm_provider: std::env::var("LLM_PROVIDER").ok(),
+            openai_tool_choice: std::env::var("OPENAI_TOOL_CHOICE").ok(),
+            openai_temperature: std::env::var("OPENAI_TEMPERATURE").ok(),
             embedding_api_key: std::env::var("EMBEDDING_API_KEY")
                 .or_else(|_| std::env::var("OPENAI_API_KEY"))
                 .ok(),
