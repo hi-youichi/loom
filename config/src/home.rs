@@ -4,6 +4,14 @@
 
 use std::path::PathBuf;
 
+/// Subdirectory under [`loom_home`] for per-session data: `{loom_home}/thread/{session_id}/`.
+pub const THREAD_DIR: &str = "thread";
+
+/// Returns `{loom_home}/thread/{session_id}/` (does not create directories).
+pub fn thread_session_dir(session_id: &str) -> PathBuf {
+    loom_home().join(THREAD_DIR).join(session_id)
+}
+
 /// Returns the Loom home directory.
 ///
 /// Resolution: `$LOOM_HOME` env var if set, otherwise `~/.loom`.
@@ -42,6 +50,20 @@ mod tests {
         let prev = std::env::var("LOOM_HOME").ok();
         std::env::set_var("LOOM_HOME", "/tmp/test-loom");
         assert_eq!(loom_home(), PathBuf::from("/tmp/test-loom"));
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+    }
+
+    #[test]
+    fn thread_session_dir_under_loom_home() {
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", "/tmp/test-loom-thread");
+        assert_eq!(
+            super::thread_session_dir("sess-a"),
+            PathBuf::from("/tmp/test-loom-thread/thread/sess-a")
+        );
         match prev {
             Some(v) => std::env::set_var("LOOM_HOME", v),
             None => std::env::remove_var("LOOM_HOME"),

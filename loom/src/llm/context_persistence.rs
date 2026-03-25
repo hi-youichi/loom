@@ -8,7 +8,7 @@
 //!
 //! # Storage Location
 //!
-//! Context is stored under `~/.loom/context/$session-id/`:
+//! Context is stored under `~/.loom/thread/$session-id/`:
 //! - `think-{turn}.jsonl`: LLM requests and responses for each turn
 //! - `tool_context.jsonl`: Tool call invocations and results
 
@@ -81,17 +81,10 @@ impl ContextEntry {
     }
 }
 
-/// Returns `~/.loom/context` (via `loom_home()`).
-fn get_base_context_dir() -> PathBuf {
-    env_config::home::loom_home().join("context")
-}
-
 /// Create or get LLM context writer for a session and turn.
 fn get_llm_context_writer(session_id: &str, turn_count: u32) -> Option<ContextWriter> {
     let filename = format!("think-{}.jsonl", turn_count);
-    let path = get_base_context_dir()
-        .join(session_id)
-        .join(filename);
+    let path = env_config::home::thread_session_dir(session_id).join(filename);
 
     match ContextWriter::new(path.clone()) {
         Ok(writer) => {
@@ -116,9 +109,7 @@ fn get_llm_context_writer(session_id: &str, turn_count: u32) -> Option<ContextWr
 
 /// Create or get Tool context writer for a session.
 fn get_tool_context_writer(session_id: &str) -> Option<ContextWriter> {
-    let path = get_base_context_dir()
-        .join(session_id)
-        .join("tool_context.jsonl");
+    let path = env_config::home::thread_session_dir(session_id).join("tool_context.jsonl");
 
     match ContextWriter::new(path.clone()) {
         Ok(writer) => {
@@ -327,17 +318,20 @@ mod tests {
     }
 
     #[test]
-    fn get_base_context_dir_uses_loom_home() {
+    fn thread_session_dir_matches_loom_home_layout() {
         let _g = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
         std::env::set_var("LOOM_HOME", dir.path());
-        let ctx_dir = get_base_context_dir();
+        let sess = env_config::home::thread_session_dir("my-session");
         match prev {
             Some(v) => std::env::set_var("LOOM_HOME", v),
             None => std::env::remove_var("LOOM_HOME"),
         }
-        assert_eq!(ctx_dir, dir.path().join("context"));
+        assert_eq!(
+            sess,
+            dir.path().join(env_config::home::THREAD_DIR).join("my-session")
+        );
     }
 
     #[test]
@@ -392,7 +386,7 @@ mod tests {
 
         let path = dir
             .path()
-            .join("context")
+            .join("thread")
             .join("sess1")
             .join("think-0.jsonl");
         assert!(path.exists());
@@ -424,7 +418,7 @@ mod tests {
 
         let path = dir
             .path()
-            .join("context")
+            .join("thread")
             .join("default")
             .join("think-0.jsonl");
         assert!(path.exists());
@@ -462,7 +456,7 @@ mod tests {
 
         let path = dir
             .path()
-            .join("context")
+            .join("thread")
             .join("sess2")
             .join("think-0.jsonl");
         assert!(path.exists());
@@ -494,7 +488,7 @@ mod tests {
 
         let path = dir
             .path()
-            .join("context")
+            .join("thread")
             .join("sess3")
             .join("think-0.jsonl");
         let content = std::fs::read_to_string(&path).unwrap();
@@ -527,7 +521,7 @@ mod tests {
 
         let path = dir
             .path()
-            .join("context")
+            .join("thread")
             .join("sess_tc")
             .join("think-0.jsonl");
         let content = std::fs::read_to_string(&path).unwrap();
@@ -552,7 +546,7 @@ mod tests {
 
         let path = dir
             .path()
-            .join("context")
+            .join("thread")
             .join("sess4")
             .join("tool_context.jsonl");
         assert!(path.exists());
@@ -578,7 +572,7 @@ mod tests {
 
         let path = dir
             .path()
-            .join("context")
+            .join("thread")
             .join("default")
             .join("tool_context.jsonl");
         assert!(path.exists());
@@ -607,7 +601,7 @@ mod tests {
 
         let path = dir
             .path()
-            .join("context")
+            .join("thread")
             .join("sess5")
             .join("tool_context.jsonl");
         assert!(path.exists());
@@ -633,7 +627,7 @@ mod tests {
 
         let path = dir
             .path()
-            .join("context")
+            .join("thread")
             .join("sess6")
             .join("tool_context.jsonl");
         let content = std::fs::read_to_string(&path).unwrap();
@@ -655,15 +649,15 @@ mod tests {
         let messages = vec![crate::message::Message::user("hello")];
 
         save_llm_request("think", Some("sess"), 0, &messages, None);
-        let path0 = dir.path().join("context/sess/think-0.jsonl");
+        let path0 = dir.path().join("thread/sess/think-0.jsonl");
         assert!(path0.exists());
 
         save_llm_request("think", Some("sess"), 1, &messages, None);
-        let path1 = dir.path().join("context/sess/think-1.jsonl");
+        let path1 = dir.path().join("thread/sess/think-1.jsonl");
         assert!(path1.exists());
 
         save_llm_request("think", Some("sess"), 2, &messages, None);
-        let path2 = dir.path().join("context/sess/think-2.jsonl");
+        let path2 = dir.path().join("thread/sess/think-2.jsonl");
         assert!(path2.exists());
 
         match prev {
@@ -682,7 +676,7 @@ mod tests {
         let messages = vec![crate::message::Message::user("test message")];
         save_llm_request("think", Some("sess"), 0, &messages, None);
 
-        let path = dir.path().join("context/sess/think-0.jsonl");
+        let path = dir.path().join("thread/sess/think-0.jsonl");
         let content = std::fs::read_to_string(&path).unwrap();
 
         assert!(content.contains("\"User\""));

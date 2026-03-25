@@ -1,7 +1,7 @@
 //! Todo tools: todo_write, todo_read.
 //!
 //! Persist todo list as JSON:
-//! - With thread_id: `~/.loom/context/{thread_id}/todo.json`
+//! - With thread_id: `~/.loom/thread/{thread_id}/todo.json`
 //! - Without thread_id: `~/.loom/todo.json` (global fallback)
 
 mod todo_read;
@@ -11,17 +11,16 @@ pub use todo_read::{TodoReadTool, TOOL_TODO_READ};
 pub use todo_write::{TodoWriteTool, TOOL_TODO_WRITE};
 
 const TODOS_FILENAME: &str = "todo.json";
-const CONTEXT_DIR: &str = "context";
 
 /// Returns the path to the todo list file.
-/// - With thread_id: `~/.loom/context/{thread_id}/todo.json`
+/// - With thread_id: `~/.loom/thread/{thread_id}/todo.json`
 /// - Without thread_id: `~/.loom/todo.json` (global fallback)
 pub fn todo_file_path(
     thread_id: Option<&str>,
 ) -> Result<std::path::PathBuf, crate::tool_source::ToolSourceError> {
     let base = env_config::home::loom_home();
     match thread_id {
-        Some(tid) => Ok(base.join(CONTEXT_DIR).join(tid).join(TODOS_FILENAME)),
+        Some(tid) => Ok(env_config::home::thread_session_dir(tid).join(TODOS_FILENAME)),
         None => Ok(base.join(TODOS_FILENAME)),
     }
 }
@@ -53,7 +52,7 @@ mod tests {
         std::env::remove_var("LOOM_HOME");
     }
 
-    /// Given LOOM_HOME and thread_id, todo_file_path returns loom_home/context/{thread_id}/todo.json.
+    /// Given LOOM_HOME and thread_id, todo_file_path returns loom_home/thread/{thread_id}/todo.json.
     #[test]
     fn todo_file_path_with_thread_id() {
         let _g = super::XDG_TEST_LOCK.lock().unwrap();
@@ -63,7 +62,7 @@ mod tests {
         assert_eq!(
             path,
             dir.path()
-                .join("context")
+                .join("thread")
                 .join("session-123")
                 .join("todo.json")
         );
