@@ -7,9 +7,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
+use tokio::time::{interval, MissedTickBehavior};
 
-use crate::config::StreamingConfig;
-use crate::traits::MessageSender;
+use crate::config::{InteractionMode, StreamingConfig};
+use crate::traits::{AgentRunContext, MessageSender};
 use crate::utils::truncate_text;
 
 /// Commands sent from event callback to message handler
@@ -35,6 +36,8 @@ pub enum StreamCommand {
 /// State for tracking message content
 pub struct MessageState {
     pub msg_id: Option<i32>,
+    _ack_message_id: Option<i32>,
+    _user_message_id: Option<i32>,
     phase: String,
     think_text: String,
     tools: Vec<String>,
@@ -45,12 +48,15 @@ pub struct MessageState {
     last_update: Instant,
     settings: StreamingConfig,
     final_text: String,
+    summary_count: u32,
 }
 
 impl MessageState {
-    pub fn new(settings: StreamingConfig) -> Self {
+    pub fn new(settings: StreamingConfig, context: AgentRunContext) -> Self {
         Self {
             msg_id: None,
+            _ack_message_id: context.ack_message_id,
+            _user_message_id: context.user_message_id,
             phase: String::new(),
             think_text: String::new(),
             tools: Vec::new(),
@@ -61,6 +67,7 @@ impl MessageState {
             last_update: Instant::now(),
             settings,
             final_text: String::new(),
+            summary_count: 0,
         }
     }
 
@@ -103,6 +110,68 @@ fn truncate_chars_with_ellipsis(text: &str, max_chars: usize) -> String {
     }
     let truncated: String = text.chars().take(max_chars).collect();
     format!("{}...", truncated)
+}
+
+fn should_emit_periodic_summary(state: &MessageState) -> bool {
+    !state.phase.is_empty()
+        || !state.think_text.trim().is_empty()
+        || !state.act_text.trim().is_empty()
+        || !state.tools.is_empty()
+}
+
+fn phase_label(state: &MessageState) -> &'static str {
+    match state.phase.as_str() {
+        "think" => "思考中",
+        "act" => "执行中",
+        _ => "处理中",
+    }
+}
+
+fn recent_progress_excerpt(state: &MessageState) -> Option<String> {
+    let source = if !state.act_text.trim().is_empty() {
+        state.act_text.trim()
+    } else if !state.think_text.trim().is_empty() {
+        state.think_text.trim()
+    } else {
+        return None;
+    };
+
+    let single_line = source.replace('\n', " ");
+    Some(truncate_chars_with_ellipsis(&single_line, 160))
+}
+
+fn build_periodic_summary_text(state: &MessageState) -> Option<String> {
+    if !should_emit_periodic_summary(state) {
+        return None;
+    }
+
+    let mut lines = vec![format!("进展更新（第 {} 次）", state.summary_count + 1)];
+    lines.push(format!("当前阶段：{}。", phase_label(state)));
+
+    if let Some(count) = state.act_count {
+        lines.push(format!("已执行 {} 个动作。", count));
+    }
+
+    if !state.tools.is_empty() {
+        let recent_tools = state
+            .tools
+            .iter()
+            .rev()
+            .take(2)
+            .map(|line| truncate_chars_with_ellipsis(&line.replace('\n', " "), 120))
+            .collect::<Vec<_>>();
+        lines.push(format!(
+            "最近工具进展：{}",
+            recent_tools.into_iter().rev().collect::<Vec<_>>().join(" | ")
+        ));
+    }
+
+    if let Some(excerpt) = recent_progress_excerpt(state) {
+        lines.push(format!("当前进展：{}", excerpt));
+    }
+
+    lines.push("完成后我会单独发送最终结果。".to_string());
+    Some(lines.join("\n"))
 }
 
 async fn enter_act_phase_without_count_if_needed(
@@ -155,223 +224,383 @@ async fn edit_act_message_if_possible(
     }
 }
 
-/// Processes streaming UI commands using [`MessageSender`] (mockable in tests).
-pub async fn stream_message_handler(
-    mut rx: mpsc::Receiver<StreamCommand>,
-    sender: Arc<dyn MessageSender>,
+fn finalize_text(state: &mut MessageState) {
+    if state.phase == "think" {
+        if !state.think_text.is_empty() {
+            state.final_text = truncate_text(&state.think_text, state.settings.max_think_chars);
+        }
+    } else if state.phase == "act" && (!state.tools.is_empty() || !state.act_text.trim().is_empty()) {
+        let body = act_body_for_edit(state);
+        state.final_text = truncate_text(&body, state.settings.max_act_chars);
+    }
+}
+
+async fn handle_streaming_command(
+    cmd: StreamCommand,
+    sender: &Arc<dyn MessageSender>,
     chat_id: i64,
-    settings: StreamingConfig,
-) -> String {
-    let mut state = MessageState::new(settings);
-
-    while let Some(cmd) = rx.recv().await {
-        match cmd {
-            StreamCommand::StartThink { count } => {
-                if state.phase == "act" && (!state.tools.is_empty() || !state.act_text.trim().is_empty()) {
-                    edit_act_message_if_possible(&sender, chat_id, state.msg_id, &state).await;
-                }
-                if state.phase == "think" && state.think_text.len() > state.last_sent_length {
-                    let text = truncate_text(&state.think_text, state.settings.max_think_chars);
-                    if let Some(msg_id) = state.msg_id {
-                        let _ = sender.edit_message(chat_id, msg_id, &text).await;
-                    }
-                }
-
-                state.phase = "think".to_string();
-                state.think_text.clear();
-                state.last_sent_length = 0;
-                state.last_update = Instant::now();
-                state.act_count = None;
-
-                if state.settings.show_think_phase {
-                    let header = format!("{} Think #{}\n\n", state.settings.think_emoji, count);
-                    let header_len = header.len();
-                    match sender.send_text_returning_id(chat_id, &header).await {
-                        Ok(id) => {
-                            state.msg_id = Some(id);
-                            state.think_text = header;
-                            state.last_sent_length = header_len;
-                        }
-                        Err(e) => {
-                            tracing::warn!("Failed to send Think header: {}", e);
-                        }
-                    }
-                }
+    state: &mut MessageState,
+) -> bool {
+    match cmd {
+        StreamCommand::StartThink { count } => {
+            if state.phase == "act" && (!state.tools.is_empty() || !state.act_text.trim().is_empty()) {
+                edit_act_message_if_possible(sender, chat_id, state.msg_id, state).await;
             }
-
-            StreamCommand::StartAct { count } => {
-                if state.phase == "think" && state.think_text.len() > state.last_sent_length {
-                    let text = truncate_text(&state.think_text, state.settings.max_think_chars);
-                    if let Some(msg_id) = state.msg_id {
-                        let _ = sender.edit_message(chat_id, msg_id, &text).await;
-                    }
-                    state.final_text = state.think_text.clone();
-                }
-                let is_fallback_act = state.phase == "act" && state.act_count.is_none();
-                let is_same_act_count = state.act_count == Some(count);
-                let should_reset_for_new_act = state.phase != "act" || (!is_fallback_act && !is_same_act_count);
-
-                if should_reset_for_new_act {
-                    state.phase = "act".to_string();
-                    state.tools.clear();
-                    state.act_text.clear();
-                    state.tool_start_times.clear();
-                    state.last_sent_length = 0;
-                    state.last_update = Instant::now();
-
-                    if state.settings.show_act_phase {
-                        let header = format!("{} Act #{}\n\n", state.settings.act_emoji, count);
-                        match sender.send_text_returning_id(chat_id, &header).await {
-                            Ok(id) => {
-                                state.msg_id = Some(id);
-                            }
-                            Err(e) => {
-                                tracing::warn!("Failed to send Act header: {}", e);
-                            }
-                        }
-                    }
-                }
-                state.act_count = Some(count);
-            }
-
-            StreamCommand::ThinkContent { content } => {
-                if state.phase != "think" || !state.settings.show_think_phase {
-                    continue;
-                }
-
-                state.think_text.push_str(&content);
-
-                if !state.should_update(state.settings.throttle_ms) {
-                    continue;
-                }
-
+            if state.phase == "think" && state.think_text.len() > state.last_sent_length {
                 let text = truncate_text(&state.think_text, state.settings.max_think_chars);
                 if let Some(msg_id) = state.msg_id {
                     let _ = sender.edit_message(chat_id, msg_id, &text).await;
                 }
-                state.last_update = Instant::now();
-                state.last_sent_length = state.think_text.len();
             }
 
-            StreamCommand::ActContent { content } => {
-                if !state.settings.show_act_phase {
-                    continue;
+            state.phase = "think".to_string();
+            state.think_text.clear();
+            state.last_sent_length = 0;
+            state.last_update = Instant::now();
+            state.act_count = None;
+
+            if state.settings.show_think_phase {
+                let header = format!("{} Think #{}\n\n", state.settings.think_emoji, count);
+                let header_len = header.len();
+                match sender.send_text_returning_id(chat_id, &header).await {
+                    Ok(id) => {
+                        state.msg_id = Some(id);
+                        state.think_text = header;
+                        state.last_sent_length = header_len;
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to send Think header: {}", e);
+                    }
                 }
-                enter_act_phase_without_count_if_needed(&sender, chat_id, &mut state).await;
+            }
+        }
 
-                state.act_text.push_str(&content);
-
-                if !state.should_update(state.settings.throttle_ms) {
-                    continue;
+        StreamCommand::StartAct { count } => {
+            if state.phase == "think" && state.think_text.len() > state.last_sent_length {
+                let text = truncate_text(&state.think_text, state.settings.max_think_chars);
+                if let Some(msg_id) = state.msg_id {
+                    let _ = sender.edit_message(chat_id, msg_id, &text).await;
                 }
+                state.final_text = state.think_text.clone();
+            }
+            let is_fallback_act = state.phase == "act" && state.act_count.is_none();
+            let is_same_act_count = state.act_count == Some(count);
+            let should_reset_for_new_act = state.phase != "act" || (!is_fallback_act && !is_same_act_count);
 
-                edit_act_message_if_possible(&sender, chat_id, state.msg_id, &state).await;
+            if should_reset_for_new_act {
+                state.phase = "act".to_string();
+                state.tools.clear();
+                state.act_text.clear();
+                state.tool_start_times.clear();
+                state.last_sent_length = 0;
                 state.last_update = Instant::now();
+
+                if state.settings.show_act_phase {
+                    let header = format!("{} Act #{}\n\n", state.settings.act_emoji, count);
+                    match sender.send_text_returning_id(chat_id, &header).await {
+                        Ok(id) => {
+                            state.msg_id = Some(id);
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to send Act header: {}", e);
+                        }
+                    }
+                }
+            }
+            state.act_count = Some(count);
+        }
+
+        StreamCommand::ThinkContent { content } => {
+            if state.phase != "think" || !state.settings.show_think_phase {
+                return false;
             }
 
-            StreamCommand::ToolStart { name, arguments } => {
-                if !state.settings.show_act_phase {
-                    continue;
-                }
-                enter_act_phase_without_count_if_needed(&sender, chat_id, &mut state).await;
+            state.think_text.push_str(&content);
 
-                state.tool_start_times.insert(name.clone(), Instant::now());
+            if !state.should_update(state.settings.throttle_ms) {
+                return false;
+            }
+
+            let text = truncate_text(&state.think_text, state.settings.max_think_chars);
+            if let Some(msg_id) = state.msg_id {
+                let _ = sender.edit_message(chat_id, msg_id, &text).await;
+            }
+            state.last_update = Instant::now();
+            state.last_sent_length = state.think_text.len();
+        }
+
+        StreamCommand::ActContent { content } => {
+            if !state.settings.show_act_phase {
+                return false;
+            }
+            enter_act_phase_without_count_if_needed(sender, chat_id, state).await;
+
+            state.act_text.push_str(&content);
+
+            if !state.should_update(state.settings.throttle_ms) {
+                return false;
+            }
+
+            edit_act_message_if_possible(sender, chat_id, state.msg_id, state).await;
+            state.last_update = Instant::now();
+        }
+
+        StreamCommand::ToolStart { name, arguments } => {
+            if !state.settings.show_act_phase {
+                return false;
+            }
+            enter_act_phase_without_count_if_needed(sender, chat_id, state).await;
+
+            state.tool_start_times.insert(name.clone(), Instant::now());
+            state
+                .tools
+                .push(format_tool_start_line(&name, arguments.as_deref()));
+
+            if !state.should_update(state.settings.throttle_ms) {
+                return false;
+            }
+
+            edit_act_message_if_possible(sender, chat_id, state.msg_id, state).await;
+            state.last_update = Instant::now();
+        }
+
+        StreamCommand::ToolEnd {
+            name,
+            result,
+            is_error,
+        } => {
+            if !state.settings.show_act_phase {
+                return false;
+            }
+            enter_act_phase_without_count_if_needed(sender, chat_id, state).await;
+
+            let status = if is_error { "❌" } else { "✅" };
+            let max_result_len = if state.settings.max_act_chars == 0 {
+                1000
+            } else {
                 state
-                    .tools
-                    .push(format_tool_start_line(&name, arguments.as_deref()));
+                    .settings
+                    .max_act_chars
+                    .saturating_sub(80)
+                    .clamp(120, 2000)
+            };
+            let truncated_result = truncate_chars_with_ellipsis(&result, max_result_len);
+            let display_result = truncated_result.replace('\r', "");
 
-                if !state.should_update(state.settings.throttle_ms) {
-                    continue;
-                }
+            let duration_str = state
+                .tool_start_times
+                .remove(&name)
+                .map(|start| {
+                    let millis = start.elapsed().as_millis();
+                    if millis < 1000 {
+                        format!(" ({}ms)", millis)
+                    } else {
+                        format!(" ({:.1}s)", millis as f64 / 1000.0)
+                    }
+                })
+                .unwrap_or_default();
 
-                edit_act_message_if_possible(&sender, chat_id, state.msg_id, &state).await;
-                state.last_update = Instant::now();
+            let existing_args = state
+                .tools
+                .iter()
+                .find(|line| is_inflight_tool_line(line, &name))
+                .and_then(|line| extract_inflight_tool_arguments(line, &name));
+            let display_name = match existing_args {
+                Some(ref args) if !args.is_empty() => format!("{} {}", name, args),
+                _ => name.clone(),
+            };
+            let completed = format!("{} {}{}:\n{}", status, display_name, duration_str, display_result);
+
+            if let Some(pos) = state
+                .tools
+                .iter()
+                .position(|t| is_inflight_tool_line(t, &name))
+            {
+                state.tools[pos] = completed;
+            } else {
+                state.tools.push(completed);
             }
 
-            StreamCommand::ToolEnd {
-                name,
-                result,
-                is_error,
-            } => {
-                if !state.settings.show_act_phase {
-                    continue;
+            if !state.should_update(state.settings.throttle_ms) {
+                return false;
+            }
+
+            edit_act_message_if_possible(sender, chat_id, state.msg_id, state).await;
+            state.last_update = Instant::now();
+        }
+
+        StreamCommand::Flush => {
+            if state.phase == "think" {
+                if state.think_text.len() > state.last_sent_length {
+                    let text = truncate_text(&state.think_text, state.settings.max_think_chars);
+                    if let Some(msg_id) = state.msg_id {
+                        let _ = sender.edit_message(chat_id, msg_id, &text).await;
+                    }
                 }
-                enter_act_phase_without_count_if_needed(&sender, chat_id, &mut state).await;
+            } else if state.phase == "act" && (!state.tools.is_empty() || !state.act_text.trim().is_empty()) {
+                edit_act_message_if_possible(sender, chat_id, state.msg_id, state).await;
+            }
+            finalize_text(state);
+            return true;
+        }
+    }
 
-                let status = if is_error { "❌" } else { "✅" };
-                let max_result_len = if state.settings.max_act_chars == 0 {
-                    1000
-                } else {
-                    state
-                        .settings
-                        .max_act_chars
-                        .saturating_sub(80)
-                        .clamp(120, 2000)
-                };
-                let truncated_result = truncate_chars_with_ellipsis(&result, max_result_len);
-                let display_result = truncated_result.replace('\r', "");
+    false
+}
 
-                let duration_str = state
-                    .tool_start_times
-                    .remove(&name)
-                    .map(|start| {
-                        let millis = start.elapsed().as_millis();
-                        if millis < 1000 {
-                            format!(" ({}ms)", millis)
+async fn handle_periodic_command(cmd: StreamCommand, state: &mut MessageState) -> bool {
+    match cmd {
+        StreamCommand::StartThink { .. } => {
+            state.phase = "think".to_string();
+            state.think_text.clear();
+            state.act_text.clear();
+            state.tools.clear();
+            state.tool_start_times.clear();
+            state.act_count = None;
+        }
+        StreamCommand::StartAct { count } => {
+            if state.phase != "act" || state.act_count != Some(count) {
+                state.phase = "act".to_string();
+                state.act_text.clear();
+                state.tools.clear();
+                state.tool_start_times.clear();
+            }
+            state.act_count = Some(count);
+        }
+        StreamCommand::ThinkContent { content } => {
+            if state.phase != "think" {
+                state.phase = "think".to_string();
+            }
+            state.think_text.push_str(&content);
+        }
+        StreamCommand::ActContent { content } => {
+            if state.phase != "act" {
+                state.phase = "act".to_string();
+            }
+            state.act_text.push_str(&content);
+        }
+        StreamCommand::ToolStart { name, arguments } => {
+            if state.phase != "act" {
+                state.phase = "act".to_string();
+            }
+            state.tool_start_times.insert(name.clone(), Instant::now());
+            state
+                .tools
+                .push(format_tool_start_line(&name, arguments.as_deref()));
+        }
+        StreamCommand::ToolEnd {
+            name,
+            result,
+            is_error,
+        } => {
+            if state.phase != "act" {
+                state.phase = "act".to_string();
+            }
+
+            let status = if is_error { "❌" } else { "✅" };
+            let duration_str = state
+                .tool_start_times
+                .remove(&name)
+                .map(|start| {
+                    let millis = start.elapsed().as_millis();
+                    if millis < 1000 {
+                        format!(" ({}ms)", millis)
+                    } else {
+                        format!(" ({:.1}s)", millis as f64 / 1000.0)
+                    }
+                })
+                .unwrap_or_default();
+            let truncated_result = truncate_chars_with_ellipsis(&result.replace('\r', ""), 240);
+            let existing_args = state
+                .tools
+                .iter()
+                .find(|line| is_inflight_tool_line(line, &name))
+                .and_then(|line| extract_inflight_tool_arguments(line, &name));
+            let display_name = match existing_args {
+                Some(ref args) if !args.is_empty() => format!("{} {}", name, args),
+                _ => name.clone(),
+            };
+            let completed = format!("{} {}{}:\n{}", status, display_name, duration_str, truncated_result);
+
+            if let Some(pos) = state
+                .tools
+                .iter()
+                .position(|t| is_inflight_tool_line(t, &name))
+            {
+                state.tools[pos] = completed;
+            } else {
+                state.tools.push(completed);
+            }
+        }
+        StreamCommand::Flush => {
+            finalize_text(state);
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Processes streaming UI commands using [`MessageSender`] (mockable in tests).
+pub async fn stream_message_handler(
+    rx: mpsc::Receiver<StreamCommand>,
+    sender: Arc<dyn MessageSender>,
+    chat_id: i64,
+    settings: StreamingConfig,
+) -> String {
+    stream_message_handler_with_context(
+        rx,
+        sender,
+        chat_id,
+        AgentRunContext {
+            interaction_mode: settings.interaction_mode,
+            ..AgentRunContext::default()
+        },
+        settings,
+    )
+    .await
+}
+
+pub async fn stream_message_handler_with_context(
+    mut rx: mpsc::Receiver<StreamCommand>,
+    sender: Arc<dyn MessageSender>,
+    chat_id: i64,
+    context: AgentRunContext,
+    settings: StreamingConfig,
+) -> String {
+    let mut state = MessageState::new(settings.clone(), context);
+
+    if settings.interaction_mode == InteractionMode::PeriodicSummary {
+        let mut summary_interval = interval(Duration::from_secs(settings.summary_interval_secs.max(1)));
+        summary_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        summary_interval.tick().await;
+
+        loop {
+            tokio::select! {
+                maybe_cmd = rx.recv() => {
+                    let Some(cmd) = maybe_cmd else {
+                        finalize_text(&mut state);
+                        break;
+                    };
+
+                    if handle_periodic_command(cmd, &mut state).await {
+                        break;
+                    }
+                }
+                _ = summary_interval.tick() => {
+                    if let Some(summary) = build_periodic_summary_text(&state) {
+                        if let Err(e) = sender.send_text(chat_id, &summary).await {
+                            tracing::warn!("Failed to send periodic summary: {}", e);
                         } else {
-                            format!(" ({:.1}s)", millis as f64 / 1000.0)
+                            state.summary_count += 1;
                         }
-                    })
-                    .unwrap_or_default();
-
-                let existing_args = state
-                    .tools
-                    .iter()
-                    .find(|line| is_inflight_tool_line(line, &name))
-                    .and_then(|line| extract_inflight_tool_arguments(line, &name));
-                let display_name = match existing_args {
-                    Some(ref args) if !args.is_empty() => format!("{} {}", name, args),
-                    _ => name.clone(),
-                };
-                let completed = format!("{} {}{}:\n{}", status, display_name, duration_str, display_result);
-
-                if let Some(pos) = state
-                    .tools
-                    .iter()
-                    .position(|t| is_inflight_tool_line(t, &name))
-                {
-                    state.tools[pos] = completed;
-                } else {
-                    state.tools.push(completed);
+                    }
                 }
-
-                if !state.should_update(state.settings.throttle_ms) {
-                    continue;
-                }
-
-                edit_act_message_if_possible(&sender, chat_id, state.msg_id, &state).await;
-                state.last_update = Instant::now();
             }
-
-            StreamCommand::Flush => {
-                if state.phase == "think" {
-                    if state.think_text.len() > state.last_sent_length {
-                        let text = truncate_text(&state.think_text, state.settings.max_think_chars);
-                        if let Some(msg_id) = state.msg_id {
-                            let _ = sender.edit_message(chat_id, msg_id, &text).await;
-                        }
-                    }
-                    if !state.think_text.is_empty() {
-                        state.final_text =
-                            truncate_text(&state.think_text, state.settings.max_think_chars);
-                    }
-                } else if state.phase == "act"
-                    && (!state.tools.is_empty() || !state.act_text.trim().is_empty())
-                {
-                    edit_act_message_if_possible(&sender, chat_id, state.msg_id, &state).await;
-                    let body = act_body_for_edit(&state);
-                    state.final_text = truncate_text(&body, state.settings.max_act_chars);
-                }
+        }
+    } else {
+        while let Some(cmd) = rx.recv().await {
+            if handle_streaming_command(cmd, &sender, chat_id, &mut state).await {
                 break;
             }
         }

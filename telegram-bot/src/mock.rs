@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use teloxide::types::{Document, PhotoSize, Video};
@@ -12,7 +13,7 @@ use teloxide::types::{Document, PhotoSize, Video};
 use crate::download::{FileMetadata, FileType};
 use crate::error::BotError;
 use crate::traits::FileDownloader;
-use crate::traits::MessageSender;
+use crate::traits::{AgentRunContext, MessageSender};
 
 /// Mock Message Sender
 pub struct MockSender {
@@ -114,6 +115,8 @@ pub struct MockAgentRunner {
     response: String,
     should_fail: bool,
     calls: Arc<RwLock<Vec<String>>>,
+    contexts: Arc<RwLock<Vec<AgentRunContext>>>,
+    delay: Duration,
     /// When set, [`AgentRunner::run`](crate::traits::AgentRunner::run) sends `response` via this
     /// sender (mirrors streaming delivering user-visible text through Telegram APIs).
     deliver_via_sender: Option<Arc<dyn MessageSender>>,
@@ -125,6 +128,8 @@ impl MockAgentRunner {
             response: response.into(),
             should_fail: false,
             calls: Arc::new(RwLock::new(Vec::new())),
+            contexts: Arc::new(RwLock::new(Vec::new())),
+            delay: Duration::ZERO,
             deliver_via_sender: None,
         }
     }
@@ -135,7 +140,20 @@ impl MockAgentRunner {
             response: response.into(),
             should_fail: false,
             calls: Arc::new(RwLock::new(Vec::new())),
+            contexts: Arc::new(RwLock::new(Vec::new())),
+            delay: Duration::ZERO,
             deliver_via_sender: Some(sender),
+        }
+    }
+
+    pub fn with_delay(response: impl Into<String>, delay: Duration) -> Self {
+        Self {
+            response: response.into(),
+            should_fail: false,
+            calls: Arc::new(RwLock::new(Vec::new())),
+            contexts: Arc::new(RwLock::new(Vec::new())),
+            delay,
+            deliver_via_sender: None,
         }
     }
 
@@ -144,12 +162,18 @@ impl MockAgentRunner {
             response: String::new(),
             should_fail: true,
             calls: Arc::new(RwLock::new(Vec::new())),
+            contexts: Arc::new(RwLock::new(Vec::new())),
+            delay: Duration::ZERO,
             deliver_via_sender: None,
         }
     }
 
     pub fn get_calls(&self) -> Vec<String> {
         self.calls.read().unwrap().clone()
+    }
+
+    pub fn get_contexts(&self) -> Vec<AgentRunContext> {
+        self.contexts.read().unwrap().clone()
     }
 }
 
@@ -159,12 +183,17 @@ impl crate::traits::AgentRunner for MockAgentRunner {
         &self,
         prompt: &str,
         chat_id: i64,
-        _message_id: Option<i32>,
+        context: AgentRunContext,
     ) -> Result<String, BotError> {
         self.calls.write().unwrap().push(prompt.to_string());
+        self.contexts.write().unwrap().push(context);
 
         if self.should_fail {
             return Err(BotError::Agent("Mock error".to_string()));
+        }
+
+        if !self.delay.is_zero() {
+            tokio::time::sleep(self.delay).await;
         }
 
         if let Some(sender) = &self.deliver_via_sender {

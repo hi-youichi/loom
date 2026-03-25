@@ -3,10 +3,13 @@
 //! Provides functions for routing incoming messages to appropriate handlers.
 
 use crate::config::Settings;
+use crate::config::InteractionMode;
 use crate::download::{download_photo, download_document, DownloadConfig};
 use crate::error::BotError;
 use crate::download::{is_bot_mentioned, is_reply_to_bot};
+use crate::handler_deps::ChatRunRegistry;
 use crate::handler_deps::HandlerDeps;
+use crate::traits::AgentRunContext;
 use std::sync::Arc;
 use teloxide::prelude::*;
 use teloxide::types::Message;
@@ -91,12 +94,58 @@ pub async fn handle_message_with_deps(deps: &HandlerDeps, msg: &Message) -> Resu
 
                 tracing::info!("Agent prompt:\n{}", prompt);
 
-                match deps
-                    .agent
-                    .run(&prompt, chat_id_numeric, Some(message_id.0))
-                    .await
+                let Some(chat_run_guard) = deps.run_registry.try_acquire(chat_id_numeric).await else {
+                    deps.sender
+                        .send_text(chat_id_numeric, &deps.settings.streaming.busy_text)
+                        .await?;
+                    return Ok(());
+                };
+
+                let ack_message_id = if deps.settings.streaming.interaction_mode
+                    == InteractionMode::PeriodicSummary
                 {
-                    Ok(_reply) => {}
+                    Some(
+                        deps.sender
+                            .send_text_returning_id(
+                                chat_id_numeric,
+                                &deps.settings.streaming.ack_placeholder_text,
+                            )
+                            .await?,
+                    )
+                } else {
+                    None
+                };
+
+                let run_result = deps
+                    .agent
+                    .run(
+                        &prompt,
+                        chat_id_numeric,
+                        AgentRunContext {
+                            user_message_id: Some(message_id.0),
+                            ack_message_id,
+                            interaction_mode: deps.settings.streaming.interaction_mode,
+                        },
+                    )
+                    .await;
+
+                let mut outbound: Result<(), BotError> = Ok(());
+                match run_result {
+                    Ok(reply) => {
+                        if !reply.trim().is_empty() {
+                            let skip_final_send =
+                                deps.settings.streaming.interaction_mode
+                                    == InteractionMode::Streaming
+                                    && (deps.settings.streaming.show_act_phase
+                                        || deps.settings.streaming.show_think_phase);
+                            if !skip_final_send {
+                                outbound = deps
+                                    .sender
+                                    .send_text(chat_id_numeric, &reply)
+                                    .await;
+                            }
+                        }
+                    }
                     Err(e) => {
                         tracing::error!("Agent error: {}", e);
                         let _ = deps
@@ -105,6 +154,8 @@ pub async fn handle_message_with_deps(deps: &HandlerDeps, msg: &Message) -> Resu
                             .await;
                     }
                 }
+                chat_run_guard.release().await;
+                outbound?;
             }
 
             if let Some(photos) = msg.photo() {
@@ -203,8 +254,9 @@ pub async fn default_handler(
     msg: Message,
     settings: Arc<Settings>,
     bot_username: Arc<String>,
+    run_registry: Arc<ChatRunRegistry>,
 ) -> Result<(), BotError> {
-    let deps = HandlerDeps::production(bot, settings, bot_username);
+    let deps = HandlerDeps::production(bot, settings, bot_username, run_registry);
     handle_message_with_deps(&deps, &msg).await
 }
 

@@ -10,6 +10,14 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 use tracing::info;
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum InteractionMode {
+    Streaming,
+    #[default]
+    PeriodicSummary,
+}
+
 /// Configuration errors
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -148,6 +156,10 @@ pub struct Settings {
 /// Streaming display configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamingConfig {
+    /// How the bot surfaces progress updates to the user.
+    #[serde(default)]
+    pub interaction_mode: InteractionMode,
+
     /// Maximum characters to display in Think phase (0 = unlimited)
     #[serde(default = "default_max_think_chars")]
     pub max_think_chars: usize,
@@ -179,6 +191,18 @@ pub struct StreamingConfig {
     /// Maximum retry attempts for network operations
     #[serde(default = "default_max_retries")]
     pub max_retries: u32,
+
+    /// Periodic summary cadence in seconds when using [`InteractionMode::PeriodicSummary`].
+    #[serde(default = "default_summary_interval_secs")]
+    pub summary_interval_secs: u64,
+
+    /// Placeholder text sent immediately after the bot accepts a request.
+    #[serde(default = "default_ack_placeholder_text")]
+    pub ack_placeholder_text: String,
+
+    /// Busy text sent when the same chat already has a running task.
+    #[serde(default = "default_busy_text")]
+    pub busy_text: String,
 }
 
 impl Default for Settings {
@@ -198,6 +222,7 @@ impl Default for Settings {
 impl Default for StreamingConfig {
     fn default() -> Self {
         Self {
+            interaction_mode: InteractionMode::default(),
             max_think_chars: default_max_think_chars(),
             max_act_chars: default_max_act_chars(),
             show_think_phase: default_show_think_phase(),
@@ -206,8 +231,23 @@ impl Default for StreamingConfig {
             act_emoji: default_act_emoji(),
             throttle_ms: default_throttle_ms(),
             max_retries: default_max_retries(),
+            summary_interval_secs: default_summary_interval_secs(),
+            ack_placeholder_text: default_ack_placeholder_text(),
+            busy_text: default_busy_text(),
         }
     }
+}
+
+fn default_summary_interval_secs() -> u64 {
+    300
+}
+
+fn default_ack_placeholder_text() -> String {
+    "已收到，开始处理。处理时间较长时我会定期同步进展。".to_string()
+}
+
+fn default_busy_text() -> String {
+    "上一个请求还在处理中，请稍后再发新消息。".to_string()
 }
 
 fn default_max_think_chars() -> usize {

@@ -2,7 +2,7 @@
 
 use telegram_bot::{
     mock::{MockAgentRunner, MockSender, MockSessionManager},
-    AgentRunner, MessageSender, SessionManager, Settings,
+    AgentRunContext, AgentRunner, MessageSender, SessionManager, Settings,
 };
 use std::sync::Arc;
 
@@ -37,7 +37,10 @@ async fn test_mock_sender_clear() {
 async fn test_mock_agent_runner_returns_response() {
     let agent = MockAgentRunner::new("Test response");
     
-    let result = agent.run("What is 2+2?", 123, None).await.unwrap();
+    let result = agent
+        .run("What is 2+2?", 123, AgentRunContext::default())
+        .await
+        .unwrap();
     
     assert_eq!(result, "Test response");
     assert_eq!(agent.get_calls().len(), 1);
@@ -48,7 +51,7 @@ async fn test_mock_agent_runner_returns_response() {
 async fn test_mock_agent_runner_failing() {
     let agent = MockAgentRunner::failing();
     
-    let result = agent.run("test", 123, None).await;
+    let result = agent.run("test", 123, AgentRunContext::default()).await;
     
     assert!(result.is_err());
 }

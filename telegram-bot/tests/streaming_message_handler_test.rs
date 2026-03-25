@@ -6,11 +6,12 @@ use std::time::Duration;
 
 use telegram_bot::{
     mock::MockSender,
-    stream_message_handler, StreamCommand, StreamingConfig,
+    stream_message_handler, InteractionMode, StreamCommand, StreamingConfig,
 };
 
 fn streaming_config_zero_throttle(base: StreamingConfig) -> StreamingConfig {
     StreamingConfig {
+        interaction_mode: InteractionMode::Streaming,
         throttle_ms: 0,
         ..base
     }
@@ -616,7 +617,7 @@ async fn tool_end_without_prior_start_has_no_duration_suffix() {
     h.await.unwrap();
     let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
     assert!(
-        joined.contains("✅ orphan: x") && !joined.contains("ms)") && !joined.contains("s)"),
+        joined.contains("✅ orphan:\nx") && !joined.contains("ms)") && !joined.contains("s)"),
         "{}",
         joined
     );
@@ -670,6 +671,7 @@ async fn think_header_fails_then_act_header_succeeds_and_tools_show() {
 async fn high_throttle_skips_intermediate_edits_flush_updates() {
     let sender = Arc::new(MockSender::new());
     let settings = StreamingConfig {
+        interaction_mode: InteractionMode::Streaming,
         throttle_ms: 60_000,
         show_think_phase: false,
         show_act_phase: true,
@@ -718,6 +720,7 @@ async fn high_throttle_skips_intermediate_edits_flush_updates() {
 async fn act_to_think_transition_flushes_pending_act_update() {
     let sender = Arc::new(MockSender::new());
     let settings = StreamingConfig {
+        interaction_mode: InteractionMode::Streaming,
         throttle_ms: 60_000,
         show_think_phase: true,
         show_act_phase: true,
@@ -765,4 +768,127 @@ async fn act_to_think_transition_flushes_pending_act_update() {
         "{}",
         joined
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn periodic_summary_mode_emits_summary_after_interval() {
+    let sender = Arc::new(MockSender::new());
+    let settings = StreamingConfig {
+        interaction_mode: InteractionMode::PeriodicSummary,
+        summary_interval_secs: 300,
+        show_think_phase: false,
+        show_act_phase: false,
+        ..Default::default()
+    };
+    let (tx, rx) = tokio::sync::mpsc::channel(16);
+
+    let h = tokio::spawn(stream_message_handler(
+        rx,
+        sender.clone(),
+        120,
+        settings,
+    ));
+
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
+    tx.send(StreamCommand::ToolStart {
+        name: "read_file".to_string(),
+        arguments: Some("{\"path\":\"README.md\"}".to_string()),
+    })
+    .await
+    .unwrap();
+    tx.send(StreamCommand::ActContent {
+        content: "collecting context for the answer".to_string(),
+    })
+    .await
+    .unwrap();
+    tokio::task::yield_now().await;
+
+    tokio::time::advance(Duration::from_secs(300)).await;
+    tokio::task::yield_now().await;
+
+    tx.send(StreamCommand::Flush).await.unwrap();
+    drop(tx);
+
+    let final_text = h.await.unwrap();
+    let messages = sender.get_messages();
+    assert_eq!(messages.len(), 1, "expected one periodic summary message");
+    assert!(messages[0].1.contains("进展更新"));
+    assert!(messages[0].1.contains("read_file"));
+    assert!(final_text.contains("collecting context"));
+}
+
+#[tokio::test(start_paused = true)]
+async fn periodic_summary_mode_skips_summary_before_interval() {
+    let sender = Arc::new(MockSender::new());
+    let settings = StreamingConfig {
+        interaction_mode: InteractionMode::PeriodicSummary,
+        summary_interval_secs: 300,
+        show_think_phase: false,
+        show_act_phase: false,
+        ..Default::default()
+    };
+    let (tx, rx) = tokio::sync::mpsc::channel(16);
+
+    let h = tokio::spawn(stream_message_handler(
+        rx,
+        sender.clone(),
+        121,
+        settings,
+    ));
+
+    tx.send(StreamCommand::StartThink { count: 1 }).await.unwrap();
+    tx.send(StreamCommand::ThinkContent {
+        content: "reasoning".to_string(),
+    })
+    .await
+    .unwrap();
+    tokio::task::yield_now().await;
+
+    tokio::time::advance(Duration::from_secs(299)).await;
+    tokio::task::yield_now().await;
+
+    tx.send(StreamCommand::Flush).await.unwrap();
+    drop(tx);
+
+    let final_text = h.await.unwrap();
+    assert!(sender.get_messages().is_empty());
+    assert!(final_text.contains("reasoning"));
+}
+
+#[tokio::test(start_paused = true)]
+async fn periodic_summary_mode_stops_after_flush() {
+    let sender = Arc::new(MockSender::new());
+    let settings = StreamingConfig {
+        interaction_mode: InteractionMode::PeriodicSummary,
+        summary_interval_secs: 300,
+        show_think_phase: false,
+        show_act_phase: false,
+        ..Default::default()
+    };
+    let (tx, rx) = tokio::sync::mpsc::channel(16);
+
+    let h = tokio::spawn(stream_message_handler(
+        rx,
+        sender.clone(),
+        122,
+        settings,
+    ));
+
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
+    tx.send(StreamCommand::ActContent {
+        content: "almost done".to_string(),
+    })
+    .await
+    .unwrap();
+    tokio::task::yield_now().await;
+    tokio::time::advance(Duration::from_secs(300)).await;
+    tokio::task::yield_now().await;
+    tx.send(StreamCommand::Flush).await.unwrap();
+    drop(tx);
+    h.await.unwrap();
+
+    tokio::time::advance(Duration::from_secs(300)).await;
+    tokio::task::yield_now().await;
+
+    assert_eq!(sender.get_messages().len(), 1);
 }

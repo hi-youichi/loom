@@ -7,8 +7,16 @@ use async_trait::async_trait;
 use teloxide::types::{ParseMode, PhotoSize, Document, Video};
 use std::path::PathBuf;
 
+use crate::config::InteractionMode;
 use crate::download::FileMetadata;
 use crate::error::BotError;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AgentRunContext {
+    pub user_message_id: Option<i32>,
+    pub ack_message_id: Option<i32>,
+    pub interaction_mode: InteractionMode,
+}
 
 /// Message sending interface
 #[async_trait]
@@ -55,7 +63,7 @@ pub trait AgentRunner: Send + Sync {
         &self,
         prompt: &str,
         chat_id: i64,
-        message_id: Option<i32>,
+        context: AgentRunContext,
     ) -> Result<String, BotError>;
 }
 

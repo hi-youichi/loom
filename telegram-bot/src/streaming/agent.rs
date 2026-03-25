@@ -5,7 +5,7 @@
 use crate::config::Settings;
 use crate::error::{BotError, Result};
 use crate::streaming::message_handler::StreamCommand;
-use crate::traits::MessageSender;
+use crate::traits::{AgentRunContext, MessageSender};
 use loom::{run_agent_with_options, RunOptions, RunCmd, RunCompletion, AnyStreamEvent};
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
@@ -102,7 +102,7 @@ pub async fn run_loom_agent_streaming(
     message: &str,
     chat_id: i64,
     sender: Arc<dyn MessageSender>,
-    _reply_to: Option<i32>,
+    context: AgentRunContext,
     settings: &Settings,
 ) -> Result<String> {
     tracing::info!("Running Loom agent (streaming) for chat {}", chat_id);
@@ -114,10 +114,11 @@ pub async fn run_loom_agent_streaming(
     let handler_sender = sender.clone();
     let handler_settings = settings.streaming.clone();
     let handler_task = tokio::spawn(async move {
-        crate::streaming::message_handler::stream_message_handler(
+        crate::streaming::message_handler::stream_message_handler_with_context(
             rx,
             handler_sender,
             chat_id,
+            context,
             handler_settings,
         )
         .await

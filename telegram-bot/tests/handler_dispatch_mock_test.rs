@@ -5,6 +5,7 @@
 
 mod common;
 
+use std::time::Duration;
 use std::sync::Arc;
 
 use common::fixtures;
@@ -14,7 +15,8 @@ use telegram_bot::{
         ErrorSessionManager, FakeFileDownloader, MockAgentRunner, MockSender, MockSessionManager,
         StubFileDownloader,
     },
-    AgentRunner, FileDownloader, HandlerDeps, MessageSender, SessionManager, Settings,
+    AgentRunner, ChatRunRegistry, FileDownloader, HandlerDeps, InteractionMode, MessageSender,
+    SessionManager, Settings, StreamingConfig,
 };
 
 fn make_deps(
@@ -32,6 +34,7 @@ fn make_deps(
         downloader,
         settings,
         bot_username,
+        Arc::new(ChatRunRegistry::new()),
     )
 }
 
@@ -94,13 +97,98 @@ async fn e2e_tg_002_plain_text_mocked_agent_delivers_via_sender() {
     handle_message_with_deps(&deps, &msg).await.unwrap();
 
     let messages = sender.get_messages();
-    assert_eq!(messages.len(), 1);
+    assert_eq!(messages.len(), 2);
     assert_eq!(messages[0].0, 99_002);
-    assert_eq!(messages[0].1, "hello from mock agent");
+    assert!(messages[0].1.contains("已收到"));
+    assert_eq!(messages[1].1, "hello from mock agent");
 
     let calls = agent.get_calls();
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0], "Say hello in one sentence");
+}
+
+#[tokio::test]
+async fn periodic_summary_default_sends_ack_then_final_and_passes_context() {
+    let sender = Arc::new(MockSender::new());
+    let sender_trait: Arc<dyn MessageSender> = sender.clone();
+    let agent = Arc::new(MockAgentRunner::new("final answer"));
+    let deps = make_text_only_deps(
+        sender_trait,
+        agent.clone(),
+        Arc::new(Settings::default()),
+        Arc::new(String::new()),
+    );
+
+    let msg = fixtures::message_private_text(99_200, 42, "Summarize the current task");
+    handle_message_with_deps(&deps, &msg).await.unwrap();
+
+    let messages = sender.get_messages();
+    assert_eq!(messages.len(), 2);
+    assert!(messages[0].1.contains("已收到"));
+    assert_eq!(messages[1].1, "final answer");
+
+    let contexts = agent.get_contexts();
+    assert_eq!(contexts.len(), 1);
+    assert_eq!(contexts[0].user_message_id, Some(42));
+    assert!(contexts[0].ack_message_id.is_some());
+}
+
+#[tokio::test]
+async fn streaming_mode_router_skips_echo_of_run_return_when_progress_flags_on() {
+    let sender = Arc::new(MockSender::new());
+    let sender_trait: Arc<dyn MessageSender> = sender.clone();
+    let agent = Arc::new(MockAgentRunner::new("would duplicate"));
+    let settings = Arc::new(Settings {
+        streaming: StreamingConfig {
+            interaction_mode: InteractionMode::Streaming,
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+    let deps = make_text_only_deps(
+        sender_trait,
+        agent.clone(),
+        settings,
+        Arc::new(String::new()),
+    );
+
+    let msg = fixtures::message_private_text(99_210, 1, "task");
+    handle_message_with_deps(&deps, &msg).await.unwrap();
+
+    assert!(
+        sender.get_messages().is_empty(),
+        "streaming path surfaces text via edits; router must not send run() return again"
+    );
+    assert_eq!(agent.get_calls(), vec!["task".to_string()]);
+}
+
+#[tokio::test]
+async fn streaming_mode_router_sends_reply_when_both_phases_hidden() {
+    let sender = Arc::new(MockSender::new());
+    let sender_trait: Arc<dyn MessageSender> = sender.clone();
+    let agent = Arc::new(MockAgentRunner::new("only channel"));
+    let settings = Arc::new(Settings {
+        streaming: StreamingConfig {
+            interaction_mode: InteractionMode::Streaming,
+            show_think_phase: false,
+            show_act_phase: false,
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+    let deps = make_text_only_deps(
+        sender_trait,
+        agent.clone(),
+        settings,
+        Arc::new(String::new()),
+    );
+
+    let msg = fixtures::message_private_text(99_211, 1, "task");
+    handle_message_with_deps(&deps, &msg).await.unwrap();
+
+    let messages = sender.get_messages();
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].1, "only channel");
 }
 
 // --- P1 commands / session ---
@@ -227,7 +315,7 @@ async fn e2e_tg_023_private_mention_gate_suppresses_plain_text() {
 
     let msg2 = fixtures::message_private_text(99_023, 2, "@mybot hi there");
     handle_message_with_deps(&deps, &msg2).await.unwrap();
-    assert_eq!(sender.get_messages().len(), 1);
+    assert_eq!(sender.get_messages().len(), 2);
     assert_eq!(agent.get_calls().len(), 1);
     assert_eq!(agent.get_calls()[0], "hi there");
 }
@@ -254,7 +342,7 @@ async fn e2e_tg_008_group_mention_gate_suppresses_plain_text() {
 
     let mentioned = fixtures::message_group_text(-100_008, 2, "@mybot question?");
     handle_message_with_deps(&deps, &mentioned).await.unwrap();
-    assert_eq!(sender.get_messages().len(), 1);
+    assert_eq!(sender.get_messages().len(), 2);
     assert!(agent.get_calls()[0].contains("question"));
 }
 
@@ -305,7 +393,7 @@ async fn e2e_tg_013_group_reply_to_bot_without_at() {
     let msg = fixtures::message_group_reply_to_bot(-100_013, 2, "mybot", "Follow-up?");
     handle_message_with_deps(&deps, &msg).await.unwrap();
 
-    assert_eq!(sender.get_messages().len(), 1);
+    assert_eq!(sender.get_messages().len(), 2);
     assert_eq!(agent.get_calls().len(), 1);
 }
 
@@ -332,8 +420,9 @@ async fn e2e_tg_022_group_status_at_bot_suffix_not_builtin_status() {
     handle_message_with_deps(&deps, &msg).await.unwrap();
 
     let messages = sender.get_messages();
-    assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0].1, "agent handled");
+    assert_eq!(messages.len(), 2);
+    assert!(messages[0].1.contains("已收到"));
+    assert_eq!(messages[1].1, "agent handled");
     // `/status@bot` is not the built-in `/status` branch; mention stripping leaves the agent prompt.
     assert_eq!(agent.get_calls()[0], "/status");
 }
@@ -356,9 +445,10 @@ async fn e2e_tg_010_agent_failure_surfaces_error_message() {
     handle_message_with_deps(&deps, &msg).await.unwrap();
 
     let messages = sender.get_messages();
-    assert_eq!(messages.len(), 1);
-    assert!(messages[0].1.starts_with("Error:"));
-    assert!(messages[0].1.contains("Mock error"));
+    assert_eq!(messages.len(), 2);
+    assert!(messages[0].1.contains("已收到"));
+    assert!(messages[1].1.starts_with("Error:"));
+    assert!(messages[1].1.contains("Mock error"));
 }
 
 #[tokio::test]
@@ -575,9 +665,11 @@ async fn e2e_tg_012_two_private_chats_isolated_outbound() {
     handle_message_with_deps(&deps, &b).await.unwrap();
 
     let messages = sender.get_messages();
-    assert_eq!(messages.len(), 2);
+    assert_eq!(messages.len(), 4);
     assert_eq!(messages[0].0, 201_001);
-    assert_eq!(messages[1].0, 201_002);
+    assert_eq!(messages[1].0, 201_001);
+    assert_eq!(messages[2].0, 201_002);
+    assert_eq!(messages[3].0, 201_002);
     assert_eq!(agent.get_calls().len(), 2);
 }
 
@@ -679,8 +771,52 @@ async fn e2e_tg_019_rapid_two_messages_both_get_responses() {
     handle_message_with_deps(&deps, &first).await.unwrap();
     handle_message_with_deps(&deps, &second).await.unwrap();
 
-    assert_eq!(sender.get_messages().len(), 2);
+    assert_eq!(sender.get_messages().len(), 4);
     assert_eq!(agent.get_calls().len(), 2);
+}
+
+#[tokio::test]
+async fn same_chat_second_request_receives_busy_message_while_first_runs() {
+    let sender = Arc::new(MockSender::new());
+    let sender_trait: Arc<dyn MessageSender> = sender.clone();
+    let agent = Arc::new(MockAgentRunner::with_delay(
+        "slow final",
+        Duration::from_millis(40),
+    ));
+    let deps = Arc::new(make_text_only_deps(
+        sender_trait,
+        agent,
+        Arc::new(Settings::default()),
+        Arc::new(String::new()),
+    ));
+
+    let first = fixtures::message_private_text(99_201, 1, "First");
+    let second = fixtures::message_private_text(99_201, 2, "Second");
+
+    let deps_first = Arc::clone(&deps);
+    let first_task = tokio::spawn(async move {
+        handle_message_with_deps(deps_first.as_ref(), &first)
+            .await
+            .unwrap();
+    });
+
+    tokio::time::sleep(Duration::from_millis(5)).await;
+
+    let deps_second = Arc::clone(&deps);
+    let second_task = tokio::spawn(async move {
+        handle_message_with_deps(deps_second.as_ref(), &second)
+            .await
+            .unwrap();
+    });
+
+    first_task.await.unwrap();
+    second_task.await.unwrap();
+
+    let messages = sender.get_messages();
+    assert_eq!(messages.len(), 3);
+    assert!(messages[0].1.contains("已收到"));
+    assert!(messages[1].1.contains("还在处理中"));
+    assert_eq!(messages[2].1, "slow final");
 }
 
 #[tokio::test]

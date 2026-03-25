@@ -2,6 +2,7 @@
 
 use crate::config::{load_config, BotConfig, Settings, TelegramBotConfig};
 use crate::handler::default_handler;
+use crate::handler_deps::ChatRunRegistry;
 use std::sync::Arc;
 use std::time::Duration;
 use teloxide::dispatching::Dispatcher;
@@ -44,6 +45,7 @@ impl BotManager {
             Err(_) => String::new(),
         };
         let bot_username = Arc::new(bot_username);
+        let run_registry = Arc::new(ChatRunRegistry::new());
 
         let handle = tokio::spawn(
             async move {
@@ -53,7 +55,7 @@ impl BotManager {
                     .endpoint(default_handler);
 
                 let mut dispatcher = Dispatcher::builder(bot, handler)
-                    .dependencies(dptree::deps![settings, bot_username])
+                    .dependencies(dptree::deps![settings, bot_username, run_registry])
                     .build();
 
                 tokio::select! {
