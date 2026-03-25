@@ -1,11 +1,9 @@
 //! Logging initialization with file rotation support.
 //!
-//! Controlled by CLI args (see `LogArgs`):
-//! - `--log-level`: Log level filter (default: info)
-//! - `--log-file`: Write logs to file with rotation
-//! - `--log-rotate`: Rotation strategy (none, daily, hourly, minutely)
-//!
-//! When `--log-file` is not set, logs are dropped so CLI stdout stays clean.
+//! Resolution order (after `config.toml` / `.env` are applied to the process environment):
+//! - `--log-level` overrides `RUST_LOG`; otherwise `RUST_LOG`, else `info`
+//! - `--log-file` overrides `LOG_FILE`; when neither is set, logs are dropped (stdout stays clean)
+//! - `--log-rotate`: Rotation strategy when writing to a file (none, daily, hourly, minutely)
 
 use std::path::Path;
 
@@ -104,8 +102,8 @@ pub struct LogGuard {
 
 /// Initializes tracing with optional file logging and rotation.
 ///
-/// - With `--log-file`: logs go to file (with rotation) only
-/// - Without `--log-file`: logs are dropped (sink)
+/// - With a resolved log file path (`--log-file` or `LOG_FILE`): logs go to file (with rotation) only
+/// - Without: logs are dropped (sink)
 ///
 /// Returns `LogGuard` that must be kept alive for file logging to work.
 /// Panics if file logging fails to initialize.

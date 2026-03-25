@@ -15,8 +15,6 @@ use session::{SessionArgs, SessionCommand};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::logging::LogRotate;
-
 /// Config directory: ~/.loom (or $LOOM_HOME). config.toml [env] is applied as env vars; project .env overrides.
 const CONFIG_DIR_HELP: &str = "\nConfiguration:\n  Config directory: ~/.loom (override with $LOOM_HOME).\n  File: config.toml with [env] table; values are applied as environment variables.\n  Project .env in working directory overrides config.toml.";
 
@@ -87,11 +85,11 @@ struct Args {
     #[arg(long, value_name = "NAME")]
     provider: Option<String>,
 
-    /// Log level: trace, debug, info, warn, error
-    #[arg(long, global = true, default_value = "info")]
-    log_level: String,
+    /// Log level (tracing EnvFilter syntax). Overrides RUST_LOG when set; default RUST_LOG or info.
+    #[arg(long, global = true, value_name = "LEVEL")]
+    log_level: Option<String>,
 
-    /// Log file path. When set, logs are written to this file; otherwise logs are dropped.
+    /// Log file path. Overrides LOG_FILE when set; when neither is set, logs are dropped.
     #[arg(long, global = true, value_name = "PATH")]
     log_file: Option<PathBuf>,
 
@@ -342,9 +340,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("{}", keys);
         }
     }
+
+    // After config.toml / .env apply env vars: honor LOG_FILE and RUST_LOG unless CLI overrides.
+    let log_level = args
+        .log_level
+        .clone()
+        .or_else(|| {
+            std::env::var("RUST_LOG")
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+        })
+        .unwrap_or_else(|| "info".to_string());
+    let log_file = args.log_file.clone().or_else(|| {
+        std::env::var_os("LOG_FILE")
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    });
+
     let log_args = logging::LogArgs::new(
-        args.log_level.clone(),
-        args.log_file.clone(),
+        log_level,
+        log_file,
         &args.log_rotate,
         args.working_folder.clone(),
     );
