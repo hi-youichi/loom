@@ -3,7 +3,6 @@
 mod agent;
 mod contract;
 mod display;
-mod builder;
 
 pub use agent::{
     print_reply_timestamp, run_agent_wrapper, RunAgentOutput, RunAgentResult, RunStopReason,
