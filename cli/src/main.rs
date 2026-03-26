@@ -194,8 +194,6 @@ enum Command {
     Tool(ToolArgs),
     /// Manage conversation sessions (list, show, delete)
     Session(SessionArgs),
-    /// Launch terminal UI dashboard for monitoring agents
-    Tui,
     /// List available models from configured providers
     Models(ModelsArgs),
 }
@@ -380,26 +378,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Session subcommands do not require a message; handle them first.
     if let Some(Command::Session(sa)) = &args.cmd {
         handle_session_command(sa, args.json).await?;
-        return Ok(());
-    }
-
-    // TUI command launches the terminal UI dashboard.
-    if let Some(Command::Tui) = &args.cmd {
-        let config = cli::tui::TuiConfig {
-            demo_mode: args.verbose,
-            working_folder: args.working_folder.clone(),
-            agent: args.agent.clone(),
-            verbose: args.verbose,
-            model: None,
-            mcp_config_path: args.mcp_config.clone(),
-            dry_run: args.dry,
-            ..Default::default()
-        };
-        let mut runner = cli::tui::TuiRunner::new(config);
-        if let Err(e) = runner.run() {
-            eprintln!("TUI error: {}", e);
-            std::process::exit(1);
-        }
         return Ok(());
     }
 

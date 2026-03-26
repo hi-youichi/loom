@@ -1,6 +1,6 @@
 //! Helve: product-semantic configuration and system prompt assembly for file-tool ReAct runs.
 //!
-//! This module provides **only** types and pure functions: no server, TUI, or I/O. Callers
+//! This module provides **only** types and pure functions: no server or I/O. Callers
 //! (e.g. a CLI) parse request/args into [`HelveConfig`], then use
 //! [`to_react_build_config`] to obtain a full [`ReactBuildConfig`](crate::agent::react::ReactBuildConfig)
 //! for [`build_react_runner`](crate::agent::react::build_react_runner). System prompt text is

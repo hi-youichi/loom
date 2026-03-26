@@ -9,7 +9,7 @@ use crate::state::ReActState;
 /// Structured output from the Understand node (DUP phase 1–2).
 ///
 /// Extracted from the LLM response: core goal, constraints, and context.
-/// Used by downstream plan/act/observe nodes and for display in TUI/CLI.
+/// Used by downstream plan/act/observe nodes and for display in the CLI.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UnderstandOutput {
     /// One sentence describing what the user wants to achieve.
