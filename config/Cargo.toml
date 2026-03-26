@@ -9,11 +9,21 @@ authors.workspace = true
 [lib]
 path = "src/lib.rs"
 
+[features]
+default = []
+# Shared tracing file appender + path resolution for CLI / loom-acp (optional to keep `config` lean).
+tracing-init = [
+    "dep:tracing-subscriber",
+    "dep:tracing-appender",
+]
+
 [dependencies]
 toml = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = { workspace = true }
+tracing-subscriber = { version = "0.3", optional = true, features = ["env-filter"] }
+tracing-appender = { version = "0.2", optional = true }
 
 [dev-dependencies]
 tempfile = "3"

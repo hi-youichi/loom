@@ -15,7 +15,7 @@ path = "src/lib.rs"
 
 [dependencies]
 loom = { path = "../loom" }
-config = { path = "../config" }
+config = { path = "../config", features = ["tracing-init"] }
 agent-client-protocol = "0.10"
 async-trait = { workspace = true }
 tokio = { workspace = true }

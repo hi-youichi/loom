@@ -16,10 +16,15 @@ use super::display::{
     format_tot_state_display, truncate_display,
 };
 use crate::envelope::EnvelopeState;
-use crate::backend::RunStopReason;
 use loom::{RunCmd, RunOptions, StreamEvent};
 
 use super::RunError;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunStopReason {
+    EndTurn,
+    Cancelled,
+}
 
 fn completion_reply(result: loom::RunCompletion) -> (String, Option<String>, RunStopReason) {
     match result {

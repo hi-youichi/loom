@@ -17,8 +17,7 @@ path = "src/main.rs"
 [dependencies]
 loom = { path = "../loom" }
 serve = { path = "../serve" }
-config = { path = "../config" }
-async-trait = { workspace = true }
+config = { path = "../config", features = ["tracing-init"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "net"] }
 clap = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }

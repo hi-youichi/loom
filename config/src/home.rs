@@ -12,6 +12,16 @@ pub fn thread_session_dir(session_id: &str) -> PathBuf {
     loom_home().join(THREAD_DIR).join(session_id)
 }
 
+/// `{loom_home}/acp/` — ACP server state and default log directory (does not create).
+pub fn acp_data_dir() -> PathBuf {
+    loom_home().join("acp")
+}
+
+/// Default ACP log file path when `--log-file` is unset (`{loom_home}/acp/loom-acp.log`).
+pub fn default_acp_log_file() -> PathBuf {
+    acp_data_dir().join("loom-acp.log")
+}
+
 /// Returns the Loom home directory.
 ///
 /// Resolution: `$LOOM_HOME` env var if set, otherwise `~/.loom`.
@@ -79,6 +89,20 @@ mod tests {
         match prev {
             Some(v) => std::env::set_var("LOOM_HOME", v),
             None => {}
+        }
+    }
+
+    #[test]
+    fn default_acp_log_file_under_acp_dir() {
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", "/tmp/loom-acp-path");
+        assert_eq!(
+            default_acp_log_file(),
+            PathBuf::from("/tmp/loom-acp-path/acp/loom-acp.log")
+        );
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
         }
     }
 }

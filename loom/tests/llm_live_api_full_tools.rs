@@ -143,13 +143,34 @@ async fn live_api_full_tool_list_invokes_read() {
         .await
         .unwrap_or_else(|e| panic!("live API invoke_stream_with_tool_delta failed: {e}"));
 
+    eprintln!("--- llm_live_api_full_tools: stream message chunks ---");
     let mut content_chunks = 0usize;
-    while chunk_rx.recv().await.is_some() {
+    while let Some(chunk) = chunk_rx.recv().await {
+        eprintln!("  chunk[{}] kind={:?} text={:?}", content_chunks, chunk.kind, chunk.content);
         content_chunks += 1;
     }
+
+    eprintln!("--- llm_live_api_full_tools: stream tool_call deltas ---");
     let mut tool_deltas = 0usize;
-    while tool_rx.recv().await.is_some() {
+    while let Some(delta) = tool_rx.recv().await {
+        eprintln!("  delta[{}] {:?}", tool_deltas, delta);
         tool_deltas += 1;
+    }
+
+    eprintln!("--- llm_live_api_full_tools: assembled LlmResponse ---");
+    eprintln!("  content ({} chars): {:?}", out.content.len(), out.content);
+    if let Some(ref rc) = out.reasoning_content {
+        eprintln!("  reasoning_content ({} chars): {:?}", rc.len(), rc);
+    } else {
+        eprintln!("  reasoning_content: None");
+    }
+    eprintln!("  usage: {:?}", out.usage);
+    eprintln!("  tool_calls ({}):", out.tool_calls.len());
+    for (i, t) in out.tool_calls.iter().enumerate() {
+        eprintln!(
+            "    [{}] name={:?} id={:?} arguments={:?}",
+            i, t.name, t.id, t.arguments
+        );
     }
 
     assert!(

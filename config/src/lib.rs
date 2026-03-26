@@ -6,6 +6,9 @@ pub mod home;
 mod mcp_config;
 mod xdg_toml;
 
+#[cfg(feature = "tracing-init")]
+pub mod tracing_init;
+
 pub use mcp_config::{
     discover_mcp_config_path, load_mcp_config_from_path, parse_mcp_config, McpConfigError,
     McpConfigFile, McpServerDef, McpServerEntry,
