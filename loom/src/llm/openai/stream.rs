@@ -111,6 +111,14 @@ impl StreamAccumulator {
                 arguments: tc.function.as_ref().and_then(|f| f.arguments.clone()),
             });
 
+            tracing::trace!(
+                index = %tc.index,
+                id = ?tc.id,
+                name = ?tc.function.as_ref().and_then(|f| f.name.as_deref()),
+                arguments = ?tc.function.as_ref().and_then(|f| f.arguments.as_deref()),
+                "tool_calls chunk"
+            );
+
             if let Some(tool_tx) = tool_delta_tx {
                 let args_delta = tc
                     .function

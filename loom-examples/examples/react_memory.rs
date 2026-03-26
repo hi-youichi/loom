@@ -99,8 +99,6 @@ impl LlmClient for MemoryMockLlm {
             reasoning_content: None,
             tool_calls,
             usage: None,
-            raw_request: None,
-            raw_response: None,
         })
     }
 }

@@ -139,6 +139,16 @@ pub(super) fn build_chat_request(
         }
     }
 
+    tracing::trace!(
+        model = model,
+        message_count = messages.len(),
+        tools_count = tools.map_or(0, |t| t.len()),
+        temperature = ?temperature,
+        tool_choice = ?tool_choice,
+        stream = stream,
+        "build_chat_request complete"
+    );
+
     args.build().map_err(|e| {
         AgentError::ExecutionFailed(format!("OpenAI request build failed: {}", e))
     })

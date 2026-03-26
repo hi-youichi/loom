@@ -418,7 +418,6 @@ impl LlmClient for ChatOpenAICompat {
         let trace_id = uuid6().to_string();
         let url = self.chat_completions_url();
         let body = self.build_request(messages, false);
-        let raw_request = serde_json::to_string(&body).ok();
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         debug!(
             trace_id = %trace_id,
@@ -559,10 +558,6 @@ impl LlmClient for ChatOpenAICompat {
         let response: ChatCompletionResponse = serde_json::from_slice(&body_bytes)
             .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI-compat response parse: {}", e)))?;
 
-        let raw_response = std::str::from_utf8(&body_bytes)
-            .ok()
-            .map(std::string::ToString::to_string);
-
         let choice = response.choices.into_iter().next().ok_or_else(|| {
             AgentError::ExecutionFailed("OpenAI-compat returned no choices".to_string())
         })?;
@@ -598,8 +593,6 @@ impl LlmClient for ChatOpenAICompat {
             reasoning_content,
             tool_calls,
             usage,
-            raw_request,
-            raw_response,
         })
     }
 
@@ -626,7 +619,6 @@ impl LlmClient for ChatOpenAICompat {
         let chunk_tx = chunk_tx.expect("chunk_tx must be Some when streaming");
         let url = self.chat_completions_url();
         let body = self.build_request(messages, true);
-        let raw_request = serde_json::to_string(&body).ok();
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         debug!(
             trace_id = %trace_id,
@@ -968,8 +960,6 @@ impl LlmClient for ChatOpenAICompat {
             reasoning_content,
             tool_calls,
             usage: stream_usage,
-            raw_request,
-            raw_response: None, // SSE stream: full wire response not reassembled
         })
     }
 

@@ -174,8 +174,6 @@ impl LlmClient for MockLlm {
             reasoning_content: None,
             tool_calls,
             usage: self.usage.clone(),
-            raw_request: None,
-            raw_response: None,
         })
     }
 

@@ -200,11 +200,10 @@ impl LlmClient for ChatOpenAI {
         );
 
         let mut attempt = 0;
-        let (response, raw_request) = loop {
+        let response = loop {
             let request = self.build_request(messages, false)?;
-            let raw_request = serde_json::to_string(&request).ok();
             match self.client.chat().create(request).await {
-                Ok(response) => break (response, raw_request),
+                Ok(response) => break response,
                 Err(e)
                     if looks_like_transient_http_error_message(&e.to_string())
                         && attempt < TRANSIENT_HTTP_MAX_RETRIES =>
@@ -229,8 +228,6 @@ impl LlmClient for ChatOpenAI {
                 }
             }
         };
-
-        let raw_response = serde_json::to_string(&response).ok();
 
         let choice =
             response.choices.into_iter().next().ok_or_else(|| {
@@ -263,8 +260,6 @@ impl LlmClient for ChatOpenAI {
             reasoning_content,
             tool_calls,
             usage,
-            raw_request,
-            raw_response,
         })
     }
 
@@ -304,11 +299,10 @@ impl LlmClient for ChatOpenAI {
         );
 
         let mut attempt = 0;
-        let (mut stream, raw_request) = loop {
+        let mut stream = loop {
             let request = self.build_request(messages, true)?;
-            let raw_request = serde_json::to_string(&request).ok();
             match self.client.chat().create_stream(request).await {
-                Ok(stream) => break (stream, raw_request),
+                Ok(stream) => break stream,
                 Err(e)
                     if looks_like_transient_http_error_message(&e.to_string())
                         && attempt < TRANSIENT_HTTP_MAX_RETRIES =>
@@ -361,8 +355,6 @@ impl LlmClient for ChatOpenAI {
             reasoning_content: result.reasoning_content,
             tool_calls: result.tool_calls,
             usage: result.usage,
-            raw_request,
-            raw_response: None,
         })
     }
 
