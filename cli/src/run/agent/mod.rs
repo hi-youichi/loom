@@ -1,22 +1,23 @@
 //! Wraps loom::run_agent_with_options with stderr display callback.
 //! Uses protocol format (type + payload) and optional envelope per protocol_spec.
 
+mod common;
+mod dup;
+mod got;
+mod react;
+mod tot;
+
 use chrono::Local;
 use loom::{
     build_helve_config, build_react_run_context, list_available_profiles, run_agent_with_options,
-    AnyStreamEvent, DupState, Envelope, GotState, MessageChunkKind, ModelLimitResolver,
-    ModelsDevResolver, ReActState, ResolvedAgent, ToolCall, TotState,
+    AnyStreamEvent, Envelope, ModelLimitResolver, ModelsDevResolver, ResolvedAgent, ToolCall,
 };
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use super::display::{
-    format_dup_state_display, format_got_state_display, format_react_state_display,
-    format_tot_state_display, truncate_display,
-};
 use crate::envelope::EnvelopeState;
-use loom::{RunCmd, RunOptions, StreamEvent};
+use loom::{RunCmd, RunOptions};
 
 use super::RunError;
 
@@ -66,7 +67,7 @@ fn print_available_agents() {
 }
 
 /// Single line when a node is entered (unified across agents).
-fn log_node_enter(from: Option<&str>, node_id: &str, verbose: bool) {
+pub(crate) fn log_node_enter(from: Option<&str>, node_id: &str, verbose: bool) {
     if !verbose {
         return;
     }
@@ -75,7 +76,7 @@ fn log_node_enter(from: Option<&str>, node_id: &str, verbose: bool) {
 }
 
 /// Single line listing tool names (normal mode only; verbose shows full state).
-fn log_tools_used(tool_calls: &[ToolCall]) {
+pub(crate) fn log_tools_used(tool_calls: &[ToolCall]) {
     if tool_calls.is_empty() {
         return;
     }
@@ -121,7 +122,7 @@ async fn print_model_info(model: Option<&String>) {
                  This usually means: \
                  1) The model name doesn't include a provider prefix (e.g., 'glm-5' instead of 'zai/glm-5'), \
                  2) The provider/model combination is not in the models.dev database, or \
-                 3) Network error when fetching from models.dev", 
+                 3) Network error when fetching from models.dev",
                 model_name
             );
             eprintln!("model: {} (context: unknown)", model_name);
@@ -263,16 +264,16 @@ pub async fn run_agent_wrapper(
         let mut s = state_clone.lock().unwrap();
         match &ev {
             AnyStreamEvent::React(e) => {
-                on_event_react(e, &mut *s, display_max_len, verbose, output_timestamp)
+                react::on_event_react(e, &mut *s, display_max_len, verbose, output_timestamp)
             }
             AnyStreamEvent::Dup(e) => {
-                on_event_dup(e, &mut *s, display_max_len, verbose, output_timestamp)
+                dup::on_event_dup(e, &mut *s, display_max_len, verbose, output_timestamp)
             }
             AnyStreamEvent::Tot(e) => {
-                on_event_tot(e, &mut *s, display_max_len, verbose, output_timestamp)
+                tot::on_event_tot(e, &mut *s, display_max_len, verbose, output_timestamp)
             }
             AnyStreamEvent::Got(e) => {
-                on_event_got(e, &mut *s, display_max_len, verbose, output_timestamp)
+                got::on_event_got(e, &mut *s, display_max_len, verbose, output_timestamp)
             }
         }
     });
@@ -309,279 +310,17 @@ pub async fn run_agent_wrapper(
     })
 }
 
-fn print_stream_chunk(chunk: &loom::MessageChunk) {
-    if chunk.kind == MessageChunkKind::Thinking {
-        eprint!("{}", chunk.content);
-        let _ = std::io::Write::flush(&mut std::io::stderr());
-    } else {
-        print!("{}", chunk.content);
-        let _ = std::io::Write::flush(&mut std::io::stdout());
-    }
-}
-
-fn on_event_react(
-    ev: &StreamEvent<ReActState>,
-    s: &mut EventState,
-    display_max_len: usize,
-    verbose: bool,
-    output_timestamp: bool,
-) {
-    match ev {
-        StreamEvent::TaskStart { node_id, .. } => {
-            if node_id == "think" {
-                eprintln!("Think");
-            }
-            log_node_enter(s.last_node.as_deref(), node_id, verbose);
-            s.last_node = Some(node_id.clone());
-        }
-        StreamEvent::Messages { chunk, .. } => {
-            if !s.reply_started {
-                if let Some(ref ad) = s.agent_display {
-                    eprintln!("AGENT: {}", ad);
-                }
-                if output_timestamp {
-                    print_reply_timestamp();
-                }
-                s.reply_started = true;
-            }
-            print_stream_chunk(chunk);
-        }
-        StreamEvent::Updates { node_id, state, .. } => {
-            if verbose {
-                let label = match node_id.as_str() {
-                    "think" => {
-                        s.turn += 1;
-                        format!("state after think (turn {})", s.turn)
-                    }
-                    "act" => "state after act".to_string(),
-                    "observe" => "state after observe".to_string(),
-                    _ => format!("state after {}", node_id),
-                };
-                eprintln!("--- {} ---", label);
-                eprintln!("{}", format_react_state_display(state, display_max_len));
-                if node_id == "think" && state.tool_calls.is_empty() {
-                    eprintln!("(think → END: tool_calls empty, LLM gave FINAL_ANSWER)");
-                }
-            } else if node_id == "think" && !state.tool_calls.is_empty() {
-                log_tools_used(&state.tool_calls);
-            }
-        }
-        StreamEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            prefill_duration,
-            decode_duration,
-            ..
-        } => {
-            s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
-            s.total_completion_tokens = s.total_completion_tokens.saturating_add(*completion_tokens);
-
-            match (prefill_duration, decode_duration) {
-                (Some(prefill), Some(decode)) => {
-                    let prefill_secs = prefill.as_secs_f64();
-                    let decode_secs = decode.as_secs_f64();
-                    let total_secs = prefill_secs + decode_secs;
-                    let prefill_rate = if prefill_secs > 0.0 {
-                        *prompt_tokens as f64 / prefill_secs
-                    } else {
-                        0.0
-                    };
-                    let decode_rate = if decode_secs > 0.0 {
-                        *completion_tokens as f64 / decode_secs
-                    } else {
-                        0.0
-                    };
-                    eprintln!(
-                        "\nLLM: {:.2}s | prefill: {}t / {:.2}s = {:.0} t/s | decode: {}t / {:.2}s = {:.0} t/s",
-                        total_secs,
-                        prompt_tokens, prefill_secs, prefill_rate,
-                        completion_tokens, decode_secs, decode_rate
-                    );
-                }
-                _ => {
-                    eprintln!(
-                        "\nLLM: prompt={}, completion={}",
-                        prompt_tokens, completion_tokens
-                    );
-                }
-            }
-
-            tracing::info!(
-                prompt_tokens,
-                completion_tokens,
-                total_tokens = *prompt_tokens + *completion_tokens,
-                "LLM usage"
-            );
-        }
-        _ => {}
-    }
-}
-
-fn on_event_dup(
-    ev: &StreamEvent<DupState>,
-    s: &mut EventState,
-    display_max_len: usize,
-    verbose: bool,
-    output_timestamp: bool,
-) {
-    match ev {
-        StreamEvent::TaskStart { node_id, .. } => {
-            log_node_enter(s.last_node.as_deref(), node_id, verbose);
-            s.last_node = Some(node_id.clone());
-        }
-        StreamEvent::Messages { chunk, .. } => {
-            if !s.reply_started {
-                if let Some(ref ad) = s.agent_display {
-                    eprintln!("AGENT: {}", ad);
-                }
-                if output_timestamp {
-                    print_reply_timestamp();
-                }
-                s.reply_started = true;
-            }
-            print_stream_chunk(chunk);
-        }
-        StreamEvent::Updates { node_id, state, .. } => {
-            if verbose {
-                match node_id.as_str() {
-                    "understand" => {
-                        if let Some(ref u) = state.understood {
-                            eprintln!("--- Understanding ---");
-                            eprintln!(
-                                "  Core goal: {}",
-                                truncate_display(&u.core_goal, display_max_len)
-                            );
-                            eprintln!("  Constraints: {:?}", u.key_constraints);
-                            eprintln!(
-                                "  Context: {}",
-                                truncate_display(&u.relevant_context, display_max_len)
-                            );
-                        }
-                    }
-                    "plan" => s.turn += 1,
-                    _ => {}
-                }
-                eprintln!("--- state after {} ---", node_id);
-                eprintln!("{}", format_dup_state_display(state, display_max_len));
-            } else {
-                if node_id == "plan" {
-                    s.turn += 1;
-                    if !state.core.tool_calls.is_empty() {
-                        log_tools_used(&state.core.tool_calls);
-                    }
-                }
-            }
-        }
-        StreamEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            ..
-        } => {
-            s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
-            s.total_completion_tokens = s.total_completion_tokens.saturating_add(*completion_tokens);
-            tracing::info!(
-                prompt_tokens,
-                completion_tokens,
-                total_tokens = *prompt_tokens + *completion_tokens,
-                "LLM usage"
-            );
-        }
-        _ => {}
-    }
-}
-
-fn on_event_tot(
-    ev: &StreamEvent<TotState>,
-    s: &mut EventState,
-    display_max_len: usize,
-    verbose: bool,
-    output_timestamp: bool,
-) {
-    match ev {
-        StreamEvent::TaskStart { node_id, .. } => {
-            log_node_enter(s.last_node.as_deref(), node_id, verbose);
-            s.last_node = Some(node_id.clone());
-        }
-        StreamEvent::TotExpand { candidates } => {
-            if verbose {
-                eprintln!("--- ToT expand: {} candidates ---", candidates.len());
-                for (i, c) in candidates.iter().enumerate() {
-                    eprintln!("  [{}] {}", i + 1, c);
-                }
-            }
-        }
-        StreamEvent::TotEvaluate { chosen, scores } => {
-            if verbose {
-                eprintln!(
-                    "--- ToT evaluate: chosen={}, scores={:?} ---",
-                    chosen, scores
-                );
-            }
-        }
-        StreamEvent::TotBacktrack { reason, to_depth } => {
-            if verbose {
-                eprintln!(
-                    "--- ToT backtrack: reason={}, to_depth={} ---",
-                    reason, to_depth
-                );
-            }
-        }
-        StreamEvent::Messages { chunk, .. } => {
-            if !s.reply_started {
-                if let Some(ref ad) = s.agent_display {
-                    eprintln!("AGENT: {}", ad);
-                }
-                if output_timestamp {
-                    print_reply_timestamp();
-                }
-                s.reply_started = true;
-            }
-            print_stream_chunk(chunk);
-        }
-        StreamEvent::Updates { node_id, state, .. } => {
-            if verbose {
-                let label = match node_id.as_str() {
-                    "think_expand" => "state after think_expand".to_string(),
-                    "think_evaluate" => "state after think_evaluate".to_string(),
-                    "act" => "state after act".to_string(),
-                    "observe" => "state after observe".to_string(),
-                    _ => format!("state after {}", node_id),
-                };
-                eprintln!("--- {} ---", label);
-                eprintln!("{}", format_tot_state_display(state, display_max_len));
-            } else if node_id == "act" && !state.core.tool_calls.is_empty() {
-                log_tools_used(&state.core.tool_calls);
-            }
-        }
-        StreamEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            ..
-        } => {
-            s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
-            s.total_completion_tokens = s.total_completion_tokens.saturating_add(*completion_tokens);
-            tracing::info!(
-                prompt_tokens,
-                completion_tokens,
-                total_tokens = *prompt_tokens + *completion_tokens,
-                "LLM usage"
-            );
-        }
-        _ => {}
-    }
-}
-
-struct EventState {
-    turn: u32,
-    last_node: Option<String>,
+pub(crate) struct EventState {
+    pub(crate) turn: u32,
+    pub(crate) last_node: Option<String>,
     /// When output_timestamp is true, we print timestamp once before the first reply chunk.
-    reply_started: bool,
+    pub(crate) reply_started: bool,
     /// Agent name (source) to print before first reply chunk when set.
-    agent_display: Option<String>,
+    pub(crate) agent_display: Option<String>,
     /// Accumulated prompt tokens from all StreamEvent::Usage in this run.
-    total_prompt_tokens: u32,
+    pub(crate) total_prompt_tokens: u32,
     /// Accumulated completion tokens from all StreamEvent::Usage in this run.
-    total_completion_tokens: u32,
+    pub(crate) total_completion_tokens: u32,
 }
 
 async fn print_loaded_tools(config: &loom::ReactBuildConfig) -> Result<(), RunError> {
@@ -598,107 +337,18 @@ async fn print_loaded_tools(config: &loom::ReactBuildConfig) -> Result<(), RunEr
     Ok(())
 }
 
-fn on_event_got(
-    ev: &StreamEvent<GotState>,
-    s: &mut EventState,
-    display_max_len: usize,
-    verbose: bool,
-    output_timestamp: bool,
-) {
-    match ev {
-        StreamEvent::TaskStart { node_id, .. } => {
-            log_node_enter(s.last_node.as_deref(), node_id, verbose);
-            s.last_node = Some(node_id.clone());
-        }
-        StreamEvent::GotPlan {
-            node_count,
-            edge_count,
-            node_ids,
-        } => {
-            if verbose {
-                eprintln!(
-                    "--- GoT plan: {} nodes, {} edges ---",
-                    node_count, edge_count
-                );
-                for id in node_ids {
-                    eprintln!("  node: {}", id);
-                }
-            }
-        }
-        StreamEvent::GotNodeStart { node_id } => {
-            if verbose {
-                eprintln!("--- GoT node start: {} ---", node_id);
-            }
-        }
-        StreamEvent::GotNodeComplete {
-            node_id,
-            result_summary,
-        } => {
-            if verbose {
-                eprintln!("--- GoT node complete: {} ---", node_id);
-                eprintln!("  result: {}", result_summary);
-            }
-        }
-        StreamEvent::GotNodeFailed { node_id, error } => {
-            if verbose {
-                eprintln!("--- GoT node failed: {} ---", node_id);
-                eprintln!("  error: {}", error);
-            }
-        }
-        StreamEvent::GotExpand {
-            node_id,
-            nodes_added,
-            edges_added,
-        } => {
-            if verbose {
-                eprintln!(
-                    "--- AGoT expand: {} → +{} nodes, +{} edges ---",
-                    node_id, nodes_added, edges_added
-                );
-            }
-        }
-        StreamEvent::Messages { chunk, .. } => {
-            if !s.reply_started {
-                if let Some(ref ad) = s.agent_display {
-                    eprintln!("AGENT: {}", ad);
-                }
-                if output_timestamp {
-                    print_reply_timestamp();
-                }
-                s.reply_started = true;
-            }
-            print_stream_chunk(chunk);
-        }
-        StreamEvent::Updates { node_id, state, .. } => {
-            if verbose {
-                eprintln!("--- state after {} ---", node_id);
-                eprintln!("{}", format_got_state_display(state, display_max_len));
-            }
-        }
-        StreamEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            ..
-        } => {
-            s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
-            s.total_completion_tokens = s.total_completion_tokens.saturating_add(*completion_tokens);
-            tracing::info!(
-                prompt_tokens,
-                completion_tokens,
-                total_tokens = *prompt_tokens + *completion_tokens,
-                "LLM usage"
-            );
-        }
-        _ => {}
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use super::dup::on_event_dup;
+    use super::got::on_event_got;
+    use super::react::on_event_react;
+    use super::tot::on_event_tot;
     use super::*;
+    use crate::envelope::EnvelopeState;
     use loom::{
-        GotRunnerConfig, Message, TaskGraph, TaskNode, TaskNodeState, TaskStatus, ToolCall,
-        TotExtension, TotRunnerConfig, UnderstandOutput,
+        AnyStreamEvent, DupState, GotRunnerConfig, GotState, Message, ReActState, StreamEvent,
+        TaskGraph, TaskNode, TaskNodeState, TaskStatus, ToolCall, TotExtension, TotRunnerConfig,
+        TotState, UnderstandOutput,
     };
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
