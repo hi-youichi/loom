@@ -240,7 +240,6 @@ mod tests {
             working_folder: None,
             session_id: None,
             thread_id: None,
-            role_file: None,
             agent: None,
             verbose: false,
             got_adaptive: false,

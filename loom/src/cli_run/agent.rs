@@ -161,9 +161,6 @@ pub struct RunOptions {
     pub message: String,
     pub working_folder: Option<PathBuf>,
     pub session_id: Option<String>,
-    /// When set, path to a file whose content is used as the agent's role/persona (instructions).
-    /// Overrides instructions.md (or SOUL.md) and the built-in default. Read at build_helve_config time.
-    pub role_file: Option<PathBuf>,
     /// Named agent profile (e.g. "coding"). Resolved from .loom/agents/<name> or ~/.loom/agents/<name>.
     pub agent: Option<String>,
     pub verbose: bool,
@@ -530,7 +527,6 @@ pub async fn run_agent_with_provider(
         session_id: None,
         cancellation: None,
         thread_id: None,
-        role_file: None,
         agent: None,
         verbose: false,
         got_adaptive: false,
@@ -565,7 +561,6 @@ mod tests {
             session_id: None,
             cancellation: None,
             thread_id: None,
-            role_file: None,
             agent: None,
             verbose: false,
             got_adaptive,
@@ -662,7 +657,6 @@ mod tests {
             session_id: None,
             cancellation: None,
             thread_id: None,
-            role_file: None,
             agent: None,
             verbose: false,
             got_adaptive: false,

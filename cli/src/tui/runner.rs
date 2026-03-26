@@ -22,8 +22,6 @@ pub struct TuiConfig {
     pub demo_mode: bool,
     /// Working folder for file tools
     pub working_folder: Option<PathBuf>,
-    /// Optional role/instructions file
-    pub role_file: Option<PathBuf>,
     /// Optional named agent profile
     pub agent: Option<String>,
     /// Enable verbose backend logging
@@ -42,7 +40,6 @@ impl Default for TuiConfig {
             tick_rate: Duration::from_millis(250),
             demo_mode: false,
             working_folder: None,
-            role_file: None,
             agent: None,
             verbose: false,
             model: None,
@@ -261,7 +258,6 @@ impl TuiRunner {
             session_id: None,
             cancellation: None,
             thread_id: Some(thread_id),
-            role_file: self.config.role_file.clone(),
             agent: self.config.agent.clone(),
             verbose: self.config.verbose,
             got_adaptive: false,

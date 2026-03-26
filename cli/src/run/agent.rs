@@ -152,7 +152,7 @@ pub async fn run_agent_wrapper(
         print_agent_banner(&resolved_agent);
         print_available_agents();
         if helve.role_setting.is_some() {
-            eprintln!("instructions/role loaded; system prompt (including it) is in state.messages[0].");
+            eprintln!("agent profile role included in system prompt (see state.messages[0]).");
         }
         if helve.agents_md.is_some() {
             eprintln!("AGENTS.md loaded; included in system prompt.");
@@ -1116,7 +1116,6 @@ mod tests {
             session_id: None,
             cancellation: None,
             thread_id: None,
-            role_file: None,
             agent: None,
             verbose: false,
             got_adaptive: false,

@@ -164,7 +164,7 @@ pub use channels::{
 };
 pub use cli_run::{
     build_config_from_profile, build_helve_config, list_available_profiles, load_agents_md,
-    load_soul_md, resolve_profile, run_agent_with_llm_override, run_agent_with_options,
+    resolve_profile, run_agent_with_llm_override, run_agent_with_options,
     ActiveOperation, ActiveOperationCanceller, ActiveOperationKind, AgentProfile, AgentRunResult,
     AnyRunner, AnyStreamEvent, ProfileError, ProfileSource, ProfileSummary, ResolvedAgent,
     RunCancellation, RunCmd, RunCompletion, RunError, RunOptions, DEFAULT_WORKING_FOLDER,

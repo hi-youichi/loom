@@ -361,57 +361,19 @@ pub fn resolve_named_profile(name: &str) -> Option<PathBuf> {
     None
 }
 
-/// Find default profile path: project .loom/agents/default, then cwd agent.yaml/agent.yml, then ~/.loom/agents/default.
-pub fn find_default_profile() -> Option<PathBuf> {
-    let project_agents = PathBuf::from(".loom/agents");
-    let candidates = [
-        project_agents.join("default").join("config.yaml"),
-        project_agents.join("default").join("config.yml"),
-        project_agents.join("default").join("config.md"),
-        project_agents.join("default.yaml"),
-        project_agents.join("default.yml"),
-        project_agents.join("default.md"),
-        PathBuf::from("agent.yaml"),
-        PathBuf::from("agent.yml"),
-    ];
-    for p in &candidates {
-        if p.exists() {
-            return Some(p.clone());
-        }
-    }
-    let user_agents = env_config::home::loom_home().join("agents");
-    let user_candidates = [
-        user_agents.join("default").join("config.yaml"),
-        user_agents.join("default").join("config.yml"),
-        user_agents.join("default").join("config.md"),
-        user_agents.join("default.yaml"),
-        user_agents.join("default.yml"),
-        user_agents.join("default.md"),
-    ];
-    for p in &user_candidates {
-        if p.exists() {
-            return Some(p.clone());
-        }
-    }
-    None
-}
-
-/// Load profile from RunOptions: --agent name → built-in agents (compile-time) or resolve_named_profile; else find_default_profile. On error returns None (fallback to no profile).
-/// Returns the loaded profile together with its source (BuiltIn / Project / User / Default).
+/// Load profile from RunOptions when `--agent` / `-P` is set: built-in agents (compile-time) or
+/// resolve_named_profile. When `agent` is unset, returns [`None`] (no implicit default profile).
+/// Returns the loaded profile together with its source (BuiltIn / Project / User).
 pub fn load_profile_from_options(opts: &RunOptions) -> Option<(AgentProfile, ProfileSource)> {
-    if let Some(ref name) = opts.agent {
-        if let Some(mut profile) = load_builtin_profile(name) {
-            let project_dir = PathBuf::from(".loom/agents").join(name);
-            if project_dir.is_dir() {
-                profile.source_dir = Some(project_dir);
-            }
-            return Some((profile, ProfileSource::BuiltIn));
+    let name = opts.agent.as_ref()?;
+    if let Some(mut profile) = load_builtin_profile(name) {
+        let project_dir = PathBuf::from(".loom/agents").join(name);
+        if project_dir.is_dir() {
+            profile.source_dir = Some(project_dir);
         }
-        let path = resolve_named_profile(name)?;
-        let source = classify_profile_path(&path);
-        return load_agent_profile(&path).ok().map(|p| (p, source));
+        return Some((profile, ProfileSource::BuiltIn));
     }
-    let path = find_default_profile()?;
+    let path = resolve_named_profile(name)?;
     let source = classify_profile_path(&path);
     load_agent_profile(&path).ok().map(|p| (p, source))
 }
@@ -575,7 +537,6 @@ mod tests {
             session_id: None,
             cancellation: None,
             thread_id: None,
-            role_file: None,
             agent: Some("dev".to_string()),
             verbose: false,
             got_adaptive: false,
@@ -610,7 +571,6 @@ mod tests {
             session_id: None,
             cancellation: None,
             thread_id: None,
-            role_file: None,
             agent: Some("agent-builder".to_string()),
             verbose: false,
             got_adaptive: false,
@@ -919,7 +879,6 @@ tools:
             session_id: None,
             cancellation: None,
             thread_id: None,
-            role_file: None,
             agent: None,
             verbose: false,
             got_adaptive: false,
@@ -959,7 +918,6 @@ tools:
             session_id: None,
             cancellation: None,
             thread_id: None,
-            role_file: None,
             agent: Some("nonexistent-agent-xyz".to_string()),
             verbose: false,
             got_adaptive: false,

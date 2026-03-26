@@ -37,10 +37,6 @@ struct Args {
     #[arg(short, long, value_name = "DIR")]
     working_folder: Option<PathBuf>,
 
-    /// Path to a file used as the agent's role/persona (instructions). Overrides instructions.md and the built-in default.
-    #[arg(long, value_name = "FILE")]
-    role: Option<PathBuf>,
-
     /// Named agent profile (e.g. coding). Loaded from .loom/agents/<NAME> or ~/.loom/agents/<NAME>.
     #[arg(short('P'), long, value_name = "NAME")]
     agent: Option<String>,
@@ -392,7 +388,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let config = cli::tui::TuiConfig {
             demo_mode: args.verbose,
             working_folder: args.working_folder.clone(),
-            role_file: args.role.clone(),
             agent: args.agent.clone(),
             verbose: args.verbose,
             model: None,
@@ -416,7 +411,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             session_id: None,
             cancellation: None,
             thread_id: args.session_id.clone(),
-            role_file: args.role.clone(),
             agent: args.agent.clone(),
             verbose: args.verbose,
             got_adaptive: false,
@@ -462,7 +456,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             session_id: None,
             cancellation: None,
             thread_id: args.session_id.clone(),
-            role_file: args.role.clone(),
             agent: args.agent.clone(),
             verbose: args.verbose,
             got_adaptive: false,
@@ -515,7 +508,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         session_id: None,
         cancellation: None,
         thread_id: args.session_id,
-        role_file: args.role,
         agent: args.agent,
         verbose: args.verbose,
         got_adaptive,
