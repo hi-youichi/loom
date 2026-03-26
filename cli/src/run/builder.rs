@@ -19,7 +19,7 @@ pub(crate) async fn build_runner(
 ) -> Result<AnyRunner, RunError> {
     match cmd {
         RunCmd::React => {
-            let r = build_react_runner(config, None, opts.verbose, None).await?;
+            let r = build_react_runner(config, None, opts.verbose).await?;
             Ok(AnyRunner::React(r))
         }
         RunCmd::Dup => {

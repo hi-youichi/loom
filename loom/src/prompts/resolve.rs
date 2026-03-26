@@ -1,22 +1,19 @@
 //! Resolves effective prompt strings from loaded config and code defaults.
 //!
-//! [`AgentPrompts`] holds per-pattern optional overrides; getters return the string to use
-//! (override or in-code default). Used by runners and [`assemble_system_prompt`](crate::helve::assemble_system_prompt).
+//! [`AgentPrompts`] holds loaded YAML prompt materials. For non-ReAct agent families,
+//! getters resolve from loaded values to code defaults. ReAct prompt assembly now lives
+//! in the single main assembler path under [`crate::helve`].
 
 use crate::agent::dup::DUP_UNDERSTAND_PROMPT;
 use crate::agent::got::{AGOT_EXPAND_SYSTEM, GOT_PLAN_SYSTEM};
-use crate::agent::react::{
-    DEFAULT_EXECUTION_ERROR_TEMPLATE, DEFAULT_TOOL_ERROR_TEMPLATE, REACT_SYSTEM_PROMPT,
-};
 use crate::agent::tot::{TOT_EXPAND_SYSTEM_ADDON, TOT_RESEARCH_QUALITY_ADDON};
 
 use super::{DupPromptsFile, GotPromptsFile, HelvePromptsFile, ReactPromptsFile, TotPromptsFile};
 
-/// Loaded and env-overridden prompts for all agent patterns. Getters resolve to code defaults when unset.
+/// Loaded YAML prompt materials for all agent patterns.
 ///
 /// Build via [`load`](crate::prompts::load) or [`load_or_default`](crate::prompts::load_or_default).
-/// Pass to [`build_react_runner`](crate::agent::react::build_react_runner) or use in
-/// [`assemble_system_prompt_with_prompts`](crate::helve::assemble_system_prompt_with_prompts) to override in-code prompts.
+/// ReAct prompt materials are loaded here but assembled elsewhere.
 #[derive(Clone, Debug)]
 pub struct AgentPrompts {
     pub react: ReactPromptsFile,
@@ -39,30 +36,6 @@ impl Default for AgentPrompts {
 }
 
 impl AgentPrompts {
-    /// ReAct system prompt (base for ReAct/ToT/DUP and Helve assembly). Env `REACT_SYSTEM_PROMPT` overrides file.
-    pub fn react_system_prompt(&self) -> String {
-        std::env::var("REACT_SYSTEM_PROMPT")
-            .ok()
-            .or_else(|| self.react.system_prompt.clone())
-            .unwrap_or_else(|| REACT_SYSTEM_PROMPT.to_string())
-    }
-
-    /// ReAct tool error template for ActNode. Placeholder: `{error}`.
-    pub fn react_tool_error_template(&self) -> String {
-        self.react
-            .tool_error_template
-            .clone()
-            .unwrap_or_else(|| DEFAULT_TOOL_ERROR_TEMPLATE.to_string())
-    }
-
-    /// ReAct execution error template. Placeholders: `{tool_name}`, `{tool_kwargs}`, `{error}`.
-    pub fn react_execution_error_template(&self) -> String {
-        self.react
-            .execution_error_template
-            .clone()
-            .unwrap_or_else(|| DEFAULT_EXECUTION_ERROR_TEMPLATE.to_string())
-    }
-
     /// ToT expand node system addon.
     pub fn tot_expand_system_addon(&self) -> String {
         self.tot
@@ -150,35 +123,9 @@ WORKING FOLDER & FILE RULES:
 mod tests {
     use super::*;
 
-    /// Default AgentPrompts returns same ReAct system prompt as in-code constant.
-    #[test]
-    fn default_react_system_prompt_equals_const() {
-        let p = AgentPrompts::default();
-        assert_eq!(p.react_system_prompt(), REACT_SYSTEM_PROMPT);
-    }
-
-    /// Default AgentPrompts returns same tool error template as in-code constant.
-    #[test]
-    fn default_react_tool_error_template_equals_const() {
-        let p = AgentPrompts::default();
-        assert_eq!(p.react_tool_error_template(), DEFAULT_TOOL_ERROR_TEMPLATE);
-    }
-
-    /// When react.system_prompt is set, react_system_prompt returns it (env unset in test).
-    #[test]
-    fn loaded_react_system_prompt_overrides_default() {
-        let mut p = AgentPrompts::default();
-        p.react.system_prompt = Some("Custom system prompt.".to_string());
-        assert_eq!(p.react_system_prompt(), "Custom system prompt.");
-    }
-
     #[test]
     fn default_getters_match_code_defaults() {
         let p = AgentPrompts::default();
-        assert_eq!(
-            p.react_execution_error_template(),
-            DEFAULT_EXECUTION_ERROR_TEMPLATE
-        );
         assert_eq!(p.tot_expand_system_addon(), TOT_EXPAND_SYSTEM_ADDON.trim());
         assert_eq!(
             p.tot_research_quality_addon(),
@@ -192,8 +139,6 @@ mod tests {
     #[test]
     fn custom_values_override_defaults_for_all_prompt_groups() {
         let mut p = AgentPrompts::default();
-        p.react.tool_error_template = Some("react tool err".to_string());
-        p.react.execution_error_template = Some("react exec err".to_string());
         p.tot.expand_system_addon = Some("tot expand".to_string());
         p.tot.research_quality_addon = Some("tot research".to_string());
         p.got.plan_system = Some("got plan".to_string());
@@ -203,8 +148,6 @@ mod tests {
         p.helve.approval_destructive = Some("ask before delete".to_string());
         p.helve.approval_always = Some("ask always".to_string());
 
-        assert_eq!(p.react_tool_error_template(), "react tool err");
-        assert_eq!(p.react_execution_error_template(), "react exec err");
         assert_eq!(p.tot_expand_system_addon(), "tot expand");
         assert_eq!(p.tot_research_quality_addon(), "tot research");
         assert_eq!(p.got_plan_system(), "got plan");

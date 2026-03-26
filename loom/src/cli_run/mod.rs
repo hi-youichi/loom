@@ -13,7 +13,10 @@ pub use agent::{
 };
 
 use crate::skill::SkillRegistry;
-use crate::{to_react_build_config, HelveConfig, ReactBuildConfig};
+use crate::{
+    assemble_react_system_prompt, to_react_build_config, HelveConfig, ReactBuildConfig,
+    ReactPromptInputs,
+};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -179,12 +182,20 @@ pub fn build_helve_config(
         Some(prompt)
     };
 
+    let agent_instructions = role_content_from_profile(profile_role);
+
+    tracing::trace!(
+        agent_instructions_len = agent_instructions.as_ref().map(|s| s.len()),
+        skills_prompt_len = skills_prompt.as_ref().map(|s| s.len()),
+        "agent prompt",
+    );
+
     let helve = HelveConfig {
         working_folder: Some(working_folder.clone()),
         thread_id: effective_opts.thread_id.clone(),
         user_id: base.user_id.clone(),
         approval_policy: None,
-        role_setting: role_content_from_profile(profile_role),
+        role_setting: agent_instructions,
         agents_md: load_agents_md(Some(&working_folder)),
         system_prompt_override: None,
         skills_prompt,
@@ -253,25 +264,18 @@ pub fn build_config_from_profile(
         }
     }
 
-    // System prompt from profile role
-    let role_content = profile.role.as_ref().and_then(|r| r.content.clone());
-    if let Some(role) = role_content {
-        let agents_md = load_agents_md(Some(&working_folder));
-        let parts: Vec<&str> = [Some(role.as_str()), agents_md.as_deref()]
-            .into_iter()
-            .flatten()
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .collect();
-        if !parts.is_empty() {
-            let base_prompt = config.system_prompt.take().unwrap_or_default();
-            let prefix = parts.join("\n\n");
-            config.system_prompt = Some(if base_prompt.is_empty() {
-                prefix
-            } else {
-                format!("{}\n\n{}", prefix, base_prompt)
-            });
-        }
+    // System prompt from profile role / AGENTS.md uses the same assembler as top-level runs.
+    let role_setting =
+        role_content_from_profile(profile.role.as_ref().and_then(|r| r.content.clone()));
+    let agents_md = load_agents_md(Some(&working_folder));
+    if role_setting.is_some() || agents_md.is_some() {
+        let prompt_inputs = ReactPromptInputs {
+            base_prompt_override: config.system_prompt.take(),
+            role_setting,
+            agents_md,
+            ..Default::default()
+        };
+        config.system_prompt = Some(assemble_react_system_prompt(&prompt_inputs));
     }
 
     // Skill registry for sub-agent

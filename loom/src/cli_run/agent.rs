@@ -449,7 +449,7 @@ pub async fn build_runner(
     let cancellation = opts.cancellation.as_ref().map(RunCancellation::token);
     match cmd {
         RunCmd::React => {
-            let r = build_react_runner(config, llm_override, opts.verbose, None)
+            let r = build_react_runner(config, llm_override, opts.verbose)
                 .await?
                 .with_cancellation(opts.cancellation.clone());
             Ok(AnyRunner::React(r))

@@ -53,7 +53,7 @@ fn minimal_config() -> ReactBuildConfig {
 async fn build_react_runner_then_invoke_one_turn() {
     let config = minimal_config();
     let llm = Box::new(MockLlm::with_no_tool_calls("Hello from mock."));
-    let runner: ReactRunner = build_react_runner(&config, Some(llm), false, None)
+    let runner: ReactRunner = build_react_runner(&config, Some(llm), false)
         .await
         .expect("build_react_runner");
     let state = runner.invoke("Hi").await.expect("invoke");

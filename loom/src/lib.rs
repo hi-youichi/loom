@@ -183,8 +183,9 @@ pub use graph::{
     NameNode, Next, Node, NodeMiddleware, RetryPolicy, RunContext, Runtime, StateGraph, END, START,
 };
 pub use helve::{
-    assemble_system_prompt, assemble_system_prompt_with_prompts, to_react_build_config,
-    tools_requiring_approval, ApprovalPolicy, HelveConfig, APPROVAL_REQUIRED_EVENT_TYPE,
+    assemble_react_system_prompt, assemble_system_prompt, to_react_build_config,
+    tools_requiring_approval, ApprovalPolicy, HelveConfig, ReactPromptInputs,
+    APPROVAL_REQUIRED_EVENT_TYPE,
 };
 pub use llm::{ChatOpenAI, ChatOpenAICompat};
 pub use llm::{

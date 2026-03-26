@@ -15,6 +15,7 @@ use crate::stream::StreamEvent;
 use crate::tool_source::ToolSource;
 use crate::user_message::UserMessageStore;
 use crate::{LlmClient, RunCancellation};
+use crate::agent::react::REACT_SYSTEM_PROMPT;
 
 use super::error::RunError;
 use super::initial_state::build_react_initial_state;
@@ -32,7 +33,7 @@ pub struct ReactRunner {
     compiled: CompiledStateGraph<ReActState>,
     checkpointer: Option<Arc<dyn Checkpointer<ReActState>>>,
     runnable_config: Option<RunnableConfig>,
-    system_prompt: Option<String>,
+    system_prompt: String,
     cancellation: Option<RunCancellation>,
 }
 
@@ -48,7 +49,7 @@ impl ReactRunner {
         checkpointer: Option<Arc<dyn Checkpointer<ReActState>>>,
         store: Option<Arc<dyn Store>>,
         runnable_config: Option<RunnableConfig>,
-        system_prompt: Option<String>,
+        system_prompt: String,
         approval_policy: Option<ApprovalPolicy>,
         compaction_config: Option<CompactionConfig>,
         _user_message_store: Option<Arc<dyn UserMessageStore>>,
@@ -312,7 +313,7 @@ impl ReactRunner {
             user_message,
             self.checkpointer.as_deref(),
             run_config.as_ref(),
-            self.system_prompt.as_deref(),
+            &self.system_prompt,
         )
         .await?;
         let final_state = self.compiled.invoke(state, run_config).await?;
@@ -344,7 +345,7 @@ impl ReactRunner {
             user_message,
             self.checkpointer.as_deref(),
             run_config.as_ref(),
-            self.system_prompt.as_deref(),
+            &self.system_prompt,
         )
         .await?;
         runner_common::run_stream_with_config(
@@ -376,7 +377,7 @@ pub async fn run_agent(
         opts.checkpointer,
         opts.store,
         opts.runnable_config,
-        None,
+        REACT_SYSTEM_PROMPT.to_string(),
         None,
         None,
         opts.user_message_store,
@@ -402,7 +403,7 @@ where
         opts.checkpointer,
         opts.store,
         opts.runnable_config,
-        None,
+        REACT_SYSTEM_PROMPT.to_string(),
         None,
         None,
         opts.user_message_store,
