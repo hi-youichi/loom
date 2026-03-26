@@ -28,9 +28,9 @@ pub(super) fn messages_to_openai(messages: &[Message]) -> Vec<ChatCompletionRequ
             Message::System(s) => ChatCompletionRequestMessage::System(
                 ChatCompletionRequestSystemMessage::from(s.as_str()),
             ),
-            Message::User(s) => {
-                ChatCompletionRequestMessage::User(ChatCompletionRequestUserMessage::from(s.as_str()))
-            }
+            Message::User(s) => ChatCompletionRequestMessage::User(
+                ChatCompletionRequestUserMessage::from(s.as_str()),
+            ),
             Message::Assistant(payload) => {
                 let tool_calls: Option<Vec<ChatCompletionMessageToolCalls>> =
                     if payload.tool_calls.is_empty() {
@@ -56,7 +56,9 @@ pub(super) fn messages_to_openai(messages: &[Message]) -> Vec<ChatCompletionRequ
                     };
                 let content = if payload.tool_calls.is_empty() {
                     let c = assistant_content_for_chat_api(payload.content.as_str());
-                    Some(ChatCompletionRequestAssistantMessageContent::Text(c.into_owned()))
+                    Some(ChatCompletionRequestAssistantMessageContent::Text(
+                        c.into_owned(),
+                    ))
                 } else if payload.content.trim().is_empty() {
                     None
                 } else {
@@ -139,19 +141,26 @@ pub(super) fn build_chat_request(
         }
     }
 
+    let req = args
+        .build()
+        .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI request build failed: {}", e)))?;
+
     tracing::trace!(
-        model = model,
-        message_count = messages.len(),
-        tools_count = tools.map_or(0, |t| t.len()),
-        temperature = ?temperature,
-        tool_choice = ?tool_choice,
-        stream = stream,
+        request = %serde_json::to_string(&req).unwrap_or_else(|e| format!("<serde error: {e}>")),
+        "build_chat_request: full request JSON"
+    );
+
+    tracing::debug!(
+        model = req.model.as_str(),
+        message_count = req.messages.len(),
+        tools_count = req.tools.as_ref().map_or(0, |t| t.len()),
+        temperature = ?req.temperature,
+        tool_choice = ?req.tool_choice,
+        stream = ?req.stream,
         "build_chat_request complete"
     );
 
-    args.build().map_err(|e| {
-        AgentError::ExecutionFailed(format!("OpenAI request build failed: {}", e))
-    })
+    Ok(req)
 }
 
 #[cfg(test)]
