@@ -8,7 +8,6 @@ mod bootstrap;
 mod display_limits;
 mod log_format;
 mod logging;
-mod model_cmd;
 mod output;
 mod repl;
 mod run_flow;
