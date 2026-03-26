@@ -107,7 +107,19 @@ async fn print_model_info(model: Option<&String>) {
 
     // Try to resolve context limit from models.dev
     let resolver = ModelsDevResolver::new();
-    match resolver.resolve_combined(model_name).await {
+    
+    // If model doesn't contain '/', try combining with LLM_PROVIDER
+    let full_model_name = if !model_name.contains('/') {
+        if let Ok(provider) = std::env::var("LLM_PROVIDER") {
+            format!("{}/{}", provider, model_name)
+        } else {
+            model_name.to_string()
+        }
+    } else {
+        model_name.to_string()
+    };
+    
+    match resolver.resolve_combined(&full_model_name).await {
         Some(spec) => {
             eprintln!(
                 "model: {} ({} context)",
@@ -123,7 +135,7 @@ async fn print_model_info(model: Option<&String>) {
                  1) The model name doesn't include a provider prefix (e.g., 'glm-5' instead of 'zai/glm-5'), \
                  2) The provider/model combination is not in the models.dev database, or \
                  3) Network error when fetching from models.dev",
-                model_name
+                full_model_name
             );
             eprintln!("model: {} (context: unknown)", model_name);
         }

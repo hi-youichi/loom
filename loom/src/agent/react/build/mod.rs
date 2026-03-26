@@ -116,20 +116,32 @@ async fn resolve_compaction_config(config: &ReactBuildConfig) -> CompactionConfi
         return cfg.clone();
     }
 
-    // Try to infer context limit from models.dev when model contains "/"
+    // Try to infer context limit from models.dev
     if let Some(ref model) = config.model {
-        if model.contains('/') {
+        // If model doesn't contain '/', try combining with LLM_PROVIDER
+        let full_model_name = if !model.contains('/') {
+            if let Some(ref provider) = config.llm_provider {
+                format!("{}/{}", provider, model)
+            } else {
+                model.clone()
+            }
+        } else {
+            model.clone()
+        };
+        
+        if full_model_name.contains('/') {
             let resolver = ModelsDevResolver::new();
-            if let Some(spec) = resolver.resolve_combined(model).await {
+            if let Some(spec) = resolver.resolve_combined(&full_model_name).await {
                 tracing::info!(
                     model = %model,
+                    full_model = %full_model_name,
                     context_limit = spec.context_limit,
                     output_limit = spec.output_limit,
                     "resolved model spec from models.dev"
                 );
                 return CompactionConfig::with_max_context_tokens(spec.context_limit);
             } else {
-                tracing::debug!(model = %model, "model not found in models.dev, using default config");
+                tracing::debug!(model = %model, full_model = %full_model_name, "model not found in models.dev, using default config");
             }
         }
     }
