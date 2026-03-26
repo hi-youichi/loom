@@ -27,7 +27,7 @@ pub struct SummarizeConfig {
 impl Default for SummarizeConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
+            enabled: false,
             max_length: 50,
             prompt_template: None,
             enable_completion_check: false,
@@ -89,7 +89,7 @@ pub struct AgentOptions {
     pub user_message_store: Option<Arc<dyn UserMessageStore>>,
     /// If true, log node and state details to stderr.
     pub verbose: bool,
-    /// Configuration for session summary generation. Defaults to enabled.
+    /// Configuration for session summary generation. Defaults to disabled; set `enabled: true` to opt in.
     pub summarize_config: Option<SummarizeConfig>,
 }
 

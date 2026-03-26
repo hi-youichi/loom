@@ -73,7 +73,7 @@ impl ReactRunner {
         }
         
         // Build graph with or without summarize node based on config
-        let summarize_enabled = summarize_config.as_ref().map_or(true, |c| c.enabled);
+        let summarize_enabled = summarize_config.as_ref().is_some_and(|c| c.enabled);
         let completion_check_enabled =
             summarize_config.as_ref().map_or(false, |c| c.enable_completion_check);
 

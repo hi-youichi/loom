@@ -165,7 +165,7 @@ pub async fn build_react_runner(
         None,
         None,
         verbose,
-        None, // summarize_config uses default
+        None, // session summarize node off unless caller passes Some(SummarizeConfig { enabled: true, .. })
     )?;
     Ok(runner)
 }
