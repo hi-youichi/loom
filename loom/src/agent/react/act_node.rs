@@ -21,7 +21,6 @@
 //! or intermediate results during execution.
 
 use async_trait::async_trait;
-use futures_util::future::{abortable, Aborted};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -29,7 +28,7 @@ use tracing::{debug, trace, warn};
 
 use crate::cli_run::ActiveOperationKind;
 use crate::error::AgentError;
-use crate::graph::{GraphInterrupt, Interrupt, Next, Node, RunContext};
+use crate::graph::{run_cancellable, GraphInterrupt, Interrupt, Next, Node, RunContext};
 use crate::helve::{tools_requiring_approval, ApprovalPolicy, APPROVAL_REQUIRED_EVENT_TYPE};
 use crate::state::tool_output_normalizer::{
     normalize_tool_output, NormalizationConfig, ToolOutputHint,
@@ -367,22 +366,13 @@ impl Node<ReActState> for ActNode {
         self.tools.set_call_context(None);
 
         let new_state = ReActState {
-            messages: state.messages,
-            last_reasoning_content: state.last_reasoning_content,
-            tool_calls: state.tool_calls,
             tool_results,
-            turn_count: state.turn_count,
             approval_result: if approval_result_consumed {
                 None
             } else {
                 state.approval_result
             },
-            usage: state.usage,
-            total_usage: state.total_usage,
-            message_count_after_last_think: state.message_count_after_last_think,
-            summary: state.summary,
-            think_count: state.think_count,
-            should_continue: state.should_continue,
+            ..state
         };
         Ok((new_state, Next::Continue))
     }
@@ -551,37 +541,20 @@ impl Node<ReActState> for ActNode {
             let tool_call = self
                 .tools
                 .call_tool_with_context(&tc.name, args.clone(), Some(&tool_ctx));
-            let (tool_call, abort_handle) = abortable(tool_call);
-            if let Some(run_cancellation) = run_ctx.run_cancellation.as_ref() {
-                run_cancellation
-                    .set_abortable_operation(ActiveOperationKind::ToolTask, abort_handle);
-            }
-            let result = if let Some(token) = run_ctx.cancellation.as_ref() {
-                tokio::select! {
-                    _ = token.cancelled() => {
-                        self.tools.set_call_context(None);
-                        return Err(AgentError::Cancelled);
-                    }
-                    result = tool_call => match result {
-                        Ok(result) => result,
-                        Err(Aborted) => {
-                            self.tools.set_call_context(None);
-                            return Err(AgentError::Cancelled);
-                        }
-                    },
-                }
-            } else {
-                match tool_call.await {
-                    Ok(result) => result,
-                    Err(Aborted) => {
-                        self.tools.set_call_context(None);
-                        return Err(AgentError::Cancelled);
-                    }
+            let result = match run_cancellable(
+                tool_call,
+                run_ctx.cancellation.as_ref(),
+                run_ctx.run_cancellation.as_ref(),
+                ActiveOperationKind::ToolTask,
+            )
+            .await
+            {
+                Ok(inner) => inner,
+                Err(e) => {
+                    self.tools.set_call_context(None);
+                    return Err(e);
                 }
             };
-            if let Some(run_cancellation) = run_ctx.run_cancellation.as_ref() {
-                run_cancellation.clear_active_operation();
-            }
 
             if is_cancelled() {
                 self.tools.set_call_context(None);
@@ -684,22 +657,13 @@ impl Node<ReActState> for ActNode {
         self.tools.set_call_context(None);
 
         let new_state = ReActState {
-            messages: state.messages,
-            last_reasoning_content: state.last_reasoning_content,
-            tool_calls: state.tool_calls,
             tool_results,
-            turn_count: state.turn_count,
             approval_result: if approval_result_consumed {
                 None
             } else {
                 state.approval_result
             },
-            usage: state.usage,
-            total_usage: state.total_usage,
-            message_count_after_last_think: state.message_count_after_last_think,
-            summary: state.summary,
-            think_count: state.think_count,
-            should_continue: state.should_continue,
+            ..state
         };
         Ok((new_state, Next::Continue))
     }

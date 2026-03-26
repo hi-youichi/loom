@@ -156,6 +156,20 @@ pub struct LlmUsage {
     pub completion_tokens_details: Option<CompletionTokensDetails>,
 }
 
+impl LlmUsage {
+    /// Sums headline token counts with `other`. Per-turn breakdown fields are cleared
+    /// because OpenAI usage is per request and details are not additive across turns.
+    pub fn accumulate(&self, other: &LlmUsage) -> LlmUsage {
+        LlmUsage {
+            prompt_tokens: self.prompt_tokens + other.prompt_tokens,
+            completion_tokens: self.completion_tokens + other.completion_tokens,
+            total_tokens: self.total_tokens + other.total_tokens,
+            prompt_tokens_details: None,
+            completion_tokens_details: None,
+        }
+    }
+}
+
 /// Response from an LLM completion: assistant message text and optional tool calls.
 ///
 /// **Interaction**: Returned by `LlmClient::invoke()`; ThinkNode writes

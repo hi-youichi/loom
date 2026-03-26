@@ -97,17 +97,10 @@ impl Node<ReActState> for ObserveNode {
         let next_turn = state.turn_count.saturating_add(1);
         let new_state = ReActState {
             messages,
-            last_reasoning_content: state.last_reasoning_content,
             tool_calls: vec![],
             tool_results: vec![],
             turn_count: next_turn,
-            approval_result: state.approval_result,
-            usage: state.usage,
-            total_usage: state.total_usage,
-            message_count_after_last_think: state.message_count_after_last_think,
-            summary: state.summary,
-            think_count: state.think_count,
-            should_continue: state.should_continue,
+            ..state
         };
         let max_turns_reached = self.max_turns.map_or(false, |m| next_turn >= m);
         let (next, exit_reason) = if self.enable_loop && max_turns_reached {
