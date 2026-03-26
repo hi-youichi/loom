@@ -37,16 +37,18 @@ fn interactive_empty_line_then_quit_exits_success() {
 
 #[test]
 fn interactive_initial_message_with_invalid_working_folder_exits_error() {
+    let temp = tempfile::NamedTempFile::new().expect("temp file");
     let out = run_with_stdin(
         &[
             "-i",
             "-m",
             "hello",
             "--working-folder",
-            "/definitely/not/exist/loom-cli-interactive-tests",
+            &temp.path().to_string_lossy(),
         ],
         "",
     );
+
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr).to_lowercase();
     assert!(stderr.contains("error"));

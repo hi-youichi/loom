@@ -45,6 +45,9 @@ async fn main() {
         usage: None,
         total_usage: None,
         message_count_after_last_think: None,
+        think_count: 0,
+        summary: None,
+        should_continue: true,
         last_reasoning_content: None,
     };
 

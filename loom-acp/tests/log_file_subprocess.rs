@@ -45,6 +45,11 @@ fn log_file_resolves_working_folder_placeholder() {
     let working_folder = temp.path().join("workspace");
     std::fs::create_dir_all(&working_folder).expect("create workspace");
     let working_folder = working_folder.canonicalize().expect("canonicalize workspace");
+    let working_folder_cli = working_folder
+        .to_string_lossy()
+        .strip_prefix("\\\\?\\")
+        .unwrap_or(&working_folder.to_string_lossy())
+        .to_string();
 
     let expected_log = working_folder.join("logs").join("acp.log");
     assert!(
@@ -52,7 +57,7 @@ fn log_file_resolves_working_folder_placeholder() {
         "log file should not exist before session/new"
     );
 
-    let cwd_str = working_folder.to_string_lossy().replace('\\', "\\\\");
+    let cwd_str = working_folder_cli.replace('\\', "\\\\");
 
     let init = serde_json::json!({
         "jsonrpc": "2.0",

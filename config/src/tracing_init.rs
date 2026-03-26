@@ -44,9 +44,16 @@ impl LogRotate {
 /// `working_folder` when provided (otherwise relative paths stay as-is).
 pub fn resolve_log_path(path: &Path, working_folder: Option<&Path>) -> PathBuf {
     let path_str = path.to_string_lossy();
+    #[cfg(windows)]
+    let path_str = path_str.strip_prefix("\\\\?\\").unwrap_or(&path_str);
     if path_str.contains("{working_folder}") {
         if let Some(wf) = working_folder {
-            PathBuf::from(path_str.replace("{working_folder}", &wf.to_string_lossy()))
+            let wf_norm = match wf.to_str() {
+                Some(s) => s.strip_prefix("\\\\?\\").unwrap_or(s),
+                None => &wf.to_string_lossy(),
+            };
+            let out = path_str.replace("{working_folder}", wf_norm);
+            PathBuf::from(out)
         } else {
             path.to_path_buf()
         }
@@ -92,14 +99,33 @@ pub fn file_non_blocking_writer(
     rotate: LogRotate,
     rolling_default_stem: &str,
 ) -> Result<(NonBlocking, WorkerGuard), FileWriterError> {
+    #[cfg(windows)]
+    let path = {
+        use std::path::Component;
+        if path
+            .components()
+            .next()
+            .is_some_and(|c| matches!(c, Component::Prefix(_)))
+        {
+            path.to_path_buf()
+        } else {
+            std::env::current_dir()
+                .map(|cwd| cwd.join(path))
+                .unwrap_or_else(|_| path.to_path_buf())
+        }
+    };
+
+    #[cfg(not(windows))]
+    let path = path.to_path_buf();
+
     match rotate {
         LogRotate::None => {
             let file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(path)
+                .open(&path)
                 .map_err(|e| FileWriterError::Open {
-                    path: path.to_path_buf(),
+                    path: path.clone(),
                     source: e,
                 })?;
             Ok(tracing_appender::non_blocking(file))

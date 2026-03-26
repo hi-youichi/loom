@@ -2,6 +2,7 @@
 
 use cli::RunOptions;
 
+
 use crate::args::{Args, Command};
 use crate::display_limits::{generate_session_id, max_message_len};
 use crate::output::{emit_run_output, make_stream_out, OutputConfig};
@@ -25,8 +26,9 @@ pub(crate) fn output_config(args: &Args) -> OutputConfig {
     }
 }
 
-pub(crate) fn build_run_options(args: &Args, message: String, got_adaptive: bool) -> RunOptions {
-    RunOptions {
+pub(crate) fn build_run_options(args: &Args, message: String, got_adaptive: bool) -> Result<RunOptions, Box<dyn std::error::Error>> {
+    Ok(RunOptions {
+
         message,
         working_folder: args.working_folder.clone(),
         session_id: None,
@@ -45,8 +47,9 @@ pub(crate) fn build_run_options(args: &Args, message: String, got_adaptive: bool
         base_url: None,
         api_key: None,
         provider_type: None,
-    }
+    })
 }
+
 
 fn print_session_status(session_id: Option<&str>, ended: bool, json: bool) {
     if json {

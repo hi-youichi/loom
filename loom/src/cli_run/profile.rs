@@ -528,6 +528,8 @@ fn load_builtin_profile(name: &str) -> Option<AgentProfile> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
+
 
     #[test]
     fn builtin_dev_agent_loaded_with_embedded_instructions() {
@@ -866,6 +868,7 @@ tools:
     }
 
     #[test]
+    #[serial]
     fn load_profile_from_options_no_agent_no_default() {
         let dir = tempfile::tempdir().unwrap();
         let prev_dir = std::env::current_dir().ok();
@@ -907,6 +910,7 @@ tools:
     }
 
     #[test]
+    #[serial]
     fn load_profile_from_options_unknown_agent() {
         let prev_loom = std::env::var("LOOM_HOME").ok();
         let dir = tempfile::tempdir().unwrap();
@@ -1165,6 +1169,7 @@ tools:
     }
 
     #[test]
+    #[serial]
     fn resolve_named_profile_user_level() {
         let loom_home = tempfile::tempdir().unwrap();
         let agents_dir = loom_home.path().join("agents");

@@ -10,7 +10,8 @@ pub(crate) async fn handle_tool_command(
     args: &Args,
     tool_args: &ToolArgs,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let opts = build_run_options(args, String::new(), false);
+    let opts = build_run_options(args, String::new(), false)?;
+
     match &tool_args.sub {
         ToolCommand::List => cli_list_tools(&opts).await?,
         ToolCommand::Show(show_args) => {
@@ -29,7 +30,8 @@ pub(crate) async fn handle_models_command(
     args: &Args,
     models_args: &ModelsArgs,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let opts = build_run_options(args, String::new(), false);
+    let opts = build_run_options(args, String::new(), false)?;
+
     match &models_args.sub {
         ModelsCommand::List => cli_list_models(&opts, None).await?,
         ModelsCommand::Show(show_args) => {

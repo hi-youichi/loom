@@ -16,7 +16,10 @@ mod subcommands;
 
 pub(crate) use args::Command;
 
+use std::path::Path;
+
 use clap::Parser;
+
 
 use args::{Args, Command as Cmd, GotArgs};
 use bootstrap::{apply_provider_override, init_logging, print_config_report};
@@ -26,12 +29,31 @@ use run_flow::{
 };
 use subcommands::{handle_models_command, handle_session_command, handle_tool_command};
 
+fn validate_working_folder(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    if !path.exists() {
+        return Err(format!("working folder does not exist: {}", path.display()).into());
+    }
+    if !path.is_dir() {
+        return Err(format!("working folder is not a directory: {}", path.display()).into());
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
+
+    if let Some(path) = args.working_folder.as_deref() {
+        if let Err(err) = validate_working_folder(path) {
+            eprintln!("error: {}", err);
+            std::process::exit(1);
+        }
+    }
+
     apply_provider_override(&args);
     print_config_report();
     let _log_guard = init_logging(&args);
+
 
     if let Some(Cmd::Serve(sa)) = &args.cmd {
         if let Err(e) = serve::run_serve(sa.addr.as_deref(), false).await {
@@ -74,8 +96,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cmd = args.cmd.clone().unwrap_or(Cmd::React);
     let got_adaptive = matches!(&cmd, Cmd::Got(GotArgs { got_adaptive: true }));
-    let mut opts = build_run_options(&args, message.clone().unwrap_or_default(), got_adaptive);
+    let mut opts = match build_run_options(&args, message.clone().unwrap_or_default(), got_adaptive) {
+        Ok(opts) => opts,
+        Err(err) => {
+            eprintln!("error: {}", err);
+            std::process::exit(1);
+        }
+    };
     let output = output_config(&args);
+
     let reply_len = max_reply_len();
 
     if args.interactive {
