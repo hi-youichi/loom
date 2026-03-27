@@ -24,7 +24,16 @@ impl FormattedMessage {
         }
     }
 
-    pub fn markdown_v2(rendered_text: impl Into<String>, plain_text_fallback: impl Into<String>) -> Self {
+    pub fn markdown_v2(text: impl Into<String>, plain_text_fallback: impl Into<String>) -> Self {
+        let text = text.into();
+        Self {
+            text: escape_markdown_v2(&text),
+            parse_mode: Some(ParseMode::MarkdownV2),
+            plain_text_fallback: plain_text_fallback.into(),
+        }
+    }
+
+    pub fn markdown_v2_rendered(rendered_text: impl Into<String>, plain_text_fallback: impl Into<String>) -> Self {
         Self {
             text: rendered_text.into(),
             parse_mode: Some(ParseMode::MarkdownV2),
@@ -65,5 +74,5 @@ pub fn escape_html(text: &str) -> String {
 pub fn markdown_notice(title: &str, body: &str) -> FormattedMessage {
     let rendered = format!("*{}*\n\n{}", escape_markdown_v2(title), escape_markdown_v2(body));
     let fallback = format!("{title}\n\n{body}");
-    FormattedMessage::markdown_v2(rendered, fallback)
+    FormattedMessage::markdown_v2_rendered(rendered, fallback)
 }

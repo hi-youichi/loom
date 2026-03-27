@@ -12,6 +12,19 @@ use crate::traits::MessageSender;
 use teloxide::prelude::*;
 use teloxide::types::{MessageId, ParseMode, ReactionType};
 
+fn preview_text(text: &str) -> String {
+    const MAX_PREVIEW_CHARS: usize = 240;
+    let mut preview = String::new();
+    for (index, ch) in text.chars().enumerate() {
+        if index >= MAX_PREVIEW_CHARS {
+            preview.push_str("...");
+            break;
+        }
+        preview.push(ch);
+    }
+    preview.replace('\n', "\\n")
+}
+
 const TELEGRAM_API_RETRIES: u32 = 3;
 
 pub struct TeloxideSender {
@@ -27,6 +40,12 @@ impl TeloxideSender {
 #[async_trait]
 impl MessageSender for TeloxideSender {
     async fn send_text_returning_id(&self, chat_id: i64, text: &str) -> Result<i32, BotError> {
+        tracing::debug!(
+            chat_id,
+            text_len = text.chars().count(),
+            text_preview = %preview_text(text),
+            "sending plain telegram message"
+        );
         let msg = send_message_with_retry(
             &self.bot,
             ChatId(chat_id),
@@ -43,6 +62,13 @@ impl MessageSender for TeloxideSender {
         text: &str,
         parse_mode: ParseMode,
     ) -> Result<(), BotError> {
+        tracing::debug!(
+            chat_id,
+            ?parse_mode,
+            text_len = text.chars().count(),
+            text_preview = %preview_text(text),
+            "sending telegram message with parse mode"
+        );
         self.bot
             .send_message(ChatId(chat_id), text)
             .parse_mode(parse_mode)
@@ -56,6 +82,15 @@ impl MessageSender for TeloxideSender {
         chat_id: i64,
         msg: &FormattedMessage,
     ) -> Result<i32, BotError> {
+        tracing::debug!(
+            chat_id,
+            parse_mode = ?msg.parse_mode,
+            text_len = msg.text.chars().count(),
+            fallback_len = msg.plain_text_fallback.chars().count(),
+            text_preview = %preview_text(&msg.text),
+            fallback_preview = %preview_text(&msg.plain_text_fallback),
+            "sending formatted telegram message"
+        );
         match msg.parse_mode {
             Some(parse_mode) => match send_formatted_message_with_retry(
                 &self.bot,
@@ -77,6 +112,15 @@ impl MessageSender for TeloxideSender {
     }
 
     async fn send_formatted(&self, chat_id: i64, msg: &FormattedMessage) -> Result<(), BotError> {
+        tracing::debug!(
+            chat_id,
+            parse_mode = ?msg.parse_mode,
+            text_len = msg.text.chars().count(),
+            fallback_len = msg.plain_text_fallback.chars().count(),
+            text_preview = %preview_text(&msg.text),
+            fallback_preview = %preview_text(&msg.plain_text_fallback),
+            "sending formatted telegram message without id"
+        );
         match msg.parse_mode {
             Some(parse_mode) => match self
                 .bot
@@ -110,6 +154,16 @@ impl MessageSender for TeloxideSender {
         text: &str,
     ) -> Result<(), BotError> {
         let escaped = escape_markdown_v2(text);
+        tracing::debug!(
+            chat_id,
+            parse_mode = ?ParseMode::MarkdownV2,
+            text_len = text.chars().count(),
+            escaped_len = escaped.chars().count(),
+            text_preview = %preview_text(text),
+            escaped_preview = %preview_text(&escaped),
+            "replying with markdown telegram message"
+        );
+
         match self
             .bot
             .send_message(ChatId(chat_id), escaped)
@@ -135,6 +189,13 @@ impl MessageSender for TeloxideSender {
         message_id: i32,
         text: &str,
     ) -> Result<(), BotError> {
+        tracing::debug!(
+            chat_id,
+            message_id,
+            text_len = text.chars().count(),
+            text_preview = %preview_text(text),
+            "editing plain telegram message"
+        );
         edit_message_with_retry(
             &self.bot,
             ChatId(chat_id),
@@ -151,6 +212,16 @@ impl MessageSender for TeloxideSender {
         message_id: i32,
         msg: &FormattedMessage,
     ) -> Result<(), BotError> {
+        tracing::debug!(
+            chat_id,
+            message_id,
+            parse_mode = ?msg.parse_mode,
+            text_len = msg.text.chars().count(),
+            fallback_len = msg.plain_text_fallback.chars().count(),
+            text_preview = %preview_text(&msg.text),
+            fallback_preview = %preview_text(&msg.plain_text_fallback),
+            "editing formatted telegram message"
+        );
         match msg.parse_mode {
             Some(parse_mode) => match edit_formatted_message_with_retry(
                 &self.bot,
