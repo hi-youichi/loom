@@ -19,6 +19,7 @@ use crate::error::AgentError;
 use crate::llm::ToolChoiceMode;
 use crate::message::{assistant_content_for_chat_api, Message};
 use crate::tool_source::ToolSpec;
+use tracing::debug;
 
 /// Convert internal `Message` list to OpenAI request messages.
 pub(super) fn messages_to_openai(messages: &[Message]) -> Vec<ChatCompletionRequestMessage> {
@@ -95,8 +96,39 @@ pub(super) fn build_chat_request(
     tool_choice: Option<ToolChoiceMode>,
     stream: bool,
 ) -> Result<async_openai::types::chat::CreateChatCompletionRequest, AgentError> {
+    debug!(
+        model,
+        stream,
+        tools_count = tools.map_or(0, |t| t.len()),
+        input_message_count = messages.len(),
+        input_message_summary = ?messages
+            .iter()
+            .enumerate()
+            .map(|(idx, msg)| match msg {
+                Message::System(content) => {
+                    format!("idx={idx} role=system content_len={}", content.len())
+                }
+                Message::User(content) => {
+                    format!("idx={idx} role=user content_len={}", content.len())
+                }
+                Message::Assistant(payload) => format!(
+                    "idx={idx} role=assistant tool_calls={} content_len={} reasoning_len={}",
+                    payload.tool_calls.len(),
+                    payload.content.len(),
+                    payload.reasoning_content.as_ref().map(|s| s.len()).unwrap_or(0)
+                ),
+                Message::Tool { tool_call_id, content } => format!(
+                    "idx={idx} role=tool tool_call_id={} content_len={}",
+                    tool_call_id,
+                    content.len()
+                ),
+            })
+            .collect::<Vec<_>>(),
+        "building OpenAI chat request from internal messages"
+    );
     let openai_messages = messages_to_openai(messages);
     let mut args = CreateChatCompletionRequestArgs::default();
+
     args.model(model);
     args.messages(openai_messages);
     if stream {
