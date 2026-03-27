@@ -69,20 +69,10 @@ async fn run_agent_for_chat(ctx: &MessageContext<'_>, prompt: &str) -> Result<()
         return Ok(());
     };
 
-    let ack_message_id = if ctx.deps.settings.streaming.interaction_mode == InteractionMode::PeriodicSummary
-    {
-        Some(
-            ctx.deps
-                .sender
-                .send_text_returning_id(
-                    chat_id,
-                    &ctx.deps.settings.streaming.ack_placeholder_text,
-                )
-                .await?,
-        )
-    } else {
-        None
-    };
+    ctx.deps
+        .sender
+        .send_reaction(chat_id, message_id, "👌")
+        .await?;
 
     let run_result = ctx
         .deps
@@ -92,7 +82,7 @@ async fn run_agent_for_chat(ctx: &MessageContext<'_>, prompt: &str) -> Result<()
             chat_id,
             AgentRunContext {
                 user_message_id: Some(message_id),
-                ack_message_id,
+                ack_message_id: None,
                 interaction_mode: ctx.deps.settings.streaming.interaction_mode,
             },
         )

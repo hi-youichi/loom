@@ -108,6 +108,16 @@ impl crate::traits::MessageSender for MockSender {
         self.messages.write().unwrap().push((chat_id, text.to_string()));
         Ok(())
     }
+
+    async fn send_reaction(
+        &self,
+        chat_id: i64,
+        _message_id: i32,
+        emoji: &str,
+    ) -> Result<(), BotError> {
+        self.messages.write().unwrap().push((chat_id, emoji.to_string()));
+        Ok(())
+    }
 }
 
 /// Mock Agent Runner

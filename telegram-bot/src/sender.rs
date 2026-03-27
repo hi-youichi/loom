@@ -5,7 +5,7 @@ use crate::error::BotError;
 use crate::streaming::retry::{edit_message_with_retry, send_message_with_retry};
 use crate::traits::MessageSender;
 use teloxide::prelude::*;
-use teloxide::types::{MessageId, ParseMode};
+use teloxide::types::{MessageId, ParseMode, ReactionType};
 
 const TELEGRAM_API_RETRIES: u32 = 3;
 
@@ -73,5 +73,21 @@ impl MessageSender for TeloxideSender {
             TELEGRAM_API_RETRIES,
         )
         .await
+    }
+
+    async fn send_reaction(
+        &self,
+        chat_id: i64,
+        message_id: i32,
+        emoji: &str,
+    ) -> Result<(), BotError> {
+        self.bot
+            .set_message_reaction(ChatId(chat_id), MessageId(message_id))
+            .reaction(vec![ReactionType::Emoji {
+                emoji: emoji.to_string(),
+            }])
+            .await
+            .map_err(BotError::from)?;
+        Ok(())
     }
 }

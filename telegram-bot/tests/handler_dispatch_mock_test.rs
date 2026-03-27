@@ -99,7 +99,7 @@ async fn e2e_tg_002_plain_text_mocked_agent_delivers_via_sender() {
     let messages = sender.get_messages();
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[0].0, 99_002);
-    assert!(messages[0].1.contains("已收到"));
+    assert_eq!(messages[0].1, "👌");
     assert_eq!(messages[1].1, "hello from mock agent");
 
     let calls = agent.get_calls();
@@ -124,13 +124,13 @@ async fn periodic_summary_default_sends_ack_then_final_and_passes_context() {
 
     let messages = sender.get_messages();
     assert_eq!(messages.len(), 2);
-    assert!(messages[0].1.contains("已收到"));
+    assert_eq!(messages[0].1, "👌");
     assert_eq!(messages[1].1, "final answer");
 
     let contexts = agent.get_contexts();
     assert_eq!(contexts.len(), 1);
     assert_eq!(contexts[0].user_message_id, Some(42));
-    assert!(contexts[0].ack_message_id.is_some());
+    assert!(contexts[0].ack_message_id.is_none());
 }
 
 #[tokio::test]
@@ -155,10 +155,9 @@ async fn streaming_mode_router_skips_echo_of_run_return_when_progress_flags_on()
     let msg = fixtures::message_private_text(99_210, 1, "task");
     handle_message_with_deps(&deps, &msg).await.unwrap();
 
-    assert!(
-        sender.get_messages().is_empty(),
-        "streaming path surfaces text via edits; router must not send run() return again"
-    );
+    let messages = sender.get_messages();
+    assert_eq!(messages.len(), 1, "should send reaction in streaming mode");
+    assert_eq!(messages[0].1, "👌");
     assert_eq!(agent.get_calls(), vec!["task".to_string()]);
 }
 
@@ -187,8 +186,9 @@ async fn streaming_mode_router_sends_reply_when_both_phases_hidden() {
     handle_message_with_deps(&deps, &msg).await.unwrap();
 
     let messages = sender.get_messages();
-    assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0].1, "only channel");
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].1, "👌");
+    assert_eq!(messages[1].1, "only channel");
 }
 
 // --- P1 commands / session ---
@@ -421,7 +421,7 @@ async fn e2e_tg_022_group_status_at_bot_suffix_not_builtin_status() {
 
     let messages = sender.get_messages();
     assert_eq!(messages.len(), 2);
-    assert!(messages[0].1.contains("已收到"));
+    assert_eq!(messages[0].1, "👌");
     assert_eq!(messages[1].1, "agent handled");
     // `/status@bot` is not the built-in `/status` branch; mention stripping leaves the agent prompt.
     assert_eq!(agent.get_calls()[0], "/status");
@@ -446,7 +446,7 @@ async fn e2e_tg_010_agent_failure_surfaces_error_message() {
 
     let messages = sender.get_messages();
     assert_eq!(messages.len(), 2);
-    assert!(messages[0].1.contains("已收到"));
+    assert_eq!(messages[0].1, "👌");
     assert!(messages[1].1.starts_with("Error:"));
     assert!(messages[1].1.contains("Mock error"));
 }
@@ -809,7 +809,7 @@ async fn same_chat_second_request_receives_busy_message_while_first_runs() {
 
     let messages = sender.get_messages();
     assert_eq!(messages.len(), 3);
-    assert!(messages[0].1.contains("已收到"));
+    assert_eq!(messages[0].1, "👌");
     assert!(messages[1].1.contains("还在处理中"));
     assert_eq!(messages[2].1, "slow final");
 }

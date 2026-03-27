@@ -53,6 +53,14 @@ pub trait MessageSender: Send + Sync {
         message_id: i32,
         text: &str,
     ) -> Result<(), BotError>;
+
+    /// Send a reaction to a message
+    async fn send_reaction(
+        &self,
+        chat_id: i64,
+        message_id: i32,
+        emoji: &str,
+    ) -> Result<(), BotError>;
 }
 
 /// Agent running interface
