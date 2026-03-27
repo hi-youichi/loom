@@ -150,6 +150,7 @@ pub async fn run_agent_wrapper(
     stream_out: Option<Arc<Mutex<dyn FnMut(Value) + Send>>>,
 ) -> RunAgentResult {
     let (helve, config, resolved_agent) = build_helve_config(opts);
+    print_loaded_tools(&config).await?;
     if !opts.output_json {
         if opts.dry_run {
             eprintln!("dry run: tools will not be executed");
@@ -164,7 +165,6 @@ pub async fn run_agent_wrapper(
         }
         print_model_info(config.model.as_ref()).await;
     }
-    print_loaded_tools(&config).await?;
 
     let display_max_len = opts.display_max_len;
 
