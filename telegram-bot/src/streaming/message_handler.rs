@@ -10,6 +10,7 @@ use tokio::sync::mpsc;
 use tokio::time::{interval, MissedTickBehavior};
 
 use crate::config::{InteractionMode, StreamingConfig};
+use crate::formatting::FormattedMessage;
 use crate::traits::{AgentRunContext, MessageSender};
 use crate::utils::truncate_text;
 
@@ -185,7 +186,9 @@ async fn enter_act_phase_without_count_if_needed(
     if state.phase == "think" && state.think_text.len() > state.last_sent_length {
         let text = truncate_text(&state.think_text, state.settings.max_think_chars);
         if let Some(msg_id) = state.msg_id {
-            let _ = sender.edit_message(chat_id, msg_id, &text).await;
+            let _ = sender
+                .edit_formatted(chat_id, msg_id, &FormattedMessage::markdown_v2(text.clone(), text))
+                .await;
         }
         state.final_text = state.think_text.clone();
     }
@@ -200,7 +203,9 @@ async fn enter_act_phase_without_count_if_needed(
 
     if state.settings.show_act_phase {
         let header = format!("{} Act\n\n", state.settings.act_emoji);
-        match sender.send_text_returning_id(chat_id, &header).await {
+        match sender
+            .send_formatted_returning_id(chat_id, &FormattedMessage::markdown_v2(header.clone(), header.clone()))
+            .await {
             Ok(id) => {
                 state.msg_id = Some(id);
             }
@@ -220,7 +225,9 @@ async fn edit_act_message_if_possible(
     let body = act_body_for_edit(state);
     let final_text = truncate_text(&body, state.settings.max_act_chars);
     if let Some(mid) = msg_id {
-        let _ = sender.edit_message(chat_id, mid, &final_text).await;
+        let _ = sender
+            .edit_formatted(chat_id, mid, &FormattedMessage::markdown_v2(final_text.clone(), final_text))
+            .await;
     }
 }
 
@@ -249,7 +256,9 @@ async fn handle_streaming_command(
             if state.phase == "think" && state.think_text.len() > state.last_sent_length {
                 let text = truncate_text(&state.think_text, state.settings.max_think_chars);
                 if let Some(msg_id) = state.msg_id {
-                    let _ = sender.edit_message(chat_id, msg_id, &text).await;
+                    let _ = sender
+                .edit_formatted(chat_id, msg_id, &FormattedMessage::markdown_v2(text.clone(), text))
+                .await;
                 }
             }
 
@@ -262,7 +271,9 @@ async fn handle_streaming_command(
             if state.settings.show_think_phase {
                 let header = format!("{} Think #{}\n\n", state.settings.think_emoji, count);
                 let header_len = header.len();
-                match sender.send_text_returning_id(chat_id, &header).await {
+                match sender
+            .send_formatted_returning_id(chat_id, &FormattedMessage::markdown_v2(header.clone(), header.clone()))
+            .await {
                     Ok(id) => {
                         state.msg_id = Some(id);
                         state.think_text = header;
@@ -279,7 +290,9 @@ async fn handle_streaming_command(
             if state.phase == "think" && state.think_text.len() > state.last_sent_length {
                 let text = truncate_text(&state.think_text, state.settings.max_think_chars);
                 if let Some(msg_id) = state.msg_id {
-                    let _ = sender.edit_message(chat_id, msg_id, &text).await;
+                    let _ = sender
+                .edit_formatted(chat_id, msg_id, &FormattedMessage::markdown_v2(text.clone(), text))
+                .await;
                 }
                 state.final_text = state.think_text.clone();
             }
@@ -297,7 +310,9 @@ async fn handle_streaming_command(
 
                 if state.settings.show_act_phase {
                     let header = format!("{} Act #{}\n\n", state.settings.act_emoji, count);
-                    match sender.send_text_returning_id(chat_id, &header).await {
+                    match sender
+            .send_formatted_returning_id(chat_id, &FormattedMessage::markdown_v2(header.clone(), header.clone()))
+            .await {
                         Ok(id) => {
                             state.msg_id = Some(id);
                         }
@@ -323,7 +338,9 @@ async fn handle_streaming_command(
 
             let text = truncate_text(&state.think_text, state.settings.max_think_chars);
             if let Some(msg_id) = state.msg_id {
-                let _ = sender.edit_message(chat_id, msg_id, &text).await;
+                let _ = sender
+                .edit_formatted(chat_id, msg_id, &FormattedMessage::markdown_v2(text.clone(), text))
+                .await;
             }
             state.last_update = Instant::now();
             state.last_sent_length = state.think_text.len();
@@ -434,7 +451,9 @@ async fn handle_streaming_command(
                 if state.think_text.len() > state.last_sent_length {
                     let text = truncate_text(&state.think_text, state.settings.max_think_chars);
                     if let Some(msg_id) = state.msg_id {
-                        let _ = sender.edit_message(chat_id, msg_id, &text).await;
+                        let _ = sender
+                .edit_formatted(chat_id, msg_id, &FormattedMessage::markdown_v2(text.clone(), text))
+                .await;
                     }
                 }
             } else if state.phase == "act" && (!state.tools.is_empty() || !state.act_text.trim().is_empty()) {
@@ -589,7 +608,9 @@ pub async fn stream_message_handler_with_context(
                 }
                 _ = summary_interval.tick() => {
                     if let Some(summary) = build_periodic_summary_text(&state) {
-                        if let Err(e) = sender.send_text(chat_id, &summary).await {
+                        if let Err(e) = sender
+                            .send_formatted(chat_id, &FormattedMessage::markdown_v2(summary.clone(), summary))
+                            .await {
                             tracing::warn!("Failed to send periodic summary: {}", e);
                         } else {
                             state.summary_count += 1;

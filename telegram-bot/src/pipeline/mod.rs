@@ -5,6 +5,7 @@
 use crate::command::{CommandContext, CommandDispatcher};
 use crate::config::InteractionMode;
 use crate::download::{is_bot_mentioned, is_reply_to_bot};
+use crate::formatting::FormattedMessage;
 use crate::error::BotError;
 use crate::handler_deps::HandlerDeps;
 use crate::traits::AgentRunContext;
@@ -64,7 +65,13 @@ async fn run_agent_for_chat(ctx: &MessageContext<'_>, prompt: &str) -> Result<()
     let Some(chat_run_guard) = ctx.deps.run_registry.try_acquire(chat_id).await else {
         ctx.deps
             .sender
-            .send_text(chat_id, &ctx.deps.settings.streaming.busy_text)
+            .send_formatted(
+                chat_id,
+                &FormattedMessage::markdown_v2(
+                    ctx.deps.settings.streaming.busy_text.clone(),
+                    ctx.deps.settings.streaming.busy_text.clone(),
+                ),
+            )
             .await?;
         return Ok(());
     };
@@ -97,7 +104,11 @@ async fn run_agent_for_chat(ctx: &MessageContext<'_>, prompt: &str) -> Result<()
                     && (ctx.deps.settings.streaming.show_act_phase
                         || ctx.deps.settings.streaming.show_think_phase);
                 if !skip_final_send {
-                    outbound = ctx.deps.sender.send_text(chat_id, &reply).await;
+                    outbound = ctx
+                        .deps
+                        .sender
+                        .send_formatted(chat_id, &FormattedMessage::markdown_v2(reply.clone(), reply))
+                        .await;
                 }
             }
         }
@@ -106,7 +117,13 @@ async fn run_agent_for_chat(ctx: &MessageContext<'_>, prompt: &str) -> Result<()
             let _ = ctx
                 .deps
                 .sender
-                .send_text(chat_id, &format!("Error: {}", e))
+                .send_formatted(
+                    chat_id,
+                    &FormattedMessage::markdown_v2(
+                        format!("Error: {}", e),
+                        format!("Error: {}", e),
+                    ),
+                )
                 .await;
         }
     }
