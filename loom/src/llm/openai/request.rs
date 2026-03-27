@@ -145,10 +145,10 @@ pub(super) fn build_chat_request(
         .build()
         .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI request build failed: {}", e)))?;
 
-    tracing::trace!(
-        request = %serde_json::to_string(&req).unwrap_or_else(|e| format!("<serde error: {e}>")),
-        "build_chat_request: full request JSON"
-    );
+    // tracing::trace!(
+    //     request = %serde_json::to_string(&req).unwrap_or_else(|e| format!("<serde error: {e}>")),
+    //     "build_chat_request: full request JSON"
+    // );
 
     tracing::debug!(
         model = req.model.as_str(),
