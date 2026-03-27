@@ -86,6 +86,8 @@ struct ChatMessageRequest {
     tool_calls: Option<Vec<BigModelToolCall>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_call_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_content: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -315,12 +317,14 @@ impl ChatOpenAICompat {
                     content: Some(s.clone()),
                     tool_calls: None,
                     tool_call_id: None,
+                    reasoning_content: None,
                 },
                 Message::User(s) => ChatMessageRequest {
                     role: "user".to_string(),
                     content: Some(s.clone()),
                     tool_calls: None,
                     tool_call_id: None,
+                    reasoning_content: None,
                 },
                 Message::Assistant(payload) => {
                     let tool_calls = if payload.tool_calls.is_empty() {
@@ -359,6 +363,7 @@ impl ChatOpenAICompat {
                         content,
                         tool_calls,
                         tool_call_id: None,
+                        reasoning_content: payload.reasoning_content.clone(),
                     }
                 }
                 Message::Tool {
@@ -369,6 +374,7 @@ impl ChatOpenAICompat {
                     content: Some(content.clone()),
                     tool_calls: None,
                     tool_call_id: Some(tool_call_id.clone()),
+                    reasoning_content: None,
                 },
             })
             .collect()

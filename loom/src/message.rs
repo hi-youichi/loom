@@ -24,6 +24,8 @@ pub struct AssistantPayload {
     pub content: String,
     #[serde(default)]
     pub tool_calls: Vec<AssistantToolCall>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_content: Option<String>,
 }
 
 mod assistant_payload_serde {
@@ -38,25 +40,31 @@ mod assistant_payload_serde {
             content: String,
             #[serde(default)]
             tool_calls: Vec<AssistantToolCall>,
+            #[serde(default)]
+            reasoning_content: Option<String>,
         },
     }
 
     #[derive(Serialize)]
     struct AssistantStruct<'a> {
         content: &'a str,
-        tool_calls: &'a [AssistantToolCall],
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        tool_calls: &'a Vec<AssistantToolCall>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reasoning_content: &'a Option<String>,
     }
 
     pub fn serialize<S>(payload: &AssistantPayload, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        if payload.tool_calls.is_empty() {
+        if payload.tool_calls.is_empty() && payload.reasoning_content.is_none() {
             payload.content.serialize(serializer)
         } else {
             AssistantStruct {
                 content: payload.content.as_str(),
-                tool_calls: payload.tool_calls.as_slice(),
+                tool_calls: &payload.tool_calls,
+                reasoning_content: &payload.reasoning_content,
             }
             .serialize(serializer)
         }
@@ -70,10 +78,17 @@ mod assistant_payload_serde {
             AssistantSerde::Legacy(content) => Ok(AssistantPayload {
                 content,
                 tool_calls: vec![],
+                reasoning_content: None,
             }),
-            AssistantSerde::Structured { content, tool_calls } => {
-                Ok(AssistantPayload { content, tool_calls })
-            }
+            AssistantSerde::Structured {
+                content,
+                tool_calls,
+                reasoning_content,
+            } => Ok(AssistantPayload {
+                content,
+                tool_calls,
+                reasoning_content,
+            }),
         }
     }
 }
@@ -111,6 +126,7 @@ impl Message {
         Self::Assistant(AssistantPayload {
             content: content.into(),
             tool_calls: vec![],
+            reasoning_content: None,
         })
     }
 
@@ -119,6 +135,29 @@ impl Message {
         Self::Assistant(AssistantPayload {
             content,
             tool_calls,
+            reasoning_content: None,
+        })
+    }
+
+    /// Creates an assistant message with text and optional reasoning (no tool calls).
+    pub fn assistant_with_reasoning(content: impl Into<String>, reasoning: Option<String>) -> Self {
+        Self::Assistant(AssistantPayload {
+            content: content.into(),
+            tool_calls: vec![],
+            reasoning_content: reasoning,
+        })
+    }
+
+    /// Creates an assistant message that includes tool calls, text, and optional reasoning.
+    pub fn assistant_with_tool_calls_and_reasoning(
+        content: String,
+        tool_calls: Vec<AssistantToolCall>,
+        reasoning: Option<String>,
+    ) -> Self {
+        Self::Assistant(AssistantPayload {
+            content,
+            tool_calls,
+            reasoning_content: reasoning,
         })
     }
 
@@ -373,5 +412,116 @@ mod tests {
             "\u{2060}"
         );
         assert_eq!(super::assistant_content_for_chat_api("hi").as_ref(), "hi");
+    }
+
+    #[test]
+    fn assistant_payload_with_reasoning() {
+        let payload = super::AssistantPayload {
+            content: "test content".to_string(),
+            tool_calls: vec![],
+            reasoning_content: Some("reasoning steps".to_string()),
+        };
+        
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("reasoning_content"));
+        assert!(json.contains("reasoning steps"));
+        
+        let decoded: super::AssistantPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.content, "test content");
+        assert_eq!(decoded.reasoning_content, Some("reasoning steps".to_string()));
+        assert_eq!(decoded.tool_calls, vec![]);
+    }
+
+    #[test]
+    fn assistant_payload_without_reasoning() {
+        let payload = super::AssistantPayload {
+            content: "test content".to_string(),
+            tool_calls: vec![],
+            reasoning_content: None,
+        };
+        
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(!json.contains("reasoning_content"));
+        
+        let decoded: super::AssistantPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.content, "test content");
+        assert_eq!(decoded.reasoning_content, None);
+    }
+
+    #[test]
+    fn backward_compatibility_legacy_format() {
+        let json = r#"{"Assistant":"hello"}"#;
+        let msg: super::Message = serde_json::from_str(json).unwrap();
+        
+        match msg {
+            super::Message::Assistant(payload) => {
+                assert_eq!(payload.content, "hello");
+                assert_eq!(payload.tool_calls, vec![]);
+                assert_eq!(payload.reasoning_content, None);
+            },
+            _ => panic!("Expected Assistant message"),
+        }
+    }
+
+    #[test]
+    fn backward_compatibility_structured_without_reasoning() {
+        let json = r#"{"content":"hello","tool_calls":[]}"#;
+        let payload: super::AssistantPayload = serde_json::from_str(json).unwrap();
+        
+        assert_eq!(payload.content, "hello");
+        assert_eq!(payload.tool_calls, vec![]);
+        assert_eq!(payload.reasoning_content, None);
+    }
+
+    #[test]
+    fn message_assistant_with_reasoning() {
+        let msg = super::Message::assistant_with_reasoning("response", Some("thinking".to_string()));
+        
+        match msg {
+            super::Message::Assistant(payload) => {
+                assert_eq!(payload.content, "response");
+                assert_eq!(payload.reasoning_content, Some("thinking".to_string()));
+                assert_eq!(payload.tool_calls, vec![]);
+            },
+            _ => panic!("Expected Assistant message"),
+        }
+    }
+
+    #[test]
+    fn message_assistant_with_tool_calls_and_reasoning() {
+        use super::AssistantToolCall;
+        
+        let tool_calls = vec![
+            AssistantToolCall {
+                id: "call_123".to_string(),
+                name: "test_tool".to_string(),
+                arguments: "{}".to_string(),
+            },
+        ];
+        
+        let msg = super::Message::assistant_with_tool_calls_and_reasoning(
+            "response".to_string(),
+            tool_calls.clone(),
+            Some("reasoning".to_string()),
+        );
+        
+        match msg {
+            super::Message::Assistant(payload) => {
+                assert_eq!(payload.content, "response");
+                assert_eq!(payload.tool_calls, tool_calls);
+                assert_eq!(payload.reasoning_content, Some("reasoning".to_string()));
+            },
+            _ => panic!("Expected Assistant message"),
+        }
+    }
+
+    #[test]
+    fn message_serialize_deserialize_with_reasoning() {
+        let msg = super::Message::assistant_with_reasoning("test", Some("reasoning".to_string()));
+        
+        let json = serde_json::to_string(&msg).unwrap();
+        let decoded: super::Message = serde_json::from_str(&json).unwrap();
+        
+        assert_eq!(msg, decoded);
     }
 }

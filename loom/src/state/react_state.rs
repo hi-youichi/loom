@@ -279,9 +279,13 @@ impl ReActState {
             })
             .collect();
         let think_message = if assistant_tool_calls.is_empty() {
-            Message::assistant(content)
+            Message::assistant_with_reasoning(content, reasoning_content.clone())
         } else {
-            Message::assistant_with_tool_calls(content, assistant_tool_calls)
+            Message::assistant_with_tool_calls_and_reasoning(
+                content,
+                assistant_tool_calls,
+                reasoning_content.clone(),
+            )
         };
         self.messages.push(think_message);
         self.last_reasoning_content = reasoning_content;
