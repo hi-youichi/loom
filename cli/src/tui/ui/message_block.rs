@@ -2,8 +2,8 @@
 
 use ratatui::{
     layout::Rect,
-    style::{Color, Modifier, Style},
-    text::{Line, Text},
+    style::{Color, Style},
+    text::Text,
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
@@ -11,12 +11,14 @@ use ratatui::{
 use crate::tui::models::Message;
 
 /// Widget for rendering a single message block
+#[allow(dead_code)]
 pub struct MessageBlock<'a> {
     message: &'a Message,
     is_collapsed: bool,
     is_selected: bool,
 }
 
+#[allow(dead_code)]
 impl<'a> MessageBlock<'a> {
     pub fn new(message: &'a Message) -> Self {
         Self {

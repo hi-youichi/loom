@@ -204,6 +204,7 @@ struct StreamDelta {
 }
 
 #[derive(serde::Deserialize)]
+#[allow(dead_code)]
 struct StreamChoice {
     delta: StreamDelta,
     /// OpenAI-compatible; optional so we don't fail if the API omits it.
@@ -777,14 +778,14 @@ impl LlmClient for ChatBigModel {
                 trace!(data = %data, "BigModel stream data");
 
                 for choice in choices {
-                    let content_len = choice.delta.content.as_ref().map(|s| s.len()).unwrap_or(0);
-                    let reasoning_len = choice
+                    let _content_len = choice.delta.content.as_ref().map(|s| s.len()).unwrap_or(0);
+                    let _reasoning_len = choice
                         .delta
                         .reasoning_content
                         .as_ref()
                         .map(|s| s.len())
                         .unwrap_or(0);
-                    let tool_call_count = choice
+                    let _tool_call_count = choice
                         .delta
                         .tool_calls
                         .as_ref()

@@ -1,9 +1,9 @@
 //! Session 面板组件 - 显示会话历史和消息列表
 
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect, Alignment},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Line, Span, Text},
+    text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph},
     Frame,
 };
@@ -11,6 +11,7 @@ use ratatui::{
 use crate::tui::{InputMode, models::{Message, MessageRole, MessageContent, ToolCallStatus}};
 
 /// Session 面板组件
+#[allow(dead_code)]
 pub struct SessionPanel {
     /// 当前选中的 Session ID
     selected_session: Option<String>,
@@ -35,7 +36,7 @@ impl SessionPanel {
         frame: &mut Frame,
         area: Rect,
         messages: &[Message],
-        input_mode: &InputMode,
+        _input_mode: &InputMode,
     ) {
         // 创建布局：标题 + 消息列表
         let chunks = Layout::default()
@@ -102,7 +103,7 @@ impl SessionPanel {
     }
 
     /// 将消息转换为 ListItem
-    fn message_to_list_items(&self, message: &Message) -> Vec<ListItem> {
+    fn message_to_list_items(&self, message: &Message) -> Vec<ListItem<'_>> {
         let mut items = Vec::new();
 
         // 消息头部
@@ -211,11 +212,13 @@ impl SessionPanel {
     }
 
     /// 向下滚动
-    pub fn scroll_down(&mut self, messages: &[Message]) {
+    #[allow(dead_code)]
+    pub fn scroll_down(&mut self, _messages: &[Message]) {
         // TODO: 实现虚拟滚动
     }
 
     /// 向上滚动
+    #[allow(dead_code)]
     pub fn scroll_up(&mut self) {
         if self.scroll_offset > 0 {
             self.scroll_offset -= 1;
@@ -223,17 +226,20 @@ impl SessionPanel {
     }
 
     /// 切换详细信息显示
+    #[allow(dead_code)]
     pub fn toggle_details(&mut self) {
         self.show_details = !self.show_details;
     }
 
     /// 选择 Session
+    #[allow(dead_code)]
     pub fn select_session(&mut self, session_id: String) {
         self.selected_session = Some(session_id);
         self.scroll_offset = 0;
     }
 
     /// 清除选择
+    #[allow(dead_code)]
     pub fn clear_selection(&mut self) {
         self.selected_session = None;
         self.scroll_offset = 0;

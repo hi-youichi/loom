@@ -38,6 +38,7 @@ impl LayoutCalculator {
     /// 计算 Agent 网格布局（根据 Agent 数量动态计算）
     /// 
     /// 返回每个 Agent 卡片的区域
+    #[allow(dead_code)]
     pub fn calculate_agent_grid(area: Rect, agent_count: usize) -> Vec<Rect> {
         if agent_count == 0 {
             return vec![];

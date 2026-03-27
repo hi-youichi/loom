@@ -33,6 +33,7 @@ impl Default for TextWithSpanIds {
 
 impl TextWithSpanIds {
     /// Builds a formatter with level and target enabled (same as default fmt layer).
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::default()
     }
