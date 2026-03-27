@@ -5,7 +5,9 @@
 use async_trait::async_trait;
 
 use crate::error::BotError;
+use crate::formatting::telegram::markdown_notice;
 use crate::handler_deps::HandlerDeps;
+
 
 /// Context available when executing a command.
 pub struct CommandContext<'a> {
@@ -67,20 +69,18 @@ impl BotCommand for ResetCommand {
         let thread_id = format!("telegram_{}", ctx.chat_id);
         match ctx.deps.session.reset(&thread_id).await {
             Ok(count) => {
-                ctx.deps
-                    .sender
-                    .send_text(
-                        ctx.chat_id,
-                        &format!("🔄 Session reset! Deleted {} checkpoints.", count),
-                    )
-                    .await?;
+                let msg = markdown_notice(
+                    "Session Reset",
+                    &format!("🔄 Deleted {} checkpoints.", count),
+                );
+                ctx.deps.sender.send_formatted(ctx.chat_id, &msg).await?;
+
             }
             Err(e) => {
                 tracing::error!("Failed to reset session: {}", e);
-                ctx.deps
-                    .sender
-                    .send_text(ctx.chat_id, &format!("❌ Reset failed: {}", e))
-                    .await?;
+                let msg = markdown_notice("Reset Failed", &format!("❌ {}", e));
+                ctx.deps.sender.send_formatted(ctx.chat_id, &msg).await?;
+
             }
         }
         Ok(())
@@ -96,10 +96,9 @@ impl BotCommand for StatusCommand {
     }
 
     async fn execute(&self, ctx: &CommandContext<'_>) -> Result<(), BotError> {
-        ctx.deps
-            .sender
-            .send_text(ctx.chat_id, "✅ Bot is running!")
-            .await?;
+        let msg = markdown_notice("Bot Status", "✅ Bot is running!");
+        ctx.deps.sender.send_formatted(ctx.chat_id, &msg).await?;
+
         Ok(())
     }
 }

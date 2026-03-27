@@ -12,8 +12,10 @@ use teloxide::types::{Document, PhotoSize, Video};
 
 use crate::download::{FileMetadata, FileType};
 use crate::error::BotError;
+use crate::formatting::FormattedMessage;
 use crate::traits::FileDownloader;
 use crate::traits::{AgentRunContext, MessageSender};
+
 
 /// Mock Message Sender
 pub struct MockSender {
@@ -89,6 +91,18 @@ impl crate::traits::MessageSender for MockSender {
         Ok(())
     }
 
+    async fn send_formatted(
+        &self,
+        chat_id: i64,
+        msg: &FormattedMessage,
+    ) -> Result<(), BotError> {
+        self.messages
+            .write()
+            .unwrap()
+            .push((chat_id, msg.plain_text_fallback.clone()));
+        Ok(())
+    }
+
     async fn reply_to(
         &self,
         chat_id: i64,
@@ -98,6 +112,7 @@ impl crate::traits::MessageSender for MockSender {
         self.messages.write().unwrap().push((chat_id, text.to_string()));
         Ok(())
     }
+
 
     async fn edit_message(
         &self,

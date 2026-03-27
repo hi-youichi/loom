@@ -35,7 +35,9 @@ mod command;
 mod config;
 mod download;
 mod error;
+pub mod formatting;
 mod handler;
+
 mod handler_deps;
 mod health;
 mod metrics;

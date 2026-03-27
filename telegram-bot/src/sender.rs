@@ -2,8 +2,10 @@
 
 use async_trait::async_trait;
 use crate::error::BotError;
+use crate::formatting::FormattedMessage;
 use crate::streaming::retry::{edit_message_with_retry, send_message_with_retry};
 use crate::traits::MessageSender;
+
 use teloxide::prelude::*;
 use teloxide::types::{MessageId, ParseMode, ReactionType};
 
@@ -46,12 +48,40 @@ impl MessageSender for TeloxideSender {
         Ok(())
     }
 
+    async fn send_formatted(&self, chat_id: i64, msg: &FormattedMessage) -> Result<(), BotError> {
+        match msg.parse_mode {
+            Some(parse_mode) => match self
+                .bot
+                .send_message(ChatId(chat_id), &msg.text)
+                .parse_mode(parse_mode)
+                .await
+            {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    tracing::warn!(error = %e, "formatted telegram message failed, falling back to plain text");
+                    self.bot
+                        .send_message(ChatId(chat_id), &msg.plain_text_fallback)
+                        .await
+                        .map_err(BotError::from)?;
+                    Ok(())
+                }
+            },
+            None => self
+                .bot
+                .send_message(ChatId(chat_id), &msg.text)
+                .await
+                .map(|_| ())
+                .map_err(BotError::from),
+        }
+    }
+
     async fn reply_to(
         &self,
         chat_id: i64,
         _reply_to_message_id: i32,
         text: &str,
     ) -> Result<(), BotError> {
+
         self.bot
             .send_message(ChatId(chat_id), text)
             .await

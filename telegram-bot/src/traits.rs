@@ -10,6 +10,8 @@ use std::path::PathBuf;
 use crate::config::InteractionMode;
 use crate::download::FileMetadata;
 use crate::error::BotError;
+use crate::formatting::FormattedMessage;
+
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct AgentRunContext {
@@ -38,7 +40,15 @@ pub trait MessageSender: Send + Sync {
         parse_mode: ParseMode,
     ) -> Result<(), BotError>;
 
+    /// Send a pre-formatted message with fallback behavior handled by the sender.
+    async fn send_formatted(
+        &self,
+        chat_id: i64,
+        msg: &FormattedMessage,
+    ) -> Result<(), BotError>;
+
     /// Reply to a specific message
+
     async fn reply_to(
         &self,
         chat_id: i64,
