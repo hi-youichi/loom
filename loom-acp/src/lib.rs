@@ -193,6 +193,7 @@ pub mod logging;
 pub mod protocol;
 pub mod session;
 pub mod stream_bridge;
+pub mod terminal;
 pub mod tools;
 
 pub use agent::LoomAcpAgent;

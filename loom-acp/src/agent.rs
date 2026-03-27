@@ -11,7 +11,8 @@ use agent_client_protocol::{
     InitializeRequest, InitializeResponse, ListSessionsRequest, ListSessionsResponse,
     LoadSessionRequest, LoadSessionResponse, NewSessionRequest, NewSessionResponse, PromptRequest,
     PromptResponse, SessionId, SessionNotification, SetSessionConfigOptionRequest,
-    SetSessionConfigOptionResponse, StopReason,
+    SetSessionConfigOptionResponse, StopReason, ToolCall, ToolCallId, ToolCallStatus,
+    ToolCallUpdate, ToolCallUpdateFields,
 };
 use loom::memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
 use loom::message::Message;
@@ -142,6 +143,7 @@ impl Agent for LoomAcpAgent {
         &self,
         _args: AuthenticateRequest,
     ) -> agent_client_protocol::Result<AuthenticateResponse> {
+        tracing::debug!("authenticate called");
         Ok(AuthenticateResponse::default())
     }
 
@@ -149,12 +151,14 @@ impl Agent for LoomAcpAgent {
         &self,
         args: NewSessionRequest,
     ) -> agent_client_protocol::Result<NewSessionResponse> {
+        tracing::debug!(cwd = ?args.cwd, "new_session called");
         // Initialize logging with working_folder from ACP session
         crate::logging::init_with_working_folder(&args.cwd);
 
         let working_directory = Some(args.cwd.clone());
         let our_id = self.sessions.create(working_directory);
         let session_id = SessionId::new(our_id.as_str().to_string());
+        tracing::debug!(session_id = %session_id, "session created");
         let current_model = std::env::var("MODEL")
             .unwrap_or_else(|_| std::env::var("OPENAI_MODEL").unwrap_or_default());
         // Fetch available models from providers
@@ -165,6 +169,7 @@ impl Agent for LoomAcpAgent {
     }
 
     async fn cancel(&self, args: CancelNotification) -> agent_client_protocol::Result<()> {
+        tracing::debug!(session_id = %args.session_id, "cancel called");
         let key = OurSessionId::new(args.session_id.to_string());
         self.sessions.cancel_current_generation(&key);
         Ok(())
@@ -174,6 +179,7 @@ impl Agent for LoomAcpAgent {
         &self,
         args: SetSessionConfigOptionRequest,
     ) -> agent_client_protocol::Result<SetSessionConfigOptionResponse> {
+        tracing::debug!(session_id = %args.session_id, config_id = ?args.config_id, value = ?args.value, "set_session_config_option called");
         let key = OurSessionId::new(args.session_id.to_string());
         if self.sessions.get(&key).is_none() {
             return Err(agent_client_protocol::Error::new(-32602, "unknown session"));
@@ -196,6 +202,7 @@ impl Agent for LoomAcpAgent {
     }
 
     async fn prompt(&self, args: PromptRequest) -> agent_client_protocol::Result<PromptResponse> {
+        tracing::debug!(session_id = %args.session_id, prompt_blocks = args.prompt.len(), "prompt called");
         let key = OurSessionId::new(args.session_id.to_string());
         let entry = self
             .sessions
@@ -321,6 +328,7 @@ impl Agent for LoomAcpAgent {
         &self,
         args: LoadSessionRequest,
     ) -> agent_client_protocol::Result<LoadSessionResponse> {
+        tracing::debug!(session_id = %args.session_id, cwd = ?args.cwd, "load_session called");
         let session_id = args.session_id.clone();
         let our_session_id = OurSessionId::new(session_id.to_string());
         let working_directory = Some(args.cwd.clone()); // Convert to Option<PathBuf>
@@ -372,33 +380,85 @@ impl Agent for LoomAcpAgent {
 
                 // Send history via session/update notifications
                 if let Some(ref tx) = self.session_update_tx {
+                    use std::collections::HashMap;
+                    let mut tool_calls_map: HashMap<String, (String, Option<serde_json::Value>)> =
+                        HashMap::new();
+
                     for message in &state.messages {
-                        let update = match message {
-                            Message::User(content) => SessionNotification::new(
+                        let updates: Vec<SessionNotification> = match message {
+                            Message::User(content) => vec![SessionNotification::new(
                                 session_id.clone(),
                                 agent_client_protocol::SessionUpdate::UserMessageChunk(
                                     ContentChunk::new(content.clone().into()),
                                 ),
-                            ),
-                            Message::Assistant(payload) => SessionNotification::new(
-                                session_id.clone(),
-                                agent_client_protocol::SessionUpdate::AgentMessageChunk(
-                                    ContentChunk::new(payload.content.clone().into()),
-                                ),
-                            ),
-                            // TODO: map to dedicated ToolResultChunk when ACP protocol supports tool role.
-                            Message::Tool { content, .. } => SessionNotification::new(
-                                session_id.clone(),
-                                agent_client_protocol::SessionUpdate::UserMessageChunk(
-                                    ContentChunk::new(content.clone().into()),
-                                ),
-                            ),
+                            )],
+                            Message::Assistant(payload) => {
+                                // Cache tool calls for later Tool messages
+                                for tc in &payload.tool_calls {
+                                    tool_calls_map.insert(
+                                        tc.id.clone(),
+                                        (
+                                            tc.name.clone(),
+                                            serde_json::from_str(&tc.arguments).ok(),
+                                        ),
+                                    );
+                                }
+
+                                // Send assistant message
+                                let mut notifications = vec![SessionNotification::new(
+                                    session_id.clone(),
+                                    agent_client_protocol::SessionUpdate::AgentMessageChunk(
+                                        ContentChunk::new(payload.content.clone().into()),
+                                    ),
+                                )];
+
+                                // Send pending tool calls
+                                for tc in &payload.tool_calls {
+                                    let tool_call_id = ToolCallId::new(tc.id.clone());
+                                    let mut tool_call =
+                                        ToolCall::new(tool_call_id.clone(), tc.name.clone())
+                                            .status(ToolCallStatus::Pending);
+                                    if let Ok(args) =
+                                        serde_json::from_str::<serde_json::Value>(&tc.arguments)
+                                    {
+                                        tool_call = tool_call.raw_input(args);
+                                    }
+                                    notifications.push(SessionNotification::new(
+                                        session_id.clone(),
+                                        agent_client_protocol::SessionUpdate::ToolCall(tool_call),
+                                    ));
+                                }
+
+                                notifications
+                            }
+                            Message::Tool {
+                                tool_call_id,
+                                content,
+                            } => {
+                                // Send ToolCallUpdate with success status
+                                let id = ToolCallId::new(tool_call_id.clone());
+                                let fields = ToolCallUpdateFields::new()
+                                    .status(ToolCallStatus::Completed)
+                                    .content(vec![content.clone().into()]);
+                                let tool_call_update =
+                                    ToolCallUpdate::new(id, fields);
+
+                                vec![SessionNotification::new(
+                                    session_id.clone(),
+                                    agent_client_protocol::SessionUpdate::ToolCallUpdate(
+                                        tool_call_update,
+                                    ),
+                                )]
+                            }
                             Message::System(_) => {
                                 // System messages are typically not sent to client
                                 continue;
                             }
                         };
-                        let _ = tx.try_send(update);
+
+                        for update in updates {
+                            let _ = tx.try_send(update);
+                        }
                     }
                 }
 
@@ -458,6 +518,7 @@ impl Agent for LoomAcpAgent {
         &self,
         args: ListSessionsRequest,
     ) -> agent_client_protocol::Result<ListSessionsResponse> {
+        tracing::debug!(cwd = ?args.cwd, cursor = ?args.cursor, "list_sessions called");
         // Convert PathBuf cwd to Option<&str> for our internal function
         let cwd_filter = args.cwd.as_ref().and_then(|p| p.to_str());
 

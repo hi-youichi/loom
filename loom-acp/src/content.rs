@@ -21,6 +21,7 @@
 //! - Result is a single user message string assigned to `RunOptions::message`.
 //! - **Empty list**: may return `Ok(String::new())` or [`ContentError::EmptyMessage`] (invalid params) depending on policy.
 
+use serde::{Deserialize, Serialize};
 
 /// Parse a slice of content blocks into a single user message string.
 ///
@@ -122,4 +123,102 @@ pub enum ContentError {
     /// Content block list is empty and policy requires a non-empty message.
     #[error("empty message")]
     EmptyMessage,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContentBlock {
+    Text { text: String },
+    Image { 
+        url: String, 
+        #[serde(skip_serializing_if = "Option::is_none")] 
+        mime_type: Option<String> 
+    },
+    Resource {
+        uri: String,
+        #[serde(skip_serializing_if = "Option::is_none")] 
+        mime_type: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")] 
+        text: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")] 
+        blob: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ToolCallContent {
+    Content { content: ContentBlock },
+    Diff {
+        path: String,
+        #[serde(skip_serializing_if = "Option::is_none")] 
+        old_text: Option<String>,
+        new_text: String,
+    },
+    Terminal { terminal_id: String },
+}
+
+impl ToolCallContent {
+    pub fn from_text(text: String) -> Self {
+        ToolCallContent::Content {
+            content: ContentBlock::Text { text },
+        }
+    }
+    
+    pub fn from_diff(path: String, old_text: Option<String>, new_text: String) -> Self {
+        ToolCallContent::Diff { path, old_text, new_text }
+    }
+    
+    pub fn from_terminal(terminal_id: String) -> Self {
+        ToolCallContent::Terminal { terminal_id }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCallLocation {
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line: Option<u32>,
+}
+
+pub fn extract_locations(tool_name: &str, args: &serde_json::Value) -> Vec<ToolCallLocation> {
+    match tool_name {
+        "read" | "write_file" | "edit" | "delete_file" | "move_file" | "glob" | "grep" => {
+            let mut locations = Vec::new();
+            
+            if let Some(path) = args.get("path").and_then(|p| p.as_str()) {
+                locations.push(ToolCallLocation {
+                    path: path.to_string(),
+                    line: args.get("line").and_then(|l| l.as_u64()).map(|l| l as u32),
+                });
+            }
+            
+            if tool_name == "move_file" {
+                if let Some(source) = args.get("source").and_then(|s| s.as_str()) {
+                    locations.push(ToolCallLocation {
+                        path: source.to_string(),
+                        line: None,
+                    });
+                }
+                if let Some(target) = args.get("target").and_then(|t| t.as_str()) {
+                    locations.push(ToolCallLocation {
+                        path: target.to_string(),
+                        line: None,
+                    });
+                }
+            }
+            
+            if tool_name == "grep" {
+                if let Some(path) = args.get("path").and_then(|p| p.as_str()) {
+                    locations.push(ToolCallLocation {
+                        path: path.to_string(),
+                        line: None,
+                    });
+                }
+            }
+            
+            locations
+        }
+        _ => Vec::new(),
+    }
 }
