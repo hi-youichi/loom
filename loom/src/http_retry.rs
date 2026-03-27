@@ -25,6 +25,37 @@ pub(crate) fn looks_like_transient_http_error_message(message: &str) -> bool {
         || message.contains("broken pipe")
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RetryDecision {
+    Retryable,
+    NonRetryable,
+}
+
+pub(crate) fn classify_openai_http_status(status: u16) -> RetryDecision {
+    match status {
+        429 | 500 | 502 | 503 | 504 => RetryDecision::Retryable,
+        _ => RetryDecision::NonRetryable,
+    }
+}
+
+pub(crate) fn classify_openai_error_message(message: &str) -> RetryDecision {
+    if looks_like_transient_http_error_message(message) {
+        return RetryDecision::Retryable;
+    }
+
+    let message = message.to_ascii_lowercase();
+    if message.contains("status code 429")
+        || message.contains("status code 500")
+        || message.contains("status code 502")
+        || message.contains("status code 503")
+        || message.contains("status code 504")
+    {
+        return RetryDecision::Retryable;
+    }
+
+    RetryDecision::NonRetryable
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -48,5 +79,40 @@ mod tests {
         assert!(!looks_like_transient_http_error_message(
             "dns lookup failed"
         ));
+    }
+
+    #[test]
+    fn classifies_retryable_openai_statuses() {
+        assert_eq!(classify_openai_http_status(429), RetryDecision::Retryable);
+        assert_eq!(classify_openai_http_status(500), RetryDecision::Retryable);
+        assert_eq!(classify_openai_http_status(503), RetryDecision::Retryable);
+    }
+
+    #[test]
+    fn classifies_non_retryable_openai_statuses() {
+        assert_eq!(classify_openai_http_status(400), RetryDecision::NonRetryable);
+        assert_eq!(classify_openai_http_status(401), RetryDecision::NonRetryable);
+    }
+
+    #[test]
+    fn classifies_retryable_openai_error_messages() {
+        assert_eq!(
+            classify_openai_error_message("HTTP status code 429 Too Many Requests"),
+            RetryDecision::Retryable
+        );
+        assert_eq!(
+            classify_openai_error_message("HTTP status code 503 Service Unavailable"),
+            RetryDecision::Retryable
+        );
+    }
+
+    #[test]
+    fn classifies_non_retryable_openai_error_messages() {
+        assert_eq!(
+            classify_openai_error_message(
+                "HTTP status client error (400 Bad Request): messages with role 'tool' must be a response to a preceding message with 'tool_calls'"
+            ),
+            RetryDecision::NonRetryable
+        );
     }
 }
