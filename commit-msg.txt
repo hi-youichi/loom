@@ -1,1 +1,1 @@
-fix(telegram-bot): add newline after Think/Act header
+Add Telegram runtime diagnostics and build fixes

@@ -45,6 +45,16 @@ impl BotManager {
             Err(_) => String::new(),
         };
         let bot_username = Arc::new(bot_username);
+        info!(
+            bot = %name,
+            bot_username = %bot_username,
+            only_respond_when_mentioned = settings.only_respond_when_mentioned,
+            interaction_mode = ?settings.streaming.interaction_mode,
+            show_think_phase = settings.streaming.show_think_phase,
+            show_act_phase = settings.streaming.show_act_phase,
+            "Resolved bot runtime configuration"
+        );
+
         let run_registry = Arc::new(ChatRunRegistry::new());
 
         let handle = tokio::spawn(
@@ -99,13 +109,34 @@ pub async fn run_with_config(config: TelegramBotConfig) -> Result<(), Box<dyn st
     }
 
     let settings = Arc::new(config.settings.clone());
+    let enabled_bot_count = config.bots.values().filter(|bot| bot.enabled).count();
+    info!(
+        configured_bot_count = config.bots.len(),
+        enabled_bot_count,
+        only_respond_when_mentioned = settings.only_respond_when_mentioned,
+        log_level = %settings.log_level,
+        log_file = ?settings.log_file,
+        interaction_mode = ?settings.streaming.interaction_mode,
+        show_think_phase = settings.streaming.show_think_phase,
+        show_act_phase = settings.streaming.show_act_phase,
+        "Starting Telegram bot manager with configuration"
+    );
     let mut managers: Vec<BotManager> = Vec::new();
 
     for (name, bot_config) in &config.bots {
+
+        info!(
+            bot = %name,
+            enabled = bot_config.enabled,
+            description = ?bot_config.description,
+            "Loaded bot configuration"
+        );
+
         if !bot_config.enabled {
             info!(bot = %name, "Skipping disabled bot");
             continue;
         }
+
 
         let mut manager = BotManager::new(name.clone(), bot_config);
         manager.start(Arc::clone(&settings)).await;

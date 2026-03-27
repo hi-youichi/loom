@@ -184,6 +184,13 @@ async fn enter_act_phase_without_count_if_needed(
         return;
     }
     if state.phase == "think" && state.think_text.len() > state.last_sent_length {
+        tracing::debug!(
+            chat_id,
+            previous_phase = %state.phase,
+            think_text_len = state.think_text.chars().count(),
+            last_sent_length = state.last_sent_length,
+            "Flushing pending think text before entering act phase"
+        );
         let text = truncate_text(&state.think_text, state.settings.max_think_chars);
         if let Some(msg_id) = state.msg_id {
             let _ = sender
@@ -192,8 +199,14 @@ async fn enter_act_phase_without_count_if_needed(
         }
         state.final_text = state.think_text.clone();
     }
-
+    tracing::debug!(
+        chat_id,
+        previous_phase = %state.phase,
+        show_act_phase = state.settings.show_act_phase,
+        "Switching stream handler phase to act"
+    );
     state.phase = "act".to_string();
+
     state.tools.clear();
     state.act_text.clear();
     state.tool_start_times.clear();
@@ -250,6 +263,7 @@ async fn handle_streaming_command(
 ) -> bool {
     match cmd {
         StreamCommand::StartThink { count } => {
+            tracing::debug!(chat_id, count, previous_phase = %state.phase, "Received StartThink command");
             if state.phase == "act" && (!state.tools.is_empty() || !state.act_text.trim().is_empty()) {
                 edit_act_message_if_possible(sender, chat_id, state.msg_id, state).await;
             }
@@ -262,8 +276,10 @@ async fn handle_streaming_command(
                 }
             }
 
+            tracing::debug!(chat_id, count, "Switching stream handler phase to think");
             state.phase = "think".to_string();
             state.think_text.clear();
+
             state.last_sent_length = 0;
             state.last_update = Instant::now();
             state.act_count = None;
@@ -287,43 +303,45 @@ async fn handle_streaming_command(
         }
 
         StreamCommand::StartAct { count } => {
+            tracing::debug!(chat_id, count, previous_phase = %state.phase, "Received StartAct command");
             if state.phase == "think" && state.think_text.len() > state.last_sent_length {
                 let text = truncate_text(&state.think_text, state.settings.max_think_chars);
                 if let Some(msg_id) = state.msg_id {
                     let _ = sender
-                .edit_formatted(chat_id, msg_id, &FormattedMessage::markdown_v2(text.clone(), text))
-                .await;
+                        .edit_formatted(chat_id, msg_id, &FormattedMessage::markdown_v2(text.clone(), text))
+                        .await;
                 }
                 state.final_text = state.think_text.clone();
             }
-            let is_fallback_act = state.phase == "act" && state.act_count.is_none();
-            let is_same_act_count = state.act_count == Some(count);
-            let should_reset_for_new_act = state.phase != "act" || (!is_fallback_act && !is_same_act_count);
 
-            if should_reset_for_new_act {
-                state.phase = "act".to_string();
-                state.tools.clear();
-                state.act_text.clear();
-                state.tool_start_times.clear();
-                state.last_sent_length = 0;
-                state.last_update = Instant::now();
+            tracing::debug!(chat_id, count, "Switching stream handler phase to act");
+            state.phase = "act".to_string();
+            state.tools.clear();
+            state.act_text.clear();
+            state.tool_start_times.clear();
+            state.last_sent_length = 0;
+            state.last_update = Instant::now();
 
-                if state.settings.show_act_phase {
-                    let header = format!("{} Act #{}\n\n", state.settings.act_emoji, count);
-                    match sender
-            .send_formatted_returning_id(chat_id, &FormattedMessage::markdown_v2(header.clone(), header.clone()))
-            .await {
-                        Ok(id) => {
-                            state.msg_id = Some(id);
-                        }
-                        Err(e) => {
-                            tracing::warn!("Failed to send Act header: {}", e);
-                        }
+            if state.settings.show_act_phase {
+                let header = format!("{} Act #{}\n\n", state.settings.act_emoji, count);
+                match sender
+                    .send_formatted_returning_id(
+                        chat_id,
+                        &FormattedMessage::markdown_v2(header.clone(), header.clone()),
+                    )
+                    .await
+                {
+                    Ok(id) => {
+                        state.msg_id = Some(id);
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to send Act header: {}", e);
                     }
                 }
             }
             state.act_count = Some(count);
         }
+
 
         StreamCommand::ThinkContent { content } => {
             if state.phase != "think" || !state.settings.show_think_phase {
@@ -467,7 +485,12 @@ async fn handle_streaming_command(
     false
 }
 
-async fn handle_periodic_command(cmd: StreamCommand, state: &mut MessageState) -> bool {
+async fn handle_periodic_command(
+    cmd: StreamCommand,
+    chat_id: i64,
+    state: &mut MessageState,
+) -> bool {
+
     match cmd {
         StreamCommand::StartThink { .. } => {
             state.phase = "think".to_string();
@@ -553,6 +576,13 @@ async fn handle_periodic_command(cmd: StreamCommand, state: &mut MessageState) -
         }
         StreamCommand::Flush => {
             finalize_text(state);
+            tracing::debug!(
+                chat_id,
+                phase = %state.phase,
+                final_text_len = state.final_text.chars().count(),
+                summary_count = state.summary_count,
+                "Received Flush command and finalized stream text"
+            );
             return true;
         }
     }
@@ -602,12 +632,20 @@ pub async fn stream_message_handler_with_context(
                         break;
                     };
 
-                    if handle_periodic_command(cmd, &mut state).await {
+                    if handle_periodic_command(cmd, chat_id, &mut state).await {
+
                         break;
                     }
                 }
                 _ = summary_interval.tick() => {
                     if let Some(summary) = build_periodic_summary_text(&state) {
+                        tracing::debug!(
+                            chat_id,
+                            phase = %state.phase,
+                            summary_count = state.summary_count,
+                            summary_len = summary.chars().count(),
+                            "Sending periodic summary"
+                        );
                         if let Err(e) = sender
                             .send_formatted(chat_id, &FormattedMessage::markdown_v2(summary.clone(), summary))
                             .await {
@@ -627,5 +665,13 @@ pub async fn stream_message_handler_with_context(
         }
     }
 
+    tracing::debug!(
+        chat_id,
+        final_phase = %state.phase,
+        final_text_len = state.final_text.chars().count(),
+        summary_count = state.summary_count,
+        interaction_mode = ?settings.interaction_mode,
+        "Stream message handler completed"
+    );
     state.final_text
 }

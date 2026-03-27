@@ -203,15 +203,39 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
             return result;
         }
 
-        let should_respond = is_bot_mentioned(ctx.msg, &ctx.deps.bot_username)
-            || is_reply_to_bot(ctx.msg, &ctx.deps.bot_username);
+        let is_mentioned = is_bot_mentioned(ctx.msg, &ctx.deps.bot_username);
+        let is_reply = is_reply_to_bot(ctx.msg, &ctx.deps.bot_username);
+        let should_respond = is_mentioned || is_reply;
+
+        tracing::debug!(
+            bot_username = %ctx.deps.bot_username,
+            only_respond_when_mentioned = ctx.deps.settings.only_respond_when_mentioned,
+            is_mentioned,
+            is_reply,
+            should_respond,
+            text = %text,
+            "Evaluated message routing"
+        );
 
         if ctx.deps.settings.only_respond_when_mentioned && !should_respond {
-            tracing::debug!("Ignoring message (bot not mentioned and not a reply)");
+            tracing::debug!(
+                bot_username = %ctx.deps.bot_username,
+                only_respond_when_mentioned = ctx.deps.settings.only_respond_when_mentioned,
+                is_mentioned,
+                is_reply,
+                text = %text,
+                "Ignoring message (bot not mentioned and not a reply)"
+            );
             return Ok(());
         }
 
         let clean_text = strip_bot_mention(text, &ctx.deps.bot_username);
+        tracing::debug!(
+            original_text = %text,
+            clean_text = %clean_text,
+            is_reply,
+            "Prepared clean text for agent"
+        );
         let prompt = build_prompt_with_reply(ctx.msg, &clean_text);
         tracing::info!("Agent prompt:\n{}", prompt);
 
