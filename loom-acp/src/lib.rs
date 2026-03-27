@@ -186,11 +186,14 @@ use agent_client_protocol::Client;
 use std::sync::OnceLock;
 
 pub mod agent;
+pub mod client_capabilities;
+pub mod client_methods;
 pub mod content;
 pub mod logging;
 pub mod protocol;
 pub mod session;
 pub mod stream_bridge;
+pub mod tools;
 
 pub use agent::LoomAcpAgent;
 pub use content::{content_blocks_to_message, ContentBlockLike, ContentError};
