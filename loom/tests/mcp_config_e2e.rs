@@ -16,7 +16,6 @@ fn opts(working_folder: PathBuf) -> RunOptions {
         working_folder: Some(working_folder),
         session_id: None,
         thread_id: None,
-        role_file: None,
         agent: None,
         verbose: false,
         got_adaptive: false,
@@ -27,6 +26,10 @@ fn opts(working_folder: PathBuf) -> RunOptions {
         cancellation: None,
         output_timestamp: false,
         dry_run: false,
+        provider: None,
+        base_url: None,
+        api_key: None,
+        provider_type: None,
     }
 }
 

@@ -49,6 +49,9 @@ pub struct ReactBuildConfig {
     pub user_id: Option<String>,
     pub system_prompt: Option<String>,
     pub exa_api_key: Option<String>,
+    /// When `EXA_API_KEY` is set, register the Exa `codesearch` tool only if this is true.
+    /// Opt-in via env `LOOM_EXA_CODESEARCH` (`1`, `true`, or `yes`, case-insensitive). Default off.
+    pub exa_codesearch_enabled: bool,
     pub twitter_api_key: Option<String>,
     pub mcp_exa_url: String,
     pub mcp_remote_cmd: String,
@@ -66,8 +69,12 @@ pub struct ReactBuildConfig {
     pub openai_api_key: Option<String>,
     pub openai_base_url: Option<String>,
     pub model: Option<String>,
-    /// When `Some("bigmodel")`, build layer uses ChatBigModel; otherwise default is OpenAI. Set via LLM_PROVIDER.
+    /// When `Some("openai_compat")` or `Some("bigmodel")`, build layer uses [`crate::llm::ChatOpenAICompat`]; otherwise default is OpenAI. Set via LLM_PROVIDER.
     pub llm_provider: Option<String>,
+    /// Chat Completions `tool_choice`: `auto`, `none`, or `required`. Set via `OPENAI_TOOL_CHOICE`.
+    pub openai_tool_choice: Option<String>,
+    /// Sampling temperature for chat completions. Set via `OPENAI_TEMPERATURE`.
+    pub openai_temperature: Option<String>,
     pub embedding_api_key: Option<String>,
     pub embedding_base_url: Option<String>,
     pub embedding_model: Option<String>,
@@ -100,6 +107,13 @@ impl ReactBuildConfig {
             user_id: std::env::var("USER_ID").ok(),
             system_prompt: std::env::var("REACT_SYSTEM_PROMPT").ok(),
             exa_api_key: std::env::var("EXA_API_KEY").ok(),
+            exa_codesearch_enabled: std::env::var("LOOM_EXA_CODESEARCH")
+                .ok()
+                .is_some_and(|s| {
+                    matches!(s.as_str(), "1")
+                        || s.eq_ignore_ascii_case("true")
+                        || s.eq_ignore_ascii_case("yes")
+                }),
             twitter_api_key: std::env::var("TWITTER_API_KEY").ok(),
             mcp_exa_url: std::env::var("MCP_EXA_URL")
                 .unwrap_or_else(|_| "https://mcp.exa.ai/mcp".to_string()),
@@ -124,6 +138,8 @@ impl ReactBuildConfig {
                 .or_else(|_| std::env::var("OPENAI_MODEL"))
                 .ok(),
             llm_provider: std::env::var("LLM_PROVIDER").ok(),
+            openai_tool_choice: std::env::var("OPENAI_TOOL_CHOICE").ok(),
+            openai_temperature: std::env::var("OPENAI_TEMPERATURE").ok(),
             embedding_api_key: std::env::var("EMBEDDING_API_KEY")
                 .or_else(|_| std::env::var("OPENAI_API_KEY"))
                 .ok(),

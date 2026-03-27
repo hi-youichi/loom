@@ -20,5 +20,5 @@ async fn invoke_single_node_chain() {
 
     let state = compiled.invoke(state, None).await.unwrap();
     let last = state.messages.last().unwrap();
-    assert!(matches!(last, Message::Assistant(s) if s == "hi"));
+    assert!(matches!(last, Message::Assistant(p) if p.content == "hi"));
 }

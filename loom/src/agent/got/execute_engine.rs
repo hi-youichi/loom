@@ -165,6 +165,7 @@ impl ExecuteGraphNode {
             message_count_after_last_think: None,
             summary: None,
             think_count: 0,
+            should_continue: true,
         };
 
         for _ in 0..MAX_SUB_TASK_TURNS {

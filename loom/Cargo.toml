@@ -62,13 +62,15 @@ regex = "1"
 # Env + config (load_and_apply, mcp.json discover/parse); local name avoids clash with loom's internal config module
 env_config = { path = "../config", package = "config" }
 
-# ISO timestamps (context_persistence; serde for future InteractionEntry)
+# ISO timestamps (e.g. tool_output_normalizer)
 chrono = { version = "0.4", features = ["serde"] }
 tokio-util = { version = "0.7.18", features = ["rt"] }
 
 [dev-dependencies]
+async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
 async-trait = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }
+tokio = { workspace = true }
 tempfile = "3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ctor = "0.2"

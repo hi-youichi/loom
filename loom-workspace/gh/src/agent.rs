@@ -64,7 +64,6 @@ pub fn run_options_from_issues_event(
         session_id: None,
         cancellation: None,
         thread_id,
-        role_file: None,
         agent: None,
         verbose: false,
         got_adaptive: false,
@@ -74,5 +73,9 @@ pub fn run_options_from_issues_event(
         mcp_config_path: None,
         output_timestamp: false,
         dry_run: false,
+        provider: None,
+        base_url: None,
+        api_key: None,
+        provider_type: None,
     }
 }

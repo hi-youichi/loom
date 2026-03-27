@@ -41,7 +41,7 @@ impl Agent for EchoAgent {
             }
         });
         if let Some(content) = last {
-            messages.push(Message::Assistant(content));
+            messages.push(Message::assistant(content));
         }
         Ok(AgentState { messages })
     }
@@ -59,7 +59,8 @@ async fn main() {
     let agent = EchoAgent::new();
     match agent.run(state).await {
         Ok(s) => {
-            if let Some(Message::Assistant(content)) = s.messages.last() {
+            if let Some(Message::Assistant(payload)) = s.messages.last() {
+                let content = &payload.content;
                 println!("{content}");
             } else {
                 eprintln!("no assistant reply");

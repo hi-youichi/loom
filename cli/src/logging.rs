@@ -1,172 +1,113 @@
-//! Logging initialization: logs go only to file (or are dropped), never to console.
+//! Logging initialization with file rotation support.
 //!
-//! Reads `RUST_LOG` (level) and `LOG_FILE` (path) from env (e.g. via .env).
-//! When `LOG_FILE` is set, logs are appended to that file; otherwise logs are dropped
-//! so the CLI stdout stays clean for the reply only.
+//! Resolution order (after `config.toml` / `.env` are applied to the process environment):
+//! - `--log-level` overrides `RUST_LOG`; otherwise `RUST_LOG`, else `info`
+//! - `--log-file` overrides `LOG_FILE`; when neither is set, logs are dropped (stdout stays clean)
+//! - `--log-rotate`: Rotation strategy when writing to a file (none, daily, hourly, minutely)
 
-use std::io::Write;
+use std::path::Path;
 
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::Layer;
+use config::tracing_init;
+pub use config::tracing_init::LogRotate;
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-/// Initializes tracing so that logs are never printed to the console.
-///
-/// - **RUST_LOG**: Log level filter, e.g. `info`, `debug`, `loom=debug`. Default: `info`.
-/// - **LOG_FILE**: When set, logs are appended to this file (plain text, no ANSI).
-///   When unset, logs are dropped (sink) so only the CLI reply is shown on stdout.
-pub fn init() -> Result<(), Box<dyn std::error::Error>> {
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,hyper_util=off"));
-
-    if let Ok(path) = std::env::var("LOG_FILE") {
-        if let Some(parent) = std::path::Path::new(&path).parent() {
-            if !parent.as_os_str().is_empty() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-        }
-        let file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)?;
-        let writer = std::sync::Mutex::new(StripAnsiWriter::new(file));
-        let file_layer = tracing_subscriber::fmt::layer()
-            .event_format(crate::log_format::TextWithSpanIds::new())
-            .with_writer(writer)
-            .with_ansi(false)
-            .with_filter(filter);
-        tracing_subscriber::registry().with(file_layer).init();
-        tracing::info!(path = %path, "cli logging to file");
-    } else {
-        let sink_layer = tracing_subscriber::fmt::layer()
-            .with_writer(std::io::sink)
-            .with_filter(filter);
-        tracing_subscriber::registry().with(sink_layer).init();
-    }
-    Ok(())
+/// Log configuration from CLI args.
+#[derive(Debug, Clone)]
+pub struct LogArgs {
+    /// Log level filter (e.g., "info", "debug", "loom=debug")
+    pub level: String,
+    /// Optional log file path (supports {working_folder} variable)
+    pub file: Option<std::path::PathBuf>,
+    /// Rotation strategy
+    pub rotate: LogRotate,
+    /// Working folder for variable substitution in log file path
+    pub working_folder: Option<std::path::PathBuf>,
 }
 
-/// Strips ANSI escape sequences so file logs are plain text.
-struct StripAnsiWriter<W> {
-    inner: W,
-    state: Vec<u8>,
-}
-
-impl<W: Write> StripAnsiWriter<W> {
-    fn new(inner: W) -> Self {
+impl LogArgs {
+    /// Create log args from CLI arguments.
+    pub fn new(
+        level: String,
+        file: Option<std::path::PathBuf>,
+        rotate: &str,
+        working_folder: Option<std::path::PathBuf>,
+    ) -> Self {
         Self {
-            inner,
-            state: Vec::with_capacity(16),
+            level,
+            file,
+            rotate: LogRotate::from_str(rotate).unwrap_or_default(),
+            working_folder,
         }
+    }
+
+    fn resolve_log_file(&self) -> Option<std::path::PathBuf> {
+        self.file.as_ref().map(|path| {
+            tracing_init::resolve_log_path(path.as_path(), self.working_folder.as_deref())
+        })
     }
 }
 
-impl<W: Write> Write for StripAnsiWriter<W> {
-    fn write(&mut self, mut buf: &[u8]) -> std::io::Result<usize> {
-        let len = buf.len();
-        while !buf.is_empty() {
-            if self.state.is_empty() {
-                if let Some(i) = buf.iter().position(|&b| b == 0x1b) {
-                    self.inner.write_all(&buf[..i])?;
-                    buf = &buf[i..];
-                    self.state.push(buf[0]);
-                    buf = &buf[1..];
-                } else {
-                    self.inner.write_all(buf)?;
-                    break;
-                }
-            } else if self.state.len() == 1 {
-                self.state.push(buf[0]);
-                buf = &buf[1..];
-                if self.state[1] != b'[' {
-                    self.inner.write_all(&self.state)?;
-                    self.state.clear();
-                }
-            } else {
-                let b = buf[0];
-                buf = &buf[1..];
-                let is_csi_final = b >= 0x40 && b <= 0x7e;
-                let is_csi_param = b == b'[' || b == b'?' || b == b';' || (b >= b'0' && b <= b'9');
-                if is_csi_final {
-                    self.state.clear();
-                } else if is_csi_param || b == b':' {
-                    self.state.push(b);
-                    if self.state.len() > 64 {
-                        self.inner.write_all(&self.state)?;
-                        self.state.clear();
-                    }
-                } else {
-                    self.inner.write_all(&self.state)?;
-                    self.state.clear();
-                    self.state.push(b);
-                }
-            }
-        }
-        Ok(len)
-    }
+/// Worker guard that keeps the log file writer alive.
+/// Drop this to flush remaining logs.
+pub struct LogGuard {
+    _guard: Option<tracing_appender::non_blocking::WorkerGuard>,
+}
 
-    fn flush(&mut self) -> std::io::Result<()> {
-        if !self.state.is_empty() {
-            self.inner.write_all(&self.state)?;
-            self.state.clear();
-        }
-        self.inner.flush()
+/// Initializes tracing with optional file logging and rotation.
+///
+/// - With a resolved log file path (`--log-file` or `LOG_FILE`): logs go to file (with rotation) only
+/// - Without: logs are dropped (sink)
+///
+/// Returns `LogGuard` that must be kept alive for file logging to work.
+/// Panics if file logging fails to initialize.
+pub fn init(args: &LogArgs) -> LogGuard {
+    let filter = tracing_init::build_env_filter(&args.level, &["hyper_util=off"]);
+
+    let log_file = args.resolve_log_file();
+
+    if let Some(ref path) = log_file {
+        init_file_logging(path, args.rotate, filter)
+    } else {
+        init_sink_logging(filter)
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::StripAnsiWriter;
-    use std::io::Write;
+fn init_file_logging(path: &Path, rotate: LogRotate, filter: EnvFilter) -> LogGuard {
+    let (writer, guard) = tracing_init::file_non_blocking_writer(path, rotate, "loom")
+        .unwrap_or_else(|e| panic!("failed to open log file {}: {}", path.display(), e));
 
-    #[test]
-    fn strip_ansi_writer_removes_color_sequences() {
-        let mut out = Vec::new();
-        {
-            let mut w = StripAnsiWriter::new(&mut out);
-            w.write_all(b"\x1b[31mred\x1b[0m plain").unwrap();
-            w.flush().unwrap();
+    let layer = fmt::layer()
+        .with_ansi(false)
+        .with_target(true)
+        .with_writer(writer);
+
+    tracing_subscriber::registry().with(filter).with(layer).init();
+
+    LogGuard { _guard: Some(guard) }
+}
+
+fn init_sink_logging(filter: EnvFilter) -> LogGuard {
+    use std::io::{self, Write};
+
+    struct Sink;
+
+    impl Write for Sink {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            Ok(buf.len())
         }
-        assert_eq!(
-            String::from_utf8(out).unwrap(),
-            "red plain",
-            "ANSI CSI color codes should be removed"
-        );
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
     }
 
-    #[test]
-    fn strip_ansi_writer_keeps_non_ansi_content() {
-        let mut out = Vec::new();
-        {
-            let mut w = StripAnsiWriter::new(&mut out);
-            w.write_all(b"hello world").unwrap();
-            w.flush().unwrap();
-        }
-        assert_eq!(String::from_utf8(out).unwrap(), "hello world");
-    }
+    let (writer, guard) = tracing_appender::non_blocking(Sink);
 
-    #[test]
-    fn strip_ansi_writer_handles_split_escape_sequences_across_writes() {
-        let mut out = Vec::new();
-        {
-            let mut w = StripAnsiWriter::new(&mut out);
-            w.write_all(b"\x1b[").unwrap();
-            w.write_all(b"32mgreen").unwrap();
-            w.write_all(b"\x1b[0m!").unwrap();
-            w.flush().unwrap();
-        }
-        assert_eq!(String::from_utf8(out).unwrap(), "green!");
-    }
+    let layer = fmt::layer()
+        .with_ansi(false)
+        .with_target(true)
+        .with_writer(writer);
 
-    #[test]
-    fn strip_ansi_writer_flush_writes_pending_non_csi_state() {
-        let mut out = Vec::new();
-        {
-            let mut w = StripAnsiWriter::new(&mut out);
-            // ESC followed by non-'[' should be preserved.
-            w.write_all(b"\x1bX").unwrap();
-            w.flush().unwrap();
-        }
-        assert_eq!(out, b"\x1bX");
-    }
+    tracing_subscriber::registry().with(filter).with(layer).init();
+
+    LogGuard { _guard: Some(guard) }
 }

@@ -161,9 +161,6 @@ pub struct RunOptions {
     pub message: String,
     pub working_folder: Option<PathBuf>,
     pub session_id: Option<String>,
-    /// When set, path to a file whose content is used as the agent's role/persona (instructions).
-    /// Overrides instructions.md (or SOUL.md) and the built-in default. Read at build_helve_config time.
-    pub role_file: Option<PathBuf>,
     /// Named agent profile (e.g. "coding"). Resolved from .loom/agents/<name> or ~/.loom/agents/<name>.
     pub agent: Option<String>,
     pub verbose: bool,
@@ -173,6 +170,14 @@ pub struct RunOptions {
     pub output_json: bool,
     /// When set, overrides env/config for this run's LLM model (e.g. "gpt-4o", "gpt-4o-mini").
     pub model: Option<String>,
+    /// Provider name to use for LLM (e.g. "openai", "anthropic"). Used to lookup base_url/api_key from config.
+    pub provider: Option<String>,
+    /// Direct base_url override (highest priority).
+    pub base_url: Option<String>,
+    /// Direct api_key override (highest priority).
+    pub api_key: Option<String>,
+    /// Provider type (e.g. "openai", "bigmodel").
+    pub provider_type: Option<String>,
     /// When set, use this path as MCP config (overrides LOOM_MCP_CONFIG_PATH and default discovery).
     pub mcp_config_path: Option<PathBuf>,
     /// Optional cancellation handle for this run.
@@ -444,7 +449,7 @@ pub async fn build_runner(
     let cancellation = opts.cancellation.as_ref().map(RunCancellation::token);
     match cmd {
         RunCmd::React => {
-            let r = build_react_runner(config, llm_override, opts.verbose, None)
+            let r = build_react_runner(config, llm_override, opts.verbose)
                 .await?
                 .with_cancellation(opts.cancellation.clone());
             Ok(AnyRunner::React(r))
@@ -470,6 +475,77 @@ pub async fn build_runner(
     }
 }
 
+/// Simplified agent runner that only requires provider configuration and model name.
+///
+/// This is a convenience function for cases where you have a pre-configured provider
+/// and model and just want to run the agent without setting up full RunOptions.
+///
+/// # Example
+///
+/// ```ignore
+/// use loom::cli_run::{run_agent_with_provider, ProviderConfig};
+///
+/// let provider = ProviderConfig {
+///     name: "openai".to_string(),
+///     base_url: Some("https://api.openai.com/v1".to_string()),
+///     api_key: Some("sk-...".to_string()),
+///     provider_type: None,
+/// };
+///
+/// let result = run_agent_with_provider(
+///     provider,
+///     "gpt-4o",
+///     "What is the capital of France?",
+///     None,
+/// ).await?;
+/// ```
+pub async fn run_agent_with_provider(
+    provider: crate::llm::ProviderConfig,
+    model: &str,
+    message: &str,
+    working_folder: Option<PathBuf>,
+) -> Result<RunCompletion, RunError> {
+    // Create ModelEntry from provider config
+    let entry = crate::llm::ModelEntry {
+        id: format!("{}/{}", provider.name, model),
+        name: model.to_string(),
+        provider: provider.name.clone(),
+        base_url: provider.base_url.clone(),
+        api_key: provider.api_key.clone(),
+        provider_type: provider.provider_type.clone(),
+        ..Default::default()
+    };
+
+    // Create LLM client from ModelEntry
+    let llm = crate::llm::create_llm_client(&entry)
+        .map_err(|e| RunError::Build(crate::BuildRunnerError::Context(e)))?;
+
+    // Create minimal RunOptions
+    let opts = RunOptions {
+        message: message.to_string(),
+        working_folder,
+        session_id: None,
+        cancellation: None,
+        thread_id: None,
+        agent: None,
+        verbose: false,
+        got_adaptive: false,
+        display_max_len: 120,
+        output_json: false,
+        output_timestamp: false,
+        model: Some(model.to_string()),
+        mcp_config_path: None,
+        dry_run: false,
+        provider: Some(provider.name),
+        base_url: provider.base_url,
+        api_key: provider.api_key,
+        provider_type: provider.provider_type,
+    };
+
+    // Run with LLM override
+    run_agent(&opts, &RunCmd::React, None, Some(llm)).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -485,16 +561,19 @@ mod tests {
             session_id: None,
             cancellation: None,
             thread_id: None,
-            role_file: None,
             agent: None,
             verbose: false,
             got_adaptive,
             display_max_len: 120,
             output_json: true,
-            output_timestamp: false,
             model: None,
             mcp_config_path: None,
+            output_timestamp: false,
             dry_run: false,
+            provider: None,
+            base_url: None,
+            api_key: None,
+            provider_type: None,
         }
     }
 
@@ -505,6 +584,7 @@ mod tests {
             user_id: None,
             system_prompt: None,
             exa_api_key: None,
+            exa_codesearch_enabled: false,
             twitter_api_key: None,
             mcp_exa_url: "https://mcp.exa.ai/mcp".to_string(),
             mcp_remote_cmd: "npx".to_string(),
@@ -521,6 +601,8 @@ mod tests {
             openai_base_url: None,
             model: None,
             llm_provider: None,
+            openai_tool_choice: None,
+            openai_temperature: None,
             embedding_api_key: None,
             embedding_base_url: None,
             embedding_model: None,
@@ -575,16 +657,19 @@ mod tests {
             session_id: None,
             cancellation: None,
             thread_id: None,
-            role_file: None,
             agent: None,
             verbose: false,
             got_adaptive: false,
-            display_max_len: 120,
-            output_json: false,
-            output_timestamp: false,
+            display_max_len: 200,
+            output_json: true,
             model: None,
             mcp_config_path: None,
+            output_timestamp: false,
             dry_run: false,
+            provider: None,
+            base_url: None,
+            api_key: None,
+            provider_type: None,
         };
         assert!(build_runner(&cfg, &opts, &RunCmd::React, None)
             .await
@@ -646,7 +731,7 @@ mod tests {
 
         let _tot = TotState {
             core: ReActState {
-                messages: vec![Message::user("u"), Message::Assistant("a".to_string())],
+                messages: vec![Message::user("u"), Message::assistant("a")],
                 ..ReActState::default()
             },
             tot: TotExtension::default(),

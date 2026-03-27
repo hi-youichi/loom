@@ -1,0 +1,164 @@
+//! Clap definitions for the `loom` binary.
+
+use std::path::PathBuf;
+
+use clap::{Parser, Subcommand};
+
+use crate::session::SessionArgs;
+
+/// Config directory: ~/.loom (or $LOOM_HOME). config.toml [env] is applied as env vars; project .env overrides.
+pub(crate) const CONFIG_DIR_HELP: &str = "\nConfiguration:\n  Config directory: ~/.loom (override with $LOOM_HOME).\n  File: config.toml with [env] table; values are applied as environment variables.\n  Project .env in working directory overrides config.toml.";
+
+#[derive(Parser, Debug)]
+#[command(name = "loom")]
+#[command(about = "Loom — run ReAct or DUP agent from CLI", after_help = CONFIG_DIR_HELP)]
+pub(crate) struct Args {
+    #[command(subcommand)]
+    pub(crate) cmd: Option<Command>,
+
+    /// User message (or pass as first positional argument)
+    #[arg(short, long, value_name = "TEXT")]
+    pub(crate) message: Option<String>,
+
+    /// Positional args: user message when -m/--message is not used
+    #[arg(trailing_var_arg = true)]
+    pub(crate) rest: Vec<String>,
+
+    /// Working folder (for file tools); default: current directory when not set
+    #[arg(short, long, value_name = "DIR")]
+    pub(crate) working_folder: Option<PathBuf>,
+
+    /// Named agent profile (e.g. coding). Loaded from .loom/agents/<NAME> or ~/.loom/agents/<NAME>.
+    #[arg(short('P'), long, value_name = "NAME")]
+    pub(crate) agent: Option<String>,
+
+    /// Session ID for conversation continuity (checkpointer)
+    #[arg(long, value_name = "ID")]
+    pub(crate) session_id: Option<String>,
+
+    /// Print State info to stderr (node enter/exit, state after each step, flow)
+    #[arg(short, long)]
+    pub(crate) verbose: bool,
+
+    /// Interactive REPL: after output, prompt for input and continue conversation
+    #[arg(short, long)]
+    pub(crate) interactive: bool,
+
+    /// Output all data as JSON (stream events + reply for agent run; JSON array for tool list; JSON for tool show)
+    #[arg(long)]
+    pub(crate) json: bool,
+
+    /// When using --json, write output to this file instead of stdout
+    #[arg(long, value_name = "PATH")]
+    pub(crate) file: Option<PathBuf>,
+
+    /// When using --json, pretty-print (multi-line). Default: compact, one line per event
+    #[arg(long)]
+    pub(crate) pretty: bool,
+
+    /// Print a timestamp to stderr before each reply (local time, e.g. 2025-03-15 10:30:00)
+    #[arg(long)]
+    pub(crate) timestamp: bool,
+
+    /// Path to MCP config JSON (overrides LOOM_MCP_CONFIG_PATH and default .loom/mcp.json discovery)
+    #[arg(long, value_name = "PATH")]
+    pub(crate) mcp_config: Option<PathBuf>,
+
+    /// Dry run: LLM runs but tools are not executed (placeholder result returned)
+    #[arg(long)]
+    pub(crate) dry: bool,
+
+    /// Provider name to use (overrides [default].provider in config.toml and LOOM_PROVIDER env var)
+    #[arg(long, value_name = "NAME")]
+    pub(crate) provider: Option<String>,
+
+    /// Log level (tracing EnvFilter syntax). Overrides RUST_LOG when set; default RUST_LOG or info.
+    #[arg(long, global = true, value_name = "LEVEL")]
+    pub(crate) log_level: Option<String>,
+
+    /// Log file path. Overrides LOG_FILE when set; when neither is set, logs are dropped.
+    #[arg(long, global = true, value_name = "PATH")]
+    pub(crate) log_file: Option<PathBuf>,
+
+    /// Log rotation strategy: none, daily, hourly, minutely (requires --log-file)
+    #[arg(long, global = true, default_value = "daily", value_name = "STRATEGY")]
+    pub(crate) log_rotate: String,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub(crate) enum Command {
+    /// Run WebSocket server (ws://127.0.0.1:8080)
+    Serve(ServeArgs),
+    /// Run ReAct graph (think → act → observe)
+    React,
+    /// Run DUP graph (understand → plan → act → observe)
+    Dup,
+    /// Run ToT graph (think_expand → think_evaluate → act → observe)
+    Tot,
+    /// Run GoT graph (plan_graph → execute_graph)
+    Got(GotArgs),
+    /// List or show tool definitions (same tools as used by react/dup/tot/got)
+    Tool(ToolArgs),
+    /// Manage conversation sessions (list, show, delete)
+    Session(SessionArgs),
+    /// List available models from configured providers
+    Models(ModelsArgs),
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct ToolArgs {
+    #[command(subcommand)]
+    pub(crate) sub: ToolCommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub(crate) enum ToolCommand {
+    /// List all loaded tools (name and description)
+    List,
+    /// Show full definition of one tool (name, description, input_schema)
+    Show(ShowToolArgs),
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct ShowToolArgs {
+    /// Tool name (e.g. read, web_fetcher)
+    pub(crate) name: String,
+    /// Output format: yaml (default) or json
+    #[arg(long, value_name = "FORMAT", default_value = "yaml")]
+    pub(crate) output: String,
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct ModelsArgs {
+    #[command(subcommand)]
+    pub(crate) sub: ModelsCommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub(crate) enum ModelsCommand {
+    /// List available models from all configured providers
+    List,
+    /// List models from a specific provider
+    Show(ShowModelsArgs),
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct ShowModelsArgs {
+    /// Provider name (e.g., openai, bigmodel)
+    pub(crate) name: String,
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct ServeArgs {
+    /// WebSocket listen address (default 127.0.0.1:8080)
+    #[arg(long, value_name = "ADDR")]
+    pub(crate) addr: Option<String>,
+}
+
+/// Arguments for the `got` subcommand.
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct GotArgs {
+    /// Enable AGoT adaptive mode (expand complex nodes).
+    #[arg(long)]
+    pub(crate) got_adaptive: bool,
+}

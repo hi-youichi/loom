@@ -16,10 +16,15 @@ use super::display::{
     format_tot_state_display, truncate_display,
 };
 use crate::envelope::EnvelopeState;
-use crate::backend::RunStopReason;
 use loom::{RunCmd, RunOptions, StreamEvent};
 
 use super::RunError;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunStopReason {
+    EndTurn,
+    Cancelled,
+}
 
 fn completion_reply(result: loom::RunCompletion) -> (String, Option<String>, RunStopReason) {
     match result {
@@ -145,6 +150,7 @@ pub async fn run_agent_wrapper(
     stream_out: Option<Arc<Mutex<dyn FnMut(Value) + Send>>>,
 ) -> RunAgentResult {
     let (helve, config, resolved_agent) = build_helve_config(opts);
+    print_loaded_tools(&config).await?;
     if !opts.output_json {
         if opts.dry_run {
             eprintln!("dry run: tools will not be executed");
@@ -152,14 +158,13 @@ pub async fn run_agent_wrapper(
         print_agent_banner(&resolved_agent);
         print_available_agents();
         if helve.role_setting.is_some() {
-            eprintln!("instructions/role loaded; system prompt (including it) is in state.messages[0].");
+            eprintln!("agent profile role included in system prompt (see state.messages[0]).");
         }
         if helve.agents_md.is_some() {
             eprintln!("AGENTS.md loaded; included in system prompt.");
         }
         print_model_info(config.model.as_ref()).await;
     }
-    print_loaded_tools(&config).await?;
 
     let display_max_len = opts.display_max_len;
 
@@ -700,7 +705,7 @@ mod tests {
 
     fn react_state() -> ReActState {
         ReActState {
-            messages: vec![Message::user("hi"), Message::Assistant("hello".into())],
+            messages: vec![Message::user("hi"), Message::assistant("hello")],
             ..ReActState::default()
         }
     }
@@ -712,6 +717,7 @@ mod tests {
             user_id: None,
             system_prompt: None,
             exa_api_key: None,
+            exa_codesearch_enabled: false,
             twitter_api_key: None,
             mcp_exa_url: "https://mcp.exa.ai/mcp".to_string(),
             mcp_remote_cmd: "npx".to_string(),
@@ -725,6 +731,8 @@ mod tests {
             openai_base_url: None,
             model: None,
             llm_provider: None,
+            openai_tool_choice: None,
+            openai_temperature: None,
             embedding_api_key: None,
             embedding_base_url: None,
             embedding_model: None,
@@ -1113,7 +1121,6 @@ mod tests {
             session_id: None,
             cancellation: None,
             thread_id: None,
-            role_file: None,
             agent: None,
             verbose: false,
             got_adaptive: false,
@@ -1123,6 +1130,10 @@ mod tests {
             mcp_config_path: None,
             output_timestamp: false,
             dry_run: false,
+            provider: None,
+            base_url: None,
+            api_key: None,
+            provider_type: None,
         }
     }
 

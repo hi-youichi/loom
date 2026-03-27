@@ -18,14 +18,19 @@ pub struct SummarizeConfig {
     /// Custom prompt template for summary generation.
     /// Use {messages} as placeholder for user messages.
     pub prompt_template: Option<String>,
+    /// Whether to use LLM-based completion check when think produces no tool calls.
+    /// When disabled (default), no tool calls → end immediately.
+    /// When enabled, an extra LLM call determines if task is complete or should continue.
+    pub enable_completion_check: bool,
 }
 
 impl Default for SummarizeConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
+            enabled: false,
             max_length: 50,
             prompt_template: None,
+            enable_completion_check: false,
         }
     }
 }
@@ -42,6 +47,12 @@ impl SummarizeConfig {
             enabled: false,
             ..Self::default()
         }
+    }
+
+    /// Enable LLM-based completion check when think produces no tool calls.
+    pub fn with_completion_check(mut self, enabled: bool) -> Self {
+        self.enable_completion_check = enabled;
+        self
     }
 
     /// Set the maximum length of the summary.
@@ -78,7 +89,7 @@ pub struct AgentOptions {
     pub user_message_store: Option<Arc<dyn UserMessageStore>>,
     /// If true, log node and state details to stderr.
     pub verbose: bool,
-    /// Configuration for session summary generation. Defaults to enabled.
+    /// Configuration for session summary generation. Defaults to disabled; set `enabled: true` to opt in.
     pub summarize_config: Option<SummarizeConfig>,
 }
 

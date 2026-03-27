@@ -29,7 +29,7 @@ pub const TOOL_GET_RECENT_MESSAGES: &str = "get_recent_messages";
 ///
 /// let context = ToolCallContext::new(vec![
 ///     Message::User("hello".to_string()),
-///     Message::Assistant("hi there!".to_string()),
+///     Message::assistant("hi there!"),
 /// ]);
 ///
 /// let args = json!({"limit": 2});
@@ -64,12 +64,26 @@ impl GetRecentMessagesTool {
 
     /// Converts a Message to a JSON value with role and content.
     fn message_to_json(m: &Message) -> Value {
-        let (role, content) = match m {
-            Message::System(s) => ("system", s.as_str()),
-            Message::User(s) => ("user", s.as_str()),
-            Message::Assistant(s) => ("assistant", s.as_str()),
-        };
-        json!({ "role": role, "content": content })
+        match m {
+            Message::System(s) => json!({ "role": "system", "content": s }),
+            Message::User(s) => json!({ "role": "user", "content": s }),
+            Message::Assistant(p) if p.tool_calls.is_empty() => {
+                json!({ "role": "assistant", "content": p.content })
+            }
+            Message::Assistant(p) => json!({
+                "role": "assistant",
+                "content": p.content,
+                "tool_calls": p.tool_calls,
+            }),
+            Message::Tool {
+                tool_call_id,
+                content,
+            } => json!({
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": content,
+            }),
+        }
     }
 }
 

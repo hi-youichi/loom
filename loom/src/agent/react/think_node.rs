@@ -4,19 +4,19 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
-use futures_util::future::{abortable, Aborted};
-
 use serde_json::Value;
 use tokio::sync::mpsc;
+use tracing::{debug, trace, warn};
 
 use crate::cli_run::ActiveOperationKind;
 use crate::error::AgentError;
-use crate::graph::{Next, RunContext};
-use crate::llm::context_persistence;
-use crate::llm::{LlmClient, ToolCallDelta};
+use crate::graph::{run_cancellable, Next, RunContext};
+use crate::llm::{LlmClient, LlmResponse, ToolCallDelta};
 use crate::message::Message;
 use crate::state::{ReActState, ToolCall};
-use crate::stream::{ChunkToStreamSender, MessageChunk, StreamEvent, StreamMetadata, StreamMode};
+use crate::stream::{
+    ChunkToStreamSender, MessageChunk, StreamEvent, StreamMetadata, StreamMode,
+};
 use crate::Node;
 
 pub struct ThinkNode {
@@ -27,51 +27,159 @@ impl ThinkNode {
     pub fn new(llm: Arc<dyn LlmClient>) -> Self {
         Self { llm }
     }
-}
 
-fn compute_usage(
-    state: &ReActState,
-    response_usage: &Option<crate::llm::LlmUsage>,
-) -> (Option<crate::llm::LlmUsage>, Option<crate::llm::LlmUsage>) {
-    match (&state.total_usage, response_usage) {
-        (Some(t), Some(u)) => (
-            response_usage.clone(),
-            Some(crate::llm::LlmUsage {
-                prompt_tokens: t.prompt_tokens + u.prompt_tokens,
-                completion_tokens: t.completion_tokens + u.completion_tokens,
-                total_tokens: t.total_tokens + u.total_tokens,
-            }),
-        ),
-        (None, Some(u)) => (response_usage.clone(), Some(u.clone())),
-        (Some(t), None) => (None, Some(t.clone())),
-        (None, None) => (None, None),
+    /// Emits stream events after the LLM returns and before state is committed (messages, tool calls).
+    /// `Usage` is sent separately after [`ReActState::apply_think`] to match prior event ordering.
+    async fn emit_post_response_events(
+        &self,
+        ctx: &RunContext<ReActState>,
+        content: &str,
+        used_fallback: bool,
+        should_stream: bool,
+        streamed_chunks: u64,
+        tool_calls: &[ToolCall],
+        should_stream_tools: bool,
+        is_cancelled: impl Fn() -> bool,
+    ) -> Result<(), AgentError> {
+        let Some(stream_tx) = ctx.stream_tx.as_ref() else {
+            return Ok(());
+        };
+
+        if used_fallback {
+            let fallback_chunk = MessageChunk::message(content.to_string());
+            let _ = stream_tx
+                .send(StreamEvent::Messages {
+                    chunk: fallback_chunk,
+                    metadata: StreamMetadata {
+                        loom_node: self.id().to_string(),
+                        namespace: None,
+                    },
+                })
+                .await;
+        }
+
+        if should_stream && !used_fallback && !content.is_empty() && streamed_chunks == 0 {
+            let _ = stream_tx
+                .send(StreamEvent::Messages {
+                    chunk: MessageChunk::message(content.to_string()),
+                    metadata: StreamMetadata {
+                        loom_node: self.id().to_string(),
+                        namespace: None,
+                    },
+                })
+                .await;
+        }
+
+        if should_stream_tools && !tool_calls.is_empty() {
+            for tc in tool_calls {
+                if is_cancelled() {
+                    return Err(AgentError::Cancelled);
+                }
+                let args: Value = serde_json::from_str(&tc.arguments)
+                    .unwrap_or_else(|_| Value::String(tc.arguments.clone()));
+                let _ = stream_tx
+                    .send(StreamEvent::ToolCall {
+                        call_id: tc.id.clone(),
+                        name: tc.name.clone(),
+                        arguments: args,
+                    })
+                    .await;
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn emit_usage_event(
+        &self,
+        ctx: &RunContext<ReActState>,
+        call_start: Instant,
+        first_token_at: Option<Instant>,
+        usage: &crate::llm::LlmUsage,
+    ) {
+        let Some(stream_tx) = ctx.stream_tx.as_ref() else {
+            return;
+        };
+        let (prefill_duration, decode_duration) = match first_token_at {
+            Some(ft) => {
+                let prefill = ft.duration_since(call_start);
+                let decode = call_start.elapsed().saturating_sub(prefill);
+                (Some(prefill), Some(decode))
+            }
+            None => (None, None),
+        };
+        trace!(
+            prompt_tokens = usage.prompt_tokens,
+            completion_tokens = usage.completion_tokens,
+            total_tokens = usage.total_tokens,
+            ?prefill_duration,
+            ?decode_duration,
+            "think: stream usage"
+        );
+        let _ = stream_tx
+            .send(StreamEvent::Usage {
+                prompt_tokens: usage.prompt_tokens,
+                completion_tokens: usage.completion_tokens,
+                total_tokens: usage.total_tokens,
+                prefill_duration,
+                decode_duration,
+            })
+            .await;
     }
 }
 
-fn apply_think_response(
-    state: ReActState,
-    content: String,
-    reasoning_content: Option<String>,
-    tool_calls: Vec<ToolCall>,
-    response_usage: Option<crate::llm::LlmUsage>,
-) -> ReActState {
-    let (usage, total_usage) = compute_usage(&state, &response_usage);
-    let mut messages = state.messages;
-    messages.push(Message::Assistant(content));
-    let message_count_after_last_think = Some(messages.len());
-    ReActState {
-        messages,
-        last_reasoning_content: reasoning_content,
-        tool_calls,
-        tool_results: state.tool_results,
-        turn_count: state.turn_count,
-        approval_result: state.approval_result,
-        usage,
-        total_usage,
-        message_count_after_last_think,
-        think_count: state.think_count + 1,
-        summary: state.summary,
-    }
+async fn invoke_think_llm(
+    llm: &Arc<dyn LlmClient>,
+    messages: &[Message],
+    should_stream: bool,
+    should_stream_tools: bool,
+    stream_tx: mpsc::Sender<StreamEvent<ReActState>>,
+    node_id: &str,
+) -> Result<(LlmResponse, u64, Option<Instant>), AgentError> {
+    let (chunk_tx, chunk_rx) = if should_stream {
+        let adapter = ChunkToStreamSender::new(stream_tx.clone(), node_id);
+        let (tx, rx) = adapter.channel();
+        (Some(tx), Some((adapter, rx)))
+    } else {
+        (None, None)
+    };
+
+    let (tool_delta_tx, tool_delta_rx) = if should_stream_tools {
+        let (tx, rx) = mpsc::channel::<ToolCallDelta>(64);
+        (Some(tx), Some(rx))
+    } else {
+        (None, None)
+    };
+
+    let stream_tx_tool = stream_tx.clone();
+    let tool_forward = async move {
+        if let Some(mut rx) = tool_delta_rx {
+            while let Some(delta) = rx.recv().await {
+                let _ = stream_tx_tool
+                    .send(StreamEvent::ToolCallChunk {
+                        call_id: delta.call_id,
+                        name: delta.name,
+                        arguments_delta: delta.arguments_delta,
+                    })
+                    .await;
+            }
+        }
+    };
+
+    let msg_forward = async move {
+        if let Some((adapter, rx)) = chunk_rx {
+            adapter.forward(rx).await
+        } else {
+            (0, None)
+        }
+    };
+
+    let (result, (forwarded_chunks, first_token_at), _) = tokio::join!(
+        llm.invoke_stream_with_tool_delta(messages, chunk_tx, tool_delta_tx),
+        msg_forward,
+        tool_forward,
+    );
+    Ok((result?, forwarded_chunks as u64, first_token_at))
 }
 
 #[async_trait]
@@ -82,19 +190,7 @@ impl Node<ReActState> for ThinkNode {
 
     async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
         let response = self.llm.invoke(&state.messages).await?;
-
-        // Save LLM response (no session_id available in run())
-        context_persistence::save_llm_response(
-            "think",
-            None,
-            &response.content,
-            response.reasoning_content.as_deref(),
-            &response.tool_calls,
-            response.usage.as_ref(),
-        );
-
-        let new_state = apply_think_response(
-            state,
+        let new_state = state.apply_think(
             response.content,
             response.reasoning_content,
             response.tool_calls,
@@ -122,180 +218,97 @@ impl Node<ReActState> for ThinkNode {
             || ctx.stream_mode.contains(&StreamMode::Debug))
             && ctx.stream_tx.is_some();
 
+        debug!(
+            messages = state.messages.len(),
+            should_stream,
+            should_stream_tools,
+            "think: invoking LLM"
+        );
+
         let call_start = Instant::now();
         let llm_call = async {
             if should_stream || should_stream_tools {
-                let stream_tx = ctx.stream_tx.clone().unwrap();
-
-                let (chunk_tx, chunk_rx) = if should_stream {
-                    let adapter = ChunkToStreamSender::new(stream_tx.clone(), self.id());
-                    let (tx, rx) = adapter.channel();
-                    (Some(tx), Some((adapter, rx)))
-                } else {
-                    (None, None)
-                };
-
-                let (tool_delta_tx, tool_delta_rx) = if should_stream_tools {
-                    let (tx, rx) = mpsc::channel::<ToolCallDelta>(64);
-                    (Some(tx), Some(rx))
-                } else {
-                    (None, None)
-                };
-
-                let tool_forward = async {
-                    if let Some(mut rx) = tool_delta_rx {
-                        while let Some(delta) = rx.recv().await {
-                            let _ = stream_tx
-                                .send(StreamEvent::ToolCallChunk {
-                                    call_id: delta.call_id,
-                                    name: delta.name,
-                                    arguments_delta: delta.arguments_delta,
-                                })
-                                .await;
-                        }
-                    }
-                };
-
-                let msg_forward = async {
-                    if let Some((adapter, rx)) = chunk_rx {
-                        adapter.forward(rx).await
-                    } else {
-                        (0, None)
-                    }
-                };
-
-                let (result, (forwarded_chunks, first_token_at), _) = tokio::join!(
-                    self.llm
-                        .invoke_stream_with_tool_delta(&state.messages, chunk_tx, tool_delta_tx,),
-                    msg_forward,
-                    tool_forward,
-                );
-                Ok::<_, AgentError>((result?, forwarded_chunks, first_token_at))
+                invoke_think_llm(
+                    &self.llm,
+                    &state.messages,
+                    should_stream,
+                    should_stream_tools,
+                    ctx.stream_tx.as_ref().unwrap().clone(),
+                    self.id(),
+                )
+                .await
             } else {
-                Ok::<_, AgentError>((self.llm.invoke(&state.messages).await?, 0, None))
+                Ok((
+                    self.llm.invoke(&state.messages).await?,
+                    0u64,
+                    None::<Instant>,
+                ))
             }
         };
-        let (llm_call, abort_handle) = abortable(llm_call);
-        if let Some(run_cancellation) = ctx.run_cancellation.as_ref() {
-            run_cancellation.set_abortable_operation(ActiveOperationKind::Llm, abort_handle);
-        }
-        let (response, streamed_chunks, first_token_at) = if let Some(token) = ctx.cancellation.as_ref() {
-            tokio::select! {
-                _ = token.cancelled() => return Err(AgentError::Cancelled),
-                result = llm_call => match result {
-                    Ok(result) => result?,
-                    Err(Aborted) => return Err(AgentError::Cancelled),
-                },
-            }
-        } else {
-            match llm_call.await {
-                Ok(result) => result?,
-                Err(Aborted) => return Err(AgentError::Cancelled),
-            }
+
+        let (response, streamed_chunks, first_token_at) = match run_cancellable(
+            llm_call,
+            ctx.cancellation.as_ref(),
+            ctx.run_cancellation.as_ref(),
+            ActiveOperationKind::Llm,
+        )
+        .await
+        {
+            Ok(Ok(triple)) => triple,
+            Ok(Err(e)) => return Err(e),
+            Err(e) => return Err(e),
         };
-        if let Some(run_cancellation) = ctx.run_cancellation.as_ref() {
-            run_cancellation.clear_active_operation();
-        }
 
         if is_cancelled() {
             return Err(AgentError::Cancelled);
         }
 
-        let used_fallback = response.content.is_empty() && response.tool_calls.is_empty();
+        let crate::llm::LlmResponse {
+            content: resp_content,
+            reasoning_content,
+            tool_calls,
+            usage,
+        } = response;
 
-        // Save LLM response with session_id from context
-        let session_id = ctx.config.thread_id.as_deref();
-        crate::llm::context_persistence::save_llm_response(
-            "think",
-            session_id,
-            &response.content,
-            response.reasoning_content.as_deref(),
-            &response.tool_calls,
-            response.usage.as_ref(),
-        );
+        let used_fallback = resp_content.is_empty() && tool_calls.is_empty();
+        if used_fallback {
+            warn!("think: empty LLM response (no text, no tool calls); using fallback message");
+        }
 
         let content = if used_fallback {
             "No text response from the model. Please try again or check the API.".to_string()
         } else {
-            response.content
+            resp_content
         };
 
-        if used_fallback && ctx.stream_tx.is_some() {
-            let fallback_chunk = MessageChunk::message(content.clone());
-            let _ = ctx
-                .stream_tx
-                .as_ref()
-                .unwrap()
-                .send(StreamEvent::Messages {
-                    chunk: fallback_chunk,
-                    metadata: StreamMetadata {
-                        loom_node: self.id().to_string(),
-                        namespace: None,
-                    },
-                })
-                .await;
-        }
-
-        if should_stream && !used_fallback && !content.is_empty() && streamed_chunks == 0 {
-            let _ = ctx
-                .stream_tx
-                .as_ref()
-                .unwrap()
-                .send(StreamEvent::Messages {
-                    chunk: MessageChunk::message(content.clone()),
-                    metadata: StreamMetadata {
-                        loom_node: self.id().to_string(),
-                        namespace: None,
-                    },
-                })
-                .await;
-        }
-
-        // Emit complete tool_call events before applying state
-        if should_stream_tools && !response.tool_calls.is_empty() {
-            let tx = ctx.stream_tx.as_ref().unwrap();
-            for tc in &response.tool_calls {
-                if is_cancelled() {
-                    return Err(AgentError::Cancelled);
-                }
-                let args: Value = serde_json::from_str(&tc.arguments)
-                    .unwrap_or_else(|_| Value::String(tc.arguments.clone()));
-                let _ = tx
-                    .send(StreamEvent::ToolCall {
-                        call_id: tc.id.clone(),
-                        name: tc.name.clone(),
-                        arguments: args,
-                    })
-                    .await;
-            }
-        }
-
-        let new_state = apply_think_response(
-            state,
-            content,
-            response.reasoning_content.clone(),
-            response.tool_calls,
-            response.usage.clone(),
+        trace!(
+            content_len = content.len(),
+            tool_calls = tool_calls.len(),
+            used_fallback,
+            "think: LLM response ready"
         );
 
-        if let (Some(ref tx), Some(ref u)) = (ctx.stream_tx.as_ref(), response.usage.as_ref()) {
-            let (prefill_duration, decode_duration) = match first_token_at {
-                Some(ft) => {
-                    let prefill = ft.duration_since(call_start);
-                    let decode = call_start.elapsed().saturating_sub(prefill);
-                    (Some(prefill), Some(decode))
-                }
-                None => (None, None),
-            };
-            let _ = tx
-                .send(StreamEvent::Usage {
-                    prompt_tokens: u.prompt_tokens,
-                    completion_tokens: u.completion_tokens,
-                    total_tokens: u.total_tokens,
-                    prefill_duration,
-                    decode_duration,
-                })
-                .await;
+        self.emit_post_response_events(
+            ctx,
+            &content,
+            used_fallback,
+            should_stream,
+            streamed_chunks,
+            &tool_calls,
+            should_stream_tools,
+            is_cancelled,
+        )
+        .await?;
+
+        let new_state = state.apply_think(
+            content,
+            reasoning_content,
+            tool_calls,
+            usage,
+        );
+
+        if let Some(ref u) = new_state.usage {
+            self.emit_usage_event(ctx, call_start, first_token_at, u).await;
         }
 
         Ok((new_state, Next::Continue))

@@ -175,6 +175,9 @@ fn react_state_construction_and_clone() {
         total_usage: None,
         message_count_after_last_think: None,
         last_reasoning_content: None,
+        think_count: 0,
+        summary: None,
+        should_continue: true,
     };
     assert_eq!(state.messages.len(), 2);
     assert_eq!(state.tool_calls.len(), 1);
@@ -229,6 +232,9 @@ fn react_state_clone_field_by_field() {
         total_usage: None,
         message_count_after_last_think: None,
         last_reasoning_content: None,
+        think_count: 0,
+        summary: None,
+        should_continue: true,
     };
     let cloned = state.clone();
     assert_eq!(cloned.messages.len(), 3);
@@ -256,6 +262,9 @@ fn react_state_with_all_message_variants() {
         total_usage: None,
         message_count_after_last_think: None,
         last_reasoning_content: None,
+        think_count: 0,
+        summary: None,
+        should_continue: true,
     };
     assert_eq!(state.messages.len(), 3);
     match &state.messages[0] {
@@ -267,7 +276,7 @@ fn react_state_with_all_message_variants() {
         _ => panic!("expected User"),
     }
     match &state.messages[2] {
-        Message::Assistant(s) => assert_eq!(s, "Assistant reply"),
+        Message::Assistant(p) => assert_eq!(p.content, "Assistant reply"),
         _ => panic!("expected Assistant"),
     }
 }
@@ -290,6 +299,9 @@ fn react_state_empty_tool_calls_non_empty_results() {
         total_usage: None,
         message_count_after_last_think: None,
         last_reasoning_content: None,
+        think_count: 0,
+        summary: None,
+        should_continue: true,
     };
     assert!(state.tool_calls.is_empty());
     assert_eq!(state.tool_results.len(), 1);
@@ -312,6 +324,9 @@ fn react_state_debug() {
         total_usage: None,
         message_count_after_last_think: None,
         last_reasoning_content: None,
+        think_count: 0,
+        summary: None,
+        should_continue: true,
     };
     let s = format!("{:?}", state);
     assert!(s.contains("messages"));

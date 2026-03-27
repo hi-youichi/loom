@@ -597,9 +597,7 @@ fn persist_output(
 }
 
 fn default_tool_output_dir() -> PathBuf {
-    env_config::home::loom_home()
-        .join("context")
-        .join("tool-output")
+    env_config::home::thread_session_dir("default").join("tool-output")
 }
 
 fn build_storage_file_name(tool_name: &str, extension: &str) -> String {

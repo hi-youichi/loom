@@ -7,9 +7,7 @@
 use std::path::PathBuf;
 
 use crate::agent::react::ReactBuildConfig;
-use crate::REACT_SYSTEM_PROMPT;
-
-use super::prompt::{assemble_system_prompt, ApprovalPolicy};
+use super::prompt::{assemble_react_system_prompt, ApprovalPolicy, ReactPromptInputs};
 
 /// Product-semantic configuration for a Helve-style run.
 ///
@@ -45,12 +43,8 @@ pub struct HelveConfig {
 /// Converts a HelveConfig and a base ReactBuildConfig into a single ReactBuildConfig.
 ///
 /// Product fields (working_folder, thread_id, user_id, approval_policy) are taken from
-/// `helve` when set; otherwise from `base`. System prompt is set in this order:
-/// 1. `helve.system_prompt_override` if present (used as full system prompt)
-/// 2. else: base content = assembled from workdir (if set) or `base.system_prompt`;
-///    role prefix = role_setting (if set) + "\n\n" + agents_md (if set), trimmed;
-///    if role prefix is non-empty, system prompt = role prefix + "\n\n" + base content;
-///    otherwise system prompt = base content
+/// `helve` when set; otherwise from `base`. The final system prompt is assembled
+/// through [`assemble_react_system_prompt`].
 ///
 /// Other fields (db_path, mcp_*, openai_*, etc.) are always taken from `base`.
 ///
@@ -68,29 +62,16 @@ pub struct HelveConfig {
 /// let runner = build_react_runner(&config, None, false).await?;
 /// ```
 pub fn to_react_build_config(helve: &HelveConfig, base: ReactBuildConfig) -> ReactBuildConfig {
-    let system_prompt = helve.system_prompt_override.clone().or_else(|| {
-        let base_content = helve
-            .working_folder
-            .as_ref()
-            .map(|p| assemble_system_prompt(p.as_path(), helve.approval_policy))
-            .or_else(|| base.system_prompt.clone())
-            .unwrap_or_else(|| REACT_SYSTEM_PROMPT.to_string());
-        let role_prefix: Vec<&str> = [
-            helve.role_setting.as_deref(),
-            helve.agents_md.as_deref(),
-            helve.skills_prompt.as_deref(),
-        ]
-        .into_iter()
-        .flatten()
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .collect();
-        Some(if role_prefix.is_empty() {
-            base_content
-        } else {
-            format!("{}\n\n{}", role_prefix.join("\n\n"), base_content)
-        })
-    });
+    let prompt_inputs = ReactPromptInputs {
+        full_override: helve.system_prompt_override.clone(),
+        base_prompt_override: base.system_prompt.clone(),
+        role_setting: helve.role_setting.clone(),
+        agents_md: helve.agents_md.clone(),
+        skills_prompt: helve.skills_prompt.clone(),
+        working_folder: helve.working_folder.clone(),
+        approval_policy: helve.approval_policy,
+    };
+    let system_prompt = Some(assemble_react_system_prompt(&prompt_inputs));
 
     ReactBuildConfig {
         system_prompt,
@@ -206,5 +187,24 @@ mod tests {
         let agents_pos = prompt.find("AGENTS content.").unwrap();
         let workdir_pos = prompt.find("/tmp/ws").unwrap();
         assert!(soul_pos < agents_pos && agents_pos < workdir_pos);
+    }
+
+    #[test]
+    fn to_react_build_config_role_agents_skills_then_base() {
+        let mut base = ReactBuildConfig::from_env();
+        base.system_prompt = Some("BASE".to_string());
+        let helve = HelveConfig {
+            role_setting: Some("ROLE".to_string()),
+            agents_md: Some("AGENTS".to_string()),
+            skills_prompt: Some("SKILLS".to_string()),
+            ..Default::default()
+        };
+        let out = to_react_build_config(&helve, base);
+        let prompt = out.system_prompt.as_deref().unwrap();
+        let role_pos = prompt.find("ROLE").unwrap();
+        let agents_pos = prompt.find("AGENTS").unwrap();
+        let skills_pos = prompt.find("SKILLS").unwrap();
+        let base_pos = prompt.find("BASE").unwrap();
+        assert!(role_pos < agents_pos && agents_pos < skills_pos && skills_pos < base_pos);
     }
 }

@@ -37,6 +37,8 @@ pub fn config_path(_app_name: &str) -> Result<Option<PathBuf>, LoadError> {
 /// base_url = "https://open.bigmodel.cn/api/paas/v4"
 /// model = "glm-4-flash"
 /// type = "bigmodel"
+/// tool_choice = "none"
+/// temperature = 0.7
 /// ```
 #[derive(serde::Deserialize, Clone, Debug)]
 pub struct ProviderDef {
@@ -48,14 +50,22 @@ pub struct ProviderDef {
     pub base_url: Option<String>,
     /// Default model name (mapped to `MODEL`).
     pub model: Option<String>,
-    /// Provider implementation type: `"openai"` (default) or `"bigmodel"` (mapped to `LLM_PROVIDER`).
+    /// Provider implementation type: `"openai"` (default), `"openai_compat"`, or `"bigmodel"` (alias; mapped to `LLM_PROVIDER`).
     #[serde(rename = "type")]
     pub provider_type: Option<String>,
+    /// Chat Completions `tool_choice`: `auto`, `none`, or `required` (mapped to `OPENAI_TOOL_CHOICE`).
+    #[serde(default)]
+    pub tool_choice: Option<String>,
+    /// Sampling temperature (mapped to `OPENAI_TEMPERATURE` as a decimal string).
+    #[serde(default)]
+    pub temperature: Option<f64>,
 }
 
 impl ProviderDef {
     /// Returns env key→value pairs derived from this provider's settings.
-    /// Keys: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `MODEL`, `LLM_PROVIDER` (when type is set).
+    /// Keys: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `MODEL`, `LLM_PROVIDER` (when type is set),
+    /// `OPENAI_TOOL_CHOICE` (when `tool_choice` is set and non-empty after trim),
+    /// `OPENAI_TEMPERATURE` (when `temperature` is set and finite).
     pub fn to_env_map(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         if let Some(ref v) = self.api_key {
@@ -69,6 +79,17 @@ impl ProviderDef {
         }
         if let Some(ref v) = self.provider_type {
             map.insert("LLM_PROVIDER".to_string(), v.clone());
+        }
+        if let Some(ref v) = self.tool_choice {
+            let t = v.trim();
+            if !t.is_empty() {
+                map.insert("OPENAI_TOOL_CHOICE".to_string(), t.to_string());
+            }
+        }
+        if let Some(t) = self.temperature {
+            if t.is_finite() {
+                map.insert("OPENAI_TEMPERATURE".to_string(), format!("{t}"));
+            }
         }
         map
     }
@@ -214,5 +235,112 @@ BAR = "baz"
 
         let map = result.unwrap();
         assert!(map.is_empty());
+    }
+
+    #[test]
+    fn provider_to_env_map_includes_tool_choice_when_set() {
+        let p = ProviderDef {
+            name: "openai".into(),
+            api_key: Some("k".into()),
+            base_url: Some("https://example/v1".into()),
+            model: Some("gpt-4o".into()),
+            provider_type: Some("openai".into()),
+            tool_choice: Some("  none  ".into()),
+            temperature: None,
+        };
+        let m = p.to_env_map();
+        assert_eq!(m.get("OPENAI_TOOL_CHOICE"), Some(&"none".to_string()));
+    }
+
+    #[test]
+    fn provider_to_env_map_omits_tool_choice_when_unset_or_blank() {
+        let p = ProviderDef {
+            name: "openai".into(),
+            api_key: None,
+            base_url: None,
+            model: None,
+            provider_type: None,
+            tool_choice: None,
+            temperature: None,
+        };
+        assert!(!p.to_env_map().contains_key("OPENAI_TOOL_CHOICE"));
+
+        let p2 = ProviderDef {
+            name: "openai".into(),
+            api_key: None,
+            base_url: None,
+            model: None,
+            provider_type: None,
+            tool_choice: Some("   ".into()),
+            temperature: None,
+        };
+        assert!(!p2.to_env_map().contains_key("OPENAI_TOOL_CHOICE"));
+    }
+
+    #[test]
+    fn load_full_config_parses_provider_tool_choice() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("config.toml"),
+            r#"
+[[providers]]
+name = "p1"
+tool_choice = "required"
+"#,
+        )
+        .unwrap();
+        let _guard = LoomHomeGuard::set(dir.path());
+        let full = load_full_config("loom").unwrap();
+        assert_eq!(full.providers.len(), 1);
+        assert_eq!(
+            full.providers[0].tool_choice.as_deref(),
+            Some("required")
+        );
+    }
+
+    #[test]
+    fn provider_to_env_map_includes_temperature_when_set() {
+        let p = ProviderDef {
+            name: "openai".into(),
+            api_key: None,
+            base_url: None,
+            model: None,
+            provider_type: None,
+            tool_choice: None,
+            temperature: Some(0.25),
+        };
+        let m = p.to_env_map();
+        assert_eq!(m.get("OPENAI_TEMPERATURE").map(String::as_str), Some("0.25"));
+    }
+
+    #[test]
+    fn provider_to_env_map_omits_non_finite_temperature() {
+        let p = ProviderDef {
+            name: "openai".into(),
+            api_key: None,
+            base_url: None,
+            model: None,
+            provider_type: None,
+            tool_choice: None,
+            temperature: Some(f64::NAN),
+        };
+        assert!(!p.to_env_map().contains_key("OPENAI_TEMPERATURE"));
+    }
+
+    #[test]
+    fn load_full_config_parses_provider_temperature() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("config.toml"),
+            r#"
+[[providers]]
+name = "p1"
+temperature = 0.5
+"#,
+        )
+        .unwrap();
+        let _guard = LoomHomeGuard::set(dir.path());
+        let full = load_full_config("loom").unwrap();
+        assert_eq!(full.providers[0].temperature, Some(0.5));
     }
 }

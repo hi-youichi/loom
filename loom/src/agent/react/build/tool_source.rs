@@ -12,6 +12,8 @@ use crate::tools::{
     ExaCodesearchTool, ExaWebsearchTool, InvokeAgentTool, LspTool, TwitterSearchTool,
     WebFetcherTool,
 };
+#[cfg(windows)]
+use crate::tools::powershell::PowerShellTool;
 
 use env_config::McpServerDef;
 
@@ -43,6 +45,14 @@ pub(crate) async fn build_tool_source(
             None => BashTool::new(),
         };
         aggregate.register_async(Box::new(bash_tool)).await;
+        #[cfg(windows)]
+        {
+            let ps_tool = match &working_folder_arc {
+                Some(wf) => PowerShellTool::with_working_folder(Arc::clone(wf)),
+                None => PowerShellTool::new(),
+            };
+            aggregate.register_async(Box::new(ps_tool)).await;
+        }
         aggregate.register_sync(Box::new(BatchTool::new(Arc::clone(&aggregate))));
         aggregate.register_sync(Box::new(LspTool::new()));
         if let Some(ref servers) = config.mcp_servers {
@@ -214,6 +224,17 @@ pub(crate) async fn build_tool_source(
         None => BashTool::new(),
     };
     aggregate.register_async(Box::new(bash_tool)).await;
+    
+    // Register PowerShell tool on Windows
+    #[cfg(windows)]
+    {
+        let ps_tool = match &working_folder_arc {
+            Some(wf) => PowerShellTool::with_working_folder(Arc::clone(wf)),
+            None => PowerShellTool::new(),
+        };
+        aggregate.register_async(Box::new(ps_tool)).await;
+    }
+    
     if let Some(ref key) = config.twitter_api_key {
         aggregate
             .register_async(Box::new(TwitterSearchTool::new(key.clone())))
@@ -223,9 +244,11 @@ pub(crate) async fn build_tool_source(
         aggregate
             .register_async(Box::new(ExaWebsearchTool::new(key.clone())))
             .await;
-        aggregate
-            .register_async(Box::new(ExaCodesearchTool::new(key.clone())))
-            .await;
+        if config.exa_codesearch_enabled {
+            aggregate
+                .register_async(Box::new(ExaCodesearchTool::new(key.clone())))
+                .await;
+        }
     }
     if let Some(ref wf) = config.working_folder {
         register_file_tools(aggregate.as_ref(), wf, config.skill_registry.clone())

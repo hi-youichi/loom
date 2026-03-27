@@ -57,7 +57,7 @@ async fn compile_with_middleware_wraps_node_run() {
     state.messages.push(Message::User("hello".into()));
 
     let out = compiled.invoke(state, None).await.unwrap();
-    assert!(matches!(out.messages.last(), Some(Message::Assistant(s)) if s == "hello"));
+    assert!(matches!(out.messages.last(), Some(Message::Assistant(p)) if p.content == "hello"));
 
     let entered = middleware.entered.lock().unwrap();
     assert_eq!(entered.as_slice(), &["echo"]);
@@ -78,7 +78,7 @@ async fn with_middleware_compile_wraps_node_run() {
     state.messages.push(Message::User("hello".into()));
 
     let out = compiled.invoke(state, None).await.unwrap();
-    assert!(matches!(out.messages.last(), Some(Message::Assistant(s)) if s == "hello"));
+    assert!(matches!(out.messages.last(), Some(Message::Assistant(p)) if p.content == "hello"));
 
     let entered = middleware.entered.lock().unwrap();
     assert_eq!(entered.as_slice(), &["echo"]);

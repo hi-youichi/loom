@@ -13,7 +13,6 @@ tools:
         todo_read,
         web_fetcher,
         websearch,
-        codesearch,
         skill,
         batch,
       ]

@@ -70,6 +70,16 @@ pub enum StreamUpdate {
         /// Result or error message.
         output: Option<String>,
     },
+
+    /// Incremental tool call argument chunk (during LLM streaming).
+    /// Maps to ToolCallUpdate with raw_input_delta if ACP supports it, otherwise ignored.
+    ToolCallChunk {
+        tool_call_id: String,
+        /// Tool name (only present in first chunk).
+        name: Option<String>,
+        /// Incremental arguments JSON delta.
+        arguments_delta: String,
+    },
 }
 
 /// Convert one Loom stream event into zero or more [`StreamUpdate`]s.
@@ -126,18 +136,42 @@ where
                 }]
             }
         }
-        StreamEvent::ToolStart { call_id, name } => {
-            let id = call_id
-                .clone()
-                .unwrap_or_else(|| format!("tool-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        StreamEvent::ToolCall {
+            call_id,
+            name,
+            arguments,
+        } => {
+            let id = call_id.clone().unwrap_or_else(|| {
+                format!(
+                    "tool-{}",
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos()
+                )
+            });
             vec![StreamUpdate::ToolCallStarted {
                 tool_call_id: id,
                 name: name.clone(),
-                input: None,
+                input: Some(arguments.clone()),
                 kind: None,
             }]
         }
-        StreamEvent::ToolOutput { call_id, content, .. } => {
+        StreamEvent::ToolStart { call_id, name: _ } => {
+            let id = call_id.clone().unwrap_or_default();
+            if id.is_empty() {
+                vec![]
+            } else {
+                vec![StreamUpdate::ToolCallUpdated {
+                    tool_call_id: id,
+                    status: "running".to_string(),
+                    output: None,
+                }]
+            }
+        }
+        StreamEvent::ToolOutput {
+            call_id, content, ..
+        } => {
             // Prefer Loom's call_id so the client can attach streamed tool output to the right tool call.
             // If call_id is missing, we keep an empty id; the notification layer will drop it.
             let id = call_id.clone().unwrap_or_default();
@@ -148,11 +182,12 @@ where
             }]
         }
         StreamEvent::ToolEnd {
-            call_id, result, is_error, ..
+            call_id,
+            result,
+            is_error,
+            ..
         } => {
-            let id = call_id
-                .clone()
-                .unwrap_or_default();
+            let id = call_id.clone().unwrap_or_default();
             vec![StreamUpdate::ToolCallUpdated {
                 tool_call_id: id,
                 status: if *is_error {
@@ -161,6 +196,27 @@ where
                     "success".to_string()
                 },
                 output: Some(result.clone()),
+            }]
+        }
+        StreamEvent::ToolCallChunk {
+            call_id,
+            name,
+            arguments_delta,
+        } => {
+            // Generate or use existing call_id
+            let id = call_id.clone().unwrap_or_else(|| {
+                format!(
+                    "tool-chunk-{}",
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos()
+                )
+            });
+            vec![StreamUpdate::ToolCallChunk {
+                tool_call_id: id,
+                name: name.clone(),
+                arguments_delta: arguments_delta.clone(),
             }]
         }
         _ => vec![],
@@ -230,6 +286,40 @@ pub fn stream_update_to_session_notification(
                 ToolCallId::new(tool_call_id.as_str()),
                 fields,
             ))
+        }
+        StreamUpdate::ToolCallChunk {
+            tool_call_id,
+            name,
+            arguments_delta,
+        } => {
+            // ACP doesn't have a dedicated tool_call_chunk type yet.
+            // For the first chunk (with name), send ToolCall with Pending status.
+            // For subsequent chunks, we could either:
+            // 1. Ignore them (wait for complete ToolCall event)
+            // 2. Send ToolCallUpdate with raw_input_delta if ACP adds support
+            // Currently, we only send if it's the first chunk (has name).
+            if let Some(tool_name) = name {
+                let id = ToolCallId::new(tool_call_id.as_str());
+                let tc = ToolCall::new(id.clone(), tool_name.clone())
+                    .status(ToolCallStatus::Pending)
+                    .raw_input(serde_json::Value::String(arguments_delta.clone()));
+                tracing::debug!(
+                    tool_call_id = %tool_call_id,
+                    name = %tool_name,
+                    arguments_delta = %arguments_delta,
+                    "tool_call_chunk (first) session update"
+                );
+                SessionUpdate::ToolCall(tc)
+            } else {
+                // Subsequent chunks: ACP doesn't support incremental updates yet.
+                // The complete ToolCall event will be sent after streaming finishes.
+                tracing::trace!(
+                    tool_call_id = %tool_call_id,
+                    arguments_delta_len = arguments_delta.len(),
+                    "ignoring tool_call_chunk (subsequent) - ACP doesn't support incremental updates"
+                );
+                return None;
+            }
         }
     };
     Some(SessionNotification::new(session_id.clone(), update))
@@ -324,9 +414,35 @@ mod tests {
         assert_eq!(updates.len(), 0);
     }
 
-    /// ToolStart 带 call_id -> ToolCallStarted 使用该 id
+    /// ToolCall 带 call_id 和 arguments -> ToolCallStarted 带 input
     #[test]
-    fn loom_event_to_updates_tool_start_with_call_id_uses_it() {
+    fn loom_event_to_updates_tool_call_with_arguments() {
+        use serde_json::json;
+        let ev = AnyStreamEvent::React(StreamEvent::ToolCall {
+            call_id: Some("call_abc".to_string()),
+            name: "read_file".to_string(),
+            arguments: json!({"path": "/tmp/test.txt"}),
+        });
+        let updates = loom_event_to_updates(&ev);
+        assert_eq!(updates.len(), 1);
+        match &updates[0] {
+            StreamUpdate::ToolCallStarted {
+                tool_call_id,
+                name,
+                input,
+                ..
+            } => {
+                assert_eq!(tool_call_id, "call_abc");
+                assert_eq!(name, "read_file");
+                assert_eq!(input, &Some(json!({"path": "/tmp/test.txt"})));
+            }
+            _ => panic!("应为 ToolCallStarted，得到 {:?}", updates[0]),
+        }
+    }
+
+    /// ToolStart 带 call_id -> ToolCallUpdated (running)
+    #[test]
+    fn loom_event_to_updates_tool_start_with_call_id_produces_running() {
         let ev = AnyStreamEvent::React(StreamEvent::ToolStart {
             call_id: Some("call_abc".to_string()),
             name: "read_file".to_string(),
@@ -334,39 +450,28 @@ mod tests {
         let updates = loom_event_to_updates(&ev);
         assert_eq!(updates.len(), 1);
         match &updates[0] {
-            StreamUpdate::ToolCallStarted {
+            StreamUpdate::ToolCallUpdated {
                 tool_call_id,
-                name,
-                ..
+                status,
+                output,
             } => {
                 assert_eq!(tool_call_id, "call_abc");
-                assert_eq!(name, "read_file");
+                assert_eq!(status, "running");
+                assert!(output.is_none());
             }
-            _ => panic!("应为 ToolCallStarted，得到 {:?}", updates[0]),
+            _ => panic!("应为 ToolCallUpdated，得到 {:?}", updates[0]),
         }
     }
 
-    /// ToolStart 无 call_id -> ToolCallStarted 仍生成非空 id
+    /// ToolStart 无 call_id -> 空（不输出）
     #[test]
-    fn loom_event_to_updates_tool_start_without_call_id_generates_id() {
+    fn loom_event_to_updates_tool_start_without_call_id_produces_nothing() {
         let ev = AnyStreamEvent::React(StreamEvent::ToolStart {
             call_id: None,
             name: "run_cmd".to_string(),
         });
         let updates = loom_event_to_updates(&ev);
-        assert_eq!(updates.len(), 1);
-        match &updates[0] {
-            StreamUpdate::ToolCallStarted {
-                tool_call_id,
-                name,
-                ..
-            } => {
-                assert!(!tool_call_id.is_empty(), "应生成非空 tool_call_id");
-                assert!(tool_call_id.starts_with("tool-"));
-                assert_eq!(name, "run_cmd");
-            }
-            _ => panic!("应为 ToolCallStarted，得到 {:?}", updates[0]),
-        }
+        assert_eq!(updates.len(), 0);
     }
 
     /// ToolEnd 带 call_id -> ToolCallUpdated 使用该 id，且可转为 SessionNotification
@@ -394,7 +499,10 @@ mod tests {
         }
         let session_id = SessionId::new("test-session".to_string());
         let notif = stream_update_to_session_notification(&session_id, &updates[0]);
-        assert!(notif.is_some(), "ToolEnd 带 call_id 应产生 SessionNotification");
+        assert!(
+            notif.is_some(),
+            "ToolEnd 带 call_id 应产生 SessionNotification"
+        );
     }
 
     /// ToolOutput 带 call_id -> ToolCallUpdated 使用该 id -> notification 为 Some
@@ -409,7 +517,10 @@ mod tests {
         assert_eq!(updates.len(), 1);
         let session_id = SessionId::new("sess-1".to_string());
         let notif = stream_update_to_session_notification(&session_id, &updates[0]);
-        assert!(notif.is_some(), "ToolOutput 带 call_id 应产生 SessionNotification");
+        assert!(
+            notif.is_some(),
+            "ToolOutput 带 call_id 应产生 SessionNotification"
+        );
     }
 
     /// AgentThoughtChunk / UserMessageChunk / AgentMessageChunk 均可转为 SessionNotification
@@ -428,5 +539,85 @@ mod tests {
             text: "回复片段".to_string(),
         };
         assert!(stream_update_to_session_notification(&session_id, &message).is_some());
+    }
+
+    /// ToolCallChunk 第一个块（有 name）-> ToolCall (Pending)
+    #[test]
+    fn loom_event_to_updates_tool_call_chunk_first_with_name() {
+        let ev = AnyStreamEvent::React(StreamEvent::ToolCallChunk {
+            call_id: Some("call-123".to_string()),
+            name: Some("read_file".to_string()),
+            arguments_delta: "{\"path\":".to_string(),
+        });
+        let updates = loom_event_to_updates(&ev);
+        assert_eq!(updates.len(), 1);
+        match &updates[0] {
+            StreamUpdate::ToolCallChunk {
+                tool_call_id,
+                name,
+                arguments_delta,
+            } => {
+                assert_eq!(tool_call_id, "call-123");
+                assert_eq!(name, &Some("read_file".to_string()));
+                assert_eq!(arguments_delta, "{\"path\":");
+            }
+            _ => panic!("应为 ToolCallChunk，得到 {:?}", updates[0]),
+        }
+    }
+
+    /// ToolCallChunk 后续块（无 name）-> ToolCallChunk (name: None)
+    #[test]
+    fn loom_event_to_updates_tool_call_chunk_subsequent_without_name() {
+        let ev = AnyStreamEvent::React(StreamEvent::ToolCallChunk {
+            call_id: Some("call-123".to_string()),
+            name: None,
+            arguments_delta: " \"src/main.rs\"}".to_string(),
+        });
+        let updates = loom_event_to_updates(&ev);
+        assert_eq!(updates.len(), 1);
+        match &updates[0] {
+            StreamUpdate::ToolCallChunk {
+                tool_call_id,
+                name,
+                arguments_delta,
+            } => {
+                assert_eq!(tool_call_id, "call-123");
+                assert!(name.is_none());
+                assert_eq!(arguments_delta, " \"src/main.rs\"}");
+            }
+            _ => panic!("应为 ToolCallChunk，得到 {:?}", updates[0]),
+        }
+    }
+
+    /// ToolCallChunk 第一个块转为 SessionNotification -> ToolCall
+    #[test]
+    fn stream_update_to_session_notification_tool_call_chunk_first() {
+        let session_id = SessionId::new("sess-3".to_string());
+        let chunk = StreamUpdate::ToolCallChunk {
+            tool_call_id: "call-456".to_string(),
+            name: Some("bash".to_string()),
+            arguments_delta: "{\"cmd\":\"cargo".to_string(),
+        };
+        let notif = stream_update_to_session_notification(&session_id, &chunk);
+        assert!(
+            notif.is_some(),
+            "ToolCallChunk 第一个块（有 name）应产生 SessionNotification"
+        );
+    }
+
+    /// ToolCallChunk 后续块转为 SessionNotification -> None (ACP 不支持增量)
+    #[test]
+    fn stream_update_to_session_notification_tool_call_chunk_subsequent() {
+        let session_id = SessionId::new("sess-3".to_string());
+        let chunk = StreamUpdate::ToolCallChunk {
+            tool_call_id: "call-456".to_string(),
+            name: None,
+            arguments_delta: " build\"}".to_string(),
+        };
+        let notif = stream_update_to_session_notification(&session_id, &chunk);
+        assert!(
+            notif.is_none(),
+            "ToolCallChunk 后续块（无 name）不应产生 SessionNotification（ACP 不支持增量更新）"
+        );
     }
 }

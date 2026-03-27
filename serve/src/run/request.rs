@@ -82,7 +82,6 @@ pub(super) async fn prepare_run(
         session_id: None,
         cancellation: None,
         thread_id: r.thread_id,
-        role_file: None,
         agent: None,
         verbose: r.verbose.unwrap_or(false),
         got_adaptive: r.got_adaptive.unwrap_or(false),
@@ -92,6 +91,10 @@ pub(super) async fn prepare_run(
         mcp_config_path: None,
         output_timestamp: false,
         dry_run: false,
+        provider: None,
+        base_url: None,
+        api_key: None,
+        provider_type: None,
     };
     let cmd = match r.agent {
         AgentType::React => RunCmd::React,

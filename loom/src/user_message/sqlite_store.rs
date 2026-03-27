@@ -4,8 +4,10 @@ use std::path::Path;
 
 use async_trait::async_trait;
 use rusqlite::params;
+use tracing::warn;
 
-use crate::message::Message;
+use crate::memory::uuid6;
+use crate::message::{AssistantPayload, Message};
 use crate::user_message::{UserMessageStore, UserMessageStoreError};
 
 /// SQLite-backed store: one table `user_messages (id, thread_id, role, content)`.
@@ -14,19 +16,49 @@ pub struct SqliteUserMessageStore {
     db_path: std::path::PathBuf,
 }
 
-fn message_to_role_content(msg: &Message) -> (&'static str, &str) {
-    match msg {
-        Message::System(c) => ("system", c.as_str()),
-        Message::User(c) => ("user", c.as_str()),
-        Message::Assistant(c) => ("assistant", c.as_str()),
-    }
-}
-
 fn row_to_message(role: &str, content: &str) -> Message {
     match role {
         "system" => Message::System(content.to_string()),
         "user" => Message::User(content.to_string()),
-        "assistant" => Message::Assistant(content.to_string()),
+        "assistant" => {
+            let t = content.trim_start();
+            if t.starts_with('{') {
+                if let Ok(payload) = serde_json::from_str::<AssistantPayload>(content) {
+                    return Message::Assistant(payload);
+                }
+            }
+            Message::assistant(content.to_string())
+        }
+        "tool" => {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(content) {
+                if let Some(c) = v.get("content").and_then(|x| x.as_str()) {
+                    let id = v
+                        .get("tool_call_id")
+                        .and_then(|x| x.as_str())
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| {
+                            warn!(
+                                raw = content,
+                                "tool message in DB missing tool_call_id; generating fallback id"
+                            );
+                            format!("call_{}", uuid6())
+                        });
+                    return Message::Tool {
+                        tool_call_id: id,
+                        content: c.to_string(),
+                    };
+                }
+            }
+            warn!(
+                raw = content,
+                "malformed tool message in DB; storing raw as content with fallback id"
+            );
+            Message::Tool {
+                tool_call_id: format!("call_{}", uuid6()),
+                content: content.to_string(),
+            }
+        }
         _ => Message::User(content.to_string()),
     }
 }
@@ -65,9 +97,8 @@ impl UserMessageStore for SqliteUserMessageStore {
         thread_id: &str,
         message: &Message,
     ) -> Result<(), UserMessageStoreError> {
-        let (role, content) = message_to_role_content(message);
+        let (role, content) = message.to_role_content_pair_for_store();
         let thread_id = thread_id.to_string();
-        let content = content.to_string();
         let db_path = self.db_path.clone();
         tokio::task::spawn_blocking(move || {
             let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
@@ -145,7 +176,7 @@ mod tests {
             _ => panic!("expected user"),
         }
         match &msgs[1] {
-            Message::Assistant(c) => assert_eq!(c, "hello"),
+            Message::Assistant(p) => assert_eq!(p.content, "hello"),
             _ => panic!("expected assistant"),
         }
         match &msgs[2] {
@@ -169,5 +200,32 @@ mod tests {
         let id_before = 3u64; // cursor: next page starts before id 3
         let page2 = store.list("t2", Some(id_before), Some(2)).await.unwrap();
         assert_eq!(page2.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn sqlite_append_tool_with_empty_call_id_gets_generated_id_on_read() {
+        let file = NamedTempFile::new().unwrap();
+        let store = SqliteUserMessageStore::new(file.path()).unwrap();
+        store
+            .append(
+                "t3",
+                &Message::Tool {
+                    tool_call_id: String::new(),
+                    content: "out".into(),
+                },
+            )
+            .await
+            .unwrap();
+        let msgs = store.list("t3", None, Some(10)).await.unwrap();
+        match &msgs[0] {
+            Message::Tool {
+                tool_call_id,
+                content,
+            } => {
+                assert!(!tool_call_id.is_empty());
+                assert_eq!(content, "out");
+            }
+            _ => panic!("expected tool"),
+        }
     }
 }

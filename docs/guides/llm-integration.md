@@ -36,7 +36,7 @@ pub trait LlmClient: Send + Sync {
 ## LlmResponse and types
 
 - **LlmResponse**: `content` (assistant text), `reasoning_content` (optional), `tool_calls` (Vec&lt;ToolCall&gt;), `usage` (optional).
-- **LlmUsage**: `prompt_tokens`, `completion_tokens`, `total_tokens` — used for logging and streaming (e.g. StreamEvent::Usage).
+- **LlmUsage**: OpenAI-style `prompt_tokens`, `completion_tokens`, `total_tokens`, plus optional `prompt_tokens_details` / `completion_tokens_details` when the provider returns them — used for logging and streaming (e.g. StreamEvent::Usage only carries the three headline counts).
 - **ToolCallDelta**: Incremental tool call from stream: `call_id`, `name`, `arguments_delta`.
 - **MessageChunk**: Streamed content — e.g. `message(content)` or `thinking(content)` for extended thinking.
 
@@ -80,7 +80,7 @@ Use **build_react_runner_with_openai** or the build module's LLM resolution to g
 
 ## Token management and rate limiting
 
-- **LlmUsage** is returned in **LlmResponse** and merged in ThinkNode into **ReActState::usage** (last call) and **total_usage** (accumulated). Used for logging and for compression/context-window logic (e.g. when to prune messages).
+- **LlmUsage** is returned in **LlmResponse** and merged in ThinkNode into **ReActState::usage** (last call, may include details) and **total_usage** (sums only the three headline counts; detail fields are cleared on the aggregate). Used for logging and for compression/context-window logic (e.g. when to prune messages).
 - Rate limiting is not implemented inside Loom; use client-side backoff, provider-specific headers, or a proxy if you need to throttle requests.
 
 ## Summary

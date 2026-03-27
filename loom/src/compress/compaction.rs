@@ -19,8 +19,9 @@ pub const PRUNE_PLACEHOLDER: &str = "[Old tool result cleared]";
 /// Returns true if the message is a User message in tool-result form (`Tool xxx returned: ...`).
 fn is_tool_result_message(m: &Message) -> bool {
     match m {
+        Message::Tool { .. } => true,
         Message::User(s) => s.starts_with("Tool ") && s.contains(" returned: "),
-        _ => false, // System/Assistant are never tool results
+        _ => false,
     }
 }
 
@@ -78,8 +79,18 @@ pub fn prune(messages: Vec<Message>, config: &CompactionConfig) -> Vec<Message> 
     // Replace marked messages with placeholder
     let mut out = messages;
     for i in &to_prune {
-        if let Some(Message::User(_)) = out.get_mut(*i) {
-            out[*i] = Message::User(PRUNE_PLACEHOLDER.to_string());
+        match out.get_mut(*i) {
+            Some(Message::User(_)) => {
+                out[*i] = Message::User(PRUNE_PLACEHOLDER.to_string());
+            }
+            Some(Message::Tool { tool_call_id, .. }) => {
+                let id = tool_call_id.clone();
+                out[*i] = Message::Tool {
+                    tool_call_id: id,
+                    content: PRUNE_PLACEHOLDER.to_string(),
+                };
+            }
+            _ => {}
         }
     }
     info!(
@@ -158,7 +169,22 @@ fn build_summary_prompt(msgs: &[Message]) -> String {
         match m {
             Message::System(s) => parts.push(format!("System: {}", s)),
             Message::User(s) => parts.push(format!("User: {}", s)),
-            Message::Assistant(s) => parts.push(format!("Assistant: {}", s)),
+            Message::Assistant(p) => {
+                if p.tool_calls.is_empty() {
+                    parts.push(format!("Assistant: {}", p.content));
+                } else {
+                    parts.push(format!(
+                        "Assistant: {} [tool_calls: {}]",
+                        p.content,
+                        p.tool_calls
+                            .iter()
+                            .map(|tc| tc.name.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                }
+            }
+            Message::Tool { content, .. } => parts.push(format!("Tool: {}", content)),
         }
     }
     parts.join("\n")
@@ -195,7 +221,7 @@ mod tests {
 
     #[test]
     fn is_tool_result_assistant() {
-        assert!(!is_tool_result_message(&Message::Assistant(
+        assert!(!is_tool_result_message(&Message::assistant(
             "Tool x returned: y".to_string()
         )));
     }
@@ -212,7 +238,7 @@ mod tests {
         let msgs = vec![
             Message::System("sys msg".to_string()),
             Message::User("user msg".to_string()),
-            Message::Assistant("asst msg".to_string()),
+            Message::assistant("asst msg".to_string()),
         ];
         let p = build_summary_prompt(&msgs);
         assert!(p.contains("System: sys msg"));
@@ -260,12 +286,12 @@ mod tests {
         };
         let msgs = vec![
             Message::User("hi".to_string()),
-            Message::Assistant("hello".to_string()),
+            Message::assistant("hello".to_string()),
         ];
         let out = prune(msgs.clone(), &config);
         assert_eq!(out.len(), 2);
         assert!(matches!(&out[0], Message::User(s) if s == "hi"));
-        assert!(matches!(&out[1], Message::Assistant(s) if s == "hello"));
+        assert!(matches!(&out[1], Message::Assistant(p) if p.content == "hello"));
     }
 
     #[test]

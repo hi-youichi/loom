@@ -28,7 +28,6 @@ fn opts(working_folder: PathBuf) -> RunOptions {
         session_id: None,
         cancellation: None,
         thread_id: None,
-        role_file: None,
         agent: None,
         verbose: false,
         got_adaptive: false,
@@ -38,6 +37,10 @@ fn opts(working_folder: PathBuf) -> RunOptions {
         mcp_config_path: None,
         output_timestamp: false,
         dry_run: false,
+        provider: None,
+        base_url: None,
+        api_key: None,
+        provider_type: None,
     }
 }
 
@@ -175,7 +178,6 @@ async fn session_id_restores_context_from_checkpoint() {
         session_id: None,
         cancellation: None,
         thread_id: Some(session_id.to_string()),
-        role_file: None,
         agent: None,
         verbose: false,
         got_adaptive: false,
@@ -185,6 +187,10 @@ async fn session_id_restores_context_from_checkpoint() {
         mcp_config_path: None,
         output_timestamp: false,
         dry_run: false,
+        provider: None,
+        base_url: None,
+        api_key: None,
+        provider_type: None,
     };
     let opts2 = RunOptions {
         message: "Second message".to_string(),
@@ -192,7 +198,6 @@ async fn session_id_restores_context_from_checkpoint() {
         session_id: None,
         cancellation: None,
         thread_id: Some(session_id.to_string()),
-        role_file: None,
         agent: None,
         verbose: false,
         got_adaptive: false,
@@ -202,6 +207,10 @@ async fn session_id_restores_context_from_checkpoint() {
         mcp_config_path: None,
         output_timestamp: false,
         dry_run: false,
+        provider: None,
+        base_url: None,
+        api_key: None,
+        provider_type: None,
     };
 
     let result1 = run_agent_with_llm_override(

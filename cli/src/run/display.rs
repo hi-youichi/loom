@@ -33,7 +33,18 @@ pub(crate) fn format_message_truncated(m: &Message, max: usize) -> String {
     match m {
         Message::System(s) => format!("System({})", truncate_display(s, max)),
         Message::User(s) => format!("User({})", truncate_display(s, max)),
-        Message::Assistant(s) => format!("Assistant({})", truncate_display(s, max)),
+        Message::Assistant(p) => format!(
+            "Assistant({})",
+            truncate_display(p.content.as_str(), max)
+        ),
+        Message::Tool {
+            tool_call_id,
+            content,
+        } => format!(
+            "Tool({}:{})",
+            tool_call_id,
+            truncate_display(content, max)
+        ),
     }
 }
 
@@ -197,7 +208,7 @@ mod tests {
             "User(hello...)"
         );
         assert_eq!(
-            format_message_truncated(&Message::Assistant("hello assistant".into()), 8),
+            format_message_truncated(&Message::assistant("hello assistant"), 8),
             "Assistant(hello...)"
         );
     }
@@ -207,7 +218,7 @@ mod tests {
         let state = ReActState {
             messages: vec![
                 Message::user("question"),
-                Message::Assistant("answer".into()),
+                Message::assistant("answer"),
             ],
             tool_calls: vec![ToolCall {
                 name: "web_fetch".to_string(),
@@ -240,7 +251,7 @@ mod tests {
     #[test]
     fn format_tot_and_dup_state_embed_core_block() {
         let core = ReActState {
-            messages: vec![Message::user("u"), Message::Assistant("a".into())],
+            messages: vec![Message::user("u"), Message::assistant("a")],
             ..ReActState::default()
         };
         let tot = TotState {

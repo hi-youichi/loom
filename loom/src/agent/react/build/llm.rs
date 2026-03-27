@@ -1,170 +1,194 @@
-//! Builds the default LLM from ReactBuildConfig (OpenAI or BigModel).
+//! Builds the default LLM from ReactBuildConfig (OpenAI or OpenAI-compat HTTP client).
 //!
-//! Default is OpenAI. Use BigModel only when `LLM_PROVIDER=bigmodel` is set.
+//! Default is OpenAI. Use the compat client when `LLM_PROVIDER=openai_compat` or `=bigmodel`.
 
 use crate::error::AgentError;
-use crate::llm::{ChatBigModel, ChatOpenAI, ToolChoiceMode};
+use crate::llm::{ChatOpenAI, ChatOpenAICompat, ModelEntry};
 use crate::tool_source::ToolSource;
 use crate::LlmClient;
 
 use super::super::config::ReactBuildConfig;
 use super::error::BuildRunnerError;
 
-/// True only when provider is explicitly set to "bigmodel". Default (no provider) → OpenAI.
-fn use_bigmodel(config: &ReactBuildConfig) -> bool {
-    config
-        .llm_provider
-        .as_deref()
-        .map(|s| s.eq_ignore_ascii_case("bigmodel"))
-        .unwrap_or(false)
-}
-
-/// BigModel uses the same config as OpenAI (openai_api_key, openai_base_url, model).
-fn bigmodel_config_from(
-    config: &ReactBuildConfig,
-) -> Result<(String, String, String), BuildRunnerError> {
+/// Extract model configuration from ReactBuildConfig into a ModelEntry.
+///
+/// Priority (highest to lowest):
+/// 1. ReactBuildConfig fields (credentials, model, provider, openai_tool_choice, openai_temperature)
+/// 2. Environment variables for any unset fields above (including `OPENAI_TEMPERATURE`)
+/// 3. Default values
+pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<ModelEntry, BuildRunnerError> {
+    // API key: config > env
     let api_key = config
         .openai_api_key
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .ok_or(BuildRunnerError::NoLlm)?;
+        .clone()
+        .or_else(|| std::env::var("OPENAI_API_KEY").ok())
+        .ok_or_else(|| {
+            BuildRunnerError::Context(AgentError::ExecutionFailed(
+                "OPENAI_API_KEY is not set".to_string(),
+            ))
+        })?;
+
+    // Base URL: config > env (optional)
     let base_url = config
         .openai_base_url
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .map(|s| s.trim_end_matches('/').to_string())
-        .unwrap_or_else(|| "https://open.bigmodel.cn/api/paas/v4".to_string());
+        .clone()
+        .or_else(|| std::env::var("OPENAI_BASE_URL").ok());
+
+    // Model: config > env > default
     let model = config
         .model
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-        .or_else(|| std::env::var("MODEL").ok())
-        .or_else(|| std::env::var("OPENAI_MODEL").ok())
-        .unwrap_or_else(|| "glm-4.7-flash".to_string());
-    Ok((base_url, api_key.to_string(), model))
-}
-
-fn openai_config_from(
-    config: &ReactBuildConfig,
-) -> Result<(async_openai::config::OpenAIConfig, String), BuildRunnerError> {
-    use async_openai::config::OpenAIConfig;
-
-    let api_key = config
-        .openai_api_key
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .ok_or(BuildRunnerError::NoLlm)?;
-    let model = config
-        .model
-        .as_deref()
+        .as_ref()
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
         .or_else(|| std::env::var("MODEL").ok())
         .or_else(|| std::env::var("OPENAI_MODEL").ok())
         .unwrap_or_else(|| "gpt-4o-mini".to_string());
-    let mut openai_config = OpenAIConfig::new().with_api_key(api_key);
-    if let Some(ref base) = config.openai_base_url {
-        if !base.is_empty() {
-            let base = base.trim_end_matches('/');
-            openai_config = openai_config.with_api_base(base);
-        }
-    }
-    Ok((openai_config, model))
-}
 
-fn env_temperature() -> Result<Option<f32>, BuildRunnerError> {
-    let Some(raw) = std::env::var("OPENAI_TEMPERATURE").ok() else {
-        return Ok(None);
+    // Provider type: config > env (optional)
+    let provider_type = config
+        .llm_provider
+        .clone()
+        .or_else(|| std::env::var("LLM_PROVIDER").ok());
+
+    // Determine provider name based on type
+    let provider = match provider_type.as_deref() {
+        Some("bigmodel") => "bigmodel".to_string(),
+        Some("openai_compat") => "openai_compat".to_string(),
+        _ => "openai".to_string(),
     };
-    if raw.trim().is_empty() {
-        return Ok(None);
-    }
-    raw.parse::<f32>().map(Some).map_err(|e| {
-        BuildRunnerError::Context(AgentError::ExecutionFailed(format!(
-            "invalid OPENAI_TEMPERATURE '{}': {}",
-            raw, e
-        )))
+
+    let tool_choice = match config
+        .openai_tool_choice
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(s) => match s.parse::<crate::llm::ToolChoiceMode>() {
+            Ok(m) => Some(m),
+            Err(_) => {
+                tracing::warn!(
+                    value = %s,
+                    "ignoring invalid OPENAI_TOOL_CHOICE (use auto, none, or required)"
+                );
+                None
+            }
+        },
+        None => None,
+    };
+
+    let temperature = config
+        .openai_temperature
+        .clone()
+        .or_else(|| std::env::var("OPENAI_TEMPERATURE").ok())
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .and_then(|s| match s.parse::<f32>() {
+            Ok(v) if v.is_finite() => Some(v),
+            _ => {
+                tracing::warn!(
+                    value = %s,
+                    "ignoring invalid OPENAI_TEMPERATURE (expected a finite number)"
+                );
+                None
+            }
+        });
+
+    // Build ModelEntry
+    Ok(ModelEntry {
+        id: format!("{}/{}", provider, model),
+        name: model,
+        provider,
+        base_url,
+        api_key: Some(api_key),
+        provider_type,
+        temperature,
+        max_tokens: None,
+        tool_choice,
     })
 }
 
-fn env_tool_choice_mode() -> Result<Option<ToolChoiceMode>, BuildRunnerError> {
-    let Some(raw) = std::env::var("OPENAI_TOOL_CHOICE").ok() else {
-        return Ok(None);
-    };
-    if raw.trim().is_empty() {
-        return Ok(None);
-    }
-    raw.parse::<ToolChoiceMode>().map(Some).map_err(|e| {
-        BuildRunnerError::Context(AgentError::ExecutionFailed(format!(
-            "invalid OPENAI_TOOL_CHOICE '{}': {}",
-            raw, e
-        )))
-    })
-}
 
-#[allow(dead_code)]
-pub(crate) fn build_default_llm(
-    config: &ReactBuildConfig,
-) -> Result<Box<dyn LlmClient>, BuildRunnerError> {
-    let temperature = env_temperature()?;
-    let tool_choice = env_tool_choice_mode()?;
-    if use_bigmodel(config) {
-        let (base_url, api_key, model) = bigmodel_config_from(config)?;
-        let mut client = ChatBigModel::with_config(base_url, api_key, model);
-        if let Some(t) = temperature {
-            client = client.with_temperature(t);
-        }
-        if let Some(mode) = tool_choice {
-            client = client.with_tool_choice(mode);
-        }
-        Ok(Box::new(client))
-    } else {
-        let (openai_config, model) = openai_config_from(config)?;
-        let mut client = ChatOpenAI::with_config(openai_config, model);
-        if let Some(t) = temperature {
-            client = client.with_temperature(t);
-        }
-        if let Some(mode) = tool_choice {
-            client = client.with_tool_choice(mode);
-        }
-        Ok(Box::new(client))
-    }
-}
-
+///
+/// This is the async version that fetches tools from the tool source.
 pub(crate) async fn build_default_llm_with_tool_source(
     config: &ReactBuildConfig,
     tool_source: &dyn ToolSource,
 ) -> Result<Box<dyn LlmClient>, BuildRunnerError> {
-    let temperature = env_temperature()?;
-    let tool_choice = env_tool_choice_mode()?;
-    if use_bigmodel(config) {
-        let (base_url, api_key, model) = bigmodel_config_from(config)?;
-        tracing::debug!("build_default_llm: BigModel, fetching tools from tool_source");
-        let mut client = ChatBigModel::new_with_tool_source(base_url, api_key, model, tool_source)
-            .await
-            .map_err(|e| BuildRunnerError::Context(AgentError::ExecutionFailed(e.to_string())))?;
-        if let Some(t) = temperature {
-            client = client.with_temperature(t);
+    let entry = model_entry_from_config(config)?;
+    let provider_type = entry.provider_type.as_deref().unwrap_or("openai");
+
+    let tools = tool_source.list_tools().await.map_err(|e| {
+        BuildRunnerError::Context(AgentError::ExecutionFailed(format!(
+            "Failed to list tools: {}",
+            e
+        )))
+    })?;
+
+    match provider_type {
+        "openai_compat" | "bigmodel" => {
+            let base_url = entry.base_url.clone().unwrap_or_else(|| {
+                "https://open.bigmodel.cn/api/paas/v4".to_string()
+            });
+            let api_key = entry.api_key.clone().unwrap();
+            tracing::debug!("build_default_llm: OpenAI-compat with tools");
+            let mut client =
+                ChatOpenAICompat::with_config(base_url, api_key, entry.name).with_tools(tools);
+            if let Some(mode) = entry.tool_choice {
+                client = client.with_tool_choice(mode);
+            }
+            if let Some(t) = entry.temperature {
+                client = client.with_temperature(t);
+            }
+            Ok(Box::new(client))
         }
-        if let Some(mode) = tool_choice {
-            client = client.with_tool_choice(mode);
+        _ => {
+            let mut openai_config = async_openai::config::OpenAIConfig::new();
+            if let Some(ref api_key) = entry.api_key {
+                openai_config = openai_config.with_api_key(api_key);
+            }
+            if let Some(ref base_url) = entry.base_url {
+                let base_url = base_url.trim_end_matches('/');
+                openai_config = openai_config.with_api_base(base_url);
+            }
+            tracing::debug!("build_default_llm: OpenAI with tools");
+            let mut client = ChatOpenAI::with_config(openai_config, entry.name).with_tools(tools);
+            if let Some(mode) = entry.tool_choice {
+                client = client.with_tool_choice(mode);
+            }
+            if let Some(t) = entry.temperature {
+                client = client.with_temperature(t);
+            }
+            Ok(Box::new(client))
         }
-        tracing::debug!("build_default_llm: ready (BigModel)");
-        Ok(Box::new(client))
-    } else {
-        let (openai_config, model) = openai_config_from(config)?;
-        tracing::debug!("build_default_llm: fetching tools from tool_source for model");
-        let mut client = ChatOpenAI::new_with_tool_source(openai_config, model, tool_source)
-            .await
-            .map_err(|e| BuildRunnerError::Context(AgentError::ExecutionFailed(e.to_string())))?;
-        if let Some(t) = temperature {
-            client = client.with_temperature(t);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    #[test]
+    fn test_model_entry_from_react_build_config() {
+        let _guard = env_lock().lock().unwrap();
+        let had_key = std::env::var("OPENAI_API_KEY").ok();
+        std::env::set_var("OPENAI_API_KEY", "test-key-for-model-entry");
+        let config = crate::agent::react::config::ReactBuildConfig::from_env();
+        let entry = model_entry_from_config(&config);
+        match had_key {
+            Some(v) => std::env::set_var("OPENAI_API_KEY", v),
+            None => std::env::remove_var("OPENAI_API_KEY"),
         }
-        if let Some(mode) = tool_choice {
-            client = client.with_tool_choice(mode);
-        }
-        tracing::debug!("build_default_llm: ready");
-        Ok(Box::new(client))
+        drop(_guard);
+
+        assert!(entry.is_ok(), "model_entry_from_config: {:?}", entry.err());
+        let entry = entry.unwrap();
+        assert!(!entry.name.is_empty());
     }
 }

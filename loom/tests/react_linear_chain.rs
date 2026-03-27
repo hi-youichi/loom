@@ -44,6 +44,9 @@ async fn react_linear_chain_user_to_tool_result_in_messages() {
         total_usage: None,
         message_count_after_last_think: None,
         last_reasoning_content: None,
+        think_count: 0,
+        summary: None,
+        should_continue: true,
     };
 
     let out = compiled.invoke(state, None).await.unwrap();
@@ -55,7 +58,8 @@ async fn react_linear_chain_user_to_tool_result_in_messages() {
     assert!(matches!(&out.messages[0], Message::User(_)));
     assert!(matches!(&out.messages[1], Message::Assistant(_)));
     assert!(
-        matches!(&out.messages[2], Message::User(s) if s.contains("Tool") && s.contains("2025-01-29"))
+        matches!(&out.messages[2], Message::Tool { content, .. }
+            if content.contains("Tool") && content.contains("2025-01-29"))
     );
     assert!(out.tool_calls.is_empty());
     assert!(out.tool_results.is_empty());
@@ -106,6 +110,9 @@ async fn react_multi_round_loop_then_end() {
         total_usage: None,
         message_count_after_last_think: None,
         last_reasoning_content: None,
+        think_count: 0,
+        summary: None,
+        should_continue: true,
     };
 
     let out = compiled.invoke(state, None).await.unwrap();
