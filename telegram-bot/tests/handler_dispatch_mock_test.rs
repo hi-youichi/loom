@@ -493,9 +493,7 @@ async fn e2e_tg_014_photo_caption_does_not_invoke_agent_text_path() {
 
     assert!(agent.get_calls().is_empty());
     let messages = sender.get_messages();
-    assert_eq!(messages.len(), 1);
-    assert!(messages[0].1.contains("图片已保存"));
-    assert!(messages[0].1.contains("mock_photo.jpg"));
+    assert!(messages.is_empty());
 }
 
 #[tokio::test]
@@ -516,7 +514,7 @@ async fn e2e_tg_005_photo_download_success_message() {
     let msg = fixtures::message_private_photo_only(99_005, 1);
     handle_message_with_deps(&deps, &msg).await.unwrap();
 
-    assert!(sender.get_messages()[0].1.contains("📷"));
+    assert!(sender.get_messages().is_empty());
 }
 
 #[tokio::test]
@@ -536,8 +534,7 @@ async fn e2e_tg_006_document_download_success_message() {
     let msg = fixtures::message_private_document(99_006, 1, "note.txt");
     handle_message_with_deps(&deps, &msg).await.unwrap();
 
-    assert!(sender.get_messages()[0].1.contains("📁"));
-    assert!(sender.get_messages()[0].1.contains("mock_doc.txt"));
+    assert!(sender.get_messages().is_empty());
 }
 
 #[tokio::test]
@@ -557,8 +554,7 @@ async fn e2e_tg_007_video_download_success_message() {
     let msg = fixtures::message_private_video(99_007, 1);
     handle_message_with_deps(&deps, &msg).await.unwrap();
 
-    assert!(sender.get_messages()[0].1.contains("🎬"));
-    assert!(sender.get_messages()[0].1.contains("mock_clip.mp4"));
+    assert!(sender.get_messages().is_empty());
 }
 
 #[tokio::test]
@@ -577,8 +573,7 @@ async fn e2e_tg_016_large_file_download_error_surfaces() {
     let msg = fixtures::message_private_photo_only(99_016, 1);
     handle_message_with_deps(&deps, &msg).await.unwrap();
 
-    let text = &sender.get_messages()[0].1;
-    assert!(text.contains("下载失败") || text.contains("stub"));
+    assert!(sender.get_messages().is_empty());
 }
 
 #[tokio::test]

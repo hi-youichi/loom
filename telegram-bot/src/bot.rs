@@ -16,8 +16,8 @@ pub struct BotManager {
     pub bot: Bot,
     handle: Option<JoinHandle<()>>,
     cancellation_token: CancellationToken,
-    max_restarts: u32,
-    restart_delay: Duration,
+    _max_restarts: u32,
+    _restart_delay: Duration,
 }
 
 impl BotManager {
@@ -28,8 +28,8 @@ impl BotManager {
             bot,
             handle: None,
             cancellation_token: CancellationToken::new(),
-            max_restarts: 3,
-            restart_delay: Duration::from_secs(5),
+            _max_restarts: 3,
+            _restart_delay: Duration::from_secs(5),
         }
     }
 

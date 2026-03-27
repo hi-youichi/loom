@@ -2,7 +2,7 @@
 //!
 //! Loads configuration from `~/.loom/telegram-bot.toml` or `LOOM_HOME/telegram-bot.toml`.
 
-use crate::config::telegram::{BotConfig, ConfigError, TelegramBotConfig};
+use crate::config::telegram::{ConfigError, TelegramBotConfig};
 use std::path::{Path, PathBuf};
 use tracing::info;
 

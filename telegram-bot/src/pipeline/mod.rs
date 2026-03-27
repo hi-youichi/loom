@@ -135,19 +135,11 @@ async fn handle_media_attachments(ctx: &MessageContext<'_>) -> Result<(), BotErr
             .download_photo(chat_id, message_id, photos)
             .await
         {
-            Ok((path, metadata)) => {
+            Ok((_path, metadata)) => {
                 tracing::info!(?metadata, "Photo downloaded");
-                ctx.deps
-                    .sender
-                    .send_text(chat_id, &format!("📷 图片已保存: {:?}", path))
-                    .await?;
             }
             Err(e) => {
                 tracing::error!("Failed to download photo: {}", e);
-                ctx.deps
-                    .sender
-                    .send_text(chat_id, &format!("❌ 下载失败: {}", e))
-                    .await?;
             }
         }
     }
@@ -159,19 +151,11 @@ async fn handle_media_attachments(ctx: &MessageContext<'_>) -> Result<(), BotErr
             .download_document(chat_id, message_id, doc)
             .await
         {
-            Ok((path, metadata)) => {
+            Ok((_path, metadata)) => {
                 tracing::info!(?metadata, "Document downloaded");
-                ctx.deps
-                    .sender
-                    .send_text(chat_id, &format!("📁 文件已保存: {:?}", path))
-                    .await?;
             }
             Err(e) => {
                 tracing::error!("Failed to download document: {}", e);
-                ctx.deps
-                    .sender
-                    .send_text(chat_id, &format!("❌ 下载失败: {}", e))
-                    .await?;
             }
         }
     }
@@ -183,19 +167,11 @@ async fn handle_media_attachments(ctx: &MessageContext<'_>) -> Result<(), BotErr
             .download_video(chat_id, message_id, video)
             .await
         {
-            Ok((path, metadata)) => {
+            Ok((_path, metadata)) => {
                 tracing::info!(?metadata, "Video downloaded");
-                ctx.deps
-                    .sender
-                    .send_text(chat_id, &format!("🎬 视频已保存: {:?}", path))
-                    .await?;
             }
             Err(e) => {
                 tracing::error!("Failed to download video: {}", e);
-                ctx.deps
-                    .sender
-                    .send_text(chat_id, &format!("❌ 下载失败: {}", e))
-                    .await?;
             }
         }
     }
