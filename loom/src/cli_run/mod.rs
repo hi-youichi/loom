@@ -101,7 +101,9 @@ pub fn build_helve_config(
     if let Some(ref key) = effective_opts.api_key {
         base.openai_api_key = Some(key.clone());
     }
-    if let Some(ref t) = effective_opts.provider_type {
+    if let Some(ref p) = effective_opts.provider {
+        base.llm_provider = Some(p.clone());
+    } else if let Some(ref t) = effective_opts.provider_type {
         base.llm_provider = Some(t.clone());
     }
 

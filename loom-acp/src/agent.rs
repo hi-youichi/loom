@@ -386,11 +386,12 @@ impl Agent for LoomAcpAgent {
                                     ContentChunk::new(payload.content.clone().into()),
                                 ),
                             ),
+                            // Map tool results as agent thought (technical detail, not user message)
                             // TODO: map to dedicated ToolResultChunk when ACP protocol supports tool role.
                             Message::Tool { content, .. } => SessionNotification::new(
                                 session_id.clone(),
-                                agent_client_protocol::SessionUpdate::UserMessageChunk(
-                                    ContentChunk::new(content.clone().into()),
+                                agent_client_protocol::SessionUpdate::AgentThoughtChunk(
+                                    ContentChunk::new(format!("[Tool Result] {}", content).into()),
                                 ),
                             ),
                             Message::System(_) => {
