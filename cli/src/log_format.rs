@@ -112,7 +112,9 @@ mod tests {
 
     #[test]
     fn builder_flags_can_be_toggled() {
-        let formatter = TextWithSpanIds::new().with_level(false).with_target(false);
+        let formatter = TextWithSpanIds::default()
+            .with_level(false)
+            .with_target(false);
         assert!(!formatter.with_level);
         assert!(!formatter.with_target);
     }
@@ -127,7 +129,7 @@ mod tests {
 
         let subscriber = tracing_subscriber::registry().with(
             tracing_subscriber::fmt::layer()
-                .event_format(TextWithSpanIds::new())
+                .event_format(TextWithSpanIds::default())
                 .with_writer(writer)
                 .with_ansi(false),
         );

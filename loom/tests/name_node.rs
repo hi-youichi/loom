@@ -32,7 +32,7 @@ impl Agent for EchoAgent {
     async fn run(&self, state: Self::State) -> Result<Self::State, AgentError> {
         let mut messages = state.messages;
         if let Some(Message::User(s)) = messages.last() {
-            messages.push(Message::Assistant(s.clone()));
+            messages.push(Message::assistant(s.clone()));
         }
         Ok(AgentState { messages })
     }
@@ -57,5 +57,5 @@ async fn name_node_passes_through_state_and_continues() {
 
     let state = compiled.invoke(state, None).await.unwrap();
     let last = state.messages.last().unwrap();
-    assert!(matches!(last, Message::Assistant(s) if s == "hi"));
+    assert!(matches!(last, Message::Assistant(p) if p.content == "hi"));
 }

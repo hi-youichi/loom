@@ -2,6 +2,11 @@
 //!
 //! This node runs once after the first think to create a human-readable
 //! summary of the conversation for session list display.
+//!
+//! **Default:** The ReAct graph omits this node unless
+//! [`crate::agent::react::runner::options::SummarizeConfig::enabled`] is set to `true`
+//! (for example via [`crate::agent::react::runner::options::AgentOptions::summarize_config`] or
+//! `ReactRunner::new` with `Some(SummarizeConfig { enabled: true, .. })`).
 
 use std::sync::Arc;
 
@@ -106,6 +111,7 @@ impl Node<ReActState> for SummarizeNode {
                     message_count_after_last_think: state.message_count_after_last_think,
                     summary: Some(summary),
                     think_count: state.think_count,
+                    should_continue: state.should_continue,
                 };
 
                 Ok((new_state, Next::Continue))

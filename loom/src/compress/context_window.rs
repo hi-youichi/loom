@@ -13,7 +13,16 @@ pub fn estimate_tokens(messages: &[Message]) -> u32 {
     let total: usize = messages
         .iter()
         .map(|m| match m {
-            Message::System(s) | Message::User(s) | Message::Assistant(s) => s.len(),
+            Message::System(s) | Message::User(s) => s.len(),
+            Message::Assistant(p) => {
+                p.content.len()
+                    + p
+                        .tool_calls
+                        .iter()
+                        .map(|tc| tc.id.len() + tc.name.len() + tc.arguments.len())
+                        .sum::<usize>()
+            }
+            Message::Tool { content, .. } => content.len(),
         })
         .sum();
     (total / CHARS_PER_TOKEN as usize) as u32
@@ -100,7 +109,7 @@ mod tests {
         let msgs = vec![
             Message::System("ab".to_string()),
             Message::User("cdef".to_string()),
-            Message::Assistant("ghij".to_string()),
+            Message::assistant("ghij"),
         ];
         assert_eq!(estimate_tokens(&msgs), 2);
     }

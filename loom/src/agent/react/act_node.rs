@@ -21,7 +21,6 @@
 //! or intermediate results during execution.
 
 use async_trait::async_trait;
-use futures_util::future::{abortable, Aborted};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -29,12 +28,12 @@ use tracing::{debug, trace, warn};
 
 use crate::cli_run::ActiveOperationKind;
 use crate::error::AgentError;
-use crate::graph::{GraphInterrupt, Interrupt, Next, Node, RunContext};
+use crate::graph::{run_cancellable, GraphInterrupt, Interrupt, Next, Node, RunContext};
 use crate::helve::{tools_requiring_approval, ApprovalPolicy, APPROVAL_REQUIRED_EVENT_TYPE};
-use crate::llm::context_persistence;
 use crate::state::tool_output_normalizer::{
-    normalize_tool_output, NormalizationConfig, NormalizedToolOutput, ToolOutputHint,
+    normalize_tool_output, NormalizationConfig, ToolOutputHint,
 };
+use crate::memory::uuid6;
 use crate::state::{ReActState, ToolCall, ToolResult};
 use crate::stream::{StreamEvent, StreamMode, ToolStreamWriter};
 use crate::tool_source::{ToolCallContext, ToolSource, ToolSourceError};
@@ -62,19 +61,6 @@ fn truncate_for_display(s: &str, max_chars: usize) -> String {
         let truncated: String = s.chars().take(max_chars).collect();
         format!("{}...", truncated)
     }
-}
-
-fn normalized_tool_result_payload(normalized: &NormalizedToolOutput) -> serde_json::Value {
-    serde_json::json!({
-        "strategy": normalized.strategy,
-        "truncated": normalized.truncated,
-        "raw_chars": normalized.raw_chars,
-        "observation_chars": normalized.observation_chars,
-        "raw_content": normalized.raw_content,
-        "observation_text": normalized.observation_text,
-        "display_text": normalized.display_text,
-        "storage_ref": normalized.storage_ref,
-    })
 }
 
 /// Parses ToolCall.arguments string to JSON Value. Logs a warning on parse failure.
@@ -224,6 +210,42 @@ impl ActNode {
     }
 }
 
+/// Ensures each [`ToolResult`] has a non-empty `call_id`, preferring the paired [`ToolCall::id`].
+fn backfill_tool_result_call_ids(tool_calls: &[ToolCall], tool_results: &mut Vec<ToolResult>) {
+    for (tc, tr) in tool_calls.iter().zip(tool_results.iter_mut()) {
+        let needs_fill = tr.call_id.as_deref().map_or(true, |s| s.is_empty());
+        if !needs_fill {
+            continue;
+        }
+        if let Some(ref id) = tc.id {
+            if !id.is_empty() {
+                tr.call_id = Some(id.clone());
+                continue;
+            }
+        }
+        tr.call_id = Some(format!("call_{}", uuid6()));
+        warn!(
+            tool_name = %tc.name,
+            "ToolResult missing call_id; generated fallback id (ToolCall.id also empty)"
+        );
+    }
+    let paired = tool_calls.len().min(tool_results.len());
+    for tr in tool_results.iter_mut().skip(paired) {
+        let needs_fill = tr.call_id.as_deref().map_or(true, |s| s.is_empty());
+        if needs_fill {
+            tr.call_id = Some(format!("call_{}", uuid6()));
+            warn!("unpaired ToolResult missing call_id; generated fallback id");
+        }
+    }
+    if tool_results.len() != tool_calls.len() {
+        warn!(
+            tool_calls_len = tool_calls.len(),
+            tool_results_len = tool_results.len(),
+            "tool_calls and tool_results length mismatch"
+        );
+    }
+}
+
 #[async_trait]
 impl Node<ReActState> for ActNode {
     fn id(&self) -> &str {
@@ -302,15 +324,6 @@ impl Node<ReActState> for ActNode {
                     );
                     used_observation_chars += normalized.observation_chars;
 
-                    context_persistence::save_tool_result_value(
-                        "act",
-                        None,
-                        tc.id.as_deref(),
-                        &tc.name,
-                        normalized_tool_result_payload(&normalized),
-                        false,
-                    );
-
                     tool_results.push(
                         ToolResult::from(normalized)
                             .with_call_id(tc.id.clone())
@@ -339,15 +352,6 @@ impl Node<ReActState> for ActNode {
                     );
                     used_observation_chars += normalized.observation_chars;
 
-                    context_persistence::save_tool_result_value(
-                        "act",
-                        None,
-                        tc.id.as_deref(),
-                        &tc.name,
-                        normalized_tool_result_payload(&normalized),
-                        true,
-                    );
-
                     tool_results.push(
                         ToolResult::from(normalized)
                             .with_call_id(tc.id.clone())
@@ -358,24 +362,17 @@ impl Node<ReActState> for ActNode {
             }
         }
 
+        backfill_tool_result_call_ids(&state.tool_calls, &mut tool_results);
         self.tools.set_call_context(None);
 
         let new_state = ReActState {
-            messages: state.messages,
-            last_reasoning_content: state.last_reasoning_content,
-            tool_calls: state.tool_calls,
             tool_results,
-            turn_count: state.turn_count,
             approval_result: if approval_result_consumed {
                 None
             } else {
                 state.approval_result
             },
-            usage: state.usage,
-            total_usage: state.total_usage,
-            message_count_after_last_think: state.message_count_after_last_think,
-            summary: state.summary,
-            think_count: state.think_count,
+            ..state
         };
         Ok((new_state, Next::Continue))
     }
@@ -544,37 +541,20 @@ impl Node<ReActState> for ActNode {
             let tool_call = self
                 .tools
                 .call_tool_with_context(&tc.name, args.clone(), Some(&tool_ctx));
-            let (tool_call, abort_handle) = abortable(tool_call);
-            if let Some(run_cancellation) = run_ctx.run_cancellation.as_ref() {
-                run_cancellation
-                    .set_abortable_operation(ActiveOperationKind::ToolTask, abort_handle);
-            }
-            let result = if let Some(token) = run_ctx.cancellation.as_ref() {
-                tokio::select! {
-                    _ = token.cancelled() => {
-                        self.tools.set_call_context(None);
-                        return Err(AgentError::Cancelled);
-                    }
-                    result = tool_call => match result {
-                        Ok(result) => result,
-                        Err(Aborted) => {
-                            self.tools.set_call_context(None);
-                            return Err(AgentError::Cancelled);
-                        }
-                    },
-                }
-            } else {
-                match tool_call.await {
-                    Ok(result) => result,
-                    Err(Aborted) => {
-                        self.tools.set_call_context(None);
-                        return Err(AgentError::Cancelled);
-                    }
+            let result = match run_cancellable(
+                tool_call,
+                run_ctx.cancellation.as_ref(),
+                run_ctx.run_cancellation.as_ref(),
+                ActiveOperationKind::ToolTask,
+            )
+            .await
+            {
+                Ok(inner) => inner,
+                Err(e) => {
+                    self.tools.set_call_context(None);
+                    return Err(e);
                 }
             };
-            if let Some(run_cancellation) = run_ctx.run_cancellation.as_ref() {
-                run_cancellation.clear_active_operation();
-            }
 
             if is_cancelled() {
                 self.tools.set_call_context(None);
@@ -600,15 +580,6 @@ impl Node<ReActState> for ActNode {
                     );
                     let summary = truncate_for_log(&normalized.display_text, 200);
                     used_observation_chars += normalized.observation_chars;
-
-                    context_persistence::save_tool_result_value(
-                        "act",
-                        run_ctx.config.thread_id.as_deref(),
-                        tc.id.as_deref(),
-                        &tc.name,
-                        normalized_tool_result_payload(&normalized),
-                        false,
-                    );
 
                     tool_results.push(
                         ToolResult::from(normalized)
@@ -655,15 +626,6 @@ impl Node<ReActState> for ActNode {
                     let summary = truncate_for_log(&normalized.display_text, 200);
                     used_observation_chars += normalized.observation_chars;
 
-                    context_persistence::save_tool_result_value(
-                        "act",
-                        run_ctx.config.thread_id.as_deref(),
-                        tc.id.as_deref(),
-                        &tc.name,
-                        normalized_tool_result_payload(&normalized),
-                        true,
-                    );
-
                     tool_results.push(
                         ToolResult::from(normalized)
                             .with_call_id(tc.id.clone())
@@ -691,24 +653,17 @@ impl Node<ReActState> for ActNode {
             }
         }
 
+        backfill_tool_result_call_ids(&state.tool_calls, &mut tool_results);
         self.tools.set_call_context(None);
 
         let new_state = ReActState {
-            messages: state.messages,
-            last_reasoning_content: state.last_reasoning_content,
-            tool_calls: state.tool_calls,
             tool_results,
-            turn_count: state.turn_count,
             approval_result: if approval_result_consumed {
                 None
             } else {
                 state.approval_result
             },
-            usage: state.usage,
-            total_usage: state.total_usage,
-            message_count_after_last_think: state.message_count_after_last_think,
-            summary: state.summary,
-            think_count: state.think_count,
+            ..state
         };
         Ok((new_state, Next::Continue))
     }
@@ -852,5 +807,37 @@ mod tests {
         use crate::tool_source::MockToolSource;
         let node = ActNode::new(Box::new(MockToolSource::default()));
         assert_eq!(Node::<ReActState>::id(&node), "act");
+    }
+
+    #[test]
+    fn backfill_tool_result_call_ids_from_toolcall_id() {
+        let tcs = vec![ToolCall {
+            id: Some("call-1".into()),
+            name: "get_time".into(),
+            arguments: "{}".into(),
+        }];
+        let mut results = vec![ToolResult::simple(
+            None,
+            Some("get_time".into()),
+            "ok".into(),
+            false,
+        )];
+        backfill_tool_result_call_ids(&tcs, &mut results);
+        assert_eq!(results[0].call_id.as_deref(), Some("call-1"));
+    }
+
+    #[test]
+    fn backfill_tool_result_call_ids_generates_when_both_missing() {
+        let tcs = vec![ToolCall {
+            id: None,
+            name: "x".into(),
+            arguments: "{}".into(),
+        }];
+        let mut results = vec![ToolResult::simple(None, None, "y".into(), false)];
+        backfill_tool_result_call_ids(&tcs, &mut results);
+        assert!(results[0]
+            .call_id
+            .as_deref()
+            .is_some_and(|s| !s.is_empty()));
     }
 }

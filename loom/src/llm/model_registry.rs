@@ -29,7 +29,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
 use crate::error::AgentError;
-use crate::llm::{fetch_provider_models, ChatBigModel, ChatOpenAI, LlmClient, ModelInfo};
+use crate::llm::{fetch_provider_models, ChatOpenAI, ChatOpenAICompat, LlmClient, ModelInfo};
 use async_openai::config::OpenAIConfig;
 
 /// Default TTL for cached model lists (5 minutes).
@@ -45,7 +45,7 @@ pub struct ProviderConfig {
     pub base_url: Option<String>,
     /// API key for authentication.
     pub api_key: Option<String>,
-    /// Provider type: "openai" (default) or "bigmodel".
+    /// Provider type: "openai" (default), "openai_compat", or "bigmodel" (alias).
     pub provider_type: Option<String>,
 }
 
@@ -68,7 +68,7 @@ pub struct ModelEntry {
     pub base_url: Option<String>,
     /// API key from provider config.
     pub api_key: Option<String>,
-    /// Provider type from provider config (e.g., "openai", "bigmodel").
+    /// Provider type from provider config (e.g., "openai", "openai_compat", "bigmodel").
     pub provider_type: Option<String>,
 
     // === Runtime Configuration ===
@@ -337,7 +337,7 @@ impl Default for ModelRegistry {
 /// Creates an LLM client from a ModelEntry with provider configuration.
 ///
 /// This is a convenience function that creates the appropriate LLM client
-/// (ChatOpenAI or ChatBigModel) based on the provider type in the ModelEntry.
+/// ([`ChatOpenAI`] or [`ChatOpenAICompat`]) based on the provider type in the ModelEntry.
 /// It also applies runtime configuration like temperature and tool_choice.
 ///
 /// # Example
@@ -363,16 +363,16 @@ pub fn create_llm_client(entry: &ModelEntry) -> Result<Box<dyn LlmClient>, Agent
     let provider_type = entry.provider_type.as_deref().unwrap_or("openai");
 
     let client: Box<dyn LlmClient> = match provider_type {
-        "bigmodel" => {
+        "openai_compat" | "bigmodel" => {
             let base_url = entry
                 .base_url
                 .clone()
-                .ok_or_else(|| AgentError::ExecutionFailed("base_url is required for bigmodel".to_string()))?;
+                .ok_or_else(|| AgentError::ExecutionFailed("base_url is required for openai_compat / bigmodel".to_string()))?;
             let api_key = entry
                 .api_key
                 .clone()
-                .ok_or_else(|| AgentError::ExecutionFailed("api_key is required for bigmodel".to_string()))?;
-            let mut client = ChatBigModel::with_config(base_url, api_key, model);
+                .ok_or_else(|| AgentError::ExecutionFailed("api_key is required for openai_compat / bigmodel".to_string()))?;
+            let mut client = ChatOpenAICompat::with_config(base_url, api_key, model);
             if let Some(temp) = entry.temperature {
                 client = client.with_temperature(temp);
             }

@@ -345,7 +345,6 @@ where
                 first_token_at = Some(std::time::Instant::now());
             }
             forwarded += 1;
-            tracing::debug!(chunk_len = chunk.content.len(), "stream chunk");
             let event = StreamEvent::Messages {
                 chunk,
                 metadata: StreamMetadata {
@@ -368,7 +367,11 @@ where
     /// Full state snapshot after a node finishes.
     Values(S),
     /// Incremental update with the node id and state after that node.
-    Updates { node_id: String, state: S, namespace: Option<String> },
+    Updates {
+        node_id: String,
+        state: S,
+        namespace: Option<String>,
+    },
     /// Message chunk emitted by a node (e.g. ThinkNode streaming LLM output).
     Messages {
         chunk: MessageChunk,
@@ -689,7 +692,12 @@ where
     /// Returns `true` if the event was sent, `false` otherwise.
     ///
     /// Note: This is typically used by the graph execution loop, not by nodes directly.
-    pub async fn emit_updates(&self, node_id: impl Into<String>, state: S, namespace: Option<String>) -> bool {
+    pub async fn emit_updates(
+        &self,
+        node_id: impl Into<String>,
+        state: S,
+        namespace: Option<String>,
+    ) -> bool {
         if !self.modes.contains(&StreamMode::Updates) {
             return false;
         }
@@ -759,7 +767,11 @@ where
     /// # Arguments
     ///
     /// * `node_id` - The ID of the node that is starting execution
-    pub async fn emit_task_start(&self, node_id: impl Into<String>, namespace: Option<String>) -> bool {
+    pub async fn emit_task_start(
+        &self,
+        node_id: impl Into<String>,
+        namespace: Option<String>,
+    ) -> bool {
         if !self.modes.contains(&StreamMode::Tasks) && !self.modes.contains(&StreamMode::Debug) {
             return false;
         }
@@ -1082,7 +1094,9 @@ mod tests {
             namespace: None,
         };
         match task_end_ok {
-            StreamEvent::TaskEnd { node_id, result, .. } => {
+            StreamEvent::TaskEnd {
+                node_id, result, ..
+            } => {
                 assert_eq!(node_id, "act");
                 assert!(result.is_ok());
             }
@@ -1095,7 +1109,9 @@ mod tests {
             namespace: None,
         };
         match task_end_err {
-            StreamEvent::TaskEnd { node_id, result, .. } => {
+            StreamEvent::TaskEnd {
+                node_id, result, ..
+            } => {
                 assert_eq!(node_id, "failing");
                 assert!(result.is_err());
                 assert_eq!(result.unwrap_err(), "execution failed");
@@ -1470,7 +1486,9 @@ mod tests {
         // Verify the success event
         let event = rx.recv().await.expect("should receive event");
         match event {
-            StreamEvent::TaskEnd { node_id, result, .. } => {
+            StreamEvent::TaskEnd {
+                node_id, result, ..
+            } => {
                 assert_eq!(node_id, "think");
                 assert!(result.is_ok());
             }
@@ -1486,7 +1504,9 @@ mod tests {
         // Verify the failure event
         let event = rx.recv().await.expect("should receive event");
         match event {
-            StreamEvent::TaskEnd { node_id, result, .. } => {
+            StreamEvent::TaskEnd {
+                node_id, result, ..
+            } => {
                 assert_eq!(node_id, "act");
                 assert!(result.is_err());
                 assert_eq!(result.unwrap_err(), "execution failed");

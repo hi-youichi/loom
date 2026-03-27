@@ -183,9 +183,9 @@ pub async fn fetch_provider_models(
     let api_key = api_key.unwrap_or("");
 
     match provider_type {
-        "bigmodel" => {
-            use crate::llm::ChatBigModel;
-            let client = ChatBigModel::with_config(base_url, api_key, "dummy-model");
+        "openai_compat" | "bigmodel" => {
+            use crate::llm::ChatOpenAICompat;
+            let client = ChatOpenAICompat::with_config(base_url, api_key, "dummy-model");
             client.list_models().await
         }
         _ => {

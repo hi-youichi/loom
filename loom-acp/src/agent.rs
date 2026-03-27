@@ -7,24 +7,24 @@ use crate::content::content_blocks_to_message;
 use crate::session::{SessionId as OurSessionId, SessionStore};
 use crate::stream_bridge::{loom_event_to_updates, stream_update_to_session_notification};
 use agent_client_protocol::{
-    Agent, AuthenticateRequest, AuthenticateResponse, CancelNotification,
-    InitializeRequest, InitializeResponse, LoadSessionRequest, LoadSessionResponse,
-    ListSessionsRequest, ListSessionsResponse, NewSessionRequest, NewSessionResponse, PromptRequest,
+    Agent, AuthenticateRequest, AuthenticateResponse, CancelNotification, ContentChunk,
+    InitializeRequest, InitializeResponse, ListSessionsRequest, ListSessionsResponse,
+    LoadSessionRequest, LoadSessionResponse, NewSessionRequest, NewSessionResponse, PromptRequest,
     PromptResponse, SessionId, SessionNotification, SetSessionConfigOptionRequest,
-    SetSessionConfigOptionResponse, StopReason, ContentChunk,
+    SetSessionConfigOptionResponse, StopReason,
 };
-use loom::memory::{Checkpointer, RunnableConfig, JsonSerializer, SqliteSaver};
-use loom::state::ReActState;
+use loom::memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
 use loom::message::Message;
+use loom::state::ReActState;
 
-use config::load_full_config;
-use std::sync::Arc;
 use async_trait::async_trait;
-use loom::{run_agent_with_options, AnyStreamEvent, RunCmd, RunCompletion, RunError, RunOptions};
-use std::path::PathBuf;
-use tokio::sync::mpsc;
-use rusqlite::Connection;
 use chrono::DateTime;
+use config::load_full_config;
+use loom::{run_agent_with_options, AnyStreamEvent, RunCmd, RunCompletion, RunError, RunOptions};
+use rusqlite::Connection;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::mpsc;
 
 /// Handle for Loom as an ACP Agent. Implements [`Agent`], holds the session store.
 /// If [`session_update_tx`](Self::session_update_tx) is set, prompt execution sends
@@ -64,7 +64,7 @@ impl LoomAcpAgent {
     /// Uses ModelRegistry for caching and unified model access.
     async fn get_available_models(&self) -> Vec<ModelOption> {
         let registry = loom::llm::ModelRegistry::global();
-        
+
         // Load provider configs from config file
         let providers: Vec<loom::llm::ProviderConfig> = match load_full_config("loom") {
             Ok(config) => config
@@ -79,7 +79,7 @@ impl LoomAcpAgent {
                 .collect(),
             Err(_) => vec![],
         };
-        
+
         let entries = registry.list_all_models(&providers).await;
 
         let all_models: Vec<ModelOption> = entries
@@ -91,14 +91,6 @@ impl LoomAcpAgent {
                 provider: entry.provider,
             })
             .collect();
-
-        tracing::info!(
-            total_models = all_models.len(),
-            "Fetched available models from all providers"
-        );
-        for m in &all_models {
-            tracing::info!(model_id = %m.id, model_name = %m.name, provider = %m.provider, "Available model");
-        }
 
         all_models
     }
@@ -112,17 +104,21 @@ impl Default for LoomAcpAgent {
 
 #[async_trait(?Send)]
 impl Agent for LoomAcpAgent {
-    async fn initialize(&self, args: InitializeRequest) -> agent_client_protocol::Result<InitializeResponse> {
+    async fn initialize(
+        &self,
+        args: InitializeRequest,
+    ) -> agent_client_protocol::Result<InitializeResponse> {
         tracing::info!(protocol_version = ?args.protocol_version, "initialize called");
         // Build base response using the standard builder
-        let base_response = InitializeResponse::new(args.protocol_version)
-            .agent_info(agent_client_protocol::Implementation::new("loom", env!("CARGO_PKG_VERSION")));
-        
+        let base_response = InitializeResponse::new(args.protocol_version).agent_info(
+            agent_client_protocol::Implementation::new("loom", env!("CARGO_PKG_VERSION")),
+        );
+
         // Add loadSession capability by serializing, modifying, and deserializing
         // This is necessary because agent_client_protocol types are non_exhaustive
         let mut json = serde_json::to_value(&base_response)
             .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
-        
+
         // Add agentCapabilities with loadSession and sessionCapabilities.list
         if let Some(obj) = json.as_object_mut() {
             obj.insert(
@@ -132,10 +128,10 @@ impl Agent for LoomAcpAgent {
                     "sessionCapabilities": {
                         "list": {}
                     }
-                })
+                }),
             );
         }
-        
+
         let response: InitializeResponse = serde_json::from_value(json)
             .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
         tracing::info!("initialize completed");
@@ -168,10 +164,7 @@ impl Agent for LoomAcpAgent {
         Ok(NewSessionResponse::new(session_id).config_options(config_options))
     }
 
-    async fn cancel(
-        &self,
-        args: CancelNotification,
-    ) -> agent_client_protocol::Result<()> {
+    async fn cancel(&self, args: CancelNotification) -> agent_client_protocol::Result<()> {
         let key = OurSessionId::new(args.session_id.to_string());
         self.sessions.cancel_current_generation(&key);
         Ok(())
@@ -213,8 +206,9 @@ impl Agent for LoomAcpAgent {
             .begin_prompt(&key)
             .ok_or_else(|| agent_client_protocol::Error::new(-32602, "unknown session"))?;
 
-        let message = content_blocks_to_message(args.prompt.as_slice())
-            .map_err(|_| agent_client_protocol::Error::new(-32602, "content_blocks parse failed"))?;
+        let message = content_blocks_to_message(args.prompt.as_slice()).map_err(|_| {
+            agent_client_protocol::Error::new(-32602, "content_blocks parse failed")
+        })?;
 
         let working_folder = entry
             .working_directory
@@ -239,20 +233,22 @@ impl Agent for LoomAcpAgent {
         // Parse provider/model format and resolve provider config using ModelRegistry
         let (model, provider_config) = if let Some(ref model_str) = entry.session_config.model {
             // Try to get full model config from ModelRegistry
-            if let Some(model_entry) = loom::llm::ModelRegistry::global().get_model(model_str, &providers).await {
+            if let Some(model_entry) = loom::llm::ModelRegistry::global()
+                .get_model(model_str, &providers)
+                .await
+            {
                 (Some(model_entry.name.clone()), Some(model_entry))
             } else if let Some((provider_name, model_id)) = model_str.split_once('/') {
                 // Fallback: load provider config directly if not in registry
                 // For nested model names like "provider/path/model", use the last segment as the actual model id
-                let actual_model_id = model_id.rsplit_once('/').map(|(_, m)| m).unwrap_or(model_id);
+                let actual_model_id = model_id
+                    .rsplit_once('/')
+                    .map(|(_, m)| m)
+                    .unwrap_or(model_id);
                 tracing::debug!(provider = %provider_name, model_id = %model_id, actual_model_id = %actual_model_id, "Model not in registry, loading provider config");
                 let provider_cfg = load_full_config("loom")
                     .ok()
-                    .and_then(|c| {
-                        c.providers
-                            .into_iter()
-                            .find(|p| p.name == provider_name)
-                    })
+                    .and_then(|c| c.providers.into_iter().find(|p| p.name == provider_name))
                     .map(|p| loom::llm::ModelEntry {
                         id: model_str.clone(),
                         name: actual_model_id.to_string(),
@@ -277,7 +273,6 @@ impl Agent for LoomAcpAgent {
             session_id: None,
             cancellation: Some(cancellation.clone()),
             thread_id: Some(entry.thread_id.clone()),
-            role_file: None,
             agent: Some("dev".to_string()),
             verbose: false,
             got_adaptive: false,
@@ -291,7 +286,9 @@ impl Agent for LoomAcpAgent {
             provider: provider_config.as_ref().map(|p| p.provider.clone()),
             base_url: provider_config.as_ref().and_then(|p| p.base_url.clone()),
             api_key: provider_config.as_ref().and_then(|p| p.api_key.clone()),
-            provider_type: provider_config.as_ref().and_then(|p| p.provider_type.clone()),
+            provider_type: provider_config
+                .as_ref()
+                .and_then(|p| p.provider_type.clone()),
         };
 
         let session_id = args.session_id.clone();
@@ -327,26 +324,31 @@ impl Agent for LoomAcpAgent {
         let session_id = args.session_id.clone();
         let our_session_id = OurSessionId::new(session_id.to_string());
         let working_directory = Some(args.cwd.clone()); // Convert to Option<PathBuf>
-        
+
         // Create or get session entry
         let entry = if let Some(existing) = self.sessions.get(&our_session_id) {
             existing
         } else {
             // Create new session entry with the provided working directory
             let thread_id = session_id.to_string();
-            self.sessions.create_with_id(our_session_id.clone(), working_directory, thread_id.clone());
-            self.sessions.get(&our_session_id).expect("Session should exist after create_with_id")
+            self.sessions.create_with_id(
+                our_session_id.clone(),
+                working_directory,
+                thread_id.clone(),
+            );
+            self.sessions
+                .get(&our_session_id)
+                .expect("Session should exist after create_with_id")
         };
 
         // Build checkpointer to load history
         let db_path = loom::memory::default_memory_db_path();
         let serializer = Arc::new(JsonSerializer);
         let checkpointer: Arc<dyn Checkpointer<ReActState>> = Arc::new(
-            SqliteSaver::new(
-                db_path.to_string_lossy().as_ref(),
-                serializer,
-            ).map_err(|e| agent_client_protocol::Error::internal_error()
-                .data(format!("Failed to create checkpointer: {}", e)))?
+            SqliteSaver::new(db_path.to_string_lossy().as_ref(), serializer).map_err(|e| {
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("Failed to create checkpointer: {}", e))
+            })?,
         );
 
         // Load checkpoint using thread_id
@@ -367,27 +369,30 @@ impl Agent for LoomAcpAgent {
             Ok(Some((checkpoint, _metadata))) => {
                 // Extract messages from state
                 let state: ReActState = checkpoint.channel_values;
-                
+
                 // Send history via session/update notifications
                 if let Some(ref tx) = self.session_update_tx {
                     for message in &state.messages {
                         let update = match message {
-                            Message::User(content) => {
-                                SessionNotification::new(
-                                    session_id.clone(),
-                                    agent_client_protocol::SessionUpdate::UserMessageChunk(
-                                        ContentChunk::new(content.clone().into())
-                                    )
-                                )
-                            }
-                            Message::Assistant(content) => {
-                                SessionNotification::new(
-                                    session_id.clone(),
-                                    agent_client_protocol::SessionUpdate::AgentMessageChunk(
-                                        ContentChunk::new(content.clone().into())
-                                    )
-                                )
-                            }
+                            Message::User(content) => SessionNotification::new(
+                                session_id.clone(),
+                                agent_client_protocol::SessionUpdate::UserMessageChunk(
+                                    ContentChunk::new(content.clone().into()),
+                                ),
+                            ),
+                            Message::Assistant(payload) => SessionNotification::new(
+                                session_id.clone(),
+                                agent_client_protocol::SessionUpdate::AgentMessageChunk(
+                                    ContentChunk::new(payload.content.clone().into()),
+                                ),
+                            ),
+                            // TODO: map to dedicated ToolResultChunk when ACP protocol supports tool role.
+                            Message::Tool { content, .. } => SessionNotification::new(
+                                session_id.clone(),
+                                agent_client_protocol::SessionUpdate::UserMessageChunk(
+                                    ContentChunk::new(content.clone().into()),
+                                ),
+                            ),
                             Message::System(_) => {
                                 // System messages are typically not sent to client
                                 continue;
@@ -396,7 +401,7 @@ impl Agent for LoomAcpAgent {
                         let _ = tx.try_send(update);
                     }
                 }
-                
+
                 tracing::info!(
                     session_id = %session_id,
                     message_count = state.messages.len(),
@@ -438,7 +443,7 @@ impl Agent for LoomAcpAgent {
         let model_options = self.get_available_models().await;
         let config_options = build_model_config_options(&current_model, &model_options)
             .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
-        
+
         // Build LoadSessionResponse with configOptions (protocol types are non_exhaustive)
         let json = serde_json::json!({
             "configOptions": config_options,
@@ -454,63 +459,86 @@ impl Agent for LoomAcpAgent {
         args: ListSessionsRequest,
     ) -> agent_client_protocol::Result<ListSessionsResponse> {
         // Convert PathBuf cwd to Option<&str> for our internal function
-        let cwd_filter = args.cwd.as_ref()
-            .and_then(|p| p.to_str());
-        
+        let cwd_filter = args.cwd.as_ref().and_then(|p| p.to_str());
+
         // Get sessions from database
-        let our_sessions = self.list_sessions_from_db(cwd_filter, args.cursor.as_deref()).await?;
-        
+        let our_sessions = self
+            .list_sessions_from_db(cwd_filter, args.cursor.as_deref())
+            .await?;
+
         // Convert our SessionInfo to JSON and then deserialize to protocol types
         // This is necessary because agent_client_protocol types are non_exhaustive
         let protocol_sessions: Vec<agent_client_protocol::SessionInfo> = our_sessions
             .into_iter()
             .map(|s| {
                 // Convert cwd: Option<String> to PathBuf string (use default if None)
-                let cwd_str = s.cwd
+                let cwd_str = s
+                    .cwd
                     .unwrap_or_else(|| loom::DEFAULT_WORKING_FOLDER.to_string());
-                
+
                 // Build JSON for SessionInfo
                 let mut session_json = serde_json::json!({
                     "sessionId": s.session_id,
                     "cwd": cwd_str,
                 });
-                
+
                 if let Some(title) = s.title {
-                    session_json.as_object_mut().unwrap().insert("title".to_string(), serde_json::Value::String(title));
+                    session_json
+                        .as_object_mut()
+                        .unwrap()
+                        .insert("title".to_string(), serde_json::Value::String(title));
                 }
                 if let Some(updated_at) = s.updated_at {
-                    session_json.as_object_mut().unwrap().insert("updatedAt".to_string(), serde_json::Value::String(updated_at));
+                    session_json.as_object_mut().unwrap().insert(
+                        "updatedAt".to_string(),
+                        serde_json::Value::String(updated_at),
+                    );
                 }
-                
+
                 // Convert our SessionMeta to Map<String, Value> for _meta
                 if let Some(meta) = s.meta {
                     let mut meta_map = serde_json::Map::new();
                     if let Some(count) = meta.checkpoint_count {
-                        meta_map.insert("checkpoint_count".to_string(), serde_json::Value::Number(count.into()));
+                        meta_map.insert(
+                            "checkpoint_count".to_string(),
+                            serde_json::Value::Number(count.into()),
+                        );
                     }
                     if let Some(count) = meta.message_count {
-                        meta_map.insert("message_count".to_string(), serde_json::Value::Number(count.into()));
+                        meta_map.insert(
+                            "message_count".to_string(),
+                            serde_json::Value::Number(count.into()),
+                        );
                     }
                     if let Some(step) = meta.latest_step {
-                        meta_map.insert("latest_step".to_string(), serde_json::Value::Number(step.into()));
+                        meta_map.insert(
+                            "latest_step".to_string(),
+                            serde_json::Value::Number(step.into()),
+                        );
                     }
                     if let Some(source) = meta.latest_source {
-                        meta_map.insert("latest_source".to_string(), serde_json::Value::String(source));
+                        meta_map.insert(
+                            "latest_source".to_string(),
+                            serde_json::Value::String(source),
+                        );
                     }
-                    session_json.as_object_mut().unwrap().insert("_meta".to_string(), serde_json::Value::Object(meta_map));
+                    session_json
+                        .as_object_mut()
+                        .unwrap()
+                        .insert("_meta".to_string(), serde_json::Value::Object(meta_map));
                 }
-                
+
                 serde_json::from_value(session_json)
                     .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))
             })
             .collect::<Result<Vec<_>, _>>()?;
-        
+
         // Build response JSON (pagination not implemented yet, so next_cursor is None)
         let response_json = serde_json::json!({
             "sessions": protocol_sessions,
             "nextCursor": None::<()>,
         });
-        
+
         serde_json::from_value(response_json)
             .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))
     }
@@ -547,7 +575,7 @@ pub struct SessionMeta {
 
 impl LoomAcpAgent {
     /// Lists all sessions from the SQLite database.
-    /// 
+    ///
     /// This function queries the checkpoints table to find all unique thread_ids
     /// and returns session information including metadata.
     pub async fn list_sessions_from_db(
@@ -557,7 +585,7 @@ impl LoomAcpAgent {
     ) -> Result<Vec<SessionInfo>, agent_client_protocol::Error> {
         let db_path = loom::memory::default_memory_db_path();
         let cwd_filter = cwd_filter.map(String::from);
-        
+
         // Use spawn_blocking for SQLite operations
         let sessions = tokio::task::spawn_blocking(move || -> Result<Vec<SessionInfo>, String> {
             let conn = Connection::open(&db_path)
@@ -580,7 +608,8 @@ impl LoomAcpAgent {
                      WHERE c2.thread_id = c1.thread_id 
                      ORDER BY metadata_created_at DESC LIMIT 1) as latest_summary
                 FROM checkpoints c1
-            "#.to_string();
+            "#
+            .to_string();
 
             // Note: We don't store cwd in checkpoints table directly,
             // so we can't filter by cwd yet. This would require storing
@@ -610,7 +639,10 @@ impl LoomAcpAgent {
 
                     // Use summary as title if available, otherwise generate from session_id
                     let title = latest_summary.or_else(|| {
-                        Some(format!("Session {}", &session_id[..8.min(session_id.len())]))
+                        Some(format!(
+                            "Session {}",
+                            &session_id[..8.min(session_id.len())]
+                        ))
                     });
 
                     Ok(SessionInfo {
@@ -686,7 +718,7 @@ fn build_model_config_options(
         .iter()
         .map(|m| serde_json::json!({ "value": &m.id, "name": &m.name }))
         .collect();
-    
+
     let json = serde_json::json!([
         {
             "id": "model",
@@ -721,10 +753,10 @@ mod tests {
     #[test]
     fn test_session_config_select_option_structure() {
         use agent_client_protocol::{SessionConfigSelectOption, SessionConfigValueId};
-        
+
         let option_id = SessionConfigValueId::new("gpt-4o".to_string());
         let select_option = SessionConfigSelectOption::new(option_id, "GPT-4o".to_string());
-        
+
         let json = serde_json::to_value(&select_option).unwrap();
         assert_eq!(json["value"], "gpt-4o");
         assert_eq!(json["name"], "GPT-4o");
@@ -757,7 +789,9 @@ mod tests {
         assert_eq!(model_config["id"], "model");
         assert_eq!(model_config["currentValue"], "openai/gpt-4o");
 
-        let options = model_config["options"].as_array().expect("options should be an array");
+        let options = model_config["options"]
+            .as_array()
+            .expect("options should be an array");
         assert_eq!(options.len(), 2);
         assert_eq!(options[0]["value"], "openai/gpt-4o");
         assert_eq!(options[0]["name"], "openai/gpt-4o");
@@ -792,8 +826,11 @@ mod tests {
         // Check if LoadSessionResponse supports config_options field
         let response = LoadSessionResponse::default();
         let json = serde_json::to_value(&response).unwrap();
-        println!("LoadSessionResponse default JSON: {}", serde_json::to_string_pretty(&json).unwrap());
-        
+        println!(
+            "LoadSessionResponse default JSON: {}",
+            serde_json::to_string_pretty(&json).unwrap()
+        );
+
         // Check if configOptions field exists (it should be optional)
         let has_config_options = json.get("configOptions").is_some();
         println!("Has configOptions field: {}", has_config_options);
@@ -803,7 +840,7 @@ mod tests {
     fn test_build_model_config_options_handles_empty_list() {
         let result = build_model_config_options("", &[]);
         assert!(result.is_ok(), "Expected Ok, got Err: {:?}", result.err());
-        
+
         let config_options = result.unwrap();
         let json = serde_json::to_value(&config_options).unwrap();
         let options = json[0]["options"].as_array().unwrap();
@@ -830,10 +867,10 @@ mod tests {
             name: "openai/gpt-4o".to_string(),
             provider: "openai".to_string(),
         }];
-        
+
         let result = build_set_session_config_option_response("gpt-4o", &model_options);
         assert!(result.is_ok());
-        
+
         let response = result.unwrap();
         let json = serde_json::to_value(&response).unwrap();
         assert!(json["configOptions"].is_array());

@@ -18,17 +18,11 @@
 //! - **Configuration**: Set `INVOKE_AGENT_MAX_CONCURRENT` environment variable
 //! - **Behavior**: When the limit is reached, new invocations wait until a slot is available
 //!
-//! ## Usage Modes
+//! ## Usage
 //!
-//! ### Single Invocation (Backward Compatible)
-//! ```json
-//! {
-//!   "agent": "dev",
-//!   "task": "Implement user authentication"
-//! }
-//! ```
+//! Input is always a non-empty **`agents`** array. Use one element for a single sub-agent.
 //!
-//! ### Batch Concurrent Invocation
+//! ### Concurrent invocation (default)
 //! ```json
 //! {
 //!   "agents": [
@@ -39,23 +33,24 @@
 //! }
 //! ```
 //!
-//! ### Async Invocation (Fire-and-Forget)
+//! ### Async (fire-and-forget)
 //! ```json
 //! {
-//!   "agent": "dev",
-//!   "task": "Run background analysis",
+//!   "agents": [
+//!     {"agent": "dev", "task": "Run background analysis"}
+//!   ],
 //!   "async": true
 //! }
 //! ```
-//! When `async: true`, the agent starts in the background and the call returns immediately
-//! without waiting for results. Useful for long-running tasks that don't need immediate feedback.
+//! When `async: true`, each agent starts in the background and the call returns immediately
+//! without waiting for results.
 //!
 //! ## Error Handling
 //!
-//! - **Single mode**: Errors are returned immediately
-//! - **Batch mode with fail_fast=true**: Stops on first error, other running agents continue
-//! - **Batch mode with fail_fast=false**: Collects all errors and returns aggregated result
-//! - **Async mode**: Errors are logged but not returned (fire-and-forget behavior)
+//! - **One or more agents, sync**: Errors are returned immediately (or aggregated when `fail_fast` is false and multiple agents ran).
+//! - **Multiple agents, fail_fast=true**: Stops on first error; other runs may still be in flight.
+//! - **Multiple agents, fail_fast=false**: Collects all errors and returns an aggregated result.
+//! - **Async mode**: Errors are logged but not returned (fire-and-forget behavior).
 
 use std::sync::Arc;
 
@@ -134,12 +129,12 @@ impl Tool for InvokeAgentTool {
     fn spec(&self) -> ToolSpec {
         let agents_desc = self.available_agents_description();
         let description = format!(
-            "Delegate a task to another agent by profile name. The sub-agent runs a full \
-             ReAct loop with its own tools and system prompt, then returns the final reply.\n\
+            "Delegate work to one or more sub-agents by profile name. Each sub-agent runs a full \
+             ReAct loop with its own tools and system prompt, then returns a final reply.\n\
              \n\
-             Use this when a specialized agent is better suited for the sub-task. \
-             Provide full context in the task parameter; the sub-agent has no memory \
-             of the current conversation.{}",
+             Always pass a non-empty `agents` array. For a single delegation use one element: \
+             `{{ \"agents\": [{{ \"agent\": \"...\", \"task\": \"...\" }}] }}`. \
+             Provide full context in each `task`; sub-agents have no memory of the current conversation.{}",
             agents_desc,
         );
         ToolSpec {
@@ -148,35 +143,24 @@ impl Tool for InvokeAgentTool {
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "agent": {
-                        "type": "string",
-                        "description": "Agent profile name (e.g. 'dev', 'agent-builder') or path to profile directory. Use this for single agent invocation."
-                    },
-                    "task": {
-                        "type": "string",
-                        "description": "Natural-language task to delegate. Include full context; the sub-agent has no memory of the current conversation."
-                    },
-                    "working_folder": {
-                        "type": "string",
-                        "description": "Optional: override working folder for the sub-agent."
-                    },
                     "agents": {
                         "type": "array",
-                        "description": "Array of agent invocations for batch concurrent execution. Each item should have 'agent', 'task', and optional 'working_folder'.",
+                        "minItems": 1,
+                        "description": "Non-empty list of delegations. Each item has 'agent', 'task', and optional 'working_folder'.",
                         "items": {
                             "type": "object",
                             "properties": {
                                 "agent": {
                                     "type": "string",
-                                    "description": "Agent profile name"
+                                    "description": "Agent profile name or path to profile directory."
                                 },
                                 "task": {
                                     "type": "string",
-                                    "description": "Task to delegate to this agent"
+                                    "description": "Natural-language task to delegate; include full context."
                                 },
                                 "working_folder": {
                                     "type": "string",
-                                    "description": "Optional: override working folder"
+                                    "description": "Optional: override working folder for this sub-agent."
                                 }
                             },
                             "required": ["agent", "task"]
@@ -184,19 +168,16 @@ impl Tool for InvokeAgentTool {
                     },
                     "fail_fast": {
                         "type": "boolean",
-                        "description": "If true, stop on first error. If false (default), continue and collect all results.",
+                        "description": "When multiple agents run in parallel: if true, stop on first error. If false (default), continue and collect all results. Ignored when only one agent or when async is true.",
                         "default": false
                     },
                     "async": {
                         "type": "boolean",
-                        "description": "If true, start agent(s) in background and return immediately without waiting for results. Useful for fire-and-forget tasks. Default: false.",
+                        "description": "If true, start all listed agent(s) in the background and return immediately without waiting for results. Default: false.",
                         "default": false
                     }
                 },
-                "oneOf": [
-                    {"required": ["agent", "task"]},
-                    {"required": ["agents"]}
-                ]
+                "required": ["agents"]
             }),
             output_hint: Some(ToolOutputHint::preferred(
                 ToolOutputStrategy::SummaryOnly,
@@ -210,21 +191,27 @@ impl Tool for InvokeAgentTool {
         ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
         let is_async = args.get("async").and_then(|v| v.as_bool()).unwrap_or(false);
-        
-        // Check if this is a batch invocation
-        if args.get("agents").is_some() {
-            if is_async {
-                self.call_multiple_async(args, ctx).await
-            } else {
-                self.call_multiple(args, ctx).await
-            }
-        } else {
-            if is_async {
-                self.call_single_async(args, ctx).await
-            } else {
-                self.call_single(args, ctx).await
-            }
+
+        let agents = args.get("agents").and_then(|v| v.as_array()).ok_or_else(|| {
+            ToolSourceError::InvalidInput(
+                "missing or invalid required argument: agents (must be a non-empty array)".into(),
+            )
+        })?;
+        if agents.is_empty() {
+            return Err(ToolSourceError::InvalidInput(
+                "agents array cannot be empty".into(),
+            ));
         }
+
+        if is_async {
+            return self.call_multiple_async(args, ctx).await;
+        }
+
+        if agents.len() == 1 {
+            return self.call_single(agents[0].clone(), ctx).await;
+        }
+
+        self.call_multiple(args, ctx).await
     }
 }
 
@@ -277,7 +264,7 @@ impl InvokeAgentTool {
         // Propagate depth + 1 so nested invoke_agent calls are tracked
         sub_config.thread_id = None;
 
-        let runner = build_react_runner(&sub_config, None, false, None)
+        let runner = build_react_runner(&sub_config, None, false)
             .await
             .map_err(|e| {
                 ToolSourceError::Transport(format!(
@@ -314,132 +301,6 @@ impl InvokeAgentTool {
         };
 
         Ok(ToolCallContent { text: reply })
-    }
-
-    /// Invoke a single agent asynchronously (fire-and-forget)
-    async fn call_single_async(
-        &self,
-        args: Value,
-        ctx: Option<&ToolCallContext>,
-    ) -> Result<ToolCallContent, ToolSourceError> {
-        let current_depth = ctx.map(|c| c.depth).unwrap_or(0);
-        if current_depth >= self.max_depth {
-            return Err(ToolSourceError::InvalidInput(format!(
-                "max sub-agent depth ({}) reached; cannot invoke further agents",
-                self.max_depth,
-            )));
-        }
-
-        let agent_name = args.get("agent").and_then(|v| v.as_str()).ok_or_else(|| {
-            ToolSourceError::InvalidInput("missing required argument: agent".into())
-        })?;
-
-        let task = args.get("task").and_then(|v| v.as_str()).ok_or_else(|| {
-            ToolSourceError::InvalidInput("missing required argument: task".into())
-        })?;
-
-        let working_folder_override = args
-            .get("working_folder")
-            .and_then(|v| v.as_str())
-            .map(std::path::PathBuf::from);
-
-        // Validate agent exists before spawning
-        let profile = resolve_profile(agent_name).map_err(|e| {
-            ToolSourceError::InvalidInput(format!(
-                "failed to resolve agent '{}': {}",
-                agent_name, e
-            ))
-        })?;
-
-        // Clone necessary data for background task
-        let profile_clone = profile.clone();
-        let base_config = self.base_config.clone();
-        let _max_depth = self.max_depth;
-        let agent_name_str = agent_name.to_string();
-        let task_str = task.to_string();
-        let ctx_clone = ctx.cloned();
-        let working_folder_clone = working_folder_override.clone();
-
-        // Spawn background task
-        tokio::spawn(async move {
-            // Acquire global semaphore permit
-            let _permit = match INVOKE_AGENT_SEMAPHORE.acquire().await {
-                Ok(p) => p,
-                Err(e) => {
-                    tracing::error!(
-                        agent = %agent_name_str,
-                        error = %e,
-                        "failed to acquire semaphore for async agent invocation"
-                    );
-                    return;
-                }
-            };
-
-            // Build config and runner in background
-            let mut sub_config = build_config_from_profile(
-                &profile_clone,
-                &base_config,
-                working_folder_clone.as_deref(),
-            );
-            sub_config.thread_id = None;
-
-            let runner = match build_react_runner(&sub_config, None, false, None).await {
-                Ok(r) => r,
-                Err(e) => {
-                    tracing::error!(
-                        agent = %agent_name_str,
-                        error = %e,
-                        "failed to build sub-agent for async invocation"
-                    );
-                    return;
-                }
-            };
-
-            // Run agent in background
-            let on_event = ctx_clone.and_then(|c| c.stream_writer.clone()).map(|writer| {
-                let agent = agent_name_str.clone();
-                move |event: crate::stream::StreamEvent<crate::state::ReActState>| {
-                    let payload = serde_json::json!({
-                        "sub_agent": agent,
-                        "event": format!("{:?}", event),
-                    });
-                    writer.emit_custom(payload);
-                }
-            });
-
-            match runner.stream_with_config(&task_str, None, on_event).await {
-                Ok(outcome) => {
-                    match outcome {
-                        crate::runner_common::StreamRunOutcome::Finished(_) => {
-                            tracing::info!(
-                                agent = %agent_name_str,
-                                "async agent invocation completed successfully"
-                            );
-                        }
-                        crate::runner_common::StreamRunOutcome::Cancelled => {
-                            tracing::warn!(
-                                agent = %agent_name_str,
-                                "async agent invocation was cancelled"
-                            );
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::error!(
-                        agent = %agent_name_str,
-                        error = %e,
-                        "async agent invocation failed"
-                    );
-                }
-            }
-        });
-
-        Ok(ToolCallContent {
-            text: format!(
-                "Agent '{}' started in background. Task: {}",
-                agent_name, task
-            ),
-        })
     }
 
     /// Invoke multiple agents concurrently with global concurrency limit
@@ -690,7 +551,7 @@ async fn invoke_single_agent(
     // Propagate depth + 1 so nested invoke_agent calls are tracked
     sub_config.thread_id = None;
 
-    let runner = build_react_runner(&sub_config, None, false, None)
+    let runner = build_react_runner(&sub_config, None, false)
         .await
         .map_err(|e| {
             ToolSourceError::Transport(format!(
@@ -729,7 +590,9 @@ mod tests {
     #[tokio::test]
     async fn depth_exceeded_returns_error() {
         let tool = InvokeAgentTool::new(Arc::new(ReactBuildConfig::from_env()), Some(2));
-        let args = serde_json::json!({"agent": "dev", "task": "hello"});
+        let args = serde_json::json!({
+            "agents": [{"agent": "dev", "task": "hello"}]
+        });
         let ctx = ToolCallContext {
             depth: 2,
             ..Default::default()
@@ -741,18 +604,28 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn missing_agent_arg_returns_error() {
+    async fn missing_agents_arg_returns_error() {
         let tool = make_tool();
-        let args = serde_json::json!({"task": "hello"});
+        let args = serde_json::json!({"fail_fast": false});
         let result = tool.call(args, None).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("agent"));
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("agents"), "error: {}", msg);
     }
 
     #[tokio::test]
-    async fn missing_task_arg_returns_error() {
+    async fn empty_agents_array_returns_error() {
         let tool = make_tool();
-        let args = serde_json::json!({"agent": "dev"});
+        let args = serde_json::json!({"agents": []});
+        let result = tool.call(args, None).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("empty"));
+    }
+
+    #[tokio::test]
+    async fn missing_task_in_single_item_returns_error() {
+        let tool = make_tool();
+        let args = serde_json::json!({"agents": [{"agent": "dev"}]});
         let result = tool.call(args, None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("task"));
@@ -761,7 +634,9 @@ mod tests {
     #[tokio::test]
     async fn unknown_agent_returns_error() {
         let tool = make_tool();
-        let args = serde_json::json!({"agent": "nonexistent-xyz", "task": "hello"});
+        let args = serde_json::json!({
+            "agents": [{"agent": "nonexistent-xyz", "task": "hello"}]
+        });
         let result = tool.call(args, None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("nonexistent-xyz"));
@@ -801,6 +676,11 @@ mod tests {
         });
         let result = tool.call(args, None).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("must be an array"));
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("agents") && msg.contains("array"),
+            "error: {}",
+            msg
+        );
     }
 }

@@ -1,4 +1,4 @@
-//! Todo-write tool: write todo list to thread context (~/.loom/context/{thread_id}/todo.json).
+//! Todo-write tool: write todo list to thread data (~/.loom/thread/{thread_id}/todo.json).
 //!
 //! Accepts a full list of todos (id, content, status, priority); writes JSON.
 //! Uses thread_id from ToolCallContext.config.thread_id for isolation.
@@ -20,7 +20,7 @@ pub const TOOL_TODO_WRITE: &str = "todo_write";
 
 /// Tool that writes the todo list to thread context.
 ///
-/// Path is `~/.loom/context/{thread_id}/todo.json` when thread_id is provided;
+/// Path is `~/.loom/thread/{thread_id}/todo.json` when thread_id is provided;
 /// falls back to `~/.loom/todo.json` for backward compatibility.
 /// Creates parent dirs if needed.
 pub struct TodoWriteTool {
@@ -304,7 +304,7 @@ mod tests {
         // Verify file is in thread-specific path
         let thread_path = crate::tools::todo::todo_file_path(Some(thread_id)).unwrap();
         assert!(thread_path.exists());
-        assert!(thread_path.to_str().unwrap().contains("context"));
+        assert!(thread_path.to_str().unwrap().contains("thread"));
         assert!(thread_path.to_str().unwrap().contains(thread_id));
 
         let raw = std::fs::read_to_string(&thread_path).unwrap();

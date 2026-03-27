@@ -4,7 +4,8 @@
 //! nodes read and write these fields. ToolCall and ToolResult align with MCP `tools/call`
 //! and result content.
 
-use crate::message::Message;
+use crate::memory::uuid6;
+use crate::message::{AssistantToolCall, Message};
 use crate::LlmUsage;
 use serde::{Deserialize, Serialize};
 
@@ -212,6 +213,10 @@ pub struct ReActState {
     /// Session summary generated after the first think; used for session list display.
     #[serde(default)]
     pub summary: Option<String>,
+    /// Flag set by CompletionCheckNode to indicate whether the task should continue.
+    /// Used by conditional routing after completion_check node.
+    #[serde(default)]
+    pub should_continue: bool,
 }
 
 impl Default for ReActState {
@@ -228,20 +233,76 @@ impl Default for ReActState {
             message_count_after_last_think: None,
             think_count: 0,
             summary: None,
+            should_continue: true,
         }
     }
 }
 
+fn normalize_tool_call_ids(mut calls: Vec<ToolCall>) -> Vec<ToolCall> {
+    for tc in &mut calls {
+        if tc.id.as_deref().map_or(true, |s| s.is_empty()) {
+            tc.id = Some(format!("call_{}", uuid6()));
+        }
+    }
+    calls
+}
+
+fn compute_think_usage(
+    total_so_far: Option<&LlmUsage>,
+    response_usage: Option<&LlmUsage>,
+) -> (Option<LlmUsage>, Option<LlmUsage>) {
+    match (total_so_far, response_usage) {
+        (Some(t), Some(u)) => (Some(u.clone()), Some(t.accumulate(u))),
+        (None, Some(u)) => (Some(u.clone()), Some(u.clone())),
+        (Some(t), None) => (None, Some(t.clone())),
+        (None, None) => (None, None),
+    }
+}
+
 impl ReActState {
+    /// Applies a Think step: append assistant message, set `tool_calls`, update usage counters.
+    pub fn apply_think(
+        mut self,
+        content: String,
+        reasoning_content: Option<String>,
+        tool_calls: Vec<ToolCall>,
+        response_usage: Option<LlmUsage>,
+    ) -> Self {
+        let (usage, total_usage) = compute_think_usage(self.total_usage.as_ref(), response_usage.as_ref());
+        let tool_calls = normalize_tool_call_ids(tool_calls);
+        let assistant_tool_calls: Vec<AssistantToolCall> = tool_calls
+            .iter()
+            .map(|tc| AssistantToolCall {
+                id: tc.id.clone().unwrap_or_default(),
+                name: tc.name.clone(),
+                arguments: tc.arguments.clone(),
+            })
+            .collect();
+        let think_message = if assistant_tool_calls.is_empty() {
+            Message::assistant(content)
+        } else {
+            Message::assistant_with_tool_calls(content, assistant_tool_calls)
+        };
+        self.messages.push(think_message);
+        self.last_reasoning_content = reasoning_content;
+        self.tool_calls = tool_calls;
+        self.usage = usage;
+        self.total_usage = total_usage;
+        self.message_count_after_last_think = Some(self.messages.len());
+        self.think_count = self.think_count.saturating_add(1);
+        self
+    }
+
     /// Returns the content of the chronologically last Assistant message, if any.
     ///
     /// Used by callers (e.g. bot, CLI) to get the final reply without scanning `messages`.
-    /// Semantics: last message in `messages` that is `Message::Assistant(content)`; empty
-    /// content (e.g. assistant turn with only tool_calls) returns `Some("")`. Returns
+    /// Semantics: last message in `messages` that is `Message::Assistant`; returns that turn's
+    /// text `content` only (ignores embedded `tool_calls`). Empty text (e.g. tool-only turn)
+    /// returns `Some("")`. Returns
     /// `None` only when there is no Assistant message at all.
     pub fn last_assistant_reply(&self) -> Option<String> {
         self.messages.iter().rev().find_map(|m| match m {
-            Message::Assistant(s) => Some(s.clone()),
+            Message::Assistant(p) => Some(p.content.clone()),
             _ => None,
         })
     }
@@ -270,5 +331,48 @@ mod tests {
             state.last_reasoning_content().as_deref(),
             Some("step by step")
         );
+    }
+
+    #[test]
+    fn apply_think_appends_message_and_increments_think_count() {
+        let state = ReActState::default();
+        let next = state.apply_think(
+            "hello".to_string(),
+            None,
+            vec![],
+            None,
+        );
+        assert_eq!(next.messages.len(), 1);
+        assert_eq!(next.think_count, 1);
+        assert_eq!(next.message_count_after_last_think, Some(1));
+        assert!(next.tool_calls.is_empty());
+    }
+
+    #[test]
+    fn apply_think_accumulates_total_usage() {
+        let prior = LlmUsage {
+            prompt_tokens: 10,
+            completion_tokens: 5,
+            total_tokens: 15,
+            prompt_tokens_details: None,
+            completion_tokens_details: None,
+        };
+        let state = ReActState {
+            total_usage: Some(prior),
+            ..Default::default()
+        };
+        let turn = LlmUsage {
+            prompt_tokens: 3,
+            completion_tokens: 2,
+            total_tokens: 5,
+            prompt_tokens_details: None,
+            completion_tokens_details: None,
+        };
+        let next = state.apply_think("x".into(), None, vec![], Some(turn.clone()));
+        assert_eq!(next.usage.as_ref(), Some(&turn));
+        let total = next.total_usage.expect("total");
+        assert_eq!(total.prompt_tokens, 13);
+        assert_eq!(total.completion_tokens, 7);
+        assert_eq!(total.total_tokens, 20);
     }
 }

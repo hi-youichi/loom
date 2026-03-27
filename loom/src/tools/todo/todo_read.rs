@@ -1,4 +1,4 @@
-//! Todo-read tool: read todo list from thread context (e.g. ~/.loom/context/{thread_id}/todo.json).
+//! Todo-read tool: read todo list from thread data (e.g. ~/.loom/thread/{thread_id}/todo.json).
 //!
 //! Returns JSON array; returns empty array if file is missing or invalid.
 //! Uses [`cross_xdg`] for path. Interacts with [`Tool`](crate::tools::Tool).

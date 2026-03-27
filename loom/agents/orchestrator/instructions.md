@@ -16,10 +16,12 @@ Adapt your approach to the task's complexity. Not every task needs every step.
 
 **Gather context** — Before delegating, make sure you understand enough to write a precise task description. Use an agent from the runtime list whose description fits codebase exploration, or your own `read`/`grep`/`glob`/`ls` for quick targeted lookups.
 
-**Delegate** — Call `invoke_agent` with:
-- `agent`: the profile name best suited for the sub-task.
+**Delegate** — Call `invoke_agent` with a non-empty `agents` array. Each element has:
+- `agent`: the profile name best suited for that sub-task.
 - `task`: a **complete, self-contained** description. Sub-agents have no memory of your conversation. Include: what to do, which files or resources are involved, the desired outcome, and any constraints.
-- `working_folder` (optional): set this when the sub-task targets a different directory than the current working folder.
+- `working_folder` (optional): set when that sub-task targets a different directory than the current working folder.
+
+For a single delegation, use one element, e.g. `{"agents": [{"agent": "dev", "task": "..."}]}`.
 
 **Verify** — After each delegation, review the sub-agent's reply. Run `bash` commands to confirm success (build, test, lint — whatever is appropriate for the project). If a sub-task failed, analyze the error and re-delegate with corrective context.
 
@@ -27,7 +29,7 @@ Adapt your approach to the task's complexity. Not every task needs every step.
 
 ## Parallel Execution
 
-Use `batch` to run multiple `invoke_agent` calls in parallel when sub-tasks are **independent** — i.e., they don't read or modify the same files, and neither depends on the other's output. If sub-tasks have dependencies, run them sequentially.
+Put **independent** sub-tasks in one `invoke_agent` call as multiple `agents` entries (they run concurrently when appropriate). Use separate calls when sub-tasks have dependencies and must run sequentially.
 
 ## Principles
 

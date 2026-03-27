@@ -8,7 +8,7 @@
 //!   calls, and optional usage.
 //! - [`ToolChoiceMode`] configures whether a provider may emit tool calls when
 //!   tools are available.
-//! - [`ChatOpenAI`] and [`ChatBigModel`] are concrete provider implementations.
+//! - [`ChatOpenAI`] and [`ChatOpenAICompat`] are concrete provider implementations.
 //!
 //! # Streaming
 //!
@@ -52,16 +52,22 @@ impl std::str::FromStr for ToolChoiceMode {
     }
 }
 
-mod bigmodel;
-mod openai;
+pub(crate) mod thinking;
+pub(crate) mod tool_call_accumulator;
 
-pub use bigmodel::ChatBigModel;
+mod openai;
+mod openai_compat;
+
+pub use openai_compat::ChatOpenAICompat;
+
+/// Deprecated alias for [`ChatOpenAICompat`].
+#[deprecated(note = "renamed to ChatOpenAICompat")]
+pub type ChatBigModel = ChatOpenAICompat;
+
 pub use mock::MockLlm;
 pub use openai::ChatOpenAI;
 pub use model_cache::{fetch_provider_models, ModelCache, ProviderModels};
 pub use model_registry::{create_llm_client, ModelEntry, ModelRegistry, ProviderConfig};
-
-pub mod context_persistence;
 
 use async_trait::async_trait;
 
@@ -105,11 +111,38 @@ pub struct ToolCallDelta {
     pub arguments_delta: String,
 }
 
+/// Breakdown of prompt tokens (OpenAI `prompt_tokens_details`).
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PromptTokensDetails {
+    /// Cached tokens present in the prompt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cached_tokens: Option<u32>,
+    /// Audio tokens present in the prompt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_tokens: Option<u32>,
+}
+
+/// Breakdown of completion tokens (OpenAI `completion_tokens_details`).
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CompletionTokensDetails {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_tokens: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_tokens: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepted_prediction_tokens: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rejected_prediction_tokens: Option<u32>,
+}
+
 /// Token usage for one LLM call (prompt + completion).
+///
+/// Aligns with OpenAI Chat Completions [`CompletionUsage`](https://platform.openai.com/docs/api-reference/completions/object):
+/// three top-level counts plus optional detail objects when the provider returns them.
 ///
 /// **Interaction**: Optional part of `LlmResponse`; emitted as `StreamEvent::Usage`
 /// when streaming so CLI can print usage when `--verbose`.
-#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LlmUsage {
     /// Tokens in the prompt (input).
     pub prompt_tokens: u32,
@@ -117,6 +150,24 @@ pub struct LlmUsage {
     pub completion_tokens: u32,
     /// Total tokens (prompt + completion).
     pub total_tokens: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_details: Option<PromptTokensDetails>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_tokens_details: Option<CompletionTokensDetails>,
+}
+
+impl LlmUsage {
+    /// Sums headline token counts with `other`. Per-turn breakdown fields are cleared
+    /// because OpenAI usage is per request and details are not additive across turns.
+    pub fn accumulate(&self, other: &LlmUsage) -> LlmUsage {
+        LlmUsage {
+            prompt_tokens: self.prompt_tokens + other.prompt_tokens,
+            completion_tokens: self.completion_tokens + other.completion_tokens,
+            total_tokens: self.total_tokens + other.total_tokens,
+            prompt_tokens_details: None,
+            completion_tokens_details: None,
+        }
+    }
 }
 
 /// Response from an LLM completion: assistant message text and optional tool calls.

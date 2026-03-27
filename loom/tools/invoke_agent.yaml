@@ -1,59 +1,44 @@
 name: invoke_agent
 description: |
-  Delegate a task to another agent by profile name. The sub-agent runs a full
-  ReAct loop with its own tools and system prompt, then returns the final reply.
+  Delegate work to one or more sub-agents by profile name. Each sub-agent runs a full
+  ReAct loop with its own tools and system prompt, then returns a final reply.
 
   Available agents are discovered from:
   - .loom/agents/<name>/  (project-level)
   - ~/.loom/agents/<name>/ (user-level)
   - Built-in: dev, agent-builder, explore
 
-  Use this when a specialized agent is better suited for the sub-task. Provide
-  full context in the task parameter; the sub-agent has no memory of the current
-  conversation.
+  Always pass a non-empty `agents` array. For one sub-agent, use a single element.
+  Each `task` must be self-contained; sub-agents have no memory of the current conversation.
 
-  Supports three modes:
-  1. Single invocation: use 'agent' and 'task' parameters
-  2. Batch concurrent invocation: use 'agents' array to run multiple agents in parallel
-     (with global concurrency control via INVOKE_AGENT_MAX_CONCURRENT env var, default: 3)
-  3. Async invocation: set 'async' to true to start agent(s) in background and return immediately
-     (useful for fire-and-forget tasks that don't need immediate results)
+  Optional `fail_fast` applies when multiple agents run in parallel (sync mode).
+  Set `async` to true to start all listed agent(s) in the background and return immediately.
 input_schema:
   type: object
   properties:
-    agent:
-      type: string
-      description: "Agent profile name (e.g. 'dev', 'agent-builder') or path to profile directory. Use this for single agent invocation."
-    task:
-      type: string
-      description: "Natural-language task to delegate. Include full context; the sub-agent has no memory of the current conversation."
-    working_folder:
-      type: string
-      description: "Optional: override working folder for the sub-agent."
     agents:
       type: array
-      description: "Array of agent invocations for batch concurrent execution. Each item should have 'agent', 'task', and optional 'working_folder'."
+      minItems: 1
+      description: "Non-empty list of delegations. Each item has 'agent', 'task', and optional 'working_folder'."
       items:
         type: object
         properties:
           agent:
             type: string
-            description: "Agent profile name"
+            description: "Agent profile name or path to profile directory."
           task:
             type: string
-            description: "Task to delegate to this agent"
+            description: "Natural-language task to delegate; include full context."
           working_folder:
             type: string
-            description: "Optional: override working folder"
+            description: "Optional: override working folder for this sub-agent."
         required: [agent, task]
     fail_fast:
       type: boolean
-      description: "If true, stop on first error. If false (default), continue and collect all results."
+      description: "When multiple agents run in parallel: if true, stop on first error. If false (default), collect all results. Ignored for a single agent or when async is true."
       default: false
     async:
       type: boolean
-      description: "If true, start agent(s) in background and return immediately without waiting for results. Useful for fire-and-forget tasks. Default: false."
+      description: "If true, start all listed agent(s) in the background and return immediately. Default: false."
       default: false
-  oneOf:
-    - required: [agent, task]
-    - required: [agents]
+  required: [agents]

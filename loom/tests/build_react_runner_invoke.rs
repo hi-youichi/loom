@@ -16,6 +16,7 @@ fn minimal_config() -> ReactBuildConfig {
         user_id: None,
         system_prompt: None,
         exa_api_key: None,
+        exa_codesearch_enabled: false,
         twitter_api_key: None,
         mcp_exa_url: "https://mcp.exa.ai/mcp".to_string(),
         mcp_remote_cmd: "npx".to_string(),
@@ -29,6 +30,8 @@ fn minimal_config() -> ReactBuildConfig {
         openai_base_url: None,
         model: None,
         llm_provider: None,
+        openai_tool_choice: None,
+        openai_temperature: None,
         embedding_api_key: None,
         embedding_base_url: None,
         embedding_model: None,
@@ -50,7 +53,7 @@ fn minimal_config() -> ReactBuildConfig {
 async fn build_react_runner_then_invoke_one_turn() {
     let config = minimal_config();
     let llm = Box::new(MockLlm::with_no_tool_calls("Hello from mock."));
-    let runner: ReactRunner = build_react_runner(&config, Some(llm), false, None)
+    let runner: ReactRunner = build_react_runner(&config, Some(llm), false)
         .await
         .expect("build_react_runner");
     let state = runner.invoke("Hi").await.expect("invoke");

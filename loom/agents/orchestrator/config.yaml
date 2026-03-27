@@ -16,7 +16,6 @@ tools:
         skill,
         web_fetcher,
         websearch,
-        codesearch,
       ]
     disabled:
       [

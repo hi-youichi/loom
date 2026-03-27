@@ -8,6 +8,7 @@ pub mod invoke_agent;
 mod lsp;
 mod mcp_adapter;
 pub mod memory;
+pub mod powershell;
 mod registry;
 pub mod skill;
 pub mod todo;
@@ -40,3 +41,4 @@ pub use web::{WebFetcherTool, TOOL_WEB_FETCHER};
 
 pub use invoke_agent::{InvokeAgentTool, TOOL_INVOKE_AGENT};
 pub use mcp_adapter::{register_mcp_tools, register_mcp_tools_with_specs, McpToolAdapter};
+pub use powershell::{PowerShellTool, TOOL_POWERSHELL};

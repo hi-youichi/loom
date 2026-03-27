@@ -123,7 +123,7 @@ fn run_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send + Sync>
     loom_acp::set_log_config(loom_acp::logging::LogConfig {
         level: args.log_level.clone(),
         file: args.log_file.clone(),
-        rotate: loom_acp::logging::LogRotate::from_str(&args.log_rotate),
+        rotate: config::tracing_init::LogRotate::from_str_or_daily(&args.log_rotate),
     });
 
     // Write PID file to default location
@@ -183,7 +183,7 @@ fn write_pid_file(log_dir: &Option<PathBuf>) -> Option<PidFileGuard> {
 
 /// Returns `~/.loom/acp` as log/PID directory.
 fn acp_log_dir() -> Option<PathBuf> {
-    Some(config::home::loom_home().join("acp"))
+    Some(config::home::acp_data_dir())
 }
 
 /// Path to the PID file (`~/.loom/acp/loom-acp.pid`).

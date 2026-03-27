@@ -1,13 +1,12 @@
 //! System prompt assembly for Helve: working folder path, permission rules, optional approval.
 //!
 //! Used by Server (or CLI) to build `ReactBuildConfig.system_prompt` without embedding
-//! product copy in React.
-//! When using file-based prompts, use [`assemble_system_prompt_with_prompts`] with [`crate::prompts::AgentPrompts`].
+//! product copy in React. All prompt materials should be loaded elsewhere and assembled
+//! through the single main entry point in this module.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::agent::react::REACT_SYSTEM_PROMPT;
-use crate::prompts::AgentPrompts;
 
 /// Approval policy for destructive or high-risk file operations.
 ///
@@ -27,6 +26,30 @@ pub enum ApprovalPolicy {
 /// Server or clients can show an approval UI and resume with `{ "approved": true }` or `{ "approved": false }`.
 pub const APPROVAL_REQUIRED_EVENT_TYPE: &str = "approval_required";
 
+/// Raw materials used to assemble the final ReAct system prompt.
+///
+/// This type intentionally stores *inputs*, not the final string:
+/// loading happens in callers, while prompt assembly happens in
+/// [`assemble_react_system_prompt`].
+#[derive(Debug, Clone, Default)]
+pub struct ReactPromptInputs {
+    /// When set, overrides the entire final prompt and bypasses all assembly.
+    pub full_override: Option<String>,
+    /// Optional base prompt content that replaces [`REACT_SYSTEM_PROMPT`] before
+    /// workdir/approval sections are appended.
+    pub base_prompt_override: Option<String>,
+    /// Optional role/persona section prepended before the base content.
+    pub role_setting: Option<String>,
+    /// Optional project rules (for example from `AGENTS.md`) prepended after `role_setting`.
+    pub agents_md: Option<String>,
+    /// Optional skills section prepended after `agents_md`.
+    pub skills_prompt: Option<String>,
+    /// Working folder displayed in the workdir section when present.
+    pub working_folder: Option<PathBuf>,
+    /// Approval policy appended after the workdir section when present.
+    pub approval_policy: Option<ApprovalPolicy>,
+}
+
 /// Returns the list of tool names that require user approval for the given policy.
 ///
 /// - `DestructiveOnly`: delete_file (and remove_dir if present).
@@ -39,6 +62,77 @@ pub fn tools_requiring_approval(policy: ApprovalPolicy) -> &'static [&'static st
         ApprovalPolicy::None => &[],
         ApprovalPolicy::DestructiveOnly => &["delete_file"],
         ApprovalPolicy::Always => &["delete_file", "write_file"],
+    }
+}
+
+fn canonical_display(path: &Path) -> String {
+    path.canonicalize()
+        .unwrap_or_else(|_| path.to_path_buf())
+        .display()
+        .to_string()
+}
+
+fn build_workdir_section(working_folder: Option<&Path>) -> String {
+    let Some(path) = working_folder else {
+        return String::new();
+    };
+    format!(
+        r#"
+WORKING FOLDER & FILE RULES:
+- Working folder path: {}
+"#,
+        canonical_display(path)
+    )
+}
+
+fn build_approval_section(approval_policy: Option<ApprovalPolicy>) -> String {
+    match approval_policy {
+        Some(ApprovalPolicy::None) | None => String::new(),
+        Some(ApprovalPolicy::DestructiveOnly) => "\n\nAPPROVAL: Before executing delete_file or remove_dir, output your plan and wait for the user to confirm (e.g. \"Proceed?\" or \"Continue?\"). Do not perform the deletion until the user approves.".to_string(),
+        Some(ApprovalPolicy::Always) => "\n\nAPPROVAL: Before executing delete_file, remove_dir, or bulk write_file operations, output your plan and wait for the user to confirm. Do not perform these operations until the user approves.".to_string(),
+    }
+}
+
+fn collect_prefix_sections(inputs: &ReactPromptInputs) -> Vec<&str> {
+    [
+        inputs.role_setting.as_deref(),
+        inputs.agents_md.as_deref(),
+        inputs.skills_prompt.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .map(str::trim)
+    .filter(|s| !s.is_empty())
+    .collect()
+}
+
+/// Assembles the final ReAct system prompt from loaded prompt materials.
+///
+/// This is the single main prompt assembly path for ReAct. Callers should gather
+/// inputs first, then pass them here to produce the final prompt string.
+pub fn assemble_react_system_prompt(inputs: &ReactPromptInputs) -> String {
+    if let Some(full) = &inputs.full_override {
+        return full.clone();
+    }
+
+    let base_prompt = inputs
+        .base_prompt_override
+        .clone()
+        .unwrap_or_else(|| REACT_SYSTEM_PROMPT.to_string());
+    let base_content = format!(
+        "{}{}{}",
+        base_prompt,
+        build_workdir_section(inputs.working_folder.as_deref()),
+        build_approval_section(inputs.approval_policy)
+    );
+
+    let prefix_sections = collect_prefix_sections(inputs);
+    if prefix_sections.is_empty() {
+        base_content
+    } else if base_content.is_empty() {
+        prefix_sections.join("\n\n")
+    } else {
+        format!("{}\n\n{}", prefix_sections.join("\n\n"), base_content)
     }
 }
 
@@ -66,66 +160,11 @@ pub fn assemble_system_prompt(
     working_folder: &Path,
     approval_policy: Option<ApprovalPolicy>,
 ) -> String {
-    let workdir_display = working_folder
-        .canonicalize()
-        .unwrap_or_else(|_| working_folder.to_path_buf())
-        .display()
-        .to_string();
-    let workdir_section = format!(
-        //         r#"
-        // WORKING FOLDER & FILE RULES:
-        // - Working folder path: {}
-        // - You may ONLY use the provided file tools (ls, read, write_file, move_file, delete_file, create_dir) to operate inside this directory and its subdirectories.
-        // - Do NOT access paths outside the working folder. Any path you use must be under the above folder.
-        // - EXPLORE FIRST: When the user asks about the project, codebase, or any contents of the working folder (e.g. "what is this project?", "what files are here?", "describe the code"), you MUST call ls first to explore the structure, then read relevant files (README, config files, etc.) before answering. Never guess or ask the user for more context when the information is available in the working folder.
-        // - FILE OUTPUT: When the user explicitly asks you to write/save a document, report, or content to a file (e.g., "write to file", "save to file", "write a report to file"), you MUST call write_file to save the content BEFORE giving FINAL_ANSWER. Do NOT give FINAL_ANSWER with only text—call write_file first, then report the file path in your final answer."#,
-        r#"
-WORKING FOLDER & FILE RULES:
-- Working folder path: {}
-"#,
-        workdir_display
-    );
-
-    let approval_section = match approval_policy {
-        Some(ApprovalPolicy::None) | None => String::new(),
-        Some(ApprovalPolicy::DestructiveOnly) => "\n\nAPPROVAL: Before executing delete_file or remove_dir, output your plan and wait for the user to confirm (e.g. \"Proceed?\" or \"Continue?\"). Do not perform the deletion until the user approves.".to_string(),
-        Some(ApprovalPolicy::Always) => "\n\nAPPROVAL: Before executing delete_file, remove_dir, or bulk write_file operations, output your plan and wait for the user to confirm. Do not perform these operations until the user approves.".to_string(),
-    };
-
-    format!(
-        "{}{}{}",
-        REACT_SYSTEM_PROMPT, workdir_section, approval_section
-    )
-}
-
-/// Assembles the full system prompt using [`AgentPrompts`] (base, workdir template, approval).
-///
-/// Use when prompts are loaded from YAML (e.g. [`crate::prompts::load_or_default`]). Replaces
-/// `{workdir}` in the Helve workdir template with the display path of `working_folder`.
-pub fn assemble_system_prompt_with_prompts(
-    working_folder: &Path,
-    approval_policy: Option<ApprovalPolicy>,
-    prompts: &AgentPrompts,
-) -> String {
-    let workdir_display = working_folder
-        .canonicalize()
-        .unwrap_or_else(|_| working_folder.to_path_buf())
-        .display()
-        .to_string();
-    let workdir_section = prompts
-        .helve_workdir_section_template()
-        .replace("{workdir}", &workdir_display);
-    let approval_section = match approval_policy {
-        Some(ApprovalPolicy::None) | None => String::new(),
-        Some(ApprovalPolicy::DestructiveOnly) => prompts.helve_approval_destructive(),
-        Some(ApprovalPolicy::Always) => prompts.helve_approval_always(),
-    };
-    format!(
-        "{}{}{}",
-        prompts.react_system_prompt(),
-        workdir_section,
-        approval_section
-    )
+    assemble_react_system_prompt(&ReactPromptInputs {
+        working_folder: Some(working_folder.to_path_buf()),
+        approval_policy,
+        ..Default::default()
+    })
 }
 
 #[cfg(test)]
@@ -154,13 +193,21 @@ mod tests {
         assert!(!p.contains("APPROVAL:"));
     }
 
-    /// assemble_system_prompt_with_prompts uses prompts and replaces {workdir}.
     #[test]
-    fn assemble_system_prompt_with_prompts_includes_workdir_and_base() {
-        let prompts = crate::prompts::AgentPrompts::default();
-        let p = assemble_system_prompt_with_prompts(Path::new("/tmp/ws"), None, &prompts);
+    fn assemble_react_system_prompt_assembles_prefix_and_sections() {
+        let p = assemble_react_system_prompt(&ReactPromptInputs {
+            role_setting: Some("You are helpful.".to_string()),
+            agents_md: Some("Project rules.".to_string()),
+            skills_prompt: Some("Available skills.".to_string()),
+            working_folder: Some(PathBuf::from("/tmp/ws")),
+            approval_policy: Some(ApprovalPolicy::DestructiveOnly),
+            ..Default::default()
+        });
+        assert!(p.starts_with("You are helpful."));
+        assert!(p.contains("Project rules."));
+        assert!(p.contains("Available skills."));
         assert!(p.contains(REACT_SYSTEM_PROMPT));
         assert!(p.contains("/tmp/ws"));
-        assert!(p.contains("Working folder path"));
+        assert!(p.contains("APPROVAL"));
     }
 }

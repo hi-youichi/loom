@@ -1,9 +1,9 @@
-//! Builds the default LLM from ReactBuildConfig (OpenAI or BigModel).
+//! Builds the default LLM from ReactBuildConfig (OpenAI or OpenAI-compat HTTP client).
 //!
-//! Default is OpenAI. Use BigModel only when `LLM_PROVIDER=bigmodel` is set.
+//! Default is OpenAI. Use the compat client when `LLM_PROVIDER=openai_compat` or `=bigmodel`.
 
 use crate::error::AgentError;
-use crate::llm::{ChatBigModel, ChatOpenAI, ModelEntry};
+use crate::llm::{ChatOpenAI, ChatOpenAICompat, ModelEntry};
 use crate::tool_source::ToolSource;
 use crate::LlmClient;
 
@@ -13,8 +13,8 @@ use super::error::BuildRunnerError;
 /// Extract model configuration from ReactBuildConfig into a ModelEntry.
 ///
 /// Priority (highest to lowest):
-/// 1. ReactBuildConfig fields (openai_api_key, openai_base_url, model, llm_provider)
-/// 2. Environment variables (OPENAI_API_KEY, OPENAI_BASE_URL, MODEL, LLM_PROVIDER)
+/// 1. ReactBuildConfig fields (credentials, model, provider, openai_tool_choice, openai_temperature)
+/// 2. Environment variables for any unset fields above (including `OPENAI_TEMPERATURE`)
 /// 3. Default values
 pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<ModelEntry, BuildRunnerError> {
     // API key: config > env
@@ -53,8 +53,46 @@ pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<Model
     // Determine provider name based on type
     let provider = match provider_type.as_deref() {
         Some("bigmodel") => "bigmodel".to_string(),
+        Some("openai_compat") => "openai_compat".to_string(),
         _ => "openai".to_string(),
     };
+
+    let tool_choice = match config
+        .openai_tool_choice
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(s) => match s.parse::<crate::llm::ToolChoiceMode>() {
+            Ok(m) => Some(m),
+            Err(_) => {
+                tracing::warn!(
+                    value = %s,
+                    "ignoring invalid OPENAI_TOOL_CHOICE (use auto, none, or required)"
+                );
+                None
+            }
+        },
+        None => None,
+    };
+
+    let temperature = config
+        .openai_temperature
+        .clone()
+        .or_else(|| std::env::var("OPENAI_TEMPERATURE").ok())
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .and_then(|s| match s.parse::<f32>() {
+            Ok(v) if v.is_finite() => Some(v),
+            _ => {
+                tracing::warn!(
+                    value = %s,
+                    "ignoring invalid OPENAI_TEMPERATURE (expected a finite number)"
+                );
+                None
+            }
+        });
 
     // Build ModelEntry
     Ok(ModelEntry {
@@ -64,9 +102,9 @@ pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<Model
         base_url,
         api_key: Some(api_key),
         provider_type,
-        temperature: None,
+        temperature,
         max_tokens: None,
-        tool_choice: None,
+        tool_choice,
     })
 }
 
@@ -88,13 +126,20 @@ pub(crate) async fn build_default_llm_with_tool_source(
     })?;
 
     match provider_type {
-        "bigmodel" => {
+        "openai_compat" | "bigmodel" => {
             let base_url = entry.base_url.clone().unwrap_or_else(|| {
                 "https://open.bigmodel.cn/api/paas/v4".to_string()
             });
             let api_key = entry.api_key.clone().unwrap();
-            tracing::debug!("build_default_llm: BigModel with tools");
-            let client = ChatBigModel::with_config(base_url, api_key, entry.name).with_tools(tools);
+            tracing::debug!("build_default_llm: OpenAI-compat with tools");
+            let mut client =
+                ChatOpenAICompat::with_config(base_url, api_key, entry.name).with_tools(tools);
+            if let Some(mode) = entry.tool_choice {
+                client = client.with_tool_choice(mode);
+            }
+            if let Some(t) = entry.temperature {
+                client = client.with_temperature(t);
+            }
             Ok(Box::new(client))
         }
         _ => {
@@ -107,7 +152,13 @@ pub(crate) async fn build_default_llm_with_tool_source(
                 openai_config = openai_config.with_api_base(base_url);
             }
             tracing::debug!("build_default_llm: OpenAI with tools");
-            let client = ChatOpenAI::with_config(openai_config, entry.name).with_tools(tools);
+            let mut client = ChatOpenAI::with_config(openai_config, entry.name).with_tools(tools);
+            if let Some(mode) = entry.tool_choice {
+                client = client.with_tool_choice(mode);
+            }
+            if let Some(t) = entry.temperature {
+                client = client.with_temperature(t);
+            }
             Ok(Box::new(client))
         }
     }
@@ -116,16 +167,27 @@ pub(crate) async fn build_default_llm_with_tool_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     #[test]
     fn test_model_entry_from_react_build_config() {
-        // Test that we can create a ModelEntry from ReactBuildConfig
-        // This verifies the Phase 2 refactoring
+        let _guard = env_lock().lock().unwrap();
+        let had_key = std::env::var("OPENAI_API_KEY").ok();
+        std::env::set_var("OPENAI_API_KEY", "test-key-for-model-entry");
         let config = crate::agent::react::config::ReactBuildConfig::from_env();
         let entry = model_entry_from_config(&config);
-        
-        // Should have a model name (either from env or default)
-        assert!(entry.is_ok());
+        match had_key {
+            Some(v) => std::env::set_var("OPENAI_API_KEY", v),
+            None => std::env::remove_var("OPENAI_API_KEY"),
+        }
+        drop(_guard);
+
+        assert!(entry.is_ok(), "model_entry_from_config: {:?}", entry.err());
         let entry = entry.unwrap();
         assert!(!entry.name.is_empty());
     }

@@ -27,7 +27,7 @@ impl Agent for EchoAgent {
     async fn run(&self, state: Self::State) -> Result<Self::State, AgentError> {
         let mut messages = state.messages;
         if let Some(Message::User(s)) = messages.last() {
-            messages.push(Message::Assistant(s.clone()));
+            messages.push(Message::assistant(s.clone()));
         }
         Ok(AgentState { messages })
     }

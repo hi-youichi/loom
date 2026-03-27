@@ -8,7 +8,8 @@ OPENAI_BASE_URL = "https://api.openai.com/v1"
 OPENAI_API_KEY = "sk-your-key"
 LANGGRAPH_API_KEY = "your-secret-key"
 
-# Logging (CLI writes to LOG_FILE when set; path relative to cwd)
+# Logging: applied as env vars; loom CLI reads LOG_FILE / RUST_LOG after loading this file.
+# LOG_FILE path is relative to cwd unless you use {working_folder} with -w/--working-folder.
 RUST_LOG = "info"
 LOG_FILE = "logs/loom.log"
 
@@ -16,7 +17,9 @@ LOG_FILE = "logs/loom.log"
 MODEL = "gpt-4o"
 OPENAI_TEMPERATURE = "0.5"
 
-# BigModel (智谱) as chat LLM: use OpenAI vars + LLM_PROVIDER
+# OpenAI-compat chat (e.g. Zhipu BigModel): use OpenAI vars + LLM_PROVIDER
+# LLM_PROVIDER = "openai_compat"
+# (alias: "bigmodel" still works)
 # LLM_PROVIDER = "bigmodel"
 # OPENAI_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
 # OPENAI_API_KEY = "your-bigmodel-key"
@@ -52,3 +55,15 @@ LOOM_COMPRESSION_RESERVE_TOKENS = "4096"
 LOOM_COMPRESSION_PRUNE_KEEP_TOKENS = "40000"
 LOOM_COMPRESSION_PRUNE_MINIMUM = "20000"
 LOOM_COMPRESSION_KEEP_RECENT = "20"
+
+# Optional: named providers (use [default].provider or LOOM_PROVIDER to select one).
+# Per-provider tool_choice sets OPENAI_TOOL_CHOICE (auto, none, required); same as [env].
+# Per-provider temperature sets OPENAI_TEMPERATURE (decimal); same as [env].
+# [[providers]]
+# name = "openai"
+# api_key = "sk-your-key"
+# base_url = "https://api.openai.com/v1"
+# model = "gpt-4o"
+# type = "openai"
+# tool_choice = "auto"
+# temperature = 0.7

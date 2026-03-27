@@ -68,7 +68,6 @@ fn run_options_other_fields_sane() {
     assert!(!opts.got_adaptive);
     assert_eq!(opts.display_max_len, 120);
     assert!(!opts.output_json);
-    assert!(opts.role_file.is_none());
     assert!(opts.mcp_config_path.is_none());
 }
 

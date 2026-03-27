@@ -1,4 +1,4 @@
-//! Load agent prompts from a directory of YAML files and apply env overrides.
+//! Load agent prompts from a directory of YAML files.
 //!
 //! **Canonical source**: Default prompt text lives in `loom/prompts/*.yaml`; they are
 //! embedded at compile time and used when no `PROMPTS_DIR` or directory is present.
@@ -78,16 +78,8 @@ where
     Ok(Some(value))
 }
 
-/// Applies env override for ReAct: `REACT_SYSTEM_PROMPT` overrides `system_prompt`.
-fn apply_react_env(mut file: ReactPromptsFile) -> ReactPromptsFile {
-    if let Ok(s) = std::env::var("REACT_SYSTEM_PROMPT") {
-        file.system_prompt = Some(s);
-    }
-    file
-}
-
 /// Loads prompts from a directory: reads `react.yaml`, `tot.yaml`, `got.yaml`, `dup.yaml`, `helve.yaml`,
-/// applies env overrides (e.g. `REACT_SYSTEM_PROMPT`), and returns an [`AgentPrompts`](super::resolve::AgentPrompts).
+/// and returns an [`AgentPrompts`](super::resolve::AgentPrompts).
 ///
 /// If `dir` is `None`, uses `PROMPTS_DIR` env or default `./prompts`. Missing files are ignored
 /// (that pattern keeps code defaults). Only returns error when the directory is required but missing,
@@ -98,9 +90,7 @@ pub fn load(dir: Option<&Path>) -> Result<super::resolve::AgentPrompts, LoadErro
         return Err(LoadError::DirNotFound(base.display().to_string()));
     }
 
-    let react = read_yaml_file::<ReactPromptsFile>(&base, REACT_FILE)?
-        .map(apply_react_env)
-        .unwrap_or_default();
+    let react = read_yaml_file::<ReactPromptsFile>(&base, REACT_FILE)?.unwrap_or_default();
     let tot = read_yaml_file::<TotPromptsFile>(&base, TOT_FILE)?.unwrap_or_default();
     let got = read_yaml_file::<GotPromptsFile>(&base, GOT_FILE)?.unwrap_or_default();
     let dup = read_yaml_file::<DupPromptsFile>(&base, DUP_FILE)?.unwrap_or_default();
@@ -121,7 +111,6 @@ pub fn load(dir: Option<&Path>) -> Result<super::resolve::AgentPrompts, LoadErro
 /// Used by [`load_or_default`] when no directory is present and by tests.
 pub fn default_from_embedded() -> super::resolve::AgentPrompts {
     let react: ReactPromptsFile = serde_yaml::from_str(EMBED_REACT).unwrap_or_default();
-    let react = apply_react_env(react);
     let tot: TotPromptsFile = serde_yaml::from_str(EMBED_TOT).unwrap_or_default();
     let got: GotPromptsFile = serde_yaml::from_str(EMBED_GOT).unwrap_or_default();
     let dup: DupPromptsFile = serde_yaml::from_str(EMBED_DUP).unwrap_or_default();
@@ -154,16 +143,14 @@ mod tests {
         assert!(matches!(result.unwrap_err(), LoadError::DirNotFound(_)));
     }
 
-    /// load_or_default with non-existent dir returns default from embedded YAML (empty react → code const).
+    /// load_or_default with non-existent dir returns default from embedded YAML.
     #[test]
     fn load_or_default_nonexistent_returns_default_from_embedded() {
         let p = load_or_default(Some(Path::new("/nonexistent_prompts_dir_12345")));
-        let s = p.react_system_prompt();
-        // Embedded react.yaml is empty by design; effective default is code const.
-        assert_eq!(s, crate::agent::react::REACT_SYSTEM_PROMPT);
+        assert!(p.react.system_prompt.is_none());
     }
 
-    /// Load from a directory containing only react.yaml with system_prompt overrides that value.
+    /// Load from a directory containing only react.yaml stores that value in `react.system_prompt`.
     #[test]
     fn load_from_dir_with_react_yaml() {
         let temp = tempfile::TempDir::new().unwrap();
@@ -171,7 +158,7 @@ mod tests {
         let react_yaml = "system_prompt: \"From file.\"\n";
         std::fs::write(dir.join("react.yaml"), react_yaml).unwrap();
         let p = load(Some(dir)).unwrap();
-        assert_eq!(p.react_system_prompt(), "From file.");
+        assert_eq!(p.react.system_prompt.as_deref(), Some("From file."));
     }
 
     #[test]
@@ -191,7 +178,7 @@ mod tests {
         let old = std::env::var("PROMPTS_DIR").ok();
         std::env::set_var("PROMPTS_DIR", dir);
         let p = load(None).unwrap();
-        assert_eq!(p.react_system_prompt(), "From env dir");
+        assert_eq!(p.react.system_prompt.as_deref(), Some("From env dir"));
         if let Some(v) = old {
             std::env::set_var("PROMPTS_DIR", v);
         } else {
@@ -203,10 +190,7 @@ mod tests {
     fn load_missing_files_are_ignored() {
         let temp = tempfile::TempDir::new().unwrap();
         let p = load(Some(temp.path())).unwrap();
-        assert_eq!(
-            p.react_system_prompt(),
-            crate::agent::react::REACT_SYSTEM_PROMPT
-        );
+        assert!(p.react.system_prompt.is_none());
         assert!(!p.tot_expand_system_addon().is_empty());
     }
 }
