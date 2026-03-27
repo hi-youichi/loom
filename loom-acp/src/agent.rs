@@ -273,7 +273,6 @@ impl Agent for LoomAcpAgent {
             session_id: None,
             cancellation: Some(cancellation.clone()),
             thread_id: Some(entry.thread_id.clone()),
-            role_file: None,
             agent: Some("dev".to_string()),
             verbose: false,
             got_adaptive: false,
@@ -381,9 +380,16 @@ impl Agent for LoomAcpAgent {
                                     ContentChunk::new(content.clone().into()),
                                 ),
                             ),
-                            Message::Assistant(content) => SessionNotification::new(
+                            Message::Assistant(payload) => SessionNotification::new(
                                 session_id.clone(),
                                 agent_client_protocol::SessionUpdate::AgentMessageChunk(
+                                    ContentChunk::new(payload.content.clone().into()),
+                                ),
+                            ),
+                            // TODO: map to dedicated ToolResultChunk when ACP protocol supports tool role.
+                            Message::Tool { content, .. } => SessionNotification::new(
+                                session_id.clone(),
+                                agent_client_protocol::SessionUpdate::UserMessageChunk(
                                     ContentChunk::new(content.clone().into()),
                                 ),
                             ),

@@ -40,7 +40,7 @@ impl Agent for EchoAgent {
             }
         });
         if let Some(content) = last {
-            messages.push(Message::Assistant(content));
+            messages.push(Message::assistant(content));
         }
         Ok(AgentState { messages })
     }
@@ -86,7 +86,8 @@ async fn main() {
         .await
         .expect("invoke");
 
-    if let Some(Message::Assistant(content)) = state.messages.last() {
+    if let Some(Message::Assistant(payload)) = state.messages.last() {
+        let content = &payload.content;
         println!("{content}");
     }
 

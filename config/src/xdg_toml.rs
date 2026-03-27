@@ -50,7 +50,7 @@ pub struct ProviderDef {
     pub base_url: Option<String>,
     /// Default model name (mapped to `MODEL`).
     pub model: Option<String>,
-    /// Provider implementation type: `"openai"` (default) or `"bigmodel"` (mapped to `LLM_PROVIDER`).
+    /// Provider implementation type: `"openai"` (default), `"openai_compat"`, or `"bigmodel"` (alias; mapped to `LLM_PROVIDER`).
     #[serde(rename = "type")]
     pub provider_type: Option<String>,
     /// Chat Completions `tool_choice`: `auto`, `none`, or `required` (mapped to `OPENAI_TOOL_CHOICE`).

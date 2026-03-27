@@ -64,7 +64,6 @@ pub fn run_options_from_issues_event(
         session_id: None,
         cancellation: None,
         thread_id,
-        role_file: None,
         agent: None,
         verbose: false,
         got_adaptive: false,

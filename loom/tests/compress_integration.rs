@@ -42,7 +42,7 @@ async fn no_compression_when_within_all_limits() {
 
     let msgs = vec![
         Message::User("hello".to_string()),
-        Message::Assistant("hi there".to_string()),
+        Message::assistant("hi there"),
         Message::User("Tool bash returned: ok".to_string()),
         Message::User("what next?".to_string()),
     ];
@@ -119,9 +119,9 @@ async fn compact_summarizes_messages_on_overflow() {
 
     let msgs = vec![
         Message::User("x".repeat(100)),
-        Message::Assistant("y".repeat(100)),
+        Message::assistant("y".repeat(100)),
         Message::User("z".repeat(100)),
-        Message::Assistant("w".repeat(100)),
+        Message::assistant("w".repeat(100)),
         Message::User("v".repeat(100)),
     ];
     let state = make_state(msgs.clone());
@@ -135,7 +135,7 @@ async fn compact_summarizes_messages_on_overflow() {
     assert!(matches!(&out.messages[0], Message::System(s) if s == &expected_summary));
 
     // Last 2 messages preserved verbatim
-    assert!(matches!(&out.messages[1], Message::Assistant(s) if s == &"w".repeat(100)));
+    assert!(matches!(&out.messages[1], Message::Assistant(p) if p.content == "w".repeat(100)));
     assert!(matches!(&out.messages[2], Message::User(s) if s == &"v".repeat(100)));
 }
 
@@ -167,7 +167,7 @@ async fn prune_then_compact_combined() {
         large_tool_result("grep", 400),
         large_tool_result("read", 400),
         large_tool_result("write", 400),
-        Message::Assistant("a".repeat(600)),
+        Message::assistant("a".repeat(600)),
         Message::User("b".repeat(600)),
     ];
     let input_count = msgs.len();
@@ -183,7 +183,7 @@ async fn prune_then_compact_combined() {
     assert!(matches!(&out.messages[0], Message::System(s) if s.contains(summary_text)));
 
     // Last 2 messages are the original recent messages
-    assert!(matches!(&out.messages[1], Message::Assistant(s) if s == &"a".repeat(600)));
+    assert!(matches!(&out.messages[1], Message::Assistant(p) if p.content == "a".repeat(600)));
     assert!(matches!(&out.messages[2], Message::User(s) if s == &"b".repeat(600)));
 }
 
@@ -242,7 +242,7 @@ async fn compression_in_full_react_loop() {
 
     let mut history: Vec<Message> = vec![Message::User("What time is it?".to_string())];
     for i in 0..10 {
-        history.push(Message::Assistant("a".repeat(200)));
+        history.push(Message::assistant("a".repeat(200)));
         history.push(Message::User(format!(
             "Tool tool_{} returned: {}",
             i,

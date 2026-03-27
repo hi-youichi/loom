@@ -30,7 +30,7 @@ async fn agent_as_node_run_maps_to_continue() {
     let (out_state, next) = result.expect("EchoAgent run should succeed");
     assert!(matches!(next, Next::Continue));
     assert_eq!(out_state.messages.len(), 2);
-    assert!(matches!(out_state.messages.last(), Some(Message::Assistant(s)) if s == "hello"));
+    assert!(matches!(out_state.messages.last(), Some(Message::Assistant(p)) if p.content == "hello"));
 }
 
 /// **Scenario**: When Agent::run returns Err, Node::run propagates the same error.

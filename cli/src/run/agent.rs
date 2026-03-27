@@ -16,10 +16,15 @@ use super::display::{
     format_tot_state_display, truncate_display,
 };
 use crate::envelope::EnvelopeState;
-use crate::backend::RunStopReason;
 use loom::{RunCmd, RunOptions, StreamEvent};
 
 use super::RunError;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunStopReason {
+    EndTurn,
+    Cancelled,
+}
 
 fn completion_reply(result: loom::RunCompletion) -> (String, Option<String>, RunStopReason) {
     match result {
@@ -152,7 +157,7 @@ pub async fn run_agent_wrapper(
         print_agent_banner(&resolved_agent);
         print_available_agents();
         if helve.role_setting.is_some() {
-            eprintln!("instructions/role loaded; system prompt (including it) is in state.messages[0].");
+            eprintln!("agent profile role included in system prompt (see state.messages[0]).");
         }
         if helve.agents_md.is_some() {
             eprintln!("AGENTS.md loaded; included in system prompt.");
@@ -700,7 +705,7 @@ mod tests {
 
     fn react_state() -> ReActState {
         ReActState {
-            messages: vec![Message::user("hi"), Message::Assistant("hello".into())],
+            messages: vec![Message::user("hi"), Message::assistant("hello")],
             ..ReActState::default()
         }
     }
@@ -712,6 +717,7 @@ mod tests {
             user_id: None,
             system_prompt: None,
             exa_api_key: None,
+            exa_codesearch_enabled: false,
             twitter_api_key: None,
             mcp_exa_url: "https://mcp.exa.ai/mcp".to_string(),
             mcp_remote_cmd: "npx".to_string(),
@@ -1115,7 +1121,6 @@ mod tests {
             session_id: None,
             cancellation: None,
             thread_id: None,
-            role_file: None,
             agent: None,
             verbose: false,
             got_adaptive: false,

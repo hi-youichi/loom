@@ -54,7 +54,10 @@ async fn main() {
                 match m {
                     Message::System(x) => println!("[System] {}", x),
                     Message::User(x) => println!("[User] {}", x),
-                    Message::Assistant(x) => println!("[Assistant] {}", x),
+                    Message::Assistant(p) => println!("[Assistant] {}", p.content),
+                    Message::Tool { tool_call_id, content } => {
+                        println!("[Tool {}] {}", tool_call_id, content)
+                    }
                 }
             }
             if s.messages.is_empty() {

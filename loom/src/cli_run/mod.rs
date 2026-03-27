@@ -13,7 +13,10 @@ pub use agent::{
 };
 
 use crate::skill::SkillRegistry;
-use crate::{to_react_build_config, HelveConfig, ReactBuildConfig};
+use crate::{
+    assemble_react_system_prompt, to_react_build_config, HelveConfig, ReactBuildConfig,
+    ReactPromptInputs,
+};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -34,11 +37,6 @@ pub struct ResolvedAgent {
 pub const DEFAULT_WORKING_FOLDER: &str = ".";
 
 const AGENTS_MD_FILE: &str = "AGENTS.md";
-const INSTRUCTIONS_MD_FILE: &str = "instructions.md";
-const SOUL_MD_FILE: &str = "SOUL.md"; // legacy; prefer instructions.md
-
-/// Default instructions (agent persona) embedded at compile time. Same as built-in dev agent (loom/agents/dev/instructions.md). Used when no instructions.md (or SOUL.md) is found on disk.
-const DEFAULT_SOUL: &str = include_str!("../../agents/dev/instructions.md");
 
 /// Reads AGENTS.md from current directory and optionally from working_folder.
 pub fn load_agents_md(working_folder: Option<&PathBuf>) -> Option<String> {
@@ -61,58 +59,16 @@ pub fn load_agents_md(working_folder: Option<&PathBuf>) -> Option<String> {
     }
 }
 
-/// Reads instructions.md (or legacy SOUL.md) from current directory and optionally from working_folder.
-pub fn load_soul_md(working_folder: Option<&PathBuf>) -> Option<String> {
-    let read_instructions = |p: &std::path::Path| {
-        std::fs::read_to_string(p.join(INSTRUCTIONS_MD_FILE))
-            .or_else(|_| std::fs::read_to_string(p.join(SOUL_MD_FILE)))
-            .ok()
-            .filter(|s| !s.trim().is_empty())
-            .map(|s| s.trim().to_string())
-    };
-    let cwd = std::env::current_dir().ok()?;
-    let cwd_canon = cwd.canonicalize().unwrap_or(cwd.clone());
-    let cwd_soul = read_instructions(&cwd);
-    let work_soul = working_folder
-        .filter(|p| p.canonicalize().unwrap_or_else(|_| p.to_path_buf()) != cwd_canon)
-        .and_then(|p| read_instructions(p));
-    match (cwd_soul, work_soul) {
-        (Some(c), Some(w)) => Some(format!("{}\n\n{}", c, w)),
-        (Some(c), None) => Some(c),
-        (None, Some(w)) => Some(w),
-        (None, None) => None,
-    }
-}
-
-/// Resolves role_setting: profile role > --role file > instructions.md (or SOUL.md) > built-in default.
-fn resolve_role_setting(
-    opts: &RunOptions,
-    working_folder: &PathBuf,
-    profile_role: Option<String>,
-) -> Option<String> {
-    if let Some(s) = profile_role {
-        if !s.trim().is_empty() {
-            return Some(s);
+/// `role_setting` from the resolved agent profile only (trimmed non-empty content).
+fn role_content_from_profile(profile_role: Option<String>) -> Option<String> {
+    profile_role.and_then(|s| {
+        let t = s.trim();
+        if t.is_empty() {
+            None
+        } else {
+            Some(t.to_string())
         }
-    }
-    if let Some(ref path) = opts.role_file {
-        match std::fs::read_to_string(path) {
-            Ok(s) => {
-                let t = s.trim().to_string();
-                if !t.is_empty() {
-                    return Some(t);
-                }
-            }
-            Err(e) => {
-                tracing::warn!(
-                    path = %path.display(),
-                    error = %e,
-                    "role file unreadable, falling back to instructions/default"
-                );
-            }
-        }
-    }
-    load_soul_md(Some(working_folder)).or_else(|| Some(DEFAULT_SOUL.trim().to_string()))
+    })
 }
 
 /// Builds HelveConfig and ReactBuildConfig from RunOptions.
@@ -226,12 +182,20 @@ pub fn build_helve_config(
         Some(prompt)
     };
 
+    let agent_instructions = role_content_from_profile(profile_role);
+
+    tracing::trace!(
+        agent_instructions_len = agent_instructions.as_ref().map(|s| s.len()),
+        skills_prompt_len = skills_prompt.as_ref().map(|s| s.len()),
+        "agent prompt",
+    );
+
     let helve = HelveConfig {
         working_folder: Some(working_folder.clone()),
         thread_id: effective_opts.thread_id.clone(),
         user_id: base.user_id.clone(),
         approval_policy: None,
-        role_setting: resolve_role_setting(opts, &working_folder, profile_role),
+        role_setting: agent_instructions,
         agents_md: load_agents_md(Some(&working_folder)),
         system_prompt_override: None,
         skills_prompt,
@@ -300,25 +264,18 @@ pub fn build_config_from_profile(
         }
     }
 
-    // System prompt from profile role
-    let role_content = profile.role.as_ref().and_then(|r| r.content.clone());
-    if let Some(role) = role_content {
-        let agents_md = load_agents_md(Some(&working_folder));
-        let parts: Vec<&str> = [Some(role.as_str()), agents_md.as_deref()]
-            .into_iter()
-            .flatten()
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .collect();
-        if !parts.is_empty() {
-            let base_prompt = config.system_prompt.take().unwrap_or_default();
-            let prefix = parts.join("\n\n");
-            config.system_prompt = Some(if base_prompt.is_empty() {
-                prefix
-            } else {
-                format!("{}\n\n{}", prefix, base_prompt)
-            });
-        }
+    // System prompt from profile role / AGENTS.md uses the same assembler as top-level runs.
+    let role_setting =
+        role_content_from_profile(profile.role.as_ref().and_then(|r| r.content.clone()));
+    let agents_md = load_agents_md(Some(&working_folder));
+    if role_setting.is_some() || agents_md.is_some() {
+        let prompt_inputs = ReactPromptInputs {
+            base_prompt_override: config.system_prompt.take(),
+            role_setting,
+            agents_md,
+            ..Default::default()
+        };
+        config.system_prompt = Some(assemble_react_system_prompt(&prompt_inputs));
     }
 
     // Skill registry for sub-agent
@@ -347,11 +304,6 @@ pub fn build_config_from_profile(
 }
 
 fn apply_profile_to_run_options(profile: &AgentProfile, opts: &mut RunOptions) {
-    if let Some(ref role) = profile.role {
-        if opts.role_file.is_none() && role.content.is_some() {
-            // role_setting will be taken from profile in build_helve_config
-        }
-    }
     if let Some(ref tools) = profile.tools {
         if let Some(ref mcp) = tools.mcp {
             if let Some(ref config) = mcp.config {
@@ -393,7 +345,6 @@ mod tests {
             session_id: None,
             cancellation: None,
             thread_id: None,
-            role_file: None,
             agent: None,
             verbose: false,
             got_adaptive: false,
@@ -453,59 +404,21 @@ mod tests {
     }
 
     #[test]
-    fn load_soul_md_in_empty_dir() {
-        let dir = tempfile::tempdir().unwrap();
-        let prev = std::env::current_dir().ok();
-        let _ = std::env::set_current_dir(dir.path());
-        let result = load_soul_md(None);
-        if let Some(d) = prev {
-            let _ = std::env::set_current_dir(d);
-        }
-        assert!(result.is_none());
+    fn role_content_from_profile_whitespace_none() {
+        assert!(role_content_from_profile(Some("  \n\t  ".to_string())).is_none());
     }
 
     #[test]
-    fn resolve_role_setting_empty_profile_role_falls_through() {
-        let dir = tempfile::tempdir().unwrap();
-        let opts = default_opts();
-        let result = resolve_role_setting(&opts, &dir.path().to_path_buf(), Some("  ".to_string()));
-        assert!(result.is_some());
-    }
-
-    #[test]
-    fn resolve_role_setting_profile_role_wins() {
-        let dir = tempfile::tempdir().unwrap();
-        let opts = default_opts();
-        let result = resolve_role_setting(
-            &opts,
-            &dir.path().to_path_buf(),
-            Some("Profile role".to_string()),
+    fn role_content_from_profile_trims_and_returns() {
+        assert_eq!(
+            role_content_from_profile(Some("  hello  ".to_string())).as_deref(),
+            Some("hello")
         );
-        assert_eq!(result.as_deref(), Some("Profile role"));
     }
 
     #[test]
-    fn resolve_role_setting_role_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let role_file = dir.path().join("role.md");
-        std::fs::write(&role_file, "Custom role").unwrap();
-        let mut opts = default_opts();
-        opts.role_file = Some(role_file);
-        let result = resolve_role_setting(&opts, &dir.path().to_path_buf(), None);
-        assert_eq!(result.as_deref(), Some("Custom role"));
-    }
-
-    #[test]
-    fn resolve_role_setting_fallback_to_default() {
-        let dir = tempfile::tempdir().unwrap();
-        let prev = std::env::current_dir().ok();
-        let _ = std::env::set_current_dir(dir.path());
-        let opts = default_opts();
-        let result = resolve_role_setting(&opts, &dir.path().to_path_buf(), None);
-        if let Some(d) = prev {
-            let _ = std::env::set_current_dir(d);
-        }
-        assert!(result.is_some());
+    fn role_content_from_profile_none_in_none_out() {
+        assert!(role_content_from_profile(None).is_none());
     }
 
     #[test]

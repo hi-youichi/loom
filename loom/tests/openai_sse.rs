@@ -26,6 +26,7 @@ fn empty_state() -> ReActState {
         last_reasoning_content: None,
         think_count: 0,
         summary: None,
+        should_continue: true,
     }
 }
 
@@ -223,6 +224,7 @@ fn adapter_emits_tool_calls_chunk_on_updates_with_tool_calls() {
             last_reasoning_content: None,
             think_count: 0,
             summary: None,
+            should_continue: true,
         },
         namespace: None,
     });

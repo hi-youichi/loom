@@ -161,9 +161,6 @@ pub struct RunOptions {
     pub message: String,
     pub working_folder: Option<PathBuf>,
     pub session_id: Option<String>,
-    /// When set, path to a file whose content is used as the agent's role/persona (instructions).
-    /// Overrides instructions.md (or SOUL.md) and the built-in default. Read at build_helve_config time.
-    pub role_file: Option<PathBuf>,
     /// Named agent profile (e.g. "coding"). Resolved from .loom/agents/<name> or ~/.loom/agents/<name>.
     pub agent: Option<String>,
     pub verbose: bool,
@@ -452,7 +449,7 @@ pub async fn build_runner(
     let cancellation = opts.cancellation.as_ref().map(RunCancellation::token);
     match cmd {
         RunCmd::React => {
-            let r = build_react_runner(config, llm_override, opts.verbose, None)
+            let r = build_react_runner(config, llm_override, opts.verbose)
                 .await?
                 .with_cancellation(opts.cancellation.clone());
             Ok(AnyRunner::React(r))
@@ -530,7 +527,6 @@ pub async fn run_agent_with_provider(
         session_id: None,
         cancellation: None,
         thread_id: None,
-        role_file: None,
         agent: None,
         verbose: false,
         got_adaptive: false,
@@ -565,7 +561,6 @@ mod tests {
             session_id: None,
             cancellation: None,
             thread_id: None,
-            role_file: None,
             agent: None,
             verbose: false,
             got_adaptive,
@@ -589,6 +584,7 @@ mod tests {
             user_id: None,
             system_prompt: None,
             exa_api_key: None,
+            exa_codesearch_enabled: false,
             twitter_api_key: None,
             mcp_exa_url: "https://mcp.exa.ai/mcp".to_string(),
             mcp_remote_cmd: "npx".to_string(),
@@ -661,7 +657,6 @@ mod tests {
             session_id: None,
             cancellation: None,
             thread_id: None,
-            role_file: None,
             agent: None,
             verbose: false,
             got_adaptive: false,
@@ -736,7 +731,7 @@ mod tests {
 
         let _tot = TotState {
             core: ReActState {
-                messages: vec![Message::user("u"), Message::Assistant("a".to_string())],
+                messages: vec![Message::user("u"), Message::assistant("a")],
                 ..ReActState::default()
             },
             tot: TotExtension::default(),

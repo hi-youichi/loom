@@ -129,7 +129,7 @@ impl Node<DupState> for UnderstandNode {
         );
 
         let mut core = state.core;
-        core.messages.push(Message::Assistant(summary));
+        core.messages.push(Message::assistant(summary));
 
         let new_state = DupState {
             core,

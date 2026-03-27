@@ -3,14 +3,13 @@
 //! Used when `-i/--interactive` is passed. Ensures a stable `session_id` for multi-turn history.
 
 use std::io::Write;
-use std::path::PathBuf;
-use std::sync::Arc;
 
 use tokio::io::{AsyncBufReadExt, BufReader};
 
-use cli::{RunBackend, RunCmd, RunError, RunOptions};
+use cli::{run_cli_turn, RunCmd, RunError, RunOptions, RunOutput, StreamOut};
 
 use crate::Command;
+use crate::output::{emit_run_output, OutputConfig};
 
 fn cmd_to_runcmd(cmd: &Command) -> RunCmd {
     match cmd {
@@ -23,17 +22,8 @@ fn cmd_to_runcmd(cmd: &Command) -> RunCmd {
         },
         Command::Tool(_) => unreachable!("tool handled in main"),
         Command::Session(_) => unreachable!("session handled in main"),
-        Command::Tui => unreachable!("tui handled in main"),
         Command::Models(_) => unreachable!("models handled in main"),
     }
-}
-
-/// Truncates reply for display. 0 means no truncation.
-fn truncate_reply(reply: &str, max_len: usize) -> String {
-    if max_len == 0 {
-        return reply.to_string();
-    }
-    crate::truncate_message(reply, max_len)
 }
 
 /// Runs the REPL loop: prompt, read line, run agent, print, repeat.
@@ -41,15 +31,12 @@ fn truncate_reply(reply: &str, max_len: usize) -> String {
 /// Exits on EOF (Ctrl+D), empty line, or `quit`/`exit`/`/quit`.
 /// On run error, prints to stderr and continues.
 pub async fn run_repl_loop(
-    backend: &Arc<dyn RunBackend>,
     base_opts: &RunOptions,
     cmd: &Command,
     max_reply_len: usize,
-    json_file: Option<PathBuf>,
-    json_pretty: bool,
-    stream_out: cli::StreamOut,
+    output: OutputConfig,
+    stream_out: StreamOut,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let json_stream = stream_out.is_some();
     let mut reader = BufReader::new(tokio::io::stdin()).lines();
 
     loop {
@@ -68,80 +55,14 @@ pub async fn run_repl_loop(
         let mut opts = base_opts.clone();
         opts.message = line;
 
-        match run_one_turn(backend, &opts, cmd, stream_out.clone()).await {
-            Ok(cli::RunOutput::Json {
-                events,
-                reply,
-                reasoning_content,
-                reply_envelope,
-                stop_reason,
-            }) => {
-                let mut reply_obj = serde_json::json!({ "reply": reply });
-                if let Some(reasoning_content) = reasoning_content {
-                    reply_obj["reasoning_content"] = serde_json::json!(reasoning_content);
-                }
-                if let Some(ref env) = reply_envelope {
-                    env.inject_into(&mut reply_obj);
-                }
-                let out = serde_json::json!({
-                    "events": events,
-                    "reply": reply_obj,
-                    "stop_reason": match stop_reason {
-                        cli::backend::RunStopReason::EndTurn => "end_turn",
-                        cli::backend::RunStopReason::Cancelled => "cancelled",
-                    }
-                });
-                let s = if json_pretty {
-                    serde_json::to_string_pretty(&out).unwrap_or_default()
-                } else {
-                    serde_json::to_string(&out).unwrap_or_default()
-                };
-                match &json_file {
-                    Some(p) => std::fs::write(p, format!("{}\n", s))?,
-                    None => println!("{}", s),
-                }
-            }
-            Ok(cli::RunOutput::Reply {
-                reply,
-                reasoning_content,
-                reply_envelope,
-                stop_reason,
-            }) => {
-                if json_stream {
-                    let mut out = serde_json::json!({ "reply": reply });
-                    out["stop_reason"] = serde_json::json!(match stop_reason {
-                        cli::backend::RunStopReason::EndTurn => "end_turn",
-                        cli::backend::RunStopReason::Cancelled => "cancelled",
-                    });
-                    if let Some(reasoning_content) = reasoning_content {
-                        out["reasoning_content"] = serde_json::json!(reasoning_content);
-                    }
-                    if let Some(ref env) = reply_envelope {
-                        env.inject_into(&mut out);
-                    }
-                    let s = if json_pretty {
-                        serde_json::to_string_pretty(&out).unwrap_or_default()
-                    } else {
-                        serde_json::to_string(&out).unwrap_or_default()
-                    };
-                    match &json_file {
-                        Some(p) => {
-                            use std::io::Write;
-                            let mut f = std::fs::OpenOptions::new()
-                                .create(true)
-                                .append(true)
-                                .open(p)?;
-                            f.write_all(format!("{}\n", s).as_bytes())?;
-                        }
-                        None => println!("{}", s),
-                    }
-                } else {
-                    if base_opts.output_timestamp {
-                        cli::run::print_reply_timestamp();
-                    }
-                    println!("{}", truncate_reply(&reply, max_reply_len));
-                }
-            }
+        match run_one_turn(&opts, cmd, stream_out.clone()).await {
+            Ok(output_value) => emit_run_output(
+                output_value,
+                &output,
+                opts.thread_id.as_deref(),
+                max_reply_len,
+                base_opts.output_timestamp,
+            )?,
             Err(e) => eprintln!("error: {}", e),
         }
     }
@@ -156,55 +77,17 @@ fn is_quit_command(s: &str) -> bool {
 
 /// Runs one turn of the agent (react, dup, tot, or got).
 pub async fn run_one_turn(
-    backend: &Arc<dyn RunBackend>,
     opts: &RunOptions,
     cmd: &Command,
-    stream_out: cli::StreamOut,
-) -> Result<cli::RunOutput, RunError> {
+    stream_out: StreamOut,
+) -> Result<RunOutput, RunError> {
     let run_cmd = cmd_to_runcmd(cmd);
-    backend.run(opts, &run_cmd, stream_out).await
+    run_cli_turn(opts, &run_cmd, stream_out).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_trait::async_trait;
-    use std::sync::{Arc, Mutex};
-
-    struct DummyBackend {
-        seen: Arc<Mutex<Vec<RunCmd>>>,
-    }
-
-    #[async_trait]
-    impl RunBackend for DummyBackend {
-        async fn run(
-            &self,
-            _opts: &RunOptions,
-            cmd: &RunCmd,
-            _stream_out: cli::StreamOut,
-        ) -> Result<cli::RunOutput, RunError> {
-            self.seen.lock().unwrap().push(cmd.clone());
-            Ok(cli::RunOutput::Reply {
-                reply: "ok".to_string(),
-                reasoning_content: None,
-                reply_envelope: None,
-                stop_reason: cli::backend::RunStopReason::EndTurn,
-            })
-        }
-
-        async fn list_tools(&self, _opts: &RunOptions) -> Result<(), RunError> {
-            Ok(())
-        }
-
-        async fn show_tool(
-            &self,
-            _opts: &RunOptions,
-            _name: &str,
-            _format: cli::ToolShowFormat,
-        ) -> Result<(), RunError> {
-            Ok(())
-        }
-    }
 
     #[test]
     fn is_quit_command_matches_expected_tokens() {
@@ -215,51 +98,9 @@ mod tests {
     }
 
     #[test]
-    fn truncate_reply_respects_zero_and_limit() {
-        assert_eq!(truncate_reply("hello world", 0), "hello world");
-        let truncated = truncate_reply("abcdefghijk", 8);
-        assert_eq!(truncated.chars().count(), 8);
-        assert!(truncated.ends_with("..."));
-    }
-
-    #[test]
     fn cmd_to_runcmd_maps_basic_variants() {
         assert!(matches!(cmd_to_runcmd(&Command::React), RunCmd::React));
         assert!(matches!(cmd_to_runcmd(&Command::Dup), RunCmd::Dup));
         assert!(matches!(cmd_to_runcmd(&Command::Tot), RunCmd::Tot));
-    }
-
-    #[tokio::test]
-    async fn run_one_turn_delegates_to_backend_with_mapped_cmd() {
-        let seen = Arc::new(Mutex::new(Vec::<RunCmd>::new()));
-        let backend: Arc<dyn RunBackend> = Arc::new(DummyBackend {
-            seen: Arc::clone(&seen),
-        });
-        let opts = RunOptions {
-            message: "hello".to_string(),
-            working_folder: None,
-            session_id: None,
-            thread_id: None,
-            role_file: None,
-            agent: None,
-            verbose: false,
-            got_adaptive: false,
-            display_max_len: 100,
-            output_json: false,
-            cancellation: None,
-            model: None,
-            mcp_config_path: None,
-            output_timestamp: false,
-            dry_run: false,
-        };
-
-        let out = run_one_turn(&backend, &opts, &Command::Dup, None)
-            .await
-            .unwrap();
-        assert!(matches!(
-            out,
-            cli::RunOutput::Reply { reply, .. } if reply == "ok"
-        ));
-        assert!(matches!(seen.lock().unwrap().first(), Some(RunCmd::Dup)));
     }
 }

@@ -17,7 +17,9 @@ LOG_FILE = "logs/loom.log"
 MODEL = "gpt-4o"
 OPENAI_TEMPERATURE = "0.5"
 
-# BigModel (智谱) as chat LLM: use OpenAI vars + LLM_PROVIDER
+# OpenAI-compat chat (e.g. Zhipu BigModel): use OpenAI vars + LLM_PROVIDER
+# LLM_PROVIDER = "openai_compat"
+# (alias: "bigmodel" still works)
 # LLM_PROVIDER = "bigmodel"
 # OPENAI_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
 # OPENAI_API_KEY = "your-bigmodel-key"

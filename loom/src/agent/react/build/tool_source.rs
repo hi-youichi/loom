@@ -244,9 +244,11 @@ pub(crate) async fn build_tool_source(
         aggregate
             .register_async(Box::new(ExaWebsearchTool::new(key.clone())))
             .await;
-        aggregate
-            .register_async(Box::new(ExaCodesearchTool::new(key.clone())))
-            .await;
+        if config.exa_codesearch_enabled {
+            aggregate
+                .register_async(Box::new(ExaCodesearchTool::new(key.clone())))
+                .await;
+        }
     }
     if let Some(ref wf) = config.working_folder {
         register_file_tools(aggregate.as_ref(), wf, config.skill_registry.clone())

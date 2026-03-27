@@ -3,6 +3,7 @@
 //! StateGraph: add nodes and edges, compile, then
 //! invoke with state.
 
+mod cancellable;
 mod compile_error;
 mod compiled;
 mod conditional;
@@ -19,6 +20,7 @@ mod runtime;
 mod state_graph;
 mod visualization;
 
+pub use cancellable::run_cancellable;
 pub use compile_error::CompilationError;
 pub use compiled::CompiledStateGraph;
 pub use conditional::{ConditionalRouter, ConditionalRouterFn, NextEntry};

@@ -33,7 +33,7 @@ async fn get_recent_messages_tool_call_with_context() {
     let tool = GetRecentMessagesTool::new();
     let context = ToolCallContext::new(vec![
         Message::User("hello".to_string()),
-        Message::Assistant("hi there!".to_string()),
+        Message::assistant("hi there!".to_string()),
         Message::User("how are you?".to_string()),
     ]);
 
@@ -54,9 +54,9 @@ async fn get_recent_messages_tool_call_with_limit() {
     let tool = GetRecentMessagesTool::new();
     let context = ToolCallContext::new(vec![
         Message::User("msg1".to_string()),
-        Message::Assistant("msg2".to_string()),
+        Message::assistant("msg2".to_string()),
         Message::User("msg3".to_string()),
-        Message::Assistant("msg4".to_string()),
+        Message::assistant("msg4".to_string()),
         Message::User("msg5".to_string()),
     ]);
 
@@ -73,7 +73,7 @@ async fn get_recent_messages_tool_call_limit_exceeds_messages() {
     let tool = GetRecentMessagesTool::new();
     let context = ToolCallContext::new(vec![
         Message::User("msg1".to_string()),
-        Message::Assistant("msg2".to_string()),
+        Message::assistant("msg2".to_string()),
     ]);
 
     let args = json!({"limit": 10});
@@ -87,7 +87,7 @@ async fn get_recent_messages_tool_call_limit_zero() {
     let tool = GetRecentMessagesTool::new();
     let context = ToolCallContext::new(vec![
         Message::User("msg1".to_string()),
-        Message::Assistant("msg2".to_string()),
+        Message::assistant("msg2".to_string()),
     ]);
 
     let args = json!({"limit": 0});
@@ -102,7 +102,7 @@ async fn get_recent_messages_tool_includes_system_messages() {
     let context = ToolCallContext::new(vec![
         Message::System("You are a helpful assistant.".to_string()),
         Message::User("Hello".to_string()),
-        Message::Assistant("Hi!".to_string()),
+        Message::assistant("Hi!".to_string()),
     ]);
 
     let args = json!({});

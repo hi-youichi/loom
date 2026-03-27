@@ -29,7 +29,10 @@ impl BacktrackNode {
 
     /// Pops the last assistant message and all consecutive user messages after it (tool results).
     fn pop_last_round_messages(messages: &mut Vec<Message>) {
-        while matches!(messages.last(), Some(Message::User(_))) {
+        while matches!(
+            messages.last(),
+            Some(Message::User(_)) | Some(Message::Tool { .. })
+        ) {
             messages.pop();
         }
         if matches!(messages.last(), Some(Message::Assistant(_))) {
@@ -66,7 +69,7 @@ impl Node<TotState> for BacktrackNode {
         let mut core = state.core;
         Self::pop_last_round_messages(&mut core.messages);
         core.messages
-            .push(Message::Assistant(chosen.thought.clone()));
+            .push(Message::assistant(chosen.thought.clone()));
         core.tool_calls = chosen.tool_calls.clone();
         core.tool_results = vec![];
 
@@ -119,7 +122,7 @@ mod tests {
     fn pop_last_round_messages_removes_assistant_and_trailing_users() {
         let mut messages = vec![
             Message::user("u1"),
-            Message::Assistant("a1".into()),
+            Message::assistant("a1"),
             Message::user("tool result 1"),
             Message::user("tool result 2"),
         ];
@@ -135,7 +138,7 @@ mod tests {
             core: ReActState {
                 messages: vec![
                     Message::user("question"),
-                    Message::Assistant("old plan".into()),
+                    Message::assistant("old plan"),
                     Message::user("old tool result"),
                 ],
                 tool_calls: vec![ToolCall {
@@ -180,7 +183,7 @@ mod tests {
         assert_eq!(out.core.tool_calls[0].name, "t2");
         assert!(matches!(
             out.core.messages.last(),
-            Some(Message::Assistant(s)) if s == "second"
+            Some(Message::Assistant(p)) if p.content == "second"
         ));
     }
 
@@ -189,7 +192,7 @@ mod tests {
         let node = BacktrackNode::new();
         let state = TotState {
             core: ReActState {
-                messages: vec![Message::user("q"), Message::Assistant("first".into())],
+                messages: vec![Message::user("q"), Message::assistant("first")],
                 ..ReActState::default()
             },
             tot: TotExtension {

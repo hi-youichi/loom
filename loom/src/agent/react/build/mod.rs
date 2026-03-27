@@ -21,8 +21,8 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use super::config::ReactBuildConfig;
+use super::REACT_SYSTEM_PROMPT;
 use super::runner::ReactRunner;
-use crate::prompts::AgentPrompts;
 use llm::build_default_llm_with_tool_source;
 use store::build_store;
 use tool_source::build_tool_source;
@@ -141,7 +141,6 @@ pub async fn build_react_runner(
     config: &ReactBuildConfig,
     llm: Option<Box<dyn LlmClient>>,
     verbose: bool,
-    agent_prompts: Option<&AgentPrompts>,
 ) -> Result<ReactRunner, BuildRunnerError> {
     let ctx = build_react_run_context(config).await?;
     let llm = match llm {
@@ -151,7 +150,7 @@ pub async fn build_react_runner(
     let system_prompt = config
         .system_prompt
         .clone()
-        .or_else(|| agent_prompts.map(|p| p.react_system_prompt()));
+        .unwrap_or_else(|| REACT_SYSTEM_PROMPT.to_string());
     let compaction_config = resolve_compaction_config(config).await;
     let runner = ReactRunner::new(
         llm,
@@ -165,7 +164,7 @@ pub async fn build_react_runner(
         None,
         None,
         verbose,
-        None, // summarize_config uses default
+        None, // session summarize node off unless caller passes Some(SummarizeConfig { enabled: true, .. })
     )?;
     Ok(runner)
 }
@@ -292,7 +291,7 @@ pub async fn build_react_runner_with_openai(
 ) -> Result<ReactRunner, BuildRunnerError> {
     use crate::llm::ChatOpenAI;
     let client = ChatOpenAI::with_config(openai_config, model);
-    build_react_runner(config, Some(Box::new(client)), verbose, None).await
+    build_react_runner(config, Some(Box::new(client)), verbose).await
 }
 
 #[cfg(test)]
@@ -308,6 +307,7 @@ mod tests {
             user_id: None,
             system_prompt: None,
             exa_api_key: None,
+            exa_codesearch_enabled: false,
             twitter_api_key: None,
             mcp_exa_url: "https://mcp.exa.ai/mcp".to_string(),
             mcp_remote_cmd: "npx".to_string(),
@@ -383,15 +383,37 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn build_react_runner_with_mock_llm_and_prompts_invokes() {
-        let cfg = base_config();
-        let mut prompts = AgentPrompts::default();
-        prompts.react.system_prompt = Some("test system prompt".to_string());
+    async fn exa_codesearch_off_by_default_when_exa_key_set() {
+        let mut cfg = base_config();
+        cfg.exa_api_key = Some("k".to_string());
+        cfg.exa_codesearch_enabled = false;
+        let ctx = build_react_run_context(&cfg).await.unwrap();
+        let tools = ctx.tool_source.list_tools().await.unwrap();
+        let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+        assert!(names.contains(&"websearch"));
+        assert!(!names.contains(&"codesearch"));
+    }
+
+    #[tokio::test]
+    async fn exa_codesearch_registered_when_flag_enabled() {
+        let mut cfg = base_config();
+        cfg.exa_api_key = Some("k".to_string());
+        cfg.exa_codesearch_enabled = true;
+        let ctx = build_react_run_context(&cfg).await.unwrap();
+        let tools = ctx.tool_source.list_tools().await.unwrap();
+        let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+        assert!(names.contains(&"websearch"));
+        assert!(names.contains(&"codesearch"));
+    }
+
+    #[tokio::test]
+    async fn build_react_runner_with_mock_llm_and_system_prompt_invokes() {
+        let mut cfg = base_config();
+        cfg.system_prompt = Some("test system prompt".to_string());
         let runner = build_react_runner(
             &cfg,
             Some(Box::new(MockLlm::with_no_tool_calls("react final"))),
             false,
-            Some(&prompts),
         )
         .await
         .unwrap();

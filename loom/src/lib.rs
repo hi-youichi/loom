@@ -46,7 +46,7 @@
 //! - [`memory`]: Checkpointing ([`Checkpointer`], [`MemorySaver`], [`SqliteSaver`]), [`Store`]; optional LanceDB.
 //! - [`tool_source`]: [`ToolSource`], [`ToolSpec`]; MCP ([`McpToolSource`]); [`WebToolsSource`], [`BashToolsSource`].
 //! - [`traits`]: Core [`Agent`] trait — implement for custom agents.
-//! - [`message`]: [`Message`] (System / User / Assistant).
+//! - [`message`]: [`Message`] (System / User / Assistant / Tool).
 //! - [`stream`]: [`StreamWriter`], [`StreamEvent`], [`StreamMode`] for graph runs.
 //! - [`config`]: Config summaries ([`RunConfigSummary`], [`build_config_summary`]).
 //! - [`cache`]: [`Cache`], [`InMemoryCache`].
@@ -88,7 +88,7 @@
 //!     async fn run(&self, state: Self::State) -> Result<Self::State, AgentError> {
 //!         let mut messages = state.messages;
 //!         if let Some(Message::User(s)) = messages.last() {
-//!             messages.push(Message::Assistant(s.clone()));
+//!             messages.push(Message::assistant(s.clone()));
 //!         }
 //!         Ok(MyState { messages })
 //!     }
@@ -102,8 +102,8 @@
 //! let agent = EchoAgent;
 //! match agent.run(state).await {
 //!     Ok(s) => {
-//!         if let Some(Message::Assistant(content)) = s.messages.last() {
-//!             println!("{}", content);
+//!         if let Some(Message::Assistant(p)) = s.messages.last() {
+//!             println!("{}", p.content);
 //!         }
 //!     }
 //!     Err(e) => eprintln!("error: {}", e),
@@ -164,7 +164,7 @@ pub use channels::{
 };
 pub use cli_run::{
     build_config_from_profile, build_helve_config, list_available_profiles, load_agents_md,
-    load_soul_md, resolve_profile, run_agent_with_llm_override, run_agent_with_options,
+    resolve_profile, run_agent_with_llm_override, run_agent_with_options,
     ActiveOperation, ActiveOperationCanceller, ActiveOperationKind, AgentProfile, AgentRunResult,
     AnyRunner, AnyStreamEvent, ProfileError, ProfileSource, ProfileSummary, ResolvedAgent,
     RunCancellation, RunCmd, RunCompletion, RunError, RunOptions, DEFAULT_WORKING_FOLDER,
@@ -183,11 +183,15 @@ pub use graph::{
     NameNode, Next, Node, NodeMiddleware, RetryPolicy, RunContext, Runtime, StateGraph, END, START,
 };
 pub use helve::{
-    assemble_system_prompt, assemble_system_prompt_with_prompts, to_react_build_config,
-    tools_requiring_approval, ApprovalPolicy, HelveConfig, APPROVAL_REQUIRED_EVENT_TYPE,
+    assemble_react_system_prompt, assemble_system_prompt, to_react_build_config,
+    tools_requiring_approval, ApprovalPolicy, HelveConfig, ReactPromptInputs,
+    APPROVAL_REQUIRED_EVENT_TYPE,
 };
-pub use llm::{ChatBigModel, ChatOpenAI};
-pub use llm::{LlmClient, LlmResponse, LlmUsage, MockLlm, ToolCallDelta, ToolChoiceMode};
+pub use llm::{ChatOpenAI, ChatOpenAICompat};
+pub use llm::{
+    CompletionTokensDetails, LlmClient, LlmResponse, LlmUsage, MockLlm, PromptTokensDetails,
+    ToolCallDelta, ToolChoiceMode,
+};
 pub use managed::{IsLastStep, ManagedValue};
 pub use memory::Embedder;
 #[cfg(feature = "lance")]
@@ -199,7 +203,7 @@ pub use memory::{
     StoreError, StoreSearchHit,
 };
 pub use memory::{SqliteSaver, SqliteStore};
-pub use message::Message;
+pub use message::{AssistantPayload, AssistantToolCall, Message};
 pub use model_spec::{
     CachedResolver, CompositeResolver, ConfigOverride, LocalFileResolver, ModelLimitResolver,
     ModelSpec, ModelsDevResolver, ResolverRefresher,

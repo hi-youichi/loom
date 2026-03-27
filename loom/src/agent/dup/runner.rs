@@ -51,7 +51,7 @@ pub async fn build_dup_initial_state(
                 &user_message_owned,
                 None,
                 runnable_config,
-                Some(&system_prompt_owned),
+                &system_prompt_owned,
             )
             .await?;
             Ok(DupState {
