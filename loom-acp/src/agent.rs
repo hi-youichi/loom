@@ -120,7 +120,7 @@ impl Agent for LoomAcpAgent {
         let mut json = serde_json::to_value(&base_response)
             .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
 
-        // Add agentCapabilities with loadSession and sessionCapabilities.list
+        // Add agentCapabilities with loadSession, sessionCapabilities.list, and promptCapabilities
         if let Some(obj) = json.as_object_mut() {
             obj.insert(
                 "agentCapabilities".to_string(),
@@ -128,6 +128,9 @@ impl Agent for LoomAcpAgent {
                     "loadSession": true,
                     "sessionCapabilities": {
                         "list": {}
+                    },
+                    "promptCapabilities": {
+                        "embeddedContext": true
                     }
                 }),
             );
@@ -216,6 +219,8 @@ impl Agent for LoomAcpAgent {
         let message = content_blocks_to_message(args.prompt.as_slice()).map_err(|_| {
             agent_client_protocol::Error::new(-32602, "content_blocks parse failed")
         })?;
+
+        tracing::info!(session_id = %args.session_id, message = %message, "User prompt");
 
         let working_folder = entry
             .working_directory

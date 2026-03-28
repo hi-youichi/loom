@@ -10,9 +10,9 @@
 //! |---------|-------------|--------------|
 //! | **Text** | Plain text or Markdown | **Required**: concatenate in order with `\n\n` between blocks. |
 //! | **ResourceLink** | Reference (URI) to a resource the agent can fetch | **Required**: e.g. "Reference: …" or append context; if Loom cannot fetch, put URI in message only. |
-//! | **Image** | Image content | Optional; needs promptCapabilities.image. If not declared, ignore or UnsupportedBlock. |
+//! | **Resource** | Embedded resource (full content in message) | **Supported** (requires `embeddedContext` capability): text resources formatted with metadata; binary resources skipped. |
+//! | **Image** | Image content | Optional; needs promptCapabilities.image. If not declared, UnsupportedBlock. |
 //! | **Audio** | Audio | Same; promptCapabilities.audio. |
-//! | **Resource** | Embedded resource (full content in message) | Optional; needs embeddedContext. If not declared, skip. |
 //!
 //! ## Implementation notes
 //!
@@ -59,7 +59,7 @@ where
     let mut parts = Vec::new();
     for block in blocks {
         if let Some(text) = block.as_text() {
-            parts.push(text.to_string());
+            parts.push(text);
         }
         if block.is_unsupported() {
             return Err(ContentError::UnsupportedBlock);
@@ -74,7 +74,7 @@ where
 /// for tests or placeholders a simple struct (e.g. with only `text: String`) can implement it.
 pub trait ContentBlockLike {
     /// If this block is plain text (or can be extracted as text), return the text; otherwise `None` (skip).
-    fn as_text(&self) -> Option<&str>;
+    fn as_text(&self) -> Option<String>;
 
     /// If this block is a type not supported by current capabilities and cannot be ignored, return `true`; parsing will return `ContentError::UnsupportedBlock`. Default is `false`.
     fn is_unsupported(&self) -> bool {
@@ -83,22 +83,50 @@ pub trait ContentBlockLike {
 }
 
 impl ContentBlockLike for str {
-    fn as_text(&self) -> Option<&str> {
-        Some(self)
+    fn as_text(&self) -> Option<String> {
+        Some(self.to_string())
     }
 }
 
 impl ContentBlockLike for String {
-    fn as_text(&self) -> Option<&str> {
-        Some(self.as_str())
+    fn as_text(&self) -> Option<String> {
+        Some(self.clone())
     }
 }
 
-/// Adapter for ACP ContentBlock: only Text is extracted; ResourceLink skipped; Image/Audio/Resource treated as unsupported.
+/// Adapter for ACP ContentBlock: Text and Resource are extracted; ResourceLink skipped; Image/Audio treated as unsupported.
 impl ContentBlockLike for agent_client_protocol::ContentBlock {
-    fn as_text(&self) -> Option<&str> {
+    fn as_text(&self) -> Option<String> {
         match self {
-            agent_client_protocol::ContentBlock::Text(t) => Some(t.text.as_str()),
+            agent_client_protocol::ContentBlock::Text(t) => Some(t.text.clone()),
+            agent_client_protocol::ContentBlock::Resource(r) => {
+                use agent_client_protocol::EmbeddedResourceResource;
+                
+                match &r.resource {
+                    EmbeddedResourceResource::TextResourceContents(text_res) => {
+                        let mime = text_res.mime_type.as_deref().unwrap_or("text/plain");
+                        let uri = &text_res.uri;
+                        let text = &text_res.text;
+                        
+                        Some(format!(
+                            "--- Embedded Resource ---\nURI: {}\nMIME: {}\n\n{}\n--- End Resource ---",
+                            uri, mime, text
+                        ))
+                    }
+                    EmbeddedResourceResource::BlobResourceContents(blob_res) => {
+                        tracing::debug!(
+                            uri = %blob_res.uri,
+                            mime = ?blob_res.mime_type,
+                            "Skipping binary embedded resource"
+                        );
+                        None
+                    }
+                    _ => {
+                        tracing::debug!("Unknown embedded resource type, skipping");
+                        None
+                    }
+                }
+            }
             _ => None,
         }
     }
@@ -108,7 +136,6 @@ impl ContentBlockLike for agent_client_protocol::ContentBlock {
             self,
             agent_client_protocol::ContentBlock::Image(_)
                 | agent_client_protocol::ContentBlock::Audio(_)
-                | agent_client_protocol::ContentBlock::Resource(_)
         )
     }
 }
@@ -220,5 +247,127 @@ pub fn extract_locations(tool_name: &str, args: &serde_json::Value) -> Vec<ToolC
             locations
         }
         _ => Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agent_client_protocol::{
+        BlobResourceContents, ContentBlock, EmbeddedResource, EmbeddedResourceResource,
+        TextContent, TextResourceContents,
+    };
+
+    #[test]
+    fn test_text_content_block() {
+        let block = ContentBlock::Text(TextContent::new("Hello, world!"));
+        let result = block.as_text();
+        assert_eq!(result, Some("Hello, world!".to_string()));
+    }
+
+    #[test]
+    fn test_text_resource_parsing() {
+        let text_res = TextResourceContents::new("Hello, world!", "file:///test.txt")
+            .mime_type(Some("text/plain".to_string()));
+        let embedded = EmbeddedResource::new(EmbeddedResourceResource::TextResourceContents(
+            text_res,
+        ));
+        let block = ContentBlock::Resource(embedded);
+
+        let result = block.as_text().expect("Should extract text from resource");
+        assert!(result.contains("Hello, world!"));
+        assert!(result.contains("file:///test.txt"));
+        assert!(result.contains("text/plain"));
+        assert!(result.contains("--- Embedded Resource ---"));
+        assert!(result.contains("--- End Resource ---"));
+    }
+
+    #[test]
+    fn test_text_resource_without_mime() {
+        let text_res = TextResourceContents::new("Content", "file:///example.txt");
+        let embedded = EmbeddedResource::new(EmbeddedResourceResource::TextResourceContents(
+            text_res,
+        ));
+        let block = ContentBlock::Resource(embedded);
+
+        let result = block.as_text().expect("Should extract text");
+        assert!(result.contains("Content"));
+        assert!(result.contains("text/plain")); // default MIME
+    }
+
+    #[test]
+    fn test_blob_resource_skipped() {
+        let blob_res = BlobResourceContents::new("SGVsbG8=", "file:///binary.bin")
+            .mime_type(Some("application/octet-stream".to_string()));
+        let embedded =
+            EmbeddedResource::new(EmbeddedResourceResource::BlobResourceContents(blob_res));
+        let block = ContentBlock::Resource(embedded);
+
+        let result = block.as_text();
+        assert!(
+            result.is_none(),
+            "Binary resources should be skipped and return None"
+        );
+    }
+
+    #[test]
+    fn test_resource_not_unsupported() {
+        let text_res = TextResourceContents::new("Test", "file:///test.txt");
+        let embedded = EmbeddedResource::new(EmbeddedResourceResource::TextResourceContents(
+            text_res,
+        ));
+        let block = ContentBlock::Resource(embedded);
+
+        assert!(
+            !block.is_unsupported(),
+            "Resource should not be marked as unsupported"
+        );
+    }
+
+    #[test]
+    fn test_image_still_unsupported() {
+        use agent_client_protocol::ImageContent;
+        let block = ContentBlock::Image(ImageContent::new("data", "image/png"));
+        assert!(
+            block.is_unsupported(),
+            "Image should still be marked as unsupported"
+        );
+    }
+
+    #[test]
+    fn test_audio_still_unsupported() {
+        use agent_client_protocol::AudioContent;
+        let block = ContentBlock::Audio(AudioContent::new("data", "audio/mp3"));
+        assert!(
+            block.is_unsupported(),
+            "Audio should still be marked as unsupported"
+        );
+    }
+
+    #[test]
+    fn test_content_blocks_to_message_with_resource() {
+        let blocks = vec![
+            ContentBlock::Text(TextContent::new("Start")),
+            ContentBlock::Resource(EmbeddedResource::new(
+                EmbeddedResourceResource::TextResourceContents(
+                    TextResourceContents::new("Embedded content", "file:///test.txt"),
+                ),
+            )),
+            ContentBlock::Text(TextContent::new("End")),
+        ];
+
+        let result = content_blocks_to_message(&blocks).expect("Should merge blocks");
+        assert!(result.contains("Start"));
+        assert!(result.contains("Embedded content"));
+        assert!(result.contains("End"));
+        assert!(result.contains("--- Embedded Resource ---"));
+    }
+
+    #[test]
+    fn test_empty_blocks() {
+        let blocks: Vec<ContentBlock> = vec![];
+        let result = content_blocks_to_message(&blocks);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "");
     }
 }
