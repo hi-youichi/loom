@@ -108,10 +108,8 @@ impl Tool for CreateTerminalTool {
             "message": "Terminal created successfully"
         });
 
-        Ok(ToolCallContent {
-            text: serde_json::to_string_pretty(&result)
-                .unwrap_or_else(|_| "Terminal created".to_string()),
-        })
+        Ok(ToolCallContent::text(serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|_| "Terminal created".to_string()),))
     }
 }
 
@@ -198,10 +196,8 @@ impl Tool for TerminalOutputTool {
             "exit_status": output.exit_status,
         });
 
-        Ok(ToolCallContent {
-            text: serde_json::to_string_pretty(&result)
-                .unwrap_or_else(|_| "Terminal output retrieved".to_string()),
-        })
+        Ok(ToolCallContent::text(serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|_| "Terminal output retrieved".to_string()),))
     }
 }
 

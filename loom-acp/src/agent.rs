@@ -442,9 +442,27 @@ impl Agent for LoomAcpAgent {
                             } => {
                                 // Send ToolCallUpdate with success status
                                 let id = ToolCallId::new(tool_call_id.clone());
+                                
+                                // Convert loom::ToolCallContent to ACP ToolCallContent
+                                let acp_content = match content {
+                                    loom::tool_source::ToolCallContent::Text(t) => {
+                                        agent_client_protocol::ToolCallContent::from(
+                                            agent_client_protocol::ContentBlock::Text(
+                                                agent_client_protocol::TextContent::new(t.clone())
+                                            )
+                                        )
+                                    }
+                                    loom::tool_source::ToolCallContent::Diff { path, old_text, new_text } => {
+                                        agent_client_protocol::ToolCallContent::Diff(
+                                            agent_client_protocol::Diff::new(path.clone(), new_text.clone())
+                                                .old_text(old_text.clone())
+                                        )
+                                    }
+                                };
+                                
                                 let fields = ToolCallUpdateFields::new()
                                     .status(ToolCallStatus::Completed)
-                                    .content(vec![content.clone().into()]);
+                                    .content(vec![acp_content]);
                                 let tool_call_update =
                                     ToolCallUpdate::new(id, fields);
 
