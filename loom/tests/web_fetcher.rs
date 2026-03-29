@@ -33,7 +33,7 @@ async fn web_fetcher_tool_call_fetches_valid_url() {
     let tool = WebFetcherTool::new();
     let args = json!({"url": "https://httpbin.org/json"});
     let result = tool.call(args, None).await.unwrap();
-    assert!(result.text.contains("slideshow"));
+    assert!(result.as_text().unwrap().contains("slideshow"));
 }
 
 #[tokio::test]
@@ -69,7 +69,7 @@ async fn web_fetcher_tool_fetches_plain_text() {
     let tool = WebFetcherTool::new();
     let args = json!({"url": "https://httpbin.org/robots.txt"});
     let result = tool.call(args, None).await.unwrap();
-    assert!(result.text.contains("User-agent"));
+    assert!(result.as_text().unwrap().contains("User-agent"));
 }
 
 #[tokio::test]
@@ -91,7 +91,7 @@ async fn web_fetcher_tool_call_get_with_only_url() {
     let tool = WebFetcherTool::new();
     let args = json!({"url": "https://httpbin.org/get"});
     let result = tool.call(args, None).await.unwrap();
-    assert!(result.text.contains("httpbin.org"));
+    assert!(result.as_text().unwrap().contains("httpbin.org"));
 }
 
 /// POST with JSON body: httpbin.org/post echoes the request.
@@ -104,8 +104,8 @@ async fn web_fetcher_tool_call_post_with_json_body() {
         "body": { "hello": "world", "n": 42 }
     });
     let result = tool.call(args, None).await.unwrap();
-    assert!(result.text.contains("\"hello\": \"world\""));
-    assert!(result.text.contains("\"n\": 42"));
+    assert!(result.as_text().unwrap().contains("\"hello\": \"world\""));
+    assert!(result.as_text().unwrap().contains("\"n\": 42"));
 }
 
 /// POST with string body.
@@ -118,7 +118,7 @@ async fn web_fetcher_tool_call_post_with_string_body() {
         "body": "plain text body"
     });
     let result = tool.call(args, None).await.unwrap();
-    assert!(result.text.contains("plain text body"));
+    assert!(result.as_text().unwrap().contains("plain text body"));
 }
 
 /// Unsupported method returns InvalidInput.

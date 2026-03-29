@@ -47,9 +47,7 @@ impl ToolSource for RecordingToolSource {
         _name: &str,
         _arguments: Value,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        Ok(ToolCallContent {
-            text: "ok".to_string(),
-        })
+        Ok(ToolCallContent::text("ok".to_string(),))
     }
 
     async fn call_tool_with_context(
@@ -61,9 +59,7 @@ impl ToolSource for RecordingToolSource {
         if let Some(ctx) = ctx {
             self.seen_contexts.lock().unwrap().push(ctx.clone());
         }
-        Ok(ToolCallContent {
-            text: "ok".to_string(),
-        })
+        Ok(ToolCallContent::text("ok".to_string(),))
     }
 }
 
@@ -618,9 +614,7 @@ impl ToolSource for HintingToolSource {
         _name: &str,
         _arguments: Value,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        Ok(ToolCallContent {
-            text: self.result.clone(),
-        })
+        Ok(ToolCallContent::text(self.result.clone(),))
     }
 }
 
@@ -779,8 +773,8 @@ async fn observe_node_appends_tool_results_as_tool_messages_and_clears_tool_fiel
         &out.messages[2],
         Message::Tool { tool_call_id, content }
             if tool_call_id == "call-1"
-                && content.contains("Tool")
-                && content.contains("2025-01-29 12:00:00")
+                && content.as_text().unwrap().contains("Tool")
+                && content.as_text().unwrap().contains("2025-01-29 12:00:00")
     ));
     assert!(out.tool_calls.is_empty());
     assert!(out.tool_results.is_empty());
@@ -847,8 +841,8 @@ async fn observe_node_prefers_observation_text_over_raw_content() {
         Message::Tool { content, .. } => content,
         other => panic!("expected tool observation message, got {:?}", other),
     };
-    assert!(injected.contains(observation));
-    assert!(!injected.contains(raw));
+    assert!(injected.as_text().unwrap().contains(observation));
+    assert!(!injected.as_text().unwrap().contains(raw));
 }
 
 #[tokio::test]

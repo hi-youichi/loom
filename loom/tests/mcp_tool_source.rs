@@ -38,5 +38,5 @@ async fn mcp_tool_source_list_and_call() {
         .call_tool("list_directory", serde_json::json!({ "path": path }))
         .await
         .expect("call_tool");
-    assert!(!content.text.is_empty());
+    assert!(!content.as_text().unwrap().is_empty());
 }

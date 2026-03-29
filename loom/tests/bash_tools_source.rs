@@ -19,8 +19,8 @@ async fn bash_tools_source_call_bash_success() {
     let source = BashToolsSource::new().await;
     let args = json!({ "command": "echo ok" });
     let result = source.call_tool("bash", args).await.unwrap();
-    assert!(!result.text.is_empty());
-    assert!(result.text.trim().contains("ok"));
+    assert!(!result.as_text().unwrap().is_empty());
+    assert!(result.as_text().unwrap().trim().contains("ok"));
 }
 
 #[tokio::test]

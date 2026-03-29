@@ -46,12 +46,12 @@ async fn todo_write_then_todo_read_roundtrip() {
         .call_tool(TOOL_TODO_WRITE, json!({ "todos": todos }))
         .await
         .unwrap();
-    assert!(write_result.text.contains("1 todos"));
+    assert!(write_result.as_text().unwrap().contains("1 todos"));
     let read_result = source.call_tool(TOOL_TODO_READ, json!({})).await.unwrap();
-    assert!(read_result.text.contains("1 todos"));
-    assert!(read_result.text.contains("First task"));
-    assert!(read_result.text.contains("Second task"));
-    assert!(read_result.text.contains("completed"));
+    assert!(read_result.as_text().unwrap().contains("1 todos"));
+    assert!(read_result.as_text().unwrap().contains("First task"));
+    assert!(read_result.as_text().unwrap().contains("Second task"));
+    assert!(read_result.as_text().unwrap().contains("completed"));
 }
 
 /// Scenario: todo_read when todo file does not exist returns empty list (0 todos).
@@ -64,8 +64,8 @@ async fn todo_read_when_file_missing_returns_empty() {
 
     let source = FileToolSource::new(dir.path()).unwrap();
     let result = source.call_tool(TOOL_TODO_READ, json!({})).await.unwrap();
-    assert!(result.text.starts_with("0 todos"));
-    assert!(result.text.contains("[]"));
+    assert!(result.as_text().unwrap().starts_with("0 todos"));
+    assert!(result.as_text().unwrap().contains("[]"));
 }
 
 /// Scenario: todo_write with missing 'todos' returns InvalidInput.

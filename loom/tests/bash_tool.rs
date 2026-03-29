@@ -31,7 +31,7 @@ async fn bash_tool_call_echo_returns_hello() {
     let tool = BashTool::new();
     let args = json!({ "command": "echo hello" });
     let result = tool.call(args, None).await.unwrap();
-    assert!(result.text.trim().contains("hello"));
+    assert!(result.as_text().unwrap().trim().contains("hello"));
 }
 
 #[tokio::test]

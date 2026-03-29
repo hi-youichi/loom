@@ -37,14 +37,14 @@ async fn read_only_dir_tool_source_list_and_read() {
         .call_tool(TOOL_READ_ONLY_LIST_DIR, json!({ "path": "." }))
         .await
         .unwrap();
-    assert!(list.text.contains("ref.txt"));
-    assert!(list.text.contains("docs"));
+    assert!(list.as_text().unwrap().contains("ref.txt"));
+    assert!(list.as_text().unwrap().contains("docs"));
 
     let read = source
         .call_tool(TOOL_READ_ONLY_READ_FILE, json!({ "path": "ref.txt" }))
         .await
         .unwrap();
-    assert_eq!(read.text, "reference content");
+    assert_eq!(read.as_text().unwrap(), "reference content");
 }
 
 /// Scenario: register_read_only_dir_tools with non-directory or missing path returns InvalidInput.
@@ -99,12 +99,12 @@ async fn aggregate_file_tools_and_read_only_dir_tools() {
         .await
         .unwrap();
     // read_file outputs cat -n style: "  {line_num}\t{content}\n"
-    assert_eq!(w.text.trim(), "1\twritten");
+    assert_eq!(w.as_text().unwrap().trim(), "1\twritten");
 
     // Read-only connector: read from read_only_root
     let ro = aggregate
         .call_tool(TOOL_READ_ONLY_READ_FILE, json!({ "path": "readme.txt" }))
         .await
         .unwrap();
-    assert_eq!(ro.text, "read-only content");
+    assert_eq!(ro.as_text().unwrap(), "read-only content");
 }

@@ -47,10 +47,10 @@ async fn file_tool_source_ls_root() {
         .call_tool(TOOL_LS, json!({ "path": "." }))
         .await
         .unwrap();
-    assert!(result.text.contains("a.txt"));
-    assert!(result.text.contains("b.txt"));
-    assert!(result.text.contains("sub"));
-    assert!(result.text.contains("c.txt"));
+    assert!(result.as_text().unwrap().contains("a.txt"));
+    assert!(result.as_text().unwrap().contains("b.txt"));
+    assert!(result.as_text().unwrap().contains("sub"));
+    assert!(result.as_text().unwrap().contains("c.txt"));
 }
 
 /// Scenario: write_file then read returns the same content; path is under working folder.
@@ -70,11 +70,11 @@ async fn file_tool_source_write_file_then_read_file_roundtrip() {
         .await
         .unwrap();
     // read returns cat -n style: "  {line_num}\t{content}\n"
-    assert!(out.text.contains("hello world"), "{}", out.text);
+    assert!(out.as_text().unwrap().contains("hello world"), "{}", out.as_text().unwrap());
     assert!(
-        out.text.trim_start().starts_with("1\t"),
+        out.as_text().unwrap().trim_start().starts_with("1\t"),
         "expected line 1: {}",
-        out.text
+        out.as_text().unwrap()
     );
 }
 
@@ -93,10 +93,10 @@ async fn file_tool_source_read_with_offset_and_limit() {
         .await
         .unwrap();
     // Lines 2 and 3 (1-based); output format "  {num}\t{content}\n"
-    assert!(out.text.contains("line2"));
-    assert!(out.text.contains("line3"));
-    assert!(!out.text.contains("line1"));
-    assert!(!out.text.contains("line4"));
+    assert!(out.as_text().unwrap().contains("line2"));
+    assert!(out.as_text().unwrap().contains("line3"));
+    assert!(!out.as_text().unwrap().contains("line1"));
+    assert!(!out.as_text().unwrap().contains("line4"));
 }
 
 /// Scenario: path parameter "../outside" is rejected with InvalidInput (path outside working folder).
@@ -171,11 +171,11 @@ async fn glob_pattern_only_returns_matching_files() {
         .call_tool(TOOL_GLOB, json!({ "pattern": "*.rs" }))
         .await
         .unwrap();
-    let lines: Vec<&str> = result.text.lines().collect();
+    let lines: Vec<&str> = result.as_text().unwrap().lines().collect();
     assert_eq!(lines.len(), 2);
     assert!(lines.contains(&"a.rs"));
     assert!(lines.contains(&"b.rs"));
-    assert!(!result.text.contains("c.txt"));
+    assert!(!result.as_text().unwrap().contains("c.txt"));
 }
 
 /// Scenario: glob with path restricts search to that subdirectory.
@@ -190,8 +190,8 @@ async fn glob_with_path_searches_under_subdir() {
         .call_tool(TOOL_GLOB, json!({ "pattern": "*.rs", "path": "src" }))
         .await
         .unwrap();
-    assert_eq!(result.text.trim(), "src/lib.rs");
-    assert!(!result.text.contains("root.rs"));
+    assert_eq!(result.as_text().unwrap().trim(), "src/lib.rs");
+    assert!(!result.as_text().unwrap().contains("root.rs"));
 }
 
 /// Scenario: glob with include filters results by additional patterns.
@@ -209,11 +209,11 @@ async fn glob_with_include_filters_by_include_patterns() {
         )
         .await
         .unwrap();
-    let lines: Vec<&str> = result.text.lines().collect();
+    let lines: Vec<&str> = result.as_text().unwrap().lines().collect();
     assert_eq!(lines.len(), 2);
     assert!(lines.contains(&"a.rs"));
     assert!(lines.contains(&"b.toml"));
-    assert!(!result.text.contains("c.yaml"));
+    assert!(!result.as_text().unwrap().contains("c.yaml"));
 }
 
 /// Scenario: glob with path ".." is rejected with InvalidInput (path outside working folder).
@@ -251,5 +251,5 @@ async fn glob_no_match_returns_empty() {
         .call_tool(TOOL_GLOB, json!({ "pattern": "*.rs" }))
         .await
         .unwrap();
-    assert!(result.text.trim().is_empty());
+    assert!(result.as_text().unwrap().trim().is_empty());
 }
