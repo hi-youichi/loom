@@ -1,7 +1,3 @@
-//! Unified error types for telegram-bot
-//!
-//! This module provides a centralized error handling system using thiserror.
-
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -18,11 +14,11 @@ pub enum BotError {
     #[error("Agent error: {0}")]
     Agent(String),
 
-    #[error("Database error: {0}")]
-    Database(String),
+    #[error("Agent run error: {0}")]
+    AgentRun(#[from] loom::cli_run::RunError),
 
-    #[error("Channel send error: {0}")]
-    ChannelSend(String),
+    #[error("Database error: {0}")]
+    Database(#[from] rusqlite::Error),
 
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),

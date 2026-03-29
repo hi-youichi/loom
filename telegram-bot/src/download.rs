@@ -311,19 +311,17 @@ pub async fn download_video(
 }
 
 /// Reset a session by deleting all checkpoints
-pub fn reset_session(thread_id: &str) -> Result<usize, String> {
+pub fn reset_session(thread_id: &str) -> Result<usize, BotError> {
     let db_path = loom::memory::default_memory_db_path();
-    
-    let conn = rusqlite::Connection::open(&db_path)
-        .map_err(|e| format!("Failed to open database: {}", e))?;
-    
+
+    let conn = rusqlite::Connection::open(&db_path)?;
+
     let count = conn
         .execute(
             "DELETE FROM checkpoints WHERE thread_id = ?1",
             [thread_id],
-        )
-        .map_err(|e| format!("Failed to delete session: {}", e))?;
-    
+        )?;
+
     Ok(count)
 }
 

@@ -25,22 +25,18 @@ fn test_settings_without_mention_required() {
 #[test]
 fn test_streaming_config_custom() {
     let config = StreamingConfig {
-        max_think_chars: 1000,
+        
         max_act_chars: 800,
-        show_think_phase: false,
+        
         show_act_phase: true,
-        think_emoji: "💭".to_string(),
         act_emoji: "🚀".to_string(),
         throttle_ms: 200,
         max_retries: 5,
         ..Default::default()
     };
 
-    assert_eq!(config.max_think_chars, 1000);
     assert_eq!(config.max_act_chars, 800);
-    assert!(!config.show_think_phase);
     assert!(config.show_act_phase);
-    assert_eq!(config.think_emoji, "💭");
     assert_eq!(config.act_emoji, "🚀");
     assert_eq!(config.throttle_ms, 200);
     assert_eq!(config.max_retries, 5);
@@ -183,11 +179,8 @@ async fn test_streaming_config_defaults_async() {
     let config = StreamingConfig::default();
 
     assert_eq!(config.interaction_mode, InteractionMode::PeriodicSummary);
-    assert_eq!(config.max_think_chars, 500);
     assert_eq!(config.max_act_chars, 500);
-    assert!(config.show_think_phase);
     assert!(config.show_act_phase);
-    assert_eq!(config.think_emoji, "🤔");
     assert_eq!(config.act_emoji, "⚡");
     assert_eq!(config.summary_interval_secs, 300);
     assert!(config.ack_placeholder_text.contains("已收到"));

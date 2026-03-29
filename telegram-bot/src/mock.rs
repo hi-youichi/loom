@@ -437,22 +437,18 @@ impl FileDownloader for FakeFileDownloader {
 }
 
 /// Session reset always fails (maps: reset failure user messaging).
-pub struct ErrorSessionManager {
-    message: String,
-}
+pub struct ErrorSessionManager;
 
 impl ErrorSessionManager {
-    pub fn new(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-        }
+    pub fn new() -> Self {
+        Self
     }
 }
 
 #[async_trait]
 impl crate::traits::SessionManager for ErrorSessionManager {
     async fn reset(&self, _thread_id: &str) -> Result<usize, BotError> {
-        Err(BotError::Database(self.message.clone()))
+        Err(BotError::Database(rusqlite::Error::InvalidQuery))
     }
 
     async fn exists(&self, _thread_id: &str) -> Result<bool, BotError> {

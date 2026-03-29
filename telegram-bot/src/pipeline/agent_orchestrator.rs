@@ -50,8 +50,7 @@ pub async fn run_agent_for_chat(ctx: &MessageContext<'_>, prompt: &str) -> Resul
             if !reply.trim().is_empty() {
                 let skip_final_send = ctx.deps.settings.streaming.interaction_mode
                     == InteractionMode::Streaming
-                    && (ctx.deps.settings.streaming.show_act_phase
-                        || ctx.deps.settings.streaming.show_think_phase);
+                    && ctx.deps.settings.streaming.show_act_phase;
                 if !skip_final_send {
                     outbound = ctx
                         .deps

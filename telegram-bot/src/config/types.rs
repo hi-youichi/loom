@@ -74,20 +74,11 @@ pub struct StreamingConfig {
     #[serde(default)]
     pub interaction_mode: InteractionMode,
 
-    #[serde(default = "default_max_think_chars")]
-    pub max_think_chars: usize,
-
     #[serde(default = "default_max_act_chars")]
     pub max_act_chars: usize,
 
-    #[serde(default = "default_show_think_phase")]
-    pub show_think_phase: bool,
-
     #[serde(default = "default_show_act_phase")]
     pub show_act_phase: bool,
-
-    #[serde(default = "default_think_emoji")]
-    pub think_emoji: String,
 
     #[serde(default = "default_act_emoji")]
     pub act_emoji: String,
@@ -118,11 +109,8 @@ impl Default for StreamingConfig {
     fn default() -> Self {
         Self {
             interaction_mode: InteractionMode::default(),
-            max_think_chars: default_max_think_chars(),
             max_act_chars: default_max_act_chars(),
-            show_think_phase: default_show_think_phase(),
             show_act_phase: default_show_act_phase(),
-            think_emoji: default_think_emoji(),
             act_emoji: default_act_emoji(),
             throttle_ms: default_throttle_ms(),
             max_retries: default_max_retries(),
@@ -175,7 +163,7 @@ fn default_true() -> bool {
 }
 
 fn default_download_dir() -> PathBuf {
-    PathBuf::from("telegram-bot-downloads")
+    PathBuf::from("downloads")
 }
 
 fn default_log_level() -> String {
@@ -187,39 +175,15 @@ fn default_polling_timeout() -> u64 {
 }
 
 fn default_retry_timeout() -> u64 {
-    5
-}
-
-fn default_summary_interval_secs() -> u64 {
-    300
-}
-
-fn default_ack_placeholder_text() -> String {
-    "已收到，开始处理。处理时间较长时我会定期同步进展。".to_string()
-}
-
-fn default_busy_text() -> String {
-    "上一个请求还在处理中，请稍后再发新消息。".to_string()
-}
-
-fn default_max_think_chars() -> usize {
-    500
+    60
 }
 
 fn default_max_act_chars() -> usize {
     500
 }
 
-fn default_show_think_phase() -> bool {
-    true
-}
-
 fn default_show_act_phase() -> bool {
     true
-}
-
-fn default_think_emoji() -> String {
-    "🤔".to_string()
 }
 
 fn default_act_emoji() -> String {
@@ -244,4 +208,16 @@ fn default_periodic_summary_ms() -> u64 {
 
 fn default_max_tool_result_chars() -> usize {
     500
+}
+
+fn default_ack_placeholder_text() -> String {
+    "已收到，开始处理。处理时间较长时我会定期同步进展。".to_string()
+}
+
+fn default_busy_text() -> String {
+    "上一个请求还在处理中，请稍后再发新消息。".to_string()
+}
+
+fn default_summary_interval_secs() -> u64 {
+    300
 }

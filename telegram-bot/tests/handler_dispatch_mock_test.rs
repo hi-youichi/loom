@@ -182,7 +182,6 @@ async fn streaming_mode_router_sends_reply_when_both_phases_hidden() {
     let settings = Arc::new(Settings {
         streaming: StreamingConfig {
             interaction_mode: InteractionMode::Streaming,
-            show_think_phase: false,
             show_act_phase: false,
             ..Default::default()
         },
@@ -834,7 +833,7 @@ async fn reset_failure_sends_user_error() {
     let deps = make_deps(
         sender_trait,
         Arc::new(MockAgentRunner::new("noop")),
-        Arc::new(ErrorSessionManager::new("db locked")),
+        Arc::new(ErrorSessionManager::new()),
         Arc::new(StubFileDownloader::new()),
         Arc::new(Settings::default()),
         Arc::new(String::new()),

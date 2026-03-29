@@ -50,13 +50,13 @@ impl SqliteModelSelectionStore {
 
     fn open_connection(&self) -> Result<Connection, BotError> {
         let connection = Connection::open(&self.database_path)
-            .map_err(|error| BotError::Database(error.to_string()))?;
+            ?;
         connection
             .execute(
                 "CREATE TABLE IF NOT EXISTS telegram_chat_model_selection (chat_id INTEGER PRIMARY KEY, model TEXT NOT NULL)",
                 [],
             )
-            .map_err(|error| BotError::Database(error.to_string()))?;
+            ?;
         Ok(connection)
     }
 }
@@ -72,20 +72,19 @@ impl ModelSelectionStore for SqliteModelSelectionStore {
         let connection = self.open_connection()?;
         let mut statement = connection
             .prepare("SELECT model FROM telegram_chat_model_selection WHERE chat_id = ?1")
-            .map_err(|error| BotError::Database(error.to_string()))?;
+            ?;
         let mut rows = statement
             .query(params![chat_id])
-            .map_err(|error| BotError::Database(error.to_string()))?;
+            ?;
 
         let row = rows
             .next()
-            .map_err(|error| BotError::Database(error.to_string()))?;
+            ?;
 
         match row {
-            Some(row) => row
+            Some(row) => Ok(row
                 .get::<_, String>(0)
-                .map(Some)
-                .map_err(|error| BotError::Database(error.to_string())),
+                .map(Some)?),
             None => Ok(None),
         }
     }
@@ -97,7 +96,7 @@ impl ModelSelectionStore for SqliteModelSelectionStore {
                 "INSERT INTO telegram_chat_model_selection (chat_id, model) VALUES (?1, ?2) ON CONFLICT(chat_id) DO UPDATE SET model = excluded.model",
                 params![chat_id, model],
             )
-            .map_err(|error| BotError::Database(error.to_string()))?;
+            ?;
         Ok(())
     }
 
@@ -108,7 +107,7 @@ impl ModelSelectionStore for SqliteModelSelectionStore {
                 "DELETE FROM telegram_chat_model_selection WHERE chat_id = ?1",
                 params![chat_id],
             )
-            .map_err(|error| BotError::Database(error.to_string()))?;
+            ?;
         Ok(())
     }
 }

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use telegram_bot::{
     mock::MockSender,
-    stream_message_handler, InteractionMode, StreamCommand, StreamingConfig,
+    stream_message_handler_simple, InteractionMode, StreamCommand, StreamingConfig,
 };
 
 fn test_config() -> StreamingConfig {
@@ -12,9 +12,7 @@ fn test_config() -> StreamingConfig {
     StreamingConfig {
         interaction_mode: InteractionMode::Streaming,
         throttle_ms: 0,
-        show_think_phase: true,
         show_act_phase: true,
-        max_think_chars: 0,
         max_act_chars: 0,
         ..StreamingConfig::default()
     }
@@ -29,7 +27,7 @@ async fn test_concurrent_message_dispatch() {
 
     let config = test_config();
 
-    let handler_handle = tokio::spawn(stream_message_handler(
+    let handler_handle = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         TEST_CHAT_ID,
@@ -61,7 +59,7 @@ async fn test_cancel_during_agent_run() {
     let cancel_clone = cancel.clone();
     let handler_handle = tokio::spawn(async move {
         tokio::select! {
-            result = stream_message_handler(rx, sender.clone(), TEST_CHAT_ID, config) => result,
+            result = stream_message_handler_simple(rx, sender.clone(), TEST_CHAT_ID, config) => result,
             _ = cancel_clone.cancelled() => "cancelled".to_string(),
         }
     });
@@ -80,7 +78,7 @@ async fn test_streaming_handler_drop_safety() {
 
     let config = test_config();
 
-    let handle = tokio::spawn(stream_message_handler(
+    let handle = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         TEST_CHAT_ID,
@@ -100,7 +98,7 @@ async fn test_sender_failure_recovery() {
     let (tx, rx) = tokio::sync::mpsc::channel(100);
     let config = test_config();
 
-    let handle = tokio::spawn(stream_message_handler(
+    let handle = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         TEST_CHAT_ID,

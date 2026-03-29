@@ -63,12 +63,13 @@ pub async fn run_loom_agent_streaming(
 
     let mapper = StreamEventMapper::new(
         tx.clone(),
-        settings.streaming.show_think_phase,
         settings.streaming.show_act_phase,
     );
     let on_event = mapper.boxed_callback();
 
     let result = run_agent_with_options(&opts, &RunCmd::React, Some(on_event)).await;
+
+    let completion = result?;
 
     if let Err(send_error) = tx
         .send(crate::streaming::message_handler::StreamCommand::Flush)
@@ -78,9 +79,8 @@ pub async fn run_loom_agent_streaming(
     }
     let final_text = handler_task.await.unwrap_or_default();
 
-    match result {
-        Ok(RunCompletion::Finished(_)) => Ok(final_text),
-        Ok(RunCompletion::Cancelled) => Err(BotError::Agent("Agent run was cancelled".to_string())),
-        Err(e) => Err(BotError::Agent(format!("Agent error: {}", e))),
+    match completion {
+        RunCompletion::Finished(_) => Ok(final_text),
+        RunCompletion::Cancelled => Err(BotError::Agent("Agent run was cancelled".to_string())),
     }
 }

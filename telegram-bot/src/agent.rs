@@ -36,6 +36,5 @@ impl AgentRunner for LoomAgentRunner {
             &self.settings,
         )
         .await
-        .map_err(|e| BotError::Agent(e.to_string()))
     }
 }

@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::fmt;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -14,9 +13,7 @@ use crate::utils::truncate_text;
 
 #[derive(Debug, Clone)]
 pub enum StreamCommand {
-    StartThink { count: u32 },
     StartAct { count: u32 },
-    ThinkContent { content: String },
     ActContent { content: String },
     ToolStart {
         name: String,
@@ -33,7 +30,6 @@ pub enum StreamCommand {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Phase {
     Idle,
-    Thinking,
     Acting,
 }
 
@@ -43,11 +39,10 @@ impl Phase {
     }
 }
 
-impl fmt::Display for Phase {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl std::fmt::Display for Phase {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Phase::Idle => write!(f, "idle"),
-            Phase::Thinking => write!(f, "think"),
             Phase::Acting => write!(f, "act"),
         }
     }
@@ -58,7 +53,6 @@ pub struct MessageState {
     _ack_message_id: Option<i32>,
     _user_message_id: Option<i32>,
     phase: Phase,
-    think_text: String,
     tools: Vec<String>,
     act_text: String,
     tool_start_times: HashMap<String, Instant>,
@@ -77,7 +71,6 @@ impl MessageState {
             _ack_message_id: context.ack_message_id,
             _user_message_id: context.user_message_id,
             phase: Phase::Idle,
-            think_text: String::new(),
             tools: Vec::new(),
             act_text: String::new(),
             tool_start_times: HashMap::new(),
@@ -131,117 +124,7 @@ fn is_inflight_tool_line(line: &str, name: &str) -> bool {
 
 fn extract_inflight_tool_arguments(line: &str, name: &str) -> Option<String> {
     let prefix = format!("🔧 {} ", name);
-    line.strip_prefix(&prefix).map(|rest| rest.to_string())
-}
-
-fn truncate_chars_with_ellipsis(text: &str, max_chars: usize) -> String {
-    if text.chars().count() <= max_chars {
-        return text.to_string();
-    }
-    let truncated: String = text.chars().take(max_chars).collect();
-    format!("{}...", truncated)
-}
-
-fn should_emit_periodic_summary(state: &MessageState) -> bool {
-    !state.phase.is_idle()
-        || !state.think_text.trim().is_empty()
-        || !state.act_text.trim().is_empty()
-        || !state.tools.is_empty()
-}
-
-fn phase_label(state: &MessageState) -> &'static str {
-    match state.phase {
-        Phase::Thinking => "思考中",
-        Phase::Acting => "执行中",
-        _ => "处理中",
-    }
-}
-
-fn recent_progress_excerpt(state: &MessageState) -> Option<String> {
-    let source = if !state.act_text.trim().is_empty() {
-        state.act_text.trim()
-    } else if !state.think_text.trim().is_empty() {
-        state.think_text.trim()
-    } else {
-        return None;
-    };
-
-    let single_line = source.lines().next().unwrap_or("");
-    let truncated = truncate_chars_with_ellipsis(single_line, 80);
-    Some(truncated.replace('\n', " "))
-}
-
-fn build_periodic_summary_text(state: &MessageState) -> Option<String> {
-    if !should_emit_periodic_summary(state) {
-        return None;
-    }
-
-    let label = phase_label(state);
-    let mut parts = vec![format!("⏳ {}...", label)];
-
-    if let Some(excerpt) = recent_progress_excerpt(state) {
-        parts.push(excerpt);
-    }
-
-    if !state.tools.is_empty() {
-        parts.push(format!("🔧 {} tools", state.tools.len()));
-    }
-
-    Some(parts.join("\n"))
-}
-
-async fn enter_act_phase_without_count_if_needed(
-    sender: &Arc<dyn MessageSender>,
-    chat_id: i64,
-    state: &mut MessageState,
-) {
-    if state.phase == Phase::Acting {
-        return;
-    }
-    if state.phase == Phase::Thinking && state.think_text.len() > state.last_sent_length {
-        tracing::debug!(
-            chat_id,
-            previous_phase = %state.phase,
-            think_text_len = state.think_text.chars().count(),
-            last_sent_length = state.last_sent_length,
-            "Flushing pending think text before entering act phase"
-        );
-        let text = truncate_text(&state.think_text, state.settings.max_think_chars);
-        if let Some(msg_id) = state.msg_id {
-            let _ = sender
-                .edit_formatted(chat_id, msg_id, &FormattedMessage::markdown_v2(text.clone(), text))
-                .await;
-        }
-        state.final_text = state.think_text.clone();
-    }
-    tracing::debug!(
-        chat_id,
-        previous_phase = %state.phase,
-        show_act_phase = state.settings.show_act_phase,
-        "Switching stream handler phase to act"
-    );
-    state.phase = Phase::Acting;
-
-    state.tools.clear();
-    state.act_text.clear();
-    state.tool_start_times.clear();
-    state.act_count = None;
-    state.last_sent_length = 0;
-    state.last_update = Instant::now();
-
-    if state.settings.show_act_phase {
-        let header = format!("{} Act\n\n", state.settings.act_emoji);
-        match sender
-            .send_formatted_returning_id(chat_id, &FormattedMessage::markdown_v2(header.clone(), header.clone()))
-            .await {
-            Ok(id) => {
-                state.msg_id = Some(id);
-            }
-            Err(e) => {
-                tracing::warn!("Failed to send fallback Act header: {}", e);
-            }
-        }
-    }
+    line.strip_prefix(&prefix).map(|s| s.to_string())
 }
 
 async fn edit_act_message_if_possible(
@@ -261,11 +144,6 @@ async fn edit_act_message_if_possible(
 
 fn finalize_text(state: &mut MessageState) {
     match state.phase {
-        Phase::Thinking => {
-            if !state.think_text.is_empty() {
-                state.final_text = truncate_text(&state.think_text, state.settings.max_think_chars);
-            }
-        }
         Phase::Acting if !state.tools.is_empty() || !state.act_text.trim().is_empty() => {
             let body = act_body_for_edit(state);
             state.final_text = truncate_text(&body, state.settings.max_act_chars);
@@ -281,63 +159,31 @@ async fn handle_streaming_command(
     state: &mut MessageState,
 ) -> bool {
     match cmd {
-        StreamCommand::StartThink { count } => {
-            tracing::debug!(chat_id, count, previous_phase = %state.phase, "Received StartThink command");
-            if state.phase == Phase::Acting && (!state.tools.is_empty() || !state.act_text.trim().is_empty()) {
-                edit_act_message_if_possible(sender, chat_id, state.msg_id, state).await;
-            }
-            if state.phase == Phase::Thinking && state.think_text.len() > state.last_sent_length {
-                tracing::debug!(
-                    chat_id,
-                    think_text_len = state.think_text.chars().count(),
-                    last_sent_length = state.last_sent_length,
-                    "Flushing pending think text on new Think round"
-                );
-                let text = truncate_text(&state.think_text, state.settings.max_think_chars);
-                if let Some(msg_id) = state.msg_id {
-                    let _ = sender
-                        .edit_formatted(chat_id, msg_id, &FormattedMessage::markdown_v2(text.clone(), text))
-                        .await;
-                }
-            }
+        StreamCommand::StartAct { count } => {
+            tracing::debug!(chat_id, count, previous_phase = %state.phase, "Received StartAct command");
 
-            state.phase = Phase::Thinking;
-            state.think_text.clear();
+            state.phase = Phase::Acting;
+            state.act_count = Some(count);
+            state.tools.clear();
+            state.act_text.clear();
+            state.tool_start_times.clear();
 
-            let header = format!("💭 Think #{}\n\n", count);
+            let header = format!("{} Act #{}\n\n", state.settings.act_emoji, count);
             match sender
                 .send_formatted_returning_id(chat_id, &FormattedMessage::markdown_v2(header.clone(), header))
                 .await
             {
                 Ok(id) => state.msg_id = Some(id),
-                Err(e) => tracing::warn!(chat_id, "Failed to send Think header: {}", e),
+                Err(e) => tracing::warn!(chat_id, "Failed to send Act header: {}", e),
             }
             state.last_update = Instant::now();
             state.last_sent_length = 0;
         }
 
-        StreamCommand::ThinkContent { content } => {
-            state.think_text.push_str(&content);
-
-            if !state.should_update(state.settings.throttle_ms) {
-                return false;
-            }
-
-            let text = truncate_text(&state.think_text, state.settings.max_think_chars);
-            if let Some(msg_id) = state.msg_id {
-                let _ = sender
-                    .edit_formatted(chat_id, msg_id, &FormattedMessage::markdown_v2(text.clone(), text))
-                    .await;
-            }
-            state.last_update = Instant::now();
-            state.last_sent_length = state.think_text.len();
-        }
-
         StreamCommand::ActContent { content } => {
             if !state.settings.show_act_phase {
                 return false;
             }
-            enter_act_phase_without_count_if_needed(sender, chat_id, state).await;
 
             state.act_text.push_str(&content);
 
@@ -368,45 +214,35 @@ async fn handle_streaming_command(
             state.last_update = Instant::now();
         }
 
-        StreamCommand::ToolEnd {
-            name,
-            result,
-            is_error,
-        } => {
+        StreamCommand::ToolEnd { name, result, is_error } => {
             if !state.settings.show_act_phase {
                 return false;
             }
-            enter_act_phase_without_count_if_needed(sender, chat_id, state).await;
 
-            let elapsed = state
-                .tool_start_times
-                .remove(&name)
-                .map(|t| t.elapsed())
-                .unwrap_or(Duration::ZERO);
-
-            let tool_key = name.clone();
-            if let Some(pos) = state.tools.iter().position(|l| is_inflight_tool_line(l, &tool_key)) {
-                let display_result = truncate_chars_with_ellipsis(
-                    &result,
-                    state.settings.max_tool_result_chars,
-                );
-
-                let mut new_line = if is_error {
-                    format!("❌ {} ({}ms)", name, elapsed.as_millis())
+            if let Some(_started) = state.tool_start_times.remove(&name) {
+                let result_preview = result.chars().take(200).collect::<String>();
+                let result_line = if is_error {
+                    format!("  ❌ → {}", result_preview)
                 } else {
-                    format!("✅ {} ({}ms)", name, elapsed.as_millis())
+                    format!("  ✅ → {}", result_preview)
                 };
 
-                let args = extract_inflight_tool_arguments(&state.tools[pos], &tool_key);
-                if let Some(args) = args {
-                    new_line = format!("{} {}", new_line, args);
+                if let Some(idx) = state.tools.iter().position(|line| is_inflight_tool_line(line, &name)) {
+                    if let Some(existing_line) = state.tools.get(idx) {
+                        if let Some(existing_args) = extract_inflight_tool_arguments(existing_line, &name) {
+                            let final_line = if existing_args.is_empty() {
+                                result_line.clone()
+                            } else {
+                                format!("{} {}", existing_args, result_line)
+                            };
+                            state.tools[idx] = final_line;
+                        } else {
+                            state.tools.push(result_line);
+                        }
+                    }
+                } else {
+                    state.tools.push(result_line);
                 }
-
-                if !display_result.is_empty() {
-                    new_line = format!("{}\n```{}```", new_line, display_result);
-                }
-
-                state.tools[pos] = new_line;
             }
 
             if !state.should_update(state.adaptive_throttle_ms()) {
@@ -417,130 +253,166 @@ async fn handle_streaming_command(
             state.last_update = Instant::now();
         }
 
-        StreamCommand::StartAct { count } => {
-            if state.phase != Phase::Acting || state.act_count != Some(count) {
-                enter_act_phase_without_count_if_needed(sender, chat_id, state).await;
-                state.act_count = Some(count);
-
-                let body = act_body_for_edit(state);
-                if !body.trim().is_empty() {
-                    let text = truncate_text(&body, state.settings.max_act_chars);
-                    if let Some(msg_id) = state.msg_id {
-                        let _ = sender
-                            .edit_formatted(chat_id, msg_id, &FormattedMessage::markdown_v2(text.clone(), text))
-                            .await;
-                    }
-                }
-            }
-        }
-
         StreamCommand::Flush => {
-            tracing::debug!(chat_id, phase = %state.phase, "Received Flush command");
-            match state.phase {
-                Phase::Thinking if state.think_text.len() > state.last_sent_length => {
-                    let text = truncate_text(&state.think_text, state.settings.max_think_chars);
-                    if let Some(msg_id) = state.msg_id {
-                        let _ = sender
-                            .edit_formatted(chat_id, msg_id, &FormattedMessage::markdown_v2(text.clone(), text))
-                            .await;
-                    }
-                }
-                Phase::Acting if !state.tools.is_empty() || !state.act_text.trim().is_empty() => {
-                    edit_act_message_if_possible(sender, chat_id, state.msg_id, state).await;
-                }
-                _ => {}
+            tracing::debug!(chat_id, "Flushing final state");
+            if state.phase == Phase::Acting {
+                edit_act_message_if_possible(sender, chat_id, state.msg_id, state).await;
             }
             finalize_text(state);
             return true;
         }
     }
-
     false
 }
 
-async fn handle_periodic_command(
-    cmd: StreamCommand,
-    _chat_id: i64,
+async fn enter_act_phase_without_count_if_needed(
+    sender: &Arc<dyn MessageSender>,
+    chat_id: i64,
     state: &mut MessageState,
-) -> bool {
+) {
+    if state.phase != Phase::Acting {
+        state.phase = Phase::Acting;
+        if state.act_count.is_none() {
+            state.act_count = Some(1);
+            let header = format!("{} Act #1\n\n", state.settings.act_emoji);
+            match sender
+                .send_formatted_returning_id(chat_id, &FormattedMessage::markdown_v2(header.clone(), header))
+                .await
+            {
+                Ok(id) => state.msg_id = Some(id),
+                Err(e) => tracing::warn!(chat_id, "Failed to send Act header: {}", e),
+            }
+        }
+    }
+}
+
+fn truncate_chars_with_ellipsis(text: &str, max_chars: usize) -> String {
+    let mut truncated: String = text.chars().take(max_chars).collect();
+    if truncated.len() < text.len() {
+        truncated.push_str("...");
+    }
+    truncated
+}
+
+fn should_emit_periodic_summary(state: &MessageState) -> bool {
+    !state.phase.is_idle()
+        || !state.act_text.trim().is_empty()
+        || !state.tools.is_empty()
+}
+
+fn phase_label(state: &MessageState) -> &'static str {
+    match state.phase {
+        Phase::Acting => "执行中",
+        _ => "处理中",
+    }
+}
+
+fn recent_progress_excerpt(state: &MessageState) -> Option<String> {
+    let source = state.act_text.trim();
+    if source.is_empty() {
+        return None;
+    }
+
+    let single_line = source.lines().next().unwrap_or("");
+    let truncated = truncate_chars_with_ellipsis(single_line, 80);
+    Some(truncated.replace('\n', " "))
+}
+
+fn build_periodic_summary_text(state: &MessageState) -> Option<String> {
+    if !should_emit_periodic_summary(state) {
+        return None;
+    }
+
+    let tools_summary = if state.tools.is_empty() {
+        String::new()
+    } else {
+        format!("\n\n已执行 {} 个工具", state.tools.len())
+    };
+
+    let excerpt = recent_progress_excerpt(state);
+    let label = phase_label(state);
+
+    match excerpt {
+        Some(progress) => Some(format!("{} {}{}", label, progress, tools_summary)),
+        None => Some(format!("{} 进行中{}", label, tools_summary)),
+    }
+}
+
+async fn handle_periodic_command(cmd: StreamCommand, chat_id: i64, state: &mut MessageState) -> bool {
     match cmd {
-        StreamCommand::StartThink { .. } => {
-            state.phase = Phase::Thinking;
-            state.think_text.clear();
-            state.act_text.clear();
-            state.tools.clear();
-            state.tool_start_times.clear();
-            state.act_count = None;
-        }
         StreamCommand::StartAct { count } => {
-            if state.phase != Phase::Acting || state.act_count != Some(count) {
-                state.phase = Phase::Acting;
-                state.act_count = Some(count);
-            }
+            tracing::debug!(chat_id, count, previous_phase = %state.phase, "Received StartAct in periodic mode");
+            state.phase = Phase::Acting;
+            state.act_count = Some(count);
+            state.tools.clear();
+            state.act_text.clear();
+            state.tool_start_times.clear();
+            state.last_update = Instant::now();
         }
-        StreamCommand::ThinkContent { content } => {
-            state.think_text.push_str(&content);
-        }
+
         StreamCommand::ActContent { content } => {
-            if !state.settings.show_act_phase {
-                return false;
-            }
             state.act_text.push_str(&content);
+            state.last_update = Instant::now();
         }
+
         StreamCommand::ToolStart { name, arguments } => {
-            if !state.settings.show_act_phase {
-                return false;
-            }
             state.tool_start_times.insert(name.clone(), Instant::now());
             state
                 .tools
                 .push(format_tool_start_line(&name, arguments.as_deref()));
         }
-        StreamCommand::ToolEnd {
-            name,
-            result,
-            is_error,
-        } => {
-            if !state.settings.show_act_phase {
-                return false;
-            }
-            let elapsed = state
-                .tool_start_times
-                .remove(&name)
-                .map(|t| t.elapsed())
-                .unwrap_or(Duration::ZERO);
 
-            let tool_key = name.clone();
-            if let Some(pos) = state.tools.iter().position(|l| is_inflight_tool_line(l, &tool_key)) {
-                let display_result = truncate_chars_with_ellipsis(
-                    &result,
-                    state.settings.max_tool_result_chars,
-                );
-
-                let mut new_line = if is_error {
-                    format!("❌ {} ({}ms)", name, elapsed.as_millis())
+        StreamCommand::ToolEnd { name, result, is_error } => {
+            if state.tool_start_times.remove(&name).is_some() {
+                let result_preview = result.chars().take(200).collect::<String>();
+                let result_line = if is_error {
+                    format!("  ❌ → {}", result_preview)
                 } else {
-                    format!("✅ {} ({}ms)", name, elapsed.as_millis())
+                    format!("  ✅ → {}", result_preview)
                 };
 
-                let args = extract_inflight_tool_arguments(&state.tools[pos], &tool_key);
-                if let Some(args) = args {
-                    new_line = format!("{} {}", new_line, args);
+                if let Some(idx) = state.tools.iter().position(|line| is_inflight_tool_line(line, &name)) {
+                    if let Some(existing_line) = state.tools.get(idx) {
+                        if let Some(existing_args) = extract_inflight_tool_arguments(existing_line, &name) {
+                            let final_line = if existing_args.is_empty() {
+                                result_line.clone()
+                            } else {
+                                format!("{} {}", existing_args, result_line)
+                            };
+                            state.tools[idx] = final_line;
+                        } else {
+                            state.tools.push(result_line);
+                        }
+                    }
+                } else {
+                    state.tools.push(result_line);
                 }
-
-                if !display_result.is_empty() {
-                    new_line = format!("{}\n```{}```", new_line, display_result);
-                }
-
-                state.tools[pos] = new_line;
             }
         }
+
         StreamCommand::Flush => {
+            tracing::debug!(chat_id, "Flushing final state in periodic mode");
             finalize_text(state);
             return true;
         }
     }
     false
+}
+
+pub async fn stream_message_handler_simple(
+    rx: mpsc::Receiver<StreamCommand>,
+    sender: Arc<dyn MessageSender>,
+    chat_id: i64,
+    settings: StreamingConfig,
+) -> String {
+    stream_message_handler_with_context(
+        rx,
+        sender,
+        chat_id,
+        AgentRunContext::default(),
+        settings,
+    )
+    .await
 }
 
 pub async fn stream_message_handler(

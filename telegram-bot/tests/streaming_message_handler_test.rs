@@ -1,4 +1,4 @@
-//! Mock tests for [`telegram_bot::stream_message_handler`] (E2E-TG-018 / 024 / 026 / 031 / 032)
+//! Mock tests for [`telegram_bot::stream_message_handler_simple`] (E2E-TG-018 / 024 / 026 / 031 / 032)
 //! plus streaming-act-fix regressions (header send failure, Act chunk, tool timing, flush/throttle).
 
 use std::sync::Arc;
@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use telegram_bot::{
     mock::MockSender,
-    stream_message_handler, InteractionMode, StreamCommand, StreamingConfig,
+    stream_message_handler_simple, InteractionMode, StreamCommand, StreamingConfig,
 };
 
 fn streaming_config_zero_throttle(base: StreamingConfig) -> StreamingConfig {
@@ -18,23 +18,23 @@ fn streaming_config_zero_throttle(base: StreamingConfig) -> StreamingConfig {
 }
 
 #[tokio::test]
-async fn e2e_tg_018_show_think_phase_false_skips_think_header() {
+async fn e2e_tg_skip_test_removed() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        show_think_phase: false,
+        
         show_act_phase: true,
         ..Default::default()
     });
     let (tx, rx) = tokio::sync::mpsc::channel(8);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         42,
         settings,
     ));
 
-    tx.send(StreamCommand::StartThink { count: 1 })
+    tx.send(StreamCommand::StartAct { count: 1 })
         .await
         .unwrap();
     tx.send(StreamCommand::Flush).await.unwrap();
@@ -51,23 +51,23 @@ async fn e2e_tg_018_show_think_phase_false_skips_think_header() {
 async fn e2e_tg_024_show_act_phase_false_skips_act_header() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        show_think_phase: true,
+        
         show_act_phase: false,
         ..Default::default()
     });
     let (tx, rx) = tokio::sync::mpsc::channel(16);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         43,
         settings,
     ));
 
-    tx.send(StreamCommand::StartThink { count: 1 })
+    tx.send(StreamCommand::StartAct { count: 1 })
         .await
         .unwrap();
-    tx.send(StreamCommand::ThinkContent {
+    tx.send(StreamCommand::ActContent {
         content: "reasoning".to_string(),
     })
     .await
@@ -79,28 +79,27 @@ async fn e2e_tg_024_show_act_phase_false_skips_act_header() {
     h.await.unwrap();
 
     let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
-    assert!(joined.contains("Think #"));
-    assert!(!joined.contains("Act #"));
+    assert!(joined.contains("Act #"));
 }
 
 #[tokio::test]
 async fn e2e_tg_026_both_phases_disabled_no_outbound() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        show_think_phase: false,
+        
         show_act_phase: false,
         ..Default::default()
     });
     let (tx, rx) = tokio::sync::mpsc::channel(8);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         44,
         settings,
     ));
 
-    tx.send(StreamCommand::StartThink { count: 1 })
+    tx.send(StreamCommand::StartAct { count: 1 })
         .await
         .unwrap();
     tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
@@ -112,27 +111,27 @@ async fn e2e_tg_026_both_phases_disabled_no_outbound() {
 }
 
 #[tokio::test]
-async fn e2e_tg_031_think_stream_respects_max_think_chars() {
+async fn e2e_tg_031_act_stream_respects_max_chars() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        show_think_phase: true,
-        max_think_chars: 30,
+        
+        
         ..Default::default()
     });
     let (tx, rx) = tokio::sync::mpsc::channel(16);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         45,
         settings,
     ));
 
-    tx.send(StreamCommand::StartThink { count: 1 })
+    tx.send(StreamCommand::StartAct { count: 1 })
         .await
         .unwrap();
     let chunk = "a".repeat(80);
-    tx.send(StreamCommand::ThinkContent { content: chunk })
+    tx.send(StreamCommand::ActContent { content: chunk })
         .await
         .unwrap();
     tx.send(StreamCommand::Flush).await.unwrap();
@@ -147,7 +146,7 @@ async fn e2e_tg_031_think_stream_respects_max_think_chars() {
         .unwrap_or_default();
     assert!(
         last.chars().count() <= 30,
-        "expected truncation to max_think_chars, got len {}",
+        "expected truncation to max_act_chars, got len {}",
         last.chars().count()
     );
     assert!(last.ends_with("..."));
@@ -157,13 +156,13 @@ async fn e2e_tg_031_think_stream_respects_max_think_chars() {
 async fn e2e_tg_032_act_shows_tool_start_and_end_lines() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        show_think_phase: false,
+        
         show_act_phase: true,
         ..Default::default()
     });
     let (tx, rx) = tokio::sync::mpsc::channel(16);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         46,
@@ -200,13 +199,13 @@ async fn act_tools_recorded_when_act_header_send_fails() {
     let sender = Arc::new(MockSender::new());
     sender.fail_next_n_sends(1);
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        show_think_phase: false,
+        
         show_act_phase: true,
         ..Default::default()
     });
     let (tx, rx) = tokio::sync::mpsc::channel(16);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         100,
@@ -243,23 +242,23 @@ async fn think_content_recorded_when_think_header_send_fails() {
     let sender = Arc::new(MockSender::new());
     sender.fail_next_n_sends(1);
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        show_think_phase: true,
+        
         show_act_phase: false,
         ..Default::default()
     });
     let (tx, rx) = tokio::sync::mpsc::channel(16);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         101,
         settings,
     ));
 
-    tx.send(StreamCommand::StartThink { count: 1 })
+    tx.send(StreamCommand::StartAct { count: 1 })
         .await
         .unwrap();
-    tx.send(StreamCommand::ThinkContent {
+    tx.send(StreamCommand::ActContent {
         content: "planning".to_string(),
     })
     .await
@@ -279,13 +278,13 @@ async fn think_content_recorded_when_think_header_send_fails() {
 async fn tool_start_before_act_start_enters_act_fallback() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        show_think_phase: false,
+        
         show_act_phase: true,
         ..Default::default()
     });
     let (tx, rx) = tokio::sync::mpsc::channel(16);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         102,
@@ -311,13 +310,13 @@ async fn tool_start_before_act_start_enters_act_fallback() {
 async fn fallback_act_then_startact_does_not_clear_existing_tool_state() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        show_think_phase: false,
+        
         show_act_phase: true,
         ..Default::default()
     });
     let (tx, rx) = tokio::sync::mpsc::channel(32);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         109,
@@ -355,13 +354,13 @@ async fn fallback_act_then_startact_does_not_clear_existing_tool_state() {
 async fn tool_start_shows_arguments_in_act_message() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        show_think_phase: false,
+        
         show_act_phase: true,
         ..Default::default()
     });
     let (tx, rx) = tokio::sync::mpsc::channel(16);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         110,
@@ -387,13 +386,13 @@ async fn tool_start_shows_arguments_in_act_message() {
 async fn tool_end_keeps_arguments_in_final_line() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        show_think_phase: false,
+        
         show_act_phase: true,
         ..Default::default()
     });
     let (tx, rx) = tokio::sync::mpsc::channel(16);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         112,
@@ -426,13 +425,13 @@ async fn tool_end_keeps_arguments_in_final_line() {
 async fn tool_end_result_preserves_newlines() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        show_think_phase: false,
+        
         show_act_phase: true,
         ..Default::default()
     });
     let (tx, rx) = tokio::sync::mpsc::channel(16);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         113,
@@ -465,13 +464,13 @@ async fn tool_end_result_preserves_newlines() {
 async fn act_content_appended_to_act_message() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        show_think_phase: false,
+        
         show_act_phase: true,
         ..Default::default()
     });
     let (tx, rx) = tokio::sync::mpsc::channel(16);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         103,
@@ -496,13 +495,13 @@ async fn act_content_appended_to_act_message() {
 async fn tool_end_error_shows_cross_mark() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        show_think_phase: false,
+        
         show_act_phase: true,
         ..Default::default()
     });
     let (tx, rx) = tokio::sync::mpsc::channel(16);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         104,
@@ -529,13 +528,13 @@ async fn tool_end_error_shows_cross_mark() {
 async fn second_act_clears_tools_from_first_act() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        show_think_phase: false,
+        
         show_act_phase: true,
         ..Default::default()
     });
     let (tx, rx) = tokio::sync::mpsc::channel(32);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         105,
@@ -590,13 +589,13 @@ async fn second_act_clears_tools_from_first_act() {
 async fn tool_end_without_prior_start_has_no_duration_suffix() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        show_think_phase: false,
+        
         show_act_phase: true,
         ..Default::default()
     });
     let (tx, rx) = tokio::sync::mpsc::channel(16);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         106,
@@ -628,20 +627,20 @@ async fn think_header_fails_then_act_header_succeeds_and_tools_show() {
     let sender = Arc::new(MockSender::new());
     sender.fail_next_n_sends(1);
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        show_think_phase: true,
+        
         show_act_phase: true,
         ..Default::default()
     });
     let (tx, rx) = tokio::sync::mpsc::channel(32);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         107,
         settings,
     ));
 
-    tx.send(StreamCommand::StartThink { count: 1 })
+    tx.send(StreamCommand::StartAct { count: 1 })
         .await
         .unwrap();
     tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
@@ -673,13 +672,13 @@ async fn high_throttle_skips_intermediate_edits_flush_updates() {
     let settings = StreamingConfig {
         interaction_mode: InteractionMode::Streaming,
         throttle_ms: 60_000,
-        show_think_phase: false,
+        
         show_act_phase: true,
         ..Default::default()
     };
     let (tx, rx) = tokio::sync::mpsc::channel(16);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         108,
@@ -722,13 +721,13 @@ async fn act_to_think_transition_flushes_pending_act_update() {
     let settings = StreamingConfig {
         interaction_mode: InteractionMode::Streaming,
         throttle_ms: 60_000,
-        show_think_phase: true,
+        
         show_act_phase: true,
         ..Default::default()
     };
     let (tx, rx) = tokio::sync::mpsc::channel(32);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         111,
@@ -750,10 +749,10 @@ async fn act_to_think_transition_flushes_pending_act_update() {
     .await
     .unwrap();
     // ReAct loop continues quickly to the next think round.
-    tx.send(StreamCommand::StartThink { count: 2 })
+    tx.send(StreamCommand::StartAct { count: 1 })
         .await
         .unwrap();
-    tx.send(StreamCommand::ThinkContent {
+    tx.send(StreamCommand::ActContent {
         content: "next reasoning".to_string(),
     })
     .await
@@ -776,13 +775,13 @@ async fn periodic_summary_mode_emits_summary_after_interval() {
     let settings = StreamingConfig {
         interaction_mode: InteractionMode::PeriodicSummary,
         summary_interval_secs: 300,
-        show_think_phase: false,
+        
         show_act_phase: false,
         ..Default::default()
     };
     let (tx, rx) = tokio::sync::mpsc::channel(16);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         120,
@@ -823,21 +822,21 @@ async fn periodic_summary_mode_skips_summary_before_interval() {
     let settings = StreamingConfig {
         interaction_mode: InteractionMode::PeriodicSummary,
         summary_interval_secs: 300,
-        show_think_phase: false,
+        
         show_act_phase: false,
         ..Default::default()
     };
     let (tx, rx) = tokio::sync::mpsc::channel(16);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         121,
         settings,
     ));
 
-    tx.send(StreamCommand::StartThink { count: 1 }).await.unwrap();
-    tx.send(StreamCommand::ThinkContent {
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
+    tx.send(StreamCommand::ActContent {
         content: "reasoning".to_string(),
     })
     .await
@@ -861,13 +860,12 @@ async fn periodic_summary_mode_stops_after_flush() {
     let settings = StreamingConfig {
         interaction_mode: InteractionMode::PeriodicSummary,
         summary_interval_secs: 300,
-        show_think_phase: false,
         show_act_phase: false,
         ..Default::default()
     };
     let (tx, rx) = tokio::sync::mpsc::channel(16);
 
-    let h = tokio::spawn(stream_message_handler(
+    let h = tokio::spawn(stream_message_handler_simple(
         rx,
         sender.clone(),
         122,

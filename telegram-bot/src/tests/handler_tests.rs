@@ -235,11 +235,8 @@ fn test_truncate_text_empty() {
 fn test_streaming_config_default() {
     use crate::config::StreamingConfig;
     let config = StreamingConfig::default();
-    assert_eq!(config.max_think_chars, 500);
     assert_eq!(config.max_act_chars, 500);
-    assert!(config.show_think_phase);
     assert!(config.show_act_phase);
-    assert_eq!(config.think_emoji, "🤔");
     assert_eq!(config.act_emoji, "⚡");
 }
 
@@ -247,6 +244,6 @@ fn test_streaming_config_default() {
 fn test_settings_default_streaming() {
     use crate::config::Settings;
     let settings = Settings::default();
-    assert_eq!(settings.streaming.max_think_chars, 500);
-    assert!(settings.streaming.show_think_phase);
+    assert_eq!(settings.streaming.max_act_chars, 500);
+    assert!(settings.streaming.show_act_phase);
 }
