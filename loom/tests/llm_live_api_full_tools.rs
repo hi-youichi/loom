@@ -10,10 +10,10 @@ use std::sync::Arc;
 
 use async_openai::config::OpenAIConfig;
 use loom::llm::{ChatOpenAI, LlmClient, ToolCallDelta, ToolChoiceMode};
-use loom::tool_source::{
-    AggregateToolSource, BashTool, LspTool, ToolSource, WebFetcherTool, YamlSpecToolSource,
-};
-use loom::tools::{register_file_tools, BatchTool, TOOL_READ_FILE};
+use loom::tool_source::{ToolSource, YamlSpecToolSource};
+use loom::tools::{AggregateToolSource, BatchTool, LspTool, WebFetcherTool, TOOL_READ_FILE};
+use loom::tool_source::register_file_tools;
+use loom::BashTool;
 use loom::{Message, MessageChunk};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;

@@ -215,12 +215,10 @@ impl<'de> Deserialize<'de> for ToolCallContent {
 }
 
 impl ToolCallContent {
-    /// Creates a text content.
     pub fn text(text: impl Into<String>) -> Self {
         ToolCallContent::Text(text.into())
     }
 
-    /// Creates a diff content for a file modification.
     pub fn diff(path: impl Into<String>, old_text: Option<String>, new_text: impl Into<String>) -> Self {
         ToolCallContent::Diff {
             path: path.into(),
@@ -229,17 +227,33 @@ impl ToolCallContent {
         }
     }
 
-    /// Returns the text content if this is a Text variant, otherwise None.
     pub fn as_text(&self) -> Option<&str> {
         match self {
             ToolCallContent::Text(t) => Some(t),
-            _ => None,
+            ToolCallContent::Diff { .. } => None,
         }
     }
 
-    /// Converts content to a string representation.
-    /// For Text, returns the text directly.
-    /// For Diff, returns a summary message.
+    pub fn into_text(self) -> String {
+        match self {
+            ToolCallContent::Text(t) => t,
+            ToolCallContent::Diff { path, .. } => {
+                format!("Modified file: {}", path)
+            }
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            ToolCallContent::Text(t) => t.len(),
+            ToolCallContent::Diff { new_text, .. } => new_text.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn to_display_string(&self) -> String {
         match self {
             ToolCallContent::Text(t) => t.clone(),
