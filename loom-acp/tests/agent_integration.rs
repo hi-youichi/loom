@@ -153,34 +153,25 @@ async fn test_model_list_from_real_provider() {
 }
 
 /// Test that current model is set from environment or default.
-#[tokio::test]
-async fn test_current_model_from_env() {
-    // Save current env
-    let original_model = std::env::var("MODEL").ok();
-    let original_openai_model = std::env::var("OPENAI_MODEL").ok();
-    
-    // Set a test model
-    unsafe {
-        std::env::set_var("MODEL", "test-model-123");
-    }
-    
-    let agent = LoomAcpAgent::new();
-    let request = make_new_session_request();
-    
-    let response = agent.new_session(request).await.unwrap();
-    let current = extract_current_model(&response);
-    
-    assert_eq!(current, Some("test-model-123".to_string()));
-    
-    // Restore env
-    unsafe {
-        if let Some(orig) = original_model {
-            std::env::set_var("MODEL", orig);
-        } else {
-            std::env::remove_var("MODEL");
+#[test]
+fn test_current_model_from_env() {
+    temp_env::with_vars(
+        vec![
+            ("MODEL", Some("test-model-123")),
+            ("OPENAI_MODEL", None),
+        ],
+        || {
+            // Use block_on to run async code in synchronous test
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let agent = LoomAcpAgent::new();
+                let request = make_new_session_request();
+                
+                let response = agent.new_session(request).await.unwrap();
+                let current = extract_current_model(&response);
+                
+                assert_eq!(current, Some("test-model-123".to_string()));
+            });
         }
-        if let Some(orig) = original_openai_model {
-            std::env::set_var("OPENAI_MODEL", orig);
-        }
-    }
+    );
 }
