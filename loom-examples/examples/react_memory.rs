@@ -58,26 +58,26 @@ impl LlmClient for MemoryMockLlm {
 
         let content = if let Some(Message::User(text)) = last_user_msg {
             let lower = text.to_lowercase();
-            if lower.contains("remember") {
+            if lower.as_text().unwrap().contains("remember") {
                 extract_and_format_tool_call("save_memory", text)
-            } else if lower.contains("what's my name") || lower.contains("what is my name") {
+            } else if lower.as_text().unwrap().contains("what's my name") || lower.as_text().unwrap().contains("what is my name") {
                 extract_and_format_tool_call("retrieve_memory", "name")
-            } else if lower.contains("what do you know") || lower.contains("tell me about myself") {
+            } else if lower.as_text().unwrap().contains("what do you know") || lower.as_text().unwrap().contains("tell me about myself") {
                 extract_and_format_tool_call("list_memories", "")
-            } else if lower.contains("hobbies")
-                || lower.contains("interests")
-                || lower.contains("hobby")
+            } else if lower.as_text().unwrap().contains("hobbies")
+                || lower.as_text().unwrap().contains("interests")
+                || lower.as_text().unwrap().contains("hobby")
             {
                 extract_and_format_tool_call("retrieve_memory", "hobbies")
-            } else if lower.contains("preferences")
-                || lower.contains("what do i like")
-                || lower.contains("what are my")
+            } else if lower.as_text().unwrap().contains("preferences")
+                || lower.as_text().unwrap().contains("what do i like")
+                || lower.as_text().unwrap().contains("what are my")
             {
                 extract_and_format_tool_call("list_memories", "")
-            } else if lower.contains("love")
-                || lower.contains("like")
-                || lower.contains("favorite")
-                || lower.contains("prefer")
+            } else if lower.as_text().unwrap().contains("love")
+                || lower.as_text().unwrap().contains("like")
+                || lower.as_text().unwrap().contains("favorite")
+                || lower.as_text().unwrap().contains("prefer")
             {
                 extract_and_format_tool_call("save_memory", text)
             } else {
@@ -88,7 +88,7 @@ impl LlmClient for MemoryMockLlm {
                 .to_string()
         };
 
-        let tool_calls = if content.contains("tool_call:") {
+        let tool_calls = if content.as_text().unwrap().contains("tool_call:") {
             vec![parse_tool_call(&content)]
         } else {
             vec![]
@@ -218,8 +218,7 @@ impl ToolSource for MemoryToolSource {
                     .put(&self.namespace, &key, &value)
                     .await
                     .map_err(|e| loom::tool_source::ToolSourceError::Transport(e.to_string()))?;
-                Ok(ToolCallContent {
-                    text: format!("Saved to memory: {}", info),
+                Ok(ToolCallContent::text(format!("Saved to memory: {)", info),
                 })
             }
             "retrieve_memory" => {
@@ -230,16 +229,14 @@ impl ToolSource for MemoryToolSource {
                     .await
                     .map_err(|e| loom::tool_source::ToolSourceError::Transport(e.to_string()))?;
                 if hits.is_empty() {
-                    Ok(ToolCallContent {
-                        text: format!("No memories found for '{}'", key),
+                    Ok(ToolCallContent::text(format!("No memories found for '{)'", key),
                     })
                 } else {
                     let memories: Vec<String> = hits
                         .iter()
                         .map(|h| h.value["info"].as_str().unwrap_or("").to_string())
                         .collect();
-                    Ok(ToolCallContent {
-                        text: format!("Found memories: {}", memories.join(", ")),
+                    Ok(ToolCallContent::text(format!("Found memories: {)", memories.join(", ")),
                     })
                 }
             }
@@ -261,12 +258,9 @@ impl ToolSource for MemoryToolSource {
                     }
                 }
                 if memories.is_empty() {
-                    Ok(ToolCallContent {
-                        text: "No memories stored yet. Tell me something to remember!".to_string(),
-                    })
+                    Ok(ToolCallContent::text("No memories stored yet. Tell me something to remember!".to_string(),))
                 } else {
-                    Ok(ToolCallContent {
-                        text: format!("I remember: {}", memories.join("; ")),
+                    Ok(ToolCallContent::text(format!("I remember: {)", memories.join("; ")),
                     })
                 }
             }
@@ -566,7 +560,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Message::User(s) => println!("[User] {}", s),
                         Message::Assistant(p) => println!("[Assistant] {}", p.content),
                         Message::Tool { tool_call_id, content } => {
-                            println!("[Tool {}] {}", tool_call_id, content)
+                            println!("[Tool {}] {}", tool_call_id, content.to_display_string())
                         }
                     }
                 }

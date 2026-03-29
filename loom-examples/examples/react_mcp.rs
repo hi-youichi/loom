@@ -92,7 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Message::User(x) => println!("[User] {}", x),
             Message::Assistant(p) => println!("[Assistant] {}", p.content),
             Message::Tool { tool_call_id, content } => {
-                println!("[Tool {}] {}", tool_call_id, content)
+                println!("[Tool {}] {}", tool_call_id, content.to_display_string())
             }
         }
     }

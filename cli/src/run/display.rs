@@ -24,8 +24,7 @@ pub(crate) fn truncate_display(s: &str, max: usize) -> String {
     format!(
         "{}{}",
         s.chars().take(content_max).collect::<String>(),
-        SUFFIX
-    )
+        SUFFIX,    )
 }
 
 /// Formats one Message with content truncated for display (User/Assistant/System).
@@ -43,7 +42,7 @@ pub(crate) fn format_message_truncated(m: &Message, max: usize) -> String {
         } => format!(
             "Tool({}:{})",
             tool_call_id,
-            truncate_display(content, max)
+            truncate_display(&content.to_display_string(), max)
         ),
     }
 }

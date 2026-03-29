@@ -56,7 +56,7 @@ async fn main() {
                     Message::User(x) => println!("[User] {}", x),
                     Message::Assistant(p) => println!("[Assistant] {}", p.content),
                     Message::Tool { tool_call_id, content } => {
-                        println!("[Tool {}] {}", tool_call_id, content)
+                        println!("[Tool {}] {}", tool_call_id, content.to_display_string())
                     }
                 }
             }
