@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct TerminalSession {
@@ -44,10 +44,7 @@ impl TerminalManager {
         _args: Option<Vec<String>>,
         _cwd: Option<String>,
     ) -> Result<String, TerminalError> {
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
+        let timestamp = Uuid::new_v4();
         let terminal_id = format!("term-{}", timestamp);
         
         let session = TerminalSession {
