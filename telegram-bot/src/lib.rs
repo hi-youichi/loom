@@ -41,6 +41,7 @@ mod handler;
 mod handler_deps;
 mod health;
 mod metrics;
+mod model_selection;
 mod pipeline;
 mod router;
 mod sender;
@@ -76,6 +77,10 @@ pub use handler_deps::{ChatRunRegistry, HandlerDeps};
 pub use router::handle_message_with_deps;
 pub use streaming::{run_loom_agent_streaming, stream_message_handler, StreamCommand};
 pub use traits::{AgentRunContext, MessageSender, AgentRunner, SessionManager, FileDownloader};
+pub use model_selection::{
+    InMemorySearchSessionStore, ModelChoice, ModelSelectionService, SqliteModelSelectionStore,
+    StaticModelCatalog,
+};
 pub use sender::TeloxideSender;
 pub use agent::LoomAgentRunner;
 pub use session::SqliteSessionManager;

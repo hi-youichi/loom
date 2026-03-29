@@ -13,12 +13,14 @@ use crate::error::BotError;
 use crate::formatting::FormattedMessage;
 
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AgentRunContext {
     pub user_message_id: Option<i32>,
     pub ack_message_id: Option<i32>,
     pub interaction_mode: InteractionMode,
+    pub model_override: Option<String>,
 }
+
 
 /// Message sending interface
 #[async_trait]

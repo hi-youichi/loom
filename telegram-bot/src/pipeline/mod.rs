@@ -2,7 +2,10 @@
 //!
 //! Keeps [`crate::router::handle_message_with_deps`] thin by centralizing common-message logic here.
 
-use crate::command::{CommandContext, CommandDispatcher};
+use crate::command::{
+    try_handle_model_command_input, CommandContext, CommandDispatcher,
+};
+
 use crate::config::InteractionMode;
 use crate::download::{is_bot_mentioned, is_reply_to_bot};
 use crate::formatting::FormattedMessage;
@@ -91,7 +94,9 @@ async fn run_agent_for_chat(ctx: &MessageContext<'_>, prompt: &str) -> Result<()
                 user_message_id: Some(message_id),
                 ack_message_id: None,
                 interaction_mode: ctx.deps.settings.streaming.interaction_mode,
+                model_override: Some(ctx.deps.model_selection.current_model(chat_id)?),
             },
+
         )
         .await;
 
@@ -202,6 +207,11 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
         if let Some(result) = dispatcher.try_dispatch(&cmd_ctx, text).await {
             return result;
         }
+
+        if try_handle_model_command_input(&cmd_ctx, text).await? {
+            return Ok(());
+        }
+
 
         let is_mentioned = is_bot_mentioned(ctx.msg, &ctx.deps.bot_username);
         let is_reply = is_reply_to_bot(ctx.msg, &ctx.deps.bot_username);

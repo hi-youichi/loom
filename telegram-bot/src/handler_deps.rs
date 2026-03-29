@@ -11,9 +11,14 @@ use tokio::sync::Mutex;
 use crate::agent::LoomAgentRunner;
 use crate::config::Settings;
 use crate::download::TeloxideDownloader;
+use crate::model_selection::{
+    InMemorySearchSessionStore, ModelCatalog, ModelChoice, ModelSelectionService,
+    SqliteModelSelectionStore, StaticModelCatalog,
+};
 use crate::sender::TeloxideSender;
 use crate::session::SqliteSessionManager;
 use crate::traits::{AgentRunner, FileDownloader, MessageSender, SessionManager};
+
 
 #[derive(Default)]
 pub struct ChatRunRegistry {
@@ -60,10 +65,12 @@ pub struct HandlerDeps {
     pub agent: Arc<dyn AgentRunner>,
     pub session: Arc<dyn SessionManager>,
     pub downloader: Arc<dyn FileDownloader>,
+    pub model_selection: Arc<ModelSelectionService>,
     pub settings: Arc<Settings>,
     pub bot_username: Arc<String>,
     pub run_registry: Arc<ChatRunRegistry>,
 }
+
 
 impl HandlerDeps {
     /// Production stack for one bot after `get_me` has filled `bot_username`.
@@ -74,15 +81,24 @@ impl HandlerDeps {
         run_registry: Arc<ChatRunRegistry>,
     ) -> Self {
         let download_dir = settings.download_dir.clone();
+        let model_catalog = build_model_catalog();
+        let model_selection = Arc::new(ModelSelectionService::new(
+            model_catalog,
+            Arc::new(SqliteModelSelectionStore::new()),
+            Arc::new(InMemorySearchSessionStore::new()),
+        ));
+
         Self {
             sender: Arc::new(TeloxideSender::new(bot.clone())),
             agent: Arc::new(LoomAgentRunner::new(bot.clone(), (*settings).clone())),
             session: Arc::new(SqliteSessionManager::new()),
             downloader: Arc::new(TeloxideDownloader::new(bot, download_dir)),
+            model_selection,
             settings,
             bot_username,
             run_registry,
         }
+
     }
 
     /// Test stack with explicit doubles (for example [`crate::mock`] types).
@@ -91,6 +107,7 @@ impl HandlerDeps {
         agent: Arc<dyn AgentRunner>,
         session: Arc<dyn SessionManager>,
         downloader: Arc<dyn FileDownloader>,
+        model_selection: Arc<ModelSelectionService>,
         settings: Arc<Settings>,
         bot_username: Arc<String>,
         run_registry: Arc<ChatRunRegistry>,
@@ -100,9 +117,31 @@ impl HandlerDeps {
             agent,
             session,
             downloader,
+            model_selection,
             settings,
             bot_username,
             run_registry,
         }
     }
 }
+
+fn build_model_catalog() -> Arc<dyn ModelCatalog> {
+    let configured_model = std::env::var("MODEL").unwrap_or_else(|_| "gpt-5.4".to_string());
+    let configured_provider = std::env::var("LOOM_PROVIDER")
+        .or_else(|_| std::env::var("LLM_PROVIDER"))
+        .unwrap_or_else(|_| "default".to_string());
+
+    let mut models = vec![ModelChoice::new(configured_model.clone())];
+    if let Ok(full_config) = config::load_full_config("loom") {
+        for provider in full_config.providers {
+            if provider.name == configured_provider || provider.name == "openai" || provider.name == "gptprotoc" {
+                if let Some(model_id) = provider.model {
+                    models.push(ModelChoice::new(model_id));
+                }
+            }
+        }
+    }
+
+    Arc::new(StaticModelCatalog::new(configured_model, models))
+}
+
