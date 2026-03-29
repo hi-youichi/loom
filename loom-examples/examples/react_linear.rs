@@ -46,6 +46,9 @@ async fn main() {
         total_usage: None,
         message_count_after_last_think: None,
         last_reasoning_content: None,
+        think_count: 0,
+        summary: None,
+        should_continue: true,
     };
 
     match compiled.invoke(state, None).await {
