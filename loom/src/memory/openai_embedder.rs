@@ -277,36 +277,64 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Requires OPENAI_API_KEY"]
-    async fn test_openai_embed() {
-        std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set for this test");
+    async fn test_openai_embed_with_mock() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let _server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            read_http_request(&mut stream).await;
+            let response = serde_json::json!({
+                "object": "list",
+                "data": [{
+                    "object": "embedding",
+                    "index": 0,
+                    "embedding": vec![0.1f32; 1536]
+                }, {
+                    "object": "embedding",
+                    "index": 1,
+                    "embedding": vec![0.2f32; 1536]
+                }],
+                "model": "text-embedding-3-small",
+                "usage": {"prompt_tokens": 4, "total_tokens": 4}
+            }).to_string();
+            write_http_response(&mut stream, "200 OK", &response).await;
+        });
 
-        let embedder = OpenAIEmbedder::new("text-embedding-3-small");
+        let config = OpenAIConfig::new()
+            .with_api_key("test-key")
+            .with_api_base(format!("http://{}", addr));
+        let embedder = OpenAIEmbedder::with_config(config, "text-embedding-3-small");
         let texts = vec!["Hello, world!", "The quick brown fox"];
-
-        // Use embed_one().await to avoid calling sync embed() (which uses block_on) inside tokio runtime.
-        let mut vectors = Vec::with_capacity(texts.len());
-        for text in &texts {
-            vectors.push(embedder.embed_one(text).await.unwrap());
-        }
-
+        let vectors = embedder.embed(&texts).await.unwrap();
         assert_eq!(vectors.len(), 2);
         assert_eq!(vectors[0].len(), 1536);
         assert_eq!(vectors[1].len(), 1536);
-
-        let one_vector = embedder.embed_one("Single text").await.unwrap();
-
-        assert_eq!(one_vector.len(), 1536);
     }
 
-    /// Verifies that async [`embed`](Embedder::embed) can be awaited from within a tokio runtime
-    /// (e.g. from store.put inside a ReAct tool like `remember`).
     #[tokio::test]
-    #[ignore = "Requires OPENAI_API_KEY"]
-    async fn test_embed_from_within_tokio_runtime() {
-        std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set for this test");
+    async fn test_embed_from_within_tokio_runtime_with_mock() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let _server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            read_http_request(&mut stream).await;
+            let response = serde_json::json!({
+                "object": "list",
+                "data": [{
+                    "object": "embedding",
+                    "index": 0,
+                    "embedding": vec![0.3f32; 1536]
+                }],
+                "model": "text-embedding-3-small",
+                "usage": {"prompt_tokens": 2, "total_tokens": 2}
+            }).to_string();
+            write_http_response(&mut stream, "200 OK", &response).await;
+        });
 
-        let embedder = OpenAIEmbedder::new("text-embedding-3-small");
+        let config = OpenAIConfig::new()
+            .with_api_key("test-key")
+            .with_api_base(format!("http://{}", addr));
+        let embedder = OpenAIEmbedder::with_config(config, "text-embedding-3-small");
         let vectors = embedder.embed(&["hello from tokio"]).await.unwrap();
         assert_eq!(vectors.len(), 1);
         assert_eq!(vectors[0].len(), 1536);

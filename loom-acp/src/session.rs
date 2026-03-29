@@ -17,7 +17,9 @@
 //! When integrated with ACP, session_id can use `agent_client_protocol::SessionId`; this module's [`SessionId`] is a placeholder type for unit tests without the ACP dependency.
 
 use loom::RunCancellation;
+use std::fmt;
 use std::path::PathBuf;
+use uuid::Uuid;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -39,6 +41,12 @@ impl SessionId {
     #[inline]
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+impl fmt::Display for SessionId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -101,13 +109,7 @@ impl SessionStore {
     /// `working_directory` comes from `NewSessionRequest::working_directory` (protocol requires absolute path);
     /// if not provided, pass `None`; prompt handling may use process cwd or another default.
     pub fn create(&self, working_directory: Option<PathBuf>) -> SessionId {
-        let session_id = SessionId(format!(
-            "session-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let session_id = SessionId(format!("session-{}", Uuid::new_v4()));
         self.create_with_id(session_id.clone(), working_directory, session_id.0.clone());
         session_id
     }

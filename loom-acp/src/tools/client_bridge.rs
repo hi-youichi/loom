@@ -5,7 +5,8 @@
 //! a thread-local approach to bridge the gap.
 
 use std::collections::HashMap;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, OnceLock};
+use tokio::sync::RwLock;
 
 /// Terminal output from ACP client.
 #[derive(Debug, Clone)]
@@ -60,26 +61,26 @@ pub struct GlobalClientBridge {
 impl GlobalClientBridge {
     /// Check if a bridge is available.
     #[allow(dead_code)]
-    pub fn is_available(&self) -> bool {
-        let guard = self.inner.read().unwrap();
+    pub async fn is_available(&self) -> bool {
+        let guard = self.inner.read().await;
         guard.as_ref().map(|b| b.is_available()).unwrap_or(false)
     }
 
     /// Set the client bridge.
-    pub fn set(&self, bridge: Arc<dyn ClientBridgeTrait>) {
-        let mut guard = self.inner.write().unwrap();
+    pub async fn set(&self, bridge: Arc<dyn ClientBridgeTrait>) {
+        let mut guard = self.inner.write().await;
         *guard = Some(bridge);
     }
 
     /// Clear the client bridge.
-    pub fn clear(&self) {
-        let mut guard = self.inner.write().unwrap();
+    pub async fn clear(&self) {
+        let mut guard = self.inner.write().await;
         *guard = None;
     }
 
     /// Get the inner bridge, returning error if not available.
-    pub fn get(&self) -> Result<Arc<dyn ClientBridgeTrait>, String> {
-        let guard = self.inner.read().unwrap();
+    pub async fn get(&self) -> Result<Arc<dyn ClientBridgeTrait>, String> {
+        let guard = self.inner.read().await;
         guard.as_ref()
             .cloned()
             .ok_or_else(|| "Client bridge not initialized".to_string())
@@ -105,18 +106,18 @@ fn get_global_bridge() -> &'static GlobalClientBridge {
 }
 
 /// Set the global client bridge.
-pub fn set_client_bridge(bridge: Arc<dyn ClientBridgeTrait>) {
-    get_global_bridge().set(bridge);
+pub async fn set_client_bridge(bridge: Arc<dyn ClientBridgeTrait>) {
+    get_global_bridge().set(bridge).await;
 }
 
 /// Clear the global client bridge.
-pub fn clear_client_bridge() {
-    get_global_bridge().clear();
+pub async fn clear_client_bridge() {
+    get_global_bridge().clear().await;
 }
 
 /// Get the global client bridge.
-pub fn get_client_bridge() -> Result<Arc<dyn ClientBridgeTrait>, String> {
-    get_global_bridge().get()
+pub async fn get_client_bridge() -> Result<Arc<dyn ClientBridgeTrait>, String> {
+    get_global_bridge().get().await
 }
 
 /// A no-op client bridge that returns placeholder responses.
@@ -162,9 +163,9 @@ impl ClientBridgeTrait for NoOpClientBridge {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_global_bridge_default() {
-        assert!(!get_global_bridge().is_available());
+    #[tokio::test]
+    async fn test_global_bridge_default() {
+        assert!(!get_global_bridge().is_available().await);
     }
 
     #[test]

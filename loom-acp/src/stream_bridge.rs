@@ -34,6 +34,7 @@ use agent_client_protocol::{
 };
 use loom::{AnyStreamEvent, MessageChunkKind, StreamEvent};
 use serde_json::Value;
+use uuid::Uuid;
 
 /// A single "sendable to Client" stream update, corresponding to ACP SessionUpdate variants.
 ///
@@ -142,13 +143,7 @@ where
             arguments,
         } => {
             let id = call_id.clone().unwrap_or_else(|| {
-                format!(
-                    "tool-{}",
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_nanos()
-                )
+                format!("tool-{}", Uuid::new_v4())
             });
             vec![StreamUpdate::ToolCallStarted {
                 tool_call_id: id,
@@ -205,13 +200,7 @@ where
         } => {
             // Generate or use existing call_id
             let id = call_id.clone().unwrap_or_else(|| {
-                format!(
-                    "tool-chunk-{}",
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_nanos()
-                )
+                format!("tool-chunk-{}", Uuid::new_v4())
             });
             vec![StreamUpdate::ToolCallChunk {
                 tool_call_id: id,

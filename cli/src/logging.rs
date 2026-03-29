@@ -6,6 +6,7 @@
 //! - `--log-rotate`: Rotation strategy when writing to a file (none, daily, hourly, minutely)
 
 use std::path::Path;
+use std::str::FromStr;
 
 use config::tracing_init;
 pub use config::tracing_init::LogRotate;

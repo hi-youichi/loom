@@ -45,7 +45,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// struct TextBlock(pub String);
 /// impl ContentBlockLike for TextBlock {
-///     fn as_text(&self) -> Option<&str> { Some(self.0.as_str()) }
+///     fn as_text(&self) -> Option<String> { Some(self.0.clone()) }
 /// }
 ///
 /// let blocks = [TextBlock("Hello".into()), TextBlock("world".into())];

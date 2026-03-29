@@ -349,9 +349,11 @@ impl Agent for LoomAcpAgent {
                 working_directory,
                 thread_id.clone(),
             );
-            self.sessions
-                .get(&our_session_id)
-                .expect("Session should exist after create_with_id")
+            self.sessions.get(&our_session_id).ok_or_else(|| {
+                tracing::error!(session_id = %our_session_id, "Session not found after creation");
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("Session {} not found after creation", our_session_id))
+            })?
         };
 
         // Build checkpointer to load history
@@ -567,16 +569,17 @@ impl Agent for LoomAcpAgent {
                 });
 
                 if let Some(title) = s.title {
-                    session_json
-                        .as_object_mut()
-                        .unwrap()
-                        .insert("title".to_string(), serde_json::Value::String(title));
+                    if let Some(obj) = session_json.as_object_mut() {
+                        obj.insert("title".to_string(), serde_json::Value::String(title));
+                    }
                 }
                 if let Some(updated_at) = s.updated_at {
-                    session_json.as_object_mut().unwrap().insert(
-                        "updatedAt".to_string(),
-                        serde_json::Value::String(updated_at),
-                    );
+                    if let Some(obj) = session_json.as_object_mut() {
+                        obj.insert(
+                            "updatedAt".to_string(),
+                            serde_json::Value::String(updated_at),
+                        );
+                    }
                 }
 
                 // Convert our SessionMeta to Map<String, Value> for _meta
@@ -606,10 +609,9 @@ impl Agent for LoomAcpAgent {
                             serde_json::Value::String(source),
                         );
                     }
-                    session_json
-                        .as_object_mut()
-                        .unwrap()
-                        .insert("_meta".to_string(), serde_json::Value::Object(meta_map));
+                    if let Some(obj) = session_json.as_object_mut() {
+                        obj.insert("_meta".to_string(), serde_json::Value::Object(meta_map));
+                    }
                 }
 
                 serde_json::from_value(session_json)

@@ -89,7 +89,7 @@ impl Tool for CreateTerminalTool {
             .map_err(|e| ToolSourceError::InvalidInput(format!("Invalid arguments: {}", e)))?;
 
         // Check if bridge is available
-        let bridge = get_client_bridge()
+        let bridge = get_client_bridge().await
             .map_err(|e| ToolSourceError::Transport(format!("Failed to get client bridge: {}", e)))?;
 
         let terminal_id = bridge
@@ -182,7 +182,7 @@ impl Tool for TerminalOutputTool {
         let args: TerminalOutputArgs = serde_json::from_value(args)
             .map_err(|e| ToolSourceError::InvalidInput(format!("Invalid arguments: {}", e)))?;
 
-        let bridge = get_client_bridge()
+        let bridge = get_client_bridge().await
             .map_err(|e| ToolSourceError::Transport(format!("Failed to get client bridge: {}", e)))?;
 
         let output = bridge

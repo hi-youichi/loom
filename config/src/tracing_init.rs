@@ -3,6 +3,7 @@
 //! Requires crate feature `tracing-init`. Callers own subscriber `init()` and guard lifetime.
 
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use thiserror::Error;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
@@ -22,21 +23,29 @@ pub enum LogRotate {
     Minutely,
 }
 
+impl FromStr for LogRotate {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "none" => Ok(Self::None),
+            "daily" => Ok(Self::Daily),
+            "hourly" => Ok(Self::Hourly),
+            "minutely" => Ok(Self::Minutely),
+            _ => Err(()),
+        }
+    }
+}
+
 impl LogRotate {
     /// Parse from a CLI string; unknown values return `None`.
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "none" => Some(Self::None),
-            "daily" => Some(Self::Daily),
-            "hourly" => Some(Self::Hourly),
-            "minutely" => Some(Self::Minutely),
-            _ => None,
-        }
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::from_str(s).ok()
     }
 
     /// Parse like ACP: unknown strings map to [`LogRotate::Daily`].
     pub fn from_str_or_daily(s: &str) -> Self {
-        Self::from_str(s).unwrap_or(Self::Daily)
+        Self::parse(s).unwrap_or(Self::Daily)
     }
 }
 
