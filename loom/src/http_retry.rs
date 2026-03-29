@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-pub(crate) const TRANSIENT_HTTP_MAX_RETRIES: u32 = 3;
+pub(crate) const TRANSIENT_HTTP_MAX_RETRIES: u32 = 5;
 pub(crate) const TRANSIENT_HTTP_INITIAL_BACKOFF: Duration = Duration::from_millis(500);
 pub(crate) const TRANSIENT_HTTP_MAX_BACKOFF: Duration = Duration::from_secs(4);
 
@@ -23,6 +23,7 @@ pub(crate) fn looks_like_transient_http_error_message(message: &str) -> bool {
         || message.contains("unexpected eof")
         || message.contains("connection reset")
         || message.contains("broken pipe")
+        || message.contains("error decoding")
 }
 
 #[cfg(test)]
@@ -40,6 +41,13 @@ mod tests {
     fn detects_connection_closed_message() {
         assert!(looks_like_transient_http_error_message(
             "connection closed before message completed"
+        ));
+    }
+
+    #[test]
+    fn detects_decode_error() {
+        assert!(looks_like_transient_http_error_message(
+            "error decoding response body"
         ));
     }
 

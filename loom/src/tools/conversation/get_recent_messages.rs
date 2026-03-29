@@ -34,7 +34,7 @@ pub const TOOL_GET_RECENT_MESSAGES: &str = "get_recent_messages";
 ///
 /// let args = json!({"limit": 2});
 /// let result = tool.call(args, Some(&context)).await.unwrap();
-/// assert!(result.text.contains("hello"));
+/// assert!(result.as_text().unwrap().contains("hello"));
 /// # }
 /// ```
 ///
@@ -143,6 +143,6 @@ impl Tool for GetRecentMessagesTool {
         let text = serde_json::to_string(&arr)
             .map_err(|e| ToolSourceError::InvalidInput(e.to_string()))?;
 
-        Ok(ToolCallContent { text })
+        Ok(ToolCallContent::text(text))
     }
 }

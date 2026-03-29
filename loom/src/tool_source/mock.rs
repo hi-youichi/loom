@@ -66,8 +66,6 @@ impl ToolSource for MockToolSource {
         _name: &str,
         _arguments: Value,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        Ok(ToolCallContent {
-            text: self.call_result.clone(),
-        })
+        Ok(ToolCallContent::text(self.call_result.clone(),))
     }
 }

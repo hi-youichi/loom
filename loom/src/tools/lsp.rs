@@ -56,8 +56,6 @@ impl Tool for LspTool {
         _args: serde_json::Value,
         _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        Ok(ToolCallContent {
-            text: "LSP tool is experimental and not implemented in this build. Use read, edit, grep, and glob for code navigation and edits.".to_string(),
-        })
+        Ok(ToolCallContent::text("LSP tool is experimental and not implemented in this build. Use read, edit, grep, and glob for code navigation and edits.".to_string(),))
     }
 }

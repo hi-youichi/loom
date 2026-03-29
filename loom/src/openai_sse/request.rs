@@ -71,9 +71,20 @@ impl MessageContent {
             MessageContent::String(s) => s.clone(),
             MessageContent::Array(parts) => parts
                 .iter()
-                .filter_map(|p| p.text.as_deref())
+                .filter_map(|p| p.as_text())
                 .collect::<Vec<_>>()
                 .join(""),
+        }
+    }
+}
+
+impl ContentPart {
+    /// Returns the text content if this is a text part.
+    pub fn as_text(&self) -> Option<&str> {
+        if self.part_type.as_deref() == Some("text") {
+            self.text.as_deref()
+        } else {
+            None
         }
     }
 }

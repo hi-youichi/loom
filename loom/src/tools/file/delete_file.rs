@@ -112,8 +112,6 @@ impl Tool for DeleteFileTool {
             std::fs::remove_file(&path)
                 .map_err(|e| ToolSourceError::Transport(format!("failed to remove file: {}", e)))?;
         }
-        Ok(ToolCallContent {
-            text: "ok".to_string(),
-        })
+        Ok(ToolCallContent::text("ok".to_string(),))
     }
 }

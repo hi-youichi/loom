@@ -77,7 +77,7 @@ pub(super) fn messages_to_openai(messages: &[Message]) -> Vec<ChatCompletionRequ
                 content,
             } => ChatCompletionRequestMessage::Tool(ChatCompletionRequestToolMessage {
                 tool_call_id: tool_call_id.clone(),
-                content: ChatCompletionRequestToolMessageContent::Text(content.clone()),
+                content: ChatCompletionRequestToolMessageContent::Text(content.to_display_string()),
             }),
         })
         .collect()

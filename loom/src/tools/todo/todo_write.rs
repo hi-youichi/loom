@@ -122,9 +122,10 @@ impl Tool for TodoWriteTool {
         })?;
         let incomplete = todos.iter().filter(|t| t.status != "completed").count();
         let output = serde_json::to_string_pretty(&todos).unwrap_or_else(|_| "[]".to_string());
-        Ok(ToolCallContent {
-            text: format!("{} todos\n{}", incomplete, output),
-        })
+        Ok(ToolCallContent::text(format!(
+            "{} todos\n{}",
+            incomplete, output
+        )))
     }
 }
 
@@ -176,9 +177,9 @@ mod tests {
             ]
         });
         let out = tool.call(args, None).await.unwrap();
-        assert!(out.text.contains("1 todos"));
-        assert!(out.text.contains("First"));
-        assert!(out.text.contains("Second"));
+        assert!(out.as_text().unwrap().contains("1 todos"));
+        assert!(out.as_text().unwrap().contains("First"));
+        assert!(out.as_text().unwrap().contains("Second"));
         let path = crate::tools::todo::todo_file_path(None).unwrap();
         let raw = std::fs::read_to_string(&path).unwrap();
         assert!(raw.contains("First"));
@@ -273,7 +274,7 @@ mod tests {
             "todos": [{ "id": "1", "content": "Only required" }]
         });
         let out = tool.call(args, None).await.unwrap();
-        assert!(out.text.contains("1 todos"));
+        assert!(out.as_text().unwrap().contains("1 todos"));
         let path = crate::tools::todo::todo_file_path(None).unwrap();
         let raw = std::fs::read_to_string(&path).unwrap();
         assert!(raw.contains("pending"));
@@ -299,7 +300,7 @@ mod tests {
         };
 
         let out = tool.call(args, Some(&ctx)).await.unwrap();
-        assert!(out.text.contains("1 todos"));
+        assert!(out.as_text().unwrap().contains("1 todos"));
 
         // Verify file is in thread-specific path
         let thread_path = crate::tools::todo::todo_file_path(Some(thread_id)).unwrap();

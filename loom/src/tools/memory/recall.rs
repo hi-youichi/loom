@@ -32,7 +32,7 @@ pub const TOOL_RECALL: &str = "recall";
 ///
 /// let recall = RecallTool::new(store, namespace);
 /// let result = recall.call(json!({"key": "preference"}), None).await.unwrap();
-/// assert!(result.text.contains("likes coffee"));
+/// assert!(result.as_text().unwrap().contains("likes coffee"));
 /// # }
 /// ```
 ///
@@ -123,6 +123,6 @@ impl Tool for RecallTool {
             None => return Err(ToolSourceError::NotFound("key not found".to_string())),
         };
 
-        Ok(ToolCallContent { text })
+        Ok(ToolCallContent::text(text))
     }
 }

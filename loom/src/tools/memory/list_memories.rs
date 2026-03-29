@@ -33,8 +33,8 @@ pub const TOOL_LIST_MEMORIES: &str = "list_memories";
 ///
 /// let list = ListMemoriesTool::new(store, namespace);
 /// let result = list.call(json!({}), None).await.unwrap();
-/// assert!(result.text.contains("coffee"));
-/// assert!(result.text.contains("tea"));
+/// assert!(result.as_text().unwrap().contains("coffee"));
+/// assert!(result.as_text().unwrap().contains("tea"));
 /// # }
 /// ```
 ///
@@ -113,9 +113,7 @@ impl Tool for ListMemoriesTool {
                 crate::memory::StoreError::EmbeddingError(s) => ToolSourceError::Transport(s),
             })?;
 
-        Ok(ToolCallContent {
-            text: serde_json::to_string(&keys)
-                .map_err(|e| ToolSourceError::InvalidInput(e.to_string()))?,
-        })
+        Ok(ToolCallContent::text(serde_json::to_string(&keys)
+                .map_err(|e| ToolSourceError::InvalidInput(e.to_string()))?,))
     }
 }

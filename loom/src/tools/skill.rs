@@ -97,19 +97,15 @@ impl Tool for SkillTool {
                         format!("- {}: {}", e.metadata.name, desc)
                     })
                     .collect();
-                return Ok(ToolCallContent {
-                    text: lines.join("\n"),
-                });
+                return Ok(ToolCallContent::text(lines.join("\n"),));
             }
             let content = registry
                 .load_skill(name)
                 .map_err(|e| ToolSourceError::InvalidInput(e.to_string()))?;
-            return Ok(ToolCallContent {
-                text: format!(
-                    "<skill_content name=\"{}\">\n{}\n</skill_content>",
-                    name, content
-                ),
-            });
+            return Ok(ToolCallContent::text(format!(
+                "<skill_content name=\"{}\">\n{}\n</skill_content>",
+                name, content
+            )));
         }
 
         let skills_dir = self
@@ -128,12 +124,10 @@ impl Tool for SkillTool {
             if p.is_file() {
                 let content = std::fs::read_to_string(&p)
                     .map_err(|e| ToolSourceError::Transport(format!("read skill: {}", e)))?;
-                return Ok(ToolCallContent {
-                    text: format!(
-                        "<skill_content name=\"{}\">\n{}\n</skill_content>",
-                        name, content
-                    ),
-                });
+                return Ok(ToolCallContent::text(format!(
+                    "<skill_content name=\"{}\">\n{}\n</skill_content>",
+                    name, content
+                )));
             }
         }
         let path = skills_dir.join(name);
@@ -163,11 +157,9 @@ impl Tool for SkillTool {
         let content = std::fs::read_to_string(&path)
             .map_err(|e| ToolSourceError::Transport(format!("read skill: {}", e)))?;
 
-        Ok(ToolCallContent {
-            text: format!(
-                "<skill_content name=\"{}\">\n{}\n</skill_content>",
-                name, content
-            ),
-        })
+        Ok(ToolCallContent::text(format!(
+            "<skill_content name=\"{}\">\n{}\n</skill_content>",
+            name, content
+        )))
     }
 }

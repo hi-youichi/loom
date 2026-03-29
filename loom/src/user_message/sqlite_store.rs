@@ -8,6 +8,7 @@ use tracing::warn;
 
 use crate::memory::uuid6;
 use crate::message::{AssistantPayload, Message};
+use crate::tool_source::ToolCallContent;
 use crate::user_message::{UserMessageStore, UserMessageStoreError};
 
 /// SQLite-backed store: one table `user_messages (id, thread_id, role, content)`.
@@ -46,7 +47,7 @@ fn row_to_message(role: &str, content: &str) -> Message {
                         });
                     return Message::Tool {
                         tool_call_id: id,
-                        content: c.to_string(),
+                        content: ToolCallContent::text(c.to_string()),
                     };
                 }
             }
@@ -56,7 +57,7 @@ fn row_to_message(role: &str, content: &str) -> Message {
             );
             Message::Tool {
                 tool_call_id: format!("call_{}", uuid6()),
-                content: content.to_string(),
+                content: ToolCallContent::text(content.to_string()),
             }
         }
         _ => Message::User(content.to_string()),
@@ -223,7 +224,7 @@ mod tests {
                 content,
             } => {
                 assert!(!tool_call_id.is_empty());
-                assert_eq!(content, "out");
+                assert_eq!(content, &ToolCallContent::text("out"));
             }
             _ => panic!("expected tool"),
         }

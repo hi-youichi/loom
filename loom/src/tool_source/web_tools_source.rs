@@ -208,9 +208,7 @@ mod tests {
             args: serde_json::Value,
             _ctx: Option<&ToolCallContext>,
         ) -> Result<ToolCallContent, ToolSourceError> {
-            Ok(ToolCallContent {
-                text: format!("dummy:{}", args),
-            })
+            Ok(ToolCallContent::text(format!("dummy:{}", args)))
         }
     }
 
@@ -243,7 +241,7 @@ mod tests {
             .call_tool("dummy_tool", serde_json::json!({"x": 1}))
             .await
             .unwrap();
-        assert!(called.text.contains("\"x\":1"));
+        assert!(called.as_text().unwrap().contains("\"x\":1"));
 
         source.set_call_context(Some(ToolCallContext::default()));
         let called_with_ctx = source
@@ -254,6 +252,6 @@ mod tests {
             )
             .await
             .unwrap();
-        assert!(called_with_ctx.text.contains("\"x\":2"));
+        assert!(called_with_ctx.as_text().unwrap().contains("\"x\":2"));
     }
 }

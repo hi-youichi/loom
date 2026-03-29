@@ -8,6 +8,7 @@ use crate::graph::Next;
 use crate::memory::uuid6;
 use crate::message::Message;
 use crate::state::ReActState;
+use crate::tool_source::ToolCallContent;
 use crate::Node;
 
 pub struct ObserveNode {
@@ -91,7 +92,7 @@ impl Node<ReActState> for ObserveNode {
 
             messages.push(Message::Tool {
                 tool_call_id,
-                content: body,
+                content: ToolCallContent::text(body),
             });
         }
         let next_turn = state.turn_count.saturating_add(1);

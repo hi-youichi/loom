@@ -148,9 +148,10 @@ impl Tool for MultieditTool {
             }
             std::fs::write(&path, &new_content)
                 .map_err(|e| ToolSourceError::Transport(format!("failed to write file: {}", e)))?;
-            return Ok(ToolCallContent {
-                text: format!("Created file with {} edit(s).", edits.len()),
-            });
+            return Ok(ToolCallContent::text(format!(
+                "Created file with {} edit(s).",
+                edits.len()
+            )));
         };
 
         for (i, ed) in edits.iter().enumerate() {
@@ -176,9 +177,10 @@ impl Tool for MultieditTool {
         std::fs::write(&path, &content)
             .map_err(|e| ToolSourceError::Transport(format!("failed to write file: {}", e)))?;
 
-        Ok(ToolCallContent {
-            text: format!("Applied {} edit(s) successfully.", edits.len()),
-        })
+        Ok(ToolCallContent::text(format!(
+            "Applied {} edit(s) successfully.",
+            edits.len()
+        )))
     }
 }
 
@@ -353,7 +355,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert!(result.text.contains("Created"));
+        assert!(result.as_text().unwrap().contains("Created"));
         assert_eq!(
             std::fs::read_to_string(dir.path().join("new.txt")).unwrap(),
             "hello"
@@ -374,7 +376,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert!(result.text.contains("Created"));
+        assert!(result.as_text().unwrap().contains("Created"));
         assert_eq!(
             std::fs::read_to_string(dir.path().join("a/b/new.txt")).unwrap(),
             "content"
@@ -457,7 +459,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert!(result.text.contains("Applied"));
+        assert!(result.as_text().unwrap().contains("Applied"));
         assert_eq!(
             std::fs::read_to_string(dir.path().join("f.txt")).unwrap(),
             "A\nb\nC"

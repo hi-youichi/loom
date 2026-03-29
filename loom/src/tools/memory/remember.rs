@@ -33,7 +33,7 @@ pub const TOOL_REMEMBER: &str = "remember";
 ///     "value": "likes coffee"
 /// });
 /// let result = tool.call(args, None).await.unwrap();
-/// assert_eq!(result.text, "ok");
+/// assert_eq!(result.as_text().unwrap(), "ok");
 /// # }
 /// ```
 ///
@@ -123,8 +123,6 @@ impl Tool for RememberTool {
                 crate::memory::StoreError::EmbeddingError(s) => ToolSourceError::Transport(s),
             })?;
 
-        Ok(ToolCallContent {
-            text: "ok".to_string(),
-        })
+        Ok(ToolCallContent::text("ok".to_string(),))
     }
 }

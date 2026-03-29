@@ -9,6 +9,7 @@ use tracing::{debug, info};
 use crate::error::AgentError;
 use crate::llm::LlmClient;
 use crate::message::Message;
+use crate::tool_source::ToolCallContent;
 
 use super::config::CompactionConfig;
 use super::context_window::estimate_tokens;
@@ -85,10 +86,8 @@ pub fn prune(messages: Vec<Message>, config: &CompactionConfig) -> Vec<Message> 
             }
             Some(Message::Tool { tool_call_id, .. }) => {
                 let id = tool_call_id.clone();
-                out[*i] = Message::Tool {
-                    tool_call_id: id,
-                    content: PRUNE_PLACEHOLDER.to_string(),
-                };
+                out[*i] = Message::Tool { tool_call_id: id, content: ToolCallContent::text(PRUNE_PLACEHOLDER.to_string(),
+                ) };
             }
             _ => {}
         }
@@ -184,7 +183,7 @@ fn build_summary_prompt(msgs: &[Message]) -> String {
                     ));
                 }
             }
-            Message::Tool { content, .. } => parts.push(format!("Tool: {}", content)),
+            Message::Tool { content, .. } => parts.push(format!("Tool: {}", content.to_display_string())),
         }
     }
     parts.join("\n")

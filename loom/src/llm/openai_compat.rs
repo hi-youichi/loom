@@ -371,7 +371,7 @@ impl ChatOpenAICompat {
                     content,
                 } => ChatMessageRequest {
                     role: "tool".to_string(),
-                    content: Some(content.clone()),
+                    content: Some(content.to_display_string()),
                     tool_calls: None,
                     tool_call_id: Some(tool_call_id.clone()),
                     reasoning_content: None,

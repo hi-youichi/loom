@@ -124,9 +124,7 @@ impl Tool for EditFileTool {
 
         // No-op: same string means no change; succeed without touching the file.
         if old_string == new_string {
-            return Ok(ToolCallContent {
-                text: "Edit applied successfully (no change).".to_string(),
-            });
+            return Ok(ToolCallContent::text("Edit applied successfully (no change).".to_string(),));
         }
 
         // Create / overwrite the file when oldString is empty (new file semantics).
@@ -140,9 +138,7 @@ impl Tool for EditFileTool {
             }
             std::fs::write(&path, new_string)
                 .map_err(|e| ToolSourceError::Transport(format!("failed to write file: {}", e)))?;
-            return Ok(ToolCallContent {
-                text: "Edit applied successfully.".to_string(),
-            });
+            return Ok(ToolCallContent::text("Edit applied successfully.".to_string(),));
         }
 
         if !path.exists() {
@@ -167,9 +163,7 @@ impl Tool for EditFileTool {
         std::fs::write(&path, &new_content)
             .map_err(|e| ToolSourceError::Transport(format!("failed to write file: {}", e)))?;
 
-        Ok(ToolCallContent {
-            text: "Edit applied successfully.".to_string(),
-        })
+        Ok(ToolCallContent::text("Edit applied successfully.".to_string(),))
     }
 }
 

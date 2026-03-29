@@ -272,6 +272,6 @@ impl Tool for LsTool {
             output.push_str(&format!("\n(truncated: showing first {} files)\n", LIMIT));
         }
 
-        Ok(ToolCallContent { text: output })
+        Ok(ToolCallContent::text(output))
     }
 }
