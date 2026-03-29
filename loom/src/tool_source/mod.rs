@@ -55,6 +55,7 @@ pub use yaml_specs::{load_tool_specs, YamlSpecError, YamlSpecToolSource};
 pub use mcp::{McpSession, McpSessionError, McpToolSource};
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
@@ -110,12 +111,164 @@ impl ToolOutputHint {
 
 /// Result of a single tool call.
 ///
-/// This is the normalized text payload returned to the ReAct runtime after a
-/// tool invocation.
-#[derive(Debug, Clone)]
-pub struct ToolCallContent {
-    /// Result text (e.g. from MCP result.content[].text).
-    pub text: String,
+/// This represents the structured output returned to the ReAct runtime after a
+/// tool invocation. Tools can return text or structured content like file diffs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolCallContent {
+    /// Plain text result (most common case).
+    Text(String),
+    /// File modification shown as a diff.
+    Diff {
+        /// The file path being modified.
+        path: String,
+        /// The original content (None for new files).
+        old_text: Option<String>,
+        /// The new content after modification.
+        new_text: String,
+    },
+}
+
+impl Serialize for ToolCallContent {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            ToolCallContent::Text(t) => t.serialize(serializer),
+            ToolCallContent::Diff { path, old_text, new_text } => {
+                use serde::ser::SerializeStruct;
+                let mut s = serializer.serialize_struct("Diff", 3)?;
+                s.serialize_field("type", "diff")?;
+                s.serialize_field("path", path)?;
+                s.serialize_field("old_text", old_text)?;
+                s.serialize_field("new_text", new_text)?;
+                s.end()
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolCallContent {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::{self, Visitor};
+        
+        struct ToolCallContentVisitor;
+        
+        impl<'de> Visitor<'de> for ToolCallContentVisitor {
+            type Value = ToolCallContent;
+            
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a string or a diff object")
+            }
+            
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(ToolCallContent::Text(value.to_string()))
+            }
+            
+            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(ToolCallContent::Text(value))
+            }
+            
+            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+            where
+                M: de::MapAccess<'de>,
+            {
+                let mut path = None;
+                let mut old_text = None;
+                let mut new_text = None;
+                let mut content_type = None;
+                
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "type" => content_type = Some(map.next_value()?),
+                        "path" => path = Some(map.next_value()?),
+                        "old_text" => old_text = map.next_value()?,
+                        "new_text" => new_text = Some(map.next_value()?),
+                        _ => { let _ = map.next_value::<serde::de::IgnoredAny>()?; }
+                    }
+                }
+                
+                let content_type: String = content_type.ok_or_else(|| de::Error::missing_field("type"))?;
+                if content_type != "diff" {
+                    return Err(de::Error::custom(format!("expected type 'diff', got '{}'", content_type)));
+                }
+                
+                Ok(ToolCallContent::Diff {
+                    path: path.ok_or_else(|| de::Error::missing_field("path"))?,
+                    old_text,
+                    new_text: new_text.ok_or_else(|| de::Error::missing_field("new_text"))?,
+                })
+            }
+        }
+        
+        deserializer.deserialize_any(ToolCallContentVisitor)
+    }
+}
+
+impl ToolCallContent {
+    /// Creates a text content.
+    pub fn text(text: impl Into<String>) -> Self {
+        ToolCallContent::Text(text.into())
+    }
+
+    /// Creates a diff content for a file modification.
+    pub fn diff(path: impl Into<String>, old_text: Option<String>, new_text: impl Into<String>) -> Self {
+        ToolCallContent::Diff {
+            path: path.into(),
+            old_text,
+            new_text: new_text.into(),
+        }
+    }
+
+    /// Returns the text content if this is a Text variant, otherwise None.
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            ToolCallContent::Text(t) => Some(t),
+            _ => None,
+        }
+    }
+
+    /// Converts content to a string representation.
+    /// For Text, returns the text directly.
+    /// For Diff, returns a summary message.
+    pub fn to_display_string(&self) -> String {
+        match self {
+            ToolCallContent::Text(t) => t.clone(),
+            ToolCallContent::Diff { path, .. } => {
+                format!("Modified file: {}", path)
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for ToolCallContent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ToolCallContent::Text(t) => write!(f, "{}", t),
+            ToolCallContent::Diff { path, .. } => write!(f, "Diff({})", path),
+        }
+    }
+}
+
+impl From<String> for ToolCallContent {
+    fn from(s: String) -> Self {
+        ToolCallContent::Text(s)
+    }
+}
+
+impl From<&str> for ToolCallContent {
+    fn from(s: &str) -> Self {
+        ToolCallContent::Text(s.to_string())
+    }
 }
 
 /// Errors from listing or calling tools.
@@ -167,11 +320,16 @@ mod tests {
         };
         assert_eq!(spec.name, "get_time");
         let _ = spec.clone();
-        let content = ToolCallContent {
-            text: "12:00".into(),
-        };
-        assert_eq!(content.text, "12:00");
+        
+        // Test Text variant
+        let content = ToolCallContent::text("12:00");
+        assert_eq!(content.as_text(), Some("12:00"));
         let _ = content.clone();
+        
+        // Test Diff variant
+        let diff = ToolCallContent::diff("test.rs", None, "new content");
+        assert!(diff.as_text().is_none());
+        let _ = diff.clone();
     }
 }
 
