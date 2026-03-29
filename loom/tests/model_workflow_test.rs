@@ -152,7 +152,6 @@ mod tests {
         // This test just verifies the function exists with the correct signature
         // Actual async testing would require a runtime
         use loom::cli_run::run_agent_with_provider;
-        use std::path::PathBuf;
 
         // Verify the function exists
         let _fn_ptr: fn(_, _, _, _) -> _ = run_agent_with_provider;
