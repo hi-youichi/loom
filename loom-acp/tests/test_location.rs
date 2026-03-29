@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use loom_acp::content::{extract_locations, ToolCallLocation};
+    use loom_acp::content::extract_locations;
     use serde_json::json;
     
     #[test]

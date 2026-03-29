@@ -184,7 +184,7 @@ impl Tool for TwitterSearchTool {
             }
 
             match response.text().await {
-                Ok(body) => return Ok(ToolCallContent { text: body }),
+                Ok(body) => return Ok(ToolCallContent::text(body)),
                 Err(e)
                     if is_retryable_reqwest_error(&e) && attempt < TRANSIENT_HTTP_MAX_RETRIES =>
                 {

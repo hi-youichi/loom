@@ -188,7 +188,7 @@ impl Tool for PowerShellTool {
         )
         .await?;
 
-        Ok(ToolCallContent { text })
+        Ok(ToolCallContent::text(text))
     }
 }
 

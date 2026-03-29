@@ -309,14 +309,13 @@ impl Node<ReActState> for ActNode {
                 Ok(content) => {
                     trace!(
                         tool = %tc.name,
-                        result_len = content.text.len(),
-                        result_preview = %truncate_for_log(&content.text, 200),
+                        result_preview = %truncate_for_log(&content.to_display_string(), 200),
                         "Tool returned"
                     );
                     let normalized = normalize_tool_output(
                         &tc.name,
                         &args,
-                        &content.text,
+                        &content.to_display_string(),
                         false,
                         tool_output_hints.get(&tc.name),
                         NormalizationConfig::runtime_default()
@@ -565,14 +564,14 @@ impl Node<ReActState> for ActNode {
                 Ok(content) => {
                     trace!(
                         tool = %tc.name,
-                        result_len = content.text.len(),
-                        result_preview = %truncate_for_log(&content.text, 200),
+                        result_len = content.as_text().unwrap().len(),
+                        result_preview = %truncate_for_log(&content.as_text().unwrap(), 200),
                         "Tool returned"
                     );
                     let normalized = normalize_tool_output(
                         &tc.name,
                         &args,
-                        &content.text,
+                        &content.as_text().unwrap(),
                         false,
                         tool_output_hints.get(&tc.name),
                         NormalizationConfig::runtime_default()

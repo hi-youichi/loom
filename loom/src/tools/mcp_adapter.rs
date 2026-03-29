@@ -215,7 +215,7 @@ mod tests {
             .call_tool("demo_mcp", serde_json::json!({"x":1}))
             .await
             .unwrap();
-        assert_eq!(out.text, "adapter-ok");
+        assert_eq!(out.as_text().unwrap(), "adapter-ok");
 
         let first_spec = tools.into_iter().find(|t| t.name == "demo_mcp").unwrap();
         let adapter = McpToolAdapter::new("demo_mcp".to_string(), first_spec.clone(), mcp);

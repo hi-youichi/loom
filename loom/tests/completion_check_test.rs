@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use loom::agent::react::CompletionCheckNode;
 use loom::graph::{Node, RunContext};
-use loom::llm::{LlmClient, MockLlm};
+use loom::llm::MockLlm;
 use loom::memory::RunnableConfig;
 use loom::message::Message;
 use loom::state::ReActState;

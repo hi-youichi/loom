@@ -68,9 +68,10 @@ impl Tool for TodoReadTool {
         };
         let incomplete = todos.iter().filter(|t| t.status != "completed").count();
         let output = serde_json::to_string_pretty(&todos).unwrap_or_else(|_| "[]".to_string());
-        Ok(ToolCallContent {
-            text: format!("{} todos\n{}", incomplete, output),
-        })
+        Ok(ToolCallContent::text(format!(
+            "{} todos\n{}",
+            incomplete, output
+        )))
     }
 }
 
@@ -114,8 +115,8 @@ mod tests {
         std::env::set_var("LOOM_HOME", dir.path());
         let tool = TodoReadTool::new(Arc::new(dir.path().to_path_buf()));
         let out = tool.call(serde_json::json!({}), None).await.unwrap();
-        assert!(out.text.starts_with("0 todos"));
-        assert!(out.text.contains("[]"));
+        assert!(out.as_text().unwrap().starts_with("0 todos"));
+        assert!(out.as_text().unwrap().contains("[]"));
     }
 
     /// When thread-specific todo file exists with valid JSON, call returns count and list.
@@ -142,8 +143,8 @@ mod tests {
             ..Default::default()
         };
         let out = tool.call(serde_json::json!({}), Some(&ctx)).await.unwrap();
-        assert!(out.text.contains("1 todos"));
-        assert!(out.text.contains("Thread task"));
+        assert!(out.as_text().unwrap().contains("1 todos"));
+        assert!(out.as_text().unwrap().contains("Thread task"));
     }
 
     /// When global todo file exists with valid JSON (no thread_id), call returns count and list.
@@ -163,10 +164,10 @@ mod tests {
         std::fs::write(&path, serde_json::to_string_pretty(&todos).unwrap()).unwrap();
         let tool = TodoReadTool::new(Arc::new(dir.path().to_path_buf()));
         let out = tool.call(serde_json::json!({}), None).await.unwrap();
-        assert!(out.text.contains("1 todos")); // one incomplete
-        assert!(out.text.contains("Task one"));
-        assert!(out.text.contains("Task two"));
-        assert!(out.text.contains("completed"));
+        assert!(out.as_text().unwrap().contains("1 todos")); // one incomplete
+        assert!(out.as_text().unwrap().contains("Task one"));
+        assert!(out.as_text().unwrap().contains("Task two"));
+        assert!(out.as_text().unwrap().contains("completed"));
     }
 
     /// When file exists but is invalid JSON, call returns empty list (default).
@@ -182,7 +183,7 @@ mod tests {
         std::fs::write(&path, "not json").unwrap();
         let tool = TodoReadTool::new(Arc::new(dir.path().to_path_buf()));
         let out = tool.call(serde_json::json!({}), None).await.unwrap();
-        assert!(out.text.starts_with("0 todos"));
-        assert!(out.text.contains("[]"));
+        assert!(out.as_text().unwrap().starts_with("0 todos"));
+        assert!(out.as_text().unwrap().contains("[]"));
     }
 }

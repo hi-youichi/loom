@@ -175,8 +175,6 @@ impl Tool for GlobTool {
         matched.sort();
         matched.dedup();
 
-        Ok(ToolCallContent {
-            text: matched.join("\n"),
-        })
+        Ok(ToolCallContent::text(matched.join("\n"),))
     }
 }

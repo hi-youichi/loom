@@ -27,7 +27,7 @@ async fn multiedit_new_file_with_single_edit() {
         )
         .await
         .unwrap();
-    assert!(result.text.contains("Created"));
+    assert!(result.as_text().unwrap().contains("Created"));
     assert_eq!(
         std::fs::read_to_string(dir.path().join("new.txt")).unwrap(),
         "first line"
@@ -52,7 +52,7 @@ async fn multiedit_existing_file_multiple_edits() {
         )
         .await
         .unwrap();
-    assert!(result.text.contains("Applied"));
+    assert!(result.as_text().unwrap().contains("Applied"));
     assert_eq!(
         std::fs::read_to_string(dir.path().join("f.txt")).unwrap(),
         "A\nb\nC"

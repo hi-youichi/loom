@@ -46,11 +46,11 @@ async fn grep_basic_match_returns_path_and_line() {
 
     let result = grep(&dir, json!({ "pattern": "hello" })).await;
 
-    assert!(result.text.contains("a.txt"), "expected filename in output");
-    assert!(result.text.contains("Line 1"), "expected line number");
-    assert!(result.text.contains("hello world"), "expected matched line");
+    assert!(result.as_text().unwrap().contains("a.txt"), "expected filename in output");
+    assert!(result.as_text().unwrap().contains("Line 1"), "expected line number");
+    assert!(result.as_text().unwrap().contains("hello world"), "expected matched line");
     assert!(
-        !result.text.contains("foo bar"),
+        !result.as_text().unwrap().contains("foo bar"),
         "non-matching line must not appear"
     );
 }
@@ -67,10 +67,10 @@ async fn grep_multiple_lines_in_one_file() {
 
     let result = grep(&dir, json!({ "pattern": r"fn \w+" })).await;
 
-    assert!(result.text.contains("Line 1"));
-    assert!(result.text.contains("Line 2"));
-    assert!(result.text.contains("Line 3"));
-    assert!(result.text.contains("Found 3 matches"));
+    assert!(result.as_text().unwrap().contains("Line 1"));
+    assert!(result.as_text().unwrap().contains("Line 2"));
+    assert!(result.as_text().unwrap().contains("Line 3"));
+    assert!(result.as_text().unwrap().contains("Found 3 matches"));
 }
 
 /// Scenario: pattern matches lines across multiple files; both appear in output.
@@ -83,10 +83,10 @@ async fn grep_matches_in_multiple_files() {
 
     let result = grep(&dir, json!({ "pattern": "needle" })).await;
 
-    assert!(result.text.contains("x.txt"));
-    assert!(result.text.contains("y.txt"));
-    assert!(!result.text.contains("z.txt"));
-    assert!(result.text.contains("Found 2 matches"));
+    assert!(result.as_text().unwrap().contains("x.txt"));
+    assert!(result.as_text().unwrap().contains("y.txt"));
+    assert!(!result.as_text().unwrap().contains("z.txt"));
+    assert!(result.as_text().unwrap().contains("Found 2 matches"));
 }
 
 // ---------------------------------------------------------------------------
@@ -101,7 +101,7 @@ async fn grep_no_match_returns_no_files_found() {
 
     let result = grep(&dir, json!({ "pattern": "xyzzy" })).await;
 
-    assert_eq!(result.text, "No files found");
+    assert_eq!(result.as_text().unwrap(), "No files found");
 }
 
 /// Scenario: working folder is empty; returns "No files found".
@@ -111,7 +111,7 @@ async fn grep_empty_folder_returns_no_files_found() {
 
     let result = grep(&dir, json!({ "pattern": "anything" })).await;
 
-    assert_eq!(result.text, "No files found");
+    assert_eq!(result.as_text().unwrap(), "No files found");
 }
 
 // ---------------------------------------------------------------------------
@@ -192,9 +192,9 @@ async fn grep_include_filter_restricts_to_matching_extension() {
 
     let result = grep(&dir, json!({ "pattern": "search", "include": "*.rs" })).await;
 
-    assert!(result.text.contains("lib.rs"), "lib.rs should match");
+    assert!(result.as_text().unwrap().contains("lib.rs"), "lib.rs should match");
     assert!(
-        !result.text.contains("config.toml"),
+        !result.as_text().unwrap().contains("config.toml"),
         "config.toml must be excluded"
     );
 }
@@ -213,9 +213,9 @@ async fn grep_include_brace_expansion_matches_multiple_extensions() {
     )
     .await;
 
-    assert!(result.text.contains("lib.rs"));
-    assert!(result.text.contains("config.toml"));
-    assert!(!result.text.contains("notes.txt"), "txt must be excluded");
+    assert!(result.as_text().unwrap().contains("lib.rs"));
+    assert!(result.as_text().unwrap().contains("config.toml"));
+    assert!(!result.as_text().unwrap().contains("notes.txt"), "txt must be excluded");
 }
 
 /// Scenario: include pattern that matches nothing returns "No files found".
@@ -226,7 +226,7 @@ async fn grep_include_no_match_returns_no_files_found() {
 
     let result = grep(&dir, json!({ "pattern": "hello", "include": "*.rs" })).await;
 
-    assert_eq!(result.text, "No files found");
+    assert_eq!(result.as_text().unwrap(), "No files found");
 }
 
 /// Scenario: invalid glob in include returns InvalidInput.
@@ -253,9 +253,9 @@ async fn grep_path_restricts_to_subdirectory() {
 
     let result = grep(&dir, json!({ "pattern": "find_me", "path": "src" })).await;
 
-    assert!(result.text.contains("lib.rs"), "src/lib.rs should be found");
+    assert!(result.as_text().unwrap().contains("lib.rs"), "src/lib.rs should be found");
     assert!(
-        !result.text.contains("root.rs"),
+        !result.as_text().unwrap().contains("root.rs"),
         "root.rs is outside path, must be excluded"
     );
 }
@@ -275,10 +275,10 @@ async fn grep_default_path_searches_recursively() {
     let result = grep(&dir, json!({ "pattern": "buried_token" })).await;
 
     assert!(
-        result.text.contains("buried_token"),
+        result.as_text().unwrap().contains("buried_token"),
         "nested file should be found"
     );
-    assert!(result.text.contains("file.txt"));
+    assert!(result.as_text().unwrap().contains("file.txt"));
 }
 
 // ---------------------------------------------------------------------------
@@ -297,9 +297,9 @@ async fn grep_binary_files_are_skipped() {
 
     let result = grep(&dir, json!({ "pattern": "binary_match" })).await;
 
-    assert!(result.text.contains("text.txt"), "text file must appear");
+    assert!(result.as_text().unwrap().contains("text.txt"), "text file must appear");
     assert!(
-        !result.text.contains("data.bin"),
+        !result.as_text().unwrap().contains("data.bin"),
         "binary file must be skipped"
     );
 }
@@ -316,13 +316,13 @@ async fn grep_is_case_sensitive_by_default() {
 
     let lower_result = grep(&dir, json!({ "pattern": "hello world" })).await;
     assert_eq!(
-        lower_result.text, "No files found",
+        lower_result.as_text().unwrap(), "No files found",
         "lowercase should not match uppercase file"
     );
 
     let upper_result = grep(&dir, json!({ "pattern": "Hello World" })).await;
     assert!(
-        upper_result.text.contains("f.txt"),
+        upper_result.as_text().unwrap().contains("f.txt"),
         "exact-case should match"
     );
 }
@@ -335,8 +335,8 @@ async fn grep_inline_case_insensitive_flag_works() {
 
     let result = grep(&dir, json!({ "pattern": "(?i)hello world" })).await;
 
-    assert!(result.text.contains("f.txt"));
-    assert!(result.text.contains("Hello World"));
+    assert!(result.as_text().unwrap().contains("f.txt"));
+    assert!(result.as_text().unwrap().contains("Hello World"));
 }
 
 /// Scenario: anchored regex (^word$) matches full-line content exactly.
@@ -348,14 +348,14 @@ async fn grep_anchored_pattern_matches_exact_line() {
     let result = grep(&dir, json!({ "pattern": "^exact$" })).await;
 
     assert!(
-        result.text.contains("Line 1"),
+        result.as_text().unwrap().contains("Line 1"),
         "line 1 'exact' should match"
     );
     assert!(
-        !result.text.contains("Line 2"),
+        !result.as_text().unwrap().contains("Line 2"),
         "line 2 'exact match' must not match ^exact$"
     );
-    assert!(!result.text.contains("Line 3"));
+    assert!(!result.as_text().unwrap().contains("Line 3"));
 }
 
 // ---------------------------------------------------------------------------
@@ -371,9 +371,9 @@ async fn grep_output_header_shows_match_count() {
     let result = grep(&dir, json!({ "pattern": "hit" })).await;
 
     assert!(
-        result.text.starts_with("Found 2 matches"),
+        result.as_text().unwrap().starts_with("Found 2 matches"),
         "output: {}",
-        result.text
+        result.as_text().unwrap()
     );
 }
 
@@ -388,12 +388,12 @@ async fn grep_results_truncated_at_100_matches() {
     let result = grep(&dir, json!({ "pattern": "match_line_" })).await;
 
     assert!(
-        result.text.contains("Found 100 matches"),
+        result.as_text().unwrap().contains("Found 100 matches"),
         "output: {}",
-        result.text
+        result.as_text().unwrap()
     );
     assert!(
-        result.text.contains("Results are truncated"),
+        result.as_text().unwrap().contains("Results are truncated"),
         "truncation notice missing"
     );
 }
@@ -408,11 +408,11 @@ async fn grep_long_lines_are_truncated() {
     let result = grep(&dir, json!({ "pattern": "START" })).await;
 
     assert!(
-        result.text.contains("..."),
+        result.as_text().unwrap().contains("..."),
         "long line should be truncated with '...'"
     );
     assert!(
-        !result.text.contains("END"),
+        !result.as_text().unwrap().contains("END"),
         "truncated part must not appear"
     );
 }
@@ -434,14 +434,14 @@ async fn grep_gitignore_excludes_listed_file() {
     let result = grep(&dir, json!({ "pattern": "needle" })).await;
 
     assert!(
-        result.text.contains("ok.txt"),
+        result.as_text().unwrap().contains("ok.txt"),
         "non-ignored file must appear; output: {}",
-        result.text
+        result.as_text().unwrap()
     );
     assert!(
-        !result.text.contains("ignored.txt"),
+        !result.as_text().unwrap().contains("ignored.txt"),
         "gitignored file must not be searched; output: {}",
-        result.text
+        result.as_text().unwrap()
     );
 }
 
@@ -458,14 +458,14 @@ async fn grep_gitignore_excludes_directory() {
     let result = grep(&dir, json!({ "pattern": "needle" })).await;
 
     assert!(
-        result.text.contains("public.txt"),
+        result.as_text().unwrap().contains("public.txt"),
         "file outside ignored dir must appear; output: {}",
-        result.text
+        result.as_text().unwrap()
     );
     assert!(
-        !result.text.contains("skip_dir") && !result.text.contains("secret.txt"),
+        !result.as_text().unwrap().contains("skip_dir") && !result.as_text().unwrap().contains("secret.txt"),
         "files under gitignored dir must not be searched; output: {}",
-        result.text
+        result.as_text().unwrap()
     );
 }
 
@@ -479,8 +479,8 @@ async fn grep_dot_ignore_excludes_listed_file() {
 
     let result = grep(&dir, json!({ "pattern": "needle" })).await;
 
-    assert!(result.text.contains("visible.txt"));
-    assert!(!result.text.contains("ignored_by_ignore"));
+    assert!(result.as_text().unwrap().contains("visible.txt"));
+    assert!(!result.as_text().unwrap().contains("ignored_by_ignore"));
 }
 
 // ---------------------------------------------------------------------------
@@ -500,16 +500,16 @@ async fn grep_results_sorted_by_modification_time_desc() {
     let result = grep(&dir, json!({ "pattern": "target" })).await;
 
     let older_pos = result
-        .text
+        .as_text().unwrap()
         .find("older.txt")
         .expect("older.txt must appear");
     let newer_pos = result
-        .text
+        .as_text().unwrap()
         .find("newer.txt")
         .expect("newer.txt must appear");
     assert!(
         newer_pos < older_pos,
         "newer file should appear before older file; output:\n{}",
-        result.text
+        result.as_text().unwrap()
     );
 }

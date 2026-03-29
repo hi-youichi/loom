@@ -314,9 +314,7 @@ impl Tool for ExaWebsearchTool {
             highlights_max_chars: Some(2000),
         };
         let out = exa_search_request(&self.api_key, params).await?;
-        Ok(ToolCallContent {
-            text: format_results(&out, 1500),
-        })
+        Ok(ToolCallContent::text(format_results(&out, 1500),))
     }
 }
 
@@ -390,9 +388,7 @@ impl Tool for ExaCodesearchTool {
             highlights_max_chars: Some(3000),
         };
         let out = exa_search_request(&self.api_key, params).await?;
-        Ok(ToolCallContent {
-            text: format_results(&out, 2000),
-        })
+        Ok(ToolCallContent::text(format_results(&out, 2000),))
     }
 }
 
@@ -603,14 +599,14 @@ mod tests {
             .call(json!({"query":"ok-web","numResults":1}), None)
             .await
             .unwrap();
-        assert!(web_out.text.contains("Web"));
+        assert!(web_out.as_text().unwrap().contains("Web"));
 
         let code = ExaCodesearchTool::new("k".to_string());
         let code_out = code
             .call(json!({"query":"ok-code","numResults":1}), None)
             .await
             .unwrap();
-        assert!(code_out.text.contains("Code"));
+        assert!(code_out.as_text().unwrap().contains("Code"));
 
         let err_params = ExaSearchParams {
             query: "err".to_string(),

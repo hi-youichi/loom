@@ -25,10 +25,10 @@ async fn skill_load_by_name_with_md_extension() {
         .call_tool(TOOL_SKILL, json!({ "name": "foo" }))
         .await
         .unwrap();
-    assert!(result.text.contains("<skill_content"));
-    assert!(result.text.contains("name=\"foo\""));
-    assert!(result.text.contains("# Foo skill"));
-    assert!(result.text.contains("Do something."));
+    assert!(result.as_text().unwrap().contains("<skill_content"));
+    assert!(result.as_text().unwrap().contains("name=\"foo\""));
+    assert!(result.as_text().unwrap().contains("# Foo skill"));
+    assert!(result.as_text().unwrap().contains("Do something."));
 }
 
 #[tokio::test]
@@ -43,7 +43,7 @@ async fn skill_load_by_name_with_txt_extension() {
         .call_tool(TOOL_SKILL, json!({ "name": "bar" }))
         .await
         .unwrap();
-    assert!(result.text.contains("Bar instructions"));
+    assert!(result.as_text().unwrap().contains("Bar instructions"));
 }
 
 #[tokio::test]
@@ -62,7 +62,7 @@ async fn skill_subdir_with_extension() {
         .call_tool(TOOL_SKILL, json!({ "name": "nested/deep" }))
         .await
         .unwrap();
-    assert!(result.text.contains("Nested skill content"));
+    assert!(result.as_text().unwrap().contains("Nested skill content"));
 }
 
 #[tokio::test]

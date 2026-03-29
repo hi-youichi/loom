@@ -105,7 +105,7 @@ impl Tool for ReadOnlyListDirTool {
             .collect();
         names.sort();
         let text = names.join("\n");
-        Ok(ToolCallContent { text })
+        Ok(ToolCallContent::text(text))
     }
 }
 
@@ -158,7 +158,7 @@ impl Tool for ReadOnlyReadFileTool {
         }
         let text = std::fs::read_to_string(&path)
             .map_err(|e| ToolSourceError::Transport(format!("read failed: {}", e)))?;
-        Ok(ToolCallContent { text })
+        Ok(ToolCallContent::text(text))
     }
 }
 

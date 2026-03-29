@@ -108,8 +108,6 @@ impl Tool for WriteFileTool {
         })?;
         std::io::Write::write_all(&mut f, content.as_bytes())
             .map_err(|e| ToolSourceError::Transport(format!("failed to write file: {}", e)))?;
-        Ok(ToolCallContent {
-            text: "ok".to_string(),
-        })
+        Ok(ToolCallContent::text("ok".to_string(),))
     }
 }

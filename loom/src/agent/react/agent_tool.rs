@@ -90,6 +90,6 @@ impl Tool for AgentTool {
             .last_assistant_reply()
             .unwrap_or_else(|| "(no reply)".to_string());
 
-        Ok(ToolCallContent { text: reply })
+        Ok(ToolCallContent::text(reply))
     }
 }

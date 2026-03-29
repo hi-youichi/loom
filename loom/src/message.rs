@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use tracing::warn;
 
 use crate::memory::uuid6;
+use crate::tool_source::ToolCallContent;
 
 /// One function tool call the model requested (aligned with OpenAI `tool_calls[]`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -106,7 +107,7 @@ pub enum Message {
     /// Tool execution result (OpenAI `role: tool`); pairs with a prior assistant `tool_calls` id.
     Tool {
         tool_call_id: String,
-        content: String,
+        content: ToolCallContent,
     },
 }
 
@@ -172,11 +173,11 @@ impl Message {
     }
 
     /// Returns the primary text content (assistant text, user/system string, or tool output body).
-    pub fn content(&self) -> &str {
+    pub fn content(&self) -> Cow<'_, str> {
         match self {
-            Message::System(s) | Message::User(s) => s,
-            Message::Assistant(p) => p.content.as_str(),
-            Message::Tool { content, .. } => content,
+            Message::System(s) | Message::User(s) => Cow::Borrowed(s),
+            Message::Assistant(p) => Cow::Borrowed(p.content.as_str()),
+            Message::Tool { content, .. } => Cow::Owned(content.to_display_string()),
         }
     }
 
@@ -203,7 +204,7 @@ impl Message {
                 content,
             } => (
                 "tool",
-                serde_json::json!({ "tool_call_id": tool_call_id, "content": content }).to_string(),
+                serde_json::json!({ "tool_call_id": tool_call_id, "content": content.to_display_string() }).to_string(),
             ),
         }
     }
@@ -221,7 +222,7 @@ impl Message {
                 let id = format!("call_{}", uuid6());
                 return (
                     "tool",
-                    serde_json::json!({ "tool_call_id": id, "content": content }).to_string(),
+                    serde_json::json!({ "tool_call_id": id, "content": content.to_display_string() }).to_string(),
                 );
             }
         }
@@ -253,7 +254,7 @@ impl std::fmt::Display for Message {
                 f,
                 "tool[{}]: {}",
                 tool_call_id,
-                content.chars().take(200).collect::<String>()
+                content.to_display_string().chars().take(200).collect::<String>()
             ),
             _ => write!(f, "{}: {}", self.role(), self.content()),
         }
@@ -363,7 +364,7 @@ mod tests {
         let long = "x".repeat(300);
         let msg = Message::Tool {
             tool_call_id: "c1".into(),
-            content: long,
+            content: ToolCallContent::text(long),
         };
         let display = msg.to_string();
         assert!(display.starts_with("tool[c1]: "));

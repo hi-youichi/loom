@@ -300,7 +300,7 @@ impl InvokeAgentTool {
             }
         };
 
-        Ok(ToolCallContent { text: reply })
+        Ok(ToolCallContent::text(reply))
     }
 
     /// Invoke multiple agents concurrently with global concurrency limit
@@ -367,7 +367,10 @@ impl InvokeAgentTool {
 
         for (idx, result) in results.into_iter().enumerate() {
             match result {
-                Ok(Ok(content)) => successful.push((idx, content.text)),
+                Ok(Ok(content)) => {
+                    let text = content.as_text().unwrap().to_string();
+                    successful.push((idx, text));
+                }
                 Ok(Err(e)) => {
                     if fail_fast {
                         return Err(ToolSourceError::Transport(format!(
@@ -411,7 +414,7 @@ impl InvokeAgentTool {
             }
         }
 
-        Ok(ToolCallContent { text: output })
+        Ok(ToolCallContent::text(output))
     }
 
     /// Invoke multiple agents asynchronously (fire-and-forget)
@@ -497,13 +500,11 @@ impl InvokeAgentTool {
             });
         }
 
-        Ok(ToolCallContent {
-            text: format!(
-                "Started {} agent(s) in background: {}",
-                agent_names.len(),
-                agent_names.join(", ")
-            ),
-        })
+        Ok(ToolCallContent::text(format!(
+            "Started {} agent(s) in background: {}",
+            agent_names.len(),
+            agent_names.join(", ")
+        )))
     }
 }
 
@@ -576,7 +577,7 @@ async fn invoke_single_agent(
         }
     };
 
-    Ok(ToolCallContent { text: reply })
+    Ok(ToolCallContent::text(reply))
 }
 
 #[cfg(test)]

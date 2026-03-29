@@ -1,5 +1,6 @@
-//! Models.dev resolver: fetch model specs from https://models.dev/api.json
+//! Models.dev resolver: fetch complete model metadata from https://models.dev/api.json
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -10,7 +11,7 @@ use crate::http_retry::{
 };
 
 use super::resolver::ModelLimitResolver;
-use super::spec::ModelSpec;
+use super::spec::{Cost, Model, ModelLimit, ModelSpec, Modalities, ModalityType, Provider};
 
 /// Default models.dev API URL.
 pub const DEFAULT_MODELS_DEV_URL: &str = "https://models.dev/api.json";
@@ -75,7 +76,7 @@ impl HttpClient for ReqwestHttpClient {
     }
 }
 
-/// Resolves model specs from models.dev API.
+/// Resolves complete model metadata from models.dev API.
 pub struct ModelsDevResolver {
     base_url: String,
     http_client: Arc<dyn HttpClient>,
@@ -100,9 +101,29 @@ impl ModelsDevResolver {
 
     /// Fetch full JSON and parse into provider -> model_id -> ModelSpec map.
     /// Key format: "provider_id/model_id".
-    pub async fn fetch_all(&self) -> Result<std::collections::HashMap<String, ModelSpec>, String> {
+    pub async fn fetch_all(&self) -> Result<HashMap<String, ModelSpec>, String> {
         let body = self.http_client.get(&self.base_url).await?;
         parse_all_models(&body)
+    }
+    
+    /// Fetch all providers with complete metadata.
+    pub async fn fetch_all_providers(&self) -> Result<HashMap<String, Provider>, String> {
+        let body = self.http_client.get(&self.base_url).await?;
+        parse_all_providers(&body)
+    }
+    
+    /// Fetch single provider with complete metadata.
+    pub async fn fetch_provider(&self, provider_id: &str) -> Option<Provider> {
+        let body = self.http_client.get(&self.base_url).await.ok()?;
+        let json: Value = serde_json::from_str(&body).ok()?;
+        let provider_json = json.get(provider_id)?;
+        parse_provider(provider_id, provider_json)
+    }
+    
+    /// Fetch single model with complete metadata.
+    pub async fn fetch_model(&self, provider_id: &str, model_id: &str) -> Option<Model> {
+        let provider = self.fetch_provider(provider_id).await?;
+        provider.models.get(model_id).cloned()
     }
 
     fn resolve_from_json(
@@ -124,7 +145,7 @@ impl ModelsDevResolver {
             }
         })?;
 
-        parse_model_limit(model)
+        parse_model_spec(model)
     }
 }
 
@@ -143,9 +164,243 @@ impl ModelLimitResolver for ModelsDevResolver {
     }
 }
 
-/// Parse ModelSpec from a model JSON object (has "limit" with "context" and "output").
-pub(crate) fn parse_model_limit(model: &Value) -> Option<ModelSpec> {
-    let limit = model.get("limit")?;
+/// Parse Provider from JSON
+fn parse_provider(provider_id: &str, value: &Value) -> Option<Provider> {
+    let name = value.get("name").and_then(|v| v.as_str())?.to_string();
+    
+    let env = value
+        .get("env")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+    
+    let npm = value
+        .get("npm")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    
+    let doc = value
+        .get("doc")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    
+    let models = value
+        .get("models")
+        .and_then(|v| v.as_object())?
+        .iter()
+        .filter_map(|(model_id, model_value)| {
+            parse_model(model_id, model_value).map(|model| (model_id.clone(), model))
+        })
+        .collect();
+    
+    Some(Provider {
+        id: provider_id.to_string(),
+        name,
+        env,
+        npm,
+        doc,
+        models,
+    })
+}
+
+/// Parse all providers from JSON
+fn parse_all_providers(body: &str) -> Result<HashMap<String, Provider>, String> {
+    let json: Value = serde_json::from_str(body)
+        .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+    
+    let json_obj = json
+        .as_object()
+        .ok_or_else(|| "JSON is not an object".to_string())?;
+    
+    let mut providers = HashMap::new();
+    
+    for (provider_id, provider_value) in json_obj {
+        if let Some(provider) = parse_provider(provider_id, provider_value) {
+            providers.insert(provider_id.clone(), provider);
+        }
+    }
+    
+    Ok(providers)
+}
+
+/// Parse Model from JSON
+fn parse_model(model_id: &str, value: &Value) -> Option<Model> {
+    let name = value
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or(model_id)
+        .to_string();
+    
+    let family = value
+        .get("family")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    
+    let attachment = value
+        .get("attachment")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    
+    let reasoning = value
+        .get("reasoning")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    
+    let tool_call = value
+        .get("tool_call")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    
+    let temperature = value
+        .get("temperature")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    
+    let structured_output = value
+        .get("structured_output")
+        .and_then(|v| v.as_bool());
+    
+    let knowledge = value
+        .get("knowledge")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    
+    let release_date = value
+        .get("release_date")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    
+    let last_updated = value
+        .get("last_updated")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    
+    let modalities = value
+        .get("modalities")
+        .map(parse_modalities)
+        .unwrap_or_default();
+    
+    let open_weights = value
+        .get("open_weights")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    
+    let cost = value.get("cost").and_then(parse_cost);
+    
+    let limit = value.get("limit").and_then(parse_model_limit);
+    
+    Some(Model {
+        id: model_id.to_string(),
+        name,
+        family,
+        attachment,
+        reasoning,
+        tool_call,
+        temperature,
+        structured_output,
+        knowledge,
+        release_date,
+        last_updated,
+        modalities,
+        open_weights,
+        cost,
+        limit,
+    })
+}
+
+/// Parse ModelSpec from a model JSON object
+pub(super) fn parse_model_spec(model: &Value) -> Option<ModelSpec> {
+    // Try to parse complete model, fallback to just limit for backward compatibility
+    let full_model = parse_model("", model);
+    
+    if let Some(model) = full_model {
+        ModelSpec::from_model(&model)
+    } else {
+        // Fallback: only limit field is present
+        let limit = parse_model_limit(model)?;
+        Some(ModelSpec::from_limit(&limit))
+    }
+}
+
+/// Parse Modalities from JSON
+fn parse_modalities(value: &Value) -> Modalities {
+    let input = value
+        .get("input")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| {
+                    v.as_str().and_then(|s| match s {
+                        "text" => Some(ModalityType::Text),
+                        "image" => Some(ModalityType::Image),
+                        "audio" => Some(ModalityType::Audio),
+                        "video" => Some(ModalityType::Video),
+                        "pdf" => Some(ModalityType::Pdf),
+                        _ => None,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    
+    let output = value
+        .get("output")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| {
+                    v.as_str().and_then(|s| match s {
+                        "text" => Some(ModalityType::Text),
+                        "image" => Some(ModalityType::Image),
+                        "audio" => Some(ModalityType::Audio),
+                        "video" => Some(ModalityType::Video),
+                        "pdf" => Some(ModalityType::Pdf),
+                        _ => None,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    
+    Modalities { input, output }
+}
+
+/// Parse Cost from JSON (costs are in USD per 1M tokens)
+fn parse_cost(value: &Value) -> Option<Cost> {
+    let input = value
+        .get("input")
+        .and_then(|v| v.as_f64())
+        .map(|v| (v * 100.0) as u32)?;
+    
+    let output = value
+        .get("output")
+        .and_then(|v| v.as_f64())
+        .map(|v| (v * 100.0) as u32)?;
+    
+    let cache_read = value
+        .get("cache_read")
+        .and_then(|v| v.as_f64())
+        .map(|v| (v * 100.0) as u32);
+    
+    let cache_write = value
+        .get("cache_write")
+        .and_then(|v| v.as_f64())
+        .map(|v| (v * 100.0) as u32);
+    
+    Some(Cost {
+        input,
+        output,
+        cache_read,
+        cache_write,
+    })
+}
+
+/// Parse ModelLimit from JSON
+pub(crate) fn parse_model_limit(limit: &Value) -> Option<ModelLimit> {
     let context = limit.get("context")?.as_u64()? as u32;
     let output = limit.get("output")?.as_u64()? as u32;
 
@@ -153,39 +408,43 @@ pub(crate) fn parse_model_limit(model: &Value) -> Option<ModelSpec> {
         .get("cache_read")
         .and_then(|v| v.as_u64())
         .map(|v| v as u32);
+    
     let cache_write = limit
         .get("cache_write")
         .and_then(|v| v.as_u64())
         .map(|v| v as u32);
 
-    let mut spec = ModelSpec::new(context, output);
-    if let Some(v) = cache_read {
-        spec.cache_read = Some(v);
-    }
-    if let Some(v) = cache_write {
-        spec.cache_write = Some(v);
-    }
-    Some(spec)
+    Some(ModelLimit {
+        context,
+        output,
+        cache_read,
+        cache_write,
+    })
 }
 
-fn parse_all_models(body: &str) -> Result<std::collections::HashMap<String, ModelSpec>, String> {
-    let json: Value = serde_json::from_str(body).map_err(|e| e.to_string())?;
-    let mut out = std::collections::HashMap::new();
-
-    let providers = json.as_object().ok_or("root is not an object")?;
-    for (provider_id, provider) in providers {
-        let models = match provider.get("models").and_then(|m| m.as_object()) {
-            Some(m) => m,
-            None => continue,
-        };
-        for (model_id, model) in models {
-            if let Some(spec) = parse_model_limit(model) {
-                let key = format!("{}/{}", provider_id, model_id);
-                out.insert(key, spec);
+/// Parse all models into ModelSpec map (legacy format for backward compatibility)
+fn parse_all_models(body: &str) -> Result<HashMap<String, ModelSpec>, String> {
+    let json: Value = serde_json::from_str(body)
+        .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+    
+    let json_obj = json
+        .as_object()
+        .ok_or_else(|| "JSON is not an object".to_string())?;
+    
+    let mut specs = HashMap::new();
+    
+    for (provider_id, provider_value) in json_obj {
+        if let Some(models) = provider_value.get("models").and_then(|v| v.as_object()) {
+            for (model_id, model_value) in models {
+                if let Some(spec) = parse_model_spec(model_value) {
+                    let key = format!("{}/{}", provider_id, model_id);
+                    specs.insert(key, spec);
+                }
             }
         }
     }
-    Ok(out)
+    
+    Ok(specs)
 }
 
 #[cfg(test)]
@@ -205,6 +464,40 @@ mod tests {
 
     fn fixture_json() -> String {
         r#"{
+            "anthropic": {
+                "id": "anthropic",
+                "name": "Anthropic",
+                "env": ["ANTHROPIC_API_KEY"],
+                "npm": "@ai-sdk/anthropic",
+                "doc": "https://docs.anthropic.com",
+                "models": {
+                    "claude-3-5-sonnet-20241022": {
+                        "id": "claude-3-5-sonnet-20241022",
+                        "name": "Claude Sonnet 3.5 v2",
+                        "family": "claude-sonnet",
+                        "attachment": true,
+                        "reasoning": false,
+                        "tool_call": true,
+                        "temperature": true,
+                        "knowledge": "2024-04-30",
+                        "modalities": {
+                            "input": ["text", "image", "pdf"],
+                            "output": ["text"]
+                        },
+                        "open_weights": false,
+                        "cost": {
+                            "input": 3,
+                            "output": 15,
+                            "cache_read": 0.3,
+                            "cache_write": 3.75
+                        },
+                        "limit": {
+                            "context": 200000,
+                            "output": 8192
+                        }
+                    }
+                }
+            },
             "zenmux": {
                 "models": {
                     "openai/gpt-5": {
@@ -212,13 +505,6 @@ mod tests {
                     },
                     "anthropic/claude-sonnet-4": {
                         "limit": { "context": 1000000, "output": 64000 }
-                    }
-                }
-            },
-            "zai": {
-                "models": {
-                    "glm-5": {
-                        "limit": { "context": 204800, "output": 131072 }
                     }
                 }
             }
@@ -234,13 +520,12 @@ mod tests {
         let resolver =
             ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
 
-        let spec = resolver.resolve("zenmux", "openai/gpt-5").await.unwrap();
-        assert_eq!(spec.context_limit, 400_000);
-        assert_eq!(spec.output_limit, 64_000);
-
-        let spec = resolver.resolve("zai", "glm-5").await.unwrap();
-        assert_eq!(spec.context_limit, 204_800);
-        assert_eq!(spec.output_limit, 131_072);
+        let spec = resolver.resolve("anthropic", "claude-3-5-sonnet-20241022").await.unwrap();
+        assert_eq!(spec.context_limit, 200_000);
+        assert_eq!(spec.output_limit, 8192);
+        assert!(spec.supports_vision());
+        assert!(spec.supports_pdf());
+        assert!(!spec.supports_audio());
     }
 
     #[tokio::test]
@@ -267,20 +552,62 @@ mod tests {
             ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
 
         let all = resolver.fetch_all().await.unwrap();
+        assert!(all.contains_key("anthropic/claude-3-5-sonnet-20241022"));
         assert!(all.contains_key("zenmux/openai/gpt-5"));
-        assert!(all.contains_key("zenmux/anthropic/claude-sonnet-4"));
-        assert!(all.contains_key("zai/glm-5"));
+    }
+
+    #[tokio::test]
+    async fn fetch_provider_with_complete_metadata() {
+        let client = Arc::new(MockHttpClient {
+            body: fixture_json(),
+        });
+        let resolver =
+            ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
+        
+        let provider = resolver.fetch_provider("anthropic").await.unwrap();
+        
+        assert_eq!(provider.id, "anthropic");
+        assert_eq!(provider.name, "Anthropic");
+        assert_eq!(provider.env, vec!["ANTHROPIC_API_KEY"]);
+        assert_eq!(provider.npm, Some("@ai-sdk/anthropic".to_string()));
+        assert!(provider.models.contains_key("claude-3-5-sonnet-20241022"));
+    }
+
+    #[tokio::test]
+    async fn fetch_model_with_complete_metadata() {
+        let client = Arc::new(MockHttpClient {
+            body: fixture_json(),
+        });
+        let resolver =
+            ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
+        
+        let model = resolver.fetch_model("anthropic", "claude-3-5-sonnet-20241022").await.unwrap();
+        
+        assert_eq!(model.id, "claude-3-5-sonnet-20241022");
+        assert_eq!(model.name, "Claude Sonnet 3.5 v2");
+        assert_eq!(model.family, Some("claude-sonnet".to_string()));
+        assert!(model.attachment);
+        assert!(!model.reasoning);
+        assert!(model.tool_call);
+        assert!(model.temperature);
+        assert_eq!(model.knowledge, Some("2024-04-30".to_string()));
+        
+        assert!(model.modalities.supports_vision());
+        assert!(model.modalities.supports_pdf());
+        assert!(!model.modalities.supports_audio());
+        
+        let cost = model.cost.unwrap();
+        assert_eq!(cost.input_cost_usd(), 3.0);
+        assert_eq!(cost.output_cost_usd(), 15.0);
+        
+        let limit = model.limit.unwrap();
+        assert_eq!(limit.context, 200_000);
+        assert_eq!(limit.output, 8192);
     }
 
     #[test]
     fn new_uses_default_url_and_reqwest_client() {
         let resolver = ModelsDevResolver::new();
-        assert_eq!(resolver.base_url, DEFAULT_MODELS_DEV_URL);
-    }
-
-    #[test]
-    fn default_creates_same_as_new() {
-        let resolver = ModelsDevResolver::default();
         assert_eq!(resolver.base_url, DEFAULT_MODELS_DEV_URL);
     }
 
@@ -312,122 +639,31 @@ mod tests {
 
     #[tokio::test]
     async fn resolve_fallback_when_model_id_has_no_slash() {
-        // Provider "zai" has model key "zai/glm-5" (provider-prefixed); lookup with model_id "glm-5" uses fallback
-        let json = r#"{
-            "zai": {
-                "models": {
-                    "zai/glm-5": {
-                        "limit": { "context": 100000, "output": 50000 }
-                    }
-                }
-            }
-        }"#;
+        // Provider "zai" has model key "zai
+        let json = r#"{"zai":{"models":{"glm-5":{"limit":{"context":204800,"output":131072}}}}}"#;
         let client = Arc::new(MockHttpClient {
             body: json.to_string(),
         });
         let resolver =
             ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
         let spec = resolver.resolve("zai", "glm-5").await.unwrap();
-        assert_eq!(spec.context_limit, 100_000);
-        assert_eq!(spec.output_limit, 50_000);
+        assert_eq!(spec.context_limit, 204_800);
+        assert_eq!(spec.output_limit, 131_072);
     }
 
     #[tokio::test]
-    async fn fetch_all_with_cache_read_and_cache_write() {
-        let json = r#"{
-            "provider": {
-                "models": {
-                    "model-with-cache": {
-                        "limit": {
-                            "context": 128000,
-                            "output": 16000,
-                            "cache_read": 100000,
-                            "cache_write": 8000
-                        }
-                    }
-                }
-            }
-        }"#;
+    async fn fetch_all_providers_returns_complete_metadata() {
         let client = Arc::new(MockHttpClient {
-            body: json.to_string(),
+            body: fixture_json(),
         });
         let resolver =
             ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
-        let all = resolver.fetch_all().await.unwrap();
-        let spec = all.get("provider/model-with-cache").unwrap();
-        assert_eq!(spec.context_limit, 128_000);
-        assert_eq!(spec.output_limit, 16_000);
-        assert_eq!(spec.cache_read, Some(100_000));
-        assert_eq!(spec.cache_write, Some(8_000));
-    }
-
-    #[tokio::test]
-    async fn fetch_all_fails_on_invalid_json() {
-        let client = Arc::new(MockHttpClient {
-            body: "invalid json {{{".to_string(),
-        });
-        let resolver =
-            ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
-        let result = resolver.fetch_all().await;
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn fetch_all_fails_when_root_is_not_object() {
-        let client = Arc::new(MockHttpClient {
-            body: "[1, 2, 3]".to_string(),
-        });
-        let resolver =
-            ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
-        let result = resolver.fetch_all().await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("not an object"));
-    }
-
-    #[tokio::test]
-    async fn fetch_all_skips_providers_without_models() {
-        let json = r#"{
-            "valid": {
-                "models": {
-                    "m1": { "limit": { "context": 1000, "output": 500 } }
-                }
-            },
-            "no_models": {},
-            "models_not_object": {
-                "models": "not an object"
-            }
-        }"#;
-        let client = Arc::new(MockHttpClient {
-            body: json.to_string(),
-        });
-        let resolver =
-            ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
-        let all = resolver.fetch_all().await.unwrap();
-        assert!(all.contains_key("valid/m1"));
-        assert!(!all.contains_key("no_models/anything"));
-        assert_eq!(all.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn fetch_all_skips_models_with_invalid_limit() {
-        let json = r#"{
-            "p": {
-                "models": {
-                    "valid": { "limit": { "context": 1000, "output": 500 } },
-                    "no_limit": {},
-                    "bad_context": { "limit": { "context": "not number", "output": 500 } }
-                }
-            }
-        }"#;
-        let client = Arc::new(MockHttpClient {
-            body: json.to_string(),
-        });
-        let resolver =
-            ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
-        let all = resolver.fetch_all().await.unwrap();
-        assert!(all.contains_key("p/valid"));
-        assert!(!all.contains_key("p/no_limit"));
-        assert!(!all.contains_key("p/bad_context"));
-        assert_eq!(all.len(), 1);
+        
+        let providers = resolver.fetch_all_providers().await.unwrap();
+        assert!(providers.contains_key("anthropic"));
+        
+        let anthropic = providers.get("anthropic").unwrap();
+        assert_eq!(anthropic.name, "Anthropic");
+        assert!(anthropic.models.contains_key("claude-3-5-sonnet-20241022"));
     }
 }

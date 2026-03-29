@@ -66,7 +66,7 @@ impl LocalFileResolver {
             }
         })?;
 
-        super::models_dev::parse_model_limit(model)
+        super::models_dev::parse_model_spec(model)
     }
 }
 

@@ -26,7 +26,7 @@ async fn apply_patch_add_file() {
         .call_tool(TOOL_APPLY_PATCH, json!({ "patchText": patch }))
         .await
         .unwrap();
-    assert!(result.text.contains("Applied"));
+    assert!(result.as_text().unwrap().contains("Applied"));
     assert_eq!(
         std::fs::read_to_string(dir.path().join("hello.txt")).unwrap(),
         "line one\nline two"
@@ -49,7 +49,7 @@ async fn apply_patch_update_file() {
         .call_tool(TOOL_APPLY_PATCH, json!({ "patchText": patch }))
         .await
         .unwrap();
-    assert!(result.text.contains("Applied"));
+    assert!(result.as_text().unwrap().contains("Applied"));
     assert_eq!(
         std::fs::read_to_string(dir.path().join("f.txt")).unwrap(),
         "NEW\nkeep\nend"
@@ -68,7 +68,7 @@ async fn apply_patch_delete_file() {
         .call_tool(TOOL_APPLY_PATCH, json!({ "patchText": patch }))
         .await
         .unwrap();
-    assert!(result.text.contains("Applied"));
+    assert!(result.as_text().unwrap().contains("Applied"));
     assert!(!dir.path().join("gone.txt").exists());
 }
 

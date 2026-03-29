@@ -33,7 +33,7 @@ pub const TOOL_SEARCH_MEMORIES: &str = "search_memories";
 ///
 /// let search = SearchMemoriesTool::new(store, namespace);
 /// let result = search.call(json!({"query": "drink preference"}), None).await.unwrap();
-/// assert!(result.text.contains("coffee") || result.text.contains("tea"));
+/// assert!(result.as_text().unwrap().contains("coffee") || result.as_text().unwrap().contains("tea"));
 /// # }
 /// ```
 ///
@@ -132,9 +132,7 @@ impl Tool for SearchMemoriesTool {
             })
             .collect();
 
-        Ok(ToolCallContent {
-            text: serde_json::to_string(&arr)
-                .map_err(|e| ToolSourceError::InvalidInput(e.to_string()))?,
-        })
+        Ok(ToolCallContent::text(serde_json::to_string(&arr)
+                .map_err(|e| ToolSourceError::InvalidInput(e.to_string()))?,))
     }
 }

@@ -41,7 +41,7 @@ pub const TOOL_BASH: &str = "bash";
 /// let tool = BashTool::new();
 /// let args = json!({ "command": "echo hello" });
 /// let result = tool.call(args, None).await.unwrap();
-/// assert!(result.text.contains("hello"));
+/// assert!(result.as_text().unwrap().contains("hello"));
 ///
 /// // With working folder
 /// let tool = BashTool::with_working_folder(Arc::new(PathBuf::from("/tmp")));
@@ -198,7 +198,7 @@ impl Tool for BashTool {
             format!("stdout:\n{}\nstderr:\n{}", output.stdout, output.stderr)
         };
 
-        Ok(ToolCallContent { text })
+        Ok(ToolCallContent::text(text))
     }
 }
 

@@ -36,9 +36,7 @@ impl Tool for MockTool {
         _args: serde_json::Value,
         _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        Ok(ToolCallContent {
-            text: self.result.clone(),
-        })
+        Ok(ToolCallContent::text(self.result.clone(),))
     }
 }
 
@@ -57,7 +55,7 @@ async fn tool_registry_register_sync_from_async_context() {
     assert_eq!(tools[0].name, "mock");
 
     let result = registry.call("mock", json!({}), None).await.unwrap();
-    assert_eq!(result.text, "ok");
+    assert_eq!(result.as_text().unwrap(), "ok");
 }
 
 /// **Scenario**: register_async registers tool and list/call work correctly.
@@ -77,5 +75,5 @@ async fn tool_registry_register_async_then_list_and_call() {
     assert_eq!(tools[0].name, "async_mock");
 
     let result = registry.call("async_mock", json!({}), None).await.unwrap();
-    assert_eq!(result.text, "async_ok");
+    assert_eq!(result.as_text().unwrap(), "async_ok");
 }

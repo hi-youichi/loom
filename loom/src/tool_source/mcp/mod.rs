@@ -229,7 +229,7 @@ fn parse_call_tool_result(result: ResultMessage) -> Result<ToolCallContent, Tool
             "no text or structuredContent in tools/call response".into(),
         ));
     }
-    Ok(ToolCallContent { text })
+    Ok(ToolCallContent::text(text))
 }
 
 #[async_trait]
@@ -449,7 +449,7 @@ mod tests {
             }),
         );
         let out = parse_call_tool_result(result).unwrap();
-        assert_eq!(out.text, "line1\nline2");
+        assert_eq!(out.as_text().unwrap(), "line1\nline2");
     }
 
     #[test]
@@ -461,7 +461,7 @@ mod tests {
             }),
         );
         let out = parse_call_tool_result(result).unwrap();
-        assert!(out.text.contains("\"ok\":true"));
+        assert!(out.as_text().unwrap().contains("\"ok\":true"));
     }
 
     #[test]
@@ -579,7 +579,7 @@ mod tests {
             .call_tool("http_tool", serde_json::json!({"q":"x"}))
             .await
             .unwrap();
-        assert_eq!(out.text, "ok-from-http");
+        assert_eq!(out.as_text().unwrap(), "ok-from-http");
         let called = methods.lock().unwrap().clone();
         assert_eq!(
             called,

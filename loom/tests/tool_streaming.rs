@@ -73,9 +73,7 @@ impl Tool for StreamingTool {
             ctx.emit_custom(json!({"phase": "done"}));
         }
 
-        Ok(ToolCallContent {
-            text: format!("Completed {} steps", self.progress_count),
-        })
+        Ok(ToolCallContent::text(format!("Completed {} steps", self.progress_count,)))
     }
 }
 
@@ -135,7 +133,7 @@ async fn streaming_tool_emits_progress_events() {
     // Call the tool
     let result = tool.call(json!({}), Some(&ctx)).await;
     assert!(result.is_ok());
-    assert_eq!(result.unwrap().text, "Completed 5 steps");
+    assert_eq!(result.unwrap().as_text().unwrap(), "Completed 5 steps");
 
     // Verify all events were captured
     let captured = events.lock().unwrap();
@@ -169,7 +167,7 @@ async fn streaming_tool_works_without_context() {
     // Call without context - should work without emitting events
     let result = tool.call(json!({}), None).await;
     assert!(result.is_ok());
-    assert_eq!(result.unwrap().text, "Completed 3 steps");
+    assert_eq!(result.unwrap().as_text().unwrap(), "Completed 3 steps");
 }
 
 /// **Scenario**: StreamingTool works with context but no stream_writer.
@@ -181,7 +179,7 @@ async fn streaming_tool_works_with_context_no_writer() {
     // Call with context but no stream writer - should work without emitting events
     let result = tool.call(json!({}), Some(&ctx)).await;
     assert!(result.is_ok());
-    assert_eq!(result.unwrap().text, "Completed 3 steps");
+    assert_eq!(result.unwrap().as_text().unwrap(), "Completed 3 steps");
 }
 
 /// **Scenario**: AggregateToolSource passes context to registered tools.

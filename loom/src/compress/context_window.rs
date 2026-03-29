@@ -22,7 +22,7 @@ pub fn estimate_tokens(messages: &[Message]) -> u32 {
                         .map(|tc| tc.id.len() + tc.name.len() + tc.arguments.len())
                         .sum::<usize>()
             }
-            Message::Tool { content, .. } => content.len(),
+            Message::Tool { content, .. } => content.to_display_string().len(),
         })
         .sum();
     (total / CHARS_PER_TOKEN as usize) as u32

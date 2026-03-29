@@ -27,9 +27,10 @@ impl ToolSource for DryRunToolSource {
         name: &str,
         _arguments: Value,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        Ok(ToolCallContent {
-            text: format!("(dry run: {} was not executed)", name),
-        })
+        Ok(ToolCallContent::text(format!(
+            "(dry run: {} was not executed)",
+            name
+        )))
     }
 
     async fn call_tool_with_context(
@@ -38,9 +39,10 @@ impl ToolSource for DryRunToolSource {
         _arguments: Value,
         _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        Ok(ToolCallContent {
-            text: format!("(dry run: {} was not executed)", name),
-        })
+        Ok(ToolCallContent::text(format!(
+            "(dry run: {} was not executed)",
+            name
+        )))
     }
 
     fn set_call_context(&self, ctx: Option<ToolCallContext>) {
@@ -66,9 +68,9 @@ mod tests {
             .call_tool("get_time", serde_json::json!({}))
             .await
             .unwrap();
-        assert!(out.text.contains("dry run"));
-        assert!(out.text.contains("get_time"));
-        assert!(out.text.contains("was not executed"));
-        assert!(!out.text.contains("12:00")); // real mock would return time
+        assert!(out.as_text().unwrap().contains("dry run"));
+        assert!(out.as_text().unwrap().contains("get_time"));
+        assert!(out.as_text().unwrap().contains("was not executed"));
+        assert!(!out.as_text().unwrap().contains("12:00")); // real mock would return time
     }
 }

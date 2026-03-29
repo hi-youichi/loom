@@ -64,13 +64,13 @@ async fn memory_tools_source_call_tool_dispatches_to_store() {
         .call_tool(TOOL_REMEMBER, json!({ "key": "k", "value": "v" }))
         .await
         .unwrap();
-    assert_eq!(r.text, "ok");
+    assert_eq!(r.as_text().unwrap(), "ok");
 
     let r = source
         .call_tool(TOOL_RECALL, json!({ "key": "k" }))
         .await
         .unwrap();
-    assert_eq!(r.text, "\"v\"");
+    assert_eq!(r.as_text().unwrap(), "\"v\"");
 }
 
 #[tokio::test]
@@ -88,7 +88,7 @@ async fn memory_tools_source_set_call_context_forwarded_get_recent_messages() {
         .call_tool(TOOL_GET_RECENT_MESSAGES, json!({}))
         .await
         .unwrap();
-    let arr: Vec<serde_json::Value> = serde_json::from_str(&r.text).unwrap();
+    let arr: Vec<serde_json::Value> = serde_json::from_str(&r.as_text().unwrap()).unwrap();
     assert_eq!(arr.len(), 2);
     assert_eq!(arr[0].get("content").and_then(|v| v.as_str()), Some("hi"));
     assert_eq!(
@@ -125,7 +125,7 @@ async fn memory_tools_source_with_vector_store() {
         )
         .await
         .unwrap();
-    let hits: Vec<serde_json::Value> = serde_json::from_str(&r.text).unwrap();
+    let hits: Vec<serde_json::Value> = serde_json::from_str(&r.as_text().unwrap()).unwrap();
     assert!(!hits.is_empty());
     assert!(hits
         .iter()

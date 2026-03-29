@@ -119,7 +119,7 @@ impl Tool for BatchTool {
             text.push_str(&format!("[{}] {}: ", i + 1, name));
             match result {
                 Ok(c) => {
-                    let t = c.text.trim();
+                    let t = c.as_text().unwrap().trim();
                     if t.len() > 500 {
                         let mut end = 500;
                         while end > 0 && !t.is_char_boundary(end) {
@@ -136,6 +136,6 @@ impl Tool for BatchTool {
             }
         }
 
-        Ok(ToolCallContent { text })
+        Ok(ToolCallContent::text(text))
     }
 }

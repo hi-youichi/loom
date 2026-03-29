@@ -71,9 +71,9 @@ mod windows_tests {
         
         // Should contain a path separator (Windows uses backslash)
         assert!(
-            result.text.contains('\\') || result.text.contains(':'),
+            result.as_text().unwrap().contains('\\') || result.as_text().unwrap().contains(':'),
             "Get-Location should return a Windows path: {}",
-            result.text
+            result.as_text().unwrap()
         );
     }
     
@@ -82,7 +82,7 @@ mod windows_tests {
         let tool = PowerShellTool::new();
         let args = json!({ "command": "Write-Output 'hello from ps'" });
         let result = tool.call(args, None).await.unwrap();
-        assert!(result.text.contains("hello from ps"));
+        assert!(result.as_text().unwrap().contains("hello from ps"));
     }
     
     #[tokio::test]
@@ -93,7 +93,7 @@ mod windows_tests {
             "workdir": "C:\\Windows"
         });
         let result = tool.call(args, None).await.unwrap();
-        assert!(result.text.contains("Windows"));
+        assert!(result.as_text().unwrap().contains("Windows"));
     }
     
     #[tokio::test]
@@ -106,7 +106,7 @@ mod windows_tests {
             }
         });
         let result = tool.call(args, None).await.unwrap();
-        assert!(result.text.contains("test_value_123"));
+        assert!(result.as_text().unwrap().contains("test_value_123"));
     }
     
     #[tokio::test]
@@ -118,7 +118,7 @@ mod windows_tests {
         });
         let result = tool.call(args, None).await.unwrap();
         // Should succeed without error
-        assert!(!result.text.to_lowercase().contains("error"));
+        assert!(!result.as_text().unwrap().to_lowercase().contains("error"));
     }
     
     #[tokio::test]
@@ -130,9 +130,9 @@ mod windows_tests {
         let result = tool.call(args, None).await.unwrap();
         // WMI query should return system info
         assert!(
-            result.text.contains(":") || result.text.contains("Name"),
+            result.as_text().unwrap().contains(":") || result.as_text().unwrap().contains("Name"),
             "WMI query should return structured data: {}",
-            &result.text[..100.min(result.text.len())]
+            &result.as_text().unwrap()[..100.min(result.as_text().unwrap().len())]
         );
     }
     
@@ -145,9 +145,9 @@ mod windows_tests {
         let result = tool.call(args, None).await.unwrap();
         // Should contain Windows version info
         assert!(
-            result.text.contains("Windows"),
+            result.as_text().unwrap().contains("Windows"),
             "Registry read should return Windows version: {}",
-            &result.text[..200.min(result.text.len())]
+            &result.as_text().unwrap()[..200.min(result.as_text().unwrap().len())]
         );
     }
     
@@ -160,9 +160,9 @@ mod windows_tests {
         let result = tool.call(args, None).await.unwrap();
         // Should return process table
         assert!(
-            result.text.contains("Name") || result.text.contains("CPU"),
+            result.as_text().unwrap().contains("Name") || result.as_text().unwrap().contains("CPU"),
             "Pipeline should return process list: {}",
-            &result.text[..100.min(result.text.len())]
+            &result.as_text().unwrap()[..100.min(result.as_text().unwrap().len())]
         );
     }
     
@@ -173,7 +173,7 @@ mod windows_tests {
             "command": "$a = 'hello'; $b = 'world'; Write-Output \"$a $b\""
         });
         let result = tool.call(args, None).await.unwrap();
-        assert!(result.text.contains("hello world"));
+        assert!(result.as_text().unwrap().contains("hello world"));
     }
     
     #[tokio::test]
@@ -183,13 +183,13 @@ mod windows_tests {
             "command": "Get-InvalidCmdletThatDoesNotExist123"
         });
         let result = tool.call(args, None).await.expect("tool returns text");
-        let lower = result.text.to_lowercase();
+        let lower = result.as_text().unwrap().to_lowercase();
         assert!(
-            result.text.contains("exited with code")
+            result.as_text().unwrap().contains("exited with code")
                 || lower.contains("not recognized")
                 || lower.contains("not found"),
             "expected cmdlet failure in output: {}",
-            result.text
+            result.as_text().unwrap()
         );
     }
     
@@ -238,9 +238,9 @@ mod windows_tests {
         });
         let result = tool.call(args, None).await.expect("ok");
         assert!(
-            result.text.contains("stderr_line_test"),
+            result.as_text().unwrap().contains("stderr_line_test"),
             "stderr should appear in combined output: {}",
-            result.text
+            result.as_text().unwrap()
         );
     }
     
@@ -256,7 +256,7 @@ mod windows_tests {
         
         // Should handle spaces in path
         if let Ok(output) = result {
-            assert!(output.text.contains("Program Files"));
+            assert!(output.as_text().unwrap().contains("Program Files"));
         }
     }
 }

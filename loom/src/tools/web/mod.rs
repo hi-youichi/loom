@@ -30,7 +30,7 @@ pub const TOOL_WEB_FETCHER: &str = "web_fetcher";
 /// // GET (default)
 /// let args = json!({ "url": "https://example.com/api/data" });
 /// let result = tool.call(args, None).await.unwrap();
-/// assert!(!result.text.is_empty());
+/// assert!(!result.as_text().unwrap().is_empty());
 ///
 /// // POST with JSON body
 /// let args = json!({
@@ -266,7 +266,7 @@ impl Tool for WebFetcherTool {
             }
 
             match response.text().await {
-                Ok(content) => return Ok(ToolCallContent { text: content }),
+                Ok(content) => return Ok(ToolCallContent::text(content)),
                 Err(e)
                     if allow_retry
                         && is_retryable_reqwest_error(&e)

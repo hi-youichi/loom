@@ -280,9 +280,10 @@ impl Tool for ApplyPatchTool {
             }
         }
 
-        Ok(ToolCallContent {
-            text: format!("Applied {} hunk(s) successfully.", applied),
-        })
+        Ok(ToolCallContent::text(format!(
+            "Applied {} hunk(s) successfully.",
+            applied
+        )))
     }
 }
 
@@ -469,7 +470,7 @@ mod tests {
         let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
         let patch = "*** Begin Patch\n*** Add File: hello.txt\n+hello world\n*** End Patch";
         let result = tool.call(json!({"patchText": patch}), None).await.unwrap();
-        assert!(result.text.contains("1 hunk"));
+        assert!(result.as_text().unwrap().contains("1 hunk"));
         assert_eq!(
             std::fs::read_to_string(dir.path().join("hello.txt")).unwrap(),
             "hello world"
@@ -483,7 +484,7 @@ mod tests {
         let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
         let patch = "*** Begin Patch\n*** Delete File: to_delete.txt\n*** End Patch";
         let result = tool.call(json!({"patchText": patch}), None).await.unwrap();
-        assert!(result.text.contains("1 hunk"));
+        assert!(result.as_text().unwrap().contains("1 hunk"));
         assert!(!dir.path().join("to_delete.txt").exists());
     }
 
@@ -495,7 +496,7 @@ mod tests {
         let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
         let patch = "*** Begin Patch\n*** Delete File: subdir\n*** End Patch";
         let result = tool.call(json!({"patchText": patch}), None).await.unwrap();
-        assert!(result.text.contains("1 hunk"));
+        assert!(result.as_text().unwrap().contains("1 hunk"));
         assert!(!dir.path().join("subdir").exists());
     }
 
@@ -514,7 +515,7 @@ mod tests {
  }
 *** End Patch";
         let result = tool.call(json!({"patchText": patch}), None).await.unwrap();
-        assert!(result.text.contains("1 hunk"));
+        assert!(result.as_text().unwrap().contains("1 hunk"));
         let content = std::fs::read_to_string(dir.path().join("main.rs")).unwrap();
         assert!(content.contains("new()"));
         assert!(!content.contains("old()"));
@@ -534,7 +535,7 @@ mod tests {
 +new line
 *** End Patch";
         let result = tool.call(json!({"patchText": patch}), None).await.unwrap();
-        assert!(result.text.contains("1 hunk"));
+        assert!(result.as_text().unwrap().contains("1 hunk"));
         assert!(!dir.path().join("a.txt").exists());
         assert!(dir.path().join("b.txt").exists());
         assert_eq!(
@@ -564,7 +565,7 @@ mod tests {
         let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
         let patch = "*** Begin Patch\n*** Add File: deep/nested/file.txt\n+content\n*** End Patch";
         let result = tool.call(json!({"patchText": patch}), None).await.unwrap();
-        assert!(result.text.contains("1 hunk"));
+        assert!(result.as_text().unwrap().contains("1 hunk"));
         assert!(dir.path().join("deep/nested/file.txt").exists());
     }
 
@@ -595,7 +596,7 @@ mod tests {
 +appended
 *** End Patch";
         let result = tool.call(json!({"patchText": patch}), None).await.unwrap();
-        assert!(result.text.contains("1 hunk"));
+        assert!(result.as_text().unwrap().contains("1 hunk"));
         let content = std::fs::read_to_string(dir.path().join("f.txt")).unwrap();
         assert!(content.contains("existing"));
         assert!(content.contains("appended"));

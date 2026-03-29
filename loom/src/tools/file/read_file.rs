@@ -132,6 +132,6 @@ impl Tool for ReadFileTool {
             };
             out.push_str(&format!("  {}\t{}\n", line_num, truncated));
         }
-        Ok(ToolCallContent { text: out })
+        Ok(ToolCallContent::text(out))
     }
 }

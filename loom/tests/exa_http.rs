@@ -67,5 +67,5 @@ async fn exa_http_call_web_search() {
         .call_tool("web_search_exa", args)
         .await
         .expect("call_tool web_search_exa");
-    assert!(!content.text.is_empty(), "expected non-empty tool result");
+    assert!(!content.as_text().unwrap().is_empty(), "expected non-empty tool result");
 }
