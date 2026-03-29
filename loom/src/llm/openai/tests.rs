@@ -244,19 +244,42 @@ async fn invoke_returns_error_when_choices_missing() {
 }
 
 #[tokio::test]
-#[ignore = "Requires OPENAI_API_KEY; run with: cargo test -p loom invoke_with_real_api -- --ignored"]
-async fn invoke_with_real_api_returns_ok() {
-    std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set for this test");
+async fn invoke_with_mock_api_returns_ok() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let _ = read_http_request(&mut stream).await;
+        let response = serde_json::json!({
+            "id":"chatcmpl-mock",
+            "object":"chat.completion",
+            "created": 1,
+            "model":"gpt-4o-mini",
+            "choices":[
+                {
+                    "index":0,
+                    "message":{
+                        "role":"assistant",
+                        "content":"ok"
+                    },
+                    "finish_reason":"stop"
+                }
+            ],
+            "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}
+        })
+        .to_string();
+        write_http_response(&mut stream, "200 OK", &response).await;
+    });
 
-    let model = std::env::var("MODEL")
-        .or_else(|_| std::env::var("OPENAI_MODEL"))
-        .unwrap_or_else(|_| "gpt-4o-mini".to_string());
-    let client = ChatOpenAI::new(model);
+    let config = OpenAIConfig::new()
+        .with_api_key("test-key")
+        .with_api_base(format!("http://{}", addr));
+    let client = ChatOpenAI::with_config(config, "gpt-4o-mini");
     let messages = [Message::user("Say exactly: ok")];
 
     let result = client.invoke(&messages).await;
 
-    let response = result.expect("invoke with real API should succeed");
+    let response = result.expect("invoke with mock API should succeed");
     assert!(
         !response.content.is_empty() || !response.tool_calls.is_empty(),
         "response should have content or tool_calls"
@@ -264,20 +287,43 @@ async fn invoke_with_real_api_returns_ok() {
 }
 
 #[tokio::test]
-#[ignore = "Requires OPENAI_API_KEY; run with: cargo test -p loom invoke_stream_with_real_api -- --ignored"]
-async fn invoke_stream_with_real_api_returns_ok() {
-    std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set for this test");
+async fn invoke_stream_with_mock_api_returns_ok() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let _ = read_http_request(&mut stream).await;
+        let response = serde_json::json!({
+            "id":"chatcmpl-mock-stream",
+            "object":"chat.completion",
+            "created": 1,
+            "model":"gpt-4o-mini",
+            "choices":[
+                {
+                    "index":0,
+                    "message":{
+                        "role":"assistant",
+                        "content":"ok"
+                    },
+                    "finish_reason":"stop"
+                }
+            ],
+            "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}
+        })
+        .to_string();
+        write_http_response(&mut stream, "200 OK", &response).await;
+    });
 
-    let model = std::env::var("MODEL")
-        .or_else(|_| std::env::var("OPENAI_MODEL"))
-        .unwrap_or_else(|_| "gpt-4o-mini".to_string());
-    let client = ChatOpenAI::new(model);
+    let config = OpenAIConfig::new()
+        .with_api_key("test-key")
+        .with_api_base(format!("http://{}", addr));
+    let client = ChatOpenAI::with_config(config, "gpt-4o-mini");
     let messages = [Message::user("Say exactly: ok")];
     let (tx, mut rx) = mpsc::channel(16);
 
     let result = client.invoke_stream(&messages, Some(tx)).await;
 
-    let response = result.expect("invoke_stream with real API should succeed");
+    let response = result.expect("invoke_stream with mock API should succeed");
     assert!(
         !response.content.is_empty() || !response.tool_calls.is_empty(),
         "response should have content or tool_calls"
@@ -287,5 +333,7 @@ async fn invoke_stream_with_real_api_returns_ok() {
     while rx.try_recv().is_ok() {
         chunks += 1;
     }
+    assert!(chunks > 0, "should receive at least one stream chunk");
+}
     assert!(chunks > 0, "should receive at least one stream chunk");
 }
