@@ -11,11 +11,13 @@ use tokio::sync::Mutex;
 use crate::agent::LoomAgentRunner;
 use crate::config::Settings;
 use crate::download::TeloxideDownloader;
+use crate::error::BotError;
 use crate::model_selection::{
     InMemorySearchSessionStore, ModelCatalog, ModelChoice, ModelSelectionService,
     SqliteModelSelectionStore, StaticModelCatalog,
 };
 use crate::sender::TeloxideSender;
+use crate::metrics::BotMetrics;
 use crate::session::SqliteSessionManager;
 use crate::traits::{AgentRunner, FileDownloader, MessageSender, SessionManager};
 
@@ -66,6 +68,7 @@ pub struct HandlerDeps {
     pub session: Arc<dyn SessionManager>,
     pub downloader: Arc<dyn FileDownloader>,
     pub model_selection: Arc<ModelSelectionService>,
+    pub metrics: Arc<BotMetrics>,
     pub settings: Arc<Settings>,
     pub bot_username: Arc<String>,
     pub run_registry: Arc<ChatRunRegistry>,
@@ -79,7 +82,7 @@ impl HandlerDeps {
         settings: Arc<Settings>,
         bot_username: Arc<String>,
         run_registry: Arc<ChatRunRegistry>,
-    ) -> Self {
+    ) -> Result<Self, BotError> {
         let download_dir = settings.download_dir.clone();
         let model_catalog = build_model_catalog();
         let model_selection = Arc::new(ModelSelectionService::new(
@@ -88,16 +91,17 @@ impl HandlerDeps {
             Arc::new(InMemorySearchSessionStore::new()),
         ));
 
-        Self {
+        Ok(Self {
             sender: Arc::new(TeloxideSender::new(bot.clone())),
-            agent: Arc::new(LoomAgentRunner::new(bot.clone(), (*settings).clone())),
-            session: Arc::new(SqliteSessionManager::new()),
+            agent: Arc::new(LoomAgentRunner::new(bot.clone(), Arc::clone(&settings))),
+            session: Arc::new(SqliteSessionManager::new()?),
             downloader: Arc::new(TeloxideDownloader::new(bot, download_dir)),
             model_selection,
+            metrics: Arc::new(BotMetrics::default()),
             settings,
             bot_username,
             run_registry,
-        }
+        })
 
     }
 
@@ -118,6 +122,7 @@ impl HandlerDeps {
             session,
             downloader,
             model_selection,
+            metrics: Arc::new(BotMetrics::default()),
             settings,
             bot_username,
             run_registry,

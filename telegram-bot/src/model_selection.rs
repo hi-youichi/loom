@@ -5,7 +5,7 @@ use rusqlite::{params, Connection};
 
 use crate::error::BotError;
 
-const SEARCH_PAGE_SIZE: usize = 8;
+use crate::constants::model::SEARCH_PAGE_SIZE;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelChoice {

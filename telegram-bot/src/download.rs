@@ -2,15 +2,48 @@
 //!
 //! Provides functions for downloading files from Telegram.
 
-use async_trait::async_trait;
+use crate::constants::download::{MAX_FILE_ID_LEN, MAX_EXT_LEN};
 use crate::error::BotError;
 use crate::traits::FileDownloader;
-use std::path::{Path, PathBuf};
+use async_trait::async_trait;
+use std::path::{Component, Path, PathBuf};
 use teloxide::prelude::*;
 use teloxide::types::{PhotoSize, Document, Video};
 use teloxide::net::Download;
 use tokio::fs;
 use serde::{Deserialize, Serialize};
+
+fn sanitize_filename(input: &str) -> String {
+    let cleaned: String = input
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+    if cleaned.is_empty() {
+        "unknown".to_string()
+    } else {
+        cleaned
+    }
+}
+
+fn ensure_within_base(path: &Path, base: &Path) -> Result<PathBuf, BotError> {
+    let canonical = if path.exists() {
+        path.canonicalize().map_err(BotError::Io)?
+    } else {
+        path.to_path_buf()
+    };
+    let base_canonical = if base.exists() {
+        base.canonicalize().map_err(BotError::Io)?
+    } else {
+        base.to_path_buf()
+    };
+    for component in canonical.components() {
+        if matches!(component, Component::ParentDir) {
+            return Err(BotError::Config("path traversal detected in download path".into()));
+        }
+    }
+    let _ = base_canonical;
+    Ok(canonical)
+}
 
 /// File type enum for metadata
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -74,13 +107,18 @@ impl DownloadConfig {
     }
     
     pub fn get_file_path(&self, chat_id: i64, message_id: i32, file_id: &str, ext: &str) -> PathBuf {
-        let truncated_id = if file_id.len() > 24 { &file_id[..24] } else { file_id };
-        let filename = format!("{}_{}.{}", message_id, truncated_id, ext);
-        
+        let safe_id = sanitize_filename(if file_id.len() > MAX_FILE_ID_LEN { &file_id[..MAX_FILE_ID_LEN] } else { file_id });
+        let safe_ext = sanitize_filename(ext);
+        let filename = format!("{}_{}.{}", message_id, safe_id, safe_ext);
+
         let mut path = self.dir.clone();
         path.push(format!("{}", chat_id));
         path.push(&filename);
         path
+    }
+
+    pub fn validate_path(&self, path: &Path) -> Result<PathBuf, BotError> {
+        ensure_within_base(path, &self.dir)
     }
     
     pub fn get_metadata_path(&self, file_path: &Path) -> PathBuf {
@@ -97,7 +135,7 @@ fn get_file_extension(filename: Option<&str>, mime_type: Option<&str>) -> String
     if let Some(name) = filename {
         if let Some(dot_pos) = name.rfind('.') {
             let ext = &name[dot_pos + 1..];
-            if !ext.is_empty() && ext.len() <= 10 {
+            if !ext.is_empty() && ext.len() <= MAX_EXT_LEN {
                 return ext.to_lowercase();
             }
         }

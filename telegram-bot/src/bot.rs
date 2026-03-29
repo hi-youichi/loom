@@ -1,7 +1,7 @@
 //! Bot instance management and long polling support
 
 use crate::config::{load_config, BotConfig, Settings, TelegramBotConfig};
-use crate::handler::default_handler;
+use crate::router::default_handler;
 use crate::handler_deps::ChatRunRegistry;
 use std::sync::Arc;
 use std::time::Duration;

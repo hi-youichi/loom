@@ -40,11 +40,11 @@ impl MockSender {
     }
 
     pub fn get_messages(&self) -> Vec<(i64, String)> {
-        self.messages.read().unwrap().clone()
+        self.messages.read().expect("mock messages lock poisoned").clone()
     }
 
     pub fn clear(&self) {
-        self.messages.write().unwrap().clear();
+        self.messages.write().expect("mock messages lock poisoned").clear();
     }
 }
 
@@ -77,7 +77,7 @@ impl crate::traits::MessageSender for MockSender {
             }
         }
         let id = self.next_message_id.fetch_add(1, Ordering::SeqCst);
-        self.messages.write().unwrap().push((chat_id, text.to_string()));
+        self.messages.write().expect("mock messages lock poisoned").push((chat_id, text.to_string()));
         Ok(id)
     }
 
@@ -87,7 +87,7 @@ impl crate::traits::MessageSender for MockSender {
         text: &str,
         _parse_mode: teloxide::types::ParseMode,
     ) -> Result<(), BotError> {
-        self.messages.write().unwrap().push((chat_id, text.to_string()));
+        self.messages.write().expect("mock messages lock poisoned").push((chat_id, text.to_string()));
         Ok(())
     }
 
@@ -99,7 +99,7 @@ impl crate::traits::MessageSender for MockSender {
         let id = self.next_message_id.fetch_add(1, Ordering::SeqCst);
         self.messages
             .write()
-            .unwrap()
+            .expect("mock messages lock poisoned")
             .push((chat_id, msg.plain_text_fallback.clone()));
         Ok(id)
     }
@@ -111,7 +111,7 @@ impl crate::traits::MessageSender for MockSender {
     ) -> Result<(), BotError> {
         self.messages
             .write()
-            .unwrap()
+            .expect("mock messages lock poisoned")
             .push((chat_id, msg.plain_text_fallback.clone()));
         Ok(())
     }
@@ -122,7 +122,7 @@ impl crate::traits::MessageSender for MockSender {
         _reply_to_message_id: i32,
         text: &str,
     ) -> Result<(), BotError> {
-        self.messages.write().unwrap().push((chat_id, text.to_string()));
+        self.messages.write().expect("mock messages lock poisoned").push((chat_id, text.to_string()));
         Ok(())
     }
 
@@ -133,7 +133,7 @@ impl crate::traits::MessageSender for MockSender {
         _message_id: i32,
         text: &str,
     ) -> Result<(), BotError> {
-        self.messages.write().unwrap().push((chat_id, text.to_string()));
+        self.messages.write().expect("mock messages lock poisoned").push((chat_id, text.to_string()));
         Ok(())
     }
 
@@ -145,7 +145,7 @@ impl crate::traits::MessageSender for MockSender {
     ) -> Result<(), BotError> {
         self.messages
             .write()
-            .unwrap()
+            .expect("mock messages lock poisoned")
             .push((chat_id, msg.plain_text_fallback.clone()));
         Ok(())
     }
@@ -156,7 +156,7 @@ impl crate::traits::MessageSender for MockSender {
         _message_id: i32,
         emoji: &str,
     ) -> Result<(), BotError> {
-        self.messages.write().unwrap().push((chat_id, emoji.to_string()));
+        self.messages.write().expect("mock messages lock poisoned").push((chat_id, emoji.to_string()));
         Ok(())
     }
 }
@@ -220,11 +220,11 @@ impl MockAgentRunner {
     }
 
     pub fn get_calls(&self) -> Vec<String> {
-        self.calls.read().unwrap().clone()
+        self.calls.read().expect("mock messages lock poisoned").clone()
     }
 
     pub fn get_contexts(&self) -> Vec<AgentRunContext> {
-        self.contexts.read().unwrap().clone()
+        self.contexts.read().expect("mock messages lock poisoned").clone()
     }
 }
 
@@ -236,8 +236,8 @@ impl crate::traits::AgentRunner for MockAgentRunner {
         chat_id: i64,
         context: AgentRunContext,
     ) -> Result<String, BotError> {
-        self.calls.write().unwrap().push(prompt.to_string());
-        self.contexts.write().unwrap().push(context);
+        self.calls.write().expect("mock messages lock poisoned").push(prompt.to_string());
+        self.contexts.write().expect("mock messages lock poisoned").push(context);
 
         if self.should_fail {
             return Err(BotError::Agent("Mock error".to_string()));
@@ -275,7 +275,7 @@ impl MockSessionManager {
     }
 
     pub fn reset_count(&self) -> usize {
-        *self.reset_calls.read().unwrap()
+        *self.reset_calls.read().expect("mock messages lock poisoned")
     }
 }
 
@@ -288,7 +288,7 @@ impl Default for MockSessionManager {
 #[async_trait]
 impl crate::traits::SessionManager for MockSessionManager {
     async fn reset(&self, _thread_id: &str) -> Result<usize, BotError> {
-        *self.reset_calls.write().unwrap() += 1;
+        *self.reset_calls.write().expect("mock messages lock poisoned") += 1;
         Ok(self.deleted_per_reset)
     }
 

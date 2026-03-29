@@ -1,7 +1,3 @@
-//! Health check module for telegram-bot
-//!
-//! Provides HTTP endpoints for health monitoring and readiness checks.
-
 use axum::{
     Router,
     routing::get,
@@ -14,18 +10,22 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::metrics::BotMetrics;
+
 pub struct HealthState {
     pub is_healthy: AtomicBool,
     pub is_ready: AtomicBool,
     pub start_time: Instant,
+    pub metrics: Arc<BotMetrics>,
 }
 
 impl HealthState {
-    pub fn new() -> Self {
+    pub fn new(metrics: Arc<BotMetrics>) -> Self {
         Self {
             is_healthy: AtomicBool::new(true),
             is_ready: AtomicBool::new(false),
             start_time: Instant::now(),
+            metrics,
         }
     }
 
@@ -42,16 +42,14 @@ impl HealthState {
     }
 }
 
-impl Default for HealthState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-async fn health_check() -> Json<serde_json::Value> {
+async fn health_check(
+    State(state): State<Arc<HealthState>>,
+) -> Json<serde_json::Value> {
+    let metrics = state.metrics.snapshot();
     Json(json!({
         "status": "ok",
         "timestamp": chrono::Utc::now().to_rfc3339(),
+        "metrics": metrics,
     }))
 }
 
@@ -60,11 +58,13 @@ async fn readiness_check(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let is_ready = state.is_ready.load(Ordering::SeqCst);
     let is_healthy = state.is_healthy.load(Ordering::SeqCst);
-    
+
     if is_ready && is_healthy {
+        let metrics = state.metrics.snapshot();
         Ok(Json(json!({
             "ready": true,
             "uptime_secs": state.uptime_secs(),
+            "metrics": metrics,
         })))
     } else {
         Err((
@@ -90,13 +90,13 @@ pub async fn start_health_server(
     port: u16,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let app = create_health_router(state);
-    
+
     let addr = format!("0.0.0.0:{}", port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    
+
     tracing::info!("Health check server listening on {}", addr);
-    
+
     axum::serve(listener, app).await?;
-    
+
     Ok(())
 }

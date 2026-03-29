@@ -32,6 +32,7 @@ pub(crate) enum RetryDecision {
     NonRetryable,
 }
 
+#[cfg(test)]
 pub(crate) fn classify_openai_http_status(status: u16) -> RetryDecision {
     match status {
         429 | 500 | 502 | 503 | 504 => RetryDecision::Retryable,

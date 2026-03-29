@@ -1,6 +1,13 @@
 //! Telegram Bot Multi-Bot Manager
 //!
-//! This module provides support for running multiple Telegram bots with long polling.
+//! Production-grade Telegram bot framework built on [teloxide] with:
+//!
+//! - **Multi-bot support** — run several bots from a single process via long polling
+//! - **Streaming agent** — real-time Think / Act streaming powered by Loom
+//! - **Slash commands** — extensible [`CommandDispatcher`] for `/model`, `/reset`, `/help`
+//! - **Media downloads** — photos, videos, documents with metadata
+//! - **Model selection** — SQLite-backed model catalog with fuzzy search
+//! - **Health & metrics** — axum health endpoint + atomic counters
 //!
 //! # Configuration
 //!
@@ -12,11 +19,11 @@
 //! log_level = "info"
 //!
 //! [bots.assistant]
-//! token = "${TELOXIDE_TOKEN}"  # Environment variable interpolation
+//! token = "${TELOXIDE_TOKEN}"
 //! enabled = true
 //! ```
 //!
-//! # Usage
+//! # Quick start
 //!
 //! ```rust,no_run
 //! use telegram_bot::run_bots;
@@ -27,17 +34,17 @@
 //!     Ok(())
 //! }
 //! ```
-//! 
+//!
+//! [teloxide]: https://github.com/teloxide/teloxide
 
 mod agent;
 mod bot;
 mod command;
 mod config;
+pub(crate) mod constants;
 mod download;
 mod error;
 pub mod formatting;
-mod handler;
-
 mod handler_deps;
 mod health;
 mod metrics;
@@ -70,9 +77,9 @@ pub use config::{
 pub use bot::{run_bots, run_with_config, BotManager};
 pub use error::{BotError, Result};
 pub use health::{create_health_router, start_health_server, HealthState};
-pub use metrics::{create_metrics_middleware, BotMetrics, MetricsSnapshot};
+pub use metrics::{BotMetrics, MetricsSnapshot};
 pub use download::{DownloadConfig, FileMetadata, FileType, TeloxideDownloader};
-pub use handler::default_handler;
+pub use router::default_handler;
 pub use handler_deps::{ChatRunRegistry, HandlerDeps};
 pub use router::handle_message_with_deps;
 pub use streaming::{run_loom_agent_streaming, stream_message_handler, StreamCommand};

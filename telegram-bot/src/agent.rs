@@ -1,5 +1,3 @@
-//! Agent runner implementations
-
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -12,11 +10,11 @@ use crate::traits::{AgentRunContext, AgentRunner, MessageSender};
 
 pub struct LoomAgentRunner {
     bot: Bot,
-    settings: Settings,
+    settings: Arc<Settings>,
 }
 
 impl LoomAgentRunner {
-    pub fn new(bot: Bot, settings: Settings) -> Self {
+    pub fn new(bot: Bot, settings: Arc<Settings>) -> Self {
         Self { bot, settings }
     }
 }

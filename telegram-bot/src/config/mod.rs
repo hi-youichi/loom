@@ -4,11 +4,14 @@
 //! - `$LOOM_HOME/telegram-bot.toml` (primary)
 //! - Supports environment variable interpolation: `${TOKEN}`
 
+mod error;
 mod loader;
 mod telegram;
+mod types;
 
+pub use error::ConfigError;
 pub use loader::{load_config, load_from_path};
-pub use telegram::{
-    AgentConfig, BotConfig, ConfigError, InteractionMode, Settings, StreamingConfig,
+pub use types::{
+    AgentConfig, BotConfig, InteractionMode, Settings, StreamingConfig,
     TelegramBotConfig,
 };

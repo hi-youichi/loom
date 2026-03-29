@@ -137,7 +137,7 @@ impl StreamEventMapper {
                     if node_id == "think" && self.show_think =>
                 {
                     let think_count = {
-                        let mut ps = self.phase_state.write().unwrap();
+                        let mut ps = self.phase_state.write().expect("phase_state lock poisoned");
                         ps.1 += 1;
                         ps.0 = "think".to_string();
                         ps.1
@@ -153,7 +153,7 @@ impl StreamEventMapper {
                     if node_id == "act" && self.show_act =>
                 {
                     let act_count = {
-                        let mut ps = self.phase_state.write().unwrap();
+                        let mut ps = self.phase_state.write().expect("phase_state lock poisoned");
                         ps.2 += 1;
                         ps.0 = "act".to_string();
                         ps.2
@@ -192,7 +192,10 @@ impl StreamEventMapper {
                             );
                         }
                         _ => {
-                            let phase = self.phase_state.read().unwrap().0.clone();
+                            let phase = {
+                                let guard = self.phase_state.read().expect("phase_state lock poisoned");
+                                guard.0.clone()
+                            };
                             match phase.as_str() {
                                 "think" if self.show_think => {
                                     send_stream_command(
@@ -223,7 +226,7 @@ impl StreamEventMapper {
                         let tool_arguments = self
                             .pending_tool_args
                             .write()
-                            .unwrap()
+                            .expect("pending_tool_args lock poisoned")
                             .take_for_start(call_id, name);
                         send_stream_command(
                             &self.tx,
@@ -244,7 +247,7 @@ impl StreamEventMapper {
                     if self.show_act {
                         self.pending_tool_args
                             .write()
-                            .unwrap()
+                            .expect("pending_tool_args lock poisoned")
                             .remember(call_id, name, arguments);
                     }
                 }

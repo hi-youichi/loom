@@ -4,7 +4,6 @@
 
 use serde::Serialize;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 
 #[derive(Debug, Default)]
 pub struct BotMetrics {
@@ -72,13 +71,6 @@ pub struct MetricsSnapshot {
     pub agent_failures: u64,
     pub messages_sent: u64,
     pub messages_edited: u64,
-}
-
-pub fn create_metrics_middleware(metrics: Arc<BotMetrics>) -> impl Fn() + Clone {
-    move || {
-        let m = metrics.clone();
-        m.increment_messages();
-    }
 }
 
 #[cfg(test)]

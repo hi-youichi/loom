@@ -7,17 +7,21 @@ const TELEGRAM_BOT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Load loom config from ~/.loom/config.toml and .env first
-    // This sets environment variables like OPENAI_API_KEY, MODEL, LLM_PROVIDER from config file
-    if let Ok(report) = config::load_and_apply_with_report("loom", None::<&std::path::Path>) {
-        if let Some(p) = &report.dotenv_path {
-            eprintln!("config: .env path={}", p.display());
+    // NOTE: eprintln! used here because tracing is initialized after config loads.
+    match config::load_and_apply_with_report("loom", None::<&std::path::Path>) {
+        Ok(report) => {
+            if let Some(p) = &report.dotenv_path {
+                eprintln!("config: .env path={}", p.display());
+            }
+            if let Some(p) = &report.xdg_path {
+                eprintln!("config: config.toml path={}", p.display());
+            }
+            if let Some(ref provider) = report.active_provider {
+                eprintln!("config: provider={}", provider);
+            }
         }
-        if let Some(p) = &report.xdg_path {
-            eprintln!("config: config.toml path={}", p.display());
-        }
-        if let Some(ref provider) = report.active_provider {
-            eprintln!("config: provider={}", provider);
+        Err(e) => {
+            eprintln!("config: loom global config not found (non-fatal, continuing): {}", e);
         }
     }
 

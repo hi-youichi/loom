@@ -25,7 +25,7 @@ fn preview_text(text: &str) -> String {
     preview.replace('\n', "\\n")
 }
 
-const TELEGRAM_API_RETRIES: u32 = 3;
+use crate::constants::retry::MAX_RETRIES as TELEGRAM_API_RETRIES;
 
 pub struct TeloxideSender {
     bot: Bot,
