@@ -122,18 +122,85 @@ async fn invoke_with_unreachable_base_returns_error() {
 async fn invoke_stream_with_unreachable_base_returns_error() {
     let config = OpenAIConfig::new()
         .with_api_key("test-key")
-        .with_api_base("https://127.0.0.1:1");
+        .with_api_base("http://127.0.0.1:1/v1");
     let client = ChatOpenAI::with_config(config, "gpt-4o-mini");
-    let messages = [Message::user("Hello")];
-    let (tx, _rx) = mpsc::channel(16);
-
-    let result = client.invoke_stream(&messages, Some(tx)).await;
-
-    assert!(
-        result.is_err(),
-        "invoke_stream against unreachable base should return Err"
-    );
+    let (chunk_tx, _chunk_rx) = mpsc::channel(8);
+    let err = client
+        .invoke_stream(&[Message::user("hello")], Some(chunk_tx))
+        .await
+        .err()
+        .unwrap();
+    assert!(err.to_string().contains("OpenAI stream error"));
 }
+
+#[tokio::test]
+async fn invoke_does_not_retry_non_retryable_400_errors() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let mut attempts = 0;
+        if let Ok((mut stream, _)) = listener.accept().await {
+            attempts += 1;
+            let _ = read_http_request(&mut stream).await;
+            write_http_response(
+                &mut stream,
+                "400 Bad Request",
+                r#"{"error":{"message":"messages with role 'tool' must be a response to a preceding message with 'tool_calls'"}}"#,
+            )
+            .await;
+        }
+        attempts
+    });
+
+    let config = OpenAIConfig::new()
+        .with_api_key("test-key")
+        .with_api_base(format!("http://{addr}/v1"));
+    let client = ChatOpenAI::with_config(config, "gpt-4o-mini");
+
+    let err = client.invoke(&[Message::user("hello")]).await.err().unwrap();
+    assert!(err.to_string().contains("OpenAI API error"));
+    assert_eq!(server.await.unwrap(), 1);
+}
+
+#[tokio::test]
+async fn invoke_retries_retryable_500_errors() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let mut attempts = 0;
+        while attempts < 2 {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            attempts += 1;
+            let _ = read_http_request(&mut stream).await;
+            if attempts == 1 {
+                write_http_response(
+                    &mut stream,
+                    "500 Internal Server Error",
+                    r#"{"error":{"message":"temporary upstream failure"}}"#,
+                )
+                .await;
+            } else {
+                write_http_response(
+                    &mut stream,
+                    "200 OK",
+                    r#"{"id":"chatcmpl-test","object":"chat.completion","created":0,"model":"gpt-4o-mini","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#,
+                )
+                .await;
+            }
+        }
+        attempts
+    });
+
+    let config = OpenAIConfig::new()
+        .with_api_key("test-key")
+        .with_api_base(format!("http://{addr}/v1"));
+    let client = ChatOpenAI::with_config(config, "gpt-4o-mini");
+
+    let response = client.invoke(&[Message::user("hello")]).await.unwrap();
+    assert_eq!(response.content, "ok");
+    assert_eq!(server.await.unwrap(), 2);
+}
+
 
 #[tokio::test]
 async fn invoke_stream_with_none_channel_delegates_to_invoke() {

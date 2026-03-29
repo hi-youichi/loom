@@ -10,19 +10,30 @@ use std::path::PathBuf;
 use crate::config::InteractionMode;
 use crate::download::FileMetadata;
 use crate::error::BotError;
+use crate::formatting::FormattedMessage;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AgentRunContext {
     pub user_message_id: Option<i32>,
     pub ack_message_id: Option<i32>,
     pub interaction_mode: InteractionMode,
+    pub model_override: Option<String>,
 }
+
 
 /// Message sending interface
 #[async_trait]
 pub trait MessageSender: Send + Sync {
     /// Send plain text and return the message id for subsequent [`Self::edit_message`] calls.
     async fn send_text_returning_id(&self, chat_id: i64, text: &str) -> Result<i32, BotError>;
+
+    /// Send a pre-formatted message and return the message id for subsequent edits.
+    async fn send_formatted_returning_id(
+        &self,
+        chat_id: i64,
+        msg: &FormattedMessage,
+    ) -> Result<i32, BotError>;
 
     /// Send a plain text message
     async fn send_text(&self, chat_id: i64, text: &str) -> Result<(), BotError> {
@@ -38,7 +49,14 @@ pub trait MessageSender: Send + Sync {
         parse_mode: ParseMode,
     ) -> Result<(), BotError>;
 
-    /// Reply to a specific message
+    /// Send a pre-formatted message with fallback behavior handled by the sender.
+    async fn send_formatted(
+        &self,
+        chat_id: i64,
+        msg: &FormattedMessage,
+    ) -> Result<(), BotError>;
+
+    /// Reply to a specific message using MarkdownV2 formatting.
     async fn reply_to(
         &self,
         chat_id: i64,
@@ -52,6 +70,14 @@ pub trait MessageSender: Send + Sync {
         chat_id: i64,
         message_id: i32,
         text: &str,
+    ) -> Result<(), BotError>;
+
+    /// Edit an existing message using a pre-formatted payload.
+    async fn edit_formatted(
+        &self,
+        chat_id: i64,
+        message_id: i32,
+        msg: &FormattedMessage,
     ) -> Result<(), BotError>;
 
     /// Send a reaction to a message

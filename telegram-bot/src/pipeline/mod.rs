@@ -2,9 +2,13 @@
 //!
 //! Keeps [`crate::router::handle_message_with_deps`] thin by centralizing common-message logic here.
 
-use crate::command::{CommandContext, CommandDispatcher};
+use crate::command::{
+    try_handle_model_command_input, CommandContext, CommandDispatcher,
+};
+
 use crate::config::InteractionMode;
 use crate::download::{is_bot_mentioned, is_reply_to_bot};
+use crate::formatting::FormattedMessage;
 use crate::error::BotError;
 use crate::handler_deps::HandlerDeps;
 use crate::traits::AgentRunContext;
@@ -64,7 +68,13 @@ async fn run_agent_for_chat(ctx: &MessageContext<'_>, prompt: &str) -> Result<()
     let Some(chat_run_guard) = ctx.deps.run_registry.try_acquire(chat_id).await else {
         ctx.deps
             .sender
-            .send_text(chat_id, &ctx.deps.settings.streaming.busy_text)
+            .send_formatted(
+                chat_id,
+                &FormattedMessage::markdown_v2(
+                    ctx.deps.settings.streaming.busy_text.clone(),
+                    ctx.deps.settings.streaming.busy_text.clone(),
+                ),
+            )
             .await?;
         return Ok(());
     };
@@ -84,7 +94,9 @@ async fn run_agent_for_chat(ctx: &MessageContext<'_>, prompt: &str) -> Result<()
                 user_message_id: Some(message_id),
                 ack_message_id: None,
                 interaction_mode: ctx.deps.settings.streaming.interaction_mode,
+                model_override: Some(ctx.deps.model_selection.current_model(chat_id)?),
             },
+
         )
         .await;
 
@@ -97,7 +109,11 @@ async fn run_agent_for_chat(ctx: &MessageContext<'_>, prompt: &str) -> Result<()
                     && (ctx.deps.settings.streaming.show_act_phase
                         || ctx.deps.settings.streaming.show_think_phase);
                 if !skip_final_send {
-                    outbound = ctx.deps.sender.send_text(chat_id, &reply).await;
+                    outbound = ctx
+                        .deps
+                        .sender
+                        .send_formatted(chat_id, &FormattedMessage::markdown_v2(reply.clone(), reply))
+                        .await;
                 }
             }
         }
@@ -106,7 +122,13 @@ async fn run_agent_for_chat(ctx: &MessageContext<'_>, prompt: &str) -> Result<()
             let _ = ctx
                 .deps
                 .sender
-                .send_text(chat_id, &format!("Error: {}", e))
+                .send_formatted(
+                    chat_id,
+                    &FormattedMessage::markdown_v2(
+                        format!("Error: {}", e),
+                        format!("Error: {}", e),
+                    ),
+                )
                 .await;
         }
     }
@@ -186,15 +208,44 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
             return result;
         }
 
-        let should_respond = is_bot_mentioned(ctx.msg, &ctx.deps.bot_username)
-            || is_reply_to_bot(ctx.msg, &ctx.deps.bot_username);
+        if try_handle_model_command_input(&cmd_ctx, text).await? {
+            return Ok(());
+        }
+
+
+        let is_mentioned = is_bot_mentioned(ctx.msg, &ctx.deps.bot_username);
+        let is_reply = is_reply_to_bot(ctx.msg, &ctx.deps.bot_username);
+        let should_respond = is_mentioned || is_reply;
+
+        tracing::debug!(
+            bot_username = %ctx.deps.bot_username,
+            only_respond_when_mentioned = ctx.deps.settings.only_respond_when_mentioned,
+            is_mentioned,
+            is_reply,
+            should_respond,
+            text = %text,
+            "Evaluated message routing"
+        );
 
         if ctx.deps.settings.only_respond_when_mentioned && !should_respond {
-            tracing::debug!("Ignoring message (bot not mentioned and not a reply)");
+            tracing::debug!(
+                bot_username = %ctx.deps.bot_username,
+                only_respond_when_mentioned = ctx.deps.settings.only_respond_when_mentioned,
+                is_mentioned,
+                is_reply,
+                text = %text,
+                "Ignoring message (bot not mentioned and not a reply)"
+            );
             return Ok(());
         }
 
         let clean_text = strip_bot_mention(text, &ctx.deps.bot_username);
+        tracing::debug!(
+            original_text = %text,
+            clean_text = %clean_text,
+            is_reply,
+            "Prepared clean text for agent"
+        );
         let prompt = build_prompt_with_reply(ctx.msg, &clean_text);
         tracing::info!("Agent prompt:\n{}", prompt);
 

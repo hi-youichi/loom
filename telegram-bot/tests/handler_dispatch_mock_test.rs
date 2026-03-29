@@ -15,9 +15,21 @@ use telegram_bot::{
         ErrorSessionManager, FakeFileDownloader, MockAgentRunner, MockSender, MockSessionManager,
         StubFileDownloader,
     },
-    AgentRunner, ChatRunRegistry, FileDownloader, HandlerDeps, InteractionMode, MessageSender,
-    SessionManager, Settings, StreamingConfig,
+    AgentRunner, ChatRunRegistry, FileDownloader, HandlerDeps, InMemorySearchSessionStore,
+    InteractionMode, MessageSender, ModelChoice, ModelSelectionService, SessionManager, Settings,
+    SqliteModelSelectionStore, StaticModelCatalog, StreamingConfig,
 };
+
+fn model_selection_for_test() -> Arc<ModelSelectionService> {
+    Arc::new(ModelSelectionService::new(
+        Arc::new(StaticModelCatalog::new(
+            "gpt-5.4",
+            vec![ModelChoice::new("gpt-5.4")],
+        )),
+        Arc::new(SqliteModelSelectionStore::new()),
+        Arc::new(InMemorySearchSessionStore::new()),
+    ))
+}
 
 fn make_deps(
     sender: Arc<dyn MessageSender>,
@@ -32,6 +44,7 @@ fn make_deps(
         agent,
         session,
         downloader,
+        model_selection_for_test(),
         settings,
         bot_username,
         Arc::new(ChatRunRegistry::new()),

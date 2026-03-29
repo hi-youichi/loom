@@ -21,7 +21,7 @@ thiserror = { workspace = true }
 anyhow = "1.0"
 chrono = "0.4"
 rusqlite = { version = "0.31", features = ["bundled"] }
-config = { path = "../config" }
+config = { path = "../config", features = ["tracing-init"] }
 loom = { path = "../loom" }
 axum = "0.7"
 tokio-util = "0.7"

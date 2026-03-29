@@ -25,6 +25,7 @@ pub async fn run_loom_agent_streaming(
 
     let (tx, rx) = mpsc::channel::<StreamCommand>(100);
 
+    let model_for_run = context.model_override.clone();
     let handler_sender = sender.clone();
     let handler_settings = settings.streaming.clone();
     let handler_task = tokio::spawn(async move {
@@ -48,7 +49,7 @@ pub async fn run_loom_agent_streaming(
         got_adaptive: false,
         display_max_len: 2000,
         output_json: false,
-        model: None,
+        model: model_for_run,
         provider: None,
         base_url: None,
         api_key: None,
@@ -58,6 +59,7 @@ pub async fn run_loom_agent_streaming(
         output_timestamp: false,
         dry_run: false,
     };
+
 
     let mapper = StreamEventMapper::new(
         tx.clone(),

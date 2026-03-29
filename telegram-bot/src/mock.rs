@@ -12,8 +12,10 @@ use teloxide::types::{Document, PhotoSize, Video};
 
 use crate::download::{FileMetadata, FileType};
 use crate::error::BotError;
+use crate::formatting::FormattedMessage;
 use crate::traits::FileDownloader;
 use crate::traits::{AgentRunContext, MessageSender};
+
 
 /// Mock Message Sender
 pub struct MockSender {
@@ -89,6 +91,31 @@ impl crate::traits::MessageSender for MockSender {
         Ok(())
     }
 
+    async fn send_formatted_returning_id(
+        &self,
+        chat_id: i64,
+        msg: &FormattedMessage,
+    ) -> Result<i32, BotError> {
+        let id = self.next_message_id.fetch_add(1, Ordering::SeqCst);
+        self.messages
+            .write()
+            .unwrap()
+            .push((chat_id, msg.plain_text_fallback.clone()));
+        Ok(id)
+    }
+
+    async fn send_formatted(
+        &self,
+        chat_id: i64,
+        msg: &FormattedMessage,
+    ) -> Result<(), BotError> {
+        self.messages
+            .write()
+            .unwrap()
+            .push((chat_id, msg.plain_text_fallback.clone()));
+        Ok(())
+    }
+
     async fn reply_to(
         &self,
         chat_id: i64,
@@ -99,6 +126,7 @@ impl crate::traits::MessageSender for MockSender {
         Ok(())
     }
 
+
     async fn edit_message(
         &self,
         chat_id: i64,
@@ -106,6 +134,19 @@ impl crate::traits::MessageSender for MockSender {
         text: &str,
     ) -> Result<(), BotError> {
         self.messages.write().unwrap().push((chat_id, text.to_string()));
+        Ok(())
+    }
+
+    async fn edit_formatted(
+        &self,
+        chat_id: i64,
+        _message_id: i32,
+        msg: &FormattedMessage,
+    ) -> Result<(), BotError> {
+        self.messages
+            .write()
+            .unwrap()
+            .push((chat_id, msg.plain_text_fallback.clone()));
         Ok(())
     }
 
