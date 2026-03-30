@@ -13,7 +13,7 @@ use super::error::BuildRunnerError;
 /// Extract model configuration from ReactBuildConfig into a ModelEntry.
 ///
 /// Priority (highest to lowest):
-/// 1. ReactBuildConfig fields (credentials, model, provider, openai_tool_choice, openai_temperature)
+/// 1. ReactBuildConfig fields (credentials, model, provider, openai_temperature)
 /// 2. Environment variables for any unset fields above (including `OPENAI_TEMPERATURE`)
 /// 3. Default values
 pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<ModelEntry, BuildRunnerError> {
@@ -57,25 +57,6 @@ pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<Model
         _ => "openai".to_string(),
     };
 
-    let tool_choice = match config
-        .openai_tool_choice
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        Some(s) => match s.parse::<crate::llm::ToolChoiceMode>() {
-            Ok(m) => Some(m),
-            Err(_) => {
-                tracing::warn!(
-                    value = %s,
-                    "ignoring invalid OPENAI_TOOL_CHOICE (use auto, none, or required)"
-                );
-                None
-            }
-        },
-        None => None,
-    };
-
     let temperature = config
         .openai_temperature
         .clone()
@@ -104,7 +85,7 @@ pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<Model
         provider_type,
         temperature,
         max_tokens: None,
-        tool_choice,
+        tool_choice: None,
     })
 }
 

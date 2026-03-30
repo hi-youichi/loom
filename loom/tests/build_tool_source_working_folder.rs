@@ -34,7 +34,6 @@ async fn build_tool_source_with_working_folder_includes_file_tools() {
         openai_base_url: None,
         model: None,
         llm_provider: None,
-        openai_tool_choice: None,
         openai_temperature: None,
         embedding_api_key: None,
         embedding_base_url: None,

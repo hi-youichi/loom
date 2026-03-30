@@ -335,5 +335,3 @@ async fn invoke_stream_with_mock_api_returns_ok() {
     }
     assert!(chunks > 0, "should receive at least one stream chunk");
 }
-    assert!(chunks > 0, "should receive at least one stream chunk");
-}
