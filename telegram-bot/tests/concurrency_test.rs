@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use telegram_bot::{
     mock::MockSender,
-    stream_message_handler_simple, InteractionMode, StreamCommand, StreamingConfig,
+    stream_message_handler_simple, StreamCommand, StreamingConfig,
 };
 
 fn test_config() -> StreamingConfig {

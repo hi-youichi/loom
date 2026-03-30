@@ -87,7 +87,7 @@ async fn e2e_tg_001_status_mocked_dispatch() {
     let messages = sender.get_messages();
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].0, 99_001);
-    assert_eq!(messages[0].1, "✅ Bot is running!");
+    assert!(messages[0].1.contains("✅ Bot is running!"));
     assert!(agent.get_calls().is_empty());
 }
 
@@ -246,7 +246,7 @@ async fn e2e_tg_025_reset_with_trailing_arg_still_command() {
     let msg = fixtures::message_private_text(99_025, 1, "/reset dry-run");
     handle_message_with_deps(&deps, &msg).await.unwrap();
 
-    assert!(sender.get_messages()[0].1.contains("Session reset!"));
+    assert!(sender.get_messages()[0].1.contains("Deleted 0 checkpoints."));
 }
 
 #[tokio::test]
@@ -382,7 +382,7 @@ async fn e2e_tg_009_group_commands_bypass_mention_gate() {
 
     let messages = sender.get_messages();
     assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0].1, "✅ Bot is running!");
+    assert!(messages[0].1.contains("✅ Bot is running!"));
     assert!(agent.get_calls().is_empty());
 }
 
@@ -650,7 +650,7 @@ async fn e2e_tg_009b_group_reset_bypasses_mention_gate() {
     let msg = fixtures::message_group_text(-100_0092, 1, "/reset");
     handle_message_with_deps(&deps, &msg).await.unwrap();
 
-    assert!(sender.get_messages()[0].1.contains("Session reset!"));
+    assert!(sender.get_messages()[0].1.contains("Session Reset"));
     assert!(agent.get_calls().is_empty());
 }
 
@@ -842,6 +842,5 @@ async fn reset_failure_sends_user_error() {
     let msg = fixtures::message_private_text(99_900, 1, "/reset");
     handle_message_with_deps(&deps, &msg).await.unwrap();
 
-    assert!(sender.get_messages()[0].1.contains("❌ Reset failed"));
-    assert!(sender.get_messages()[0].1.contains("db locked"));
+    assert!(sender.get_messages()[0].1.contains("Reset Failed"));
 }

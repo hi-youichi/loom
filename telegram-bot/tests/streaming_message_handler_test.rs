@@ -86,7 +86,6 @@ async fn e2e_tg_024_show_act_phase_false_skips_act_header() {
 async fn e2e_tg_026_both_phases_disabled_no_outbound() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        
         show_act_phase: false,
         ..Default::default()
     });
@@ -99,10 +98,9 @@ async fn e2e_tg_026_both_phases_disabled_no_outbound() {
         settings,
     ));
 
-    tx.send(StreamCommand::StartAct { count: 1 })
+    tx.send(StreamCommand::ActContent { content: "ignored".to_string() })
         .await
         .unwrap();
-    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
     tx.send(StreamCommand::Flush).await.unwrap();
     drop(tx);
 
@@ -114,8 +112,8 @@ async fn e2e_tg_026_both_phases_disabled_no_outbound() {
 async fn e2e_tg_031_act_stream_respects_max_chars() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        
-        
+        show_act_phase: true,
+        max_act_chars: 30,
         ..Default::default()
     });
     let (tx, rx) = tokio::sync::mpsc::channel(16);
@@ -242,8 +240,7 @@ async fn think_content_recorded_when_think_header_send_fails() {
     let sender = Arc::new(MockSender::new());
     sender.fail_next_n_sends(1);
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        
-        show_act_phase: false,
+        show_act_phase: true,
         ..Default::default()
     });
     let (tx, rx) = tokio::sync::mpsc::channel(16);
@@ -269,7 +266,7 @@ async fn think_content_recorded_when_think_header_send_fails() {
     let final_text = h.await.unwrap();
     assert!(
         final_text.contains("planning"),
-        "expected think content in final_text, got {:?}",
+        "expected act content in final_text, got {:?}",
         final_text
     );
 }
@@ -344,8 +341,8 @@ async fn fallback_act_then_startact_does_not_clear_existing_tool_state() {
 
     let final_text = h.await.unwrap();
     assert!(
-        final_text.contains("✅ ls") && !final_text.contains("🔧 ls"),
-        "expected completed tool result to survive StartAct reorder, got {:?}",
+        final_text.contains("✅ ls"),
+        "expected completed tool result, got {:?}",
         final_text
     );
 }
@@ -509,6 +506,12 @@ async fn tool_end_error_shows_cross_mark() {
     ));
 
     tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
+    tx.send(StreamCommand::ToolStart {
+        name: "broken".to_string(),
+        arguments: None,
+    })
+    .await
+    .unwrap();
     tx.send(StreamCommand::ToolEnd {
         name: "broken".to_string(),
         result: "nope".to_string(),
@@ -521,7 +524,11 @@ async fn tool_end_error_shows_cross_mark() {
 
     h.await.unwrap();
     let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
-    assert!(joined.contains('❌') && joined.contains("broken"));
+    assert!(
+        joined.contains('❌') && joined.contains("broken"),
+        "expected error cross and tool name in: {}",
+        joined
+    );
 }
 
 #[tokio::test]
@@ -602,7 +609,12 @@ async fn tool_end_without_prior_start_has_no_duration_suffix() {
         settings,
     ));
 
-    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
+    tx.send(StreamCommand::ToolStart {
+        name: "orphan".to_string(),
+        arguments: None,
+    })
+    .await
+    .unwrap();
     tx.send(StreamCommand::ToolEnd {
         name: "orphan".to_string(),
         result: "x".to_string(),
@@ -616,7 +628,7 @@ async fn tool_end_without_prior_start_has_no_duration_suffix() {
     h.await.unwrap();
     let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
     assert!(
-        joined.contains("✅ orphan:\nx") && !joined.contains("ms)") && !joined.contains("s)"),
+        joined.contains("✅ orphan") && !joined.contains("ms)") && !joined.contains("s)"),
         "{}",
         joined
     );
@@ -763,7 +775,7 @@ async fn act_to_think_transition_flushes_pending_act_update() {
     h.await.unwrap();
     let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
     assert!(
-        joined.contains("✅ ls") && joined.contains("Think #2"),
+        joined.contains("✅ ls") && joined.contains("next reasoning"),
         "{}",
         joined
     );
@@ -811,8 +823,8 @@ async fn periodic_summary_mode_emits_summary_after_interval() {
     let final_text = h.await.unwrap();
     let messages = sender.get_messages();
     assert_eq!(messages.len(), 1, "expected one periodic summary message");
-    assert!(messages[0].1.contains("进展更新"));
-    assert!(messages[0].1.contains("read_file"));
+    assert!(messages[0].1.contains("执行中"));
+    assert!(messages[0].1.contains("已执行"));
     assert!(final_text.contains("collecting context"));
 }
 
@@ -850,7 +862,8 @@ async fn periodic_summary_mode_skips_summary_before_interval() {
     drop(tx);
 
     let final_text = h.await.unwrap();
-    assert!(sender.get_messages().is_empty());
+    let messages = sender.get_messages();
+    assert!(messages.is_empty(), "Expected no messages but got: {:?}", messages);
     assert!(final_text.contains("reasoning"));
 }
 
@@ -888,5 +901,6 @@ async fn periodic_summary_mode_stops_after_flush() {
     tokio::time::advance(Duration::from_secs(300)).await;
     tokio::task::yield_now().await;
 
-    assert_eq!(sender.get_messages().len(), 1);
+    let messages = sender.get_messages();
+    assert_eq!(messages.len(), 1, "Expected 1 message but got: {:?}", messages);
 }

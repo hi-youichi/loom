@@ -62,6 +62,8 @@ pub struct MessageState {
     settings: StreamingConfig,
     final_text: String,
     summary_count: u32,
+    // Tracks if we've received a canonical StartAct (not from fallback mode)
+    has_received_canonical_start_act: bool,
 }
 
 impl MessageState {
@@ -80,6 +82,7 @@ impl MessageState {
             settings,
             final_text: String::new(),
             summary_count: 0,
+            has_received_canonical_start_act: false,
         }
     }
 
@@ -162,11 +165,19 @@ async fn handle_streaming_command(
         StreamCommand::StartAct { count } => {
             tracing::debug!(chat_id, count, previous_phase = %state.phase, "Received StartAct command");
 
+            // If we've already received a canonical StartAct and are in Acting phase,
+            // this is a new act cycle - flush pending updates and finalize previous content
+            if state.has_received_canonical_start_act && state.phase == Phase::Acting {
+                edit_act_message_if_possible(sender, chat_id, state.msg_id, state).await;
+                finalize_text(state);
+                state.tools.clear();
+                state.tool_start_times.clear();
+            }
+
             state.phase = Phase::Acting;
             state.act_count = Some(count);
-            state.tools.clear();
             state.act_text.clear();
-            state.tool_start_times.clear();
+            state.has_received_canonical_start_act = true;
 
             let header = format!("{} Act #{}\n\n", state.settings.act_emoji, count);
             match sender
@@ -230,14 +241,19 @@ async fn handle_streaming_command(
                 if let Some(idx) = state.tools.iter().position(|line| is_inflight_tool_line(line, &name)) {
                     if let Some(existing_line) = state.tools.get(idx) {
                         if let Some(existing_args) = extract_inflight_tool_arguments(existing_line, &name) {
-                            let final_line = if existing_args.is_empty() {
-                                result_line.clone()
+                            let final_line = if is_error {
+                                format!("❌ {} {}   ❌ → {}", name, existing_args, result_preview)
                             } else {
-                                format!("{} {}", existing_args, result_line)
+                                format!("✅ {} {}   ✅ → {}", name, existing_args, result_preview)
                             };
                             state.tools[idx] = final_line;
                         } else {
-                            state.tools.push(result_line);
+                            let final_line = if is_error {
+                                format!("❌ {}   ❌ → {}", name, result_preview)
+                            } else {
+                                format!("✅ {}   ✅ → {}", name, result_preview)
+                            };
+                            state.tools[idx] = final_line;
                         }
                     }
                 } else {
@@ -344,9 +360,8 @@ async fn handle_periodic_command(cmd: StreamCommand, chat_id: i64, state: &mut M
             tracing::debug!(chat_id, count, previous_phase = %state.phase, "Received StartAct in periodic mode");
             state.phase = Phase::Acting;
             state.act_count = Some(count);
-            state.tools.clear();
             state.act_text.clear();
-            state.tool_start_times.clear();
+            state.has_received_canonical_start_act = true;
             state.last_update = Instant::now();
         }
 
@@ -443,8 +458,10 @@ pub async fn stream_message_handler_with_context(
     let interaction_mode = settings.interaction_mode;
 
     if interaction_mode == InteractionMode::PeriodicSummary {
-        let mut tick = interval(Duration::from_millis(settings.periodic_summary_ms));
+        let interval_ms = settings.summary_interval_secs * 1000;
+        let mut tick = interval(Duration::from_millis(interval_ms));
         tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        tick.reset(); // Reset to avoid immediate first tick
         let mut rx = rx;
 
         loop {

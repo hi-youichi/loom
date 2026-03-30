@@ -80,7 +80,14 @@ pub async fn run_loom_agent_streaming(
     let final_text = handler_task.await.unwrap_or_default();
 
     match completion {
-        RunCompletion::Finished(_) => Ok(final_text),
+        RunCompletion::Finished(agent_result) => {
+            let text = if final_text.trim().is_empty() {
+                agent_result.reply
+            } else {
+                final_text
+            };
+            Ok(text)
+        }
         RunCompletion::Cancelled => Err(BotError::Agent("Agent run was cancelled".to_string())),
     }
 }
