@@ -1,5 +1,7 @@
 use async_trait::async_trait;
 
+use serde_json::Value;
+
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 
 /// Represents a single tool that can be called by the LLM.
@@ -38,9 +40,7 @@ use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, Tool
 ///         args: Value,
 ///         _ctx: Option<&ToolCallContext>,
 ///     ) -> Result<ToolCallContent, ToolSourceError> {
-///         Ok(ToolCallContent {
-///             text: "tool executed".to_string(),
-///         })
+///         Ok(ToolCallContent::Text("tool executed".to_string()))
 ///     }
 /// }
 /// ```
@@ -94,7 +94,9 @@ pub trait Tool: Send + Sync {
     /// - Context is provided by ActNode via ToolCallContext before tool calls
     async fn call(
         &self,
-        args: serde_json::Value,
-        ctx: Option<&ToolCallContext>,
-    ) -> Result<ToolCallContent, ToolSourceError>;
+        _args: Value,
+        _ctx: Option<&ToolCallContext>,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+        Ok(ToolCallContent::Text("tool executed".to_string()))
+    }
 }
