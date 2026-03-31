@@ -59,6 +59,14 @@ async fn write_http_response(stream: &mut TcpStream, status: &str, body: &str) {
     stream.write_all(resp.as_bytes()).await.unwrap();
 }
 
+async fn write_http_stream_response(stream: &mut TcpStream, body: &str) {
+    let resp = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n{}",
+        body
+    );
+    stream.write_all(resp.as_bytes()).await.unwrap();
+}
+
 #[test]
 fn chat_openai_new_creates_client() {
     let _ = ChatOpenAI::new("gpt-4");
@@ -293,25 +301,14 @@ async fn invoke_stream_with_mock_api_returns_ok() {
     tokio::spawn(async move {
         let (mut stream, _) = listener.accept().await.unwrap();
         let _ = read_http_request(&mut stream).await;
-        let response = serde_json::json!({
-            "id":"chatcmpl-mock-stream",
-            "object":"chat.completion",
-            "created": 1,
-            "model":"gpt-4o-mini",
-            "choices":[
-                {
-                    "index":0,
-                    "message":{
-                        "role":"assistant",
-                        "content":"ok"
-                    },
-                    "finish_reason":"stop"
-                }
-            ],
-            "usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}
-        })
-        .to_string();
-        write_http_response(&mut stream, "200 OK", &response).await;
+        let sse_data = vec![
+            r#"data: {"id":"chatcmpl-mock-stream","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-mock-stream","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-mock-stream","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#,
+            "data: [DONE]",
+        ];
+        let response = sse_data.join("\n\n") + "\n\n";
+        write_http_stream_response(&mut stream, &response).await;
     });
 
     let config = OpenAIConfig::new()
@@ -333,7 +330,5 @@ async fn invoke_stream_with_mock_api_returns_ok() {
     while rx.try_recv().is_ok() {
         chunks += 1;
     }
-    assert!(chunks > 0, "should receive at least one stream chunk");
-}
     assert!(chunks > 0, "should receive at least one stream chunk");
 }
