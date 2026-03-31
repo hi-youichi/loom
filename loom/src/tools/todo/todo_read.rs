@@ -110,6 +110,7 @@ mod tests {
     /// When XDG todo file does not exist, call returns "0 todos" and "[]".
     #[tokio::test]
     async fn todo_read_call_when_file_missing_returns_empty_list() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
@@ -122,6 +123,7 @@ mod tests {
     /// When thread-specific todo file exists with valid JSON, call returns count and list.
     #[tokio::test]
     async fn todo_read_call_when_thread_file_exists_returns_parsed_todos() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         use crate::tool_source::ToolCallContext;
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
@@ -150,6 +152,7 @@ mod tests {
     /// When global todo file exists with valid JSON (no thread_id), call returns count and list.
     #[tokio::test]
     async fn todo_read_call_when_global_file_exists_returns_parsed_todos() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
@@ -173,6 +176,7 @@ mod tests {
     /// When file exists but is invalid JSON, call returns empty list (default).
     #[tokio::test]
     async fn todo_read_call_when_invalid_json_returns_empty_list() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());

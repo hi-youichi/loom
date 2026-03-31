@@ -491,6 +491,7 @@ mod tests {
 
     #[test]
     fn build_config_from_profile_minimal() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = ENV_LOCK.lock().unwrap();
         let loom_home = tempfile::tempdir().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
@@ -509,6 +510,7 @@ mod tests {
 
     #[test]
     fn build_config_from_profile_overrides_model() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = ENV_LOCK.lock().unwrap();
         let loom_home = tempfile::tempdir().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
@@ -532,6 +534,7 @@ mod tests {
 
     #[test]
     fn build_config_from_profile_working_folder_override() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = ENV_LOCK.lock().unwrap();
         let loom_home = tempfile::tempdir().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
@@ -550,6 +553,7 @@ mod tests {
 
     #[test]
     fn build_config_from_profile_with_role() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = ENV_LOCK.lock().unwrap();
         let loom_home = tempfile::tempdir().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
@@ -574,6 +578,7 @@ mod tests {
 
     #[test]
     fn build_helve_config_no_skills_dir_no_prompt() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let prev_dir = std::env::current_dir().ok();
