@@ -47,3 +47,54 @@ impl DupState {
         self.core.last_reasoning_content()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::ReActState;
+    use crate::Message;
+
+    #[test]
+    fn last_assistant_reply_delegates_to_core() {
+        let mut state = DupState {
+            core: ReActState::default(),
+            understood: None,
+        };
+        assert!(state.last_assistant_reply().is_none());
+        state.core.messages.push(Message::Assistant(
+            crate::message::AssistantPayload {
+                content: "hello".to_string(),
+                tool_calls: vec![],
+                reasoning_content: None,
+            },
+        ));
+        assert_eq!(state.last_assistant_reply().as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn last_reasoning_content_delegates_to_core() {
+        let state = DupState {
+            core: ReActState {
+                last_reasoning_content: Some("thinking".to_string()),
+                ..Default::default()
+            },
+            understood: None,
+        };
+        assert_eq!(state.last_reasoning_content().as_deref(), Some("thinking"));
+    }
+
+    #[test]
+    fn serialization_round_trip() {
+        let state = DupState {
+            core: ReActState::default(),
+            understood: Some(UnderstandOutput {
+                core_goal: "goal".to_string(),
+                key_constraints: vec!["c1".to_string()],
+                relevant_context: "ctx".to_string(),
+            }),
+        };
+        let json = serde_json::to_string(&state).unwrap();
+        let restored: DupState = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.understood.as_ref().unwrap().core_goal, "goal");
+    }
+}

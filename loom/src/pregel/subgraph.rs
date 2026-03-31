@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use crate::pregel::PregelGraph;
 use crate::pregel::runtime::PregelRuntime;
 use crate::pregel::types::{ChannelValue, InterruptRecord, TaskId};
 
@@ -62,4 +63,39 @@ impl std::fmt::Debug for PregelSubgraph {
 pub struct PregelSubgraphEntry {
     pub path: String,
     pub runtime: PregelRuntime,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checkpoint_namespace_root() {
+        assert_eq!(CheckpointNamespace::root().0, "root");
+    }
+
+    #[test]
+    fn checkpoint_namespace_child_empty_parent() {
+        let ns = CheckpointNamespace("".to_string());
+        let child = ns.child("seg");
+        assert_eq!(child.0, "seg");
+    }
+
+    #[test]
+    fn checkpoint_namespace_child_nonempty_parent() {
+        let ns = CheckpointNamespace("a".to_string());
+        let child = ns.child("b");
+        assert_eq!(child.0, "a/b");
+    }
+
+    #[test]
+    fn pregel_subgraph_debug_impl() {
+        let subgraph = PregelSubgraph {
+            name: "test".to_string(),
+            runtime: Arc::new(PregelRuntime::new(PregelGraph::new())),
+        };
+        let debug_str = format!("{:?}", subgraph);
+        assert!(debug_str.contains("PregelSubgraph"));
+        assert!(debug_str.contains("test"));
+    }
 }

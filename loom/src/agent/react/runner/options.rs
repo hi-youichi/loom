@@ -125,3 +125,60 @@ pub(super) fn resolve_run_agent_options(opts: AgentOptions) -> ResolvedRunAgentO
         summarize_config: opts.summarize_config.unwrap_or_default(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn summarize_config_default_values() {
+        let cfg = SummarizeConfig::default();
+        assert!(!cfg.enabled);
+        assert_eq!(cfg.max_length, 50);
+        assert!(cfg.prompt_template.is_none());
+        assert!(!cfg.enable_completion_check);
+    }
+
+    #[test]
+    fn summarize_config_builder_methods() {
+        let cfg = SummarizeConfig::new()
+            .with_completion_check(true)
+            .with_max_length(200)
+            .with_prompt_template("summarize: {messages}".to_string());
+        assert!(cfg.enable_completion_check);
+        assert_eq!(cfg.max_length, 200);
+        assert_eq!(cfg.prompt_template.as_deref(), Some("summarize: {messages}"));
+    }
+
+    #[test]
+    fn agent_options_default_all_none() {
+        let opts = AgentOptions::default();
+        assert!(opts.llm.is_none());
+        assert!(opts.tool_source.is_none());
+        assert!(opts.checkpointer.is_none());
+        assert!(opts.store.is_none());
+        assert!(opts.runnable_config.is_none());
+        assert!(opts.user_message_store.is_none());
+        assert!(!opts.verbose);
+        assert!(opts.summarize_config.is_none());
+    }
+
+    #[test]
+    fn resolve_with_defaults() {
+        let resolved = resolve_run_agent_options(AgentOptions::default());
+        assert!(!resolved.verbose);
+        assert!(resolved.checkpointer.is_none());
+        assert!(resolved.store.is_none());
+        assert!(!resolved.summarize_config.enabled);
+    }
+
+    #[test]
+    fn resolve_preserves_verbose() {
+        let opts = AgentOptions {
+            verbose: true,
+            ..Default::default()
+        };
+        let resolved = resolve_run_agent_options(opts);
+        assert!(resolved.verbose);
+    }
+}

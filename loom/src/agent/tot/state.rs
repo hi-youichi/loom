@@ -80,3 +80,69 @@ impl TotState {
         self.core.last_reasoning_content()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::ReActState;
+    use crate::Message;
+
+    #[test]
+    fn last_assistant_reply_delegates_to_core() {
+        let mut state = TotState {
+            core: ReActState::default(),
+            tot: TotExtension::default(),
+        };
+        assert!(state.last_assistant_reply().is_none());
+        state.core.messages.push(Message::Assistant(
+            crate::message::AssistantPayload {
+                content: "reply".to_string(),
+                tool_calls: vec![],
+                reasoning_content: None,
+            },
+        ));
+        assert_eq!(state.last_assistant_reply().as_deref(), Some("reply"));
+    }
+
+    #[test]
+    fn last_reasoning_content_delegates_to_core() {
+        let state = TotState {
+            core: ReActState {
+                last_reasoning_content: Some("reasoning".to_string()),
+                ..Default::default()
+            },
+            tot: TotExtension::default(),
+        };
+        assert_eq!(state.last_reasoning_content().as_deref(), Some("reasoning"));
+    }
+
+    #[test]
+    fn tot_extension_default() {
+        let ext = TotExtension::default();
+        assert_eq!(ext.depth, 0);
+        assert!(ext.candidates.is_empty());
+        assert!(ext.chosen_index.is_none());
+        assert!(!ext.suggest_backtrack);
+        assert!(ext.path_failed_reason.is_none());
+    }
+
+    #[test]
+    fn serialization_round_trip() {
+        let state = TotState {
+            core: ReActState::default(),
+            tot: TotExtension {
+                depth: 3,
+                candidates: vec![TotCandidate {
+                    thought: "idea".to_string(),
+                    tool_calls: vec![],
+                    score: Some(0.9),
+                }],
+                ..Default::default()
+            },
+        };
+        let json = serde_json::to_string(&state).unwrap();
+        let restored: TotState = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.tot.depth, 3);
+        assert_eq!(restored.tot.candidates.len(), 1);
+    }
+}
