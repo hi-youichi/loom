@@ -44,6 +44,7 @@ mod tests {
     /// Given LOOM_HOME is set, todo_file_path returns loom_home/todo.json.
     #[test]
     fn todo_file_path_uses_loom_home() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = super::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
@@ -55,6 +56,7 @@ mod tests {
     /// Given LOOM_HOME and thread_id, todo_file_path returns loom_home/thread/{thread_id}/todo.json.
     #[test]
     fn todo_file_path_with_thread_id() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = super::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());

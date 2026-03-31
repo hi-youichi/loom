@@ -18,7 +18,7 @@ async fn completion_check_with_empty_state() {
     let state = ReActState::default();
     let ctx = RunContext::<ReActState>::new(RunnableConfig::default());
     
-    let (new_state, next) = node.run_with_context(state, &ctx).await.unwrap();
+    let (_new_state, next) = node.run_with_context(state, &ctx).await.unwrap();
     
     // Empty state should end
     assert!(matches!(next, loom::graph::Next::End));
@@ -38,7 +38,7 @@ async fn completion_check_respects_max_iterations() {
     };
     let ctx = RunContext::<ReActState>::new(RunnableConfig::default());
     
-    let (new_state, next) = node.run_with_context(state, &ctx).await.unwrap();
+    let (_new_state, next) = node.run_with_context(state, &ctx).await.unwrap();
     
     // Should end due to max iterations
     assert!(matches!(next, loom::graph::Next::End));

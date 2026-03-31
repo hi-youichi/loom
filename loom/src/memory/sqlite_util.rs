@@ -49,6 +49,7 @@ mod tests {
 
     #[test]
     fn default_memory_db_path_uses_loom_home() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
@@ -63,6 +64,7 @@ mod tests {
 
     #[test]
     fn default_memory_db_path_creates_parent_dir() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let nested = dir.path().join("sub").join("dir");

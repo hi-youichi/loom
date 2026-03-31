@@ -124,4 +124,39 @@ mod tests {
             RetryDecision::NonRetryable
         );
     }
+
+    #[test]
+    fn backoff_attempt_zero() {
+        assert_eq!(retry_backoff_for_attempt(0), TRANSIENT_HTTP_INITIAL_BACKOFF);
+    }
+
+    #[test]
+    fn backoff_doubles_each_attempt() {
+        let b0 = retry_backoff_for_attempt(0);
+        let b1 = retry_backoff_for_attempt(1);
+        let b2 = retry_backoff_for_attempt(2);
+        assert!(b1 > b0);
+        assert!(b2 > b1);
+    }
+
+    #[test]
+    fn backoff_capped_at_max() {
+        let large = retry_backoff_for_attempt(10);
+        assert_eq!(large, TRANSIENT_HTTP_MAX_BACKOFF);
+    }
+
+    #[test]
+    fn detects_unexpected_eof() {
+        assert!(looks_like_transient_http_error_message("unexpected eof while reading"));
+    }
+
+    #[test]
+    fn detects_connection_reset() {
+        assert!(looks_like_transient_http_error_message("connection reset by peer"));
+    }
+
+    #[test]
+    fn detects_broken_pipe() {
+        assert!(looks_like_transient_http_error_message("broken pipe"));
+    }
 }

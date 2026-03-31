@@ -14,3 +14,14 @@ impl WithNodeLogging for StateGraph<ReActState> {
         self.with_middleware(Arc::new(LoggingNodeMiddleware::<ReActState>::default()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn with_node_logging_returns_state_graph() {
+        let graph: StateGraph<ReActState> = StateGraph::new();
+        let _result = graph.with_node_logging();
+    }
+}
