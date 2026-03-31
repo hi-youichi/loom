@@ -2,7 +2,6 @@
 
 use std::sync::Arc;
 
-use crate::pregel::PregelGraph;
 use crate::pregel::runtime::PregelRuntime;
 use crate::pregel::types::{ChannelValue, InterruptRecord, TaskId};
 
