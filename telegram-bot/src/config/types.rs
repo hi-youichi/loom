@@ -51,6 +51,12 @@ pub struct Settings {
     #[serde(default)]
     pub only_respond_when_mentioned: bool,
 
+    #[serde(default = "default_telegram_message_max_chars")]
+    pub telegram_message_max_chars: usize,
+
+    #[serde(default = "default_telegram_safe_reply_chars")]
+    pub telegram_safe_reply_chars: usize,
+
     #[serde(default)]
     pub streaming: StreamingConfig,
 }
@@ -64,6 +70,8 @@ impl Default for Settings {
             polling_timeout: default_polling_timeout(),
             retry_timeout: default_retry_timeout(),
             only_respond_when_mentioned: false,
+            telegram_message_max_chars: default_telegram_message_max_chars(),
+            telegram_safe_reply_chars: default_telegram_safe_reply_chars(),
             streaming: StreamingConfig::default(),
         }
     }
@@ -176,6 +184,14 @@ fn default_polling_timeout() -> u64 {
 
 fn default_retry_timeout() -> u64 {
     60
+}
+
+fn default_telegram_message_max_chars() -> usize {
+    crate::constants::telegram::MESSAGE_MAX_CHARS
+}
+
+fn default_telegram_safe_reply_chars() -> usize {
+    crate::constants::telegram::SAFE_REPLY_CHARS
 }
 
 fn default_max_act_chars() -> usize {

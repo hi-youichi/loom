@@ -15,6 +15,10 @@ organize_by_date = false
 organize_by_chat = false
 # 仅在机器人被 @ 时才响应（群聊场景）
 only_respond_when_mentioned = false
+# Telegram 单条消息硬上限
+telegram_message_max_chars = 4096
+# Prompt 中要求模型控制的安全长度（预留 markdown 转义空间）
+telegram_safe_reply_chars = 3800
 
 # 机器人配置
 # 每个机器人需要一个唯一的名称

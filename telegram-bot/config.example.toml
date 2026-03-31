@@ -7,6 +7,10 @@
 download_dir = "downloads"
 # 日志级别: trace, debug, info, warn, error
 log_level = "info"
+# Telegram 单条消息硬上限
+telegram_message_max_chars = 4096
+# Prompt 中要求模型控制的安全长度（预留 markdown 转义空间）
+telegram_safe_reply_chars = 3800
 
 # 流式显示配置
 [settings.streaming]
