@@ -25,10 +25,8 @@ pub(crate) async fn handle_user_messages(
     };
     match store.list(&r.thread_id, r.before, r.limit).await {
         Ok(messages) => {
-            let items: Vec<UserMessageItem> = messages
-                .into_iter()
-                .map(|m| message_to_item(&m))
-                .collect();
+            let items: Vec<UserMessageItem> =
+                messages.into_iter().map(|m| message_to_item(&m)).collect();
             loom::ServerResponse::UserMessages(UserMessagesResponse {
                 id: r.id.clone(),
                 thread_id: r.thread_id.clone(),

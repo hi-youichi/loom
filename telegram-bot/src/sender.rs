@@ -1,6 +1,5 @@
 //! Teloxide message sender implementation
 
-use async_trait::async_trait;
 use crate::error::BotError;
 use crate::formatting::{escape_markdown_v2, FormattedMessage};
 use crate::streaming::retry::{
@@ -8,6 +7,7 @@ use crate::streaming::retry::{
     send_message_with_retry,
 };
 use crate::traits::MessageSender;
+use async_trait::async_trait;
 
 use teloxide::prelude::*;
 use teloxide::types::{MessageId, ParseMode, ReactionType};
@@ -46,13 +46,8 @@ impl MessageSender for TeloxideSender {
             text_preview = %preview_text(text),
             "sending plain telegram message"
         );
-        let msg = send_message_with_retry(
-            &self.bot,
-            ChatId(chat_id),
-            text,
-            TELEGRAM_API_RETRIES,
-        )
-        .await?;
+        let msg =
+            send_message_with_retry(&self.bot, ChatId(chat_id), text, TELEGRAM_API_RETRIES).await?;
         Ok(msg.id.0)
     }
 
@@ -104,7 +99,8 @@ impl MessageSender for TeloxideSender {
                 Ok(message) => Ok(message.id.0),
                 Err(e) => {
                     tracing::warn!(error = %e, "formatted telegram message failed, falling back to plain text");
-                    self.send_text_returning_id(chat_id, &msg.plain_text_fallback).await
+                    self.send_text_returning_id(chat_id, &msg.plain_text_fallback)
+                        .await
                 }
             },
             None => self.send_text_returning_id(chat_id, &msg.text).await,
@@ -182,7 +178,6 @@ impl MessageSender for TeloxideSender {
         }
     }
 
-
     async fn edit_message(
         &self,
         chat_id: i64,
@@ -236,7 +231,8 @@ impl MessageSender for TeloxideSender {
                 Ok(()) => Ok(()),
                 Err(e) => {
                     tracing::warn!(error = %e, "formatted telegram edit failed, falling back to plain text");
-                    self.edit_message(chat_id, message_id, &msg.plain_text_fallback).await
+                    self.edit_message(chat_id, message_id, &msg.plain_text_fallback)
+                        .await
                 }
             },
             None => self.edit_message(chat_id, message_id, &msg.text).await,

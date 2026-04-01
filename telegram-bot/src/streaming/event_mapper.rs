@@ -47,7 +47,10 @@ pub(crate) fn send_stream_command(
             if tx.try_send(command).is_ok() {
                 tracing::debug!(command = command_kind, "Sent best-effort command");
             } else {
-                tracing::debug!(command = command_kind, "Dropped best-effort command (channel full)");
+                tracing::debug!(
+                    command = command_kind,
+                    "Dropped best-effort command (channel full)"
+                );
             }
         }
     }
@@ -101,10 +104,7 @@ pub(crate) struct StreamEventMapper {
 }
 
 impl StreamEventMapper {
-    pub(crate) fn new(
-        tx: mpsc::Sender<StreamCommand>,
-        show_act: bool,
-    ) -> Arc<Self> {
+    pub(crate) fn new(tx: mpsc::Sender<StreamCommand>, show_act: bool) -> Arc<Self> {
         Arc::new(Self {
             tx,
             phase_state: Arc::new(std::sync::RwLock::new((String::new(), 0))),
@@ -119,100 +119,95 @@ impl StreamEventMapper {
     }
 
     fn map_event(&self, ev: AnyStreamEvent) {
-        tokio::task::block_in_place(|| {
-            match &ev {
-                AnyStreamEvent::React(loom::StreamEvent::TaskStart { node_id, .. })
-                    if node_id == "act" && self.show_act =>
-                {
-                    let act_count = {
-                        let mut ps = self.phase_state.write().expect("phase_state lock poisoned");
-                        ps.1 += 1;
-                        ps.0 = "act".to_string();
-                        ps.1
-                    };
+        tokio::task::block_in_place(|| match &ev {
+            AnyStreamEvent::React(loom::StreamEvent::TaskStart { node_id, .. })
+                if node_id == "act" && self.show_act =>
+            {
+                let act_count = {
+                    let mut ps = self.phase_state.write().expect("phase_state lock poisoned");
+                    ps.1 += 1;
+                    ps.0 = "act".to_string();
+                    ps.1
+                };
+                send_stream_command(
+                    &self.tx,
+                    StreamCommand::StartAct { count: act_count },
+                    CommandPriority::Critical,
+                );
+            }
+
+            AnyStreamEvent::React(loom::StreamEvent::Messages { chunk, metadata }) => {
+                if chunk.content.is_empty() {
+                    return;
+                }
+                match metadata.loom_node.as_str() {
+                    "act" if self.show_act => {
+                        send_stream_command(
+                            &self.tx,
+                            StreamCommand::ActContent {
+                                content: chunk.content.clone(),
+                            },
+                            CommandPriority::BestEffort,
+                        );
+                    }
+                    _ => {}
+                }
+            }
+
+            AnyStreamEvent::React(loom::StreamEvent::ToolStart {
+                call_id: tool_call_id,
+                name,
+            }) => {
+                if self.show_act {
+                    let tool_arguments = self
+                        .pending_tool_args
+                        .write()
+                        .expect("pending_tool_args lock poisoned")
+                        .take_for_start(tool_call_id.clone(), name);
                     send_stream_command(
                         &self.tx,
-                        StreamCommand::StartAct { count: act_count },
+                        StreamCommand::ToolStart {
+                            name: name.clone(),
+                            arguments: tool_arguments,
+                        },
                         CommandPriority::Critical,
                     );
                 }
-
-                AnyStreamEvent::React(loom::StreamEvent::Messages {
-                    chunk,
-                    metadata,
-                }) => {
-                    if chunk.content.is_empty() {
-                        return;
-                    }
-                    match metadata.loom_node.as_str() {
-                        "act" if self.show_act => {
-                            send_stream_command(
-                                &self.tx,
-                                StreamCommand::ActContent {
-                                    content: chunk.content.clone(),
-                                },
-                                CommandPriority::BestEffort,
-                            );
-                        }
-                        _ => {}
-                    }
-                }
-
-                AnyStreamEvent::React(loom::StreamEvent::ToolStart {
-                    call_id: tool_call_id,
-                    name,
-                }) => {
-                    if self.show_act {
-                        let tool_arguments = self
-                            .pending_tool_args
-                            .write()
-                            .expect("pending_tool_args lock poisoned")
-                            .take_for_start(tool_call_id.clone(), name);
-                        send_stream_command(
-                            &self.tx,
-                            StreamCommand::ToolStart {
-                                name: name.clone(),
-                                arguments: tool_arguments,
-                            },
-                            CommandPriority::Critical,
-                        );
-                    }
-                }
-
-                AnyStreamEvent::React(loom::StreamEvent::ToolCall {
-                    call_id: tool_call_id,
-                    name,
-                    arguments,
-                }) => {
-                    if self.show_act {
-                        self.pending_tool_args
-                            .write()
-                            .expect("pending_tool_args lock poisoned")
-                            .remember(tool_call_id.clone(), name, arguments.clone());
-                    }
-                }
-
-                AnyStreamEvent::React(loom::StreamEvent::ToolEnd {
-                    name,
-                    result,
-                    is_error,
-                    ..
-                }) => {
-                    if self.show_act {
-                        send_stream_command(
-                            &self.tx,
-                            StreamCommand::ToolEnd {
-                                name: name.clone(),
-                                result: result.clone(),
-                                is_error: *is_error,
-                            },
-                            CommandPriority::Critical,
-                        );
-                    }
-                }
-
-                _ => {}
             }
+
+            AnyStreamEvent::React(loom::StreamEvent::ToolCall {
+                call_id: tool_call_id,
+                name,
+                arguments,
+            }) => {
+                if self.show_act {
+                    self.pending_tool_args
+                        .write()
+                        .expect("pending_tool_args lock poisoned")
+                        .remember(tool_call_id.clone(), name, arguments.clone());
+                }
+            }
+
+            AnyStreamEvent::React(loom::StreamEvent::ToolEnd {
+                name,
+                result,
+                is_error,
+                ..
+            }) => {
+                if self.show_act {
+                    send_stream_command(
+                        &self.tx,
+                        StreamCommand::ToolEnd {
+                            name: name.clone(),
+                            result: result.clone(),
+                            is_error: *is_error,
+                        },
+                        CommandPriority::Critical,
+                    );
+                }
+            }
+
+            _ => {}
         });
     }
 }

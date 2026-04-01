@@ -41,11 +41,17 @@ async fn mcp_config_injected_into_build_tool_source() {
 
     let (_, config, _) = build_helve_config(&opts(working));
     assert!(
-        config.mcp_servers.as_ref().map(|s| !s.is_empty()).unwrap_or(false),
+        config
+            .mcp_servers
+            .as_ref()
+            .map(|s| !s.is_empty())
+            .unwrap_or(false),
         "mcp_servers should be loaded from .loom/mcp.json"
     );
 
-    let ctx = build_react_run_context(&config).await.expect("build_react_run_context");
+    let ctx = build_react_run_context(&config)
+        .await
+        .expect("build_react_run_context");
     let tools = ctx.tool_source.list_tools().await.expect("list_tools");
     // Base tools (bash, web_fetcher, etc.) are always present; MCP may have failed to start and been skipped
     assert!(!tools.is_empty());
@@ -64,11 +70,17 @@ async fn mcp_config_empty_when_no_file() {
 
     let (_, config, _) = build_helve_config(&opts(working));
     assert!(
-        config.mcp_servers.as_ref().map(|s| s.is_empty()).unwrap_or(true),
+        config
+            .mcp_servers
+            .as_ref()
+            .map(|s| s.is_empty())
+            .unwrap_or(true),
         "mcp_servers should be None or empty when no config file"
     );
 
-    let ctx = build_react_run_context(&config).await.expect("build_react_run_context");
+    let ctx = build_react_run_context(&config)
+        .await
+        .expect("build_react_run_context");
     let tools = ctx.tool_source.list_tools().await.expect("list_tools");
     assert!(!tools.is_empty());
 
@@ -92,6 +104,8 @@ async fn mcp_config_invalid_json_logged_but_build_succeeds() {
     run_opts.mcp_config_path = Some(bad_json);
     let (_, config, _) = build_helve_config(&run_opts);
     // load_mcp_config_from_path fails for that file; build_helve_config only sets mcp_servers on Ok, so we get None or from_env
-    let ctx = build_react_run_context(&config).await.expect("build_react_run_context");
+    let ctx = build_react_run_context(&config)
+        .await
+        .expect("build_react_run_context");
     let _ = ctx.tool_source.list_tools().await.expect("list_tools");
 }

@@ -10,9 +10,9 @@ use std::sync::Arc;
 
 use async_openai::config::OpenAIConfig;
 use loom::llm::{ChatOpenAI, LlmClient, ToolCallDelta, ToolChoiceMode};
+use loom::tool_source::register_file_tools;
 use loom::tool_source::{ToolSource, YamlSpecToolSource};
 use loom::tools::{AggregateToolSource, BatchTool, LspTool, WebFetcherTool, TOOL_READ_FILE};
-use loom::tool_source::register_file_tools;
 use loom::BashTool;
 use loom::{Message, MessageChunk};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -54,11 +54,7 @@ async fn read_http_request(stream: &mut tokio::net::TcpStream) -> String {
     String::new()
 }
 
-async fn write_http_response(
-    stream: &mut tokio::net::TcpStream,
-    status: &str,
-    body: &str,
-) {
+async fn write_http_response(stream: &mut tokio::net::TcpStream, status: &str, body: &str) {
     let resp = format!(
         "HTTP/1.1 {}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
         status,
@@ -144,14 +140,7 @@ async fn mock_api_full_tool_list_invokes_read() {
         tools.len()
     );
     let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
-    for required in [
-        "bash",
-        "web_fetcher",
-        TOOL_READ_FILE,
-        "ls",
-        "batch",
-        "lsp",
-    ] {
+    for required in ["bash", "web_fetcher", TOOL_READ_FILE, "ls", "batch", "lsp"] {
         assert!(
             names.contains(&required),
             "tool {required:?} missing from listed tools: {names:?}"
@@ -198,9 +187,17 @@ async fn mock_api_full_tool_list_invokes_read() {
             )
         });
 
-    let args: serde_json::Value = serde_json::from_str(read_call.arguments.trim())
-        .unwrap_or_else(|e| panic!("read arguments should be JSON: {e}, raw: {:?}", read_call.arguments));
-    let path = args.get("path").and_then(|p| p.as_str()).unwrap_or_default();
+    let args: serde_json::Value =
+        serde_json::from_str(read_call.arguments.trim()).unwrap_or_else(|e| {
+            panic!(
+                "read arguments should be JSON: {e}, raw: {:?}",
+                read_call.arguments
+            )
+        });
+    let path = args
+        .get("path")
+        .and_then(|p| p.as_str())
+        .unwrap_or_default();
     assert!(
         path.contains("probe.txt"),
         "expected read path to reference probe.txt, got path: {:?}",

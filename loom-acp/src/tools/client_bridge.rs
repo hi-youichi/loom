@@ -81,7 +81,8 @@ impl GlobalClientBridge {
     /// Get the inner bridge, returning error if not available.
     pub async fn get(&self) -> Result<Arc<dyn ClientBridgeTrait>, String> {
         let guard = self.inner.read().await;
-        guard.as_ref()
+        guard
+            .as_ref()
             .cloned()
             .ok_or_else(|| "Client bridge not initialized".to_string())
     }

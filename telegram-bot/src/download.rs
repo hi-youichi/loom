@@ -2,21 +2,27 @@
 //!
 //! Provides functions for downloading files from Telegram.
 
-use crate::constants::download::{MAX_FILE_ID_LEN, MAX_EXT_LEN};
+use crate::constants::download::{MAX_EXT_LEN, MAX_FILE_ID_LEN};
 use crate::error::BotError;
 use crate::traits::FileDownloader;
 use async_trait::async_trait;
-use std::path::{Component, Path, PathBuf};
-use teloxide::prelude::*;
-use teloxide::types::{PhotoSize, Document, Video};
-use teloxide::net::Download;
-use tokio::fs;
 use serde::{Deserialize, Serialize};
+use std::path::{Component, Path, PathBuf};
+use teloxide::net::Download;
+use teloxide::prelude::*;
+use teloxide::types::{Document, PhotoSize, Video};
+use tokio::fs;
 
 fn sanitize_filename(input: &str) -> String {
     let cleaned: String = input
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     if cleaned.is_empty() {
         "unknown".to_string()
@@ -38,7 +44,9 @@ fn ensure_within_base(path: &Path, base: &Path) -> Result<PathBuf, BotError> {
     };
     for component in canonical.components() {
         if matches!(component, Component::ParentDir) {
-            return Err(BotError::Config("path traversal detected in download path".into()));
+            return Err(BotError::Config(
+                "path traversal detected in download path".into(),
+            ));
         }
     }
     let _ = base_canonical;
@@ -105,9 +113,19 @@ impl DownloadConfig {
             ..Default::default()
         }
     }
-    
-    pub fn get_file_path(&self, chat_id: i64, message_id: i32, file_id: &str, ext: &str) -> PathBuf {
-        let safe_id = sanitize_filename(if file_id.len() > MAX_FILE_ID_LEN { &file_id[..MAX_FILE_ID_LEN] } else { file_id });
+
+    pub fn get_file_path(
+        &self,
+        chat_id: i64,
+        message_id: i32,
+        file_id: &str,
+        ext: &str,
+    ) -> PathBuf {
+        let safe_id = sanitize_filename(if file_id.len() > MAX_FILE_ID_LEN {
+            &file_id[..MAX_FILE_ID_LEN]
+        } else {
+            file_id
+        });
         let safe_ext = sanitize_filename(ext);
         let filename = format!("{}_{}.{}", message_id, safe_id, safe_ext);
 
@@ -120,11 +138,11 @@ impl DownloadConfig {
     pub fn validate_path(&self, path: &Path) -> Result<PathBuf, BotError> {
         ensure_within_base(path, &self.dir)
     }
-    
+
     pub fn get_metadata_path(&self, file_path: &Path) -> PathBuf {
         file_path.with_extension("json")
     }
-    
+
     pub async fn init(&self) -> std::io::Result<()> {
         fs::create_dir_all(&self.dir).await
     }
@@ -140,7 +158,7 @@ fn get_file_extension(filename: Option<&str>, mime_type: Option<&str>) -> String
             }
         }
     }
-    
+
     if let Some(mime) = mime_type {
         return match mime {
             "image/jpeg" | "image/jpg" => "jpg".to_string(),
@@ -153,10 +171,10 @@ fn get_file_extension(filename: Option<&str>, mime_type: Option<&str>) -> String
             "audio/ogg" => "ogg".to_string(),
             "application/pdf" => "pdf".to_string(),
             "application/zip" => "zip".to_string(),
-            _ => "bin".to_string()
-        }
+            _ => "bin".to_string(),
+        };
     }
-    
+
     "bin".to_string()
 }
 
@@ -168,21 +186,17 @@ async fn save_metadata(path: &Path, metadata: &FileMetadata) -> std::io::Result<
 }
 
 /// Download a file from Telegram by file_id
-pub async fn download_file(
-    bot: &Bot, 
-    file_id: &str, 
-    path: &Path
-) -> Result<PathBuf, BotError> {
+pub async fn download_file(bot: &Bot, file_id: &str, path: &Path) -> Result<PathBuf, BotError> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).await?;
     }
-    
+
     let file = bot.get_file(file_id).await?;
     let mut dst = fs::File::create(path).await?;
     bot.download_file(&file.path, &mut dst).await?;
-    
+
     tracing::info!("Downloaded file to: {:?}", path);
-    
+
     Ok(path.to_path_buf())
 }
 
@@ -192,18 +206,18 @@ pub async fn download_photo(
     photos: &[PhotoSize],
     config: &DownloadConfig,
     chat_id: i64,
-    message_id: i32
+    message_id: i32,
 ) -> Result<(PathBuf, FileMetadata), BotError> {
-    let largest = photos.last().ok_or_else(|| {
-        BotError::Unknown("No photo sizes available".to_string())
-    })?;
+    let largest = photos
+        .last()
+        .ok_or_else(|| BotError::Unknown("No photo sizes available".to_string()))?;
     let file_id = &largest.file.id;
     let file_unique_id = &largest.file.unique_id;
-    
+
     let path = config.get_file_path(chat_id, message_id, file_id, "jpg");
-    
+
     download_file(bot, file_id, &path).await?;
-    
+
     let metadata = FileMetadata {
         chat_id,
         message_id,
@@ -216,14 +230,14 @@ pub async fn download_photo(
         user_id: None,
         downloaded_at: chrono::Utc::now().to_rfc3339(),
     };
-    
+
     if config.save_metadata {
         let meta_path = config.get_metadata_path(&path);
         if let Err(e) = save_metadata(&meta_path, &metadata).await {
             tracing::warn!("Failed to save metadata: {}", e);
         }
     }
-    
+
     Ok((path, metadata))
 }
 
@@ -233,18 +247,18 @@ pub async fn download_document(
     doc: &Document,
     config: &DownloadConfig,
     chat_id: i64,
-    message_id: i32
+    message_id: i32,
 ) -> Result<(PathBuf, FileMetadata), BotError> {
     let file_id = &doc.file.id;
     let file_unique_id = &doc.file.unique_id;
-    
+
     let mime_str = doc.mime_type.as_ref().map(|m| m.to_string());
     let ext = get_file_extension(doc.file_name.as_deref(), mime_str.as_deref());
-    
+
     let path = config.get_file_path(chat_id, message_id, file_id, &ext);
-    
+
     download_file(bot, file_id, &path).await?;
-    
+
     let metadata = FileMetadata {
         chat_id,
         message_id,
@@ -257,14 +271,14 @@ pub async fn download_document(
         user_id: None,
         downloaded_at: chrono::Utc::now().to_rfc3339(),
     };
-    
+
     if config.save_metadata {
         let meta_path = config.get_metadata_path(&path);
         if let Err(e) = save_metadata(&meta_path, &metadata).await {
             tracing::warn!("Failed to save metadata: {}", e);
         }
     }
-    
+
     Ok((path, metadata))
 }
 
@@ -274,19 +288,19 @@ pub async fn download_video(
     video: &Video,
     config: &DownloadConfig,
     chat_id: i64,
-    message_id: i32
+    message_id: i32,
 ) -> Result<(PathBuf, FileMetadata), BotError> {
     let file_id = &video.file.id;
     let file_unique_id = &video.file.unique_id;
-    
+
     let mime_str = video.mime_type.as_ref().map(|m| m.to_string());
     let ext = get_file_extension(None, mime_str.as_deref());
     let ext = if ext == "bin" { "mp4" } else { &ext };
-    
+
     let path = config.get_file_path(chat_id, message_id, file_id, ext);
-    
+
     download_file(bot, file_id, &path).await?;
-    
+
     let metadata = FileMetadata {
         chat_id,
         message_id,
@@ -299,14 +313,14 @@ pub async fn download_video(
         user_id: None,
         downloaded_at: chrono::Utc::now().to_rfc3339(),
     };
-    
+
     if config.save_metadata {
         let meta_path = config.get_metadata_path(&path);
         if let Err(e) = save_metadata(&meta_path, &metadata).await {
             tracing::warn!("Failed to save metadata: {}", e);
         }
     }
-    
+
     Ok((path, metadata))
 }
 
@@ -316,11 +330,7 @@ pub fn reset_session(thread_id: &str) -> Result<usize, BotError> {
 
     let conn = rusqlite::Connection::open(&db_path)?;
 
-    let count = conn
-        .execute(
-            "DELETE FROM checkpoints WHERE thread_id = ?1",
-            [thread_id],
-        )?;
+    let count = conn.execute("DELETE FROM checkpoints WHERE thread_id = ?1", [thread_id])?;
 
     Ok(count)
 }

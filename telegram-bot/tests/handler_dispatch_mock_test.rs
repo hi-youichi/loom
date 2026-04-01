@@ -5,8 +5,8 @@
 
 mod common;
 
-use std::time::Duration;
 use std::sync::Arc;
+use std::time::Duration;
 
 use common::fixtures;
 use telegram_bot::{
@@ -246,7 +246,9 @@ async fn e2e_tg_025_reset_with_trailing_arg_still_command() {
     let msg = fixtures::message_private_text(99_025, 1, "/reset dry-run");
     handle_message_with_deps(&deps, &msg).await.unwrap();
 
-    assert!(sender.get_messages()[0].1.contains("Deleted 0 checkpoints."));
+    assert!(sender.get_messages()[0]
+        .1
+        .contains("Deleted 0 checkpoints."));
 }
 
 #[tokio::test]
@@ -336,7 +338,10 @@ async fn e2e_tg_023_private_mention_gate_suppresses_plain_text() {
 async fn e2e_tg_008_group_mention_gate_suppresses_plain_text() {
     let sender = Arc::new(MockSender::new());
     let sender_trait: Arc<dyn MessageSender> = sender.clone();
-    let agent = Arc::new(MockAgentRunner::with_sender(sender_trait.clone(), "answered"));
+    let agent = Arc::new(MockAgentRunner::with_sender(
+        sender_trait.clone(),
+        "answered",
+    ));
     let settings = Arc::new(Settings {
         only_respond_when_mentioned: true,
         ..Default::default()
@@ -686,10 +691,7 @@ async fn e2e_tg_012_two_private_chats_isolated_outbound() {
 async fn e2e_tg_020_sticker_does_not_reply_or_invoke_agent() {
     let sender = Arc::new(MockSender::new());
     let sender_trait: Arc<dyn MessageSender> = sender.clone();
-    let agent = Arc::new(MockAgentRunner::with_sender(
-        sender_trait.clone(),
-        "no",
-    ));
+    let agent = Arc::new(MockAgentRunner::with_sender(sender_trait.clone(), "no"));
     let deps = make_text_only_deps(
         sender_trait,
         agent.clone(),

@@ -11,10 +11,7 @@ use tracing::info;
 const CONFIG_FILE: &str = "telegram-bot.toml";
 
 pub fn load_config() -> Result<TelegramBotConfig, ConfigError> {
-    let candidates = [
-        loom_home().join(CONFIG_FILE),
-        PathBuf::from(CONFIG_FILE),
-    ];
+    let candidates = [loom_home().join(CONFIG_FILE), PathBuf::from(CONFIG_FILE)];
 
     for path in &candidates {
         if path.exists() {

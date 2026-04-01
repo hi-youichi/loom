@@ -40,7 +40,10 @@ async fn create_workspace_returns_uuid_list_workspaces_includes_it() {
     assert!(list[0].name.is_none());
     assert!(list[0].created_at_ms > 0);
 
-    let id2 = store.create_workspace(Some("my workspace".into())).await.unwrap();
+    let id2 = store
+        .create_workspace(Some("my workspace".into()))
+        .await
+        .unwrap();
     assert!(is_uuid(&id2));
     let list2 = store.list_workspaces().await.unwrap();
     assert_eq!(list2.len(), 2);
@@ -101,12 +104,18 @@ async fn remove_thread_from_workspace_then_list_excludes_it() {
     let before = store.list_threads(&ws_id).await.unwrap();
     assert_eq!(before.len(), 2);
 
-    store.remove_thread_from_workspace(&ws_id, "t1").await.unwrap();
+    store
+        .remove_thread_from_workspace(&ws_id, "t1")
+        .await
+        .unwrap();
     let after = store.list_threads(&ws_id).await.unwrap();
     assert_eq!(after.len(), 1);
     assert_eq!(after[0].thread_id, "t2");
 
-    store.remove_thread_from_workspace(&ws_id, "t2").await.unwrap();
+    store
+        .remove_thread_from_workspace(&ws_id, "t2")
+        .await
+        .unwrap();
     let empty = store.list_threads(&ws_id).await.unwrap();
     assert!(empty.is_empty());
 }
@@ -118,9 +127,18 @@ async fn list_threads_isolates_workspaces() {
     let ws_a = store.create_workspace(Some("A".into())).await.unwrap();
     let ws_b = store.create_workspace(Some("B".into())).await.unwrap();
 
-    store.add_thread_to_workspace(&ws_a, "thread-a1").await.unwrap();
-    store.add_thread_to_workspace(&ws_a, "thread-a2").await.unwrap();
-    store.add_thread_to_workspace(&ws_b, "thread-b1").await.unwrap();
+    store
+        .add_thread_to_workspace(&ws_a, "thread-a1")
+        .await
+        .unwrap();
+    store
+        .add_thread_to_workspace(&ws_a, "thread-a2")
+        .await
+        .unwrap();
+    store
+        .add_thread_to_workspace(&ws_b, "thread-b1")
+        .await
+        .unwrap();
 
     let threads_a = store.list_threads(&ws_a).await.unwrap();
     let threads_b = store.list_threads(&ws_b).await.unwrap();

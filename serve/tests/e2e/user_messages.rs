@@ -42,12 +42,15 @@ async fn e2e_user_messages_after_run() {
     });
 
     let read_timeout = Duration::from_secs(90);
-    let (final_resp, _) = common::send_run_and_recv_end(&mut write, &mut read, &run_req, read_timeout)
-        .await
-        .expect("run should complete");
+    let (final_resp, _) =
+        common::send_run_and_recv_end(&mut write, &mut read, &run_req, read_timeout)
+            .await
+            .expect("run should complete");
 
     match &final_resp {
-        ServerResponse::RunEnd(r) => assert!(!r.reply.is_empty(), "run_end reply should be non-empty"),
+        ServerResponse::RunEnd(r) => {
+            assert!(!r.reply.is_empty(), "run_end reply should be non-empty")
+        }
         ServerResponse::Error(e) => panic!("run failed: {}", e.error),
         _ => panic!("expected RunEnd or Error, got {:?}", final_resp),
     }
@@ -65,10 +68,19 @@ async fn e2e_user_messages_after_run() {
     match &um_resp {
         ServerResponse::UserMessages(r) => {
             assert_eq!(r.thread_id, thread_id);
-            let has_user = r.messages.iter().any(|m| m.role == "user" && m.content.contains(user_msg));
+            let has_user = r
+                .messages
+                .iter()
+                .any(|m| m.role == "user" && m.content.contains(user_msg));
             let has_assistant = r.messages.iter().any(|m| m.role == "assistant");
-            assert!(has_user, "user_messages should contain the run's user message");
-            assert!(has_assistant, "user_messages should contain at least one assistant message");
+            assert!(
+                has_user,
+                "user_messages should contain the run's user message"
+            );
+            assert!(
+                has_assistant,
+                "user_messages should contain at least one assistant message"
+            );
         }
         ServerResponse::Error(e) => panic!("user_messages failed: {}", e.error),
         _ => panic!("expected UserMessages or Error, got {:?}", um_resp),

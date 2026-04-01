@@ -4,9 +4,7 @@
 
 mod agent_orchestrator;
 
-use crate::command::{
-    try_handle_model_command_input, CommandContext, CommandDispatcher,
-};
+use crate::command::{try_handle_model_command_input, CommandContext, CommandDispatcher};
 
 use crate::download::{is_bot_mentioned, is_reply_to_bot};
 use crate::error::BotError;
@@ -135,7 +133,6 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
         if try_handle_model_command_input(&cmd_ctx, text).await? {
             return Ok(());
         }
-
 
         let is_mentioned = is_bot_mentioned(ctx.msg, &ctx.deps.bot_username);
         let is_reply = is_reply_to_bot(ctx.msg, &ctx.deps.bot_username);

@@ -79,12 +79,18 @@ impl BotCommand for ResetCommand {
                     "Session Reset",
                     &format!("🔄 Deleted {} checkpoints.", count),
                 );
-                ctx.deps.sender.send_formatted(ctx.chat_id, &message).await?;
+                ctx.deps
+                    .sender
+                    .send_formatted(ctx.chat_id, &message)
+                    .await?;
             }
             Err(error) => {
                 tracing::error!("Failed to reset session: {}", error);
                 let message = markdown_notice("Reset Failed", &format!("❌ {}", error));
-                ctx.deps.sender.send_formatted(ctx.chat_id, &message).await?;
+                ctx.deps
+                    .sender
+                    .send_formatted(ctx.chat_id, &message)
+                    .await?;
             }
         }
         Ok(())
@@ -99,7 +105,10 @@ impl BotCommand for StatusCommand {
 
     async fn execute(&self, ctx: &CommandContext<'_>) -> Result<(), BotError> {
         let message = markdown_notice("Bot Status", "✅ Bot is running!");
-        ctx.deps.sender.send_formatted(ctx.chat_id, &message).await?;
+        ctx.deps
+            .sender
+            .send_formatted(ctx.chat_id, &message)
+            .await?;
         Ok(())
     }
 }
@@ -146,7 +155,9 @@ pub async fn try_handle_model_command_input(
 
     if let Some(model_id) = trimmed_text.strip_prefix("/model use ") {
         let selected_model = model_id.trim();
-        ctx.deps.model_selection.select_model(ctx.chat_id, selected_model)?;
+        ctx.deps
+            .model_selection
+            .select_model(ctx.chat_id, selected_model)?;
         ctx.deps
             .sender
             .send_text(ctx.chat_id, &format!("Switched to `{}`.", selected_model))
@@ -155,7 +166,10 @@ pub async fn try_handle_model_command_input(
     }
 
     if let Some(query) = trimmed_text.strip_prefix("/model ") {
-        let result = ctx.deps.model_selection.search_models(ctx.chat_id, query.trim(), 1);
+        let result = ctx
+            .deps
+            .model_selection
+            .search_models(ctx.chat_id, query.trim(), 1);
         send_model_search_result(ctx, &result).await?;
         return Ok(true);
     }
@@ -214,6 +228,9 @@ async fn send_model_search_result(
     }
     lines.push("Send `/model use <model_id>` to select a model.".to_string());
 
-    ctx.deps.sender.send_text(ctx.chat_id, &lines.join("\n")).await?;
+    ctx.deps
+        .sender
+        .send_text(ctx.chat_id, &lines.join("\n"))
+        .await?;
     Ok(())
 }

@@ -115,11 +115,7 @@ fn assert_protocol_event(
         } => {
             assert_non_empty("event.checkpoint_id", checkpoint_id);
             assert_non_empty("event.timestamp", timestamp);
-            assert!(
-                *step >= 0,
-                "expected checkpoint.step >= 0, got {}",
-                step
-            );
+            assert!(*step >= 0, "expected checkpoint.step >= 0, got {}", step);
             assert!(
                 !state.is_null(),
                 "expected checkpoint.state to be non-null, got {:?}",
@@ -150,7 +146,10 @@ fn assert_protocol_event(
                 scores.len()
             );
         }
-        ProtocolEvent::TotBacktrack { reason, to_depth: _ } => {
+        ProtocolEvent::TotBacktrack {
+            reason,
+            to_depth: _,
+        } => {
             assert_non_empty("event.reason", reason);
         }
         ProtocolEvent::GotPlan {
@@ -239,9 +238,7 @@ fn assert_protocol_event(
             name: _,
             arguments: _,
         } => {
-            panic!(
-                "unexpected tool_approval event: ToolApproval is not implemented for this flow"
-            );
+            panic!("unexpected tool_approval event: ToolApproval is not implemented for this flow");
         }
     }
 }
@@ -330,7 +327,11 @@ async fn e2e_run_react() {
                     run_id = Some(ev.id.clone());
                 }
                 if run_id.as_deref() == Some(ev.id.as_str()) {
-                    assert_eq!(ev.id, run_id.as_deref().unwrap(), "stream event run id mismatch");
+                    assert_eq!(
+                        ev.id,
+                        run_id.as_deref().unwrap(),
+                        "stream event run id mismatch"
+                    );
 
                     assert_eq!(
                         ev.event.session_id.as_deref(),
@@ -409,10 +410,7 @@ async fn e2e_run_react() {
                 "expected server-generated run id, got {:?}",
                 r.id
             );
-            assert_eq!(
-                r.id, run_id,
-                "run_end id should match stream event run id"
-            );
+            assert_eq!(r.id, run_id, "run_end id should match stream event run id");
             if let Some(session_id) = r.session_id.as_deref() {
                 assert_eq!(
                     session_id, run_id,

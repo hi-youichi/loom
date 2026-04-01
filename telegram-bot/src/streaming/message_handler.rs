@@ -13,8 +13,12 @@ use crate::utils::truncate_text;
 
 #[derive(Debug, Clone)]
 pub enum StreamCommand {
-    StartAct { count: u32 },
-    ActContent { content: String },
+    StartAct {
+        count: u32,
+    },
+    ActContent {
+        content: String,
+    },
     ToolStart {
         name: String,
         arguments: Option<String>,
@@ -140,7 +144,11 @@ async fn edit_act_message_if_possible(
     let final_text = truncate_text(&body, state.settings.max_act_chars);
     if let Some(mid) = msg_id {
         let _ = sender
-            .edit_formatted(chat_id, mid, &FormattedMessage::markdown_v2(final_text.clone(), final_text))
+            .edit_formatted(
+                chat_id,
+                mid,
+                &FormattedMessage::markdown_v2(final_text.clone(), final_text),
+            )
             .await;
     }
 }
@@ -181,7 +189,10 @@ async fn handle_streaming_command(
 
             let header = format!("{} Act #{}\n\n", state.settings.act_emoji, count);
             match sender
-                .send_formatted_returning_id(chat_id, &FormattedMessage::markdown_v2(header.clone(), header))
+                .send_formatted_returning_id(
+                    chat_id,
+                    &FormattedMessage::markdown_v2(header.clone(), header),
+                )
                 .await
             {
                 Ok(id) => state.msg_id = Some(id),
@@ -225,7 +236,11 @@ async fn handle_streaming_command(
             state.last_update = Instant::now();
         }
 
-        StreamCommand::ToolEnd { name, result, is_error } => {
+        StreamCommand::ToolEnd {
+            name,
+            result,
+            is_error,
+        } => {
             if !state.settings.show_act_phase {
                 return false;
             }
@@ -238,9 +253,15 @@ async fn handle_streaming_command(
                     format!("  ✅ → {}", result_preview)
                 };
 
-                if let Some(idx) = state.tools.iter().position(|line| is_inflight_tool_line(line, &name)) {
+                if let Some(idx) = state
+                    .tools
+                    .iter()
+                    .position(|line| is_inflight_tool_line(line, &name))
+                {
                     if let Some(existing_line) = state.tools.get(idx) {
-                        if let Some(existing_args) = extract_inflight_tool_arguments(existing_line, &name) {
+                        if let Some(existing_args) =
+                            extract_inflight_tool_arguments(existing_line, &name)
+                        {
                             let final_line = if is_error {
                                 format!("❌ {} {}   ❌ → {}", name, existing_args, result_preview)
                             } else {
@@ -292,7 +313,10 @@ async fn enter_act_phase_without_count_if_needed(
             state.act_count = Some(1);
             let header = format!("{} Act #1\n\n", state.settings.act_emoji);
             match sender
-                .send_formatted_returning_id(chat_id, &FormattedMessage::markdown_v2(header.clone(), header))
+                .send_formatted_returning_id(
+                    chat_id,
+                    &FormattedMessage::markdown_v2(header.clone(), header),
+                )
                 .await
             {
                 Ok(id) => state.msg_id = Some(id),
@@ -311,9 +335,7 @@ fn truncate_chars_with_ellipsis(text: &str, max_chars: usize) -> String {
 }
 
 fn should_emit_periodic_summary(state: &MessageState) -> bool {
-    !state.phase.is_idle()
-        || !state.act_text.trim().is_empty()
-        || !state.tools.is_empty()
+    !state.phase.is_idle() || !state.act_text.trim().is_empty() || !state.tools.is_empty()
 }
 
 fn phase_label(state: &MessageState) -> &'static str {
@@ -354,7 +376,11 @@ fn build_periodic_summary_text(state: &MessageState) -> Option<String> {
     }
 }
 
-async fn handle_periodic_command(cmd: StreamCommand, chat_id: i64, state: &mut MessageState) -> bool {
+async fn handle_periodic_command(
+    cmd: StreamCommand,
+    chat_id: i64,
+    state: &mut MessageState,
+) -> bool {
     match cmd {
         StreamCommand::StartAct { count } => {
             tracing::debug!(chat_id, count, previous_phase = %state.phase, "Received StartAct in periodic mode");
@@ -377,7 +403,11 @@ async fn handle_periodic_command(cmd: StreamCommand, chat_id: i64, state: &mut M
                 .push(format_tool_start_line(&name, arguments.as_deref()));
         }
 
-        StreamCommand::ToolEnd { name, result, is_error } => {
+        StreamCommand::ToolEnd {
+            name,
+            result,
+            is_error,
+        } => {
             if state.tool_start_times.remove(&name).is_some() {
                 let result_preview = result.chars().take(200).collect::<String>();
                 let result_line = if is_error {
@@ -386,9 +416,15 @@ async fn handle_periodic_command(cmd: StreamCommand, chat_id: i64, state: &mut M
                     format!("  ✅ → {}", result_preview)
                 };
 
-                if let Some(idx) = state.tools.iter().position(|line| is_inflight_tool_line(line, &name)) {
+                if let Some(idx) = state
+                    .tools
+                    .iter()
+                    .position(|line| is_inflight_tool_line(line, &name))
+                {
                     if let Some(existing_line) = state.tools.get(idx) {
-                        if let Some(existing_args) = extract_inflight_tool_arguments(existing_line, &name) {
+                        if let Some(existing_args) =
+                            extract_inflight_tool_arguments(existing_line, &name)
+                        {
                             let final_line = if existing_args.is_empty() {
                                 result_line.clone()
                             } else {
@@ -420,14 +456,8 @@ pub async fn stream_message_handler_simple(
     chat_id: i64,
     settings: StreamingConfig,
 ) -> String {
-    stream_message_handler_with_context(
-        rx,
-        sender,
-        chat_id,
-        AgentRunContext::default(),
-        settings,
-    )
-    .await
+    stream_message_handler_with_context(rx, sender, chat_id, AgentRunContext::default(), settings)
+        .await
 }
 
 pub async fn stream_message_handler(
@@ -437,14 +467,7 @@ pub async fn stream_message_handler(
     context: AgentRunContext,
     settings: crate::config::Settings,
 ) -> String {
-    stream_message_handler_with_context(
-        rx,
-        sender,
-        chat_id,
-        context,
-        settings.streaming,
-    )
-    .await
+    stream_message_handler_with_context(rx, sender, chat_id, context, settings.streaming).await
 }
 
 pub async fn stream_message_handler_with_context(

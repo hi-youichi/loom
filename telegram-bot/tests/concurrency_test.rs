@@ -3,8 +3,7 @@
 use std::sync::Arc;
 
 use telegram_bot::{
-    mock::MockSender,
-    stream_message_handler_simple, StreamCommand, StreamingConfig,
+    mock::MockSender, stream_message_handler_simple, StreamCommand, StreamingConfig,
 };
 
 fn test_config() -> StreamingConfig {
@@ -38,7 +37,9 @@ async fn test_concurrent_message_dispatch() {
     for i in 0..10 {
         tx.send(StreamCommand::ActContent {
             content: format!("chunk {} ", i),
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
     }
     tx.send(StreamCommand::Flush).await.unwrap();
     drop(tx);
@@ -87,7 +88,10 @@ async fn test_streaming_handler_drop_safety() {
 
     drop(tx);
     let result = handle.await;
-    assert!(result.is_ok(), "handler should complete cleanly when channel is dropped");
+    assert!(
+        result.is_ok(),
+        "handler should complete cleanly when channel is dropped"
+    );
 }
 
 #[tokio::test]
@@ -108,7 +112,9 @@ async fn test_sender_failure_recovery() {
     tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
     tx.send(StreamCommand::ActContent {
         content: "hello".into(),
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
     tx.send(StreamCommand::Flush).await.unwrap();
     drop(tx);
 

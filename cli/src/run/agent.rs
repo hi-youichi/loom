@@ -28,9 +28,11 @@ pub enum RunStopReason {
 
 fn completion_reply(result: loom::RunCompletion) -> (String, Option<String>, RunStopReason) {
     match result {
-        loom::RunCompletion::Finished(result) => {
-            (result.reply, result.reasoning_content, RunStopReason::EndTurn)
-        }
+        loom::RunCompletion::Finished(result) => (
+            result.reply,
+            result.reasoning_content,
+            RunStopReason::EndTurn,
+        ),
         loom::RunCompletion::Cancelled => (String::new(), None, RunStopReason::Cancelled),
     }
 }
@@ -62,7 +64,10 @@ fn print_available_agents() {
         return;
     }
     let names: Vec<&str> = profiles.iter().map(|p| p.name.as_str()).collect();
-    eprintln!("available agents: {} (use -P/--agent to switch)", names.join(", "));
+    eprintln!(
+        "available agents: {} (use -P/--agent to switch)",
+        names.join(", ")
+    );
 }
 
 /// Single line when a node is entered (unified across agents).
@@ -246,7 +251,9 @@ pub async fn run_agent_wrapper(
         });
     }
 
-    let agent_display = resolved_agent.as_ref().map(|ra| format!("{} ({})", ra.name, ra.source));
+    let agent_display = resolved_agent
+        .as_ref()
+        .map(|ra| format!("{} ({})", ra.name, ra.source));
     let state = Arc::new(Mutex::new(EventState {
         turn: 0,
         last_node: None,
@@ -374,7 +381,8 @@ fn on_event_react(
             ..
         } => {
             s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
-            s.total_completion_tokens = s.total_completion_tokens.saturating_add(*completion_tokens);
+            s.total_completion_tokens =
+                s.total_completion_tokens.saturating_add(*completion_tokens);
 
             match (prefill_duration, decode_duration) {
                 (Some(prefill), Some(decode)) => {
@@ -478,7 +486,8 @@ fn on_event_dup(
             ..
         } => {
             s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
-            s.total_completion_tokens = s.total_completion_tokens.saturating_add(*completion_tokens);
+            s.total_completion_tokens =
+                s.total_completion_tokens.saturating_add(*completion_tokens);
             tracing::info!(
                 prompt_tokens,
                 completion_tokens,
@@ -559,7 +568,8 @@ fn on_event_tot(
             ..
         } => {
             s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
-            s.total_completion_tokens = s.total_completion_tokens.saturating_add(*completion_tokens);
+            s.total_completion_tokens =
+                s.total_completion_tokens.saturating_add(*completion_tokens);
             tracing::info!(
                 prompt_tokens,
                 completion_tokens,
@@ -681,7 +691,8 @@ fn on_event_got(
             ..
         } => {
             s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
-            s.total_completion_tokens = s.total_completion_tokens.saturating_add(*completion_tokens);
+            s.total_completion_tokens =
+                s.total_completion_tokens.saturating_add(*completion_tokens);
             tracing::info!(
                 prompt_tokens,
                 completion_tokens,
@@ -724,7 +735,10 @@ mod tests {
             mcp_remote_args: "-y mcp-remote".to_string(),
             github_token: None,
             mcp_github_cmd: "npx".to_string(),
-            mcp_github_args: vec!["-y".to_string(), "@modelcontextprotocol/server-github".to_string()],
+            mcp_github_args: vec![
+                "-y".to_string(),
+                "@modelcontextprotocol/server-github".to_string(),
+            ],
             mcp_github_url: None,
             mcp_verbose: false,
             openai_api_key: None,

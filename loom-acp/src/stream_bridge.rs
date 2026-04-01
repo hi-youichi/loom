@@ -142,9 +142,9 @@ where
             name,
             arguments,
         } => {
-            let id = call_id.clone().unwrap_or_else(|| {
-                format!("tool-{}", Uuid::new_v4())
-            });
+            let id = call_id
+                .clone()
+                .unwrap_or_else(|| format!("tool-{}", Uuid::new_v4()));
             vec![StreamUpdate::ToolCallStarted {
                 tool_call_id: id,
                 name: name.clone(),
@@ -199,9 +199,9 @@ where
             arguments_delta,
         } => {
             // Generate or use existing call_id
-            let id = call_id.clone().unwrap_or_else(|| {
-                format!("tool-chunk-{}", Uuid::new_v4())
-            });
+            let id = call_id
+                .clone()
+                .unwrap_or_else(|| format!("tool-chunk-{}", Uuid::new_v4()));
             vec![StreamUpdate::ToolCallChunk {
                 tool_call_id: id,
                 name: name.clone(),

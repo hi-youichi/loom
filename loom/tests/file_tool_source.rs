@@ -70,7 +70,11 @@ async fn file_tool_source_write_file_then_read_file_roundtrip() {
         .await
         .unwrap();
     // read returns cat -n style: "  {line_num}\t{content}\n"
-    assert!(out.as_text().unwrap().contains("hello world"), "{}", out.as_text().unwrap());
+    assert!(
+        out.as_text().unwrap().contains("hello world"),
+        "{}",
+        out.as_text().unwrap()
+    );
     assert!(
         out.as_text().unwrap().trim_start().starts_with("1\t"),
         "expected line 1: {}",

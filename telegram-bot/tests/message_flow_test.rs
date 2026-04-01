@@ -25,9 +25,8 @@ fn test_settings_without_mention_required() {
 #[test]
 fn test_streaming_config_custom() {
     let config = StreamingConfig {
-        
         max_act_chars: 800,
-        
+
         show_act_phase: true,
         act_emoji: "🚀".to_string(),
         throttle_ms: 200,
@@ -49,7 +48,9 @@ fn test_text_cleaning_removes_mention() {
     let bot_username = "mybot";
 
     let mention = format!("@{} ", bot_username);
-    let clean_text = text.replace(&mention, "").replace(&format!("@{}", bot_username), "");
+    let clean_text = text
+        .replace(&mention, "")
+        .replace(&format!("@{}", bot_username), "");
 
     assert_eq!(clean_text, "Tell me a joke");
 }
@@ -60,7 +61,9 @@ fn test_text_cleaning_handles_mention_at_end() {
     let bot_username = "mybot";
 
     let mention = format!("@{} ", bot_username);
-    let clean_text = text.replace(&mention, "").replace(&format!("@{}", bot_username), "");
+    let clean_text = text
+        .replace(&mention, "")
+        .replace(&format!("@{}", bot_username), "");
 
     assert_eq!(clean_text, "Hello ");
 }
@@ -72,7 +75,9 @@ fn test_text_cleaning_handles_case_insensitive() {
 
     // Note: The actual implementation does case-sensitive removal
     let mention = format!("@{} ", bot_username);
-    let clean_text = text.replace(&mention, "").replace(&format!("@{}", bot_username), "");
+    let clean_text = text
+        .replace(&mention, "")
+        .replace(&format!("@{}", bot_username), "");
 
     // This shows that case-sensitive matching may miss mentions
     assert_ne!(clean_text, "What is this?");

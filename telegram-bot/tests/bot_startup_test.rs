@@ -25,7 +25,9 @@ async fn e2e_tg_028_no_enabled_bots_returns_error() {
         agent: None,
     };
 
-    let err = run_with_config(config).await.expect_err("expected startup error");
+    let err = run_with_config(config)
+        .await
+        .expect_err("expected startup error");
     let msg = format!("{err}");
     assert!(
         msg.contains("No enabled bots"),
