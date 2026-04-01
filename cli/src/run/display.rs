@@ -24,7 +24,8 @@ pub(crate) fn truncate_display(s: &str, max: usize) -> String {
     format!(
         "{}{}",
         s.chars().take(content_max).collect::<String>(),
-        SUFFIX,    )
+        SUFFIX,
+    )
 }
 
 /// Formats one Message with content truncated for display (User/Assistant/System).
@@ -32,10 +33,9 @@ pub(crate) fn format_message_truncated(m: &Message, max: usize) -> String {
     match m {
         Message::System(s) => format!("System({})", truncate_display(s, max)),
         Message::User(s) => format!("User({})", truncate_display(s, max)),
-        Message::Assistant(p) => format!(
-            "Assistant({})",
-            truncate_display(p.content.as_str(), max)
-        ),
+        Message::Assistant(p) => {
+            format!("Assistant({})", truncate_display(p.content.as_str(), max))
+        }
         Message::Tool {
             tool_call_id,
             content,
@@ -215,10 +215,7 @@ mod tests {
     #[test]
     fn format_react_state_display_contains_sections() {
         let state = ReActState {
-            messages: vec![
-                Message::user("question"),
-                Message::assistant("answer"),
-            ],
+            messages: vec![Message::user("question"), Message::assistant("answer")],
             tool_calls: vec![ToolCall {
                 name: "web_fetch".to_string(),
                 arguments: r#"{"url":"https://example.com/very/long/path"}"#.to_string(),

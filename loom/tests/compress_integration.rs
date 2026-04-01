@@ -9,7 +9,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use loom::{
-    compress::{build_graph, compaction::PRUNE_PLACEHOLDER, CompactionConfig, CompressionGraphNode},
+    compress::{
+        build_graph, compaction::PRUNE_PLACEHOLDER, CompactionConfig, CompressionGraphNode,
+    },
     tools_condition, ActNode, LlmClient, Message, MockLlm, MockToolSource, ObserveNode, ReActState,
     StateGraph, ThinkNode, END, START,
 };
@@ -22,7 +24,11 @@ fn make_state(messages: Vec<Message>) -> ReActState {
 }
 
 fn large_tool_result(name: &str, char_count: usize) -> Message {
-    Message::User(format!("Tool {} returned: {}", name, "x".repeat(char_count)))
+    Message::User(format!(
+        "Tool {} returned: {}",
+        name,
+        "x".repeat(char_count)
+    ))
 }
 
 // ---------- Test 4: no compression ----------
@@ -95,7 +101,9 @@ async fn prune_replaces_old_tool_results_via_compression_graph() {
     assert!(matches!(&out.messages[2], Message::User(s) if s == PRUNE_PLACEHOLDER));
 
     // Most recent tool result preserved (first ~104 tokens within 120 budget)
-    assert!(matches!(&out.messages[3], Message::User(s) if s.starts_with("Tool read_file returned:")));
+    assert!(
+        matches!(&out.messages[3], Message::User(s) if s.starts_with("Tool read_file returned:"))
+    );
 }
 
 // ---------- Test 2: compact ----------
@@ -179,7 +187,9 @@ async fn prune_then_compact_combined() {
     assert!(out.messages.len() < input_count);
 
     // First message is the summary
-    assert!(matches!(&out.messages[0], Message::System(s) if s.contains("[Summary of earlier conversation]")));
+    assert!(
+        matches!(&out.messages[0], Message::System(s) if s.contains("[Summary of earlier conversation]"))
+    );
     assert!(matches!(&out.messages[0], Message::System(s) if s.contains(summary_text)));
 
     // Last 2 messages are the original recent messages
@@ -263,11 +273,13 @@ async fn compression_in_full_react_loop() {
     );
 
     // Should contain a summary message from compaction
-    let has_summary = out
-        .messages
-        .iter()
-        .any(|m| matches!(m, Message::System(s) if s.contains("[Summary of earlier conversation]")));
-    assert!(has_summary, "expected a summary System message after compaction");
+    let has_summary = out.messages.iter().any(
+        |m| matches!(m, Message::System(s) if s.contains("[Summary of earlier conversation]")),
+    );
+    assert!(
+        has_summary,
+        "expected a summary System message after compaction"
+    );
 
     // Flow completed normally
     assert!(out.tool_calls.is_empty());

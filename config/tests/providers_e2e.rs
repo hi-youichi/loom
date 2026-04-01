@@ -105,7 +105,10 @@ model = "gpt-4o-mini"
         "https://api.openai.com/v1"
     );
     assert_eq!(std::env::var("MODEL").unwrap(), "gpt-4o-mini");
-    assert!(std::env::var("LLM_PROVIDER").is_err(), "no type → LLM_PROVIDER unset");
+    assert!(
+        std::env::var("LLM_PROVIDER").is_err(),
+        "no type → LLM_PROVIDER unset"
+    );
 
     assert_eq!(report.active_provider.as_deref(), Some("openai"));
     assert!(report
@@ -147,7 +150,10 @@ tool_choice = "required"
     let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
 
     assert_eq!(std::env::var("OPENAI_TOOL_CHOICE").unwrap(), "required");
-    let tc = report.entries.iter().find(|e| e.key == "OPENAI_TOOL_CHOICE");
+    let tc = report
+        .entries
+        .iter()
+        .find(|e| e.key == "OPENAI_TOOL_CHOICE");
     assert_eq!(tc.map(|e| e.source), Some(ConfigSource::Provider));
 }
 
@@ -184,7 +190,10 @@ temperature = 0.35
     let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
 
     assert_eq!(std::env::var("OPENAI_TEMPERATURE").unwrap(), "0.35");
-    let te = report.entries.iter().find(|e| e.key == "OPENAI_TEMPERATURE");
+    let te = report
+        .entries
+        .iter()
+        .find(|e| e.key == "OPENAI_TEMPERATURE");
     assert_eq!(te.map(|e| e.source), Some(ConfigSource::Provider));
 }
 
@@ -220,38 +229,6 @@ type = "bigmodel"
     assert_eq!(report.active_provider.as_deref(), Some("bigmodel"));
 }
 
-/// Multiple providers defined; LOOM_PROVIDER env var selects among them.
-#[test]
-fn e2e_loom_provider_env_var_selects_provider() {
-    let _lock = LOCK.lock().unwrap();
-    let dir = tempfile::tempdir().unwrap();
-    write_config(
-        dir.path(),
-        r#"
-[default]
-provider = "fast"
-
-[[providers]]
-name = "fast"
-model = "gpt-4o-mini"
-
-[[providers]]
-name = "powerful"
-model = "gpt-4o"
-"#,
-    );
-
-    let _home = LoomHomeGuard::set(dir.path());
-    let env = EnvGuard::new(&["MODEL", "LOOM_PROVIDER"]);
-    env.clear();
-    std::env::set_var("LOOM_PROVIDER", "powerful");
-
-    let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
-
-    assert_eq!(std::env::var("MODEL").unwrap(), "gpt-4o");
-    assert_eq!(report.active_provider.as_deref(), Some("powerful"));
-}
-
 /// .env file takes priority over [[providers]] settings.
 #[test]
 fn e2e_dotenv_overrides_provider() {
@@ -274,7 +251,7 @@ model = "model-from-provider"
     std::fs::write(proj_dir.path().join(".env"), "MODEL=model-from-dotenv\n").unwrap();
 
     let _home = LoomHomeGuard::set(loom_home.path());
-    let env = EnvGuard::new(&["OPENAI_API_KEY", "MODEL", "LOOM_PROVIDER"]);
+    let env = EnvGuard::new(&["OPENAI_API_KEY", "MODEL"]);
     env.clear();
 
     load_and_apply_with_report("loom", Some(proj_dir.path())).unwrap();
@@ -306,7 +283,7 @@ model = "from-provider-model"
     std::fs::write(proj_dir.path().join(".env"), "MODEL=from-dotenv\n").unwrap();
 
     let _home = LoomHomeGuard::set(loom_home.path());
-    let env = EnvGuard::new(&["OPENAI_API_KEY", "MODEL", "LOOM_PROVIDER"]);
+    let env = EnvGuard::new(&["OPENAI_API_KEY", "MODEL"]);
     env.clear();
     std::env::set_var("MODEL", "from-process-env");
 
@@ -339,7 +316,7 @@ model = "from-provider"
     );
 
     let _home = LoomHomeGuard::set(dir.path());
-    let env = EnvGuard::new(&["MODEL", "SOME_OTHER_KEY", "LOOM_PROVIDER"]);
+    let env = EnvGuard::new(&["MODEL", "SOME_OTHER_KEY"]);
     env.clear();
 
     load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
@@ -379,6 +356,50 @@ model = "only-model"
     assert!(std::env::var("LLM_PROVIDER").is_err());
 }
 
+/// Missing base_url falls back to models.dev provider `api` field.
+#[test]
+fn e2e_provider_base_url_from_models_dev_api_field() {
+    let _lock = LOCK.lock().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    write_config(
+        dir.path(),
+        r#"
+[default]
+provider = "zhipuai-coding-plan"
+
+[[providers]]
+name = "zhipuai-coding-plan"
+api_key = "provider-key"
+model = "glm-5"
+"#,
+    );
+
+    let _home = LoomHomeGuard::set(dir.path());
+    let env = EnvGuard::new(&[
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "MODEL",
+        "LLM_PROVIDER",
+        "LOOM_MODELS_DEV_API_JSON",
+    ]);
+    env.clear();
+    std::env::set_var(
+        "LOOM_MODELS_DEV_API_JSON",
+        r#"{
+  "zhipuai-coding-plan": { "api": "https://open.bigmodel.cn/api/paas/v4" }
+}"#,
+    );
+
+    load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+
+    assert_eq!(std::env::var("OPENAI_API_KEY").unwrap(), "provider-key");
+    assert_eq!(std::env::var("MODEL").unwrap(), "glm-5");
+    assert_eq!(
+        std::env::var("OPENAI_BASE_URL").unwrap(),
+        "https://open.bigmodel.cn/api/paas/v4"
+    );
+}
+
 /// Unknown provider name in [default].provider → no provider env vars set, no crash.
 #[test]
 fn e2e_unknown_provider_name_is_noop() {
@@ -397,7 +418,7 @@ model = "other-model"
     );
 
     let _home = LoomHomeGuard::set(dir.path());
-    let env = EnvGuard::new(&["MODEL", "OPENAI_API_KEY", "LOOM_PROVIDER"]);
+    let env = EnvGuard::new(&["MODEL", "OPENAI_API_KEY"]);
     env.clear();
 
     let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
@@ -406,7 +427,7 @@ model = "other-model"
     assert!(report.active_provider.is_none());
 }
 
-/// No [default].provider and no LOOM_PROVIDER → behaves exactly as before (no provider applied).
+/// No [default].provider behaves exactly as before (no provider applied).
 #[test]
 fn e2e_no_default_provider_is_backward_compatible() {
     let _lock = LOCK.lock().unwrap();
@@ -421,7 +442,7 @@ OPENAI_API_KEY = "from-env-key"
     );
 
     let _home = LoomHomeGuard::set(dir.path());
-    let env = EnvGuard::new(&["MODEL", "OPENAI_API_KEY", "LOOM_PROVIDER"]);
+    let env = EnvGuard::new(&["MODEL", "OPENAI_API_KEY"]);
     env.clear();
 
     let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
@@ -453,47 +474,13 @@ model = "gpt-4o"
     );
 
     let _home = LoomHomeGuard::set(dir.path());
-    let env = EnvGuard::new(&["MODEL", "LOOM_PROVIDER"]);
+    let env = EnvGuard::new(&["MODEL"]);
     env.clear();
 
     let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
 
     assert_eq!(std::env::var("MODEL").unwrap(), "gpt-4o");
     assert!(report.active_provider.is_some());
-}
-
-/// LOOM_PROVIDER set in [env] section selects a provider.
-#[test]
-fn e2e_loom_provider_in_env_section_selects_provider() {
-    let _lock = LOCK.lock().unwrap();
-    let dir = tempfile::tempdir().unwrap();
-    write_config(
-        dir.path(),
-        r#"
-[env]
-LOOM_PROVIDER = "local"
-
-[[providers]]
-name = "local"
-api_key = "local-key"
-base_url = "http://localhost:11434/v1"
-model = "llama3.2"
-"#,
-    );
-
-    let _home = LoomHomeGuard::set(dir.path());
-    let env = EnvGuard::new(&["OPENAI_API_KEY", "OPENAI_BASE_URL", "MODEL", "LOOM_PROVIDER"]);
-    env.clear();
-
-    let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
-
-    assert_eq!(std::env::var("OPENAI_API_KEY").unwrap(), "local-key");
-    assert_eq!(
-        std::env::var("OPENAI_BASE_URL").unwrap(),
-        "http://localhost:11434/v1"
-    );
-    assert_eq!(std::env::var("MODEL").unwrap(), "llama3.2");
-    assert_eq!(report.active_provider.as_deref(), Some("local"));
 }
 
 /// ConfigLoadReport.active_provider is None when [[providers]] exists but no selection.
@@ -511,7 +498,7 @@ model = "gpt-4o"
     );
 
     let _home = LoomHomeGuard::set(dir.path());
-    let env = EnvGuard::new(&["MODEL", "LOOM_PROVIDER"]);
+    let env = EnvGuard::new(&["MODEL"]);
     env.clear();
 
     let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();

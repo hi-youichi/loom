@@ -82,7 +82,10 @@ fn run_options_working_folder_tied_to_repo() {
     std::env::set_var("WORKING_FOLDER", "/tmp/test-repo");
     let opts2 = run_options_from_issues_event(&ev, None);
     assert_eq!(
-        opts2.working_folder.as_deref().map(|p| p.display().to_string()),
+        opts2
+            .working_folder
+            .as_deref()
+            .map(|p| p.display().to_string()),
         Some("/tmp/test-repo".to_string())
     );
     if let Some(p) = prev {

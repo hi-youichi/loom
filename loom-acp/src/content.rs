@@ -101,13 +101,13 @@ impl ContentBlockLike for agent_client_protocol::ContentBlock {
             agent_client_protocol::ContentBlock::Text(t) => Some(t.text.clone()),
             agent_client_protocol::ContentBlock::Resource(r) => {
                 use agent_client_protocol::EmbeddedResourceResource;
-                
+
                 match &r.resource {
                     EmbeddedResourceResource::TextResourceContents(text_res) => {
                         let mime = text_res.mime_type.as_deref().unwrap_or("text/plain");
                         let uri = &text_res.uri;
                         let text = &text_res.text;
-                        
+
                         Some(format!(
                             "--- Embedded Resource ---\nURI: {}\nMIME: {}\n\n{}\n--- End Resource ---",
                             uri, mime, text
@@ -155,19 +155,21 @@ pub enum ContentError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentBlock {
-    Text { text: String },
-    Image { 
-        url: String, 
-        #[serde(skip_serializing_if = "Option::is_none")] 
-        mime_type: Option<String> 
+    Text {
+        text: String,
+    },
+    Image {
+        url: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        mime_type: Option<String>,
     },
     Resource {
         uri: String,
-        #[serde(skip_serializing_if = "Option::is_none")] 
+        #[serde(skip_serializing_if = "Option::is_none")]
         mime_type: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")] 
+        #[serde(skip_serializing_if = "Option::is_none")]
         text: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")] 
+        #[serde(skip_serializing_if = "Option::is_none")]
         blob: Option<String>,
     },
 }
@@ -175,14 +177,18 @@ pub enum ContentBlock {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ToolCallContent {
-    Content { content: ContentBlock },
+    Content {
+        content: ContentBlock,
+    },
     Diff {
         path: String,
-        #[serde(skip_serializing_if = "Option::is_none")] 
+        #[serde(skip_serializing_if = "Option::is_none")]
         old_text: Option<String>,
         new_text: String,
     },
-    Terminal { terminal_id: String },
+    Terminal {
+        terminal_id: String,
+    },
 }
 
 impl ToolCallContent {
@@ -191,11 +197,15 @@ impl ToolCallContent {
             content: ContentBlock::Text { text },
         }
     }
-    
+
     pub fn from_diff(path: String, old_text: Option<String>, new_text: String) -> Self {
-        ToolCallContent::Diff { path, old_text, new_text }
+        ToolCallContent::Diff {
+            path,
+            old_text,
+            new_text,
+        }
     }
-    
+
     pub fn from_terminal(terminal_id: String) -> Self {
         ToolCallContent::Terminal { terminal_id }
     }
@@ -212,14 +222,14 @@ pub fn extract_locations(tool_name: &str, args: &serde_json::Value) -> Vec<ToolC
     match tool_name {
         "read" | "write_file" | "edit" | "delete_file" | "move_file" | "glob" | "grep" => {
             let mut locations = Vec::new();
-            
+
             if let Some(path) = args.get("path").and_then(|p| p.as_str()) {
                 locations.push(ToolCallLocation {
                     path: path.to_string(),
                     line: args.get("line").and_then(|l| l.as_u64()).map(|l| l as u32),
                 });
             }
-            
+
             if tool_name == "move_file" {
                 if let Some(source) = args.get("source").and_then(|s| s.as_str()) {
                     locations.push(ToolCallLocation {
@@ -234,7 +244,7 @@ pub fn extract_locations(tool_name: &str, args: &serde_json::Value) -> Vec<ToolC
                     });
                 }
             }
-            
+
             if tool_name == "grep" {
                 if let Some(path) = args.get("path").and_then(|p| p.as_str()) {
                     locations.push(ToolCallLocation {
@@ -243,7 +253,7 @@ pub fn extract_locations(tool_name: &str, args: &serde_json::Value) -> Vec<ToolC
                     });
                 }
             }
-            
+
             locations
         }
         _ => Vec::new(),
@@ -269,9 +279,8 @@ mod tests {
     fn test_text_resource_parsing() {
         let text_res = TextResourceContents::new("Hello, world!", "file:///test.txt")
             .mime_type(Some("text/plain".to_string()));
-        let embedded = EmbeddedResource::new(EmbeddedResourceResource::TextResourceContents(
-            text_res,
-        ));
+        let embedded =
+            EmbeddedResource::new(EmbeddedResourceResource::TextResourceContents(text_res));
         let block = ContentBlock::Resource(embedded);
 
         let result = block.as_text().expect("Should extract text from resource");
@@ -285,9 +294,8 @@ mod tests {
     #[test]
     fn test_text_resource_without_mime() {
         let text_res = TextResourceContents::new("Content", "file:///example.txt");
-        let embedded = EmbeddedResource::new(EmbeddedResourceResource::TextResourceContents(
-            text_res,
-        ));
+        let embedded =
+            EmbeddedResource::new(EmbeddedResourceResource::TextResourceContents(text_res));
         let block = ContentBlock::Resource(embedded);
 
         let result = block.as_text().expect("Should extract text");
@@ -313,9 +321,8 @@ mod tests {
     #[test]
     fn test_resource_not_unsupported() {
         let text_res = TextResourceContents::new("Test", "file:///test.txt");
-        let embedded = EmbeddedResource::new(EmbeddedResourceResource::TextResourceContents(
-            text_res,
-        ));
+        let embedded =
+            EmbeddedResource::new(EmbeddedResourceResource::TextResourceContents(text_res));
         let block = ContentBlock::Resource(embedded);
 
         assert!(
@@ -349,9 +356,10 @@ mod tests {
         let blocks = vec![
             ContentBlock::Text(TextContent::new("Start")),
             ContentBlock::Resource(EmbeddedResource::new(
-                EmbeddedResourceResource::TextResourceContents(
-                    TextResourceContents::new("Embedded content", "file:///test.txt"),
-                ),
+                EmbeddedResourceResource::TextResourceContents(TextResourceContents::new(
+                    "Embedded content",
+                    "file:///test.txt",
+                )),
             )),
             ContentBlock::Text(TextContent::new("End")),
         ];

@@ -39,20 +39,20 @@ pub async fn client_read_text_file<C: Client>(
     limit: Option<u32>,
 ) -> Result<String, agent_client_protocol::Error> {
     let mut request = ReadTextFileRequest::new(session_id, path);
-    
+
     if let Some(l) = line {
         request = request.line(l);
     }
     if let Some(lim) = limit {
         request = request.limit(lim);
     }
-    
+
     debug!(path = %path, line = ?line, limit = ?limit, "Reading file from client");
-    
+
     let response = client.read_text_file(request).await?;
-    
+
     info!(path = %path, length = response.content.len(), "Successfully read file from client");
-    
+
     Ok(response.content)
 }
 
@@ -79,13 +79,13 @@ pub async fn client_write_text_file<C: Client>(
     contents: &str,
 ) -> Result<(), agent_client_protocol::Error> {
     let request = WriteTextFileRequest::new(session_id, path, contents);
-    
+
     debug!(path = %path, length = contents.len(), "Writing file to client");
-    
+
     client.write_text_file(request).await?;
-    
+
     info!(path = %path, length = contents.len(), "Successfully wrote file to client");
-    
+
     Ok(())
 }
 
@@ -113,13 +113,13 @@ mod tests {
     fn test_client_supports_file_operations() {
         // Both supported
         assert!(client_supports_file_operations(true, true));
-        
+
         // Only read supported
         assert!(client_supports_file_operations(true, false));
-        
+
         // Only write supported
         assert!(client_supports_file_operations(false, true));
-        
+
         // Neither supported
         assert!(!client_supports_file_operations(false, false));
     }

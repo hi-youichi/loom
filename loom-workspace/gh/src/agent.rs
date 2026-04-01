@@ -15,44 +15,27 @@ pub fn run_options_from_issues_event(
     ev: &IssuesEvent,
     delivery_id: Option<&str>,
 ) -> loom::RunOptions {
-    let body = ev
-        .issue
-        .body
-        .as_deref()
-        .unwrap_or("")
-        .trim();
+    let body = ev.issue.body.as_deref().unwrap_or("").trim();
     let message = if body.is_empty() {
         format!(
             "GitHub issue {} in {} #{}: {}",
-            ev.action,
-            ev.repository.full_name,
-            ev.issue.number,
-            ev.issue.title
+            ev.action, ev.repository.full_name, ev.issue.number, ev.issue.title
         )
     } else {
         format!(
             "GitHub issue {} in {} #{}: {}\n\n{}",
-            ev.action,
-            ev.repository.full_name,
-            ev.issue.number,
-            ev.issue.title,
-            body
+            ev.action, ev.repository.full_name, ev.issue.number, ev.issue.title, body
         )
     };
 
-    let thread_id = delivery_id
-        .map(String::from)
-        .or_else(|| {
-            Some(format!(
-                "issue-{}-{}",
-                ev.repository.full_name,
-                ev.issue.number
-            ))
-        });
+    let thread_id = delivery_id.map(String::from).or_else(|| {
+        Some(format!(
+            "issue-{}-{}",
+            ev.repository.full_name, ev.issue.number
+        ))
+    });
 
-    let working_folder = std::env::var("WORKING_FOLDER")
-        .ok()
-        .map(PathBuf::from);
+    let working_folder = std::env::var("WORKING_FOLDER").ok().map(PathBuf::from);
 
     let model = std::env::var("MODEL")
         .or_else(|_| std::env::var("OPENAI_MODEL"))

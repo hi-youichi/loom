@@ -8,6 +8,7 @@ use crate::memory::uuid6;
 use crate::message::{AssistantToolCall, Message};
 use crate::LlmUsage;
 use serde::{Deserialize, Serialize};
+use tracing::debug;
 
 use crate::state::tool_output_normalizer::{ToolOutputStrategy, ToolStorageRef};
 
@@ -288,9 +289,32 @@ impl ReActState {
             )
         };
         self.messages.push(think_message);
+        debug!(
+            message_count = self.messages.len(),
+            tool_call_count = tool_calls.len(),
+            tool_calls = ?tool_calls
+                .iter()
+                .map(|tc| format!(
+                    "id={} name={} args_len={}",
+                    tc.id.as_deref().unwrap_or(""),
+                    tc.name,
+                    tc.arguments.len()
+                ))
+                .collect::<Vec<_>>(),
+            reasoning_len = reasoning_content.as_ref().map(|s| s.len()),
+            content_len = self
+                .messages
+                .last()
+                .and_then(|m| match m {
+                    Message::Assistant(payload) => Some(payload.content.len()),
+                    _ => None,
+                }),
+            "react_state apply_think wrote assistant message and tool_calls"
+        );
         self.last_reasoning_content = reasoning_content;
         self.tool_calls = tool_calls;
         self.usage = usage;
+
         self.total_usage = total_usage;
         self.message_count_after_last_think = Some(self.messages.len());
         self.think_count = self.think_count.saturating_add(1);

@@ -53,6 +53,16 @@ ThinkNode maps `LlmResponse` into **ReActState**: appends Assistant message, set
 
 Use **build_react_runner_with_openai** or the build module's LLM resolution to get a ChatOpenAI-backed runner when the config points to OpenAI.
 
+### Automatic routing from `MODEL`
+
+When `LLM_PROVIDER` is not set, the build layer infers provider type from `MODEL` if it is in `provider/model` format:
+
+- `openai/...` -> OpenAI client
+- non-`openai` provider prefix -> OpenAI-compatible client
+
+In this mode, the provider prefix is used only for routing and the request model name is normalized to the part after `/`.
+For OpenAI-compatible routing, `OPENAI_BASE_URL` is required at runtime. When using `~/.loom/config.toml` `[[providers]]` entries, Loom can auto-fill `OPENAI_BASE_URL` from the models.dev provider `api` field if `base_url` is omitted.
+
 ## ChatBigModel (智谱)
 
 **ChatBigModel** is an OpenAI-compatible client for the BigModel (智谱) API (`https://open.bigmodel.cn/api/paas/v4/`).

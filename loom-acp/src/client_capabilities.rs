@@ -6,8 +6,8 @@
 //! - Terminal operations (terminal/create, terminal/output, etc.)
 //! - Future: MCP capabilities, prompt capabilities
 
-use std::sync::Arc;
 use serde_json::Value;
+use std::sync::Arc;
 
 /// Client capabilities as detected during initialization.
 #[derive(Debug, Clone, Default)]
@@ -32,26 +32,30 @@ impl DetectedCapabilities {
     pub fn from_client_capabilities_json(caps_json: Option<Value>) -> Self {
         let caps_json = caps_json.unwrap_or_else(|| serde_json::json!({}));
         let caps_obj = caps_json.as_object().cloned().unwrap_or_default();
-        
+
         // Extract fs capabilities
-        let fs_caps = caps_obj.get("fs")
+        let fs_caps = caps_obj
+            .get("fs")
             .and_then(|v| v.as_object())
             .cloned()
             .unwrap_or_default();
-        
-        let fs_read_text_file = fs_caps.get("readTextFile")
+
+        let fs_read_text_file = fs_caps
+            .get("readTextFile")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        
-        let fs_write_text_file = fs_caps.get("writeTextFile")
+
+        let fs_write_text_file = fs_caps
+            .get("writeTextFile")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        
+
         // Extract terminal capabilities
-        let terminal_supported = caps_obj.get("terminal")
+        let terminal_supported = caps_obj
+            .get("terminal")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        
+
         Self {
             fs_read_text_file,
             fs_write_text_file,
@@ -73,7 +77,7 @@ impl ClientCapabilitiesInfo {
             inner: Arc::new(detected),
         }
     }
-    
+
     /// Create from ACP ClientCapabilities JSON.
     pub fn from_json(caps_json: Option<Value>) -> Self {
         let detected = DetectedCapabilities::from_client_capabilities_json(caps_json);
@@ -136,7 +140,7 @@ mod tests {
         assert!(!caps.fs_write_text_file);
         assert!(!caps.terminal_supported);
     }
-    
+
     #[test]
     fn test_from_full_capabilities() {
         let caps_json = serde_json::json!({
@@ -152,7 +156,7 @@ mod tests {
         assert!(caps.fs_write_text_file);
         assert!(caps.terminal_supported);
     }
-    
+
     #[test]
     fn test_client_capabilities_info() {
         let caps_json = serde_json::json!({
@@ -162,7 +166,7 @@ mod tests {
             },
             "terminal": true
         });
-        
+
         let info = ClientCapabilitiesInfo::from_json(Some(caps_json));
         assert!(info.can_read_text_file());
         assert!(!info.can_write_text_file());

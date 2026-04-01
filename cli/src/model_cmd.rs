@@ -17,9 +17,8 @@ const MAX_MODELS_DISPLAY: usize = 30;
 /// List models from all configured providers.
 #[allow(dead_code)]
 pub async fn list_all_models(json: bool) -> Result<(), RunError> {
-    let config = load_full_config("loom").map_err(|e| {
-        RunError::ConfigError(format!("Failed to load config: {}", e))
-    })?;
+    let config = load_full_config("loom")
+        .map_err(|e| RunError::ConfigError(format!("Failed to load config: {}", e)))?;
 
     if config.providers.is_empty() {
         eprintln!("No providers configured in ~/.loom/config.toml");
@@ -46,9 +45,8 @@ pub async fn list_all_models(json: bool) -> Result<(), RunError> {
 /// List models from a specific provider.
 #[allow(dead_code)]
 pub async fn list_provider_models(provider_name: &str, json: bool) -> Result<(), RunError> {
-    let config = load_full_config("loom").map_err(|e| {
-        RunError::ConfigError(format!("Failed to load config: {}", e))
-    })?;
+    let config = load_full_config("loom")
+        .map_err(|e| RunError::ConfigError(format!("Failed to load config: {}", e)))?;
 
     let provider = config
         .providers
@@ -105,7 +103,10 @@ fn output_json(results: &[ProviderModels]) {
         })
         .collect();
 
-    println!("{}", serde_json::to_string_pretty(&json_results).unwrap_or_default());
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json_results).unwrap_or_default()
+    );
 }
 
 /// Output results in human-readable format.

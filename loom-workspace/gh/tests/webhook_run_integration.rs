@@ -36,7 +36,11 @@ fn sign(secret: &[u8], body: &[u8]) -> String {
 /// Returns (base URL, receiver for RunOptions). Spawns server with mock run_agent.
 async fn spawn_webhook_server_with_mock(
     secret: &[u8],
-) -> (String, tokio::task::JoinHandle<()>, mpsc::Receiver<loom::RunOptions>) {
+) -> (
+    String,
+    tokio::task::JoinHandle<()>,
+    mpsc::Receiver<loom::RunOptions>,
+) {
     let (tx, rx) = mpsc::channel(2);
     let run_agent: RunAgentCallback = Arc::new(move |opts| {
         let _ = tx.try_send(opts);
@@ -72,7 +76,9 @@ async fn webhook_returns_200_then_invokes_run_once() {
         .expect("timeout waiting for run_agent call")
         .expect("channel closed");
     assert!(
-        opts.message.contains("owner/repo") && opts.message.contains("42") && opts.message.contains("Test issue"),
+        opts.message.contains("owner/repo")
+            && opts.message.contains("42")
+            && opts.message.contains("Test issue"),
         "RunOptions.message should contain repo, issue number, title: {}",
         opts.message
     );
@@ -122,7 +128,10 @@ async fn webhook_invalid_payload_does_not_invoke_run() {
         .unwrap();
     assert_eq!(res.status(), 400);
     let received = tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv()).await;
-    assert!(received.is_err() || received.unwrap().is_none(), "run_agent must not be called");
+    assert!(
+        received.is_err() || received.unwrap().is_none(),
+        "run_agent must not be called"
+    );
 }
 
 #[tokio::test]
@@ -139,5 +148,8 @@ async fn webhook_invalid_signature_does_not_invoke_run() {
         .unwrap();
     assert_eq!(res.status(), 401);
     let received = tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv()).await;
-    assert!(received.is_err() || received.unwrap().is_none(), "run_agent must not be called");
+    assert!(
+        received.is_err() || received.unwrap().is_none(),
+        "run_agent must not be called"
+    );
 }

@@ -15,10 +15,12 @@ use loom::{
     helve::ApprovalPolicy,
     memory::RunnableConfig,
     stream::{StreamEvent, StreamMode},
-    tool_source::{FileToolSource, ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec},
-    ActNode, LlmUsage, Message, MockLlm, MockToolSource, Next, Node, ObserveNode, PromptTokensDetails,
-    ReActState,
-    ThinkNode, ToolCall, ToolOutputHint, ToolOutputStrategy, ToolResult, STEP_PROGRESS_EVENT_TYPE,
+    tool_source::{
+        FileToolSource, ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec,
+    },
+    ActNode, LlmUsage, Message, MockLlm, MockToolSource, Next, Node, ObserveNode,
+    PromptTokensDetails, ReActState, ThinkNode, ToolCall, ToolOutputHint, ToolOutputStrategy,
+    ToolResult, STEP_PROGRESS_EVENT_TYPE,
 };
 use serde_json::{json, Value};
 use tokio::sync::mpsc;
@@ -47,7 +49,7 @@ impl ToolSource for RecordingToolSource {
         _name: &str,
         _arguments: Value,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        Ok(ToolCallContent::text("ok".to_string(),))
+        Ok(ToolCallContent::text("ok".to_string()))
     }
 
     async fn call_tool_with_context(
@@ -59,7 +61,7 @@ impl ToolSource for RecordingToolSource {
         if let Some(ctx) = ctx {
             self.seen_contexts.lock().unwrap().push(ctx.clone());
         }
-        Ok(ToolCallContent::text("ok".to_string(),))
+        Ok(ToolCallContent::text("ok".to_string()))
     }
 }
 
@@ -246,13 +248,12 @@ async fn think_node_usage_merge_some_plus_some() {
         Some(15 + 28)
     );
     assert_eq!(out.total_usage.as_ref().map(|u| u.prompt_tokens), Some(30));
-    assert!(
-        out.usage
-            .as_ref()
-            .and_then(|u| u.prompt_tokens_details.as_ref())
-            .and_then(|d| d.cached_tokens)
-            .is_some()
-    );
+    assert!(out
+        .usage
+        .as_ref()
+        .and_then(|u| u.prompt_tokens_details.as_ref())
+        .and_then(|d| d.cached_tokens)
+        .is_some());
     assert!(out
         .total_usage
         .as_ref()
@@ -400,8 +401,14 @@ async fn think_node_stream_emits_usage_when_available() {
             assert_eq!(prompt_tokens, 10);
             assert_eq!(completion_tokens, 5);
             assert_eq!(total_tokens, 15);
-            assert!(prefill_duration.is_some(), "prefill_duration should be set in streaming mode");
-            assert!(decode_duration.is_some(), "decode_duration should be set in streaming mode");
+            assert!(
+                prefill_duration.is_some(),
+                "prefill_duration should be set in streaming mode"
+            );
+            assert!(
+                decode_duration.is_some(),
+                "decode_duration should be set in streaming mode"
+            );
         }
     }
     assert_eq!(usage_events, 1, "should emit exactly one Usage event");
@@ -603,9 +610,7 @@ impl ToolSource for HintingToolSource {
             name: "hinted_tool".to_string(),
             description: Some("Tool with explicit output hint".to_string()),
             input_schema: json!({ "type": "object", "properties": {}, "required": [] }),
-            output_hint: Some(ToolOutputHint::preferred(
-                ToolOutputStrategy::SummaryOnly,
-            )),
+            output_hint: Some(ToolOutputHint::preferred(ToolOutputStrategy::SummaryOnly)),
         }])
     }
 
@@ -614,7 +619,7 @@ impl ToolSource for HintingToolSource {
         _name: &str,
         _arguments: Value,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        Ok(ToolCallContent::text(self.result.clone(),))
+        Ok(ToolCallContent::text(self.result.clone()))
     }
 }
 
@@ -855,10 +860,7 @@ async fn observe_node_default_constructible() {
 async fn observe_node_with_loop_returns_node_think_when_had_tool_calls() {
     let node = ObserveNode::with_loop();
     let state = ReActState {
-        messages: vec![
-            Message::user("Hi"),
-            Message::assistant("I'll check."),
-        ],
+        messages: vec![Message::user("Hi"), Message::assistant("I'll check.")],
         tool_calls: vec![ToolCall {
             name: "get_time".into(),
             arguments: "{}".into(),
@@ -912,10 +914,7 @@ async fn observe_node_with_loop_returns_end_when_max_turns_reached() {
 
     let node = ObserveNode::with_loop_max_turns(MAX_TURNS);
     let state = ReActState {
-        messages: vec![
-            Message::user("Hi"),
-            Message::assistant("I'll check."),
-        ],
+        messages: vec![Message::user("Hi"), Message::assistant("I'll check.")],
         tool_calls: vec![ToolCall {
             name: "get_time".into(),
             arguments: "{}".into(),

@@ -1,0 +1,48 @@
+name: telegram-bot CI
+
+on:
+  push:
+    paths:
+      - 'telegram-bot/**'
+      - 'loom/**'
+      - 'config/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  pull_request:
+    paths:
+      - 'telegram-bot/**'
+      - 'loom/**'
+      - 'config/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  check:
+    name: Clippy + Test + Doc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rust-src
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+
+      - name: Clippy
+        run: cargo clippy -p telegram-bot --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test -p telegram-bot
+
+      - name: Doc check
+        run: cargo doc -p telegram-bot --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings

@@ -10,6 +10,16 @@ use crate::LlmClient;
 use super::super::config::ReactBuildConfig;
 use super::error::BuildRunnerError;
 
+fn parse_provider_model(model: &str) -> Option<(&str, &str)> {
+    let (provider, model_id) = model.split_once('/')?;
+    let provider = provider.trim();
+    let model_id = model_id.trim();
+    if provider.is_empty() || model_id.is_empty() {
+        return None;
+    }
+    Some((provider, model_id))
+}
+
 /// Extract model configuration from ReactBuildConfig into a ModelEntry.
 ///
 /// Priority (highest to lowest):
@@ -35,7 +45,7 @@ pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<Model
         .or_else(|| std::env::var("OPENAI_BASE_URL").ok());
 
     // Model: config > env > default
-    let model = config
+    let raw_model = config
         .model
         .as_ref()
         .filter(|s| !s.is_empty())
@@ -44,11 +54,38 @@ pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<Model
         .or_else(|| std::env::var("OPENAI_MODEL").ok())
         .unwrap_or_else(|| "gpt-4o-mini".to_string());
 
-    // Provider type: config > env (optional)
-    let provider_type = config
+    // Explicit provider type: config > env (optional)
+    let explicit_provider_type = config
         .llm_provider
         .clone()
         .or_else(|| std::env::var("LLM_PROVIDER").ok());
+    // Inferred provider type from MODEL when explicit provider type is not set.
+    let inferred_provider_type = parse_provider_model(&raw_model).map(|(provider, _)| {
+        if provider.eq_ignore_ascii_case("openai") {
+            "openai".to_string()
+        } else {
+            "openai_compat".to_string()
+        }
+    });
+    let provider_type = explicit_provider_type
+        .clone()
+        .or_else(|| inferred_provider_type.clone());
+    let model = parse_provider_model(&raw_model)
+        .map(|(_, model_id)| model_id.to_string())
+        .unwrap_or(raw_model.clone());
+
+    if matches!(provider_type.as_deref(), Some("openai_compat" | "bigmodel")) && base_url.is_none() {
+        let detail = if explicit_provider_type.is_none() {
+            parse_provider_model(&raw_model)
+                .map(|(provider, _)| format!("inferred from MODEL provider '{}'", provider))
+                .unwrap_or_else(|| "inferred provider".to_string())
+        } else {
+            "LLM_PROVIDER/provider type".to_string()
+        };
+        return Err(BuildRunnerError::Context(AgentError::ExecutionFailed(format!(
+            "OPENAI_BASE_URL is required for OpenAI-compatible providers ({detail})."
+        ))));
+    }
 
     // Determine provider name based on type
     let provider = match provider_type.as_deref() {
@@ -127,9 +164,11 @@ pub(crate) async fn build_default_llm_with_tool_source(
 
     match provider_type {
         "openai_compat" | "bigmodel" => {
-            let base_url = entry.base_url.clone().unwrap_or_else(|| {
-                "https://open.bigmodel.cn/api/paas/v4".to_string()
-            });
+            let base_url = entry.base_url.clone().ok_or_else(|| {
+                BuildRunnerError::Context(AgentError::ExecutionFailed(
+                    "OPENAI_BASE_URL is required for OpenAI-compatible providers".to_string(),
+                ))
+            })?;
             let api_key = entry.api_key.clone().unwrap();
             tracing::debug!("build_default_llm: OpenAI-compat with tools");
             let mut client =
@@ -140,7 +179,7 @@ pub(crate) async fn build_default_llm_with_tool_source(
             if let Some(t) = entry.temperature {
                 client = client.with_temperature(t);
             }
-            Ok(Box::new(client))
+            Ok(Box::new(client) as Box<dyn LlmClient>)
         }
         _ => {
             let mut openai_config = async_openai::config::OpenAIConfig::new();
@@ -159,7 +198,7 @@ pub(crate) async fn build_default_llm_with_tool_source(
             if let Some(t) = entry.temperature {
                 client = client.with_temperature(t);
             }
-            Ok(Box::new(client))
+            Ok(Box::new(client) as Box<dyn LlmClient>)
         }
     }
 }
@@ -190,5 +229,108 @@ mod tests {
         assert!(entry.is_ok(), "model_entry_from_config: {:?}", entry.err());
         let entry = entry.unwrap();
         assert!(!entry.name.is_empty());
+    }
+
+    fn restore_env(key: &str, old: Option<String>) {
+        match old {
+            Some(v) => std::env::set_var(key, v),
+            None => std::env::remove_var(key),
+        }
+    }
+
+    #[test]
+    fn model_provider_prefix_non_openai_infers_openai_compat_and_normalizes_model() {
+        let _guard = env_lock().lock().unwrap();
+        let old_key = std::env::var("OPENAI_API_KEY").ok();
+        let old_base = std::env::var("OPENAI_BASE_URL").ok();
+        let old_provider = std::env::var("LLM_PROVIDER").ok();
+        std::env::set_var("OPENAI_API_KEY", "test-key");
+        std::env::set_var("OPENAI_BASE_URL", "https://open.bigmodel.cn/api/paas/v4");
+        std::env::remove_var("LLM_PROVIDER");
+
+        let mut config = crate::agent::react::config::ReactBuildConfig::from_env();
+        config.model = Some("zhipuai-coding-plan/glm-5".to_string());
+        config.llm_provider = None;
+        let entry = model_entry_from_config(&config).unwrap();
+
+        restore_env("OPENAI_API_KEY", old_key);
+        restore_env("OPENAI_BASE_URL", old_base);
+        restore_env("LLM_PROVIDER", old_provider);
+        drop(_guard);
+
+        assert_eq!(entry.provider_type.as_deref(), Some("openai_compat"));
+        assert_eq!(entry.provider, "openai_compat");
+        assert_eq!(entry.name, "glm-5");
+    }
+
+    #[test]
+    fn model_provider_prefix_openai_infers_openai_and_normalizes_model() {
+        let _guard = env_lock().lock().unwrap();
+        let old_key = std::env::var("OPENAI_API_KEY").ok();
+        let old_base = std::env::var("OPENAI_BASE_URL").ok();
+        let old_provider = std::env::var("LLM_PROVIDER").ok();
+        std::env::set_var("OPENAI_API_KEY", "test-key");
+        std::env::remove_var("OPENAI_BASE_URL");
+        std::env::remove_var("LLM_PROVIDER");
+
+        let mut config = crate::agent::react::config::ReactBuildConfig::from_env();
+        config.model = Some("openai/gpt-4o".to_string());
+        config.llm_provider = None;
+        let entry = model_entry_from_config(&config).unwrap();
+
+        restore_env("OPENAI_API_KEY", old_key);
+        restore_env("OPENAI_BASE_URL", old_base);
+        restore_env("LLM_PROVIDER", old_provider);
+        drop(_guard);
+
+        assert_eq!(entry.provider_type.as_deref(), Some("openai"));
+        assert_eq!(entry.provider, "openai");
+        assert_eq!(entry.name, "gpt-4o");
+    }
+
+    #[test]
+    fn explicit_provider_type_overrides_model_provider_inference() {
+        let _guard = env_lock().lock().unwrap();
+        let old_key = std::env::var("OPENAI_API_KEY").ok();
+        let old_provider = std::env::var("LLM_PROVIDER").ok();
+        std::env::set_var("OPENAI_API_KEY", "test-key");
+        std::env::set_var("LLM_PROVIDER", "openai");
+
+        let mut config = crate::agent::react::config::ReactBuildConfig::from_env();
+        config.model = Some("zhipuai-coding-plan/glm-5".to_string());
+        config.llm_provider = None;
+        let entry = model_entry_from_config(&config).unwrap();
+
+        restore_env("OPENAI_API_KEY", old_key);
+        restore_env("LLM_PROVIDER", old_provider);
+        drop(_guard);
+
+        assert_eq!(entry.provider_type.as_deref(), Some("openai"));
+        assert_eq!(entry.provider, "openai");
+        assert_eq!(entry.name, "glm-5");
+    }
+
+    #[test]
+    fn inferred_openai_compat_requires_base_url() {
+        let _guard = env_lock().lock().unwrap();
+        let old_key = std::env::var("OPENAI_API_KEY").ok();
+        let old_base = std::env::var("OPENAI_BASE_URL").ok();
+        let old_provider = std::env::var("LLM_PROVIDER").ok();
+        std::env::set_var("OPENAI_API_KEY", "test-key");
+        std::env::remove_var("OPENAI_BASE_URL");
+        std::env::remove_var("LLM_PROVIDER");
+
+        let mut config = crate::agent::react::config::ReactBuildConfig::from_env();
+        config.model = Some("zhipuai-coding-plan/glm-5".to_string());
+        config.llm_provider = None;
+        let err = model_entry_from_config(&config).unwrap_err().to_string();
+
+        restore_env("OPENAI_API_KEY", old_key);
+        restore_env("OPENAI_BASE_URL", old_base);
+        restore_env("LLM_PROVIDER", old_provider);
+        drop(_guard);
+
+        assert!(err.contains("OPENAI_BASE_URL is required"));
+        assert!(err.contains("zhipuai-coding-plan"));
     }
 }

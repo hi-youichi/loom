@@ -45,7 +45,8 @@ impl Store {
     /// Opens or creates the database and tables.
     pub fn new(path: impl AsRef<Path>) -> Result<Self, StoreError> {
         let path = path.as_ref().to_path_buf();
-        let conn = rusqlite::Connection::open(&path).map_err(|e| StoreError::Storage(e.to_string()))?;
+        let conn =
+            rusqlite::Connection::open(&path).map_err(|e| StoreError::Storage(e.to_string()))?;
         conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS workspaces (
@@ -104,12 +105,16 @@ impl Store {
                     })
                 })
                 .map_err(|e| StoreError::Storage(e.to_string()))?;
-            rows.collect::<Result<Vec<_>, _>>().map_err(|e| StoreError::Storage(e.to_string()))
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|e| StoreError::Storage(e.to_string()))
         })
     }
 
     /// Lists threads in a workspace (for UI "某 workspace 下所有对话列表").
-    pub async fn list_threads(&self, workspace_id: &str) -> Result<Vec<ThreadInWorkspace>, StoreError> {
+    pub async fn list_threads(
+        &self,
+        workspace_id: &str,
+    ) -> Result<Vec<ThreadInWorkspace>, StoreError> {
         let db = self.db.clone();
         let workspace_id = workspace_id.to_string();
         tokio::task::block_in_place(|| {
@@ -128,7 +133,8 @@ impl Store {
                     })
                 })
                 .map_err(|e| StoreError::Storage(e.to_string()))?;
-            rows.collect::<Result<Vec<_>, _>>().map_err(|e| StoreError::Storage(e.to_string()))
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|e| StoreError::Storage(e.to_string()))
         })
     }
 

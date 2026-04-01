@@ -20,7 +20,8 @@ use tracing::{debug, trace};
 
 use crate::error::AgentError;
 use crate::http_retry::{
-    looks_like_transient_http_error_message, retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES,
+    classify_openai_error_message, retry_backoff_for_attempt, RetryDecision,
+    TRANSIENT_HTTP_MAX_RETRIES,
 };
 use crate::llm::thinking::collect_thinking_tags;
 use crate::llm::{LlmClient, LlmResponse, LlmUsage, ToolCallDelta};
@@ -204,26 +205,37 @@ impl LlmClient for ChatOpenAI {
             let request = self.build_request(messages, false)?;
             match self.client.chat().create(request).await {
                 Ok(response) => break response,
-                Err(e)
-                    if looks_like_transient_http_error_message(&e.to_string())
-                        && attempt < TRANSIENT_HTTP_MAX_RETRIES =>
-                {
-                    let delay = retry_backoff_for_attempt(attempt);
+                Err(e) => {
+                    let error_message = e.to_string();
+                    let retry_decision = classify_openai_error_message(&error_message);
+                    if matches!(retry_decision, RetryDecision::Retryable)
+                        && attempt < TRANSIENT_HTTP_MAX_RETRIES
+                    {
+                        let delay = retry_backoff_for_attempt(attempt);
+                        tracing::warn!(
+                            url = %url,
+                            attempt = attempt + 1,
+                            max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                            delay_secs = delay.as_secs_f64(),
+                            retry_decision = ?retry_decision,
+                            error = %error_message,
+                            "OpenAI API request failed, retrying"
+                        );
+                        attempt += 1;
+                        tokio::time::sleep(delay).await;
+                        continue;
+                    }
+
                     tracing::warn!(
                         url = %url,
                         attempt = attempt + 1,
-                        max_retries = TRANSIENT_HTTP_MAX_RETRIES,
-                        delay_secs = delay.as_secs_f64(),
-                        error = %e,
-                        "OpenAI API request failed, retrying"
+                        retry_decision = ?retry_decision,
+                        error = %error_message,
+                        "OpenAI API request failed without retry"
                     );
-                    attempt += 1;
-                    tokio::time::sleep(delay).await;
-                }
-                Err(e) => {
                     return Err(AgentError::ExecutionFailed(format!(
                         "OpenAI API error: {}",
-                        e
+                        error_message
                     )));
                 }
             }
@@ -303,26 +315,37 @@ impl LlmClient for ChatOpenAI {
             let request = self.build_request(messages, true)?;
             match self.client.chat().create_stream(request).await {
                 Ok(stream) => break stream,
-                Err(e)
-                    if looks_like_transient_http_error_message(&e.to_string())
-                        && attempt < TRANSIENT_HTTP_MAX_RETRIES =>
-                {
-                    let delay = retry_backoff_for_attempt(attempt);
+                Err(e) => {
+                    let error_message = e.to_string();
+                    let retry_decision = classify_openai_error_message(&error_message);
+                    if matches!(retry_decision, RetryDecision::Retryable)
+                        && attempt < TRANSIENT_HTTP_MAX_RETRIES
+                    {
+                        let delay = retry_backoff_for_attempt(attempt);
+                        tracing::warn!(
+                            url = %url,
+                            attempt = attempt + 1,
+                            max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                            delay_secs = delay.as_secs_f64(),
+                            retry_decision = ?retry_decision,
+                            error = %error_message,
+                            "OpenAI stream request failed, retrying"
+                        );
+                        attempt += 1;
+                        tokio::time::sleep(delay).await;
+                        continue;
+                    }
+
                     tracing::warn!(
                         url = %url,
                         attempt = attempt + 1,
-                        max_retries = TRANSIENT_HTTP_MAX_RETRIES,
-                        delay_secs = delay.as_secs_f64(),
-                        error = %e,
-                        "OpenAI stream request failed, retrying"
+                        retry_decision = ?retry_decision,
+                        error = %error_message,
+                        "OpenAI stream request failed without retry"
                     );
-                    attempt += 1;
-                    tokio::time::sleep(delay).await;
-                }
-                Err(e) => {
                     return Err(AgentError::ExecutionFailed(format!(
                         "OpenAI stream error: {}",
-                        e
+                        error_message
                     )));
                 }
             }

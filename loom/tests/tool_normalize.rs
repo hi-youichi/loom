@@ -46,7 +46,14 @@ fn small_output_uses_inline_strategy() {
 fn medium_bash_output_uses_head_tail_strategy() {
     let config = NormalizationConfig::default();
     let text = "line1\n".repeat(900);
-    let result = normalize_tool_output("bash", &json!({"command": "test"}), &text, false, None, config);
+    let result = normalize_tool_output(
+        "bash",
+        &json!({"command": "test"}),
+        &text,
+        false,
+        None,
+        config,
+    );
 
     assert_eq!(result.strategy, ToolOutputStrategy::HeadTail);
     assert!(result.truncated);
@@ -91,7 +98,10 @@ fn very_large_web_fetcher_output_uses_file_ref_with_excerpt() {
         assert_eq!(result.strategy, ToolOutputStrategy::FileRefWithExcerpt);
         assert!(result.truncated);
         assert!(result.raw_content.is_none());
-        assert!(result.storage_ref.is_some(), "large output should be persisted");
+        assert!(
+            result.storage_ref.is_some(),
+            "large output should be persisted"
+        );
         assert!(result.observation_text.contains("Output too large"));
         assert!(result.observation_text.contains("Excerpt:"));
 
@@ -114,7 +124,10 @@ fn chars_tracking_uses_character_counts() {
     );
 
     assert_eq!(result.raw_chars, text.chars().count());
-    assert_eq!(result.observation_chars, result.observation_text.chars().count());
+    assert_eq!(
+        result.observation_chars,
+        result.observation_text.chars().count()
+    );
 }
 
 #[test]

@@ -48,11 +48,18 @@ Check correctness, security, and style.
     let (helve, config, _resolved_agent) = build_helve_config(&run_opts);
 
     assert!(
-        helve.skills_prompt.as_ref().map_or(false, |s| s.contains("code-review") && s.contains("Review code")),
+        helve
+            .skills_prompt
+            .as_ref()
+            .map_or(false, |s| s.contains("code-review")
+                && s.contains("Review code")),
         "expected skills_prompt to contain skill name and description, got: {:?}",
         helve.skills_prompt
     );
-    assert!(config.skill_registry.is_some(), "expected skill_registry to be set");
+    assert!(
+        config.skill_registry.is_some(),
+        "expected skill_registry to be set"
+    );
     let registry = config.skill_registry.as_ref().unwrap();
     let list = registry.list();
     assert_eq!(list.len(), 1);

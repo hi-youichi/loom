@@ -228,7 +228,11 @@ BAR = "baz"
     #[test]
     fn config_without_env_section_returns_empty_map() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("config.toml"), "[other]\nkey = \"ignored\"\n").unwrap();
+        std::fs::write(
+            dir.path().join("config.toml"),
+            "[other]\nkey = \"ignored\"\n",
+        )
+        .unwrap();
 
         let _guard = LoomHomeGuard::set(dir.path());
         let result = load_env_map("loom");
@@ -292,10 +296,7 @@ tool_choice = "required"
         let _guard = LoomHomeGuard::set(dir.path());
         let full = load_full_config("loom").unwrap();
         assert_eq!(full.providers.len(), 1);
-        assert_eq!(
-            full.providers[0].tool_choice.as_deref(),
-            Some("required")
-        );
+        assert_eq!(full.providers[0].tool_choice.as_deref(), Some("required"));
     }
 
     #[test]
@@ -310,7 +311,10 @@ tool_choice = "required"
             temperature: Some(0.25),
         };
         let m = p.to_env_map();
-        assert_eq!(m.get("OPENAI_TEMPERATURE").map(String::as_str), Some("0.25"));
+        assert_eq!(
+            m.get("OPENAI_TEMPERATURE").map(String::as_str),
+            Some("0.25")
+        );
     }
 
     #[test]
