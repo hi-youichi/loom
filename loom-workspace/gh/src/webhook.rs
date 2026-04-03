@@ -17,10 +17,12 @@ pub fn verify_signature(secret: &[u8], body: &[u8], signature_header: &str) -> b
     let Ok(expected) = hex::decode(hex_sig) else {
         return false;
     };
-    let mut mac = hmac::Hmac::<sha2::Sha256>::new_from_slice(secret).expect("HMAC accepts any key size");
+    let mut mac =
+        hmac::Hmac::<sha2::Sha256>::new_from_slice(secret).expect("HMAC accepts any key size");
     mac.update(body);
     let computed = mac.finalize().into_bytes();
-    expected.len() == computed.len() && subtle::ConstantTimeEq::ct_eq(&expected[..], &computed[..]).into()
+    expected.len() == computed.len()
+        && subtle::ConstantTimeEq::ct_eq(&expected[..], &computed[..]).into()
 }
 
 // -----------------------------------------------------------------------------

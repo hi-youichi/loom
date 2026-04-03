@@ -1,15 +1,9 @@
-//! Process startup: provider override, config report, logging.
+//! Process startup: config report and logging.
 
 use std::path::PathBuf;
 
 use crate::args::Args;
 use crate::logging;
-
-pub(crate) fn apply_provider_override(args: &Args) {
-    if let Some(ref provider) = args.provider {
-        std::env::set_var("LOOM_PROVIDER", provider);
-    }
-}
 
 pub(crate) fn print_config_report() {
     if let Ok(report) = config::load_and_apply_with_report("loom", None::<&std::path::Path>) {

@@ -49,8 +49,7 @@ impl SqliteModelSelectionStore {
     }
 
     fn open_connection(&self) -> Result<Connection, BotError> {
-        let connection = Connection::open(&self.database_path)
-            ?;
+        let connection = Connection::open(&self.database_path)?;
         connection
             .execute(
                 "CREATE TABLE IF NOT EXISTS telegram_chat_model_selection (chat_id INTEGER PRIMARY KEY, model TEXT NOT NULL)",
@@ -71,20 +70,13 @@ impl ModelSelectionStore for SqliteModelSelectionStore {
     fn get_selected_model(&self, chat_id: i64) -> Result<Option<String>, BotError> {
         let connection = self.open_connection()?;
         let mut statement = connection
-            .prepare("SELECT model FROM telegram_chat_model_selection WHERE chat_id = ?1")
-            ?;
-        let mut rows = statement
-            .query(params![chat_id])
-            ?;
+            .prepare("SELECT model FROM telegram_chat_model_selection WHERE chat_id = ?1")?;
+        let mut rows = statement.query(params![chat_id])?;
 
-        let row = rows
-            .next()
-            ?;
+        let row = rows.next()?;
 
         match row {
-            Some(row) => Ok(row
-                .get::<_, String>(0)
-                .map(Some)?),
+            Some(row) => Ok(row.get::<_, String>(0).map(Some)?),
             None => Ok(None),
         }
     }
@@ -102,12 +94,10 @@ impl ModelSelectionStore for SqliteModelSelectionStore {
 
     fn clear_selected_model(&self, chat_id: i64) -> Result<(), BotError> {
         let connection = self.open_connection()?;
-        connection
-            .execute(
-                "DELETE FROM telegram_chat_model_selection WHERE chat_id = ?1",
-                params![chat_id],
-            )
-            ?;
+        connection.execute(
+            "DELETE FROM telegram_chat_model_selection WHERE chat_id = ?1",
+            params![chat_id],
+        )?;
         Ok(())
     }
 }
@@ -129,7 +119,10 @@ impl StaticModelCatalog {
         let mut unique_models = Vec::new();
         let mut seen = std::collections::HashSet::new();
 
-        for model in models.into_iter().chain(std::iter::once(ModelChoice::new(default_model.clone()))) {
+        for model in models
+            .into_iter()
+            .chain(std::iter::once(ModelChoice::new(default_model.clone())))
+        {
             if seen.insert(model.model_id.clone()) {
                 unique_models.push(model);
             }
@@ -360,7 +353,10 @@ mod tests {
     #[test]
     fn service_uses_default_when_chat_has_no_override() {
         let service = ModelSelectionService::new(
-            Arc::new(StaticModelCatalog::new("gpt-5.4", vec![ModelChoice::new("gpt-5.4")])),
+            Arc::new(StaticModelCatalog::new(
+                "gpt-5.4",
+                vec![ModelChoice::new("gpt-5.4")],
+            )),
             Arc::new(InMemoryModelSelectionStore::new()),
             Arc::new(InMemorySearchSessionStore::new()),
         );

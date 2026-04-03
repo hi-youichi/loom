@@ -45,8 +45,6 @@ pub fn load_from_path(path: &Path) -> Result<TelegramBotConfig, ConfigError> {
     Ok(config)
 }
 
-
-
 fn interpolate_env_vars(content: &str) -> Result<String, ConfigError> {
     let lines: Vec<&str> = content.lines().collect();
     let mut result = Vec::with_capacity(lines.len());

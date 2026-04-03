@@ -7,7 +7,7 @@ use crate::error::{BotError, Result};
 use crate::streaming::event_mapper::StreamEventMapper;
 use crate::streaming::message_handler::StreamCommand;
 use crate::traits::{AgentRunContext, MessageSender};
-use loom::{run_agent_with_options, RunOptions, RunCmd, RunCompletion};
+use loom::{run_agent_with_options, RunCmd, RunCompletion, RunOptions};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -60,11 +60,7 @@ pub async fn run_loom_agent_streaming(
         dry_run: false,
     };
 
-
-    let mapper = StreamEventMapper::new(
-        tx.clone(),
-        settings.streaming.show_act_phase,
-    );
+    let mapper = StreamEventMapper::new(tx.clone(), settings.streaming.show_act_phase);
     let on_event = mapper.boxed_callback();
 
     let result = run_agent_with_options(&opts, &RunCmd::React, Some(on_event)).await;

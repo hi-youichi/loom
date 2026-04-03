@@ -16,7 +16,6 @@ use crate::formatting::FormattedMessage;
 use crate::traits::FileDownloader;
 use crate::traits::{AgentRunContext, MessageSender};
 
-
 /// Mock Message Sender
 pub struct MockSender {
     messages: Arc<RwLock<Vec<(i64, String)>>>,
@@ -40,11 +39,17 @@ impl MockSender {
     }
 
     pub fn get_messages(&self) -> Vec<(i64, String)> {
-        self.messages.read().expect("mock messages lock poisoned").clone()
+        self.messages
+            .read()
+            .expect("mock messages lock poisoned")
+            .clone()
     }
 
     pub fn clear(&self) {
-        self.messages.write().expect("mock messages lock poisoned").clear();
+        self.messages
+            .write()
+            .expect("mock messages lock poisoned")
+            .clear();
     }
 }
 
@@ -77,7 +82,10 @@ impl crate::traits::MessageSender for MockSender {
             }
         }
         let id = self.next_message_id.fetch_add(1, Ordering::SeqCst);
-        self.messages.write().expect("mock messages lock poisoned").push((chat_id, text.to_string()));
+        self.messages
+            .write()
+            .expect("mock messages lock poisoned")
+            .push((chat_id, text.to_string()));
         Ok(id)
     }
 
@@ -87,7 +95,10 @@ impl crate::traits::MessageSender for MockSender {
         text: &str,
         _parse_mode: teloxide::types::ParseMode,
     ) -> Result<(), BotError> {
-        self.messages.write().expect("mock messages lock poisoned").push((chat_id, text.to_string()));
+        self.messages
+            .write()
+            .expect("mock messages lock poisoned")
+            .push((chat_id, text.to_string()));
         Ok(())
     }
 
@@ -104,11 +115,7 @@ impl crate::traits::MessageSender for MockSender {
         Ok(id)
     }
 
-    async fn send_formatted(
-        &self,
-        chat_id: i64,
-        msg: &FormattedMessage,
-    ) -> Result<(), BotError> {
+    async fn send_formatted(&self, chat_id: i64, msg: &FormattedMessage) -> Result<(), BotError> {
         self.messages
             .write()
             .expect("mock messages lock poisoned")
@@ -122,10 +129,12 @@ impl crate::traits::MessageSender for MockSender {
         _reply_to_message_id: i32,
         text: &str,
     ) -> Result<(), BotError> {
-        self.messages.write().expect("mock messages lock poisoned").push((chat_id, text.to_string()));
+        self.messages
+            .write()
+            .expect("mock messages lock poisoned")
+            .push((chat_id, text.to_string()));
         Ok(())
     }
-
 
     async fn edit_message(
         &self,
@@ -133,7 +142,10 @@ impl crate::traits::MessageSender for MockSender {
         _message_id: i32,
         text: &str,
     ) -> Result<(), BotError> {
-        self.messages.write().expect("mock messages lock poisoned").push((chat_id, text.to_string()));
+        self.messages
+            .write()
+            .expect("mock messages lock poisoned")
+            .push((chat_id, text.to_string()));
         Ok(())
     }
 
@@ -156,7 +168,10 @@ impl crate::traits::MessageSender for MockSender {
         _message_id: i32,
         emoji: &str,
     ) -> Result<(), BotError> {
-        self.messages.write().expect("mock messages lock poisoned").push((chat_id, emoji.to_string()));
+        self.messages
+            .write()
+            .expect("mock messages lock poisoned")
+            .push((chat_id, emoji.to_string()));
         Ok(())
     }
 }
@@ -220,11 +235,17 @@ impl MockAgentRunner {
     }
 
     pub fn get_calls(&self) -> Vec<String> {
-        self.calls.read().expect("mock messages lock poisoned").clone()
+        self.calls
+            .read()
+            .expect("mock messages lock poisoned")
+            .clone()
     }
 
     pub fn get_contexts(&self) -> Vec<AgentRunContext> {
-        self.contexts.read().expect("mock messages lock poisoned").clone()
+        self.contexts
+            .read()
+            .expect("mock messages lock poisoned")
+            .clone()
     }
 }
 
@@ -236,8 +257,14 @@ impl crate::traits::AgentRunner for MockAgentRunner {
         chat_id: i64,
         context: AgentRunContext,
     ) -> Result<String, BotError> {
-        self.calls.write().expect("mock messages lock poisoned").push(prompt.to_string());
-        self.contexts.write().expect("mock messages lock poisoned").push(context);
+        self.calls
+            .write()
+            .expect("mock messages lock poisoned")
+            .push(prompt.to_string());
+        self.contexts
+            .write()
+            .expect("mock messages lock poisoned")
+            .push(context);
 
         if self.should_fail {
             return Err(BotError::Agent("Mock error".to_string()));
@@ -275,7 +302,10 @@ impl MockSessionManager {
     }
 
     pub fn reset_count(&self) -> usize {
-        *self.reset_calls.read().expect("mock messages lock poisoned")
+        *self
+            .reset_calls
+            .read()
+            .expect("mock messages lock poisoned")
     }
 }
 
@@ -288,7 +318,10 @@ impl Default for MockSessionManager {
 #[async_trait]
 impl crate::traits::SessionManager for MockSessionManager {
     async fn reset(&self, _thread_id: &str) -> Result<usize, BotError> {
-        *self.reset_calls.write().expect("mock messages lock poisoned") += 1;
+        *self
+            .reset_calls
+            .write()
+            .expect("mock messages lock poisoned") += 1;
         Ok(self.deleted_per_reset)
     }
 
@@ -349,9 +382,7 @@ pub struct FakeFileDownloader {
 
 impl FakeFileDownloader {
     pub fn new(path: impl Into<PathBuf>) -> Self {
-        Self {
-            path: path.into(),
-        }
+        Self { path: path.into() }
     }
 
     fn metadata(
@@ -386,10 +417,7 @@ impl FileDownloader for FakeFileDownloader {
         message_id: i32,
         photos: &[PhotoSize],
     ) -> Result<(PathBuf, FileMetadata), BotError> {
-        let file_id = photos
-            .last()
-            .map(|p| p.file.id.as_str())
-            .unwrap_or("photo");
+        let file_id = photos.last().map(|p| p.file.id.as_str()).unwrap_or("photo");
         let meta = self.metadata(
             chat_id,
             message_id,

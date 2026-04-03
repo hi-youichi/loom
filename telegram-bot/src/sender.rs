@@ -1,6 +1,10 @@
 //! Teloxide message sender implementation
 
 use async_trait::async_trait;
+use teloxide::prelude::*;
+use teloxide::types::{MessageId, ParseMode, ReactionType};
+
+use crate::constants::retry::MAX_RETRIES as TELEGRAM_API_RETRIES;
 use crate::constants::telegram::MESSAGE_MAX_CHARS as TELEGRAM_MESSAGE_MAX_CHARS;
 use crate::error::BotError;
 use crate::formatting::{escape_markdown_v2, FormattedMessage};
@@ -10,9 +14,6 @@ use crate::streaming::retry::{
 };
 use crate::traits::MessageSender;
 use crate::utils::{split_text_for_telegram, truncate_text};
-
-use teloxide::prelude::*;
-use teloxide::types::{MessageId, ParseMode, ReactionType};
 
 fn preview_text(text: &str) -> String {
     const MAX_PREVIEW_CHARS: usize = 240;
@@ -27,7 +28,6 @@ fn preview_text(text: &str) -> String {
     preview.replace('\n', "\\n")
 }
 
-use crate::constants::retry::MAX_RETRIES as TELEGRAM_API_RETRIES;
 const EDIT_TRUNCATION_NOTICE: &str = "\n\n[truncated: exceeds Telegram edit limit]";
 
 fn exceeds_telegram_limit(text: &str) -> bool {
@@ -133,7 +133,8 @@ impl MessageSender for TeloxideSender {
                 Ok(message) => Ok(message.id.0),
                 Err(e) => {
                     tracing::warn!(error = %e, "formatted telegram message failed, falling back to plain text");
-                    self.send_text_returning_id(chat_id, &msg.plain_text_fallback).await
+                    self.send_text_returning_id(chat_id, &msg.plain_text_fallback)
+                        .await
                 }
             },
             None => self.send_text_returning_id(chat_id, &msg.text).await,
@@ -223,7 +224,6 @@ impl MessageSender for TeloxideSender {
         }
     }
 
-
     async fn edit_message(
         &self,
         chat_id: i64,
@@ -285,7 +285,8 @@ impl MessageSender for TeloxideSender {
                 Ok(()) => Ok(()),
                 Err(e) => {
                     tracing::warn!(error = %e, "formatted telegram edit failed, falling back to plain text");
-                    self.edit_message(chat_id, message_id, &msg.plain_text_fallback).await
+                    self.edit_message(chat_id, message_id, &msg.plain_text_fallback)
+                        .await
                 }
             },
             None => self.edit_message(chat_id, message_id, &msg.text).await,

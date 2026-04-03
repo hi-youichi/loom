@@ -129,15 +129,9 @@ pub enum ProtocolEvent {
         id: String,
     },
     /// **Graph of Thought**: a plan node completed successfully.
-    GotNodeComplete {
-        id: String,
-        result_summary: String,
-    },
+    GotNodeComplete { id: String, result_summary: String },
     /// **Graph of Thought**: a plan node failed.
-    GotNodeFailed {
-        id: String,
-        error: String,
-    },
+    GotNodeFailed { id: String, error: String },
     /// **Graph of Thought**: adaptive expand. New nodes/edges were added from a node.
     /// Payload uses `node_id` (not `id`) per protocol.
     GotExpand {

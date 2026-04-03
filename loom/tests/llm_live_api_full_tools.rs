@@ -140,14 +140,7 @@ async fn mock_api_full_tool_list_invokes_read() {
         tools.len()
     );
     let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
-    for required in [
-        "bash",
-        "web_fetcher",
-        TOOL_READ_FILE,
-        "ls",
-        "batch",
-        "lsp",
-    ] {
+    for required in ["bash", "web_fetcher", TOOL_READ_FILE, "ls", "batch", "lsp"] {
         assert!(
             names.contains(&required),
             "tool {required:?} missing from listed tools: {names:?}"
@@ -194,9 +187,17 @@ async fn mock_api_full_tool_list_invokes_read() {
             )
         });
 
-    let args: serde_json::Value = serde_json::from_str(read_call.arguments.trim())
-        .unwrap_or_else(|e| panic!("read arguments should be JSON: {e}, raw: {:?}", read_call.arguments));
-    let path = args.get("path").and_then(|p| p.as_str()).unwrap_or_default();
+    let args: serde_json::Value =
+        serde_json::from_str(read_call.arguments.trim()).unwrap_or_else(|e| {
+            panic!(
+                "read arguments should be JSON: {e}, raw: {:?}",
+                read_call.arguments
+            )
+        });
+    let path = args
+        .get("path")
+        .and_then(|p| p.as_str())
+        .unwrap_or_default();
     assert!(
         path.contains("probe.txt"),
         "expected read path to reference probe.txt, got path: {:?}",

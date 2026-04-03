@@ -130,7 +130,9 @@ mod tests {
             session_id: Some("run-1".into()),
             node_id: Some("n".into()),
             event_id: Some(1),
-            event: ProtocolEvent::NodeEnter { id: "think".to_string() },
+            event: ProtocolEvent::NodeEnter {
+                id: "think".to_string(),
+            },
         };
         tx.send(env).await.unwrap();
         drop(tx);
@@ -251,12 +253,8 @@ mod tests {
         let file = tempfile::NamedTempFile::new().unwrap();
         let store = Arc::new(loom_workspace::Store::new(file.path()).unwrap());
         let ws_id = store.create_workspace(None).await.unwrap();
-        try_register_thread_in_workspace(
-            Some(&store),
-            Some(ws_id.as_str()),
-            Some("thread-1"),
-        )
-        .await;
+        try_register_thread_in_workspace(Some(&store), Some(ws_id.as_str()), Some("thread-1"))
+            .await;
         let threads = store.list_threads(&ws_id).await.unwrap();
         assert_eq!(threads.len(), 1);
         assert_eq!(threads[0].thread_id, "thread-1");
@@ -278,8 +276,7 @@ mod tests {
     #[tokio::test]
     async fn try_append_initial_user_message_both_some_returns_true() {
         let store: Arc<dyn loom::UserMessageStore> = Arc::new(loom::NoOpUserMessageStore);
-        let got =
-            try_append_initial_user_message(Some(&store), Some("t1"), "hello").await;
+        let got = try_append_initial_user_message(Some(&store), Some("t1"), "hello").await;
         assert!(got);
     }
 

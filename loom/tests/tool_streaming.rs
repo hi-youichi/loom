@@ -73,7 +73,10 @@ impl Tool for StreamingTool {
             ctx.emit_custom(json!({"phase": "done"}));
         }
 
-        Ok(ToolCallContent::text(format!("Completed {} steps", self.progress_count,)))
+        Ok(ToolCallContent::text(format!(
+            "Completed {} steps",
+            self.progress_count,
+        )))
     }
 }
 

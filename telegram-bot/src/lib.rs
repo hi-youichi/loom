@@ -70,24 +70,26 @@ pub mod prelude {
 /// Test doubles for integration tests and harnesses. Not used by the production binary.
 pub mod mock;
 
-pub use config::{
-    load_config, load_from_path, TelegramBotConfig, BotConfig, Settings, AgentConfig,
-    ConfigError, InteractionMode, StreamingConfig,
-};
+pub use agent::LoomAgentRunner;
 pub use bot::{run_bots, run_with_config, BotManager};
+pub use config::{
+    load_config, load_from_path, AgentConfig, BotConfig, ConfigError, InteractionMode, Settings,
+    StreamingConfig, TelegramBotConfig,
+};
+pub use download::{DownloadConfig, FileMetadata, FileType, TeloxideDownloader};
 pub use error::{BotError, Result};
+pub use handler_deps::{ChatRunRegistry, HandlerDeps};
 pub use health::{create_health_router, start_health_server, HealthState};
 pub use metrics::{BotMetrics, MetricsSnapshot};
-pub use download::{DownloadConfig, FileMetadata, FileType, TeloxideDownloader};
-pub use router::default_handler;
-pub use handler_deps::{ChatRunRegistry, HandlerDeps};
-pub use router::handle_message_with_deps;
-pub use streaming::{run_loom_agent_streaming, stream_message_handler, stream_message_handler_simple, StreamCommand};
-pub use traits::{AgentRunContext, MessageSender, AgentRunner, SessionManager, FileDownloader};
 pub use model_selection::{
     InMemorySearchSessionStore, ModelChoice, ModelSelectionService, SqliteModelSelectionStore,
     StaticModelCatalog,
 };
+pub use router::default_handler;
+pub use router::handle_message_with_deps;
 pub use sender::TeloxideSender;
-pub use agent::LoomAgentRunner;
 pub use session::SqliteSessionManager;
+pub use streaming::{
+    run_loom_agent_streaming, stream_message_handler, stream_message_handler_simple, StreamCommand,
+};
+pub use traits::{AgentRunContext, AgentRunner, FileDownloader, MessageSender, SessionManager};

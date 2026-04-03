@@ -24,8 +24,8 @@ fn read_jsonrpc_response(
         if trimmed.is_empty() {
             continue;
         }
-        let v: serde_json::Value =
-            serde_json::from_str(trimmed).unwrap_or_else(|e| panic!("invalid JSON: {trimmed}: {e}"));
+        let v: serde_json::Value = serde_json::from_str(trimmed)
+            .unwrap_or_else(|e| panic!("invalid JSON: {trimmed}: {e}"));
         if v.get("method").is_some() {
             // Agent -> client notification; ignore for this test.
             continue;
@@ -44,7 +44,9 @@ fn log_file_resolves_working_folder_placeholder() {
 
     let working_folder = temp.path().join("workspace");
     std::fs::create_dir_all(&working_folder).expect("create workspace");
-    let working_folder = working_folder.canonicalize().expect("canonicalize workspace");
+    let working_folder = working_folder
+        .canonicalize()
+        .expect("canonicalize workspace");
 
     let expected_log = working_folder.join("logs").join("acp.log");
     assert!(

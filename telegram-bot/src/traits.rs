@@ -4,14 +4,13 @@
 //! enabling testable and decoupled code.
 
 use async_trait::async_trait;
-use teloxide::types::{ParseMode, PhotoSize, Document, Video};
 use std::path::PathBuf;
+use teloxide::types::{Document, ParseMode, PhotoSize, Video};
 
 use crate::config::InteractionMode;
 use crate::download::FileMetadata;
 use crate::error::BotError;
 use crate::formatting::FormattedMessage;
-
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AgentRunContext {
@@ -20,7 +19,6 @@ pub struct AgentRunContext {
     pub interaction_mode: InteractionMode,
     pub model_override: Option<String>,
 }
-
 
 /// Message sending interface
 #[async_trait]
@@ -50,11 +48,7 @@ pub trait MessageSender: Send + Sync {
     ) -> Result<(), BotError>;
 
     /// Send a pre-formatted message with fallback behavior handled by the sender.
-    async fn send_formatted(
-        &self,
-        chat_id: i64,
-        msg: &FormattedMessage,
-    ) -> Result<(), BotError>;
+    async fn send_formatted(&self, chat_id: i64, msg: &FormattedMessage) -> Result<(), BotError>;
 
     /// Reply to a specific message using MarkdownV2 formatting.
     async fn reply_to(
@@ -65,12 +59,8 @@ pub trait MessageSender: Send + Sync {
     ) -> Result<(), BotError>;
 
     /// Edit an existing message
-    async fn edit_message(
-        &self,
-        chat_id: i64,
-        message_id: i32,
-        text: &str,
-    ) -> Result<(), BotError>;
+    async fn edit_message(&self, chat_id: i64, message_id: i32, text: &str)
+        -> Result<(), BotError>;
 
     /// Edit an existing message using a pre-formatted payload.
     async fn edit_formatted(

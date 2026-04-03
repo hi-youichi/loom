@@ -8,8 +8,8 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 
 use cli::{run_cli_turn, RunCmd, RunError, RunOptions, RunOutput, StreamOut};
 
-use crate::Command;
 use crate::output::{emit_run_output, OutputConfig};
+use crate::Command;
 
 fn cmd_to_runcmd(cmd: &Command) -> RunCmd {
     match cmd {

@@ -1,10 +1,4 @@
-use axum::{
-    Router,
-    routing::get,
-    Json,
-    http::StatusCode,
-    extract::State,
-};
+use axum::{extract::State, http::StatusCode, routing::get, Json, Router};
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -42,9 +36,7 @@ impl HealthState {
     }
 }
 
-async fn health_check(
-    State(state): State<Arc<HealthState>>,
-) -> Json<serde_json::Value> {
+async fn health_check(State(state): State<Arc<HealthState>>) -> Json<serde_json::Value> {
     let metrics = state.metrics.snapshot();
     Json(json!({
         "status": "ok",
@@ -73,7 +65,7 @@ async fn readiness_check(
                 "ready": false,
                 "healthy": is_healthy,
                 "uptime_secs": state.uptime_secs(),
-            }))
+            })),
         ))
     }
 }

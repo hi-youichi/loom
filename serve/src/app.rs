@@ -85,5 +85,13 @@ async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) ->
     let workspace_store = state.workspace_store.clone();
     let user_message_store = state.user_message_store.clone();
     let run_config = state.run_config.clone();
-    ws.on_upgrade(move |socket| handle_socket(socket, shutdown_tx, workspace_store, user_message_store, run_config))
+    ws.on_upgrade(move |socket| {
+        handle_socket(
+            socket,
+            shutdown_tx,
+            workspace_store,
+            user_message_store,
+            run_config,
+        )
+    })
 }

@@ -36,7 +36,9 @@ pub async fn run_serve_on_listener(
     let workspace_store = std::env::var("WORKSPACE_DB")
         .ok()
         .unwrap_or_else(|| "workspace.db".to_string());
-    let workspace_store = loom_workspace::Store::new(&workspace_store).ok().map(Arc::new);
+    let workspace_store = loom_workspace::Store::new(&workspace_store)
+        .ok()
+        .map(Arc::new);
     let user_message_store = std::env::var("USER_MESSAGE_DB")
         .ok()
         .and_then(|path| loom::SqliteUserMessageStore::new(&path).ok())

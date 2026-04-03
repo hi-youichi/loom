@@ -23,30 +23,34 @@ async fn powershell_tool_name_is_correct() {
 async fn powershell_tool_spec_has_correct_properties() {
     let tool = PowerShellTool::new();
     let spec = tool.spec();
-    
+
     assert_eq!(spec.name, TOOL_POWERSHELL);
     assert!(spec.description.is_some());
-    
+
     let desc = spec.description.unwrap();
     assert!(
         desc.contains("PowerShell") || desc.contains("Windows"),
         "Description should mention PowerShell or Windows: {}",
         desc
     );
-    
+
     // Verify required parameter
     assert_eq!(spec.input_schema["properties"]["command"]["type"], "string");
     assert!(spec.input_schema["required"]
         .as_array()
         .unwrap()
         .contains(&json!("command")));
-    
+
     assert!(spec.input_schema["properties"].get("workdir").is_some());
     assert!(spec.input_schema["properties"].get("timeout").is_some());
     assert!(spec.input_schema["properties"].get("timeout_ms").is_some());
     assert!(spec.input_schema["properties"].get("env").is_some());
-    assert!(spec.input_schema["properties"].get("execution_policy").is_some());
-    assert!(spec.input_schema["properties"].get("use_legacy_powershell").is_some());
+    assert!(spec.input_schema["properties"]
+        .get("execution_policy")
+        .is_some());
+    assert!(spec.input_schema["properties"]
+        .get("use_legacy_powershell")
+        .is_some());
 }
 
 #[tokio::test]
@@ -62,13 +66,13 @@ async fn powershell_tool_default_construction() {
 #[cfg(windows)]
 mod windows_tests {
     use super::*;
-    
+
     #[tokio::test]
     async fn call_get_location_returns_path() {
         let tool = PowerShellTool::new();
         let args = json!({ "command": "Get-Location" });
         let result = tool.call(args, None).await.unwrap();
-        
+
         // Should contain a path separator (Windows uses backslash)
         assert!(
             result.as_text().unwrap().contains('\\') || result.as_text().unwrap().contains(':'),
@@ -76,7 +80,7 @@ mod windows_tests {
             result.as_text().unwrap()
         );
     }
-    
+
     #[tokio::test]
     async fn call_echo_returns_hello() {
         let tool = PowerShellTool::new();
@@ -84,22 +88,22 @@ mod windows_tests {
         let result = tool.call(args, None).await.unwrap();
         assert!(result.as_text().unwrap().contains("hello from ps"));
     }
-    
+
     #[tokio::test]
     async fn call_with_workdir_changes_directory() {
         let tool = PowerShellTool::new();
-        let args = json!({ 
+        let args = json!({
             "command": "Get-Location",
             "workdir": "C:\\Windows"
         });
         let result = tool.call(args, None).await.unwrap();
         assert!(result.as_text().unwrap().contains("Windows"));
     }
-    
+
     #[tokio::test]
     async fn call_with_env_vars_exports_them() {
         let tool = PowerShellTool::new();
-        let args = json!({ 
+        let args = json!({
             "command": "$env:TEST_VAR",
             "env": {
                 "TEST_VAR": "test_value_123"
@@ -108,11 +112,11 @@ mod windows_tests {
         let result = tool.call(args, None).await.unwrap();
         assert!(result.as_text().unwrap().contains("test_value_123"));
     }
-    
+
     #[tokio::test]
     async fn call_with_execution_policy_bypass() {
         let tool = PowerShellTool::new();
-        let args = json!({ 
+        let args = json!({
             "command": "Get-ExecutionPolicy",
             "execution_policy": "Bypass"
         });
@@ -120,11 +124,11 @@ mod windows_tests {
         // Should succeed without error
         assert!(!result.as_text().unwrap().to_lowercase().contains("error"));
     }
-    
+
     #[tokio::test]
     async fn call_wmi_query_succeeds() {
         let tool = PowerShellTool::new();
-        let args = json!({ 
+        let args = json!({
             "command": "Get-WmiObject -Class Win32_ComputerSystem | Select-Object -First 1 | Format-List"
         });
         let result = tool.call(args, None).await.unwrap();
@@ -135,11 +139,11 @@ mod windows_tests {
             &result.as_text().unwrap()[..100.min(result.as_text().unwrap().len())]
         );
     }
-    
+
     #[tokio::test]
     async fn call_registry_read_succeeds() {
         let tool = PowerShellTool::new();
-        let args = json!({ 
+        let args = json!({
             "command": "Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion' -Name ProductName"
         });
         let result = tool.call(args, None).await.unwrap();
@@ -150,11 +154,11 @@ mod windows_tests {
             &result.as_text().unwrap()[..200.min(result.as_text().unwrap().len())]
         );
     }
-    
+
     #[tokio::test]
     async fn call_pipeline_succeeds() {
         let tool = PowerShellTool::new();
-        let args = json!({ 
+        let args = json!({
             "command": "Get-Process | Sort-Object CPU -Descending | Select-Object -First 3 | Format-Table Name, CPU"
         });
         let result = tool.call(args, None).await.unwrap();
@@ -165,17 +169,17 @@ mod windows_tests {
             &result.as_text().unwrap()[..100.min(result.as_text().unwrap().len())]
         );
     }
-    
+
     #[tokio::test]
     async fn call_multiline_script_succeeds() {
         let tool = PowerShellTool::new();
-        let args = json!({ 
+        let args = json!({
             "command": "$a = 'hello'; $b = 'world'; Write-Output \"$a $b\""
         });
         let result = tool.call(args, None).await.unwrap();
         assert!(result.as_text().unwrap().contains("hello world"));
     }
-    
+
     #[tokio::test]
     async fn call_invalid_command_reports_failure_in_output() {
         let tool = PowerShellTool::new();
@@ -192,33 +196,33 @@ mod windows_tests {
             result.as_text().unwrap()
         );
     }
-    
+
     #[tokio::test]
     async fn call_missing_command_returns_error() {
         let tool = PowerShellTool::new();
         let args = json!({});
         let result = tool.call(args, None).await;
-        
+
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
-            err.to_string().contains("missing") || 
-            err.to_string().contains("command") ||
-            err.to_string().contains("InvalidInput"),
+            err.to_string().contains("missing")
+                || err.to_string().contains("command")
+                || err.to_string().contains("InvalidInput"),
             "Error should mention missing command: {}",
             err
         );
     }
-    
+
     #[tokio::test]
     async fn call_with_timeout_terminates_long_running() {
         let tool = PowerShellTool::new();
-        let args = json!({ 
+        let args = json!({
             "command": "Start-Sleep -Seconds 10",
             "timeout_ms": 500  // 500ms timeout
         });
         let result = tool.call(args, None).await;
-        
+
         // Should timeout and return error
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -229,7 +233,7 @@ mod windows_tests {
             err
         );
     }
-    
+
     #[tokio::test]
     async fn stderr_is_captured() {
         let tool = PowerShellTool::new();
@@ -243,17 +247,17 @@ mod windows_tests {
             result.as_text().unwrap()
         );
     }
-    
+
     #[tokio::test]
     async fn working_folder_with_special_chars() {
         let tool = PowerShellTool::new();
         // Test with a path that has spaces (common on Windows)
-        let args = json!({ 
+        let args = json!({
             "command": "Get-Location",
             "workdir": "C:\\Program Files"
         });
         let result = tool.call(args, None).await;
-        
+
         // Should handle spaces in path
         if let Ok(output) = result {
             assert!(output.as_text().unwrap().contains("Program Files"));

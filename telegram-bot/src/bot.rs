@@ -1,15 +1,15 @@
 //! Bot instance management and long polling support
 
 use crate::config::{load_config, BotConfig, Settings, TelegramBotConfig};
-use crate::router::default_handler;
 use crate::handler_deps::ChatRunRegistry;
+use crate::router::default_handler;
 use std::sync::Arc;
 use std::time::Duration;
 use teloxide::dispatching::Dispatcher;
 use teloxide::prelude::*;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
-use tracing::{info, error, Instrument};
+use tracing::{error, info, Instrument};
 
 pub struct BotManager {
     pub name: String,
@@ -60,8 +60,7 @@ impl BotManager {
             async move {
                 info!(bot = %name, "Starting bot with long polling");
 
-                let handler = Update::filter_message()
-                    .endpoint(default_handler);
+                let handler = Update::filter_message().endpoint(default_handler);
 
                 let mut dispatcher = Dispatcher::builder(bot, handler)
                     .dependencies(dptree::deps![settings, bot_username, run_registry])
@@ -102,7 +101,9 @@ pub async fn run_bots() -> Result<(), Box<dyn std::error::Error + Send + Sync>> 
     run_with_config(config).await
 }
 
-pub async fn run_with_config(config: TelegramBotConfig) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub async fn run_with_config(
+    config: TelegramBotConfig,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if config.bots.is_empty() {
         return Err("No bots configured".into());
     }
@@ -122,7 +123,6 @@ pub async fn run_with_config(config: TelegramBotConfig) -> Result<(), Box<dyn st
     let mut managers: Vec<BotManager> = Vec::new();
 
     for (name, bot_config) in &config.bots {
-
         info!(
             bot = %name,
             enabled = bot_config.enabled,
@@ -135,11 +135,10 @@ pub async fn run_with_config(config: TelegramBotConfig) -> Result<(), Box<dyn st
             continue;
         }
 
-
         let mut manager = BotManager::new(name.clone(), bot_config);
         manager.start(Arc::clone(&settings)).await;
         managers.push(manager);
-        
+
         info!(bot = %name, "Bot initialized");
     }
 

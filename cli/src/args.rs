@@ -68,10 +68,6 @@ pub(crate) struct Args {
     #[arg(long)]
     pub(crate) dry: bool,
 
-    /// Provider name to use (overrides [default].provider in config.toml and LOOM_PROVIDER env var)
-    #[arg(long, value_name = "NAME")]
-    pub(crate) provider: Option<String>,
-
     /// Log level (tracing EnvFilter syntax). Overrides RUST_LOG when set; default RUST_LOG or info.
     #[arg(long, global = true, value_name = "LEVEL")]
     pub(crate) log_level: Option<String>,

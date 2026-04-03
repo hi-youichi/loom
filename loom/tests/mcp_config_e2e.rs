@@ -5,9 +5,7 @@
 
 mod init_logging;
 
-use loom::{
-    build_helve_config, run_agent_with_llm_override, MockLlm, RunCmd, RunOptions,
-};
+use loom::{build_helve_config, run_agent_with_llm_override, MockLlm, RunCmd, RunOptions};
 use std::path::PathBuf;
 
 fn opts(working_folder: PathBuf) -> RunOptions {
@@ -46,7 +44,11 @@ async fn mcp_config_discovered_and_run_with_mock_llm_returns_reply() {
     let opts = opts(working.clone());
     let (_, config, _) = build_helve_config(&opts);
     assert!(
-        config.mcp_servers.as_ref().map(|s| !s.is_empty()).unwrap_or(false),
+        config
+            .mcp_servers
+            .as_ref()
+            .map(|s| !s.is_empty())
+            .unwrap_or(false),
         "mcp_servers should be loaded from .loom/mcp.json"
     );
 

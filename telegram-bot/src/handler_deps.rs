@@ -12,15 +12,14 @@ use crate::agent::LoomAgentRunner;
 use crate::config::Settings;
 use crate::download::TeloxideDownloader;
 use crate::error::BotError;
+use crate::metrics::BotMetrics;
 use crate::model_selection::{
     InMemorySearchSessionStore, ModelCatalog, ModelChoice, ModelSelectionService,
     SqliteModelSelectionStore, StaticModelCatalog,
 };
 use crate::sender::TeloxideSender;
-use crate::metrics::BotMetrics;
 use crate::session::SqliteSessionManager;
 use crate::traits::{AgentRunner, FileDownloader, MessageSender, SessionManager};
-
 
 #[derive(Default)]
 pub struct ChatRunRegistry {
@@ -74,7 +73,6 @@ pub struct HandlerDeps {
     pub run_registry: Arc<ChatRunRegistry>,
 }
 
-
 impl HandlerDeps {
     /// Production stack for one bot after `get_me` has filled `bot_username`.
     pub fn production(
@@ -102,7 +100,6 @@ impl HandlerDeps {
             bot_username,
             run_registry,
         })
-
     }
 
     /// Test stack with explicit doubles (for example [`crate::mock`] types).
@@ -132,14 +129,20 @@ impl HandlerDeps {
 
 fn build_model_catalog() -> Arc<dyn ModelCatalog> {
     let configured_model = std::env::var("MODEL").unwrap_or_else(|_| "gpt-5.4".to_string());
-    let configured_provider = std::env::var("LOOM_PROVIDER")
-        .or_else(|_| std::env::var("LLM_PROVIDER"))
-        .unwrap_or_else(|_| "default".to_string());
+    let full_config = config::load_full_config("loom").ok();
+    let configured_provider = full_config
+        .as_ref()
+        .and_then(|cfg| cfg.default_provider.clone())
+        .or_else(|| std::env::var("LLM_PROVIDER").ok())
+        .unwrap_or_else(|| "default".to_string());
 
     let mut models = vec![ModelChoice::new(configured_model.clone())];
-    if let Ok(full_config) = config::load_full_config("loom") {
+    if let Some(full_config) = full_config {
         for provider in full_config.providers {
-            if provider.name == configured_provider || provider.name == "openai" || provider.name == "gptprotoc" {
+            if provider.name == configured_provider
+                || provider.name == "openai"
+                || provider.name == "gptprotoc"
+            {
                 if let Some(model_id) = provider.model {
                     models.push(ModelChoice::new(model_id));
                 }
@@ -149,4 +152,3 @@ fn build_model_catalog() -> Arc<dyn ModelCatalog> {
 
     Arc::new(StaticModelCatalog::new(configured_model, models))
 }
-

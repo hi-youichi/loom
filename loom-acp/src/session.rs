@@ -19,9 +19,9 @@
 use loom::RunCancellation;
 use std::fmt;
 use std::path::PathBuf;
-use uuid::Uuid;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use uuid::Uuid;
 
 /// Unique session identifier.
 ///
@@ -269,13 +269,11 @@ mod tests {
 
         store.finish_prompt(&id, cancellation.generation());
         let entry = store.get(&id).expect("session entry");
-        assert!(
-            entry
-                .cancellation
-                .current_turn
-                .read()
-                .expect("read current turn")
-                .is_none()
-        );
+        assert!(entry
+            .cancellation
+            .current_turn
+            .read()
+            .expect("read current turn")
+            .is_none());
     }
 }

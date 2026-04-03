@@ -30,7 +30,12 @@ fn e2e_discover_then_load_override() {
     let list = load_mcp_config_from_path(&path).unwrap();
     assert_eq!(list.len(), 1);
     match &list[0] {
-        McpServerDef::Stdio { name, command, args, .. } => {
+        McpServerDef::Stdio {
+            name,
+            command,
+            args,
+            ..
+        } => {
             assert_eq!(name, "one");
             assert_eq!(command, "cmd");
             assert_eq!(args.as_slice(), ["a", "b"]);
@@ -62,7 +67,12 @@ fn e2e_discover_then_load_project() {
     let list = load_mcp_config_from_path(&path).unwrap();
     assert_eq!(list.len(), 1);
     match &list[0] {
-        McpServerDef::Stdio { name, command, args, .. } => {
+        McpServerDef::Stdio {
+            name,
+            command,
+            args,
+            ..
+        } => {
             assert_eq!(name, "proj-server");
             assert_eq!(command, "node");
             assert_eq!(args.as_slice(), ["server.js"]);
@@ -93,7 +103,12 @@ fn e2e_discover_then_load_global() {
     let list = load_mcp_config_from_path(&path).unwrap();
     assert_eq!(list.len(), 1);
     match &list[0] {
-        McpServerDef::Stdio { name, command, args, .. } => {
+        McpServerDef::Stdio {
+            name,
+            command,
+            args,
+            ..
+        } => {
             assert_eq!(name, "global");
             assert_eq!(command, "npx");
             assert_eq!(args.as_slice(), ["-y", "mcp-server"]);
@@ -110,7 +125,11 @@ fn e2e_discover_order_override_over_project() {
     std::fs::write(&override_path, r#"{"mcpServers":{"ov":{"command":"ov"}}}"#).unwrap();
     let working = dir.path().join("proj");
     std::fs::create_dir_all(working.join(".loom")).unwrap();
-    std::fs::write(working.join(".loom").join("mcp.json"), r#"{"mcpServers":{}}"#).unwrap();
+    std::fs::write(
+        working.join(".loom").join("mcp.json"),
+        r#"{"mcpServers":{}}"#,
+    )
+    .unwrap();
     let loom_home = dir.path().join("loom_home");
     std::fs::create_dir_all(&loom_home).unwrap();
     std::fs::write(loom_home.join("mcp.json"), "{}").unwrap();
@@ -133,7 +152,11 @@ fn e2e_discover_order_project_over_global() {
     std::fs::write(&project_mcp, r#"{"mcpServers":{"p":{"command":"p"}}}"#).unwrap();
     let loom_home = dir.path().join("loom_home");
     std::fs::create_dir_all(&loom_home).unwrap();
-    std::fs::write(loom_home.join("mcp.json"), r#"{"mcpServers":{"g":{"command":"g"}}}"#).unwrap();
+    std::fs::write(
+        loom_home.join("mcp.json"),
+        r#"{"mcpServers":{"g":{"command":"g"}}}"#,
+    )
+    .unwrap();
 
     let prev = std::env::var("LOOM_HOME").ok();
     std::env::set_var("LOOM_HOME", &loom_home);

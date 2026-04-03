@@ -1,8 +1,8 @@
 //! Agent run task: stream events to protocol envelopes and optional message store append.
 
 use loom::{
-    run_agent_with_options, AnyStreamEvent, EnvelopeState, Message, ProtocolEventEnvelope,
-    RunCmd, RunCompletion, RunError, RunOptions, StreamEvent,
+    run_agent_with_options, AnyStreamEvent, EnvelopeState, Message, ProtocolEventEnvelope, RunCmd,
+    RunCompletion, RunError, RunOptions, StreamEvent,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -18,7 +18,9 @@ pub(super) const APPEND_QUEUE_CAPACITY: usize = 64;
 
 /// Extracts the message list from a React stream event, if the event carries one.
 fn react_event_messages(ev: &AnyStreamEvent) -> Option<&[Message]> {
-    let AnyStreamEvent::React(react_ev) = ev else { return None };
+    let AnyStreamEvent::React(react_ev) = ev else {
+        return None;
+    };
     let messages = match react_ev {
         StreamEvent::Values(s) => &s.messages[..],
         StreamEvent::Updates { state: s, .. } => &s.messages[..],
@@ -39,7 +41,9 @@ fn forward_react_messages_to_append(
 ) {
     let Some(atx) = append_tx else { return };
     let Some(tid) = thread_id else { return };
-    let Some(messages) = react_event_messages(ev) else { return };
+    let Some(messages) = react_event_messages(ev) else {
+        return;
+    };
     let mut seen_count = match message_count.lock() {
         Ok(g) => g,
         Err(e) => {
@@ -82,14 +86,14 @@ fn process_run_stream_event(
             return;
         }
     };
-    let Ok(protocol_envelope) = ev.to_protocol_event(&mut *guard) else { return };
+    let Ok(protocol_envelope) = ev.to_protocol_event(&mut *guard) else {
+        return;
+    };
     if tx.try_send(protocol_envelope).is_err() {
         if let Some(c) = dropped_events {
             c.fetch_add(1, Ordering::Relaxed);
         }
-        tracing::warn!(
-            "event queue full, dropping stream event (receiver likely disconnected)"
-        );
+        tracing::warn!("event queue full, dropping stream event (receiver likely disconnected)");
     }
 }
 

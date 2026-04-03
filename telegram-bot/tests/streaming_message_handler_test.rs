@@ -5,8 +5,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use telegram_bot::{
-    mock::MockSender,
-    stream_message_handler_simple, InteractionMode, StreamCommand, StreamingConfig,
+    mock::MockSender, stream_message_handler_simple, InteractionMode, StreamCommand,
+    StreamingConfig,
 };
 
 fn streaming_config_zero_throttle(base: StreamingConfig) -> StreamingConfig {
@@ -21,7 +21,6 @@ fn streaming_config_zero_throttle(base: StreamingConfig) -> StreamingConfig {
 async fn e2e_tg_skip_test_removed() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        
         show_act_phase: true,
         ..Default::default()
     });
@@ -34,9 +33,7 @@ async fn e2e_tg_skip_test_removed() {
         settings,
     ));
 
-    tx.send(StreamCommand::StartAct { count: 1 })
-        .await
-        .unwrap();
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
     tx.send(StreamCommand::Flush).await.unwrap();
     drop(tx);
 
@@ -51,7 +48,6 @@ async fn e2e_tg_skip_test_removed() {
 async fn e2e_tg_024_show_act_phase_false_skips_act_header() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        
         show_act_phase: false,
         ..Default::default()
     });
@@ -64,9 +60,7 @@ async fn e2e_tg_024_show_act_phase_false_skips_act_header() {
         settings,
     ));
 
-    tx.send(StreamCommand::StartAct { count: 1 })
-        .await
-        .unwrap();
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
     tx.send(StreamCommand::ActContent {
         content: "reasoning".to_string(),
     })
@@ -78,7 +72,11 @@ async fn e2e_tg_024_show_act_phase_false_skips_act_header() {
 
     h.await.unwrap();
 
-    let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
+    let joined: String = sender
+        .get_messages()
+        .iter()
+        .map(|(_, t)| t.as_str())
+        .collect();
     assert!(joined.contains("Act #"));
 }
 
@@ -98,9 +96,11 @@ async fn e2e_tg_026_both_phases_disabled_no_outbound() {
         settings,
     ));
 
-    tx.send(StreamCommand::ActContent { content: "ignored".to_string() })
-        .await
-        .unwrap();
+    tx.send(StreamCommand::ActContent {
+        content: "ignored".to_string(),
+    })
+    .await
+    .unwrap();
     tx.send(StreamCommand::Flush).await.unwrap();
     drop(tx);
 
@@ -125,9 +125,7 @@ async fn e2e_tg_031_act_stream_respects_max_chars() {
         settings,
     ));
 
-    tx.send(StreamCommand::StartAct { count: 1 })
-        .await
-        .unwrap();
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
     let chunk = "a".repeat(80);
     tx.send(StreamCommand::ActContent { content: chunk })
         .await
@@ -154,7 +152,6 @@ async fn e2e_tg_031_act_stream_respects_max_chars() {
 async fn e2e_tg_032_act_shows_tool_start_and_end_lines() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        
         show_act_phase: true,
         ..Default::default()
     });
@@ -186,7 +183,11 @@ async fn e2e_tg_032_act_shows_tool_start_and_end_lines() {
 
     h.await.unwrap();
 
-    let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
+    let joined: String = sender
+        .get_messages()
+        .iter()
+        .map(|(_, t)| t.as_str())
+        .collect();
     assert!(joined.contains("🔧"));
     assert!(joined.contains("list_dir"));
     assert!(joined.contains('✅'));
@@ -197,7 +198,6 @@ async fn act_tools_recorded_when_act_header_send_fails() {
     let sender = Arc::new(MockSender::new());
     sender.fail_next_n_sends(1);
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        
         show_act_phase: true,
         ..Default::default()
     });
@@ -252,9 +252,7 @@ async fn think_content_recorded_when_think_header_send_fails() {
         settings,
     ));
 
-    tx.send(StreamCommand::StartAct { count: 1 })
-        .await
-        .unwrap();
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
     tx.send(StreamCommand::ActContent {
         content: "planning".to_string(),
     })
@@ -275,7 +273,6 @@ async fn think_content_recorded_when_think_header_send_fails() {
 async fn tool_start_before_act_start_enters_act_fallback() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        
         show_act_phase: true,
         ..Default::default()
     });
@@ -299,7 +296,11 @@ async fn tool_start_before_act_start_enters_act_fallback() {
     drop(tx);
 
     h.await.unwrap();
-    let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
+    let joined: String = sender
+        .get_messages()
+        .iter()
+        .map(|(_, t)| t.as_str())
+        .collect();
     assert!(joined.contains("early"));
 }
 
@@ -307,7 +308,6 @@ async fn tool_start_before_act_start_enters_act_fallback() {
 async fn fallback_act_then_startact_does_not_clear_existing_tool_state() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        
         show_act_phase: true,
         ..Default::default()
     });
@@ -351,7 +351,6 @@ async fn fallback_act_then_startact_does_not_clear_existing_tool_state() {
 async fn tool_start_shows_arguments_in_act_message() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        
         show_act_phase: true,
         ..Default::default()
     });
@@ -375,7 +374,11 @@ async fn tool_start_shows_arguments_in_act_message() {
     drop(tx);
 
     h.await.unwrap();
-    let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
+    let joined: String = sender
+        .get_messages()
+        .iter()
+        .map(|(_, t)| t.as_str())
+        .collect();
     assert!(joined.contains("🔧 ls {\"path\":\".\"}"), "{}", joined);
 }
 
@@ -383,7 +386,6 @@ async fn tool_start_shows_arguments_in_act_message() {
 async fn tool_end_keeps_arguments_in_final_line() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        
         show_act_phase: true,
         ..Default::default()
     });
@@ -414,7 +416,11 @@ async fn tool_end_keeps_arguments_in_final_line() {
     drop(tx);
 
     h.await.unwrap();
-    let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
+    let joined: String = sender
+        .get_messages()
+        .iter()
+        .map(|(_, t)| t.as_str())
+        .collect();
     assert!(joined.contains("✅ ls {\"path\":\".\"}"), "{}", joined);
 }
 
@@ -422,7 +428,6 @@ async fn tool_end_keeps_arguments_in_final_line() {
 async fn tool_end_result_preserves_newlines() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        
         show_act_phase: true,
         ..Default::default()
     });
@@ -453,7 +458,11 @@ async fn tool_end_result_preserves_newlines() {
     drop(tx);
 
     h.await.unwrap();
-    let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
+    let joined: String = sender
+        .get_messages()
+        .iter()
+        .map(|(_, t)| t.as_str())
+        .collect();
     assert!(joined.contains("line1\nline2"), "{}", joined);
 }
 
@@ -461,7 +470,6 @@ async fn tool_end_result_preserves_newlines() {
 async fn act_content_appended_to_act_message() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        
         show_act_phase: true,
         ..Default::default()
     });
@@ -484,7 +492,11 @@ async fn act_content_appended_to_act_message() {
     drop(tx);
 
     h.await.unwrap();
-    let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
+    let joined: String = sender
+        .get_messages()
+        .iter()
+        .map(|(_, t)| t.as_str())
+        .collect();
     assert!(joined.contains("hello act"));
 }
 
@@ -492,7 +504,6 @@ async fn act_content_appended_to_act_message() {
 async fn tool_end_error_shows_cross_mark() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        
         show_act_phase: true,
         ..Default::default()
     });
@@ -523,7 +534,11 @@ async fn tool_end_error_shows_cross_mark() {
     drop(tx);
 
     h.await.unwrap();
-    let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
+    let joined: String = sender
+        .get_messages()
+        .iter()
+        .map(|(_, t)| t.as_str())
+        .collect();
     assert!(
         joined.contains('❌') && joined.contains("broken"),
         "expected error cross and tool name in: {}",
@@ -535,7 +550,6 @@ async fn tool_end_error_shows_cross_mark() {
 async fn second_act_clears_tools_from_first_act() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        
         show_act_phase: true,
         ..Default::default()
     });
@@ -596,7 +610,6 @@ async fn second_act_clears_tools_from_first_act() {
 async fn tool_end_without_prior_start_has_no_duration_suffix() {
     let sender = Arc::new(MockSender::new());
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        
         show_act_phase: true,
         ..Default::default()
     });
@@ -626,7 +639,11 @@ async fn tool_end_without_prior_start_has_no_duration_suffix() {
     drop(tx);
 
     h.await.unwrap();
-    let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
+    let joined: String = sender
+        .get_messages()
+        .iter()
+        .map(|(_, t)| t.as_str())
+        .collect();
     assert!(
         joined.contains("✅ orphan") && !joined.contains("ms)") && !joined.contains("s)"),
         "{}",
@@ -639,7 +656,6 @@ async fn think_header_fails_then_act_header_succeeds_and_tools_show() {
     let sender = Arc::new(MockSender::new());
     sender.fail_next_n_sends(1);
     let settings = streaming_config_zero_throttle(StreamingConfig {
-        
         show_act_phase: true,
         ..Default::default()
     });
@@ -652,9 +668,7 @@ async fn think_header_fails_then_act_header_succeeds_and_tools_show() {
         settings,
     ));
 
-    tx.send(StreamCommand::StartAct { count: 1 })
-        .await
-        .unwrap();
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
     tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
     tx.send(StreamCommand::ToolStart {
         name: "ls".to_string(),
@@ -673,7 +687,11 @@ async fn think_header_fails_then_act_header_succeeds_and_tools_show() {
     drop(tx);
 
     h.await.unwrap();
-    let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
+    let joined: String = sender
+        .get_messages()
+        .iter()
+        .map(|(_, t)| t.as_str())
+        .collect();
     assert!(joined.contains("Act #"));
     assert!(joined.contains("ls"));
 }
@@ -684,7 +702,7 @@ async fn high_throttle_skips_intermediate_edits_flush_updates() {
     let settings = StreamingConfig {
         interaction_mode: InteractionMode::Streaming,
         throttle_ms: 60_000,
-        
+
         show_act_phase: true,
         ..Default::default()
     };
@@ -717,10 +735,7 @@ async fn high_throttle_skips_intermediate_edits_flush_updates() {
 
     h.await.unwrap();
     let msgs = sender.get_messages();
-    let edits: Vec<_> = msgs
-        .iter()
-        .filter(|(_, t)| t.contains("✅ t"))
-        .collect();
+    let edits: Vec<_> = msgs.iter().filter(|(_, t)| t.contains("✅ t")).collect();
     assert!(
         !edits.is_empty(),
         "Flush should emit at least one edit with tool result"
@@ -733,7 +748,7 @@ async fn act_to_think_transition_flushes_pending_act_update() {
     let settings = StreamingConfig {
         interaction_mode: InteractionMode::Streaming,
         throttle_ms: 60_000,
-        
+
         show_act_phase: true,
         ..Default::default()
     };
@@ -761,9 +776,7 @@ async fn act_to_think_transition_flushes_pending_act_update() {
     .await
     .unwrap();
     // ReAct loop continues quickly to the next think round.
-    tx.send(StreamCommand::StartAct { count: 1 })
-        .await
-        .unwrap();
+    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
     tx.send(StreamCommand::ActContent {
         content: "next reasoning".to_string(),
     })
@@ -773,7 +786,11 @@ async fn act_to_think_transition_flushes_pending_act_update() {
     drop(tx);
 
     h.await.unwrap();
-    let joined: String = sender.get_messages().iter().map(|(_, t)| t.as_str()).collect();
+    let joined: String = sender
+        .get_messages()
+        .iter()
+        .map(|(_, t)| t.as_str())
+        .collect();
     assert!(
         joined.contains("✅ ls") && joined.contains("next reasoning"),
         "{}",
@@ -787,7 +804,7 @@ async fn periodic_summary_mode_emits_summary_after_interval() {
     let settings = StreamingConfig {
         interaction_mode: InteractionMode::PeriodicSummary,
         summary_interval_secs: 300,
-        
+
         show_act_phase: false,
         ..Default::default()
     };
@@ -834,7 +851,7 @@ async fn periodic_summary_mode_skips_summary_before_interval() {
     let settings = StreamingConfig {
         interaction_mode: InteractionMode::PeriodicSummary,
         summary_interval_secs: 300,
-        
+
         show_act_phase: false,
         ..Default::default()
     };
@@ -863,7 +880,11 @@ async fn periodic_summary_mode_skips_summary_before_interval() {
 
     let final_text = h.await.unwrap();
     let messages = sender.get_messages();
-    assert!(messages.is_empty(), "Expected no messages but got: {:?}", messages);
+    assert!(
+        messages.is_empty(),
+        "Expected no messages but got: {:?}",
+        messages
+    );
     assert!(final_text.contains("reasoning"));
 }
 
@@ -902,5 +923,10 @@ async fn periodic_summary_mode_stops_after_flush() {
     tokio::task::yield_now().await;
 
     let messages = sender.get_messages();
-    assert_eq!(messages.len(), 1, "Expected 1 message but got: {:?}", messages);
+    assert_eq!(
+        messages.len(),
+        1,
+        "Expected 1 message but got: {:?}",
+        messages
+    );
 }

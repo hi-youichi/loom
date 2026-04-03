@@ -36,7 +36,7 @@ impl Tool for MockTool {
         _args: serde_json::Value,
         _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        Ok(ToolCallContent::text(self.result.clone(),))
+        Ok(ToolCallContent::text(self.result.clone()))
     }
 }
 

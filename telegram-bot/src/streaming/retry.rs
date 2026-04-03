@@ -5,9 +5,9 @@
 
 use crate::error::{BotError, Result};
 use rand::Rng;
+use std::time::Duration;
 use teloxide::prelude::*;
 use teloxide::types::{Message, MessageId, ParseMode};
-use std::time::Duration;
 
 const BASE_DELAY: Duration = Duration::from_secs(1);
 const MAX_DELAY: Duration = Duration::from_secs(30);
@@ -175,7 +175,11 @@ pub async fn edit_formatted_message_with_retry(
     let mut last_error: Option<teloxide::RequestError> = None;
 
     loop {
-        match bot.edit_message_text(chat_id, message_id, text).parse_mode(parse_mode).await {
+        match bot
+            .edit_message_text(chat_id, message_id, text)
+            .parse_mode(parse_mode)
+            .await
+        {
             Ok(_) => return Ok(()),
             Err(e) => {
                 let kind = classify_error(&e);

@@ -11,6 +11,6 @@ pub use issue::{add_labels, close_issue, create_comment, octocrab_from_token, Is
 pub use server::{webhook_router, RunAgentCallback};
 pub use webhook::{
     parse_issues_event, verify_signature, ChangesPayload, EnterprisePayload, InstallationPayload,
-    IssuesEvent, IssuePayload, LabelPayload, MilestonePayload, OrganizationPayload,
-    PullRequestRef, RepoRef, SenderPayload, SimpleUser, WebhookError,
+    IssuePayload, IssuesEvent, LabelPayload, MilestonePayload, OrganizationPayload, PullRequestRef,
+    RepoRef, SenderPayload, SimpleUser, WebhookError,
 };

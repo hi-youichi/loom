@@ -27,7 +27,10 @@ async fn build_tool_source_with_working_folder_includes_file_tools() {
         mcp_remote_args: "-y mcp-remote".to_string(),
         github_token: None,
         mcp_github_cmd: "npx".to_string(),
-        mcp_github_args: vec!["-y".to_string(), "@modelcontextprotocol/server-github".to_string()],
+        mcp_github_args: vec![
+            "-y".to_string(),
+            "@modelcontextprotocol/server-github".to_string(),
+        ],
         mcp_github_url: None,
         mcp_verbose: false,
         openai_api_key: None,

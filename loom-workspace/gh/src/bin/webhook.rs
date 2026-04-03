@@ -39,8 +39,10 @@ struct Args {
 fn init_tracing(
     log_level: &str,
     log_file: Option<&std::path::Path>,
-) -> Result<Option<tracing_appender::non_blocking::WorkerGuard>, Box<dyn std::error::Error + Send + Sync>>
-{
+) -> Result<
+    Option<tracing_appender::non_blocking::WorkerGuard>,
+    Box<dyn std::error::Error + Send + Sync>,
+> {
     let filter = EnvFilter::try_new(log_level)
         .or_else(|_| EnvFilter::try_new("info"))
         .expect("valid log level");

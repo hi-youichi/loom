@@ -1,9 +1,13 @@
-use config::tracing_init::{build_env_filter, file_non_blocking_writer, resolve_log_path, LogRotate};
+use config::tracing_init::{
+    build_env_filter, file_non_blocking_writer, resolve_log_path, LogRotate,
+};
 use telegram_bot::TelegramBotConfig;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-pub fn setup_logging(config: &TelegramBotConfig) -> Option<tracing_appender::non_blocking::WorkerGuard> {
+pub fn setup_logging(
+    config: &TelegramBotConfig,
+) -> Option<tracing_appender::non_blocking::WorkerGuard> {
     let filter = build_env_filter(&config.settings.log_level, &[]);
 
     if let Some(log_file) = &config.settings.log_file {
@@ -18,7 +22,11 @@ pub fn setup_logging(config: &TelegramBotConfig) -> Option<tracing_appender::non
                 tracing_subscriber::registry()
                     .with(filter)
                     .with(tracing_subscriber::fmt::layer().with_writer(std::io::stdout))
-                    .with(tracing_subscriber::fmt::layer().with_writer(writer).with_ansi(false))
+                    .with(
+                        tracing_subscriber::fmt::layer()
+                            .with_writer(writer)
+                            .with_ansi(false),
+                    )
                     .init();
 
                 info!("Logging to file: {:?}", log_path);
@@ -34,9 +42,7 @@ pub fn setup_logging(config: &TelegramBotConfig) -> Option<tracing_appender::non
             }
         }
     } else {
-        tracing_subscriber::fmt()
-            .with_env_filter(filter)
-            .init();
+        tracing_subscriber::fmt().with_env_filter(filter).init();
         None
     }
 }

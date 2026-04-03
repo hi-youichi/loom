@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "loom",
     "config",
+    "model-spec-core",
     "loom-examples",
     "cli",
     "serve",

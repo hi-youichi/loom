@@ -21,7 +21,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
         }
         Err(e) => {
-            eprintln!("config: loom global config not found (non-fatal, continuing): {}", e);
+            eprintln!(
+                "config: loom global config not found (non-fatal, continuing): {}",
+                e
+            );
         }
     }
 

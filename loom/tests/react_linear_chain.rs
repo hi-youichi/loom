@@ -57,10 +57,8 @@ async fn react_linear_chain_user_to_tool_result_in_messages() {
     assert!(out.messages.len() >= 3);
     assert!(matches!(&out.messages[0], Message::User(_)));
     assert!(matches!(&out.messages[1], Message::Assistant(_)));
-    assert!(
-        matches!(&out.messages[2], Message::Tool { content, .. }
-            if content.as_text().unwrap().contains("Tool") && content.as_text().unwrap().contains("2025-01-29"))
-    );
+    assert!(matches!(&out.messages[2], Message::Tool { content, .. }
+            if content.as_text().unwrap().contains("Tool") && content.as_text().unwrap().contains("2025-01-29")));
     assert!(out.tool_calls.is_empty());
     assert!(out.tool_results.is_empty());
 }
