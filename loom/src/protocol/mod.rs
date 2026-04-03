@@ -70,7 +70,7 @@ pub enum AgentType {
 pub struct RunRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-    pub message: String,
+    pub message: crate::message::UserContent,
     pub agent: AgentType,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thread_id: Option<String>,
@@ -83,6 +83,38 @@ pub struct RunRequest {
     pub got_adaptive: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verbose: Option<bool>,
+}
+
+impl RunRequest {
+    /// Validates that the message modalities are supported by the given model.
+    pub fn validate_modalities(
+        &self,
+        model: &model_spec_core::spec::Model,
+    ) -> Result<(), crate::AgentError> {
+        use crate::message::UserContent;
+
+        let UserContent::Multimodal(parts) = &self.message else {
+            return Ok(());
+        };
+
+        let modalities = &model.modalities;
+        if modalities.input.is_empty() {
+            return Ok(()); // 无法验证，保守放行
+        }
+
+        for part in parts {
+            let required = part.modality();
+            if required != model_spec_core::spec::ModalityType::Text
+                && !modalities.input.contains(&required)
+            {
+                return Err(crate::AgentError::ExecutionFailed(format!(
+                    "model does not support {:?} input",
+                    required
+                )));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Tools list request: list all tools.
@@ -276,7 +308,7 @@ mod tests {
     fn request_run_roundtrip() {
         let req = ClientRequest::Run(RunRequest {
             id: Some("abc-123".to_string()),
-            message: "hello".to_string(),
+            message: crate::message::UserContent::Text("hello".to_string()),
             agent: AgentType::React,
             thread_id: Some("t1".to_string()),
             workspace_id: None,

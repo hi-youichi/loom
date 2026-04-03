@@ -213,7 +213,7 @@ impl SessionManager {
             match serde_json::from_slice::<loom::state::ReActState>(&data) {
                 Ok(state) => {
                     let first_user = state.messages.iter().find_map(|m| match m {
-                        loom::message::Message::User(s) => Some(s.clone()),
+                        loom::message::Message::User(s) => Some(s.as_text().to_string()),
                         _ => None,
                     });
                     let last_assistant = state.last_assistant_reply();

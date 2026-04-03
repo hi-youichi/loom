@@ -8,7 +8,7 @@ use tracing::{debug, info};
 
 use crate::error::AgentError;
 use crate::llm::LlmClient;
-use crate::message::Message;
+use crate::message::{Message, UserContent};
 use crate::tool_source::ToolCallContent;
 
 use super::config::CompactionConfig;
@@ -21,7 +21,10 @@ pub const PRUNE_PLACEHOLDER: &str = "[Old tool result cleared]";
 fn is_tool_result_message(m: &Message) -> bool {
     match m {
         Message::Tool { .. } => true,
-        Message::User(s) => s.starts_with("Tool ") && s.contains(" returned: "),
+        Message::User(c) => {
+            let s = c.as_text();
+            s.starts_with("Tool ") && s.contains(" returned: ")
+        }
         _ => false,
     }
 }
@@ -82,7 +85,7 @@ pub fn prune(messages: Vec<Message>, config: &CompactionConfig) -> Vec<Message> 
     for i in &to_prune {
         match out.get_mut(*i) {
             Some(Message::User(_)) => {
-                out[*i] = Message::User(PRUNE_PLACEHOLDER.to_string());
+                out[*i] = Message::user(crate::message::UserContent::Text(PRUNE_PLACEHOLDER.to_string()));
             }
             Some(Message::Tool { tool_call_id, .. }) => {
                 let id = tool_call_id.clone();
@@ -131,7 +134,7 @@ pub async fn compact(
 
     // Ask LLM to summarize the older part
     let prompt = build_summary_prompt(to_summarize);
-    let summary_msgs = vec![Message::User(prompt)];
+    let summary_msgs = vec![Message::user(crate::message::UserContent::Text(prompt))];
     let response = llm.invoke(&summary_msgs).await?;
     let content = response.content;
 
@@ -167,7 +170,7 @@ fn build_summary_prompt(msgs: &[Message]) -> String {
     for m in msgs {
         match m {
             Message::System(s) => parts.push(format!("System: {}", s)),
-            Message::User(s) => parts.push(format!("User: {}", s)),
+            Message::User(c) => parts.push(format!("User: {}", c.as_text())),
             Message::Assistant(p) => {
                 if p.tool_calls.is_empty() {
                     parts.push(format!("Assistant: {}", p.content));
@@ -196,19 +199,22 @@ mod tests {
     use super::*;
 
     fn tool_result_msg(name: &str, content: &str) -> Message {
-        Message::User(format!("Tool {} returned: {}", name, content))
+        Message::User(crate::message::UserContent::Text(format!(
+            "Tool {} returned: {}",
+            name, content
+        )))
     }
 
     #[test]
     fn is_tool_result_user_with_prefix() {
         assert!(is_tool_result_message(&Message::User(
-            "Tool bash returned: ok".to_string()
+            crate::message::UserContent::Text("Tool bash returned: ok".to_string())
         )));
     }
 
     #[test]
     fn is_tool_result_plain_user() {
-        assert!(!is_tool_result_message(&Message::User("hello".to_string())));
+        assert!(!is_tool_result_message(&Message::user("hello".to_string())));
     }
 
     #[test]
@@ -236,7 +242,7 @@ mod tests {
     fn build_summary_prompt_with_messages() {
         let msgs = vec![
             Message::System("sys msg".to_string()),
-            Message::User("user msg".to_string()),
+            Message::user("user msg".to_string()),
             Message::assistant("asst msg".to_string()),
         ];
         let p = build_summary_prompt(&msgs);
@@ -253,13 +259,13 @@ mod tests {
             ..Default::default()
         };
         let msgs = vec![
-            Message::User("hi".to_string()),
+            Message::user("hi"),
             tool_result_msg("a", "data"),
         ];
         let out = prune(msgs.clone(), &config);
         assert_eq!(out.len(), msgs.len());
-        assert!(matches!(&out[0], Message::User(s) if s == "hi"));
-        assert!(matches!(&out[1], Message::User(s) if s.contains("Tool a returned:")));
+        assert!(matches!(&out[0], Message::User(UserContent::Text(s)) if s == "hi"));
+        assert!(matches!(&out[1], Message::User(UserContent::Text(s)) if s.contains("Tool a returned:")));
     }
 
     #[test]
@@ -272,7 +278,7 @@ mod tests {
         let msgs = vec![tool_result_msg("a", "x")];
         let out = prune(msgs.clone(), &config);
         assert_eq!(out.len(), 1);
-        assert!(matches!(&out[0], Message::User(s) if s.contains("Tool a returned:")));
+        assert!(matches!(&out[0], Message::User(UserContent::Text(s)) if s.contains("Tool a returned:")));
     }
 
     #[test]
@@ -284,12 +290,12 @@ mod tests {
             ..Default::default()
         };
         let msgs = vec![
-            Message::User("hi".to_string()),
+            Message::user("hi".to_string()),
             Message::assistant("hello".to_string()),
         ];
         let out = prune(msgs.clone(), &config);
         assert_eq!(out.len(), 2);
-        assert!(matches!(&out[0], Message::User(s) if s == "hi"));
+        assert!(matches!(&out[0], Message::User(UserContent::Text(s)) if s == "hi"));
         assert!(matches!(&out[1], Message::Assistant(p) if p.content == "hello"));
     }
 
@@ -304,15 +310,15 @@ mod tests {
             ..Default::default()
         };
         let msgs = vec![
-            Message::User("user".to_string()),
+            Message::user("user".to_string()),
             tool_result_msg("old", "12345678901234567890"), // "Tool old returned: " + 20 chars
             tool_result_msg("new", "abcdefghijabcdefghij"), // "Tool new returned: " + 20 chars
         ];
         let out = prune(msgs, &config);
         assert_eq!(out.len(), 3);
-        assert!(matches!(&out[0], Message::User(s) if s == "user"));
-        assert!(matches!(&out[1], Message::User(s) if s == PRUNE_PLACEHOLDER));
-        assert!(matches!(&out[2], Message::User(s) if s.contains("Tool new returned:")));
+        assert!(matches!(&out[0], Message::User(UserContent::Text(s)) if s == "user"));
+        assert!(matches!(&out[1], Message::User(UserContent::Text(s)) if s == PRUNE_PLACEHOLDER));
+        assert!(matches!(&out[2], Message::User(UserContent::Text(s)) if s.contains("Tool new returned:")));
     }
 
     #[test]
@@ -324,12 +330,12 @@ mod tests {
             ..Default::default()
         };
         let msgs = vec![
-            Message::User("x".to_string()),
+            Message::user("x".to_string()),
             tool_result_msg("a", &"y".repeat(400)), // 100 tokens
         ];
         let out = prune(msgs.clone(), &config);
         assert_eq!(out.len(), 2);
-        assert!(matches!(&out[0], Message::User(s) if s == "x"));
-        assert!(matches!(&out[1], Message::User(s) if s.contains("Tool a returned:")));
+        assert!(matches!(&out[0], Message::User(UserContent::Text(s)) if s == "x"));
+        assert!(matches!(&out[1], Message::User(UserContent::Text(s)) if s.contains("Tool a returned:")));
     }
 }

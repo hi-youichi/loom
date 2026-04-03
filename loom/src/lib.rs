@@ -203,7 +203,7 @@ pub use memory::{
     StoreError, StoreSearchHit,
 };
 pub use memory::{SqliteSaver, SqliteStore};
-pub use message::{AssistantPayload, AssistantToolCall, Message};
+pub use message::{AssistantPayload, AssistantToolCall, ContentError, ContentPart, Message, UserContent};
 pub use model_spec::{
     CachedResolver, CompositeResolver, ConfigOverride, LocalFileResolver, ModelLimitResolver,
     ModelSpec, ModelsDevResolver, ResolverRefresher,

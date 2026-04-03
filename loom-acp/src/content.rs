@@ -23,6 +23,9 @@
 
 use serde::{Deserialize, Serialize};
 
+// Re-export from loom for compatibility
+pub use loom::message::{ContentPart, UserContent};
+
 /// Parse a slice of content blocks into a single user message string.
 ///
 /// Only blocks implementing [`ContentBlockLike`] are processed; typically ACP's `ContentBlock::Text` implements it,
@@ -132,11 +135,8 @@ impl ContentBlockLike for agent_client_protocol::ContentBlock {
     }
 
     fn is_unsupported(&self) -> bool {
-        matches!(
-            self,
-            agent_client_protocol::ContentBlock::Image(_)
-                | agent_client_protocol::ContentBlock::Audio(_)
-        )
+        // 不再报错，由 content_blocks_to_user_content 处理
+        false
     }
 }
 
@@ -260,6 +260,111 @@ pub fn extract_locations(tool_name: &str, args: &serde_json::Value) -> Vec<ToolC
     }
 }
 
+/// Convert ACP ContentBlock list to UserContent, supporting multimodal input.
+///
+/// This replaces the old `content_blocks_to_message` for cases where the caller
+/// needs the full multimodal structure (images, audio) rather than a flattened string.
+///
+/// # Arguments
+///
+/// * `blocks` - A slice of ACP ContentBlock items
+///
+/// # Returns
+///
+/// * `Ok(UserContent)` - The converted content, either Text or Multimodal
+/// * `Err(ContentError::EmptyMessage)` - If blocks is empty or contains no usable content
+pub fn content_blocks_to_user_content(
+    blocks: &[agent_client_protocol::ContentBlock],
+) -> Result<UserContent, ContentError> {
+    if blocks.is_empty() {
+        return Err(ContentError::EmptyMessage);
+    }
+
+    let mut parts: Vec<ContentPart> = Vec::new();
+
+    for block in blocks {
+        match block {
+            agent_client_protocol::ContentBlock::Text(t) => {
+                parts.push(ContentPart::Text { text: t.text.clone() });
+            }
+
+            agent_client_protocol::ContentBlock::Image(img) => {
+                if !img.data.is_empty() {
+                    parts.push(ContentPart::ImageBase64 {
+                        media_type: img.mime_type.clone(),
+                        data: img.data.clone(),
+                    });
+                } else if let Some(uri) = &img.uri {
+                    parts.push(ContentPart::ImageUrl {
+                        url: uri.clone(),
+                        detail: None,
+                    });
+                }
+            }
+
+            agent_client_protocol::ContentBlock::Audio(audio) => {
+                if audio.data.is_empty() {
+                    tracing::warn!(
+                        mime_type = %audio.mime_type,
+                        "ACP Audio with empty data, skipping"
+                    );
+                    continue;
+                }
+                parts.push(ContentPart::AudioBase64 {
+                    media_type: audio.mime_type.clone(),
+                    data: audio.data.clone(),
+                });
+            }
+
+            agent_client_protocol::ContentBlock::Resource(r) => {
+                use agent_client_protocol::EmbeddedResourceResource;
+                match &r.resource {
+                    EmbeddedResourceResource::TextResourceContents(text_res) => {
+                        parts.push(ContentPart::Text {
+                            text: format!(
+                                "--- Embedded Resource ---\nURI: {}\nMIME: {}\n\n{}\n--- End Resource ---",
+                                text_res.uri,
+                                text_res.mime_type.as_deref().unwrap_or("text/plain"),
+                                text_res.text
+                            ),
+                        });
+                    }
+                    EmbeddedResourceResource::BlobResourceContents(blob_res) => {
+                        tracing::debug!(
+                            uri = %blob_res.uri,
+                            mime = ?blob_res.mime_type,
+                            "Skipping binary embedded resource"
+                        );
+                    }
+                    _ => {
+                        tracing::debug!("Unknown embedded resource type, skipping");
+                    }
+                }
+            }
+
+            agent_client_protocol::ContentBlock::ResourceLink(_) => {
+                // ResourceLink 仅是 URI 引用，Agent 通过 MCP 工具自行获取
+            }
+            _ => {
+                tracing::debug!("Unhandled ContentBlock type, skipping");
+            }
+        }
+    }
+
+    if parts.is_empty() {
+        return Err(ContentError::EmptyMessage);
+    }
+
+    // 纯文本快捷路径
+    if parts.len() == 1 {
+        if let ContentPart::Text { text } = &parts[0] {
+            return Ok(UserContent::Text(text.clone()));
+        }
+    }
+
+    Ok(UserContent::Multimodal(parts))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -332,23 +437,70 @@ mod tests {
     }
 
     #[test]
-    fn test_image_still_unsupported() {
+    fn test_image_no_longer_unsupported() {
         use agent_client_protocol::ImageContent;
         let block = ContentBlock::Image(ImageContent::new("data", "image/png"));
         assert!(
-            block.is_unsupported(),
-            "Image should still be marked as unsupported"
+            !block.is_unsupported(),
+            "Image should no longer be marked as unsupported"
         );
     }
 
     #[test]
-    fn test_audio_still_unsupported() {
+    fn test_audio_no_longer_unsupported() {
         use agent_client_protocol::AudioContent;
         let block = ContentBlock::Audio(AudioContent::new("data", "audio/mp3"));
         assert!(
-            block.is_unsupported(),
-            "Audio should still be marked as unsupported"
+            !block.is_unsupported(),
+            "Audio should no longer be marked as unsupported"
         );
+    }
+
+    #[test]
+    fn test_content_blocks_to_user_converted() {
+        use agent_client_protocol::{ImageContent, AudioContent};
+
+        // 文本 + 图片 + 音频
+        let blocks = vec![
+            ContentBlock::Text(TextContent::new("Look at this")),
+            ContentBlock::Image(ImageContent::new("base64data", "image/png")),
+            ContentBlock::Audio(AudioContent::new("audiodata", "audio/mp3")),
+        ];
+
+        let result = content_blocks_to_user_content(&blocks);
+        assert!(result.is_ok());
+
+        let UserContent::Multimodal(parts) = result.unwrap() else {
+            panic!("Expected Multimodal content");
+        };
+        assert_eq!(parts.len(), 3);
+        assert!(matches!(parts[0], ContentPart::Text { .. }));
+        assert!(matches!(parts[1], ContentPart::ImageBase64 { .. }));
+        assert!(matches!(parts[2], ContentPart::AudioBase64 { .. }));
+    }
+
+    #[test]
+    fn test_content_blocks_to_user_text_only() {
+        let blocks = vec![
+            ContentBlock::Text(TextContent::new("Hello")),
+            ContentBlock::Text(TextContent::new("World")),
+        ];
+
+        let result = content_blocks_to_user_content(&blocks);
+        assert!(result.is_ok());
+
+        // 纯文本应该合并为 UserContent::Text
+        let UserContent::Text(text) = result.unwrap() else {
+            panic!("Expected Text content");
+        };
+        assert_eq!(text, "Hello\n\nWorld");
+    }
+
+    #[test]
+    fn test_content_blocks_to_user_empty() {
+        let blocks: Vec<ContentBlock> = vec![];
+        let result = content_blocks_to_user_content(&blocks);
+        assert!(matches!(result, Err(ContentError::EmptyMessage)));
     }
 
     #[test]

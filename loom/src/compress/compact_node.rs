@@ -100,7 +100,7 @@ mod tests {
             llm: Arc::new(MockLlm::with_no_tool_calls("")),
         };
         let state = ReActState {
-            messages: vec![Message::User("a".repeat(200_000))], // would overflow if checked
+            messages: vec![Message::user("a".repeat(200_000))], // would overflow if checked
             last_reasoning_content: None,
             tool_calls: vec![],
             tool_results: vec![],
@@ -130,7 +130,7 @@ mod tests {
             llm: Arc::new(MockLlm::with_no_tool_calls("")),
         };
         let state = ReActState {
-            messages: vec![Message::User("short".to_string())],
+            messages: vec![Message::user("short")],
             last_reasoning_content: None,
             tool_calls: vec![],
             tool_results: vec![],

@@ -32,7 +32,7 @@ pub(crate) fn truncate_display(s: &str, max: usize) -> String {
 pub(crate) fn format_message_truncated(m: &Message, max: usize) -> String {
     match m {
         Message::System(s) => format!("System({})", truncate_display(s, max)),
-        Message::User(s) => format!("User({})", truncate_display(s, max)),
+        Message::User(s) => format!("User({})", truncate_display(s.as_text().as_ref(), max)),
         Message::Assistant(p) => {
             format!("Assistant({})", truncate_display(p.content.as_str(), max))
         }

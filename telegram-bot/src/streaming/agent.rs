@@ -7,7 +7,7 @@ use crate::error::{BotError, Result};
 use crate::streaming::event_mapper::StreamEventMapper;
 use crate::streaming::message_handler::StreamCommand;
 use crate::traits::{AgentRunContext, MessageSender};
-use loom::{run_agent_with_options, RunCmd, RunCompletion, RunOptions};
+use loom::{run_agent_with_options, RunCmd, RunCompletion, RunOptions, UserContent};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -40,7 +40,7 @@ pub async fn run_loom_agent_streaming(
     });
 
     let opts = RunOptions {
-        message: message.to_string(),
+        message: UserContent::Text(message.to_string()),
         thread_id: Some(thread_id),
         working_folder: Some(PathBuf::from(".")),
         session_id: None,

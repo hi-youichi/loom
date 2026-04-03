@@ -44,10 +44,10 @@ impl ThinkEvaluateNode {
         Self
     }
 
-    fn last_user_message(messages: &[Message]) -> Option<&str> {
+    fn last_user_message(messages: &[Message]) -> Option<String> {
         messages.iter().rev().find_map(|m| {
-            if let Message::User(s) = m {
-                Some(s.as_str())
+            if let Message::User(c) = m {
+                Some(c.as_text().to_string())
             } else {
                 None
             }
@@ -137,7 +137,7 @@ impl Node<TotState> for ThinkEvaluateNode {
             ));
         }
         let last_user = Self::last_user_message(&state.core.messages);
-        let (chosen_index, scores) = Self::choose_best(&tot.candidates, last_user);
+        let (chosen_index, scores) = Self::choose_best(&tot.candidates, last_user.as_deref());
         for (c, s) in tot.candidates.iter_mut().zip(scores.iter()) {
             c.score = Some(*s);
         }
