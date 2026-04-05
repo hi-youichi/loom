@@ -246,6 +246,7 @@ async fn run_powershell_command(
     if let Some(dir) = workdir {
         cmd.current_dir(dir);
     }
+    cmd.stdin(std::process::Stdio::piped());
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
 

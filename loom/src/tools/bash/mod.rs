@@ -234,6 +234,7 @@ async fn run_shell_command(
 ) -> Result<ShellOutput, ToolSourceError> {
     let mut cmd = tokio::process::Command::new("cmd");
     cmd.args(["/C", command]);
+    cmd.stdin(std::process::Stdio::piped());
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
     if let Some(dir) = workdir {
