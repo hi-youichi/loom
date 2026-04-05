@@ -8,7 +8,7 @@ use tracing::{debug, info};
 
 use crate::error::AgentError;
 use crate::llm::LlmClient;
-use crate::message::{Message, UserContent};
+use crate::message::Message;
 use crate::tool_source::ToolCallContent;
 
 use super::config::CompactionConfig;

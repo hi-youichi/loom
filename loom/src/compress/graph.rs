@@ -9,7 +9,7 @@ use crate::graph::{
     CompilationError, CompiledStateGraph, Next, Node, RunContext, StateGraph, END, START,
 };
 use crate::llm::LlmClient;
-use crate::message::UserContent;
+
 use crate::state::ReActState;
 
 use super::compact_node::CompactNode;

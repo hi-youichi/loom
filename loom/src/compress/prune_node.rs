@@ -5,7 +5,7 @@ use tracing::debug;
 
 use crate::error::AgentError;
 use crate::graph::{Next, Node};
-use crate::message::UserContent;
+
 use crate::state::ReActState;
 
 use super::compaction;
