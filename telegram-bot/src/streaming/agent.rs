@@ -42,6 +42,7 @@ pub async fn run_loom_agent_streaming(
     let opts = RunOptions {
         message: message.to_string(),
         thread_id: Some(thread_id),
+        chat_id: Some(chat_id),
         working_folder: Some(PathBuf::from(".")),
         session_id: None,
         agent: None,

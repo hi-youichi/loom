@@ -11,6 +11,7 @@ pub mod memory;
 pub mod powershell;
 mod registry;
 pub mod skill;
+pub mod telegram;
 pub mod todo;
 mod r#trait;
 pub mod twitter;
@@ -35,6 +36,11 @@ pub use memory::{
 pub use r#trait::Tool;
 pub use registry::{ToolRegistry, ToolRegistryLocked};
 pub use skill::{SkillTool, TOOL_SKILL};
+pub use telegram::{
+    set_telegram_api, TelegramApi, TelegramSendDocumentTool, TelegramSendMessageTool,
+    TelegramSendPollTool, TOOL_TELEGRAM_SEND_DOCUMENT, TOOL_TELEGRAM_SEND_MESSAGE,
+    TOOL_TELEGRAM_SEND_POLL,
+};
 pub use todo::{TodoReadTool, TodoWriteTool, TOOL_TODO_READ, TOOL_TODO_WRITE};
 pub use twitter::{TwitterSearchTool, TOOL_TWITTER_SEARCH};
 pub use web::{WebFetcherTool, TOOL_WEB_FETCHER};

@@ -302,6 +302,7 @@ mod tests {
             cancellation: None,
             output_timestamp: false,
             dry_run: false,
+            chat_id: None,
         };
         let (result, state, _dropped_events, _dropped_appends) = run_agent_task(
             "test-session".to_string(),
@@ -342,6 +343,7 @@ mod tests {
             cancellation: None,
             output_timestamp: false,
             dry_run: false,
+            chat_id: None,
         };
         let (result, state, _dropped_events, _dropped_appends) = run_agent_task(
             "session-2".to_string(),

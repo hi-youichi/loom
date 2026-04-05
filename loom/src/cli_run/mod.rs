@@ -202,6 +202,7 @@ pub fn build_helve_config(
     };
     let mut config = to_react_build_config(&helve, base);
     config.skill_registry = Some(skill_registry.0);
+    config.chat_id = effective_opts.chat_id;
     config.max_sub_agent_depth = profile
         .as_ref()
         .and_then(|p| p.behavior.as_ref())
@@ -345,6 +346,7 @@ mod tests {
             session_id: None,
             cancellation: None,
             thread_id: None,
+            chat_id: None,
             agent: None,
             verbose: false,
             got_adaptive: false,

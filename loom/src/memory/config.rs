@@ -20,6 +20,8 @@ pub struct RunnableConfig {
     pub checkpoint_ns: String,
     /// Optional user id; used by Store for cross-thread memory (namespace).
     pub user_id: Option<String>,
+    /// Optional chat id; used by Telegram tools to target the current chat.
+    pub chat_id: Option<i64>,
     /// When set, the graph starts from this node instead of the first (e.g. resume after Interrupt at "act").
     /// Used when resuming after an approval_required interrupt: load checkpoint state, set state.approval_result, set this to "act".
     pub resume_from_node_id: Option<String>,
@@ -54,11 +56,12 @@ mod tests {
     /// **Scenario**: After setting fields and cloning, cloned values match.
     #[test]
     fn runnable_config_clone() {
-        let c = RunnableConfig {
+        RunnableConfig {
             thread_id: Some("t1".into()),
             checkpoint_id: Some("cp1".into()),
             checkpoint_ns: "ns".into(),
             user_id: Some("u1".into()),
+            chat_id: None,
             resume_from_node_id: None,
             depth: None,
             resume_value: None,

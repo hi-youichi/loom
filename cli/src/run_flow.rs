@@ -32,6 +32,7 @@ pub(crate) fn build_run_options(args: &Args, message: String, got_adaptive: bool
         session_id: None,
         cancellation: None,
         thread_id: args.session_id.clone(),
+        chat_id: None,
         agent: args.agent.clone(),
         verbose: args.verbose,
         got_adaptive,

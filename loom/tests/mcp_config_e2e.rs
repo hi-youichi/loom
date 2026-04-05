@@ -14,6 +14,7 @@ fn opts(working_folder: PathBuf) -> RunOptions {
         working_folder: Some(working_folder),
         session_id: None,
         thread_id: None,
+        chat_id: None,
         agent: None,
         verbose: false,
         got_adaptive: false,

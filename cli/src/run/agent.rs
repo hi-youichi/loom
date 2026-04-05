@@ -759,6 +759,7 @@ mod tests {
             skill_registry: None,
             max_sub_agent_depth: None,
             dry_run: false,
+            chat_id: None,
         }
     }
 
@@ -1135,6 +1136,7 @@ mod tests {
             session_id: None,
             cancellation: None,
             thread_id: None,
+            chat_id: None,
             agent: None,
             verbose: false,
             got_adaptive: false,

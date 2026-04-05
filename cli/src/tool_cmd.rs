@@ -261,6 +261,7 @@ mod tests {
             session_id: None,
             cancellation: None,
             thread_id: None,
+            chat_id: None,
             agent: None,
             verbose: false,
             got_adaptive: false,

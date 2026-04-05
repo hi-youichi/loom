@@ -90,6 +90,12 @@ pub struct ToolCallContext {
     /// Use for multi-tenant or store namespace. See RunnableConfig::user_id.
     pub user_id: Option<String>,
 
+    /// Optional chat id for the current run (e.g., Telegram chat ID).
+    ///
+    /// Injected by ActNode from `RunContext::config` when `run_with_context` is used.
+    /// Used by Telegram tools to send messages to the current chat.
+    pub chat_id: Option<i64>,
+
     /// Current sub-agent nesting depth (0 = top-level agent).
     ///
     /// Used by `InvokeAgentTool` to prevent infinite recursion. Each nested
@@ -104,13 +110,14 @@ pub struct ToolCallContext {
 impl ToolCallContext {
     /// Creates a new ToolCallContext with the given messages.
     ///
-    /// `stream_writer`, `thread_id`, and `user_id` are set to `None`.
+    /// `stream_writer`, `thread_id`, `user_id`, and `chat_id` are set to `None`.
     pub fn new(recent_messages: Vec<Message>) -> Self {
         Self {
             recent_messages,
             stream_writer: None,
             thread_id: None,
             user_id: None,
+            chat_id: None,
             depth: 0,
             run_cancellation: None,
         }
@@ -118,8 +125,8 @@ impl ToolCallContext {
 
     /// Creates a new ToolCallContext with messages and a stream writer.
     ///
-    /// `thread_id` and `user_id` are set to `None`. When running with RunContext,
-    /// ActNode builds the context with thread_id/user_id from config.
+    /// `thread_id`, `user_id`, and `chat_id` are set to `None`. When running with RunContext,
+    /// ActNode builds the context with thread_id/user_id/chat_id from config.
     pub fn with_stream_writer(
         recent_messages: Vec<Message>,
         stream_writer: ToolStreamWriter,
@@ -129,6 +136,7 @@ impl ToolCallContext {
             stream_writer: Some(stream_writer),
             thread_id: None,
             user_id: None,
+            chat_id: None,
             depth: 0,
             run_cancellation: None,
         }

@@ -22,6 +22,7 @@ fn opts(working_folder: std::path::PathBuf) -> RunOptions {
         cancellation: None,
         output_timestamp: false,
         dry_run: false,
+        chat_id: None,
     }
 }
 

@@ -86,6 +86,7 @@ pub(super) async fn prepare_run(
         session_id: None,
         cancellation: None,
         thread_id: r.thread_id,
+        chat_id: None,
         agent: None,
         verbose: r.verbose.unwrap_or(false),
         got_adaptive: r.got_adaptive.unwrap_or(false),

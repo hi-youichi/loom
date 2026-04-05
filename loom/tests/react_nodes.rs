@@ -575,18 +575,10 @@ async fn act_node_run_with_context_propagates_thread_user_and_depth() {
             resume_from_node_id: None,
             depth: Some(2),
             resume_value: None,
+            chat_id: None,
             resume_values_by_interrupt_id: Default::default(),
             resume_values_by_namespace: Default::default(),
-        },
-        stream_tx: None,
-        stream_mode: HashSet::new(),
-        managed_values: Default::default(),
-        store: None,
-        previous: None,
-        runtime_context: None,
-        cancellation: None,
-        run_cancellation: None,
-    };
+        };
 
     let (out, _) = node.run_with_context(state, &ctx).await.unwrap();
     assert_eq!(out.tool_results.len(), 1);
