@@ -15,8 +15,13 @@ pub use mcp_config::{
 };
 pub use xdg_toml::{load_full_config, FullConfig, ProviderDef};
 
+use model_spec_core::extract_provider_api_from_models_dev_json;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
+
+const DEFAULT_MODELS_DEV_URL: &str = "https://models.dev/api.json";
+const MODELS_DEV_URL_ENV: &str = "MODELS_DEV_URL";
+const MODELS_DEV_INLINE_JSON_ENV: &str = "LOOM_MODELS_DEV_API_JSON";
 
 /// Masks a key for logging: keeps first `prefix_len` and last `suffix_len` chars, middle becomes `***`.
 pub fn mask_key(key: &str, prefix_len: usize, suffix_len: usize) -> String {
@@ -170,6 +175,34 @@ pub enum LoadError {
     DotenvRead(std::io::Error),
 }
 
+fn provider_env_map_with_models_dev_fallback(
+    provider: &ProviderDef,
+) -> std::collections::HashMap<String, String> {
+    let mut env_map = provider.to_env_map();
+    let has_base_url = env_map
+        .get("OPENAI_BASE_URL")
+        .is_some_and(|v| !v.trim().is_empty());
+    if !has_base_url {
+        if let Some(api_base) = resolve_provider_api_base_from_models_dev(&provider.name) {
+            env_map.insert("OPENAI_BASE_URL".to_string(), api_base);
+        }
+    }
+    env_map
+}
+
+fn resolve_provider_api_base_from_models_dev(provider_name: &str) -> Option<String> {
+    let inline_json = std::env::var(MODELS_DEV_INLINE_JSON_ENV).ok();
+    if let Some(body) = inline_json.as_deref() {
+        return extract_provider_api_from_models_dev_json(body, provider_name);
+    }
+
+    let url =
+        std::env::var(MODELS_DEV_URL_ENV).unwrap_or_else(|_| DEFAULT_MODELS_DEV_URL.to_string());
+    let response = ureq::get(&url).call().ok()?;
+    let body = response.into_body().read_to_string().ok()?;
+    extract_provider_api_from_models_dev_json(&body, provider_name)
+}
+
 /// Loads config from `~/.loom/config.toml` and optional project `.env`, then sets environment
 /// variables only for keys that are **not** already set (so existing env has highest priority).
 ///
@@ -189,7 +222,7 @@ pub fn load_and_apply(app_name: &str, override_dir: Option<&Path>) -> Result<(),
 /// Priority (highest to lowest):
 /// 1. Existing process environment  
 /// 2. Project `.env`
-/// 3. Active `[[providers]]` entry (selected via `[default].provider` or `LOOM_PROVIDER` env var)
+/// 3. Active `[[providers]]` entry (selected via `[default].provider`)
 /// 4. `[env]` table in `config.toml`
 pub fn load_and_apply_with_report(
     app_name: &str,
@@ -199,12 +232,8 @@ pub fn load_and_apply_with_report(
     let xdg_map = full_config.env;
     let dotenv_map = dotenv::load_env_map(override_dir).map_err(LoadError::DotenvRead)?;
 
-    // Resolve active provider name (priority: process env > .env > [env] > [default].provider).
-    let active_provider_name = std::env::var("LOOM_PROVIDER")
-        .ok()
-        .or_else(|| dotenv_map.get("LOOM_PROVIDER").cloned())
-        .or_else(|| xdg_map.get("LOOM_PROVIDER").cloned())
-        .or(full_config.default_provider);
+    // Resolve active provider name from [default].provider only.
+    let active_provider_name = full_config.default_provider;
     let provider_map: std::collections::HashMap<String, String> = active_provider_name
         .as_deref()
         .and_then(|name| {
@@ -213,7 +242,7 @@ pub fn load_and_apply_with_report(
                 .iter()
                 .find(|p| p.name.eq_ignore_ascii_case(name))
         })
-        .map(|p| p.to_env_map())
+        .map(provider_env_map_with_models_dev_fallback)
         .unwrap_or_default();
 
     let dotenv_path = dotenv::env_file_path(override_dir);
@@ -506,7 +535,10 @@ mod tests {
         restore_var("LOOM_HOME", prev_loom);
 
         assert!(!report.entries.is_empty());
-        let entry = report.entries.iter().find(|e| e.key == "CONFIG_TEST_REPORT_LOG");
+        let entry = report
+            .entries
+            .iter()
+            .find(|e| e.key == "CONFIG_TEST_REPORT_LOG");
         assert!(entry.is_some());
         let entry = entry.unwrap();
         assert_eq!(entry.source, ConfigSource::Xdg);
@@ -531,7 +563,11 @@ mod tests {
         env::remove_var("CONFIG_TEST_API_KEY");
         restore_var("LOOM_HOME", prev_loom);
 
-        let entry = report.entries.iter().find(|e| e.key == "CONFIG_TEST_API_KEY").unwrap();
+        let entry = report
+            .entries
+            .iter()
+            .find(|e| e.key == "CONFIG_TEST_API_KEY")
+            .unwrap();
         assert_eq!(entry.value_masked, "su***et");
     }
 
@@ -586,7 +622,10 @@ mod tests {
     #[test]
     fn format_entry_quotes_empty_and_spaces() {
         assert_eq!(ConfigLoadReport::format_entry("K", ""), "K=\"\"");
-        assert_eq!(ConfigLoadReport::format_entry("K", "has space"), "K=\"has space\"");
+        assert_eq!(
+            ConfigLoadReport::format_entry("K", "has space"),
+            "K=\"has space\""
+        );
         assert_eq!(ConfigLoadReport::format_entry("K", "nospace"), "K=nospace");
     }
 
@@ -647,7 +686,6 @@ model = "test-model"
         env::remove_var("OPENAI_API_KEY");
         env::remove_var("OPENAI_BASE_URL");
         env::remove_var("MODEL");
-        env::remove_var("LOOM_PROVIDER");
 
         let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
 
@@ -694,7 +732,6 @@ type = "bigmodel"
         env::remove_var("OPENAI_API_KEY");
         env::remove_var("LLM_PROVIDER");
         env::remove_var("MODEL");
-        env::remove_var("LOOM_PROVIDER");
 
         let _ = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
 
@@ -733,7 +770,6 @@ model = "model-from-provider"
         let prev_loom = env::var("LOOM_HOME").ok();
         env::set_var("LOOM_HOME", loom_home.path());
         env::remove_var("MODEL");
-        env::remove_var("LOOM_PROVIDER");
 
         let _ = load_and_apply_with_report("loom", Some(dotenv_dir.path())).unwrap();
         let model = env::var("MODEL").unwrap_or_default();
@@ -764,7 +800,6 @@ model = "model-from-provider"
         let prev_loom = env::var("LOOM_HOME").ok();
         env::set_var("LOOM_HOME", loom_home.path());
         env::set_var("MODEL", "model-from-env");
-        env::remove_var("LOOM_PROVIDER");
 
         let _ = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
         let model = env::var("MODEL").unwrap_or_default();
@@ -795,7 +830,6 @@ model = "other-model"
         let prev_loom = env::var("LOOM_HOME").ok();
         env::set_var("LOOM_HOME", loom_home.path());
         env::remove_var("MODEL");
-        env::remove_var("LOOM_PROVIDER");
 
         let _ = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
         let model = env::var("MODEL").ok();
@@ -806,35 +840,40 @@ model = "other-model"
     }
 
     #[test]
-    fn loom_provider_env_selects_provider() {
+    fn extract_provider_api_from_models_dev_json_reads_api_field() {
+        let body = r#"{
+            "openai": { "api": "https://api.openai.com/v1" },
+            "zhipuai-coding-plan": { "api": "https://open.bigmodel.cn/api/paas/v4" }
+        }"#;
+        let api = extract_provider_api_from_models_dev_json(body, "zhipuai-coding-plan");
+        assert_eq!(api.as_deref(), Some("https://open.bigmodel.cn/api/paas/v4"));
+    }
+
+    #[test]
+    fn provider_env_map_uses_models_dev_api_when_base_url_missing() {
         let _g = CONFIG_ENV_LOCK.lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
-        std::fs::write(
-            loom_home.path().join("config.toml"),
-            r#"
-[[providers]]
-name = "fast"
-model = "fast-model"
+        let prev_inline = env::var(MODELS_DEV_INLINE_JSON_ENV).ok();
+        env::set_var(
+            MODELS_DEV_INLINE_JSON_ENV,
+            r#"{"zhipuai-coding-plan":{"api":"https://open.bigmodel.cn/api/paas/v4"}}"#,
+        );
 
-[[providers]]
-name = "slow"
-model = "slow-model"
-"#,
-        )
-        .unwrap();
+        let provider = ProviderDef {
+            name: "zhipuai-coding-plan".to_string(),
+            api_key: Some("test-key".to_string()),
+            base_url: None,
+            model: Some("glm-5".to_string()),
+            provider_type: None,
+            tool_choice: None,
+            temperature: None,
+        };
 
-        let prev_loom = env::var("LOOM_HOME").ok();
-        env::set_var("LOOM_HOME", loom_home.path());
-        env::set_var("LOOM_PROVIDER", "slow");
-        env::remove_var("MODEL");
+        let env_map = provider_env_map_with_models_dev_fallback(&provider);
+        restore_var(MODELS_DEV_INLINE_JSON_ENV, prev_inline);
 
-        let _ = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
-        let model = env::var("MODEL").unwrap_or_default();
-
-        env::remove_var("MODEL");
-        env::remove_var("LOOM_PROVIDER");
-        restore_var("LOOM_HOME", prev_loom);
-
-        assert_eq!(model, "slow-model");
+        assert_eq!(
+            env_map.get("OPENAI_BASE_URL").map(String::as_str),
+            Some("https://open.bigmodel.cn/api/paas/v4")
+        );
     }
 }

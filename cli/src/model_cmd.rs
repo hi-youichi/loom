@@ -1,14 +1,15 @@
-//! Models subcommand: list available models from configured providers.
+//! Models subcommand: list available models from model spec metadata.
 //!
-//! Queries the `/v1/models` endpoint of each configured provider and displays
-//! the available models. Supports filtering by provider name.
+//! Reads configured providers from `~/.loom/config.toml`, resolves models from
+//! model spec, and displays available models. Supports filtering by provider name.
 //!
 //! **Interaction**: Called from the `loom` binary when the user runs `loom models list`
 //! or `loom models show <PROVIDER>`.
 
 use config::{load_full_config, ProviderDef};
-use loom::llm::{fetch_provider_models, ProviderModels};
+use loom::llm::{ModelInfo, ModelRegistry, ProviderConfig, ProviderModels};
 use loom::RunError;
+use std::collections::HashMap;
 
 /// Maximum number of models to display per provider before truncating.
 #[allow(dead_code)]
@@ -17,9 +18,8 @@ const MAX_MODELS_DISPLAY: usize = 30;
 /// List models from all configured providers.
 #[allow(dead_code)]
 pub async fn list_all_models(json: bool) -> Result<(), RunError> {
-    let config = load_full_config("loom").map_err(|e| {
-        RunError::ConfigError(format!("Failed to load config: {}", e))
-    })?;
+    let config = load_full_config("loom")
+        .map_err(|e| RunError::ConfigError(format!("Failed to load config: {}", e)))?;
 
     if config.providers.is_empty() {
         eprintln!("No providers configured in ~/.loom/config.toml");
@@ -27,12 +27,7 @@ pub async fn list_all_models(json: bool) -> Result<(), RunError> {
         return Ok(());
     }
 
-    let mut results: Vec<ProviderModels> = Vec::new();
-
-    for provider in &config.providers {
-        let result = query_provider_models(provider).await;
-        results.push(result);
-    }
+    let results = query_providers_models_from_spec(&config.providers).await;
 
     if json {
         output_json(&results);
@@ -46,9 +41,8 @@ pub async fn list_all_models(json: bool) -> Result<(), RunError> {
 /// List models from a specific provider.
 #[allow(dead_code)]
 pub async fn list_provider_models(provider_name: &str, json: bool) -> Result<(), RunError> {
-    let config = load_full_config("loom").map_err(|e| {
-        RunError::ConfigError(format!("Failed to load config: {}", e))
-    })?;
+    let config = load_full_config("loom")
+        .map_err(|e| RunError::ConfigError(format!("Failed to load config: {}", e)))?;
 
     let provider = config
         .providers
@@ -56,7 +50,11 @@ pub async fn list_provider_models(provider_name: &str, json: bool) -> Result<(),
         .find(|p| p.name == provider_name)
         .ok_or_else(|| RunError::ConfigError(format!("Provider '{}' not found", provider_name)))?;
 
-    let result = query_provider_models(provider).await;
+    let result = query_providers_models_from_spec(std::slice::from_ref(provider))
+        .await
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| ProviderModels::ok(provider.name.clone(), Vec::new()));
 
     if json {
         output_json(&[result]);
@@ -67,16 +65,52 @@ pub async fn list_provider_models(provider_name: &str, json: bool) -> Result<(),
     Ok(())
 }
 
-/// Query models from a provider.
+/// Query models from providers using model spec.
 #[allow(dead_code)]
-async fn query_provider_models(provider: &ProviderDef) -> ProviderModels {
-    let provider_type = provider.provider_type.as_deref().unwrap_or("openai");
-    let base_url = provider.base_url.as_deref().unwrap_or("");
-    let api_key = provider.api_key.as_deref().unwrap_or("");
+async fn query_providers_models_from_spec(providers: &[ProviderDef]) -> Vec<ProviderModels> {
+    let registry = ModelRegistry::global();
+    let provider_configs: Vec<ProviderConfig> = providers
+        .iter()
+        .map(|p| ProviderConfig {
+            name: p.name.clone(),
+            base_url: p.base_url.clone(),
+            api_key: p.api_key.clone(),
+            provider_type: p.provider_type.clone(),
+        })
+        .collect();
 
-    match fetch_provider_models(Some(provider_type), Some(base_url), Some(api_key)).await {
-        Ok(models) => ProviderModels::ok(provider.name.clone(), models),
-        Err(e) => ProviderModels::err(provider.name.clone(), e.to_string()),
+    match registry.list_all_models_result(&provider_configs).await {
+        Ok(entries) => {
+            let mut by_provider: HashMap<String, Vec<ModelInfo>> = HashMap::new();
+            for entry in entries {
+                by_provider
+                    .entry(entry.provider)
+                    .or_default()
+                    .push(ModelInfo {
+                        id: entry.name,
+                        created: None,
+                        owned_by: None,
+                    });
+            }
+
+            providers
+                .iter()
+                .map(|provider| {
+                    let mut models = by_provider.remove(&provider.name).unwrap_or_default();
+                    models.sort_by(|a, b| a.id.cmp(&b.id));
+                    ProviderModels::ok(provider.name.clone(), models)
+                })
+                .collect()
+        }
+        Err(e) => providers
+            .iter()
+            .map(|provider| {
+                ProviderModels::err(
+                    provider.name.clone(),
+                    format!("Failed to resolve models from model spec: {e}"),
+                )
+            })
+            .collect(),
     }
 }
 
@@ -105,7 +139,10 @@ fn output_json(results: &[ProviderModels]) {
         })
         .collect();
 
-    println!("{}", serde_json::to_string_pretty(&json_results).unwrap_or_default());
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json_results).unwrap_or_default()
+    );
 }
 
 /// Output results in human-readable format.

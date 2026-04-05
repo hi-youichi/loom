@@ -46,9 +46,18 @@ async fn grep_basic_match_returns_path_and_line() {
 
     let result = grep(&dir, json!({ "pattern": "hello" })).await;
 
-    assert!(result.as_text().unwrap().contains("a.txt"), "expected filename in output");
-    assert!(result.as_text().unwrap().contains("Line 1"), "expected line number");
-    assert!(result.as_text().unwrap().contains("hello world"), "expected matched line");
+    assert!(
+        result.as_text().unwrap().contains("a.txt"),
+        "expected filename in output"
+    );
+    assert!(
+        result.as_text().unwrap().contains("Line 1"),
+        "expected line number"
+    );
+    assert!(
+        result.as_text().unwrap().contains("hello world"),
+        "expected matched line"
+    );
     assert!(
         !result.as_text().unwrap().contains("foo bar"),
         "non-matching line must not appear"
@@ -192,7 +201,10 @@ async fn grep_include_filter_restricts_to_matching_extension() {
 
     let result = grep(&dir, json!({ "pattern": "search", "include": "*.rs" })).await;
 
-    assert!(result.as_text().unwrap().contains("lib.rs"), "lib.rs should match");
+    assert!(
+        result.as_text().unwrap().contains("lib.rs"),
+        "lib.rs should match"
+    );
     assert!(
         !result.as_text().unwrap().contains("config.toml"),
         "config.toml must be excluded"
@@ -215,7 +227,10 @@ async fn grep_include_brace_expansion_matches_multiple_extensions() {
 
     assert!(result.as_text().unwrap().contains("lib.rs"));
     assert!(result.as_text().unwrap().contains("config.toml"));
-    assert!(!result.as_text().unwrap().contains("notes.txt"), "txt must be excluded");
+    assert!(
+        !result.as_text().unwrap().contains("notes.txt"),
+        "txt must be excluded"
+    );
 }
 
 /// Scenario: include pattern that matches nothing returns "No files found".
@@ -253,7 +268,10 @@ async fn grep_path_restricts_to_subdirectory() {
 
     let result = grep(&dir, json!({ "pattern": "find_me", "path": "src" })).await;
 
-    assert!(result.as_text().unwrap().contains("lib.rs"), "src/lib.rs should be found");
+    assert!(
+        result.as_text().unwrap().contains("lib.rs"),
+        "src/lib.rs should be found"
+    );
     assert!(
         !result.as_text().unwrap().contains("root.rs"),
         "root.rs is outside path, must be excluded"
@@ -297,7 +315,10 @@ async fn grep_binary_files_are_skipped() {
 
     let result = grep(&dir, json!({ "pattern": "binary_match" })).await;
 
-    assert!(result.as_text().unwrap().contains("text.txt"), "text file must appear");
+    assert!(
+        result.as_text().unwrap().contains("text.txt"),
+        "text file must appear"
+    );
     assert!(
         !result.as_text().unwrap().contains("data.bin"),
         "binary file must be skipped"
@@ -316,7 +337,8 @@ async fn grep_is_case_sensitive_by_default() {
 
     let lower_result = grep(&dir, json!({ "pattern": "hello world" })).await;
     assert_eq!(
-        lower_result.as_text().unwrap(), "No files found",
+        lower_result.as_text().unwrap(),
+        "No files found",
         "lowercase should not match uppercase file"
     );
 
@@ -463,7 +485,8 @@ async fn grep_gitignore_excludes_directory() {
         result.as_text().unwrap()
     );
     assert!(
-        !result.as_text().unwrap().contains("skip_dir") && !result.as_text().unwrap().contains("secret.txt"),
+        !result.as_text().unwrap().contains("skip_dir")
+            && !result.as_text().unwrap().contains("secret.txt"),
         "files under gitignored dir must not be searched; output: {}",
         result.as_text().unwrap()
     );
@@ -500,11 +523,13 @@ async fn grep_results_sorted_by_modification_time_desc() {
     let result = grep(&dir, json!({ "pattern": "target" })).await;
 
     let older_pos = result
-        .as_text().unwrap()
+        .as_text()
+        .unwrap()
         .find("older.txt")
         .expect("older.txt must appear");
     let newer_pos = result
-        .as_text().unwrap()
+        .as_text()
+        .unwrap()
         .find("newer.txt")
         .expect("newer.txt must appear");
     assert!(

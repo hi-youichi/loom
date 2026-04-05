@@ -1,0 +1,89 @@
+//! Agent execution with streaming support
+//!
+//! Provides functions for running Loom agent with real-time streaming.
+
+use crate::config::Settings;
+use crate::error::{BotError, Result};
+use crate::streaming::event_mapper::StreamEventMapper;
+use crate::streaming::message_handler::StreamCommand;
+use crate::traits::{AgentRunContext, MessageSender};
+use loom::{run_agent_with_options, RunCmd, RunCompletion, RunOptions, UserContent};
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::mpsc;
+
+pub async fn run_loom_agent_streaming(
+    message: &str,
+    chat_id: i64,
+    sender: Arc<dyn MessageSender>,
+    context: AgentRunContext,
+    settings: &Settings,
+) -> Result<String> {
+    tracing::info!("Running Loom agent (streaming) for chat {}", chat_id);
+
+    let thread_id = format!("telegram_{}", chat_id);
+
+    let (tx, rx) = mpsc::channel::<StreamCommand>(100);
+
+    let model_for_run = context.model_override.clone();
+    let handler_sender = sender.clone();
+    let handler_settings = settings.streaming.clone();
+    let handler_task = tokio::spawn(async move {
+        crate::streaming::message_handler::stream_message_handler_with_context(
+            rx,
+            handler_sender,
+            chat_id,
+            context,
+            handler_settings,
+        )
+        .await
+    });
+
+    let opts = RunOptions {
+        message: UserContent::Text(message.to_string()),
+        thread_id: Some(thread_id),
+        working_folder: Some(PathBuf::from(".")),
+        session_id: None,
+        agent: None,
+        verbose: false,
+        got_adaptive: false,
+        display_max_len: 2000,
+        output_json: false,
+        model: model_for_run,
+        provider: None,
+        base_url: None,
+        api_key: None,
+        provider_type: None,
+        mcp_config_path: None,
+        cancellation: None,
+        output_timestamp: false,
+        dry_run: false,
+    };
+
+    let mapper = StreamEventMapper::new(tx.clone(), settings.streaming.show_act_phase);
+    let on_event = mapper.boxed_callback();
+
+    let result = run_agent_with_options(&opts, &RunCmd::React, Some(on_event)).await;
+
+    let completion = result?;
+
+    if let Err(send_error) = tx
+        .send(crate::streaming::message_handler::StreamCommand::Flush)
+        .await
+    {
+        tracing::error!("Failed to send Flush to stream handler: {}", send_error);
+    }
+    let final_text = handler_task.await.unwrap_or_default();
+
+    match completion {
+        RunCompletion::Finished(agent_result) => {
+            let text = if final_text.trim().is_empty() {
+                agent_result.reply
+            } else {
+                final_text
+            };
+            Ok(text)
+        }
+        RunCompletion::Cancelled => Err(BotError::Agent("Agent run was cancelled".to_string())),
+    }
+}

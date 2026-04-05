@@ -23,13 +23,15 @@
 //! let model = registry.get_model("openai/gpt-4o", &providers).await;
 //! ```
 
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::sync::RwLock;
 
 use crate::error::AgentError;
-use crate::llm::{fetch_provider_models, ChatOpenAI, ChatOpenAICompat, LlmClient, ModelInfo};
+use crate::llm::{ChatOpenAI, ChatOpenAICompat, LlmClient};
+use crate::model_spec::{ModelsDevResolver, Provider as SpecProvider};
 use async_openai::config::OpenAIConfig;
 
 /// Default TTL for cached model lists (5 minutes).
@@ -158,23 +160,16 @@ impl ModelEntry {
     }
 }
 
-/// Cached model list for a single provider.
+/// Cached model catalog fetched from models.dev.
 #[derive(Clone, Debug)]
-#[allow(dead_code)]
-struct CachedProviderModels {
-    /// Provider name.
-    provider_name: String,
-    /// List of models.
-    models: Vec<ModelInfo>,
+struct CachedSpecProviders {
+    /// Provider metadata from models.dev keyed by normalized provider name.
+    providers: HashMap<String, SpecProvider>,
     /// When the models were fetched.
     fetched_at: Instant,
-    /// Provider configuration.
-    base_url: Option<String>,
-    api_key: Option<String>,
-    provider_type: Option<String>,
 }
 
-impl CachedProviderModels {
+impl CachedSpecProviders {
     fn is_expired(&self, ttl: Duration) -> bool {
         self.fetched_at.elapsed() > ttl
     }
@@ -189,8 +184,8 @@ pub struct ModelRegistry {
 
 #[derive(Default)]
 struct RegistryInner {
-    /// Cached models per provider.
-    cache: Vec<CachedProviderModels>,
+    /// Cached provider catalog from models.dev.
+    cache: Option<CachedSpecProviders>,
 }
 
 impl ModelRegistry {
@@ -216,115 +211,143 @@ impl ModelRegistry {
     /// List all available models from all providers.
     /// Returns models in "{provider}/{model_id}" format with provider configuration.
     pub async fn list_all_models(&self, providers: &[ProviderConfig]) -> Vec<ModelEntry> {
+        match self.list_all_models_result(providers).await {
+            Ok(models) => models,
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to resolve models from model spec");
+                Vec::new()
+            }
+        }
+    }
+
+    /// List all available models from configured providers using model spec.
+    pub async fn list_all_models_result(
+        &self,
+        providers: &[ProviderConfig],
+    ) -> Result<Vec<ModelEntry>, AgentError> {
+        if providers.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let spec_providers = self.fetch_or_get_cached_spec_providers().await?;
         let mut all_models = Vec::new();
+        let mut seen_ids = HashSet::new();
 
         for provider in providers {
-            match self.fetch_or_get_cached(provider).await {
-                Ok(models) => {
-                    for model in models {
-                        all_models.push(ModelEntry {
-                            id: format!("{}/{}", provider.name, model.id),
-                            name: model.id,
-                            provider: provider.name.clone(),
-                            base_url: provider.base_url.clone(),
-                            api_key: provider.api_key.clone(),
-                            provider_type: provider.provider_type.clone(),
-                            ..Default::default()
-                        });
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        provider = %provider.name,
-                        error = %e,
-                        "Failed to fetch models from provider"
-                    );
+            let normalized = Self::normalize_provider_name(&provider.name);
+            let Some(spec_provider) = spec_providers.get(&normalized) else {
+                tracing::warn!(
+                    provider = %provider.name,
+                    "Provider not found in model spec; skipping provider models"
+                );
+                continue;
+            };
+
+            for model_id in spec_provider.models.keys() {
+                let entry = ModelEntry::from_provider_config(provider, model_id);
+                if seen_ids.insert(entry.id.clone()) {
+                    all_models.push(entry);
                 }
             }
         }
 
-        tracing::info!(
-            total_models = all_models.len(),
-            "Listed all available models"
-        );
+        all_models.sort_by(|a, b| {
+            a.provider
+                .cmp(&b.provider)
+                .then_with(|| a.name.cmp(&b.name))
+        });
 
-        all_models
+        tracing::info!(total_models = all_models.len(), "Listed all available models from model spec");
+        Ok(all_models)
     }
 
     /// Get a specific model by its combined ID ("{provider}/{model_id}").
     /// Returns None if the model is not found or the provider doesn't exist.
     pub async fn get_model(&self, combined_id: &str, providers: &[ProviderConfig]) -> Option<ModelEntry> {
-        let (provider_name, model_id) = combined_id.split_once('/')?;
-
-        // Find the provider
-        let provider = providers.iter().find(|p| p.name == provider_name)?;
-
-        // Get models for this provider
-        let models = self.fetch_or_get_cached(provider).await.ok()?;
-
-        // Find the specific model
-        let _model = models.iter().find(|m| m.id == model_id)?;
-
-        Some(ModelEntry {
-            id: combined_id.to_string(),
-            name: model_id.to_string(),
-            provider: provider.name.clone(),
-            base_url: provider.base_url.clone(),
-            api_key: provider.api_key.clone(),
-            provider_type: provider.provider_type.clone(),
-            ..Default::default()
-        })
+        self.get_model_result(combined_id, providers).await.ok().flatten()
     }
 
-    /// Fetch models from a provider, using cache if valid.
-    async fn fetch_or_get_cached(&self, provider: &ProviderConfig) -> Result<Vec<ModelInfo>, AgentError> {
+    /// Get a specific model by combined ID using model spec metadata.
+    pub async fn get_model_result(
+        &self,
+        combined_id: &str,
+        providers: &[ProviderConfig],
+    ) -> Result<Option<ModelEntry>, AgentError> {
+        let Some((provider_name, model_id)) = combined_id.split_once('/') else {
+            return Ok(None);
+        };
+
+        let Some(provider_cfg) = providers.iter().find(|p| p.name == provider_name) else {
+            return Ok(None);
+        };
+
+        let spec_providers = self.fetch_or_get_cached_spec_providers().await?;
+        let normalized = Self::normalize_provider_name(provider_name);
+        let Some(spec_provider) = spec_providers.get(&normalized) else {
+            return Ok(None);
+        };
+
+        if !spec_provider.models.contains_key(model_id) {
+            return Ok(None);
+        }
+
+        Ok(Some(ModelEntry::from_provider_config(provider_cfg, model_id)))
+    }
+
+    fn normalize_provider_name(name: &str) -> String {
+        name.trim().to_ascii_lowercase()
+    }
+
+    /// Fetch models.dev providers, using cache if valid.
+    async fn fetch_or_get_cached_spec_providers(
+        &self,
+    ) -> Result<HashMap<String, SpecProvider>, AgentError> {
         // Check cache first
         {
             let inner = self.inner.read().await;
-            if let Some(cached) = inner.cache.iter().find(|c| c.provider_name == provider.name) {
+            if let Some(cached) = &inner.cache {
                 if !cached.is_expired(self.ttl) {
-                    return Ok(cached.models.clone());
+                    return Ok(cached.providers.clone());
                 }
             }
         }
 
-        // Fetch from provider
-        let models = fetch_provider_models(
-            provider.provider_type.as_deref(),
-            provider.base_url.as_deref(),
-            provider.api_key.as_deref(),
-        )
-        .await?;
+        // Fetch from model spec
+        let fetched = ModelsDevResolver::new()
+            .fetch_all_providers()
+            .await
+            .map_err(|e| AgentError::ExecutionFailed(format!("failed to fetch model spec providers: {e}")))?;
+        let providers: HashMap<String, SpecProvider> = fetched
+            .into_iter()
+            .map(|(k, v)| (Self::normalize_provider_name(&k), v))
+            .collect();
 
         // Update cache
         {
             let mut inner = self.inner.write().await;
-            // Remove old entry if exists
-            inner.cache.retain(|c| c.provider_name != provider.name);
-            // Add new entry
-            inner.cache.push(CachedProviderModels {
-                provider_name: provider.name.clone(),
-                models: models.clone(),
+            inner.cache = Some(CachedSpecProviders {
+                providers: providers.clone(),
                 fetched_at: Instant::now(),
-                base_url: provider.base_url.clone(),
-                api_key: provider.api_key.clone(),
-                provider_type: provider.provider_type.clone(),
             });
         }
 
-        Ok(models)
+        Ok(providers)
     }
 
     /// Invalidate cache for a specific provider.
     pub async fn invalidate(&self, provider_name: &str) {
         let mut inner = self.inner.write().await;
-        inner.cache.retain(|c| c.provider_name != provider_name);
+        if let Some(cached) = &mut inner.cache {
+            cached
+                .providers
+                .remove(&Self::normalize_provider_name(provider_name));
+        }
     }
 
     /// Invalidate all cached models.
     pub async fn invalidate_all(&self) {
         let mut inner = self.inner.write().await;
-        inner.cache.clear();
+        inner.cache = None;
     }
 }
 

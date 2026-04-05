@@ -14,6 +14,14 @@
 //! 7. [`trimmed_boundary_replacer`] – trim leading/trailing whitespace from `oldString`
 //! 8. [`context_aware_replacer`] – anchor on first/last line; ≥50% middle-line match
 //! 9. [`multi_occurrence_replacer`] – yields all exact matches (enables `replaceAll`)
+//!
+//! # Memory safety
+//!
+//! Each replacer is capped by [`MAX_REPLACER_RESULTS`] to bound intermediate allocations.
+//! [`escape_normalized_replacer`] uses lazy evaluation — it compares lines individually
+//! before joining, avoiding O(n×m) heap allocations for the sliding window.
+//! [`replace`] rejects empty `old_string` to prevent `str::replace("", …)` from inserting
+//! the replacement at every character boundary.
 
 use std::sync::Arc;
 
@@ -197,6 +205,13 @@ fn levenshtein(a: &str, b: &str) -> usize {
     matrix[m][n]
 }
 
+const SINGLE_CANDIDATE_SIMILARITY_THRESHOLD: f64 = 0.0;
+const MULTIPLE_CANDIDATES_SIMILARITY_THRESHOLD: f64 = 0.3;
+/// Maximum number of results each replacer may return.
+///
+/// Prevents unbounded heap growth when a pattern matches many times in a large file.
+const MAX_REPLACER_RESULTS: usize = 64;
+
 // ---------------------------------------------------------------------------
 // Replacers – each returns the substrings of `content` that match `find`
 // ---------------------------------------------------------------------------
@@ -207,6 +222,8 @@ fn simple_replacer(_content: &str, find: &str) -> Vec<String> {
 }
 
 /// Matches blocks where every line matches after trimming leading/trailing whitespace.
+///
+/// Results are capped at [`MAX_REPLACER_RESULTS`].
 fn line_trimmed_replacer(content: &str, find: &str) -> Vec<String> {
     let orig: Vec<&str> = content.split('\n').collect();
     let mut search: Vec<&str> = find.split('\n').collect();
@@ -229,16 +246,19 @@ fn line_trimmed_replacer(content: &str, find: &str) -> Vec<String> {
                     .map(|(k, l)| l.len() + if k < search.len() - 1 { 1 } else { 0 })
                     .sum::<usize>();
             results.push(content[start..end].to_string());
+            if results.len() >= MAX_REPLACER_RESULTS {
+                break;
+            }
         }
     }
     results
 }
 
-const SINGLE_CANDIDATE_SIMILARITY_THRESHOLD: f64 = 0.0;
-const MULTIPLE_CANDIDATES_SIMILARITY_THRESHOLD: f64 = 0.3;
-
 /// Matches a block by its first and last lines as anchors, using Levenshtein
 /// similarity on middle lines to pick the best (or only) candidate.
+///
+/// The number of anchor candidates is capped at [`MAX_REPLACER_RESULTS`] to avoid
+/// O(n²) blowup on large files with many repeated anchor lines.
 fn block_anchor_replacer(content: &str, find: &str) -> Vec<String> {
     let orig: Vec<&str> = content.split('\n').collect();
     let mut search: Vec<&str> = find.split('\n').collect();
@@ -266,6 +286,9 @@ fn block_anchor_replacer(content: &str, find: &str) -> Vec<String> {
                 candidates.push((i, j));
                 break;
             }
+        }
+        if candidates.len() >= MAX_REPLACER_RESULTS {
+            break;
         }
     }
 
@@ -444,6 +467,11 @@ fn unescape_string(s: &str) -> String {
 }
 
 /// Unescapes `\n`, `\t`, `\\`, etc. in `find` before searching.
+///
+/// Uses lazy per-line comparison instead of eagerly joining every sliding window,
+/// keeping memory usage O(1) per window rather than O(m) where m = `find` line count.
+/// Only joins when a full match is confirmed. Results are capped at
+/// [`MAX_REPLACER_RESULTS`].
 fn escape_normalized_replacer(content: &str, find: &str) -> Vec<String> {
     let unescaped = unescape_string(find);
     let mut results = Vec::new();
@@ -454,10 +482,20 @@ fn escape_normalized_replacer(content: &str, find: &str) -> Vec<String> {
 
     let lines: Vec<&str> = content.split('\n').collect();
     let find_lines: Vec<&str> = unescaped.split('\n').collect();
-    for i in 0..=lines.len().saturating_sub(find_lines.len()) {
-        let block = lines[i..i + find_lines.len()].join("\n");
-        if unescape_string(&block) == unescaped {
+    if find_lines.is_empty() || find_lines.len() > lines.len() {
+        return results;
+    }
+    for i in 0..=lines.len() - find_lines.len() {
+        let all_match = find_lines
+            .iter()
+            .enumerate()
+            .all(|(k, fl)| unescape_string(lines[i + k]) == *fl);
+        if all_match {
+            let block = lines[i..i + find_lines.len()].join("\n");
             results.push(block);
+            if results.len() >= MAX_REPLACER_RESULTS {
+                break;
+            }
         }
     }
     results
@@ -535,11 +573,16 @@ fn context_aware_replacer(content: &str, find: &str) -> Vec<String> {
 }
 
 /// Yields every exact occurrence of `find`; used to enable `replaceAll`.
+///
+/// Results are capped at [`MAX_REPLACER_RESULTS`].
 fn multi_occurrence_replacer(content: &str, find: &str) -> Vec<String> {
     let mut results = Vec::new();
     let mut start = 0;
     while let Some(idx) = content[start..].find(find) {
         results.push(find.to_string());
+        if results.len() >= MAX_REPLACER_RESULTS {
+            break;
+        }
         start += idx + find.len();
     }
     results
@@ -558,6 +601,9 @@ fn multi_occurrence_replacer(content: &str, find: &str) -> Vec<String> {
 ///
 /// # Errors
 ///
+/// - `"oldString and newString must be different"` – same string passed for both.
+/// - `"oldString must not be empty"` – empty `old_string` would cause `str::replace`
+///   to insert `new_string` at every character boundary.
 /// - `"oldString not found in content"` – no strategy produced a match.
 /// - `"Found multiple matches …"` – a strategy matched but the string appeared
 ///   more than once and `replace_all` was false.
@@ -569,6 +615,9 @@ pub fn replace(
 ) -> Result<String, String> {
     if old_string == new_string {
         return Err("oldString and newString must be different".to_string());
+    }
+    if old_string.is_empty() {
+        return Err("oldString must not be empty".to_string());
     }
 
     let replacers: &[fn(&str, &str) -> Vec<String>] = &[
@@ -664,6 +713,12 @@ mod tests {
     fn replace_same_old_new_returns_error() {
         let err = replace("x", "x", "x", false).unwrap_err();
         assert!(err.contains("different"));
+    }
+
+    #[test]
+    fn replace_empty_old_string_returns_error() {
+        let err = replace("hello", "", "world", false).unwrap_err();
+        assert!(err.contains("empty"));
     }
 
     // --- simple_replacer ---

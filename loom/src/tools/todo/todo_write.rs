@@ -166,6 +166,7 @@ mod tests {
     /// call with valid todos writes file and returns count and list.
     #[tokio::test]
     async fn todo_write_call_valid_todos_writes_and_returns() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
@@ -189,6 +190,7 @@ mod tests {
     /// call with missing "todos" returns InvalidInput.
     #[tokio::test]
     async fn todo_write_call_missing_todos_returns_invalid_input() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
@@ -202,6 +204,7 @@ mod tests {
     /// call with todos not an array returns InvalidInput.
     #[tokio::test]
     async fn todo_write_call_todos_not_array_returns_invalid_input() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
@@ -216,6 +219,7 @@ mod tests {
     /// call with item missing "id" returns InvalidInput.
     #[tokio::test]
     async fn todo_write_call_item_missing_id_returns_invalid_input() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
@@ -234,6 +238,7 @@ mod tests {
     /// call with item missing "content" returns InvalidInput.
     #[tokio::test]
     async fn todo_write_call_item_missing_content_returns_invalid_input() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
@@ -252,6 +257,7 @@ mod tests {
     /// call with item as non-object returns InvalidInput.
     #[tokio::test]
     async fn todo_write_call_item_not_object_returns_invalid_input() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
@@ -266,6 +272,7 @@ mod tests {
     /// call with optional status/priority uses defaults (pending, medium).
     #[tokio::test]
     async fn todo_write_call_default_status_and_priority() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
@@ -284,6 +291,7 @@ mod tests {
     /// call with thread_id writes to thread-specific path.
     #[tokio::test]
     async fn todo_write_call_with_thread_id_writes_to_thread_path() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());

@@ -90,8 +90,9 @@ impl Tool for ReadTextFileTool {
         let args: ReadTextFileArgs = serde_json::from_value(args)
             .map_err(|e| ToolSourceError::InvalidInput(format!("Invalid arguments: {}", e)))?;
 
-        let bridge: Arc<dyn ClientBridgeTrait> = get_client_bridge().await
-            .map_err(|e| ToolSourceError::Transport(format!("Failed to get client bridge: {}", e)))?;
+        let bridge: Arc<dyn ClientBridgeTrait> = get_client_bridge().await.map_err(|e| {
+            ToolSourceError::Transport(format!("Failed to get client bridge: {}", e))
+        })?;
 
         let content = bridge
             .read_text_file(&args.path, args.line, args.limit)
@@ -172,14 +173,12 @@ impl Tool for WriteTextFileTool {
         let args: WriteTextFileArgs = serde_json::from_value(args)
             .map_err(|e| ToolSourceError::InvalidInput(format!("Invalid arguments: {}", e)))?;
 
-        let bridge: Arc<dyn ClientBridgeTrait> = get_client_bridge().await
-            .map_err(|e| ToolSourceError::Transport(format!("Failed to get client bridge: {}", e)))?;
+        let bridge: Arc<dyn ClientBridgeTrait> = get_client_bridge().await.map_err(|e| {
+            ToolSourceError::Transport(format!("Failed to get client bridge: {}", e))
+        })?;
 
         // Read old content if file exists
-        let old_content = bridge
-            .read_text_file(&args.path, None, None)
-            .await
-            .ok();
+        let old_content = bridge.read_text_file(&args.path, None, None).await.ok();
 
         // Write new content
         bridge
@@ -188,11 +187,7 @@ impl Tool for WriteTextFileTool {
             .map_err(|e| ToolSourceError::Transport(format!("Failed to write file: {}", e)))?;
 
         // Return Diff for file modifications
-        Ok(ToolCallContent::diff(
-            args.path,
-            old_content,
-            args.content,
-        ))
+        Ok(ToolCallContent::diff(args.path, old_content, args.content))
     }
 }
 

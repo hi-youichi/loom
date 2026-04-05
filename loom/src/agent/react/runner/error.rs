@@ -21,3 +21,24 @@ impl From<std::io::Error> for RunError {
         RunError::Execution(AgentError::ExecutionFailed(e.to_string()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn io_error_converts_to_execution_variant() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::BrokenPipe, "pipe broke");
+        let run_err: RunError = io_err.into();
+        match run_err {
+            RunError::Execution(e) => assert!(e.to_string().contains("pipe broke")),
+            other => panic!("expected Execution, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn display_stream_ended_without_state() {
+        let err = RunError::StreamEndedWithoutState;
+        assert_eq!(err.to_string(), "stream ended without final state");
+    }
+}

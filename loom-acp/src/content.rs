@@ -23,6 +23,9 @@
 
 use serde::{Deserialize, Serialize};
 
+// Re-export from loom for compatibility
+pub use loom::message::{ContentPart, UserContent};
+
 /// Parse a slice of content blocks into a single user message string.
 ///
 /// Only blocks implementing [`ContentBlockLike`] are processed; typically ACP's `ContentBlock::Text` implements it,
@@ -101,13 +104,13 @@ impl ContentBlockLike for agent_client_protocol::ContentBlock {
             agent_client_protocol::ContentBlock::Text(t) => Some(t.text.clone()),
             agent_client_protocol::ContentBlock::Resource(r) => {
                 use agent_client_protocol::EmbeddedResourceResource;
-                
+
                 match &r.resource {
                     EmbeddedResourceResource::TextResourceContents(text_res) => {
                         let mime = text_res.mime_type.as_deref().unwrap_or("text/plain");
                         let uri = &text_res.uri;
                         let text = &text_res.text;
-                        
+
                         Some(format!(
                             "--- Embedded Resource ---\nURI: {}\nMIME: {}\n\n{}\n--- End Resource ---",
                             uri, mime, text
@@ -132,11 +135,8 @@ impl ContentBlockLike for agent_client_protocol::ContentBlock {
     }
 
     fn is_unsupported(&self) -> bool {
-        matches!(
-            self,
-            agent_client_protocol::ContentBlock::Image(_)
-                | agent_client_protocol::ContentBlock::Audio(_)
-        )
+        // 不再报错，由 content_blocks_to_user_content 处理
+        false
     }
 }
 
@@ -155,19 +155,21 @@ pub enum ContentError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentBlock {
-    Text { text: String },
-    Image { 
-        url: String, 
-        #[serde(skip_serializing_if = "Option::is_none")] 
-        mime_type: Option<String> 
+    Text {
+        text: String,
+    },
+    Image {
+        url: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        mime_type: Option<String>,
     },
     Resource {
         uri: String,
-        #[serde(skip_serializing_if = "Option::is_none")] 
+        #[serde(skip_serializing_if = "Option::is_none")]
         mime_type: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")] 
+        #[serde(skip_serializing_if = "Option::is_none")]
         text: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")] 
+        #[serde(skip_serializing_if = "Option::is_none")]
         blob: Option<String>,
     },
 }
@@ -175,14 +177,18 @@ pub enum ContentBlock {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ToolCallContent {
-    Content { content: ContentBlock },
+    Content {
+        content: ContentBlock,
+    },
     Diff {
         path: String,
-        #[serde(skip_serializing_if = "Option::is_none")] 
+        #[serde(skip_serializing_if = "Option::is_none")]
         old_text: Option<String>,
         new_text: String,
     },
-    Terminal { terminal_id: String },
+    Terminal {
+        terminal_id: String,
+    },
 }
 
 impl ToolCallContent {
@@ -191,11 +197,15 @@ impl ToolCallContent {
             content: ContentBlock::Text { text },
         }
     }
-    
+
     pub fn from_diff(path: String, old_text: Option<String>, new_text: String) -> Self {
-        ToolCallContent::Diff { path, old_text, new_text }
+        ToolCallContent::Diff {
+            path,
+            old_text,
+            new_text,
+        }
     }
-    
+
     pub fn from_terminal(terminal_id: String) -> Self {
         ToolCallContent::Terminal { terminal_id }
     }
@@ -212,14 +222,14 @@ pub fn extract_locations(tool_name: &str, args: &serde_json::Value) -> Vec<ToolC
     match tool_name {
         "read" | "write_file" | "edit" | "delete_file" | "move_file" | "glob" | "grep" => {
             let mut locations = Vec::new();
-            
+
             if let Some(path) = args.get("path").and_then(|p| p.as_str()) {
                 locations.push(ToolCallLocation {
                     path: path.to_string(),
                     line: args.get("line").and_then(|l| l.as_u64()).map(|l| l as u32),
                 });
             }
-            
+
             if tool_name == "move_file" {
                 if let Some(source) = args.get("source").and_then(|s| s.as_str()) {
                     locations.push(ToolCallLocation {
@@ -234,7 +244,7 @@ pub fn extract_locations(tool_name: &str, args: &serde_json::Value) -> Vec<ToolC
                     });
                 }
             }
-            
+
             if tool_name == "grep" {
                 if let Some(path) = args.get("path").and_then(|p| p.as_str()) {
                     locations.push(ToolCallLocation {
@@ -243,11 +253,116 @@ pub fn extract_locations(tool_name: &str, args: &serde_json::Value) -> Vec<ToolC
                     });
                 }
             }
-            
+
             locations
         }
         _ => Vec::new(),
     }
+}
+
+/// Convert ACP ContentBlock list to UserContent, supporting multimodal input.
+///
+/// This replaces the old `content_blocks_to_message` for cases where the caller
+/// needs the full multimodal structure (images, audio) rather than a flattened string.
+///
+/// # Arguments
+///
+/// * `blocks` - A slice of ACP ContentBlock items
+///
+/// # Returns
+///
+/// * `Ok(UserContent)` - The converted content, either Text or Multimodal
+/// * `Err(ContentError::EmptyMessage)` - If blocks is empty or contains no usable content
+pub fn content_blocks_to_user_content(
+    blocks: &[agent_client_protocol::ContentBlock],
+) -> Result<UserContent, ContentError> {
+    if blocks.is_empty() {
+        return Err(ContentError::EmptyMessage);
+    }
+
+    let mut parts: Vec<ContentPart> = Vec::new();
+
+    for block in blocks {
+        match block {
+            agent_client_protocol::ContentBlock::Text(t) => {
+                parts.push(ContentPart::Text { text: t.text.clone() });
+            }
+
+            agent_client_protocol::ContentBlock::Image(img) => {
+                if !img.data.is_empty() {
+                    parts.push(ContentPart::ImageBase64 {
+                        media_type: img.mime_type.clone(),
+                        data: img.data.clone(),
+                    });
+                } else if let Some(uri) = &img.uri {
+                    parts.push(ContentPart::ImageUrl {
+                        url: uri.clone(),
+                        detail: None,
+                    });
+                }
+            }
+
+            agent_client_protocol::ContentBlock::Audio(audio) => {
+                if audio.data.is_empty() {
+                    tracing::warn!(
+                        mime_type = %audio.mime_type,
+                        "ACP Audio with empty data, skipping"
+                    );
+                    continue;
+                }
+                parts.push(ContentPart::AudioBase64 {
+                    media_type: audio.mime_type.clone(),
+                    data: audio.data.clone(),
+                });
+            }
+
+            agent_client_protocol::ContentBlock::Resource(r) => {
+                use agent_client_protocol::EmbeddedResourceResource;
+                match &r.resource {
+                    EmbeddedResourceResource::TextResourceContents(text_res) => {
+                        parts.push(ContentPart::Text {
+                            text: format!(
+                                "--- Embedded Resource ---\nURI: {}\nMIME: {}\n\n{}\n--- End Resource ---",
+                                text_res.uri,
+                                text_res.mime_type.as_deref().unwrap_or("text/plain"),
+                                text_res.text
+                            ),
+                        });
+                    }
+                    EmbeddedResourceResource::BlobResourceContents(blob_res) => {
+                        tracing::debug!(
+                            uri = %blob_res.uri,
+                            mime = ?blob_res.mime_type,
+                            "Skipping binary embedded resource"
+                        );
+                    }
+                    _ => {
+                        tracing::debug!("Unknown embedded resource type, skipping");
+                    }
+                }
+            }
+
+            agent_client_protocol::ContentBlock::ResourceLink(_) => {
+                // ResourceLink 仅是 URI 引用，Agent 通过 MCP 工具自行获取
+            }
+            _ => {
+                tracing::debug!("Unhandled ContentBlock type, skipping");
+            }
+        }
+    }
+
+    if parts.is_empty() {
+        return Err(ContentError::EmptyMessage);
+    }
+
+    // 纯文本快捷路径
+    if parts.len() == 1 {
+        if let ContentPart::Text { text } = &parts[0] {
+            return Ok(UserContent::Text(text.clone()));
+        }
+    }
+
+    Ok(UserContent::Multimodal(parts))
 }
 
 #[cfg(test)]
@@ -269,9 +384,8 @@ mod tests {
     fn test_text_resource_parsing() {
         let text_res = TextResourceContents::new("Hello, world!", "file:///test.txt")
             .mime_type(Some("text/plain".to_string()));
-        let embedded = EmbeddedResource::new(EmbeddedResourceResource::TextResourceContents(
-            text_res,
-        ));
+        let embedded =
+            EmbeddedResource::new(EmbeddedResourceResource::TextResourceContents(text_res));
         let block = ContentBlock::Resource(embedded);
 
         let result = block.as_text().expect("Should extract text from resource");
@@ -285,9 +399,8 @@ mod tests {
     #[test]
     fn test_text_resource_without_mime() {
         let text_res = TextResourceContents::new("Content", "file:///example.txt");
-        let embedded = EmbeddedResource::new(EmbeddedResourceResource::TextResourceContents(
-            text_res,
-        ));
+        let embedded =
+            EmbeddedResource::new(EmbeddedResourceResource::TextResourceContents(text_res));
         let block = ContentBlock::Resource(embedded);
 
         let result = block.as_text().expect("Should extract text");
@@ -313,9 +426,8 @@ mod tests {
     #[test]
     fn test_resource_not_unsupported() {
         let text_res = TextResourceContents::new("Test", "file:///test.txt");
-        let embedded = EmbeddedResource::new(EmbeddedResourceResource::TextResourceContents(
-            text_res,
-        ));
+        let embedded =
+            EmbeddedResource::new(EmbeddedResourceResource::TextResourceContents(text_res));
         let block = ContentBlock::Resource(embedded);
 
         assert!(
@@ -325,23 +437,70 @@ mod tests {
     }
 
     #[test]
-    fn test_image_still_unsupported() {
+    fn test_image_no_longer_unsupported() {
         use agent_client_protocol::ImageContent;
         let block = ContentBlock::Image(ImageContent::new("data", "image/png"));
         assert!(
-            block.is_unsupported(),
-            "Image should still be marked as unsupported"
+            !block.is_unsupported(),
+            "Image should no longer be marked as unsupported"
         );
     }
 
     #[test]
-    fn test_audio_still_unsupported() {
+    fn test_audio_no_longer_unsupported() {
         use agent_client_protocol::AudioContent;
         let block = ContentBlock::Audio(AudioContent::new("data", "audio/mp3"));
         assert!(
-            block.is_unsupported(),
-            "Audio should still be marked as unsupported"
+            !block.is_unsupported(),
+            "Audio should no longer be marked as unsupported"
         );
+    }
+
+    #[test]
+    fn test_content_blocks_to_user_converted() {
+        use agent_client_protocol::{ImageContent, AudioContent};
+
+        // 文本 + 图片 + 音频
+        let blocks = vec![
+            ContentBlock::Text(TextContent::new("Look at this")),
+            ContentBlock::Image(ImageContent::new("base64data", "image/png")),
+            ContentBlock::Audio(AudioContent::new("audiodata", "audio/mp3")),
+        ];
+
+        let result = content_blocks_to_user_content(&blocks);
+        assert!(result.is_ok());
+
+        let UserContent::Multimodal(parts) = result.unwrap() else {
+            panic!("Expected Multimodal content");
+        };
+        assert_eq!(parts.len(), 3);
+        assert!(matches!(parts[0], ContentPart::Text { .. }));
+        assert!(matches!(parts[1], ContentPart::ImageBase64 { .. }));
+        assert!(matches!(parts[2], ContentPart::AudioBase64 { .. }));
+    }
+
+    #[test]
+    fn test_content_blocks_to_user_text_only() {
+        let blocks = vec![
+            ContentBlock::Text(TextContent::new("Hello")),
+            ContentBlock::Text(TextContent::new("World")),
+        ];
+
+        let result = content_blocks_to_user_content(&blocks);
+        assert!(result.is_ok());
+
+        // 纯文本应该合并为 UserContent::Text
+        let UserContent::Text(text) = result.unwrap() else {
+            panic!("Expected Text content");
+        };
+        assert_eq!(text, "Hello\n\nWorld");
+    }
+
+    #[test]
+    fn test_content_blocks_to_user_empty() {
+        let blocks: Vec<ContentBlock> = vec![];
+        let result = content_blocks_to_user_content(&blocks);
+        assert!(matches!(result, Err(ContentError::EmptyMessage)));
     }
 
     #[test]
@@ -349,9 +508,10 @@ mod tests {
         let blocks = vec![
             ContentBlock::Text(TextContent::new("Start")),
             ContentBlock::Resource(EmbeddedResource::new(
-                EmbeddedResourceResource::TextResourceContents(
-                    TextResourceContents::new("Embedded content", "file:///test.txt"),
-                ),
+                EmbeddedResourceResource::TextResourceContents(TextResourceContents::new(
+                    "Embedded content",
+                    "file:///test.txt",
+                )),
             )),
             ContentBlock::Text(TextContent::new("End")),
         ];

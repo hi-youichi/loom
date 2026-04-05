@@ -54,8 +54,7 @@ pub fn init_with_working_folder(working_folder: &PathBuf) {
 
     let filter = tracing_init::build_env_filter(&config.level, &[]);
 
-    let guard = match tracing_init::file_non_blocking_writer(&log_path, config.rotate, "loom-acp")
-    {
+    let guard = match tracing_init::file_non_blocking_writer(&log_path, config.rotate, "loom-acp") {
         Ok((writer, guard)) => {
             let layer = tracing_subscriber::fmt::layer()
                 .with_ansi(false)

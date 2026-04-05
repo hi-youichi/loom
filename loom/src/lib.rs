@@ -203,7 +203,7 @@ pub use memory::{
     StoreError, StoreSearchHit,
 };
 pub use memory::{SqliteSaver, SqliteStore};
-pub use message::{AssistantPayload, AssistantToolCall, Message};
+pub use message::{AssistantPayload, AssistantToolCall, ContentError, ContentPart, Message, UserContent};
 pub use model_spec::{
     CachedResolver, CompositeResolver, ConfigOverride, LocalFileResolver, ModelLimitResolver,
     ModelSpec, ModelsDevResolver, ResolverRefresher,
@@ -277,4 +277,12 @@ mod test_logging {
             )
             .try_init();
     }
+}
+
+/// Global lock for tests that modify `LOOM_HOME` or `OPENAI_BASE_URL` env vars.
+/// Use in any test that sets/removes these env vars to prevent data races.
+#[cfg(test)]
+pub fn env_test_lock() -> &'static std::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
 }

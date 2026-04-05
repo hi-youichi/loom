@@ -528,11 +528,12 @@ fn load_builtin_profile(name: &str) -> Option<AgentProfile> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::env_test_lock;
 
     #[test]
     fn builtin_dev_agent_loaded_with_embedded_instructions() {
         let opts = RunOptions {
-            message: String::new(),
+            message: crate::message::UserContent::Text(String::new()),
             working_folder: None,
             session_id: None,
             cancellation: None,
@@ -566,7 +567,7 @@ mod tests {
     #[test]
     fn builtin_agent_builder_loaded_with_embedded_instructions() {
         let opts = RunOptions {
-            message: String::new(),
+            message: crate::message::UserContent::Text(String::new()),
             working_folder: None,
             session_id: None,
             cancellation: None,
@@ -867,6 +868,7 @@ tools:
 
     #[test]
     fn load_profile_from_options_no_agent_no_default() {
+        let _lock = env_test_lock().lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let prev_dir = std::env::current_dir().ok();
         let _ = std::env::set_current_dir(dir.path());
@@ -874,7 +876,7 @@ tools:
         std::env::set_var("LOOM_HOME", dir.path());
 
         let opts = RunOptions {
-            message: String::new(),
+            message: crate::message::UserContent::Text(String::new()),
             working_folder: None,
             session_id: None,
             cancellation: None,
@@ -908,12 +910,13 @@ tools:
 
     #[test]
     fn load_profile_from_options_unknown_agent() {
+        let _lock = env_test_lock().lock().unwrap();
         let prev_loom = std::env::var("LOOM_HOME").ok();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
 
         let opts = RunOptions {
-            message: String::new(),
+            message: crate::message::UserContent::Text(String::new()),
             working_folder: None,
             session_id: None,
             cancellation: None,
@@ -1166,6 +1169,7 @@ tools:
 
     #[test]
     fn resolve_named_profile_user_level() {
+        let _lock = env_test_lock().lock().unwrap();
         let loom_home = tempfile::tempdir().unwrap();
         let agents_dir = loom_home.path().join("agents");
         let agent_dir = agents_dir.join("custom-agent");

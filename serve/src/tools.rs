@@ -2,7 +2,7 @@
 
 use loom::{
     build_helve_config, build_react_run_context, ErrorResponse, RunOptions, ServerResponse,
-    ToolShowOutput, ToolShowResponse, ToolsListResponse,
+    ToolShowOutput, ToolShowResponse, ToolsListResponse, UserContent,
 };
 use std::path::PathBuf;
 
@@ -14,7 +14,7 @@ pub(crate) async fn handle_tools_list(
 ) -> ServerResponse {
     let id = r.id.clone();
     let opts = RunOptions {
-        message: String::new(),
+        message: UserContent::Text(String::new()),
         working_folder: r.working_folder.as_ref().map(PathBuf::from),
         session_id: None,
         cancellation: None,
@@ -55,7 +55,7 @@ pub(crate) async fn handle_tool_show(
 ) -> ServerResponse {
     let id = r.id.clone();
     let opts = RunOptions {
-        message: String::new(),
+        message: UserContent::Text(String::new()),
         working_folder: r.working_folder.as_ref().map(PathBuf::from),
         session_id: None,
         cancellation: None,

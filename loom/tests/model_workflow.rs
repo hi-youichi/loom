@@ -41,7 +41,10 @@ mod tests {
         };
 
         let result = create_llm_client(&entry);
-        assert!(result.is_ok(), "Should create BigModel client from ModelEntry");
+        assert!(
+            result.is_ok(),
+            "Should create BigModel client from ModelEntry"
+        );
     }
 
     /// Test 3: ModelEntry 缺少必需字段时返回错误
@@ -60,7 +63,10 @@ mod tests {
         };
 
         let result = create_llm_client(&entry);
-        assert!(result.is_err(), "Should fail when base_url is missing for bigmodel");
+        assert!(
+            result.is_err(),
+            "Should fail when base_url is missing for bigmodel"
+        );
     }
 
     /// Test 4: ProviderConfig 可以转换为 ModelEntry
@@ -87,7 +93,10 @@ mod tests {
         };
 
         let result = create_llm_client(&entry);
-        assert!(result.is_ok(), "Should create client from ProviderConfig-derived ModelEntry");
+        assert!(
+            result.is_ok(),
+            "Should create client from ProviderConfig-derived ModelEntry"
+        );
     }
 
     /// Test 5: ModelEntry 默认值

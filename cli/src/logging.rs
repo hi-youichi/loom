@@ -82,9 +82,14 @@ fn init_file_logging(path: &Path, rotate: LogRotate, filter: EnvFilter) -> LogGu
         .with_target(true)
         .with_writer(writer);
 
-    tracing_subscriber::registry().with(filter).with(layer).init();
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(layer)
+        .init();
 
-    LogGuard { _guard: Some(guard) }
+    LogGuard {
+        _guard: Some(guard),
+    }
 }
 
 fn init_sink_logging(filter: EnvFilter) -> LogGuard {
@@ -108,7 +113,12 @@ fn init_sink_logging(filter: EnvFilter) -> LogGuard {
         .with_target(true)
         .with_writer(writer);
 
-    tracing_subscriber::registry().with(filter).with(layer).init();
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(layer)
+        .init();
 
-    LogGuard { _guard: Some(guard) }
+    LogGuard {
+        _guard: Some(guard),
+    }
 }

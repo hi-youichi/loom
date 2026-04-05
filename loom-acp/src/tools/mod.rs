@@ -12,8 +12,8 @@ mod fs_tools;
 mod terminal_tools;
 
 pub use client_bridge::{
-    ClientBridgeTrait, NoOpClientBridge, TerminalOutput,
-    set_client_bridge, clear_client_bridge, get_client_bridge,
+    clear_client_bridge, get_client_bridge, set_client_bridge, ClientBridgeTrait, NoOpClientBridge,
+    TerminalOutput,
 };
 pub use fs_tools::{ReadTextFileTool, WriteTextFileTool};
 pub use terminal_tools::{CreateTerminalTool, TerminalOutputTool};
@@ -22,7 +22,11 @@ use crate::client_capabilities::ClientCapabilitiesInfo;
 use loom::tools::Tool;
 
 /// Helper function to create a tool spec with common fields.
-pub(crate) fn create_tool_spec(name: &str, description: &str, input_schema: serde_json::Value) -> loom::tool_source::ToolSpec {
+pub(crate) fn create_tool_spec(
+    name: &str,
+    description: &str,
+    input_schema: serde_json::Value,
+) -> loom::tool_source::ToolSpec {
     loom::tool_source::ToolSpec {
         name: name.to_string(),
         description: Some(description.to_string()),

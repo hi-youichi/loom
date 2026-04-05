@@ -218,13 +218,75 @@ BAR = "baz"
     #[test]
     fn config_without_env_section_returns_empty_map() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("config.toml"), "[other]\nkey = \"ignored\"\n").unwrap();
+        std::fs::write(
+            dir.path().join("config.toml"),
+            "[other]\nkey = \"ignored\"\n",
+        )
+        .unwrap();
 
         let _guard = LoomHomeGuard::set(dir.path());
         let result = load_env_map("loom");
 
         let map = result.unwrap();
         assert!(map.is_empty());
+    }
+
+    #[test]
+    fn provider_to_env_map_includes_tool_choice_when_set() {
+        let p = ProviderDef {
+            name: "openai".into(),
+            api_key: Some("k".into()),
+            base_url: Some("https://example/v1".into()),
+            model: Some("gpt-4o".into()),
+            provider_type: Some("openai".into()),
+            tool_choice: Some("  none  ".into()),
+            temperature: None,
+        };
+        let m = p.to_env_map();
+        assert_eq!(m.get("OPENAI_TOOL_CHOICE"), Some(&"none".to_string()));
+    }
+
+    #[test]
+    fn provider_to_env_map_omits_tool_choice_when_unset_or_blank() {
+        let p = ProviderDef {
+            name: "openai".into(),
+            api_key: None,
+            base_url: None,
+            model: None,
+            provider_type: None,
+            tool_choice: None,
+            temperature: None,
+        };
+        assert!(!p.to_env_map().contains_key("OPENAI_TOOL_CHOICE"));
+
+        let p2 = ProviderDef {
+            name: "openai".into(),
+            api_key: None,
+            base_url: None,
+            model: None,
+            provider_type: None,
+            tool_choice: Some("   ".into()),
+            temperature: None,
+        };
+        assert!(!p2.to_env_map().contains_key("OPENAI_TOOL_CHOICE"));
+    }
+
+    #[test]
+    fn load_full_config_parses_provider_tool_choice() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("config.toml"),
+            r#"
+[[providers]]
+name = "p1"
+tool_choice = "required"
+"#,
+        )
+        .unwrap();
+        let _guard = LoomHomeGuard::set(dir.path());
+        let full = load_full_config("loom").unwrap();
+        assert_eq!(full.providers.len(), 1);
+        assert_eq!(full.providers[0].tool_choice.as_deref(), Some("required"));
     }
 
     #[test]
@@ -238,7 +300,10 @@ BAR = "baz"
             temperature: Some(0.25),
         };
         let m = p.to_env_map();
-        assert_eq!(m.get("OPENAI_TEMPERATURE").map(String::as_str), Some("0.25"));
+        assert_eq!(
+            m.get("OPENAI_TEMPERATURE").map(String::as_str),
+            Some("0.25")
+        );
     }
 
     #[test]

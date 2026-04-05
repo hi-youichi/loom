@@ -30,8 +30,12 @@ pub(super) async fn try_append_initial_user_message(
     thread_id: Option<&str>,
     message: &str,
 ) -> bool {
-    let Some(store) = user_message_store else { return false };
-    let Some(thread_id) = thread_id else { return false };
+    let Some(store) = user_message_store else {
+        return false;
+    };
+    let Some(thread_id) = thread_id else {
+        return false;
+    };
     let msg = Message::user(message);
     match store.append(thread_id, &msg).await {
         Ok(()) => true,
@@ -72,7 +76,7 @@ pub(super) async fn prepare_run(
     let initial_user_appended = try_append_initial_user_message(
         user_message_store,
         r.thread_id.as_deref(),
-        r.message.as_str(),
+        r.message.as_text().as_ref(),
     )
     .await;
 

@@ -8,7 +8,7 @@
 mod init_logging;
 
 use loom::{
-    run_agent_with_options, run_agent_with_llm_override, ActiveOperationKind, AnyStreamEvent,
+    run_agent_with_llm_override, run_agent_with_options, ActiveOperationKind, AnyStreamEvent,
     Checkpointer, MockLlm, RunCancellation, RunCmd, RunCompletion, RunOptions, StreamEvent,
 };
 use std::path::PathBuf;
@@ -47,9 +47,14 @@ fn opts(working_folder: PathBuf) -> RunOptions {
 /// Integration test: run_agent_with_options with invalid working folder returns Err.
 #[tokio::test]
 async fn run_agent_with_options_invalid_working_folder_returns_err() {
-    let opts = opts(PathBuf::from("/definitely/not/exist/loom-run-agent-with-options-test"));
+    let opts = opts(PathBuf::from(
+        "/definitely/not/exist/loom-run-agent-with-options-test",
+    ));
     let res = run_agent_with_options(&opts, &RunCmd::React, None).await;
-    assert!(res.is_err(), "run_agent_with_options should fail for invalid working folder");
+    assert!(
+        res.is_err(),
+        "run_agent_with_options should fail for invalid working folder"
+    );
 }
 
 /// Integration test: success path with on_event (same run path as run_agent_with_options).
@@ -109,17 +114,16 @@ async fn dry_run_returns_placeholder_for_tool_calls() {
 
     let saw_dry_placeholder = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let saw = std::sync::Arc::clone(&saw_dry_placeholder);
-    let on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>> = Some(Box::new(move |ev| {
-        if let AnyStreamEvent::React(StreamEvent::Updates { state, .. }) = &ev {
-            if state
-                .tool_results
-                .iter()
-                .any(|tr| tr.content.contains("dry run") && tr.content.contains("was not executed"))
-            {
-                saw.store(true, Ordering::Relaxed);
+    let on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>> =
+        Some(Box::new(move |ev| {
+            if let AnyStreamEvent::React(StreamEvent::Updates { state, .. }) = &ev {
+                if state.tool_results.iter().any(|tr| {
+                    tr.content.contains("dry run") && tr.content.contains("was not executed")
+                }) {
+                    saw.store(true, Ordering::Relaxed);
+                }
             }
-        }
-    }));
+        }));
 
     let result = run_agent_with_llm_override(
         &run_opts,
@@ -145,7 +149,9 @@ async fn dry_run_returns_placeholder_for_tool_calls() {
 /// Integration test: run_agent_with_options with on_event and invalid working folder still returns Err.
 #[tokio::test]
 async fn run_agent_with_options_with_on_event_invalid_working_folder_returns_err() {
-    let opts = opts(PathBuf::from("/definitely/not/exist/loom-run-agent-with-options-test"));
+    let opts = opts(PathBuf::from(
+        "/definitely/not/exist/loom-run-agent-with-options-test",
+    ));
     let event_count = std::sync::Arc::new(AtomicUsize::new(0));
     let count = std::sync::Arc::clone(&event_count);
     let on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>> = Some(Box::new(move |_ev| {
@@ -411,7 +417,8 @@ async fn cancelled_bash_tool_kills_active_child_process() {
     tokio::spawn(async move {
         let wait_for_child = async {
             loop {
-                if cancel_handle.active_operation_kind() == Some(ActiveOperationKind::ChildProcess) {
+                if cancel_handle.active_operation_kind() == Some(ActiveOperationKind::ChildProcess)
+                {
                     break;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(20)).await;
@@ -424,14 +431,9 @@ async fn cancelled_bash_tool_kills_active_child_process() {
     });
 
     let started_at = Instant::now();
-    let result = run_agent_with_llm_override(
-        &opts,
-        &RunCmd::React,
-        None,
-        Some(Box::new(llm)),
-    )
-    .await
-    .expect("run_agent");
+    let result = run_agent_with_llm_override(&opts, &RunCmd::React, None, Some(Box::new(llm)))
+        .await
+        .expect("run_agent");
 
     assert!(
         started_at.elapsed() < std::time::Duration::from_secs(3),

@@ -165,10 +165,18 @@ mod tests {
         let list = parse_mcp_config(json).unwrap();
         assert_eq!(list.len(), 1);
         match &list[0] {
-            McpServerDef::Stdio { name, command, args, env } => {
+            McpServerDef::Stdio {
+                name,
+                command,
+                args,
+                env,
+            } => {
                 assert_eq!(name, "fs");
                 assert_eq!(command, "npx");
-                assert_eq!(args.as_slice(), ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]);
+                assert_eq!(
+                    args.as_slice(),
+                    ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+                );
                 assert!(env.is_empty());
             }
             McpServerDef::Http { .. } => panic!("expected Stdio"),
@@ -194,7 +202,12 @@ mod tests {
         let list = parse_mcp_config(json).unwrap();
         assert_eq!(list.len(), 1);
         match &list[0] {
-            McpServerDef::Stdio { name, command, args, env } => {
+            McpServerDef::Stdio {
+                name,
+                command,
+                args,
+                env,
+            } => {
                 assert_eq!(name, "enabled");
                 assert_eq!(command, "node");
                 assert_eq!(args.as_slice(), ["server.js"]);
@@ -264,7 +277,10 @@ mod tests {
             McpServerDef::Http { name, url, headers } => {
                 assert_eq!(name, "my-service");
                 assert_eq!(url, "https://mcp.example.com/sse");
-                assert_eq!(headers.get("Authorization").map(|s| s.as_str()), Some("Bearer your-token-here"));
+                assert_eq!(
+                    headers.get("Authorization").map(|s| s.as_str()),
+                    Some("Bearer your-token-here")
+                );
             }
             McpServerDef::Stdio { .. } => panic!("expected Http"),
         }
@@ -378,7 +394,12 @@ mod tests {
         let list = load_mcp_config_from_path(&path).unwrap();
         assert_eq!(list.len(), 1);
         match &list[0] {
-            McpServerDef::Stdio { name, command, args, .. } => {
+            McpServerDef::Stdio {
+                name,
+                command,
+                args,
+                ..
+            } => {
                 assert_eq!(name, "a");
                 assert_eq!(command, "cmd");
                 assert_eq!(args.as_slice(), ["x"]);

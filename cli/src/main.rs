@@ -19,17 +19,17 @@ pub(crate) use args::Command;
 use clap::Parser;
 
 use args::{Args, Command as Cmd, GotArgs};
-use bootstrap::{apply_provider_override, init_logging, print_config_report};
+use bootstrap::{init_logging, print_config_report};
 use display_limits::max_reply_len;
 use run_flow::{
-    build_run_options, output_config, resolve_user_message, run_interactive_mode, run_single_turn_mode,
+    build_run_options, output_config, resolve_user_message, run_interactive_mode,
+    run_single_turn_mode,
 };
 use subcommands::{handle_models_command, handle_session_command, handle_tool_command};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
-    apply_provider_override(&args);
     print_config_report();
     let _log_guard = init_logging(&args);
 

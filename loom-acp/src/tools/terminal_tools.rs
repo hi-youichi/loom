@@ -89,8 +89,9 @@ impl Tool for CreateTerminalTool {
             .map_err(|e| ToolSourceError::InvalidInput(format!("Invalid arguments: {}", e)))?;
 
         // Check if bridge is available
-        let bridge = get_client_bridge().await
-            .map_err(|e| ToolSourceError::Transport(format!("Failed to get client bridge: {}", e)))?;
+        let bridge = get_client_bridge().await.map_err(|e| {
+            ToolSourceError::Transport(format!("Failed to get client bridge: {}", e))
+        })?;
 
         let terminal_id = bridge
             .create_terminal(
@@ -108,8 +109,10 @@ impl Tool for CreateTerminalTool {
             "message": "Terminal created successfully"
         });
 
-        Ok(ToolCallContent::text(serde_json::to_string_pretty(&result)
-                .unwrap_or_else(|_| "Terminal created".to_string()),))
+        Ok(ToolCallContent::text(
+            serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|_| "Terminal created".to_string()),
+        ))
     }
 }
 
@@ -182,13 +185,16 @@ impl Tool for TerminalOutputTool {
         let args: TerminalOutputArgs = serde_json::from_value(args)
             .map_err(|e| ToolSourceError::InvalidInput(format!("Invalid arguments: {}", e)))?;
 
-        let bridge = get_client_bridge().await
-            .map_err(|e| ToolSourceError::Transport(format!("Failed to get client bridge: {}", e)))?;
+        let bridge = get_client_bridge().await.map_err(|e| {
+            ToolSourceError::Transport(format!("Failed to get client bridge: {}", e))
+        })?;
 
         let output = bridge
             .terminal_output(&args.terminal_id)
             .await
-            .map_err(|e| ToolSourceError::Transport(format!("Failed to get terminal output: {}", e)))?;
+            .map_err(|e| {
+                ToolSourceError::Transport(format!("Failed to get terminal output: {}", e))
+            })?;
 
         let result = serde_json::json!({
             "output": output.output,
@@ -196,8 +202,10 @@ impl Tool for TerminalOutputTool {
             "exit_status": output.exit_status,
         });
 
-        Ok(ToolCallContent::text(serde_json::to_string_pretty(&result)
-                .unwrap_or_else(|_| "Terminal output retrieved".to_string()),))
+        Ok(ToolCallContent::text(
+            serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|_| "Terminal output retrieved".to_string()),
+        ))
     }
 }
 

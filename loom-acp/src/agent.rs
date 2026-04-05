@@ -3,7 +3,7 @@
 //! [`LoomAcpAgent`] implements `agent_client_protocol::Agent` and maps ACP requests
 //! to Loom sessions and execution. See [`crate::protocol`] for protocol and behavior details.
 
-use crate::content::content_blocks_to_message;
+use crate::content::content_blocks_to_user_content;
 use crate::session::{SessionId as OurSessionId, SessionStore};
 use crate::stream_bridge::{loom_event_to_updates, stream_update_to_session_notification};
 use agent_client_protocol::{
@@ -130,7 +130,9 @@ impl Agent for LoomAcpAgent {
                         "list": {}
                     },
                     "promptCapabilities": {
-                        "embeddedContext": true
+                        "embeddedContext": true,
+                        "image": true,
+                        "audio": true
                     }
                 }),
             );
@@ -216,11 +218,15 @@ impl Agent for LoomAcpAgent {
             .begin_prompt(&key)
             .ok_or_else(|| agent_client_protocol::Error::new(-32602, "unknown session"))?;
 
-        let message = content_blocks_to_message(args.prompt.as_slice()).map_err(|_| {
+        let user_content = content_blocks_to_user_content(args.prompt.as_slice()).map_err(|_| {
             agent_client_protocol::Error::new(-32602, "content_blocks parse failed")
         })?;
 
-        tracing::info!(session_id = %args.session_id, message = %message, "User prompt");
+        tracing::info!(
+            session_id = %args.session_id,
+            content = ?user_content,
+            "User prompt"
+        );
 
         let working_folder = entry
             .working_directory
@@ -280,7 +286,7 @@ impl Agent for LoomAcpAgent {
         };
 
         let opts = RunOptions {
-            message,
+            message: user_content,
             working_folder: Some(working_folder),
             session_id: None,
             cancellation: Some(cancellation.clone()),
@@ -339,22 +345,23 @@ impl Agent for LoomAcpAgent {
         let working_directory = Some(args.cwd.clone()); // Convert to Option<PathBuf>
 
         // Create or get session entry
-        let entry = if let Some(existing) = self.sessions.get(&our_session_id) {
-            existing
-        } else {
-            // Create new session entry with the provided working directory
-            let thread_id = session_id.to_string();
-            self.sessions.create_with_id(
-                our_session_id.clone(),
-                working_directory,
-                thread_id.clone(),
-            );
-            self.sessions.get(&our_session_id).ok_or_else(|| {
+        let entry =
+            if let Some(existing) = self.sessions.get(&our_session_id) {
+                existing
+            } else {
+                // Create new session entry with the provided working directory
+                let thread_id = session_id.to_string();
+                self.sessions.create_with_id(
+                    our_session_id.clone(),
+                    working_directory,
+                    thread_id.clone(),
+                );
+                self.sessions.get(&our_session_id).ok_or_else(|| {
                 tracing::error!(session_id = %our_session_id, "Session not found after creation");
                 agent_client_protocol::Error::internal_error()
                     .data(format!("Session {} not found after creation", our_session_id))
             })?
-        };
+            };
 
         // Build checkpointer to load history
         let db_path = loom::memory::default_memory_db_path();
@@ -396,7 +403,9 @@ impl Agent for LoomAcpAgent {
                             Message::User(content) => vec![SessionNotification::new(
                                 session_id.clone(),
                                 agent_client_protocol::SessionUpdate::UserMessageChunk(
-                                    ContentChunk::new(content.clone().into()),
+                                    ContentChunk::new(agent_client_protocol::ContentBlock::Text(
+                                        agent_client_protocol::TextContent::new(content.as_text().to_string()),
+                                    )),
                                 ),
                             )],
                             Message::Assistant(payload) => {
@@ -404,10 +413,7 @@ impl Agent for LoomAcpAgent {
                                 for tc in &payload.tool_calls {
                                     tool_calls_map.insert(
                                         tc.id.clone(),
-                                        (
-                                            tc.name.clone(),
-                                            serde_json::from_str(&tc.arguments).ok(),
-                                        ),
+                                        (tc.name.clone(), serde_json::from_str(&tc.arguments).ok()),
                                     );
                                 }
 
@@ -444,29 +450,33 @@ impl Agent for LoomAcpAgent {
                             } => {
                                 // Send ToolCallUpdate with success status
                                 let id = ToolCallId::new(tool_call_id.clone());
-                                
+
                                 // Convert loom::ToolCallContent to ACP ToolCallContent
                                 let acp_content = match content {
                                     loom::tool_source::ToolCallContent::Text(t) => {
                                         agent_client_protocol::ToolCallContent::from(
                                             agent_client_protocol::ContentBlock::Text(
-                                                agent_client_protocol::TextContent::new(t.clone())
-                                            )
+                                                agent_client_protocol::TextContent::new(t.clone()),
+                                            ),
                                         )
                                     }
-                                    loom::tool_source::ToolCallContent::Diff { path, old_text, new_text } => {
-                                        agent_client_protocol::ToolCallContent::Diff(
-                                            agent_client_protocol::Diff::new(path.clone(), new_text.clone())
-                                                .old_text(old_text.clone())
+                                    loom::tool_source::ToolCallContent::Diff {
+                                        path,
+                                        old_text,
+                                        new_text,
+                                    } => agent_client_protocol::ToolCallContent::Diff(
+                                        agent_client_protocol::Diff::new(
+                                            path.clone(),
+                                            new_text.clone(),
                                         )
-                                    }
+                                        .old_text(old_text.clone()),
+                                    ),
                                 };
-                                
+
                                 let fields = ToolCallUpdateFields::new()
                                     .status(ToolCallStatus::Completed)
                                     .content(vec![acp_content]);
-                                let tool_call_update =
-                                    ToolCallUpdate::new(id, fields);
+                                let tool_call_update = ToolCallUpdate::new(id, fields);
 
                                 vec![SessionNotification::new(
                                     session_id.clone(),

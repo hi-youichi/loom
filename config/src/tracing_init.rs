@@ -151,14 +151,20 @@ mod tests {
     fn resolve_relative_with_working_folder_joined() {
         let wf = Path::new("/proj");
         let p = Path::new("logs/x.log");
-        assert_eq!(resolve_log_path(p, Some(wf)), PathBuf::from("/proj/logs/x.log"));
+        assert_eq!(
+            resolve_log_path(p, Some(wf)),
+            PathBuf::from("/proj/logs/x.log")
+        );
     }
 
     #[test]
     fn resolve_absolute_ignores_working_folder() {
         let wf = Path::new("/proj");
         let p = Path::new("/var/log/x.log");
-        assert_eq!(resolve_log_path(p, Some(wf)), PathBuf::from("/var/log/x.log"));
+        assert_eq!(
+            resolve_log_path(p, Some(wf)),
+            PathBuf::from("/var/log/x.log")
+        );
     }
 
     #[test]

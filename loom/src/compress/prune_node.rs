@@ -5,6 +5,7 @@ use tracing::debug;
 
 use crate::error::AgentError;
 use crate::graph::{Next, Node};
+use crate::message::UserContent;
 use crate::state::ReActState;
 
 use super::compaction;
@@ -62,7 +63,7 @@ mod tests {
             },
         };
         let state = ReActState {
-            messages: vec![Message::User("Tool x returned: y".to_string())],
+            messages: vec![Message::user("Tool x returned: y")],
             last_reasoning_content: None,
             tool_calls: vec![],
             tool_results: vec![],
@@ -77,7 +78,7 @@ mod tests {
         };
         let (out, next) = node.run(state).await.unwrap();
         assert_eq!(out.messages.len(), 1);
-        assert!(matches!(&out.messages[0], Message::User(s) if s.contains("Tool x returned:")));
+        assert!(matches!(&out.messages[0], Message::User(UserContent::Text(s)) if s.contains("Tool x returned:")));
         assert!(matches!(next, Next::Continue));
     }
 
@@ -93,8 +94,8 @@ mod tests {
         };
         let state = ReActState {
             messages: vec![
-                Message::User("u".to_string()),
-                Message::User("Tool a returned: xxxxxxxxxxxxxxxxxxxx".to_string()), // 5 tokens
+                Message::user("u"),
+                Message::user("Tool a returned: xxxxxxxxxxxxxxxxxxxx"), // 5 tokens
             ],
             last_reasoning_content: None,
             tool_calls: vec![],
@@ -110,7 +111,7 @@ mod tests {
         };
         let (out, next) = node.run(state).await.unwrap();
         assert_eq!(out.messages.len(), 2);
-        assert!(matches!(&out.messages[1], Message::User(s) if s == compaction::PRUNE_PLACEHOLDER));
+        assert!(matches!(&out.messages[1], Message::User(UserContent::Text(s)) if s == compaction::PRUNE_PLACEHOLDER));
         assert!(matches!(next, Next::Continue));
     }
 }

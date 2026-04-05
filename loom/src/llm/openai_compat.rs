@@ -30,7 +30,7 @@ use crate::http_retry::{
 };
 use crate::llm::{LlmClient, LlmResponse, LlmUsage, ToolCallDelta};
 use crate::memory::uuid6;
-use crate::message::{assistant_content_for_chat_api, Message};
+use crate::message::{assistant_content_for_chat_api, ContentPart, Message, UserContent};
 use crate::state::ToolCall;
 use crate::stream::MessageChunk;
 use crate::tool_source::{ToolSource, ToolSourceError, ToolSpec};
@@ -319,13 +319,62 @@ impl ChatOpenAICompat {
                     tool_call_id: None,
                     reasoning_content: None,
                 },
-                Message::User(s) => ChatMessageRequest {
-                    role: "user".to_string(),
-                    content: Some(s.clone()),
-                    tool_calls: None,
-                    tool_call_id: None,
-                    reasoning_content: None,
-                },
+                Message::User(content) => {
+                    let content_value = match content {
+                        UserContent::Text(s) => serde_json::json!(s),
+                        UserContent::Multimodal(parts) => {
+                            serde_json::json!(parts
+                                .iter()
+                                .map(|p| match p {
+                                    ContentPart::Text { text } => {
+                                        serde_json::json!({ "type": "text", "text": text })
+                                    }
+                                    ContentPart::ImageUrl { url, detail } => {
+                                        let mut obj = serde_json::json!({
+                                            "type": "image_url",
+                                            "image_url": { "url": url }
+                                        });
+                                        if let Some(detail) = detail {
+                                            if let Some(obj_url) = obj.get_mut("image_url") {
+                                                if let Some(obj_url) = obj_url.as_object_mut() {
+                                                    obj_url.insert("detail".into(), serde_json::json!(detail));
+                                                }
+                                            }
+                                        }
+                                        obj
+                                    }
+                                    ContentPart::ImageBase64 { media_type, data } => {
+                                        serde_json::json!({
+                                            "type": "image_url",
+                                            "image_url": {
+                                                "url": format!("data:{};base64,{}", media_type, data)
+                                            }
+                                        })
+                                    }
+                                    _ => {
+                                        let modality = p.modality();
+                                        tracing::warn!(
+                                            modality = ?modality,
+                                            "Modality not supported by OpenAI-compatible API, converting to placeholder. \
+                                            The original content will NOT be sent to the model."
+                                        );
+                                        serde_json::json!({
+                                            "type": "text",
+                                            "text": format!("[[[{:?} 未被当前模型支持，内容已省略]]]", modality)
+                                        })
+                                    }
+                                })
+                                .collect::<Vec<_>>())
+                        }
+                    };
+                    ChatMessageRequest {
+                        role: "user".to_string(),
+                        content: Some(content_value.to_string()),
+                        tool_calls: None,
+                        tool_call_id: None,
+                        reasoning_content: None,
+                    }
+                }
                 Message::Assistant(payload) => {
                     let tool_calls = if payload.tool_calls.is_empty() {
                         None

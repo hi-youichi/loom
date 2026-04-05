@@ -85,8 +85,9 @@ impl SessionManager {
         let conn = rusqlite::Connection::open(&self.db_path)
             .map_err(|e| format!("Failed to open database: {}", e))?;
 
-        let mut stmt = conn.prepare(
-            r#"
+        let mut stmt = conn
+            .prepare(
+                r#"
             SELECT 
                 thread_id,
                 COUNT(*) as checkpoint_count,
@@ -102,7 +103,8 @@ impl SessionManager {
             GROUP BY thread_id
             ORDER BY last_updated DESC
             "#,
-        ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
+            )
+            .map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
         let sessions = stmt
             .query_map([], |row| {
@@ -139,8 +141,9 @@ impl SessionManager {
             .map_err(|e| format!("Failed to open database: {}", e))?;
 
         // Get basic session info
-        let mut stmt = conn.prepare(
-            r#"
+        let mut stmt = conn
+            .prepare(
+                r#"
             SELECT 
                 COUNT(*) as checkpoint_count,
                 MIN(metadata_created_at) as created_at,
@@ -154,7 +157,8 @@ impl SessionManager {
             FROM checkpoints
             WHERE thread_id = ?1
             "#,
-        ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
+            )
+            .map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
         let info = stmt
             .query_row([session_id], |row| {
@@ -186,32 +190,32 @@ impl SessionManager {
         };
 
         // Get the latest checkpoint to extract message info
-        let mut payload_stmt = conn.prepare(
-            r#"
+        let mut payload_stmt = conn
+            .prepare(
+                r#"
             SELECT payload
             FROM checkpoints
             WHERE thread_id = ?1
             ORDER BY metadata_created_at DESC
             LIMIT 1
             "#,
-        ).map_err(|e| format!("Failed to prepare payload statement: {}", e))?;
+            )
+            .map_err(|e| format!("Failed to prepare payload statement: {}", e))?;
 
         let payload: Option<Vec<u8>> = payload_stmt
             .query_row([session_id], |row| row.get(0))
             .optional()
             .map_err(|e| format!("Failed to query payload: {}", e))?;
 
-        let (message_count, first_user_message, last_assistant_reply) = if let Some(data) = payload {
+        let (message_count, first_user_message, last_assistant_reply) = if let Some(data) = payload
+        {
             // Try to deserialize as ReActState
             match serde_json::from_slice::<loom::state::ReActState>(&data) {
                 Ok(state) => {
-                    let first_user = state
-                        .messages
-                        .iter()
-                        .find_map(|m| match m {
-                            loom::message::Message::User(s) => Some(s.clone()),
-                            _ => None,
-                        });
+                    let first_user = state.messages.iter().find_map(|m| match m {
+                        loom::message::Message::User(s) => Some(s.as_text().to_string()),
+                        _ => None,
+                    });
                     let last_assistant = state.last_assistant_reply();
                     (state.messages.len(), first_user, last_assistant)
                 }
@@ -235,10 +239,7 @@ impl SessionManager {
             .map_err(|e| format!("Failed to open database: {}", e))?;
 
         let count = conn
-            .execute(
-                "DELETE FROM checkpoints WHERE thread_id = ?1",
-                [session_id],
-            )
+            .execute("DELETE FROM checkpoints WHERE thread_id = ?1", [session_id])
             .map_err(|e| format!("Failed to delete session: {}", e))?;
 
         Ok(count)
@@ -288,11 +289,7 @@ impl SessionManager {
     }
 
     /// Prints session detail in a formatted way.
-    pub fn print_session_detail(
-        &self,
-        detail: &SessionDetail,
-        json: bool,
-    ) -> Result<(), String> {
+    pub fn print_session_detail(&self, detail: &SessionDetail, json: bool) -> Result<(), String> {
         if json {
             let json_output = serde_json::to_string_pretty(detail)
                 .map_err(|e| format!("Failed to serialize to JSON: {}", e))?;
@@ -304,8 +301,14 @@ impl SessionManager {
             println!("Messages: {}", detail.message_count);
             println!("Latest Step: {}", detail.info.latest_step);
             println!("Latest Source: {}", detail.info.latest_source);
-            println!("Created: {}", Self::format_datetime(&detail.info.created_at));
-            println!("Last Updated: {}", Self::format_datetime(&detail.info.last_updated));
+            println!(
+                "Created: {}",
+                Self::format_datetime(&detail.info.created_at)
+            );
+            println!(
+                "Last Updated: {}",
+                Self::format_datetime(&detail.info.last_updated)
+            );
 
             if let Some(ref msg) = detail.first_user_message {
                 let truncated = if msg.chars().count() > 100 {

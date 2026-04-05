@@ -69,7 +69,8 @@ pub struct ReactBuildConfig {
     pub openai_api_key: Option<String>,
     pub openai_base_url: Option<String>,
     pub model: Option<String>,
-    /// When `Some("openai_compat")` or `Some("bigmodel")`, build layer uses [`crate::llm::ChatOpenAICompat`]; otherwise default is OpenAI. Set via LLM_PROVIDER.
+    /// Explicit provider type override. When `Some("openai_compat")` or `Some("bigmodel")`, build layer uses [`crate::llm::ChatOpenAICompat`]; otherwise default is OpenAI.
+    /// If unset, build layer may infer provider type from `MODEL` in `provider/model` format.
     pub llm_provider: Option<String>,
     /// Sampling temperature for chat completions. Set via `OPENAI_TEMPERATURE`.
     pub openai_temperature: Option<String>,

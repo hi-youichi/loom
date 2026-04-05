@@ -9,6 +9,7 @@ use crate::graph::{
     CompilationError, CompiledStateGraph, Next, Node, RunContext, StateGraph, END, START,
 };
 use crate::llm::LlmClient;
+use crate::message::UserContent;
 use crate::state::ReActState;
 
 use super::compact_node::CompactNode;
@@ -88,7 +89,7 @@ mod tests {
         let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(""));
         let compiled = build_graph(CompactionConfig::default(), llm).expect("compile");
         let state = ReActState {
-            messages: vec![Message::User("hello".to_string())],
+            messages: vec![Message::user("hello")],
             last_reasoning_content: None,
             tool_calls: vec![],
             tool_results: vec![],
@@ -103,7 +104,7 @@ mod tests {
         };
         let out = compiled.invoke(state, None).await.unwrap();
         assert_eq!(out.messages.len(), 1);
-        assert!(matches!(&out.messages[0], Message::User(s) if s == "hello"));
+        assert!(matches!(&out.messages[0], Message::User(UserContent::Text(s)) if s == "hello"));
     }
 
     #[tokio::test]
@@ -120,7 +121,7 @@ mod tests {
         let inner = build_graph(CompactionConfig::default(), llm).unwrap();
         let node = CompressionGraphNode::new(inner);
         let state = ReActState {
-            messages: vec![Message::User("test".to_string())],
+            messages: vec![Message::user("test")],
             last_reasoning_content: None,
             tool_calls: vec![],
             tool_results: vec![],

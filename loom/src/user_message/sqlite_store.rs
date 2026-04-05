@@ -4,10 +4,10 @@ use std::path::Path;
 
 use async_trait::async_trait;
 use rusqlite::params;
-use tracing::warn;
+use tracing::{debug, warn};
 
 use crate::memory::uuid6;
-use crate::message::{AssistantPayload, Message};
+use crate::message::{AssistantPayload, Message, UserContent};
 use crate::tool_source::ToolCallContent;
 use crate::user_message::{UserMessageStore, UserMessageStoreError};
 
@@ -20,7 +20,14 @@ pub struct SqliteUserMessageStore {
 fn row_to_message(role: &str, content: &str) -> Message {
     match role {
         "system" => Message::System(content.to_string()),
-        "user" => Message::User(content.to_string()),
+        "user" => {
+            // 尝试反序列化为 UserContent（支持多模态）
+            if let Ok(uc) = serde_json::from_str::<UserContent>(content) {
+                Message::User(uc)
+            } else {
+                Message::User(UserContent::Text(content.to_string()))
+            }
+        }
         "assistant" => {
             let t = content.trim_start();
             if t.starts_with('{') {
@@ -60,7 +67,7 @@ fn row_to_message(role: &str, content: &str) -> Message {
                 content: ToolCallContent::text(content.to_string()),
             }
         }
-        _ => Message::User(content.to_string()),
+        _ => Message::User(UserContent::Text(content.to_string())),
     }
 }
 
@@ -124,7 +131,9 @@ impl UserMessageStore for SqliteUserMessageStore {
         let thread_id = thread_id.to_string();
         let limit = limit.unwrap_or(100).min(1000);
         let db_path = self.db_path.clone();
+        let thread_id_for_query = thread_id.clone();
         let rows: Vec<(String, String)> = tokio::task::spawn_blocking(move || {
+
             let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
                 .map_err(UserMessageStoreError::Other)?;
             let sql = match before {
@@ -133,8 +142,9 @@ impl UserMessageStore for SqliteUserMessageStore {
             };
             let mut stmt = conn.prepare(sql).map_err(|e| UserMessageStoreError::Other(e.to_string()))?;
             let rows = match before {
-                Some(b) => stmt.query(params![thread_id, b as i64, limit as i64]),
-                None => stmt.query(params![thread_id, limit as i64]),
+                Some(b) => stmt.query(params![thread_id_for_query, b as i64, limit as i64]),
+                None => stmt.query(params![thread_id_for_query, limit as i64]),
+
             }
             .map_err(|e| UserMessageStoreError::Other(e.to_string()))?;
             let mut out = Vec::new();
@@ -148,10 +158,41 @@ impl UserMessageStore for SqliteUserMessageStore {
         })
         .await
         .map_err(|e| UserMessageStoreError::Other(e.to_string()))??;
-        Ok(rows
+        let messages: Vec<Message> = rows
             .into_iter()
             .map(|(role, content)| row_to_message(&role, &content))
-            .collect())
+            .collect();
+        debug!(
+            thread_id,
+            before = ?before,
+            limit,
+            loaded_count = messages.len(),
+            message_summary = ?messages
+                .iter()
+                .enumerate()
+                .map(|(idx, msg)| match msg {
+                    Message::Assistant(payload) => format!(
+                        "idx={idx} role=assistant tool_calls={} content_len={}",
+                        payload.tool_calls.len(),
+                        payload.content.len()
+                    ),
+                    Message::Tool { tool_call_id, content } => format!(
+                        "idx={idx} role=tool tool_call_id={} content_len={}",
+                        tool_call_id,
+                        content.len()
+                    ),
+                    Message::System(content) => {
+                        format!("idx={idx} role=system content_len={}", content.len())
+                    }
+                    Message::User(content) => {
+                        format!("idx={idx} role=user content_len={}", content.as_text().len())
+                    }
+                })
+                .collect::<Vec<_>>(),
+            "loaded messages from sqlite store"
+        );
+        Ok(messages)
+
     }
 }
 
@@ -173,7 +214,7 @@ mod tests {
         let msgs = store.list("t1", None, Some(10)).await.unwrap();
         assert_eq!(msgs.len(), 3);
         match &msgs[0] {
-            Message::User(c) => assert_eq!(c, "hi"),
+            Message::User(c) => assert_eq!(c.as_text(), "hi"),
             _ => panic!("expected user"),
         }
         match &msgs[1] {
@@ -181,7 +222,7 @@ mod tests {
             _ => panic!("expected assistant"),
         }
         match &msgs[2] {
-            Message::User(c) => assert_eq!(c, "bye"),
+            Message::User(c) => assert_eq!(c.as_text(), "bye"),
             _ => panic!("expected user"),
         }
     }

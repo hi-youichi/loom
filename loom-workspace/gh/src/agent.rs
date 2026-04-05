@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use crate::webhook::IssuesEvent;
+use loom::UserContent;
 
 /// Builds `loom::RunOptions` from a webhook IssuesEvent so the agent can be run with
 /// `loom::run_agent_with_options(opts, RunCmd::React, on_event)`.
@@ -15,51 +16,34 @@ pub fn run_options_from_issues_event(
     ev: &IssuesEvent,
     delivery_id: Option<&str>,
 ) -> loom::RunOptions {
-    let body = ev
-        .issue
-        .body
-        .as_deref()
-        .unwrap_or("")
-        .trim();
+    let body = ev.issue.body.as_deref().unwrap_or("").trim();
     let message = if body.is_empty() {
         format!(
             "GitHub issue {} in {} #{}: {}",
-            ev.action,
-            ev.repository.full_name,
-            ev.issue.number,
-            ev.issue.title
+            ev.action, ev.repository.full_name, ev.issue.number, ev.issue.title
         )
     } else {
         format!(
             "GitHub issue {} in {} #{}: {}\n\n{}",
-            ev.action,
-            ev.repository.full_name,
-            ev.issue.number,
-            ev.issue.title,
-            body
+            ev.action, ev.repository.full_name, ev.issue.number, ev.issue.title, body
         )
     };
 
-    let thread_id = delivery_id
-        .map(String::from)
-        .or_else(|| {
-            Some(format!(
-                "issue-{}-{}",
-                ev.repository.full_name,
-                ev.issue.number
-            ))
-        });
+    let thread_id = delivery_id.map(String::from).or_else(|| {
+        Some(format!(
+            "issue-{}-{}",
+            ev.repository.full_name, ev.issue.number
+        ))
+    });
 
-    let working_folder = std::env::var("WORKING_FOLDER")
-        .ok()
-        .map(PathBuf::from);
+    let working_folder = std::env::var("WORKING_FOLDER").ok().map(PathBuf::from);
 
     let model = std::env::var("MODEL")
         .or_else(|_| std::env::var("OPENAI_MODEL"))
         .ok();
 
     loom::RunOptions {
-        message,
+        message: UserContent::Text(message),
         working_folder,
         session_id: None,
         cancellation: None,

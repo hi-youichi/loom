@@ -77,7 +77,11 @@ fn run_reload() {
     let content = match std::fs::read_to_string(&pid_path) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("loom-acp reload: failed to read PID file {}: {}", pid_path.display(), e);
+            eprintln!(
+                "loom-acp reload: failed to read PID file {}: {}",
+                pid_path.display(),
+                e
+            );
             std::process::exit(1);
         }
     };

@@ -8,7 +8,7 @@ use async_trait::async_trait;
 
 use crate::error::AgentError;
 use crate::graph::{Next, RunContext};
-use crate::message::Message;
+use crate::message::{Message, UserContent};
 use crate::stream::StreamEvent;
 use crate::Node;
 
@@ -128,7 +128,7 @@ mod tests {
         ];
         BacktrackNode::pop_last_round_messages(&mut messages);
         assert_eq!(messages.len(), 1);
-        assert!(matches!(messages.first(), Some(Message::User(s)) if s == "u1"));
+        assert!(matches!(messages.first(), Some(Message::User(UserContent::Text(s))) if s == "u1"));
     }
 
     #[tokio::test]

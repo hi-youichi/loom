@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "loom",
     "config",
+    "model-spec-core",
     "loom-examples",
     "cli",
     "serve",
@@ -10,10 +11,11 @@ members = [
     "loom-workspace",
     "loom-acp",
     "loom-workspace/gh",
+    "telegram-bot",
 ]
 
 [workspace.package]
-version = "0.1.3"
+version = "0.1.5"
 edition = "2021"
 authors = ["loom contributors"]
 license = "MIT"

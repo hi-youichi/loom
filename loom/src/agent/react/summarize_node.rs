@@ -78,6 +78,12 @@ impl Node<ReActState> for SummarizeNode {
             return Ok((state, Next::Continue));
         }
 
+        // Convert UserContent to text strings for the prompt
+        let user_texts: Vec<_> = user_messages
+            .iter()
+            .map(|c| c.as_text().to_string())
+            .collect();
+
         // Generate summary using LLM
         let prompt = format!(
             r#"用一句话总结这个对话的主题（不超过50字，用对话的语言）：
@@ -85,7 +91,7 @@ impl Node<ReActState> for SummarizeNode {
 {}
 
 只输出摘要内容，不要其他内容。"#,
-            user_messages.join("\n")
+            user_texts.join("\n")
         );
 
         // Create a minimal message list for the summary request

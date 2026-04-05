@@ -434,6 +434,7 @@ mod tests {
 
     #[test]
     fn skill_registry_discover_project_and_user() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = ENV_LOCK.lock().unwrap();
         let project = tempfile::tempdir().unwrap();
         let loom_home = tempfile::tempdir().unwrap();
@@ -473,6 +474,7 @@ mod tests {
 
     #[test]
     fn skill_registry_project_wins_over_user_same_name() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = ENV_LOCK.lock().unwrap();
         let project = tempfile::tempdir().unwrap();
         let loom_home = tempfile::tempdir().unwrap();
@@ -507,6 +509,7 @@ mod tests {
 
     #[test]
     fn skill_registry_extra_dirs() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = ENV_LOCK.lock().unwrap();
         let project = tempfile::tempdir().unwrap();
         let loom_home = tempfile::tempdir().unwrap();
@@ -533,6 +536,7 @@ mod tests {
 
     #[test]
     fn apply_filters_enabled_whitelist() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let skills_dir = dir.path().join(".loom").join("skills");
@@ -567,6 +571,7 @@ mod tests {
 
     #[test]
     fn apply_filters_disabled_blacklist() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let skills_dir = dir.path().join(".loom").join("skills");

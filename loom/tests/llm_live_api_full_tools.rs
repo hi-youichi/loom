@@ -10,10 +10,10 @@ use std::sync::Arc;
 
 use async_openai::config::OpenAIConfig;
 use loom::llm::{ChatOpenAI, LlmClient, ToolCallDelta, ToolChoiceMode};
-use loom::tool_source::{
-    AggregateToolSource, BashTool, LspTool, ToolSource, WebFetcherTool, YamlSpecToolSource,
+use loom::tool_source::{register_file_tools, ToolSource, YamlSpecToolSource};
+use loom::tools::{
+    AggregateToolSource, BashTool, BatchTool, LspTool, WebFetcherTool, TOOL_READ_FILE,
 };
-use loom::tools::{register_file_tools, BatchTool, TOOL_READ_FILE};
 use loom::{Message, MessageChunk};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -54,6 +54,7 @@ async fn read_http_request(stream: &mut tokio::net::TcpStream) -> String {
     String::new()
 }
 
+#[allow(dead_code)]
 async fn write_http_response(
     stream: &mut tokio::net::TcpStream,
     status: &str,
@@ -63,6 +64,17 @@ async fn write_http_response(
         "HTTP/1.1 {}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
         status,
         body.len(),
+        body
+    );
+    stream.write_all(resp.as_bytes()).await.unwrap();
+}
+
+async fn write_http_stream_response(
+    stream: &mut tokio::net::TcpStream,
+    body: &str,
+) {
+    let resp = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n{}",
         body
     );
     stream.write_all(resp.as_bytes()).await.unwrap();
@@ -106,31 +118,15 @@ async fn mock_api_full_tool_list_invokes_read() {
     tokio::spawn(async move {
         let (mut stream, _) = listener.accept().await.unwrap();
         let _body = read_http_request(&mut stream).await;
-        let response = serde_json::json!({
-            "id": "chatcmpl-mock-read",
-            "object": "chat.completion",
-            "created": 1,
-            "model": "gpt-4o-mini",
-            "choices": [{
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": "",
-                    "tool_calls": [{
-                        "id": "call_read_1",
-                        "type": "function",
-                        "function": {
-                            "name": TOOL_READ_FILE,
-                            "arguments": "{\"path\":\"probe.txt\"}"
-                        }
-                    }]
-                },
-                "finish_reason": "tool_calls"
-            }],
-            "usage": {"prompt_tokens": 20, "completion_tokens": 5, "total_tokens": 25}
-        })
-        .to_string();
-        write_http_response(&mut stream, "200 OK", &response).await;
+        let sse_data = vec![
+            r#"data: {"id":"chatcmpl-mock-read","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-mock-read","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_read_1","type":"function","function":{"name":"read"}}]},"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-mock-read","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"path\":\"probe.txt\"}"}}]},"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-mock-read","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#,
+            "data: [DONE]",
+        ];
+        let response = sse_data.join("\n\n") + "\n\n";
+        write_http_stream_response(&mut stream, &response).await;
     });
 
     let dir = tempfile::tempdir().expect("tempdir");
@@ -144,14 +140,7 @@ async fn mock_api_full_tool_list_invokes_read() {
         tools.len()
     );
     let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
-    for required in [
-        "bash",
-        "web_fetcher",
-        TOOL_READ_FILE,
-        "ls",
-        "batch",
-        "lsp",
-    ] {
+    for required in ["bash", "web_fetcher", TOOL_READ_FILE, "ls", "batch", "lsp"] {
         assert!(
             names.contains(&required),
             "tool {required:?} missing from listed tools: {names:?}"
@@ -198,9 +187,17 @@ async fn mock_api_full_tool_list_invokes_read() {
             )
         });
 
-    let args: serde_json::Value = serde_json::from_str(read_call.arguments.trim())
-        .unwrap_or_else(|e| panic!("read arguments should be JSON: {e}, raw: {:?}", read_call.arguments));
-    let path = args.get("path").and_then(|p| p.as_str()).unwrap_or_default();
+    let args: serde_json::Value =
+        serde_json::from_str(read_call.arguments.trim()).unwrap_or_else(|e| {
+            panic!(
+                "read arguments should be JSON: {e}, raw: {:?}",
+                read_call.arguments
+            )
+        });
+    let path = args
+        .get("path")
+        .and_then(|p| p.as_str())
+        .unwrap_or_default();
     assert!(
         path.contains("probe.txt"),
         "expected read path to reference probe.txt, got path: {:?}",

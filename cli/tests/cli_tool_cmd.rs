@@ -29,7 +29,11 @@ fn cli_tool_list_local_json_succeeds() {
 fn cli_tool_show_existing_local_json_succeeds() {
     // Use "read" (file tool) — always present when working_folder defaults to "."
     let out = run_loom(&["--json", "tool", "show", "read"]);
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("\"name\""));
     assert!(stdout.contains("read"));
@@ -42,4 +46,3 @@ fn cli_tool_show_missing_local_fails() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("tool not found"));
 }
-

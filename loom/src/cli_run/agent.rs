@@ -158,7 +158,7 @@ impl RunCancellation {
 /// Options for running the Helve agent.
 #[derive(Debug, Clone)]
 pub struct RunOptions {
-    pub message: String,
+    pub message: crate::message::UserContent,
     pub working_folder: Option<PathBuf>,
     pub session_id: Option<String>,
     /// Named agent profile (e.g. "coding"). Resolved from .loom/agents/<name> or ~/.loom/agents/<name>.
@@ -330,7 +330,7 @@ pub async fn run_agent(
                 }
             });
             let outcome = r
-                .stream_with_config(opts.message.as_str(), None, on_ev)
+                .stream_with_config(opts.message.as_text().as_ref(), None, on_ev)
                 .instrument(span.clone())
                 .await?;
             match outcome {
@@ -353,7 +353,7 @@ pub async fn run_agent(
                 }
             });
             let outcome = r
-                .stream_with_config(opts.message.as_str(), None, on_ev)
+                .stream_with_config(opts.message.as_text().as_ref(), None, on_ev)
                 .instrument(span.clone())
                 .await?;
             match outcome {
@@ -376,7 +376,7 @@ pub async fn run_agent(
                 }
             });
             let outcome = r
-                .stream_with_config(opts.message.as_str(), None, on_ev)
+                .stream_with_config(opts.message.as_text().as_ref(), None, on_ev)
                 .instrument(span.clone())
                 .await?;
             match outcome {
@@ -399,7 +399,7 @@ pub async fn run_agent(
                 }
             });
             let outcome = r
-                .stream_with_config(opts.message.as_str(), None, on_ev)
+                .stream_with_config(opts.message.as_text().as_ref(), None, on_ev)
                 .instrument(span.clone())
                 .await?;
             match outcome {
@@ -522,7 +522,7 @@ pub async fn run_agent_with_provider(
 
     // Create minimal RunOptions
     let opts = RunOptions {
-        message: message.to_string(),
+        message: crate::message::UserContent::Text(message.to_string()),
         working_folder,
         session_id: None,
         cancellation: None,
@@ -554,7 +554,7 @@ mod tests {
     fn opts_for_error(cmd: &RunCmd) -> RunOptions {
         let got_adaptive = matches!(cmd, RunCmd::Got { got_adaptive: true });
         RunOptions {
-            message: "hello".to_string(),
+            message: crate::message::UserContent::Text("hello".to_string()),
             working_folder: Some(PathBuf::from(
                 "/definitely/not/exist/loom-cli-run-agent-tests",
             )),
@@ -651,7 +651,7 @@ mod tests {
     async fn build_runner_errors_for_invalid_working_folder_for_all_modes() {
         let cfg = minimal_config_with_invalid_working_folder();
         let opts = RunOptions {
-            message: "m".to_string(),
+            message: crate::message::UserContent::Text("m".to_string()),
             working_folder: cfg.working_folder.clone(),
             session_id: None,
             cancellation: None,

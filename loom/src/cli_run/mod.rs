@@ -339,8 +339,9 @@ mod tests {
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn default_opts() -> RunOptions {
+        use crate::message::UserContent;
         RunOptions {
-            message: String::new(),
+            message: UserContent::Text(String::new()),
             working_folder: None,
             session_id: None,
             cancellation: None,
@@ -491,6 +492,7 @@ mod tests {
 
     #[test]
     fn build_config_from_profile_minimal() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = ENV_LOCK.lock().unwrap();
         let loom_home = tempfile::tempdir().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
@@ -509,6 +511,7 @@ mod tests {
 
     #[test]
     fn build_config_from_profile_overrides_model() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = ENV_LOCK.lock().unwrap();
         let loom_home = tempfile::tempdir().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
@@ -532,6 +535,7 @@ mod tests {
 
     #[test]
     fn build_config_from_profile_working_folder_override() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = ENV_LOCK.lock().unwrap();
         let loom_home = tempfile::tempdir().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
@@ -550,6 +554,7 @@ mod tests {
 
     #[test]
     fn build_config_from_profile_with_role() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = ENV_LOCK.lock().unwrap();
         let loom_home = tempfile::tempdir().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
@@ -574,6 +579,7 @@ mod tests {
 
     #[test]
     fn build_helve_config_no_skills_dir_no_prompt() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let _g = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let prev_dir = std::env::current_dir().ok();
@@ -582,7 +588,7 @@ mod tests {
         std::env::set_var("LOOM_HOME", dir.path());
 
         let opts = RunOptions {
-            message: "hello".to_string(),
+            message: crate::message::UserContent::Text("hello".to_string()),
             agent: Some("dev".to_string()),
             ..default_opts()
         };

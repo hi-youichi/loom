@@ -56,7 +56,7 @@ LOOM_COMPRESSION_PRUNE_KEEP_TOKENS = "40000"
 LOOM_COMPRESSION_PRUNE_MINIMUM = "20000"
 LOOM_COMPRESSION_KEEP_RECENT = "20"
 
-# Optional: named providers (use [default].provider or LOOM_PROVIDER to select one).
+# Optional: named providers (use [default].provider to select one).
 # Per-provider tool_choice sets OPENAI_TOOL_CHOICE (auto, none, required); same as [env].
 # Per-provider temperature sets OPENAI_TEMPERATURE (decimal); same as [env].
 # [[providers]]
