@@ -151,6 +151,11 @@ mod tests {
         let names: Vec<&str> = specs.iter().map(|s| s.name.as_str()).collect();
         assert!(names.contains(&"bash"), "expected bash in {:?}", names);
         assert!(
+            names.contains(&"powershell"),
+            "expected powershell in {:?}",
+            names
+        );
+        assert!(
             names.contains(&"web_fetcher"),
             "expected web_fetcher in {:?}",
             names

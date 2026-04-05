@@ -1,0 +1,41 @@
+# Edit name, description, or input_schema; execution is in Rust.
+name: powershell
+description: |
+  Executes a PowerShell command on Windows (WMI, Registry, .NET, COM). Uses pwsh when installed, else Windows PowerShell 5.1.
+  Timeout is in milliseconds (default 120000), same as bash.
+
+  - Commands run in the working folder by default. Use workdir to run in a different directory.
+  - Use for git, npm, cargo, docker, etc. Do NOT use for file read/write/search — use read, grep, glob, edit instead.
+  - Optional timeout in milliseconds (default 120000). Give a short description in the description field when calling.
+  - For cross-platform shell commands, prefer the bash tool (available on non-Windows platforms).
+
+  When running multiple commands: if independent, make multiple powershell calls in one message; if sequential, use a single call with "; " separator.
+input_schema:
+  type: object
+  properties:
+    command:
+      type: string
+      description: PowerShell script or expression to run.
+    workdir:
+      type: string
+      description: Working directory (optional; defaults to agent working folder if set).
+    timeout:
+      type: integer
+      description: Timeout in milliseconds (default 120000). Use 0 for no limit.
+      default: 120000
+    timeout_ms:
+      type: integer
+      description: Alias for timeout (milliseconds).
+    env:
+      type: object
+      additionalProperties:
+        type: string
+      description: Extra environment variables for the process.
+    execution_policy:
+      type: string
+      description: Optional -ExecutionPolicy value (e.g. Bypass, RemoteSigned).
+    use_legacy_powershell:
+      type: boolean
+      description: If true, force Windows PowerShell 5.1 (powershell.exe) instead of pwsh.
+  required:
+    - command

@@ -401,7 +401,7 @@ fn determine_strategy(
     }
 
     let base_strategy = match tool_name {
-        "bash" => {
+        "bash" | "powershell" => {
             if raw_chars <= config.inline_limit {
                 ToolOutputStrategy::Inline
             } else if raw_chars <= config.file_ref_threshold {
@@ -461,7 +461,7 @@ fn determine_strategy(
 
     if raw_chars > remaining_budget {
         return match tool_name {
-            "bash" if remaining_budget >= config.head_tail_limit / 2 => ToolOutputStrategy::HeadTail,
+            "bash" | "powershell" if remaining_budget >= config.head_tail_limit / 2 => ToolOutputStrategy::HeadTail,
             "web_fetcher" | "invoke_agent" | "mcp_call_tool" => ToolOutputStrategy::FileRefWithExcerpt,
             "get_recent_messages" => ToolOutputStrategy::SummaryOnly,
             _ if raw_chars > config.file_ref_threshold / 2 => ToolOutputStrategy::FileRefWithExcerpt,
@@ -633,7 +633,7 @@ fn infer_storage_format(
     args: &serde_json::Value,
     raw_text: &str,
 ) -> (&'static str, &'static str) {
-    if tool_name == "bash" {
+    if tool_name == "bash" || tool_name == "powershell" {
         return ("log", "text/plain");
     }
 

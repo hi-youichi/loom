@@ -3,7 +3,7 @@
 //! [`LoomAcpAgent`] implements `agent_client_protocol::Agent` and maps ACP requests
 //! to Loom sessions and execution. See [`crate::protocol`] for protocol and behavior details.
 
-use crate::content::content_blocks_to_message;
+use crate::content::content_blocks_to_user_content;
 use crate::session::{SessionId as OurSessionId, SessionStore};
 use crate::stream_bridge::{loom_event_to_updates, stream_update_to_session_notification};
 use agent_client_protocol::{
@@ -130,7 +130,9 @@ impl Agent for LoomAcpAgent {
                         "list": {}
                     },
                     "promptCapabilities": {
-                        "embeddedContext": true
+                        "embeddedContext": true,
+                        "image": true,
+                        "audio": true
                     }
                 }),
             );
@@ -216,11 +218,36 @@ impl Agent for LoomAcpAgent {
             .begin_prompt(&key)
             .ok_or_else(|| agent_client_protocol::Error::new(-32602, "unknown session"))?;
 
-        let message = content_blocks_to_message(args.prompt.as_slice()).map_err(|_| {
+        let user_content = content_blocks_to_user_content(args.prompt.as_slice()).map_err(|_| {
             agent_client_protocol::Error::new(-32602, "content_blocks parse failed")
         })?;
 
-        tracing::info!(session_id = %args.session_id, message = %message, "User prompt");
+        let content_type = match &user_content {
+            loom::message::UserContent::Text(_) => "text",
+            loom::message::UserContent::Multimodal(parts) => {
+                let has_image = parts
+                    .iter()
+                    .any(|p| matches!(p, loom::message::ContentPart::ImageBase64 { .. }));
+                let has_audio = parts
+                    .iter()
+                    .any(|p| matches!(p, loom::message::ContentPart::AudioBase64 { .. }));
+                if has_image && has_audio {
+                    "multimodal(image+audio)"
+                } else if has_image {
+                    "multimodal(image)"
+                } else if has_audio {
+                    "multimodal(audio)"
+                } else {
+                    "multimodal"
+                }
+            }
+        };
+        tracing::info!(
+            session_id = %args.session_id,
+            content_type = content_type,
+            text_len = user_content.as_text().len(),
+            "User prompt"
+        );
 
         let working_folder = entry
             .working_directory
@@ -280,7 +307,7 @@ impl Agent for LoomAcpAgent {
         };
 
         let opts = RunOptions {
-            message,
+            message: user_content,
             working_folder: Some(working_folder),
             session_id: None,
             cancellation: Some(cancellation.clone()),
@@ -399,7 +426,9 @@ impl Agent for LoomAcpAgent {
                             Message::User(content) => vec![SessionNotification::new(
                                 session_id.clone(),
                                 agent_client_protocol::SessionUpdate::UserMessageChunk(
-                                    ContentChunk::new(content.clone().into()),
+                                    ContentChunk::new(agent_client_protocol::ContentBlock::Text(
+                                        agent_client_protocol::TextContent::new(content.as_text().to_string()),
+                                    )),
                                 ),
                             )],
                             Message::Assistant(payload) => {

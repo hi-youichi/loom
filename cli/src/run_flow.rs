@@ -3,6 +3,7 @@
 use cli::RunOptions;
 
 use crate::args::{Args, Command};
+use loom::UserContent;
 use crate::display_limits::{generate_session_id, max_message_len};
 use crate::output::{emit_run_output, make_stream_out, OutputConfig};
 use crate::repl::{run_one_turn, run_repl_loop};
@@ -27,7 +28,7 @@ pub(crate) fn output_config(args: &Args) -> OutputConfig {
 
 pub(crate) fn build_run_options(args: &Args, message: String, got_adaptive: bool) -> RunOptions {
     RunOptions {
-        message,
+        message: UserContent::Text(message),
         working_folder: args.working_folder.clone(),
         session_id: None,
         cancellation: None,
@@ -100,7 +101,7 @@ pub(crate) async fn run_interactive_mode(
 
     let stream_out = make_stream_out(output);
     if let Some(msg) = initial_message.filter(|msg| !msg.trim().is_empty()) {
-        opts.message = msg;
+        opts.message = UserContent::Text(msg);
         match run_one_turn(opts, cmd, stream_out.clone()).await {
             Ok(output_value) => emit_run_output(
                 output_value,

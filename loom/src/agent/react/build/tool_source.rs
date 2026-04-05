@@ -7,8 +7,10 @@ use crate::tool_source::{
     register_file_tools, McpToolSource, MemoryToolsSource, ToolSource, ToolSourceError,
     YamlSpecToolSource,
 };
+#[cfg(not(windows))]
+use crate::tools::BashTool;
 use crate::tools::{
-    register_mcp_tools, register_mcp_tools_with_specs, AggregateToolSource, BashTool, BatchTool,
+    register_mcp_tools, register_mcp_tools_with_specs, AggregateToolSource, BatchTool,
     ExaCodesearchTool, ExaWebsearchTool, InvokeAgentTool, LspTool, TwitterSearchTool,
     WebFetcherTool,
 };
@@ -40,10 +42,12 @@ pub(crate) async fn build_tool_source(
         aggregate
             .register_async(Box::new(WebFetcherTool::new()))
             .await;
+        #[cfg(not(windows))]
         let bash_tool = match &working_folder_arc {
             Some(wf) => BashTool::with_working_folder(Arc::clone(wf)),
             None => BashTool::new(),
         };
+        #[cfg(not(windows))]
         aggregate.register_async(Box::new(bash_tool)).await;
         #[cfg(windows)]
         {
@@ -219,13 +223,14 @@ pub(crate) async fn build_tool_source(
     aggregate
         .register_async(Box::new(WebFetcherTool::new()))
         .await;
+    #[cfg(not(windows))]
     let bash_tool = match &working_folder_arc {
         Some(wf) => BashTool::with_working_folder(Arc::clone(wf)),
         None => BashTool::new(),
     };
+    #[cfg(not(windows))]
     aggregate.register_async(Box::new(bash_tool)).await;
-    
-    // Register PowerShell tool on Windows
+
     #[cfg(windows)]
     {
         let ps_tool = match &working_folder_arc {

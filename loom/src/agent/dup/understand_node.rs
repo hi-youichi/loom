@@ -110,14 +110,14 @@ impl Node<DupState> for UnderstandNode {
             .iter()
             .rev()
             .find_map(|m| match m {
-                Message::User(s) => Some(s.as_str()),
+                Message::User(c) => Some(c.as_text().to_string()),
                 _ => None,
             })
-            .unwrap_or("");
+            .unwrap_or_default();
 
         let messages = vec![
             Message::system(DUP_UNDERSTAND_PROMPT),
-            Message::user(last_user.to_string()),
+            Message::user(last_user),
         ];
 
         let response = self.llm.invoke(&messages).await?;

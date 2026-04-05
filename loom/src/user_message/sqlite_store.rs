@@ -7,7 +7,7 @@ use rusqlite::params;
 use tracing::{debug, warn};
 
 use crate::memory::uuid6;
-use crate::message::{AssistantPayload, Message};
+use crate::message::{AssistantPayload, Message, UserContent};
 use crate::tool_source::ToolCallContent;
 use crate::user_message::{UserMessageStore, UserMessageStoreError};
 
@@ -20,7 +20,14 @@ pub struct SqliteUserMessageStore {
 fn row_to_message(role: &str, content: &str) -> Message {
     match role {
         "system" => Message::System(content.to_string()),
-        "user" => Message::User(content.to_string()),
+        "user" => {
+            // 尝试反序列化为 UserContent（支持多模态）
+            if let Ok(uc) = serde_json::from_str::<UserContent>(content) {
+                Message::User(uc)
+            } else {
+                Message::User(UserContent::Text(content.to_string()))
+            }
+        }
         "assistant" => {
             let t = content.trim_start();
             if t.starts_with('{') {
@@ -60,7 +67,7 @@ fn row_to_message(role: &str, content: &str) -> Message {
                 content: ToolCallContent::text(content.to_string()),
             }
         }
-        _ => Message::User(content.to_string()),
+        _ => Message::User(UserContent::Text(content.to_string())),
     }
 }
 
@@ -178,7 +185,7 @@ impl UserMessageStore for SqliteUserMessageStore {
                         format!("idx={idx} role=system content_len={}", content.len())
                     }
                     Message::User(content) => {
-                        format!("idx={idx} role=user content_len={}", content.len())
+                        format!("idx={idx} role=user content_len={}", content.as_text().len())
                     }
                 })
                 .collect::<Vec<_>>(),
@@ -207,7 +214,7 @@ mod tests {
         let msgs = store.list("t1", None, Some(10)).await.unwrap();
         assert_eq!(msgs.len(), 3);
         match &msgs[0] {
-            Message::User(c) => assert_eq!(c, "hi"),
+            Message::User(c) => assert_eq!(c.as_text(), "hi"),
             _ => panic!("expected user"),
         }
         match &msgs[1] {
@@ -215,7 +222,7 @@ mod tests {
             _ => panic!("expected assistant"),
         }
         match &msgs[2] {
-            Message::User(c) => assert_eq!(c, "bye"),
+            Message::User(c) => assert_eq!(c.as_text(), "bye"),
             _ => panic!("expected user"),
         }
     }

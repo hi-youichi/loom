@@ -11,6 +11,138 @@ use tracing::warn;
 use crate::memory::uuid6;
 use crate::tool_source::ToolCallContent;
 
+/// User message content: plain text or multimodal part array.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum UserContent {
+    Text(String),
+    Multimodal(Vec<ContentPart>),
+}
+
+/// One content part in a multimodal user message.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContentPart {
+    Text { text: String },
+    ImageUrl { url: String, detail: Option<String> },
+    ImageBase64 { media_type: String, data: String },
+    AudioBase64 { media_type: String, data: String },
+    VideoUrl { url: String },
+    VideoBase64 { media_type: String, data: String },
+    PdfUrl { url: String },
+    PdfBase64 { data: String },
+    File {
+        file_id: Option<String>,
+        file_data: Option<String>,
+        filename: Option<String>,
+    },
+}
+
+/// Content block or message error.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ContentError {
+    #[error("empty content parts")]
+    EmptyMessage,
+}
+
+impl UserContent {
+    pub fn as_text(&self) -> Cow<'_, str> {
+        match self {
+            UserContent::Text(s) => Cow::Borrowed(s),
+            UserContent::Multimodal(parts) => {
+                let texts: Vec<_> = parts
+                    .iter()
+                    .filter_map(|p| match p {
+                        ContentPart::Text { text } => Some(text.as_str()),
+                        _ => None,
+                    })
+                    .collect();
+                Cow::Owned(texts.join("\n"))
+            }
+        }
+    }
+
+    pub fn text(text: impl Into<String>) -> Self {
+        Self::Text(text.into())
+    }
+
+    pub fn multimodal(parts: Vec<ContentPart>) -> Result<Self, ContentError> {
+        if parts.is_empty() {
+            return Err(ContentError::EmptyMessage);
+        }
+        Ok(Self::Multimodal(parts))
+    }
+
+    /// Returns the list of modalities used in this content.
+    pub fn modalities(&self) -> Vec<model_spec_core::spec::ModalityType> {
+        match self {
+            UserContent::Text(_) => vec![model_spec_core::spec::ModalityType::Text],
+            UserContent::Multimodal(parts) => parts.iter().map(|p| p.modality()).collect(),
+        }
+    }
+
+    /// Validates that all modalities in this content are supported by the given model.
+    /// Returns a list of unsupported modalities (empty if all are supported).
+    pub fn unsupported_modalities(
+        &self,
+        model: &model_spec_core::spec::Model,
+    ) -> Vec<model_spec_core::spec::ModalityType> {
+        let modalities = &model.modalities;
+        if modalities.input.is_empty() {
+            return vec![]; // Can't validate - assume supported
+        }
+
+        self.modalities()
+            .into_iter()
+            .filter(|m| {
+                *m != model_spec_core::spec::ModalityType::Text && !modalities.input.contains(m)
+            })
+            .collect()
+    }
+
+    /// Checks if all modalities in this content are supported by the given model.
+    pub fn is_supported_by(&self, model: &model_spec_core::spec::Model) -> bool {
+        self.unsupported_modalities(model).is_empty()
+    }
+}
+
+impl From<String> for UserContent {
+    fn from(s: String) -> Self {
+        Self::Text(s)
+    }
+}
+
+impl From<&str> for UserContent {
+    fn from(s: &str) -> Self {
+        Self::Text(s.to_string())
+    }
+}
+
+impl ContentPart {
+    pub fn modality(&self) -> model_spec_core::spec::ModalityType {
+        match self {
+            ContentPart::Text { .. } => model_spec_core::spec::ModalityType::Text,
+            ContentPart::ImageUrl { .. } | ContentPart::ImageBase64 { .. } => {
+                model_spec_core::spec::ModalityType::Image
+            }
+            ContentPart::AudioBase64 { .. } => model_spec_core::spec::ModalityType::Audio,
+            ContentPart::VideoUrl { .. } | ContentPart::VideoBase64 { .. } => {
+                model_spec_core::spec::ModalityType::Video
+            }
+            ContentPart::PdfUrl { .. } | ContentPart::PdfBase64 { .. } => {
+                model_spec_core::spec::ModalityType::Pdf
+            }
+            ContentPart::File { .. } => model_spec_core::spec::ModalityType::Text,
+        }
+    }
+
+    /// Returns true if this content part is supported by the given model's modalities.
+    pub fn is_supported_by(&self, model: &model_spec_core::spec::Model) -> bool {
+        let m = self.modality();
+        m == model_spec_core::spec::ModalityType::Text || model.modalities.input.contains(&m)
+    }
+}
+
 /// One function tool call the model requested (aligned with OpenAI `tool_calls[]`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AssistantToolCall {
@@ -100,7 +232,7 @@ pub enum Message {
     /// System prompt; typically placed first in the message list.
     System(String),
     /// User input.
-    User(String),
+    User(UserContent),
     /// Model reply, optionally including tool calls for the next round.
     #[serde(with = "assistant_payload_serde")]
     Assistant(AssistantPayload),
@@ -118,8 +250,13 @@ impl Message {
     }
 
     /// Creates a user message.
-    pub fn user(content: impl Into<String>) -> Self {
+    pub fn user(content: impl Into<UserContent>) -> Self {
         Self::User(content.into())
+    }
+
+    /// Creates a user message with multimodal content.
+    pub fn user_multimodal(parts: Vec<ContentPart>) -> Result<Self, ContentError> {
+        Ok(Self::User(UserContent::multimodal(parts)?))
     }
 
     /// Creates an assistant message with text only (no tool calls).
@@ -175,7 +312,8 @@ impl Message {
     /// Returns the primary text content (assistant text, user/system string, or tool output body).
     pub fn content(&self) -> Cow<'_, str> {
         match self {
-            Message::System(s) | Message::User(s) => Cow::Borrowed(s),
+            Message::System(s) => Cow::Borrowed(s),
+            Message::User(c) => c.as_text(),
             Message::Assistant(p) => Cow::Borrowed(p.content.as_str()),
             Message::Tool { content, .. } => Cow::Owned(content.to_display_string()),
         }
@@ -188,7 +326,7 @@ impl Message {
     pub fn to_role_content_pair(&self) -> (&'static str, String) {
         match self {
             Message::System(c) => ("system", c.clone()),
-            Message::User(c) => ("user", c.clone()),
+            Message::User(c) => ("user", c.as_text().into_owned()),
             Message::Assistant(p) => {
                 if p.tool_calls.is_empty() {
                     ("assistant", p.content.clone())
@@ -271,7 +409,7 @@ mod tests {
         let sys = Message::system("s");
         assert!(matches!(&sys, Message::System(c) if c == "s"));
         let usr = Message::user("u");
-        assert!(matches!(&usr, Message::User(c) if c == "u"));
+        assert!(matches!(&usr, Message::User(UserContent::Text(c)) if c == "u"));
         let ast = Message::assistant("a");
         assert!(matches!(&ast, Message::Assistant(p) if p.content == "a" && p.tool_calls.is_empty()));
     }
@@ -491,7 +629,7 @@ mod tests {
     #[test]
     fn message_assistant_with_tool_calls_and_reasoning() {
         use super::AssistantToolCall;
-        
+
         let tool_calls = vec![
             AssistantToolCall {
                 id: "call_123".to_string(),
@@ -499,13 +637,13 @@ mod tests {
                 arguments: "{}".to_string(),
             },
         ];
-        
+
         let msg = super::Message::assistant_with_tool_calls_and_reasoning(
             "response".to_string(),
             tool_calls.clone(),
             Some("reasoning".to_string()),
         );
-        
+
         match msg {
             super::Message::Assistant(payload) => {
                 assert_eq!(payload.content, "response");
@@ -519,10 +657,214 @@ mod tests {
     #[test]
     fn message_serialize_deserialize_with_reasoning() {
         let msg = super::Message::assistant_with_reasoning("test", Some("reasoning".to_string()));
-        
+
         let json = serde_json::to_string(&msg).unwrap();
         let decoded: super::Message = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(msg, decoded);
+    }
+
+    // ========== UserContent / ContentPart tests ==========
+
+    #[test]
+    fn user_content_text_serialization() {
+        let uc = UserContent::Text("hello".to_string());
+        let json = serde_json::to_string(&uc).unwrap();
+        assert_eq!(json, "\"hello\"");
+
+        let uc2: UserContent = serde_json::from_str(&json).unwrap();
+        assert_eq!(uc, uc2);
+    }
+
+    #[test]
+    fn user_content_multimodal_serialization() {
+        let parts = vec![
+            ContentPart::Text { text: "see this".to_string() },
+            ContentPart::ImageUrl {
+                url: "https://example.com/img.png".to_string(),
+                detail: Some("high".to_string()),
+            },
+        ];
+        let uc = UserContent::Multimodal(parts);
+        let json = serde_json::to_string(&uc).unwrap();
+        assert!(json.contains("\"type\":\"text\""));
+        assert!(json.contains("\"type\":\"image_url\""));
+
+        let uc2: UserContent = serde_json::from_str(&json).unwrap();
+        assert_eq!(uc, uc2);
+    }
+
+    #[test]
+    fn message_user_with_user_content() {
+        let msg = Message::user("hello");
+        assert!(matches!(msg, Message::User(UserContent::Text(s)) if s == "hello"));
+
+        let parts = vec![ContentPart::Text { text: "hi".to_string() }];
+        let msg = Message::user_multimodal(parts).unwrap();
+        assert!(matches!(msg, Message::User(UserContent::Multimodal(..))));
+    }
+
+    #[test]
+    fn legacy_checkpoint_compatibility() {
+        // 旧格式：纯字符串
+        let json = r#"{"User":"hello"}"#;
+        let msg: Message = serde_json::from_str(json).unwrap();
+        assert!(matches!(msg, Message::User(UserContent::Text(s)) if s == "hello"));
+
+        // 新格式：多模态数组
+        let json = r#"{"User":[{"type":"text","text":"hello"}]}"#;
+        let msg: Message = serde_json::from_str(json).unwrap();
+        assert!(matches!(msg, Message::User(UserContent::Multimodal(..))));
+    }
+
+    #[test]
+    fn content_part_modality() {
+        assert_eq!(
+            ContentPart::Text { text: "hi".to_string() }.modality(),
+            model_spec_core::spec::ModalityType::Text
+        );
+        assert_eq!(
+            ContentPart::ImageUrl { url: "https://x.com/img.png".to_string(), detail: None }.modality(),
+            model_spec_core::spec::ModalityType::Image
+        );
+        assert_eq!(
+            ContentPart::ImageBase64 { media_type: "image/png".to_string(), data: "abc".to_string() }.modality(),
+            model_spec_core::spec::ModalityType::Image
+        );
+        assert_eq!(
+            ContentPart::AudioBase64 { media_type: "audio/mp3".to_string(), data: "abc".to_string() }.modality(),
+            model_spec_core::spec::ModalityType::Audio
+        );
+        assert_eq!(
+            ContentPart::VideoUrl { url: "https://x.com/vid.mp4".to_string() }.modality(),
+            model_spec_core::spec::ModalityType::Video
+        );
+        assert_eq!(
+            ContentPart::PdfUrl { url: "https://x.com/doc.pdf".to_string() }.modality(),
+            model_spec_core::spec::ModalityType::Pdf
+        );
+        assert_eq!(
+            ContentPart::File { file_id: None, file_data: None, filename: Some("data.csv".to_string()) }.modality(),
+            model_spec_core::spec::ModalityType::Text
+        );
+    }
+
+    #[test]
+    fn user_content_as_text() {
+        let text = UserContent::Text("hello".to_string());
+        assert_eq!(text.as_text(), "hello");
+
+        let parts = vec![
+            ContentPart::Text { text: "first".to_string() },
+            ContentPart::Text { text: "second".to_string() },
+        ];
+        let multimodal = UserContent::Multimodal(parts);
+        assert_eq!(multimodal.as_text(), "first\nsecond");
+    }
+
+    #[test]
+    fn user_content_modalities() {
+        let text = UserContent::Text("hello".to_string());
+        assert_eq!(text.modalities(), vec![model_spec_core::spec::ModalityType::Text]);
+
+        let parts = vec![
+            ContentPart::Text { text: "hi".to_string() },
+            ContentPart::ImageUrl { url: "https://x.com/img.png".to_string(), detail: None },
+        ];
+        let multimodal = UserContent::Multimodal(parts);
+        assert_eq!(
+            multimodal.modalities(),
+            vec![
+                model_spec_core::spec::ModalityType::Text,
+                model_spec_core::spec::ModalityType::Image
+            ]
+        );
+    }
+
+    #[test]
+    fn user_content_unsupported_modalities() {
+        use model_spec_core::spec::{Model, Modalities};
+
+        // Model that only supports text and image
+        let model = Model {
+            id: "test-model".to_string(),
+            name: "test-model".to_string(),
+            family: None,
+            attachment: false,
+            limit: None,
+            modalities: Modalities {
+                input: vec![
+                    model_spec_core::spec::ModalityType::Text,
+                    model_spec_core::spec::ModalityType::Image,
+                ],
+                output: vec![model_spec_core::spec::ModalityType::Text],
+            },
+            tool_call: false,
+            temperature: false,
+            structured_output: None,
+            knowledge: None,
+            release_date: None,
+            last_updated: None,
+            reasoning: false,
+            open_weights: false,
+            cost: None,
+        };
+
+        // Text + Image is fully supported
+        let supported = UserContent::Multimodal(vec![
+            ContentPart::Text { text: "hi".to_string() },
+            ContentPart::ImageUrl { url: "https://x.com/img.png".to_string(), detail: None },
+        ]);
+        assert!(supported.is_supported_by(&model));
+        assert_eq!(supported.unsupported_modalities(&model), vec![]);
+
+        // Audio is NOT supported
+        let unsupported = UserContent::Multimodal(vec![
+            ContentPart::Text { text: "hi".to_string() },
+            ContentPart::AudioBase64 { media_type: "audio/mp3".to_string(), data: "abc".to_string() },
+        ]);
+        assert!(!unsupported.is_supported_by(&model));
+        assert_eq!(
+            unsupported.unsupported_modalities(&model),
+            vec![model_spec_core::spec::ModalityType::Audio]
+        );
+    }
+
+    #[test]
+    fn content_part_is_supported_by() {
+        use model_spec_core::spec::{Model, Modalities};
+
+        let model = Model {
+            id: "test-model".to_string(),
+            name: "test-model".to_string(),
+            family: None,
+            attachment: false,
+            limit: None,
+            modalities: Modalities {
+                input: vec![model_spec_core::spec::ModalityType::Text, model_spec_core::spec::ModalityType::Image],
+                output: vec![model_spec_core::spec::ModalityType::Text],
+            },
+            tool_call: false,
+            temperature: false,
+            structured_output: None,
+            knowledge: None,
+            release_date: None,
+            last_updated: None,
+            reasoning: false,
+            open_weights: false,
+            cost: None,
+        };
+
+        assert!(ContentPart::Text { text: "hi".to_string() }.is_supported_by(&model));
+        assert!(ContentPart::ImageUrl {
+            url: "https://x.com/img.png".to_string(),
+            detail: None
+        }
+        .is_supported_by(&model));
+        assert!(!ContentPart::AudioBase64 {
+            media_type: "audio/mp3".to_string(),
+            data: "abc".to_string()
+        }
+        .is_supported_by(&model));
     }
 }

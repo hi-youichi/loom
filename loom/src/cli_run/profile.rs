@@ -533,7 +533,7 @@ mod tests {
     #[test]
     fn builtin_dev_agent_loaded_with_embedded_instructions() {
         let opts = RunOptions {
-            message: String::new(),
+            message: crate::message::UserContent::Text(String::new()),
             working_folder: None,
             session_id: None,
             cancellation: None,
@@ -568,7 +568,7 @@ mod tests {
     #[test]
     fn builtin_agent_builder_loaded_with_embedded_instructions() {
         let opts = RunOptions {
-            message: String::new(),
+            message: crate::message::UserContent::Text(String::new()),
             working_folder: None,
             session_id: None,
             cancellation: None,
@@ -878,7 +878,7 @@ tools:
         std::env::set_var("LOOM_HOME", dir.path());
 
         let opts = RunOptions {
-            message: String::new(),
+            message: crate::message::UserContent::Text(String::new()),
             working_folder: None,
             session_id: None,
             cancellation: None,
@@ -919,7 +919,7 @@ tools:
         std::env::set_var("LOOM_HOME", dir.path());
 
         let opts = RunOptions {
-            message: String::new(),
+            message: crate::message::UserContent::Text(String::new()),
             working_folder: None,
             session_id: None,
             cancellation: None,

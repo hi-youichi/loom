@@ -7,6 +7,7 @@ use std::io::Write;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 use cli::{run_cli_turn, RunCmd, RunError, RunOptions, RunOutput, StreamOut};
+use loom::UserContent;
 
 use crate::output::{emit_run_output, OutputConfig};
 use crate::Command;
@@ -53,7 +54,7 @@ pub async fn run_repl_loop(
         };
 
         let mut opts = base_opts.clone();
-        opts.message = line;
+        opts.message = UserContent::Text(line);
 
         match run_one_turn(&opts, cmd, stream_out.clone()).await {
             Ok(output_value) => emit_run_output(

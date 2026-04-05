@@ -6,12 +6,21 @@
 //! one code path.
 
 use async_openai::types::chat::{
+    ChatCompletionRequestMessageContentPartImage, ChatCompletionRequestMessageContentPartText,
     ChatCompletionMessageToolCall, ChatCompletionMessageToolCalls,
     ChatCompletionRequestAssistantMessage, ChatCompletionRequestAssistantMessageContent,
     ChatCompletionRequestMessage, ChatCompletionRequestSystemMessage,
     ChatCompletionRequestToolMessage, ChatCompletionRequestToolMessageContent,
-    ChatCompletionRequestUserMessage, ChatCompletionTool, ChatCompletionToolChoiceOption,
-    ChatCompletionTools, CreateChatCompletionRequestArgs, FunctionCall, FunctionObject,
+    ChatCompletionRequestUserMessage, ChatCompletionRequestUserMessageContent,
+    ChatCompletionRequestUserMessageContentPart,
+    ChatCompletionTool,
+    ChatCompletionToolChoiceOption,
+    ChatCompletionTools,
+    CreateChatCompletionRequestArgs,
+    FunctionCall,
+    FunctionObject,
+    ImageUrl,
+    ImageDetail,
     ToolChoiceOptions,
 };
 
@@ -23,15 +32,86 @@ use tracing::debug;
 
 /// Convert internal `Message` list to OpenAI request messages.
 pub(super) fn messages_to_openai(messages: &[Message]) -> Vec<ChatCompletionRequestMessage> {
+    use crate::message::{ContentPart, UserContent};
+
     messages
         .iter()
         .map(|m| match m {
             Message::System(s) => ChatCompletionRequestMessage::System(
                 ChatCompletionRequestSystemMessage::from(s.as_str()),
             ),
-            Message::User(s) => ChatCompletionRequestMessage::User(
-                ChatCompletionRequestUserMessage::from(s.as_str()),
-            ),
+            Message::User(content) => {
+                let msg = match content {
+                    UserContent::Text(s) => ChatCompletionRequestUserMessage::from(s.as_str()),
+                    UserContent::Multimodal(parts) => {
+                        let content_parts: Vec<
+                            ChatCompletionRequestUserMessageContentPart,
+                        > = parts
+                            .iter()
+                            .map(|p| match p {
+                                ContentPart::Text { text } => {
+                                    ChatCompletionRequestUserMessageContentPart::Text(
+                                        ChatCompletionRequestMessageContentPartText {
+                                            text: text.clone(),
+                                        },
+                                    )
+                                }
+                                ContentPart::ImageUrl { url, detail } => {
+                                    let image_url = ImageUrl {
+                                        url: url.clone(),
+                                        detail: detail.as_ref().map(|d| match d.as_str() {
+                                            "low" => ImageDetail::Low,
+                                            "auto" => ImageDetail::Auto,
+                                            _ => ImageDetail::High,
+                                        }),
+                                    };
+                                    ChatCompletionRequestUserMessageContentPart::ImageUrl(
+                                        ChatCompletionRequestMessageContentPartImage {
+                                            image_url,
+                                        },
+                                    )
+                                }
+                                ContentPart::ImageBase64 { media_type, data } => {
+                                    let data_uri = format!("data:{};base64,{}", media_type, data);
+                                    ChatCompletionRequestUserMessageContentPart::ImageUrl(
+                                        ChatCompletionRequestMessageContentPartImage {
+                                            image_url: ImageUrl {
+                                                url: data_uri,
+                                                detail: None,
+                                            },
+                                        },
+                                    )
+                                }
+                                // 其他模态降级处理：转为文本说明并记录警告
+                                ContentPart::AudioBase64 { .. }
+                                | ContentPart::VideoUrl { .. }
+                                | ContentPart::VideoBase64 { .. }
+                                | ContentPart::PdfUrl { .. }
+                                | ContentPart::PdfBase64 { .. }
+                                | ContentPart::File { .. } => {
+                                    let modality = p.modality();
+                                    tracing::warn!(
+                                        modality = ?modality,
+                                        "Modality not supported by OpenAI Chat API, converting to placeholder. \
+                                        The original content will NOT be sent to the model."
+                                    );
+                                    ChatCompletionRequestUserMessageContentPart::Text(
+                                        ChatCompletionRequestMessageContentPartText {
+                                            text: format!(
+                                                "[[[{:?} 未被当前模型支持，内容已省略]]]",
+                                                modality
+                                            ),
+                                        },
+                                    )
+                                }
+                            })
+                            .collect();
+
+                        ChatCompletionRequestUserMessage::from(ChatCompletionRequestUserMessageContent::Array(content_parts))
+                    }
+                };
+                ChatCompletionRequestMessage::User(msg)
+            }
             Message::Assistant(payload) => {
                 let tool_calls: Option<Vec<ChatCompletionMessageToolCalls>> =
                     if payload.tool_calls.is_empty() {
@@ -109,7 +189,7 @@ pub(super) fn build_chat_request(
                     format!("idx={idx} role=system content_len={}", content.len())
                 }
                 Message::User(content) => {
-                    format!("idx={idx} role=user content_len={}", content.len())
+                    format!("idx={idx} role=user content_len={}", content.as_text().len())
                 }
                 Message::Assistant(payload) => format!(
                     "idx={idx} role=assistant tool_calls={} content_len={} reasoning_len={}",
@@ -206,7 +286,7 @@ mod tests {
     fn messages_to_openai_maps_all_roles() {
         let req = messages_to_openai(&[
             Message::System("s".to_string()),
-            Message::User("u".to_string()),
+            Message::user("u"),
             Message::assistant("a"),
         ]);
         assert_eq!(req.len(), 3);

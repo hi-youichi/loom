@@ -76,7 +76,7 @@ pub(super) async fn prepare_run(
     let initial_user_appended = try_append_initial_user_message(
         user_message_store,
         r.thread_id.as_deref(),
-        r.message.as_str(),
+        r.message.as_text().as_ref(),
     )
     .await;
 

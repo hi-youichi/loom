@@ -128,7 +128,7 @@ mod tests {
         ];
         BacktrackNode::pop_last_round_messages(&mut messages);
         assert_eq!(messages.len(), 1);
-        assert!(matches!(messages.first(), Some(Message::User(s)) if s == "u1"));
+        assert!(matches!(messages.first(), Some(Message::User(UserContent::Text(s))) if s == "u1"));
     }
 
     #[tokio::test]

@@ -90,8 +90,8 @@ impl Tool for PowerShellTool {
             description: Some(
                 "Executes a PowerShell command on Windows (WMI, Registry, .NET, COM). \
                  Uses pwsh when installed, else Windows PowerShell 5.1. \
-                 For git/npm/cargo and cross-platform shell, prefer the bash tool. \
-                 Timeout is in milliseconds (default 120000), same as bash."
+                 This is the primary shell tool on Windows (bash is not available on Windows). \
+                 Timeout is in milliseconds (default 120000)."
                     .to_string(),
             ),
             input_schema: json!({
@@ -246,6 +246,7 @@ async fn run_powershell_command(
     if let Some(dir) = workdir {
         cmd.current_dir(dir);
     }
+    cmd.stdin(std::process::Stdio::piped());
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
 

@@ -3,7 +3,7 @@
 //! Uses a heuristic (~4 chars per token) and, when available, hybrid strategy
 //! with last LLM usage + delta for messages after last think.
 
-use crate::message::Message;
+use crate::message::{ContentPart, Message, UserContent};
 
 /// Heuristic: approximate characters per token for English/mixed text (used by `estimate_tokens`).
 const CHARS_PER_TOKEN: u32 = 4;
@@ -13,7 +13,25 @@ pub fn estimate_tokens(messages: &[Message]) -> u32 {
     let total: usize = messages
         .iter()
         .map(|m| match m {
-            Message::System(s) | Message::User(s) => s.len(),
+            Message::System(s) => s.len(),
+            Message::User(c) => match c {
+                UserContent::Text(s) => s.len(),
+                UserContent::Multimodal(parts) => {
+                    parts
+                        .iter()
+                        .map(|p| match p {
+                            ContentPart::Text { text } => text.len(),
+                            ContentPart::ImageUrl { .. } | ContentPart::ImageBase64 { .. } => 4000,
+                            ContentPart::AudioBase64 { .. } => 2000,
+                            ContentPart::VideoUrl { .. } | ContentPart::VideoBase64 { .. } => {
+                                8000
+                            }
+                            ContentPart::PdfUrl { .. } | ContentPart::PdfBase64 { .. } => 4000,
+                            ContentPart::File { .. } => 2000,
+                        })
+                        .sum::<usize>()
+                }
+            },
             Message::Assistant(p) => {
                 p.content.len()
                     + p
@@ -98,7 +116,7 @@ mod tests {
     #[test]
     fn estimate_tokens_uses_four_chars_per_token() {
         // Formula: total_chars / 4 (integer division). 8 chars → 8/4 = 2 tokens.
-        let msgs = vec![Message::User("12345678".to_string())];
+        let msgs = vec![Message::user("12345678")];
         assert_eq!(estimate_tokens(&msgs), 2);
     }
 
@@ -108,7 +126,7 @@ mod tests {
         // 2 + 4 + 4 = 10 chars → 10/4 = 2 tokens.
         let msgs = vec![
             Message::System("ab".to_string()),
-            Message::User("cdef".to_string()),
+            Message::user("cdef"),
             Message::assistant("ghij"),
         ];
         assert_eq!(estimate_tokens(&msgs), 2);
@@ -120,7 +138,7 @@ mod tests {
     fn is_overflow_without_usage_uses_estimate_only() {
         // No usage / no message_count_after_last_think → current = estimate_tokens(messages).
         // 400 chars → 100 tokens. Overflow when current + reserve > max: 100 + 10 = 110 > 100 → true.
-        let messages = vec![Message::User("x".repeat(400))];
+        let messages = vec![Message::user("x".repeat(400))];
         let input = ContextWindowCheck {
             messages: &messages,
             usage: None,
@@ -134,7 +152,7 @@ mod tests {
     #[test]
     fn is_overflow_under_limit_no_overflow() {
         // Same formula; 100 chars → 25 tokens. 25 + 10 = 35 < 1000 → no overflow.
-        let messages = vec![Message::User("x".repeat(100))];
+        let messages = vec![Message::user("x".repeat(100))];
         let input = ContextWindowCheck {
             messages: &messages,
             usage: None,
@@ -151,8 +169,8 @@ mod tests {
         // current = (50 + 10) + estimate_tokens(messages[1..]) = 60 + estimate(["new"]) = 60 + (3/4) = 60 + 0 = 60.
         // 60 + 10 = 70 < 100 → no overflow. Demonstrates that messages after last Think are estimated, not double-counted.
         let messages = vec![
-            Message::User("old".to_string()),
-            Message::User("new".to_string()),
+            Message::user("old"),
+            Message::user("new"),
         ];
         let input = ContextWindowCheck {
             messages: &messages,

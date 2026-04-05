@@ -46,7 +46,7 @@ impl Tool for BatchTool {
                         "items": {
                             "type": "object",
                             "properties": {
-                                "tool": { "type": "string", "description": "Tool name (e.g. read, grep, bash)." },
+                                "tool": { "type": "string", "description": "Tool name (e.g. read, grep, bash/powershell)." },
                                 "parameters": { "type": "object", "description": "Arguments for the tool." }
                             },
                             "required": ["tool", "parameters"]

@@ -53,9 +53,6 @@ pub struct ProviderDef {
     /// Provider implementation type: `"openai"` (default), `"openai_compat"`, or `"bigmodel"` (alias; mapped to `LLM_PROVIDER`).
     #[serde(rename = "type")]
     pub provider_type: Option<String>,
-    /// Chat Completions `tool_choice`: `auto`, `none`, or `required` (mapped to `OPENAI_TOOL_CHOICE`).
-    #[serde(default)]
-    pub tool_choice: Option<String>,
     /// Sampling temperature (mapped to `OPENAI_TEMPERATURE` as a decimal string).
     #[serde(default)]
     pub temperature: Option<f64>,
@@ -64,7 +61,6 @@ pub struct ProviderDef {
 impl ProviderDef {
     /// Returns env key→value pairs derived from this provider's settings.
     /// Keys: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `MODEL`, `LLM_PROVIDER` (when type is set),
-    /// `OPENAI_TOOL_CHOICE` (when `tool_choice` is set and non-empty after trim),
     /// `OPENAI_TEMPERATURE` (when `temperature` is set and finite).
     pub fn to_env_map(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
@@ -79,12 +75,6 @@ impl ProviderDef {
         }
         if let Some(ref v) = self.provider_type {
             map.insert("LLM_PROVIDER".to_string(), v.clone());
-        }
-        if let Some(ref v) = self.tool_choice {
-            let t = v.trim();
-            if !t.is_empty() {
-                map.insert("OPENAI_TOOL_CHOICE".to_string(), t.to_string());
-            }
         }
         if let Some(t) = self.temperature {
             if t.is_finite() {
@@ -307,7 +297,6 @@ tool_choice = "required"
             base_url: None,
             model: None,
             provider_type: None,
-            tool_choice: None,
             temperature: Some(0.25),
         };
         let m = p.to_env_map();
@@ -325,7 +314,6 @@ tool_choice = "required"
             base_url: None,
             model: None,
             provider_type: None,
-            tool_choice: None,
             temperature: Some(f64::NAN),
         };
         assert!(!p.to_env_map().contains_key("OPENAI_TEMPERATURE"));

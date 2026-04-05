@@ -340,8 +340,9 @@ mod tests {
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn default_opts() -> RunOptions {
+        use crate::message::UserContent;
         RunOptions {
-            message: String::new(),
+            message: UserContent::Text(String::new()),
             working_folder: None,
             session_id: None,
             cancellation: None,
@@ -589,7 +590,7 @@ mod tests {
         std::env::set_var("LOOM_HOME", dir.path());
 
         let opts = RunOptions {
-            message: "hello".to_string(),
+            message: crate::message::UserContent::Text("hello".to_string()),
             agent: Some("dev".to_string()),
             ..default_opts()
         };
