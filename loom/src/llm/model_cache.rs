@@ -183,20 +183,19 @@ pub async fn fetch_provider_models(
     let api_key = api_key.unwrap_or("");
 
     match provider_type {
-        "openai_compat" | "bigmodel" => {
-            use crate::llm::ChatOpenAICompat;
-            let client = ChatOpenAICompat::with_config(base_url, api_key, "dummy-model");
-            client.list_models().await
-        }
-        _ => {
-            // Default to OpenAI-compatible API
+        "openai" => {
             use async_openai::config::OpenAIConfig;
             use crate::llm::ChatOpenAI;
-            
+
             let config = OpenAIConfig::new()
                 .with_api_key(api_key)
                 .with_api_base(base_url);
             let client = ChatOpenAI::with_config(config, "dummy-model");
+            client.list_models().await
+        }
+        _ => {
+            use crate::llm::ChatOpenAICompat;
+            let client = ChatOpenAICompat::with_config(base_url, api_key, "dummy-model");
             client.list_models().await
         }
     }

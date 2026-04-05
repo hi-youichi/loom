@@ -244,7 +244,17 @@ impl ModelRegistry {
             };
 
             for model_id in spec_provider.models.keys() {
-                let entry = ModelEntry::from_provider_config(provider, model_id);
+                let mut entry = ModelEntry::from_provider_config(provider, model_id);
+                if entry.base_url.is_none() {
+                    if let Some(ref api) = spec_provider.api {
+                        entry.base_url = Some(api.clone());
+                    }
+                }
+                if entry.provider_type.is_none()
+                    && !entry.provider.eq_ignore_ascii_case("openai")
+                {
+                    entry.provider_type = Some("openai_compat".to_string());
+                }
                 if seen_ids.insert(entry.id.clone()) {
                     all_models.push(entry);
                 }
@@ -291,7 +301,19 @@ impl ModelRegistry {
             return Ok(None);
         }
 
-        Ok(Some(ModelEntry::from_provider_config(provider_cfg, model_id)))
+        let mut entry = ModelEntry::from_provider_config(provider_cfg, model_id);
+        if entry.base_url.is_none() {
+            if let Some(ref api) = spec_provider.api {
+                entry.base_url = Some(api.clone());
+            }
+        }
+        if entry.provider_type.is_none()
+            && !entry.provider.eq_ignore_ascii_case("openai")
+        {
+            entry.provider_type = Some("openai_compat".to_string());
+        }
+
+        Ok(Some(entry))
     }
 
     fn normalize_provider_name(name: &str) -> String {
@@ -383,29 +405,16 @@ impl Default for ModelRegistry {
 /// ```
 pub fn create_llm_client(entry: &ModelEntry) -> Result<Box<dyn LlmClient>, AgentError> {
     let model = entry.name.clone();
-    let provider_type = entry.provider_type.as_deref().unwrap_or("openai");
+    let provider_type = entry.provider_type.as_deref().unwrap_or_else(|| {
+        if entry.provider.eq_ignore_ascii_case("openai") {
+            "openai"
+        } else {
+            "openai_compat"
+        }
+    });
 
     let client: Box<dyn LlmClient> = match provider_type {
-        "openai_compat" | "bigmodel" => {
-            let base_url = entry
-                .base_url
-                .clone()
-                .ok_or_else(|| AgentError::ExecutionFailed("base_url is required for openai_compat / bigmodel".to_string()))?;
-            let api_key = entry
-                .api_key
-                .clone()
-                .ok_or_else(|| AgentError::ExecutionFailed("api_key is required for openai_compat / bigmodel".to_string()))?;
-            let mut client = ChatOpenAICompat::with_config(base_url, api_key, model);
-            if let Some(temp) = entry.temperature {
-                client = client.with_temperature(temp);
-            }
-            if let Some(mode) = entry.tool_choice {
-                client = client.with_tool_choice(mode);
-            }
-            Box::new(client)
-        }
-        _ => {
-            // Default to OpenAI-compatible client
+        "openai" => {
             let mut config = OpenAIConfig::new();
             if let Some(ref api_key) = entry.api_key {
                 config = config.with_api_key(api_key);
@@ -415,6 +424,29 @@ pub fn create_llm_client(entry: &ModelEntry) -> Result<Box<dyn LlmClient>, Agent
                 config = config.with_api_base(base_url);
             }
             let mut client = ChatOpenAI::with_config(config, model);
+            if let Some(temp) = entry.temperature {
+                client = client.with_temperature(temp);
+            }
+            if let Some(mode) = entry.tool_choice {
+                client = client.with_tool_choice(mode);
+            }
+            Box::new(client)
+        }
+        _ => {
+            let api_key = entry
+                .api_key
+                .clone()
+                .ok_or_else(|| AgentError::ExecutionFailed(format!(
+                    "api_key is required for provider '{}'", provider_type
+                )))?;
+            let base_url = entry
+                .base_url
+                .clone()
+                .or_else(|| std::env::var("OPENAI_BASE_URL").ok())
+                .ok_or_else(|| AgentError::ExecutionFailed(format!(
+                    "base_url (or OPENAI_BASE_URL) is required for non-openai provider '{}'", provider_type
+                )))?;
+            let mut client = ChatOpenAICompat::with_config(base_url, api_key, model);
             if let Some(temp) = entry.temperature {
                 client = client.with_temperature(temp);
             }

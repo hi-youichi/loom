@@ -1,6 +1,7 @@
 //! Builds the default LLM from ReactBuildConfig (OpenAI or OpenAI-compat HTTP client).
 //!
-//! Default is OpenAI. Use the compat client when `LLM_PROVIDER=openai_compat` or `=bigmodel`.
+//! Only `LLM_PROVIDER=openai` uses the native `async_openai` client; all other providers
+//! (including the default when the model prefix is not `openai/`) use `ChatOpenAICompat`.
 
 use crate::error::AgentError;
 use crate::llm::{ChatOpenAI, ChatOpenAICompat, ModelEntry};
@@ -134,7 +135,13 @@ pub(crate) async fn build_default_llm_with_tool_source(
     tool_source: &dyn ToolSource,
 ) -> Result<Box<dyn LlmClient>, BuildRunnerError> {
     let entry = model_entry_from_config(config)?;
-    let provider_type = entry.provider_type.as_deref().unwrap_or("openai");
+    let provider_type = entry.provider_type.as_deref().unwrap_or_else(|| {
+        if entry.provider.eq_ignore_ascii_case("openai") {
+            "openai"
+        } else {
+            "openai_compat"
+        }
+    });
 
     let tools = tool_source.list_tools().await.map_err(|e| {
         BuildRunnerError::Context(AgentError::ExecutionFailed(format!(
@@ -144,25 +151,7 @@ pub(crate) async fn build_default_llm_with_tool_source(
     })?;
 
     match provider_type {
-        "openai_compat" | "bigmodel" => {
-            let base_url = entry.base_url.clone().ok_or_else(|| {
-                BuildRunnerError::Context(AgentError::ExecutionFailed(
-                    "OPENAI_BASE_URL is required for OpenAI-compatible providers".to_string(),
-                ))
-            })?;
-            let api_key = entry.api_key.clone().unwrap();
-            tracing::debug!("build_default_llm: OpenAI-compat with tools");
-            let mut client =
-                ChatOpenAICompat::with_config(base_url, api_key, entry.name).with_tools(tools);
-            if let Some(mode) = entry.tool_choice {
-                client = client.with_tool_choice(mode);
-            }
-            if let Some(t) = entry.temperature {
-                client = client.with_temperature(t);
-            }
-            Ok(Box::new(client) as Box<dyn LlmClient>)
-        }
-        _ => {
+        "openai" => {
             let mut openai_config = async_openai::config::OpenAIConfig::new();
             if let Some(ref api_key) = entry.api_key {
                 openai_config = openai_config.with_api_key(api_key);
@@ -173,6 +162,30 @@ pub(crate) async fn build_default_llm_with_tool_source(
             }
             tracing::debug!("build_default_llm: OpenAI with tools");
             let mut client = ChatOpenAI::with_config(openai_config, entry.name).with_tools(tools);
+            if let Some(mode) = entry.tool_choice {
+                client = client.with_tool_choice(mode);
+            }
+            if let Some(t) = entry.temperature {
+                client = client.with_temperature(t);
+            }
+            Ok(Box::new(client) as Box<dyn LlmClient>)
+        }
+        _ => {
+            let base_url = entry.base_url.clone()
+                .or_else(|| std::env::var("OPENAI_BASE_URL").ok())
+                .ok_or_else(|| {
+                    BuildRunnerError::Context(AgentError::ExecutionFailed(format!(
+                        "OPENAI_BASE_URL is required for non-openai provider '{}'", provider_type
+                    )))
+                })?;
+            let api_key = entry.api_key.clone().ok_or_else(|| {
+                BuildRunnerError::Context(AgentError::ExecutionFailed(format!(
+                    "api_key is required for provider '{}'", provider_type
+                )))
+            })?;
+            tracing::debug!(provider_type = %provider_type, "build_default_llm: OpenAI-compat with tools");
+            let mut client =
+                ChatOpenAICompat::with_config(base_url, api_key, entry.name).with_tools(tools);
             if let Some(mode) = entry.tool_choice {
                 client = client.with_tool_choice(mode);
             }
