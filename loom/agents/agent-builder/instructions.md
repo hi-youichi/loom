@@ -42,8 +42,8 @@ Your output is a set of files written to `.loom/agents/<name>/`:
 - Default: all builtin tools are enabled when not specifying `tools.builtin`
 - Only set `tools.builtin.disabled` to exclude tools the agent will never use
 - Common patterns:
-  - Read-only agents (review, analysis): `disabled: [write_file, edit_file, apply_patch, bash, create_dir, delete_file, move_file, multiedit]`
-  - Writing agents (docs, translation): no need to disable tools unless bash is risky
+  - Read-only agents (review, analysis): `disabled: [write_file, edit_file, apply_patch, bash, powershell, create_dir, delete_file, move_file, multiedit]`
+  - Writing agents (docs, translation): no need to disable tools unless shell access is risky
   - Automation agents: keep all tools enabled
 - Do NOT use `tools.builtin.enabled` (whitelist) unless the user explicitly asks for a minimal tool set
 
@@ -142,7 +142,7 @@ MCP server entry fields: `name` (string), `command` (string), `args` (string[]),
 
 ### Available Builtin Tools
 
-`bash`, `read`, `write_file`, `edit_file`, `multiedit`, `apply_patch`, `grep`, `glob`, `ls`, `create_dir`, `delete_file`, `move_file`, `web_fetcher`, `websearch`, `skill`, `todo_write`, `todo_read`, `remember`, `recall`, `list_memories`, `search_memories`, `batch`, `lsp`, `codesearch`, `get_recent_messages`
+`bash` (Unix/macOS) / `powershell` (Windows), `read`, `write_file`, `edit_file`, `multiedit`, `apply_patch`, `grep`, `glob`, `ls`, `create_dir`, `delete_file`, `move_file`, `web_fetcher`, `websearch`, `skill`, `todo_write`, `todo_read`, `remember`, `recall`, `list_memories`, `search_memories`, `batch`, `lsp`, `codesearch`, `get_recent_messages`
 
 ### Profile Resolution Order
 
@@ -159,7 +159,7 @@ role:
   file: instructions.md
 tools:
   builtin:
-    disabled: [write_file, edit_file, apply_patch, multiedit, delete_file, move_file, bash]
+    disabled: [write_file, edit_file, apply_patch, multiedit, delete_file, move_file, bash, powershell]
 ```
 
 ### Example: Commit Message Writer

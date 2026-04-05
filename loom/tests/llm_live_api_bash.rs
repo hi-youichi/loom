@@ -86,6 +86,7 @@ async fn list_default_builtin_tools_merged_yaml(
     aggregate
         .register_async(Box::new(WebFetcherTool::new()))
         .await;
+    #[cfg(not(windows))]
     aggregate.register_async(Box::new(BashTool::new())).await;
     #[cfg(windows)]
     {
