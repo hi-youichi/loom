@@ -222,9 +222,30 @@ impl Agent for LoomAcpAgent {
             agent_client_protocol::Error::new(-32602, "content_blocks parse failed")
         })?;
 
+        let content_type = match &user_content {
+            loom::message::UserContent::Text(_) => "text",
+            loom::message::UserContent::Multimodal(parts) => {
+                let has_image = parts
+                    .iter()
+                    .any(|p| matches!(p, loom::message::ContentPart::ImageBase64 { .. }));
+                let has_audio = parts
+                    .iter()
+                    .any(|p| matches!(p, loom::message::ContentPart::AudioBase64 { .. }));
+                if has_image && has_audio {
+                    "multimodal(image+audio)"
+                } else if has_image {
+                    "multimodal(image)"
+                } else if has_audio {
+                    "multimodal(audio)"
+                } else {
+                    "multimodal"
+                }
+            }
+        };
         tracing::info!(
             session_id = %args.session_id,
-            content = ?user_content,
+            content_type = content_type,
+            text_len = user_content.as_text().len(),
             "User prompt"
         );
 

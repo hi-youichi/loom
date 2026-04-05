@@ -299,6 +299,11 @@ pub fn content_blocks_to_user_content(
                         url: uri.clone(),
                         detail: None,
                     });
+                } else {
+                    tracing::warn!(
+                        mime_type = %img.mime_type,
+                        "ACP Image with empty data and no URI, skipping"
+                    );
                 }
             }
 
@@ -330,11 +335,24 @@ pub fn content_blocks_to_user_content(
                         });
                     }
                     EmbeddedResourceResource::BlobResourceContents(blob_res) => {
-                        tracing::debug!(
-                            uri = %blob_res.uri,
-                            mime = ?blob_res.mime_type,
-                            "Skipping binary embedded resource"
-                        );
+                        let mime = blob_res.mime_type.as_deref().unwrap_or("");
+                        if mime.starts_with("image/") {
+                            parts.push(ContentPart::ImageBase64 {
+                                media_type: mime.to_string(),
+                                data: blob_res.blob.clone(),
+                            });
+                        } else if mime.starts_with("audio/") {
+                            parts.push(ContentPart::AudioBase64 {
+                                media_type: mime.to_string(),
+                                data: blob_res.blob.clone(),
+                            });
+                        } else {
+                            tracing::debug!(
+                                uri = %blob_res.uri,
+                                mime = ?blob_res.mime_type,
+                                "Skipping binary embedded resource"
+                            );
+                        }
                     }
                     _ => {
                         tracing::debug!("Unknown embedded resource type, skipping");
