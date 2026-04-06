@@ -84,9 +84,44 @@ pub fn markdown_notice(title: &str, body: &str) -> FormattedMessage {
     FormattedMessage::markdown_v2_rendered(rendered, fallback)
 }
 
+fn strip_outer_code_fence(input: &str) -> &str {
+    let trimmed = input.trim();
+    if !trimmed.starts_with("```") {
+        return input;
+    }
+    let after_open = &trimmed[3..];
+    let newline_pos = match after_open.find('\n') {
+        Some(p) => p,
+        None => return input,
+    };
+    let lang_tag = after_open[..newline_pos].trim();
+    if lang_tag != "markdown" && lang_tag != "md" {
+        return input;
+    }
+    let content_start = 3 + newline_pos + 1;
+    if !trimmed.ends_with("```") {
+        return input;
+    }
+    let close_pos = trimmed.len() - 3;
+    if close_pos <= content_start {
+        return input;
+    }
+    let before_close = &trimmed[close_pos..];
+    if before_close != "```" {
+        return input;
+    }
+    let inner = &trimmed[content_start..close_pos];
+    if inner.contains("```") {
+        return input;
+    }
+    inner
+}
+
 /// Convert markdown to Telegram MarkdownV2 format.
 /// Supports: **bold**, *italic*, `code`, ```code blocks```, [links](url)
 pub fn markdown_to_telegram_v2(markdown: &str) -> String {
+    let markdown = strip_outer_code_fence(markdown);
+
     let mut result = String::with_capacity(markdown.len() * 2);
     let mut i = 0;
     let chars: Vec<char> = markdown.chars().collect();
@@ -358,5 +393,43 @@ mod tests {
     #[test]
     fn bold_with_special_chars() {
         assert_eq!(markdown_to_telegram_v2("**price is $10.**"), "*price is $10\\.*");
+    }
+
+    #[test]
+    fn strips_outer_markdown_fence() {
+        let input = "```markdown\n# Title\n\n**bold** text\n```\n";
+        let result = markdown_to_telegram_v2(input);
+        assert!(!result.contains("```markdown"));
+        assert!(result.contains("\\# Title"));
+        assert!(result.contains("*bold*"));
+    }
+
+    #[test]
+    fn does_not_strip_plain_fence() {
+        let input = "```\n# Title\n```\n";
+        let result = markdown_to_telegram_v2(input);
+        assert!(result.contains("```"));
+    }
+
+    #[test]
+    fn does_not_strip_if_inner_has_code_fences() {
+        let input = "```markdown\nsome text\n```\ncode here\n```inner```\n";
+        let result = markdown_to_telegram_v2(input);
+        assert!(result.contains("```"));
+    }
+
+    #[test]
+    fn does_not_strip_non_fence_input() {
+        let input = "**bold** text";
+        let result = markdown_to_telegram_v2(input);
+        assert_eq!(result, "*bold* text");
+    }
+
+    #[test]
+    fn strips_fence_with_leading_trailing_whitespace() {
+        let input = "\n\n```markdown\n**hello**\n```\n\n";
+        let result = markdown_to_telegram_v2(input);
+        assert!(result.contains("*hello*"));
+        assert!(!result.contains("```markdown"));
     }
 }
