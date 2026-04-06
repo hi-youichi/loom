@@ -104,15 +104,7 @@ impl Tool for CreateTerminalTool {
             .await
             .map_err(|e| ToolSourceError::Transport(format!("Failed to create terminal: {}", e)))?;
 
-        let result = serde_json::json!({
-            "terminal_id": terminal_id,
-            "message": "Terminal created successfully"
-        });
-
-        Ok(ToolCallContent::text(
-            serde_json::to_string_pretty(&result)
-                .unwrap_or_else(|_| "Terminal created".to_string()),
-        ))
+        Ok(ToolCallContent::terminal(&terminal_id))
     }
 }
 

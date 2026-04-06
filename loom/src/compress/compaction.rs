@@ -156,7 +156,7 @@ pub async fn compact(
 }
 
 /// Build the prompt sent to the LLM: instructions on what to summarize, then the message list.
-fn build_summary_prompt(msgs: &[Message]) -> String {
+pub fn build_summary_prompt(msgs: &[Message]) -> String {
     // Instruction lines telling the LLM what to focus on
     let mut parts = vec![
         "Summarize the following conversation. Focus on:".to_string(),

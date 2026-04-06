@@ -8,6 +8,7 @@ use crate::command::{try_handle_model_command_input, CommandContext, CommandDisp
 use crate::download::{is_bot_mentioned, is_reply_to_bot};
 use crate::error::BotError;
 use crate::handler_deps::HandlerDeps;
+use loom::command as loom_command;
 use teloxide::types::Message;
 
 pub struct MessageContext<'a> {
@@ -119,6 +120,29 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
     if let Some(text) = ctx.msg.text() {
         tracing::info!("Text: {}", text);
 
+        // 1. Try loom core commands (/reset, /clear, /new)
+        if let Some(cmd) = loom_command::parse(text) {
+            match cmd {
+                loom_command::Command::ResetContext => {
+                    let thread_id = format!("telegram_{}", ctx.chat_id());
+                    ctx.deps.session.reset(&thread_id).await?;
+                    ctx.deps.sender.send_text(ctx.chat_id(), "Context cleared.").await?;
+                    return Ok(());
+                }
+                loom_command::Command::Compact { .. } | loom_command::Command::Summarize => {
+                    ctx.deps
+                        .sender
+                        .send_text(ctx.chat_id(), "Command not yet supported in Telegram bot.")
+                        .await?;
+                    return Ok(());
+                }
+                loom_command::Command::Models { .. } | loom_command::Command::ModelsUse { .. } => {
+                    // fall through to existing model handling below
+                }
+            }
+        }
+
+        // 2. Bot-specific commands (/status, /model via dispatcher)
         let cmd_ctx = CommandContext {
             chat_id: ctx.chat_id(),
             deps: ctx.deps,
@@ -129,6 +153,7 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
             return result;
         }
 
+        // 3. /models handling (existing)
         if try_handle_model_command_input(&cmd_ctx, text).await? {
             return Ok(());
         }

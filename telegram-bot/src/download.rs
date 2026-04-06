@@ -324,13 +324,31 @@ pub async fn download_video(
     Ok((path, metadata))
 }
 
-/// Reset a session by deleting all checkpoints
+/// Reset a session by deleting all checkpoints.
+///
+/// Opens with WAL mode to match `SqliteSaver` and ensure the DELETE is visible to
+/// subsequent WAL-mode reads.
 pub fn reset_session(thread_id: &str) -> Result<usize, BotError> {
     let db_path = loom::memory::default_memory_db_path();
+    tracing::info!(
+        thread_id = %thread_id,
+        db_path = %db_path.display(),
+        "reset_session: deleting checkpoints"
+    );
 
     let conn = rusqlite::Connection::open(&db_path)?;
+    conn.execute_batch("PRAGMA journal_mode=WAL;")?;
 
-    let count = conn.execute("DELETE FROM checkpoints WHERE thread_id = ?1", [thread_id])?;
+    let count = conn.execute(
+        "DELETE FROM checkpoints WHERE thread_id = ?1",
+        [thread_id],
+    )?;
+
+    tracing::info!(
+        thread_id = %thread_id,
+        deleted = count,
+        "reset_session: done"
+    );
 
     Ok(count)
 }

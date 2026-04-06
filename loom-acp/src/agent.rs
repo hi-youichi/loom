@@ -11,8 +11,8 @@ use agent_client_protocol::{
     InitializeRequest, InitializeResponse, ListSessionsRequest, ListSessionsResponse,
     LoadSessionRequest, LoadSessionResponse, NewSessionRequest, NewSessionResponse, PromptRequest,
     PromptResponse, SessionId, SessionNotification, SetSessionConfigOptionRequest,
-    SetSessionConfigOptionResponse, StopReason, ToolCall, ToolCallId, ToolCallStatus,
-    ToolCallUpdate, ToolCallUpdateFields,
+    SetSessionConfigOptionResponse, StopReason, Terminal, TerminalId, ToolCall, ToolCallId,
+    ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields,
 };
 use loom::memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
 use loom::message::Message;
@@ -221,6 +221,22 @@ impl Agent for LoomAcpAgent {
         let user_content = content_blocks_to_user_content(args.prompt.as_slice()).map_err(|_| {
             agent_client_protocol::Error::new(-32602, "content_blocks parse failed")
         })?;
+
+        if let loom::message::UserContent::Text(ref text) = user_content {
+            if let Some(cmd) = loom::command::parse(text) {
+                match cmd {
+                    loom::command::Command::ResetContext => {
+                        return Ok(PromptResponse::new(StopReason::EndTurn));
+                    }
+                    loom::command::Command::Models { .. } | loom::command::Command::ModelsUse { .. } => {
+                        // ACP handles models via SetSessionConfigOption, not here
+                    }
+                    _ => {
+                        return Ok(PromptResponse::new(StopReason::EndTurn));
+                    }
+                }
+            }
+        }
 
         let content_type = match &user_content {
             loom::message::UserContent::Text(_) => "text",
@@ -494,6 +510,11 @@ impl Agent for LoomAcpAgent {
                                         )
                                         .old_text(old_text.clone()),
                                     ),
+                                    loom::tool_source::ToolCallContent::Terminal { terminal_id } => {
+                                        agent_client_protocol::ToolCallContent::Terminal(
+                                            Terminal::new(TerminalId::new(terminal_id.clone())),
+                                        )
+                                    }
                                 };
 
                                 let fields = ToolCallUpdateFields::new()
@@ -809,6 +830,10 @@ fn tool_call_content_to_raw_output(content: &loom::tool_source::ToolCallContent)
             "path": path,
             "oldText": old_text,
             "newText": new_text,
+        }),
+        loom::tool_source::ToolCallContent::Terminal { terminal_id } => serde_json::json!({
+            "type": "terminal",
+            "terminalId": terminal_id,
         }),
     }
 }

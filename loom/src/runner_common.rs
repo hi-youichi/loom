@@ -35,10 +35,21 @@ where
     if load_from_checkpoint {
         let cp = checkpointer.expect("checkpointer is Some");
         let config = runnable_config.expect("runnable_config is Some");
+        tracing::debug!(
+            thread_id = ?config.thread_id,
+            "load_from_checkpoint_or_build: attempting to load checkpoint"
+        );
         let tuple = cp.get_tuple(config).await?;
         if let Some((checkpoint, _)) = tuple {
+            tracing::info!(
+                thread_id = ?runnable_config.expect("runnable_config is Some").thread_id,
+                "load_from_checkpoint_or_build: checkpoint found, merging user message"
+            );
             return Ok(merge(checkpoint.channel_values, user_message.to_string()));
         }
+        tracing::info!(
+            "load_from_checkpoint_or_build: no checkpoint found, building fresh state"
+        );
     }
 
     build_fresh.await

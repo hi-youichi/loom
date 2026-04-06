@@ -8,6 +8,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 
 use cli::{run_cli_turn, RunCmd, RunError, RunOptions, RunOutput, StreamOut};
 use loom::UserContent;
+use loom::command::{self as loom_command};
 
 use crate::output::{emit_run_output, OutputConfig};
 use crate::Command;
@@ -27,10 +28,6 @@ fn cmd_to_runcmd(cmd: &Command) -> RunCmd {
     }
 }
 
-/// Runs the REPL loop: prompt, read line, run agent, print, repeat.
-///
-/// Exits on EOF (Ctrl+D), empty line, or `quit`/`exit`/`/quit`.
-/// On run error, prints to stderr and continues.
 pub async fn run_repl_loop(
     base_opts: &RunOptions,
     cmd: &Command,
@@ -53,6 +50,19 @@ pub async fn run_repl_loop(
             Some(s) => s,
         };
 
+        if let Some(parsed) = loom_command::parse(&line) {
+            match parsed {
+                loom_command::Command::Models { .. } | loom_command::Command::ModelsUse { .. } => {
+                    println!("/models is not yet supported in CLI mode.");
+                }
+                _ => {
+                    let reply = handle_repl_command(parsed);
+                    println!("{}", reply);
+                }
+            }
+            continue;
+        }
+
         let mut opts = base_opts.clone();
         opts.message = UserContent::Text(line);
 
@@ -71,12 +81,26 @@ pub async fn run_repl_loop(
     Ok(())
 }
 
+fn handle_repl_command(cmd: loom_command::Command) -> String {
+    match cmd {
+        loom_command::Command::ResetContext => "Context will be cleared on next run.".into(),
+        loom_command::Command::Compact { .. } => {
+            "/compact requires an active session with LLM access.".into()
+        }
+        loom_command::Command::Summarize => {
+            "/summarize requires an active session with LLM access.".into()
+        }
+        loom_command::Command::Models { .. } | loom_command::Command::ModelsUse { .. } => {
+            unreachable!("handled above")
+        }
+    }
+}
+
 fn is_quit_command(s: &str) -> bool {
     let lower = s.trim().to_lowercase();
     matches!(lower.as_str(), "quit" | "exit" | "/quit")
 }
 
-/// Runs one turn of the agent (react, dup, tot, or got).
 pub async fn run_one_turn(
     opts: &RunOptions,
     cmd: &Command,

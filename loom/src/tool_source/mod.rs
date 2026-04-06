@@ -128,6 +128,10 @@ pub enum ToolCallContent {
         /// The new content after modification.
         new_text: String,
     },
+    /// Terminal command output with a terminal ID.
+    Terminal {
+        terminal_id: String,
+    },
 }
 
 impl Serialize for ToolCallContent {
@@ -144,6 +148,13 @@ impl Serialize for ToolCallContent {
                 s.serialize_field("path", path)?;
                 s.serialize_field("old_text", old_text)?;
                 s.serialize_field("new_text", new_text)?;
+                s.end()
+            }
+            ToolCallContent::Terminal { terminal_id } => {
+                use serde::ser::SerializeStruct;
+                let mut s = serializer.serialize_struct("Terminal", 2)?;
+                s.serialize_field("type", "terminal")?;
+                s.serialize_field("terminal_id", terminal_id)?;
                 s.end()
             }
         }
@@ -187,6 +198,7 @@ impl<'de> Deserialize<'de> for ToolCallContent {
                 let mut path = None;
                 let mut old_text = None;
                 let mut new_text = None;
+                let mut terminal_id = None;
                 let mut content_type = None;
                 
                 while let Some(key) = map.next_key::<String>()? {
@@ -195,20 +207,23 @@ impl<'de> Deserialize<'de> for ToolCallContent {
                         "path" => path = Some(map.next_value()?),
                         "old_text" => old_text = map.next_value()?,
                         "new_text" => new_text = Some(map.next_value()?),
+                        "terminal_id" => terminal_id = Some(map.next_value()?),
                         _ => { let _ = map.next_value::<serde::de::IgnoredAny>()?; }
                     }
                 }
                 
                 let content_type: String = content_type.ok_or_else(|| de::Error::missing_field("type"))?;
-                if content_type != "diff" {
-                    return Err(de::Error::custom(format!("expected type 'diff', got '{}'", content_type)));
+                match content_type.as_str() {
+                    "terminal" => Ok(ToolCallContent::Terminal {
+                        terminal_id: terminal_id.ok_or_else(|| de::Error::missing_field("terminal_id"))?,
+                    }),
+                    "diff" => Ok(ToolCallContent::Diff {
+                        path: path.ok_or_else(|| de::Error::missing_field("path"))?,
+                        old_text,
+                        new_text: new_text.ok_or_else(|| de::Error::missing_field("new_text"))?,
+                    }),
+                    other => Err(de::Error::custom(format!("expected type 'diff' or 'terminal', got '{}'", other))),
                 }
-                
-                Ok(ToolCallContent::Diff {
-                    path: path.ok_or_else(|| de::Error::missing_field("path"))?,
-                    old_text,
-                    new_text: new_text.ok_or_else(|| de::Error::missing_field("new_text"))?,
-                })
             }
         }
         
@@ -229,10 +244,14 @@ impl ToolCallContent {
         }
     }
 
+    pub fn terminal(terminal_id: impl Into<String>) -> Self {
+        ToolCallContent::Terminal { terminal_id: terminal_id.into() }
+    }
+
     pub fn as_text(&self) -> Option<&str> {
         match self {
             ToolCallContent::Text(t) => Some(t),
-            ToolCallContent::Diff { .. } => None,
+            ToolCallContent::Diff { .. } | ToolCallContent::Terminal { .. } => None,
         }
     }
 
@@ -242,6 +261,9 @@ impl ToolCallContent {
             ToolCallContent::Diff { path, .. } => {
                 format!("Modified file: {}", path)
             }
+            ToolCallContent::Terminal { terminal_id } => {
+                format!("Terminal: {}", terminal_id)
+            }
         }
     }
 
@@ -249,6 +271,7 @@ impl ToolCallContent {
         match self {
             ToolCallContent::Text(t) => t.len(),
             ToolCallContent::Diff { new_text, .. } => new_text.len(),
+            ToolCallContent::Terminal { terminal_id } => terminal_id.len(),
         }
     }
 
@@ -262,6 +285,9 @@ impl ToolCallContent {
             ToolCallContent::Diff { path, .. } => {
                 format!("Modified file: {}", path)
             }
+            ToolCallContent::Terminal { terminal_id } => {
+                format!("Terminal: {}", terminal_id)
+            }
         }
     }
 }
@@ -271,6 +297,7 @@ impl std::fmt::Display for ToolCallContent {
         match self {
             ToolCallContent::Text(t) => write!(f, "{}", t),
             ToolCallContent::Diff { path, .. } => write!(f, "Diff({})", path),
+            ToolCallContent::Terminal { terminal_id } => write!(f, "Terminal({})", terminal_id),
         }
     }
 }
