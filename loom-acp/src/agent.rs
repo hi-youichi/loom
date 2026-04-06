@@ -11,8 +11,8 @@ use agent_client_protocol::{
     InitializeRequest, InitializeResponse, ListSessionsRequest, ListSessionsResponse,
     LoadSessionRequest, LoadSessionResponse, NewSessionRequest, NewSessionResponse, PromptRequest,
     PromptResponse, SessionId, SessionNotification, SetSessionConfigOptionRequest,
-    SetSessionConfigOptionResponse, StopReason, ToolCall, ToolCallId, ToolCallStatus,
-    ToolCallUpdate, ToolCallUpdateFields,
+    SetSessionConfigOptionResponse, StopReason, Terminal, TerminalId, ToolCall, ToolCallId,
+    ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields,
 };
 use loom::memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
 use loom::message::Message;
@@ -492,6 +492,11 @@ impl Agent for LoomAcpAgent {
                                         )
                                         .old_text(old_text.clone()),
                                     ),
+                                    loom::tool_source::ToolCallContent::Terminal { terminal_id } => {
+                                        agent_client_protocol::ToolCallContent::Terminal(
+                                            Terminal::new(TerminalId::new(terminal_id.clone())),
+                                        )
+                                    }
                                 };
 
                                 let fields = ToolCallUpdateFields::new()
@@ -807,6 +812,10 @@ fn tool_call_content_to_raw_output(content: &loom::tool_source::ToolCallContent)
             "path": path,
             "oldText": old_text,
             "newText": new_text,
+        }),
+        loom::tool_source::ToolCallContent::Terminal { terminal_id } => serde_json::json!({
+            "type": "terminal",
+            "terminalId": terminal_id,
         }),
     }
 }
