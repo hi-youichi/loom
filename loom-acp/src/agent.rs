@@ -222,6 +222,22 @@ impl Agent for LoomAcpAgent {
             agent_client_protocol::Error::new(-32602, "content_blocks parse failed")
         })?;
 
+        if let loom::message::UserContent::Text(ref text) = user_content {
+            if let Some(cmd) = loom::command::parse(text) {
+                match cmd {
+                    loom::command::Command::ResetContext => {
+                        return Ok(PromptResponse::new(StopReason::EndTurn));
+                    }
+                    loom::command::Command::Models { .. } | loom::command::Command::ModelsUse { .. } => {
+                        // ACP handles models via SetSessionConfigOption, not here
+                    }
+                    _ => {
+                        return Ok(PromptResponse::new(StopReason::EndTurn));
+                    }
+                }
+            }
+        }
+
         let content_type = match &user_content {
             loom::message::UserContent::Text(_) => "text",
             loom::message::UserContent::Multimodal(parts) => {
