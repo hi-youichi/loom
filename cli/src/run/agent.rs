@@ -758,7 +758,6 @@ mod tests {
             skill_registry: None,
             max_sub_agent_depth: None,
             dry_run: false,
-            chat_id: None,
         }
     }
 
@@ -1127,7 +1126,7 @@ mod tests {
 
     fn invalid_opts(output_json: bool) -> RunOptions {
         RunOptions {
-            message: "hello".to_string(),
+            message: loom::UserContent::text("hello".to_string()),
             // Deterministic failure path in build context (invalid file-tool root).
             working_folder: Some(PathBuf::from(
                 "/definitely/not/exist/loom-cli-run-agent-tests",
@@ -1135,7 +1134,6 @@ mod tests {
             session_id: None,
             cancellation: None,
             thread_id: None,
-            chat_id: None,
             agent: None,
             verbose: false,
             got_adaptive: false,

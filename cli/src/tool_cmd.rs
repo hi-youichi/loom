@@ -254,14 +254,13 @@ mod tests {
 
     fn invalid_opts() -> RunOptions {
         RunOptions {
-            message: String::new(),
+            message: loom::UserContent::text(String::new()),
             working_folder: Some(PathBuf::from(
                 "/definitely/not/exist/loom-cli-tool-cmd-tests",
             )),
             session_id: None,
             cancellation: None,
             thread_id: None,
-            chat_id: None,
             agent: None,
             verbose: false,
             got_adaptive: false,

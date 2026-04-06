@@ -98,6 +98,10 @@ mod tests {
     /// Test create_llm_client with missing base_url for BigModel (should fail)
     #[test]
     fn test_create_llm_client_bigmodel_missing_base_url() {
+        // Clear OPENAI_BASE_URL env var to ensure test doesn't pick up system config
+        let prev_base_url = std::env::var("OPENAI_BASE_URL").ok();
+        std::env::remove_var("OPENAI_BASE_URL");
+        
         let entry = ModelEntry {
             id: "bigmodel/glm-4".to_string(),
             name: "glm-4".to_string(),
@@ -109,6 +113,13 @@ mod tests {
         };
 
         let result = create_llm_client(&entry);
+        
+        // Restore env var
+        match prev_base_url {
+            Some(v) => std::env::set_var("OPENAI_BASE_URL", v),
+            None => {}
+        }
+        
         assert!(result.is_err());
     }
 

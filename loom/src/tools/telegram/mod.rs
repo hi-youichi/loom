@@ -48,6 +48,22 @@ pub fn get_telegram_api() -> Option<Arc<dyn TelegramApi>> {
     TELEGRAM_API.read().unwrap().clone()
 }
 
+static CURRENT_CHAT_ID: std::sync::RwLock<Option<i64>> = std::sync::RwLock::new(None);
+
+pub fn set_current_chat_id(chat_id: i64) {
+    let mut lock = CURRENT_CHAT_ID.write().unwrap();
+    *lock = Some(chat_id);
+}
+
+pub fn get_current_chat_id() -> Option<i64> {
+    CURRENT_CHAT_ID.read().unwrap().clone()
+}
+
+pub fn clear_current_chat_id() {
+    let mut lock = CURRENT_CHAT_ID.write().unwrap();
+    *lock = None;
+}
+
 /// Common parameters for Telegram tools.
 #[derive(Debug, Deserialize)]
 pub struct TelegramToolParams {

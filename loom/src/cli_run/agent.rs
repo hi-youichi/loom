@@ -184,8 +184,6 @@ pub struct RunOptions {
     pub cancellation: Option<RunCancellation>,
     /// Thread ID for checkpointer (conversation / run identity).
     pub thread_id: Option<String>,
-    /// Optional chat ID (e.g. Telegram chat ID) passed to ToolCallContext for Telegram tools.
-    pub chat_id: Option<i64>,
     /// When true, print a timestamp line to stderr before each reply output (CLI --timestamp).
     pub output_timestamp: bool,
     /// When true, do not execute tools; LLM runs but tool calls return a placeholder (CLI --dry).
@@ -529,7 +527,6 @@ pub async fn run_agent_with_provider(
             session_id: None,
             cancellation: None,
             thread_id: None,
-            chat_id: None,
             agent: None,
         verbose: false,
         got_adaptive: false,

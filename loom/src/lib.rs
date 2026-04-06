@@ -97,7 +97,7 @@
 //! # #[tokio::main]
 //! # async fn main() {
 //! let mut state = MyState::default();
-//! state.messages.push(Message::User("hello, world!".to_string()));
+//! state.messages.push(Message::User(loom::UserContent::Text("hello, world!".to_string())));
 //!
 //! let agent = EchoAgent;
 //! match agent.run(state).await {

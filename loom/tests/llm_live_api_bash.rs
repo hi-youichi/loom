@@ -11,7 +11,7 @@ use async_openai::config::OpenAIConfig;
 use loom::llm::{ChatOpenAI, LlmClient, ToolCallDelta, ToolChoiceMode};
 use loom::tool_source::{register_file_tools, ToolSource, YamlSpecToolSource};
 use loom::tools::{
-    AggregateToolSource, BashTool, BatchTool, LspTool, WebFetcherTool, TOOL_READ_FILE,
+    AggregateToolSource, BatchTool, LspTool, WebFetcherTool, TOOL_READ_FILE,
 };
 use loom::{Message, MessageChunk};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -86,7 +86,7 @@ async fn list_default_builtin_tools_merged_yaml(
     aggregate
         .register_async(Box::new(WebFetcherTool::new()))
         .await;
-    #[cfg(not(windows))]
+ #[cfg(not(windows))]
     aggregate.register_async(Box::new(BashTool::new())).await;
     #[cfg(windows)]
     {
@@ -118,13 +118,20 @@ async fn mock_api_bash_tool_invocation() {
     tokio::spawn(async move {
         let (mut stream, _) = listener.accept().await.unwrap();
         let _body = read_http_request(&mut stream).await;
-        let sse_data = vec![
-            r#"data: {"id":"chatcmpl-mock-bash","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}"#,
-            r#"data: {"id":"chatcmpl-mock-bash","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_bash_1","type":"function","function":{"name":"bash","arguments":""}}]},"finish_reason":null}]}"#,
-            r#"data: {"id":"chatcmpl-mock-bash","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"command\":\"ls /tmp\"}"}}]},"finish_reason":null}]}"#,
-            r#"data: {"id":"chatcmpl-mock-bash","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#,
-            "data: [DONE]",
-        ];
+    #[cfg(not(windows))]
+    let sse_data = vec![
+        r#"data: {"id":"chatcmpl-mock-bash","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"bash","arguments":""}}]},"finish_reason":null}]}"#,
+        r#"data: {"id":"chatcmpl-mock-bash","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"command\":\"ls /tmp\"}"}}]},"finish_reason":null}]}"#,
+        r#"data: {"id":"chatcmpl-mock-bash","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#,
+        "data: [DONE]",
+    ];
+    #[cfg(windows)]
+    let sse_data = vec![
+        r#"data: {"id":"chatcmpl-mock-powershell","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"powershell","arguments":""}}]},"finish_reason":null}]}"#,
+        r#"data: {"id":"chatcmpl-mock-powershell","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"command\":\"Get-ChildItem C:\\\\temp\"}"}}]},"finish_reason":null}]}"#,
+        r#"data: {"id":"chatcmpl-mock-powershell","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#,
+        "data: [DONE]",
+    ];
         let response = sse_data.join("\n\n") + "\n\n";
         write_http_stream_response(&mut stream, &response).await;
     });
@@ -138,17 +145,30 @@ async fn mock_api_bash_tool_invocation() {
         tools.len()
     );
     let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+    #[cfg(not(windows))]
     for required in [
         "bash",
         "web_fetcher",
         TOOL_READ_FILE,
-        "ls",
-        "batch",
-        "lsp",
+    ] {
+        assert!(
+            names.contains(&required.to_string()),
+            "tool {:?} missing from listed tools: {:?}",
+            required,
+            names
+        );
+    }
+    #[cfg(windows)]
+    for required in [
+        "powershell",
+        "web_fetcher",
+        TOOL_READ_FILE,
     ] {
         assert!(
             names.contains(&required),
-            "tool {required:?} missing from listed tools: {names:?}"
+            "tool {:?} missing from listed tools: {:?}",
+            required,
+            names
         );
     }
 
@@ -179,23 +199,34 @@ async fn mock_api_bash_tool_invocation() {
         out.tool_calls.len()
     );
 
-    let bash_call = out
+    #[cfg(not(windows))]
+    let tool_name = "bash";
+    #[cfg(windows)]
+    let tool_name = "powershell";
+    
+    let tool_call = out
         .tool_calls
         .iter()
-        .find(|t| t.name == "bash")
+        .find(|t| t.name == tool_name)
         .unwrap_or_else(|| {
             panic!(
-                "expected `bash` tool call, got names {:?}",
+                "expected `{}` tool call, got names {:?}",
+                tool_name,
                 out.tool_calls.iter().map(|t| &t.name).collect::<Vec<_>>()
             )
         });
 
-    let args: serde_json::Value = serde_json::from_str(bash_call.arguments.trim())
-        .unwrap_or_else(|e| panic!("bash arguments should be JSON: {e}, raw: {:?}", bash_call.arguments));
+    let args: serde_json::Value = serde_json::from_str(tool_call.arguments.trim())
+        .unwrap_or_else(|e| panic!("{} arguments should be JSON: {e}, raw: {:?}", tool_name, tool_call.arguments));
     let cmd = args.get("command").and_then(|c| c.as_str()).unwrap_or_default();
+    #[cfg(not(windows))]
+    let expected_cmd = "ls";
+    #[cfg(windows)]
+    let expected_cmd = "Get-ChildItem";
+    
     assert!(
-        cmd.contains("ls"),
-        "expected bash command to contain 'ls', got command: {:?}",
-        cmd
+        cmd.contains(expected_cmd),
+        "expected {} command to contain '{}', got command: {:?}",
+        tool_name, expected_cmd, cmd
     );
 }

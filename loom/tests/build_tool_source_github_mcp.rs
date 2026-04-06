@@ -44,7 +44,6 @@ fn base_config(working_folder: std::path::PathBuf) -> ReactBuildConfig {
         skill_registry: None,
         max_sub_agent_depth: None,
         dry_run: false,
-        chat_id: None,
     }
 }
 

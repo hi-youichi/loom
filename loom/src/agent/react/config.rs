@@ -47,7 +47,6 @@ pub struct ReactBuildConfig {
     pub db_path: Option<String>,
     pub thread_id: Option<String>,
     pub user_id: Option<String>,
-    pub chat_id: Option<i64>,
     pub system_prompt: Option<String>,
     pub exa_api_key: Option<String>,
     /// When `EXA_API_KEY` is set, register the Exa `codesearch` tool only if this is true.
@@ -179,7 +178,6 @@ impl ReactBuildConfig {
                 .ok()
                 .and_then(|s| s.parse().ok()),
             dry_run: false,
-            chat_id: None,
         }
     }
 }

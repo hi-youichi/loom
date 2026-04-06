@@ -62,6 +62,14 @@ impl UserContent {
         }
     }
 
+    pub fn contains(&self, pattern: &str) -> bool {
+        self.as_text().contains(pattern)
+    }
+
+    pub fn starts_with(&self, pattern: &str) -> bool {
+        self.as_text().starts_with(pattern)
+    }
+
     pub fn text(text: impl Into<String>) -> Self {
         Self::Text(text.into())
     }
@@ -115,6 +123,30 @@ impl From<String> for UserContent {
 impl From<&str> for UserContent {
     fn from(s: &str) -> Self {
         Self::Text(s.to_string())
+    }
+}
+
+impl std::fmt::Display for UserContent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_text())
+    }
+}
+
+impl From<UserContent> for String {
+    fn from(c: UserContent) -> Self {
+        c.as_text().into_owned()
+    }
+}
+
+impl PartialEq<&str> for UserContent {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_text().as_ref() == *other
+    }
+}
+
+impl PartialEq<String> for UserContent {
+    fn eq(&self, other: &String) -> bool {
+        self.as_text().as_ref() == other
     }
 }
 

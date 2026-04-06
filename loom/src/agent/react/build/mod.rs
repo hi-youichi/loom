@@ -68,7 +68,7 @@ fn build_checkpointer(
 }
 
 fn build_runnable_config(config: &ReactBuildConfig) -> Option<RunnableConfig> {
-    if config.thread_id.is_none() && config.user_id.is_none() && config.chat_id.is_none() {
+    if config.thread_id.is_none() && config.user_id.is_none() {
         return None;
     }
     Some(RunnableConfig {
@@ -76,7 +76,6 @@ fn build_runnable_config(config: &ReactBuildConfig) -> Option<RunnableConfig> {
         checkpoint_id: None,
         checkpoint_ns: String::new(),
         user_id: config.user_id.clone(),
-        chat_id: config.chat_id,
         resume_from_node_id: None,
         depth: None,
         resume_value: None,
@@ -338,7 +337,6 @@ mod tests {
             skill_registry: None,
             max_sub_agent_depth: None,
             dry_run: false,
-            chat_id: None,
         }
     }
 

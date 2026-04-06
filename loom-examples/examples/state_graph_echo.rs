@@ -63,7 +63,7 @@ async fn main() {
     let compiled: CompiledStateGraph<AgentState> = graph.compile().expect("valid graph");
 
     let mut state = AgentState::default();
-    state.messages.push(Message::User(input));
+    state.messages.push(Message::user(input));
 
     match compiled.invoke(state, None).await {
         Ok(s) => {

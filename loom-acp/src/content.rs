@@ -373,11 +373,17 @@ pub fn content_blocks_to_user_content(
         return Err(ContentError::EmptyMessage);
     }
 
-    // 纯文本快捷路径
-    if parts.len() == 1 {
-        if let ContentPart::Text { text } = &parts[0] {
-            return Ok(UserContent::Text(text.clone()));
-        }
+    // 纯文本快捷路径：如果所有部分都是文本，合并为单个文本
+    if parts.iter().all(|p| matches!(p, ContentPart::Text { .. })) {
+        let combined = parts
+            .iter()
+            .map(|p| match p {
+                ContentPart::Text { text } => text.as_str(),
+                _ => "",
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        return Ok(UserContent::Text(combined));
     }
 
     Ok(UserContent::Multimodal(parts))

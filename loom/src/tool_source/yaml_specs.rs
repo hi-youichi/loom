@@ -24,6 +24,7 @@ macro_rules! embed_tool_yaml {
 const TOOL_YAML_FILES: &[&str] = embed_tool_yaml!(
     "../../tools/bash.yaml",
     "../../tools/batch.yaml",
+    "../../tools/powershell.yaml",
     "../../tools/web_fetcher.yaml",
     "../../tools/read.yaml",
     "../../tools/write_file.yaml",
@@ -149,7 +150,9 @@ mod tests {
     fn load_tool_specs_returns_builtin_tools() {
         let specs = load_tool_specs().expect("tools/*.yaml must parse");
         let names: Vec<&str> = specs.iter().map(|s| s.name.as_str()).collect();
+        #[cfg(not(windows))]
         assert!(names.contains(&"bash"), "expected bash in {:?}", names);
+        #[cfg(windows)]
         assert!(
             names.contains(&"powershell"),
             "expected powershell in {:?}",

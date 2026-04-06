@@ -72,7 +72,7 @@ impl Node<ReActState> for CompressionGraphNode {
 mod tests {
     use std::sync::Arc;
 
-    use crate::message::Message;
+    use crate::message::{Message, UserContent};
     use crate::state::ReActState;
     use crate::MockLlm;
 

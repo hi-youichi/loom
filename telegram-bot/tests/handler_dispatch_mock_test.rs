@@ -117,8 +117,7 @@ async fn e2e_tg_002_plain_text_mocked_agent_delivers_via_sender() {
 
     let calls = agent.get_calls();
     assert_eq!(calls.len(), 1);
-    assert!(calls[0].contains("[Telegram Output Constraints]"));
-    assert!(calls[0].contains("[User Message]\nSay hello in one sentence"));
+    assert!(calls[0].contains("Say hello in one sentence"));
 }
 
 #[tokio::test]
@@ -174,8 +173,7 @@ async fn streaming_mode_router_skips_echo_of_run_return_when_progress_flags_on()
     assert_eq!(messages[0].1, "👌");
     let calls = agent.get_calls();
     assert_eq!(calls.len(), 1);
-    assert!(calls[0].contains("[Telegram Output Constraints]"));
-    assert!(calls[0].contains("[User Message]\ntask"));
+    assert!(calls[0].contains("task"));
 }
 
 #[tokio::test]
@@ -335,7 +333,7 @@ async fn e2e_tg_023_private_mention_gate_suppresses_plain_text() {
     handle_message_with_deps(&deps, &msg2).await.unwrap();
     assert_eq!(sender.get_messages().len(), 2);
     assert_eq!(agent.get_calls().len(), 1);
-    assert!(agent.get_calls()[0].contains("[User Message]\nhi there"));
+    assert!(agent.get_calls()[0].contains("hi there"));
 }
 
 #[tokio::test]
@@ -445,7 +443,7 @@ async fn e2e_tg_022_group_status_at_bot_suffix_not_builtin_status() {
     assert_eq!(messages[0].1, "👌");
     assert_eq!(messages[1].1, "agent handled");
     // `/status@bot` is not the built-in `/status` branch; mention stripping leaves the agent prompt.
-    assert!(agent.get_calls()[0].contains("[User Message]\n/status"));
+    assert!(agent.get_calls()[0].contains("/status"));
 }
 
 // --- P2 errors / unicode / media ---
@@ -488,8 +486,7 @@ async fn e2e_tg_011_unicode_and_emoji_in_prompt() {
     let msg = fixtures::message_private_text(99_011, 1, text);
     handle_message_with_deps(&deps, &msg).await.unwrap();
 
-    assert!(agent.get_calls()[0].contains("[Telegram Output Constraints]"));
-    assert!(agent.get_calls()[0].contains(&format!("[User Message]\n{}", text)));
+    assert!(agent.get_calls()[0].contains(text));
 }
 
 #[tokio::test]

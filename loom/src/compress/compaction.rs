@@ -194,7 +194,7 @@ fn build_summary_prompt(msgs: &[Message]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::message::Message;
+    use crate::message::{Message, UserContent};
 
     use super::*;
 

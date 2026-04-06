@@ -12,7 +12,7 @@ use async_openai::config::OpenAIConfig;
 use loom::llm::{ChatOpenAI, LlmClient, ToolCallDelta, ToolChoiceMode};
 use loom::tool_source::{register_file_tools, ToolSource, YamlSpecToolSource};
 use loom::tools::{
-    AggregateToolSource, BashTool, BatchTool, LspTool, WebFetcherTool, TOOL_READ_FILE,
+    AggregateToolSource, BatchTool, LspTool, WebFetcherTool, TOOL_READ_FILE,
 };
 use loom::{Message, MessageChunk};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -141,7 +141,11 @@ async fn mock_api_full_tool_list_invokes_read() {
         tools.len()
     );
     let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
-    for required in ["bash", "web_fetcher", TOOL_READ_FILE, "ls", "batch", "lsp"] {
+    #[cfg(unix)]
+    let required_tools = ["bash", "web_fetcher", TOOL_READ_FILE, "ls", "batch", "lsp"];
+    #[cfg(windows)]
+    let required_tools = ["powershell", "web_fetcher", TOOL_READ_FILE, "ls", "batch", "lsp"];
+    for required in required_tools {
         assert!(
             names.contains(&required),
             "tool {required:?} missing from listed tools: {names:?}"

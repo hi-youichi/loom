@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 use crate::tools::Tool;
 
-use super::get_telegram_api;
+use super::{get_current_chat_id, get_telegram_api};
 
 /// Tool name for sending polls.
 pub const TOOL_TELEGRAM_SEND_POLL: &str = "telegram_send_poll";
@@ -96,7 +96,7 @@ impl Tool for TelegramSendPollTool {
             .ok_or_else(|| ToolSourceError::Transport("Telegram API not initialized".to_string()))?;
 
         let chat_id = params.chat_id.unwrap_or_else(|| {
-            _ctx.and_then(|c| c.chat_id).unwrap_or(0)
+            get_current_chat_id().unwrap_or(0)
         });
 
         if chat_id == 0 {

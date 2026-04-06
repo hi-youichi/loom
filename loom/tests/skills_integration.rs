@@ -4,7 +4,7 @@ use loom::{build_helve_config, RunOptions};
 
 fn opts(working_folder: std::path::PathBuf) -> RunOptions {
     RunOptions {
-        message: String::new(),
+        message: loom::UserContent::text(String::new()),
         working_folder: Some(working_folder),
         session_id: None,
         thread_id: None,
@@ -22,7 +22,6 @@ fn opts(working_folder: std::path::PathBuf) -> RunOptions {
         cancellation: None,
         output_timestamp: false,
         dry_run: false,
-        chat_id: None,
     }
 }
 
