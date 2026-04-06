@@ -58,7 +58,7 @@ pub(crate) async fn build_tool_source(
             aggregate.register_async(Box::new(ps_tool)).await;
         }
         aggregate.register_sync(Box::new(BatchTool::new(Arc::clone(&aggregate))));
-        aggregate.register_sync(Box::new(LspTool::new()));
+        aggregate.register_sync(Box::new(LspTool::default()));
         if let Some(ref servers) = config.mcp_servers {
             for def in servers {
                 match def {
@@ -260,7 +260,7 @@ pub(crate) async fn build_tool_source(
             .map_err(to_agent_error)?;
     }
     aggregate.register_sync(Box::new(BatchTool::new(Arc::clone(&aggregate))));
-    aggregate.register_sync(Box::new(LspTool::new()));
+    aggregate.register_sync(Box::new(LspTool::default()));
 
     if let Some(ref servers) = config.mcp_servers {
         for def in servers {

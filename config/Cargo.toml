@@ -25,6 +25,7 @@ tracing-subscriber = { version = "0.3", optional = true, features = [
 ] }
 tracing-appender = { version = "0.2", optional = true }
 model-spec-core = { path = "../model-spec-core" }
+dirs = "5.0"
 
 [dev-dependencies]
 tempfile = "3"

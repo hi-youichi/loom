@@ -52,6 +52,7 @@ serde_yaml = "0.9"
 # Glob tool: recursive walk + pattern match under working folder
 walkdir = "2"
 glob = "0.3"
+which = "6.0"
 
 # Grep tool: ripgrep library stack (grep-regex + grep-searcher + ignore)
 grep-regex = "0.1"
@@ -66,6 +67,11 @@ model-spec-core = { path = "../model-spec-core" }
 # ISO timestamps (e.g. tool_output_normalizer)
 chrono = { version = "0.4", features = ["serde"] }
 tokio-util = { version = "0.7.18", features = ["rt"] }
+
+# LSP support
+lsp-types = "0.95"
+jsonrpc-core = "18.0"
+url = "2.5"
 
 [dev-dependencies]
 async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
