@@ -1,5 +1,6 @@
 pub mod telegram;
 
 pub use telegram::{
-    escape_html, escape_markdown_v2, markdown_notice, FormattedMessage, TelegramMessageFormat,
+    escape_html, escape_markdown_v2, markdown_notice, markdown_to_telegram_v2, FormattedMessage,
+    TelegramMessageFormat,
 };

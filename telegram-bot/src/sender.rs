@@ -7,7 +7,7 @@ use teloxide::types::{MessageId, ParseMode, ReactionType};
 use crate::constants::retry::MAX_RETRIES as TELEGRAM_API_RETRIES;
 use crate::constants::telegram::MESSAGE_MAX_CHARS as TELEGRAM_MESSAGE_MAX_CHARS;
 use crate::error::BotError;
-use crate::formatting::{escape_markdown_v2, FormattedMessage};
+use crate::formatting::{markdown_to_telegram_v2, FormattedMessage};
 use crate::streaming::retry::{
     edit_formatted_message_with_retry, edit_message_with_retry, send_formatted_message_with_retry,
     send_message_with_retry,
@@ -195,20 +195,20 @@ impl MessageSender for TeloxideSender {
         _reply_to_message_id: i32,
         text: &str,
     ) -> Result<(), BotError> {
-        let escaped = escape_markdown_v2(text);
+        let converted = markdown_to_telegram_v2(text);
         tracing::debug!(
             chat_id,
             parse_mode = ?ParseMode::MarkdownV2,
             text_len = text.chars().count(),
-            escaped_len = escaped.chars().count(),
+            converted_len = converted.chars().count(),
             text_preview = %preview_text(text),
-            escaped_preview = %preview_text(&escaped),
+            converted_preview = %preview_text(&converted),
             "replying with markdown telegram message"
         );
 
         match self
             .bot
-            .send_message(ChatId(chat_id), escaped)
+            .send_message(ChatId(chat_id), converted)
             .parse_mode(ParseMode::MarkdownV2)
             .await
         {
