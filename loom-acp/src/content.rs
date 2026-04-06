@@ -97,7 +97,7 @@ impl ContentBlockLike for String {
     }
 }
 
-/// Adapter for ACP ContentBlock: Text and Resource are extracted; ResourceLink skipped; Image/Audio treated as unsupported.
+/// Adapter for ACP ContentBlock: Text, Resource, and ResourceLink are extracted; Image/Audio unsupported in pure-text mode.
 impl ContentBlockLike for agent_client_protocol::ContentBlock {
     fn as_text(&self) -> Option<String> {
         match self {
@@ -117,12 +117,13 @@ impl ContentBlockLike for agent_client_protocol::ContentBlock {
                         ))
                     }
                     EmbeddedResourceResource::BlobResourceContents(blob_res) => {
-                        tracing::debug!(
-                            uri = %blob_res.uri,
-                            mime = ?blob_res.mime_type,
-                            "Skipping binary embedded resource"
-                        );
-                        None
+                        let mime = blob_res.mime_type.as_deref().unwrap_or("application/octet-stream");
+                        Some(format!(
+                            "--- Binary Resource ---\nURI: {}\nMIME: {}\nSize: {} bytes\n--- End Resource ---",
+                            blob_res.uri,
+                            mime,
+                            blob_res.blob.len()
+                        ))
                     }
                     _ => {
                         tracing::debug!("Unknown embedded resource type, skipping");
@@ -130,12 +131,21 @@ impl ContentBlockLike for agent_client_protocol::ContentBlock {
                     }
                 }
             }
+            agent_client_protocol::ContentBlock::ResourceLink(rl) => {
+                let mut parts = vec![format!("Reference: {} ({})", rl.name, rl.uri)];
+                if let Some(desc) = &rl.description {
+                    parts.push(format!("Description: {}", desc));
+                }
+                if let Some(mime) = &rl.mime_type {
+                    parts.push(format!("MIME: {}", mime));
+                }
+                Some(parts.join("\n"))
+            }
             _ => None,
         }
     }
 
     fn is_unsupported(&self) -> bool {
-        // 不再报错，由 content_blocks_to_user_content 处理
         false
     }
 }
@@ -159,9 +169,16 @@ pub enum ContentBlock {
         text: String,
     },
     Image {
-        url: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        data: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         mime_type: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        uri: Option<String>,
+    },
+    Audio {
+        data: String,
+        mime_type: String,
     },
     Resource {
         uri: String,
@@ -171,6 +188,14 @@ pub enum ContentBlock {
         text: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         blob: Option<String>,
+    },
+    ResourceLink {
+        uri: String,
+        name: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        mime_type: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        description: Option<String>,
     },
 }
 
@@ -347,11 +372,15 @@ pub fn content_blocks_to_user_content(
                                 data: blob_res.blob.clone(),
                             });
                         } else {
-                            tracing::debug!(
-                                uri = %blob_res.uri,
-                                mime = ?blob_res.mime_type,
-                                "Skipping binary embedded resource"
-                            );
+                            let mime = blob_res.mime_type.as_deref().unwrap_or("application/octet-stream");
+                            parts.push(ContentPart::Text {
+                                text: format!(
+                                    "--- Binary Resource ---\nURI: {}\nMIME: {}\nSize: {} bytes\n--- End Resource ---",
+                                    blob_res.uri,
+                                    mime,
+                                    blob_res.blob.len()
+                                ),
+                            });
                         }
                     }
                     _ => {
@@ -360,8 +389,15 @@ pub fn content_blocks_to_user_content(
                 }
             }
 
-            agent_client_protocol::ContentBlock::ResourceLink(_) => {
-                // ResourceLink 仅是 URI 引用，Agent 通过 MCP 工具自行获取
+            agent_client_protocol::ContentBlock::ResourceLink(rl) => {
+                let mut text = format!("Reference: {} ({})", rl.name, rl.uri);
+                if let Some(desc) = &rl.description {
+                    text.push_str(&format!("\nDescription: {}", desc));
+                }
+                if let Some(mime) = &rl.mime_type {
+                    text.push_str(&format!("\nMIME: {}", mime));
+                }
+                parts.push(ContentPart::Text { text });
             }
             _ => {
                 tracing::debug!("Unhandled ContentBlock type, skipping");
@@ -433,18 +469,17 @@ mod tests {
     }
 
     #[test]
-    fn test_blob_resource_skipped() {
+    fn test_blob_resource_returns_reference() {
         let blob_res = BlobResourceContents::new("SGVsbG8=", "file:///binary.bin")
             .mime_type(Some("application/octet-stream".to_string()));
         let embedded =
             EmbeddedResource::new(EmbeddedResourceResource::BlobResourceContents(blob_res));
         let block = ContentBlock::Resource(embedded);
 
-        let result = block.as_text();
-        assert!(
-            result.is_none(),
-            "Binary resources should be skipped and return None"
-        );
+        let result = block.as_text().expect("Should return text reference for blob");
+        assert!(result.contains("Binary Resource"));
+        assert!(result.contains("file:///binary.bin"));
+        assert!(result.contains("application/octet-stream"));
     }
 
     #[test]
@@ -553,5 +588,47 @@ mod tests {
         let result = content_blocks_to_message(&blocks);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "");
+    }
+
+    #[test]
+    fn test_resource_link_as_text() {
+        use agent_client_protocol::ResourceLink;
+        let rl = ResourceLink::new("document.pdf", "file:///home/user/document.pdf")
+            .mime_type(Some("application/pdf".to_string()))
+            .description(Some("Important document".to_string()));
+        let block = ContentBlock::ResourceLink(rl);
+        let result = block.as_text().expect("Should extract text from ResourceLink");
+        assert!(result.contains("Reference: document.pdf"));
+        assert!(result.contains("file:///home/user/document.pdf"));
+        assert!(result.contains("application/pdf"));
+        assert!(result.contains("Important document"));
+    }
+
+    #[test]
+    fn test_resource_link_in_content_blocks_to_user_content() {
+        use agent_client_protocol::ResourceLink;
+        let rl = ResourceLink::new("readme.md", "file:///project/README.md");
+        let blocks = vec![
+            ContentBlock::Text(TextContent::new("Check this file")),
+            ContentBlock::ResourceLink(rl),
+        ];
+        let result = content_blocks_to_user_content(&blocks).expect("Should convert");
+        let text = result.as_text();
+        assert!(text.contains("Check this file"));
+        assert!(text.contains("Reference: readme.md"));
+        assert!(text.contains("file:///project/README.md"));
+    }
+
+    #[test]
+    fn test_blob_resource_in_content_blocks_to_user_content() {
+        let blob_res = BlobResourceContents::new("SGVsbG8=", "file:///data.bin")
+            .mime_type(Some("application/octet-stream".to_string()));
+        let embedded =
+            EmbeddedResource::new(EmbeddedResourceResource::BlobResourceContents(blob_res));
+        let blocks = vec![ContentBlock::Resource(embedded)];
+        let result = content_blocks_to_user_content(&blocks).expect("Should convert");
+        let text = result.as_text();
+        assert!(text.contains("Binary Resource"));
+        assert!(text.contains("file:///data.bin"));
     }
 }

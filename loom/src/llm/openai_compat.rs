@@ -43,22 +43,22 @@ use super::ToolChoiceMode;
 const DEFAULT_BASE_URL: &str = "https://open.bigmodel.cn/api/paas/v4";
 
 /// Max retries for retryable 5xx (500, 502, 503, 504). Total attempts = 1 + this.
-const COMPAT_5XX_MAX_RETRIES: u32 = 3;
+const COMPAT_RETRY_MAX_RETRIES: u32 = 3;
 /// Initial backoff before first retry.
-const COMPAT_5XX_INITIAL_BACKOFF: std::time::Duration = std::time::Duration::from_secs(1);
+const COMPAT_RETRY_INITIAL_BACKOFF: std::time::Duration = std::time::Duration::from_secs(1);
 /// Max backoff cap.
-const COMPAT_5XX_MAX_BACKOFF: std::time::Duration = std::time::Duration::from_secs(16);
+const COMPAT_RETRY_MAX_BACKOFF: std::time::Duration = std::time::Duration::from_secs(16);
 
 /// Returns true for transient 5xx where retry is reasonable: 500, 502, 503, 504.
 /// Other 5xx (501 Not Implemented, 505 HTTP Version Not Supported, etc.) are not retried.
-fn is_retryable_5xx(status: reqwest::StatusCode) -> bool {
-    matches!(status.as_u16(), 500 | 502 | 503 | 504)
+fn is_retryable_status(status: reqwest::StatusCode) -> bool {
+    matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504)
 }
 
 fn backoff_for_attempt(attempt: u32) -> std::time::Duration {
-    let secs = COMPAT_5XX_INITIAL_BACKOFF.as_secs_f64() * 2_f64.powi(attempt as i32);
+    let secs = COMPAT_RETRY_INITIAL_BACKOFF.as_secs_f64() * 2_f64.powi(attempt as i32);
     let d = std::time::Duration::from_secs_f64(secs);
-    d.min(COMPAT_5XX_MAX_BACKOFF)
+    d.min(COMPAT_RETRY_MAX_BACKOFF)
 }
 
 // ----- Request DTOs (OpenAI-compatible) -----
@@ -555,21 +555,21 @@ impl LlmClient for ChatOpenAICompat {
             if status.is_success() {
                 break 'request (status, body_bytes);
             }
-            if !is_retryable_5xx(status) {
+            if !is_retryable_status(status) {
                 let msg = String::from_utf8_lossy(&body_bytes);
                 return Err(AgentError::ExecutionFailed(format!(
                     "OpenAI-compat API error {}: {}",
                     status, msg
                 )));
             }
-            for attempt in 0..COMPAT_5XX_MAX_RETRIES {
+            for attempt in 0..COMPAT_RETRY_MAX_RETRIES {
                 let delay = backoff_for_attempt(attempt);
                 tracing::warn!(
                     status = %status,
                     attempt = attempt + 1,
-                    max_retries = COMPAT_5XX_MAX_RETRIES,
+                    max_retries = COMPAT_RETRY_MAX_RETRIES,
                     delay_secs = delay.as_secs_f64(),
-                    "OpenAI-compat 5xx, retrying"
+                    "OpenAI-compat retryable status, retrying"
                 );
                 tokio::time::sleep(delay).await;
                 let retry_res = self
@@ -589,18 +589,18 @@ impl LlmClient for ChatOpenAICompat {
                 if retry_status.is_success() {
                     break 'request (retry_status, retry_bytes);
                 }
-                if !is_retryable_5xx(retry_status) {
+                if !is_retryable_status(retry_status) {
                     let msg = String::from_utf8_lossy(&retry_bytes);
                     return Err(AgentError::ExecutionFailed(format!(
                         "OpenAI-compat API error {}: {}",
                         retry_status, msg
                     )));
                 }
-                if attempt == COMPAT_5XX_MAX_RETRIES - 1 {
+                if attempt == COMPAT_RETRY_MAX_RETRIES - 1 {
                     let msg = String::from_utf8_lossy(&retry_bytes);
                     return Err(AgentError::ExecutionFailed(format!(
                         "OpenAI-compat API error {}: {} (after {} retries)",
-                        retry_status, msg, COMPAT_5XX_MAX_RETRIES
+                        retry_status, msg, COMPAT_RETRY_MAX_RETRIES
                     )));
                 }
             }
@@ -729,7 +729,7 @@ impl LlmClient for ChatOpenAICompat {
             if status.is_success() {
                 break 'stream_request response;
             }
-            if !is_retryable_5xx(status) {
+            if !is_retryable_status(status) {
                 let body_bytes = response.bytes().await.unwrap_or_default();
                 let msg = String::from_utf8_lossy(&body_bytes);
                 return Err(AgentError::ExecutionFailed(format!(
@@ -737,14 +737,14 @@ impl LlmClient for ChatOpenAICompat {
                     status, msg
                 )));
             }
-            for attempt in 0..COMPAT_5XX_MAX_RETRIES {
+            for attempt in 0..COMPAT_RETRY_MAX_RETRIES {
                 let delay = backoff_for_attempt(attempt);
                 tracing::warn!(
                     status = %status,
                     attempt = attempt + 1,
-                    max_retries = COMPAT_5XX_MAX_RETRIES,
+                    max_retries = COMPAT_RETRY_MAX_RETRIES,
                     delay_secs = delay.as_secs_f64(),
-                    "OpenAI-compat stream 5xx, retrying"
+                    "OpenAI-compat stream retryable status, retrying"
                 );
                 tokio::time::sleep(delay).await;
                 let retry_res = self
@@ -761,7 +761,7 @@ impl LlmClient for ChatOpenAICompat {
                 if retry_status.is_success() {
                     break 'stream_request retry_res;
                 }
-                if !is_retryable_5xx(retry_status) {
+                if !is_retryable_status(retry_status) {
                     let body_bytes = retry_res.bytes().await.unwrap_or_default();
                     let msg = String::from_utf8_lossy(&body_bytes);
                     return Err(AgentError::ExecutionFailed(format!(
@@ -769,12 +769,12 @@ impl LlmClient for ChatOpenAICompat {
                         retry_status, msg
                     )));
                 }
-                if attempt == COMPAT_5XX_MAX_RETRIES - 1 {
+                if attempt == COMPAT_RETRY_MAX_RETRIES - 1 {
                     let body_bytes = retry_res.bytes().await.unwrap_or_default();
                     let msg = String::from_utf8_lossy(&body_bytes);
                     return Err(AgentError::ExecutionFailed(format!(
                         "OpenAI-compat stream error {}: {} (after {} retries)",
-                        retry_status, msg, COMPAT_5XX_MAX_RETRIES
+                        retry_status, msg, COMPAT_RETRY_MAX_RETRIES
                     )));
                 }
             }

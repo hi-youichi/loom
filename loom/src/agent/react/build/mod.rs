@@ -110,16 +110,16 @@ pub async fn build_react_run_context(
 }
 
 /// Resolves CompactionConfig: uses config.compaction_config if set, otherwise attempts
-/// to infer max_context_tokens from models.dev when model is in "provider/model" format.
+/// to infer max_context_tokens from models.dev.
 async fn resolve_compaction_config(config: &ReactBuildConfig) -> CompactionConfig {
     if let Some(ref cfg) = config.compaction_config {
         return cfg.clone();
     }
 
-    // Try to infer context limit from models.dev when model contains "/"
     if let Some(ref model) = config.model {
+        let resolver = ModelsDevResolver::new();
+
         if model.contains('/') {
-            let resolver = ModelsDevResolver::new();
             if let Some(spec) = resolver.resolve_combined(model).await {
                 tracing::info!(
                     model = %model,
@@ -128,10 +128,20 @@ async fn resolve_compaction_config(config: &ReactBuildConfig) -> CompactionConfi
                     "resolved model spec from models.dev"
                 );
                 return CompactionConfig::with_max_context_tokens(spec.context_limit);
-            } else {
-                tracing::debug!(model = %model, "model not found in models.dev, using default config");
             }
         }
+
+        if let Some(spec) = resolver.resolve_by_bare_model_name(model).await {
+            tracing::info!(
+                model = %model,
+                context_limit = spec.context_limit,
+                output_limit = spec.output_limit,
+                "resolved model spec from models.dev by bare model name"
+            );
+            return CompactionConfig::with_max_context_tokens(spec.context_limit);
+        }
+
+        tracing::debug!(model = %model, "model not found in models.dev, using default config");
     }
 
     CompactionConfig::default()

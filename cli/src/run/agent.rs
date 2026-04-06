@@ -109,9 +109,13 @@ async fn print_model_info(model: Option<&String>) {
         }
     };
 
-    // Try to resolve context limit from models.dev
     let resolver = ModelsDevResolver::new();
-    match resolver.resolve_combined(model_name).await {
+    let spec = if model_name.contains('/') {
+        resolver.resolve_combined(model_name).await
+    } else {
+        resolver.resolve_by_bare_model_name(model_name).await
+    };
+    match spec {
         Some(spec) => {
             eprintln!(
                 "model: {} ({} context)",
@@ -120,13 +124,9 @@ async fn print_model_info(model: Option<&String>) {
             );
         }
         None => {
-            // Log detailed reason why resolution failed
             tracing::debug!(
                 "Model spec resolution failed for '{}'. \
-                 This usually means: \
-                 1) The model name doesn't include a provider prefix (e.g., 'glm-5' instead of 'zai/glm-5'), \
-                 2) The provider/model combination is not in the models.dev database, or \
-                 3) Network error when fetching from models.dev", 
+                 The model may not be in the models.dev database, or there was a network error.",
                 model_name
             );
             eprintln!("model: {} (context: unknown)", model_name);
@@ -745,6 +745,7 @@ mod tests {
             openai_base_url: None,
             model: None,
             llm_provider: None,
+            provider_name: None,
             openai_temperature: None,
             embedding_api_key: None,
             embedding_base_url: None,

@@ -1,4 +1,4 @@
-//! Integration test: build_react_run_context with working_folder set includes file tools.
+﻿//! Integration test: build_react_run_context with working_folder set includes file tools.
 //!
 //! Scenario: when ReactBuildConfig has working_folder set, the built tool source
 //! lists ls, read, write_file, move_file, delete_file, create_dir.
