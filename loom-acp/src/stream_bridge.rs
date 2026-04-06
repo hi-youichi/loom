@@ -269,7 +269,9 @@ pub fn stream_update_to_session_notification(
             };
             let mut fields = ToolCallUpdateFields::new().status(status);
             if let Some(ref s) = output {
-                fields = fields.content(vec![s.clone().into()]);
+                fields = fields
+                    .content(vec![s.clone().into()])
+                    .raw_output(parse_text_output_to_raw_value(s));
             }
             SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
                 ToolCallId::new(tool_call_id.as_str()),
@@ -289,9 +291,7 @@ pub fn stream_update_to_session_notification(
             // Currently, we only send if it's the first chunk (has name).
             if let Some(tool_name) = name {
                 let id = ToolCallId::new(tool_call_id.as_str());
-                let tc = ToolCall::new(id.clone(), tool_name.clone())
-                    .status(ToolCallStatus::Pending)
-                    .raw_input(serde_json::Value::String(arguments_delta.clone()));
+                let tc = ToolCall::new(id.clone(), tool_name.clone()).status(ToolCallStatus::Pending);
                 tracing::debug!(
                     tool_call_id = %tool_call_id,
                     name = %tool_name,
@@ -312,6 +312,11 @@ pub fn stream_update_to_session_notification(
         }
     };
     Some(SessionNotification::new(session_id.clone(), update))
+}
+
+fn parse_text_output_to_raw_value(output: &str) -> serde_json::Value {
+    serde_json::from_str::<serde_json::Value>(output)
+        .unwrap_or_else(|_| serde_json::json!({ "text": output }))
 }
 
 fn name_to_tool_kind(name: &str) -> ToolKind {
@@ -592,6 +597,13 @@ mod tests {
             notif.is_some(),
             "ToolCallChunk 第一个块（有 name）应产生 SessionNotification"
         );
+        if let Some(notification) = notif {
+            if let SessionUpdate::ToolCall(tc) = notification.update {
+                assert_eq!(tc.raw_input, None, "tool_call_chunk 不应写入 raw_input");
+            } else {
+                panic!("expected SessionUpdate::ToolCall");
+            }
+        }
     }
 
     /// ToolCallChunk 后续块转为 SessionNotification -> None (ACP 不支持增量)
@@ -608,5 +620,25 @@ mod tests {
             notif.is_none(),
             "ToolCallChunk 后续块（无 name）不应产生 SessionNotification（ACP 不支持增量更新）"
         );
+    }
+
+    #[test]
+    fn stream_update_to_session_notification_tool_update_sets_raw_output() {
+        let session_id = SessionId::new("sess-4".to_string());
+        let update = StreamUpdate::ToolCallUpdated {
+            tool_call_id: "call-raw-output".to_string(),
+            status: "success".to_string(),
+            output: Some("{\"ok\":true}".to_string()),
+        };
+        let notif = stream_update_to_session_notification(&session_id, &update)
+            .expect("expected notification");
+        if let SessionUpdate::ToolCallUpdate(tool_update) = notif.update {
+            assert_eq!(
+                tool_update.fields.raw_output,
+                Some(serde_json::json!({"ok": true}))
+            );
+        } else {
+            panic!("expected SessionUpdate::ToolCallUpdate");
+        }
     }
 }

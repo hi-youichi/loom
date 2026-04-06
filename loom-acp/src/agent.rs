@@ -496,7 +496,8 @@ impl Agent for LoomAcpAgent {
 
                                 let fields = ToolCallUpdateFields::new()
                                     .status(ToolCallStatus::Completed)
-                                    .content(vec![acp_content]);
+                                    .content(vec![acp_content])
+                                    .raw_output(tool_call_content_to_raw_output(content));
                                 let tool_call_update = ToolCallUpdate::new(id, fields);
 
                                 vec![SessionNotification::new(
@@ -793,6 +794,23 @@ fn map_run_error(e: RunError) -> agent_client_protocol::Error {
     agent_client_protocol::Error::internal_error().data(e.to_string())
 }
 
+fn tool_call_content_to_raw_output(content: &loom::tool_source::ToolCallContent) -> serde_json::Value {
+    match content {
+        loom::tool_source::ToolCallContent::Text(text) => serde_json::from_str::<serde_json::Value>(text)
+            .unwrap_or_else(|_| serde_json::json!({ "text": text })),
+        loom::tool_source::ToolCallContent::Diff {
+            path,
+            old_text,
+            new_text,
+        } => serde_json::json!({
+            "type": "diff",
+            "path": path,
+            "oldText": old_text,
+            "newText": new_text,
+        }),
+    }
+}
+
 /// Model option for ACP config dropdown.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct ModelOption {
@@ -991,5 +1009,38 @@ mod tests {
         let response = result.unwrap();
         let json = serde_json::to_value(&response).unwrap();
         assert!(json["configOptions"].is_array());
+    }
+
+    #[test]
+    fn test_tool_call_content_to_raw_output_text_json_and_plain_text() {
+        let json_text = loom::tool_source::ToolCallContent::Text("{\"ok\":true}".to_string());
+        assert_eq!(
+            tool_call_content_to_raw_output(&json_text),
+            serde_json::json!({"ok": true})
+        );
+
+        let plain_text = loom::tool_source::ToolCallContent::Text("hello".to_string());
+        assert_eq!(
+            tool_call_content_to_raw_output(&plain_text),
+            serde_json::json!({"text": "hello"})
+        );
+    }
+
+    #[test]
+    fn test_tool_call_content_to_raw_output_diff() {
+        let diff = loom::tool_source::ToolCallContent::Diff {
+            path: "/tmp/a.txt".to_string(),
+            old_text: Some("old".to_string()),
+            new_text: "new".to_string(),
+        };
+        assert_eq!(
+            tool_call_content_to_raw_output(&diff),
+            serde_json::json!({
+                "type": "diff",
+                "path": "/tmp/a.txt",
+                "oldText": "old",
+                "newText": "new",
+            })
+        );
     }
 }
