@@ -103,6 +103,7 @@ mod tests {
     use super::super::state::{TotCandidate, TotExtension};
     use super::*;
     use crate::memory::RunnableConfig;
+    use crate::message::UserContent;
     use crate::state::{ReActState, ToolCall, ToolResult};
     use tokio::sync::mpsc;
 

@@ -117,46 +117,6 @@ model = "gpt-4o-mini"
         .all(|e| e.key != "OPENAI_API_KEY" || e.source == ConfigSource::Provider));
 }
 
-/// Optional `tool_choice` on [[providers]] maps to OPENAI_TOOL_CHOICE.
-#[test]
-fn e2e_provider_tool_choice_sets_openai_tool_choice() {
-    let _lock = LOCK.lock().unwrap();
-    let dir = tempfile::tempdir().unwrap();
-    write_config(
-        dir.path(),
-        r#"
-[default]
-provider = "openai"
-
-[[providers]]
-name = "openai"
-api_key = "sk-e2e-test"
-base_url = "https://api.openai.com/v1"
-model = "gpt-4o-mini"
-tool_choice = "required"
-"#,
-    );
-
-    let _home = LoomHomeGuard::set(dir.path());
-    let env = EnvGuard::new(&[
-        "OPENAI_API_KEY",
-        "OPENAI_BASE_URL",
-        "MODEL",
-        "LLM_PROVIDER",
-        "OPENAI_TOOL_CHOICE",
-    ]);
-    env.clear();
-
-    let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
-
-    assert_eq!(std::env::var("OPENAI_TOOL_CHOICE").unwrap(), "required");
-    let tc = report
-        .entries
-        .iter()
-        .find(|e| e.key == "OPENAI_TOOL_CHOICE");
-    assert_eq!(tc.map(|e| e.source), Some(ConfigSource::Provider));
-}
-
 /// Optional `temperature` on [[providers]] maps to OPENAI_TEMPERATURE.
 #[test]
 fn e2e_provider_temperature_sets_openai_temperature() {

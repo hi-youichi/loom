@@ -579,7 +579,7 @@ async fn act_node_run_with_context_propagates_thread_user_and_depth() {
             resume_values_by_namespace: Default::default(),
         },
         stream_tx: None,
-        stream_mode: HashSet::new(),
+        stream_mode: Default::default(),
         managed_values: Default::default(),
         store: None,
         previous: None,

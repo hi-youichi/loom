@@ -246,4 +246,6 @@ fn test_settings_default_streaming() {
     let settings = Settings::default();
     assert_eq!(settings.streaming.max_act_chars, 500);
     assert!(settings.streaming.show_act_phase);
+    assert_eq!(settings.telegram_message_max_chars, 4096);
+    assert_eq!(settings.telegram_safe_reply_chars, 3800);
 }

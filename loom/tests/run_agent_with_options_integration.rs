@@ -8,12 +8,16 @@
 mod init_logging;
 
 use loom::{
-    run_agent_with_llm_override, run_agent_with_options, ActiveOperationKind, AnyStreamEvent,
+    run_agent_with_llm_override, run_agent_with_options, AnyStreamEvent,
     Checkpointer, MockLlm, RunCancellation, RunCmd, RunCompletion, RunOptions, StreamEvent,
+    UserContent,
 };
+#[cfg(unix)]
+use loom::ActiveOperationKind;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
+#[cfg(unix)]
 use std::time::Instant;
 
 fn env_lock() -> &'static Mutex<()> {
@@ -23,7 +27,7 @@ fn env_lock() -> &'static Mutex<()> {
 
 fn opts(working_folder: PathBuf) -> RunOptions {
     RunOptions {
-        message: "Hi".to_string(),
+        message: UserContent::Text("Hi".to_string()),
         working_folder: Some(working_folder),
         session_id: None,
         cancellation: None,
@@ -179,7 +183,7 @@ async fn session_id_restores_context_from_checkpoint() {
 
     let session_id = "sess-restore-test";
     let opts1 = RunOptions {
-        message: "First message".to_string(),
+        message: UserContent::Text("First message".to_string()),
         working_folder: Some(working.clone()),
         session_id: None,
         cancellation: None,
@@ -199,7 +203,7 @@ async fn session_id_restores_context_from_checkpoint() {
         provider_type: None,
     };
     let opts2 = RunOptions {
-        message: "Second message".to_string(),
+        message: UserContent::Text("Second message".to_string()),
         working_folder: Some(working),
         session_id: None,
         cancellation: None,
@@ -394,6 +398,7 @@ async fn run_agent_with_llm_override_returns_cancelled_during_streaming() {
 }
 
 #[tokio::test]
+#[cfg(unix)]
 async fn cancelled_bash_tool_kills_active_child_process() {
     let dir = tempfile::tempdir().expect("tempdir");
     let working = dir.path().to_path_buf();
@@ -402,14 +407,9 @@ async fn cancelled_bash_tool_kills_active_child_process() {
     let cancellation = RunCancellation::new(42);
     opts.cancellation = Some(cancellation.clone());
 
-    let command = if cfg!(windows) {
-        "ping -n 6 127.0.0.1 > NUL"
-    } else {
-        "sleep 5"
-    };
     let llm = MockLlm::first_tools_then_end().with_tool_calls(vec![loom::ToolCall {
         name: "bash".to_string(),
-        arguments: serde_json::json!({ "command": command }).to_string(),
+        arguments: serde_json::json!({ "command": "sleep 5" }).to_string(),
         id: Some("call-bash".to_string()),
     }]);
 

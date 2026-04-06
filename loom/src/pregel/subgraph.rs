@@ -66,7 +66,8 @@ pub struct PregelSubgraphEntry {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::pregel::{CheckpointNamespace, PregelGraph, PregelRuntime, PregelSubgraph};
+    use std::sync::Arc;
 
     #[test]
     fn checkpoint_namespace_root() {

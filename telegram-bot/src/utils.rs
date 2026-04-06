@@ -20,6 +20,69 @@ pub fn truncate_text(text: &str, max_chars: usize) -> String {
     }
 }
 
+/// Split text into chunks that fit Telegram's single-message limit.
+///
+/// Prefers splitting at newlines, punctuation, or spaces near the boundary.
+pub fn split_text_for_telegram(text: &str, max_chars: usize) -> Vec<String> {
+    if text.is_empty() || max_chars == 0 || text.chars().count() <= max_chars {
+        return vec![text.to_string()];
+    }
+
+    let chars: Vec<char> = text.chars().collect();
+    let mut chunks = Vec::new();
+    let mut start = 0usize;
+
+    while start < chars.len() {
+        let remaining = chars.len() - start;
+        if remaining <= max_chars {
+            let chunk: String = chars[start..].iter().collect();
+            if !chunk.is_empty() {
+                chunks.push(chunk);
+            }
+            break;
+        }
+
+        let hard_end = start + max_chars;
+        let soft_start = start + (max_chars / 2).max(1);
+        let split_at = find_split_index(&chars, soft_start, hard_end).unwrap_or(hard_end);
+
+        let chunk: String = chars[start..split_at].iter().collect::<String>().trim_end().to_string();
+        if chunk.is_empty() {
+            let forced_chunk: String = chars[start..hard_end].iter().collect();
+            chunks.push(forced_chunk);
+            start = hard_end;
+        } else {
+            chunks.push(chunk);
+            start = split_at;
+        }
+
+        while start < chars.len() && chars[start].is_whitespace() {
+            start += 1;
+        }
+    }
+
+    chunks
+}
+
+fn find_split_index(chars: &[char], start: usize, end: usize) -> Option<usize> {
+    for idx in (start..end).rev() {
+        if chars[idx] == '\n' {
+            return Some(idx + 1);
+        }
+    }
+    for idx in (start..end).rev() {
+        if matches!(chars[idx], '.' | '!' | '?' | ';' | '。' | '！' | '？' | '；') {
+            return Some(idx + 1);
+        }
+    }
+    for idx in (start..end).rev() {
+        if chars[idx].is_whitespace() {
+            return Some(idx + 1);
+        }
+    }
+    None
+}
+
 /// Check if enough time has elapsed since last update (throttle helper)
 ///
 /// # Arguments
@@ -114,5 +177,29 @@ mod tests {
     fn test_sanitize_for_display() {
         assert_eq!(sanitize_for_display("Line1\nLine2", 0), "Line1\\nLine2");
         assert_eq!(sanitize_for_display("Tab\there", 10), "Tab\\there");
+    }
+
+    #[test]
+    fn split_text_for_telegram_keeps_short_message_intact() {
+        let chunks = split_text_for_telegram("hello", 10);
+        assert_eq!(chunks, vec!["hello".to_string()]);
+    }
+
+    #[test]
+    fn split_text_for_telegram_splits_long_message_by_limit() {
+        let text = "a".repeat(25);
+        let chunks = split_text_for_telegram(&text, 10);
+        assert_eq!(chunks.len(), 3);
+        assert!(chunks.iter().all(|chunk| chunk.chars().count() <= 10));
+        assert_eq!(chunks.concat(), text);
+    }
+
+    #[test]
+    fn split_text_for_telegram_prefers_newline_boundary() {
+        let text = "first line\nsecond line\nthird line";
+        let chunks = split_text_for_telegram(text, 15);
+        assert!(chunks.len() >= 2);
+        assert!(chunks[0].contains("first line"));
+        assert!(chunks.iter().all(|chunk| chunk.chars().count() <= 15));
     }
 }

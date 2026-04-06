@@ -284,7 +284,7 @@ mod tests {
     async fn run_agent_task_completes_and_returns_result_and_state() {
         let (tx, _rx) = mpsc::channel::<ProtocolEventEnvelope>(EVENT_QUEUE_CAPACITY);
         let opts = RunOptions {
-            message: "ping".to_string(),
+            message: loom::UserContent::text("ping".to_string()),
             working_folder: None,
             session_id: None,
             thread_id: None,
@@ -324,7 +324,7 @@ mod tests {
         let (tx, _rx) = mpsc::channel::<ProtocolEventEnvelope>(EVENT_QUEUE_CAPACITY);
         let store: Arc<dyn loom::UserMessageStore> = Arc::new(loom::NoOpUserMessageStore);
         let opts = RunOptions {
-            message: "hi".to_string(),
+            message: loom::UserContent::text("hi".to_string()),
             working_folder: None,
             session_id: None,
             thread_id: Some("thread-append".to_string()),

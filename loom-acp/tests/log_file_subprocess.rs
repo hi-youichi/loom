@@ -1,10 +1,14 @@
 //! Spawns the real `loom-acp` binary, completes ACP initialize + session/new, and asserts
 //! that `--log-file '{working_folder}/logs/acp.log'` resolves and creates the log file.
 
+#[cfg(unix)]
 use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
 use std::process::{Command, Stdio};
+#[cfg(unix)]
 use std::time::{Duration, Instant};
 
+#[cfg(unix)]
 fn read_jsonrpc_response(
     reader: &mut impl BufRead,
     want_id: i64,
@@ -37,6 +41,7 @@ fn read_jsonrpc_response(
 }
 
 #[test]
+#[cfg(unix)]
 fn log_file_resolves_working_folder_placeholder() {
     let temp = tempfile::tempdir().expect("tempdir");
     let loom_home = temp.path().join("loom_home");

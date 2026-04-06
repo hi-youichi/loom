@@ -24,7 +24,7 @@ fn make_state(messages: Vec<Message>) -> ReActState {
 }
 
 fn large_tool_result(name: &str, char_count: usize) -> Message {
-    Message::User(format!(
+    Message::user(format!(
         "Tool {} returned: {}",
         name,
         "x".repeat(char_count)
@@ -47,10 +47,10 @@ async fn no_compression_when_within_all_limits() {
     let graph = build_graph(config, llm).expect("compile");
 
     let msgs = vec![
-        Message::User("hello".to_string()),
+        Message::user("hello"),
         Message::assistant("hi there"),
-        Message::User("Tool bash returned: ok".to_string()),
-        Message::User("what next?".to_string()),
+        Message::user("Tool bash returned: ok"),
+        Message::user("what next?"),
     ];
     let state = make_state(msgs.clone());
     let out = graph.invoke(state, None).await.unwrap();
@@ -83,7 +83,7 @@ async fn prune_replaces_old_tool_results_via_compression_graph() {
     let graph = build_graph(config, llm).expect("compile");
 
     let msgs = vec![
-        Message::User("What time is it?".to_string()),
+        Message::user("What time is it?"),
         large_tool_result("bash", 400),
         large_tool_result("grep", 400),
         large_tool_result("read_file", 400),
@@ -94,15 +94,15 @@ async fn prune_replaces_old_tool_results_via_compression_graph() {
     assert_eq!(out.messages.len(), 4);
 
     // First message (non-tool) unchanged
-    assert!(matches!(&out.messages[0], Message::User(s) if s == "What time is it?"));
+    assert!(matches!(&out.messages[0], Message::User(loom::UserContent::Text(s)) if s == "What time is it?"));
 
     // Oldest two tool results pruned (each ~104 tokens, cumulative exceeds 120 after the newest)
-    assert!(matches!(&out.messages[1], Message::User(s) if s == PRUNE_PLACEHOLDER));
-    assert!(matches!(&out.messages[2], Message::User(s) if s == PRUNE_PLACEHOLDER));
+    assert!(matches!(&out.messages[1], Message::User(loom::UserContent::Text(s)) if s == PRUNE_PLACEHOLDER));
+    assert!(matches!(&out.messages[2], Message::User(loom::UserContent::Text(s)) if s == PRUNE_PLACEHOLDER));
 
     // Most recent tool result preserved (first ~104 tokens within 120 budget)
     assert!(
-        matches!(&out.messages[3], Message::User(s) if s.starts_with("Tool read_file returned:"))
+        matches!(&out.messages[3], Message::User(loom::UserContent::Text(s)) if s.starts_with("Tool read_file returned:"))
     );
 }
 
@@ -126,11 +126,11 @@ async fn compact_summarizes_messages_on_overflow() {
     let graph = build_graph(config, llm).expect("compile");
 
     let msgs = vec![
-        Message::User("x".repeat(100)),
+        Message::user("x".repeat(100)),
         Message::assistant("y".repeat(100)),
-        Message::User("z".repeat(100)),
+        Message::user("z".repeat(100)),
         Message::assistant("w".repeat(100)),
-        Message::User("v".repeat(100)),
+        Message::user("v".repeat(100)),
     ];
     let state = make_state(msgs.clone());
     let out = graph.invoke(state, None).await.unwrap();
@@ -144,7 +144,7 @@ async fn compact_summarizes_messages_on_overflow() {
 
     // Last 2 messages preserved verbatim
     assert!(matches!(&out.messages[1], Message::Assistant(p) if p.content == "w".repeat(100)));
-    assert!(matches!(&out.messages[2], Message::User(s) if s == &"v".repeat(100)));
+    assert!(matches!(&out.messages[2], Message::User(loom::UserContent::Text(s)) if *s == "v".repeat(100)));
 }
 
 // ---------- Test 3: prune then compact ----------
@@ -170,13 +170,13 @@ async fn prune_then_compact_combined() {
     let graph = build_graph(config, llm).expect("compile");
 
     let msgs = vec![
-        Message::User("initial question".to_string()),
+        Message::user("initial question"),
         large_tool_result("bash", 400),
         large_tool_result("grep", 400),
         large_tool_result("read", 400),
         large_tool_result("write", 400),
         Message::assistant("a".repeat(600)),
-        Message::User("b".repeat(600)),
+        Message::user("b".repeat(600)),
     ];
     let input_count = msgs.len();
     let state = make_state(msgs);
@@ -194,7 +194,7 @@ async fn prune_then_compact_combined() {
 
     // Last 2 messages are the original recent messages
     assert!(matches!(&out.messages[1], Message::Assistant(p) if p.content == "a".repeat(600)));
-    assert!(matches!(&out.messages[2], Message::User(s) if s == &"b".repeat(600)));
+    assert!(matches!(&out.messages[2], Message::User(loom::UserContent::Text(s)) if *s == "b".repeat(600)));
 }
 
 // ---------- Test 5: full ReAct loop with compression ----------
@@ -250,10 +250,10 @@ async fn compression_in_full_react_loop() {
 
     let compiled = graph.compile().expect("valid graph");
 
-    let mut history: Vec<Message> = vec![Message::User("What time is it?".to_string())];
+    let mut history: Vec<Message> = vec![Message::user("What time is it?")];
     for i in 0..10 {
         history.push(Message::assistant("a".repeat(200)));
-        history.push(Message::User(format!(
+        history.push(Message::user(format!(
             "Tool tool_{} returned: {}",
             i,
             "x".repeat(200)

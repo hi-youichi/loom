@@ -54,7 +54,7 @@ async fn main() {
         .unwrap_or_else(|| "hello world".to_string());
 
     let mut state = AgentState::default();
-    state.messages.push(Message::User(input));
+    state.messages.push(Message::user(input));
 
     let agent = EchoAgent::new();
     match agent.run(state).await {

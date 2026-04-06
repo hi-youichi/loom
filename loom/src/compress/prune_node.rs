@@ -41,7 +41,7 @@ impl Node<ReActState> for PruneNode {
 
 #[cfg(test)]
 mod tests {
-    use crate::message::Message;
+    use crate::message::{Message, UserContent};
     use crate::state::ReActState;
 
     use super::*;

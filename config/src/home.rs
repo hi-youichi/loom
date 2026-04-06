@@ -54,12 +54,19 @@ fn home_dir() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // Serialize tests that modify LOOM_HOME env var
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
+    #[cfg(unix)]
     fn loom_home_respects_env() {
+        let _lock = ENV_LOCK.lock().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
-        std::env::set_var("LOOM_HOME", "/tmp/test-loom");
-        assert_eq!(loom_home(), PathBuf::from("/tmp/test-loom"));
+        let test_path = "/tmp/test-loom";
+        std::env::set_var("LOOM_HOME", test_path);
+        assert_eq!(loom_home(), PathBuf::from(test_path));
         match prev {
             Some(v) => std::env::set_var("LOOM_HOME", v),
             None => std::env::remove_var("LOOM_HOME"),
@@ -67,13 +74,43 @@ mod tests {
     }
 
     #[test]
-    fn thread_session_dir_under_loom_home() {
+    #[cfg(windows)]
+    fn loom_home_respects_env() {
+        let _lock = ENV_LOCK.lock().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
-        std::env::set_var("LOOM_HOME", "/tmp/test-loom-thread");
-        assert_eq!(
-            super::thread_session_dir("sess-a"),
-            PathBuf::from("/tmp/test-loom-thread/thread/sess-a")
-        );
+        let test_path = r"C:\tmp\test-loom";
+        std::env::set_var("LOOM_HOME", test_path);
+        assert_eq!(loom_home(), PathBuf::from(test_path));
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn thread_session_dir_under_loom_home() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        let test_path = "/tmp/test-loom-thread";
+        std::env::set_var("LOOM_HOME", test_path);
+        let expected = PathBuf::from(test_path).join("thread").join("sess-a");
+        assert_eq!(super::thread_session_dir("sess-a"), expected);
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn thread_session_dir_under_loom_home() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        let test_path = r"C:\tmp\test-loom-thread";
+        std::env::set_var("LOOM_HOME", test_path);
+        let expected = PathBuf::from(test_path).join("thread").join("sess-a");
+        assert_eq!(super::thread_session_dir("sess-a"), expected);
         match prev {
             Some(v) => std::env::set_var("LOOM_HOME", v),
             None => std::env::remove_var("LOOM_HOME"),
@@ -93,12 +130,30 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn default_acp_log_file_under_acp_dir() {
+        let _lock = ENV_LOCK.lock().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
         std::env::set_var("LOOM_HOME", "/tmp/loom-acp-path");
         assert_eq!(
             default_acp_log_file(),
             PathBuf::from("/tmp/loom-acp-path/acp/loom-acp.log")
+        );
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn default_acp_log_file_under_acp_dir() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", r"C:\tmp\loom-acp-path");
+        assert_eq!(
+            default_acp_log_file(),
+            PathBuf::from(r"C:\tmp\loom-acp-path\acp\loom-acp.log")
         );
         match prev {
             Some(v) => std::env::set_var("LOOM_HOME", v),

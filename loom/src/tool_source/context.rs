@@ -90,7 +90,7 @@ pub struct ToolCallContext {
     /// Use for multi-tenant or store namespace. See RunnableConfig::user_id.
     pub user_id: Option<String>,
 
-    /// Current sub-agent nesting depth (0 = top-level agent).
+
     ///
     /// Used by `InvokeAgentTool` to prevent infinite recursion. Each nested
     /// invocation increments this counter; calls are rejected when `depth`

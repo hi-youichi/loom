@@ -30,6 +30,7 @@ mod mock;
 mod read_only_dir_tool_source;
 mod short_term_memory_tool_source;
 mod store_tool_source;
+mod telegram_tools_source;
 mod web_tools_source;
 mod yaml_specs;
 
@@ -49,6 +50,7 @@ pub use short_term_memory_tool_source::{ShortTermMemoryToolSource, TOOL_GET_RECE
 pub use store_tool_source::{
     StoreToolSource, TOOL_LIST_MEMORIES, TOOL_RECALL, TOOL_REMEMBER, TOOL_SEARCH_MEMORIES,
 };
+pub use telegram_tools_source::TelegramToolsSource;
 pub use web_tools_source::{WebToolsSource, TOOL_WEB_FETCHER};
 pub use yaml_specs::{load_tool_specs, YamlSpecError, YamlSpecToolSource};
 

@@ -79,7 +79,7 @@ async fn main() {
         .expect("compile");
 
     let mut state = AgentState::default();
-    state.messages.push(Message::User(input.clone()));
+    state.messages.push(Message::user(input.clone()));
 
     let state = compiled
         .invoke(state, Some(config.clone()))

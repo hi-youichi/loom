@@ -8,6 +8,7 @@ use crate::streaming::event_mapper::StreamEventMapper;
 use crate::streaming::message_handler::StreamCommand;
 use crate::traits::{AgentRunContext, MessageSender};
 use loom::{run_agent_with_options, RunCmd, RunCompletion, RunOptions, UserContent};
+use loom::tools::set_current_chat_id;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -22,6 +23,8 @@ pub async fn run_loom_agent_streaming(
     tracing::info!("Running Loom agent (streaming) for chat {}", chat_id);
 
     let thread_id = format!("telegram_{}", chat_id);
+
+    set_current_chat_id(chat_id);
 
     let (tx, rx) = mpsc::channel::<StreamCommand>(100);
 

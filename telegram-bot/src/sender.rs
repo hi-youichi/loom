@@ -1,5 +1,11 @@
 //! Teloxide message sender implementation
 
+use async_trait::async_trait;
+use teloxide::prelude::*;
+use teloxide::types::{MessageId, ParseMode, ReactionType};
+
+use crate::constants::retry::MAX_RETRIES as TELEGRAM_API_RETRIES;
+use crate::constants::telegram::MESSAGE_MAX_CHARS as TELEGRAM_MESSAGE_MAX_CHARS;
 use crate::error::BotError;
 use crate::formatting::{escape_markdown_v2, FormattedMessage};
 use crate::streaming::retry::{
@@ -7,10 +13,7 @@ use crate::streaming::retry::{
     send_message_with_retry,
 };
 use crate::traits::MessageSender;
-use async_trait::async_trait;
-
-use teloxide::prelude::*;
-use teloxide::types::{MessageId, ParseMode, ReactionType};
+use crate::utils::{split_text_for_telegram, truncate_text};
 
 fn preview_text(text: &str) -> String {
     const MAX_PREVIEW_CHARS: usize = 240;
@@ -25,7 +28,11 @@ fn preview_text(text: &str) -> String {
     preview.replace('\n', "\\n")
 }
 
-use crate::constants::retry::MAX_RETRIES as TELEGRAM_API_RETRIES;
+const EDIT_TRUNCATION_NOTICE: &str = "\n\n[truncated: exceeds Telegram edit limit]";
+
+fn exceeds_telegram_limit(text: &str) -> bool {
+    text.chars().count() > TELEGRAM_MESSAGE_MAX_CHARS
+}
 
 pub struct TeloxideSender {
     bot: Bot,
@@ -40,15 +47,31 @@ impl TeloxideSender {
 #[async_trait]
 impl MessageSender for TeloxideSender {
     async fn send_text_returning_id(&self, chat_id: i64, text: &str) -> Result<i32, BotError> {
+        let chunks = split_text_for_telegram(text, TELEGRAM_MESSAGE_MAX_CHARS);
         tracing::debug!(
             chat_id,
             text_len = text.chars().count(),
+            chunk_count = chunks.len(),
             text_preview = %preview_text(text),
             "sending plain telegram message"
         );
-        let msg =
-            send_message_with_retry(&self.bot, ChatId(chat_id), text, TELEGRAM_API_RETRIES).await?;
-        Ok(msg.id.0)
+
+        let mut first_message_id: Option<i32> = None;
+        for chunk in chunks {
+            let msg = send_message_with_retry(
+                &self.bot,
+                ChatId(chat_id),
+                &chunk,
+                TELEGRAM_API_RETRIES,
+            )
+            .await?;
+            if first_message_id.is_none() {
+                first_message_id = Some(msg.id.0);
+            }
+        }
+
+        first_message_id
+            .ok_or_else(|| BotError::Unknown("cannot send empty telegram chunk list".to_string()))
     }
 
     async fn send_text_with_parse_mode(
@@ -64,6 +87,17 @@ impl MessageSender for TeloxideSender {
             text_preview = %preview_text(text),
             "sending telegram message with parse mode"
         );
+        if exceeds_telegram_limit(text) {
+            tracing::warn!(
+                chat_id,
+                text_len = text.chars().count(),
+                max_chars = TELEGRAM_MESSAGE_MAX_CHARS,
+                "parse-mode message exceeded telegram limit, fallback to plain chunked sending"
+            );
+            self.send_text(chat_id, text).await?;
+            return Ok(());
+        }
+
         self.bot
             .send_message(ChatId(chat_id), text)
             .parse_mode(parse_mode)
@@ -117,6 +151,18 @@ impl MessageSender for TeloxideSender {
             fallback_preview = %preview_text(&msg.plain_text_fallback),
             "sending formatted telegram message without id"
         );
+        if exceeds_telegram_limit(&msg.text) || exceeds_telegram_limit(&msg.plain_text_fallback) {
+            tracing::warn!(
+                chat_id,
+                text_len = msg.text.chars().count(),
+                fallback_len = msg.plain_text_fallback.chars().count(),
+                max_chars = TELEGRAM_MESSAGE_MAX_CHARS,
+                "formatted message exceeded telegram limit, fallback to plain chunked sending"
+            );
+            self.send_text(chat_id, &msg.plain_text_fallback).await?;
+            return Ok(());
+        }
+
         match msg.parse_mode {
             Some(parse_mode) => match self
                 .bot
@@ -184,18 +230,26 @@ impl MessageSender for TeloxideSender {
         message_id: i32,
         text: &str,
     ) -> Result<(), BotError> {
+        let text_for_edit = if exceeds_telegram_limit(text) {
+            let notice_chars = EDIT_TRUNCATION_NOTICE.chars().count();
+            let allowed = TELEGRAM_MESSAGE_MAX_CHARS.saturating_sub(notice_chars);
+            format!("{}{}", truncate_text(text, allowed), EDIT_TRUNCATION_NOTICE)
+        } else {
+            text.to_string()
+        };
+
         tracing::debug!(
             chat_id,
             message_id,
-            text_len = text.chars().count(),
-            text_preview = %preview_text(text),
+            text_len = text_for_edit.chars().count(),
+            text_preview = %preview_text(&text_for_edit),
             "editing plain telegram message"
         );
         edit_message_with_retry(
             &self.bot,
             ChatId(chat_id),
             MessageId(message_id),
-            text,
+            &text_for_edit,
             TELEGRAM_API_RETRIES,
         )
         .await

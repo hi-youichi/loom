@@ -254,7 +254,7 @@ mod tests {
 
     fn invalid_opts() -> RunOptions {
         RunOptions {
-            message: String::new(),
+            message: loom::UserContent::text(String::new()),
             working_folder: Some(PathBuf::from(
                 "/definitely/not/exist/loom-cli-tool-cmd-tests",
             )),

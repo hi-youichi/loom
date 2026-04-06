@@ -1,11 +1,10 @@
-//! Message processing pipeline: download dir, text flow (commands → mention gate → agent), media.
+//! Message processing pipeline: download dir, text flow (commands -> mention gate -> agent), media.
 //!
 //! Keeps [`crate::router::handle_message_with_deps`] thin by centralizing common-message logic here.
 
 mod agent_orchestrator;
 
 use crate::command::{try_handle_model_command_input, CommandContext, CommandDispatcher};
-
 use crate::download::{is_bot_mentioned, is_reply_to_bot};
 use crate::error::BotError;
 use crate::handler_deps::HandlerDeps;

@@ -54,6 +54,7 @@ mod router;
 mod sender;
 mod session;
 mod streaming;
+pub mod telegram_tools;
 mod traits;
 pub mod utils;
 

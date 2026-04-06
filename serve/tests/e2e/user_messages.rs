@@ -138,7 +138,7 @@ async fn e2e_user_messages_after_run() {
 
     let run_req = ClientRequest::Run(RunRequest {
         id: None,
-        message: user_msg.to_string(),
+        message: loom::UserContent::text(user_msg.to_string()),
         agent: AgentType::React,
         thread_id: Some(thread_id.to_string()),
         workspace_id: None,

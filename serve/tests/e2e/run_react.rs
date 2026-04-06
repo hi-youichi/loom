@@ -129,7 +129,7 @@ async fn e2e_run_then_disconnect() {
 
     let req = ClientRequest::Run(RunRequest {
         id: None,
-        message: "hi".to_string(),
+        message: loom::UserContent::text("hi".to_string()),
         agent: AgentType::React,
         thread_id: None,
         workspace_id: None,
@@ -206,7 +206,7 @@ async fn e2e_run_react() {
 
     let req = ClientRequest::Run(RunRequest {
         id: None,
-        message: "Say hello".to_string(),
+        message: loom::UserContent::text("Say hello".to_string()),
         agent: AgentType::React,
         thread_id: None,
         workspace_id: None,

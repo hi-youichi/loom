@@ -1126,7 +1126,7 @@ mod tests {
 
     fn invalid_opts(output_json: bool) -> RunOptions {
         RunOptions {
-            message: "hello".to_string(),
+            message: loom::UserContent::text("hello".to_string()),
             // Deterministic failure path in build context (invalid file-tool root).
             working_folder: Some(PathBuf::from(
                 "/definitely/not/exist/loom-cli-run-agent-tests",

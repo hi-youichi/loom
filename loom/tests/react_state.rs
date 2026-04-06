@@ -272,7 +272,7 @@ fn react_state_with_all_message_variants() {
         _ => panic!("expected System"),
     }
     match &state.messages[1] {
-        Message::User(s) => assert_eq!(s, "User input"),
+        Message::User(s) => assert_eq!(s.as_text(), "User input"),
         _ => panic!("expected User"),
     }
     match &state.messages[2] {

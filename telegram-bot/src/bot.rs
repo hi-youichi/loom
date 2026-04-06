@@ -39,6 +39,9 @@ impl BotManager {
         let span_name = name.clone();
         let cancellation_token = self.cancellation_token.clone();
 
+        // Initialize Telegram API for loom tools
+        crate::telegram_tools::init_telegram_api(bot.clone());
+
         let me = bot.get_me().await;
         let bot_username = match me {
             Ok(m) => m.username.clone().unwrap_or_default(),

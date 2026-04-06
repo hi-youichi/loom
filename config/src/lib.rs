@@ -864,7 +864,6 @@ model = "other-model"
             base_url: None,
             model: Some("glm-5".to_string()),
             provider_type: None,
-            tool_choice: None,
             temperature: None,
         };
 

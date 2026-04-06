@@ -28,7 +28,7 @@ pub const TOOL_GET_RECENT_MESSAGES: &str = "get_recent_messages";
 /// let tool = GetRecentMessagesTool;
 ///
 /// let context = ToolCallContext::new(vec![
-///     Message::User("hello".to_string()),
+///     Message::User(loom::message::UserContent::Text("hello".to_string())),
 ///     Message::assistant("hi there!"),
 /// ]);
 ///
