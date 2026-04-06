@@ -129,6 +129,20 @@ impl ModelsDevResolver {
         provider.models.get(model_id).cloned()
     }
 
+    /// Resolve model spec by bare model name (without provider prefix).
+    ///
+    /// Searches all providers for a matching model ID. Returns the first match.
+    pub async fn resolve_by_bare_model_name(&self, model_name: &str) -> Option<ModelSpec> {
+        let all = self.fetch_all().await.ok()?;
+        let suffix = format!("/{}", model_name);
+        for (key, spec) in &all {
+            if key.ends_with(&suffix) {
+                return Some(spec.clone());
+            }
+        }
+        None
+    }
+
     fn resolve_from_json(
         &self,
         json: &Value,

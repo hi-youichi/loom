@@ -276,7 +276,8 @@ impl Agent for LoomAcpAgent {
                 .get_model(model_str, &providers)
                 .await
             {
-                (Some(model_entry.name.clone()), Some(model_entry))
+                // Use id ("provider/model") so resolve_compaction_config can query model spec
+                (Some(model_entry.id.clone()), Some(model_entry))
             } else if let Some((provider_name, model_id)) = model_str.split_once('/') {
                 // Fallback: load provider config directly if not in registry
                 // For nested model names like "provider/path/model", use the last segment as the actual model id
@@ -297,7 +298,8 @@ impl Agent for LoomAcpAgent {
                         provider_type: p.provider_type,
                         ..Default::default()
                     });
-                (Some(actual_model_id.to_string()), provider_cfg)
+                // Keep "provider/model" format so resolve_compaction_config can query model spec
+                (Some(model_str.clone()), provider_cfg)
             } else {
                 // No provider prefix, use as-is (backward compatibility)
                 (Some(model_str.clone()), None)

@@ -1,4 +1,4 @@
-//! L2: build_tool_source with GitHub MCP (github_token None vs invalid command).
+﻿//! L2: build_tool_source with GitHub MCP (github_token None vs invalid command).
 //!
 //! When github_token is None, no GitHub MCP is started. When github_token is set but
 //! mcp_github_cmd is invalid, spawn fails and we skip GitHub MCP (build still succeeds).
@@ -31,6 +31,7 @@ fn base_config(working_folder: std::path::PathBuf) -> ReactBuildConfig {
         openai_base_url: None,
         model: None,
         llm_provider: None,
+        provider_name: None,
         openai_temperature: None,
         embedding_api_key: None,
         embedding_base_url: None,

@@ -1,4 +1,4 @@
-//! Integration test: build_react_runner then invoke (config → runner → one invoke).
+﻿//! Integration test: build_react_runner then invoke (config → runner → one invoke).
 //!
 //! Phase 0 refactoring: ensures the full pipeline from ReactBuildConfig through
 //! build_react_runner and ReactRunner::invoke is covered by a test.
@@ -33,6 +33,7 @@ fn minimal_config() -> ReactBuildConfig {
         openai_base_url: None,
         model: None,
         llm_provider: None,
+        provider_name: None,
         openai_temperature: None,
         embedding_api_key: None,
         embedding_base_url: None,
