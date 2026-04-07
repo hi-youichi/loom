@@ -82,6 +82,10 @@ const ORCHESTRATOR_AGENT_INSTRUCTIONS: &str =
     include_str!("../../agents/orchestrator/instructions.md");
 const ORCHESTRATOR_AGENT_CONFIG_YAML: &str = include_str!("../../agents/orchestrator/config.yaml");
 
+/// Built-in ask agent: read-only Q&A agent that never modifies files (loom/agents/ask/).
+const ASK_AGENT_INSTRUCTIONS: &str = include_str!("../../agents/ask/instructions.md");
+const ASK_AGENT_CONFIG_YAML: &str = include_str!("../../agents/ask/config.yaml");
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct RoleConfig {
     #[serde(default)]
@@ -391,7 +395,7 @@ fn classify_profile_path(path: &Path) -> ProfileSource {
 }
 
 /// Built-in agent names (compile-time embedded).
-const BUILTIN_AGENT_NAMES: &[&str] = &["dev", "agent-builder", "explore", "orchestrator"];
+const BUILTIN_AGENT_NAMES: &[&str] = &["dev", "ask", "agent-builder", "explore", "orchestrator"];
 
 /// Resolve an agent profile by name at runtime. Tries built-in agents first,
 /// then project-level `.loom/agents/<name>/`, then user-level `~/.loom/agents/<name>/`.
@@ -508,6 +512,7 @@ pub fn list_available_profiles() -> Vec<ProfileSummary> {
 fn load_builtin_profile(name: &str) -> Option<AgentProfile> {
     let (config_yaml, instructions) = match name {
         "dev" => (DEV_AGENT_CONFIG_YAML, DEV_AGENT_INSTRUCTIONS),
+        "ask" => (ASK_AGENT_CONFIG_YAML, ASK_AGENT_INSTRUCTIONS),
         "agent-builder" => (AGENT_BUILDER_CONFIG_YAML, AGENT_BUILDER_INSTRUCTIONS),
         "explore" => (EXPLORE_AGENT_CONFIG_YAML, EXPLORE_AGENT_INSTRUCTIONS),
         "orchestrator" => (

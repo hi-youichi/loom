@@ -1,0 +1,35 @@
+name: ask
+description: "Ask questions without making any changes"
+tools:
+  builtin:
+    enabled:
+      [
+        read,
+        grep,
+        glob,
+        ls,
+        todo_write,
+        todo_read,
+        web_fetcher,
+        websearch,
+        skill,
+        batch,
+        search_memories,
+        list_memories,
+        recall,
+        get_recent_messages,
+      ]
+    disabled:
+      [
+        write_file,
+        edit_file,
+        apply_patch,
+        multiedit,
+        delete_file,
+        move_file,
+        create_dir,
+        bash,
+        invoke_agent,
+        remember,
+        lsp,
+      ]
