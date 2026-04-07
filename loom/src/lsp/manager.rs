@@ -173,7 +173,7 @@ impl LspManager {
         file_path: &Path,
     ) -> Result<Vec<lsp_types::Diagnostic>, LspManagerError> {
         let client = self.get_client_for_file(file_path).await?;
-        let mut client = client.write().await;
+        let client = client.read().await;
 
         let uri = path_to_uri(file_path)?;
         client.diagnostics(&uri).await.map_err(Into::into)
@@ -225,7 +225,7 @@ impl LspManager {
     pub async fn document_symbols(
         &self,
         file_path: &Path,
-    ) -> Result<Vec<lsp_types::DocumentSymbolResponse>, LspManagerError> {
+    ) -> Result<Option<lsp_types::DocumentSymbolResponse>, LspManagerError> {
         let client = self.get_client_for_file(file_path).await?;
         let mut client = client.write().await;
 

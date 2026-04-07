@@ -29,6 +29,8 @@ use tokio::{
 };
 use tracing::{debug, error, info, warn};
 
+use crate::lsp::cache::DiagnosticCache;
+
 /// LSP result type
 pub type LspResult<T> = Result<T, LspClientError>;
 
@@ -68,21 +70,18 @@ type PendingRequests = Arc<RwLock<HashMap<u64, oneshot::Sender<LspResult<Value>>
 /// LSP Client managing a single language server process
 pub struct LspClient {
     process: Option<Child>,
-    
-    /// Stdin for sending requests
+
     stdin: tokio::process::ChildStdin,
-    
-    /// Pending requests waiting for responses
+
     pending_requests: PendingRequests,
-    
-    /// Channel to signal shutdown
+
     shutdown_tx: mpsc::Sender<()>,
-    
-    /// Server capabilities (set after initialization)
+
     capabilities: Arc<RwLock<Option<InitializeResult>>>,
-    
-    /// Workspace root URI
+
     root_uri: Option<Url>,
+
+    diagnostics_cache: Arc<DiagnosticCache>,
 }
 
 impl LspClient {
@@ -112,14 +111,16 @@ impl LspClient {
         
         let pending_requests = Arc::new(RwLock::new(HashMap::new()));
         let capabilities = Arc::new(RwLock::new(None));
-        
+        let diagnostics_cache = Arc::new(DiagnosticCache::new());
+
         let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
-        
+
         let pending_requests_clone = pending_requests.clone();
         let capabilities_clone = capabilities.clone();
+        let diagnostics_cache_clone = diagnostics_cache.clone();
         tokio::spawn(async move {
             let mut reader = BufReader::new(stdout);
-            
+
             loop {
                 tokio::select! {
                     _ = shutdown_rx.recv() => break,
@@ -134,6 +135,7 @@ impl LspClient {
                                     &body_str,
                                     &pending_requests_clone,
                                     &capabilities_clone,
+                                    &diagnostics_cache_clone,
                                 ).await {
                                     error!("Failed to handle LSP response: {}", e);
                                 }
@@ -142,10 +144,10 @@ impl LspClient {
                     }
                 }
             }
-            
+
             debug!("LSP reader task stopped");
         });
-        
+
         Ok(Self {
             process: Some(process),
             stdin,
@@ -153,6 +155,7 @@ impl LspClient {
             shutdown_tx,
             capabilities,
             root_uri,
+            diagnostics_cache,
         })
     }
     
@@ -227,14 +230,8 @@ impl LspClient {
     }
     
     /// Get diagnostics for a document
-    pub async fn diagnostics(&mut self, uri: &Url) -> LspResult<Vec<Diagnostic>> {
-        // Diagnostics are typically pushed via notifications
-        // This is a placeholder - actual implementation would cache diagnostics
-        let params = TextDocumentIdentifier { uri: uri.clone() };
-        let _result: () = self.request("textDocument/diagnostics", params).await?;
-        
-        // For now, return empty (diagnostics come via notifications)
-        Ok(Vec::new())
+    pub async fn diagnostics(&self, uri: &Url) -> LspResult<Vec<Diagnostic>> {
+        Ok(self.diagnostics_cache.get_latest(uri).await.unwrap_or_default())
     }
     
     /// Send a request and wait for response
@@ -303,23 +300,21 @@ impl LspClient {
         line: &str,
         pending_requests: &PendingRequests,
         _capabilities: &Arc<RwLock<Option<InitializeResult>>>,
+        diagnostics_cache: &Arc<DiagnosticCache>,
     ) -> LspResult<()> {
         if line.is_empty() {
             return Ok(());
         }
-        
-        // Parse headers
+
         if line.starts_with("Content-Length:") {
-            return Ok(()); // Skip header line
+            return Ok(());
         }
-        
-        // Try to parse as JSON-RPC message
+
         let message: Value = serde_json::from_str(line)?;
-        
+
         if let Some(id) = message.get("id").and_then(|id| id.as_u64()) {
-            // This is a response
             let pending = pending_requests.write().await.remove(&id);
-            
+
             if let Some(tx) = pending {
                 if let Some(error) = message.get("error") {
                     let error_msg = error["message"].as_str().unwrap_or("Unknown error");
@@ -331,18 +326,26 @@ impl LspClient {
                 }
             }
         } else if let Some(method) = message.get("method").and_then(|m| m.as_str()) {
-            // This is a notification
             match method {
                 "textDocument/publishDiagnostics" => {
                     debug!("Received diagnostics notification");
-                    // TODO: Cache diagnostics
+                    if let Some(params) = message.get("params") {
+                        if let Some(uri_str) = params.get("uri").and_then(|u| u.as_str()) {
+                            if let Ok(uri) = Url::parse(uri_str) {
+                                let diags: Vec<Diagnostic> =
+                                    params.get("diagnostics").and_then(|d| serde_json::from_value(d.clone()).ok()).unwrap_or_default();
+                                let version = params.get("version").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                                diagnostics_cache.put(uri, version, diags).await;
+                            }
+                        }
+                    }
                 }
                 _ => {
                     debug!("Received notification: {}", method);
                 }
             }
         }
-        
+
         Ok(())
     }
     
@@ -409,11 +412,28 @@ impl LspClient {
             "position": { "line": line, "character": character },
             "context": { "includeDeclaration": true }
         });
-        
-        let result: Value = self.request("textDocument/references", params).await?;
-        let locations: Vec<lsp_types::Location> = serde_json::from_value(result)?;
-        
-        Ok(locations)
+
+        let max_retries = 3;
+        for attempt in 0..=max_retries {
+            match self.request::<_, Value>("textDocument/references", &params).await {
+                Ok(result) => {
+                    let locations: Vec<lsp_types::Location> = serde_json::from_value(result)?;
+                    return Ok(locations);
+                }
+                Err(LspClientError::Protocol(msg))
+                    if msg.contains("content modified") || msg.contains("ContentModified") =>
+                {
+                    if attempt < max_retries {
+                        debug!("find_references: content modified, retrying ({}/{})", attempt + 1, max_retries);
+                        tokio::time::sleep(Duration::from_millis(200 * (attempt as u64 + 1))).await;
+                        continue;
+                    }
+                    return Err(LspClientError::Protocol(msg));
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(Vec::new())
     }
     
     /// Get hover information
@@ -442,15 +462,19 @@ impl LspClient {
     pub async fn document_symbols(
         &mut self,
         uri: &Url,
-    ) -> LspResult<Vec<lsp_types::DocumentSymbolResponse>> {
+    ) -> LspResult<Option<lsp_types::DocumentSymbolResponse>> {
         let params = json!({
             "textDocument": { "uri": uri }
         });
-        
+
         let result: Value = self.request("textDocument/documentSymbol", params).await?;
-        let symbols: Vec<lsp_types::DocumentSymbolResponse> = serde_json::from_value(result)?;
-        
-        Ok(symbols)
+
+        if result.is_null() {
+            return Ok(None);
+        }
+
+        let response: lsp_types::DocumentSymbolResponse = serde_json::from_value(result)?;
+        Ok(Some(response))
     }
     
     /// Add workspace folder

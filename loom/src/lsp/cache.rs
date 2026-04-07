@@ -64,21 +64,33 @@ impl DiagnosticCache {
     /// Get diagnostics from cache if available and not expired.
     pub async fn get(&self, uri: &Url, version: i32) -> Option<Vec<Diagnostic>> {
         let cache = self.cache.read().await;
-        
+
         if let Some(entry) = cache.get(uri) {
-            // Check if entry is expired
             if entry.timestamp.elapsed() > self.config.ttl {
                 return None;
             }
-            
-            // Check if version matches
+
             if entry.version != version {
                 return None;
             }
-            
+
             return Some(entry.diagnostics.clone());
         }
-        
+
+        None
+    }
+
+    pub async fn get_latest(&self, uri: &Url) -> Option<Vec<Diagnostic>> {
+        let cache = self.cache.read().await;
+
+        if let Some(entry) = cache.get(uri) {
+            if entry.timestamp.elapsed() > self.config.ttl {
+                return None;
+            }
+
+            return Some(entry.diagnostics.clone());
+        }
+
         None
     }
 
