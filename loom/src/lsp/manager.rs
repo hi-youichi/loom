@@ -10,7 +10,7 @@ use crate::lsp::cache::DiagnosticCache;
 use crate::lsp::client::LspClient;
 use env_config::LspServerConfig;
 use dashmap::DashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::RwLock;
@@ -44,6 +44,7 @@ pub struct LspManager {
     /// Server configurations
     configs: Vec<LspServerConfig>,
     /// Diagnostic cache
+    #[allow(dead_code)]
     diagnostic_cache: DiagnosticCache,
     /// Extension to language mapping
     extension_map: DashMap<String, String>,

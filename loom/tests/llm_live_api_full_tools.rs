@@ -14,6 +14,8 @@ use loom::tool_source::{register_file_tools, ToolSource, YamlSpecToolSource};
 use loom::tools::{
     AggregateToolSource, BatchTool, LspTool, WebFetcherTool, TOOL_READ_FILE,
 };
+#[cfg(not(windows))]
+use loom::tools::BashTool;
 use loom::{Message, MessageChunk};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -98,7 +100,7 @@ async fn list_default_builtin_tools_merged_yaml(
     register_file_tools(aggregate.as_ref(), working_folder, None)
         .unwrap_or_else(|e| panic!("register_file_tools: {e}"));
     aggregate.register_sync(Box::new(BatchTool::new(Arc::clone(&aggregate))));
-    aggregate.register_sync(Box::new(LspTool::new()));
+    aggregate.register_sync(Box::new(LspTool::placeholder()));
 
     let inner: Box<dyn ToolSource> = Box::new(aggregate);
     let wrapped = YamlSpecToolSource::wrap(inner)

@@ -8,12 +8,12 @@ use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 /// Mock LSP server that responds to basic LSP requests.
 pub struct MockLspServer {
     responses: Arc<Mutex<HashMap<String, Value>>>,
+    #[allow(dead_code)]
     running: Arc<Mutex<bool>>,
 }
 
@@ -35,6 +35,7 @@ impl MockLspServer {
     }
 
     /// Start the mock server on a separate thread.
+    #[allow(dead_code)]
     pub fn start(&self) -> MockServerHandle {
         let running = Arc::clone(&self.running);
         let running_clone = Arc::clone(&running);
@@ -144,6 +145,7 @@ impl MockLspServer {
 }
 
 /// Handle to stop the mock server.
+#[allow(dead_code)]
 pub struct MockServerHandle {
     running: Arc<Mutex<bool>>,
     handle: Option<thread::JoinHandle<()>>,
@@ -151,6 +153,7 @@ pub struct MockServerHandle {
 
 impl MockServerHandle {
     /// Stop the mock server.
+    #[allow(dead_code)]
     pub fn stop(&mut self) {
         *self.running.lock().unwrap() = false;
         if let Some(handle) = self.handle.take() {

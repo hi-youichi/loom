@@ -2,10 +2,7 @@
 //!
 //! Implements efficient text synchronization using LSP's TextDocumentContentChangeEvent.
 
-use lsp_types::{
-    Position, Range, TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem, Url,
-    VersionedTextDocumentIdentifier,
-};
+use lsp_types::{Position, Range, TextDocumentContentChangeEvent, Url};
 use std::collections::HashMap;
 
 /// Represents a document being tracked for synchronization.
@@ -167,8 +164,8 @@ impl DocumentSyncManager {
                 TextDocumentContentChangeEvent {
                     range: Some(range),
                     range_length: Some(
-                        ((end_line_old - start_line) as u32
-                            + if end_line_old > start_line { 1 } else { 0 }),
+                        (end_line_old - start_line) as u32
+                            + if end_line_old > start_line { 1 } else { 0 },
                     ),
                     text: changed_text,
                 }

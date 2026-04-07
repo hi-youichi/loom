@@ -4,7 +4,7 @@
 //! set of language servers and configurations.
 
 use dashmap::DashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::RwLock;

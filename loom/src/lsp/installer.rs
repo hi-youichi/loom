@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 use std::process::Command;
 use thiserror::Error;
-use tracing::{info, warn};
+use tracing::info;
 
 #[derive(Debug, Error)]
 pub enum InstallerError {
@@ -45,6 +45,7 @@ struct ServerDefinition {
     executable: String,
     check_args: Vec<String>,
     install_commands: Vec<String>,
+    #[allow(dead_code)]
     package_managers: Vec<String>,
 }
 

@@ -8,8 +8,6 @@
 
 use std::{
     collections::HashMap,
-    io::{BufRead, BufReader, Read, Write},
-    process::{Child, ChildStdin, Command, Stdio},
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -24,7 +22,11 @@ use lsp_types::{
 };
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{json, Value};
-use tokio::sync::{mpsc, oneshot, RwLock};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
+    process::{Child, Command},
+    sync::{mpsc, oneshot, RwLock},
+};
 use tracing::{debug, error, info, warn};
 
 /// LSP result type
@@ -65,11 +67,10 @@ type PendingRequests = Arc<RwLock<HashMap<u64, oneshot::Sender<LspResult<Value>>
 
 /// LSP Client managing a single language server process
 pub struct LspClient {
-    /// Language server process
     process: Option<Child>,
     
     /// Stdin for sending requests
-    stdin: ChildStdin,
+    stdin: tokio::process::ChildStdin,
     
     /// Pending requests waiting for responses
     pending_requests: PendingRequests,
@@ -95,9 +96,9 @@ impl LspClient {
         
         let mut process = Command::new(command)
             .args(args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| LspClientError::Protocol(format!("Failed to start {}: {}", command, e)))?;
         
@@ -112,72 +113,38 @@ impl LspClient {
         let pending_requests = Arc::new(RwLock::new(HashMap::new()));
         let capabilities = Arc::new(RwLock::new(None));
         
-        // Channel for shutdown signaling
         let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
         
-        // Spawn background task to read responses
-       let pending_requests_clone = pending_requests.clone();
-       let capabilities_clone = capabilities.clone();
-       tokio::spawn(async move {
-           let mut reader = BufReader::new(stdout);
-           
-           loop {
-               // Check for shutdown signal
-               if shutdown_rx.try_recv().is_ok() {
-                   break;
-               }
-               
-                // Read Content-Length header
-                let mut content_length: Option<usize> = None;
-                loop {
-                    let mut line = String::new();
-                    match reader.read_line(&mut line) {
-                        Ok(0) => break, // EOF
-                        Ok(_) => {
-                            let line = line.trim();
-                            if line.is_empty() {
-                                // Empty line marks end of headers
+        let pending_requests_clone = pending_requests.clone();
+        let capabilities_clone = capabilities.clone();
+        tokio::spawn(async move {
+            let mut reader = BufReader::new(stdout);
+            
+            loop {
+                tokio::select! {
+                    _ = shutdown_rx.recv() => break,
+                    result = read_lsp_message(&mut reader) => {
+                        match result {
+                            None => {
+                                debug!("LSP server closed connection");
                                 break;
                             }
-                            if let Some(length) = line.strip_prefix("Content-Length: ") {
-                                content_length = Some(length.parse().unwrap_or(0));
+                            Some(body_str) => {
+                                if let Err(e) = Self::handle_response(
+                                    &body_str,
+                                    &pending_requests_clone,
+                                    &capabilities_clone,
+                                ).await {
+                                    error!("Failed to handle LSP response: {}", e);
+                                }
                             }
-                        }
-                        Err(e) => {
-                            error!("Failed to read header from LSP server: {}", e);
-                            return;
                         }
                     }
                 }
-                
-                // Read message body
-                if let Some(length) = content_length {
-                    if length == 0 {
-                        continue;
-                    }
-                    
-                    let mut body = vec![0u8; length];
-                    match reader.read_exact(&mut body) {
-                        Ok(_) => {
-                            let body_str = String::from_utf8_lossy(&body);
-                            if let Err(e) = Self::handle_response(
-                                &body_str,
-                                &pending_requests_clone,
-                                &capabilities_clone,
-                            ).await {
-                                error!("Failed to handle LSP response: {}", e);
-                            }
-                        }
-                        Err(e) => {
-                            error!("Failed to read body from LSP server: {}", e);
-                            break;
-                        }
-                    }
-               }
-           }
-           
-           debug!("LSP reader task stopped");
-       });
+            }
+            
+            debug!("LSP reader task stopped");
+        });
         
         Ok(Self {
             process: Some(process),
@@ -192,6 +159,7 @@ impl LspClient {
     /// Initialize the language server
     pub async fn initialize(&mut self) -> LspResult<InitializeResult> {
         let params = InitializeParams {
+            #[allow(deprecated)]
             root_uri: self.root_uri.clone(),
             ..Default::default()
         };
@@ -322,9 +290,9 @@ impl LspClient {
         let content = serde_json::to_string(message)?;
         let header = format!("Content-Length: {}\r\n\r\n", content.len());
         
-        self.stdin.write_all(header.as_bytes())?;
-        self.stdin.write_all(content.as_bytes())?;
-        self.stdin.flush()?;
+        self.stdin.write_all(header.as_bytes()).await?;
+        self.stdin.write_all(content.as_bytes()).await?;
+        self.stdin.flush().await?;
         
         debug!("Sent LSP message: {}", message["method"].as_str().unwrap_or("unknown"));
         Ok(())
@@ -334,7 +302,7 @@ impl LspClient {
     async fn handle_response(
         line: &str,
         pending_requests: &PendingRequests,
-        capabilities: &Arc<RwLock<Option<InitializeResult>>>,
+        _capabilities: &Arc<RwLock<Option<InitializeResult>>>,
     ) -> LspResult<()> {
         if line.is_empty() {
             return Ok(());
@@ -393,7 +361,7 @@ impl LspClient {
         if let Some(mut process) = self.process.take() {
             tokio::time::timeout(
                 Duration::from_secs(5),
-                async { process.wait() }
+                process.wait()
             ).await
                 .map_err(|_| LspClientError::Timeout)?
                 .map_err(|e| LspClientError::Protocol(format!("Process wait failed: {}", e)))?;
@@ -420,7 +388,7 @@ impl LspClient {
         // Handle both Location and LocationLink
         let locations: Vec<lsp_types::Location> = if result.is_array() {
             serde_json::from_value(result)?
-        } else if let Some(location) = result.get("uri") {
+        } else if let Some(_location) = result.get("uri") {
             vec![serde_json::from_value(result)?]
         } else {
             Vec::new()
@@ -495,6 +463,50 @@ impl LspClient {
     pub async fn remove_workspace(&mut self, _uri: &Url) -> LspResult<()> {
         // TODO: Implement workspace folder support
         Ok(())
+    }
+}
+
+async fn read_lsp_message<R: AsyncBufReadExt + Unpin>(reader: &mut R) -> Option<String> {
+    let mut content_length: Option<usize> = None;
+    loop {
+        let mut line = String::new();
+        match reader.read_line(&mut line).await {
+            Ok(0) => {
+                debug!("read_lsp_message: EOF on header read");
+                return None;
+            }
+            Ok(_) => {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    break;
+                }
+                if let Some(length) = trimmed.strip_prefix("Content-Length: ") {
+                    content_length = Some(length.parse().unwrap_or(0));
+                }
+            }
+            Err(e) => {
+                debug!("read_lsp_message: header read error: {}", e);
+                return None;
+            }
+        }
+    }
+    
+    let length = content_length?;
+    if length == 0 {
+        return Some(String::new());
+    }
+    
+    let mut body = vec![0u8; length];
+    match reader.read_exact(&mut body).await {
+        Ok(_n) => {
+            let body_str = String::from_utf8_lossy(&body).into_owned();
+            debug!("read_lsp_message: received {} bytes", body_str.len());
+            Some(body_str)
+        }
+        Err(e) => {
+            debug!("read_lsp_message: body read error: {}", e);
+            None
+        }
     }
 }
 
