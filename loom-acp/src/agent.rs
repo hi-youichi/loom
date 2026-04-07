@@ -3,16 +3,18 @@
 //! [`LoomAcpAgent`] implements `agent_client_protocol::Agent` and maps ACP requests
 //! to Loom sessions and execution. See [`crate::protocol`] for protocol and behavior details.
 
+use crate::agent_registry::AgentRegistry;
 use crate::content::content_blocks_to_user_content;
 use crate::session::{SessionId as OurSessionId, SessionStore};
 use crate::stream_bridge::{loom_event_to_updates, stream_update_to_session_notification};
 use agent_client_protocol::{
     Agent, AuthenticateRequest, AuthenticateResponse, CancelNotification, ContentChunk,
-    InitializeRequest, InitializeResponse, ListSessionsRequest, ListSessionsResponse,
-    LoadSessionRequest, LoadSessionResponse, NewSessionRequest, NewSessionResponse, PromptRequest,
-    PromptResponse, SessionId, SessionNotification, SetSessionConfigOptionRequest,
-    SetSessionConfigOptionResponse, StopReason, Terminal, TerminalId, ToolCall, ToolCallId,
-    ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields,
+    CurrentModeUpdate, InitializeRequest, InitializeResponse, ListSessionsRequest,
+    ListSessionsResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
+    NewSessionResponse, PromptRequest, PromptResponse, SessionId, SessionModeId,
+    SessionConfigOptionValue, SessionNotification, SessionUpdate, SetSessionConfigOptionRequest,
+    SetSessionConfigOptionResponse, SetSessionModeRequest, SetSessionModeResponse, StopReason,
+    Terminal, TerminalId, ToolCall, ToolCallId, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields,
 };
 use loom::memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
 use loom::message::Message;
@@ -33,6 +35,7 @@ use tokio::sync::mpsc;
 #[derive(Debug)]
 pub struct LoomAcpAgent {
     pub(crate) sessions: SessionStore,
+    pub(crate) agent_registry: AgentRegistry,
     /// If Some, on_event during prompt converts stream events to SessionNotification and try_sends here.
     pub(crate) session_update_tx: Option<mpsc::Sender<SessionNotification>>,
 }
@@ -42,6 +45,7 @@ impl LoomAcpAgent {
     pub fn new() -> Self {
         Self {
             sessions: SessionStore::new(),
+            agent_registry: AgentRegistry::new(),
             session_update_tx: None,
         }
     }
@@ -50,6 +54,7 @@ impl LoomAcpAgent {
     pub fn with_session_update_tx(tx: mpsc::Sender<SessionNotification>) -> Self {
         Self {
             sessions: SessionStore::new(),
+            agent_registry: AgentRegistry::new(),
             session_update_tx: Some(tx),
         }
     }
@@ -94,6 +99,38 @@ impl LoomAcpAgent {
             .collect();
 
         all_models
+    }
+
+    fn apply_session_mode(
+        &self,
+        session_id: &SessionId,
+        key: &OurSessionId,
+        mode_id: &str,
+    ) -> agent_client_protocol::Result<()> {
+        if self.sessions.get(key).is_none() {
+            return Err(agent_client_protocol::Error::new(-32602, "unknown session"));
+        }
+
+        if !self.agent_registry.mode_exists(mode_id) {
+            return Err(agent_client_protocol::Error::new(
+                -32602,
+                format!("unknown mode: {}", mode_id),
+            ));
+        }
+
+        self.sessions.update_session_config(key, |c| {
+            c.current_agent = mode_id.to_string();
+        });
+
+        if let Some(tx) = &self.session_update_tx {
+            let notif = SessionNotification::new(
+                session_id.clone(),
+                SessionUpdate::CurrentModeUpdate(CurrentModeUpdate::new(SessionModeId::new(mode_id))),
+            );
+            let _ = tx.try_send(notif);
+        }
+
+        Ok(())
     }
 }
 
@@ -164,13 +201,23 @@ impl Agent for LoomAcpAgent {
         let our_id = self.sessions.create(working_directory);
         let session_id = SessionId::new(our_id.as_str().to_string());
         tracing::debug!(session_id = %session_id, "session created");
+
+        let default_mode = self.agent_registry.default_mode_id();
+        self.sessions.update_session_config(&our_id, |c| {
+            c.current_agent = default_mode.to_string();
+        });
+
         let current_model = std::env::var("MODEL")
             .unwrap_or_else(|_| std::env::var("OPENAI_MODEL").unwrap_or_default());
-        // Fetch available models from providers
         let model_options = self.get_available_models().await;
-        let config_options = build_model_config_options(&current_model, &model_options)
+        let current_mode = default_mode;
+        let modes = self.agent_registry.to_session_modes();
+        let config_options =
+            build_session_config_options(current_mode, &current_model, &modes, &model_options)
             .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
-        Ok(NewSessionResponse::new(session_id).config_options(config_options))
+        Ok(NewSessionResponse::new(session_id)
+            .modes(self.agent_registry.to_session_mode_state(current_mode))
+            .config_options(config_options))
     }
 
     async fn cancel(&self, args: CancelNotification) -> agent_client_protocol::Result<()> {
@@ -190,20 +237,60 @@ impl Agent for LoomAcpAgent {
             return Err(agent_client_protocol::Error::new(-32602, "unknown session"));
         }
         let config_id_str = args.config_id.to_string();
-        let current_model = if config_id_str == "model" {
-            let value_str = args.value.to_string();
-            self.sessions
-                .update_session_config(&key, |c| c.model = Some(value_str.clone()));
-            value_str
-        } else {
-            return Err(agent_client_protocol::Error::new(
+        let value_str = session_config_value_as_id(&args.value).ok_or_else(|| {
+            agent_client_protocol::Error::new(
                 -32602,
-                format!("unsupported config_id: {}", config_id_str),
-            ));
+                format!(
+                    "unsupported value type for config_id {}: expected select value id",
+                    config_id_str
+                ),
+            )
+        })?;
+        match config_id_str.as_str() {
+            "model" => {
+                self.sessions
+                    .update_session_config(&key, |c| c.model = Some(value_str));
+            }
+            "mode" => {
+                self.apply_session_mode(&args.session_id, &key, &value_str)?;
+            }
+            _ => {
+                return Err(agent_client_protocol::Error::new(
+                    -32602,
+                    format!("unsupported config_id: {}", config_id_str),
+                ));
+            }
+        }
+
+        let entry = self
+            .sessions
+            .get(&key)
+            .ok_or_else(|| agent_client_protocol::Error::new(-32602, "unknown session"))?;
+        let current_mode = if entry.session_config.current_agent.is_empty() {
+            self.agent_registry.default_mode_id().to_string()
+        } else {
+            entry.session_config.current_agent.clone()
         };
+        let current_model = entry.session_config.model.clone().unwrap_or_else(|| {
+            std::env::var("MODEL")
+                .unwrap_or_else(|_| std::env::var("OPENAI_MODEL").unwrap_or_default())
+        });
+        let modes = self.agent_registry.to_session_modes();
         let model_options = self.get_available_models().await;
-        build_set_session_config_option_response(&current_model, &model_options)
+        build_set_session_config_option_response(&current_mode, &current_model, &modes, &model_options)
             .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))
+    }
+
+    async fn set_session_mode(
+        &self,
+        args: SetSessionModeRequest,
+    ) -> agent_client_protocol::Result<SetSessionModeResponse> {
+        let mode_id = args.mode_id.to_string();
+        tracing::debug!(session_id = %args.session_id, mode_id = %mode_id, "set_session_mode called");
+
+        let key = OurSessionId::new(args.session_id.to_string());
+        self.apply_session_mode(&args.session_id, &key, &mode_id)?;
+        Ok(SetSessionModeResponse::new())
     }
 
     async fn prompt(&self, args: PromptRequest) -> agent_client_protocol::Result<PromptResponse> {
@@ -330,7 +417,7 @@ impl Agent for LoomAcpAgent {
             session_id: None,
             cancellation: Some(cancellation.clone()),
             thread_id: Some(entry.thread_id.clone()),
-            agent: Some("dev".to_string()),
+            agent: Some(self.agent_registry.resolve_agent_name(&entry.session_config.current_agent)),
             verbose: false,
             got_adaptive: false,
             display_max_len: 4096,
@@ -379,6 +466,8 @@ impl Agent for LoomAcpAgent {
         args: LoadSessionRequest,
     ) -> agent_client_protocol::Result<LoadSessionResponse> {
         tracing::debug!(session_id = %args.session_id, cwd = ?args.cwd, "load_session called");
+        // Initialize logging with working_folder from ACP session
+        crate::logging::init_with_working_folder(&args.cwd);
         let session_id = args.session_id.clone();
         let our_session_id = OurSessionId::new(session_id.to_string());
         let working_directory = Some(args.cwd.clone()); // Convert to Option<PathBuf>
@@ -395,6 +484,12 @@ impl Agent for LoomAcpAgent {
                     working_directory,
                     thread_id.clone(),
                 );
+                let default_mode = self.agent_registry.default_mode_id();
+                self.sessions.update_session_config(&our_session_id, |c| {
+                    if c.current_agent.is_empty() {
+                        c.current_agent = default_mode.to_string();
+                    }
+                });
                 self.sessions.get(&our_session_id).ok_or_else(|| {
                 tracing::error!(session_id = %our_session_id, "Session not found after creation");
                 agent_client_protocol::Error::internal_error()
@@ -575,18 +670,32 @@ impl Agent for LoomAcpAgent {
             );
         }
 
-        // Return LoadSessionResponse with config_options
+        // Return LoadSessionResponse with config_options and modes
+        let current_mode = if entry.session_config.current_agent.is_empty() {
+            self.agent_registry.default_mode_id().to_string()
+        } else {
+            entry.session_config.current_agent.clone()
+        };
         let current_model = entry.session_config.model.clone().unwrap_or_else(|| {
             std::env::var("MODEL")
                 .unwrap_or_else(|_| std::env::var("OPENAI_MODEL").unwrap_or_default())
         });
         let model_options = self.get_available_models().await;
-        let config_options = build_model_config_options(&current_model, &model_options)
+        let available_modes = self.agent_registry.to_session_modes();
+        let config_options = build_session_config_options(
+            &current_mode,
+            &current_model,
+            &available_modes,
+            &model_options,
+        )
             .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
 
-        // Build LoadSessionResponse with configOptions (protocol types are non_exhaustive)
+        let modes = self.agent_registry.to_session_mode_state(&current_mode);
+
+        // Build LoadSessionResponse with configOptions and modes (protocol types are non_exhaustive)
         let json = serde_json::json!({
             "configOptions": config_options,
+            "modes": modes,
             "meta": None::<()>
         });
         let response: LoadSessionResponse = serde_json::from_value(json)
@@ -866,22 +975,39 @@ fn normalize_current_model_for_acp(current_model: &str, options: &[ModelOption])
     current_model.to_string()
 }
 
-/// Build config_options array with a single "model" option (protocol types are non_exhaustive, so we construct via serde).
+/// Build config_options array with "mode" and "model" options (protocol types are non_exhaustive, so we construct via serde).
 /// SessionConfigOption has kind flattened; SessionConfigKind uses tag "type" → "type": "select" and SessionConfigSelect fields at top level (camelCase).
-fn build_model_config_options(
+fn build_session_config_options(
+    current_mode: &str,
     current_model: &str,
+    modes: &[agent_client_protocol::SessionMode],
     model_options: &[ModelOption],
 ) -> Result<Vec<agent_client_protocol::SessionConfigOption>, serde_json::Error> {
     let current_model = normalize_current_model_for_acp(current_model, model_options);
-    // Build options array with the correct structure for SessionConfigSelectOptions::Ungrouped
-    // Each option needs "value" (not "id") and "name" fields
-    // The options field should be an array directly (ungrouped variant is untagged)
-    let options: Vec<_> = model_options
+    let mode_options: Vec<_> = modes
+        .iter()
+        .map(|m| {
+            serde_json::json!({
+                "value": m.id.to_string(),
+                "name": m.name.to_string()
+            })
+        })
+        .collect();
+    let model_options: Vec<_> = model_options
         .iter()
         .map(|m| serde_json::json!({ "value": &m.id, "name": &m.name }))
         .collect();
 
     let json = serde_json::json!([
+        {
+            "id": "mode",
+            "name": "Mode",
+            "description": "Session behavior mode.",
+            "category": "mode",
+            "type": "select",
+            "currentValue": current_mode,
+            "options": mode_options
+        },
         {
             "id": "model",
             "name": "Model",
@@ -889,7 +1015,7 @@ fn build_model_config_options(
             "category": "model",
             "type": "select",
             "currentValue": current_model,
-            "options": options
+            "options": model_options
         }
     ]);
     serde_json::from_value(json)
@@ -897,15 +1023,26 @@ fn build_model_config_options(
 
 /// Build SetSessionConfigOptionResponse with a single "model" option (protocol types are non_exhaustive, so we construct via serde).
 fn build_set_session_config_option_response(
+    current_mode: &str,
     current_model: &str,
+    modes: &[agent_client_protocol::SessionMode],
     model_options: &[ModelOption],
 ) -> Result<SetSessionConfigOptionResponse, serde_json::Error> {
-    let config_options = build_model_config_options(current_model, model_options)?;
+    let config_options =
+        build_session_config_options(current_mode, current_model, modes, model_options)?;
     let json = serde_json::json!({
         "configOptions": config_options,
         "meta": None::<()>
     });
     serde_json::from_value(json)
+}
+
+fn session_config_value_as_id(value: &SessionConfigOptionValue) -> Option<String> {
+    match value {
+        SessionConfigOptionValue::ValueId { value } => Some(value.to_string()),
+        SessionConfigOptionValue::Boolean { .. } => None,
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -925,7 +1062,17 @@ mod tests {
     }
 
     #[test]
-    fn test_build_model_config_options_populates_options() {
+    fn test_build_session_config_options_populates_options() {
+        let modes = vec![
+            agent_client_protocol::SessionMode::new(
+                agent_client_protocol::SessionModeId::new("ask"),
+                "Ask",
+            ),
+            agent_client_protocol::SessionMode::new(
+                agent_client_protocol::SessionModeId::new("default"),
+                "Default",
+            ),
+        ];
         let model_options = vec![
             ModelOption {
                 id: "openai/gpt-4o".to_string(),
@@ -940,14 +1087,18 @@ mod tests {
         ];
 
         // Bare MODEL= id normalizes to the unique provider/model match
-        let result = build_model_config_options("gpt-4o", &model_options);
+        let result = build_session_config_options("ask", "gpt-4o", &modes, &model_options);
         assert!(result.is_ok(), "Expected Ok, got Err: {:?}", result.err());
 
         let config_options = result.unwrap();
-        assert_eq!(config_options.len(), 1);
+        assert_eq!(config_options.len(), 2);
 
         let json = serde_json::to_value(&config_options).unwrap();
-        let model_config = &json[0];
+        assert_eq!(json[0]["id"], "mode");
+        assert_eq!(json[0]["category"], "mode");
+        assert_eq!(json[0]["currentValue"], "ask");
+        assert_eq!(json[1]["id"], "model");
+        let model_config = &json[1];
         assert_eq!(model_config["id"], "model");
         assert_eq!(model_config["currentValue"], "openai/gpt-4o");
 
@@ -999,13 +1150,17 @@ mod tests {
     }
 
     #[test]
-    fn test_build_model_config_options_handles_empty_list() {
-        let result = build_model_config_options("", &[]);
+    fn test_build_session_config_options_handles_empty_model_list() {
+        let modes = vec![agent_client_protocol::SessionMode::new(
+            agent_client_protocol::SessionModeId::new("ask"),
+            "Ask",
+        )];
+        let result = build_session_config_options("ask", "", &modes, &[]);
         assert!(result.is_ok(), "Expected Ok, got Err: {:?}", result.err());
 
         let config_options = result.unwrap();
         let json = serde_json::to_value(&config_options).unwrap();
-        let options = json[0]["options"].as_array().unwrap();
+        let options = json[1]["options"].as_array().unwrap();
         assert!(options.is_empty());
     }
 
@@ -1024,18 +1179,32 @@ mod tests {
 
     #[test]
     fn test_build_set_session_config_option_response() {
+        let modes = vec![agent_client_protocol::SessionMode::new(
+            agent_client_protocol::SessionModeId::new("ask"),
+            "Ask",
+        )];
         let model_options = vec![ModelOption {
             id: "openai/gpt-4o".to_string(),
             name: "openai/gpt-4o".to_string(),
             provider: "openai".to_string(),
         }];
 
-        let result = build_set_session_config_option_response("gpt-4o", &model_options);
+        let result =
+            build_set_session_config_option_response("ask", "gpt-4o", &modes, &model_options);
         assert!(result.is_ok());
 
         let response = result.unwrap();
         let json = serde_json::to_value(&response).unwrap();
         assert!(json["configOptions"].is_array());
+    }
+
+    #[test]
+    fn test_session_config_value_as_id_accepts_value_id_only() {
+        let value_id = SessionConfigOptionValue::value_id("ask");
+        assert_eq!(session_config_value_as_id(&value_id).as_deref(), Some("ask"));
+
+        let boolean = SessionConfigOptionValue::boolean(true);
+        assert!(session_config_value_as_id(&boolean).is_none());
     }
 
     #[test]

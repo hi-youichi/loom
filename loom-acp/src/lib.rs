@@ -186,6 +186,7 @@ use agent_client_protocol::Client;
 use std::sync::OnceLock;
 
 pub mod agent;
+pub mod agent_registry;
 pub mod client_capabilities;
 pub mod client_methods;
 pub mod content;

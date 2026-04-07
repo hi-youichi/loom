@@ -55,6 +55,8 @@ impl fmt::Display for SessionId {
 pub struct SessionConfig {
     /// LLM model id for this session (e.g. "gpt-4o", "gpt-4o-mini"). When set, overrides env at prompt time.
     pub model: Option<String>,
+    /// Current agent/mode id for this session (e.g. "ask", "default", "dev"). Maps to ACP session mode.
+    pub current_agent: String,
 }
 
 /// Metadata and cancel flag for a single session.
