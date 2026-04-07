@@ -35,7 +35,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
     async fn test_rust_analyzer_completion() {
         let manager = create_test_manager().await;
         let manager = manager.read().await;
@@ -57,7 +56,6 @@ fn main() {
     }
 
     #[tokio::test]
-    #[ignore]
     async fn test_rust_analyzer_diagnostics() {
         let manager = create_test_manager().await;
         let manager = manager.read().await;
@@ -75,7 +73,6 @@ fn main() {
     }
 
     #[tokio::test]
-    #[ignore]
     async fn test_rust_analyzer_goto_definition() {
         let manager = create_test_manager().await;
         let manager = manager.read().await;
@@ -101,7 +98,6 @@ fn main() {
     }
 
     #[tokio::test]
-    #[ignore]
     async fn test_rust_analyzer_hover() {
         let manager = create_test_manager().await;
         let manager = manager.read().await;
