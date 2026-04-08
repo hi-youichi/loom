@@ -43,7 +43,7 @@ use super::ToolChoiceMode;
 const DEFAULT_BASE_URL: &str = "https://open.bigmodel.cn/api/paas/v4";
 
 /// Max retries for retryable 5xx (500, 502, 503, 504). Total attempts = 1 + this.
-const COMPAT_RETRY_MAX_RETRIES: u32 = 3;
+const COMPAT_RETRY_MAX_RETRIES: u32 = 999;
 /// Initial backoff before first retry.
 const COMPAT_RETRY_INITIAL_BACKOFF: std::time::Duration = std::time::Duration::from_secs(1);
 /// Max backoff cap.
