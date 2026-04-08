@@ -208,7 +208,11 @@ impl Agent for LoomAcpAgent {
         });
 
         let current_model = std::env::var("MODEL")
-            .unwrap_or_else(|_| std::env::var("OPENAI_MODEL").unwrap_or_default());
+            .or_else(|_| std::env::var("OPENAI_MODEL"))
+            .ok()
+            .filter(|s| !s.is_empty())
+            .or_else(crate::last_model::load)
+            .unwrap_or_default();
         let model_options = self.get_available_models().await;
         let current_mode = default_mode;
         let modes = self.agent_registry.to_session_modes();
@@ -249,7 +253,8 @@ impl Agent for LoomAcpAgent {
         match config_id_str.as_str() {
             "model" => {
                 self.sessions
-                    .update_session_config(&key, |c| c.model = Some(value_str));
+                    .update_session_config(&key, |c| c.model = Some(value_str.clone()));
+                crate::last_model::save(&value_str);
             }
             "mode" => {
                 self.apply_session_mode(&args.session_id, &key, &value_str)?;
@@ -273,7 +278,11 @@ impl Agent for LoomAcpAgent {
         };
         let current_model = entry.session_config.model.clone().unwrap_or_else(|| {
             std::env::var("MODEL")
-                .unwrap_or_else(|_| std::env::var("OPENAI_MODEL").unwrap_or_default())
+                .or_else(|_| std::env::var("OPENAI_MODEL"))
+                .ok()
+                .filter(|s| !s.is_empty())
+                .or_else(crate::last_model::load)
+                .unwrap_or_default()
         });
         let modes = self.agent_registry.to_session_modes();
         let model_options = self.get_available_models().await;
@@ -678,7 +687,11 @@ impl Agent for LoomAcpAgent {
         };
         let current_model = entry.session_config.model.clone().unwrap_or_else(|| {
             std::env::var("MODEL")
-                .unwrap_or_else(|_| std::env::var("OPENAI_MODEL").unwrap_or_default())
+                .or_else(|_| std::env::var("OPENAI_MODEL"))
+                .ok()
+                .filter(|s| !s.is_empty())
+                .or_else(crate::last_model::load)
+                .unwrap_or_default()
         });
         let model_options = self.get_available_models().await;
         let available_modes = self.agent_registry.to_session_modes();

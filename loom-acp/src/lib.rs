@@ -190,6 +190,7 @@ pub mod agent_registry;
 pub mod client_capabilities;
 pub mod client_methods;
 pub mod content;
+pub mod last_model;
 pub mod logging;
 pub mod protocol;
 pub mod session;
