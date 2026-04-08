@@ -28,6 +28,16 @@ pub(crate) struct Args {
     #[arg(short, long, value_name = "DIR")]
     pub(crate) working_folder: Option<PathBuf>,
 
+    /// Override LLM model for this run. Supports bare name ("gpt-4o") or "provider/model" format
+    /// (e.g. "zhipuai-coding-plan/glm-5.1") to auto-select provider from [[providers]] in config.toml.
+    #[arg(short('M'), long, value_name = "MODEL")]
+    pub(crate) model: Option<String>,
+
+    /// Override LLM provider name from [[providers]] in config.toml (e.g. "openai", "zhipuai-coding-plan").
+    /// When set, takes precedence over the provider/ prefix in --model.
+    #[arg(long, value_name = "PROVIDER")]
+    pub(crate) provider: Option<String>,
+
     /// Named agent profile (e.g. coding). Loaded from .loom/agents/<NAME> or ~/.loom/agents/<NAME>.
     #[arg(short('P'), long, value_name = "NAME")]
     pub(crate) agent: Option<String>,

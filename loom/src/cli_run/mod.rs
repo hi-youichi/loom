@@ -84,6 +84,7 @@ pub fn build_helve_config(
     });
     let profile = loaded.map(|(p, _)| p);
     let mut effective_opts = opts.clone();
+    apply_model_provider_resolution(&mut effective_opts);
     if let Some(ref p) = profile {
         apply_profile_to_run_options(p, &mut effective_opts);
     }
@@ -301,6 +302,70 @@ pub fn build_config_from_profile(
         .or(parent_config.max_sub_agent_depth);
 
     config
+}
+
+fn apply_model_provider_resolution(opts: &mut RunOptions) {
+    if opts.model.is_none() && opts.provider.is_none() {
+        return;
+    }
+
+    let provider_only = opts.provider.clone();
+    let raw_model = match opts.model.as_deref() {
+        Some(m) => m.to_string(),
+        None => {
+            resolve_provider_fields_into_opts(provider_only.as_deref(), opts);
+            return;
+        }
+    };
+
+    let (resolved_provider, model_name) = if let Some((p, m)) = raw_model.split_once('/') {
+        (Some(p.to_string()), m.to_string())
+    } else {
+        (None, raw_model)
+    };
+
+    let effective_provider = provider_only.as_deref().or(resolved_provider.as_deref());
+    opts.model = Some(model_name);
+
+    if let Some(name) = effective_provider {
+        let name = name.to_string();
+        resolve_provider_fields_into_opts(Some(name.as_str()), opts);
+    }
+}
+
+fn resolve_provider_fields_into_opts(provider_name: Option<&str>, opts: &mut RunOptions) {
+    let Some(name) = provider_name else { return };
+
+    let full_config = match env_config::load_full_config("loom") {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    let provider = match full_config.providers.iter().find(|p| {
+        p.name.eq_ignore_ascii_case(name)
+    }) {
+        Some(p) => p,
+        None => {
+            tracing::warn!(provider = name, "Provider not found in config.toml [[providers]]");
+            return;
+        }
+    };
+
+    if opts.api_key.is_none() {
+        if let Some(ref key) = provider.api_key {
+            opts.api_key = Some(key.clone());
+        }
+    }
+    if opts.base_url.is_none() {
+        if let Some(ref url) = provider.base_url {
+            opts.base_url = Some(url.clone());
+        }
+    }
+    if opts.provider_type.is_none() {
+        if let Some(ref t) = provider.provider_type {
+            opts.provider_type = Some(t.clone());
+        }
+    }
 }
 
 fn apply_profile_to_run_options(profile: &AgentProfile, opts: &mut RunOptions) {
