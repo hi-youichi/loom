@@ -28,9 +28,10 @@
 //! [`stream_update_to_session_notification`] converts this module's [`StreamUpdate`] into
 //! `agent_client_protocol::SessionNotification` for the upper layer to send via the connection.
 
+use crate::content::extract_locations;
 use agent_client_protocol::{
     ContentChunk, SessionId, SessionNotification, SessionUpdate, ToolCall, ToolCallId,
-    ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
+    ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
 };
 use loom::{AnyStreamEvent, MessageChunkKind, StreamEvent};
 use serde_json::Value;
@@ -243,6 +244,14 @@ pub fn stream_update_to_session_notification(
                 .kind(effective_kind);
             if let Some(ref v) = input {
                 tc = tc.raw_input(v.clone());
+                // Add locations for "follow-along" feature
+                let locations: Vec<ToolCallLocation> = extract_locations(name, v)
+                    .into_iter()
+                    .map(|loc| ToolCallLocation::new(loc.path).line(loc.line))
+                    .collect();
+                if !locations.is_empty() {
+                    tc = tc.locations(locations);
+                }
             }
             tracing::trace!(
                 tool_call_id = %tool_call_id,
@@ -349,23 +358,31 @@ pub fn name_to_tool_kind(name: &str) -> ToolKind {
 
 pub fn generate_tool_title(name: &str, input: Option<&serde_json::Value>) -> String {
     let kind = name_to_tool_kind(name);
-    let verb = match kind {
-        ToolKind::Read => "Reading",
-        ToolKind::Edit => "Editing",
-        ToolKind::Delete => "Deleting",
-        ToolKind::Move => "Moving",
-        ToolKind::Search => "Searching",
-        ToolKind::Execute => "Running",
-        ToolKind::Think => "Thinking",
-        ToolKind::Fetch => "Fetching",
-        ToolKind::SwitchMode => "Switching mode",
-        ToolKind::Other | _ => "Running",
-    };
-
     let target = extract_target_from_input(name, input);
-    match target {
-        Some(t) => format!("{} {}", verb, t),
-        None => format!("{} {}", verb, name),
+
+    match kind {
+        // Execute and Other: show command directly without "Running" prefix
+        ToolKind::Execute | ToolKind::Other => {
+            target.unwrap_or_else(|| name.to_string())
+        }
+        // Others: use verb prefix
+        _ => {
+            let verb = match kind {
+                ToolKind::Read => "Reading",
+                ToolKind::Edit => "Editing",
+                ToolKind::Delete => "Deleting",
+                ToolKind::Move => "Moving",
+                ToolKind::Search => "Searching",
+                ToolKind::Think => "Thinking",
+                ToolKind::Fetch => "Fetching",
+                ToolKind::SwitchMode => "Switching mode",
+                ToolKind::Execute | ToolKind::Other | _ => unreachable!(),
+            };
+            match target {
+                Some(t) => format!("{} {}", verb, t),
+                None => format!("{} {}", verb, name),
+            }
+        }
     }
 }
 
@@ -394,8 +411,13 @@ fn extract_target_from_input(name: &str, input: Option<&serde_json::Value>) -> O
     for key_group in keys {
         for &key in *key_group {
             if let Some(val) = obj.get(key).and_then(|v| v.as_str()) {
-                let truncated = truncate_path(val, 60);
-                return Some(truncated);
+                // Commands should not be truncated - they're the primary information
+                let display = if key == "command" || key == "cmd" {
+                    val.to_string()
+                } else {
+                    truncate_path(val, 60)
+                };
+                return Some(display);
             }
         }
     }
@@ -673,8 +695,8 @@ mod tests {
                 assert_eq!(tc.raw_input, None, "tool_call_chunk 不应写入 raw_input");
                 assert_eq!(tc.kind, ToolKind::Execute, "bash tool should map to Execute kind");
                 assert!(
-                    tc.title.contains("Running"),
-                    "title should contain 'Running', got: {}",
+                    tc.title.contains("bash") || tc.title.contains("cargo"),
+                    "title should contain tool name or command, got: {}",
                     tc.title
                 );
             } else {

@@ -89,6 +89,13 @@
 //!
 //! - Mode: e.g. ask/architect/code, mappable to ReAct/DUP/ToT/GoT; set_session_mode switches RunCmd.
 //! - Config: model, max_tokens, etc.; set_session_config_option sends it; inject into RunOptions/config at prompt time.
+//! - set_session_model: dedicated RPC for switching model; equivalent to set_session_config_option("model", ...).
+//!
+//! ## session/fork
+//!
+//! - Only when capabilities.sessionCapabilities.fork is present. Clones current session into a new one (same config, new ID).
+//! - Copies session_config (model, mode) to the forked session.
+//! - Does NOT copy conversation history (that's load_session's job).
 //!
 //! ## Client capabilities (fs, terminal)
 //!

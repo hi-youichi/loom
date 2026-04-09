@@ -16,7 +16,7 @@ path = "src/lib.rs"
 [dependencies]
 loom = { path = "../loom" }
 config = { path = "../config", features = ["tracing-init"] }
-agent-client-protocol = { version = "0.10", features = ["unstable_boolean_config"] }
+agent-client-protocol = { version = "0.10", features = ["unstable_boolean_config", "unstable_session_model", "unstable_session_fork"] }
 async-trait = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { version = "0.7", features = ["compat"] }

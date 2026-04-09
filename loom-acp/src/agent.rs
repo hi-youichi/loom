@@ -4,17 +4,19 @@
 //! to Loom sessions and execution. See [`crate::protocol`] for protocol and behavior details.
 
 use crate::agent_registry::AgentRegistry;
-use crate::content::content_blocks_to_user_content;
+use crate::content::{content_blocks_to_user_content, extract_locations};
 use crate::session::{SessionId as OurSessionId, SessionStore};
 use crate::stream_bridge::{loom_event_to_updates, stream_update_to_session_notification, generate_tool_title, name_to_tool_kind};
 use agent_client_protocol::{
     Agent, AuthenticateRequest, AuthenticateResponse, CancelNotification, ContentChunk,
-    CurrentModeUpdate, InitializeRequest, InitializeResponse, ListSessionsRequest,
-    ListSessionsResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
-    NewSessionResponse, PromptRequest, PromptResponse, SessionId, SessionModeId,
-    SessionConfigOptionValue, SessionNotification, SessionUpdate, SetSessionConfigOptionRequest,
-    SetSessionConfigOptionResponse, SetSessionModeRequest, SetSessionModeResponse, StopReason,
-    Terminal, TerminalId, ToolCall, ToolCallId, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields,
+    CurrentModeUpdate, ForkSessionRequest, ForkSessionResponse, InitializeRequest,
+    InitializeResponse, ListSessionsRequest, ListSessionsResponse, LoadSessionRequest,
+    LoadSessionResponse, NewSessionRequest, NewSessionResponse, PromptRequest, PromptResponse,
+    SessionId, SessionModeId, SessionConfigOptionValue, SessionNotification, SessionUpdate,
+    SetSessionConfigOptionRequest, SetSessionConfigOptionResponse, SetSessionModeRequest,
+    SetSessionModeResponse, SetSessionModelRequest, SetSessionModelResponse, StopReason,
+    Terminal, TerminalId, ToolCall, ToolCallId, ToolCallLocation, ToolCallStatus, ToolCallUpdate,
+    ToolCallUpdateFields,
 };
 use loom::memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
 use loom::message::Message;
@@ -164,7 +166,8 @@ impl Agent for LoomAcpAgent {
                 serde_json::json!({
                     "loadSession": true,
                     "sessionCapabilities": {
-                        "list": {}
+                        "list": {},
+                        "fork": {}
                     },
                     "promptCapabilities": {
                         "embeddedContext": true,
@@ -300,6 +303,77 @@ impl Agent for LoomAcpAgent {
         let key = OurSessionId::new(args.session_id.to_string());
         self.apply_session_mode(&args.session_id, &key, &mode_id)?;
         Ok(SetSessionModeResponse::new())
+    }
+
+    async fn set_session_model(
+        &self,
+        args: SetSessionModelRequest,
+    ) -> agent_client_protocol::Result<SetSessionModelResponse> {
+        let model_id = args.model_id.to_string();
+        tracing::debug!(session_id = %args.session_id, model_id = %model_id, "set_session_model called");
+
+        let key = OurSessionId::new(args.session_id.to_string());
+        if self.sessions.get(&key).is_none() {
+            return Err(agent_client_protocol::Error::new(-32602, "unknown session"));
+        }
+
+        // Update the model in session config
+        self.sessions
+            .update_session_config(&key, |c| c.model = Some(model_id.clone()));
+        crate::last_model::save(&model_id);
+
+        Ok(SetSessionModelResponse::new())
+    }
+
+    async fn fork_session(
+        &self,
+        args: ForkSessionRequest,
+    ) -> agent_client_protocol::Result<ForkSessionResponse> {
+        tracing::debug!(session_id = %args.session_id, cwd = ?args.cwd, "fork_session called");
+        crate::logging::init_with_working_folder(&args.cwd);
+
+        let source_key = OurSessionId::new(args.session_id.to_string());
+        let source_entry = self.sessions.get(&source_key).ok_or_else(|| {
+            agent_client_protocol::Error::new(-32602, "unknown session")
+        })?;
+
+        // Create new session with the same working directory and config
+        let new_our_id = self.sessions.create(source_entry.working_directory.clone());
+
+        // Copy source session config (model, mode) to the new session
+        self.sessions.update_session_config(&new_our_id, |c| {
+            *c = source_entry.session_config.clone();
+        });
+
+        let new_session_id = SessionId::new(new_our_id.as_str().to_string());
+        tracing::info!(source_session = %args.session_id, new_session = %new_session_id, "session forked");
+
+        let current_mode = if source_entry.session_config.current_agent.is_empty() {
+            self.agent_registry.default_mode_id().to_string()
+        } else {
+            source_entry.session_config.current_agent.clone()
+        };
+        let current_model = source_entry.session_config.model.clone().unwrap_or_else(|| {
+            std::env::var("MODEL")
+                .or_else(|_| std::env::var("OPENAI_MODEL"))
+                .ok()
+                .filter(|s| !s.is_empty())
+                .or_else(crate::last_model::load)
+                .unwrap_or_default()
+        });
+        let model_options = self.get_available_models().await;
+        let modes = self.agent_registry.to_session_modes();
+        let config_options = build_session_config_options(
+            &current_mode,
+            &current_model,
+            &modes,
+            &model_options,
+        )
+            .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
+
+        Ok(ForkSessionResponse::new(new_session_id)
+            .modes(self.agent_registry.to_session_mode_state(&current_mode))
+            .config_options(config_options))
     }
 
     async fn prompt(&self, args: PromptRequest) -> agent_client_protocol::Result<PromptResponse> {
@@ -577,8 +651,16 @@ impl Agent for LoomAcpAgent {
                                     let mut tool_call = ToolCall::new(tool_call_id.clone(), title)
                                         .status(ToolCallStatus::Pending)
                                         .kind(kind);
-                                    if let Some(args) = args {
-                                        tool_call = tool_call.raw_input(args);
+                                    if let Some(ref args) = args {
+                                        tool_call = tool_call.raw_input(args.clone());
+                                        // Add locations for "follow-along" feature
+                                        let locations: Vec<ToolCallLocation> = extract_locations(&tc.name, args)
+                                            .into_iter()
+                                            .map(|loc| ToolCallLocation::new(loc.path).line(loc.line))
+                                            .collect();
+                                        if !locations.is_empty() {
+                                            tool_call = tool_call.locations(locations);
+                                        }
                                     }
                                     notifications.push(SessionNotification::new(
                                         session_id.clone(),
