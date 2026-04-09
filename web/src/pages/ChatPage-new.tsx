@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 
 import { ChatErrorBoundary } from '../components/error/ErrorBoundary'
 import { FileTreeSidebar } from '../components/file-tree'
 import { DashboardView } from '../components/dashboard'
+import { AgentChatSidebar } from '../components/chat'
 import type { FileNode } from '../components/file-tree'
-import type { AgentInfo, ActivityEvent } from '../types/agent'
+import type { AgentInfo, ActivityEvent, UIMessageItemProps } from '../types/agent'
 
 const DEMO_FILES: FileNode[] = [
   {
@@ -86,6 +87,31 @@ const DEMO_FILES: FileNode[] = [
     type: 'file',
     path: 'vite.config.ts',
     extension: 'ts',
+  },
+]
+
+const DEMO_MESSAGES: UIMessageItemProps[] = [
+  {
+    id: '1',
+    sender: 'user',
+    timestamp: new Date().toISOString(),
+    content: [
+      {
+        type: 'text',
+        text: '你好，我可以帮你什么吗？',
+      },
+    ],
+  },
+  {
+    id: '2',
+    sender: 'assistant',
+    timestamp: new Date().toISOString(),
+    content: [
+      {
+        type: 'text',
+        text: '你好！我是你的助手 Agent。我可以帮你处理代码、分析文件、搜索信息等。请告诉我你需要什么帮助！',
+      },
+    ],
   },
 ]
 
@@ -254,6 +280,37 @@ const DEMO_TOTAL_CALLS = DEMO_AGENTS.reduce((sum, a) => sum + a.callCount, 0)
 
 export function ChatPage() {
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
+  const [messages, setMessages] = useState<UIMessageItemProps[]>(DEMO_MESSAGES)
+  const mountedRef = useRef(true)
+
+  const handleSendMessage = useCallback(async (text: string) => {
+    const userMessage: UIMessageItemProps = {
+      id: crypto.randomUUID(),
+      sender: 'user',
+      timestamp: new Date().toISOString(),
+      content: [{ type: 'text', text }],
+    }
+
+    setMessages((prev) => [...prev, userMessage])
+
+    const timer = setTimeout(() => {
+      if (!mountedRef.current) return
+      const assistantMessage: UIMessageItemProps = {
+        id: crypto.randomUUID(),
+        sender: 'assistant',
+        timestamp: new Date().toISOString(),
+        content: [
+          {
+            type: 'text',
+            text: `我收到了你的消息："${text}"。作为一个示例助手，我还没有实际连接到后端服务。在实际应用中，这里会通过 WebSocket 发送消息到对应的 Agent。`,
+          },
+        ],
+      }
+      setMessages((prev) => [...prev, assistantMessage])
+    }, 1000)
+
+    return () => clearTimeout(timer)
+  }, [])
 
   return (
     <ChatErrorBoundary>
@@ -271,6 +328,15 @@ export function ChatPage() {
             totalCalls={DEMO_TOTAL_CALLS}
           />
         </div>
+        <AgentChatSidebar
+          agents={DEMO_AGENTS.map(agent => ({
+            name: agent.name,
+            status: agent.status,
+          }))}
+          messages={messages}
+          unreadCount={messages.filter(m => m.sender === 'assistant').length}
+          onSendMessage={handleSendMessage}
+        />
       </div>
     </ChatErrorBoundary>
   )
