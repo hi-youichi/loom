@@ -51,7 +51,7 @@ class MockWebSocket {
   }
 }
 
-// @ts-ignore
+// @ts-expect-error: MockWebSocket needs to replace native WebSocket
 window.WebSocket = MockWebSocket
 
 // 全局测试工具

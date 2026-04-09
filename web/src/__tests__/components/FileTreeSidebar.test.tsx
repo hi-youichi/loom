@@ -109,7 +109,7 @@ describe('FileTreeSidebar', () => {
   })
 
   it('shows empty search results message', () => {
-    const { container } = render(<FileTreeSidebar files={sampleFiles} />)
+    render(<FileTreeSidebar files={sampleFiles} />)
     fireEvent.click(screen.getByText('文件'))
     expect(screen.getByText('src')).toBeInTheDocument()
     expect(screen.getByText('package.json')).toBeInTheDocument()

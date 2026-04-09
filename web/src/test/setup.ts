@@ -48,8 +48,9 @@ class MockWebSocket {
     }, 0)
   }
 
-  send(data: string) {
-    // Mock implementation
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  send(_data: string) {
+    // Mock implementation - no operation needed
   }
 
   close() {
@@ -58,7 +59,7 @@ class MockWebSocket {
   }
 }
 
-// @ts-ignore
+// @ts-expect-error: MockWebSocket needs to replace native WebSocket
 global.WebSocket = MockWebSocket
 
 // Mock ResizeObserver

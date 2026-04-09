@@ -18,7 +18,9 @@ function ts(offset = 0) {
  * 有节奏的完整聊天演示：按时间轴自动展示用户消息 → Thinking → 助手回复（含工具）
  */
 function RhythmicChatDemo() {
-  const [messages, setMessages] = useState<UIMessageItemProps[]>([])
+  const [messages, setMessages] = useState<UIMessageItemProps[]>([
+    { id: '1', sender: 'user', timestamp: now, content: [{ type: 'text', text: '北京现在多少度？' }] },
+  ])
   const [thinkingLines, setThinkingLines] = useState<string[]>([])
   const [thinkingActive, setThinkingActive] = useState(false)
   const [composerDisabled, setComposerDisabled] = useState(false)
@@ -28,11 +30,6 @@ function RhythmicChatDemo() {
       step: 1800,
       thinkLine: 1600,
     }
-
-    // 0: 仅用户消息
-    setMessages([
-      { id: '1', sender: 'user', timestamp: now, content: [{ type: 'text', text: '北京现在多少度？' }] },
-    ])
 
     const t1 = setTimeout(() => {
       setThinkingLines(['分析用户问题：天气查询请求'])

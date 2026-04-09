@@ -138,7 +138,7 @@ describe('file-tree utils', () => {
 
     it('应该返回空字符串当bytes为0或undefined', () => {
       expect(formatFileSize(0)).toBe('')
-      expect(formatFileSize(undefined as any)).toBe('')
+      expect(formatFileSize(undefined as unknown)).toBe('')
     })
   })
 
