@@ -1,0 +1,280 @@
+//! WebSocket request types (client → server).
+
+use serde::{Deserialize, Serialize};
+use crate::message::UserContent;
+
+/// Agent type for run requests.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentType {
+    React,
+    Dup,
+    Tot,
+    Got,
+}
+
+/// Run request: execute one Agent run (streaming events + final RunEnd).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RunRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    pub message: UserContent,
+    pub agent: AgentType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<String>,
+    /// When set with thread_id, the run's thread is associated with this workspace (see loom-workspace).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub working_folder: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub got_adaptive: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verbose: Option<bool>,
+}
+
+impl RunRequest {
+    /// Validates that the message modalities are supported by the given model.
+    pub fn validate_modalities(
+        &self,
+        model: &model_spec_core::spec::Model,
+    ) -> Result<(), crate::AgentError> {
+        use crate::message::UserContent;
+
+        let UserContent::Multimodal(parts) = &self.message else {
+            return Ok(());
+        };
+
+        let modalities = &model.modalities;
+        if modalities.input.is_empty() {
+            return Ok(()); // 无法验证，保守放行
+        }
+
+        for part in parts {
+            let required = part.modality();
+            if required != model_spec_core::spec::ModalityType::Text
+                && !modalities.input.contains(&required)
+            {
+                return Err(crate::AgentError::ExecutionFailed(format!(
+                    "model does not support {:?} input",
+                    required
+                )));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Tool list request: list all available tools.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ToolsListRequest {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub working_folder: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<String>,
+}
+
+/// Output format for tool_show.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolShowOutput {
+    Json,
+    Yaml,
+}
+
+/// Tool show request: get a single tool definition.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ToolShowRequest {
+    pub id: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<ToolShowOutput>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub working_folder: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<String>,
+}
+
+/// Ping request: health / keepalive.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PingRequest {
+    pub id: String,
+}
+
+/// User messages list request: list stored messages for a thread (pagination).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UserMessagesRequest {
+    pub id: String,
+    pub thread_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub before: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+
+/// Filter for agent list by source type.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentSourceFilter {
+    BuiltIn,
+    Project,
+    User,
+}
+
+/// Agent list request: list available agent profiles.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AgentListRequest {
+    pub id: String,
+    /// Optional filter by agent source (built-in, project, user).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_filter: Option<AgentSourceFilter>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub working_folder: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<String>,
+}
+
+/// Client-to-server request envelope.
+///
+/// Each variant maps to a JSON object with `"type": "<variant_name>"`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ClientRequest {
+    Run(RunRequest),
+    ToolsList(ToolsListRequest),
+    ToolShow(ToolShowRequest),
+    UserMessages(UserMessagesRequest),
+    AgentList(AgentListRequest),
+    Ping(PingRequest),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn request_run_roundtrip() {
+        let req = ClientRequest::Run(RunRequest {
+            id: Some("abc-123".to_string()),
+            message: crate::message::UserContent::Text("hello".to_string()),
+            agent: AgentType::React,
+            thread_id: Some("t1".to_string()),
+            workspace_id: None,
+            working_folder: None,
+            got_adaptive: None,
+            verbose: Some(true),
+        });
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"type\":\"run\""));
+        assert!(json.contains("\"id\":\"abc-123\""));
+        assert!(json.contains("\"message\":\"hello\""));
+        assert!(json.contains("\"agent\":\"react\""));
+        let parsed: ClientRequest = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, ClientRequest::Run(_)));
+    }
+
+    #[test]
+    fn request_tools_list_roundtrip() {
+        let req = ClientRequest::ToolsList(ToolsListRequest {
+            id: "req-1".to_string(),
+            working_folder: None,
+            thread_id: None,
+        });
+        let json = serde_json::to_string(&req).unwrap();
+        assert_eq!(json, r#"{"type":"tools_list","id":"req-1"}"#);
+        let parsed: ClientRequest = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, ClientRequest::ToolsList(_)));
+    }
+
+    #[test]
+    fn request_tools_list_with_context_roundtrip() {
+        let req = ClientRequest::ToolsList(ToolsListRequest {
+            id: "req-2".to_string(),
+            working_folder: Some("/tmp/proj".to_string()),
+            thread_id: Some("t1".to_string()),
+        });
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"working_folder\":\"/tmp/proj\""));
+        assert!(json.contains("\"thread_id\":\"t1\""));
+        let parsed: ClientRequest = serde_json::from_str(&json).unwrap();
+        if let ClientRequest::ToolsList(r) = parsed {
+            assert_eq!(r.working_folder.as_deref(), Some("/tmp/proj"));
+            assert_eq!(r.thread_id.as_deref(), Some("t1"));
+        } else {
+            panic!("expected ToolsList");
+        }
+    }
+
+    #[test]
+    fn request_tools_list_backward_compat_parses_legacy_json() {
+        let json = r#"{"type":"tools_list","id":"req-legacy"}"#;
+        let parsed: ClientRequest = serde_json::from_str(json).unwrap();
+        if let ClientRequest::ToolsList(r) = parsed {
+            assert_eq!(r.id, "req-legacy");
+            assert_eq!(r.working_folder, None);
+            assert_eq!(r.thread_id, None);
+        } else {
+            panic!("expected ToolsList");
+        }
+    }
+
+    #[test]
+    fn request_tool_show_roundtrip() {
+        let req = ClientRequest::ToolShow(ToolShowRequest {
+            id: "req-ts".to_string(),
+            name: "read".to_string(),
+            output: None,
+            working_folder: None,
+            thread_id: None,
+        });
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"type\":\"tool_show\""));
+        assert!(json.contains("\"id\":\"req-ts\""));
+        assert!(json.contains("\"name\":\"read\""));
+        let parsed: ClientRequest = serde_json::from_str(&json).unwrap();
+        if let ClientRequest::ToolShow(r) = parsed {
+            assert_eq!(r.id, "req-ts");
+            assert_eq!(r.name, "read");
+        } else {
+            panic!("expected ToolShow");
+        }
+    }
+
+    #[test]
+    fn request_tool_show_with_options_roundtrip() {
+        let req = ClientRequest::ToolShow(ToolShowRequest {
+            id: "req-ts2".to_string(),
+            name: "write".to_string(),
+            output: Some(ToolShowOutput::Yaml),
+            working_folder: Some("/tmp".to_string()),
+            thread_id: None,
+        });
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"output\":\"yaml\""));
+        assert!(json.contains("\"working_folder\":\"/tmp\""));
+        let parsed: ClientRequest = serde_json::from_str(&json).unwrap();
+        if let ClientRequest::ToolShow(r) = parsed {
+            assert_eq!(r.id, "req-ts2");
+            assert_eq!(r.output, Some(ToolShowOutput::Yaml));
+        } else {
+            panic!("expected ToolShow");
+        }
+    }
+
+    #[test]
+    fn request_agent_list_roundtrip() {
+        let req = ClientRequest::AgentList(AgentListRequest {
+            id: "req-agents".to_string(),
+            source_filter: Some(AgentSourceFilter::BuiltIn),
+            working_folder: None,
+            thread_id: None,
+        });
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"type\":\"agent_list\""));
+        assert!(json.contains("\"id\":\"req-agents\""));
+        assert!(json.contains("\"source_filter\":\"builtin\""));
+        let parsed: ClientRequest = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, ClientRequest::AgentList(_)));
+    }
+}

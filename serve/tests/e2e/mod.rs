@@ -6,3 +6,4 @@ mod tool_show_existing;
 mod tool_show_nonexistent;
 mod tools_list;
 mod user_messages;
+mod agent_list;

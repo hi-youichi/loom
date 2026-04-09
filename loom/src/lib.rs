@@ -224,6 +224,7 @@ pub use protocol::stream::{
     stream_event_to_protocol_value, Envelope,
 };
 pub use protocol::{
+    AgentListRequest, AgentListResponse, AgentSummary, AgentSource, AgentSourceFilter,
     AgentType, ClientRequest, EnvelopeState, ErrorResponse, PingRequest, PongResponse,
     ProtocolEvent, ProtocolEventEnvelope, RunEndResponse, RunRequest, RunStreamEventResponse,
     ServerResponse, ToolShowOutput, ToolShowRequest, ToolShowResponse, ToolsListRequest,

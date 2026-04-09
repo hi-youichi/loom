@@ -10,6 +10,7 @@ use super::response::send_response;
 use super::run::handle_run;
 use super::tools::{handle_tool_show, handle_tools_list};
 use super::user_messages::handle_user_messages;
+use super::agents::handle_agent_list;
 
 pub(crate) async fn handle_socket(
     mut socket: WebSocket,
@@ -87,6 +88,10 @@ async fn handle_request_and_send(
         }
         ClientRequest::UserMessages(r) => {
             let resp = handle_user_messages(r, user_message_store.clone()).await;
+            send_response(socket, &resp).await?;
+        }
+        ClientRequest::AgentList(r) => {
+            let resp = handle_agent_list(r).await;
             send_response(socket, &resp).await?;
         }
         ClientRequest::Ping(r) => {
