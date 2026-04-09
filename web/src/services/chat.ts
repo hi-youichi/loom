@@ -13,6 +13,7 @@ import { getConnection } from './connection'
 type SendMessageOptions = {
   threadId?: string
   workspaceId?: string
+  agent?: string          // ← 新增：执行模式，默认 'react'
   onChunk?: (chunk: string) => void
   onEvent?: (event: LoomStreamEvent) => void
 }
@@ -58,10 +59,13 @@ export function sendMessage(
   }
 
   const workingFolder = getWorkingFolder()
+  const agentValue = options.agent || 'dev'
+  
   const payload: Record<string, unknown> = {
     type: 'run',
     message: content,
-    agent: 'react',
+    // agent can be either a builtin type (react/dup/tot/got) or custom profile name (dev/assistant/ask)
+    agent: agentValue,
     thread_id: options.threadId,
     working_folder: workingFolder,
     verbose: false,

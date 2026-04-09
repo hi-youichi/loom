@@ -1,10 +1,11 @@
 import { memo } from 'react'
 import type { UIMessageItemProps, UIMessageContent } from '../../types/ui/message'
+import { MarkdownContent } from './MarkdownContent'
 
-/**
- * 消息项组件 - 协议无关
- * 只依赖通用UI类型，不依赖任何特定协议
- */
+interface MessageItemExtraProps {
+  streaming?: boolean
+}
+
 export const MessageItem = memo(function MessageItem({
   id,
   sender,
@@ -12,12 +13,13 @@ export const MessageItem = memo(function MessageItem({
   content,
   className,
   onRetry,
-}: UIMessageItemProps) {
+  streaming,
+}: UIMessageItemProps & MessageItemExtraProps) {
   const renderContent = (item: UIMessageContent, index: number) => {
     if (item.type === 'text') {
       return (
         <div key={index} className="message__text">
-          {item.text}
+          <MarkdownContent text={item.text} streaming={streaming} />
         </div>
       )
     }

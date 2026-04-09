@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState, useEffect } from 'react'
 
 import { ToolBlockAdapter } from '../adapters/ToolBlockAdapter'
 import { ToolStreamAggregator } from '../adapters/ToolStreamAggregator'
@@ -9,7 +9,6 @@ import type {
 } from '../types/protocol/loom'
 import { isToolEvent } from '../types/protocol/loom'
 import type { UIMessageItemProps, UIToolContent } from '../types/ui/message'
-import { useThread } from './useThread'
 
 function createTextContent(text: string) {
   return {
@@ -73,8 +72,13 @@ function formatThinkLine(event: LoomStreamEvent): string | null {
   }
 }
 
-export function useChat() {
-  const { threadId } = useThread()
+export function useChat(options?: {
+  threadId?: string
+  agentId?: string
+}) {
+  const threadId = options?.threadId
+  const agentId = options?.agentId || 'react'
+
   const [messages, setMessages] = useState<UIMessageItemProps[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<WebSocketStatus>('connected')
@@ -82,6 +86,14 @@ export function useChat() {
   const [thinkingLines, setThinkingLines] = useState<string[]>([])
   const activeAssistantMessageIdRef = useRef<string | null>(null)
   const toolAggregatorRef = useRef(new ToolStreamAggregator())
+
+  // 当 threadId 变化时，清空消息
+  useEffect(() => {
+    setMessages([])
+    setThinkingLines([])
+    toolAggregatorRef.current.reset()
+    activeAssistantMessageIdRef.current = null
+  }, [threadId])
 
   const updateAssistantMessage = useCallback(
     (updater: (message: UIMessageItemProps) => UIMessageItemProps) => {
@@ -99,41 +111,18 @@ export function useChat() {
 
   const handleTextChunk = useCallback(
     (chunk: string) => {
-      updateAssistantMessage((message) => {
-        const textIndex = message.content.findIndex((block) => block.type === 'text')
-
-        if (textIndex === -1) {
-          return {
-            ...message,
-            content: [createTextContent(chunk), ...message.content],
-          }
-        }
-
-        return {
-          ...message,
-          content: message.content.map((block, index) =>
-            index === textIndex && block.type === 'text'
-              ? { ...block, text: block.text + chunk }
-              : block,
-          ),
-        }
-      })
-    },
-    [updateAssistantMessage],
-  )
-
-  const handleToolEvent = useCallback(
-    (event: LoomStreamEvent) => {
-      if (!isToolEvent(event)) {
-        return
-      }
-
-      const toolState = toolAggregatorRef.current.apply(event)
-      const toolContent = ToolBlockAdapter.toUI(toolState)
-
-      updateAssistantMessage((message) => ({
-        ...message,
-        content: upsertToolContent(message.content, toolContent),
+      updateAssistantMessage((msg) => ({
+        ...msg,
+        content: [
+          ...msg.content.filter((block) => block.type !== 'text'),
+          {
+            type: 'text' as const,
+            text: (msg.content.find((b) => b.type === 'text')?.type === 'text'
+              ? (msg.content.find((b) => b.type === 'text') as { type: 'text'; text: string }).text
+              : '') + chunk,
+            format: 'plain' as const,
+          },
+        ],
       }))
     },
     [updateAssistantMessage],
@@ -141,62 +130,68 @@ export function useChat() {
 
   const handleEvent = useCallback(
     (event: LoomStreamEvent) => {
-      handleToolEvent(event)
-
-      if (event.type === 'thought_chunk' && event.content) {
-        setThinkingLines((current) =>
-          (current.join('\n') + event.content).split('\n'),
-        )
+      const thinkLine = formatThinkLine(event)
+      if (thinkLine) {
+        setThinkingLines((prev) => [...prev, thinkLine])
         return
       }
 
-      const thinkLine = formatThinkLine(event)
-      if (thinkLine) {
-        setThinkingLines((current) => [...current, thinkLine])
-      }
+        if (isToolEvent(event)) {
+          const nextTool = toolAggregatorRef.current.apply(event)
+          if (nextTool) {
+            updateAssistantMessage((msg) => ({
+              ...msg,
+              content: upsertToolContent(msg.content, ToolBlockAdapter.toUI(nextTool)),
+            }))
+          }
+        }
     },
-    [handleToolEvent],
+    [updateAssistantMessage],
   )
 
   const sendMessage = useCallback(
     async (text: string) => {
-      const userMessage = createUserMessage(text)
-      const assistantMessage = createAssistantMessage()
+      if (isStreaming) {
+        return
+      }
 
+      const userMessage = createUserMessage(text)
+      setMessages((prev) => [...prev, userMessage])
+
+      const assistantMessage = createAssistantMessage()
       activeAssistantMessageIdRef.current = assistantMessage.id
-      toolAggregatorRef.current.reset()
-      setThinkingLines([])
-      setMessages((current) => [...current, userMessage, assistantMessage])
+      setMessages((prev) => [...prev, assistantMessage])
+
       setIsStreaming(true)
-      setConnectionStatus('connecting')
       setError(null)
+      setConnectionStatus('connected')
+      toolAggregatorRef.current.reset()
 
       try {
         const reply = await sendChatMessage(text, {
           threadId,
+          agent: agentId,
           onChunk: handleTextChunk,
           onEvent: handleEvent,
         })
-
-        updateAssistantMessage((message) => {
-          const hasTextBlock = message.content.some((block) => block.type === 'text')
-          if (hasTextBlock || !reply.content) {
-            return message
-          }
-
-          return {
-            ...message,
-            content: [createTextContent(reply.content), ...message.content],
-          }
-        })
-
-        setConnectionStatus('connected')
+        if (reply.content) {
+          updateAssistantMessage((msg) => ({
+            ...msg,
+            content: [
+              ...msg.content.filter((block) => block.type !== 'text'),
+              {
+                type: 'text' as const,
+                text: reply.content,
+                format: 'plain' as const,
+              },
+            ],
+          }))
+        }
       } catch (caughtError) {
-        const nextError =
-          caughtError instanceof Error
-            ? caughtError.message
-            : 'Request failed. Check whether `loom serve` is running.'
-
+        let nextError = 'Request failed. Check whether `loom serve` is running.'
+        if (caughtError instanceof Error) {
+          nextError = caughtError.message
+        }
         setError(nextError)
         setConnectionStatus('error')
         throw caughtError
@@ -205,7 +200,7 @@ export function useChat() {
         activeAssistantMessageIdRef.current = null
       }
     },
-    [handleEvent, handleTextChunk, threadId, updateAssistantMessage],
+    [isStreaming, threadId, agentId, handleTextChunk, handleEvent],
   )
 
   return useMemo(

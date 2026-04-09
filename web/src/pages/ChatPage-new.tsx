@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 
 import { ChatErrorBoundary } from '../components/error/ErrorBoundary'
 import { FileTreeSidebar } from '../components/file-tree'
@@ -8,9 +8,9 @@ import { WorkspaceSelector } from '../components/workspace'
 import { useWorkspace } from '../hooks/useWorkspace'
 import { useThread } from '../hooks/useThread'
 import { useAgents } from '../hooks/useAgents'
+import { useChat } from '../hooks/useChat'
+import { useChatPanel } from '../hooks/useChatPanel'
 import type { FileNode } from '../components/file-tree'
-import type { ActivityEvent } from '../types/agent'
-import type { UIMessageItemProps } from '../types/ui/message'
 
 const DEMO_FILES: FileNode[] = [
   {
@@ -95,68 +95,6 @@ const DEMO_FILES: FileNode[] = [
   },
 ]
 
-const DEMO_MESSAGES: UIMessageItemProps[] = [
-  {
-    id: '1',
-    sender: 'user',
-    timestamp: new Date().toISOString(),
-    content: [
-      {
-        type: 'text',
-        text: '你好，我可以帮你什么吗？',
-      },
-    ],
-  },
-  {
-    id: '2',
-    sender: 'assistant',
-    timestamp: new Date().toISOString(),
-    content: [
-      {
-        type: 'text',
-        text: '你好！我是你的助手 Agent。我可以帮你处理代码、分析文件、搜索信息等。请告诉我你需要什么帮助！',
-      },
-    ],
-  },
-]
-
-const now = Date.now()
-const s = (ms: number) => new Date(now - ms).toISOString()
-
-function makeActivity(): ActivityEvent[] {
-  const events: ActivityEvent[] = [
-    { id: 'a1', timestamp: s(2000), agent: 'dev', type: 'run_start', summary: '修复登录页面的表单验证问题', isError: false },
-    { id: 'a2', timestamp: s(1900), agent: 'dev', type: 'tool_call', summary: 'read', isError: false },
-    { id: 'a3', timestamp: s(1800), agent: 'dev', type: 'tool_start', summary: 'read', isError: false },
-    { id: 'a4', timestamp: s(1700), agent: 'dev', type: 'tool_output', summary: '读取 src/components/LoginForm.tsx', isError: false },
-    { id: 'a5', timestamp: s(1600), agent: 'researcher', type: 'run_start', summary: '调研 React 19 新特性', isError: false },
-    { id: 'a6', timestamp: s(1500), agent: 'researcher', type: 'tool_call', summary: 'websearch', isError: false },
-    { id: 'a7', timestamp: s(1400), agent: 'researcher', type: 'tool_start', summary: 'websearch', isError: false },
-    { id: 'a8', timestamp: s(1300), agent: 'researcher', type: 'tool_output', summary: 'React 19 正式发布，新增 use() hook...', isError: false },
-    { id: 'a9', timestamp: s(1200), agent: 'dev', type: 'tool_call', summary: 'edit', isError: false },
-    { id: 'a10', timestamp: s(1100), agent: 'dev', type: 'tool_end', summary: 'edit done', isError: false },
-    { id: 'a11', timestamp: s(1000), agent: 'dev', type: 'message_chunk', summary: '我已经修复了表单验证的逻辑，现在邮箱字段会正确校验格式。', isError: false },
-    { id: 'a12', timestamp: s(5000), agent: 'linter', type: 'run_start', summary: '检查代码质量', isError: false },
-    { id: 'a13', timestamp: s(4900), agent: 'linter', type: 'tool_call', summary: 'bash', isError: false },
-    { id: 'a14', timestamp: s(4800), agent: 'linter', type: 'tool_end', summary: 'bash done', isError: false },
-    { id: 'a15', timestamp: s(4700), agent: 'linter', type: 'message_chunk', summary: 'TypeError: Cannot read property "fix" of undefined', isError: false },
-    { id: 'a16', timestamp: s(300_000), agent: 'reviewer', type: 'run_start', summary: '审查 PR #42 的代码变更', isError: false },
-    { id: 'a17', timestamp: s(299_000), agent: 'reviewer', type: 'tool_call', summary: 'read', isError: false },
-    { id: 'a18', timestamp: s(298_000), agent: 'reviewer', type: 'tool_end', summary: 'read done', isError: false },
-    { id: 'a19', timestamp: s(297_000), agent: 'reviewer', type: 'message_chunk', summary: 'LGTM，只有两个小的命名建议。', isError: false },
-    { id: 'a20', timestamp: s(240_000), agent: 'tester', type: 'run_start', summary: '运行集成测试', isError: false },
-    { id: 'a21', timestamp: s(239_000), agent: 'tester', type: 'tool_call', summary: 'bash', isError: false },
-    { id: 'a22', timestamp: s(238_000), agent: 'tester', type: 'tool_end', summary: 'bash done', isError: false },
-    { id: 'a23', timestamp: s(600_000), agent: 'deploy', type: 'run_start', summary: '部署到 staging 环境', isError: false },
-    { id: 'a24', timestamp: s(599_000), agent: 'deploy', type: 'tool_call', summary: 'bash', isError: false },
-    { id: 'a25', timestamp: s(598_000), agent: 'deploy', type: 'tool_end', summary: 'bash done', isError: false },
-    { id: 'a26', timestamp: s(900_000), agent: 'planner', type: 'run_start', summary: '规划 Sprint 12 任务', isError: false },
-    { id: 'a27', timestamp: s(1_200_000), agent: 'architect', type: 'run_start', summary: '设计微服务拆分方案', isError: false },
-  ]
-  return events
-}
-
-const DEMO_ACTIVITY = makeActivity()
 export function ChatPage() {
   const {
     workspaces,
@@ -168,10 +106,18 @@ export function ChatPage() {
     selectWorkspace: selectWs,
   } = useWorkspace()
   const { agents } = useAgents({ autoRefresh: true, refreshInterval: 15000 })
-  useThread()
+  const { threadId } = useThread()
+  const { selectedAgentId } = useChatPanel()
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
-  const [messages, setMessages] = useState<UIMessageItemProps[]>(DEMO_MESSAGES)
-  const mountedRef = useRef(true)
+
+  const {
+    messages,
+    isStreaming,
+    sendMessage: sendRealMessage,
+  } = useChat({
+    threadId,
+    agentId: selectedAgentId || 'dev',
+  })
 
   useEffect(() => {
     loadWorkspaces()
@@ -192,31 +138,8 @@ export function ChatPage() {
   }, [createWorkspace])
 
   const handleSendMessage = useCallback(async (text: string) => {
-    const userMessage: UIMessageItemProps = {
-      id: crypto.randomUUID(),
-      sender: 'user',
-      timestamp: new Date().toISOString(),
-      content: [{ type: 'text', text }],
-    }
-
-    setMessages((prev) => [...prev, userMessage])
-
-    setTimeout(() => {
-      if (!mountedRef.current) return
-      const assistantMessage: UIMessageItemProps = {
-        id: crypto.randomUUID(),
-        sender: 'assistant',
-        timestamp: new Date().toISOString(),
-        content: [
-          {
-            type: 'text',
-            text: `我收到了你的消息："${text}"。作为一个示例助手，我还没有实际连接到后端服务。在实际应用中，这里会通过 WebSocket 发送消息到对应的 Agent。`,
-          },
-        ],
-      }
-      setMessages((prev) => [...prev, assistantMessage])
-    }, 1000)
-  }, [])
+    await sendRealMessage(text)
+  }, [sendRealMessage])
 
   return (
     <ChatErrorBoundary>
@@ -240,7 +163,7 @@ export function ChatPage() {
         <div className="flex-1 min-w-0">
           <DashboardView
             agents={agents}
-            activity={DEMO_ACTIVITY}
+            activity={[]}
             activeCount={agents.filter(a => a.status === 'running').length}
             totalCalls={agents.reduce((sum, a) => sum + a.callCount, 0)}
           />
@@ -252,6 +175,7 @@ export function ChatPage() {
           }))}
           messages={messages}
           unreadCount={messages.filter(m => m.sender === 'assistant').length}
+          isStreaming={isStreaming}
           onSendMessage={handleSendMessage}
         />
       </div>

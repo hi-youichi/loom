@@ -1,4 +1,5 @@
 import type { UITextContent } from '../../types/ui/message'
+import { MarkdownContent } from './MarkdownContent'
 
 interface TextMessageProps {
   content: UITextContent
@@ -8,9 +9,7 @@ interface TextMessageProps {
 export function TextMessage({ content, className }: TextMessageProps) {
   return (
     <div className={`text-message ${className || ''}`}>
-      <p className="text-message__content">
-        {content.text}
-      </p>
+      <MarkdownContent text={content.text} />
     </div>
   )
 }

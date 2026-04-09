@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import type { UIToolContent } from '../../types/ui/message'
+import { TOOL_TYPE_INFO, TOOL_STATUS_INFO } from '../../types/toolConfig'
 
 type ToolMessageProps = {
   content: UIToolContent
@@ -14,34 +15,33 @@ export const ToolMessage = memo(function ToolMessage({
   content,
   className 
 }: ToolMessageProps) {
-  const statusColor = {
-    pending: '#999',
-    running: '#2196F3',
-    success: '#4CAF50',
-    error: '#F44336',
-  }
-
-  const statusText = {
-    pending: '⏳ 等待中',
-    running: '🔄 执行中',
-    success: '✅ 成功',
-    error: '❌ 失败',
-  }
+  // 使用工具类型信息
+  const toolType = content.toolType || 'other'
+  const typeInfo = TOOL_TYPE_INFO[toolType]
+  const statusInfo = TOOL_STATUS_INFO[content.status]
 
   return (
     <div 
-      className={`tool-message ${className || ''}`} 
+      className={`tool-message tool-message--${toolType} ${className || ''}`} 
       role="article" 
-      aria-label={`工具调用: ${content.name}`}
+      aria-label={`${typeInfo.label}工具: ${content.name}`}
+      style={{ borderLeftColor: typeInfo.color }}
     >
       <div className="tool-message__header">
+        <span className="tool-message__icon">{statusInfo.icon}</span>
+        <span className="tool-message__type-icon" style={{ color: typeInfo.color }}>
+          {typeInfo.icon}
+        </span>
         <span className="tool-message__name">{content.name}</span>
+        <span className="tool-message__type-label" style={{ color: typeInfo.color }}>
+          {typeInfo.label}
+        </span>
         <span 
           className="tool-message__status"
-          style={{ color: statusColor[content.status] }}
+          style={{ color: statusInfo.color }}
           aria-label={`状态: ${content.status}`}
         >
-          {statusText[content.status]}
+          {statusInfo.label}
         </span>
       </div>
       

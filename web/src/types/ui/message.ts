@@ -16,16 +16,31 @@ export interface UITextContent {
 /** 工具状态 */
 export type UIToolStatus = 'pending' | 'running' | 'success' | 'error'
 
+/** 工具类型 */
+export type UIToolType = 
+  | 'read'      // 读取文件/数据
+  | 'edit'      // 修改文件/内容  
+  | 'delete'    // 删除文件/数据
+  | 'move'      // 移动/重命名文件
+  | 'search'    // 搜索信息
+  | 'execute'   // 运行命令/代码
+  | 'think'     // 内部推理/规划
+  | 'fetch'     // 获取外部数据
+  | 'other'     // 其他工具类型
+
 /** 工具内容 */
 export interface UIToolContent {
   type: 'tool'
   id: string
   name: string
+  toolType?: UIToolType
   status: UIToolStatus
   argumentsText: string
   outputText: string
   resultText: string
   isError: boolean
+  timestamp?: string
+  duration?: number
 }
 
 /** 消息内容联合类型 */
