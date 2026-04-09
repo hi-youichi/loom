@@ -318,10 +318,30 @@ fn apply_model_provider_resolution(opts: &mut RunOptions) {
         }
     };
 
+    // Validate provider/model format
+    if raw_model.is_empty() {
+        tracing::warn!("Model name cannot be empty");
+        return;
+    }
+
     let (resolved_provider, model_name) = if let Some((p, m)) = raw_model.split_once('/') {
+        // Validate provider and model parts
+        if p.is_empty() {
+            tracing::warn!("Provider name in 'provider/model' format cannot be empty");
+            return;
+        }
+        if m.is_empty() {
+            tracing::warn!("Model name in 'provider/model' format cannot be empty");
+            return;
+        }
         (Some(p.to_string()), m.to_string())
     } else {
-        (None, raw_model)
+        // Bare model name - validate it's not just whitespace
+        if raw_model.trim().is_empty() {
+            tracing::warn!("Model name cannot be empty or whitespace only");
+            return;
+        }
+        (None, raw_model.trim().to_string())
     };
 
     let effective_provider = provider_only.as_deref().or(resolved_provider.as_deref());
@@ -677,5 +697,117 @@ mod tests {
     fn constants_match() {
         assert_eq!(DEFAULT_WORKING_FOLDER, ".");
         assert_eq!(AGENTS_MD_FILE, "AGENTS.md");
+    }
+
+    #[test]
+    fn apply_model_provider_resolution_with_provider_model_format() {
+        let mut opts = default_opts();
+        opts.model = Some("openai/gpt-4o".to_string());
+        
+        apply_model_provider_resolution(&mut opts);
+        
+        assert_eq!(opts.model.as_deref(), Some("gpt-4o"));
+    }
+
+    #[test]
+    fn apply_model_provider_resolution_with_bare_model() {
+        let mut opts = default_opts();
+        opts.model = Some("gpt-4o".to_string());
+        
+        apply_model_provider_resolution(&mut opts);
+        
+        assert_eq!(opts.model.as_deref(), Some("gpt-4o"));
+    }
+
+    #[test]
+    fn apply_model_provider_resolution_with_provider_override() {
+        let mut opts = default_opts();
+        opts.model = Some("anthropic/claude-3-opus".to_string());
+        opts.provider = Some("openai".to_string());
+        
+        apply_model_provider_resolution(&mut opts);
+        
+        assert_eq!(opts.model.as_deref(), Some("claude-3-opus"));
+        // Provider should be overridden by --provider flag
+        assert_eq!(opts.provider.as_deref(), Some("openai"));
+    }
+
+    #[test]
+    fn apply_model_provider_resolution_with_provider_only() {
+        let mut opts = default_opts();
+        opts.provider = Some("openai".to_string());
+        
+        apply_model_provider_resolution(&mut opts);
+        
+        assert_eq!(opts.provider.as_deref(), Some("openai"));
+    }
+
+    #[test]
+    fn apply_model_provider_resolution_empty() {
+        let mut opts = default_opts();
+        
+        apply_model_provider_resolution(&mut opts);
+        
+        assert!(opts.model.is_none());
+        assert!(opts.provider.is_none());
+    }
+
+    #[test]
+    fn apply_model_provider_resolution_multiple_slashes() {
+        let mut opts = default_opts();
+        opts.model = Some("provider/sub/model".to_string());
+        
+        apply_model_provider_resolution(&mut opts);
+        
+        // Should split on first slash only
+        assert_eq!(opts.model.as_deref(), Some("sub/model"));
+    }
+
+    #[test]
+    fn apply_model_provider_resolution_empty_model() {
+        let mut opts = default_opts();
+        opts.model = Some("".to_string());
+        
+        apply_model_provider_resolution(&mut opts);
+        
+        // Should not modify options when model is empty
+        assert!(opts.model.is_none());
+        assert!(opts.provider.is_none());
+    }
+
+    #[test]
+    fn apply_model_provider_resolution_whitespace_model() {
+        let mut opts = default_opts();
+        opts.model = Some("   ".to_string());
+        
+        apply_model_provider_resolution(&mut opts);
+        
+        // Should not modify options when model is whitespace only
+        assert!(opts.model.is_none());
+        assert!(opts.provider.is_none());
+    }
+
+    #[test]
+    fn apply_model_provider_resolution_empty_provider_in_format() {
+        let mut opts = default_opts();
+        opts.model = Some("/gpt-4o".to_string());
+        
+        apply_model_provider_resolution(&mut opts);
+        
+        // Should not modify options when provider part is empty
+        assert!(opts.model.is_none());
+        assert!(opts.provider.is_none());
+    }
+
+    #[test]
+    fn apply_model_provider_resolution_empty_model_in_format() {
+        let mut opts = default_opts();
+        opts.model = Some("openai/".to_string());
+        
+        apply_model_provider_resolution(&mut opts);
+        
+        // Should not modify options when model part is empty
+        assert!(opts.model.is_none());
+        assert!(opts.provider.is_none());
     }
 }
