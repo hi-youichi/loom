@@ -236,12 +236,13 @@ pub fn stream_update_to_session_notification(
             kind,
         } => {
             let id = ToolCallId::new(tool_call_id.as_str());
-            let mut tc = ToolCall::new(id.clone(), name.clone()).status(ToolCallStatus::Pending);
+            let title = generate_tool_title(name, input.as_ref());
+            let effective_kind = kind.as_deref().map(name_to_tool_kind).unwrap_or_else(|| name_to_tool_kind(name));
+            let mut tc = ToolCall::new(id.clone(), title)
+                .status(ToolCallStatus::Pending)
+                .kind(effective_kind);
             if let Some(ref v) = input {
                 tc = tc.raw_input(v.clone());
-            }
-            if let Some(ref k) = kind {
-                tc = tc.kind(name_to_tool_kind(k));
             }
             tracing::trace!(
                 tool_call_id = %tool_call_id,
@@ -283,15 +284,13 @@ pub fn stream_update_to_session_notification(
             name,
             arguments_delta,
         } => {
-            // ACP doesn't have a dedicated tool_call_chunk type yet.
-            // For the first chunk (with name), send ToolCall with Pending status.
-            // For subsequent chunks, we could either:
-            // 1. Ignore them (wait for complete ToolCall event)
-            // 2. Send ToolCallUpdate with raw_input_delta if ACP adds support
-            // Currently, we only send if it's the first chunk (has name).
             if let Some(tool_name) = name {
                 let id = ToolCallId::new(tool_call_id.as_str());
-                let tc = ToolCall::new(id.clone(), tool_name.clone()).status(ToolCallStatus::Pending);
+                let kind = name_to_tool_kind(&tool_name);
+                let title = generate_tool_title(&tool_name, parse_arguments_delta(&arguments_delta).as_ref());
+                let tc = ToolCall::new(id.clone(), title)
+                    .status(ToolCallStatus::Pending)
+                    .kind(kind);
                 tracing::debug!(
                     tool_call_id = %tool_call_id,
                     name = %tool_name,
@@ -314,29 +313,101 @@ pub fn stream_update_to_session_notification(
     Some(SessionNotification::new(session_id.clone(), update))
 }
 
+fn parse_arguments_delta(delta: &str) -> Option<serde_json::Value> {
+    serde_json::from_str::<serde_json::Value>(delta).ok()
+}
+
 fn parse_text_output_to_raw_value(output: &str) -> serde_json::Value {
     serde_json::from_str::<serde_json::Value>(output)
         .unwrap_or_else(|_| serde_json::json!({ "text": output }))
 }
 
-fn name_to_tool_kind(name: &str) -> ToolKind {
+pub fn name_to_tool_kind(name: &str) -> ToolKind {
     let n = name.to_lowercase();
-    if n.contains("read") || n.contains("file") {
+    if n.contains("read") {
         ToolKind::Read
     } else if n.contains("write") || n.contains("edit") {
         ToolKind::Edit
-    } else if n.contains("delete") {
+    } else if n.contains("delete") || n.contains("remove") {
         ToolKind::Delete
-    } else if n.contains("search") {
+    } else if n.contains("move") || n.contains("rename") {
+        ToolKind::Move
+    } else if n.contains("search") || n.contains("grep") || n.contains("glob") {
         ToolKind::Search
-    } else if n.contains("run") || n.contains("command") || n.contains("exec") {
+    } else if n.contains("run") || n.contains("bash") || n.contains("command") || n.contains("exec") || n.contains("shell") {
         ToolKind::Execute
     } else if n.contains("think") || n.contains("reason") {
         ToolKind::Think
     } else if n.contains("fetch") {
         ToolKind::Fetch
+    } else if n.contains("switch_mode") || n.contains("switchmode") || n.contains("set_mode") || n.contains("setmode") {
+        ToolKind::SwitchMode
     } else {
         ToolKind::Other
+    }
+}
+
+pub fn generate_tool_title(name: &str, input: Option<&serde_json::Value>) -> String {
+    let kind = name_to_tool_kind(name);
+    let verb = match kind {
+        ToolKind::Read => "Reading",
+        ToolKind::Edit => "Editing",
+        ToolKind::Delete => "Deleting",
+        ToolKind::Move => "Moving",
+        ToolKind::Search => "Searching",
+        ToolKind::Execute => "Running",
+        ToolKind::Think => "Thinking",
+        ToolKind::Fetch => "Fetching",
+        ToolKind::SwitchMode => "Switching mode",
+        ToolKind::Other | _ => "Running",
+    };
+
+    let target = extract_target_from_input(name, input);
+    match target {
+        Some(t) => format!("{} {}", verb, t),
+        None => format!("{} {}", verb, name),
+    }
+}
+
+fn extract_target_from_input(name: &str, input: Option<&serde_json::Value>) -> Option<String> {
+    let obj = input?.as_object()?;
+    let n = name.to_lowercase();
+
+    let keys: &[&[&str]] = if n.contains("read") || n.contains("file") {
+        &[&["path", "file_path", "filepath"]]
+    } else if n.contains("write") || n.contains("edit") {
+        &[&["path", "file_path", "filepath"]]
+    } else if n.contains("delete") || n.contains("remove") {
+        &[&["path", "file_path", "filepath"]]
+    } else if n.contains("move") || n.contains("rename") {
+        &[&["source", "src", "path"], &["destination", "dest", "target"]]
+    } else if n.contains("search") || n.contains("grep") || n.contains("glob") {
+        &[&["pattern", "query", "search"]]
+    } else if n.contains("run") || n.contains("bash") || n.contains("command") || n.contains("exec") || n.contains("shell") {
+        &[&["command", "cmd"]]
+    } else if n.contains("fetch") {
+        &[&["url", "uri"]]
+    } else {
+        &[]
+    };
+
+    for key_group in keys {
+        for &key in *key_group {
+            if let Some(val) = obj.get(key).and_then(|v| v.as_str()) {
+                let truncated = truncate_path(val, 60);
+                return Some(truncated);
+            }
+        }
+    }
+    None
+}
+
+fn truncate_path(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        let start = s.len() - max_len + 3;
+        format!("...{}", &s[start..])
     }
 }
 
@@ -600,6 +671,12 @@ mod tests {
         if let Some(notification) = notif {
             if let SessionUpdate::ToolCall(tc) = notification.update {
                 assert_eq!(tc.raw_input, None, "tool_call_chunk 不应写入 raw_input");
+                assert_eq!(tc.kind, ToolKind::Execute, "bash tool should map to Execute kind");
+                assert!(
+                    tc.title.contains("Running"),
+                    "title should contain 'Running', got: {}",
+                    tc.title
+                );
             } else {
                 panic!("expected SessionUpdate::ToolCall");
             }
@@ -620,6 +697,39 @@ mod tests {
             notif.is_none(),
             "ToolCallChunk 后续块（无 name）不应产生 SessionNotification（ACP 不支持增量更新）"
         );
+    }
+
+    #[test]
+    fn stream_update_to_session_notification_tool_call_started_generates_title_and_kind() {
+        let session_id = SessionId::new("sess-title".to_string());
+        let update = StreamUpdate::ToolCallStarted {
+            tool_call_id: "call-title-1".to_string(),
+            name: "read_file".to_string(),
+            input: Some(serde_json::json!({"path": "/tmp/test.txt"})),
+            kind: None,
+        };
+        let notif = stream_update_to_session_notification(&session_id, &update)
+            .expect("expected notification");
+        if let SessionUpdate::ToolCall(tc) = notif.update {
+            assert_eq!(tc.kind, ToolKind::Read, "read_file should map to Read kind");
+            assert!(
+                tc.title.contains("Reading"),
+                "title should contain 'Reading', got: {}",
+                tc.title
+            );
+            assert!(
+                tc.title.contains("/tmp/test.txt"),
+                "title should contain the path, got: {}",
+                tc.title
+            );
+            assert_eq!(
+                tc.raw_input,
+                Some(serde_json::json!({"path": "/tmp/test.txt"})),
+                "raw_input should be set from input"
+            );
+        } else {
+            panic!("expected SessionUpdate::ToolCall");
+        }
     }
 
     #[test]

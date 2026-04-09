@@ -6,7 +6,7 @@
 use crate::agent_registry::AgentRegistry;
 use crate::content::content_blocks_to_user_content;
 use crate::session::{SessionId as OurSessionId, SessionStore};
-use crate::stream_bridge::{loom_event_to_updates, stream_update_to_session_notification};
+use crate::stream_bridge::{loom_event_to_updates, stream_update_to_session_notification, generate_tool_title, name_to_tool_kind};
 use agent_client_protocol::{
     Agent, AuthenticateRequest, AuthenticateResponse, CancelNotification, ContentChunk,
     CurrentModeUpdate, InitializeRequest, InitializeResponse, ListSessionsRequest,
@@ -571,12 +571,13 @@ impl Agent for LoomAcpAgent {
                                 // Send pending tool calls
                                 for tc in &payload.tool_calls {
                                     let tool_call_id = ToolCallId::new(tc.id.clone());
-                                    let mut tool_call =
-                                        ToolCall::new(tool_call_id.clone(), tc.name.clone())
-                                            .status(ToolCallStatus::Pending);
-                                    if let Ok(args) =
-                                        serde_json::from_str::<serde_json::Value>(&tc.arguments)
-                                    {
+                                    let args = serde_json::from_str::<serde_json::Value>(&tc.arguments).ok();
+                                    let title = generate_tool_title(&tc.name, args.as_ref());
+                                    let kind = name_to_tool_kind(&tc.name);
+                                    let mut tool_call = ToolCall::new(tool_call_id.clone(), title)
+                                        .status(ToolCallStatus::Pending)
+                                        .kind(kind);
+                                    if let Some(args) = args {
                                         tool_call = tool_call.raw_input(args);
                                     }
                                     notifications.push(SessionNotification::new(
