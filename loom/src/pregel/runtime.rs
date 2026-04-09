@@ -1037,7 +1037,23 @@ fn next_checkpoint(
     checkpoint.pending_interrupts = current.pending_interrupts.clone();
     checkpoint.metadata.parents = current.metadata.parents.clone();
     checkpoint.metadata.children = current.metadata.children.clone();
+    checkpoint.metadata.summary = current
+        .metadata
+        .summary
+        .clone()
+        .or_else(|| extract_summary_from_channel_values(&current.channel_values));
     checkpoint
+}
+
+/// Extract the `summary` field from serialized channel values (e.g. ReActState).
+/// This bridges the gap between state-level summary and checkpoint metadata,
+/// ensuring summaries are persisted even when the metadata was not explicitly set.
+fn extract_summary_from_channel_values(channel_values: &serde_json::Value) -> Option<String> {
+    channel_values
+        .get("summary")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
 }
 
 fn merge_subgraph_links(checkpoint: &mut Checkpoint<ChannelValue>, ctx: &PregelNodeContext) {
@@ -5785,5 +5801,32 @@ mod tests {
             .unwrap();
         assert_eq!(node_a_runs.load(Ordering::SeqCst), 2);
         assert_eq!(node_b_runs.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn extract_summary_from_channel_values_returns_summary_when_present() {
+        let channel_values = serde_json::json!({"summary": "Hello world", "messages": []});
+        assert_eq!(
+            extract_summary_from_channel_values(&channel_values),
+            Some("Hello world".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_summary_from_channel_values_returns_none_when_null() {
+        let channel_values = serde_json::json!({"summary": null, "messages": []});
+        assert_eq!(extract_summary_from_channel_values(&channel_values), None);
+    }
+
+    #[test]
+    fn extract_summary_from_channel_values_returns_none_when_empty_string() {
+        let channel_values = serde_json::json!({"summary": "", "messages": []});
+        assert_eq!(extract_summary_from_channel_values(&channel_values), None);
+    }
+
+    #[test]
+    fn extract_summary_from_channel_values_returns_none_when_field_missing() {
+        let channel_values = serde_json::json!({"messages": []});
+        assert_eq!(extract_summary_from_channel_values(&channel_values), None);
     }
 }

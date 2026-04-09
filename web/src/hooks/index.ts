@@ -1,6 +1,6 @@
 export { useWebSocket } from './useWebSocket'
 export { useThread } from './useThread'
 export { useMessages } from './useMessages'
-export { useChat, sendMessage as sendChatMessage } from './useChat'
+export { useChat } from './useChat'
 export { useAgents } from './useAgents'
 export { useChatPanel } from './useChatPanel'

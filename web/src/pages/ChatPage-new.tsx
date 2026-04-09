@@ -1,11 +1,15 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 
 import { ChatErrorBoundary } from '../components/error/ErrorBoundary'
 import { FileTreeSidebar } from '../components/file-tree'
 import { DashboardView } from '../components/dashboard'
 import { AgentChatSidebar } from '../components/chat'
+import { WorkspaceSelector } from '../components/workspace'
+import { useWorkspace } from '../hooks/useWorkspace'
+import { useThread } from '../hooks/useThread'
 import type { FileNode } from '../components/file-tree'
-import type { AgentInfo, ActivityEvent, UIMessageItemProps } from '../types/agent'
+import type { AgentInfo, ActivityEvent } from '../types/agent'
+import type { UIMessageItemProps } from '../types/ui/message'
 
 const DEMO_FILES: FileNode[] = [
   {
@@ -279,9 +283,37 @@ const DEMO_ACTIVE_COUNT = DEMO_AGENTS.filter((a) => a.status === 'running').leng
 const DEMO_TOTAL_CALLS = DEMO_AGENTS.reduce((sum, a) => sum + a.callCount, 0)
 
 export function ChatPage() {
+  const {
+    workspaces,
+    activeWorkspaceId,
+    loading: workspaceLoading,
+    error: workspaceError,
+    loadWorkspaces,
+    createWorkspace,
+    selectWorkspace: selectWs,
+  } = useWorkspace()
+  useThread()
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
   const [messages, setMessages] = useState<UIMessageItemProps[]>(DEMO_MESSAGES)
   const mountedRef = useRef(true)
+
+  useEffect(() => {
+    loadWorkspaces()
+  }, [loadWorkspaces])
+
+  useEffect(() => {
+    if (activeWorkspaceId) {
+      selectWs(activeWorkspaceId)
+    }
+  }, [activeWorkspaceId, selectWs])
+
+  const handleSelectWorkspace = useCallback((id: string) => {
+    selectWs(id)
+  }, [selectWs])
+
+  const handleCreateWorkspace = useCallback(async (name?: string) => {
+    return createWorkspace(name)
+  }, [createWorkspace])
 
   const handleSendMessage = useCallback(async (text: string) => {
     const userMessage: UIMessageItemProps = {
@@ -293,7 +325,7 @@ export function ChatPage() {
 
     setMessages((prev) => [...prev, userMessage])
 
-    const timer = setTimeout(() => {
+    setTimeout(() => {
       if (!mountedRef.current) return
       const assistantMessage: UIMessageItemProps = {
         id: crypto.randomUUID(),
@@ -308,8 +340,6 @@ export function ChatPage() {
       }
       setMessages((prev) => [...prev, assistantMessage])
     }, 1000)
-
-    return () => clearTimeout(timer)
   }, [])
 
   return (
@@ -319,6 +349,17 @@ export function ChatPage() {
           files={DEMO_FILES}
           selectedId={selectedFileId}
           onSelect={(node) => setSelectedFileId(node.id)}
+          workspaceSlot={
+            <WorkspaceSelector
+              workspaces={workspaces}
+              activeWorkspaceId={activeWorkspaceId}
+              loading={workspaceLoading}
+              error={workspaceError}
+              onSelect={handleSelectWorkspace}
+              onCreate={handleCreateWorkspace}
+              onRefresh={loadWorkspaces}
+            />
+          }
         />
         <div className="flex-1 min-w-0">
           <DashboardView

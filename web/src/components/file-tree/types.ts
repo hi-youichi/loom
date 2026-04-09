@@ -36,4 +36,5 @@ export interface FileTreeSidebarProps {
   onSelect?: (node: FileNode) => void
   title?: string
   className?: string
+  workspaceSlot?: React.ReactNode
 }

@@ -146,9 +146,53 @@ pub enum ClientRequest {
     ToolShow(ToolShowRequest),
     UserMessages(UserMessagesRequest),
     AgentList(AgentListRequest),
+    WorkspaceList(WorkspaceListRequest),
+    WorkspaceCreate(WorkspaceCreateRequest),
+    WorkspaceThreadList(WorkspaceThreadListRequest),
+    WorkspaceThreadAdd(WorkspaceThreadAddRequest),
+    WorkspaceThreadRemove(WorkspaceThreadRemoveRequest),
     Ping(PingRequest),
 }
+// -----------------------------------------------------------------------------
+// Workspace requests
+// -----------------------------------------------------------------------------
 
+/// Workspace list request: list all workspaces.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceListRequest {
+    pub id: String,
+}
+
+/// Workspace create request: create a new workspace.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceCreateRequest {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+/// Workspace thread list request: list threads in a workspace.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceThreadListRequest {
+    pub id: String,
+    pub workspace_id: String,
+}
+
+/// Workspace thread add request: associate a thread with a workspace.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceThreadAddRequest {
+    pub id: String,
+    pub workspace_id: String,
+    pub thread_id: String,
+}
+
+/// Workspace thread remove request: disassociate a thread from a workspace.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceThreadRemoveRequest {
+    pub id: String,
+    pub workspace_id: String,
+    pub thread_id: String,
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -276,5 +320,68 @@ mod tests {
         assert!(json.contains("\"source_filter\":\"builtin\""));
         let parsed: ClientRequest = serde_json::from_str(&json).unwrap();
         assert!(matches!(parsed, ClientRequest::AgentList(_)));
+    }
+
+    #[test]
+    fn request_workspace_list_roundtrip() {
+        let req = ClientRequest::WorkspaceList(WorkspaceListRequest {
+            id: "req-wl".to_string(),
+        });
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"type\":\"workspace_list\""));
+        let parsed: ClientRequest = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, ClientRequest::WorkspaceList(_)));
+    }
+
+    #[test]
+    fn request_workspace_create_roundtrip() {
+        let req = ClientRequest::WorkspaceCreate(WorkspaceCreateRequest {
+            id: "req-wc".to_string(),
+            name: Some("project-alpha".to_string()),
+        });
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"type\":\"workspace_create\""));
+        assert!(json.contains("\"name\":\"project-alpha\""));
+        let parsed: ClientRequest = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, ClientRequest::WorkspaceCreate(_)));
+    }
+
+    #[test]
+    fn request_workspace_thread_list_roundtrip() {
+        let req = ClientRequest::WorkspaceThreadList(WorkspaceThreadListRequest {
+            id: "req-wtl".to_string(),
+            workspace_id: "ws-1".to_string(),
+        });
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"type\":\"workspace_thread_list\""));
+        assert!(json.contains("\"workspace_id\":\"ws-1\""));
+        let parsed: ClientRequest = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, ClientRequest::WorkspaceThreadList(_)));
+    }
+
+    #[test]
+    fn request_workspace_thread_add_roundtrip() {
+        let req = ClientRequest::WorkspaceThreadAdd(WorkspaceThreadAddRequest {
+            id: "req-wta".to_string(),
+            workspace_id: "ws-1".to_string(),
+            thread_id: "t-1".to_string(),
+        });
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"type\":\"workspace_thread_add\""));
+        let parsed: ClientRequest = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, ClientRequest::WorkspaceThreadAdd(_)));
+    }
+
+    #[test]
+    fn request_workspace_thread_remove_roundtrip() {
+        let req = ClientRequest::WorkspaceThreadRemove(WorkspaceThreadRemoveRequest {
+            id: "req-wtr".to_string(),
+            workspace_id: "ws-1".to_string(),
+            thread_id: "t-1".to_string(),
+        });
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"type\":\"workspace_thread_remove\""));
+        let parsed: ClientRequest = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, ClientRequest::WorkspaceThreadRemove(_)));
     }
 }

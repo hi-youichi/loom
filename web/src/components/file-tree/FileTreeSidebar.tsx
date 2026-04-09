@@ -13,6 +13,7 @@ export const FileTreeSidebar = memo(function FileTreeSidebar({
   onSelect,
   title = '文件',
   className,
+  workspaceSlot,
 }: FileTreeSidebarProps) {
   const [activeView, setActiveView] = useState<'files' | 'dashboard'>('dashboard')
 
@@ -21,6 +22,7 @@ export const FileTreeSidebar = memo(function FileTreeSidebar({
       className={cn('flex flex-col h-full border-r border-border bg-background', className)}
       style={{ width: '220px' }}
     >
+      {workspaceSlot}
       <button
         type="button"
         onClick={() => setActiveView(activeView === 'dashboard' ? 'files' : 'dashboard')}

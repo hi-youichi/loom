@@ -641,7 +641,9 @@ impl Agent for LoomAcpAgent {
                         };
 
                         for update in updates {
-                            let _ = tx.try_send(update);
+                            if let Err(e) = tx.send(update).await {
+                                tracing::error!(session_id = %session_id, error = %e, "Failed to send session update during history replay");
+                            }
                         }
                     }
                 }
@@ -854,24 +856,29 @@ impl LoomAcpAgent {
             let conn = Connection::open(&db_path)
                 .map_err(|e| format!("Failed to open database: {}", e))?;
 
-            // Build query with optional cwd filter
+            // Build query: use CTE to get latest checkpoint per thread,
+            // then join with aggregate stats. This avoids 3 correlated subqueries.
             let mut sql = r#"
                 SELECT 
-                    thread_id,
-                    COUNT(*) as checkpoint_count,
-                    MIN(metadata_created_at) as created_at,
-                    MAX(metadata_created_at) as last_updated,
-                    (SELECT metadata_step FROM checkpoints c2 
-                     WHERE c2.thread_id = c1.thread_id 
-                     ORDER BY metadata_created_at DESC LIMIT 1) as latest_step,
-                    (SELECT metadata_source FROM checkpoints c2 
-                     WHERE c2.thread_id = c1.thread_id 
-                     ORDER BY metadata_created_at DESC LIMIT 1) as latest_source,
-                    (SELECT metadata_summary FROM checkpoints c2 
-                     WHERE c2.thread_id = c1.thread_id 
-                     ORDER BY metadata_created_at DESC LIMIT 1) as latest_summary
-                FROM checkpoints c1
-            "#
+                    c.thread_id,
+                    c.checkpoint_count,
+                    c.created_at,
+                    c.last_updated,
+                    lc.metadata_step as latest_step,
+                    lc.metadata_source as latest_source,
+                    lc.metadata_summary as latest_summary
+                FROM (
+                    SELECT 
+                        thread_id,
+                        COUNT(*) as checkpoint_count,
+                        MIN(metadata_created_at) as created_at,
+                        MAX(metadata_created_at) as last_updated
+                    FROM checkpoints
+                    GROUP BY thread_id
+                ) c
+                INNER JOIN checkpoints lc ON lc.thread_id = c.thread_id
+                    AND lc.metadata_created_at = c.last_updated
+                "#
             .to_string();
 
             // Note: We don't store cwd in checkpoints table directly,
@@ -880,7 +887,7 @@ impl LoomAcpAgent {
             // For now, we'll return all sessions regardless of cwd_filter.
             let _ = cwd_filter;
 
-            sql.push_str(" GROUP BY thread_id ORDER BY last_updated DESC");
+            sql.push_str(" ORDER BY COALESCE(c.last_updated, 0) DESC");
 
             let mut stmt = conn
                 .prepare(&sql)
@@ -900,13 +907,15 @@ impl LoomAcpAgent {
                         .and_then(|ms| DateTime::from_timestamp_millis(ms))
                         .map(|dt| dt.to_rfc3339());
 
-                    // Use summary as title if available, otherwise generate from session_id
-                    let title = latest_summary.or_else(|| {
-                        Some(format!(
-                            "Session {}",
-                            &session_id[..8.min(session_id.len())]
-                        ))
-                    });
+                    // Use summary as title if available and not empty, otherwise generate from session_id
+                    let title = latest_summary
+                        .filter(|s| !s.trim().is_empty())
+                        .or_else(|| {
+                            Some(format!(
+                                "Session {}",
+                                &session_id[..8.min(session_id.len())]
+                            ))
+                        });
 
                     Ok(SessionInfo {
                         session_id,

@@ -26,6 +26,12 @@ pub async fn spawn_server_once() -> (
     String,
     tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send + Sync>>>,
 ) {
+    if std::env::var("WORKSPACE_DB").is_err() {
+        let db = tempfile::NamedTempFile::new().unwrap();
+        let db_path = db.path().to_string_lossy().to_string();
+        std::mem::forget(db);
+        std::env::set_var("WORKSPACE_DB", &db_path);
+    }
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let url = format!("ws://{}", addr);

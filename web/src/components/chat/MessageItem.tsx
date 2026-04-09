@@ -8,7 +8,7 @@ import type { UIMessageItemProps, UIMessageContent } from '../../types/ui/messag
 export const MessageItem = memo(function MessageItem({
   id,
   sender,
-  timestamp,
+  timestamp: _timestamp,
   content,
   className,
   onRetry,

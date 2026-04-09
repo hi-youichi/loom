@@ -229,6 +229,11 @@ pub use protocol::{
     ProtocolEvent, ProtocolEventEnvelope, RunEndResponse, RunRequest, RunStreamEventResponse,
     ServerResponse, ToolShowOutput, ToolShowRequest, ToolShowResponse, ToolsListRequest,
     ToolsListResponse, UserMessageItem, UserMessagesRequest, UserMessagesResponse,
+    WorkspaceListRequest, WorkspaceListResponse, WorkspaceMeta,
+    WorkspaceCreateRequest, WorkspaceCreateResponse,
+    WorkspaceThreadListRequest, WorkspaceThreadListResponse, ThreadInWorkspace,
+    WorkspaceThreadAddRequest, WorkspaceThreadAddResponse,
+    WorkspaceThreadRemoveRequest, WorkspaceThreadRemoveResponse,
 };
 pub use state::{
     normalize_tool_output, NormalizationConfig, NormalizedToolOutput, ToolOutputHint,

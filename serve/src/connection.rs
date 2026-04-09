@@ -11,6 +11,10 @@ use super::run::handle_run;
 use super::tools::{handle_tool_show, handle_tools_list};
 use super::user_messages::handle_user_messages;
 use super::agents::handle_agent_list;
+use super::workspace::{
+    handle_workspace_create, handle_workspace_list, handle_workspace_thread_add,
+    handle_workspace_thread_list, handle_workspace_thread_remove,
+};
 
 pub(crate) async fn handle_socket(
     mut socket: WebSocket,
@@ -92,6 +96,26 @@ async fn handle_request_and_send(
         }
         ClientRequest::AgentList(r) => {
             let resp = handle_agent_list(r).await;
+            send_response(socket, &resp).await?;
+        }
+        ClientRequest::WorkspaceList(r) => {
+            let resp = handle_workspace_list(r, workspace_store.clone()).await;
+            send_response(socket, &resp).await?;
+        }
+        ClientRequest::WorkspaceCreate(r) => {
+            let resp = handle_workspace_create(r, workspace_store.clone()).await;
+            send_response(socket, &resp).await?;
+        }
+        ClientRequest::WorkspaceThreadList(r) => {
+            let resp = handle_workspace_thread_list(r, workspace_store.clone()).await;
+            send_response(socket, &resp).await?;
+        }
+        ClientRequest::WorkspaceThreadAdd(r) => {
+            let resp = handle_workspace_thread_add(r, workspace_store.clone()).await;
+            send_response(socket, &resp).await?;
+        }
+        ClientRequest::WorkspaceThreadRemove(r) => {
+            let resp = handle_workspace_thread_remove(r, workspace_store.clone()).await;
             send_response(socket, &resp).await?;
         }
         ClientRequest::Ping(r) => {

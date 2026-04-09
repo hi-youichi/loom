@@ -1,10 +1,11 @@
 //! WebSocket server for Loom (axum + ws).
 //!
-//! Listens on ws://127.0.0.1:8080, handles run, tools_list, tool_show, agent_list, ping.
+//! Listens on ws://127.0.0.1:8080, handles run, tools_list, tool_show, agent_list, workspace_*, ping.
 //!
 //! **Public API**: [`run_serve`], [`run_serve_on_listener`].
 
 mod app;
+mod workspace;
 mod connection;
 mod response;
 mod run;

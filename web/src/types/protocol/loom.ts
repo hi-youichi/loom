@@ -150,10 +150,104 @@ export interface LoomErrorResponse {
   error: string
 }
 
+export type WorkspaceListRequest = {
+  type: 'workspace_list'
+  id: string
+}
+
+export type WorkspaceCreateRequest = {
+  type: 'workspace_create'
+  id: string
+  name?: string
+}
+
+export type WorkspaceThreadListRequest = {
+  type: 'workspace_thread_list'
+  id: string
+  workspace_id: string
+}
+
+export type WorkspaceThreadAddRequest = {
+  type: 'workspace_thread_add'
+  id: string
+  workspace_id: string
+  thread_id: string
+}
+
+export type WorkspaceThreadRemoveRequest = {
+  type: 'workspace_thread_remove'
+  id: string
+  workspace_id: string
+  thread_id: string
+}
+
+export type WorkspaceRequest =
+  | WorkspaceListRequest
+  | WorkspaceCreateRequest
+  | WorkspaceThreadListRequest
+  | WorkspaceThreadAddRequest
+  | WorkspaceThreadRemoveRequest
+
+export type WorkspaceMeta = {
+  id: string
+  name?: string | null
+  created_at_ms: number
+}
+
+export type ThreadInWorkspace = {
+  thread_id: string
+  created_at_ms: number
+}
+
+export type WorkspaceListResponse = {
+  type: 'workspace_list'
+  id: string
+  workspaces: WorkspaceMeta[]
+}
+
+export type WorkspaceCreateResponse = {
+  type: 'workspace_create'
+  id: string
+  workspace_id: string
+}
+
+export type WorkspaceThreadListResponse = {
+  type: 'workspace_thread_list'
+  id: string
+  workspace_id: string
+  threads: ThreadInWorkspace[]
+}
+
+export type WorkspaceThreadAddResponse = {
+  type: 'workspace_thread_add'
+  id: string
+  workspace_id: string
+  thread_id: string
+}
+
+export type WorkspaceThreadRemoveResponse = {
+  type: 'workspace_thread_remove'
+  id: string
+  workspace_id: string
+  thread_id: string
+}
+
+export type WorkspaceResponse =
+  | WorkspaceListResponse
+  | WorkspaceCreateResponse
+  | WorkspaceThreadListResponse
+  | WorkspaceThreadAddResponse
+  | WorkspaceThreadRemoveResponse
+
 export type LoomServerMessage =
   | LoomRunStreamEventResponse
   | LoomRunEndResponse
   | LoomErrorResponse
+  | WorkspaceListResponse
+  | WorkspaceCreateResponse
+  | WorkspaceThreadListResponse
+  | WorkspaceThreadAddResponse
+  | WorkspaceThreadRemoveResponse
   | { type: string }
 
 export function isRunStreamEvent(msg: LoomServerMessage): msg is LoomRunStreamEventResponse {
@@ -188,4 +282,8 @@ export function isToolEvent(event: LoomStreamEvent): event is LoomToolEvent {
 
 export interface ChatReply {
   content: string
+}
+
+export function isWorkspaceResponse(msg: LoomServerMessage): msg is WorkspaceResponse {
+  return typeof msg.type === 'string' && msg.type.startsWith('workspace_')
 }

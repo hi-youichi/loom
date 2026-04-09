@@ -1,7 +1,7 @@
 "use client"
 
 import { memo, useRef, useCallback, useState, useEffect } from "react"
-import { MessageSquare, ChevronRight, Users, ChevronDown } from "lucide-react"
+import { ChevronRight, Users, ChevronDown } from "lucide-react"
 import { useChatPanel } from "@/hooks/useChatPanel"
 import { CollapsedPanel } from "./CollapsedPanel"
 import { MessageList } from "./MessageList"
@@ -44,7 +44,7 @@ function ResizeHandle({ onDrag, onToggle }: { onDrag: (w: number) => void; onTog
     document.body.style.userSelect = ""
   }, [])
 
-  const handlePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+  const handlePointerUp = useCallback((_e: React.PointerEvent<HTMLDivElement>) => {
     onPointerUp()
     if (!isDragging.current) {
       onToggle()

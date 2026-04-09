@@ -142,10 +142,64 @@ pub enum ServerResponse {
     ToolShow(ToolShowResponse),
     UserMessages(UserMessagesResponse),
     AgentList(AgentListResponse),
+    WorkspaceList(WorkspaceListResponse),
+    WorkspaceCreate(WorkspaceCreateResponse),
+    WorkspaceThreadList(WorkspaceThreadListResponse),
+    WorkspaceThreadAdd(WorkspaceThreadAddResponse),
+    WorkspaceThreadRemove(WorkspaceThreadRemoveResponse),
     Pong(PongResponse),
     Error(ErrorResponse),
 }
-
+// -----------------------------------------------------------------------------
+// Workspace responses
+// -----------------------------------------------------------------------------
+/// Workspace metadata.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceMeta {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub created_at_ms: i64,
+}
+/// Workspace list response.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceListResponse {
+    pub id: String,
+    pub workspaces: Vec<WorkspaceMeta>,
+}
+/// Workspace create response.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceCreateResponse {
+    pub id: String,
+    pub workspace_id: String,
+}
+/// Thread in workspace.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ThreadInWorkspace {
+    pub thread_id: String,
+    pub created_at_ms: i64,
+}
+/// Workspace thread list response.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceThreadListResponse {
+    pub id: String,
+    pub workspace_id: String,
+    pub threads: Vec<ThreadInWorkspace>,
+}
+/// Workspace thread add response.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceThreadAddResponse {
+    pub id: String,
+    pub workspace_id: String,
+    pub thread_id: String,
+}
+/// Workspace thread remove response.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceThreadRemoveResponse {
+    pub id: String,
+    pub workspace_id: String,
+    pub thread_id: String,
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,5 +336,78 @@ mod tests {
         assert!(json.contains("\"source\":\"builtin\""));
         let parsed: ServerResponse = serde_json::from_str(&json).unwrap();
         assert!(matches!(parsed, ServerResponse::AgentList(_)));
+    }
+
+    #[test]
+    fn response_workspace_list_roundtrip() {
+        let resp = ServerResponse::WorkspaceList(WorkspaceListResponse {
+            id: "req-wl".to_string(),
+            workspaces: vec![WorkspaceMeta {
+                id: "ws-1".to_string(),
+                name: Some("project-alpha".to_string()),
+                created_at_ms: 1712649600000,
+            }],
+        });
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"type\":\"workspace_list\""));
+        assert!(json.contains("\"name\":\"project-alpha\""));
+        let parsed: ServerResponse = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, ServerResponse::WorkspaceList(_)));
+    }
+
+    #[test]
+    fn response_workspace_create_roundtrip() {
+        let resp = ServerResponse::WorkspaceCreate(WorkspaceCreateResponse {
+            id: "req-wc".to_string(),
+            workspace_id: "ws-2".to_string(),
+        });
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"type\":\"workspace_create\""));
+        assert!(json.contains("\"workspace_id\":\"ws-2\""));
+        let parsed: ServerResponse = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, ServerResponse::WorkspaceCreate(_)));
+    }
+
+    #[test]
+    fn response_workspace_thread_list_roundtrip() {
+        let resp = ServerResponse::WorkspaceThreadList(WorkspaceThreadListResponse {
+            id: "req-wtl".to_string(),
+            workspace_id: "ws-1".to_string(),
+            threads: vec![ThreadInWorkspace {
+                thread_id: "t-1".to_string(),
+                created_at_ms: 1712649600000,
+            }],
+        });
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"type\":\"workspace_thread_list\""));
+        assert!(json.contains("\"thread_id\":\"t-1\""));
+        let parsed: ServerResponse = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, ServerResponse::WorkspaceThreadList(_)));
+    }
+
+    #[test]
+    fn response_workspace_thread_add_roundtrip() {
+        let resp = ServerResponse::WorkspaceThreadAdd(WorkspaceThreadAddResponse {
+            id: "req-wta".to_string(),
+            workspace_id: "ws-1".to_string(),
+            thread_id: "t-1".to_string(),
+        });
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"type\":\"workspace_thread_add\""));
+        let parsed: ServerResponse = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, ServerResponse::WorkspaceThreadAdd(_)));
+    }
+
+    #[test]
+    fn response_workspace_thread_remove_roundtrip() {
+        let resp = ServerResponse::WorkspaceThreadRemove(WorkspaceThreadRemoveResponse {
+            id: "req-wtr".to_string(),
+            workspace_id: "ws-1".to_string(),
+            thread_id: "t-1".to_string(),
+        });
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"type\":\"workspace_thread_remove\""));
+        let parsed: ServerResponse = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, ServerResponse::WorkspaceThreadRemove(_)));
     }
 }

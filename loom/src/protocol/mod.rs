@@ -57,10 +57,15 @@ pub use stream_event::ProtocolEvent;
 pub use requests::{
     AgentListRequest, AgentSourceFilter, AgentType, ClientRequest, PingRequest, RunRequest,
     ToolShowOutput, ToolShowRequest, ToolsListRequest, UserMessagesRequest,
+    WorkspaceListRequest, WorkspaceCreateRequest, WorkspaceThreadListRequest,
+    WorkspaceThreadAddRequest, WorkspaceThreadRemoveRequest,
 };
 pub use responses::{
     AgentListResponse, AgentSource, AgentSummary, ErrorResponse, PongResponse,
     ProtocolEventEnvelope, RunEndResponse, RunStreamEventResponse, ServerResponse,
     ToolShowResponse, ToolsListResponse, UserMessageItem, UserMessagesResponse,
+    WorkspaceListResponse, WorkspaceMeta, WorkspaceCreateResponse,
+    WorkspaceThreadListResponse, ThreadInWorkspace, WorkspaceThreadAddResponse,
+    WorkspaceThreadRemoveResponse,
 };
 pub use types::{AgentSource as AgentSourceExport, AgentSourceFilter as AgentSourceFilterExport};

@@ -2,13 +2,8 @@ import { useState, useCallback } from 'react'
 
 const THREAD_STORAGE_KEY = 'loom-web-thread-id'
 
-/**
- * 管理线程ID的Hook
- * - 自动持久化到localStorage
- * - 支持重置线程
- */
 export function useThread() {
-  const [threadId, setThreadId] = useState<string>(() => {
+  const [threadId, setThreadIdState] = useState<string>(() => {
     const existing = window.localStorage.getItem(THREAD_STORAGE_KEY)
     if (existing) {
       return existing
@@ -19,14 +14,21 @@ export function useThread() {
     return nextThreadId
   })
 
-  const resetThread = useCallback(() => {
+  const setThreadId = useCallback((id: string) => {
+    window.localStorage.setItem(THREAD_STORAGE_KEY, id)
+    setThreadIdState(id)
+  }, [])
+
+  const resetThread = useCallback((): string => {
     const newThreadId = crypto.randomUUID()
     window.localStorage.setItem(THREAD_STORAGE_KEY, newThreadId)
-    setThreadId(newThreadId)
+    setThreadIdState(newThreadId)
+    return newThreadId
   }, [])
 
   return {
     threadId,
+    setThreadId,
     resetThread,
   }
 }
