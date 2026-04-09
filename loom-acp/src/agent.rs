@@ -6,6 +6,7 @@
 use crate::agent_registry::AgentRegistry;
 use crate::content::{content_blocks_to_user_content, extract_locations};
 use crate::session::{SessionId as OurSessionId, SessionStore};
+use crate::session_config_store::SessionConfigStore;
 use crate::stream_bridge::{loom_event_to_updates, stream_update_to_session_notification, generate_tool_title, name_to_tool_kind};
 use agent_client_protocol::{
     Agent, AuthenticateRequest, AuthenticateResponse, CancelNotification, ContentChunk,
@@ -38,6 +39,7 @@ use tokio::sync::mpsc;
 pub struct LoomAcpAgent {
     pub(crate) sessions: SessionStore,
     pub(crate) agent_registry: AgentRegistry,
+    pub(crate) config_store: SessionConfigStore,
     /// If Some, on_event during prompt converts stream events to SessionNotification and try_sends here.
     pub(crate) session_update_tx: Option<mpsc::Sender<SessionNotification>>,
 }
@@ -45,18 +47,28 @@ pub struct LoomAcpAgent {
 impl LoomAcpAgent {
     /// Construct a new Agent instance (no session/update sending).
     pub fn new() -> Self {
+        let db_path = loom::memory::default_memory_db_path();
+        let config_store = SessionConfigStore::new(db_path.to_str().unwrap_or_default())
+            .expect("Failed to initialize session config store");
+        
         Self {
             sessions: SessionStore::new(),
             agent_registry: AgentRegistry::new(),
+            config_store,
             session_update_tx: None,
         }
     }
 
     /// Construct an Agent with a session/update sender for the stdio loop to push stream updates to the client.
     pub fn with_session_update_tx(tx: mpsc::Sender<SessionNotification>) -> Self {
+        let db_path = loom::memory::default_memory_db_path();
+        let config_store = SessionConfigStore::new(db_path.to_str().unwrap_or_default())
+            .expect("Failed to initialize session config store");
+        
         Self {
             sessions: SessionStore::new(),
             agent_registry: AgentRegistry::new(),
+            config_store,
             session_update_tx: Some(tx),
         }
     }
@@ -206,16 +218,23 @@ impl Agent for LoomAcpAgent {
         tracing::debug!(session_id = %session_id, "session created");
 
         let default_mode = self.agent_registry.default_mode_id();
-        self.sessions.update_session_config(&our_id, |c| {
-            c.current_agent = default_mode.to_string();
-        });
-
         let current_model = std::env::var("MODEL")
             .or_else(|_| std::env::var("OPENAI_MODEL"))
             .ok()
             .filter(|s| !s.is_empty())
             .or_else(crate::last_model::load)
             .unwrap_or_default();
+        self.sessions.update_session_config(&our_id, |c| {
+            c.current_agent = default_mode.to_string();
+            if !current_model.is_empty() {
+                c.model = Some(current_model.clone());
+            }
+        });
+        if !current_model.is_empty() {
+            if let Err(e) = self.config_store.set(&our_id, "model", &current_model) {
+                tracing::warn!(session_id = %our_id, error = %e, "Failed to persist initial model config");
+            }
+        }
         let model_options = self.get_available_models().await;
         let current_mode = default_mode;
         let modes = self.agent_registry.to_session_modes();
@@ -258,9 +277,17 @@ impl Agent for LoomAcpAgent {
                 self.sessions
                     .update_session_config(&key, |c| c.model = Some(value_str.clone()));
                 crate::last_model::save(&value_str);
+                // Persist to database
+                if let Err(e) = self.config_store.set(&key, "model", &value_str) {
+                    tracing::warn!(session_id = %args.session_id, error = %e, "Failed to persist model config");
+                }
             }
             "mode" => {
                 self.apply_session_mode(&args.session_id, &key, &value_str)?;
+                // Persist to database
+                if let Err(e) = self.config_store.set(&key, "mode", &value_str) {
+                    tracing::warn!(session_id = %args.session_id, error = %e, "Failed to persist mode config");
+                }
             }
             _ => {
                 return Err(agent_client_protocol::Error::new(
@@ -302,6 +329,12 @@ impl Agent for LoomAcpAgent {
 
         let key = OurSessionId::new(args.session_id.to_string());
         self.apply_session_mode(&args.session_id, &key, &mode_id)?;
+        
+        // Persist to database
+        if let Err(e) = self.config_store.set(&key, "mode", &mode_id) {
+            tracing::warn!(session_id = %args.session_id, error = %e, "Failed to persist mode config");
+        }
+        
         Ok(SetSessionModeResponse::new())
     }
 
@@ -321,6 +354,11 @@ impl Agent for LoomAcpAgent {
         self.sessions
             .update_session_config(&key, |c| c.model = Some(model_id.clone()));
         crate::last_model::save(&model_id);
+        
+        // Persist to database
+        if let Err(e) = self.config_store.set(&key, "model", &model_id) {
+            tracing::warn!(session_id = %args.session_id, error = %e, "Failed to persist model config");
+        }
 
         Ok(SetSessionModelResponse::new())
     }
@@ -339,13 +377,22 @@ impl Agent for LoomAcpAgent {
 
         // Create new session with the same working directory and config
         let new_our_id = self.sessions.create(source_entry.working_directory.clone());
+        let new_session_id = SessionId::new(new_our_id.as_str().to_string());
 
         // Copy source session config (model, mode) to the new session
         self.sessions.update_session_config(&new_our_id, |c| {
             *c = source_entry.session_config.clone();
         });
-
-        let new_session_id = SessionId::new(new_our_id.as_str().to_string());
+        
+        // Copy persistent config from source to target
+        if let Err(e) = self.config_store.copy_config(&source_key, &new_our_id) {
+            tracing::warn!(
+                source_session = %args.session_id,
+                target_session = %new_session_id,
+                error = %e,
+                "Failed to copy persistent config during fork"
+            );
+        }
         tracing::info!(source_session = %args.session_id, new_session = %new_session_id, "session forked");
 
         let current_mode = if source_entry.session_config.current_agent.is_empty() {
@@ -361,6 +408,20 @@ impl Agent for LoomAcpAgent {
                 .or_else(crate::last_model::load)
                 .unwrap_or_default()
         });
+        // If model was resolved from fallback (env/last_model) rather than source config, persist it
+        if !current_model.is_empty() && source_entry.session_config.model.is_none() {
+            self.sessions.update_session_config(&new_our_id, |c| {
+                c.model = Some(current_model.clone());
+            });
+            if let Err(e) = self.config_store.set(&new_our_id, "model", &current_model) {
+                tracing::warn!(
+                    session_id = %new_session_id,
+                    error = %e,
+                    "Failed to persist initial model config in forked session"
+                );
+            }
+        }
+
         let model_options = self.get_available_models().await;
         let modes = self.agent_registry.to_session_modes();
         let config_options = build_session_config_options(
@@ -396,6 +457,8 @@ impl Agent for LoomAcpAgent {
             if let Some(cmd) = loom::command::parse(text) {
                 match cmd {
                     loom::command::Command::ResetContext => {
+                        self.sessions.cancel_current_generation(&key);
+                        tracing::info!(session_id = %args.session_id, "Context cleared via /reset command");
                         return Ok(PromptResponse::new(StopReason::EndTurn));
                     }
                     loom::command::Command::Models { .. } | loom::command::Command::ModelsUse { .. } => {
@@ -765,19 +828,35 @@ impl Agent for LoomAcpAgent {
         }
 
         // Return LoadSessionResponse with config_options and modes
-        let current_mode = if entry.session_config.current_agent.is_empty() {
-            self.agent_registry.default_mode_id().to_string()
-        } else {
-            entry.session_config.current_agent.clone()
-        };
-        let current_model = entry.session_config.model.clone().unwrap_or_else(|| {
-            std::env::var("MODEL")
-                .or_else(|_| std::env::var("OPENAI_MODEL"))
-                .ok()
-                .filter(|s| !s.is_empty())
-                .or_else(crate::last_model::load)
-                .unwrap_or_default()
-        });
+        // First, try to load from persistent store
+        let persisted_config = self.config_store.get_all(&our_session_id)
+            .unwrap_or_else(|e| {
+                tracing::warn!(session_id = %session_id, error = %e, "Failed to load persistent config");
+                std::collections::HashMap::new()
+            });
+        
+        let current_mode = persisted_config.get("mode")
+            .cloned()
+            .unwrap_or_else(|| {
+                if entry.session_config.current_agent.is_empty() {
+                    self.agent_registry.default_mode_id().to_string()
+                } else {
+                    entry.session_config.current_agent.clone()
+                }
+            });
+        
+        let current_model = persisted_config.get("model")
+            .cloned()
+            .unwrap_or_else(|| {
+                entry.session_config.model.clone().unwrap_or_else(|| {
+                    std::env::var("MODEL")
+                        .or_else(|_| std::env::var("OPENAI_MODEL"))
+                        .ok()
+                        .filter(|s| !s.is_empty())
+                        .or_else(crate::last_model::load)
+                        .unwrap_or_default()
+                })
+            });
         let model_options = self.get_available_models().await;
         let available_modes = self.agent_registry.to_session_modes();
         let config_options = build_session_config_options(

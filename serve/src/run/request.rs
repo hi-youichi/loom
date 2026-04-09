@@ -1,6 +1,6 @@
 //! Request preparation: register thread in workspace, append initial user message, build RunOptions and RunCmd.
 
-use loom::{AgentType, Message, RunCmd, RunOptions};
+use loom::{AgentType, protocol::AgentIdentifier, Message, RunCmd, RunOptions};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -100,13 +100,22 @@ pub(super) async fn prepare_run(
         api_key: None,
         provider_type: None,
     };
+    
+    // Handle both AgentType (react/dup/tot/got) and custom agent names
     let cmd = match r.agent {
-        AgentType::React => RunCmd::React,
-        AgentType::Dup => RunCmd::Dup,
-        AgentType::Tot => RunCmd::Tot,
-        AgentType::Got => RunCmd::Got {
+        AgentIdentifier::Type(AgentType::React) => RunCmd::React,
+        AgentIdentifier::Type(AgentType::Dup) => RunCmd::Dup,
+        AgentIdentifier::Type(AgentType::Tot) => RunCmd::Tot,
+        AgentIdentifier::Type(AgentType::Got) => RunCmd::Got {
             got_adaptive: opts.got_adaptive,
         },
+        AgentIdentifier::Name(name) => {
+            // Custom agent profile name (dev, assistant, ask, etc.)
+            // For now, default to React mode with profile resolution
+            // TODO: resolve agent profile by name and run it
+            tracing::info!("Running agent profile: {}", name);
+            RunCmd::React
+        }
     };
 
     PrepareRunResult {

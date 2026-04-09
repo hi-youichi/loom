@@ -55,6 +55,7 @@ pub use stream_event::ProtocolEvent;
 
 // Re-export types from sub-modules
 pub use requests::{
+    AgentIdentifier,
     AgentListRequest, AgentSourceFilter, AgentType, ClientRequest, PingRequest, RunRequest,
     ToolShowOutput, ToolShowRequest, ToolsListRequest, UserMessagesRequest,
     WorkspaceListRequest, WorkspaceCreateRequest, WorkspaceThreadListRequest,

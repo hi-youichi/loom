@@ -12,6 +12,15 @@ pub enum AgentType {
     Tot,
     Got,
 }
+/// Agent identifier - can be a builtin AgentType or a custom agent name
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum AgentIdentifier {
+    /// Builtin agent type
+    Type(AgentType),
+    /// Custom agent profile name (dev, assistant, ask, etc.)
+    Name(String),
+}
 
 /// Run request: execute one Agent run (streaming events + final RunEnd).
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -19,7 +28,7 @@ pub struct RunRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     pub message: UserContent,
-    pub agent: AgentType,
+    pub agent: AgentIdentifier,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thread_id: Option<String>,
     /// When set with thread_id, the run's thread is associated with this workspace (see loom-workspace).

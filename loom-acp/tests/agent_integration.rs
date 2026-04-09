@@ -43,8 +43,10 @@ fn extract_current_model(response: &NewSessionResponse) -> Option<String> {
     if let Ok(json) = serde_json::to_value(response) {
         if let Some(config_options) = json.get("configOptions").and_then(|v| v.as_array()) {
             for config in config_options {
-                if let Some(current) = config.get("currentValue").and_then(|v| v.as_str()) {
-                    return Some(current.to_string());
+                if config.get("id").and_then(|v| v.as_str()) == Some("model") {
+                    if let Some(current) = config.get("currentValue").and_then(|v| v.as_str()) {
+                        return Some(current.to_string());
+                    }
                 }
             }
         }
