@@ -1,0 +1,20 @@
+import type {
+  AgentListResponse,
+  AgentListSource,
+  AgentSummary,
+} from '../types/protocol/loom'
+import { getConnection } from './connection'
+
+export async function listAgents(options?: {
+  sourceFilter?: AgentListSource
+  workingFolder?: string
+  threadId?: string
+}): Promise<AgentSummary[]> {
+  const payload: Record<string, unknown> = { type: 'agent_list' }
+  if (options?.sourceFilter) payload.source_filter = options.sourceFilter
+  if (options?.workingFolder) payload.working_folder = options.workingFolder
+  if (options?.threadId) payload.thread_id = options.threadId
+
+  const resp = await getConnection().request(payload) as AgentListResponse
+  return resp.agents
+}

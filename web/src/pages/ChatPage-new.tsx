@@ -7,8 +7,9 @@ import { AgentChatSidebar } from '../components/chat'
 import { WorkspaceSelector } from '../components/workspace'
 import { useWorkspace } from '../hooks/useWorkspace'
 import { useThread } from '../hooks/useThread'
+import { useAgents } from '../hooks/useAgents'
 import type { FileNode } from '../components/file-tree'
-import type { AgentInfo, ActivityEvent } from '../types/agent'
+import type { ActivityEvent } from '../types/agent'
 import type { UIMessageItemProps } from '../types/ui/message'
 
 const DEMO_FILES: FileNode[] = [
@@ -122,129 +123,6 @@ const DEMO_MESSAGES: UIMessageItemProps[] = [
 const now = Date.now()
 const s = (ms: number) => new Date(now - ms).toISOString()
 
-const DEMO_AGENTS: AgentInfo[] = [
-  {
-    name: 'dev',
-    status: 'running',
-    callCount: 12,
-    lastRunAt: s(2000),
-    lastError: null,
-    profile: {
-      name: 'dev',
-      description: '默认开发 Agent，负责代码编写与调试',
-
-      tools: ['bash', 'read', 'edit', 'write_file', 'glob', 'grep', 'websearch'],
-      mcpServers: [],
-      source: 'builtin',
-    },
-  },
-  {
-    name: 'reviewer',
-    status: 'idle',
-    callCount: 3,
-    lastRunAt: s(300_000),
-    lastError: null,
-    profile: {
-      name: 'reviewer',
-      description: '代码审查 Agent',
-
-      tools: ['read', 'glob', 'grep'],
-      mcpServers: [],
-      source: 'project',
-    },
-  },
-  {
-    name: 'researcher',
-    status: 'running',
-    callCount: 7,
-    lastRunAt: s(1000),
-    lastError: null,
-    profile: {
-      name: 'researcher',
-      description: '搜索与研究 Agent',
-
-      tools: ['websearch', 'web_fetcher', 'read', 'grep'],
-      mcpServers: ['exa-search'],
-      source: 'user',
-    },
-  },
-  {
-    name: 'linter',
-    status: 'idle',
-    callCount: 2,
-    lastRunAt: s(180_000),
-    lastError: null,
-    profile: {
-      name: 'linter',
-      description: '代码检查 Agent',
-
-      tools: ['bash', 'read', 'glob'],
-      mcpServers: [],
-      source: 'project',
-    },
-  },
-  {
-    name: 'deploy',
-    status: 'idle',
-    callCount: 5,
-    lastRunAt: s(600_000),
-    lastError: null,
-    profile: {
-      name: 'deploy',
-      description: '部署与运维 Agent',
-
-      tools: ['bash', 'read', 'write_file'],
-      mcpServers: ['k8s-api'],
-      source: 'user',
-    },
-  },
-  {
-    name: 'planner',
-    status: 'idle',
-    callCount: 1,
-    lastRunAt: s(900_000),
-    lastError: null,
-    profile: {
-      name: 'planner',
-      description: '任务规划 Agent',
-
-      tools: ['read', 'grep', 'glob'],
-      mcpServers: [],
-      source: 'builtin',
-    },
-  },
-  {
-    name: 'architect',
-    status: 'idle',
-    callCount: 4,
-    lastRunAt: s(1_200_000),
-    lastError: null,
-    profile: {
-      name: 'architect',
-      description: '架构设计 Agent',
-
-      tools: ['read', 'glob', 'grep', 'websearch'],
-      mcpServers: ['figma-api'],
-      source: 'user',
-    },
-  },
-  {
-    name: 'tester',
-    status: 'idle',
-    callCount: 6,
-    lastRunAt: s(240_000),
-    lastError: null,
-    profile: {
-      name: 'tester',
-      description: '测试 Agent',
-
-      tools: ['bash', 'read', 'write_file', 'glob'],
-      mcpServers: [],
-      source: 'project',
-    },
-  },
-]
-
 function makeActivity(): ActivityEvent[] {
   const events: ActivityEvent[] = [
     { id: 'a1', timestamp: s(2000), agent: 'dev', type: 'run_start', summary: '修复登录页面的表单验证问题', isError: false },
@@ -279,9 +157,6 @@ function makeActivity(): ActivityEvent[] {
 }
 
 const DEMO_ACTIVITY = makeActivity()
-const DEMO_ACTIVE_COUNT = DEMO_AGENTS.filter((a) => a.status === 'running').length
-const DEMO_TOTAL_CALLS = DEMO_AGENTS.reduce((sum, a) => sum + a.callCount, 0)
-
 export function ChatPage() {
   const {
     workspaces,
@@ -292,6 +167,7 @@ export function ChatPage() {
     createWorkspace,
     selectWorkspace: selectWs,
   } = useWorkspace()
+  const { agents } = useAgents({ autoRefresh: true, refreshInterval: 15000 })
   useThread()
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
   const [messages, setMessages] = useState<UIMessageItemProps[]>(DEMO_MESSAGES)
@@ -363,14 +239,14 @@ export function ChatPage() {
         />
         <div className="flex-1 min-w-0">
           <DashboardView
-            agents={DEMO_AGENTS}
+            agents={agents}
             activity={DEMO_ACTIVITY}
-            activeCount={DEMO_ACTIVE_COUNT}
-            totalCalls={DEMO_TOTAL_CALLS}
+            activeCount={agents.filter(a => a.status === 'running').length}
+            totalCalls={agents.reduce((sum, a) => sum + a.callCount, 0)}
           />
         </div>
         <AgentChatSidebar
-          agents={DEMO_AGENTS.map(agent => ({
+          agents={agents.map(agent => ({
             name: agent.name,
             status: agent.status,
           }))}

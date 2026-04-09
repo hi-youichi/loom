@@ -239,10 +239,33 @@ export type WorkspaceResponse =
   | WorkspaceThreadAddResponse
   | WorkspaceThreadRemoveResponse
 
+export type AgentListSource = 'builtin' | 'project' | 'user'
+
+export type AgentSummary = {
+  name: string
+  description: string | null
+  source: AgentListSource
+}
+
+export type AgentListRequest = {
+  type: 'agent_list'
+  id: string
+  source_filter?: AgentListSource
+  working_folder?: string
+  thread_id?: string
+}
+
+export type AgentListResponse = {
+  type: 'agent_list'
+  id: string
+  agents: AgentSummary[]
+}
+
 export type LoomServerMessage =
   | LoomRunStreamEventResponse
   | LoomRunEndResponse
   | LoomErrorResponse
+  | AgentListResponse
   | WorkspaceListResponse
   | WorkspaceCreateResponse
   | WorkspaceThreadListResponse
