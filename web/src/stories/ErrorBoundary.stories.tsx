@@ -13,6 +13,7 @@ type Story = StoryObj<typeof meta>
 
 function Thrower() {
   throw new Error('Storybook 测试错误')
+  return null
 }
 
 export const Normal: Story = {

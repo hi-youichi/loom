@@ -22,7 +22,7 @@ const toolContent: UIToolContent = {
   type: 'tool',
   id: 'call-1',
   name: 'example_tool',
-  status: 'done',
+  status: 'success',
   argumentsText: '{}',
   outputText: 'output',
   resultText: 'result',

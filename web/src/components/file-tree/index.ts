@@ -1,0 +1,7 @@
+export { FileTree } from './FileTree'
+export { FileTreeSidebar } from './FileTreeSidebar'
+export { FileTreeItem } from './FileTreeItem'
+export { FileTreeProvider } from './FileTreeContext'
+export { useFileTree } from './useFileTree'
+export type { FileNode, FileTreeProps, FileTreeSidebarProps } from './types'
+export * from './utils'

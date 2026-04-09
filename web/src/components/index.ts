@@ -13,3 +13,10 @@ export { ChatErrorBoundary } from './error/ErrorBoundary'
 
 // Composer
 export { MessageComposer } from './MessageComposer'
+
+// File Tree
+export { FileTree, FileTreeSidebar } from './file-tree'
+export type { FileNode } from './file-tree'
+
+// Dashboard
+export { DashboardView, AgentGrid, AgentCard, ActivityFeed } from './dashboard'

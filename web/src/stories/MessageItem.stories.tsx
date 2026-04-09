@@ -1,7 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { fn } from 'storybook/test'
 import { MessageItem } from '../components/chat/MessageItem'
-import type { UIMessageItemProps } from '../types/ui/message'
 
 const meta = {
   title: 'Chat/MessageItem',
