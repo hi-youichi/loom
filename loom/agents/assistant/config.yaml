@@ -1,0 +1,4 @@
+name: assistant
+description: "General-purpose conversational assistant with full tool access. Answers questions, writes code, searches the web, manages files, and maintains memory."
+role:
+  file: instructions.md
