@@ -277,7 +277,6 @@ h2 {
   border-radius: 24px;
   border: 0;
   background: #ffffff;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.05);
 }
 
 .composer__input {
@@ -298,8 +297,8 @@ h2 {
 }
 
 .composer__button {
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   border: 0;
   border-radius: 999px;
@@ -319,8 +318,8 @@ h2 {
 }
 
 .composer__button-icon {
-  width: 19px;
-  height: 19px;
+  width: 16px;
+  height: 16px;
 }
 
 .composer__button:hover:not(:disabled) {

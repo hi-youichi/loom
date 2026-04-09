@@ -13,13 +13,6 @@ export const MessageItem = memo(function MessageItem({
   className,
   onRetry,
 }: UIMessageItemProps) {
-  const formatTime = (ts: string) => {
-    return new Intl.DateTimeFormat('zh-CN', {
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(new Date(ts))
-  }
-
   const renderContent = (item: UIMessageContent, index: number) => {
     if (item.type === 'text') {
       return (
@@ -75,19 +68,6 @@ export const MessageItem = memo(function MessageItem({
       data-message-id={id}
       aria-label={`${sender === 'user' ? '用户' : '助手'}消息`}
     >
-      <header className="message__header">
-        <span className="message__sender" aria-label="发送者">
-          {sender === 'user' ? '用户' : '助手'}
-        </span>
-        <time
-          className="message__time"
-          dateTime={timestamp}
-          aria-label={`发送时间 ${formatTime(timestamp)}`}
-        >
-          {formatTime(timestamp)}
-        </time>
-      </header>
-
       <div className="message__content">
         {content.map((item, index) => renderContent(item, index))}
       </div>

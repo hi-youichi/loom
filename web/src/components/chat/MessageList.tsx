@@ -24,7 +24,7 @@ export const MessageList = memo(function MessageList({
   return (
     <div 
       ref={listRef}
-      className={`message-list ${className}`}
+      className={`message-list text-sm ${className}`}
       role="log" 
       aria-live="polite"
       aria-label="聊天消息"
