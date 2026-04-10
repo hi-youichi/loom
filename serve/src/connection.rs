@@ -2,7 +2,7 @@
 
 use axum::extract::ws::{Message, WebSocket};
 use loom::{ClientRequest, ErrorResponse, ServerResponse};
-use loom::services::ModelService;
+use loom::llm::ProviderConfig;
 use std::sync::Arc;
 use tokio::sync::oneshot;
 
@@ -24,7 +24,7 @@ pub(crate) async fn handle_socket(
     workspace_store: Option<Arc<loom_workspace::Store>>,
     user_message_store: Option<std::sync::Arc<dyn loom::UserMessageStore>>,
     run_config: RunConfig,
-    model_service: Arc<ModelService>,
+    providers: Arc<Vec<ProviderConfig>>,
 ) {
     while let Some(res) = socket.recv().await {
         let msg = match res {
@@ -47,7 +47,7 @@ pub(crate) async fn handle_socket(
             workspace_store.clone(),
             user_message_store.clone(),
             &run_config,
-            model_service.clone(),
+            providers.clone(),
         )
         .await
         {
@@ -67,7 +67,7 @@ async fn handle_request_and_send(
     workspace_store: Option<Arc<loom_workspace::Store>>,
     user_message_store: Option<std::sync::Arc<dyn loom::UserMessageStore>>,
     run_config: &RunConfig,
-    model_service: Arc<ModelService>,
+    providers: Arc<Vec<ProviderConfig>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let req: ClientRequest = match serde_json::from_str(text) {
         Ok(r) => r,
@@ -130,14 +130,14 @@ async fn handle_request_and_send(
             )
             .await?;
         }
-        // ClientRequest::ListModels(r) => {
-        //     let resp = handle_list_models(r, &model_service).await;
-        //     send_response(socket, &resp).await?;
-        // }
-        // ClientRequest::SetModel(r) => {
-        //     let resp = handle_set_model(r, &model_service).await;
-        //     send_response(socket, &resp).await?;
-        // }
+        ClientRequest::ListModels(r) => {
+            let resp = handle_list_models(r, &providers).await;
+            send_response(socket, &resp).await?;
+        }
+        ClientRequest::SetModel(r) => {
+            let resp = handle_set_model(r, &providers).await;
+            send_response(socket, &resp).await?;
+        }
     }
     Ok(())
 }

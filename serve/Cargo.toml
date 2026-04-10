@@ -12,6 +12,7 @@ path = "src/lib.rs"
 
 [dependencies]
 loom = { path = "../loom" }
+config = { path = "../config" }
 loom-workspace = { path = "../loom-workspace" }
 axum = { version = "0.7", features = ["ws", "json"] }
 async-trait = "0.1"

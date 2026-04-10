@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::oneshot;
 
 use super::connection::handle_socket;
-use loom::services::ModelService;
+use loom::llm::ProviderConfig;
 
 /// Run-related server configuration (queue capacities and display limits).
 #[derive(Clone)]
@@ -73,8 +73,8 @@ pub(crate) struct AppState {
     pub(crate) user_message_store: Option<std::sync::Arc<dyn loom::UserMessageStore>>,
     /// Run and tools configuration (queue capacities, display_max_len).
     pub(crate) run_config: RunConfig,
-    /// Model service for managing available models.
-    pub(crate) model_service: Arc<ModelService>,
+    /// Provider configurations for model access.
+    pub(crate) providers: Arc<Vec<ProviderConfig>>,
 }
 
 /// Builds the Axum router with a single WebSocket route at `/`.
@@ -88,7 +88,7 @@ async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) ->
     let workspace_store = state.workspace_store.clone();
     let user_message_store = state.user_message_store.clone();
     let run_config = state.run_config.clone();
-    let model_service = state.model_service.clone();
+    let providers = state.providers.clone();
     ws.on_upgrade(move |socket| {
         handle_socket(
             socket,
@@ -96,7 +96,7 @@ async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) ->
             workspace_store,
             user_message_store,
             run_config,
-            model_service,
+            providers,
         )
     })
 }

@@ -80,6 +80,8 @@ pub(super) async fn prepare_run(
     )
     .await;
 
+    let resolved = loom::resolve_model_config(r.model.as_deref()).await;
+
     let opts = RunOptions {
         message: r.message,
         working_folder: r.working_folder.map(PathBuf::from),
@@ -91,14 +93,14 @@ pub(super) async fn prepare_run(
         got_adaptive: r.got_adaptive.unwrap_or(false),
         display_max_len: input.display_max_len,
         output_json: true,
-        model: None,
+        model: resolved.model,
         mcp_config_path: None,
         output_timestamp: false,
         dry_run: false,
-        provider: None,
-        base_url: None,
-        api_key: None,
-        provider_type: None,
+        provider: resolved.provider,
+        base_url: resolved.base_url,
+        api_key: resolved.api_key,
+        provider_type: resolved.provider_type,
     };
     
     // Handle both AgentType (react/dup/tot/got) and custom agent names

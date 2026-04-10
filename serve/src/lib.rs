@@ -21,7 +21,8 @@ use tokio::sync::oneshot;
 use tracing::{error, info};
 
 use app::{router, run_config_from_env, AppState};
-use loom::services::ModelService;
+use loom::llm::{ModelRegistry, ProviderConfig};
+use config;
 
 const DEFAULT_WS_ADDR: &str = "127.0.0.1:8080";
 
@@ -42,50 +43,50 @@ pub async fn run_serve_on_listener(
     let workspace_store = setup_workspace_store();
     let user_message_store = setup_user_message_store();
     
-    // Initialize ModelService
-    info!("🔄 Initializing ModelService...");
+    // Initialize ModelRegistry and load providers from config
+    info!("🔄 Initializing ModelRegistry...");
     let load_start = Instant::now();
-    let model_service = Arc::new(ModelService::new());
-    info!("✓ ModelService initialized (took {}ms)", load_start.elapsed().as_millis());
+    let registry = ModelRegistry::global();
+    info!("✓ ModelRegistry initialized (took {}ms)", load_start.elapsed().as_millis());
     
-    // Load models from models.dev (BLOCKING - required for server to start)
-    info!("📡 Loading models from models.dev API...");
-    let api_load_start = Instant::now();
-    
-    match model_service.load_from_models_dev().await {
-        Ok(_) => {
-            let duration = api_load_start.elapsed();
-            let models = model_service.get_available_models().await;
-            
-            if models.is_empty() {
-                error!("❌ No models loaded from models.dev, cannot start server");
-                return Err("No models available from models.dev API".into());
-            }
-            
-            info!("✅ Successfully loaded {} models from models.dev (took {}ms)", 
-                models.len(), duration.as_millis());
+    // Load provider configs from config file
+    info!("📡 Loading providers from config file...");
+    let providers: Vec<ProviderConfig> = match config::load_full_config("loom") {
+        Ok(full_config) => {
+            info!("✅ Loaded config with {} providers", full_config.providers.len());
+            full_config.providers
+                .into_iter()
+                .map(|p| ProviderConfig {
+                    name: p.name,
+                    base_url: p.base_url,
+                    api_key: p.api_key,
+                    provider_type: p.provider_type,
+                })
+                .collect()
         }
         Err(e) => {
-            let duration = api_load_start.elapsed();
-            error!("❌ Failed to load models from models.dev after {}ms: {}", 
-                duration.as_millis(), e);
-            return Err(format!("Failed to load models from models.dev: {}", e).into());
+            info!("⚠️  No config file found or error loading config: {}", e);
+            vec![]
         }
+    };
+    
+    // Load models from configured providers
+    let models = registry.list_all_models(&providers).await;
+    let model_count = models.len();
+    
+    if model_count == 0 {
+        error!("❌ No models loaded from configured providers");
+        if providers.is_empty() {
+            error!("💡 Hint: Create ~/.loom/config.toml with [[providers]] entries");
+        }
+        return Err("No models available from configured providers".into());
     }
     
-    // Final verification
-    let final_models = model_service.get_available_models().await;
-    if final_models.is_empty() {
-        error!("❌ Final verification failed - no models available");
-        return Err("No models available after initialization".into());
-    }
-    
-    let total_duration = load_start.elapsed();
-    info!("🚀 Model initialization complete: {} models available (total: {}ms)", 
-        final_models.len(), total_duration.as_millis());
+    info!("✅ Successfully loaded {} models from {} providers (total: {}ms)", 
+        model_count, providers.len(), load_start.elapsed().as_millis());
     
     // Log sample models
-    for (i, model) in final_models.iter().take(5).enumerate() {
+    for (i, model) in models.iter().take(5).enumerate() {
         info!("  {}. {} ({})", i + 1, model.name, model.provider);
     }
 
@@ -98,7 +99,7 @@ pub async fn run_serve_on_listener(
         workspace_store,
         user_message_store,
         run_config: run_config_from_env(),
-        model_service,
+        providers: Arc::new(providers),
     });
 
     let app = router(state);
