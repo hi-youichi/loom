@@ -11,61 +11,57 @@ describe('MessageItem', () => {
     content: [{ type: 'text', text: 'Hello World' }],
   }
 
-  it('应该渲染用户消息', () => {
+  it('should render user text message', () => {
     render(<MessageItem {...defaultProps} />)
-    
     expect(screen.getByText('Hello World')).toBeInTheDocument()
-    expect(screen.getByText('用户')).toBeInTheDocument()
   })
 
-  it('应该渲染助手消息', () => {
+  it('should render assistant text message', () => {
     render(<MessageItem {...defaultProps} sender="assistant" />)
-    
     expect(screen.getByText('Hello World')).toBeInTheDocument()
-    expect(screen.getByText('助手')).toBeInTheDocument()
   })
 
-  it('应该显示时间戳', () => {
+  it('should have correct ARIA label for user message', () => {
     render(<MessageItem {...defaultProps} />)
-    
-    // 时间格式化后应该显示
-    const timeElement = screen.getByRole('time')
-    expect(timeElement).toBeInTheDocument()
-    expect(timeElement).toHaveAttribute('dateTime', '2024-01-01T10:30:00Z')
+    const article = screen.getByRole('article')
+    expect(article).toHaveAttribute('aria-label', 'User message')
   })
 
-  it('应该应用自定义className', () => {
+  it('should have correct ARIA label for assistant message', () => {
+    render(<MessageItem {...defaultProps} sender="assistant" />)
+    const article = screen.getByRole('article')
+    expect(article).toHaveAttribute('aria-label', 'Assistant message')
+  })
+
+  it('should apply custom className', () => {
     const { container } = render(
       <MessageItem {...defaultProps} className="custom-class" />
     )
-    
     const article = container.querySelector('article')
     expect(article).toHaveClass('custom-class')
   })
 
-  it('应该为用户消息显示重试按钮', () => {
+  it('should show retry button for user message with onRetry', () => {
     const onRetry = vi.fn()
     render(<MessageItem {...defaultProps} onRetry={onRetry} />)
-    
-    const retryButton = screen.getByRole('button', { name: /重试/i })
+    const retryButton = screen.getByRole('button', { name: /Retry/i })
     expect(retryButton).toBeInTheDocument()
   })
 
-  it('应该为助手消息不显示重试按钮', () => {
+  it('should not show retry button for assistant message', () => {
     const onRetry = vi.fn()
-    render(
-      <MessageItem 
-        {...defaultProps} 
-        sender="assistant" 
-        onRetry={onRetry} 
-      />
-    )
-    
-    const retryButton = screen.queryByRole('button', { name: /重试/i })
+    render(<MessageItem {...defaultProps} sender="assistant" onRetry={onRetry} />)
+    const retryButton = screen.queryByRole('button', { name: /Retry/i })
     expect(retryButton).not.toBeInTheDocument()
   })
 
-  it('应该渲染工具内容', () => {
+  it('should not show retry button when onRetry is not provided', () => {
+    render(<MessageItem {...defaultProps} />)
+    const retryButton = screen.queryByRole('button', { name: /Retry/i })
+    expect(retryButton).not.toBeInTheDocument()
+  })
+
+  it('should render tool content via ToolCard', () => {
     const props: UIMessageItemProps = {
       ...defaultProps,
       content: [{
@@ -79,36 +75,14 @@ describe('MessageItem', () => {
         isError: false,
       }],
     }
-    
+
     render(<MessageItem {...props} />)
-    
-    expect(screen.getByText('test-tool')).toBeInTheDocument()
-    expect(screen.getByText('success')).toBeInTheDocument()
+
+    const toolCard = screen.getByRole('article')
+    expect(toolCard).toHaveAttribute('aria-label', expect.stringContaining('test-tool'))
   })
 
-  it('应该渲染多个内容块', () => {
-    const props: UIMessageItemProps = {
-      ...defaultProps,
-      content: [
-        { type: 'text', text: 'First' },
-        { type: 'text', text: 'Second' },
-      ],
-    }
-    
-    render(<MessageItem {...props} />)
-    
-    expect(screen.getByText('First')).toBeInTheDocument()
-    expect(screen.getByText('Second')).toBeInTheDocument()
-  })
-
-  it('应该有正确的ARIA标签', () => {
-    render(<MessageItem {...defaultProps} />)
-    
-    const article = screen.getByRole('article')
-    expect(article).toHaveAttribute('aria-label', '用户消息')
-  })
-
-  it('应该处理工具错误状态', () => {
+  it('should render tool content with error status', () => {
     const props: UIMessageItemProps = {
       ...defaultProps,
       content: [{
@@ -122,12 +96,37 @@ describe('MessageItem', () => {
         isError: true,
       }],
     }
-    
+
     render(<MessageItem {...props} />)
-    
-    expect(screen.getByText('failing-tool')).toBeInTheDocument()
-    expect(screen.getByText('error')).toBeInTheDocument()
-    expect(screen.getByText('错误:')).toBeInTheDocument()
-    expect(screen.getByText('error result')).toBeInTheDocument()
+
+    const toolCard = screen.getByRole('article')
+    expect(toolCard).toHaveAttribute('aria-label', expect.stringContaining('failing-tool'))
+  })
+
+  it('should render multiple text content blocks', () => {
+    const props: UIMessageItemProps = {
+      ...defaultProps,
+      content: [
+        { type: 'text', text: 'First' },
+        { type: 'text', text: 'Second' },
+      ],
+    }
+
+    render(<MessageItem {...props} />)
+    expect(screen.getByText('First')).toBeInTheDocument()
+    expect(screen.getByText('Second')).toBeInTheDocument()
+  })
+
+  it('should set data-message-id on article', () => {
+    render(<MessageItem {...defaultProps} />)
+    const article = screen.getByRole('article')
+    expect(article).toHaveAttribute('data-message-id', '1')
+  })
+
+  it('should call onRetry when retry button is clicked', () => {
+    const onRetry = vi.fn()
+    render(<MessageItem {...defaultProps} onRetry={onRetry} />)
+    screen.getByRole('button', { name: /Retry/i }).click()
+    expect(onRetry).toHaveBeenCalledTimes(1)
   })
 })

@@ -213,7 +213,23 @@ export function createMockWebSocket(): {
       if (arr) {
         const index = arr.indexOf(listener)
         if (index > -1) arr.splice(index, 1)
-      }
+}
+
+export function createMockModels(count = 3): Model[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `model-${i}`,
+    name: `Model ${i}`,
+    provider: 'test-provider',
+  }))
+}
+
+interface Model {
+  id: string
+  name: string
+  provider: string
+  family?: string
+  capabilities?: string[]
+}
     }),
   } as unknown as WebSocket
 

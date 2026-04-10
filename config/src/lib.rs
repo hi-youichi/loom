@@ -317,7 +317,7 @@ mod tests {
     use super::*;
     use std::env;
 
-    static CONFIG_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    use crate::home::CONFIG_TEST_LOCK as CONFIG_ENV_LOCK;
 
     #[test]
     fn mask_key_keeps_prefix_suffix() {

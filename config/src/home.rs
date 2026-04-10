@@ -52,17 +52,15 @@ fn home_dir() -> PathBuf {
 }
 
 #[cfg(test)]
+pub(crate) static CONFIG_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
-
-    // Serialize tests that modify LOOM_HOME env var
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
     #[test]
     #[cfg(unix)]
     fn loom_home_respects_env() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = CONFIG_TEST_LOCK.lock().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
         let test_path = "/tmp/test-loom";
         std::env::set_var("LOOM_HOME", test_path);
@@ -76,7 +74,7 @@ mod tests {
     #[test]
     #[cfg(windows)]
     fn loom_home_respects_env() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = CONFIG_TEST_LOCK.lock().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
         let test_path = r"C:\tmp\test-loom";
         std::env::set_var("LOOM_HOME", test_path);
@@ -90,7 +88,7 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn thread_session_dir_under_loom_home() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = CONFIG_TEST_LOCK.lock().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
         let test_path = "/tmp/test-loom-thread";
         std::env::set_var("LOOM_HOME", test_path);
@@ -105,7 +103,7 @@ mod tests {
     #[test]
     #[cfg(windows)]
     fn thread_session_dir_under_loom_home() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = CONFIG_TEST_LOCK.lock().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
         let test_path = r"C:\tmp\test-loom-thread";
         std::env::set_var("LOOM_HOME", test_path);
@@ -119,6 +117,7 @@ mod tests {
 
     #[test]
     fn loom_home_defaults_to_dot_loom() {
+        let _lock = CONFIG_TEST_LOCK.lock().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
         std::env::remove_var("LOOM_HOME");
         let h = loom_home();
@@ -132,7 +131,7 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn default_acp_log_file_under_acp_dir() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = CONFIG_TEST_LOCK.lock().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
         std::env::set_var("LOOM_HOME", "/tmp/loom-acp-path");
         assert_eq!(
@@ -148,7 +147,7 @@ mod tests {
     #[test]
     #[cfg(windows)]
     fn default_acp_log_file_under_acp_dir() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = CONFIG_TEST_LOCK.lock().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
         std::env::set_var("LOOM_HOME", r"C:\tmp\loom-acp-path");
         assert_eq!(
