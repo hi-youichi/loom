@@ -211,7 +211,7 @@ mod tests {
         let req = ClientRequest::Run(RunRequest {
             id: Some("abc-123".to_string()),
             message: crate::message::UserContent::Text("hello".to_string()),
-            agent: AgentType::React,
+            agent: AgentIdentifier::Type(AgentType::React),
             thread_id: Some("t1".to_string()),
             workspace_id: None,
             working_folder: None,

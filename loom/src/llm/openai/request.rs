@@ -236,7 +236,7 @@ pub(super) fn build_chat_request(
         args.temperature(t);
     }
 
-    let tools_nonempty = tools.map_or(false, |t| !t.is_empty());
+    let tools_nonempty = tools.is_some_and(|t| !t.is_empty());
     if let Some(mode) = tool_choice {
         if tools_nonempty {
             let opt = match mode {

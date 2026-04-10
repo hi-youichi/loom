@@ -321,6 +321,7 @@ fn apply_model_provider_resolution(opts: &mut RunOptions) {
     // Validate provider/model format
     if raw_model.is_empty() {
         tracing::warn!("Model name cannot be empty");
+        opts.model = None;
         return;
     }
 
@@ -328,10 +329,12 @@ fn apply_model_provider_resolution(opts: &mut RunOptions) {
         // Validate provider and model parts
         if p.is_empty() {
             tracing::warn!("Provider name in 'provider/model' format cannot be empty");
+            opts.model = None;
             return;
         }
         if m.is_empty() {
             tracing::warn!("Model name in 'provider/model' format cannot be empty");
+            opts.model = None;
             return;
         }
         (Some(p.to_string()), m.to_string())
@@ -339,6 +342,7 @@ fn apply_model_provider_resolution(opts: &mut RunOptions) {
         // Bare model name - validate it's not just whitespace
         if raw_model.trim().is_empty() {
             tracing::warn!("Model name cannot be empty or whitespace only");
+            opts.model = None;
             return;
         }
         (None, raw_model.trim().to_string())

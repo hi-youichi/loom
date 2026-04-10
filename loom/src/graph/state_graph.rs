@@ -314,7 +314,7 @@ where
                 return Err(CompilationError::NodeNotFound(source.clone()));
             }
             if let Some(ref path_map) = router.path_map {
-                for (_, target) in path_map {
+                for target in path_map.values() {
                     if target != END && !self.nodes.contains_key(target) {
                         return Err(CompilationError::InvalidConditionalPathMap(target.clone()));
                     }
@@ -342,7 +342,7 @@ where
             || self.conditional_edges.values().any(|r| {
                 r.path_map
                     .as_ref()
-                    .map_or(true, |m| m.values().any(|v| v == END))
+                    .is_none_or(|m| m.values().any(|v| v == END))
             });
         if !has_end {
             return Err(CompilationError::MissingEnd);

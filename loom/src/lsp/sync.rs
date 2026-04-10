@@ -164,7 +164,7 @@ impl DocumentSyncManager {
                 TextDocumentContentChangeEvent {
                     range: Some(range),
                     range_length: Some(
-                        (end_line_old - start_line) as u32
+                        (end_line_old - start_line)
                             + if end_line_old > start_line { 1 } else { 0 },
                     ),
                     text: changed_text,

@@ -181,7 +181,7 @@ where
     ) -> Result<Self, CheckpointError> {
         let db_path = path.as_ref().to_path_buf();
         let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
-            .map_err(|e| CheckpointError::Storage(e))?;
+            .map_err(CheckpointError::Storage)?;
         conn.execute(
             r#"
             CREATE TABLE IF NOT EXISTS checkpoints (
@@ -241,7 +241,7 @@ where
             .map_err(|e| CheckpointError::Serialization(e.to_string()))?;
         let versions_seen = serialize_json_field(&checkpoint.versions_seen)?;
         let metadata_source = source_to_str(&checkpoint.metadata.source).to_string();
-        let metadata_step = checkpoint.metadata.step as i64;
+        let metadata_step = checkpoint.metadata.step;
         let metadata_created_at = created_at_to_i64(&checkpoint.metadata.created_at);
         let metadata_parents = serialize_parents(&checkpoint.metadata.parents)?;
         let metadata_children = serialize_children(&checkpoint.metadata.children)?;
@@ -256,7 +256,7 @@ where
         let db_path = self.db_path.clone();
         tokio::task::spawn_blocking(move || {
             let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
-                .map_err(|e| CheckpointError::Storage(e))?;
+                .map_err(CheckpointError::Storage)?;
             conn.execute(
                 r#"
                 INSERT OR REPLACE INTO checkpoints
@@ -320,7 +320,7 @@ where
         );
         let row: Option<RowData> = tokio::task::spawn_blocking(move || -> Result<Option<RowData>, CheckpointError> {
             let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
-                .map_err(|e| CheckpointError::Storage(e))?;
+                .map_err(CheckpointError::Storage)?;
             let sql = if want_id.is_some() {
                 "SELECT checkpoint_id, ts, payload, channel_versions, versions_seen, metadata_source, metadata_step, metadata_created_at, metadata_parents, metadata_children, metadata_summary,
                         updated_channels, pending_sends, pending_writes, pending_interrupts
@@ -443,7 +443,7 @@ where
 
         let items = tokio::task::spawn_blocking(move || {
             let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
-                .map_err(|e| CheckpointError::Storage(e))?;
+                .map_err(CheckpointError::Storage)?;
             let mut stmt = conn
                 .prepare(
                     "SELECT checkpoint_id, metadata_source, metadata_step, metadata_created_at, metadata_parents, metadata_children, metadata_summary

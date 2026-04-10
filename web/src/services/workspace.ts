@@ -28,7 +28,7 @@ export async function createWorkspace(name?: string): Promise<string> {
     type: 'workspace_create',
     ...(name ? { name } : {}),
   })
-  return resp.workspace_id
+  return resp.workspace.id
 }
 
 export async function listThreads(workspaceId: string): Promise<ThreadInWorkspace[]> {

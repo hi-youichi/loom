@@ -12,8 +12,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// Strategy for normalizing tool output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ToolOutputStrategy {
     /// Small result, keep inline in full.
+    #[default]
     Inline,
     /// Only keep a summary, no inline content.
     SummaryOnly,
@@ -25,11 +27,6 @@ pub enum ToolOutputStrategy {
     FileRefWithExcerpt,
 }
 
-impl Default for ToolOutputStrategy {
-    fn default() -> Self {
-        Self::Inline
-    }
-}
 
 /// Optional metadata supplied by a tool to influence output normalization.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

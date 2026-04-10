@@ -30,11 +30,11 @@ where
     ));
 
     // Add regular nodes
-    for (node_id, _) in &graph.nodes {
+    for node_id in graph.nodes.keys() {
         dot.push_str(&format!("  \"{}\";\n", node_id));
     }
 
-    dot.push_str("\n");
+    dot.push('\n');
 
     // Add edges based on edge_order
     if !graph.edge_order.is_empty() {
