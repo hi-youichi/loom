@@ -40,6 +40,9 @@ pub struct RunRequest {
     pub got_adaptive: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verbose: Option<bool>,
+    /// Model to use for this run (e.g. "openai/gpt-4o", "gpt-4o").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 impl RunRequest {
@@ -111,6 +114,21 @@ pub struct PingRequest {
     pub id: String,
 }
 
+/// List models request: list available models.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ListModelsRequest {
+    pub id: String,
+}
+
+/// Set model request: set model for a session.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SetModelRequest {
+    pub id: String,
+    pub model_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+}
+
 /// User messages list request: list stored messages for a thread (pagination).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UserMessagesRequest {
@@ -161,6 +179,8 @@ pub enum ClientRequest {
     WorkspaceThreadAdd(WorkspaceThreadAddRequest),
     WorkspaceThreadRemove(WorkspaceThreadRemoveRequest),
     Ping(PingRequest),
+    ListModels(ListModelsRequest),
+    SetModel(SetModelRequest),
 }
 // -----------------------------------------------------------------------------
 // Workspace requests
@@ -217,6 +237,7 @@ mod tests {
             working_folder: None,
             got_adaptive: None,
             verbose: Some(true),
+            model: None,
         });
         let json = serde_json::to_string(&req).unwrap();
         assert!(json.contains("\"type\":\"run\""));
@@ -392,5 +413,30 @@ mod tests {
         assert!(json.contains("\"type\":\"workspace_thread_remove\""));
         let parsed: ClientRequest = serde_json::from_str(&json).unwrap();
         assert!(matches!(parsed, ClientRequest::WorkspaceThreadRemove(_)));
+    }
+
+    #[test]
+    fn request_list_models_roundtrip() {
+        let req = ClientRequest::ListModels(ListModelsRequest {
+            id: "req-lm".to_string(),
+        });
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"type\":\"list_models\""));
+        let parsed: ClientRequest = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, ClientRequest::ListModels(_)));
+    }
+
+    #[test]
+    fn request_set_model_roundtrip() {
+        let req = ClientRequest::SetModel(SetModelRequest {
+            id: "req-sm".to_string(),
+            model_id: "gpt-4".to_string(),
+            session_id: Some("session-123".to_string()),
+        });
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"type\":\"set_model\""));
+        assert!(json.contains("\"model_id\":\"gpt-4\""));
+        let parsed: ClientRequest = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, ClientRequest::SetModel(_)));
     }
 }

@@ -304,6 +304,91 @@ pub fn build_config_from_profile(
     config
 }
 
+/// Resolved model + provider configuration from a model string like "openai/gpt-4o".
+#[derive(Debug, Clone, Default)]
+pub struct ResolvedModelConfig {
+    pub model: Option<String>,
+    pub provider: Option<String>,
+    pub base_url: Option<String>,
+    pub api_key: Option<String>,
+    pub provider_type: Option<String>,
+}
+
+/// Resolve a model string (e.g. "openai/gpt-4o", "gpt-4o") into model id + provider config.
+///
+/// Resolution order:
+/// 1. `ModelRegistry::get_model()` — full registry lookup
+/// 2. `"provider/model"` split — fallback to config file provider lookup
+/// 3. Bare model id — no provider resolution (backward compat)
+pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfig {
+    let Some(model_str) = model_str else {
+        return ResolvedModelConfig::default();
+    };
+    if model_str.is_empty() {
+        return ResolvedModelConfig::default();
+    }
+
+    let providers: Vec<crate::llm::ProviderConfig> = match env_config::load_full_config("loom") {
+        Ok(config) => config
+            .providers
+            .into_iter()
+            .map(|p| crate::llm::ProviderConfig {
+                name: p.name,
+                base_url: p.base_url,
+                api_key: p.api_key,
+                provider_type: p.provider_type,
+            })
+            .collect(),
+        Err(_) => vec![],
+    };
+
+    // 1. Try ModelRegistry first
+    if let Some(entry) = crate::llm::ModelRegistry::global()
+        .get_model(model_str, &providers)
+        .await
+    {
+        return ResolvedModelConfig {
+            model: Some(entry.id.clone()),
+            provider: Some(entry.provider.clone()),
+            base_url: entry.base_url,
+            api_key: entry.api_key,
+            provider_type: entry.provider_type,
+        };
+    }
+
+    // 2. Try "provider/model" split
+    if let Some((provider_name, model_id)) = model_str.split_once('/') {
+        let actual_model_id = model_id
+            .rsplit_once('/')
+            .map(|(_, m)| m)
+            .unwrap_or(model_id);
+        tracing::debug!(
+            provider = %provider_name,
+            model_id = %model_id,
+            actual_model_id = %actual_model_id,
+            "Model not in registry, loading provider config"
+        );
+        let provider_cfg = env_config::load_full_config("loom")
+            .ok()
+            .and_then(|c| c.providers.into_iter().find(|p| p.name == provider_name));
+        if let Some(p) = provider_cfg {
+            return ResolvedModelConfig {
+                model: Some(model_str.to_string()),
+                provider: Some(p.name),
+                base_url: p.base_url,
+                api_key: p.api_key,
+                provider_type: p.provider_type,
+            };
+        }
+    }
+
+    // 3. Bare model id — backward compat
+    ResolvedModelConfig {
+        model: Some(model_str.to_string()),
+        ..Default::default()
+    }
+}
+
 fn apply_model_provider_resolution(opts: &mut RunOptions) {
     if opts.model.is_none() && opts.provider.is_none() {
         return;

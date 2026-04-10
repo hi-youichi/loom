@@ -60,6 +60,7 @@ pub use requests::{
     ToolShowOutput, ToolShowRequest, ToolsListRequest, UserMessagesRequest,
     WorkspaceListRequest, WorkspaceCreateRequest, WorkspaceThreadListRequest,
     WorkspaceThreadAddRequest, WorkspaceThreadRemoveRequest,
+    ListModelsRequest, SetModelRequest,
 };
 pub use responses::{
     AgentListResponse, AgentSource, AgentSummary, ErrorResponse, PongResponse,
@@ -67,6 +68,6 @@ pub use responses::{
     ToolShowResponse, ToolsListResponse, UserMessageItem, UserMessagesResponse,
     WorkspaceListResponse, WorkspaceMeta, WorkspaceCreateResponse,
     WorkspaceThreadListResponse, ThreadInWorkspace, WorkspaceThreadAddResponse,
-    WorkspaceThreadRemoveResponse,
+    WorkspaceThreadRemoveResponse, ListModelsResponse, SetModelResponse,
 };
 pub use types::{AgentSource as AgentSourceExport, AgentSourceFilter as AgentSourceFilterExport};

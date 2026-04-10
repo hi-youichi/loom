@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 /// Legacy ModelSpec for backward compatibility
 /// Wraps ModelLimit to maintain existing API
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelSpec {
     /// Context (input) token limit
     pub context_limit: u32,

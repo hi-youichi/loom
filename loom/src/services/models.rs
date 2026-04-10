@@ -11,6 +11,7 @@ use tokio::sync::RwLock;
 pub struct ModelService {
     providers: Arc<RwLock<HashMap<String, Provider>>>,
     models: Arc<RwLock<HashMap<String, Model>>>,
+    model_to_provider: Arc<RwLock<HashMap<String, String>>>, // Maps model_id to provider_id
 }
 
 impl ModelService {
@@ -21,6 +22,7 @@ impl ModelService {
         Self {
             providers: Arc::new(RwLock::new(HashMap::new())),
             models: Arc::new(RwLock::new(HashMap::new())),
+            model_to_provider: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -43,21 +45,28 @@ impl ModelService {
             return Err(format!("Models.dev returned status: {}", status));
         }
         
-        let providers_json: HashMap<String, Provider> = response
-            .json()
-            .await
+        // Parse directly as serde_json::Value first to inspect structure
+        let json_value: serde_json::Value = response.json().await.map_err(|e| {
+            tracing::error!("Failed to read response body: {}", e);
+            format!("Failed to read response body: {}", e)
+        })?;
+        
+        // Then try to parse as Provider types
+        let providers_json: HashMap<String, Provider> = serde_json::from_value(json_value)
             .map_err(|e| {
-                tracing::error!("Failed to parse models.dev response: {}", e);
-                format!("Failed to parse models.dev response: {}", e)
+                tracing::error!("Failed to parse models: {}", e);
+                format!("Failed to parse models: {}", e)
             })?;
 
         let mut providers = self.providers.write().await;
         let mut models = self.models.write().await;
+        let mut model_to_provider = self.model_to_provider.write().await;
         
         let mut total_models = 0;
         for (provider_id, provider) in providers_json {
             for (model_id, model) in &provider.models {
                 models.insert(model_id.clone(), model.clone());
+                model_to_provider.insert(model_id.clone(), provider_id.clone());
                 total_models += 1;
             }
             providers.insert(provider_id, provider);
@@ -71,10 +80,11 @@ impl ModelService {
     pub async fn get_available_models(&self) -> Vec<ModelInfo> {
         let models = self.models.read().await;
         let providers = self.providers.read().await;
+        let model_to_provider = self.model_to_provider.read().await;
         
         models.values()
             .map(|model| {
-                let provider = model.id.split('-').next()
+                let provider = model_to_provider.get(&model.id)
                     .and_then(|provider_id| providers.get(provider_id))
                     .map(|p| p.name.clone())
                     .unwrap_or_else(|| "Unknown".to_string());
