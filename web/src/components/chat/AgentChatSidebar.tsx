@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useRef, useCallback } from "react"
+import { memo, useRef, useCallback, useState } from "react"
 import { ChevronRight, Users, ChevronDown } from "lucide-react"
 import { useChatPanel } from "@/hooks/useChatPanel"
 import { MessageList } from "./MessageList"
@@ -67,8 +67,13 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
   onSendMessage,
 }: AgentChatSidebarProps) {
   const { collapsed, width, selectedAgentId, toggle, expand, setWidth, selectAgent } = useChatPanel()
+  const [selectedModel, setSelectedModel] = useState('claude-3-5-sonnet')
 
   const selectedAgentName = agents.find((a) => a.name === selectedAgentId)?.name || selectedAgentId
+
+  const handleModelChange = (model: string) => {
+    setSelectedModel(model)
+  }
 
   return (
     <aside
@@ -120,6 +125,8 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
         <MessageComposer
           disabled={!selectedAgentId || isStreaming}
           onSend={onSendMessage}
+          selectedModel={selectedModel}
+          onModelChange={handleModelChange}
         />
       </div>
     </aside>

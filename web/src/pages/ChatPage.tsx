@@ -95,6 +95,11 @@ export function ChatPage() {
   const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([])
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selectedModel, setSelectedModel] = useState('claude-3-5-sonnet')
+
+  const handleModelChange = (model: string) => {
+    setSelectedModel(model)
+  }
 
   const handleSend = async (text: string) => {
     const createdAt = new Date().toISOString()
@@ -115,6 +120,7 @@ export function ChatPage() {
     try {
       const reply = await sendMessage(text, {
         threadId,
+        model: selectedModel,
         onEvent: (event) => {
           const evt = event as Record<string, unknown>
           
@@ -306,7 +312,12 @@ export function ChatPage() {
 
         {error ? <p className="chat-panel__error">{error}</p> : null}
 
-        <MessageComposer disabled={sending} onSend={handleSend} />
+        <MessageComposer 
+          disabled={sending} 
+          onSend={handleSend}
+          selectedModel={selectedModel}
+          onModelChange={handleModelChange}
+        />
       </section>
     </main>
   )

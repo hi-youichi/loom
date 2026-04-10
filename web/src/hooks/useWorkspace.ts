@@ -37,9 +37,21 @@ export function useWorkspace() {
     setLoading(true)
     setError(null)
     try {
-      const list = await wsApi.listWorkspaces()
+      let list = await wsApi.listWorkspaces()
+      if (list.length === 0) {
+        await wsApi.createWorkspace()
+        list = await wsApi.listWorkspaces()
+      }
       if (mountedRef.current) {
         setWorkspaces(list)
+        const wsId = activeWorkspaceId || list[0]?.id
+        if (wsId) {
+          setActiveWorkspaceId(wsId)
+          const threads = await wsApi.listThreads(wsId)
+          if (mountedRef.current) {
+            setThreads(threads)
+          }
+        }
       }
     } catch (e: unknown) {
       if (mountedRef.current) {
@@ -50,7 +62,7 @@ export function useWorkspace() {
         setLoading(false)
       }
     }
-  }, [])
+  }, [activeWorkspaceId])
 
   const createWorkspace = useCallback(async (name?: string) => {
     setLoading(true)
