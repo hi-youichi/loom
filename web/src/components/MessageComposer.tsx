@@ -1,8 +1,11 @@
 import { useLayoutEffect, useRef, useState } from 'react'
+import { ModelSelector } from './ModelSelector'
 
 type MessageComposerProps = {
   disabled?: boolean
   onSend: (text: string) => Promise<void>
+  selectedModel?: string
+  onModelChange?: (model: string) => void
 }
 
 function resizeTextarea(element: HTMLTextAreaElement) {
@@ -26,6 +29,8 @@ function resizeTextarea(element: HTMLTextAreaElement) {
 export function MessageComposer({
   disabled = false,
   onSend,
+  selectedModel = 'claude-3-5-sonnet',
+  onModelChange,
 }: MessageComposerProps) {
   const [value, setValue] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
@@ -77,28 +82,36 @@ export function MessageComposer({
           }
         }}
       />
-      <button
-        className="composer__button"
-        type="submit"
-        aria-label={disabled ? 'Sending message' : 'Send message'}
-        disabled={disabled || !value.trim()}
-      >
-        <svg
-          className="composer__button-icon"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          aria-hidden="true"
+      <div className="composer__toolbar">
+        <ModelSelector
+          value={selectedModel}
+          onChange={onModelChange}
+          disabled={disabled}
+          className="composer__model-selector"
+        />
+        <button
+          className="composer__button"
+          type="submit"
+          aria-label={disabled ? 'Sending message' : 'Send message'}
+          disabled={disabled || !value.trim()}
         >
-          <path
-            d="M12 19V6M7 11L12 6L17 11"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
+          <svg
+            className="composer__button-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <path
+              d="M12 19V6M7 11L12 6L17 11"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      </div>
     </form>
   )
 }

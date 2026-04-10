@@ -13,6 +13,7 @@ export { ChatErrorBoundary } from './error/ErrorBoundary'
 
 // Composer
 export { MessageComposer } from './MessageComposer'
+export { ModelSelector } from './ModelSelector'
 
 // File Tree
 export { FileTree, FileTreeSidebar } from './file-tree'
