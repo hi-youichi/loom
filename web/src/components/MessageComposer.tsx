@@ -42,8 +42,12 @@ export function MessageComposer({
       return
     }
 
-    await onSend(text)
     setValue('')
+    try {
+      await onSend(text)
+    } catch {
+      setValue(text)
+    }
   }
 
   return (
