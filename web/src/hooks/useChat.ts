@@ -5,6 +5,7 @@ import { ToolStreamAggregator } from '../adapters/ToolStreamAggregator'
 import { sendMessage as sendChatMessage } from '../services/chat'
 import type {
   LoomStreamEvent,
+  LoomToolEvent,
   WebSocketStatus,
 } from '../types/protocol/loom'
 import { isToolEvent } from '../types/protocol/loom'
@@ -137,7 +138,7 @@ export function useChat(options?: {
       }
 
         if (isToolEvent(event)) {
-          const nextTool = toolAggregatorRef.current.apply(event)
+          const nextTool = toolAggregatorRef.current.apply(event as LoomToolEvent)
           if (nextTool) {
             updateAssistantMessage((msg) => ({
               ...msg,

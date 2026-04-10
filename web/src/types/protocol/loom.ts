@@ -104,7 +104,6 @@ export type LoomCheckpointEvent = LoomEnvelope & {
   step?: number
   state?: unknown
   thread_id?: string
-  checkpoint_ns?: string
 }
 
 export type LoomUnknownEvent = LoomEnvelope & {
@@ -149,6 +148,14 @@ export interface LoomErrorResponse {
   id?: string
   error: string
 }
+
+export interface ChatReply {
+  content: string
+}
+
+// -----------------------------------------------------------------------------
+// Workspace types
+// -----------------------------------------------------------------------------
 
 export type WorkspaceListRequest = {
   type: 'workspace_list'
@@ -208,7 +215,7 @@ export type WorkspaceListResponse = {
 export type WorkspaceCreateResponse = {
   type: 'workspace_create'
   id: string
-  workspace_id: string
+  workspace: WorkspaceMeta
 }
 
 export type WorkspaceThreadListResponse = {
@@ -239,6 +246,10 @@ export type WorkspaceResponse =
   | WorkspaceThreadAddResponse
   | WorkspaceThreadRemoveResponse
 
+// -----------------------------------------------------------------------------
+// Agent types
+// -----------------------------------------------------------------------------
+
 export type AgentListSource = 'builtin' | 'project' | 'user'
 
 export type AgentSummary = {
@@ -261,11 +272,54 @@ export type AgentListResponse = {
   agents: AgentSummary[]
 }
 
+// -----------------------------------------------------------------------------
+// Model types
+// -----------------------------------------------------------------------------
+
+export type ModelInfo = {
+  id: string
+  name: string
+  provider: string
+  family?: string
+  capabilities?: string[]
+}
+
+export type ListModelsRequest = {
+  type: 'list_models'
+  id: string
+}
+
+export type ListModelsResponse = {
+  type: 'models_list'
+  id: string
+  models: ModelInfo[]
+}
+
+export type SetModelRequest = {
+  type: 'set_model'
+  id: string
+  model_id: string
+  session_id?: string
+}
+
+export type SetModelResponse = {
+  type: 'model_set'
+  id: string
+  success: boolean
+  error?: string
+}
+
+// -----------------------------------------------------------------------------
+// Server message types
+// -----------------------------------------------------------------------------
+
 export type LoomServerMessage =
   | LoomRunStreamEventResponse
   | LoomRunEndResponse
   | LoomErrorResponse
   | AgentListResponse
+  | ListModelsResponse
+  | SetModelResponse
   | WorkspaceListResponse
   | WorkspaceCreateResponse
   | WorkspaceThreadListResponse
@@ -289,8 +343,14 @@ export function isMessageChunkEvent(event: LoomStreamEvent): event is LoomMessag
   return event.type === 'message_chunk'
 }
 
-export function isThoughtChunkEvent(event: LoomStreamEvent): event is LoomThoughtChunkEvent {
-  return event.type === 'thought_chunk'
+export function isWorkspaceResponse(msg: LoomServerMessage): msg is WorkspaceResponse {
+  return (
+    msg.type === 'workspace_list' ||
+    msg.type === 'workspace_create' ||
+    msg.type === 'workspace_thread_list' ||
+    msg.type === 'workspace_thread_add' ||
+    msg.type === 'workspace_thread_remove'
+  )
 }
 
 export function isToolEvent(event: LoomStreamEvent): event is LoomToolEvent {
@@ -301,12 +361,4 @@ export function isToolEvent(event: LoomStreamEvent): event is LoomToolEvent {
     event.type === 'tool_output' ||
     event.type === 'tool_end'
   )
-}
-
-export interface ChatReply {
-  content: string
-}
-
-export function isWorkspaceResponse(msg: LoomServerMessage): msg is WorkspaceResponse {
-  return typeof msg.type === 'string' && msg.type.startsWith('workspace_')
 }

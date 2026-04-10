@@ -5,13 +5,14 @@ import {
   PopoverTrigger,
 } from './ui/popover'
 import { cn } from '../lib/utils'
+import { useModels, type Model } from '../hooks/useModels'
 
 type ModelOption = {
   value: string
   label: string
 }
 
-const MODELS: ModelOption[] = [
+const DEFAULT_MODELS: ModelOption[] = [
   { value: 'claude-3-5-sonnet', label: 'Claude 3.5 Sonnet' },
   { value: 'claude-3-opus', label: 'Claude 3 Opus' },
   { value: 'claude-3-haiku', label: 'Claude 3 Haiku' },
@@ -24,27 +25,42 @@ type ModelSelectorProps = {
   onChange?: (model: string) => void
   disabled?: boolean
   className?: string
+  fetchModels?: boolean
 }
 
 export function ModelSelector({
-  value = MODELS[0].value,
+  value = DEFAULT_MODELS[0].value,
   onChange,
   disabled = false,
   className = '',
+  fetchModels = true,
 }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const { models, loading } = useModels()
 
-  const selectedModel = MODELS.find(m => m.value === value) || MODELS[0]
+  // Convert API models to ModelOption format
+  const modelOptions = useMemo(() => {
+    if (!fetchModels || models.length === 0) {
+      return DEFAULT_MODELS
+    }
+    
+    return models.map((model: Model) => ({
+      value: model.id,
+      label: model.name
+    }))
+  }, [fetchModels, models])
+
+  const selectedModel = modelOptions.find(m => m.value === value) || modelOptions[0]
 
   const filteredModels = useMemo(() => {
-    if (!searchQuery.trim()) return MODELS
+    if (!searchQuery.trim()) return modelOptions
     const query = searchQuery.toLowerCase()
-    return MODELS.filter(model =>
+    return modelOptions.filter(model =>
       model.label.toLowerCase().includes(query) ||
       model.value.toLowerCase().includes(query)
     )
-  }, [searchQuery])
+  }, [searchQuery, modelOptions])
 
   const handleSelect = (modelValue: string) => {
     onChange?.(modelValue)
@@ -72,6 +88,7 @@ export function ModelSelector({
           )}
         >
           <span className="truncate">{selectedModel.label}</span>
+          {loading && <span className="ml-2 text-xs text-muted-foreground">...</span>}
           <svg
             className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50"
             fill="none"
@@ -98,7 +115,11 @@ export function ModelSelector({
             autoFocus
           />
           <div className="max-h-48 overflow-y-auto">
-            {filteredModels.length > 0 ? (
+            {loading ? (
+              <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                加载模型列表...
+              </div>
+            ) : filteredModels.length > 0 ? (
               filteredModels.map((model) => (
                 <button
                   key={model.value}
