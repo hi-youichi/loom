@@ -3,6 +3,7 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 @import "./styles/toolComponents.css";
+@import "./styles/streamingIndicator.css";
 
 @tailwind base;
 @tailwind components;
@@ -137,12 +138,11 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 6px 2px;
+  padding: 6px 12px;
   overflow-y: auto;
 }
 
 .message {
-  width: fit-content;
   max-width: min(100%, 560px);
   padding: 16px 18px;
   border-radius: 20px;
@@ -368,19 +368,20 @@ h2 {
   flex-direction: column;
   gap: 12px;
   align-items: stretch;
-  padding: 14px;
-  border-radius: 24px;
+  padding: 10px;
+  border-radius: 0;
   border: 0;
-  background: #ffffff;
+  background: var(--card);
 }
 
 .composer__input {
+  font-size: 14px;
   width: 100%;
   max-height: 220px;
   resize: none;
   border: 0;
   outline: none;
-  color: #111111;
+  color: var(--foreground);
   background: transparent;
   line-height: 1.55;
   overflow-y: auto;
@@ -388,7 +389,7 @@ h2 {
 }
 
 .composer__input::placeholder {
-  color: rgba(0, 0, 0, 0.36);
+  color: var(--muted-foreground);
 }
 
 .composer__button {
@@ -397,8 +398,8 @@ h2 {
   padding: 0;
   border: 0;
   border-radius: 999px;
-  color: #ffffff;
-  background: #111111;
+  color: var(--primary-foreground);
+  background: var(--primary);
   font-weight: 600;
   display: inline-flex;
   align-items: center;
@@ -409,7 +410,7 @@ h2 {
     transform 180ms ease,
     box-shadow 180ms ease,
     opacity 180ms ease;
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 12px oklch(from var(--primary) l c h / 20%);
 }
 
 .composer__button-icon {
@@ -419,8 +420,8 @@ h2 {
 
 .composer__button:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 16px 28px rgba(0, 0, 0, 0.16);
-  background: #000000;
+  box-shadow: 0 8px 20px oklch(from var(--primary) l c h / 30%);
+  background: oklch(from var(--primary) l c h calc(l - 0.05));
 }
 
 .composer__button:disabled {
@@ -447,6 +448,27 @@ h2 {
   50% {
     opacity: 0;
   }
+}
+
+@keyframes pulse-scale {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scale(1.8);
+    opacity: 0.4;
+  }
+}
+
+.streaming-dot {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--primary);
+  animation: pulse-scale 1.5s ease-in-out infinite;
 }
 
 @keyframes fadeSlideUp {
@@ -493,7 +515,7 @@ h2 {
 /* Tool Block Styles */
 .tool-block {
   width: min(100%, 520px);
-  margin: 8px 0;
+  margin: 12px 0;
   border-radius: 12px;
   border: 1px solid #e0e0e0;
   background: #fafafa;
@@ -712,6 +734,18 @@ h2 {
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.556 0 0);
+  }
+
+  .dark .message--user {
+    background: oklch(0.30 0 0);
+  }
+
+  .dark .message--user .message__content {
+    color: oklch(0.985 0 0);
+  }
+
+  .dark .message--user .message__meta {
+    color: oklch(0.708 0 0);
   }
   * {
     @apply border-border;

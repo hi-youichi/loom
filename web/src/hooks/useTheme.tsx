@@ -6,8 +6,8 @@ import {
   useCallback,
   type ReactNode,
 } from 'react'
-
-type Theme = 'light' | 'dark' | 'system'
+import type { Theme } from './themeUtils'
+import { getSystem, getInitial } from './themeUtils'
 
 interface ThemeCtx {
   theme: Theme
@@ -21,52 +21,39 @@ const Ctx = createContext<ThemeCtx>({
   setTheme: () => {},
 })
 
-function getSystem(): 'light' | 'dark' {
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
-    ? 'dark'
-    : 'light'
-}
-
-function getInitial(): Theme {
-  try {
-    return (localStorage.getItem('theme') as Theme) || 'system'
-  } catch {
-    return 'system'
-  }
-}
-
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(getInitial)
   const [resolved, setResolved] = useState<'light' | 'dark'>(
     theme === 'system' ? getSystem() : theme,
   )
 
-  const apply = useCallback((t: Theme) => {
-    const r = t === 'system' ? getSystem() : t
-    setResolved(r)
-    document.documentElement.classList.toggle('dark', r === 'dark')
-  }, [])
-
   const setTheme = useCallback(
     (t: Theme) => {
       setThemeState(t)
-      try { localStorage.setItem('theme', t) } catch {}
-      apply(t)
+      try { localStorage.setItem('theme', t) } catch {
+        // Ignore localStorage errors
+      }
     },
-    [apply],
+    [],
   )
 
   useEffect(() => {
-    apply(theme)
-  }, [apply, theme])
+    const resolved = theme === 'system' ? getSystem() : theme
+    setResolved(resolved)
+    document.documentElement.classList.toggle('dark', resolved === 'dark')
+  }, [theme])
 
   useEffect(() => {
     if (theme !== 'system') return
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const handler = () => apply('system')
+    const handler = () => {
+      const resolved = getSystem()
+      setResolved(resolved)
+      document.documentElement.classList.toggle('dark', resolved === 'dark')
+    }
     mq.addEventListener('change', handler)
     return () => mq.removeEventListener('change', handler)
-  }, [theme, apply])
+  }, [theme])
 
   return <Ctx.Provider value={{ theme, resolved, setTheme }}>{children}</Ctx.Provider>
 }
