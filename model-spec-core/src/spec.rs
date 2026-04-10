@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Provider metadata from models.dev
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Provider {
     /// Provider ID (e.g., "anthropic", "openai")
     pub id: String,
@@ -31,7 +31,7 @@ pub struct Provider {
 }
 
 /// Complete model metadata from models.dev
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Model {
     /// Model ID (e.g., "claude-3-5-sonnet-20241022")
     pub id: String,
@@ -147,33 +147,38 @@ impl Modalities {
 }
 
 /// Pricing information (costs per 1M tokens in USD)
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Cost {
     /// Input cost per 1M tokens (in USD * 100 to avoid floating point)
     #[serde(default)]
-    pub input: u32,
+    pub input: f64,
 
     /// Output cost per 1M tokens (in USD * 100)
     #[serde(default)]
-    pub output: u32,
+    pub output: f64,
 
     /// Cache read cost per 1M tokens (for prompt caching)
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cache_read: Option<u32>,
+    pub cache_read: Option<f64>,
 
     /// Cache write cost per 1M tokens
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cache_write: Option<u32>,
+    pub cache_write: Option<f64>,
+
+    /// Reasoning cost (for reasoning models)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<f64>,
 }
 
 impl Cost {
     /// Create new cost specification
     pub fn new(input: f64, output: f64) -> Self {
         Self {
-            input: (input * 100.0) as u32,
-            output: (output * 100.0) as u32,
+            input,
+            output,
             cache_read: None,
             cache_write: None,
+            reasoning: None,
         }
     }
 

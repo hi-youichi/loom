@@ -249,29 +249,30 @@ fn parse_modalities(value: &Value) -> Modalities {
 fn parse_cost(value: &Value) -> Option<Cost> {
     let input = value
         .get("input")
-        .and_then(|v| v.as_f64())
-        .map(|v| (v * 100.0) as u32)?;
+        .and_then(|v| v.as_f64())?;
 
     let output = value
         .get("output")
-        .and_then(|v| v.as_f64())
-        .map(|v| (v * 100.0) as u32)?;
+        .and_then(|v| v.as_f64())?;
 
     let cache_read = value
         .get("cache_read")
-        .and_then(|v| v.as_f64())
-        .map(|v| (v * 100.0) as u32);
+        .and_then(|v| v.as_f64());
 
     let cache_write = value
         .get("cache_write")
-        .and_then(|v| v.as_f64())
-        .map(|v| (v * 100.0) as u32);
+        .and_then(|v| v.as_f64());
+
+    let reasoning = value
+        .get("reasoning")
+        .and_then(|v| v.as_f64());
 
     Some(Cost {
         input,
         output,
         cache_read,
         cache_write,
+        reasoning,
     })
 }
 
