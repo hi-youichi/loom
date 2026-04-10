@@ -117,13 +117,7 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
       </div>
 
       <div className="flex-1 min-h-0 overflow-hidden">
-        {collapsed ? null : messages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center p-8 text-center">
-            <div className="text-4xl mb-3">💬</div>
-            <p className="text-sm text-muted-foreground mb-2">选择一个 Agent 开始对话</p>
-            <p className="text-xs text-muted-foreground/60">Agent 将帮助您完成任务和回答问题</p>
-          </div>
-        ) : (
+        {collapsed ? null : (
           <MessageList messages={messages} streaming={isStreaming} />
         )}
       </div>
