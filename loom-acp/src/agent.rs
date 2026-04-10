@@ -503,59 +503,10 @@ impl Agent for LoomAcpAgent {
             .clone()
             .unwrap_or_else(|| PathBuf::from(loom::DEFAULT_WORKING_FOLDER));
 
-        // Load provider configs from config file
-        let providers: Vec<loom::llm::ProviderConfig> = match load_full_config("loom") {
-            Ok(config) => config
-                .providers
-                .into_iter()
-                .map(|p| loom::llm::ProviderConfig {
-                    name: p.name,
-                    base_url: p.base_url,
-                    api_key: p.api_key,
-                    provider_type: p.provider_type,
-                })
-                .collect(),
-            Err(_) => vec![],
-        };
-
-        // Parse provider/model format and resolve provider config using ModelRegistry
-        let (model, provider_config) = if let Some(ref model_str) = entry.session_config.model {
-            // Try to get full model config from ModelRegistry
-            if let Some(model_entry) = loom::llm::ModelRegistry::global()
-                .get_model(model_str, &providers)
-                .await
-            {
-                // Use id ("provider/model") so resolve_compaction_config can query model spec
-                (Some(model_entry.id.clone()), Some(model_entry))
-            } else if let Some((provider_name, model_id)) = model_str.split_once('/') {
-                // Fallback: load provider config directly if not in registry
-                // For nested model names like "provider/path/model", use the last segment as the actual model id
-                let actual_model_id = model_id
-                    .rsplit_once('/')
-                    .map(|(_, m)| m)
-                    .unwrap_or(model_id);
-                tracing::debug!(provider = %provider_name, model_id = %model_id, actual_model_id = %actual_model_id, "Model not in registry, loading provider config");
-                let provider_cfg = load_full_config("loom")
-                    .ok()
-                    .and_then(|c| c.providers.into_iter().find(|p| p.name == provider_name))
-                    .map(|p| loom::llm::ModelEntry {
-                        id: model_str.clone(),
-                        name: actual_model_id.to_string(),
-                        provider: p.name,
-                        base_url: p.base_url,
-                        api_key: p.api_key,
-                        provider_type: p.provider_type,
-                        ..Default::default()
-                    });
-                // Keep "provider/model" format so resolve_compaction_config can query model spec
-                (Some(model_str.clone()), provider_cfg)
-            } else {
-                // No provider prefix, use as-is (backward compatibility)
-                (Some(model_str.clone()), None)
-            }
-        } else {
-            (None, None)
-        };
+        let resolved = loom::resolve_model_config(
+            entry.session_config.model.as_deref(),
+        )
+        .await;
 
         let opts = RunOptions {
             message: user_content,
@@ -568,17 +519,14 @@ impl Agent for LoomAcpAgent {
             got_adaptive: false,
             display_max_len: 4096,
             output_json: false,
-            model,
+            model: resolved.model,
             mcp_config_path: None,
             output_timestamp: false,
             dry_run: false,
-            // Provider config from resolved model entry
-            provider: provider_config.as_ref().map(|p| p.provider.clone()),
-            base_url: provider_config.as_ref().and_then(|p| p.base_url.clone()),
-            api_key: provider_config.as_ref().and_then(|p| p.api_key.clone()),
-            provider_type: provider_config
-                .as_ref()
-                .and_then(|p| p.provider_type.clone()),
+            provider: resolved.provider,
+            base_url: resolved.base_url,
+            api_key: resolved.api_key,
+            provider_type: resolved.provider_type,
         };
 
         let session_id = args.session_id.clone();
