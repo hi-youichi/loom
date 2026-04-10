@@ -7,6 +7,7 @@ mod agent_orchestrator;
 use crate::command::{try_handle_model_command_input, CommandContext, CommandDispatcher};
 use crate::download::{is_bot_mentioned, is_reply_to_bot};
 use crate::error::BotError;
+use crate::formatting::telegram::markdown_notice;
 use crate::handler_deps::HandlerDeps;
 use loom::command as loom_command;
 use teloxide::types::Message;
@@ -125,8 +126,20 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
             match cmd {
                 loom_command::Command::ResetContext => {
                     let thread_id = format!("telegram_{}", ctx.chat_id());
-                    ctx.deps.session.reset(&thread_id).await?;
-                    ctx.deps.sender.send_text(ctx.chat_id(), "Context cleared.").await?;
+                    match ctx.deps.session.reset(&thread_id).await {
+                        Ok(count) => {
+                            let message = markdown_notice(
+                                "Session Reset",
+                                &format!("🔄 Deleted {} checkpoints.", count),
+                            );
+                            ctx.deps.sender.send_formatted(ctx.chat_id(), &message).await?;
+                        }
+                        Err(error) => {
+                            tracing::error!("Failed to reset session: {}", error);
+                            let message = markdown_notice("Reset Failed", &format!("❌ {}", error));
+                            ctx.deps.sender.send_formatted(ctx.chat_id(), &message).await?;
+                        }
+                    }
                     return Ok(());
                 }
                 loom_command::Command::Compact { .. } | loom_command::Command::Summarize => {
