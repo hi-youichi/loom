@@ -686,57 +686,56 @@ impl LlmClient for ChatOpenAICompat {
             "OpenAI-compat chat create_stream"
         );
 
-        let mut res = 'stream_request: loop {
-            let response = {
-                let mut attempt = 0;
-                loop {
-                    match self
-                        .client
-                        .post(&url)
-                        .bearer_auth(&self.api_key)
-                        .json(&body)
-                        .send()
-                        .await
+        let response = {
+            let mut attempt = 0;
+            loop {
+                match self
+                    .client
+                    .post(&url)
+                    .bearer_auth(&self.api_key)
+                    .json(&body)
+                    .send()
+                    .await
+                {
+                    Ok(response) => break response,
+                    Err(e)
+                        if is_retryable_reqwest_error(&e)
+                            && attempt < TRANSIENT_HTTP_MAX_RETRIES =>
                     {
-                        Ok(response) => break response,
-                        Err(e)
-                            if is_retryable_reqwest_error(&e)
-                                && attempt < TRANSIENT_HTTP_MAX_RETRIES =>
-                        {
-                            let delay = retry_backoff_for_attempt(attempt);
-                            tracing::warn!(
-                                url = %url,
-                                attempt = attempt + 1,
-                                max_retries = TRANSIENT_HTTP_MAX_RETRIES,
-                                delay_secs = delay.as_secs_f64(),
-                                error = %e,
-                                "OpenAI-compat stream request failed, retrying"
-                            );
-                            attempt += 1;
-                            tokio::time::sleep(delay).await;
-                        }
-                        Err(e) => {
-                            return Err(AgentError::ExecutionFailed(format!(
-                                "OpenAI-compat stream request: {}",
-                                e
-                            )));
-                        }
+                        let delay = retry_backoff_for_attempt(attempt);
+                        tracing::warn!(
+                            url = %url,
+                            attempt = attempt + 1,
+                            max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                            delay_secs = delay.as_secs_f64(),
+                            error = %e,
+                            "OpenAI-compat stream request failed, retrying"
+                        );
+                        attempt += 1;
+                        tokio::time::sleep(delay).await;
+                    }
+                    Err(e) => {
+                        return Err(AgentError::ExecutionFailed(format!(
+                            "OpenAI-compat stream request: {}",
+                            e
+                        )));
                     }
                 }
-            };
+            }
+        };
 
-            let status = response.status();
-            if status.is_success() {
-                break 'stream_request response;
-            }
-            if !is_retryable_status(status) {
-                let body_bytes = response.bytes().await.unwrap_or_default();
-                let msg = String::from_utf8_lossy(&body_bytes);
-                return Err(AgentError::ExecutionFailed(format!(
-                    "OpenAI-compat stream error {}: {}",
-                    status, msg
-                )));
-            }
+        let status = response.status();
+        let response = if status.is_success() {
+            response
+        } else if !is_retryable_status(status) {
+            let body_bytes = response.bytes().await.unwrap_or_default();
+            let msg = String::from_utf8_lossy(&body_bytes);
+            return Err(AgentError::ExecutionFailed(format!(
+                "OpenAI-compat stream error {}: {}",
+                status, msg
+            )));
+        } else {
+            let mut final_response = None;
             for attempt in 0..COMPAT_RETRY_MAX_RETRIES {
                 let delay = backoff_for_attempt(attempt);
                 tracing::warn!(
@@ -759,7 +758,8 @@ impl LlmClient for ChatOpenAICompat {
                     })?;
                 let retry_status = retry_res.status();
                 if retry_status.is_success() {
-                    break 'stream_request retry_res;
+                    final_response = Some(retry_res);
+                    break;
                 }
                 if !is_retryable_status(retry_status) {
                     let body_bytes = retry_res.bytes().await.unwrap_or_default();
@@ -778,12 +778,18 @@ impl LlmClient for ChatOpenAICompat {
                     )));
                 }
             }
-            let body_bytes = response.bytes().await.unwrap_or_default();
-            let msg = String::from_utf8_lossy(&body_bytes);
-            return Err(AgentError::ExecutionFailed(format!(
-                "OpenAI-compat stream error {}: {}",
-                status, msg
-            )));
+            
+            match final_response {
+                Some(resp) => resp,
+                None => {
+                    let body_bytes = response.bytes().await.unwrap_or_default();
+                    let msg = String::from_utf8_lossy(&body_bytes);
+                    return Err(AgentError::ExecutionFailed(format!(
+                        "OpenAI-compat stream error {}: {}",
+                        status, msg
+                    )));
+                }
+            }
         };
 
         let mut buf = Vec::<u8>::new();
@@ -798,6 +804,8 @@ impl LlmClient for ChatOpenAICompat {
         let mut done = false;
         let mut stream_read_attempt = 0;
 
+        let mut res = response;
+        
         while !done {
             let chunk = match res.chunk().await {
                 Ok(Some(bytes)) => Some(bytes),
