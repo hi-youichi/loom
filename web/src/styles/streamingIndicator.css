@@ -1,0 +1,28 @@
+.message-list__streaming {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0;
+}
+
+.streaming-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: var(--primary);
+  animation: indicator-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes indicator-pulse {
+  0% {
+    transform: scale(0.8);
+    background-color: #6366f1;
+  }
+  50% {
+    transform: scale(1.3);
+    background-color: #a855f7;
+  }
+  100% {
+    transform: scale(0.8);
+    background-color: #6366f1;
+  }
+}
