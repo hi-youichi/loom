@@ -2,6 +2,7 @@
 
 use axum::extract::ws::{Message, WebSocket};
 use loom::{ClientRequest, ErrorResponse, ServerResponse};
+use loom::services::ModelService;
 use std::sync::Arc;
 use tokio::sync::oneshot;
 
@@ -11,6 +12,7 @@ use super::run::handle_run;
 use super::tools::{handle_tool_show, handle_tools_list};
 use super::user_messages::handle_user_messages;
 use super::agents::handle_agent_list;
+use super::models::{handle_list_models, handle_set_model};
 use super::workspace::{
     handle_workspace_create, handle_workspace_list, handle_workspace_thread_add,
     handle_workspace_thread_list, handle_workspace_thread_remove,
@@ -22,6 +24,7 @@ pub(crate) async fn handle_socket(
     workspace_store: Option<Arc<loom_workspace::Store>>,
     user_message_store: Option<std::sync::Arc<dyn loom::UserMessageStore>>,
     run_config: RunConfig,
+    model_service: Arc<ModelService>,
 ) {
     while let Some(res) = socket.recv().await {
         let msg = match res {
@@ -44,6 +47,7 @@ pub(crate) async fn handle_socket(
             workspace_store.clone(),
             user_message_store.clone(),
             &run_config,
+            model_service.clone(),
         )
         .await
         {
@@ -63,6 +67,7 @@ async fn handle_request_and_send(
     workspace_store: Option<Arc<loom_workspace::Store>>,
     user_message_store: Option<std::sync::Arc<dyn loom::UserMessageStore>>,
     run_config: &RunConfig,
+    model_service: Arc<ModelService>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let req: ClientRequest = match serde_json::from_str(text) {
         Ok(r) => r,
@@ -125,6 +130,14 @@ async fn handle_request_and_send(
             )
             .await?;
         }
+        // ClientRequest::ListModels(r) => {
+        //     let resp = handle_list_models(r, &model_service).await;
+        //     send_response(socket, &resp).await?;
+        // }
+        // ClientRequest::SetModel(r) => {
+        //     let resp = handle_set_model(r, &model_service).await;
+        //     send_response(socket, &resp).await?;
+        // }
     }
     Ok(())
 }

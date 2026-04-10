@@ -149,9 +149,12 @@ pub enum ServerResponse {
     WorkspaceThreadRemove(WorkspaceThreadRemoveResponse),
     Pong(PongResponse),
     Error(ErrorResponse),
+    ListModels(ListModelsResponse),
+    SetModel(SetModelResponse),
 }
 // -----------------------------------------------------------------------------
 // Workspace responses
+// -----------------------------------------------------------------------------
 // -----------------------------------------------------------------------------
 /// Workspace metadata.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -199,6 +202,38 @@ pub struct WorkspaceThreadRemoveResponse {
     pub id: String,
     pub workspace_id: String,
     pub thread_id: String,
+}
+
+// -----------------------------------------------------------------------------
+// Model responses
+// -----------------------------------------------------------------------------
+
+/// Model information
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ModelInfo {
+    pub id: String,
+    pub name: String,
+    pub provider: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub family: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<Vec<String>>,
+}
+
+/// List models response
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ListModelsResponse {
+    pub id: String,
+    pub models: Vec<ModelInfo>,
+}
+
+/// Set model response
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SetModelResponse {
+    pub id: String,
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 #[cfg(test)]
 mod tests {
