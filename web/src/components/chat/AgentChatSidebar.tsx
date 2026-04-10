@@ -107,12 +107,6 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
             {/* Agent dropdown placeholder - would need full implementation */}
           </div>
         </div>
-        {isStreaming && (
-          <div className="flex items-center gap-1.5 text-xs text-primary animate-pulse">
-            <span className="size-2 rounded-full bg-primary"></span>
-            对话中...
-          </div>
-        )}
         <ThemeToggle />
       </div>
 
@@ -122,7 +116,7 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
         )}
       </div>
 
-      <div className="p-3 border-t border-border">
+      <div className="border-t border-border">
         <MessageComposer
           disabled={!selectedAgentId || isStreaming}
           onSend={onSendMessage}

@@ -60,11 +60,16 @@ export const MessageList = memo(function MessageList({
       className={`message-list text-sm h-full overflow-y-auto ${className}`}
       role="log" 
       aria-live="polite"
-      aria-label="聊天消息"
+      aria-label="Chat messages"
     >
       {messages.map(message => (
         <MessageItem key={message.id} {...message} streaming={streaming && message.sender === 'assistant'} />
       ))}
+      {streaming && (
+        <div className="message-list__streaming">
+          <span className="streaming-indicator" />
+        </div>
+      )}
     </div>
   )
 })

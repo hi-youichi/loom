@@ -53,7 +53,7 @@ export function ToolCard({
     <div 
       className={`tool-card tool-card--${toolType} tool-card--${tool.status}${expanded ? ' tool-card--expanded' : ''}`}
       role="article"
-      aria-label={`${typeInfo.label}工具: ${tool.name}`}
+      aria-label={`${displayName} ${displayTitle || ''}`}
     >
       {/* 标题栏 */}
       <div

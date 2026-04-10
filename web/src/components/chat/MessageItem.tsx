@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import type { UIMessageItemProps, UIMessageContent } from '../../types/ui/message'
+import type { UIMessageItemProps, UITextContent, UIToolContent } from '../../types/ui/message'
 import { MarkdownContent } from './MarkdownContent'
 import { ToolCard } from '../ToolCard'
 import type { ToolBlock } from '../../types/chat'
@@ -25,57 +25,52 @@ export const MessageItem = memo(function MessageItem({
   onRetry,
   streaming,
 }: UIMessageItemProps & MessageItemExtraProps) {
-  const renderContent = (item: UIMessageContent, index: number) => {
-    if (item.type === 'text') {
-      return (
-        <div key={index} className="message__text">
-          <MarkdownContent text={item.text} streaming={streaming} />
-        </div>
-      )
-    }
-
-    if (item.type === 'tool') {
-      const tool: ToolBlock = {
-        id: item.id,
-        type: 'tool',
-        callId: item.id,
-        name: item.name,
-        status: uiStatusToBlockStatus(item.status),
-        argumentsText: item.argumentsText,
-        outputText: item.outputText,
-        resultText: item.resultText,
-        isError: item.isError,
-      }
-      return (
-        <div key={index} className="message__tool">
-          <ToolCard tool={tool} />
-        </div>
-      )
-    }
-
-    return null
-  }
+  const textItems = content.filter((item): item is UITextContent => item.type === 'text')
+  const toolItems = content.filter((item): item is UIToolContent => item.type === 'tool')
 
   return (
-    <article
-      className={`message message--${sender} ${className || ''}`}
-      data-message-id={id}
-      aria-label={`${sender === 'user' ? 'User' : 'Assistant'} message`}
-    >
-      <div className="message__content">
-        {content.map((item, index) => renderContent(item, index))}
-      </div>
-
-      {onRetry && sender === 'user' && (
-        <button
-          className="message__retry"
-          onClick={onRetry}
-          aria-label="Retry"
-          type="button"
+    <>
+      {textItems.length > 0 && (
+        <article
+          className={`message message--${sender} ${className || ''}`}
+          data-message-id={id}
+          aria-label={`${sender === 'user' ? 'User' : 'Assistant'} message`}
         >
-          Retry
-        </button>
+          <div className="message__content">
+            {textItems.map((item, index) => (
+              <div key={index} className="message__text">
+                <MarkdownContent text={item.text} streaming={streaming} />
+              </div>
+            ))}
+          </div>
+
+          {onRetry && sender === 'user' && (
+            <button
+              className="message__retry"
+              onClick={onRetry}
+              aria-label="Retry"
+              type="button"
+            >
+              Retry
+            </button>
+          )}
+        </article>
       )}
-    </article>
+
+      {toolItems.map((item, index) => {
+        const tool: ToolBlock = {
+          id: item.id,
+          type: 'tool',
+          callId: item.id,
+          name: item.name,
+          status: uiStatusToBlockStatus(item.status),
+          argumentsText: item.argumentsText,
+          outputText: item.outputText,
+          resultText: item.resultText,
+          isError: item.isError,
+        }
+        return <ToolCard key={`tool-${index}`} tool={tool} />
+      })}
+    </>
   )
 })
