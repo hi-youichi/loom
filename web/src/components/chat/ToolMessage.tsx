@@ -1,6 +1,8 @@
 import { memo } from 'react'
 import type { UIToolContent } from '../../types/ui/message'
-import { TOOL_TYPE_INFO, TOOL_STATUS_INFO } from '../../types/toolConfig'
+import { TOOL_TYPE_INFO } from '../../types/toolConfig'
+import { ToolIcon } from '../ToolIcon'
+import { extractToolTitle, getToolDisplayName } from '../../utils/toolTitle'
 
 type ToolMessageProps = {
   content: UIToolContent
@@ -18,7 +20,12 @@ export const ToolMessage = memo(function ToolMessage({
   // 使用工具类型信息
   const toolType = content.toolType || 'other'
   const typeInfo = TOOL_TYPE_INFO[toolType]
-  const statusInfo = TOOL_STATUS_INFO[content.status]
+
+  let parsedArgs: Record<string, unknown> = {}
+  try { parsedArgs = JSON.parse(content.argumentsText || '{}') } catch {}
+  const displayName = getToolDisplayName(content.name)
+  const title = extractToolTitle(content.name, parsedArgs)
+  const headerText = title ? `${displayName} · ${title}` : displayName
 
   return (
     <div 
@@ -28,21 +35,8 @@ export const ToolMessage = memo(function ToolMessage({
       style={{ borderLeftColor: typeInfo.color }}
     >
       <div className="tool-message__header">
-        <span className="tool-message__icon">{statusInfo.icon}</span>
-        <span className="tool-message__type-icon" style={{ color: typeInfo.color }}>
-          {typeInfo.icon}
-        </span>
-        <span className="tool-message__name">{content.name}</span>
-        <span className="tool-message__type-label" style={{ color: typeInfo.color }}>
-          {typeInfo.label}
-        </span>
-        <span 
-          className="tool-message__status"
-          style={{ color: statusInfo.color }}
-          aria-label={`状态: ${content.status}`}
-        >
-          {statusInfo.label}
-        </span>
+        <ToolIcon name={typeInfo.icon} size={16} style={{ flexShrink: 0 }} />
+        <span className="tool-message__name">{headerText}</span>
       </div>
       
       {content.argumentsText && (

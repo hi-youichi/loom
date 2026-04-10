@@ -20,3 +20,6 @@ export type { FileNode } from './file-tree'
 
 // Dashboard
 export { DashboardView, AgentGrid, AgentCard, ActivityFeed } from './dashboard'
+
+// Tools
+export { ToolCard } from './ToolCard'

@@ -5,12 +5,12 @@ import { ChevronRight, Users, ChevronDown } from "lucide-react"
 import { useChatPanel } from "@/hooks/useChatPanel"
 import { MessageList } from "./MessageList"
 import { MessageComposer } from "../MessageComposer"
+import { ThemeToggle } from "../ThemeToggle"
 import type { UIMessageItemProps } from "@/types/ui/message"
 
 interface AgentChatSidebarProps {
   agents: Array<{ name: string; status: string }>
   messages: UIMessageItemProps[]
-  unreadCount: number
   isStreaming?: boolean
   onSendMessage: (text: string) => Promise<void>
 }
@@ -63,7 +63,6 @@ function ResizeHandle({ onDrag, onToggle }: { onDrag: (w: number) => void; onTog
 export const AgentChatSidebar = memo(function AgentChatSidebar({
   agents,
   messages,
-  unreadCount,
   isStreaming = false,
   onSendMessage,
 }: AgentChatSidebarProps) {
@@ -114,9 +113,7 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
             对话中...
           </div>
         )}
-        {unreadCount > 0 && !isStreaming && (
-          <div className="text-xs text-muted-foreground">{unreadCount} 条消息</div>
-        )}
+        <ThemeToggle />
       </div>
 
       <div className="flex-1 min-h-0 overflow-hidden">

@@ -1,25 +1,12 @@
 import { useState } from 'react'
 import type { ToolBlock } from '../types/chat'
+import { TOOL_TYPE_ICONS } from '../types/icons'
+import { ToolIcon } from './ToolIcon'
+import { extractToolTitle, getToolDisplayName } from '../utils/toolTitle'
 
 type ToolBlockViewProps = {
   tool: ToolBlock
   defaultExpanded?: boolean
-}
-
-const STATUS_ICONS: Record<ToolBlock['status'], string> = {
-  queued: '⏳',
-  running: '▶',
-  done: '✅',
-  error: '❌',
-  approval_required: '🔒',
-}
-
-const STATUS_LABELS: Record<ToolBlock['status'], string> = {
-  queued: '等待中',
-  running: '运行中',
-  done: '已完成',
-  error: '错误',
-  approval_required: '需审批',
 }
 
 const MAX_OUTPUT_LINES = 8
@@ -69,11 +56,8 @@ export function ToolBlockView({ tool, defaultExpanded = false }: ToolBlockViewPr
         aria-expanded={expanded}
         type="button"
       >
-        <span className="tool-block__icon" aria-hidden="true">
-          {STATUS_ICONS[tool.status]}
-        </span>
-        <span className="tool-block__name">{tool.name}</span>
-        <span className="tool-block__status">{STATUS_LABELS[tool.status]}</span>
+        <ToolIcon name={TOOL_TYPE_ICONS[tool.toolType || 'other'] || 'settings'} size={16} style={{ flexShrink: 0 }} />
+        <span className="tool-block__name">{(() => { try { const a = JSON.parse(tool.argumentsText || '{}'); const t = extractToolTitle(tool.name, a); const d = getToolDisplayName(tool.name); return t ? `${d} · ${t}` : d } catch { return tool.name } })()}</span>
         <span className="tool-block__toggle" aria-hidden="true">
           {expanded ? '▼' : '▶'}
         </span>

@@ -174,7 +174,6 @@ export function ChatPage() {
             status: agent.status,
           }))}
           messages={messages}
-          unreadCount={messages.filter(m => m.sender === 'assistant').length}
           isStreaming={isStreaming}
           onSendMessage={handleSendMessage}
         />

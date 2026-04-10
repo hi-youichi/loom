@@ -1,9 +1,19 @@
 import { memo } from 'react'
 import type { UIMessageItemProps, UIMessageContent } from '../../types/ui/message'
 import { MarkdownContent } from './MarkdownContent'
+import { ToolCard } from '../ToolCard'
+import type { ToolBlock } from '../../types/chat'
 
 interface MessageItemExtraProps {
   streaming?: boolean
+}
+
+function uiStatusToBlockStatus(s: 'pending' | 'running' | 'success' | 'error'): ToolBlock['status'] {
+  if (s === 'pending') return 'queued'
+  if (s === 'running') return 'running'
+  if (s === 'success') return 'done'
+  if (s === 'error') return 'error'
+  return 'queued'
 }
 
 export const MessageItem = memo(function MessageItem({
@@ -25,38 +35,20 @@ export const MessageItem = memo(function MessageItem({
     }
 
     if (item.type === 'tool') {
+      const tool: ToolBlock = {
+        id: item.id,
+        type: 'tool',
+        callId: item.id,
+        name: item.name,
+        status: uiStatusToBlockStatus(item.status),
+        argumentsText: item.argumentsText,
+        outputText: item.outputText,
+        resultText: item.resultText,
+        isError: item.isError,
+      }
       return (
         <div key={index} className="message__tool">
-          <div className="tool__header">
-            <span className="tool__name">{item.name}</span>
-            <span className={`tool__status tool__status--${item.status}`}>
-              {item.status}
-            </span>
-          </div>
-          {item.argumentsText && (
-            <div className="tool__arguments">
-              <strong>参数:</strong>
-              <pre>{item.argumentsText}</pre>
-            </div>
-          )}
-          {item.outputText && (
-            <div className="tool__output">
-              <strong>输出:</strong>
-              <pre>{item.outputText}</pre>
-            </div>
-          )}
-          {item.resultText && !item.isError && (
-            <div className="tool__result">
-              <strong>结果:</strong>
-              <pre>{item.resultText}</pre>
-            </div>
-          )}
-          {item.isError && (
-            <div className="tool__error">
-              <strong>错误:</strong>
-              <pre>{item.resultText}</pre>
-            </div>
-          )}
+          <ToolCard tool={tool} />
         </div>
       )
     }
@@ -68,7 +60,7 @@ export const MessageItem = memo(function MessageItem({
     <article
       className={`message message--${sender} ${className || ''}`}
       data-message-id={id}
-      aria-label={`${sender === 'user' ? '用户' : '助手'}消息`}
+      aria-label={`${sender === 'user' ? 'User' : 'Assistant'} message`}
     >
       <div className="message__content">
         {content.map((item, index) => renderContent(item, index))}
@@ -78,9 +70,10 @@ export const MessageItem = memo(function MessageItem({
         <button
           className="message__retry"
           onClick={onRetry}
-          aria-label="重试发送"
+          aria-label="Retry"
+          type="button"
         >
-          重试
+          Retry
         </button>
       )}
     </article>
