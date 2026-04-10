@@ -271,7 +271,7 @@ impl PregelLoop {
             .collect::<Vec<_>>();
         if let Some(task) = interrupt_after_tasks.first() {
             self.status = LoopStatus::InterruptedAfter;
-            let interrupt = build_configured_interrupt(&task, "after");
+            let interrupt = build_configured_interrupt(task, "after");
             push_pending_interrupt_records(
                 &mut self.checkpoint,
                 interrupt_after_tasks

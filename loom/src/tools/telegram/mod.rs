@@ -56,7 +56,7 @@ pub fn set_current_chat_id(chat_id: i64) {
 }
 
 pub fn get_current_chat_id() -> Option<i64> {
-    CURRENT_CHAT_ID.read().unwrap().clone()
+    *CURRENT_CHAT_ID.read().unwrap()
 }
 
 pub fn clear_current_chat_id() {

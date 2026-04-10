@@ -205,7 +205,7 @@ impl ModelRegistry {
     /// Get the global singleton instance.
     pub fn global() -> Self {
         static INSTANCE: std::sync::OnceLock<ModelRegistry> = std::sync::OnceLock::new();
-        INSTANCE.get_or_init(|| ModelRegistry::new()).clone()
+        INSTANCE.get_or_init(ModelRegistry::new).clone()
     }
 
     /// List all available models from all providers.

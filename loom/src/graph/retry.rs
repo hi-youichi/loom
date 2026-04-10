@@ -8,8 +8,10 @@ use std::time::Duration;
 ///
 /// Defines how many times and with what strategy to retry a failed operation.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub enum RetryPolicy {
     /// No retry - fail immediately on error.
+    #[default]
     None,
     /// Fixed interval retry - retry with a constant delay between attempts.
     Fixed {
@@ -101,11 +103,6 @@ impl RetryPolicy {
     }
 }
 
-impl Default for RetryPolicy {
-    fn default() -> Self {
-        RetryPolicy::None
-    }
-}
 
 #[cfg(test)]
 mod tests {

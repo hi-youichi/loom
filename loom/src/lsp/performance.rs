@@ -124,7 +124,7 @@ impl PerformanceMonitor {
         map: &DashMap<String, OperationStats>,
         metric: &OperationMetric,
     ) {
-        let mut entry = map.entry(key.to_string()).or_insert_with(OperationStats::default);
+        let mut entry = map.entry(key.to_string()).or_default();
         
         entry.total_count += 1;
         entry.total_duration += metric.duration;

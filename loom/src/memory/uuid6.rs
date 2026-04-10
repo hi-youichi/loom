@@ -189,8 +189,8 @@ pub fn uuid6_with_params(node: Option<u64>, clock_seq: Option<u16>) -> Uuid6 {
     }
 
     // Generate random values for node and clock_seq if not provided
-    let node = node.unwrap_or_else(|| rand_u48());
-    let clock_seq = clock_seq.unwrap_or_else(|| rand_u14());
+    let node = node.unwrap_or_else(rand_u48);
+    let clock_seq = clock_seq.unwrap_or_else(rand_u14);
 
     // Build UUID6 integer
     let time_high_and_time_mid = (timestamp >> 12) & 0xFFFF_FFFF_FFFF;

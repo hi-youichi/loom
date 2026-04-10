@@ -82,6 +82,7 @@ impl Default for TaskNodeState {
 ///
 /// **Interaction**: Flows through `StateGraph<GotState>`; see `crate::agent::got::runner`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct GotState {
     /// User message used by PlanGraphNode to generate the DAG.
     #[serde(default)]
@@ -93,15 +94,6 @@ pub struct GotState {
     pub node_states: HashMap<String, TaskNodeState>,
 }
 
-impl Default for GotState {
-    fn default() -> Self {
-        Self {
-            input_message: String::new(),
-            task_graph: TaskGraph::default(),
-            node_states: HashMap::new(),
-        }
-    }
-}
 
 impl GotState {
     /// Returns a combined result string for display (e.g. last node's result or concatenation).

@@ -241,7 +241,7 @@ impl Default for ReActState {
 
 fn normalize_tool_call_ids(mut calls: Vec<ToolCall>) -> Vec<ToolCall> {
     for tc in &mut calls {
-        if tc.id.as_deref().map_or(true, |s| s.is_empty()) {
+        if tc.id.as_deref().is_none_or(|s| s.is_empty()) {
             tc.id = Some(format!("call_{}", uuid6()));
         }
     }

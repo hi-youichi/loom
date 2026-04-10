@@ -54,7 +54,7 @@ const IGNORE_DIRS: &[&str] = &[
 
 /// Returns `true` if the directory entry's file name matches a default-ignored segment.
 fn is_default_ignored(name: &str) -> bool {
-    IGNORE_DIRS.iter().any(|&d| d == name)
+    IGNORE_DIRS.contains(&name)
 }
 
 /// Tool that lists files and subdirectories as a tree.

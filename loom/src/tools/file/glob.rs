@@ -131,7 +131,7 @@ impl Tool for GlobTool {
             .map(|arr| {
                 arr.iter()
                     .filter_map(|v| v.as_str().map(|s| s.trim()).filter(|s| !s.is_empty()))
-                    .map(|s| Pattern::new(s))
+                    .map(Pattern::new)
                     .filter_map(|p| p.ok())
                     .collect()
             })

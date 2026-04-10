@@ -367,7 +367,7 @@ fn whitespace_normalized_replacer(content: &str, find: &str) -> Vec<String> {
         if normalize(line) == norm_find {
             results.push(line.to_string());
         } else if normalize(line).contains(&norm_find) {
-            let words: Vec<&str> = find.trim().split_whitespace().collect();
+            let words: Vec<&str> = find.split_whitespace().collect();
             if !words.is_empty() {
                 let pattern = words
                     .iter()
