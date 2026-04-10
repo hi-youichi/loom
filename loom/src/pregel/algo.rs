@@ -509,7 +509,7 @@ fn prepare_pull_tasks(
                 updated.contains(trigger.as_str())
                     && channels
                         .get(trigger.as_str())
-                        .map_or(false, |ch| ch.is_available())
+                        .is_some_and(|ch| ch.is_available())
             })
         };
 

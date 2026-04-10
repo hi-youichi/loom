@@ -160,7 +160,7 @@ impl Node<TotState> for ThinkEvaluateNode {
         ctx: &RunContext<TotState>,
     ) -> Result<(TotState, Next), AgentError> {
         let (out, next) = self.run(state).await?;
-        if let (Some(ref tx), Some(chosen)) = (ctx.stream_tx.as_ref(), out.tot.chosen_index) {
+        if let (Some(tx), Some(chosen)) = (ctx.stream_tx.as_ref(), out.tot.chosen_index) {
             let scores: Vec<f32> = out.tot.candidates.iter().filter_map(|c| c.score).collect();
             let _ = tx.send(StreamEvent::TotEvaluate { chosen, scores }).await;
         }

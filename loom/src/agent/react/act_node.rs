@@ -110,17 +110,14 @@ pub type ErrorHandlerFn =
 
 /// Configuration for how ActNode handles tool errors.
 #[derive(Clone)]
+#[derive(Default)]
 pub enum HandleToolErrors {
+    #[default]
     Never,
     Always(Option<String>),
     Custom(ErrorHandlerFn),
 }
 
-impl Default for HandleToolErrors {
-    fn default() -> Self {
-        Self::Never
-    }
-}
 
 impl std::fmt::Debug for HandleToolErrors {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -213,7 +210,7 @@ impl ActNode {
 /// Ensures each [`ToolResult`] has a non-empty `call_id`, preferring the paired [`ToolCall::id`].
 fn backfill_tool_result_call_ids(tool_calls: &[ToolCall], tool_results: &mut Vec<ToolResult>) {
     for (tc, tr) in tool_calls.iter().zip(tool_results.iter_mut()) {
-        let needs_fill = tr.call_id.as_deref().map_or(true, |s| s.is_empty());
+        let needs_fill = tr.call_id.as_deref().is_none_or(|s| s.is_empty());
         if !needs_fill {
             continue;
         }
@@ -231,7 +228,7 @@ fn backfill_tool_result_call_ids(tool_calls: &[ToolCall], tool_results: &mut Vec
     }
     let paired = tool_calls.len().min(tool_results.len());
     for tr in tool_results.iter_mut().skip(paired) {
-        let needs_fill = tr.call_id.as_deref().map_or(true, |s| s.is_empty());
+        let needs_fill = tr.call_id.as_deref().is_none_or(|s| s.is_empty());
         if needs_fill {
             tr.call_id = Some(format!("call_{}", uuid6()));
             warn!("unpaired ToolResult missing call_id; generated fallback id");
@@ -451,6 +448,7 @@ impl Node<ReActState> for ActNode {
                             NormalizationConfig::runtime_default()
                                 .with_used_observation_chars(used_observation_chars),
                         );
+                        let display_text = normalized.display_text.clone();
                         let summary = truncate_for_log(&normalized.display_text, 200);
                         used_observation_chars += normalized.observation_chars;
                         tool_results.push(
@@ -466,7 +464,7 @@ impl Node<ReActState> for ActNode {
                                     .send(StreamEvent::ToolEnd {
                                         call_id: tc.id.clone(),
                                         name: tc.name.clone(),
-                                        result: summary.clone(),
+                                        result: display_text,
                                         is_error: true,
                                     })
                                     .await;
@@ -565,19 +563,20 @@ impl Node<ReActState> for ActNode {
                     trace!(
                         tool = %tc.name,
                         result_len = content.as_text().unwrap().len(),
-                        result_preview = %truncate_for_log(&content.as_text().unwrap(), 200),
+                        result_preview = %truncate_for_log(content.as_text().unwrap(), 200),
                         "Tool returned"
                     );
                     let normalized = normalize_tool_output(
                         &tc.name,
                         &args,
-                        &content.as_text().unwrap(),
+                        content.as_text().unwrap(),
                         false,
                         tool_output_hints.get(&tc.name),
                         NormalizationConfig::runtime_default()
                             .with_used_observation_chars(used_observation_chars),
                     );
                     let summary = truncate_for_log(&normalized.display_text, 200);
+                    let display_text = normalized.display_text.clone();
                     used_observation_chars += normalized.observation_chars;
 
                     tool_results.push(
@@ -592,7 +591,7 @@ impl Node<ReActState> for ActNode {
                                 .send(StreamEvent::ToolEnd {
                                     call_id: tc.id.clone(),
                                     name: tc.name.clone(),
-                                    result: summary.clone(),
+                                    result: display_text,
                                     is_error: false,
                                 })
                                 .await;
@@ -623,6 +622,7 @@ impl Node<ReActState> for ActNode {
                             .with_used_observation_chars(used_observation_chars),
                     );
                     let summary = truncate_for_log(&normalized.display_text, 200);
+                    let display_text = normalized.display_text.clone();
                     used_observation_chars += normalized.observation_chars;
 
                     tool_results.push(
@@ -638,7 +638,7 @@ impl Node<ReActState> for ActNode {
                                 .send(StreamEvent::ToolEnd {
                                     call_id: tc.id.clone(),
                                     name: tc.name.clone(),
-                                    result: summary.clone(),
+                                    result: display_text,
                                     is_error: true,
                                 })
                                 .await;

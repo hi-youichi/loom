@@ -27,19 +27,12 @@ impl Default for TotRunnerConfig {
 
 /// GoT-specific runner config (adaptive mode, AGoT LLM complexity).
 #[derive(Clone, Debug)]
+#[derive(Default)]
 pub struct GotRunnerConfig {
     pub adaptive: bool,
     pub agot_llm_complexity: bool,
 }
 
-impl Default for GotRunnerConfig {
-    fn default() -> Self {
-        Self {
-            adaptive: false,
-            agot_llm_complexity: false,
-        }
-    }
-}
 
 /// Configuration for building ReAct run context.
 #[derive(Clone, Debug)]
