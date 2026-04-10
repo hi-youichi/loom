@@ -327,8 +327,7 @@ fn parse_arguments_delta(delta: &str) -> Option<serde_json::Value> {
 }
 
 fn parse_text_output_to_raw_value(output: &str) -> serde_json::Value {
-    serde_json::from_str::<serde_json::Value>(output)
-        .unwrap_or_else(|_| serde_json::json!({ "text": output }))
+    serde_json::json!(output)
 }
 
 pub fn name_to_tool_kind(name: &str) -> ToolKind {

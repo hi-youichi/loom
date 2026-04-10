@@ -1112,8 +1112,11 @@ fn map_run_error(e: RunError) -> agent_client_protocol::Error {
 
 fn tool_call_content_to_raw_output(content: &loom::tool_source::ToolCallContent) -> serde_json::Value {
     match content {
-        loom::tool_source::ToolCallContent::Text(text) => serde_json::from_str::<serde_json::Value>(text)
-            .unwrap_or_else(|_| serde_json::json!({ "text": text })),
+        loom::tool_source::ToolCallContent::Text(text) => {
+            // For text content (like bash output), return as string directly
+            // This preserves the original output format without JSON parsing attempts
+            serde_json::json!(text)
+        }
         loom::tool_source::ToolCallContent::Diff {
             path,
             old_text,
