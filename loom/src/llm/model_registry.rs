@@ -16,6 +16,7 @@
 //!     base_url: Some("https://api.openai.com/v1".to_string()),
 //!     api_key: Some("sk-...".to_string()),
 //!     provider_type: None,
+//!     fetch_models: false,
 //! }];
 //! let models = registry.list_all_models(&providers).await;
 //!
@@ -49,6 +50,8 @@ pub struct ProviderConfig {
     pub api_key: Option<String>,
     /// Provider type: "openai" (default), "openai_compat", or "bigmodel" (alias).
     pub provider_type: Option<String>,
+    /// When `true`, fetch model list from `{base_url}/models` instead of models.dev.
+    pub fetch_models: bool,
 }
 
 /// A fully resolved model entry with provider configuration.
@@ -229,34 +232,80 @@ impl ModelRegistry {
             return Ok(Vec::new());
         }
 
-        let spec_providers = self.fetch_or_get_cached_spec_providers().await?;
         let mut all_models = Vec::new();
         let mut seen_ids = HashSet::new();
+        let mut need_spec_providers = false;
 
         for provider in providers {
-            let normalized = Self::normalize_provider_name(&provider.name);
-            let Some(spec_provider) = spec_providers.get(&normalized) else {
-                tracing::warn!(
-                    provider = %provider.name,
-                    "Provider not found in model spec; skipping provider models"
-                );
-                continue;
-            };
-
-            for model_id in spec_provider.models.keys() {
-                let mut entry = ModelEntry::from_provider_config(provider, model_id);
-                if entry.base_url.is_none() {
-                    if let Some(ref api) = spec_provider.api {
-                        entry.base_url = Some(api.clone());
+            if provider.fetch_models {
+                if let Some(ref base_url) = provider.base_url {
+                    let url = format!("{}/models", base_url.trim_end_matches('/'));
+                    match fetch_models_from_api(&url, provider.api_key.as_deref()).await {
+                        Ok(model_ids) => {
+                            tracing::info!(
+                                provider = %provider.name,
+                                count = model_ids.len(),
+                                "Fetched models from provider API"
+                            );
+                            for model_id in model_ids {
+                                let entry = ModelEntry::from_provider_config(provider, &model_id);
+                                if seen_ids.insert(entry.id.clone()) {
+                                    all_models.push(entry);
+                                }
+                            }
+                            continue;
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                provider = %provider.name,
+                                url = %url,
+                                error = %e,
+                                "Failed to fetch models from provider API; skipping provider"
+                            );
+                            continue;
+                        }
                     }
+                } else {
+                    tracing::warn!(
+                        provider = %provider.name,
+                        "fetch_models=true but base_url is missing; skipping provider"
+                    );
+                    continue;
                 }
-                if entry.provider_type.is_none()
-                    && !entry.provider.eq_ignore_ascii_case("openai")
-                {
-                    entry.provider_type = Some("openai_compat".to_string());
+            }
+            need_spec_providers = true;
+        }
+
+        if need_spec_providers {
+            let spec_providers = self.fetch_or_get_cached_spec_providers().await?;
+            for provider in providers {
+                if provider.fetch_models {
+                    continue;
                 }
-                if seen_ids.insert(entry.id.clone()) {
-                    all_models.push(entry);
+                let normalized = Self::normalize_provider_name(&provider.name);
+                let Some(spec_provider) = spec_providers.get(&normalized) else {
+                    tracing::warn!(
+                        provider = %provider.name,
+                        "Provider not found in model spec; skipping provider models"
+                    );
+                    continue;
+                };
+
+                for model_id in spec_provider.models.keys() {
+                    let mut entry = ModelEntry::from_provider_config(provider, model_id);
+                    if entry.base_url.is_none() {
+                        if let Some(ref api) = spec_provider.api {
+                            entry.base_url = Some(api.clone());
+                        }
+                    }
+                    if entry.provider_type.is_none()
+                        && !entry.provider.eq_ignore_ascii_case("openai")
+                    {
+                        entry.provider_type = Some("openai_compat".to_string());
+                    }
+                    if seen_ids.insert(entry.id.clone()) {
+                        all_models.push(entry);
+                    }
                 }
             }
         }
@@ -379,6 +428,37 @@ impl Default for ModelRegistry {
     }
 }
 
+#[derive(serde::Deserialize)]
+struct OpenAiModelsResponse {
+    data: Vec<OpenAiModelItem>,
+}
+
+#[derive(serde::Deserialize)]
+struct OpenAiModelItem {
+    id: String,
+}
+
+async fn fetch_models_from_api(
+    url: &str,
+    api_key: Option<&str>,
+) -> Result<Vec<String>, AgentError> {
+    let client = reqwest::Client::new();
+    let mut req = client.get(url);
+    if let Some(key) = api_key {
+        if key != "none" && !key.is_empty() {
+            req = req.bearer_auth(key);
+        }
+    }
+    let resp: OpenAiModelsResponse = req
+        .send()
+        .await
+        .map_err(|e| AgentError::ExecutionFailed(format!("failed to fetch models from {url}: {e}")))?
+        .json()
+        .await
+        .map_err(|e| AgentError::ExecutionFailed(format!("failed to parse models response from {url}: {e}")))?;
+    Ok(resp.data.into_iter().map(|m| m.id).collect())
+}
+
 /// Creates an LLM client from a ModelEntry with provider configuration.
 ///
 /// This is a convenience function that creates the appropriate LLM client
@@ -478,6 +558,7 @@ mod tests {
             base_url: Some("https://api.example.com".to_string()),
             api_key: Some("key".to_string()),
             provider_type: Some("openai".to_string()),
+            fetch_models: false,
         };
         let cloned = config.clone();
         assert_eq!(config.name, cloned.name);
@@ -535,6 +616,7 @@ mod tests {
             base_url: Some("https://api.openai.com/v1".to_string()),
             api_key: Some("sk-test".to_string()),
             provider_type: None,
+            fetch_models: false,
         };
         
         let entry = ModelEntry::from_provider_config(&provider, "gpt-4o");

@@ -61,6 +61,7 @@ pub async fn run_serve_on_listener(
                     base_url: p.base_url,
                     api_key: p.api_key,
                     provider_type: p.provider_type,
+                    fetch_models: p.fetch_models.unwrap_or(false),
                 })
                 .collect()
         }

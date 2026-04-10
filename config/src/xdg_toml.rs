@@ -56,6 +56,9 @@ pub struct ProviderDef {
     /// Sampling temperature (mapped to `OPENAI_TEMPERATURE` as a decimal string).
     #[serde(default)]
     pub temperature: Option<f64>,
+    /// When `true`, fetch model list from `{base_url}/models` instead of models.dev.
+    #[serde(default)]
+    pub fetch_models: Option<bool>,
 }
 
 impl ProviderDef {
@@ -240,6 +243,7 @@ BAR = "baz"
             model: None,
             provider_type: None,
             temperature: None,
+            fetch_models: None,
         };
         assert!(!p.to_env_map().contains_key("OPENAI_TOOL_CHOICE"));
     }
@@ -253,6 +257,7 @@ BAR = "baz"
             model: None,
             provider_type: None,
             temperature: Some(0.25),
+            fetch_models: None,
         };
         let m = p.to_env_map();
         assert_eq!(
@@ -270,6 +275,7 @@ BAR = "baz"
             model: None,
             provider_type: None,
             temperature: Some(f64::NAN),
+            fetch_models: None,
         };
         assert!(!p.to_env_map().contains_key("OPENAI_TEMPERATURE"));
     }

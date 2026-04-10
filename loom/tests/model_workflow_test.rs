@@ -131,6 +131,7 @@ mod tests {
             base_url: Some("https://api.openai.com/v1".to_string()),
             api_key: Some("sk-test".to_string()),
             provider_type: Some("openai".to_string()),
+            fetch_models: false,
         };
 
         let model_name = "gpt-4o";

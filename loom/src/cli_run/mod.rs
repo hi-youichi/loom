@@ -337,6 +337,7 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
                 base_url: p.base_url,
                 api_key: p.api_key,
                 provider_type: p.provider_type,
+                fetch_models: p.fetch_models.unwrap_or(false),
             })
             .collect(),
         Err(_) => vec![],
