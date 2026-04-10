@@ -4,6 +4,7 @@
 use super::common;
 use futures_util::StreamExt;
 use loom::{AgentType, ClientRequest, RunRequest, ServerResponse, UserMessagesRequest};
+use loom::protocol::AgentIdentifier;
 use std::time::Duration;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
@@ -139,7 +140,7 @@ async fn e2e_user_messages_after_run() {
     let run_req = ClientRequest::Run(RunRequest {
         id: None,
         message: loom::UserContent::text(user_msg.to_string()),
-        agent: AgentType::React,
+        agent: AgentIdentifier::Type(AgentType::React),
         thread_id: Some(thread_id.to_string()),
         workspace_id: None,
         working_folder: None,
