@@ -85,7 +85,7 @@ export function ModelSelector({
               "model-selector__trigger",
               "flex items-center gap-2 px-3 border border-border bg-background",
               "hover:bg-accent/50",
-              "focus-visible:outline-none",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               "disabled:opacity-50 disabled:cursor-not-allowed",
               "transition-colors cursor-pointer"
             )}
@@ -114,7 +114,7 @@ export function ModelSelector({
             </svg>
           </div>
         </PopoverTrigger>
-        <PopoverContent align="start" sideOffset={4}>
+        <PopoverContent align="start" sideOffset={4} className="w-[280px]">
           <div className="model-selector__content">
             <div className="px-1 pb-1">
               <input
