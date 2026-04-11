@@ -405,6 +405,7 @@ where
         name: String,
         result: String,
         is_error: bool,
+        raw_result: Option<String>,
     ) -> bool {
         if !self.is_tools_enabled() {
             return false;
@@ -415,6 +416,7 @@ where
                 name,
                 result,
                 is_error,
+                raw_result,
             })
             .await
             .is_ok()

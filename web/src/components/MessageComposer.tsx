@@ -29,7 +29,7 @@ function resizeTextarea(element: HTMLTextAreaElement) {
 export function MessageComposer({
   disabled = false,
   onSend,
-  selectedModel = 'claude-3-5-sonnet',
+  selectedModel = '',  // Changed from hardcoded default to empty string, parent should provide proper model ID
   onModelChange,
 }: MessageComposerProps) {
   const [value, setValue] = useState('')

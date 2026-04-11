@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 
 import { MessageComposer } from '../components/MessageComposer'
 import { ThinkIndicator } from '../components/ThinkIndicator'
 import { ToolBlockView } from '../components/ToolBlockView'
 import { sendMessage } from '../services/chat'
+import { useModels } from '../hooks/useModels'
 import type { ToolBlock, ToolStatus } from '../types/chat'
 
 const THREAD_STORAGE_KEY = 'loom-web-thread-id'
@@ -95,7 +96,15 @@ export function ChatPage() {
   const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([])
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [selectedModel, setSelectedModel] = useState('claude-3-5-sonnet')
+  const { models } = useModels()
+  const [selectedModel, setSelectedModel] = useState('')
+
+  useEffect(() => {
+    if (selectedModel || models.length === 0) return
+    const fallback = 'claude-3-5-sonnet'
+    const match = models.find(m => m.id.includes(fallback) || m.name.includes(fallback))
+    setSelectedModel(match?.id || models[0].id)
+  }, [models, selectedModel])
 
   const handleModelChange = (model: string) => {
     setSelectedModel(model)

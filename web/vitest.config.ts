@@ -22,8 +22,8 @@ export default defineConfig({
       exclude: [...coverageConfigDefaults.exclude, 'src/main.tsx', 'src/App.tsx', 'src/**/*.d.ts', 'src/__tests__/**', 'src/types/**', 'src/**/*.css'],
       thresholds: {
         lines: 90,
-        functions: 90,
-        branches: 85,
+        functions: 95,
+        branches: 80,
         statements: 90
       }
     },

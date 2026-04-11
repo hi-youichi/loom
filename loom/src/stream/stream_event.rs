@@ -142,6 +142,9 @@ where
         name: String,
         result: String,
         is_error: bool,
+        /// Full un-normalized result. When set, ACP layer uses this for `raw_output`
+        /// instead of `result` (which may be a head-tail excerpt or file reference).
+        raw_result: Option<String>,
     },
     /// Tool requires user approval before execution (Act node).
     ToolApproval {

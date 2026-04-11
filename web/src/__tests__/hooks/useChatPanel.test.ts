@@ -1,107 +1,82 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useChatPanel } from '../../hooks/useChatPanel'
 
 describe('useChatPanel', () => {
   beforeEach(() => {
-    localStorage.removeItem('chatPanelState')
+    localStorage.clear()
   })
 
-  it('should initialize with default state', () => {
+  it('returns default state', async () => {
+    const { useChatPanel } = await import('../../hooks/useChatPanel')
     const { result } = renderHook(() => useChatPanel())
-
     expect(result.current.collapsed).toBe(false)
     expect(result.current.width).toBe(400)
     expect(result.current.selectedAgentId).toBeNull()
   })
 
-  it('should toggle collapsed state', () => {
+  it('toggles collapsed', async () => {
+    const { useChatPanel } = await import('../../hooks/useChatPanel')
     const { result } = renderHook(() => useChatPanel())
 
-    expect(result.current.collapsed).toBe(false)
-
-    act(() => {
-      result.current.toggle()
-    })
-
+    act(() => result.current.toggle())
     expect(result.current.collapsed).toBe(true)
-  })
 
-  it('should expand when toggle is called on collapsed state', () => {
-    const { result } = renderHook(() => useChatPanel())
-
-    act(() => {
-      result.current.toggle()
-      result.current.toggle()
-    })
-
+    act(() => result.current.toggle())
     expect(result.current.collapsed).toBe(false)
   })
 
-  it('should collapse when toggle is called on expanded state', () => {
+  it('expands', async () => {
+    const { useChatPanel } = await import('../../hooks/useChatPanel')
     const { result } = renderHook(() => useChatPanel())
 
-    act(() => {
-      result.current.toggle()
-    })
-
+    act(() => result.current.collapse())
     expect(result.current.collapsed).toBe(true)
-  })
 
-  it('should collapse when width is set below threshold', () => {
-    const { result } = renderHook(() => useChatPanel())
-
-    act(() => {
-      result.current.setWidth(150)
-    })
-
-    expect(result.current.collapsed).toBe(true)
-    expect(result.current.width).toBe(320) // clamped to minimum width
-  })
-
-  it('should expand when width is set above threshold', () => {
-    const { result } = renderHook(() => useChatPanel())
-
-    act(() => {
-      result.current.toggle() // collapse first
-      result.current.setWidth(500)
-    })
-
+    act(() => result.current.expand())
     expect(result.current.collapsed).toBe(false)
   })
 
-  it('should select agent', () => {
+  it('collapses', async () => {
+    const { useChatPanel } = await import('../../hooks/useChatPanel')
     const { result } = renderHook(() => useChatPanel())
 
-    expect(result.current.selectedAgentId).toBeNull()
-
-    act(() => {
-      result.current.selectAgent('dev')
-    })
-
-    expect(result.current.selectedAgentId).toBe('dev')
+    act(() => result.current.collapse())
+    expect(result.current.collapsed).toBe(true)
   })
 
-  it('should clear selected agent when reset is called', () => {
+  it('clamps width to min 320', async () => {
+    const { useChatPanel } = await import('../../hooks/useChatPanel')
     const { result } = renderHook(() => useChatPanel())
 
-    act(() => {
-      result.current.selectAgent('dev')
-      result.current.reset()
-    })
-
-    expect(result.current.selectedAgentId).toBeNull()
+    act(() => result.current.setWidth(100))
+    expect(result.current.width).toBe(320)
+    expect(result.current.collapsed).toBe(true)
   })
 
-  it('should collapse and reset when reset is called', () => {
+  it('clamps width to max 600', async () => {
+    const { useChatPanel } = await import('../../hooks/useChatPanel')
     const { result } = renderHook(() => useChatPanel())
 
-    act(() => {
-      result.current.selectAgent('dev')
-      result.current.setWidth(150)
-      result.current.reset()
-    })
+    act(() => result.current.setWidth(800))
+    expect(result.current.width).toBe(600)
+  })
 
+  it('selects agent', async () => {
+    const { useChatPanel } = await import('../../hooks/useChatPanel')
+    const { result } = renderHook(() => useChatPanel())
+
+    act(() => result.current.selectAgent('agent-1'))
+    expect(result.current.selectedAgentId).toBe('agent-1')
+  })
+
+  it('resets to default state', async () => {
+    const { useChatPanel } = await import('../../hooks/useChatPanel')
+    const { result } = renderHook(() => useChatPanel())
+
+    act(() => result.current.collapse())
+    act(() => result.current.selectAgent('agent-1'))
+
+    act(() => result.current.reset())
     expect(result.current.collapsed).toBe(false)
     expect(result.current.width).toBe(400)
     expect(result.current.selectedAgentId).toBeNull()

@@ -157,11 +157,13 @@ where
             name,
             result,
             is_error,
+            raw_result,
         } => ProtocolEvent::ToolEnd {
             call_id: call_id.clone(),
             name: name.clone(),
             result: result.clone(),
             is_error: *is_error,
+            raw_result: raw_result.clone(),
         },
         StreamEvent::ToolApproval {
             call_id,
@@ -501,6 +503,7 @@ mod tests {
             name: "bash".into(),
             result: "done".into(),
             is_error: false,
+            raw_result: None,
         };
         let v = stream_event_to_protocol_event(&ev)
             .unwrap()
@@ -518,6 +521,7 @@ mod tests {
             name: "bash".into(),
             result: "Error: fail".into(),
             is_error: true,
+            raw_result: None,
         };
         let v = stream_event_to_protocol_event(&ev)
             .unwrap()

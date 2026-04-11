@@ -473,6 +473,12 @@ impl ErrorSessionManager {
     }
 }
 
+impl Default for ErrorSessionManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl crate::traits::SessionManager for ErrorSessionManager {
     async fn reset(&self, _thread_id: &str) -> Result<usize, BotError> {

@@ -1,35 +1,29 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getAvailableModels } from '../services/model'
+import { getConnection, type Model } from '../services/connection'
 
 const CACHE_KEY = 'loom-models-cache'
-const CACHE_DURATION = 60 * 60 * 1000 // 1 hour
+const CACHE_DURATION = 60 * 60 * 1000
 
 interface CachedModels {
   models: Model[]
   timestamp: number
 }
 
-export interface Model {
-  id: string
-  name: string
-  provider: string
-  family?: string
-  capabilities?: string[]
-}
+export type { Model }
 
 function getCachedModels(): Model[] | null {
   try {
     const cached = localStorage.getItem(CACHE_KEY)
     if (!cached) return null
-    
+
     const data: CachedModels = JSON.parse(cached)
     const isExpired = Date.now() - data.timestamp > CACHE_DURATION
-    
+
     if (isExpired) {
       localStorage.removeItem(CACHE_KEY)
       return null
     }
-    
+
     return data.models
   } catch {
     return null
@@ -44,7 +38,6 @@ function setCachedModels(models: Model[]): void {
     }
     localStorage.setItem(CACHE_KEY, JSON.stringify(data))
   } catch {
-    // Ignore cache errors
   }
 }
 
@@ -56,19 +49,14 @@ export function useModels() {
   const [error, setError] = useState<string | null>(null)
   const mountedRef = useRef(true)
 
-  const fetchModels = useCallback(async (forceRefresh = false) => {
-    if (!forceRefresh) {
-      const cached = getCachedModels()
-      if (cached && cached.length > 0) {
-        setModels(cached)
-        return
-      }
-    }
-
+  const refetch = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const data = await getAvailableModels()
+      const id = crypto.randomUUID()
+      const conn = getConnection()
+      const response = await conn.request({ type: 'list_models', id }) as { models: Model[] }
+      const data = response.models || []
       setCachedModels(data)
       if (mountedRef.current) {
         setModels(data)
@@ -87,16 +75,33 @@ export function useModels() {
   }, [])
 
   useEffect(() => {
-    fetchModels()
+    mountedRef.current = true
+
+    const handler = (data: Model[]) => {
+      if (!mountedRef.current) return
+      setCachedModels(data)
+      setModels(data)
+      setLoading(false)
+      setError(null)
+    }
+
+    const conn = getConnection()
+    conn.on('models_updated', handler)
+
+    if (getCachedModels() === null) {
+      refetch()
+    }
+
     return () => {
       mountedRef.current = false
+      conn.off('models_updated', handler)
     }
-  }, [fetchModels])
+  }, [refetch])
 
   return {
     models,
     loading,
     error,
-    refetch: () => fetchModels(true),
+    refetch,
   }
 }

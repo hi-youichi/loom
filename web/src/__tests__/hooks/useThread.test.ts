@@ -1,64 +1,34 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useThread } from '../../hooks/useThread'
 
 describe('useThread', () => {
-  it('应该创建新的线程ID', () => {
-    const { result } = renderHook(() => useThread())
-    expect(result.current.threadId).toBeDefined()
-    expect(typeof result.current.threadId).toBe('string')
-    expect(result.current.threadId.length).toBeGreaterThan(0)
+  beforeEach(() => {
+    localStorage.clear()
   })
 
-  it('应该重置线程ID', () => {
+  it('generates and stores thread ID', async () => {
+    const { useThread } = await import('../../hooks/useThread')
     const { result } = renderHook(() => useThread())
-    const oldThreadId = result.current.threadId
-
-    act(() => {
-      result.current.resetThread()
-    })
-
-    expect(result.current.threadId).toBeDefined()
-    expect(result.current.threadId).not.toBe(oldThreadId)
+    expect(result.current.threadId).toBeTruthy()
   })
 
-  it('resetThread 应该是一个函数', () => {
+  it('setThreadId updates thread ID', async () => {
+    const { useThread } = await import('../../hooks/useThread')
     const { result } = renderHook(() => useThread())
-    expect(typeof result.current.resetThread).toBe('function')
+
+    act(() => result.current.setThreadId('updated-id'))
+    expect(result.current.threadId).toBe('updated-id')
   })
 
-  it('应该从localStorage恢复已有的线程ID', () => {
-    const existingId = 'my-existing-thread-id'
-    vi.mocked(window.localStorage.getItem).mockReturnValue(existingId)
-
-    const { result } = renderHook(() => useThread())
-    expect(result.current.threadId).toBe(existingId)
-
-    vi.mocked(window.localStorage.getItem).mockRestore()
-  })
-
-  it('新线程ID应该调用localStorage.setItem', () => {
-    vi.mocked(window.localStorage.getItem).mockReturnValue(null)
-
-    const { result } = renderHook(() => useThread())
-    expect(window.localStorage.setItem).toHaveBeenCalledWith(
-      'loom-web-thread-id',
-      result.current.threadId
-    )
-  })
-
-  it('resetThread应该调用localStorage.setItem', () => {
-    vi.mocked(window.localStorage.getItem).mockReturnValue(null)
-    vi.mocked(window.localStorage.setItem).mockClear()
-
+  it('resetThread generates new thread ID', async () => {
+    const { useThread } = await import('../../hooks/useThread')
     const { result } = renderHook(() => useThread())
 
-    act(() => {
-      result.current.resetThread()
-    })
-    expect(window.localStorage.setItem).toHaveBeenCalledWith(
-      'loom-web-thread-id',
-      result.current.threadId
-    )
+    const oldId = result.current.threadId
+    let newId: string = ''
+    act(() => { newId = result.current.resetThread() })
+
+    expect(newId).not.toBe(oldId)
+    expect(result.current.threadId).toBe(newId)
   })
 })

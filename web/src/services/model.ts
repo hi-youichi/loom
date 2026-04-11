@@ -1,12 +1,6 @@
-import { getConnection } from './connection'
+import { getConnection, type Model } from './connection'
 
-export interface Model {
-  id: string
-  name: string
-  provider: string
-  family?: string
-  capabilities?: string[]
-}
+export type { Model }
 
 export interface ListModelsRequest {
   type: 'list_models'
@@ -33,9 +27,6 @@ export interface SetModelResponse {
   error?: string
 }
 
-/**
- * Get available models from the server
- */
 export async function getAvailableModels(): Promise<Model[]> {
   const requestId = crypto.randomUUID()
   const request: ListModelsRequest = {
@@ -46,11 +37,11 @@ export async function getAvailableModels(): Promise<Model[]> {
   try {
     const response = await getConnection().request(request) as ListModelsResponse
     const models = response.models || []
-    
+
     if (models.length === 0) {
       throw new Error('No models available from server')
     }
-    
+
     return models
   } catch (error) {
     console.error('Failed to get available models:', error)
@@ -58,9 +49,6 @@ export async function getAvailableModels(): Promise<Model[]> {
   }
 }
 
-/**
- * Set the model for the current session
- */
 export async function setSessionModel(
   modelId: string,
   sessionId?: string
@@ -82,9 +70,6 @@ export async function setSessionModel(
   }
 }
 
-/**
- * Validate if a model is available
- */
 export async function isModelAvailable(modelId: string): Promise<boolean> {
   try {
     const models = await getAvailableModels()

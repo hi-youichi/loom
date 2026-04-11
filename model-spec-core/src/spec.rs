@@ -149,11 +149,11 @@ impl Modalities {
 /// Pricing information (costs per 1M tokens in USD)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Cost {
-    /// Input cost per 1M tokens (in USD * 100 to avoid floating point)
+    /// Input cost per 1M tokens (in USD)
     #[serde(default)]
     pub input: f64,
 
-    /// Output cost per 1M tokens (in USD * 100)
+    /// Output cost per 1M tokens (in USD)
     #[serde(default)]
     pub output: f64,
 
@@ -184,12 +184,12 @@ impl Cost {
 
     /// Get input cost in USD
     pub fn input_cost_usd(&self) -> f64 {
-        self.input as f64 / 100.0
+        self.input
     }
 
     /// Get output cost in USD
     pub fn output_cost_usd(&self) -> f64 {
-        self.output as f64 / 100.0
+        self.output
     }
 
     /// Estimate cost for given token counts

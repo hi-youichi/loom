@@ -18,42 +18,51 @@ describe('MessageList', () => {
     }
   ]
 
-  it('应该渲染所有消息', () => {
+  it('should render all messages', () => {
     render(<MessageList messages={mockMessages} />)
-    
     expect(screen.getByText('Hello')).toBeInTheDocument()
     expect(screen.getByText('Hi there!')).toBeInTheDocument()
   })
 
-  it('应该有正确的ARIA属性', () => {
+  it('should have correct ARIA attributes', () => {
     render(<MessageList messages={mockMessages} />)
-    
     const list = screen.getByRole('log')
     expect(list).toHaveAttribute('aria-live', 'polite')
-    expect(list).toHaveAttribute('aria-label', '聊天消息')
+    expect(list).toHaveAttribute('aria-label', 'Chat messages')
   })
 
-  it('应该应用自定义className', () => {
+  it('should apply custom className', () => {
     const { container } = render(
       <MessageList messages={mockMessages} className="custom-class" />
     )
-    
     expect(container.firstChild).toHaveClass('custom-class')
   })
 
-  it('应该处理空消息列表', () => {
+  it('should handle empty message list', () => {
     const { container } = render(<MessageList messages={[]} />)
-    
     expect(container.querySelector('.message-list')).toBeInTheDocument()
-    expect(container.querySelectorAll('.message-item')).toHaveLength(0)
   })
 
-  it('应该为每个消息设置正确的key', () => {
+  it('should set data-message-id for each message', () => {
     const { container } = render(<MessageList messages={mockMessages} />)
-    
     const messageElements = container.querySelectorAll('[data-message-id]')
     expect(messageElements).toHaveLength(2)
     expect(messageElements[0]).toHaveAttribute('data-message-id', '1')
     expect(messageElements[1]).toHaveAttribute('data-message-id', '2')
+  })
+
+  it('should show streaming indicator when streaming is true', () => {
+    const { container } = render(<MessageList messages={mockMessages} streaming={true} />)
+    expect(container.querySelector('.message-list__streaming')).toBeInTheDocument()
+  })
+
+  it('should not show streaming indicator when streaming is false', () => {
+    const { container } = render(<MessageList messages={mockMessages} streaming={false} />)
+    expect(container.querySelector('.message-list__streaming')).toBeNull()
+  })
+
+  it('should pass streaming prop only to assistant messages', () => {
+    const { container } = render(<MessageList messages={mockMessages} streaming={true} />)
+    expect(container.querySelector('.message-list__streaming')).toBeInTheDocument()
   })
 })

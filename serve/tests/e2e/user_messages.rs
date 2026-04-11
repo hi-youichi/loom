@@ -146,6 +146,7 @@ async fn e2e_user_messages_after_run() {
         working_folder: None,
         got_adaptive: None,
         verbose: Some(false),
+        model: None,
     });
 
     let read_timeout = Duration::from_secs(90);

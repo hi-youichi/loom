@@ -137,6 +137,7 @@ async fn e2e_run_then_disconnect() {
         working_folder: None,
         got_adaptive: None,
         verbose: Some(false),
+        model: None,
     });
     let req_json = serde_json::to_string(&req).unwrap();
     write.send(Message::Text(req_json)).await.unwrap();
@@ -213,6 +214,7 @@ async fn e2e_run_react() {
         workspace_id: None,
         working_folder: None,
         got_adaptive: None,
+        model: None,
         verbose: Some(false),
     });
     let read_timeout = Duration::from_secs(30);

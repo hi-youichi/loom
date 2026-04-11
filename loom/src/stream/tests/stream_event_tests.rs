@@ -136,6 +136,7 @@ mod tests {
             name: "tool1".to_string(),
             result: "result".to_string(),
             is_error: false,
+            raw_result: None,
         };
         match event {
             StreamEvent::ToolEnd {
@@ -143,11 +144,13 @@ mod tests {
                 name,
                 result,
                 is_error,
+                raw_result,
             } => {
                 assert_eq!(call_id, Some("call1".to_string()));
-                assert_eq!(name, "tool1".to_string());
-                assert_eq!(result, "result".to_string());
+                assert_eq!(name, "tool1");
+                assert_eq!(result, "result");
                 assert!(!is_error);
+                assert_eq!(raw_result, None);
             }
             _ => panic!("expected ToolEnd"),
         }

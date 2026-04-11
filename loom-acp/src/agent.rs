@@ -4,23 +4,20 @@
 //! to Loom sessions and execution. See [`crate::protocol`] for protocol and behavior details.
 
 use crate::agent_registry::AgentRegistry;
-use crate::content::{content_blocks_to_user_content, extract_locations};
+use crate::content::content_blocks_to_user_content;
 use crate::session::{SessionId as OurSessionId, SessionStore};
 use crate::session_config_store::SessionConfigStore;
-use crate::stream_bridge::{loom_event_to_updates, stream_update_to_session_notification, generate_tool_title, name_to_tool_kind};
+use crate::stream_bridge::SessionNotifier;
 use agent_client_protocol::{
-    Agent, AuthenticateRequest, AuthenticateResponse, CancelNotification, ContentChunk,
-    CurrentModeUpdate, ForkSessionRequest, ForkSessionResponse, InitializeRequest,
+    Agent, AuthenticateRequest, AuthenticateResponse, CancelNotification,
+    ForkSessionRequest, ForkSessionResponse, InitializeRequest,
     InitializeResponse, ListSessionsRequest, ListSessionsResponse, LoadSessionRequest,
     LoadSessionResponse, NewSessionRequest, NewSessionResponse, PromptRequest, PromptResponse,
-    SessionId, SessionModeId, SessionConfigOptionValue, SessionNotification, SessionUpdate,
+    SessionId, SessionConfigOptionValue, SessionNotification,
     SetSessionConfigOptionRequest, SetSessionConfigOptionResponse, SetSessionModeRequest,
     SetSessionModeResponse, SetSessionModelRequest, SetSessionModelResponse, StopReason,
-    Terminal, TerminalId, ToolCall, ToolCallId, ToolCallLocation, ToolCallStatus, ToolCallUpdate,
-    ToolCallUpdateFields,
 };
 use loom::memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
-use loom::message::Message;
 use loom::state::ReActState;
 
 use async_trait::async_trait;
@@ -138,11 +135,8 @@ impl LoomAcpAgent {
         });
 
         if let Some(tx) = &self.session_update_tx {
-            let notif = SessionNotification::new(
-                session_id.clone(),
-                SessionUpdate::CurrentModeUpdate(CurrentModeUpdate::new(SessionModeId::new(mode_id))),
-            );
-            let _ = tx.try_send(notif);
+            let notifier = SessionNotifier::new(tx.clone(), session_id.clone());
+            notifier.try_send_current_mode(mode_id);
         }
 
         Ok(())
@@ -533,13 +527,9 @@ impl Agent for LoomAcpAgent {
         let session_id = args.session_id.clone();
         let tx = self.session_update_tx.clone();
         let on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>> = tx.map(|sender| {
+            let notifier = SessionNotifier::new(sender, session_id);
             let closure = move |ev: AnyStreamEvent| {
-                let updates = loom_event_to_updates(&ev);
-                for u in &updates {
-                    if let Some(notif) = stream_update_to_session_notification(&session_id, u) {
-                        let _ = sender.try_send(notif);
-                    }
-                }
+                notifier.try_send_event(&ev);
             };
             Box::new(closure) as Box<dyn FnMut(AnyStreamEvent) + Send>
         });
@@ -623,124 +613,8 @@ impl Agent for LoomAcpAgent {
 
                 // Send history via session/update notifications
                 if let Some(ref tx) = self.session_update_tx {
-                    use std::collections::HashMap;
-                    let mut tool_calls_map: HashMap<String, (String, Option<serde_json::Value>)> =
-                        HashMap::new();
-
-                    for message in &state.messages {
-                        let updates: Vec<SessionNotification> = match message {
-                            Message::User(content) => vec![SessionNotification::new(
-                                session_id.clone(),
-                                agent_client_protocol::SessionUpdate::UserMessageChunk(
-                                    ContentChunk::new(agent_client_protocol::ContentBlock::Text(
-                                        agent_client_protocol::TextContent::new(content.as_text().to_string()),
-                                    )),
-                                ),
-                            )],
-                            Message::Assistant(payload) => {
-                                // Cache tool calls for later Tool messages
-                                for tc in &payload.tool_calls {
-                                    tool_calls_map.insert(
-                                        tc.id.clone(),
-                                        (tc.name.clone(), serde_json::from_str(&tc.arguments).ok()),
-                                    );
-                                }
-
-                                // Send assistant message
-                                let mut notifications = vec![SessionNotification::new(
-                                    session_id.clone(),
-                                    agent_client_protocol::SessionUpdate::AgentMessageChunk(
-                                        ContentChunk::new(payload.content.clone().into()),
-                                    ),
-                                )];
-
-                                // Send pending tool calls
-                                for tc in &payload.tool_calls {
-                                    let tool_call_id = ToolCallId::new(tc.id.clone());
-                                    let args = serde_json::from_str::<serde_json::Value>(&tc.arguments).ok();
-                                    let title = generate_tool_title(&tc.name, args.as_ref());
-                                    let kind = name_to_tool_kind(&tc.name);
-                                    let mut tool_call = ToolCall::new(tool_call_id.clone(), title)
-                                        .status(ToolCallStatus::Pending)
-                                        .kind(kind);
-                                    if let Some(ref args) = args {
-                                        tool_call = tool_call.raw_input(args.clone());
-                                        // Add locations for "follow-along" feature
-                                        let locations: Vec<ToolCallLocation> = extract_locations(&tc.name, args)
-                                            .into_iter()
-                                            .map(|loc| ToolCallLocation::new(loc.path).line(loc.line))
-                                            .collect();
-                                        if !locations.is_empty() {
-                                            tool_call = tool_call.locations(locations);
-                                        }
-                                    }
-                                    notifications.push(SessionNotification::new(
-                                        session_id.clone(),
-                                        agent_client_protocol::SessionUpdate::ToolCall(tool_call),
-                                    ));
-                                }
-
-                                notifications
-                            }
-                            Message::Tool {
-                                tool_call_id,
-                                content,
-                            } => {
-                                // Send ToolCallUpdate with success status
-                                let id = ToolCallId::new(tool_call_id.clone());
-
-                                // Convert loom::ToolCallContent to ACP ToolCallContent
-                                let acp_content = match content {
-                                    loom::tool_source::ToolCallContent::Text(t) => {
-                                        agent_client_protocol::ToolCallContent::from(
-                                            agent_client_protocol::ContentBlock::Text(
-                                                agent_client_protocol::TextContent::new(t.clone()),
-                                            ),
-                                        )
-                                    }
-                                    loom::tool_source::ToolCallContent::Diff {
-                                        path,
-                                        old_text,
-                                        new_text,
-                                    } => agent_client_protocol::ToolCallContent::Diff(
-                                        agent_client_protocol::Diff::new(
-                                            path.clone(),
-                                            new_text.clone(),
-                                        )
-                                        .old_text(old_text.clone()),
-                                    ),
-                                    loom::tool_source::ToolCallContent::Terminal { terminal_id } => {
-                                        agent_client_protocol::ToolCallContent::Terminal(
-                                            Terminal::new(TerminalId::new(terminal_id.clone())),
-                                        )
-                                    }
-                                };
-
-                                let fields = ToolCallUpdateFields::new()
-                                    .status(ToolCallStatus::Completed)
-                                    .content(vec![acp_content])
-                                    .raw_output(tool_call_content_to_raw_output(content));
-                                let tool_call_update = ToolCallUpdate::new(id, fields);
-
-                                vec![SessionNotification::new(
-                                    session_id.clone(),
-                                    agent_client_protocol::SessionUpdate::ToolCallUpdate(
-                                        tool_call_update,
-                                    ),
-                                )]
-                            }
-                            Message::System(_) => {
-                                // System messages are typically not sent to client
-                                continue;
-                            }
-                        };
-
-                        for update in updates {
-                            if let Err(e) = tx.send(update).await {
-                                tracing::error!(session_id = %session_id, error = %e, "Failed to send session update during history replay");
-                            }
-                        }
-                    }
+                    let notifier = SessionNotifier::new(tx.clone(), session_id.clone());
+                    notifier.send_history(&state.messages).await;
                 }
 
                 tracing::info!(
@@ -1059,30 +933,6 @@ fn map_run_error(e: RunError) -> agent_client_protocol::Error {
     agent_client_protocol::Error::internal_error().data(e.to_string())
 }
 
-fn tool_call_content_to_raw_output(content: &loom::tool_source::ToolCallContent) -> serde_json::Value {
-    match content {
-        loom::tool_source::ToolCallContent::Text(text) => {
-            // For text content (like bash output), return as string directly
-            // This preserves the original output format without JSON parsing attempts
-            serde_json::json!(text)
-        }
-        loom::tool_source::ToolCallContent::Diff {
-            path,
-            old_text,
-            new_text,
-        } => serde_json::json!({
-            "type": "diff",
-            "path": path,
-            "oldText": old_text,
-            "newText": new_text,
-        }),
-        loom::tool_source::ToolCallContent::Terminal { terminal_id } => serde_json::json!({
-            "type": "terminal",
-            "terminalId": terminal_id,
-        }),
-    }
-}
-
 /// Model option for ACP config dropdown.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct ModelOption {
@@ -1341,38 +1191,5 @@ mod tests {
 
         let boolean = SessionConfigOptionValue::boolean(true);
         assert!(session_config_value_as_id(&boolean).is_none());
-    }
-
-    #[test]
-    fn test_tool_call_content_to_raw_output_text_json_and_plain_text() {
-        let json_text = loom::tool_source::ToolCallContent::Text("{\"ok\":true}".to_string());
-        assert_eq!(
-            tool_call_content_to_raw_output(&json_text),
-            serde_json::json!({"ok": true})
-        );
-
-        let plain_text = loom::tool_source::ToolCallContent::Text("hello".to_string());
-        assert_eq!(
-            tool_call_content_to_raw_output(&plain_text),
-            serde_json::json!({"text": "hello"})
-        );
-    }
-
-    #[test]
-    fn test_tool_call_content_to_raw_output_diff() {
-        let diff = loom::tool_source::ToolCallContent::Diff {
-            path: "/tmp/a.txt".to_string(),
-            old_text: Some("old".to_string()),
-            new_text: "new".to_string(),
-        };
-        assert_eq!(
-            tool_call_content_to_raw_output(&diff),
-            serde_json::json!({
-                "type": "diff",
-                "path": "/tmp/a.txt",
-                "oldText": "old",
-                "newText": "new",
-            })
-        );
     }
 }

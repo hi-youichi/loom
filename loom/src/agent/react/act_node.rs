@@ -466,6 +466,7 @@ impl Node<ReActState> for ActNode {
                                         name: tc.name.clone(),
                                         result: display_text,
                                         is_error: true,
+                                        raw_result: None,
                                     })
                                     .await;
                             }
@@ -566,10 +567,11 @@ impl Node<ReActState> for ActNode {
                         result_preview = %truncate_for_log(content.as_text().unwrap(), 200),
                         "Tool returned"
                     );
+                    let raw_text = content.as_text().unwrap().to_string();
                     let normalized = normalize_tool_output(
                         &tc.name,
                         &args,
-                        content.as_text().unwrap(),
+                        &raw_text,
                         false,
                         tool_output_hints.get(&tc.name),
                         NormalizationConfig::runtime_default()
@@ -577,6 +579,11 @@ impl Node<ReActState> for ActNode {
                     );
                     let summary = truncate_for_log(&normalized.display_text, 200);
                     let display_text = normalized.display_text.clone();
+                    let raw_result_value = if display_text != raw_text {
+                        Some(raw_text)
+                    } else {
+                        None
+                    };
                     used_observation_chars += normalized.observation_chars;
 
                     tool_results.push(
@@ -593,6 +600,7 @@ impl Node<ReActState> for ActNode {
                                     name: tc.name.clone(),
                                     result: display_text,
                                     is_error: false,
+                                    raw_result: raw_result_value,
                                 })
                                 .await;
                         }
@@ -640,6 +648,7 @@ impl Node<ReActState> for ActNode {
                                     name: tc.name.clone(),
                                     result: display_text,
                                     is_error: true,
+                                    raw_result: None,
                                 })
                                 .await;
                         }

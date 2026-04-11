@@ -30,46 +30,48 @@ export const MessageItem = memo(function MessageItem({
 
   return (
     <>
-      {textItems.length > 0 && (
-        <article
-          className={`message message--${sender} ${className || ''}`}
-          data-message-id={id}
-          aria-label={`${sender === 'user' ? 'User' : 'Assistant'} message`}
-        >
-          <div className="message__content">
-            {textItems.map((item, index) => (
-              <div key={index} className="message__text">
-                <MarkdownContent text={item.text} streaming={streaming} />
-              </div>
-            ))}
-          </div>
-
-          {onRetry && sender === 'user' && (
-            <button
-              className="message__retry"
-              onClick={onRetry}
-              aria-label="Retry"
-              type="button"
+      {content.map((item, index) => {
+        if (item.type === 'text') {
+          return (
+            <article
+              key={`text-${index}`}
+              className={`message message--${sender} ${className || ''}`}
+              data-message-id={id}
+              aria-label={`${sender === 'user' ? 'User' : 'Assistant'} message`}
             >
-              Retry
-            </button>
-          )}
-        </article>
-      )}
+              <div className="message__content">
+                <div className="message__text">
+                  <MarkdownContent text={item.text} streaming={streaming} />
+                </div>
+              </div>
 
-      {toolItems.map((item, index) => {
-        const tool: ToolBlock = {
-          id: item.id,
-          type: 'tool',
-          callId: item.id,
-          name: item.name,
-          status: uiStatusToBlockStatus(item.status),
-          argumentsText: item.argumentsText,
-          outputText: item.outputText,
-          resultText: item.resultText,
-          isError: item.isError,
+              {onRetry && sender === 'user' && index === 0 && (
+                <button
+                  className="message__retry"
+                  onClick={onRetry}
+                  aria-label="Retry"
+                  type="button"
+                >
+                  Retry
+                </button>
+              )}
+            </article>
+          )
+        } else if (item.type === 'tool') {
+          const tool: ToolBlock = {
+            id: item.id,
+            type: 'tool',
+            callId: item.id,
+            name: item.name,
+            status: uiStatusToBlockStatus(item.status),
+            argumentsText: item.argumentsText,
+            outputText: item.outputText,
+            resultText: item.resultText,
+            isError: item.isError,
+          }
+          return <ToolCard key={`tool-${index}`} tool={tool} />
         }
-        return <ToolCard key={`tool-${index}`} tool={tool} />
+        return null
       })}
     </>
   )

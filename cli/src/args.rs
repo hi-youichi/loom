@@ -109,6 +109,8 @@ pub(crate) enum Command {
     Session(SessionArgs),
     /// List available models from configured providers
     Models(ModelsArgs),
+    /// Manage MCP servers (list, show, add, edit, delete, enable, disable)
+    Mcp(McpArgs),
 }
 
 #[derive(clap::Args, Debug, Clone)]
@@ -167,4 +169,95 @@ pub(crate) struct GotArgs {
     /// Enable AGoT adaptive mode (expand complex nodes).
     #[arg(long)]
     pub(crate) got_adaptive: bool,
+}
+
+/// Arguments for the `mcp` subcommand.
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct McpArgs {
+    #[command(subcommand)]
+    pub(crate) command: McpCommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub(crate) enum McpCommand {
+    /// List all MCP servers
+    List,
+    /// Show details of a specific MCP server
+    Show {
+        /// Server name
+        name: String,
+    },
+    /// Add a new MCP server
+    Add(AddMcpArgs),
+    /// Edit an existing MCP server
+    Edit(EditMcpArgs),
+    /// Delete an MCP server
+    Delete {
+        /// Server name to delete
+        name: String,
+    },
+    /// Enable a disabled MCP server
+    Enable {
+        /// Server name to enable
+        name: String,
+    },
+    /// Disable an enabled MCP server
+    Disable {
+        /// Server name to disable
+        name: String,
+    },
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct AddMcpArgs {
+    /// Server name
+    #[arg(long, value_name = "NAME")]
+    pub(crate) name: String,
+    
+    /// Command for stdio-based servers (e.g., "npx")
+    #[arg(long, value_name = "CMD")]
+    pub(crate) command: Option<String>,
+    
+    /// Arguments for the command (can be specified multiple times)
+    #[arg(long = "arg", value_name = "ARG", allow_hyphen_values = true)]
+    pub(crate) args: Vec<String>,
+    
+    /// URL for HTTP-based servers
+    #[arg(long, value_name = "URL")]
+    pub(crate) url: Option<String>,
+    
+    /// Environment variables (KEY=VALUE format, can be specified multiple times)
+    #[arg(long = "env", value_name = "ENV", allow_hyphen_values = true)]
+    pub(crate) env: Vec<String>,
+    
+    /// Create server in disabled state
+    #[arg(long)]
+    pub(crate) disabled: bool,
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct EditMcpArgs {
+    /// Server name to edit
+    #[arg(value_name = "NAME")]
+    pub(crate) name: String,
+    
+    /// New command for stdio-based servers
+    #[arg(long, value_name = "CMD")]
+    pub(crate) command: Option<String>,
+    
+    /// New arguments for the command (can be specified multiple times)
+    #[arg(long = "arg", value_name = "ARG", allow_hyphen_values = true)]
+    pub(crate) args: Vec<String>,
+    
+    /// New URL for HTTP-based servers
+    #[arg(long, value_name = "URL")]
+    pub(crate) url: Option<String>,
+    
+    /// New environment variables (KEY=VALUE format, can be specified multiple times)
+    #[arg(long = "env", value_name = "ENV", allow_hyphen_values = true)]
+    pub(crate) env: Vec<String>,
+    
+    /// Set disabled state (true/false)
+    #[arg(long, value_name = "BOOL")]
+    pub(crate) disabled: Option<bool>,
 }

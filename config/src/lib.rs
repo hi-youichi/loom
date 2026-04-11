@@ -15,7 +15,8 @@ pub use lsp_config::{
 };
 pub use mcp_config::{
     discover_mcp_config_path, load_mcp_config_from_path, parse_mcp_config, McpConfigError,
-    McpConfigFile, McpServerDef, McpServerEntry,
+    McpConfigFile, McpServerDef, McpServerEntry, create_mcp_config_if_missing, save_mcp_config,
+    upsert_mcp_server, remove_mcp_server, load_mcp_config_file, get_or_create_mcp_config_path,
 };
 pub use xdg_toml::{load_full_config, FullConfig, ProviderDef};
 
@@ -317,7 +318,7 @@ mod tests {
     use super::*;
     use std::env;
 
-    static CONFIG_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    use crate::home::CONFIG_TEST_LOCK as CONFIG_ENV_LOCK;
 
     #[test]
     fn mask_key_keeps_prefix_suffix() {

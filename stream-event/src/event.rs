@@ -171,10 +171,14 @@ pub enum ProtocolEvent {
     ToolEnd {
         call_id: Option<String>,
         name: String,
-        /// Result text (success or error message).
+        /// Result text (success or error message), possibly normalized/truncated for display.
         result: String,
         /// Whether the tool reported an error.
         is_error: bool,
+        /// Full un-normalized result text. When set, ACP agents use this for raw_output
+        /// instead of `result` (which may be a head-tail excerpt or file reference).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        raw_result: Option<String>,
     },
     /// Tool call awaiting user approval (e.g. destructive or privileged actions).
     /// Contains the tool name and arguments for the client to confirm or reject. See [`ToolCall`](Self::ToolCall).
@@ -337,6 +341,7 @@ mod tests {
             name: "list_dir".to_string(),
             result: "main.rs, lib.rs (2 entries)".to_string(),
             is_error: false,
+            raw_result: None,
         };
         let v = event.to_value().unwrap();
         assert_eq!(v["type"], "tool_end");
@@ -353,6 +358,7 @@ mod tests {
             name: "bash".to_string(),
             result: "Error: command not found".to_string(),
             is_error: true,
+            raw_result: None,
         };
         let v = event.to_value().unwrap();
         assert_eq!(v["type"], "tool_end");

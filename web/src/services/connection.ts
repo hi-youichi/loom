@@ -17,6 +17,23 @@ type PendingEntry = {
   onMessage?: MessageHandler
 }
 
+export type LoomEventType = 'models_updated' | 'connection_changed'
+
+export type LoomEventMap = {
+  models_updated: Model[]
+  connection_changed: 'open' | 'closed'
+}
+
+export interface Model {
+  id: string
+  name: string
+  provider: string
+  family?: string
+  capabilities?: string[]
+}
+
+type Listener<T> = (data: T) => void
+
 class LoomConnection {
   private ws: WebSocket | null = null
   private pending = new Map<string, PendingEntry>()
@@ -26,25 +43,52 @@ class LoomConnection {
   private opening: Promise<void> | null = null
   private activeRunRequestId: string | null = null
   private activeRunId: string | null = null
+  private listeners = new Map<string, Set<Listener<unknown>>>()
 
   constructor() {
     this.url = getLoomWsUrl()
   }
 
-  private ensureOpen(): Promise<void> {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      return Promise.resolve()
+  on<K extends LoomEventType>(event: K, listener: Listener<LoomEventMap[K]>): void {
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, new Set())
     }
+    this.listeners.get(event)!.add(listener as Listener<unknown>)
+  }
 
-    if (this.opening) {
-      return this.opening
+  off<K extends LoomEventType>(event: K, listener: Listener<LoomEventMap[K]>): void {
+    this.listeners.get(event)?.delete(listener as Listener<unknown>)
+  }
+
+  private emit<K extends LoomEventType>(event: K, data: LoomEventMap[K]): void {
+    this.listeners.get(event)?.forEach(fn => fn(data))
+  }
+
+  private notifyConnectionChanged(state: 'open' | 'closed') {
+    this.emit('connection_changed', state)
+  }
+
+  private async fetchAndEmitModels() {
+    try {
+      const id = crypto.randomUUID()
+      const response = await this.request({ type: 'list_models', id }) as { models: Model[] }
+      this.emit('models_updated', response.models || [])
+    } catch (e) {
+      console.warn('Auto-fetch models failed:', e)
     }
+  }
+
+  private ensureOpen(): Promise<void> {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) return Promise.resolve()
+    if (this.opening) return this.opening
 
     this.opening = new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(this.url)
 
       ws.addEventListener('open', () => {
         this.opening = null
+        this.notifyConnectionChanged('open')
+        this.fetchAndEmitModels()
         resolve()
       })
 
@@ -71,6 +115,7 @@ class LoomConnection {
           this.opening = null
         }
         if (!this.intentionalClose) {
+          this.notifyConnectionChanged('closed')
           this.rejectAllPending(new Error('WebSocket connection closed.'))
           this.scheduleReconnect()
         }
