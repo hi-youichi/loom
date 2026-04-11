@@ -348,6 +348,7 @@ mod tests {
                 "test_tool".to_string(),
                 "result".to_string(),
                 false,
+                None,
             )
             .await;
         assert!(sent, "should send tool end event");
@@ -359,6 +360,7 @@ mod tests {
                 name,
                 result,
                 is_error,
+                raw_result: _,
             } => {
                 assert_eq!(call_id, Some("call1".to_string()));
                 assert_eq!(name, "test_tool");
@@ -375,6 +377,7 @@ mod tests {
                 "failing_tool".to_string(),
                 "error message".to_string(),
                 true,
+                None,
             )
             .await;
         assert!(sent, "should send tool end error event");
@@ -386,6 +389,7 @@ mod tests {
                 name,
                 result,
                 is_error,
+                raw_result: _,
             } => {
                 assert_eq!(call_id, Some("call2".to_string()));
                 assert_eq!(name, "failing_tool");

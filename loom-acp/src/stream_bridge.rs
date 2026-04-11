@@ -73,8 +73,10 @@ pub enum StreamUpdate {
         tool_call_id: String,
         /// e.g. "running" | "success" | "failure"; maps to ToolCallStatus in ACP.
         status: String,
-        /// Result or error message.
+        /// Result or error message (possibly normalized/truncated).
         output: Option<String>,
+        /// Full un-normalized result. When set, used for ACP `raw_output` instead of `output`.
+        raw_output: Option<String>,
     },
 
     /// Incremental tool call argument chunk (during LLM streaming).
@@ -166,6 +168,7 @@ where
                     tool_call_id: id,
                     status: "running".to_string(),
                     output: None,
+                    raw_output: None,
                 }]
             }
         }
@@ -179,12 +182,14 @@ where
                 tool_call_id: id,
                 status: "running".to_string(),
                 output: Some(content.clone()),
+                raw_output: None,
             }]
         }
         StreamEvent::ToolEnd {
             call_id,
             result,
             is_error,
+            raw_result,
             ..
         } => {
             let id = call_id.clone().unwrap_or_default();
@@ -196,6 +201,7 @@ where
                     "success".to_string()
                 },
                 output: Some(result.clone()),
+                raw_output: raw_result.clone(),
             }]
         }
         StreamEvent::ToolCallChunk {
@@ -255,6 +261,7 @@ pub fn stream_update_to_session_notification(
             tool_call_id,
             status,
             output,
+            raw_output,
         } => {
             if tool_call_id.is_empty() {
                 return None;
@@ -267,9 +274,12 @@ pub fn stream_update_to_session_notification(
             };
             let mut fields = ToolCallUpdateFields::new().status(status);
             if let Some(ref s) = output {
+                let effective_raw = raw_output
+                    .as_deref()
+                    .unwrap_or(s);
                 fields = fields
                     .content(vec![s.clone().into()])
-                    .raw_output(parse_text_output_to_raw_value(s));
+                    .raw_output(parse_text_output_to_raw_value(effective_raw));
             }
             SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
                 ToolCallId::new(tool_call_id.as_str()),
