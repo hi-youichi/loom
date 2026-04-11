@@ -52,7 +52,7 @@ export function ModelSelector({
   const modelOptions = useMemo(() => {
     return models.map((model: Model) => ({
       value: model.id,
-      label: model.name
+      label: model.id  // Display model ID to distinguish different providers
     }))
   }, [models])
 
@@ -62,8 +62,7 @@ export function ModelSelector({
     if (!searchQuery.trim()) return modelOptions
     const query = searchQuery.toLowerCase()
     return modelOptions.filter(model =>
-      model.label.toLowerCase().includes(query) ||
-      model.value.toLowerCase().includes(query)
+      model.label.toLowerCase().includes(query)
     )
   }, [searchQuery, modelOptions])
 
