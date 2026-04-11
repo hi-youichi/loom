@@ -83,8 +83,9 @@ export function ModelSelector({
           <div
             className={cn(
               "model-selector__trigger",
-              "flex items-center gap-2 px-3 border border-input bg-background",
+              "flex items-center gap-2 px-3 border border-border bg-background",
               "hover:bg-accent/50",
+              "focus-visible:outline-none",
               "disabled:opacity-50 disabled:cursor-not-allowed",
               "transition-colors cursor-pointer"
             )}
@@ -117,7 +118,7 @@ export function ModelSelector({
           <div className="model-selector__content">
             <div className="px-1 pb-1">
               <input
-                className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm outline-none focus:border-ring"
+                className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none focus:outline-none"
                 placeholder="Search models..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -138,7 +139,7 @@ export function ModelSelector({
                         className={cn(
                           "w-full text-left px-3 py-1.5 text-sm rounded-sm",
                           "hover:bg-accent hover:text-accent-foreground",
-                          "focus:outline-none focus:border-ring",
+                          "focus:outline-none",
                           model.id === value && "bg-accent text-accent-foreground"
                         )}
                         onClick={() => {

@@ -442,7 +442,7 @@ h2 {
 
 .composer__model-selector {
   flex: 0 0 auto;
-  min-width: 200px;
+  min-width: 180px;
 }
 
 .model-selector {
@@ -451,7 +451,6 @@ h2 {
 
 .model-selector__trigger {
   width: 100%;
-  min-width: 260px;
   height: 36px;
   font-size: 13px;
   border-radius: 6px;
