@@ -86,7 +86,6 @@ export function MessageComposer({
         <ModelSelector
           value={selectedModel}
           onChange={onModelChange}
-          disabled={disabled}
           className="composer__model-selector"
         />
         <button
