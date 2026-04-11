@@ -6,6 +6,7 @@ import { useChatPanel } from "@/hooks/useChatPanel"
 import { MessageList } from "./MessageList"
 import { MessageComposer } from "../MessageComposer"
 import { ThemeToggle } from "../ThemeToggle"
+import { useModels } from "@/hooks/useModels"
 import type { UIMessageItemProps } from "@/types/ui/message"
 
 interface AgentChatSidebarProps {
@@ -67,7 +68,15 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
   onSendMessage,
 }: AgentChatSidebarProps) {
   const { collapsed, width, selectedAgentId, toggle, expand, setWidth, selectAgent } = useChatPanel()
-  const [selectedModel, setSelectedModel] = useState('claude-3-5-sonnet')
+  const { models } = useModels()
+  
+  // Set default model to first available model ID
+  const [selectedModel, setSelectedModel] = useState(() => {
+    const defaultModel = 'claude-3-5-sonnet' // Fallback default
+    // Try to find a matching model ID, otherwise use first available
+    const matchingModel = models.find(m => m.id.includes(defaultModel) || m.name.includes(defaultModel))
+    return matchingModel?.id || models[0]?.id || defaultModel
+  })
 
   const selectedAgentName = agents.find((a) => a.name === selectedAgentId)?.name || selectedAgentId
 

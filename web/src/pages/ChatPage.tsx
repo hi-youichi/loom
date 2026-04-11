@@ -4,6 +4,7 @@ import { MessageComposer } from '../components/MessageComposer'
 import { ThinkIndicator } from '../components/ThinkIndicator'
 import { ToolBlockView } from '../components/ToolBlockView'
 import { sendMessage } from '../services/chat'
+import { useModels } from '../hooks/useModels'
 import type { ToolBlock, ToolStatus } from '../types/chat'
 
 const THREAD_STORAGE_KEY = 'loom-web-thread-id'
@@ -95,7 +96,15 @@ export function ChatPage() {
   const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([])
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [selectedModel, setSelectedModel] = useState('claude-3-5-sonnet')
+  const { models } = useModels()
+  
+  // Set default model to first available model ID
+  const [selectedModel, setSelectedModel] = useState(() => {
+    const defaultModel = 'claude-3-5-sonnet' // Fallback default
+    // Try to find a matching model ID, otherwise use first available
+    const matchingModel = models.find(m => m.id.includes(defaultModel) || m.name.includes(defaultModel))
+    return matchingModel?.id || models[0]?.id || defaultModel
+  })
 
   const handleModelChange = (model: string) => {
     setSelectedModel(model)
