@@ -75,6 +75,8 @@ export function useModels() {
   }, [])
 
   useEffect(() => {
+    mountedRef.current = true
+
     const handler = (data: Model[]) => {
       if (!mountedRef.current) return
       setCachedModels(data)

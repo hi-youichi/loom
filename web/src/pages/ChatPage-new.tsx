@@ -143,7 +143,7 @@ export function ChatPage() {
 
   return (
     <ChatErrorBoundary>
-      <div className="flex h-screen">
+      <div className="flex h-screen overflow-hidden">
         <FileTreeSidebar
           files={DEMO_FILES}
           selectedId={selectedFileId}
