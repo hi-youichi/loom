@@ -9,14 +9,12 @@ interface MessageListProps {
   className?: string
 }
 
-function getMessagesTextLength(messages: UIMessageItemProps[]): number {
-  let len = 0
-  for (const m of messages) {
-    for (const c of m.content) {
-      if (c.type === 'text') len += c.text.length
-    }
-  }
-  return len
+function getMessagesHash(messages: UIMessageItemProps[]): string {
+  // Create a hash of the messages to detect any changes
+  // Only check structure changes, not content details
+  return messages.map(m => 
+    `${m.id}-${m.sender}-${m.content.length}-${m.content.map(c => `${c.type}-${c.type === 'text' ? c.text.length : 'tool'}`).join(',')}`
+  ).join('|')
 }
 
 export const MessageList = memo(function MessageList({ 
@@ -26,32 +24,58 @@ export const MessageList = memo(function MessageList({
 }: MessageListProps) {
   const listRef = useRef<HTMLDivElement>(null)
   const userScrolledRef = useRef(false)
-  const lastTextLenRef = useRef(0)
+  const lastMessagesHashRef = useRef('')
+  const isAutoScrollingRef = useRef(false)
 
   const handleScroll = useCallback(() => {
+    // Don't track scroll while we're auto-scrolling
+    if (isAutoScrollingRef.current) return
+
     const el = listRef.current
     if (!el) return
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
-    userScrolledRef.current = !atBottom
+    
+    const threshold = 100 // Increased threshold for better UX
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    
+    // User is manually scrolling up
+    if (distanceFromBottom > threshold) {
+      userScrolledRef.current = true
+    } else {
+      // User scrolled back to bottom, re-enable auto-scroll
+      userScrolledRef.current = false
+    }
   }, [])
 
   useEffect(() => {
-    const textLen = getMessagesTextLength(messages)
-    if (textLen === lastTextLenRef.current) return
-    lastTextLenRef.current = textLen
+    const el = listRef.current
+    if (!el) return
 
+    const currentHash = getMessagesHash(messages)
+    
+    // Only scroll if messages changed
+    if (currentHash === lastMessagesHashRef.current) return
+    
+    lastMessagesHashRef.current = currentHash
+
+    // Don't auto-scroll if user manually scrolled up (unless streaming)
     if (userScrolledRef.current && !streaming) return
 
-    const el = listRef.current
-    if (el) {
-      el.scrollTop = el.scrollHeight
-    }
-  })
+    // Auto-scroll to bottom
+    isAutoScrollingRef.current = true
+    el.scrollTop = el.scrollHeight
+    
+    // Reset auto-scrolling flag after a brief delay
+    setTimeout(() => {
+      isAutoScrollingRef.current = false
+    }, 50)
+  }, [messages, streaming])
 
+  // Reset user scroll state when new messages arrive during streaming
   useEffect(() => {
-    userScrolledRef.current = false
-    lastTextLenRef.current = 0
-  }, [messages.length])
+    if (streaming) {
+      userScrolledRef.current = false
+    }
+  }, [streaming, messages.length])
 
   return (
     <div 
@@ -69,6 +93,24 @@ export const MessageList = memo(function MessageList({
         <div className="message-list__streaming">
           <span className="streaming-indicator" />
         </div>
+      )}
+      
+      {/* Scroll to bottom button when user has scrolled up */}
+      {userScrolledRef.current && !streaming && (
+        <button
+          className="message-list__scroll-to-bottom"
+          onClick={() => {
+            const el = listRef.current
+            if (el) {
+              el.scrollTop = el.scrollHeight
+              userScrolledRef.current = false
+            }
+          }}
+          aria-label="滚动到底部"
+          type="button"
+        >
+          ↓ 新消息
+        </button>
       )}
     </div>
   )
