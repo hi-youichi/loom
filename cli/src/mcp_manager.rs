@@ -4,7 +4,8 @@
 //! that integrates with the config crate and handles CLI-specific concerns.
 
 use config::{
-    get_or_create_mcp_config_path, load_mcp_config_file, McpConfigError, McpServerEntry,
+    create_mcp_config_if_missing, discover_mcp_config_path, load_mcp_config_file,
+    McpConfigError, McpServerEntry,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -15,9 +16,16 @@ pub struct McpManager {
 }
 
 impl McpManager {
-    /// Creates a new MCP manager with the default config path
+    /// Creates a new MCP manager, discovering config path with priority:
+    /// project `.loom/mcp.json` > `~/.loom/mcp.json`.
+    /// Creates the file if none exists.
     pub fn new() -> Result<Self, McpConfigError> {
-        let config_path = get_or_create_mcp_config_path()?;
+        let config_path = discover_mcp_config_path(None, Some(std::env::current_dir()?.as_path()))
+            .unwrap_or_else(|| {
+                let p = config::home::loom_home().join("mcp.json");
+                let _ = create_mcp_config_if_missing(&p);
+                p
+            });
         Ok(Self { config_path })
     }
 
