@@ -128,12 +128,10 @@ async fn mock_api_bash_tool_invocation() {
         "data: [DONE]",
     ];
     #[cfg(windows)]
-    let sse_data = vec![
-        r#"data: {"id":"chatcmpl-mock-powershell","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"powershell","arguments":""}}]},"finish_reason":null}]}"#,
+    let sse_data = [r#"data: {"id":"chatcmpl-mock-powershell","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"powershell","arguments":""}}]},"finish_reason":null}]}"#,
         r#"data: {"id":"chatcmpl-mock-powershell","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"command\":\"Get-ChildItem C:\\\\temp\"}"}}]},"finish_reason":null}]}"#,
         r#"data: {"id":"chatcmpl-mock-powershell","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#,
-        "data: [DONE]",
-    ];
+        "data: [DONE]"];
         let response = sse_data.join("\n\n") + "\n\n";
         write_http_stream_response(&mut stream, &response).await;
     });

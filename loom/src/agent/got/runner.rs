@@ -81,10 +81,10 @@ impl GotRunner {
     }
 
     /// Creates a GoT runner with the given LLM, tool source, and optional persistence.
-    ///
     /// When `adaptive` is true, enables AGoT: complex nodes may be expanded into subgraphs
     /// after completion.
     /// When `agot_llm_complexity` is true, use LLM to decide simple vs complex instead of heuristic.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         llm: Arc<dyn LlmClient>,
         tool_source: Box<dyn ToolSource>,

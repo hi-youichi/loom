@@ -375,7 +375,7 @@ mod tests {
         topic.extend(vec![1, 2, 3]);
         assert_eq!(topic.read(), Some(vec![1, 2, 3]));
 
-        topic.extend([4, 5].into_iter());
+        topic.extend([4, 5]);
         assert_eq!(topic.read(), Some(vec![1, 2, 3, 4, 5]));
     }
 

@@ -336,7 +336,7 @@ mod tests {
     #[test]
     fn test_uuid6_clone_eq() {
         let id1 = uuid6();
-        let id2 = id1.clone();
+        let id2 = id1;
         assert_eq!(id1, id2);
 
         let id3 = uuid6();

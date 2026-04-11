@@ -4,6 +4,7 @@
 //! types for cross-platform command handling.
 
 pub mod builtins;
+#[allow(clippy::module_inception)]
 pub mod command;
 pub mod parser;
 

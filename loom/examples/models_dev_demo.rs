@@ -59,9 +59,10 @@ async fn main() {
                     vision_count += 1;
                     if vision_count <= 3 {
                         println!(
-                            "   📷 {} - {} ({} tokens context)",
+                            "   📷 {} - {}/{} ({} tokens context)",
                             model.name,
-                            format!("{}/{}", provider_id, model_id),
+                            provider_id,
+                            model_id,
                             model.limit.as_ref().map(|l| l.context).unwrap_or(0)
                         );
                     }

@@ -51,7 +51,7 @@ Check correctness, security, and style.
         helve
             .skills_prompt
             .as_ref()
-            .map_or(false, |s| s.contains("code-review")
+            .is_some_and(|s| s.contains("code-review")
                 && s.contains("Review code")),
         "expected skills_prompt to contain skill name and description, got: {:?}",
         helve.skills_prompt

@@ -1,7 +1,7 @@
 //! LSP type definitions and protocol structures.
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::Path;
 
 /// LSP Position in a document (0-based).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -315,7 +315,7 @@ pub struct ServerInfo {
 }
 
 /// Language identifier based on file extension.
-pub fn language_id_from_path(path: &PathBuf) -> Option<String> {
+pub fn language_id_from_path(path: &Path) -> Option<String> {
     let ext = path.extension()?.to_str()?;
     
     let language_id = match ext {

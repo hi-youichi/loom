@@ -291,6 +291,7 @@ impl AnyStreamEvent {
 ///
 /// When `llm_override` is Some (e.g. in tests with [`crate::MockLlm`]), that client is used instead of
 /// building one from config; otherwise the default LLM is built from env/OpenAI.
+#[allow(clippy::type_complexity)]
 pub async fn run_agent(
     opts: &RunOptions,
     cmd: &RunCmd,

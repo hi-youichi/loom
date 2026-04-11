@@ -3,6 +3,7 @@
 use crate::pregel::state::PregelStateSnapshot;
 
 /// Supported replay operations over persisted checkpoints.
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReplayMode {
     ResumeFromCheckpoint(String),

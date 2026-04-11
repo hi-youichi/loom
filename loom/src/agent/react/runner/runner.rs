@@ -43,6 +43,7 @@ impl ReactRunner {
         self
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         llm: Box<dyn LlmClient>,
         tool_source: Box<dyn ToolSource>,

@@ -208,7 +208,7 @@ impl ActNode {
 }
 
 /// Ensures each [`ToolResult`] has a non-empty `call_id`, preferring the paired [`ToolCall::id`].
-fn backfill_tool_result_call_ids(tool_calls: &[ToolCall], tool_results: &mut Vec<ToolResult>) {
+fn backfill_tool_result_call_ids(tool_calls: &[ToolCall], tool_results: &mut [ToolResult]) {
     for (tc, tr) in tool_calls.iter().zip(tool_results.iter_mut()) {
         let needs_fill = tr.call_id.as_deref().is_none_or(|s| s.is_empty());
         if !needs_fill {

@@ -39,7 +39,7 @@ async fn short_term_memory_with_context_returns_messages() {
         .call_tool(TOOL_GET_RECENT_MESSAGES, json!({}))
         .await
         .unwrap();
-    let arr: Vec<serde_json::Value> = serde_json::from_str(&r.as_text().unwrap()).unwrap();
+    let arr: Vec<serde_json::Value> = serde_json::from_str(r.as_text().unwrap()).unwrap();
     assert_eq!(arr.len(), 2);
     assert_eq!(arr[0].get("role").and_then(|v| v.as_str()), Some("user"));
     assert_eq!(
@@ -67,7 +67,7 @@ async fn short_term_memory_with_limit_returns_last_n() {
         .call_tool(TOOL_GET_RECENT_MESSAGES, json!({ "limit": 2 }))
         .await
         .unwrap();
-    let arr: Vec<serde_json::Value> = serde_json::from_str(&r.as_text().unwrap()).unwrap();
+    let arr: Vec<serde_json::Value> = serde_json::from_str(r.as_text().unwrap()).unwrap();
     assert_eq!(arr.len(), 2);
     assert_eq!(arr[0].get("content").and_then(|v| v.as_str()), Some("2"));
     assert_eq!(arr[1].get("content").and_then(|v| v.as_str()), Some("3"));
@@ -82,7 +82,7 @@ async fn short_term_memory_call_tool_with_context_uses_explicit_ctx() {
         .call_tool_with_context(TOOL_GET_RECENT_MESSAGES, json!({}), Some(&ctx))
         .await
         .unwrap();
-    let arr: Vec<serde_json::Value> = serde_json::from_str(&r.as_text().unwrap()).unwrap();
+    let arr: Vec<serde_json::Value> = serde_json::from_str(r.as_text().unwrap()).unwrap();
     assert_eq!(arr.len(), 2);
     assert_eq!(arr[0].get("content").and_then(|v| v.as_str()), Some("a"));
     assert_eq!(arr[1].get("content").and_then(|v| v.as_str()), Some("b"));

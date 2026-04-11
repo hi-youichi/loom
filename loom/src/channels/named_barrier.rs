@@ -370,7 +370,7 @@ mod tests {
         barrier.mark_seen("a".to_string()).unwrap();
         let pending = barrier.pending_names();
         assert_eq!(pending.len(), 1);
-        assert!(pending.contains(&"b".to_string()));
+        assert!(pending.contains("b"));
     }
 
     /// **Scenario**: checkpoint and from_checkpoint work correctly.

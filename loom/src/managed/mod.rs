@@ -82,8 +82,8 @@ mod tests {
         let context = create_test_context::<String>();
         // Test bool implementation
         let value: bool = <IsLastStep as ManagedValue<bool, String>>::get(&is_last, &context);
-        assert_eq!(value, true);
-        assert_eq!(is_last.value(), true);
+        assert!(value);
+        assert!(is_last.value());
     }
 
     #[test]
@@ -92,7 +92,7 @@ mod tests {
         let context = create_test_context::<String>();
         // Test bool implementation
         let value: bool = <IsLastStep as ManagedValue<bool, String>>::get(&is_last, &context);
-        assert_eq!(value, false);
-        assert_eq!(is_last.value(), false);
+        assert!(!value);
+        assert!(!is_last.value());
     }
 }

@@ -394,20 +394,16 @@ where
             let mut current = first.clone();
             let mut visited = HashSet::new();
             visited.insert(current.clone());
-            loop {
-                let next = match linear_next.get(&current) {
-                    Some(n) => n.clone(),
-                    None => break,
-                };
+            while let Some(next) = linear_next.get(&current) {
                 if next == END {
                     break;
                 }
-                if visited.contains(&next) {
+                if visited.contains(next) {
                     return Err(CompilationError::InvalidChain("cycle detected".into()));
                 }
                 visited.insert(next.clone());
                 edge_order.push(next.clone());
-                current = next;
+                current = next.clone();
             }
         }
 

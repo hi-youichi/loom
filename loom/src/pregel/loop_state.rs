@@ -311,11 +311,11 @@ impl PregelLoop {
 
         let tasks = outcomes
             .into_iter()
-            .filter_map(|outcome| match outcome {
-                TaskOutcome::Success { task } => Some(task),
-                TaskOutcome::Interrupted { task, .. } => Some(task),
-                TaskOutcome::Cancelled { task } => Some(task),
-                TaskOutcome::Failed { task, .. } => Some(task),
+            .map(|outcome| match outcome {
+                TaskOutcome::Success { task } => task,
+                TaskOutcome::Interrupted { task, .. } => task,
+                TaskOutcome::Cancelled { task } => task,
+                TaskOutcome::Failed { task, .. } => task,
             })
             .collect::<Vec<_>>();
 

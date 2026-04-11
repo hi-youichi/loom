@@ -535,6 +535,7 @@ async fn read_lsp_message<R: AsyncBufReadExt + Unpin>(reader: &mut R) -> Option<
 }
 
 impl Drop for LspClient {
+    #[allow(clippy::let_underscore_future)]
     fn drop(&mut self) {
         if let Some(mut process) = self.process.take() {
             let _ = process.kill();

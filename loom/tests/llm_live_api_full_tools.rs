@@ -121,13 +121,11 @@ async fn mock_api_full_tool_list_invokes_read() {
     tokio::spawn(async move {
         let (mut stream, _) = listener.accept().await.unwrap();
         let _body = read_http_request(&mut stream).await;
-        let sse_data = vec![
-            r#"data: {"id":"chatcmpl-mock-read","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}"#,
+        let sse_data = [r#"data: {"id":"chatcmpl-mock-read","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}"#,
             r#"data: {"id":"chatcmpl-mock-read","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_read_1","type":"function","function":{"name":"read"}}]},"finish_reason":null}]}"#,
             r#"data: {"id":"chatcmpl-mock-read","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"path\":\"probe.txt\"}"}}]},"finish_reason":null}]}"#,
             r#"data: {"id":"chatcmpl-mock-read","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#,
-            "data: [DONE]",
-        ];
+            "data: [DONE]"];
         let response = sse_data.join("\n\n") + "\n\n";
         write_http_stream_response(&mut stream, &response).await;
     });

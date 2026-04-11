@@ -42,7 +42,7 @@ impl ThinkExpandNode {
 
     /// Sets the number of candidates to request per step (2 or 3).
     pub fn with_candidates_per_step(mut self, n: usize) -> Self {
-        self.candidates_per_step = n.min(3).max(2);
+        self.candidates_per_step = n.clamp(2, 3);
         self
     }
 

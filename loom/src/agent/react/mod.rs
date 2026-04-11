@@ -87,6 +87,17 @@ pub fn tools_condition(state: &ReActState) -> ToolsConditionResult {
     }
 }
 
+/// Default ReAct **base** system prompt when no `react.yaml` / `REACT_SYSTEM_PROMPT` override.
+///
+/// The previous RULES/PHASES block (THOUGHT / FINAL_ANSWER / "do not call tools" for in-knowledge
+/// questions) is **disabled**: it conflicts with `tool_choice: required` and with tasks that need
+/// real workspace listing without hallucination.
+///
+/// **Restore:** copy `system_prompt` from `loom/prompts/experimental/react.yaml` into
+/// `loom/prompts/react.yaml`, or set env `REACT_SYSTEM_PROMPT`. Role / AGENTS.md / Helve sections
+/// still apply on top of this empty base.
+pub const REACT_SYSTEM_PROMPT: &str = "";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,14 +129,3 @@ mod tests {
         assert_eq!(tools_condition(&state).as_str(), "tools");
     }
 }
-
-/// Default ReAct **base** system prompt when no `react.yaml` / `REACT_SYSTEM_PROMPT` override.
-///
-/// The previous RULES/PHASES block (THOUGHT / FINAL_ANSWER / “do not call tools” for in-knowledge
-/// questions) is **disabled**: it conflicts with `tool_choice: required` and with tasks that need
-/// real workspace listing without hallucination.
-///
-/// **Restore:** copy `system_prompt` from `loom/prompts/experimental/react.yaml` into
-/// `loom/prompts/react.yaml`, or set env `REACT_SYSTEM_PROMPT`. Role / AGENTS.md / Helve sections
-/// still apply on top of this empty base.
-pub const REACT_SYSTEM_PROMPT: &str = "";

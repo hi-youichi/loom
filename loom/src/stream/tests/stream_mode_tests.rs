@@ -2,6 +2,7 @@
 mod tests {
     use crate::stream::StreamMode;
 
+    #[allow(clippy::useless_vec)]
     #[test]
     fn stream_mode_variants_hashset_equality() {
         use std::collections::HashSet;

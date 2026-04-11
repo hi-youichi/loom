@@ -361,8 +361,9 @@ async fn invoke_with_mock_api_returns_ok() {
     );
 }
 
-#[tokio::test]
-async fn invoke_stream_with_mock_api_returns_ok() {
+    #[allow(clippy::useless_vec)]
+    #[tokio::test]
+    async fn invoke_stream_with_mock_api_returns_ok() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {

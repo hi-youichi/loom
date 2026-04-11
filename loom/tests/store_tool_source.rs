@@ -108,7 +108,7 @@ async fn store_tool_source_list_memories_returns_keys() {
         .call_tool(TOOL_LIST_MEMORIES, json!({}))
         .await
         .unwrap();
-    let keys: Vec<String> = serde_json::from_str(&r.as_text().unwrap()).unwrap();
+    let keys: Vec<String> = serde_json::from_str(r.as_text().unwrap()).unwrap();
     assert!(keys.contains(&"a".to_string()));
     assert!(keys.contains(&"b".to_string()));
 }
@@ -135,7 +135,7 @@ async fn store_tool_source_search_memories_returns_hits() {
         )
         .await
         .unwrap();
-    let hits: Vec<serde_json::Value> = serde_json::from_str(&r.as_text().unwrap()).unwrap();
+    let hits: Vec<serde_json::Value> = serde_json::from_str(r.as_text().unwrap()).unwrap();
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].get("key").and_then(|v| v.as_str()), Some("apple"));
 }
@@ -171,7 +171,7 @@ async fn store_tool_source_remember_search_with_vector_store() {
         )
         .await
         .unwrap();
-    let hits: Vec<serde_json::Value> = serde_json::from_str(&r.as_text().unwrap()).unwrap();
+    let hits: Vec<serde_json::Value> = serde_json::from_str(r.as_text().unwrap()).unwrap();
     assert!(!hits.is_empty());
     assert!(hits
         .iter()

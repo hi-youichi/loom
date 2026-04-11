@@ -338,7 +338,7 @@ mod tests {
             .unwrap_err()
             .into();
         match &err {
-            StoreError::Serialization(s) => assert!(s.contains("expected value") || s.len() > 0),
+            StoreError::Serialization(s) => assert!(s.contains("expected value") || !s.is_empty()),
             _ => panic!("expected Serialization variant"),
         }
     }

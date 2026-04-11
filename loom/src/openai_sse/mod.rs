@@ -356,12 +356,14 @@ mod tests {
 
     #[test]
     fn stream_to_sse_updates_with_tool_calls_emits_tool_calls_chunk() {
-        let mut state = ReActState::default();
-        state.tool_calls = vec![ToolCall {
-            id: Some("call_1".into()),
-            name: "get_weather".into(),
-            arguments: r#"{"city":"NYC"}"#.into(),
-        }];
+        let state = ReActState {
+            tool_calls: vec![ToolCall {
+                id: Some("call_1".into()),
+                name: "get_weather".into(),
+                arguments: r#"{\"city\":\"NYC\"}"#.into(),
+            }],
+            ..ReActState::default()
+        };
         let mut adapter = StreamToSse::new(meta_with_created(1000), false);
         adapter.feed(StreamEvent::Updates {
             node_id: "act".into(),

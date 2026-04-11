@@ -30,6 +30,7 @@ impl ThinkNode {
 
     /// Emits stream events after the LLM returns and before state is committed (messages, tool calls).
     /// `Usage` is sent separately after [`ReActState::apply_think`] to match prior event ordering.
+    #[allow(clippy::too_many_arguments)]
     async fn emit_post_response_events(
         &self,
         ctx: &RunContext<ReActState>,
