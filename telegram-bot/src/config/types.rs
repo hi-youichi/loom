@@ -10,7 +10,7 @@ pub enum InteractionMode {
     PeriodicSummary,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TelegramBotConfig {
     #[serde(default)]
     pub settings: Settings,
@@ -18,17 +18,8 @@ pub struct TelegramBotConfig {
     #[serde(default)]
     pub bots: HashMap<String, BotConfig>,
 
+    #[serde(default)]
     pub agent: Option<AgentConfig>,
-}
-
-impl Default for TelegramBotConfig {
-    fn default() -> Self {
-        Self {
-            settings: Settings::default(),
-            bots: HashMap::new(),
-            agent: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

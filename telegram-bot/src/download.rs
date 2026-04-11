@@ -181,7 +181,7 @@ fn get_file_extension(filename: Option<&str>, mime_type: Option<&str>) -> String
 /// Save metadata to JSON file
 async fn save_metadata(path: &Path, metadata: &FileMetadata) -> std::io::Result<()> {
     let json = serde_json::to_string_pretty(metadata)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
     fs::write(path, json).await
 }
 

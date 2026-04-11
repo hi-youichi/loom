@@ -103,6 +103,7 @@ impl HandlerDeps {
     }
 
     /// Test stack with explicit doubles (for example [`crate::mock`] types).
+    #[allow(clippy::too_many_arguments)]
     pub fn for_test(
         sender: Arc<dyn MessageSender>,
         agent: Arc<dyn AgentRunner>,
