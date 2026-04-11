@@ -172,6 +172,10 @@ h2 {
   color: rgba(0, 0, 0, 0.5);
 }
 
+.message--assistant .message__meta {
+  color: rgba(0, 0, 0, 0.56);
+}
+
 .message__role {
   text-transform: uppercase;
   letter-spacing: 0.14em;
@@ -772,6 +776,19 @@ h2 {
   .dark .message--user .message__meta {
     color: oklch(0.708 0 0);
   }
+
+  .dark .message--assistant {
+    background: oklch(0.205 0 0);
+  }
+
+  .dark .message--assistant .message__content {
+    color: oklch(0.985 0 0);
+  }
+
+  .dark .message--assistant .message__meta {
+    color: oklch(0.65 0 0);
+  }
+
   * {
     @apply border-border;
     outline-color: color-mix(in oklch, var(--ring) 50%, transparent);
