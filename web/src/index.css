@@ -4,6 +4,8 @@
 @import "@fontsource-variable/geist";
 @import "./styles/toolComponents.css";
 @import "./styles/streamingIndicator.css";
+@import "./styles/tabs.css";
+@import "./styles/sessions.css";
 
 @tailwind base;
 @tailwind components;
