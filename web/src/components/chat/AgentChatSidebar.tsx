@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useRef, useCallback, useState } from "react"
+import { memo, useRef, useCallback, useState, useEffect } from "react"
 import { ChevronRight, Users, ChevronDown } from "lucide-react"
 import { useChatPanel } from "@/hooks/useChatPanel"
 import { MessageList } from "./MessageList"
@@ -69,14 +69,14 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
 }: AgentChatSidebarProps) {
   const { collapsed, width, selectedAgentId, toggle, expand, setWidth, selectAgent } = useChatPanel()
   const { models } = useModels()
-  
-  // Set default model to first available model ID
-  const [selectedModel, setSelectedModel] = useState(() => {
-    const defaultModel = 'claude-3-5-sonnet' // Fallback default
-    // Try to find a matching model ID, otherwise use first available
-    const matchingModel = models.find(m => m.id.includes(defaultModel) || m.name.includes(defaultModel))
-    return matchingModel?.id || models[0]?.id || defaultModel
-  })
+  const [selectedModel, setSelectedModel] = useState('')
+
+  useEffect(() => {
+    if (selectedModel || models.length === 0) return
+    const fallback = 'claude-3-5-sonnet'
+    const match = models.find(m => m.id.includes(fallback) || m.name.includes(fallback))
+    setSelectedModel(match?.id || models[0].id)
+  }, [models, selectedModel])
 
   const selectedAgentName = agents.find((a) => a.name === selectedAgentId)?.name || selectedAgentId
 

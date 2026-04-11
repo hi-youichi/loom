@@ -71,6 +71,7 @@
 
 /* ===== Tool Card ===== */
 .tool-card {
+  flex-shrink: 0;
   background: var(--tool-surface);
   border: 1px solid var(--tool-border);
   border-radius: 6px;
