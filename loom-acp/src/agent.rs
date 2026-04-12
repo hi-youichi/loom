@@ -889,7 +889,7 @@ impl LoomAcpAgent {
                     let latest_summary: Option<String> = row.get(6)?;
 
                     let updated_at = last_updated_ms
-                        .and_then(|ms| DateTime::from_timestamp_millis(ms))
+                        .and_then(DateTime::from_timestamp_millis)
                         .map(|dt| dt.to_rfc3339());
 
                     // Use summary as title if available and not empty, otherwise generate from session_id

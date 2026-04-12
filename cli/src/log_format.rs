@@ -24,7 +24,7 @@ pub struct TextWithSpanIds {
 impl Default for TextWithSpanIds {
     fn default() -> Self {
         Self {
-            timer: SystemTime::default(),
+            timer: SystemTime,
             with_level: true,
             with_target: true,
         }
