@@ -168,6 +168,7 @@ async fn run_agent_with_options_with_on_event_invalid_working_folder_returns_err
 
 /// Integration test: session-id (thread_id) restores context from checkpoint.
 /// Runs twice with the same thread_id; verifies both runs persist to the same session (>= 2 checkpoints).
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn session_id_restores_context_from_checkpoint() {
     let _guard = env_lock().lock().expect("lock env");
@@ -303,6 +304,7 @@ async fn run_agent_with_llm_override_returns_cancelled_when_token_is_pre_cancell
 }
 
 /// Integration test: cancelled run does not persist a resume checkpoint.
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn cancelled_run_does_not_persist_checkpoint() {
     let _guard = env_lock().lock().expect("lock env");

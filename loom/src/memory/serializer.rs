@@ -269,6 +269,7 @@ mod tests {
     }
 
     /// **Scenario**: Roundtrip typed serialization preserves complex data.
+    #[allow(clippy::approx_constant)]
     #[test]
     fn typed_serializer_roundtrip_complex() {
         let ser = JsonSerializer;

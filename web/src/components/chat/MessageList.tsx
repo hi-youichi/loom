@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { memo } from 'react'
 import type { UIMessageItemProps } from '../../types/ui/message'
 import { MessageItem } from './MessageItem'
@@ -9,49 +9,54 @@ interface MessageListProps {
   className?: string
 }
 
-function getMessagesTextLength(messages: UIMessageItemProps[]): number {
-  let len = 0
-  for (const m of messages) {
-    for (const c of m.content) {
-      if (c.type === 'text') len += c.text.length
-    }
-  }
-  return len
-}
-
 export const MessageList = memo(function MessageList({ 
   messages, 
   streaming,
   className = '' 
 }: MessageListProps) {
   const listRef = useRef<HTMLDivElement>(null)
-  const userScrolledRef = useRef(false)
-  const lastTextLenRef = useRef(0)
+  const isAutoScrollingRef = useRef(false)
+  const [userScrolledUp, setUserScrolledUp] = useState(false)
 
   const handleScroll = useCallback(() => {
+    if (isAutoScrollingRef.current) return
+
     const el = listRef.current
     if (!el) return
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
-    userScrolledRef.current = !atBottom
+
+    const threshold = 100
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+
+    setUserScrolledUp(distanceFromBottom > threshold)
   }, [])
 
   useEffect(() => {
-    const textLen = getMessagesTextLength(messages)
-    if (textLen === lastTextLenRef.current) return
-    lastTextLenRef.current = textLen
+    const el = listRef.current
+    if (!el) return
 
-    if (userScrolledRef.current && !streaming) return
+    if (userScrolledUp && !streaming) return
 
+    isAutoScrollingRef.current = true
+    el.scrollTop = el.scrollHeight
+
+    setTimeout(() => {
+      isAutoScrollingRef.current = false
+    }, 50)
+  }, [messages, streaming, userScrolledUp])
+
+  useEffect(() => {
+    if (streaming) {
+      setUserScrolledUp(false)
+    }
+  }, [streaming, messages.length])
+
+  const scrollToBottom = useCallback(() => {
     const el = listRef.current
     if (el) {
       el.scrollTop = el.scrollHeight
+      setUserScrolledUp(false)
     }
-  })
-
-  useEffect(() => {
-    userScrolledRef.current = false
-    lastTextLenRef.current = 0
-  }, [messages.length])
+  }, [])
 
   return (
     <div 
@@ -69,6 +74,17 @@ export const MessageList = memo(function MessageList({
         <div className="message-list__streaming">
           <span className="streaming-indicator" />
         </div>
+      )}
+      
+      {userScrolledUp && !streaming && (
+        <button
+          className="message-list__scroll-to-bottom"
+          onClick={scrollToBottom}
+          aria-label="Scroll to bottom"
+          type="button"
+        >
+          ↓ 新消息
+        </button>
       )}
     </div>
   )

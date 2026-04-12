@@ -378,11 +378,13 @@ mod tests {
 
     #[test]
     fn test_operation_stats() {
-        let mut stats = OperationStats::default();
-        stats.total_count = 10;
-        stats.success_count = 8;
-        stats.cache_hit_count = 5;
-        stats.total_duration = Duration::from_millis(100);
+        let stats = OperationStats {
+            total_count: 10,
+            success_count: 8,
+            cache_hit_count: 5,
+            total_duration: Duration::from_millis(100),
+            ..OperationStats::default()
+        };
         
         assert_eq!(stats.success_rate(), 80.0);
         assert_eq!(stats.cache_hit_rate(), 50.0);

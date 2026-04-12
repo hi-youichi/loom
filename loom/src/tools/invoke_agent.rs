@@ -469,7 +469,6 @@ impl InvokeAgentTool {
             let args = agent_spec.clone();
             let ctx = ctx_clone.clone();
             let base_config = base_config.clone();
-            let max_depth = max_depth;
 
             tokio::spawn(async move {
                 // Acquire global semaphore permit

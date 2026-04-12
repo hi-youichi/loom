@@ -118,7 +118,7 @@ fn strip_outer_code_fence(input: &str) -> &str {
 }
 
 /// Convert markdown to Telegram MarkdownV2 format.
-/// Supports: **bold**, *italic*, `code`, ```code blocks```, [links](url)
+/// Supports: **bold**, *italic*, `code`, ```code blocks```, \[links\](url)
 pub fn markdown_to_telegram_v2(markdown: &str) -> String {
     let markdown = strip_outer_code_fence(markdown);
 

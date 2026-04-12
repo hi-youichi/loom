@@ -98,8 +98,9 @@ mod tests {
     //! - If we have both `usage` (prompt_tokens, completion_tokens) and `message_count_after_last_think`:
     //!   current = (prompt_tokens + completion_tokens) + estimate_tokens(messages[count..])
     //!   (hybrid: real usage for the last Think round + estimated delta for messages added after).
-    //! - Otherwise: current = estimate_tokens(messages) (pure heuristic).
-    //! Overflow when: current + reserve_tokens > max_context_tokens.
+//! - Otherwise: current = estimate_tokens(messages) (pure heuristic).
+//!
+//! Overflow when: current + reserve_tokens > max_context_tokens.
 
     use crate::message::Message;
 

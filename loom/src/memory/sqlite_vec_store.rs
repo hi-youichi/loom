@@ -70,6 +70,7 @@ impl SqliteVecStore {
         embedder: std::sync::Arc<dyn Embedder>,
     ) -> Result<Self, StoreError> {
         SQLITE_VEC_INIT.call_once(|| unsafe {
+            #[allow(clippy::missing_transmute_annotations)]
             rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
                 sqlite_vec::sqlite3_vec_init as *const (),
             )));

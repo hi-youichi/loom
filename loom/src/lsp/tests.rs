@@ -1,6 +1,7 @@
 //! Unit tests for LSP module
 
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod tests {
     use crate::lsp::LspManager;
     use std::path::Path;

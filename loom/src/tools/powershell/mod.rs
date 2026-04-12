@@ -225,6 +225,7 @@ where
     }
 }
 
+    #[allow(clippy::too_many_arguments)]
 async fn run_powershell_command(
     shell: &str,
     shell_cmd_arg: &str,

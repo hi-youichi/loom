@@ -330,7 +330,7 @@ impl crate::traits::SessionManager for MockSessionManager {
     }
 }
 
-/// [`FileDownloader`](crate::traits::FileDownloader) that always errors; use when the test only exercises text paths.
+/// [`FileDownloader`] that always errors; use when the test only exercises text paths.
 pub struct StubFileDownloader;
 
 impl StubFileDownloader {

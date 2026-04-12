@@ -329,6 +329,46 @@ pub enum ToolSourceError {
     ToolError(String),
 }
 
+/// Tool source contract used by ReAct runners.
+///
+/// [`crate::agent::react::ThinkNode`] consumes [`Self::list_tools`] to advertise
+/// available tools to the model. [`crate::agent::react::ActNode`] uses
+/// [`Self::call_tool`] or [`Self::call_tool_with_context`] to execute the model's
+/// requested tool calls.
+#[async_trait]
+pub trait ToolSource: Send + Sync {
+    /// Lists the tools available to the current runtime.
+    async fn list_tools(&self) -> Result<Vec<ToolSpec>, ToolSourceError>;
+
+    /// Calls a tool by name with JSON arguments.
+    async fn call_tool(
+        &self,
+        name: &str,
+        arguments: Value,
+    ) -> Result<ToolCallContent, ToolSourceError>;
+
+    /// Calls a tool with optional per-step context.
+    ///
+    /// The default implementation ignores `ctx` and delegates to
+    /// [`Self::call_tool`]. Tool sources that need access to ephemeral
+    /// per-turn state, such as recent messages, can override this method.
+    async fn call_tool_with_context(
+        &self,
+        name: &str,
+        arguments: Value,
+        ctx: Option<&ToolCallContext>,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+        let _ = ctx;
+        self.call_tool(name, arguments).await
+    }
+
+    /// Injects per-step context before tool execution.
+    ///
+    /// This hook exists for implementations that prefer explicit stateful setup
+    /// before one round of tool calls. The default implementation is a no-op.
+    fn set_call_context(&self, _ctx: Option<ToolCallContext>) {}
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -376,44 +416,4 @@ mod tests {
         assert!(diff.as_text().is_none());
         let _ = diff.clone();
     }
-}
-
-/// Tool source contract used by ReAct runners.
-///
-/// [`crate::agent::react::ThinkNode`] consumes [`Self::list_tools`] to advertise
-/// available tools to the model. [`crate::agent::react::ActNode`] uses
-/// [`Self::call_tool`] or [`Self::call_tool_with_context`] to execute the model's
-/// requested tool calls.
-#[async_trait]
-pub trait ToolSource: Send + Sync {
-    /// Lists the tools available to the current runtime.
-    async fn list_tools(&self) -> Result<Vec<ToolSpec>, ToolSourceError>;
-
-    /// Calls a tool by name with JSON arguments.
-    async fn call_tool(
-        &self,
-        name: &str,
-        arguments: Value,
-    ) -> Result<ToolCallContent, ToolSourceError>;
-
-    /// Calls a tool with optional per-step context.
-    ///
-    /// The default implementation ignores `ctx` and delegates to
-    /// [`Self::call_tool`]. Tool sources that need access to ephemeral
-    /// per-turn state, such as recent messages, can override this method.
-    async fn call_tool_with_context(
-        &self,
-        name: &str,
-        arguments: Value,
-        ctx: Option<&ToolCallContext>,
-    ) -> Result<ToolCallContent, ToolSourceError> {
-        let _ = ctx;
-        self.call_tool(name, arguments).await
-    }
-
-    /// Injects per-step context before tool execution.
-    ///
-    /// This hook exists for implementations that prefer explicit stateful setup
-    /// before one round of tool calls. The default implementation is a no-op.
-    fn set_call_context(&self, _ctx: Option<ToolCallContext>) {}
 }

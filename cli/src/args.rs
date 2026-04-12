@@ -47,7 +47,7 @@ pub(crate) struct Args {
     pub(crate) session_id: Option<String>,
 
     /// Print State info to stderr (node enter/exit, state after each step, flow)
-    #[arg(short, long)]
+    #[arg(short, long, default_value = "true")]
     pub(crate) verbose: bool,
 
     /// Interactive REPL: after output, prompt for input and continue conversation

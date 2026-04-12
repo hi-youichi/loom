@@ -69,10 +69,7 @@ mod tests {
         let result = create_llm_client(&entry);
         
         // Restore env var
-        match prev_base_url {
-            Some(v) => std::env::set_var("OPENAI_BASE_URL", v),
-            None => {}
-        }
+        if let Some(v) = prev_base_url { std::env::set_var("OPENAI_BASE_URL", v) }
         
         assert!(
             result.is_err(),

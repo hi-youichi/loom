@@ -25,6 +25,7 @@ pub use session_http::McpHttpSession;
 
 /// Transport kind: stdio (spawn process) or HTTP (POST to URL).
 /// HTTP variant uses `Arc` so we can release the mutex before awaiting.
+#[allow(clippy::large_enum_variant)]
 enum McpSessionKind {
     Stdio(McpSession),
     Http(Arc<McpHttpSession>),

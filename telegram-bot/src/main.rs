@@ -1,3 +1,4 @@
+use clap::Parser;
 use telegram_bot::{load_config, run_with_config};
 use tracing::{error, info};
 
@@ -5,8 +6,24 @@ mod logging;
 
 const TELEGRAM_BOT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+#[derive(Parser, Debug)]
+#[command(name = "telegram-bot")]
+#[command(about = "Telegram Bot for Loom", long_about = None)]
+struct Args {
+    /// Show version information
+    #[arg(short = 'V', long = "version", action = clap::ArgAction::SetTrue)]
+    version: bool,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let args = Args::parse();
+
+    if args.version {
+        println!("telegram-bot v{}", TELEGRAM_BOT_VERSION);
+        return Ok(());
+    }
+
     // NOTE: eprintln! used here because tracing is initialized after config loads.
     match config::load_and_apply_with_report("loom", None::<&std::path::Path>) {
         Ok(report) => {

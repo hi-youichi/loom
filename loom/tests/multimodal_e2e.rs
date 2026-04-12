@@ -43,7 +43,7 @@ fn find_any_provider(names: &[&str]) -> Option<ProviderDef> {
 /// Helper to build LLM client from provider config.
 fn build_client_from_provider(provider: &ProviderDef) -> Option<ChatOpenAICompat> {
     let api_key = provider.api_key.as_ref()?;
-    let base_url = provider.base_url.as_ref().map(|s| s.as_str()).unwrap_or_else(|| {
+    let base_url = provider.base_url.as_deref().unwrap_or_else(|| {
         if provider.name.contains("zhipu") || provider.name.contains("glm") {
             "https://open.bigmodel.cn/api/paas/v4"
         } else if provider.name.contains("moonshot") {
@@ -52,7 +52,7 @@ fn build_client_from_provider(provider: &ProviderDef) -> Option<ChatOpenAICompat
             "https://api.openai.com/v1"
         }
     });
-    let model = provider.model.as_ref().map(|s| s.as_str()).unwrap_or("gpt-4o");
+    let model = provider.model.as_deref().unwrap_or("gpt-4o");
 
     Some(ChatOpenAICompat::with_config(base_url, api_key, model))
 }
