@@ -322,24 +322,34 @@ pub struct ResolvedModelConfig {
 /// 3. Bare model id — no provider resolution (backward compat)
 pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfig {
     let Some(model_str) = model_str else {
+        tracing::debug!("No model string provided, using default configuration");
         return ResolvedModelConfig::default();
     };
     if model_str.is_empty() {
+        tracing::debug!("Empty model string provided, using default configuration");
         return ResolvedModelConfig::default();
     }
 
+    tracing::debug!("🔍 Resolving model configuration for: {}", model_str);
+
     let providers: Vec<crate::llm::ProviderConfig> = match env_config::load_full_config("loom") {
-        Ok(config) => config
-            .providers
-            .into_iter()
-            .map(|p| crate::llm::ProviderConfig {
-                name: p.name,
-                base_url: p.base_url,
-                api_key: p.api_key,
-                provider_type: p.provider_type,
-            })
-            .collect(),
-        Err(_) => vec![],
+        Ok(config) => {
+            tracing::debug!("📋 Loaded {} provider(s) from config", config.providers.len());
+            config
+                .providers
+                .into_iter()
+                .map(|p| crate::llm::ProviderConfig {
+                    name: p.name,
+                    base_url: p.base_url,
+                    api_key: p.api_key,
+                    provider_type: p.provider_type,
+                })
+                .collect()
+        }
+        Err(e) => {
+            tracing::warn!("⚠️  Failed to load config: {}, using empty providers", e);
+            vec![]
+        }
     };
 
     // 1. Try ModelRegistry first
@@ -347,6 +357,7 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
         .get_model(model_str, &providers)
         .await
     {
+        tracing::info!("✅ Found model in registry: {} from provider {}", entry.id, entry.provider);
         return ResolvedModelConfig {
             model: Some(entry.id.clone()),
             provider: Some(entry.provider.clone()),
@@ -355,6 +366,8 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
             provider_type: entry.provider_type,
         };
     }
+    
+    tracing::debug!("❌ Model not found in registry, trying provider/model split");
 
     // 2. Try "provider/model" split
     if let Some((provider_name, model_id)) = model_str.split_once('/') {
@@ -372,6 +385,7 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
             .ok()
             .and_then(|c| c.providers.into_iter().find(|p| p.name == provider_name));
         if let Some(p) = provider_cfg {
+            tracing::info!("✅ Resolved model from provider config: {} from provider {}", model_str, p.name);
             return ResolvedModelConfig {
                 model: Some(model_str.to_string()),
                 provider: Some(p.name),
@@ -379,10 +393,13 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
                 api_key: p.api_key,
                 provider_type: p.provider_type,
             };
+        } else {
+            tracing::warn!("⚠️  Provider '{}' not found in config, using bare model", provider_name);
         }
     }
 
     // 3. Bare model id — backward compat
+    tracing::info!("🔧 Using bare model ID: {}", model_str);
     ResolvedModelConfig {
         model: Some(model_str.to_string()),
         ..Default::default()
