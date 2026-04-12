@@ -491,6 +491,7 @@ pub async fn build_runner(
 ///     base_url: Some("https://api.openai.com/v1".to_string()),
 ///     api_key: Some("sk-...".to_string()),
 ///     provider_type: None,
+///     fetch_models: false,
 /// };
 ///
 /// let result = run_agent_with_provider(

@@ -26,11 +26,16 @@ pub(crate) async fn handle_socket(
     run_config: RunConfig,
     providers: Arc<Vec<ProviderConfig>>,
 ) {
+    tracing::info!("🔗 New WebSocket connection established");
+    
+    let mut request_count = 0;
+    let connection_start = std::time::Instant::now();
+
     while let Some(res) = socket.recv().await {
         let msg = match res {
             Ok(m) => m,
             Err(e) => {
-                tracing::warn!("read error (client closed?): {}", e);
+                tracing::warn!("❌ WebSocket read error (client closed?): {}", e);
                 let _ = socket.close().await;
                 break;
             }
@@ -38,9 +43,17 @@ pub(crate) async fn handle_socket(
         let text = match &msg {
             Message::Text(t) => t.clone(),
             Message::Binary(b) => String::from_utf8_lossy(b).into_owned(),
-            _ => continue,
+            _ => {
+                tracing::debug!("Received non-text message, skipping");
+                continue;
+            }
         };
 
+        request_count += 1;
+        tracing::debug!("📨 Request #{}: {}", request_count, text.chars().take(100).collect::<String>());
+
+        let request_start = std::time::Instant::now();
+        
         if let Err(e) = handle_request_and_send(
             &text,
             &mut socket,
@@ -51,11 +64,19 @@ pub(crate) async fn handle_socket(
         )
         .await
         {
-            tracing::warn!("handle_request error: {}", e);
+            tracing::error!("❌ Request #{} failed: {}", request_count, e);
             let _ = socket.close().await;
             break;
         }
+        
+        let duration = request_start.elapsed();
+        tracing::debug!("✅ Request #{} completed in {}ms", request_count, duration.as_millis());
     }
+    
+    let connection_duration = connection_start.elapsed();
+    tracing::info!("🔌 WebSocket connection closed (handled {} requests in {}ms)", 
+        request_count, connection_duration.as_millis());
+    
     if let Some(tx) = shutdown_tx {
         let _ = tx.send(());
     }
@@ -72,6 +93,7 @@ async fn handle_request_and_send(
     let req: ClientRequest = match serde_json::from_str(text) {
         Ok(r) => r,
         Err(e) => {
+            tracing::warn!("⚠️  Failed to parse request: {}", e);
             let resp = ServerResponse::Error(ErrorResponse {
                 id: None,
                 error: format!("parse error: {}", e),
@@ -81,8 +103,11 @@ async fn handle_request_and_send(
         }
     };
 
+    let request_type = format!("{:?}", req);
+
     match req {
         ClientRequest::Run(r) => {
+            tracing::info!("🚀 Starting agent run with profile: {:?}", r.agent);
             if let Some(resp) =
                 handle_run(r, socket, workspace_store, user_message_store, run_config).await?
             {
@@ -90,17 +115,53 @@ async fn handle_request_and_send(
             }
         }
         ClientRequest::ToolsList(r) => {
+            tracing::debug!("📋 Listing available tools");
             send_response(socket, &handle_tools_list(r, run_config).await).await?;
         }
         ClientRequest::ToolShow(r) => {
+            tracing::debug!("🔍 Showing tool details: {}", r.name);
             send_response(socket, &handle_tool_show(r, run_config).await).await?;
+        }
+        ClientRequest::AgentList(r) => {
+            tracing::debug!("👥 Listing available agents");
+            let resp = handle_agent_list(r).await;
+            send_response(socket, &resp).await?;
+        }
+        ClientRequest::Ping(r) => {
+            tracing::debug!("💓 Ping received");
+            send_response(
+                socket,
+                &ServerResponse::Pong(loom::PongResponse { id: r.id }),
+            )
+            .await?;
+        }
+        ClientRequest::ListModels(r) => {
+            tracing::debug!("🤖 Listing available models");
+            let resp = handle_list_models(r, &providers).await;
+            match &resp {
+                ServerResponse::ListModels(m) => {
+                    tracing::info!("✅ Listed {} models", m.models.len());
+                }
+                ServerResponse::Error(e) => {
+                    tracing::error!("❌ Failed to list models: {}", e.error);
+                }
+                _ => {}
+            }
+            send_response(socket, &resp).await?;
+        }
+        ClientRequest::SetModel(r) => {
+            tracing::info!("⚙️  Setting model: {} for session: {}",
+                r.model_id, r.session_id.as_deref().unwrap_or("default"));
+            let resp = handle_set_model(r, &providers).await;
+            match &resp {
+                ServerResponse::SetModel(_) => tracing::info!("✅ Model set successfully"),
+                ServerResponse::Error(e) => tracing::error!("❌ Failed to set model: {}", e.error),
+                _ => {}
+            }
+            send_response(socket, &resp).await?;
         }
         ClientRequest::UserMessages(r) => {
             let resp = handle_user_messages(r, user_message_store.clone()).await;
-            send_response(socket, &resp).await?;
-        }
-        ClientRequest::AgentList(r) => {
-            let resp = handle_agent_list(r).await;
             send_response(socket, &resp).await?;
         }
         ClientRequest::WorkspaceList(r) => {
@@ -123,21 +184,8 @@ async fn handle_request_and_send(
             let resp = handle_workspace_thread_remove(r, workspace_store.clone()).await;
             send_response(socket, &resp).await?;
         }
-        ClientRequest::Ping(r) => {
-            send_response(
-                socket,
-                &ServerResponse::Pong(loom::PongResponse { id: r.id }),
-            )
-            .await?;
-        }
-        ClientRequest::ListModels(r) => {
-            let resp = handle_list_models(r, &providers).await;
-            send_response(socket, &resp).await?;
-        }
-        ClientRequest::SetModel(r) => {
-            let resp = handle_set_model(r, &providers).await;
-            send_response(socket, &resp).await?;
-        }
     }
+
+    tracing::debug!("📤 Sending response for: {}", request_type);
     Ok(())
 }

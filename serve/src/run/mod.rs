@@ -49,14 +49,16 @@ pub(crate) async fn handle_run(
     let thread_id_for_append = opts.thread_id.clone();
     let user_message_store_for_append = user_message_store.clone();
     let run_handle = tokio::spawn(stream::run_agent_task(
-        session_id,
-        tx,
-        opts,
-        cmd,
-        initial_user_appended,
-        user_message_store_for_append,
-        thread_id_for_append,
-        run_config.append_queue_capacity,
+        stream::AgentTaskParams {
+            session_id,
+            tx,
+            opts,
+            cmd,
+            initial_user_appended,
+            user_message_store: user_message_store_for_append,
+            thread_id: thread_id_for_append,
+            append_queue_capacity: run_config.append_queue_capacity,
+        },
     ));
 
     let mut sender = delivery::WebSocketRunSender(socket);
@@ -76,7 +78,7 @@ mod tests {
 
     use super::delivery::{handle_run_stream, RunStreamSender};
     use super::request::{try_append_initial_user_message, try_register_thread_in_workspace};
-    use super::stream::{run_agent_task, APPEND_QUEUE_CAPACITY, EVENT_QUEUE_CAPACITY};
+    use super::stream::{run_agent_task, AgentTaskParams, APPEND_QUEUE_CAPACITY, EVENT_QUEUE_CAPACITY};
 
     /// Mock sender that can fail on first send or record sent responses.
     struct MockRunStreamSender {
@@ -304,14 +306,16 @@ mod tests {
             dry_run: false,
         };
         let (result, state, _dropped_events, _dropped_appends) = run_agent_task(
-            "test-session".to_string(),
-            tx,
-            opts,
-            RunCmd::React,
-            false,
-            None,
-            None,
-            APPEND_QUEUE_CAPACITY,
+            AgentTaskParams {
+                session_id: "test-session".to_string(),
+                tx,
+                opts,
+                cmd: RunCmd::React,
+                initial_user_appended: false,
+                user_message_store: None,
+                thread_id: None,
+                append_queue_capacity: APPEND_QUEUE_CAPACITY,
+            },
         )
         .await;
         let _ = result;
@@ -344,14 +348,16 @@ mod tests {
             dry_run: false,
         };
         let (result, state, _dropped_events, _dropped_appends) = run_agent_task(
-            "session-2".to_string(),
-            tx,
-            opts,
-            RunCmd::React,
-            true,
-            Some(store),
-            Some("thread-append".to_string()),
-            APPEND_QUEUE_CAPACITY,
+            AgentTaskParams {
+                session_id: "session-2".to_string(),
+                tx,
+                opts,
+                cmd: RunCmd::React,
+                initial_user_appended: true,
+                user_message_store: Some(store),
+                thread_id: Some("thread-append".to_string()),
+                append_queue_capacity: APPEND_QUEUE_CAPACITY,
+            },
         )
         .await;
         let _ = result;

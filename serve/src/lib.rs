@@ -20,9 +20,8 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tracing::{error, info};
 
-use app::{router, run_config_from_env, AppState};
+use app::{router, run_config_from_env, AppState, RunConfig};
 use loom::llm::{ModelRegistry, ProviderConfig};
-use config;
 
 const DEFAULT_WS_ADDR: &str = "127.0.0.1:8080";
 
@@ -33,15 +32,17 @@ pub async fn run_serve_on_listener(
     once: bool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr = listener.local_addr()?;
-    info!("WebSocket server initializing on ws://{}", addr);
+    info!("🌐 WebSocket server initializing on ws://{}", addr);
     if once {
-        info!("will exit after first connection is done (once mode, used by tests)");
+        info!("🔧 Running in once mode (will exit after first connection is done, used by tests)");
     }
 
     // Setup basic components
+    info!("📦 Setting up server components...");
     let (shutdown_tx, shutdown_rx) = oneshot::channel();
     let workspace_store = setup_workspace_store();
     let user_message_store = setup_user_message_store();
+    info!("✅ Server components setup complete");
     
     // Initialize ModelRegistry and load providers from config
     info!("🔄 Initializing ModelRegistry...");
@@ -56,11 +57,15 @@ pub async fn run_serve_on_listener(
             info!("✅ Loaded config with {} providers", full_config.providers.len());
             full_config.providers
                 .into_iter()
-                .map(|p| ProviderConfig {
-                    name: p.name,
-                    base_url: p.base_url,
-                    api_key: p.api_key,
-                    provider_type: p.provider_type,
+                .map(|p| {
+                    info!("  📋 Provider: {} ({:?})", p.name, p.provider_type);
+                    ProviderConfig {
+                        name: p.name,
+                        base_url: p.base_url,
+                        api_key: p.api_key,
+                        provider_type: p.provider_type,
+                        fetch_models: p.fetch_models.unwrap_or(false),
+                    }
                 })
                 .collect()
         }
@@ -71,25 +76,32 @@ pub async fn run_serve_on_listener(
     };
     
     // Load models from configured providers
+    info!("🤖 Loading models from {} provider(s)...", providers.len());
+    let load_start = Instant::now();
     let models = registry.list_all_models(&providers).await;
     let model_count = models.len();
+    info!("✅ Model loading completed (took {}ms)", load_start.elapsed().as_millis());
     
     if model_count == 0 {
         error!("❌ No models loaded from configured providers");
         if providers.is_empty() {
             error!("💡 Hint: Create ~/.loom/config.toml with [[providers]] entries");
         }
-        return Err("No models available from configured providers".into());
+        return Err("No models available".into());
     }
     
     info!("✅ Successfully loaded {} models from {} providers (total: {}ms)", 
         model_count, providers.len(), load_start.elapsed().as_millis());
-    
-    // Log sample models
-    for (i, model) in models.iter().take(5).enumerate() {
+    for (i, model) in models.iter().enumerate() {
         info!("  {}. {} ({})", i + 1, model.name, model.provider);
     }
-
+    
+    let run_config = RunConfig::default();
+    
+    info!("🚀 Starting server with configuration:");
+    info!("  Event queue capacity: {}", run_config.event_queue_capacity);
+    info!("  Append queue capacity: {}", run_config.append_queue_capacity);
+    
     let state = Arc::new(AppState {
         shutdown_tx: Arc::new(std::sync::Mutex::new(if once {
             Some(shutdown_tx)
@@ -103,17 +115,25 @@ pub async fn run_serve_on_listener(
     });
 
     let app = router(state);
+    
+    info!("✅ Server initialization complete, ready to accept connections");
+    info!("📍 Listening on: {}", addr);
+    info!("🔗 WebSocket endpoint: ws://{}/", addr);
 
     if once {
+        info!("⏳ Waiting for first connection (once mode)...");
         axum::serve(listener, app)
             .with_graceful_shutdown(async move {
                 let _ = shutdown_rx.await;
             })
             .await?;
-        info!("connection done, exiting (once mode)");
+        info!("✅ Connection completed, exiting (once mode)");
     } else {
+        info!("🔄 Server running in persistent mode (will handle multiple connections)");
         axum::serve(listener, app).await?;
     }
+    
+    info!("🛑 Server shutdown complete");
     Ok(())
 }
 

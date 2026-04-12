@@ -3,7 +3,7 @@
 //! Log config is set at startup from CLI args, but actual file initialization
 //! is delayed until the first `new_session` provides `working_folder` via ACP.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use config::tracing_init;
@@ -27,7 +27,7 @@ pub struct LogConfig {
 /// Initialize logging with working_folder from ACP session.
 /// This should be called once when the first session is created.
 /// Subsequent calls are no-ops.
-pub fn init_with_working_folder(working_folder: &PathBuf) {
+pub fn init_with_working_folder(working_folder: &Path) {
     if LOG_GUARD.get().is_some() {
         return;
     }
@@ -46,7 +46,7 @@ pub fn init_with_working_folder(working_folder: &PathBuf) {
     };
 
     let log_path =
-        tracing_init::resolve_log_path(log_file.as_path(), Some(working_folder.as_path()));
+        tracing_init::resolve_log_path(log_file.as_path(), Some(working_folder));
 
     if let Some(parent) = log_path.parent() {
         let _ = std::fs::create_dir_all(parent);

@@ -4,6 +4,8 @@
 @import "@fontsource-variable/geist";
 @import "./styles/toolComponents.css";
 @import "./styles/streamingIndicator.css";
+@import "./styles/tabs.css";
+@import "./styles/sessions.css";
 
 @tailwind base;
 @tailwind components;
@@ -140,6 +142,7 @@ h2 {
   gap: 14px;
   padding: 6px 12px;
   overflow-y: auto;
+  position: relative;
 }
 
 .message {
@@ -846,4 +849,49 @@ h2 {
 
 .dark .message-list {
   scrollbar-color: oklch(0.40 0 0) transparent;
+}
+
+/* Scroll to bottom button - positioned relative to message list */
+.message-list__scroll-to-bottom {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  padding: 8px 16px;
+  background: var(--background);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s ease;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.message-list__scroll-to-bottom:hover {
+  background: var(--accent);
+  border-color: var(--ring);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  transform: translateY(-2px);
+}
+
+.message-list__scroll-to-bottom:active {
+  transform: translateY(0);
+}
+
+.dark .message-list__scroll-to-bottom {
+  background: var(--card);
+  color: var(--card-foreground);
+  border-color: var(--border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.dark .message-list__scroll-to-bottom:hover {
+  background: var(--accent);
+  border-color: var(--ring);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
