@@ -229,6 +229,7 @@ impl ModelRegistry {
         providers: &[ProviderConfig],
     ) -> Result<Vec<ModelEntry>, AgentError> {
         if providers.is_empty() {
+            tracing::info!(total_models = 0, "Listed all available models from model spec (no providers configured)");
             return Ok(Vec::new());
         }
 
