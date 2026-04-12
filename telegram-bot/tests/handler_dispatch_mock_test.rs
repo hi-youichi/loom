@@ -125,10 +125,17 @@ async fn periodic_summary_default_sends_ack_then_final_and_passes_context() {
     let sender = Arc::new(MockSender::new());
     let sender_trait: Arc<dyn MessageSender> = sender.clone();
     let agent = Arc::new(MockAgentRunner::new("final answer"));
+    let settings = Arc::new(Settings {
+        streaming: StreamingConfig {
+            interaction_mode: InteractionMode::PeriodicSummary,
+            ..Default::default()
+        },
+        ..Default::default()
+    });
     let deps = make_text_only_deps(
         sender_trait,
         agent.clone(),
-        Arc::new(Settings::default()),
+        settings,
         Arc::new(String::new()),
     );
 
@@ -797,7 +804,13 @@ async fn same_chat_second_request_receives_busy_message_while_first_runs() {
     let deps = Arc::new(make_text_only_deps(
         sender_trait,
         agent,
-        Arc::new(Settings::default()),
+        Arc::new(Settings {
+            streaming: StreamingConfig {
+                interaction_mode: InteractionMode::PeriodicSummary,
+                ..Default::default()
+            },
+            ..Default::default()
+        }),
         Arc::new(String::new()),
     ));
 
