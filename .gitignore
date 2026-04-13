@@ -46,6 +46,10 @@ Thumbs.db
 # CLI output
 out.json
 
+# Test output files
+loom_test_*.txt
+test_output_*.txt
+
 # Debug and test
 log
 logs/

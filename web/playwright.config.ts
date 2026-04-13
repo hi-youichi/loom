@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test'
 
 export default defineConfig({
   testDir: './e2e',
-  timeout: 30000,
+  timeout: 60000, // Increased timeout for server startup
   retries: 0,
   use: {
     baseURL: 'http://localhost:5173',
@@ -18,4 +18,8 @@ export default defineConfig({
       use: { browserName: 'chromium' },
     },
   ],
+  // Global setup: start test servers before all tests
+  globalSetup: require.resolve('./e2e/global-setup.ts'),
+  // Global teardown: stop test servers after all tests
+  globalTeardown: require.resolve('./e2e/global-teardown.ts'),
 })

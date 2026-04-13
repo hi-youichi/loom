@@ -39,6 +39,7 @@ export const SessionCard = memo(function SessionCard({
 
   return (
     <div
+      data-testid={`session-card-${session.id}`}
       className={cn(
         'session-card',
         isSelected && 'session-card--selected',
@@ -61,45 +62,47 @@ export const SessionCard = memo(function SessionCard({
           {session.isPinned && (
             <span className="session-card__pin-icon" aria-label="已固定">📌</span>
           )}
-          <h3 className="session-card__title">{session.title}</h3>
+          <h3 data-testid="session-card__title" className="session-card__title">{session.title}</h3>
         </div>
         
         <div className="session-card__actions">
           {onPin && (
             <button
+              data-testid="pin-session-btn"
               className="session-card__action-btn"
               onClick={handlePin}
-              aria-label={session.isPinned ? "取消固定" : "固定会话"}
+              aria-label={session.isPinned ? "取消固定" : "固定"}
               type="button"
             >
-              {session.isPinned ? '🔓' : '📌'}
+              {session.isPinned ? '🔒' : '📌'}
             </button>
           )}
           {onMore && (
             <button
+              data-testid="more-session-btn"
               className="session-card__action-btn"
               onClick={handleMore}
               aria-label="更多选项"
               type="button"
             >
-              ⋮
+              •••
             </button>
           )}
         </div>
       </div>
 
-      <p className="session-card__message">
+      <p data-testid="session-card__last-message" className="session-card__message">
         {session.lastMessage}
       </p>
 
       <div className="session-card__meta">
         <span className="session-card__badge" title={`Agent: ${session.agent}`}>
-          🏷️ {session.agent}
+          🤖 {session.agent}
         </span>
         <span className="session-card__badge" title={`Model: ${session.model}`}>
-          🤖 {session.model}
+          🧠 {session.model}
         </span>
-        <span className="session-card__badge" title={`${session.messageCount} 条消息`}>
+        <span data-testid="session-card__count" className="session-card__badge" title={`${session.messageCount} 条消息`}>
           💬 {session.messageCount}
         </span>
         <span className="session-card__time" title={`更新于 ${new Date(session.updatedAt).toLocaleString()}`}>

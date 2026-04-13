@@ -106,7 +106,7 @@ export function SessionList({
   const hasPinnedSessions = sessions.some(s => s.isPinned)
 
   return (
-    <div className={cn('session-list', className)}>
+    <div data-testid="session-list" className={cn('session-list', className)}>
       {/* Toolbar */}
       <div className="session-list__toolbar">
         <div className="session-list__search">
