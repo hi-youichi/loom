@@ -11,6 +11,7 @@ import { useAgents } from '../hooks/useAgents'
 import { useChat } from '../hooks/useChat'
 import { useChatPanel } from '../hooks/useChatPanel'
 import type { FileNode } from '../components/file-tree'
+import type { Session } from '../types/session'
 
 const DEMO_FILES: FileNode[] = [
   {
@@ -99,6 +100,7 @@ export function ChatPage() {
   const {
     workspaces,
     activeWorkspaceId,
+    threads,
     loading: workspaceLoading,
     error: workspaceError,
     loadWorkspaces,
@@ -128,6 +130,18 @@ export function ChatPage() {
       selectWs(activeWorkspaceId)
     }
   }, [activeWorkspaceId, selectWs])
+
+  const sessions: Session[] = threads.map(t => ({
+    id: t.thread_id,
+    title: t.thread_id.slice(0, 8),
+    createdAt: new Date(t.created_at_ms).toISOString(),
+    updatedAt: new Date(t.created_at_ms).toISOString(),
+    lastMessage: '',
+    messageCount: 0,
+    agent: '',
+    model: '',
+    isPinned: false,
+  }))
 
   const handleSelectWorkspace = useCallback((id: string) => {
     selectWs(id)
@@ -161,11 +175,12 @@ export function ChatPage() {
           }
         />
         <div className="flex-1 min-w-0">
-          <DashboardView
+        <DashboardView
             agents={agents}
             activity={[]}
             activeCount={agents.filter(a => a.status === 'running').length}
             totalCalls={agents.reduce((sum, a) => sum + a.callCount, 0)}
+            sessions={sessions}
           />
         </div>
         <AgentChatSidebar

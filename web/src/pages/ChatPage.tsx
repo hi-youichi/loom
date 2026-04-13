@@ -107,6 +107,9 @@ export function ChatPage() {
   }, [models, selectedModel])
 
   const handleModelChange = (model: string) => {
+    if (import.meta.env.DEV) {
+      console.log('🔄 Model changed to:', model);
+    }
     setSelectedModel(model)
   }
 
@@ -115,6 +118,17 @@ export function ChatPage() {
     const userId = crypto.randomUUID()
     const thinkingId = crypto.randomUUID()
     const textId = crypto.randomUUID()
+
+    // Validate model selection
+    if (!selectedModel) {
+      setError('Please select a model before sending a message')
+      return
+    }
+    
+    if (import.meta.env.DEV) {
+      console.log('📤 Preparing to send message with model:', selectedModel);
+      console.log('📤 Model details:', models.find(m => m.id === selectedModel));
+    }
 
     // Add user message and assistant placeholder events
     setStreamEvents((current) => [
