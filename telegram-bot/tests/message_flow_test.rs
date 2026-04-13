@@ -39,7 +39,7 @@ fn test_streaming_config_custom() {
     assert_eq!(config.act_emoji, "🚀");
     assert_eq!(config.throttle_ms, 200);
     assert_eq!(config.max_retries, 5);
-    assert_eq!(config.interaction_mode, InteractionMode::PeriodicSummary);
+    assert_eq!(config.interaction_mode, InteractionMode::Streaming);
 }
 
 #[test]
@@ -183,7 +183,7 @@ async fn test_settings_clone_async() {
 async fn test_streaming_config_defaults_async() {
     let config = StreamingConfig::default();
 
-    assert_eq!(config.interaction_mode, InteractionMode::PeriodicSummary);
+    assert_eq!(config.interaction_mode, InteractionMode::Streaming);
     assert_eq!(config.max_act_chars, 500);
     assert!(config.show_act_phase);
     assert_eq!(config.act_emoji, "⚡");
