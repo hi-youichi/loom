@@ -159,6 +159,13 @@ pub(crate) async fn build_default_llm_with_tool_source(
             }
             tracing::debug!("build_default_llm: OpenAI with tools");
             let mut client = ChatOpenAI::with_config(openai_config, entry.name).with_tools(tools);
+            
+            if let Some(ref thread_id) = config.thread_id {
+                let headers = crate::llm::LlmHeaders::default().with_thread_id(thread_id);
+                client = client.with_headers(headers);
+                tracing::debug!("Set X-Thread-Id header: {}", thread_id);
+            }
+            
             if let Some(mode) = entry.tool_choice {
                 client = client.with_tool_choice(mode);
             }
@@ -187,6 +194,13 @@ pub(crate) async fn build_default_llm_with_tool_source(
             tracing::debug!(provider_type = %provider_type, "build_default_llm: OpenAI-compat with tools");
             let mut client =
                 ChatOpenAICompat::with_config(base_url, api_key, entry.name).with_tools(tools);
+            
+            if let Some(ref thread_id) = config.thread_id {
+                let headers = crate::llm::LlmHeaders::default().with_thread_id(thread_id);
+                client = client.with_headers(headers);
+                tracing::debug!("Set X-Thread-Id header: {}", thread_id);
+            }
+            
             if let Some(mode) = entry.tool_choice {
                 client = client.with_tool_choice(mode);
             }
