@@ -441,11 +441,17 @@ h2 {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+  width: 100%;
 }
 
 .composer__model-selector {
+  flex: 1 1 auto;
+  min-width: 120px;
+  max-width: 200px;
+}
+
+.composer__button {
   flex: 0 0 auto;
-  min-width: 180px;
 }
 
 .model-selector {
