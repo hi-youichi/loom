@@ -219,6 +219,7 @@ pub struct ChatOpenAICompat {
     temperature: Option<f32>,
     tool_choice: Option<ToolChoiceMode>,
     parse_thinking_tags: bool,
+    headers: Option<crate::llm::LlmHeaders>,
 }
 
 impl ChatOpenAICompat {
@@ -250,6 +251,7 @@ impl ChatOpenAICompat {
             temperature: None,
             tool_choice: None,
             parse_thinking_tags: false,
+            headers: None,
         }
     }
 
@@ -300,6 +302,37 @@ impl ChatOpenAICompat {
     pub fn with_parse_thinking_tags(mut self, enable: bool) -> Self {
         self.parse_thinking_tags = enable;
         self
+    }
+
+    /// Sets HTTP headers for LLM requests.
+    ///
+    /// This allows adding custom headers like X-App-Id, X-Thread-Id, X-Trace-Id
+    /// for request tracking and observability.
+    pub fn with_headers(mut self, headers: crate::llm::LlmHeaders) -> Self {
+        self.headers = Some(headers);
+        self
+    }
+
+    fn add_headers_to_request(&self, request_builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        let mut builder = request_builder;
+
+        if let Some(headers) = &self.headers {
+            // Fixed X-App-Id header as "loom"
+            builder = builder.header("X-App-Id", "loom");
+            
+            if let Some(thread_id) = &headers.thread_id {
+                builder = builder.header("X-Thread-Id", thread_id);
+            }
+            if let Some(trace_id) = &headers.trace_id {
+                builder = builder.header("X-Trace-Id", trace_id);
+            }
+
+            for (key, value) in &headers.custom_headers {
+                builder = builder.header(key, value);
+            }
+        }
+
+        builder
     }
 
     fn chat_completions_url(&self) -> String {
@@ -489,13 +522,14 @@ impl LlmClient for ChatOpenAICompat {
             let res = {
                 let mut attempt = 0;
                 loop {
-                    match self
-                        .client
-                        .post(&url)
-                        .bearer_auth(&self.api_key)
-                        .json(&body)
-                        .send()
-                        .await
+                    match self.add_headers_to_request(
+                        self.client
+                            .post(&url)
+                            .bearer_auth(&self.api_key)
+                            .json(&body)
+                    )
+                    .send()
+                    .await
                     {
                         Ok(res) => break res,
                         Err(e)
@@ -572,16 +606,17 @@ impl LlmClient for ChatOpenAICompat {
                     "OpenAI-compat retryable status, retrying"
                 );
                 tokio::time::sleep(delay).await;
-                let retry_res = self
-                    .client
-                    .post(&url)
-                    .bearer_auth(&self.api_key)
-                    .json(&body)
-                    .send()
-                    .await
-                    .map_err(|e| {
-                        AgentError::ExecutionFailed(format!("OpenAI-compat request failed: {}", e))
-                    })?;
+                let retry_res = self.add_headers_to_request(
+                    self.client
+                        .post(&url)
+                        .bearer_auth(&self.api_key)
+                        .json(&body)
+                )
+                .send()
+                .await
+                .map_err(|e| {
+                    AgentError::ExecutionFailed(format!("OpenAI-compat request failed: {}", e))
+                })?;
                 let retry_status = retry_res.status();
                 let retry_bytes = retry_res.bytes().await.map_err(|e| {
                     AgentError::ExecutionFailed(format!("OpenAI-compat response read: {}", e))
@@ -688,15 +723,16 @@ impl LlmClient for ChatOpenAICompat {
 
         let response = {
             let mut attempt = 0;
-            loop {
-                match self
-                    .client
-                    .post(&url)
-                    .bearer_auth(&self.api_key)
-                    .json(&body)
+                loop {
+                    match self.add_headers_to_request(
+                        self.client
+                            .post(&url)
+                            .bearer_auth(&self.api_key)
+                            .json(&body)
+                    )
                     .send()
                     .await
-                {
+                    {
                     Ok(response) => break response,
                     Err(e)
                         if is_retryable_reqwest_error(&e)
@@ -746,16 +782,17 @@ impl LlmClient for ChatOpenAICompat {
                     "OpenAI-compat stream retryable status, retrying"
                 );
                 tokio::time::sleep(delay).await;
-                let retry_res = self
-                    .client
-                    .post(&url)
-                    .bearer_auth(&self.api_key)
-                    .json(&body)
-                    .send()
-                    .await
-                    .map_err(|e| {
-                        AgentError::ExecutionFailed(format!("OpenAI-compat stream request: {}", e))
-                    })?;
+                let retry_res = self.add_headers_to_request(
+                    self.client
+                        .post(&url)
+                        .bearer_auth(&self.api_key)
+                        .json(&body)
+                )
+                .send()
+                .await
+                .map_err(|e| {
+                    AgentError::ExecutionFailed(format!("OpenAI-compat stream request: {}", e))
+                })?;
                 let retry_status = retry_res.status();
                 if retry_status.is_success() {
                     final_response = Some(retry_res);
