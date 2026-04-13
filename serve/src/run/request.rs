@@ -81,6 +81,24 @@ pub(super) async fn prepare_run(
     .await;
 
     let resolved = loom::resolve_model_config(r.model.as_deref()).await;
+    
+    // Log the model resolution
+    match &r.model {
+        Some(model) => {
+            tracing::info!("🤖 [RunRequest] Model requested from frontend: {}", model);
+            if let Some(ref resolved_model) = resolved.model {
+                tracing::info!("✅ [RunRequest] Model resolved: {} (provider: {:?})", resolved_model, resolved.provider);
+            } else {
+                tracing::warn!("⚠️  [RunRequest] Model resolution returned empty, using defaults");
+            }
+        }
+        None => {
+            tracing::info!("🤖 [RunRequest] No model specified from frontend, using default configuration");
+        }
+    }
+
+    let r_thread_id = r.thread_id.clone();
+    let r_agent = r.agent.clone();
 
     let opts = RunOptions {
         message: r.message,
@@ -111,14 +129,18 @@ pub(super) async fn prepare_run(
         AgentIdentifier::Type(AgentType::Got) => RunCmd::Got {
             got_adaptive: opts.got_adaptive,
         },
-        AgentIdentifier::Name(name) => {
-            // Custom agent profile name (dev, assistant, ask, etc.)
-            // For now, default to React mode with profile resolution
-            // TODO: resolve agent profile by name and run it
+        AgentIdentifier::Name(ref name) => {
             tracing::info!("Running agent profile: {}", name);
             RunCmd::React
         }
     };
+    
+    // Log final run options
+    tracing::info!("🎯 Run options configured:");
+    tracing::info!("  Model: {:?}", opts.model);
+    tracing::info!("  Provider: {:?}", opts.provider);
+    tracing::info!("  Agent: {:?}", r_agent);
+    tracing::info!("  Thread ID: {:?}", r_thread_id);
 
     PrepareRunResult {
         opts,

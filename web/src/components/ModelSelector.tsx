@@ -143,6 +143,9 @@ export function ModelSelector({
                           model.id === value && "bg-accent text-accent-foreground"
                         )}
                         onClick={() => {
+                          if (import.meta.env.DEV) {
+                            console.log('🎯 Model selected:', model.id, model.name);
+                          }
                           onChange?.(model.id)
                           setOpen(false)
                           setSearchQuery('')

@@ -19,7 +19,7 @@ use crate::state::tool_output_normalizer::{ToolOutputStrategy, ToolStorageRef};
 ///
 /// **Interaction**: Written by ThinkNode from LLM output; read by ActNode to call
 /// `ToolSource::call_tool(name, arguments)`.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct ToolCall {
     /// Tool name as registered in ToolSource (e.g. MCP tools/list).
     pub name: String,

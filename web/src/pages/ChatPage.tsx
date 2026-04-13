@@ -1,101 +1,117 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 
-import { MessageComposer } from '../components/MessageComposer'
-import { ThinkIndicator } from '../components/ThinkIndicator'
-import { ToolBlockView } from '../components/ToolBlockView'
-import { sendMessage } from '../services/chat'
+import { ChatErrorBoundary } from '../components/error/ErrorBoundary'
+import { FileTreeSidebar } from '../components/file-tree'
+import { DashboardView } from '../components/dashboard'
+import { AgentChatSidebar } from '../components/chat'
+import { WorkspaceSelector } from '../components/workspace'
+import { useWorkspace } from '../hooks/useWorkspace'
+import { useThread } from '../hooks/useThread'
+import { useAgents } from '../hooks/useAgents'
+import { useChat } from '../hooks/useChat'
+import { useChatPanel } from '../hooks/useChatPanel'
 import { useModels } from '../hooks/useModels'
-import type { ToolBlock, ToolStatus } from '../types/chat'
+import type { FileNode } from '../components/file-tree'
+import type { Session } from '../types/session'
 
-const THREAD_STORAGE_KEY = 'loom-web-thread-id'
-
-function getOrCreateThreadId() {
-  const existing = window.localStorage.getItem(THREAD_STORAGE_KEY)
-  if (existing) {
-    return existing
-  }
-
-  const nextThreadId = crypto.randomUUID()
-  window.localStorage.setItem(THREAD_STORAGE_KEY, nextThreadId)
-  return nextThreadId
-}
-
-function formatTime(timestamp: string) {
-  return new Intl.DateTimeFormat('en', {
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(timestamp))
-}
-
-type UserEvent = {
-  type: 'user'
-  id: string
-  createdAt: string
-  text: string
-}
-
-type AssistantTextEvent = {
-  type: 'assistant_text'
-  id: string
-  createdAt: string
-  text: string
-}
-
-type AssistantThinkingEvent = {
-  type: 'assistant_thinking'
-  id: string
-  lines: string[]
-  active: boolean
-}
-
-type ToolBlockEvent = {
-  type: 'tool_block'
-  tool: ToolBlock
-}
-
-type StreamEvent = UserEvent | AssistantTextEvent | AssistantThinkingEvent | ToolBlockEvent
-
-function formatThinkLine(event: Record<string, unknown>) {
-  switch (event.type) {
-    case 'run_start':
-      return `run_start${typeof event.agent === 'string' ? ` · ${event.agent}` : ''}`
-    case 'node_enter':
-    case 'node_exit':
-    case 'usage':
-    case 'values':
-    case 'updates':
-    case 'checkpoint':
-    case 'message_chunk':
-    case 'thought_chunk':
-    case 'tool_call':
-    case 'tool_start':
-    case 'tool_output':
-    case 'tool_end':
-      return null
-    default:
-      return typeof event.type === 'string' ? event.type : null
-  }
-}
-
-function createToolBlock(callId: string, name: string, args: string): ToolBlock {
-  return {
-    id: crypto.randomUUID(),
-    type: 'tool',
-    callId,
-    name,
-    status: 'queued' as ToolStatus,
-    argumentsText: args,
-    outputText: '',
-    resultText: '',
-    isError: false,
-  }
-}
+const DEMO_FILES: FileNode[] = [
+  {
+    id: '1',
+    name: 'src',
+    type: 'folder',
+    path: 'src',
+    children: [
+      {
+        id: '1-1',
+        name: 'App.tsx',
+        type: 'file',
+        path: 'src/App.tsx',
+        extension: 'tsx',
+      },
+      {
+        id: '1-2',
+        name: 'main.tsx',
+        type: 'file',
+        path: 'src/main.tsx',
+        extension: 'tsx',
+      },
+      {
+        id: '1-3',
+        name: 'index.css',
+        type: 'file',
+        path: 'src/index.css',
+        extension: 'css',
+      },
+      {
+        id: '1-4',
+        name: 'components',
+        type: 'folder',
+        path: 'src/components',
+        children: [
+          {
+            id: '1-4-1',
+            name: 'MessageComposer.tsx',
+            type: 'file',
+            path: 'src/components/MessageComposer.tsx',
+            extension: 'tsx',
+          },
+          {
+            id: '1-4-2',
+            name: 'ThinkIndicator.tsx',
+            type: 'file',
+            path: 'src/components/ThinkIndicator.tsx',
+            extension: 'tsx',
+          },
+        ],
+      },
+      {
+        id: '1-5',
+        name: 'hooks',
+        type: 'folder',
+        path: 'src/hooks',
+        children: [
+          {
+            id: '1-5-1',
+            name: 'useChat.ts',
+            type: 'file',
+            path: 'src/hooks/useChat.ts',
+            extension: 'ts',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: '2',
+    name: 'package.json',
+    type: 'file',
+    path: 'package.json',
+    extension: 'json',
+  },
+  {
+    id: '3',
+    name: 'vite.config.ts',
+    type: 'file',
+    path: 'vite.config.ts',
+    extension: 'ts',
+  },
+]
 
 export function ChatPage() {
-  const threadId = useMemo(() => getOrCreateThreadId(), [])
-  const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([])
-  const [sending, setSending] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const {
+    workspaces,
+    activeWorkspaceId,
+    threads,
+    loading: workspaceLoading,
+    error: workspaceError,
+    loadWorkspaces,
+    createWorkspace,
+    selectWorkspace: selectWs,
+  } = useWorkspace()
+  const { agents } = useAgents({ autoRefresh: true, refreshInterval: 15000 })
+  const { threadId } = useThread()
+  const { selectedAgentId } = useChatPanel()
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
   const { models } = useModels()
   const [selectedModel, setSelectedModel] = useState('')
 
@@ -106,228 +122,89 @@ export function ChatPage() {
     setSelectedModel(match?.id || models[0].id)
   }, [models, selectedModel])
 
-  const handleModelChange = (model: string) => {
-    setSelectedModel(model)
-  }
+  const {
+    messages,
+    isStreaming,
+    sendMessage: sendRealMessage,
+  } = useChat({
+    threadId,
+    agentId: selectedAgentId || 'dev',
+    model: selectedModel,
+  })
 
-  const handleSend = async (text: string) => {
-    const createdAt = new Date().toISOString()
-    const userId = crypto.randomUUID()
-    const thinkingId = crypto.randomUUID()
-    const textId = crypto.randomUUID()
+  useEffect(() => {
+    loadWorkspaces()
+  }, [loadWorkspaces])
 
-    // Add user message and assistant placeholder events
-    setStreamEvents((current) => [
-      ...current,
-      { type: 'user', id: userId, createdAt, text },
-      { type: 'assistant_thinking', id: thinkingId, lines: [], active: true },
-      { type: 'assistant_text', id: textId, createdAt, text: '' },
-    ])
-    setSending(true)
-    setError(null)
-
-    try {
-      const reply = await sendMessage(text, {
-        threadId,
-        model: selectedModel,
-        onEvent: (event) => {
-          const evt = event as Record<string, unknown>
-          
-          // Handle tool events separately
-          if (evt.type === 'tool_call') {
-            const callId = typeof evt.id === 'string' ? evt.id : crypto.randomUUID()
-            const name = typeof evt.name === 'string' ? evt.name : 'unknown'
-            const args = typeof evt.input === 'string' 
-              ? evt.input 
-              : JSON.stringify(evt.input, null, 2)
-            
-            const toolBlock = createToolBlock(callId, name, args)
-            setStreamEvents((current) => [...current, { type: 'tool_block', tool: toolBlock }])
-            return
-          }
-          
-          if (evt.type === 'tool_start') {
-            const callId = typeof evt.id === 'string' ? evt.id : ''
-            setStreamEvents((current) =>
-              current.map((e) => {
-                if (e.type === 'tool_block' && e.tool.callId === callId) {
-                  return { ...e, tool: { ...e.tool, status: 'running' as ToolStatus } }
-                }
-                return e
-              }),
-            )
-            return
-          }
-          
-          if (evt.type === 'tool_output') {
-            const callId = typeof evt.id === 'string' ? evt.id : ''
-            const content = typeof evt.content === 'string' ? evt.content : ''
-            setStreamEvents((current) =>
-              current.map((e) => {
-                if (e.type === 'tool_block' && e.tool.callId === callId) {
-                  return { 
-                    ...e, 
-                    tool: { 
-                      ...e.tool, 
-                      outputText: e.tool.outputText + content 
-                    } 
-                  }
-                }
-                return e
-              }),
-            )
-            return
-          }
-          
-          if (evt.type === 'tool_end') {
-            const callId = typeof evt.id === 'string' ? evt.id : ''
-            const result = typeof evt.result === 'string' 
-              ? evt.result 
-              : JSON.stringify(evt.result, null, 2)
-            const isError = evt.error !== undefined && evt.error !== null
-            
-            setStreamEvents((current) =>
-              current.map((e) => {
-                if (e.type === 'tool_block' && e.tool.callId === callId) {
-                  return { 
-                    ...e, 
-                    tool: { 
-                      ...e.tool, 
-                      status: (isError ? 'error' : 'done') as ToolStatus,
-                      resultText: result,
-                      isError
-                    } 
-                  }
-                }
-                return e
-              }),
-            )
-            return
-          }
-
-          // thought_chunk: append reasoning content to thinking lines
-          if (evt.type === 'thought_chunk' && typeof evt.content === 'string') {
-            setStreamEvents((current) =>
-              current.map((e) =>
-                e.type === 'assistant_thinking' && e.id === thinkingId
-                  ? { ...e, lines: (e.lines.join('\n') + evt.content).split('\n') }
-                  : e,
-              ),
-            )
-            return
-          }
-
-          // Handle other thinking events (run_start, node_enter, etc.)
-          const line = formatThinkLine(evt)
-          if (!line) {
-            return
-          }
-
-          setStreamEvents((current) =>
-            current.map((e) =>
-              e.type === 'assistant_thinking' && e.id === thinkingId
-                ? { ...e, lines: [...e.lines, line] }
-                : e,
-            ),
-          )
-        },
-        onChunk: (chunk) => {
-          setStreamEvents((current) =>
-            current.map((e) =>
-              e.type === 'assistant_text' && e.id === textId
-                ? { ...e, text: e.text + chunk }
-                : e,
-            ),
-          )
-        },
-      })
-
-      // Mark thinking as inactive and finalize text
-      setStreamEvents((current) =>
-        current.map((e) => {
-          if (e.type === 'assistant_thinking' && e.id === thinkingId) {
-            return { ...e, active: false }
-          }
-          if (e.type === 'assistant_text' && e.id === textId) {
-            return { ...e, text: reply.content || e.text }
-          }
-          return e
-        }),
-      )
-    } catch (caughtError) {
-      const nextError =
-        caughtError instanceof Error
-          ? caughtError.message
-          : 'Request failed. Check whether `loom serve` is running.'
-
-      // Remove assistant events on error
-      setStreamEvents((current) =>
-        current.filter(
-          (e) =>
-            !(e.type === 'assistant_thinking' && e.id === thinkingId) &&
-            !(e.type === 'assistant_text' && e.id === textId),
-        ),
-      )
-      setError(nextError)
-      throw caughtError
-    } finally {
-      setSending(false)
+  useEffect(() => {
+    if (activeWorkspaceId) {
+      selectWs(activeWorkspaceId)
     }
-  }
+  }, [activeWorkspaceId, selectWs])
+
+  const sessions: Session[] = threads.map(t => ({
+    id: t.thread_id,
+    title: t.thread_id.slice(0, 8),
+    createdAt: new Date(t.created_at_ms).toISOString(),
+    updatedAt: new Date(t.created_at_ms).toISOString(),
+    lastMessage: '',
+    messageCount: 0,
+    agent: '',
+    model: '',
+    isPinned: false,
+  }))
+
+  const handleSelectWorkspace = useCallback((id: string) => {
+    selectWs(id)
+  }, [selectWs])
+
+  const handleCreateWorkspace = useCallback(async (name?: string) => {
+    return createWorkspace(name)
+  }, [createWorkspace])
+
+  const handleSendMessage = useCallback(async (text: string) => {
+    await sendRealMessage(text)
+  }, [sendRealMessage])
 
   return (
-    <main className="shell">
-      <section className="chat-panel" aria-label="Chat demo">
-        <div className="message-list" role="log" aria-live="polite">
-          {streamEvents.map((event) => {
-            if (event.type === 'user') {
-              return (
-                <article key={event.id} className="message message--user" aria-label="user message">
-                  <div className="message__meta">
-                    <time dateTime={event.createdAt}>{formatTime(event.createdAt)}</time>
-                  </div>
-                  <p className="message__content">{event.text}</p>
-                </article>
-              )
-            }
-
-            if (event.type === 'assistant_thinking') {
-              return <ThinkIndicator key={event.id} lines={event.lines} active={event.active} />
-            }
-
-            if (event.type === 'assistant_text') {
-              if (!event.text) return null
-              return (
-                <article
-                  key={event.id}
-                  className="message message--assistant"
-                  aria-label="assistant message"
-                >
-                  <div className="message__meta">
-                    <time dateTime={event.createdAt}>{formatTime(event.createdAt)}</time>
-                  </div>
-                  <p className="message__content">{event.text}</p>
-                </article>
-              )
-            }
-
-            if (event.type === 'tool_block') {
-              return <ToolBlockView key={event.tool.id} tool={event.tool} />
-            }
-
-            return null
-          })}
-        </div>
-
-        {error ? <p className="chat-panel__error">{error}</p> : null}
-
-        <MessageComposer 
-          disabled={sending} 
-          onSend={handleSend}
-          selectedModel={selectedModel}
-          onModelChange={handleModelChange}
+    <ChatErrorBoundary>
+      <div className="flex h-screen overflow-hidden">
+        <FileTreeSidebar
+          files={DEMO_FILES}
+          selectedId={selectedFileId}
+          onSelect={(node) => setSelectedFileId(node.id)}
+          workspaceSlot={
+            <WorkspaceSelector
+              workspaces={workspaces}
+              activeWorkspaceId={activeWorkspaceId}
+              loading={workspaceLoading}
+              error={workspaceError}
+              onSelect={handleSelectWorkspace}
+              onCreate={handleCreateWorkspace}
+              onRefresh={loadWorkspaces}
+            />
+          }
         />
-      </section>
-    </main>
+        <div className="flex-1 min-w-0">
+        <DashboardView
+            agents={agents}
+            activity={[]}
+            activeCount={agents.filter(a => a.status === 'running').length}
+            totalCalls={agents.reduce((sum, a) => sum + a.callCount, 0)}
+            sessions={sessions}
+          />
+        </div>
+        <AgentChatSidebar
+          agents={agents.map(agent => ({
+            name: agent.name,
+            status: agent.status,
+          }))}
+          messages={messages}
+          isStreaming={isStreaming}
+          onSendMessage={handleSendMessage}
+          onModelChange={setSelectedModel}
+        />
+      </div>
+    </ChatErrorBoundary>
   )
 }

@@ -38,9 +38,7 @@ pub fn run_options_from_issues_event(
 
     let working_folder = std::env::var("WORKING_FOLDER").ok().map(PathBuf::from);
 
-    let model = std::env::var("MODEL")
-        .or_else(|_| std::env::var("OPENAI_MODEL"))
-        .ok();
+    let model = None; // Removed environment variable support, use API parameters
 
     loom::RunOptions {
         message: UserContent::Text(message),

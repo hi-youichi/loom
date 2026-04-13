@@ -22,6 +22,15 @@ pub enum AgentIdentifier {
     Name(String),
 }
 
+impl std::fmt::Display for AgentIdentifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AgentIdentifier::Type(t) => write!(f, "{:?}", t),
+            AgentIdentifier::Name(n) => write!(f, "{}", n),
+        }
+    }
+}
+
 /// Run request: execute one Agent run (streaming events + final RunEnd).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RunRequest {

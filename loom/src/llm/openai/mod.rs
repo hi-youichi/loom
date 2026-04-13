@@ -70,6 +70,7 @@ pub struct ChatOpenAI {
     tool_choice: Option<ToolChoiceMode>,
     /// When true, parse content for thinking tags and emit as MessageChunk::thinking / message.
     parse_thinking_tags: bool,
+    headers: Option<crate::llm::LlmHeaders>,
 }
 
 impl ChatOpenAI {
@@ -85,6 +86,7 @@ impl ChatOpenAI {
             temperature: None,
             tool_choice: None,
             parse_thinking_tags: false,
+            headers: None,
         }
     }
 
@@ -100,6 +102,7 @@ impl ChatOpenAI {
             temperature: None,
             tool_choice: None,
             parse_thinking_tags: false,
+            headers: None,
         }
     }
 
@@ -152,6 +155,38 @@ impl ChatOpenAI {
     pub fn with_parse_thinking_tags(mut self, enable: bool) -> Self {
         self.parse_thinking_tags = enable;
         self
+    }
+
+    /// Sets HTTP headers for LLM requests.
+    ///
+    /// This allows adding custom headers like X-App-Id, X-Thread-Id, X-Trace-Id
+    /// for request tracking and observability.
+    pub fn with_headers(mut self, headers: crate::llm::LlmHeaders) -> Self {
+        self.headers = Some(headers);
+        self
+    }
+
+    #[allow(dead_code)]
+    fn get_headers_map(&self) -> std::collections::HashMap<String, String> {
+        let mut headers = std::collections::HashMap::new();
+
+        if let Some(config) = &self.headers {
+            // Fixed X-App-Id header as "loom"
+            headers.insert("X-App-Id".to_string(), "loom".to_string());
+            
+            if let Some(thread_id) = &config.thread_id {
+                headers.insert("X-Thread-Id".to_string(), thread_id.clone());
+            }
+            if let Some(trace_id) = &config.trace_id {
+                headers.insert("X-Trace-Id".to_string(), trace_id.clone());
+            }
+
+            for (key, value) in &config.custom_headers {
+                headers.insert(key.clone(), value.clone());
+            }
+        }
+
+        headers
     }
 
     /// Chat completions URL for logging (`OPENAI_BASE_URL` / `OPENAI_API_BASE` or default).
