@@ -92,6 +92,7 @@ impl LoomAcpAgent {
                     base_url: p.base_url,
                     api_key: p.api_key,
                     provider_type: p.provider_type,
+                    fetch_models: p.fetch_models.unwrap_or(false),
                 })
                 .collect(),
             Err(_) => vec![],
@@ -874,7 +875,7 @@ impl LoomAcpAgent {
                     let latest_summary: Option<String> = row.get(6)?;
 
                     let updated_at = last_updated_ms
-                        .and_then(|ms| DateTime::from_timestamp_millis(ms))
+                        .and_then(DateTime::from_timestamp_millis)
                         .map(|dt| dt.to_rfc3339());
 
                     // Use summary as title if available and not empty, otherwise generate from session_id

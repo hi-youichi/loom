@@ -20,11 +20,8 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tracing::{error, info};
 
-use app::{router, run_config_from_env, AppState};
+use app::{router, run_config_from_env, AppState, RunConfig};
 use loom::llm::{ModelRegistry, ProviderConfig};
-use config;
-
-use app::RunConfig;
 
 const DEFAULT_WS_ADDR: &str = "127.0.0.1:8080";
 
@@ -67,6 +64,7 @@ pub async fn run_serve_on_listener(
                         base_url: p.base_url,
                         api_key: p.api_key,
                         provider_type: p.provider_type,
+                        fetch_models: p.fetch_models.unwrap_or(false),
                     }
                 })
                 .collect()

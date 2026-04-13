@@ -83,7 +83,7 @@ fn log_file_resolves_working_folder_placeholder() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_loom-acp"))
         .env("LOOM_HOME", &loom_home)
         .arg("--log-level")
-        .arg("info")
+        .arg("info,loom=info")
         .arg("--log-file")
         .arg("{working_folder}/logs/acp.log")
         .arg("--log-rotate")

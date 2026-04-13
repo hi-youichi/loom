@@ -67,3 +67,5 @@ LOOM_COMPRESSION_KEEP_RECENT = "20"
 # type = "openai"
 # tool_choice = "auto"
 # temperature = 0.7
+# fetch_models = true              # Fetch model list from {base_url}/models
+                                   # (missing or false = use models.dev catalog)

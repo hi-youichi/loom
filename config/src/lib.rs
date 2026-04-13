@@ -870,6 +870,7 @@ model = "other-model"
             model: Some("glm-5".to_string()),
             provider_type: None,
             temperature: None,
+            fetch_models: None,
         };
 
         let env_map = provider_env_map_with_models_dev_fallback(&provider);

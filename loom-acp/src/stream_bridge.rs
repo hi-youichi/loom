@@ -295,7 +295,7 @@ pub fn stream_update_to_session_notification(
                 let tc = create_tool_call(
                     tool_call_id, 
                     tool_name, 
-                    parse_arguments_delta(&arguments_delta).as_ref(),
+                    parse_arguments_delta(arguments_delta).as_ref(),
                     None
                 );
                 tracing::debug!(
@@ -572,11 +572,10 @@ fn extract_target_from_input(name: &str, input: Option<&serde_json::Value>) -> O
     let obj = input?.as_object()?;
     let n = name.to_lowercase();
 
-    let keys: &[&[&str]] = if n.contains("read") || n.contains("file") {
-        &[&["path", "file_path", "filepath"]]
-    } else if n.contains("write") || n.contains("edit") {
-        &[&["path", "file_path", "filepath"]]
-    } else if n.contains("delete") || n.contains("remove") {
+    let keys: &[&[&str]] = if n.contains("read") || n.contains("file")
+        || n.contains("write") || n.contains("edit")
+        || n.contains("delete") || n.contains("remove")
+    {
         &[&["path", "file_path", "filepath"]]
     } else if n.contains("move") || n.contains("rename") {
         &[&["source", "src", "path"], &["destination", "dest", "target"]]

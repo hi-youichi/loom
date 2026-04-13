@@ -133,11 +133,11 @@ async fn handle_request_and_send(
             handle_tools_list(r, run_config).await
         }
         ClientRequest::ToolShow(r) => {
-            tracing::debug!("🔍 Showing tool details: {}", r.name);
+            tracing::debug!("🔧 Showing tool details: {}", r.name);
             handle_tool_show(r, run_config).await
         }
         ClientRequest::AgentList(r) => {
-            tracing::debug!("🤖 Listing available agents");
+            tracing::debug!("📋 Listing available agents");
             handle_agent_list(r).await
         }
         ClientRequest::UserMessages(r) => {
@@ -165,7 +165,8 @@ async fn handle_request_and_send(
                 }
                 _ => {}
             }
-            resp
+            send_response(socket, &resp).await?;
+            return Ok(());
         }
         ClientRequest::SetModel(r) => {
             tracing::info!("🔄 Setting model: {} for session: {}", r.model_id,
@@ -176,26 +177,27 @@ async fn handle_request_and_send(
                 ServerResponse::Error(e) => tracing::error!("❌ Failed to set model: {}", e.error),
                 _ => {}
             }
-            resp
+            send_response(socket, &resp).await?;
+            return Ok(());
         }
         ClientRequest::WorkspaceList(r) => {
             tracing::debug!("📂 Listing workspaces");
             super::workspace::handle_workspace_list(r, workspace_store.clone()).await
         }
         ClientRequest::WorkspaceCreate(r) => {
-            tracing::debug!("📂 Creating workspace");
+            tracing::debug!("📁 Creating workspace");
             super::workspace::handle_workspace_create(r, workspace_store.clone()).await
         }
         ClientRequest::WorkspaceThreadList(r) => {
-            tracing::debug!("📂 Listing workspace threads");
+            tracing::debug!("📋 Listing workspace threads");
             super::workspace::handle_workspace_thread_list(r, workspace_store.clone()).await
         }
         ClientRequest::WorkspaceThreadAdd(r) => {
-            tracing::debug!("📂 Adding thread to workspace");
+            tracing::debug!("➕ Adding thread to workspace");
             super::workspace::handle_workspace_thread_add(r, workspace_store.clone()).await
         }
         ClientRequest::WorkspaceThreadRemove(r) => {
-            tracing::debug!("📂 Removing thread from workspace");
+            tracing::debug!("➖ Removing thread from workspace");
             super::workspace::handle_workspace_thread_remove(r, workspace_store.clone()).await
         }
     };
@@ -204,4 +206,3 @@ async fn handle_request_and_send(
     send_response(socket, &resp).await?;
     Ok(())
 }
-

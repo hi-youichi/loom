@@ -71,7 +71,7 @@ pub fn format_tools_list(tools: &[ToolSpec], output_json: bool) -> Result<(), Ru
         return Ok(());
     }
     let name_width = tools.iter().map(|t| t.name.len()).max().unwrap_or(4).max(4);
-    println!("{:<width$}\t{}", "NAME", "DESCRIPTION", width = name_width);
+    println!("{:<width$}\tDESCRIPTION", "NAME", width = name_width);
     for spec in tools {
         let desc = spec
             .description

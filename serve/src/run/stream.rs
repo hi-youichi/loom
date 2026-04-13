@@ -67,30 +67,44 @@ fn forward_react_messages_to_append(
 
 /// Handles a single stream event: forward new messages to append channel, convert to
 /// protocol envelope and send to `tx`. Increments drop counters when queues are full.
+struct AppendContext<'a> {
+    append_tx: Option<&'a mpsc::Sender<(String, Message)>>,
+    thread_id: Option<&'a String>,
+    message_count: &'a Arc<Mutex<usize>>,
+    dropped_appends: Option<&'a Arc<AtomicUsize>>,
+}
+
+struct EventContext<'a> {
+    state: &'a Arc<Mutex<EnvelopeState>>,
+    tx: &'a mpsc::Sender<ProtocolEventEnvelope>,
+    dropped_events: Option<&'a Arc<AtomicUsize>>,
+}
+
 fn process_run_stream_event(
     ev: AnyStreamEvent,
-    state: &Arc<Mutex<EnvelopeState>>,
-    tx: &mpsc::Sender<ProtocolEventEnvelope>,
-    append_tx: Option<&mpsc::Sender<(String, Message)>>,
-    thread_id: Option<&String>,
-    message_count: &Arc<Mutex<usize>>,
-    dropped_events: Option<&Arc<AtomicUsize>>,
-    dropped_appends: Option<&Arc<AtomicUsize>>,
+    event_ctx: &EventContext<'_>,
+    append_ctx: &AppendContext<'_>,
 ) {
-    forward_react_messages_to_append(&ev, append_tx, thread_id, message_count, dropped_appends);
+    forward_react_messages_to_append(
+        &ev,
+        append_ctx.append_tx,
+        append_ctx.thread_id,
+        append_ctx.message_count,
+        append_ctx.dropped_appends,
+    );
 
-    let mut guard = match state.lock() {
+    let mut guard = match event_ctx.state.lock() {
         Ok(g) => g,
         Err(e) => {
             tracing::error!("envelope state lock failed (poisoned?): {}", e);
             return;
         }
     };
-    let Ok(protocol_envelope) = ev.to_protocol_event(&mut *guard) else {
+    let Ok(protocol_envelope) = ev.to_protocol_event(&mut guard) else {
         return;
     };
-    if tx.try_send(protocol_envelope).is_err() {
-        if let Some(c) = dropped_events {
+    if event_ctx.tx.try_send(protocol_envelope).is_err() {
+        if let Some(c) = event_ctx.dropped_events {
             c.fetch_add(1, Ordering::Relaxed);
         }
         tracing::warn!("event queue full, dropping stream event (receiver likely disconnected)");
@@ -98,21 +112,35 @@ fn process_run_stream_event(
 }
 
 /// Runs the agent in the current task. Returns result, envelope state, and drop counters.
+pub(super) struct AgentTaskParams {
+    pub(super) session_id: String,
+    pub(super) tx: mpsc::Sender<ProtocolEventEnvelope>,
+    pub(super) opts: RunOptions,
+    pub(super) cmd: RunCmd,
+    pub(super) initial_user_appended: bool,
+    pub(super) user_message_store: Option<Arc<dyn loom::UserMessageStore>>,
+    pub(super) thread_id: Option<String>,
+    pub(super) append_queue_capacity: usize,
+}
+
 pub(super) async fn run_agent_task(
-    session_id: String,
-    tx: mpsc::Sender<ProtocolEventEnvelope>,
-    opts: RunOptions,
-    cmd: RunCmd,
-    initial_user_appended: bool,
-    user_message_store: Option<Arc<dyn loom::UserMessageStore>>,
-    thread_id: Option<String>,
-    append_queue_capacity: usize,
+    params: AgentTaskParams,
 ) -> (
     Result<RunCompletion, RunError>,
     Arc<Mutex<EnvelopeState>>,
     Arc<AtomicUsize>,
     Arc<AtomicUsize>,
 ) {
+    let AgentTaskParams {
+        session_id,
+        tx,
+        opts,
+        cmd,
+        initial_user_appended,
+        user_message_store,
+        thread_id,
+        append_queue_capacity,
+    } = params;
     let state = Arc::new(Mutex::new(EnvelopeState::new(session_id.clone())));
     let state_clone = state.clone();
     let dropped_events = Arc::new(AtomicUsize::new(0));
@@ -143,16 +171,18 @@ pub(super) async fn run_agent_task(
     let dropped_appends_clone = dropped_appends.clone();
 
     let on_event = Box::new(move |ev: AnyStreamEvent| {
-        process_run_stream_event(
-            ev,
-            &state_clone,
-            &tx,
-            append_tx_for_closure.as_ref(),
-            thread_id_closure.as_ref(),
-            &message_count_clone,
-            Some(&dropped_events_clone),
-            Some(&dropped_appends_clone),
-        );
+        let event_ctx = EventContext {
+            state: &state_clone,
+            tx: &tx,
+            dropped_events: Some(&dropped_events_clone),
+        };
+        let append_ctx = AppendContext {
+            append_tx: append_tx_for_closure.as_ref(),
+            thread_id: thread_id_closure.as_ref(),
+            message_count: &message_count_clone,
+            dropped_appends: Some(&dropped_appends_clone),
+        };
+        process_run_stream_event(ev, &event_ctx, &append_ctx);
     });
     let result = run_agent_with_options(&opts, &cmd, Some(on_event)).await;
     drop(append_tx_to_drop);
