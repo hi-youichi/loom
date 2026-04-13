@@ -83,7 +83,7 @@ pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<Model
         .unwrap_or_else(|| (None, raw_model.as_str()));
 
     // Determine provider name
-    let provider = match config.llm_provider.as_deref().or(provider_from_model.as_deref()) {
+    let provider = match config.llm_provider.as_deref().or(provider_from_model) {
         Some("bigmodel") => "bigmodel".to_string(),
         Some("openai_compat") => "openai_compat".to_string(),
         Some(other) => other.to_string(),

@@ -214,7 +214,7 @@ impl Agent for LoomAcpAgent {
 
         let default_mode = self.agent_registry.default_mode_id();
         let current_model = None // Removed environment variable support, use session config
-            .or_else(|| crate::last_model::load())
+            .or_else(crate::last_model::load)
             .unwrap_or_default();
         self.sessions.update_session_config(&our_id, |c| {
             c.current_agent = default_mode.to_string();
