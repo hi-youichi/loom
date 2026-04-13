@@ -1,12 +1,13 @@
 "use client"
 
-import { memo, useRef, useCallback, useState, useEffect } from "react"
+import { memo, useRef, useCallback } from "react"
 import { ChevronRight, Users, ChevronDown } from "lucide-react"
 import { useChatPanel } from "@/hooks/useChatPanel"
 import { MessageList } from "./MessageList"
 import { MessageComposer } from "../MessageComposer"
 import { ThemeToggle } from "../ThemeToggle"
 import { useModels } from "@/hooks/useModels"
+import { useAgentModel } from "@/hooks/useAgentModel"
 import type { UIMessageItemProps } from "@/types/ui/message"
 
 interface AgentChatSidebarProps {
@@ -71,19 +72,12 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
 }: AgentChatSidebarProps) {
   const { collapsed, width, selectedAgentId, toggle, expand, setWidth, selectAgent } = useChatPanel()
   const { models } = useModels()
-  const [selectedModel, setSelectedModel] = useState('')
-
-  useEffect(() => {
-    if (selectedModel || models.length === 0) return
-    const fallback = 'claude-3-5-sonnet'
-    const match = models.find(m => m.id.includes(fallback) || m.name.includes(fallback))
-    setSelectedModel(match?.id || models[0].id)
-  }, [models, selectedModel])
+  const { selectedModel, handleModelChange: setModel } = useAgentModel(selectedAgentId, models)
 
   const selectedAgentName = agents.find((a) => a.name === selectedAgentId)?.name || selectedAgentId
 
   const handleModelChange = (model: string) => {
-    setSelectedModel(model)
+    setModel(model)
     onModelChange?.(model)
   }
 
