@@ -1,4 +1,4 @@
-//! WebSocket server for Loom (axum + ws).
+﻿//! WebSocket server for Loom (axum + ws).
 //!
 //! Listens on ws://127.0.0.1:8080, handles run, tools_list, tool_show, agent_list, workspace_*, ping.
 //!
@@ -23,6 +23,8 @@ use tracing::{error, info};
 use app::{router, run_config_from_env, AppState};
 use loom::llm::{ModelRegistry, ProviderConfig};
 use config;
+
+use app::RunConfig;
 
 const DEFAULT_WS_ADDR: &str = "127.0.0.1:8080";
 
@@ -59,7 +61,7 @@ pub async fn run_serve_on_listener(
             full_config.providers
                 .into_iter()
                 .map(|p| {
-                    info!("  📋 Provider: {} ({})", p.name, p.provider_type);
+                    info!("  📋 Provider: {} ({:?})", p.name, p.provider_type);
                     ProviderConfig {
                         name: p.name,
                         base_url: p.base_url,

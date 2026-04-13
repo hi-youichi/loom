@@ -10,13 +10,8 @@ use super::app::RunConfig;
 use super::response::send_response;
 use super::run::handle_run;
 use super::tools::{handle_tool_show, handle_tools_list};
-use super::user_messages::handle_user_messages;
 use super::agents::handle_agent_list;
 use super::models::{handle_list_models, handle_set_model};
-use super::workspace::{
-    handle_workspace_create, handle_workspace_list, handle_workspace_thread_add,
-    handle_workspace_thread_list, handle_workspace_thread_remove,
-};
 
 pub(crate) async fn handle_socket(
     mut socket: WebSocket,
@@ -104,44 +99,53 @@ async fn handle_request_and_send(
     };
 
     let request_type = format!("{:?}", req);
-    tracing::info!("🎯 Handling request: {} (id: {:?})", request_type, 
+    tracing::info!("Handling request: {} (id: {:?})", request_type,
         match &req {
-            ClientRequest::Run(r) => Some(r.id.clone()),
-            ClientRequest::ToolsList(r) => Some(r.id.clone()),
-            ClientRequest::ToolShow(r) => Some(r.id.clone()),
-            ClientRequest::AgentList(r) => Some(r.id.clone()),
-            ClientRequest::Ping(r) => Some(r.id.clone()),
+            ClientRequest::Run(r) => r.id.clone(),
             ClientRequest::ListModels(r) => Some(r.id.clone()),
             ClientRequest::SetModel(r) => Some(r.id.clone()),
             _ => None,
-        }
-    );
+        });
 
     let resp = match req {
         ClientRequest::Run(r) => {
             tracing::info!("🚀 Starting agent run with profile: {}", r.agent);
-            let resp = handle_run(r, workspace_store, user_message_store, run_config).await;
-            match &resp {
-                ServerResponse::RunStart(_) => tracing::info!("✅ Run started successfully"),
-                ServerResponse::Error(e) => tracing::error!("❌ Run failed: {}", e.error),
-                _ => {}
+            match handle_run(r, socket, workspace_store, user_message_store, run_config).await {
+                Ok(Some(resp)) => {
+                    tracing::info!("✅ Run completed with response");
+                    resp
+                }
+                Ok(None) => {
+                    tracing::info!("✅ Run streamed to client");
+                    return Ok(());
+                }
+                Err(e) => {
+                    tracing::error!("❌ Run failed: {}", e);
+                    ServerResponse::Error(ErrorResponse {
+                        id: None,
+                        error: e.to_string(),
+                    })
+                }
             }
-            resp
         }
         ClientRequest::ToolsList(r) => {
-            tracing::debug!("📋 Listing available tools");
-            handle_tools_list(r).await
+            tracing::debug!("🔧 Listing available tools");
+            handle_tools_list(r, run_config).await
         }
         ClientRequest::ToolShow(r) => {
             tracing::debug!("🔍 Showing tool details: {}", r.name);
-            handle_tool_show(r).await
+            handle_tool_show(r, run_config).await
         }
         ClientRequest::AgentList(r) => {
-            tracing::debug!("👥 Listing available agents");
+            tracing::debug!("🤖 Listing available agents");
             handle_agent_list(r).await
         }
+        ClientRequest::UserMessages(r) => {
+            tracing::debug!("💬 Handling user messages for thread: {}", r.thread_id);
+            super::user_messages::handle_user_messages(r, user_message_store).await
+        }
         ClientRequest::Ping(r) => {
-            tracing::debug!("💓 Ping received");
+            tracing::debug!("🏓 Ping received");
             send_response(
                 socket,
                 &ServerResponse::Pong(loom::PongResponse { id: r.id }),
@@ -150,11 +154,11 @@ async fn handle_request_and_send(
             return Ok(());
         }
         ClientRequest::ListModels(r) => {
-            tracing::debug!("🤖 Listing available models");
+            tracing::debug!("📋 Listing available models");
             let resp = handle_list_models(r, &providers).await;
             match &resp {
-                ServerResponse::ModelsList(m) => {
-                    tracing::info!("✅ Listed {} models", m.models.len());
+                ServerResponse::ListModels(m) => {
+                    tracing::info!("📋 Listed {} models", m.models.len());
                 }
                 ServerResponse::Error(e) => {
                     tracing::error!("❌ Failed to list models: {}", e.error);
@@ -164,7 +168,7 @@ async fn handle_request_and_send(
             resp
         }
         ClientRequest::SetModel(r) => {
-            tracing::info!("⚙️  Setting model: {} for session: {}", r.model_id, 
+            tracing::info!("🔄 Setting model: {} for session: {}", r.model_id,
                 r.session_id.as_deref().unwrap_or("default"));
             let resp = handle_set_model(r, &providers).await;
             match &resp {
@@ -174,71 +178,30 @@ async fn handle_request_and_send(
             }
             resp
         }
+        ClientRequest::WorkspaceList(r) => {
+            tracing::debug!("📂 Listing workspaces");
+            super::workspace::handle_workspace_list(r, workspace_store.clone()).await
+        }
+        ClientRequest::WorkspaceCreate(r) => {
+            tracing::debug!("📂 Creating workspace");
+            super::workspace::handle_workspace_create(r, workspace_store.clone()).await
+        }
+        ClientRequest::WorkspaceThreadList(r) => {
+            tracing::debug!("📂 Listing workspace threads");
+            super::workspace::handle_workspace_thread_list(r, workspace_store.clone()).await
+        }
+        ClientRequest::WorkspaceThreadAdd(r) => {
+            tracing::debug!("📂 Adding thread to workspace");
+            super::workspace::handle_workspace_thread_add(r, workspace_store.clone()).await
+        }
+        ClientRequest::WorkspaceThreadRemove(r) => {
+            tracing::debug!("📂 Removing thread from workspace");
+            super::workspace::handle_workspace_thread_remove(r, workspace_store.clone()).await
+        }
     };
     
     tracing::debug!("📤 Sending response for: {}", request_type);
     send_response(socket, &resp).await?;
     Ok(())
 }
-    };
 
-    match req {
-        ClientRequest::Run(r) => {
-            if let Some(resp) =
-                handle_run(r, socket, workspace_store, user_message_store, run_config).await?
-            {
-                send_response(socket, &resp).await?;
-            }
-        }
-        ClientRequest::ToolsList(r) => {
-            send_response(socket, &handle_tools_list(r, run_config).await).await?;
-        }
-        ClientRequest::ToolShow(r) => {
-            send_response(socket, &handle_tool_show(r, run_config).await).await?;
-        }
-        ClientRequest::UserMessages(r) => {
-            let resp = handle_user_messages(r, user_message_store.clone()).await;
-            send_response(socket, &resp).await?;
-        }
-        ClientRequest::AgentList(r) => {
-            let resp = handle_agent_list(r).await;
-            send_response(socket, &resp).await?;
-        }
-        ClientRequest::WorkspaceList(r) => {
-            let resp = handle_workspace_list(r, workspace_store.clone()).await;
-            send_response(socket, &resp).await?;
-        }
-        ClientRequest::WorkspaceCreate(r) => {
-            let resp = handle_workspace_create(r, workspace_store.clone()).await;
-            send_response(socket, &resp).await?;
-        }
-        ClientRequest::WorkspaceThreadList(r) => {
-            let resp = handle_workspace_thread_list(r, workspace_store.clone()).await;
-            send_response(socket, &resp).await?;
-        }
-        ClientRequest::WorkspaceThreadAdd(r) => {
-            let resp = handle_workspace_thread_add(r, workspace_store.clone()).await;
-            send_response(socket, &resp).await?;
-        }
-        ClientRequest::WorkspaceThreadRemove(r) => {
-            let resp = handle_workspace_thread_remove(r, workspace_store.clone()).await;
-            send_response(socket, &resp).await?;
-        }
-        ClientRequest::Ping(r) => {
-            send_response(
-                socket,
-                &ServerResponse::Pong(loom::PongResponse { id: r.id }),
-            )
-            .await?;
-        }
-        ClientRequest::ListModels(r) => {
-            let resp = handle_list_models(r, &providers).await;
-            send_response(socket, &resp).await?;
-        }
-        ClientRequest::SetModel(r) => {
-            let resp = handle_set_model(r, &providers).await;
-            send_response(socket, &resp).await?;
-        }
-    }
-    Ok(())
-}

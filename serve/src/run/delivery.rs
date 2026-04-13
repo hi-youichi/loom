@@ -140,7 +140,7 @@ where
                 .await?;
         }
         Err(e) => {
-            tracing::error!("❌ Run failed with error: {}", run_id, error = %e);
+            tracing::error!("❌ Run {} failed with error: {}", run_id, e);
             sender
                 .send_response(&ServerResponse::Error(ErrorResponse {
                     id: Some(run_id.clone()),
@@ -150,6 +150,6 @@ where
         }
     }
     
-    tracing::info("🎉 Run {} fully processed and response sent", run_id);
+    tracing::info!("🎉 Run {} fully processed and response sent", run_id);
     Ok(None)
 }
