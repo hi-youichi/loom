@@ -14,6 +14,7 @@ interface AgentChatSidebarProps {
   messages: UIMessageItemProps[]
   isStreaming?: boolean
   onSendMessage: (text: string) => Promise<void>
+  onModelChange?: (model: string) => void
 }
 
 function ResizeHandle({ onDrag, onToggle }: { onDrag: (w: number) => void; onToggle: () => void }) {
@@ -66,6 +67,7 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
   messages,
   isStreaming = false,
   onSendMessage,
+  onModelChange,
 }: AgentChatSidebarProps) {
   const { collapsed, width, selectedAgentId, toggle, expand, setWidth, selectAgent } = useChatPanel()
   const { models } = useModels()
@@ -82,6 +84,7 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
 
   const handleModelChange = (model: string) => {
     setSelectedModel(model)
+    onModelChange?.(model)
   }
 
   return (

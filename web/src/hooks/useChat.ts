@@ -76,9 +76,11 @@ function formatThinkLine(event: LoomStreamEvent): string | null {
 export function useChat(options?: {
   threadId?: string
   agentId?: string
+  model?: string
 }) {
   const threadId = options?.threadId
   const agentId = options?.agentId || 'react'
+  const model = options?.model
 
   const [messages, setMessages] = useState<UIMessageItemProps[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
@@ -172,6 +174,7 @@ export function useChat(options?: {
         const reply = await sendChatMessage(text, {
           threadId,
           agent: agentId,
+          model,
           onChunk: handleTextChunk,
           onEvent: handleEvent,
         })
@@ -201,7 +204,7 @@ export function useChat(options?: {
         activeAssistantMessageIdRef.current = null
       }
     },
-    [isStreaming, threadId, agentId, handleTextChunk, handleEvent],
+    [isStreaming, threadId, agentId, model, handleTextChunk, handleEvent],
   )
 
   return useMemo(
