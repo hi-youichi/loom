@@ -45,22 +45,29 @@ pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<Model
         .clone()
         .or_else(|| std::env::var("OPENAI_BASE_URL").ok());
 
-    // Model: config > env > default
-    let raw_model = config
-        .model
-        .as_ref()
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-        .or_else(|| std::env::var("MODEL").ok())
-        .or_else(|| std::env::var("OPENAI_MODEL").ok())
-        .unwrap_or_else(|| "gpt-4o-mini".to_string());
-
-    // Explicit provider type: config > env (optional)
-    let explicit_provider_type = config
-        .llm_provider
-        .clone()
-        .or_else(|| std::env::var("LLM_PROVIDER").ok());
-    // Inferred provider type from MODEL when explicit provider type is not set.
+    // Model: frontend config > default (environment variables removed)
+    tracing::debug!("🎯 Frontend config model: {:?}", config.model);
+    
+    let raw_model = if let Some(ref model) = config.model {
+        if !model.is_empty() {
+            tracing::info!("✅ Using frontend selected model: {}", model);
+            model.clone()
+        } else {
+            tracing::warn!("⚠️ Frontend config model empty, using system default");
+            "gpt-4o-mini".to_string()
+        }
+    } else {
+        tracing::warn!("⚠️ No frontend config model, using system default");
+        tracing::info!("💡 Tip: Specify a model in your config file or via API parameters for better control");
+        "gpt-4o-mini".to_string()
+    };
+    
+    tracing::info!("✅ Final model to use: {}", raw_model);
+    
+    // Provider type: only use config, no environment variables (removed)
+    tracing::debug!("🎯 Config provider type: {:?}", config.llm_provider);
+    
+    // Inferred provider type from model string when explicit provider type not set
     let inferred_provider_type = parse_provider_model(&raw_model).map(|(provider, _)| {
         if provider.eq_ignore_ascii_case("openai") {
             "openai".to_string()
@@ -68,37 +75,24 @@ pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<Model
             "openai_compat".to_string()
         }
     });
-    let provider_type = explicit_provider_type
-        .clone()
-        .or_else(|| inferred_provider_type.clone());
-    let model = parse_provider_model(&raw_model)
-        .map(|(_, model_id)| model_id.to_string())
-        .unwrap_or(raw_model.clone());
+    let _provider_type = config.llm_provider.clone().or(inferred_provider_type);
 
-    if matches!(provider_type.as_deref(), Some("openai_compat" | "bigmodel")) && base_url.is_none() {
-        let detail = if explicit_provider_type.is_none() {
-            parse_provider_model(&raw_model)
-                .map(|(provider, _)| format!("inferred from MODEL provider '{}'", provider))
-                .unwrap_or_else(|| "inferred provider".to_string())
-        } else {
-            "LLM_PROVIDER/provider type".to_string()
-        };
-        return Err(BuildRunnerError::Context(AgentError::ExecutionFailed(format!(
-            "OPENAI_BASE_URL is required for OpenAI-compatible providers ({detail})."
-        ))));
-    }
+    // Parse model to extract provider and model_id
+    let (provider_from_model, model) = parse_provider_model(&raw_model)
+        .map(|(p, m)| (Some(p), m))
+        .unwrap_or_else(|| (None, raw_model.as_str()));
 
-    // Determine provider name based on type
-    let provider = match provider_type.as_deref() {
+    // Determine provider name
+    let provider = match config.llm_provider.as_deref().or(provider_from_model.as_deref()) {
         Some("bigmodel") => "bigmodel".to_string(),
         Some("openai_compat") => "openai_compat".to_string(),
-        _ => "openai".to_string(),
+        Some(other) => other.to_string(),
+        None => "openai".to_string(),
     };
 
     let temperature = config
         .openai_temperature
         .clone()
-        .or_else(|| std::env::var("OPENAI_TEMPERATURE").ok())
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
@@ -116,11 +110,11 @@ pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<Model
     // Build ModelEntry
     Ok(ModelEntry {
         id: format!("{}/{}", provider, model),
-        name: model,
+        name: model.to_string(),
         provider,
         base_url,
         api_key: Some(api_key),
-        provider_type,
+        provider_type: config.llm_provider.clone(),
         temperature,
         max_tokens: None,
         tool_choice: None,

@@ -330,7 +330,7 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
         return ResolvedModelConfig::default();
     }
 
-    tracing::debug!("🔍 Resolving model configuration for: {}", model_str);
+    tracing::info!("🔍 Resolving model configuration for: {}", model_str);
 
     let providers: Vec<crate::llm::ProviderConfig> = match env_config::load_full_config("loom") {
         Ok(config) => {
@@ -353,6 +353,7 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
     };
 
     // 1. Try ModelRegistry first
+    tracing::debug!("🔎 Searching ModelRegistry for: {}", model_str);
     if let Some(entry) = crate::llm::ModelRegistry::global()
         .get_model(model_str, &providers)
         .await
@@ -367,7 +368,7 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
         };
     }
     
-    tracing::debug!("❌ Model not found in registry, trying provider/model split");
+    tracing::warn!("❌ Model not found in registry, trying provider/model split");
 
     // 2. Try "provider/model" split
     if let Some((provider_name, model_id)) = model_str.split_once('/') {
@@ -407,7 +408,10 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
 }
 
 fn apply_model_provider_resolution(opts: &mut RunOptions) {
+    tracing::debug!("🔧 apply_model_provider_resolution called with model: {:?}, provider: {:?}", opts.model, opts.provider);
+    
     if opts.model.is_none() && opts.provider.is_none() {
+        tracing::debug!("⏭️  Skipping model resolution - no model or provider specified");
         return;
     }
 
@@ -415,14 +419,17 @@ fn apply_model_provider_resolution(opts: &mut RunOptions) {
     let raw_model = match opts.model.as_deref() {
         Some(m) => m.to_string(),
         None => {
+            tracing::debug!("🔧 No model specified, resolving provider only: {:?}", provider_only);
             resolve_provider_fields_into_opts(provider_only.as_deref(), opts);
             return;
         }
     };
 
+    tracing::debug!("🔧 Processing model: {}", raw_model);
+
     // Validate provider/model format
     if raw_model.is_empty() {
-        tracing::warn!("Model name cannot be empty");
+        tracing::warn!("❌ Model name cannot be empty");
         opts.model = None;
         return;
     }
@@ -430,28 +437,32 @@ fn apply_model_provider_resolution(opts: &mut RunOptions) {
     let (resolved_provider, model_name) = if let Some((p, m)) = raw_model.split_once('/') {
         // Validate provider and model parts
         if p.is_empty() {
-            tracing::warn!("Provider name in 'provider/model' format cannot be empty");
+            tracing::warn!("❌ Provider name in 'provider/model' format cannot be empty");
             opts.model = None;
             return;
         }
         if m.is_empty() {
-            tracing::warn!("Model name in 'provider/model' format cannot be empty");
+            tracing::warn!("❌ Model name in 'provider/model' format cannot be empty");
             opts.model = None;
             return;
         }
+        tracing::debug!("✅ Parsed provider/model format: provider={}, model={}", p, m);
         (Some(p.to_string()), m.to_string())
     } else {
         // Bare model name - validate it's not just whitespace
         if raw_model.trim().is_empty() {
-            tracing::warn!("Model name cannot be empty or whitespace only");
+            tracing::warn!("❌ Model name cannot be empty or whitespace only");
             opts.model = None;
             return;
         }
+        tracing::debug!("✅ Using bare model name: {}", raw_model.trim());
         (None, raw_model.trim().to_string())
     };
 
     let effective_provider = provider_only.as_deref().or(resolved_provider.as_deref());
-    opts.model = Some(model_name);
+    opts.model = Some(model_name.clone());
+    
+    tracing::info!("🎯 Final resolution: model_name={}, provider={:?}", model_name, effective_provider);
 
     if let Some(name) = effective_provider {
         let name = name.to_string();

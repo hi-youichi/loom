@@ -212,11 +212,8 @@ impl Agent for LoomAcpAgent {
         tracing::debug!(session_id = %session_id, "session created");
 
         let default_mode = self.agent_registry.default_mode_id();
-        let current_model = std::env::var("MODEL")
-            .or_else(|_| std::env::var("OPENAI_MODEL"))
-            .ok()
-            .filter(|s| !s.is_empty())
-            .or_else(crate::last_model::load)
+        let current_model = None // Removed environment variable support, use session config
+            .or_else(|| crate::last_model::load())
             .unwrap_or_default();
         self.sessions.update_session_config(&our_id, |c| {
             c.current_agent = default_mode.to_string();
@@ -300,14 +297,10 @@ impl Agent for LoomAcpAgent {
         } else {
             entry.session_config.current_agent.clone()
         };
-        let current_model = entry.session_config.model.clone().unwrap_or_else(|| {
-            std::env::var("MODEL")
-                .or_else(|_| std::env::var("OPENAI_MODEL"))
-                .ok()
-                .filter(|s| !s.is_empty())
-                .or_else(crate::last_model::load)
-                .unwrap_or_default()
-        });
+        let current_model = entry.session_config.model.clone()
+            .unwrap_or_else(|| {
+                crate::last_model::load().unwrap_or_default()
+            });
         let modes = self.agent_registry.to_session_modes();
         let model_options = self.get_available_models().await;
         build_set_session_config_option_response(&current_mode, &current_model, &modes, &model_options)
@@ -395,14 +388,11 @@ impl Agent for LoomAcpAgent {
             source_entry.session_config.current_agent.clone()
         };
         let current_model = source_entry.session_config.model.clone().unwrap_or_else(|| {
-            std::env::var("MODEL")
-                .or_else(|_| std::env::var("OPENAI_MODEL"))
-                .ok()
-                .filter(|s| !s.is_empty())
+            None // Removed environment variable support, use session config
                 .or_else(crate::last_model::load)
                 .unwrap_or_default()
         });
-        // If model was resolved from fallback (env/last_model) rather than source config, persist it
+        // If model was resolved from fallback rather than source config, persist it
         if !current_model.is_empty() && source_entry.session_config.model.is_none() {
             self.sessions.update_session_config(&new_our_id, |c| {
                 c.model = Some(current_model.clone());
@@ -670,14 +660,10 @@ impl Agent for LoomAcpAgent {
         let current_model = persisted_config.get("model")
             .cloned()
             .unwrap_or_else(|| {
-                entry.session_config.model.clone().unwrap_or_else(|| {
-                    std::env::var("MODEL")
-                        .or_else(|_| std::env::var("OPENAI_MODEL"))
-                        .ok()
-                        .filter(|s| !s.is_empty())
-                        .or_else(crate::last_model::load)
-                        .unwrap_or_default()
-                })
+                entry.session_config.model.clone()
+                    .unwrap_or_else(|| {
+                        crate::last_model::load().unwrap_or_default()
+                    })
             });
         let model_options = self.get_available_models().await;
         let available_modes = self.agent_registry.to_session_modes();
