@@ -3,11 +3,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::agent::react::REACT_SYSTEM_PROMPT;
 use crate::compress::{build_graph, CompactionConfig, CompressionGraphNode};
 use crate::graph::{
     CompilationError, CompiledStateGraph, LoggingNodeMiddleware, StateGraph, END, START,
 };
 use crate::helve::ApprovalPolicy;
+use crate::llm::RetryLlmClient;
 use crate::memory::{Checkpointer, RunnableConfig, Store};
 use crate::runner_common;
 use crate::state::ReActState;
@@ -15,17 +17,15 @@ use crate::stream::StreamEvent;
 use crate::tool_source::ToolSource;
 use crate::user_message::UserMessageStore;
 use crate::{LlmClient, RunCancellation};
-use crate::llm::RetryLlmClient;
-use crate::agent::react::REACT_SYSTEM_PROMPT;
 
 use super::error::RunError;
 use super::initial_state::build_react_initial_state;
+use super::options::SummarizeConfig;
 use super::options::{resolve_run_agent_options, AgentOptions};
 use crate::agent::react::act_node::{ActNode, HandleToolErrors};
 use crate::agent::react::completion_check_node::CompletionCheckNode;
 use crate::agent::react::observe_node::ObserveNode;
 use crate::agent::react::summarize_node::SummarizeNode;
-use super::options::SummarizeConfig;
 use crate::agent::react::think_node::ThinkNode;
 use crate::agent::react::tools_condition;
 use crate::agent::react::with_node_logging::WithNodeLogging;
@@ -75,11 +75,12 @@ impl ReactRunner {
         if let Some(s) = store {
             graph = graph.with_store(s);
         }
-        
+
         // Build graph with or without summarize node based on config
         let summarize_enabled = summarize_config.as_ref().is_some_and(|c| c.enabled);
-        let completion_check_enabled =
-            summarize_config.as_ref().is_some_and(|c| c.enable_completion_check);
+        let completion_check_enabled = summarize_config
+            .as_ref()
+            .is_some_and(|c| c.enable_completion_check);
 
         if summarize_enabled {
             // Summarize node for generating session summaries after first think
@@ -90,24 +91,27 @@ impl ReactRunner {
                     .with_max_iterations(10)
                     .with_message_window(5);
 
-                let think_condition_path_map: HashMap<String, String> =
-                    [("summarize".into(), "summarize".into()),
-                     ("tools".into(), "act".into()),
-                     ("completion_check".into(), "completion_check".into())]
-                        .into_iter()
-                        .collect();
+                let think_condition_path_map: HashMap<String, String> = [
+                    ("summarize".into(), "summarize".into()),
+                    ("tools".into(), "act".into()),
+                    ("completion_check".into(), "completion_check".into()),
+                ]
+                .into_iter()
+                .collect();
 
-                let summarize_condition_path_map: HashMap<String, String> =
-                    [("tools".into(), "act".into()),
-                     ("completion_check".into(), "completion_check".into())]
-                        .into_iter()
-                        .collect();
+                let summarize_condition_path_map: HashMap<String, String> = [
+                    ("tools".into(), "act".into()),
+                    ("completion_check".into(), "completion_check".into()),
+                ]
+                .into_iter()
+                .collect();
 
-                let completion_check_path_map: HashMap<String, String> =
-                    [("continue".into(), "think".into()),
-                     (END.into(), END.into())]
-                        .into_iter()
-                        .collect();
+                let completion_check_path_map: HashMap<String, String> = [
+                    ("continue".into(), "think".into()),
+                    (END.into(), END.into()),
+                ]
+                .into_iter()
+                .collect();
 
                 graph
                     .add_node("think", Arc::new(think))
@@ -120,10 +124,15 @@ impl ReactRunner {
                     .add_conditional_edges(
                         "think",
                         Arc::new(|state: &ReActState| {
-                            let user_msg_count = state.messages.iter()
+                            let user_msg_count = state
+                                .messages
+                                .iter()
                                 .filter(|m| matches!(m, crate::message::Message::User(_)))
                                 .count();
-                            if user_msg_count == 1 && state.summary.is_none() && state.think_count == 1 {
+                            if user_msg_count == 1
+                                && state.summary.is_none()
+                                && state.think_count == 1
+                            {
                                 "summarize".to_string()
                             } else if !state.tool_calls.is_empty() {
                                 "tools".to_string()
@@ -160,16 +169,16 @@ impl ReactRunner {
                     .add_edge("compress", "think");
             } else {
                 // No completion check: think/summarize -> tools or end
-                let think_condition_path_map: HashMap<String, String> =
-                    [("summarize".into(), "summarize".into()),
-                     ("tools".into(), "act".into()),
-                     (END.into(), END.into())]
-                        .into_iter()
-                        .collect();
+                let think_condition_path_map: HashMap<String, String> = [
+                    ("summarize".into(), "summarize".into()),
+                    ("tools".into(), "act".into()),
+                    (END.into(), END.into()),
+                ]
+                .into_iter()
+                .collect();
 
                 let summarize_condition_path_map: HashMap<String, String> =
-                    [("tools".into(), "act".into()),
-                     (END.into(), END.into())]
+                    [("tools".into(), "act".into()), (END.into(), END.into())]
                         .into_iter()
                         .collect();
 
@@ -183,10 +192,15 @@ impl ReactRunner {
                     .add_conditional_edges(
                         "think",
                         Arc::new(|state: &ReActState| {
-                            let user_msg_count = state.messages.iter()
+                            let user_msg_count = state
+                                .messages
+                                .iter()
                                 .filter(|m| matches!(m, crate::message::Message::User(_)))
                                 .count();
-                            if user_msg_count == 1 && state.summary.is_none() && state.think_count == 1 {
+                            if user_msg_count == 1
+                                && state.summary.is_none()
+                                && state.think_count == 1
+                            {
                                 "summarize".to_string()
                             } else {
                                 tools_condition(state).as_str().to_string()
@@ -209,18 +223,20 @@ impl ReactRunner {
                 .with_max_iterations(10)
                 .with_message_window(5);
 
-            let think_condition_path_map: HashMap<String, String> =
-                [("tools".into(), "act".into()),
-                 ("completion_check".into(), "completion_check".into()),
-                 (END.into(), END.into())]
-                    .into_iter()
-                    .collect();
+            let think_condition_path_map: HashMap<String, String> = [
+                ("tools".into(), "act".into()),
+                ("completion_check".into(), "completion_check".into()),
+                (END.into(), END.into()),
+            ]
+            .into_iter()
+            .collect();
 
-            let completion_check_path_map: HashMap<String, String> =
-                [("continue".into(), "think".into()),
-                 (END.into(), END.into())]
-                    .into_iter()
-                    .collect();
+            let completion_check_path_map: HashMap<String, String> = [
+                ("continue".into(), "think".into()),
+                (END.into(), END.into()),
+            ]
+            .into_iter()
+            .collect();
 
             graph
                 .add_node("think", Arc::new(think))
@@ -257,8 +273,7 @@ impl ReactRunner {
         } else {
             // No summarize, no completion check - original graph
             let think_condition_path_map: HashMap<String, String> =
-                [("tools".into(), "act".into()),
-                 (END.into(), END.into())]
+                [("tools".into(), "act".into()), (END.into(), END.into())]
                     .into_iter()
                     .collect();
 

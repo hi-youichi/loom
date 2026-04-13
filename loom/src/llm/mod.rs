@@ -85,7 +85,7 @@ impl LlmHeaders {
 }
 
 /// Load LLM headers from environment variables.
-/// 
+///
 /// Environment variables:
 /// - `LLM_THREAD_ID`: Thread identifier  
 /// - `LLM_TRACE_ID`: Trace identifier
@@ -110,9 +110,9 @@ pub use openai_compat::ChatOpenAICompat;
 pub type ChatBigModel = ChatOpenAICompat;
 
 pub use mock::MockLlm;
-pub use openai::ChatOpenAI;
 pub use model_cache::{fetch_provider_models, ModelCache, ProviderModels};
 pub use model_registry::{create_llm_client, ModelEntry, ModelRegistry, ProviderConfig};
+pub use openai::ChatOpenAI;
 pub use retry::RetryLlmClient;
 
 use async_trait::async_trait;
@@ -375,8 +375,14 @@ mod tests {
             .add_header("X-Custom", "value")
             .add_header("X-Another", "another-value");
 
-        assert_eq!(headers.custom_headers.get("X-Custom"), Some(&"value".to_string()));
-        assert_eq!(headers.custom_headers.get("X-Another"), Some(&"another-value".to_string()));
+        assert_eq!(
+            headers.custom_headers.get("X-Custom"),
+            Some(&"value".to_string())
+        );
+        assert_eq!(
+            headers.custom_headers.get("X-Another"),
+            Some(&"another-value".to_string())
+        );
     }
 
     #[test]

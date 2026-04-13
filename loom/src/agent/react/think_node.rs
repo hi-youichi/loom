@@ -14,9 +14,7 @@ use crate::graph::{run_cancellable, Next, RunContext};
 use crate::llm::{LlmClient, LlmResponse, ToolCallDelta};
 use crate::message::Message;
 use crate::state::{ReActState, ToolCall};
-use crate::stream::{
-    ChunkToStreamSender, MessageChunk, StreamEvent, StreamMetadata, StreamMode,
-};
+use crate::stream::{ChunkToStreamSender, MessageChunk, StreamEvent, StreamMetadata, StreamMode};
 use crate::Node;
 
 pub struct ThinkNode {
@@ -207,9 +205,7 @@ impl Node<ReActState> for ThinkNode {
 
         debug!(
             messages = state.messages.len(),
-            should_stream,
-            should_stream_tools,
-            "think: invoking LLM"
+            should_stream, should_stream_tools, "think: invoking LLM"
         );
 
         let call_start = Instant::now();
@@ -282,15 +278,11 @@ impl Node<ReActState> for ThinkNode {
         )
         .await?;
 
-        let new_state = state.apply_think(
-            content,
-            reasoning_content,
-            tool_calls,
-            usage,
-        );
+        let new_state = state.apply_think(content, reasoning_content, tool_calls, usage);
 
         if let Some(ref u) = new_state.usage {
-            self.emit_usage_event(ctx, call_start, first_token_at, u).await;
+            self.emit_usage_event(ctx, call_start, first_token_at, u)
+                .await;
         }
 
         Ok((new_state, Next::Continue))

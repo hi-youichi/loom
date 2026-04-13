@@ -1,17 +1,17 @@
 //! WebSocket connection lifecycle: recv loop and request dispatch.
 
 use axum::extract::ws::{Message, WebSocket};
-use loom::{ClientRequest, ErrorResponse, ServerResponse};
 use loom::llm::ProviderConfig;
+use loom::{ClientRequest, ErrorResponse, ServerResponse};
 use std::sync::Arc;
 use tokio::sync::oneshot;
 
+use super::agents::handle_agent_list;
 use super::app::RunConfig;
+use super::models::{handle_list_models, handle_set_model};
 use super::response::send_response;
 use super::run::handle_run;
 use super::tools::{handle_tool_show, handle_tools_list};
-use super::agents::handle_agent_list;
-use super::models::{handle_list_models, handle_set_model};
 
 pub(crate) async fn handle_socket(
     mut socket: WebSocket,
@@ -22,7 +22,7 @@ pub(crate) async fn handle_socket(
     providers: Arc<Vec<ProviderConfig>>,
 ) {
     tracing::info!("🔗 New WebSocket connection established");
-    
+
     let mut request_count = 0;
     let connection_start = std::time::Instant::now();
 
@@ -45,10 +45,14 @@ pub(crate) async fn handle_socket(
         };
 
         request_count += 1;
-        tracing::debug!("📨 Request #{}: {}", request_count, text.chars().take(100).collect::<String>());
+        tracing::debug!(
+            "📨 Request #{}: {}",
+            request_count,
+            text.chars().take(100).collect::<String>()
+        );
 
         let request_start = std::time::Instant::now();
-        
+
         if let Err(e) = handle_request_and_send(
             &text,
             &mut socket,
@@ -63,15 +67,22 @@ pub(crate) async fn handle_socket(
             let _ = socket.close().await;
             break;
         }
-        
+
         let duration = request_start.elapsed();
-        tracing::debug!("✅ Request #{} completed in {}ms", request_count, duration.as_millis());
+        tracing::debug!(
+            "✅ Request #{} completed in {}ms",
+            request_count,
+            duration.as_millis()
+        );
     }
-    
+
     let connection_duration = connection_start.elapsed();
-    tracing::info!("🔌 WebSocket connection closed (handled {} requests in {}ms)", 
-        request_count, connection_duration.as_millis());
-    
+    tracing::info!(
+        "🔌 WebSocket connection closed (handled {} requests in {}ms)",
+        request_count,
+        connection_duration.as_millis()
+    );
+
     if let Some(tx) = shutdown_tx {
         let _ = tx.send(());
     }
@@ -99,13 +110,16 @@ async fn handle_request_and_send(
     };
 
     let request_type = format!("{:?}", req);
-    tracing::info!("Handling request: {} (id: {:?})", request_type,
+    tracing::info!(
+        "Handling request: {} (id: {:?})",
+        request_type,
         match &req {
             ClientRequest::Run(r) => r.id.clone(),
             ClientRequest::ListModels(r) => Some(r.id.clone()),
             ClientRequest::SetModel(r) => Some(r.id.clone()),
             _ => None,
-        });
+        }
+    );
 
     let resp = match req {
         ClientRequest::Run(r) => {
@@ -169,8 +183,11 @@ async fn handle_request_and_send(
             return Ok(());
         }
         ClientRequest::SetModel(r) => {
-            tracing::info!("🔄 Setting model: {} for session: {}", r.model_id,
-                r.session_id.as_deref().unwrap_or("default"));
+            tracing::info!(
+                "🔄 Setting model: {} for session: {}",
+                r.model_id,
+                r.session_id.as_deref().unwrap_or("default")
+            );
             let resp = handle_set_model(r, &providers).await;
             match &resp {
                 ServerResponse::SetModel(_) => tracing::info!("✅ Model set successfully"),
@@ -201,7 +218,7 @@ async fn handle_request_and_send(
             super::workspace::handle_workspace_thread_remove(r, workspace_store.clone()).await
         }
     };
-    
+
     tracing::debug!("📤 Sending response for: {}", request_type);
     send_response(socket, &resp).await?;
     Ok(())

@@ -11,11 +11,9 @@ use std::sync::Arc;
 use async_openai::config::OpenAIConfig;
 use loom::llm::{ChatOpenAI, LlmClient, ToolCallDelta, ToolChoiceMode};
 use loom::tool_source::{register_file_tools, ToolSource, YamlSpecToolSource};
-use loom::tools::{
-    AggregateToolSource, BatchTool, LspTool, WebFetcherTool, TOOL_READ_FILE,
-};
 #[cfg(not(windows))]
 use loom::tools::BashTool;
+use loom::tools::{AggregateToolSource, BatchTool, LspTool, WebFetcherTool, TOOL_READ_FILE};
 use loom::{Message, MessageChunk};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -57,11 +55,7 @@ async fn read_http_request(stream: &mut tokio::net::TcpStream) -> String {
 }
 
 #[allow(dead_code)]
-async fn write_http_response(
-    stream: &mut tokio::net::TcpStream,
-    status: &str,
-    body: &str,
-) {
+async fn write_http_response(stream: &mut tokio::net::TcpStream, status: &str, body: &str) {
     let resp = format!(
         "HTTP/1.1 {}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
         status,
@@ -71,10 +65,7 @@ async fn write_http_response(
     stream.write_all(resp.as_bytes()).await.unwrap();
 }
 
-async fn write_http_stream_response(
-    stream: &mut tokio::net::TcpStream,
-    body: &str,
-) {
+async fn write_http_stream_response(stream: &mut tokio::net::TcpStream, body: &str) {
     let resp = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n{}",
         body
@@ -121,11 +112,13 @@ async fn mock_api_full_tool_list_invokes_read() {
     tokio::spawn(async move {
         let (mut stream, _) = listener.accept().await.unwrap();
         let _body = read_http_request(&mut stream).await;
-        let sse_data = [r#"data: {"id":"chatcmpl-mock-read","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}"#,
+        let sse_data = [
+            r#"data: {"id":"chatcmpl-mock-read","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}"#,
             r#"data: {"id":"chatcmpl-mock-read","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_read_1","type":"function","function":{"name":"read"}}]},"finish_reason":null}]}"#,
             r#"data: {"id":"chatcmpl-mock-read","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"path\":\"probe.txt\"}"}}]},"finish_reason":null}]}"#,
             r#"data: {"id":"chatcmpl-mock-read","object":"chat.completion.chunk","created":1,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#,
-            "data: [DONE]"];
+            "data: [DONE]",
+        ];
         let response = sse_data.join("\n\n") + "\n\n";
         write_http_stream_response(&mut stream, &response).await;
     });
@@ -144,7 +137,14 @@ async fn mock_api_full_tool_list_invokes_read() {
     #[cfg(unix)]
     let required_tools = ["bash", "web_fetcher", TOOL_READ_FILE, "ls", "batch", "lsp"];
     #[cfg(windows)]
-    let required_tools = ["powershell", "web_fetcher", TOOL_READ_FILE, "ls", "batch", "lsp"];
+    let required_tools = [
+        "powershell",
+        "web_fetcher",
+        TOOL_READ_FILE,
+        "ls",
+        "batch",
+        "lsp",
+    ];
     for required in required_tools {
         assert!(
             names.contains(&required),

@@ -184,8 +184,8 @@ pub async fn fetch_provider_models(
 
     match provider_type {
         "openai" => {
-            use async_openai::config::OpenAIConfig;
             use crate::llm::ChatOpenAI;
+            use async_openai::config::OpenAIConfig;
 
             let config = OpenAIConfig::new()
                 .with_api_key(api_key)
@@ -255,10 +255,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(
-            call_count.load(std::sync::atomic::Ordering::SeqCst),
-            1
-        );
+        assert_eq!(call_count.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
@@ -281,5 +278,3 @@ mod tests {
         assert_eq!(cache.len().await, 0);
     }
 }
-
-

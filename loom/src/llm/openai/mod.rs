@@ -40,19 +40,21 @@ pub(super) fn completion_usage_to_llm(u: &CompletionUsage) -> LlmUsage {
         prompt_tokens: u.prompt_tokens,
         completion_tokens: u.completion_tokens,
         total_tokens: u.total_tokens,
-        prompt_tokens_details: u.prompt_tokens_details.as_ref().map(|d| PromptTokensDetails {
-            cached_tokens: d.cached_tokens,
-            audio_tokens: d.audio_tokens,
-        }),
-        completion_tokens_details: u
-            .completion_tokens_details
+        prompt_tokens_details: u
+            .prompt_tokens_details
             .as_ref()
-            .map(|d| CompletionTokensDetails {
+            .map(|d| PromptTokensDetails {
+                cached_tokens: d.cached_tokens,
+                audio_tokens: d.audio_tokens,
+            }),
+        completion_tokens_details: u.completion_tokens_details.as_ref().map(|d| {
+            CompletionTokensDetails {
                 reasoning_tokens: d.reasoning_tokens,
                 audio_tokens: d.audio_tokens,
                 accepted_prediction_tokens: d.accepted_prediction_tokens,
                 rejected_prediction_tokens: d.rejected_prediction_tokens,
-            }),
+            }
+        }),
     }
 }
 
@@ -173,7 +175,7 @@ impl ChatOpenAI {
         if let Some(config) = &self.headers {
             // Fixed X-App-Id header as "loom"
             headers.insert("X-App-Id".to_string(), "loom".to_string());
-            
+
             if let Some(thread_id) = &config.thread_id {
                 headers.insert("X-Thread-Id".to_string(), thread_id.clone());
             }

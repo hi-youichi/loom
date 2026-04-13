@@ -180,8 +180,7 @@ fn get_file_extension(filename: Option<&str>, mime_type: Option<&str>) -> String
 
 /// Save metadata to JSON file
 async fn save_metadata(path: &Path, metadata: &FileMetadata) -> std::io::Result<()> {
-    let json = serde_json::to_string_pretty(metadata)
-        .map_err(std::io::Error::other)?;
+    let json = serde_json::to_string_pretty(metadata).map_err(std::io::Error::other)?;
     fs::write(path, json).await
 }
 
@@ -339,10 +338,7 @@ pub fn reset_session(thread_id: &str) -> Result<usize, BotError> {
     let conn = rusqlite::Connection::open(&db_path)?;
     conn.execute_batch("PRAGMA journal_mode=WAL;")?;
 
-    let count = conn.execute(
-        "DELETE FROM checkpoints WHERE thread_id = ?1",
-        [thread_id],
-    )?;
+    let count = conn.execute("DELETE FROM checkpoints WHERE thread_id = ?1", [thread_id])?;
 
     tracing::info!(
         thread_id = %thread_id,

@@ -9,11 +9,8 @@ fn test_chat_openai_compat_with_headers() {
         .with_trace_id("test-trace-456")
         .add_header("X-Custom-Header", "custom-value");
 
-    let _client = ChatOpenAICompat::with_config(
-        "https://api.openai.com/v1",
-        "test-key",
-        "gpt-4"
-    ).with_headers(headers);
+    let _client = ChatOpenAICompat::with_config("https://api.openai.com/v1", "test-key", "gpt-4")
+        .with_headers(headers);
 
     // Verify client was created successfully
     // In a real integration test, we would make an actual HTTP request

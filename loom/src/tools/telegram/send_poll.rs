@@ -92,12 +92,13 @@ impl Tool for TelegramSendPollTool {
             ));
         }
 
-        let api = get_telegram_api()
-            .ok_or_else(|| ToolSourceError::Transport("Telegram API not initialized".to_string()))?;
+        let api = get_telegram_api().ok_or_else(|| {
+            ToolSourceError::Transport("Telegram API not initialized".to_string())
+        })?;
 
-        let chat_id = params.chat_id.unwrap_or_else(|| {
-            get_current_chat_id().unwrap_or(0)
-        });
+        let chat_id = params
+            .chat_id
+            .unwrap_or_else(|| get_current_chat_id().unwrap_or(0));
 
         if chat_id == 0 {
             return Err(ToolSourceError::InvalidInput(

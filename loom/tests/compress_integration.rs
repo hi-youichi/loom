@@ -94,11 +94,17 @@ async fn prune_replaces_old_tool_results_via_compression_graph() {
     assert_eq!(out.messages.len(), 4);
 
     // First message (non-tool) unchanged
-    assert!(matches!(&out.messages[0], Message::User(loom::UserContent::Text(s)) if s == "What time is it?"));
+    assert!(
+        matches!(&out.messages[0], Message::User(loom::UserContent::Text(s)) if s == "What time is it?")
+    );
 
     // Oldest two tool results pruned (each ~104 tokens, cumulative exceeds 120 after the newest)
-    assert!(matches!(&out.messages[1], Message::User(loom::UserContent::Text(s)) if s == PRUNE_PLACEHOLDER));
-    assert!(matches!(&out.messages[2], Message::User(loom::UserContent::Text(s)) if s == PRUNE_PLACEHOLDER));
+    assert!(
+        matches!(&out.messages[1], Message::User(loom::UserContent::Text(s)) if s == PRUNE_PLACEHOLDER)
+    );
+    assert!(
+        matches!(&out.messages[2], Message::User(loom::UserContent::Text(s)) if s == PRUNE_PLACEHOLDER)
+    );
 
     // Most recent tool result preserved (first ~104 tokens within 120 budget)
     assert!(
@@ -144,7 +150,9 @@ async fn compact_summarizes_messages_on_overflow() {
 
     // Last 2 messages preserved verbatim
     assert!(matches!(&out.messages[1], Message::Assistant(p) if p.content == "w".repeat(100)));
-    assert!(matches!(&out.messages[2], Message::User(loom::UserContent::Text(s)) if *s == "v".repeat(100)));
+    assert!(
+        matches!(&out.messages[2], Message::User(loom::UserContent::Text(s)) if *s == "v".repeat(100))
+    );
 }
 
 // ---------- Test 3: prune then compact ----------
@@ -194,7 +202,9 @@ async fn prune_then_compact_combined() {
 
     // Last 2 messages are the original recent messages
     assert!(matches!(&out.messages[1], Message::Assistant(p) if p.content == "a".repeat(600)));
-    assert!(matches!(&out.messages[2], Message::User(loom::UserContent::Text(s)) if *s == "b".repeat(600)));
+    assert!(
+        matches!(&out.messages[2], Message::User(loom::UserContent::Text(s)) if *s == "b".repeat(600))
+    );
 }
 
 // ---------- Test 5: full ReAct loop with compression ----------

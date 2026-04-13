@@ -27,7 +27,9 @@ fn parse_provider_model(model: &str) -> Option<(&str, &str)> {
 /// 1. ReactBuildConfig fields (credentials, model, provider, openai_temperature)
 /// 2. Environment variables for any unset fields above (including `OPENAI_TEMPERATURE`)
 /// 3. Default values
-pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<ModelEntry, BuildRunnerError> {
+pub(crate) fn model_entry_from_config(
+    config: &ReactBuildConfig,
+) -> Result<ModelEntry, BuildRunnerError> {
     // API key: config > env
     let api_key = config
         .openai_api_key
@@ -47,7 +49,7 @@ pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<Model
 
     // Model: frontend config > default (environment variables removed)
     tracing::debug!("🎯 Frontend config model: {:?}", config.model);
-    
+
     let raw_model = if let Some(ref model) = config.model {
         if !model.is_empty() {
             tracing::info!("✅ Using frontend selected model: {}", model);
@@ -58,15 +60,17 @@ pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<Model
         }
     } else {
         tracing::warn!("⚠️ No frontend config model, using system default");
-        tracing::info!("💡 Tip: Specify a model in your config file or via API parameters for better control");
+        tracing::info!(
+            "💡 Tip: Specify a model in your config file or via API parameters for better control"
+        );
         "gpt-4o-mini".to_string()
     };
-    
+
     tracing::info!("✅ Final model to use: {}", raw_model);
-    
+
     // Provider type: only use config, no environment variables (removed)
     tracing::debug!("🎯 Config provider type: {:?}", config.llm_provider);
-    
+
     // Inferred provider type from model string when explicit provider type not set
     let inferred_provider_type = parse_provider_model(&raw_model).map(|(provider, _)| {
         if provider.eq_ignore_ascii_case("openai") {
@@ -121,7 +125,6 @@ pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<Model
     })
 }
 
-
 ///
 /// This is the async version that fetches tools from the tool source.
 pub(crate) async fn build_default_llm_with_tool_source(
@@ -165,16 +168,20 @@ pub(crate) async fn build_default_llm_with_tool_source(
             Ok(Box::new(client) as Box<dyn LlmClient>)
         }
         _ => {
-            let base_url = entry.base_url.clone()
+            let base_url = entry
+                .base_url
+                .clone()
                 .or_else(|| std::env::var("OPENAI_BASE_URL").ok())
                 .ok_or_else(|| {
                     BuildRunnerError::Context(AgentError::ExecutionFailed(format!(
-                        "OPENAI_BASE_URL is required for non-openai provider '{}'", provider_type
+                        "OPENAI_BASE_URL is required for non-openai provider '{}'",
+                        provider_type
                     )))
                 })?;
             let api_key = entry.api_key.clone().ok_or_else(|| {
                 BuildRunnerError::Context(AgentError::ExecutionFailed(format!(
-                    "api_key is required for provider '{}'", provider_type
+                    "api_key is required for provider '{}'",
+                    provider_type
                 )))
             })?;
             tracing::debug!(provider_type = %provider_type, "build_default_llm: OpenAI-compat with tools");

@@ -11,6 +11,7 @@ import { useAgents } from '../hooks/useAgents'
 import { useChat } from '../hooks/useChat'
 import { useChatPanel } from '../hooks/useChatPanel'
 import { useModels } from '../hooks/useModels'
+import { getUserMessages } from '../services/userMessages'
 import type { FileNode } from '../components/file-tree'
 import type { Session } from '../types/session'
 
@@ -109,7 +110,7 @@ export function ChatPage() {
     selectWorkspace: selectWs,
   } = useWorkspace()
   const { agents } = useAgents({ autoRefresh: true, refreshInterval: 15000 })
-  const { threadId } = useThread()
+  const { threadId, setThreadId } = useThread(activeWorkspaceId)
   const { selectedAgentId } = useChatPanel()
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
   const { models } = useModels()
@@ -126,8 +127,10 @@ export function ChatPage() {
     messages,
     isStreaming,
     sendMessage: sendRealMessage,
+    loadHistory,
   } = useChat({
     threadId,
+    workspaceId: activeWorkspaceId,
     agentId: selectedAgentId || 'dev',
     model: selectedModel,
   })
@@ -142,17 +145,47 @@ export function ChatPage() {
     }
   }, [activeWorkspaceId, selectWs])
 
-  const sessions: Session[] = threads.map(t => ({
-    id: t.thread_id,
-    title: t.thread_id.slice(0, 8),
-    createdAt: new Date(t.created_at_ms).toISOString(),
-    updatedAt: new Date(t.created_at_ms).toISOString(),
-    lastMessage: '',
-    messageCount: 0,
-    agent: '',
-    model: '',
-    isPinned: false,
-  }))
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [loadingSessions, setLoadingSessions] = useState(false)
+
+  useEffect(() => {
+    const loadSessionSummary = async () => {
+      if (threads.length === 0) {
+        setSessions([])
+        return
+      }
+
+      setLoadingSessions(true)
+      try {
+        const sessionPromises = threads.map(async (t) => {
+          const messages = await getUserMessages(t.thread_id, { limit: 10 })
+          const firstMsg = messages.find(m => m.role === 'user')
+          const lastMsg = messages[messages.length - 1]
+
+          return {
+            id: t.thread_id,
+            title: firstMsg?.content?.slice(0, 50) || t.thread_id.slice(0, 8),
+            createdAt: new Date(t.created_at_ms).toISOString(),
+            updatedAt: new Date(t.created_at_ms).toISOString(),
+            lastMessage: lastMsg?.content?.slice(0, 100) || '',
+            messageCount: messages.length,
+            agent: '',
+            model: '',
+            isPinned: false,
+          } as Session
+        })
+
+        const loadedSessions = await Promise.all(sessionPromises)
+        setSessions(loadedSessions)
+      } catch (error) {
+        console.error('Failed to load session summaries:', error)
+      } finally {
+        setLoadingSessions(false)
+      }
+    }
+
+    loadSessionSummary()
+  }, [threads])
 
   const handleSelectWorkspace = useCallback((id: string) => {
     selectWs(id)
@@ -165,6 +198,13 @@ export function ChatPage() {
   const handleSendMessage = useCallback(async (text: string) => {
     await sendRealMessage(text)
   }, [sendRealMessage])
+
+  const handleSelectSession = useCallback(async (sessionId: string) => {
+    setThreadId(sessionId)
+    if (loadHistory) {
+      await loadHistory(sessionId)
+    }
+  }, [loadHistory, setThreadId])
 
   return (
     <ChatErrorBoundary>
@@ -192,6 +232,8 @@ export function ChatPage() {
             activeCount={agents.filter(a => a.status === 'running').length}
             totalCalls={agents.reduce((sum, a) => sum + a.callCount, 0)}
             sessions={sessions}
+            loadingSessions={loadingSessions}
+            onSelectSession={handleSelectSession}
           />
         </div>
         <AgentChatSidebar

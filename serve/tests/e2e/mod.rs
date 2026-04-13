@@ -1,3 +1,4 @@
+mod agent_list;
 mod common;
 mod invalid_json;
 mod ping;
@@ -6,5 +7,4 @@ mod tool_show_existing;
 mod tool_show_nonexistent;
 mod tools_list;
 mod user_messages;
-mod agent_list;
 mod workspace;

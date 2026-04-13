@@ -271,14 +271,12 @@ mod tests {
     fn response_tools_list_roundtrip() {
         let resp = ServerResponse::ToolsList(ToolsListResponse {
             id: "req-1".to_string(),
-            tools: vec![
-                ToolSpec {
-                    name: "test_tool".to_string(),
-                    description: Some("A test tool".to_string()),
-                    input_schema: serde_json::json!({}),
-                    output_hint: None,
-                },
-            ],
+            tools: vec![ToolSpec {
+                name: "test_tool".to_string(),
+                description: Some("A test tool".to_string()),
+                input_schema: serde_json::json!({}),
+                output_hint: None,
+            }],
         });
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"type\":\"tools_list\""));

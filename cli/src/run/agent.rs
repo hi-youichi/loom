@@ -712,7 +712,7 @@ mod tests {
         TotExtension, TotRunnerConfig, UnderstandOutput,
     };
     use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex};
 
     fn react_state() -> ReActState {
         ReActState {

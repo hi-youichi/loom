@@ -76,10 +76,7 @@ impl RetryLlmClient {
         })
     }
 
-    async fn send_chunks_to(
-        chunk_tx: &Option<mpsc::Sender<MessageChunk>>,
-        resp: &LlmResponse,
-    ) {
+    async fn send_chunks_to(chunk_tx: &Option<mpsc::Sender<MessageChunk>>, resp: &LlmResponse) {
         if let Some(tx) = chunk_tx {
             if let Some(ref reasoning_content) = resp.reasoning_content {
                 if !reasoning_content.is_empty() {
@@ -89,9 +86,7 @@ impl RetryLlmClient {
                 }
             }
             if !resp.content.is_empty() {
-                let _ = tx
-                    .send(MessageChunk::message(resp.content.clone()))
-                    .await;
+                let _ = tx.send(MessageChunk::message(resp.content.clone())).await;
             }
         }
     }
@@ -113,8 +108,7 @@ impl LlmClient for RetryLlmClient {
         let inner = Arc::clone(&self.inner);
         let messages = messages.to_vec();
 
-        self.retry_with_delay(|| inner.invoke(&messages))
-            .await
+        self.retry_with_delay(|| inner.invoke(&messages)).await
     }
 
     async fn invoke_stream(
@@ -308,8 +302,7 @@ mod tests {
     #[tokio::test]
     async fn test_retry_llm_client_with_custom_retries() {
         let mock = MockLlm::new("", vec![]);
-        let retry = RetryLlmClient::new(Arc::new(mock))
-            .with_max_retries(1);
+        let retry = RetryLlmClient::new(Arc::new(mock)).with_max_retries(1);
 
         let result = retry.invoke(&[]).await;
         assert!(result.is_err());

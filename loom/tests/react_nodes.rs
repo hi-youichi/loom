@@ -262,7 +262,6 @@ async fn think_node_usage_merge_some_plus_some() {
         .is_none());
 }
 
-
 #[tokio::test]
 async fn think_node_stream_emits_usage_when_available() {
     let usage = LlmUsage {

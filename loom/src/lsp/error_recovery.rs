@@ -3,10 +3,10 @@
 //! This module provides automatic error recovery, retry logic, and circuit breaker
 //! patterns to ensure robust LSP server communication.
 
+use dashmap::DashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use dashmap::DashMap;
 use tracing::{debug, info, warn};
 
 /// Circuit breaker states.
@@ -107,7 +107,7 @@ impl CircuitBreaker {
     /// Record a failed request.
     pub fn record_failure(&mut self) {
         self.last_failure_time = Some(Instant::now());
-        
+
         match self.state {
             CircuitState::Closed => {
                 self.failure_count += 1;
@@ -160,11 +160,10 @@ impl Default for RetryConfig {
 impl RetryConfig {
     /// Calculate delay for a given retry attempt.
     pub fn delay_for_attempt(&self, attempt: usize) -> Duration {
-        let delay_ms = self.initial_delay_ms as f64
-            * self.backoff_multiplier.powi(attempt as i32);
-        
+        let delay_ms = self.initial_delay_ms as f64 * self.backoff_multiplier.powi(attempt as i32);
+
         let delay_ms = delay_ms.min(self.max_delay_ms as f64) as u64;
-        
+
         Duration::from_millis(delay_ms)
     }
 }
@@ -190,7 +189,9 @@ impl ErrorRecoveryManager {
         self.circuit_breakers
             .entry(language.to_string())
             .or_insert_with(|| {
-                Arc::new(RwLock::new(CircuitBreaker::new(self.circuit_breaker_config.clone())))
+                Arc::new(RwLock::new(CircuitBreaker::new(
+                    self.circuit_breaker_config.clone(),
+                )))
             })
             .clone()
     }
@@ -201,18 +202,14 @@ impl ErrorRecoveryManager {
     }
 
     /// Execute an operation with retry logic.
-    pub async fn with_retry<F, Fut, T, E>(
-        &self,
-        language: &str,
-        operation: F,
-    ) -> Result<T, E>
+    pub async fn with_retry<F, Fut, T, E>(&self, language: &str, operation: F) -> Result<T, E>
     where
         F: Fn() -> Fut,
         Fut: std::future::Future<Output = Result<T, E>>,
         E: std::fmt::Debug,
     {
         let circuit_breaker = self.get_circuit_breaker(language);
-        
+
         // Check circuit breaker
         {
             let mut cb = circuit_breaker.write().await;
@@ -224,14 +221,14 @@ impl ErrorRecoveryManager {
         }
 
         let mut last_error = None;
-        
+
         for attempt in 0..=self.retry_config.max_retries {
             match operation().await {
                 Ok(result) => {
                     // Record success
                     let mut cb = circuit_breaker.write().await;
                     cb.record_success();
-                    
+
                     if attempt > 0 {
                         info!(
                             language = %language,
@@ -239,16 +236,16 @@ impl ErrorRecoveryManager {
                             "Operation succeeded after retry"
                         );
                     }
-                    
+
                     return Ok(result);
                 }
                 Err(e) => {
                     last_error = Some(e);
-                    
+
                     // Record failure
                     let mut cb = circuit_breaker.write().await;
                     cb.record_failure();
-                    
+
                     if attempt < self.retry_config.max_retries {
                         let delay = self.retry_config.delay_for_attempt(attempt);
                         debug!(
@@ -270,13 +267,13 @@ impl ErrorRecoveryManager {
     /// Get health status for all language servers.
     pub async fn health_status(&self) -> std::collections::HashMap<String, CircuitState> {
         let mut status = std::collections::HashMap::new();
-        
+
         for entry in self.circuit_breakers.iter() {
             let language = entry.key().clone();
             let cb = entry.value().read().await;
             status.insert(language, cb.state().clone());
         }
-        
+
         status
     }
 
@@ -313,24 +310,24 @@ mod tests {
             success_threshold: 1,
         };
         let mut cb = CircuitBreaker::new(config);
-        
+
         // Initially closed
         assert_eq!(cb.state(), &CircuitState::Closed);
         assert!(cb.allow_request());
-        
+
         // Record failures
         cb.record_failure();
         assert_eq!(cb.state(), &CircuitState::Closed);
-        
+
         cb.record_failure();
         assert_eq!(cb.state(), &CircuitState::Open);
         assert!(!cb.allow_request());
-        
+
         // Wait for timeout
         tokio::time::sleep(Duration::from_secs(1)).await;
         assert!(cb.allow_request());
         assert_eq!(cb.state(), &CircuitState::HalfOpen);
-        
+
         // Record success
         cb.record_success();
         assert_eq!(cb.state(), &CircuitState::Closed);
@@ -344,7 +341,7 @@ mod tests {
             max_delay_ms: 1000,
             backoff_multiplier: 2.0,
         };
-        
+
         assert_eq!(config.delay_for_attempt(0), Duration::from_millis(100));
         assert_eq!(config.delay_for_attempt(1), Duration::from_millis(200));
         assert_eq!(config.delay_for_attempt(2), Duration::from_millis(400));

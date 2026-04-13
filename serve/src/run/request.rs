@@ -1,6 +1,6 @@
 //! Request preparation: register thread in workspace, append initial user message, build RunOptions and RunCmd.
 
-use loom::{AgentType, protocol::AgentIdentifier, Message, RunCmd, RunOptions};
+use loom::{protocol::AgentIdentifier, AgentType, Message, RunCmd, RunOptions};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -81,19 +81,25 @@ pub(super) async fn prepare_run(
     .await;
 
     let resolved = loom::resolve_model_config(r.model.as_deref()).await;
-    
+
     // Log the model resolution
     match &r.model {
         Some(model) => {
             tracing::info!("🤖 [RunRequest] Model requested from frontend: {}", model);
             if let Some(ref resolved_model) = resolved.model {
-                tracing::info!("✅ [RunRequest] Model resolved: {} (provider: {:?})", resolved_model, resolved.provider);
+                tracing::info!(
+                    "✅ [RunRequest] Model resolved: {} (provider: {:?})",
+                    resolved_model,
+                    resolved.provider
+                );
             } else {
                 tracing::warn!("⚠️  [RunRequest] Model resolution returned empty, using defaults");
             }
         }
         None => {
-            tracing::info!("🤖 [RunRequest] No model specified from frontend, using default configuration");
+            tracing::info!(
+                "🤖 [RunRequest] No model specified from frontend, using default configuration"
+            );
         }
     }
 
@@ -120,7 +126,7 @@ pub(super) async fn prepare_run(
         api_key: resolved.api_key,
         provider_type: resolved.provider_type,
     };
-    
+
     // Handle both AgentType (react/dup/tot/got) and custom agent names
     let cmd = match r.agent {
         AgentIdentifier::Type(AgentType::React) => RunCmd::React,
@@ -134,7 +140,7 @@ pub(super) async fn prepare_run(
             RunCmd::React
         }
     };
-    
+
     // Log final run options
     tracing::info!("🎯 Run options configured:");
     tracing::info!("  Model: {:?}", opts.model);

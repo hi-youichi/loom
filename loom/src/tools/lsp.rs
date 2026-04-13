@@ -26,9 +26,9 @@ impl LspTool {
 
     /// Create a placeholder LSP tool (for backwards compatibility).
     pub fn placeholder() -> Self {
-        let manager = std::sync::Arc::new(tokio::sync::RwLock::new(
-            LspManager::from_configs(env_config::get_default_lsp_servers()),
-        ));
+        let manager = std::sync::Arc::new(tokio::sync::RwLock::new(LspManager::from_configs(
+            env_config::get_default_lsp_servers(),
+        )));
         Self { manager }
     }
 }
@@ -50,9 +50,7 @@ pub enum LspAction {
         character: u32,
     },
     /// Get diagnostics
-    Diagnostics {
-        file_path: String,
-    },
+    Diagnostics { file_path: String },
     /// Go to definition
     GotoDefinition {
         file_path: String,
@@ -72,9 +70,7 @@ pub enum LspAction {
         character: u32,
     },
     /// Get document symbols
-    DocumentSymbols {
-        file_path: String,
-    },
+    DocumentSymbols { file_path: String },
 }
 
 /// Simplified completion item for output
@@ -150,16 +146,23 @@ impl Tool for LspTool {
         let content = std::fs::read_to_string(path)
             .map_err(|e| ToolSourceError::InvalidInput(format!("Failed to read file: {}", e)))?;
 
-        manager.open_document(path, &content).await
-            .map_err(|e| ToolSourceError::InvalidInput(format!("Failed to open document: {}", e)))?;
+        manager.open_document(path, &content).await.map_err(|e| {
+            ToolSourceError::InvalidInput(format!("Failed to open document: {}", e))
+        })?;
 
         match action {
-            LspAction::Completion { file_path, line, character } => {
+            LspAction::Completion {
+                file_path,
+                line,
+                character,
+            } => {
                 let path = std::path::Path::new(&file_path);
                 let result = manager
                     .completion(path, line, character)
                     .await
-                    .map_err(|e| ToolSourceError::InvalidInput(format!("Completion failed: {}", e)))?;
+                    .map_err(|e| {
+                        ToolSourceError::InvalidInput(format!("Completion failed: {}", e))
+                    })?;
 
                 let items: Vec<CompletionItem> = result
                     .iter()
@@ -178,10 +181,9 @@ impl Tool for LspTool {
 
             LspAction::Diagnostics { file_path } => {
                 let path = std::path::Path::new(&file_path);
-                let diagnostics = manager
-                    .diagnostics(path)
-                    .await
-                    .map_err(|e| ToolSourceError::InvalidInput(format!("Diagnostics failed: {}", e)))?;
+                let diagnostics = manager.diagnostics(path).await.map_err(|e| {
+                    ToolSourceError::InvalidInput(format!("Diagnostics failed: {}", e))
+                })?;
 
                 let items: Vec<DiagnosticItem> = diagnostics
                     .iter()
@@ -200,12 +202,18 @@ impl Tool for LspTool {
                 Ok(ToolCallContent::text(output))
             }
 
-            LspAction::GotoDefinition { file_path, line, character } => {
+            LspAction::GotoDefinition {
+                file_path,
+                line,
+                character,
+            } => {
                 let path = std::path::Path::new(&file_path);
                 let locations = manager
                     .goto_definition(path, line, character)
                     .await
-                    .map_err(|e| ToolSourceError::InvalidInput(format!("Goto definition failed: {}", e)))?;
+                    .map_err(|e| {
+                        ToolSourceError::InvalidInput(format!("Goto definition failed: {}", e))
+                    })?;
 
                 let output = if locations.is_empty() {
                     "No definition found".to_string()
@@ -217,12 +225,18 @@ impl Tool for LspTool {
                 Ok(ToolCallContent::text(output))
             }
 
-            LspAction::FindReferences { file_path, line, character } => {
+            LspAction::FindReferences {
+                file_path,
+                line,
+                character,
+            } => {
                 let path = std::path::Path::new(&file_path);
                 let result = manager
                     .find_references(path, line, character)
                     .await
-                    .map_err(|e| ToolSourceError::InvalidInput(format!("Find references failed: {}", e)))?;
+                    .map_err(|e| {
+                        ToolSourceError::InvalidInput(format!("Find references failed: {}", e))
+                    })?;
 
                 let output = serde_json::to_string_pretty(&result)
                     .map_err(|e| ToolSourceError::InvalidInput(e.to_string()))?;
@@ -230,7 +244,11 @@ impl Tool for LspTool {
                 Ok(ToolCallContent::text(output))
             }
 
-            LspAction::Hover { file_path, line, character } => {
+            LspAction::Hover {
+                file_path,
+                line,
+                character,
+            } => {
                 let path = std::path::Path::new(&file_path);
                 let result = manager
                     .hover(path, line, character)
@@ -241,9 +259,11 @@ impl Tool for LspTool {
                     Some(hover) => {
                         let content = match hover.contents {
                             lsp_types::HoverContents::Scalar(s) => format!("{:?}", s),
-                            lsp_types::HoverContents::Array(arr) => {
-                                arr.iter().map(|s| format!("{:?}", s)).collect::<Vec<_>>().join("\n")
-                            }
+                            lsp_types::HoverContents::Array(arr) => arr
+                                .iter()
+                                .map(|s| format!("{:?}", s))
+                                .collect::<Vec<_>>()
+                                .join("\n"),
                             lsp_types::HoverContents::Markup(mc) => mc.value,
                         };
                         content
@@ -256,10 +276,9 @@ impl Tool for LspTool {
 
             LspAction::DocumentSymbols { file_path } => {
                 let path = std::path::Path::new(&file_path);
-                let result = manager
-                    .document_symbols(path)
-                    .await
-                    .map_err(|e| ToolSourceError::InvalidInput(format!("Document symbols failed: {}", e)))?;
+                let result = manager.document_symbols(path).await.map_err(|e| {
+                    ToolSourceError::InvalidInput(format!("Document symbols failed: {}", e))
+                })?;
 
                 let output = serde_json::to_string_pretty(&result)
                     .map_err(|e| ToolSourceError::InvalidInput(e.to_string()))?;

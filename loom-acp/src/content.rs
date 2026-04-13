@@ -117,7 +117,10 @@ impl ContentBlockLike for agent_client_protocol::ContentBlock {
                         ))
                     }
                     EmbeddedResourceResource::BlobResourceContents(blob_res) => {
-                        let mime = blob_res.mime_type.as_deref().unwrap_or("application/octet-stream");
+                        let mime = blob_res
+                            .mime_type
+                            .as_deref()
+                            .unwrap_or("application/octet-stream");
                         Some(format!(
                             "--- Binary Resource ---\nURI: {}\nMIME: {}\nSize: {} bytes\n--- End Resource ---",
                             blob_res.uri,
@@ -310,7 +313,9 @@ pub fn content_blocks_to_user_content(
     for block in blocks {
         match block {
             agent_client_protocol::ContentBlock::Text(t) => {
-                parts.push(ContentPart::Text { text: t.text.clone() });
+                parts.push(ContentPart::Text {
+                    text: t.text.clone(),
+                });
             }
 
             agent_client_protocol::ContentBlock::Image(img) => {
@@ -372,7 +377,10 @@ pub fn content_blocks_to_user_content(
                                 data: blob_res.blob.clone(),
                             });
                         } else {
-                            let mime = blob_res.mime_type.as_deref().unwrap_or("application/octet-stream");
+                            let mime = blob_res
+                                .mime_type
+                                .as_deref()
+                                .unwrap_or("application/octet-stream");
                             parts.push(ContentPart::Text {
                                 text: format!(
                                     "--- Binary Resource ---\nURI: {}\nMIME: {}\nSize: {} bytes\n--- End Resource ---",
@@ -476,7 +484,9 @@ mod tests {
             EmbeddedResource::new(EmbeddedResourceResource::BlobResourceContents(blob_res));
         let block = ContentBlock::Resource(embedded);
 
-        let result = block.as_text().expect("Should return text reference for blob");
+        let result = block
+            .as_text()
+            .expect("Should return text reference for blob");
         assert!(result.contains("Binary Resource"));
         assert!(result.contains("file:///binary.bin"));
         assert!(result.contains("application/octet-stream"));
@@ -517,7 +527,7 @@ mod tests {
 
     #[test]
     fn test_content_blocks_to_user_converted() {
-        use agent_client_protocol::{ImageContent, AudioContent};
+        use agent_client_protocol::{AudioContent, ImageContent};
 
         // 文本 + 图片 + 音频
         let blocks = vec![
@@ -597,7 +607,9 @@ mod tests {
             .mime_type(Some("application/pdf".to_string()))
             .description(Some("Important document".to_string()));
         let block = ContentBlock::ResourceLink(rl);
-        let result = block.as_text().expect("Should extract text from ResourceLink");
+        let result = block
+            .as_text()
+            .expect("Should extract text from ResourceLink");
         assert!(result.contains("Reference: document.pdf"));
         assert!(result.contains("file:///home/user/document.pdf"));
         assert!(result.contains("application/pdf"));

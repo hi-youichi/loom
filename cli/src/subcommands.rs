@@ -3,7 +3,7 @@
 use cli::{cli_list_models, cli_list_tools, cli_show_tool, ToolShowFormat};
 
 use crate::args::{Args, McpArgs, McpCommand, ModelsArgs, ModelsCommand, ToolArgs, ToolCommand};
-use crate::mcp_manager::{AddMcpArgs, EditMcpArgs, McpManager, ServerInfo, ServerDetail};
+use crate::mcp_manager::{AddMcpArgs, EditMcpArgs, McpManager, ServerDetail, ServerInfo};
 use crate::run_flow::build_run_options;
 use crate::session::{SessionArgs, SessionCommand, SessionManager};
 
@@ -77,7 +77,7 @@ pub(crate) fn handle_mcp_command(
     json: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let manager = McpManager::new()?;
-    
+
     match &mcp_args.command {
         McpCommand::List => {
             let servers = manager.list_servers()?;
@@ -87,21 +87,19 @@ pub(crate) fn handle_mcp_command(
                 print_server_list(&servers);
             }
         }
-        McpCommand::Show { name } => {
-            match manager.show_server(name)? {
-                Some(detail) => {
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&detail)?);
-                    } else {
-                        print_server_detail(&detail);
-                    }
-                }
-                None => {
-                    eprintln!("MCP server not found: {}", name);
-                    std::process::exit(1);
+        McpCommand::Show { name } => match manager.show_server(name)? {
+            Some(detail) => {
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&detail)?);
+                } else {
+                    print_server_detail(&detail);
                 }
             }
-        }
+            None => {
+                eprintln!("MCP server not found: {}", name);
+                std::process::exit(1);
+            }
+        },
         McpCommand::Add(add_args) => {
             let cli_args = AddMcpArgs {
                 name: add_args.name.clone(),
@@ -148,12 +146,12 @@ pub(crate) fn handle_mcp_command(
 fn print_server_list(servers: &[ServerInfo]) {
     println!("MCP Servers:");
     println!("{}", "─".repeat(80));
-    
+
     if servers.is_empty() {
         println!("No MCP servers configured.");
         return;
     }
-    
+
     for server in servers {
         let status = if server.disabled { "[disabled]" } else { "" };
         println!("  • {} {}", server.name, status);
@@ -171,21 +169,25 @@ fn print_server_list(servers: &[ServerInfo]) {
 fn print_server_detail(detail: &ServerDetail) {
     println!("MCP Server: {}", detail.name);
     println!("{}", "═".repeat(80));
-    
-    let status = if detail.entry.disabled { "disabled" } else { "enabled" };
+
+    let status = if detail.entry.disabled {
+        "disabled"
+    } else {
+        "enabled"
+    };
     println!("Status: {}", status);
-    
+
     if let Some(cmd) = &detail.entry.command {
         println!("Command: {}", cmd);
         if !detail.entry.args.is_empty() {
             println!("Args: {}", detail.entry.args.join(" "));
         }
     }
-    
+
     if let Some(url) = &detail.entry.url {
         println!("URL: {}", url);
     }
-    
+
     if !detail.entry.env.is_empty() {
         println!("Environment:");
         for (key, value) in &detail.entry.env {
@@ -193,7 +195,7 @@ fn print_server_detail(detail: &ServerDetail) {
             println!("  {}={}", key, masked_value);
         }
     }
-    
+
     if !detail.entry.headers.is_empty() {
         println!("Headers:");
         for (key, value) in &detail.entry.headers {

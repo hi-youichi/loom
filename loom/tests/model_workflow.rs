@@ -53,7 +53,7 @@ mod tests {
         // Clear OPENAI_BASE_URL env var to ensure test doesn't pick up system config
         let prev_base_url = std::env::var("OPENAI_BASE_URL").ok();
         std::env::remove_var("OPENAI_BASE_URL");
-        
+
         let entry = ModelEntry {
             id: "bigmodel/glm-4".to_string(),
             name: "glm-4".to_string(),
@@ -67,10 +67,12 @@ mod tests {
         };
 
         let result = create_llm_client(&entry);
-        
+
         // Restore env var
-        if let Some(v) = prev_base_url { std::env::set_var("OPENAI_BASE_URL", v) }
-        
+        if let Some(v) = prev_base_url {
+            std::env::set_var("OPENAI_BASE_URL", v)
+        }
+
         assert!(
             result.is_err(),
             "Should fail when base_url is missing for bigmodel"

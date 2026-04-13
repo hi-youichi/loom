@@ -35,7 +35,9 @@ use crate::state::ToolCall;
 use crate::stream::MessageChunk;
 use crate::tool_source::{ToolSource, ToolSourceError, ToolSpec};
 
-use super::thinking::{collect_thinking_tags, strip_thinking_tags, ThinkingSegment, ThinkingTagParser};
+use super::thinking::{
+    collect_thinking_tags, strip_thinking_tags, ThinkingSegment, ThinkingTagParser,
+};
 use super::tool_call_accumulator::{RawToolCallDelta, ToolCallAccumulator};
 use super::ToolChoiceMode;
 
@@ -313,13 +315,16 @@ impl ChatOpenAICompat {
         self
     }
 
-    fn add_headers_to_request(&self, request_builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+    fn add_headers_to_request(
+        &self,
+        request_builder: reqwest::RequestBuilder,
+    ) -> reqwest::RequestBuilder {
         let mut builder = request_builder;
 
         if let Some(headers) = &self.headers {
             // Fixed X-App-Id header as "loom"
             builder = builder.header("X-App-Id", "loom");
-            
+
             if let Some(thread_id) = &headers.thread_id {
                 builder = builder.header("X-Thread-Id", thread_id);
             }
@@ -522,14 +527,15 @@ impl LlmClient for ChatOpenAICompat {
             let res = {
                 let mut attempt = 0;
                 loop {
-                    match self.add_headers_to_request(
-                        self.client
-                            .post(&url)
-                            .bearer_auth(&self.api_key)
-                            .json(&body)
-                    )
-                    .send()
-                    .await
+                    match self
+                        .add_headers_to_request(
+                            self.client
+                                .post(&url)
+                                .bearer_auth(&self.api_key)
+                                .json(&body),
+                        )
+                        .send()
+                        .await
                     {
                         Ok(res) => break res,
                         Err(e)
@@ -606,17 +612,18 @@ impl LlmClient for ChatOpenAICompat {
                     "OpenAI-compat retryable status, retrying"
                 );
                 tokio::time::sleep(delay).await;
-                let retry_res = self.add_headers_to_request(
-                    self.client
-                        .post(&url)
-                        .bearer_auth(&self.api_key)
-                        .json(&body)
-                )
-                .send()
-                .await
-                .map_err(|e| {
-                    AgentError::ExecutionFailed(format!("OpenAI-compat request failed: {}", e))
-                })?;
+                let retry_res = self
+                    .add_headers_to_request(
+                        self.client
+                            .post(&url)
+                            .bearer_auth(&self.api_key)
+                            .json(&body),
+                    )
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        AgentError::ExecutionFailed(format!("OpenAI-compat request failed: {}", e))
+                    })?;
                 let retry_status = retry_res.status();
                 let retry_bytes = retry_res.bytes().await.map_err(|e| {
                     AgentError::ExecutionFailed(format!("OpenAI-compat response read: {}", e))
@@ -646,8 +653,10 @@ impl LlmClient for ChatOpenAICompat {
             )));
         };
 
-        let response: ChatCompletionResponse = serde_json::from_slice(&body_bytes)
-            .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI-compat response parse: {}", e)))?;
+        let response: ChatCompletionResponse =
+            serde_json::from_slice(&body_bytes).map_err(|e| {
+                AgentError::ExecutionFailed(format!("OpenAI-compat response parse: {}", e))
+            })?;
 
         let choice = response.choices.into_iter().next().ok_or_else(|| {
             AgentError::ExecutionFailed("OpenAI-compat returned no choices".to_string())
@@ -723,16 +732,17 @@ impl LlmClient for ChatOpenAICompat {
 
         let response = {
             let mut attempt = 0;
-                loop {
-                    match self.add_headers_to_request(
+            loop {
+                match self
+                    .add_headers_to_request(
                         self.client
                             .post(&url)
                             .bearer_auth(&self.api_key)
-                            .json(&body)
+                            .json(&body),
                     )
                     .send()
                     .await
-                    {
+                {
                     Ok(response) => break response,
                     Err(e)
                         if is_retryable_reqwest_error(&e)
@@ -782,17 +792,18 @@ impl LlmClient for ChatOpenAICompat {
                     "OpenAI-compat stream retryable status, retrying"
                 );
                 tokio::time::sleep(delay).await;
-                let retry_res = self.add_headers_to_request(
-                    self.client
-                        .post(&url)
-                        .bearer_auth(&self.api_key)
-                        .json(&body)
-                )
-                .send()
-                .await
-                .map_err(|e| {
-                    AgentError::ExecutionFailed(format!("OpenAI-compat stream request: {}", e))
-                })?;
+                let retry_res = self
+                    .add_headers_to_request(
+                        self.client
+                            .post(&url)
+                            .bearer_auth(&self.api_key)
+                            .json(&body),
+                    )
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        AgentError::ExecutionFailed(format!("OpenAI-compat stream request: {}", e))
+                    })?;
                 let retry_status = retry_res.status();
                 if retry_status.is_success() {
                     final_response = Some(retry_res);
@@ -815,7 +826,7 @@ impl LlmClient for ChatOpenAICompat {
                     )));
                 }
             }
-            
+
             match final_response {
                 Some(resp) => resp,
                 None => {
@@ -835,14 +846,12 @@ impl LlmClient for ChatOpenAICompat {
         let mut sent_any_content = false;
         let mut tool_calls_acc = ToolCallAccumulator::new();
         let mut stream_usage: Option<LlmUsage> = None;
-        let mut thinking_parser = self
-            .parse_thinking_tags
-            .then(ThinkingTagParser::new);
+        let mut thinking_parser = self.parse_thinking_tags.then(ThinkingTagParser::new);
         let mut done = false;
         let mut stream_read_attempt = 0;
 
         let mut res = response;
-        
+
         while !done {
             let chunk = match res.chunk().await {
                 Ok(Some(bytes)) => Some(bytes),
@@ -936,8 +945,7 @@ impl LlmClient for ChatOpenAICompat {
                                             let _ = chunk_tx.send(MessageChunk::message(s)).await;
                                         }
                                         ThinkingSegment::Thinking(s) => {
-                                            let _ =
-                                                chunk_tx.send(MessageChunk::thinking(s)).await;
+                                            let _ = chunk_tx.send(MessageChunk::thinking(s)).await;
                                         }
                                     }
                                 }

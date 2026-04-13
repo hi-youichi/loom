@@ -9,9 +9,7 @@ async fn spawn_mock(
     content_type: &str,
     body: &str,
 ) -> (String, tokio::task::JoinHandle<()>) {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let ct = content_type.to_string();
     let b = body.to_string();

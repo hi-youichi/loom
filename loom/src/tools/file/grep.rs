@@ -261,7 +261,7 @@ impl Tool for GrepTool {
         }
 
         if matches.is_empty() {
-            return Ok(ToolCallContent::text("No files found".to_string(),));
+            return Ok(ToolCallContent::text("No files found".to_string()));
         }
 
         let mut output_lines: Vec<String> = vec![format!("Found {} matches", matches.len())];
@@ -291,6 +291,6 @@ impl Tool for GrepTool {
             );
         }
 
-        Ok(ToolCallContent::text(output_lines.join("\n"),))
+        Ok(ToolCallContent::text(output_lines.join("\n")))
     }
 }

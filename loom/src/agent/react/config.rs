@@ -1,8 +1,8 @@
 //! Configuration for building a ReAct run context.
 
+use env_config::McpServerDef;
 use std::path::PathBuf;
 use std::sync::Arc;
-use env_config::McpServerDef;
 
 use crate::skill::SkillRegistry;
 
@@ -25,13 +25,11 @@ impl Default for TotRunnerConfig {
 }
 
 /// GoT-specific runner config (adaptive mode, AGoT LLM complexity).
-#[derive(Clone, Debug)]
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub struct GotRunnerConfig {
     pub adaptive: bool,
     pub agot_llm_complexity: bool,
 }
-
 
 /// Configuration for building ReAct run context.
 #[derive(Clone, Debug)]
@@ -99,13 +97,11 @@ impl ReactBuildConfig {
             twitter_api_key: std::env::var("TWITTER_API_KEY").ok(),
             mcp_exa_url: std::env::var("MCP_EXA_URL")
                 .unwrap_or_else(|_| "https://exa-cp.backend.mcp.dev".to_string()),
-            mcp_remote_cmd: std::env::var("MCP_REMOTE_CMD")
-                .unwrap_or_else(|_| "npx".to_string()),
+            mcp_remote_cmd: std::env::var("MCP_REMOTE_CMD").unwrap_or_else(|_| "npx".to_string()),
             mcp_remote_args: std::env::var("MCP_REMOTE_ARGS")
                 .unwrap_or_else(|_| "mcp-remote".to_string()),
             github_token: std::env::var("GITHUB_TOKEN").ok(),
-            mcp_github_cmd: std::env::var("MCP_GITHUB_CMD")
-                .unwrap_or_else(|_| "npx".to_string()),
+            mcp_github_cmd: std::env::var("MCP_GITHUB_CMD").unwrap_or_else(|_| "npx".to_string()),
             mcp_github_args: std::env::var("MCP_GITHUB_ARGS")
                 .unwrap_or_else(|_| "-y @modelcontextprotocol/server-github".to_string())
                 .split_whitespace()

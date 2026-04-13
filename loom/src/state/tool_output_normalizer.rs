@@ -27,7 +27,6 @@ pub enum ToolOutputStrategy {
     FileRefWithExcerpt,
 }
 
-
 /// Optional metadata supplied by a tool to influence output normalization.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ToolOutputHint {
@@ -187,18 +186,26 @@ pub fn normalize_tool_output(
     let mut output = match strategy {
         ToolOutputStrategy::Inline => build_inline_output(raw_text, raw_chars, &config),
         ToolOutputStrategy::HeadTail => build_head_tail_output(raw_text, raw_chars, &config),
-        ToolOutputStrategy::SummaryOnly => {
-            build_summary_output(tool_name, args, raw_text, is_error, raw_chars, storage_ref, &config)
-        }
-        ToolOutputStrategy::FileRef | ToolOutputStrategy::FileRefWithExcerpt => build_file_ref_output(
+        ToolOutputStrategy::SummaryOnly => build_summary_output(
             tool_name,
+            args,
             raw_text,
+            is_error,
             raw_chars,
-            strategy,
             storage_ref,
-            remaining_budget,
             &config,
         ),
+        ToolOutputStrategy::FileRef | ToolOutputStrategy::FileRefWithExcerpt => {
+            build_file_ref_output(
+                tool_name,
+                raw_text,
+                raw_chars,
+                strategy,
+                storage_ref,
+                remaining_budget,
+                &config,
+            )
+        }
     };
 
     apply_observation_budget(&mut output, remaining_budget);
@@ -458,11 +465,19 @@ fn determine_strategy(
 
     if raw_chars > remaining_budget {
         return match tool_name {
-            "bash" | "powershell" if remaining_budget >= config.head_tail_limit / 2 => ToolOutputStrategy::HeadTail,
-            "web_fetcher" | "invoke_agent" | "mcp_call_tool" => ToolOutputStrategy::FileRefWithExcerpt,
+            "bash" | "powershell" if remaining_budget >= config.head_tail_limit / 2 => {
+                ToolOutputStrategy::HeadTail
+            }
+            "web_fetcher" | "invoke_agent" | "mcp_call_tool" => {
+                ToolOutputStrategy::FileRefWithExcerpt
+            }
             "get_recent_messages" => ToolOutputStrategy::SummaryOnly,
-            _ if raw_chars > config.file_ref_threshold / 2 => ToolOutputStrategy::FileRefWithExcerpt,
-            _ if is_error && remaining_budget >= config.head_tail_limit / 2 => ToolOutputStrategy::HeadTail,
+            _ if raw_chars > config.file_ref_threshold / 2 => {
+                ToolOutputStrategy::FileRefWithExcerpt
+            }
+            _ if is_error && remaining_budget >= config.head_tail_limit / 2 => {
+                ToolOutputStrategy::HeadTail
+            }
             _ => ToolOutputStrategy::SummaryOnly,
         };
     }

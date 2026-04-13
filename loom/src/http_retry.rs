@@ -99,8 +99,14 @@ mod tests {
 
     #[test]
     fn classifies_non_retryable_openai_statuses() {
-        assert_eq!(classify_openai_http_status(400), RetryDecision::NonRetryable);
-        assert_eq!(classify_openai_http_status(401), RetryDecision::NonRetryable);
+        assert_eq!(
+            classify_openai_http_status(400),
+            RetryDecision::NonRetryable
+        );
+        assert_eq!(
+            classify_openai_http_status(401),
+            RetryDecision::NonRetryable
+        );
     }
 
     #[test]
@@ -147,12 +153,16 @@ mod tests {
 
     #[test]
     fn detects_unexpected_eof() {
-        assert!(looks_like_transient_http_error_message("unexpected eof while reading"));
+        assert!(looks_like_transient_http_error_message(
+            "unexpected eof while reading"
+        ));
     }
 
     #[test]
     fn detects_connection_reset() {
-        assert!(looks_like_transient_http_error_message("connection reset by peer"));
+        assert!(looks_like_transient_http_error_message(
+            "connection reset by peer"
+        ));
     }
 
     #[test]

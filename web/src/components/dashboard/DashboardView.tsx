@@ -13,7 +13,9 @@ interface DashboardViewProps {
   activity: ActivityEvent[]
   activeCount: number
   totalCalls: number
-  sessions?: Session[]  // New optional prop
+  sessions?: Session[]
+  loadingSessions?: boolean
+  onSelectSession?: (sessionId: string) => void
 }
 
 export function DashboardView({ 
@@ -21,7 +23,9 @@ export function DashboardView({
   activity, 
   activeCount, 
   totalCalls,
-  sessions = []
+  sessions = [],
+  loadingSessions = false,
+  onSelectSession,
 }: DashboardViewProps) {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
   
@@ -44,9 +48,7 @@ export function DashboardView({
   }
 
   const handleSessionClick = (sessionId: string) => {
-    // Navigate to session
-    console.log('Navigate to session:', sessionId)
-    // TODO: Implement navigation logic
+    onSelectSession?.(sessionId)
   }
 
   const handleSessionPin = (sessionId: string) => {

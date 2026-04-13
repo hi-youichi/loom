@@ -269,7 +269,8 @@ impl ReActState {
         tool_calls: Vec<ToolCall>,
         response_usage: Option<LlmUsage>,
     ) -> Self {
-        let (usage, total_usage) = compute_think_usage(self.total_usage.as_ref(), response_usage.as_ref());
+        let (usage, total_usage) =
+            compute_think_usage(self.total_usage.as_ref(), response_usage.as_ref());
         let tool_calls = normalize_tool_call_ids(tool_calls);
         let assistant_tool_calls: Vec<AssistantToolCall> = tool_calls
             .iter()
@@ -343,7 +344,9 @@ impl ReActState {
 
 impl crate::command::builtins::ResetState for ReActState {
     fn reset_context(&mut self) {
-        let system = self.messages.iter()
+        let system = self
+            .messages
+            .iter()
             .find(|m| matches!(m, Message::System(_)))
             .cloned();
         self.messages.clear();
@@ -406,12 +409,7 @@ mod tests {
     #[test]
     fn apply_think_appends_message_and_increments_think_count() {
         let state = ReActState::default();
-        let next = state.apply_think(
-            "hello".to_string(),
-            None,
-            vec![],
-            None,
-        );
+        let next = state.apply_think("hello".to_string(), None, vec![], None);
         assert_eq!(next.messages.len(), 1);
         assert_eq!(next.think_count, 1);
         assert_eq!(next.message_count_after_last_think, Some(1));

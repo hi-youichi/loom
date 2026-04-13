@@ -51,7 +51,10 @@ async fn e2e_workspace_create_and_list() {
     match resp {
         ServerResponse::WorkspaceList(r) => {
             assert_eq!(r.id, "wl-1");
-            assert!(r.workspaces.iter().any(|w| w.id == workspace_id && w.name.as_deref() == Some("test-project")));
+            assert!(r
+                .workspaces
+                .iter()
+                .any(|w| w.id == workspace_id && w.name.as_deref() == Some("test-project")));
         }
         ServerResponse::Error(e) => panic!("server error: {}", e.error),
         other => panic!("expected WorkspaceList, got {:?}", other),

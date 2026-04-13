@@ -14,8 +14,7 @@ use super::{DupPromptsFile, GotPromptsFile, HelvePromptsFile, ReactPromptsFile, 
 ///
 /// Build via [`load`](crate::prompts::load) or [`load_or_default`](crate::prompts::load_or_default).
 /// ReAct prompt materials are loaded here but assembled elsewhere.
-#[derive(Clone, Debug)]
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub struct AgentPrompts {
     pub react: ReactPromptsFile,
     pub tot: TotPromptsFile,
@@ -23,7 +22,6 @@ pub struct AgentPrompts {
     pub dup: DupPromptsFile,
     pub helve: HelvePromptsFile,
 }
-
 
 impl AgentPrompts {
     /// ToT expand node system addon.

@@ -89,7 +89,7 @@ static INVOKE_AGENT_SEMAPHORE: Lazy<Arc<Semaphore>> = Lazy::new(|| {
         .and_then(|s| s.parse().ok())
         .and_then(|n| if n > 0 && n <= 100 { Some(n) } else { None })
         .unwrap_or(DEFAULT_MAX_CONCURRENT);
-    
+
     Arc::new(Semaphore::new(max_concurrent))
 });
 
@@ -179,9 +179,7 @@ impl Tool for InvokeAgentTool {
                 },
                 "required": ["agents"]
             }),
-            output_hint: Some(ToolOutputHint::preferred(
-                ToolOutputStrategy::SummaryOnly,
-            )),
+            output_hint: Some(ToolOutputHint::preferred(ToolOutputStrategy::SummaryOnly)),
         }
     }
 
@@ -192,11 +190,15 @@ impl Tool for InvokeAgentTool {
     ) -> Result<ToolCallContent, ToolSourceError> {
         let is_async = args.get("async").and_then(|v| v.as_bool()).unwrap_or(false);
 
-        let agents = args.get("agents").and_then(|v| v.as_array()).ok_or_else(|| {
-            ToolSourceError::InvalidInput(
-                "missing or invalid required argument: agents (must be a non-empty array)".into(),
-            )
-        })?;
+        let agents = args
+            .get("agents")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| {
+                ToolSourceError::InvalidInput(
+                    "missing or invalid required argument: agents (must be a non-empty array)"
+                        .into(),
+                )
+            })?;
         if agents.is_empty() {
             return Err(ToolSourceError::InvalidInput(
                 "agents array cannot be empty".into(),
@@ -309,9 +311,10 @@ impl InvokeAgentTool {
         args: Value,
         ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        let agents = args.get("agents").and_then(|v| v.as_array()).ok_or_else(|| {
-            ToolSourceError::InvalidInput("agents must be an array".into())
-        })?;
+        let agents = args
+            .get("agents")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| ToolSourceError::InvalidInput("agents must be an array".into()))?;
 
         if agents.is_empty() {
             return Err(ToolSourceError::InvalidInput(
@@ -319,7 +322,10 @@ impl InvokeAgentTool {
             ));
         }
 
-        let fail_fast = args.get("fail_fast").and_then(|v| v.as_bool()).unwrap_or(false);
+        let fail_fast = args
+            .get("fail_fast")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         // Validate all agent specs before spawning tasks
         for (idx, agent_spec) in agents.iter().enumerate() {
@@ -343,7 +349,7 @@ impl InvokeAgentTool {
             let args = agent_spec.clone();
             let ctx = ctx.cloned();
             let base_config = self.base_config.clone();
-        let max_depth = self.max_depth;
+            let max_depth = self.max_depth;
 
             let handle = tokio::spawn(async move {
                 // Acquire global semaphore permit
@@ -423,9 +429,10 @@ impl InvokeAgentTool {
         args: Value,
         ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        let agents = args.get("agents").and_then(|v| v.as_array()).ok_or_else(|| {
-            ToolSourceError::InvalidInput("agents must be an array".into())
-        })?;
+        let agents = args
+            .get("agents")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| ToolSourceError::InvalidInput("agents must be an array".into()))?;
 
         if agents.is_empty() {
             return Err(ToolSourceError::InvalidInput(
@@ -487,7 +494,9 @@ impl InvokeAgentTool {
                 };
 
                 // Invoke single agent in background
-                if let Err(e) = invoke_single_agent(&base_config, args, ctx.as_ref(), max_depth).await {
+                if let Err(e) =
+                    invoke_single_agent(&base_config, args, ctx.as_ref(), max_depth).await
+                {
                     if let Some(agent_name) = e.to_string().split("'").nth(1) {
                         tracing::error!(
                             agent = %agent_name,
@@ -522,13 +531,15 @@ async fn invoke_single_agent(
         )));
     }
 
-    let agent_name = args.get("agent").and_then(|v| v.as_str()).ok_or_else(|| {
-        ToolSourceError::InvalidInput("missing required argument: agent".into())
-    })?;
+    let agent_name = args
+        .get("agent")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ToolSourceError::InvalidInput("missing required argument: agent".into()))?;
 
-    let task = args.get("task").and_then(|v| v.as_str()).ok_or_else(|| {
-        ToolSourceError::InvalidInput("missing required argument: task".into())
-    })?;
+    let task = args
+        .get("task")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ToolSourceError::InvalidInput("missing required argument: task".into()))?;
 
     let working_folder_override = args
         .get("working_folder")
@@ -536,17 +547,11 @@ async fn invoke_single_agent(
         .map(std::path::PathBuf::from);
 
     let profile = resolve_profile(agent_name).map_err(|e| {
-        ToolSourceError::InvalidInput(format!(
-            "failed to resolve agent '{}': {}",
-            agent_name, e
-        ))
+        ToolSourceError::InvalidInput(format!("failed to resolve agent '{}': {}", agent_name, e))
     })?;
 
-    let mut sub_config = build_config_from_profile(
-        &profile,
-        base_config,
-        working_folder_override.as_deref(),
-    );
+    let mut sub_config =
+        build_config_from_profile(&profile, base_config, working_folder_override.as_deref());
 
     // Propagate depth + 1 so nested invoke_agent calls are tracked
     sub_config.thread_id = None;
@@ -554,10 +559,7 @@ async fn invoke_single_agent(
     let runner = build_react_runner(&sub_config, None, false)
         .await
         .map_err(|e| {
-            ToolSourceError::Transport(format!(
-                "failed to build sub-agent '{}': {}",
-                agent_name, e
-            ))
+            ToolSourceError::Transport(format!("failed to build sub-agent '{}': {}", agent_name, e))
         })?;
 
     let outcome = runner
@@ -571,9 +573,7 @@ async fn invoke_single_agent(
         crate::runner_common::StreamRunOutcome::Finished(final_state) => final_state
             .last_assistant_reply()
             .unwrap_or_else(|| "(no reply from sub-agent)".to_string()),
-        crate::runner_common::StreamRunOutcome::Cancelled => {
-            "(sub-agent cancelled)".to_string()
-        }
+        crate::runner_common::StreamRunOutcome::Cancelled => "(sub-agent cancelled)".to_string(),
     };
 
     Ok(ToolCallContent::text(reply))

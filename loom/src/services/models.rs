@@ -17,8 +17,6 @@ pub struct ModelService {
 impl ModelService {
     /// Create a new model service
     pub fn new() -> Self {
-        
-        
         Self {
             providers: Arc::new(RwLock::new(HashMap::new())),
             models: Arc::new(RwLock::new(HashMap::new())),
@@ -30,27 +28,25 @@ impl ModelService {
     pub async fn load_from_models_dev(&self) -> Result<(), String> {
         let url = "https://models.dev/api.json";
         tracing::info!("Fetching models from {}", url);
-        
-        let response = reqwest::get(url)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to fetch from models.dev: {}", e);
-                format!("Failed to fetch from models.dev: {}", e)
-            })?;
-        
+
+        let response = reqwest::get(url).await.map_err(|e| {
+            tracing::error!("Failed to fetch from models.dev: {}", e);
+            format!("Failed to fetch from models.dev: {}", e)
+        })?;
+
         let status = response.status();
         tracing::info!("Response status: {}", status);
-        
+
         if !status.is_success() {
             return Err(format!("Models.dev returned status: {}", status));
         }
-        
+
         // Parse directly as serde_json::Value first to inspect structure
         let json_value: serde_json::Value = response.json().await.map_err(|e| {
             tracing::error!("Failed to read response body: {}", e);
             format!("Failed to read response body: {}", e)
         })?;
-        
+
         // Then try to parse as Provider types
         let providers_json: HashMap<String, Provider> = serde_json::from_value(json_value)
             .map_err(|e| {
@@ -61,7 +57,7 @@ impl ModelService {
         let mut providers = self.providers.write().await;
         let mut models = self.models.write().await;
         let mut model_to_provider = self.model_to_provider.write().await;
-        
+
         let mut total_models = 0;
         for (provider_id, provider) in providers_json {
             for (model_id, model) in &provider.models {
@@ -71,7 +67,7 @@ impl ModelService {
             }
             providers.insert(provider_id, provider);
         }
-        
+
         tracing::info!("Loaded {} models from models.dev", total_models);
         Ok(())
     }
@@ -81,14 +77,16 @@ impl ModelService {
         let models = self.models.read().await;
         let providers = self.providers.read().await;
         let model_to_provider = self.model_to_provider.read().await;
-        
-        models.values()
+
+        models
+            .values()
             .map(|model| {
-                let provider = model_to_provider.get(&model.id)
+                let provider = model_to_provider
+                    .get(&model.id)
                     .and_then(|provider_id| providers.get(provider_id))
                     .map(|p| p.name.clone())
                     .unwrap_or_else(|| "Unknown".to_string());
-                
+
                 ModelInfo {
                     id: model.id.clone(),
                     name: model.name.clone(),
@@ -109,7 +107,7 @@ impl ModelService {
     /// Extract capabilities from model metadata
     fn extract_capabilities(model: &Model) -> Option<Vec<String>> {
         let mut capabilities = Vec::new();
-        
+
         if model.tool_call {
             capabilities.push("tool_call".to_string());
         }
@@ -122,7 +120,7 @@ impl ModelService {
         if model.structured_output.unwrap_or(false) {
             capabilities.push("structured_output".to_string());
         }
-        
+
         if capabilities.is_empty() {
             None
         } else {
@@ -151,14 +149,24 @@ mod tests {
     fn test_model_service_creation() {
         let service = ModelService::new();
         // Service should be created successfully
-        let models = tokio::runtime::Runtime::new().unwrap().block_on(service.get_available_models());
-        assert!(models.is_empty(), "Model service should start with no models");
+        let models = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(service.get_available_models());
+        assert!(
+            models.is_empty(),
+            "Model service should start with no models"
+        );
     }
 
     #[test]
     fn test_model_service_default() {
         let service = ModelService::default();
-        let models = tokio::runtime::Runtime::new().unwrap().block_on(service.get_available_models());
-        assert!(models.is_empty(), "Default model service should start with no models");
+        let models = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(service.get_available_models());
+        assert!(
+            models.is_empty(),
+            "Default model service should start with no models"
+        );
     }
 }

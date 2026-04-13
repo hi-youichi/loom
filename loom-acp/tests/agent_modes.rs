@@ -1,7 +1,8 @@
 //! ACP Agent integration tests for session modes feature.
 
 use agent_client_protocol::{
-    Agent, LoadSessionRequest, NewSessionRequest, SetSessionConfigOptionRequest, SetSessionModeRequest,
+    Agent, LoadSessionRequest, NewSessionRequest, SetSessionConfigOptionRequest,
+    SetSessionModeRequest,
 };
 use loom_acp::LoomAcpAgent;
 use std::path::PathBuf;
@@ -14,21 +15,29 @@ fn make_new_session_request() -> NewSessionRequest {
 fn extract_mode_ids_from_json(json: &serde_json::Value) -> Vec<String> {
     let modes_field = json.get("modes");
     if modes_field.is_none() {
-        eprintln!("JSON has no 'modes' field. Keys: {:?}", json.as_object().map(|o| o.keys().collect::<Vec<_>>()));
+        eprintln!(
+            "JSON has no 'modes' field. Keys: {:?}",
+            json.as_object().map(|o| o.keys().collect::<Vec<_>>())
+        );
         return vec![];
     }
     let modes_obj = modes_field.unwrap();
     if let Some(arr) = modes_obj.get("availableModes").and_then(|m| m.as_array()) {
-        return arr.iter()
+        return arr
+            .iter()
             .filter_map(|entry| entry.get("id").and_then(|id| id.as_str().map(String::from)))
             .collect();
     }
     if let Some(arr) = modes_obj.as_array() {
-        return arr.iter()
+        return arr
+            .iter()
             .filter_map(|entry| entry.get("id").and_then(|id| id.as_str().map(String::from)))
             .collect();
     }
-    eprintln!("Unexpected modes structure: {}", serde_json::to_string_pretty(modes_obj).unwrap());
+    eprintln!(
+        "Unexpected modes structure: {}",
+        serde_json::to_string_pretty(modes_obj).unwrap()
+    );
     vec![]
 }
 
@@ -73,21 +82,19 @@ async fn test_set_session_mode_and_load_preserves_mode() {
     let ns_response = agent.new_session(make_new_session_request()).await.unwrap();
     let session_id = ns_response.session_id.clone();
 
-    let set_request: SetSessionModeRequest =
-        serde_json::from_value(serde_json::json!({
-            "sessionId": session_id.to_string(),
-            "modeId": "dev"
-        }))
-        .unwrap();
+    let set_request: SetSessionModeRequest = serde_json::from_value(serde_json::json!({
+        "sessionId": session_id.to_string(),
+        "modeId": "dev"
+    }))
+    .unwrap();
     agent.set_session_mode(set_request).await.unwrap();
 
-    let load_request: LoadSessionRequest =
-        serde_json::from_value(serde_json::json!({
-            "sessionId": session_id.to_string(),
-            "cwd": std::env::current_dir().unwrap().to_str().unwrap(),
-            "mcpServers": []
-        }))
-        .unwrap();
+    let load_request: LoadSessionRequest = serde_json::from_value(serde_json::json!({
+        "sessionId": session_id.to_string(),
+        "cwd": std::env::current_dir().unwrap().to_str().unwrap(),
+        "mcpServers": []
+    }))
+    .unwrap();
 
     let load_response = agent.load_session(load_request).await.unwrap();
     let json = serde_json::to_value(&load_response).unwrap();
@@ -105,12 +112,11 @@ async fn test_set_session_mode_rejects_unknown_mode() {
     let ns_response = agent.new_session(make_new_session_request()).await.unwrap();
     let session_id = ns_response.session_id.clone();
 
-    let set_request: SetSessionModeRequest =
-        serde_json::from_value(serde_json::json!({
-            "sessionId": session_id.to_string(),
-            "modeId": "nonexistent-mode"
-        }))
-        .unwrap();
+    let set_request: SetSessionModeRequest = serde_json::from_value(serde_json::json!({
+        "sessionId": session_id.to_string(),
+        "modeId": "nonexistent-mode"
+    }))
+    .unwrap();
 
     let result = agent.set_session_mode(set_request).await;
     assert!(result.is_err(), "expected error for unknown mode");
@@ -120,12 +126,11 @@ async fn test_set_session_mode_rejects_unknown_mode() {
 async fn test_set_session_mode_rejects_unknown_session() {
     let agent = LoomAcpAgent::new();
 
-    let set_request: SetSessionModeRequest =
-        serde_json::from_value(serde_json::json!({
-            "sessionId": "nonexistent-session",
-            "modeId": "ask"
-        }))
-        .unwrap();
+    let set_request: SetSessionModeRequest = serde_json::from_value(serde_json::json!({
+        "sessionId": "nonexistent-session",
+        "modeId": "ask"
+    }))
+    .unwrap();
 
     let result = agent.set_session_mode(set_request).await;
     assert!(result.is_err(), "expected error for unknown session");
@@ -137,13 +142,12 @@ async fn test_load_session_new_entry_defaults_to_dev() {
     let ns_response = agent.new_session(make_new_session_request()).await.unwrap();
     let session_id = ns_response.session_id.clone();
 
-    let load_request: LoadSessionRequest =
-        serde_json::from_value(serde_json::json!({
-            "sessionId": session_id.to_string(),
-            "cwd": std::env::current_dir().unwrap().to_str().unwrap(),
-            "mcpServers": []
-        }))
-        .unwrap();
+    let load_request: LoadSessionRequest = serde_json::from_value(serde_json::json!({
+        "sessionId": session_id.to_string(),
+        "cwd": std::env::current_dir().unwrap().to_str().unwrap(),
+        "mcpServers": []
+    }))
+    .unwrap();
     let load_response = agent.load_session(load_request).await.unwrap();
     let json = serde_json::to_value(&load_response).unwrap();
     let current = extract_current_mode_id(&json);
@@ -159,13 +163,12 @@ async fn test_load_session_modes_list_contains_builtins() {
     let agent = LoomAcpAgent::new();
     let fake_session_id = "session-load-test-002";
 
-    let load_request: LoadSessionRequest =
-        serde_json::from_value(serde_json::json!({
-            "sessionId": fake_session_id,
-            "cwd": std::env::current_dir().unwrap().to_str().unwrap(),
-            "mcpServers": []
-        }))
-        .unwrap();
+    let load_request: LoadSessionRequest = serde_json::from_value(serde_json::json!({
+        "sessionId": fake_session_id,
+        "cwd": std::env::current_dir().unwrap().to_str().unwrap(),
+        "mcpServers": []
+    }))
+    .unwrap();
 
     let load_response = agent.load_session(load_request).await.unwrap();
     let json = serde_json::to_value(&load_response).unwrap();
@@ -214,13 +217,12 @@ async fn test_set_session_config_option_mode_switches_mode_and_returns_mode_firs
     assert_eq!(options[0]["currentValue"], "dev");
     assert_eq!(options[1]["id"], "model");
 
-    let load_request: LoadSessionRequest =
-        serde_json::from_value(serde_json::json!({
-            "sessionId": session_id.to_string(),
-            "cwd": std::env::current_dir().unwrap().to_str().unwrap(),
-            "mcpServers": []
-        }))
-        .unwrap();
+    let load_request: LoadSessionRequest = serde_json::from_value(serde_json::json!({
+        "sessionId": session_id.to_string(),
+        "cwd": std::env::current_dir().unwrap().to_str().unwrap(),
+        "mcpServers": []
+    }))
+    .unwrap();
     let load_response = agent.load_session(load_request).await.unwrap();
     let load_json = serde_json::to_value(&load_response).unwrap();
     assert_eq!(extract_current_mode_id(&load_json), Some("dev".to_string()));
@@ -259,13 +261,12 @@ async fn test_set_session_config_option_mode_accepts_typed_value_payload() {
     assert_eq!(options[0]["currentValue"], "dev");
     assert_eq!(options[1]["id"], "model");
 
-    let load_request: LoadSessionRequest =
-        serde_json::from_value(serde_json::json!({
-            "sessionId": session_id.to_string(),
-            "cwd": std::env::current_dir().unwrap().to_str().unwrap(),
-            "mcpServers": []
-        }))
-        .unwrap();
+    let load_request: LoadSessionRequest = serde_json::from_value(serde_json::json!({
+        "sessionId": session_id.to_string(),
+        "cwd": std::env::current_dir().unwrap().to_str().unwrap(),
+        "mcpServers": []
+    }))
+    .unwrap();
     let load_response = agent.load_session(load_request).await.unwrap();
     let load_json = serde_json::to_value(&load_response).unwrap();
     assert_eq!(extract_current_mode_id(&load_json), Some("dev".to_string()));

@@ -7,13 +7,12 @@
 
 mod init_logging;
 
-use loom::{
-    run_agent_with_llm_override, run_agent_with_options, AnyStreamEvent,
-    Checkpointer, MockLlm, RunCancellation, RunCmd, RunCompletion, RunOptions, StreamEvent,
-    UserContent,
-};
 #[cfg(unix)]
 use loom::ActiveOperationKind;
+use loom::{
+    run_agent_with_llm_override, run_agent_with_options, AnyStreamEvent, Checkpointer, MockLlm,
+    RunCancellation, RunCmd, RunCompletion, RunOptions, StreamEvent, UserContent,
+};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};

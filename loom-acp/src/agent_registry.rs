@@ -25,10 +25,7 @@ impl AgentRegistry {
     }
 
     pub fn to_session_mode_state(&self, current_mode_id: &str) -> SessionModeState {
-        SessionModeState::new(
-            SessionModeId::new(current_mode_id),
-            self.to_session_modes(),
-        )
+        SessionModeState::new(SessionModeId::new(current_mode_id), self.to_session_modes())
     }
 
     pub fn default_mode_id(&self) -> &'static str {

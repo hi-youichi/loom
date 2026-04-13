@@ -3,12 +3,10 @@
 use std::sync::Arc;
 
 use loom::{
-    ErrorResponse, ServerResponse, WorkspaceCreateRequest, WorkspaceCreateResponse,
-    WorkspaceListRequest, WorkspaceListResponse, WorkspaceMeta,
-    WorkspaceThreadAddRequest, WorkspaceThreadAddResponse,
-    WorkspaceThreadListRequest, WorkspaceThreadListResponse,
-    WorkspaceThreadRemoveRequest, WorkspaceThreadRemoveResponse,
-    ThreadInWorkspace,
+    ErrorResponse, ServerResponse, ThreadInWorkspace, WorkspaceCreateRequest,
+    WorkspaceCreateResponse, WorkspaceListRequest, WorkspaceListResponse, WorkspaceMeta,
+    WorkspaceThreadAddRequest, WorkspaceThreadAddResponse, WorkspaceThreadListRequest,
+    WorkspaceThreadListResponse, WorkspaceThreadRemoveRequest, WorkspaceThreadRemoveResponse,
 };
 
 fn no_store_error(id: &str) -> ServerResponse {
@@ -54,10 +52,9 @@ pub(crate) async fn handle_workspace_create(
         return no_store_error(&id);
     };
     match store.create_workspace(r.name).await {
-        Ok(workspace_id) => ServerResponse::WorkspaceCreate(WorkspaceCreateResponse {
-            id,
-            workspace_id,
-        }),
+        Ok(workspace_id) => {
+            ServerResponse::WorkspaceCreate(WorkspaceCreateResponse { id, workspace_id })
+        }
         Err(e) => ServerResponse::Error(ErrorResponse {
             id: Some(id),
             error: e.to_string(),
@@ -106,7 +103,10 @@ pub(crate) async fn handle_workspace_thread_add(
     let Some(store) = store else {
         return no_store_error(&id);
     };
-    match store.add_thread_to_workspace(&r.workspace_id, &r.thread_id).await {
+    match store
+        .add_thread_to_workspace(&r.workspace_id, &r.thread_id)
+        .await
+    {
         Ok(()) => ServerResponse::WorkspaceThreadAdd(WorkspaceThreadAddResponse {
             id,
             workspace_id,
@@ -129,7 +129,10 @@ pub(crate) async fn handle_workspace_thread_remove(
     let Some(store) = store else {
         return no_store_error(&id);
     };
-    match store.remove_thread_from_workspace(&r.workspace_id, &r.thread_id).await {
+    match store
+        .remove_thread_from_workspace(&r.workspace_id, &r.thread_id)
+        .await
+    {
         Ok(()) => ServerResponse::WorkspaceThreadRemove(WorkspaceThreadRemoveResponse {
             id,
             workspace_id,

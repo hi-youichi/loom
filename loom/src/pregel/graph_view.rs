@@ -165,8 +165,11 @@ impl PregelGraphView {
             }
         }
         edges.sort_by(|a, b| {
-            (a.source.as_str(), a.target.as_str(), edge_kind_rank(a.kind))
-                .cmp(&(b.source.as_str(), b.target.as_str(), edge_kind_rank(b.kind)))
+            (a.source.as_str(), a.target.as_str(), edge_kind_rank(a.kind)).cmp(&(
+                b.source.as_str(),
+                b.target.as_str(),
+                edge_kind_rank(b.kind),
+            ))
         });
 
         let mut subgraphs = Vec::new();
@@ -261,13 +264,7 @@ fn edge_kind_rank(kind: PregelGraphEdgeKind) -> u8 {
 fn mermaid_id(prefix: &str, raw: &str) -> String {
     let sanitized = raw
         .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() {
-                ch
-            } else {
-                '_'
-            }
-        })
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
         .collect::<String>();
     format!("{prefix}_{sanitized}")
 }
@@ -280,7 +277,9 @@ mod tests {
 
     use crate::error::AgentError;
     use crate::pregel::channel::ChannelSpec;
-    use crate::pregel::node::{PregelGraph, PregelNode, PregelNodeContext, PregelNodeInput, PregelNodeOutput};
+    use crate::pregel::node::{
+        PregelGraph, PregelNode, PregelNodeContext, PregelNodeInput, PregelNodeOutput,
+    };
     use crate::pregel::subgraph::PregelSubgraph;
     use crate::pregel::PregelRuntime;
 

@@ -85,12 +85,16 @@ pub fn prune(messages: Vec<Message>, config: &CompactionConfig) -> Vec<Message> 
     for i in &to_prune {
         match out.get_mut(*i) {
             Some(Message::User(_)) => {
-                out[*i] = Message::user(crate::message::UserContent::Text(PRUNE_PLACEHOLDER.to_string()));
+                out[*i] = Message::user(crate::message::UserContent::Text(
+                    PRUNE_PLACEHOLDER.to_string(),
+                ));
             }
             Some(Message::Tool { tool_call_id, .. }) => {
                 let id = tool_call_id.clone();
-                out[*i] = Message::Tool { tool_call_id: id, content: ToolCallContent::text(PRUNE_PLACEHOLDER.to_string(),
-                ) };
+                out[*i] = Message::Tool {
+                    tool_call_id: id,
+                    content: ToolCallContent::text(PRUNE_PLACEHOLDER.to_string()),
+                };
             }
             _ => {}
         }
@@ -186,7 +190,9 @@ pub fn build_summary_prompt(msgs: &[Message]) -> String {
                     ));
                 }
             }
-            Message::Tool { content, .. } => parts.push(format!("Tool: {}", content.to_display_string())),
+            Message::Tool { content, .. } => {
+                parts.push(format!("Tool: {}", content.to_display_string()))
+            }
         }
     }
     parts.join("\n")
@@ -258,14 +264,13 @@ mod tests {
             prune_keep_tokens: 1000,
             ..Default::default()
         };
-        let msgs = vec![
-            Message::user("hi"),
-            tool_result_msg("a", "data"),
-        ];
+        let msgs = vec![Message::user("hi"), tool_result_msg("a", "data")];
         let out = prune(msgs.clone(), &config);
         assert_eq!(out.len(), msgs.len());
         assert!(matches!(&out[0], Message::User(UserContent::Text(s)) if s == "hi"));
-        assert!(matches!(&out[1], Message::User(UserContent::Text(s)) if s.contains("Tool a returned:")));
+        assert!(
+            matches!(&out[1], Message::User(UserContent::Text(s)) if s.contains("Tool a returned:"))
+        );
     }
 
     #[test]
@@ -278,7 +283,9 @@ mod tests {
         let msgs = vec![tool_result_msg("a", "x")];
         let out = prune(msgs.clone(), &config);
         assert_eq!(out.len(), 1);
-        assert!(matches!(&out[0], Message::User(UserContent::Text(s)) if s.contains("Tool a returned:")));
+        assert!(
+            matches!(&out[0], Message::User(UserContent::Text(s)) if s.contains("Tool a returned:"))
+        );
     }
 
     #[test]
@@ -318,7 +325,9 @@ mod tests {
         assert_eq!(out.len(), 3);
         assert!(matches!(&out[0], Message::User(UserContent::Text(s)) if s == "user"));
         assert!(matches!(&out[1], Message::User(UserContent::Text(s)) if s == PRUNE_PLACEHOLDER));
-        assert!(matches!(&out[2], Message::User(UserContent::Text(s)) if s.contains("Tool new returned:")));
+        assert!(
+            matches!(&out[2], Message::User(UserContent::Text(s)) if s.contains("Tool new returned:"))
+        );
     }
 
     #[test]
@@ -336,6 +345,8 @@ mod tests {
         let out = prune(msgs.clone(), &config);
         assert_eq!(out.len(), 2);
         assert!(matches!(&out[0], Message::User(UserContent::Text(s)) if s == "x"));
-        assert!(matches!(&out[1], Message::User(UserContent::Text(s)) if s.contains("Tool a returned:")));
+        assert!(
+            matches!(&out[1], Message::User(UserContent::Text(s)) if s.contains("Tool a returned:"))
+        );
     }
 }

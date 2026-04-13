@@ -7,8 +7,7 @@ use std::time::Duration;
 /// Retry policy for handling failures.
 ///
 /// Defines how many times and with what strategy to retry a failed operation.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub enum RetryPolicy {
     /// No retry - fail immediately on error.
     #[default]
@@ -102,7 +101,6 @@ impl RetryPolicy {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {

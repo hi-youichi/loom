@@ -16,7 +16,7 @@ mod tests {
     #[test]
     fn test_detect_language() {
         let manager = LspManager::from_configs(env_config::get_default_lsp_servers());
-        
+
         let test_cases = vec![
             ("src/main.rs", "rust"),
             ("src/lib.ts", "typescript"),

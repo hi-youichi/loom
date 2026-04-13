@@ -29,11 +29,7 @@ fn clamp_summary_chars(s: &str) -> String {
     }
     let ellipsis = "...";
     let keep = MAX_SUMMARY_CHARS.saturating_sub(ellipsis.chars().count());
-    format!(
-        "{}{}",
-        s.chars().take(keep).collect::<String>(),
-        ellipsis
-    )
+    format!("{}{}", s.chars().take(keep).collect::<String>(), ellipsis)
 }
 
 /// Node that generates a session summary after the first think.
@@ -96,7 +92,9 @@ impl Node<ReActState> for SummarizeNode {
 
         // Create a minimal message list for the summary request
         let summary_messages = vec![
-            Message::system("You are a helpful assistant that creates concise conversation summaries."),
+            Message::system(
+                "You are a helpful assistant that creates concise conversation summaries.",
+            ),
             Message::user(prompt),
         ];
 

@@ -26,27 +26,25 @@
 //! }
 //! ```
 
-
-
-pub mod stream_mode;
-pub mod metadata;
 pub mod message;
+pub mod metadata;
 pub mod sender;
 pub mod stream_event;
+pub mod stream_mode;
 pub mod writers;
 
-pub use stream_mode::StreamMode;
-pub use metadata::{CheckpointEvent, StreamMetadata};
 pub use message::{MessageChunk, MessageChunkKind};
+pub use metadata::{CheckpointEvent, StreamMetadata};
 pub use sender::ChunkToStreamSender;
 pub use stream_event::StreamEvent;
+pub use stream_mode::StreamMode;
 pub use writers::{StreamWriter, ToolStreamWriter};
 
 // Test modules
 #[cfg(test)]
 mod tests {
-    pub mod stream_mode_tests;
-    pub mod stream_event_tests;
-    pub mod writer_tests;
     pub mod integration_tests;
+    pub mod stream_event_tests;
+    pub mod stream_mode_tests;
+    pub mod writer_tests;
 }

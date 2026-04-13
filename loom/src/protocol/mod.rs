@@ -44,9 +44,9 @@
 //! [protocol_spec]: https://github.com/loom/loom/blob/main/docs/protocol_spec.md
 
 pub mod envelope_state;
-pub mod stream;
 pub mod requests;
 pub mod responses;
+pub mod stream;
 pub mod types;
 
 // Re-export sub-module types for convenience
@@ -55,19 +55,16 @@ pub use stream_event::ProtocolEvent;
 
 // Re-export types from sub-modules
 pub use requests::{
-    AgentIdentifier,
-    AgentListRequest, AgentSourceFilter, AgentType, ClientRequest, PingRequest, RunRequest,
-    ToolShowOutput, ToolShowRequest, ToolsListRequest, UserMessagesRequest,
-    WorkspaceListRequest, WorkspaceCreateRequest, WorkspaceThreadListRequest,
-    WorkspaceThreadAddRequest, WorkspaceThreadRemoveRequest,
-    ListModelsRequest, SetModelRequest,
+    AgentIdentifier, AgentListRequest, AgentSourceFilter, AgentType, ClientRequest,
+    ListModelsRequest, PingRequest, RunRequest, SetModelRequest, ToolShowOutput, ToolShowRequest,
+    ToolsListRequest, UserMessagesRequest, WorkspaceCreateRequest, WorkspaceListRequest,
+    WorkspaceThreadAddRequest, WorkspaceThreadListRequest, WorkspaceThreadRemoveRequest,
 };
 pub use responses::{
-    AgentListResponse, AgentSource, AgentSummary, ErrorResponse, PongResponse,
+    AgentListResponse, AgentSource, AgentSummary, ErrorResponse, ListModelsResponse, PongResponse,
     ProtocolEventEnvelope, RunEndResponse, RunStreamEventResponse, ServerResponse,
-    ToolShowResponse, ToolsListResponse, UserMessageItem, UserMessagesResponse,
-    WorkspaceListResponse, WorkspaceMeta, WorkspaceCreateResponse,
-    WorkspaceThreadListResponse, ThreadInWorkspace, WorkspaceThreadAddResponse,
-    WorkspaceThreadRemoveResponse, ListModelsResponse, SetModelResponse,
+    SetModelResponse, ThreadInWorkspace, ToolShowResponse, ToolsListResponse, UserMessageItem,
+    UserMessagesResponse, WorkspaceCreateResponse, WorkspaceListResponse, WorkspaceMeta,
+    WorkspaceThreadAddResponse, WorkspaceThreadListResponse, WorkspaceThreadRemoveResponse,
 };
 pub use types::{AgentSource as AgentSourceExport, AgentSourceFilter as AgentSourceFilterExport};

@@ -362,12 +362,8 @@ impl PregelRuntime {
                         .await?;
                     }
                     crate::pregel::PregelDurability::Async => {
-                        flush_inflight_checkpoint(
-                            &mut inflight_checkpoint,
-                            &node_ctx,
-                            &run_config,
-                        )
-                        .await?;
+                        flush_inflight_checkpoint(&mut inflight_checkpoint, &node_ctx, &run_config)
+                            .await?;
                         if let Some(checkpointer) = &self.checkpointer {
                             inflight_checkpoint = Some(spawn_checkpoint_persist(
                                 Arc::clone(checkpointer),
@@ -385,7 +381,8 @@ impl PregelRuntime {
             match self.config.durability {
                 crate::pregel::PregelDurability::Sync => {}
                 crate::pregel::PregelDurability::Async => {
-                    flush_inflight_checkpoint(&mut inflight_checkpoint, &node_ctx, &run_config).await?;
+                    flush_inflight_checkpoint(&mut inflight_checkpoint, &node_ctx, &run_config)
+                        .await?;
                 }
                 crate::pregel::PregelDurability::Exit => {
                     self.persist_checkpoint(
@@ -465,9 +462,8 @@ impl PregelRuntime {
     pub fn stream(&self, input: ChannelValue, config: Option<RunnableConfig>) -> PregelStream {
         let (tx, rx) = mpsc::channel(64);
         let runtime = self.clone();
-        let completion = tokio::spawn(async move {
-            runtime.invoke_inner(input, config, Some(tx)).await
-        });
+        let completion =
+            tokio::spawn(async move { runtime.invoke_inner(input, config, Some(tx)).await });
         PregelStream {
             events: ReceiverStream::new(rx),
             completion,
@@ -546,7 +542,9 @@ impl PregelRuntime {
         request: BulkStateUpdateRequest,
     ) -> Result<PregelStateSnapshot, AgentError> {
         validate_checkpointer_config(self.checkpointer.as_ref(), &config)?;
-        let mut checkpoint = self.load_checkpoint_or_default(&config, serde_json::json!({})).await?;
+        let mut checkpoint = self
+            .load_checkpoint_or_default(&config, serde_json::json!({}))
+            .await?;
         let existing_pending_sends = checkpoint.pending_sends.clone();
         let existing_pending_writes = checkpoint.pending_writes.clone();
         let mut channels = restore_channels_from_checkpoint(&checkpoint, &self.graph);
@@ -554,7 +552,14 @@ impl PregelRuntime {
             .updates
             .iter()
             .enumerate()
-            .map(|(index, update)| synthetic_update_task(index, checkpoint.metadata.step.max(0) as u64, update, &self.graph))
+            .map(|(index, update)| {
+                synthetic_update_task(
+                    index,
+                    checkpoint.metadata.step.max(0) as u64,
+                    update,
+                    &self.graph,
+                )
+            })
             .collect::<Result<Vec<_>, _>>()?;
 
         let updated_channels = crate::pregel::apply_writes(
@@ -622,7 +627,8 @@ impl PregelRuntime {
                 let Some((mut checkpoint, _metadata)) = checkpointer
                     .get_tuple(&replay_config)
                     .await
-                    .map_err(checkpoint_error)? else {
+                    .map_err(checkpoint_error)?
+                else {
                     return Ok(None);
                 };
                 normalize_checkpoint_frontier(&mut checkpoint);
@@ -656,21 +662,23 @@ impl PregelRuntime {
                 let Some((mut checkpoint, _metadata)) = checkpointer
                     .get_tuple(&source_config)
                     .await
-                    .map_err(checkpoint_error)? else {
+                    .map_err(checkpoint_error)?
+                else {
                     return Ok(None);
                 };
                 normalize_checkpoint_frontier(&mut checkpoint);
 
-                let forked = checkpoint.fork_from(
-                    source_config.checkpoint_ns.clone(),
-                    checkpoint_id,
-                );
+                let forked =
+                    checkpoint.fork_from(source_config.checkpoint_ns.clone(), checkpoint_id);
                 let source_children = checkpoint
                     .metadata
                     .children
                     .entry(config.checkpoint_ns.clone())
                     .or_default();
-                if !source_children.iter().any(|existing| existing == &forked.id) {
+                if !source_children
+                    .iter()
+                    .any(|existing| existing == &forked.id)
+                {
                     source_children.push(forked.id.clone());
                 }
                 checkpointer
@@ -722,7 +730,11 @@ impl PregelRuntime {
             ..config.clone()
         };
         let result = match child_runtime
-            .invoke_inner(invocation.entry_input, Some(child_config.clone()), stream_tx)
+            .invoke_inner(
+                invocation.entry_input,
+                Some(child_config.clone()),
+                stream_tx,
+            )
             .await
         {
             Ok(value) => SubgraphResult::Completed(value),
@@ -752,11 +764,8 @@ impl PregelRuntime {
             Err(AgentError::Cancelled) => SubgraphResult::Cancelled,
             Err(error) => SubgraphResult::Failed(error.to_string()),
         };
-        
-        if let Some(state) = child_runtime
-            .get_state(child_config)
-            .await?
-        {
+
+        if let Some(state) = child_runtime.get_state(child_config).await? {
             if let Some(checkpoint_id) = invocation.parent_checkpoint_id {
                 // Link child -> parent
                 if let Some(checkpointer) = &child_runtime.checkpointer {
@@ -770,14 +779,26 @@ impl PregelRuntime {
                         .await
                         .map_err(checkpoint_error)?
                         .map(|(cp, _)| cp)
-                        .unwrap_or_else(|| Checkpoint::from_state(serde_json::json!({}), CheckpointSource::Update, 0));
-                    
-                    child_checkpoint.metadata.parents.insert(config.checkpoint_ns.clone(), checkpoint_id);
+                        .unwrap_or_else(|| {
+                            Checkpoint::from_state(
+                                serde_json::json!({}),
+                                CheckpointSource::Update,
+                                0,
+                            )
+                        });
+
+                    child_checkpoint
+                        .metadata
+                        .parents
+                        .insert(config.checkpoint_ns.clone(), checkpoint_id);
                     checkpointer
-                        .put(&RunnableConfig {
-                            checkpoint_ns: child_namespace.clone(),
-                            ..config.clone()
-                        }, &child_checkpoint)
+                        .put(
+                            &RunnableConfig {
+                                checkpoint_ns: child_namespace.clone(),
+                                ..config.clone()
+                            },
+                            &child_checkpoint,
+                        )
                         .await
                         .map_err(checkpoint_error)?;
                 }
@@ -838,10 +859,18 @@ impl PregelRuntime {
                     normalize_checkpoint_frontier(&mut checkpoint);
                     Ok(checkpoint)
                 }
-                Ok(None) => Ok(Checkpoint::from_state(fallback_input, CheckpointSource::Input, 0)),
+                Ok(None) => Ok(Checkpoint::from_state(
+                    fallback_input,
+                    CheckpointSource::Input,
+                    0,
+                )),
                 Err(error) => Err(checkpoint_error(error)),
             },
-            None => Ok(Checkpoint::from_state(fallback_input, CheckpointSource::Input, 0)),
+            None => Ok(Checkpoint::from_state(
+                fallback_input,
+                CheckpointSource::Input,
+                0,
+            )),
         }
     }
 
@@ -851,16 +880,18 @@ impl PregelRuntime {
         checkpoint: &Checkpoint<ChannelValue>,
         run_config: &RunnableConfig,
     ) -> Vec<crate::pregel::PreparedTask> {
-        let pending_writes_by_task_id: std::collections::HashMap<String, Vec<(String, ChannelValue)>> =
-            checkpoint
-                .pending_writes
-                .iter()
-                .fold(std::collections::HashMap::new(), |mut acc, (task_id, channel, value)| {
-                    acc.entry(task_id.clone())
-                        .or_default()
-                        .push((channel.clone(), value.clone()));
-                    acc
-                });
+        let pending_writes_by_task_id: std::collections::HashMap<
+            String,
+            Vec<(String, ChannelValue)>,
+        > = checkpoint.pending_writes.iter().fold(
+            std::collections::HashMap::new(),
+            |mut acc, (task_id, channel, value)| {
+                acc.entry(task_id.clone())
+                    .or_default()
+                    .push((channel.clone(), value.clone()));
+                acc
+            },
+        );
         let cache = self.task_cache.as_ref();
         tasks
             .into_iter()
@@ -949,11 +980,9 @@ fn is_reserved_control_write(channel: &str) -> bool {
     )
 }
 
-async fn emit_values_event(
-    ctx: &PregelNodeContext,
-    state: &ChannelValue,
-) {
-    if !(ctx.stream_mode.contains(&StreamMode::Values) || ctx.stream_mode.contains(&StreamMode::Debug))
+async fn emit_values_event(ctx: &PregelNodeContext, state: &ChannelValue) {
+    if !(ctx.stream_mode.contains(&StreamMode::Values)
+        || ctx.stream_mode.contains(&StreamMode::Debug))
     {
         return;
     }
@@ -962,12 +991,9 @@ async fn emit_values_event(
     }
 }
 
-async fn emit_updates_events(
-    ctx: &PregelNodeContext,
-    node_ids: &[String],
-    state: &ChannelValue,
-) {
-    if !(ctx.stream_mode.contains(&StreamMode::Updates) || ctx.stream_mode.contains(&StreamMode::Debug))
+async fn emit_updates_events(ctx: &PregelNodeContext, node_ids: &[String], state: &ChannelValue) {
+    if !(ctx.stream_mode.contains(&StreamMode::Updates)
+        || ctx.stream_mode.contains(&StreamMode::Debug))
     {
         return;
     }
@@ -994,7 +1020,8 @@ async fn emit_checkpoint_event(
     config: &RunnableConfig,
     checkpoint: &Checkpoint<ChannelValue>,
 ) {
-    if !(ctx.stream_mode.contains(&StreamMode::Checkpoints) || ctx.stream_mode.contains(&StreamMode::Debug))
+    if !(ctx.stream_mode.contains(&StreamMode::Checkpoints)
+        || ctx.stream_mode.contains(&StreamMode::Debug))
     {
         return;
     }
@@ -1040,8 +1067,11 @@ fn next_checkpoint(
     current: &Checkpoint<ChannelValue>,
     source: CheckpointSource,
 ) -> Checkpoint<ChannelValue> {
-    let mut checkpoint =
-        Checkpoint::from_state(current.channel_values.clone(), source, current.metadata.step);
+    let mut checkpoint = Checkpoint::from_state(
+        current.channel_values.clone(),
+        source,
+        current.metadata.step,
+    );
     checkpoint.channel_versions = current.channel_versions.clone();
     checkpoint.versions_seen = current.versions_seen.clone();
     checkpoint.updated_channels = current.updated_channels.clone();
@@ -1116,9 +1146,7 @@ async fn flush_inflight_checkpoint(
     Ok(())
 }
 
-fn successful_node_ids(
-    outcomes: &[crate::pregel::TaskOutcome],
-) -> Vec<String> {
+fn successful_node_ids(outcomes: &[crate::pregel::TaskOutcome]) -> Vec<String> {
     outcomes
         .iter()
         .filter_map(|outcome| match outcome {
@@ -1181,9 +1209,7 @@ fn merge_resume_value(
     pending_interrupts: &[crate::pregel::InterruptRecord],
     checkpoint_namespace: &str,
 ) {
-    if let Some(record) =
-        unambiguous_resume_target(pending_interrupts, checkpoint_namespace)
-    {
+    if let Some(record) = unambiguous_resume_target(pending_interrupts, checkpoint_namespace) {
         resume_map
             .values_by_interrupt_id
             .entry(record.interrupt_id.clone())
@@ -1347,14 +1373,14 @@ mod tests {
 
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    use crate::graph::{GraphInterrupt, Interrupt};
     use crate::memory::{Checkpointer, JsonSerializer, MemorySaver, SqliteSaver};
+    use crate::pregel::channel::{ChannelKind, ChannelSpec};
+    use crate::pregel::node::{PregelNode, PregelNodeInput, PregelNodeOutput};
     use crate::pregel::{
         CheckpointNamespace, InMemoryPregelTaskCache, ReplayMode, ReplayRequest,
         SubgraphInvocation, SubgraphResult,
     };
-    use crate::graph::{GraphInterrupt, Interrupt};
-    use crate::pregel::channel::{ChannelKind, ChannelSpec};
-    use crate::pregel::node::{PregelNode, PregelNodeInput, PregelNodeOutput};
 
     #[derive(Debug)]
     struct EchoNode {
@@ -2130,7 +2156,10 @@ mod tests {
                 .emit_custom(json!({"kind": "progress", "node": self.name(), "pct": 50}))
                 .await;
             let _ = ctx
-                .emit_message_chunk(crate::stream::MessageChunk::thinking("thinking"), self.name())
+                .emit_message_chunk(
+                    crate::stream::MessageChunk::thinking("thinking"),
+                    self.name(),
+                )
                 .await;
             let _ = ctx.emit_message("done", self.name()).await;
 
@@ -2241,7 +2270,9 @@ mod tests {
                     saw_start = true;
                     assert_eq!(node_id, "echo");
                 }
-                StreamEvent::TaskEnd { node_id, result, .. } => {
+                StreamEvent::TaskEnd {
+                    node_id, result, ..
+                } => {
                     saw_end = true;
                     assert_eq!(node_id, "echo");
                     assert!(result.is_ok());
@@ -2370,14 +2401,14 @@ mod tests {
             .unwrap();
         assert_eq!(output["out"], json!("hello"));
 
-        let parent_state = parent_runtime.get_state(config.clone()).await.unwrap().unwrap();
+        let parent_state = parent_runtime
+            .get_state(config.clone())
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(parent_state.channels["out"], json!("hello"));
-        let parent_task_id = crate::pregel::task_id_for(
-            "pregel",
-            "subgraph",
-            0,
-            crate::pregel::TaskKind::Pull,
-        );
+        let parent_task_id =
+            crate::pregel::task_id_for("pregel", "subgraph", 0, crate::pregel::TaskKind::Pull);
         let child_namespace = CheckpointNamespace("parent/child".to_string())
             .child(&parent_task_id)
             .0;
@@ -2470,7 +2501,11 @@ mod tests {
             .await;
         assert!(matches!(first, Err(AgentError::Interrupted(_))));
 
-        let parent_state = parent_runtime.get_state(config.clone()).await.unwrap().unwrap();
+        let parent_state = parent_runtime
+            .get_state(config.clone())
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(parent_state.pending_interrupts.len(), 1);
         let child_namespace = parent_state.pending_interrupts[0].namespace.clone();
         assert!(child_namespace.starts_with("parent/child/"));
@@ -2489,7 +2524,11 @@ mod tests {
             .unwrap();
         assert_eq!(resumed["out"], json!("approved"));
 
-        let final_parent_state = parent_runtime.get_state(config.clone()).await.unwrap().unwrap();
+        let final_parent_state = parent_runtime
+            .get_state(config.clone())
+            .await
+            .unwrap()
+            .unwrap();
         assert!(final_parent_state.pending_interrupts.is_empty());
         assert_eq!(final_parent_state.channels["out"], json!("approved"));
 
@@ -2506,14 +2545,14 @@ mod tests {
             .await
             .unwrap();
         assert!(child_history.len() >= 2);
-        
+
         let mut expected_child_ids: Vec<String> = child_history
             .iter()
             .map(|item| item.checkpoint_id.clone())
             .collect();
         expected_child_ids.sort();
         expected_child_ids.dedup();
-        
+
         let mut actual_child_ids = final_parent_state
             .children
             .get(
@@ -2528,10 +2567,7 @@ mod tests {
         actual_child_ids.sort();
         actual_child_ids.dedup();
 
-        assert_eq!(
-            actual_child_ids,
-            expected_child_ids
-        );
+        assert_eq!(actual_child_ids, expected_child_ids);
     }
 
     #[tokio::test]
@@ -2759,13 +2795,19 @@ mod tests {
             ..Default::default()
         };
 
-        let result = runtime.invoke(json!({"in": "hello"}), Some(config.clone())).await;
+        let result = runtime
+            .invoke(json!({"in": "hello"}), Some(config.clone()))
+            .await;
         assert!(matches!(result, Err(AgentError::Interrupted(_))));
 
         let state = runtime.get_state(config.clone()).await.unwrap().unwrap();
         assert_eq!(state.step, 0);
         assert_eq!(state.channels["in"], json!("hello"));
-        assert!(state.channels.get("out").unwrap_or(&serde_json::Value::Null).is_null());
+        assert!(state
+            .channels
+            .get("out")
+            .unwrap_or(&serde_json::Value::Null)
+            .is_null());
 
         let history = runtime
             .get_state_history(config, None, None, None)
@@ -2801,13 +2843,19 @@ mod tests {
             ..Default::default()
         };
 
-        let result = runtime.invoke(json!({"in": "hello"}), Some(config.clone())).await;
+        let result = runtime
+            .invoke(json!({"in": "hello"}), Some(config.clone()))
+            .await;
         assert!(matches!(result, Err(AgentError::Interrupted(_))));
 
         let state = runtime.get_state(config.clone()).await.unwrap().unwrap();
         assert_eq!(state.step, 0);
         assert_eq!(state.channels["in"], json!("hello"));
-        assert!(state.channels.get("out").unwrap_or(&serde_json::Value::Null).is_null());
+        assert!(state
+            .channels
+            .get("out")
+            .unwrap_or(&serde_json::Value::Null)
+            .is_null());
 
         let history = runtime
             .get_state_history(config, None, None, None)
@@ -2838,7 +2886,9 @@ mod tests {
             ..Default::default()
         };
 
-        let result = runtime.invoke(json!({"in": "hello"}), Some(config.clone())).await;
+        let result = runtime
+            .invoke(json!({"in": "hello"}), Some(config.clone()))
+            .await;
         assert!(matches!(result, Err(AgentError::Interrupted(_))));
 
         let state = runtime.get_state(config.clone()).await.unwrap().unwrap();
@@ -2946,7 +2996,10 @@ mod tests {
         let mut graph = PregelGraph::new();
         graph
             .add_channel("counter", ChannelSpec::new(ChannelKind::LastValue))
-            .add_channel(crate::pregel::TASKS_CHANNEL, ChannelSpec::new(ChannelKind::Tasks))
+            .add_channel(
+                crate::pregel::TASKS_CHANNEL,
+                ChannelSpec::new(ChannelKind::Tasks),
+            )
             .add_node(Arc::new(EchoNode {
                 triggers: vec!["counter".to_string()],
                 reads: vec!["counter".to_string()],
@@ -3065,7 +3118,10 @@ mod tests {
         ));
         checkpointer.put(&config, &checkpoint).await.unwrap();
 
-        let output = runtime.invoke(json!({}), Some(config.clone())).await.unwrap();
+        let output = runtime
+            .invoke(json!({}), Some(config.clone()))
+            .await
+            .unwrap();
         assert_eq!(output["out"], json!("hello"));
 
         let final_state = runtime.get_state(config).await.unwrap().unwrap();
@@ -3096,23 +3152,17 @@ mod tests {
             ..Default::default()
         };
 
-        let current_task_id = crate::pregel::task_id_for(
-            "pregel",
-            "counting",
-            1,
-            crate::pregel::TaskKind::Pull,
-        );
+        let current_task_id =
+            crate::pregel::task_id_for("pregel", "counting", 1, crate::pregel::TaskKind::Pull);
         let mut checkpoint = crate::memory::Checkpoint::from_state(
             json!({"in": "hello"}),
             crate::memory::CheckpointSource::Loop,
             1,
         );
         checkpoint.updated_channels = Some(vec!["in".to_string()]);
-        checkpoint.pending_writes.push((
-            current_task_id,
-            "out".to_string(),
-            json!("hello"),
-        ));
+        checkpoint
+            .pending_writes
+            .push((current_task_id, "out".to_string(), json!("hello")));
         checkpoint.pending_writes.push((
             "other-task".to_string(),
             crate::pregel::ReservedWrite::NoWrites.as_str().to_string(),
@@ -3120,7 +3170,10 @@ mod tests {
         ));
         checkpointer.put(&config, &checkpoint).await.unwrap();
 
-        let output = runtime.invoke(json!({"in": "ignored"}), Some(config.clone())).await.unwrap();
+        let output = runtime
+            .invoke(json!({"in": "ignored"}), Some(config.clone()))
+            .await
+            .unwrap();
         assert_eq!(output["out"], json!("hello"));
         assert_eq!(runs.load(Ordering::SeqCst), 0);
 
@@ -3148,8 +3201,8 @@ mod tests {
             .set_output_channels(vec!["out".to_string()])
             .build_trigger_index();
 
-        let runtime = PregelRuntime::new(graph)
-            .with_task_cache(Arc::new(InMemoryPregelTaskCache::new()));
+        let runtime =
+            PregelRuntime::new(graph).with_task_cache(Arc::new(InMemoryPregelTaskCache::new()));
 
         let first = runtime.invoke(json!({"in": "hello"}), None).await.unwrap();
         let second = runtime.invoke(json!({"in": "hello"}), None).await.unwrap();
@@ -3186,28 +3239,20 @@ mod tests {
             ..Default::default()
         };
 
-        let task_id = crate::pregel::task_id_for(
-            "pregel",
-            "counting",
-            0,
-            crate::pregel::TaskKind::Pull,
-        );
+        let task_id =
+            crate::pregel::task_id_for("pregel", "counting", 0, crate::pregel::TaskKind::Pull);
         let mut checkpoint = crate::memory::Checkpoint::from_state(
             json!({"in": "hello"}),
             crate::memory::CheckpointSource::Loop,
             0,
         );
         checkpoint.updated_channels = Some(vec!["in".to_string()]);
-        checkpoint.pending_writes.push((
-            task_id.clone(),
-            "out".to_string(),
-            json!("hello"),
-        ));
-        checkpoint.pending_writes.push((
-            task_id,
-            "out".to_string(),
-            json!("hello"),
-        ));
+        checkpoint
+            .pending_writes
+            .push((task_id.clone(), "out".to_string(), json!("hello")));
+        checkpoint
+            .pending_writes
+            .push((task_id, "out".to_string(), json!("hello")));
         checkpointer.put(&config, &checkpoint).await.unwrap();
 
         let output = runtime
@@ -3349,7 +3394,9 @@ mod tests {
             ..Default::default()
         };
 
-        let result = runtime.invoke(json!({"in": "hello"}), Some(config.clone())).await;
+        let result = runtime
+            .invoke(json!({"in": "hello"}), Some(config.clone()))
+            .await;
         match result {
             Err(AgentError::ExecutionFailed(message)) => {
                 assert_eq!(message, "reserved failure");
@@ -3498,7 +3545,11 @@ mod tests {
         let invocation_for_task = invocation.clone();
         let task = tokio::spawn(async move {
             parent_runtime_for_task
-                .invoke_subgraph(&child_runtime_for_task, config_for_task, invocation_for_task)
+                .invoke_subgraph(
+                    &child_runtime_for_task,
+                    config_for_task,
+                    invocation_for_task,
+                )
                 .await
         });
         tokio::time::sleep(std::time::Duration::from_millis(25)).await;
@@ -3540,7 +3591,9 @@ mod tests {
             ..Default::default()
         };
 
-        let first = runtime.invoke(json!({"in": "hello"}), Some(config.clone())).await;
+        let first = runtime
+            .invoke(json!({"in": "hello"}), Some(config.clone()))
+            .await;
         assert!(matches!(first, Err(AgentError::Interrupted(_))));
 
         let interrupted_state = runtime.get_state(config).await.unwrap().unwrap();
@@ -3586,7 +3639,9 @@ mod tests {
             ..Default::default()
         };
 
-        let first = runtime.invoke(json!({"in": "hello"}), Some(config.clone())).await;
+        let first = runtime
+            .invoke(json!({"in": "hello"}), Some(config.clone()))
+            .await;
         assert!(matches!(first, Err(AgentError::Interrupted(_))));
 
         let interrupted_state = runtime.get_state(config.clone()).await.unwrap().unwrap();
@@ -3599,7 +3654,12 @@ mod tests {
                     resume_values_by_interrupt_id: interrupted_state
                         .pending_interrupts
                         .iter()
-                        .map(|record| (record.interrupt_id.clone(), json!(record.interrupt_id.clone())))
+                        .map(|record| {
+                            (
+                                record.interrupt_id.clone(),
+                                json!(record.interrupt_id.clone()),
+                            )
+                        })
                         .collect(),
                     ..config.clone()
                 }),
@@ -3728,7 +3788,9 @@ mod tests {
             ..Default::default()
         };
 
-        let first = runtime.invoke(json!({"in": "hello"}), Some(config.clone())).await;
+        let first = runtime
+            .invoke(json!({"in": "hello"}), Some(config.clone()))
+            .await;
         assert!(matches!(first, Err(AgentError::Interrupted(_))));
 
         let interrupted_state = runtime.get_state(config.clone()).await.unwrap().unwrap();
@@ -3736,9 +3798,7 @@ mod tests {
             .replay(
                 RunnableConfig {
                     resume_values_by_interrupt_id: [(
-                        interrupted_state.pending_interrupts[0]
-                            .interrupt_id
-                            .clone(),
+                        interrupted_state.pending_interrupts[0].interrupt_id.clone(),
                         json!("approved"),
                     )]
                     .into_iter()
@@ -3784,7 +3844,9 @@ mod tests {
             ..Default::default()
         };
 
-        let first = runtime.invoke(json!({"in": "hello"}), Some(config.clone())).await;
+        let first = runtime
+            .invoke(json!({"in": "hello"}), Some(config.clone()))
+            .await;
         assert!(matches!(first, Err(AgentError::Interrupted(_))));
 
         let interrupted_state = runtime.get_state(config.clone()).await.unwrap().unwrap();
@@ -3792,9 +3854,7 @@ mod tests {
             .replay(
                 RunnableConfig {
                     resume_values_by_interrupt_id: [(
-                        interrupted_state.pending_interrupts[0]
-                            .interrupt_id
-                            .clone(),
+                        interrupted_state.pending_interrupts[0].interrupt_id.clone(),
                         json!("approved"),
                     )]
                     .into_iter()
@@ -3873,7 +3933,9 @@ mod tests {
             .unwrap();
         assert_eq!(intermediate.channels["mid"], json!("hello"));
         assert!(!intermediate.updated_channels.is_empty());
-        assert!(intermediate.channels.get("out").is_none() || intermediate.channels["out"].is_null());
+        assert!(
+            intermediate.channels.get("out").is_none() || intermediate.channels["out"].is_null()
+        );
 
         let resumed = runtime
             .replay(
@@ -3954,7 +4016,9 @@ mod tests {
             .unwrap();
         assert_eq!(intermediate.channels["mid"], json!("hello"));
         assert!(!intermediate.updated_channels.is_empty());
-        assert!(intermediate.channels.get("out").is_none() || intermediate.channels["out"].is_null());
+        assert!(
+            intermediate.channels.get("out").is_none() || intermediate.channels["out"].is_null()
+        );
 
         let resumed = runtime
             .replay(
@@ -4105,7 +4169,9 @@ mod tests {
             ..Default::default()
         };
 
-        let first = runtime.invoke(json!({"in": "hello"}), Some(config.clone())).await;
+        let first = runtime
+            .invoke(json!({"in": "hello"}), Some(config.clone()))
+            .await;
         assert!(matches!(first, Err(AgentError::Interrupted(_))));
 
         let interrupted_state = runtime.get_state(config.clone()).await.unwrap().unwrap();
@@ -4120,9 +4186,7 @@ mod tests {
                 json!({"in": "hello"}),
                 Some(RunnableConfig {
                     resume_values_by_interrupt_id: [(
-                        interrupted_state.pending_interrupts[0]
-                            .interrupt_id
-                            .clone(),
+                        interrupted_state.pending_interrupts[0].interrupt_id.clone(),
                         json!("approved"),
                     )]
                     .into_iter()
@@ -4216,7 +4280,9 @@ mod tests {
             ..Default::default()
         };
 
-        let first = runtime.invoke(json!({"in": "hello"}), Some(config.clone())).await;
+        let first = runtime
+            .invoke(json!({"in": "hello"}), Some(config.clone()))
+            .await;
         assert!(matches!(first, Err(AgentError::Interrupted(_))));
 
         let interrupted_state = runtime.get_state(config.clone()).await.unwrap().unwrap();
@@ -4278,26 +4344,24 @@ mod tests {
             ..Default::default()
         };
 
-        let first = runtime.invoke(json!({"in": "hello"}), Some(config.clone())).await;
+        let first = runtime
+            .invoke(json!({"in": "hello"}), Some(config.clone()))
+            .await;
         assert!(matches!(first, Err(AgentError::Interrupted(_))));
         assert_eq!(runs.load(Ordering::SeqCst), 1);
 
         let interrupted_state = runtime.get_state(config.clone()).await.unwrap().unwrap();
-        assert!(
-            interrupted_state
-                .pending_writes
-                .iter()
-                .any(|(_, channel, value)| channel == "out" && value == "hello")
-        );
+        assert!(interrupted_state
+            .pending_writes
+            .iter()
+            .any(|(_, channel, value)| channel == "out" && value == "hello"));
 
         let resumed = runtime
             .invoke(
                 json!({"in": "hello"}),
                 Some(RunnableConfig {
                     resume_values_by_interrupt_id: [(
-                        interrupted_state.pending_interrupts[0]
-                            .interrupt_id
-                            .clone(),
+                        interrupted_state.pending_interrupts[0].interrupt_id.clone(),
                         json!("approved"),
                     )]
                     .into_iter()
@@ -4359,27 +4423,25 @@ mod tests {
             ..Default::default()
         };
 
-        let first = runtime.invoke(json!({"in": "hello"}), Some(config.clone())).await;
+        let first = runtime
+            .invoke(json!({"in": "hello"}), Some(config.clone()))
+            .await;
         assert!(matches!(first, Err(AgentError::Interrupted(_))));
         assert_eq!(runs.load(Ordering::SeqCst), 1);
 
         let interrupted_state = runtime.get_state(config.clone()).await.unwrap().unwrap();
         assert_eq!(interrupted_state.step, 1);
-        assert!(
-            interrupted_state
-                .pending_writes
-                .iter()
-                .any(|(_, channel, value)| channel == "out" && value == "hello")
-        );
+        assert!(interrupted_state
+            .pending_writes
+            .iter()
+            .any(|(_, channel, value)| channel == "out" && value == "hello"));
 
         let resumed = runtime
             .invoke(
                 json!({"in": "hello"}),
                 Some(RunnableConfig {
                     resume_values_by_interrupt_id: [(
-                        interrupted_state.pending_interrupts[0]
-                            .interrupt_id
-                            .clone(),
+                        interrupted_state.pending_interrupts[0].interrupt_id.clone(),
                         json!("approved"),
                     )]
                     .into_iter()
@@ -4449,27 +4511,25 @@ mod tests {
             ..Default::default()
         };
 
-        let first = runtime.invoke(json!({"in": "hello"}), Some(config.clone())).await;
+        let first = runtime
+            .invoke(json!({"in": "hello"}), Some(config.clone()))
+            .await;
         assert!(matches!(first, Err(AgentError::Interrupted(_))));
         assert_eq!(worker_runs.load(Ordering::SeqCst), 1);
 
         let interrupted_state = runtime.get_state(config.clone()).await.unwrap().unwrap();
         assert_eq!(interrupted_state.step, 2);
-        assert!(
-            interrupted_state
-                .pending_writes
-                .iter()
-                .any(|(_, channel, value)| channel == "out" && value == "hello")
-        );
+        assert!(interrupted_state
+            .pending_writes
+            .iter()
+            .any(|(_, channel, value)| channel == "out" && value == "hello"));
 
         let resumed = runtime
             .invoke(
                 json!({"in": "hello"}),
                 Some(RunnableConfig {
                     resume_values_by_interrupt_id: [(
-                        interrupted_state.pending_interrupts[0]
-                            .interrupt_id
-                            .clone(),
+                        interrupted_state.pending_interrupts[0].interrupt_id.clone(),
                         json!("approved"),
                     )]
                     .into_iter()
@@ -4545,7 +4605,9 @@ mod tests {
             ..Default::default()
         };
 
-        let first = runtime.invoke(json!({"in": "hello"}), Some(config.clone())).await;
+        let first = runtime
+            .invoke(json!({"in": "hello"}), Some(config.clone()))
+            .await;
         assert!(matches!(first, Err(AgentError::Interrupted(_))));
         assert_eq!(sender_runs.load(Ordering::SeqCst), 1);
         assert_eq!(worker_a_runs.load(Ordering::SeqCst), 0);
@@ -4557,7 +4619,9 @@ mod tests {
             interrupted_state
                 .pending_writes
                 .iter()
-                .filter(|(_, channel, _)| channel == crate::pregel::ReservedWrite::Scheduled.as_str())
+                .filter(
+                    |(_, channel, _)| channel == crate::pregel::ReservedWrite::Scheduled.as_str()
+                )
                 .count(),
             2
         );
@@ -4567,9 +4631,7 @@ mod tests {
                 json!({"in": "hello"}),
                 Some(RunnableConfig {
                     resume_values_by_interrupt_id: [(
-                        interrupted_state.pending_interrupts[0]
-                            .interrupt_id
-                            .clone(),
+                        interrupted_state.pending_interrupts[0].interrupt_id.clone(),
                         json!("approved"),
                     )]
                     .into_iter()
@@ -4616,7 +4678,9 @@ mod tests {
             ..Default::default()
         };
 
-        let first = runtime.invoke(json!({"in": "hello"}), Some(config.clone())).await;
+        let first = runtime
+            .invoke(json!({"in": "hello"}), Some(config.clone()))
+            .await;
         assert!(matches!(first, Err(AgentError::Interrupted(_))));
 
         let interrupted_state = runtime.get_state(config.clone()).await.unwrap().unwrap();
@@ -4639,9 +4703,7 @@ mod tests {
                 json!({"in": "hello"}),
                 Some(RunnableConfig {
                     resume_values_by_interrupt_id: [(
-                        interrupted_state.pending_interrupts[0]
-                            .interrupt_id
-                            .clone(),
+                        interrupted_state.pending_interrupts[0].interrupt_id.clone(),
                         json!("approved"),
                     )]
                     .into_iter()
@@ -4655,7 +4717,10 @@ mod tests {
 
         let final_state = runtime.get_state(config).await.unwrap().unwrap();
         assert_eq!(final_state.pending_interrupts.len(), 1);
-        assert_eq!(final_state.pending_interrupts[0].interrupt_id, "other-interrupt");
+        assert_eq!(
+            final_state.pending_interrupts[0].interrupt_id,
+            "other-interrupt"
+        );
     }
 
     #[tokio::test]
@@ -4681,7 +4746,9 @@ mod tests {
             ..Default::default()
         };
 
-        let first = runtime.invoke(json!({"in": "hello"}), Some(config.clone())).await;
+        let first = runtime
+            .invoke(json!({"in": "hello"}), Some(config.clone()))
+            .await;
         assert!(matches!(first, Err(AgentError::Interrupted(_))));
 
         let mut checkpoint = checkpointer.get_tuple(&config).await.unwrap().unwrap().0;
@@ -4750,7 +4817,9 @@ mod tests {
             ..Default::default()
         };
 
-        let first = runtime.invoke(json!({"in": "hello"}), Some(config.clone())).await;
+        let first = runtime
+            .invoke(json!({"in": "hello"}), Some(config.clone()))
+            .await;
         assert!(matches!(first, Err(AgentError::Interrupted(_))));
 
         let second = runtime
@@ -4803,7 +4872,9 @@ mod tests {
             ..Default::default()
         };
 
-        let first = runtime.invoke(json!({"in": "hello"}), Some(config.clone())).await;
+        let first = runtime
+            .invoke(json!({"in": "hello"}), Some(config.clone()))
+            .await;
         assert!(matches!(first, Err(AgentError::Interrupted(_))));
 
         let updated = runtime
@@ -4906,8 +4977,7 @@ mod tests {
             .set_output_channels(vec!["out".to_string()])
             .build_trigger_index();
 
-        let runtime = PregelRuntime::new(graph)
-            .with_managed_value("tenant", json!("acme"));
+        let runtime = PregelRuntime::new(graph).with_managed_value("tenant", json!("acme"));
         let output = runtime.invoke(json!({"in": "hello"}), None).await.unwrap();
         assert_eq!(output["out"], json!("acme"));
     }
@@ -4933,7 +5003,9 @@ mod tests {
             ..Default::default()
         };
 
-        let first = runtime.invoke(json!({"in": "hello"}), Some(config.clone())).await;
+        let first = runtime
+            .invoke(json!({"in": "hello"}), Some(config.clone()))
+            .await;
         assert!(matches!(first, Err(AgentError::Interrupted(_))));
 
         let interrupted_state = runtime.get_state(config.clone()).await.unwrap().unwrap();
@@ -4944,9 +5016,7 @@ mod tests {
                 json!({"in": "hello"}),
                 Some(RunnableConfig {
                     resume_values_by_interrupt_id: [(
-                        interrupted_state.pending_interrupts[0]
-                            .interrupt_id
-                            .clone(),
+                        interrupted_state.pending_interrupts[0].interrupt_id.clone(),
                         json!("approved"),
                     )]
                     .into_iter()
@@ -4978,7 +5048,8 @@ mod tests {
             .set_input_channels(vec!["in".to_string()])
             .set_output_channels(vec!["out".to_string()])
             .build_trigger_index();
-        let parent_runtime = PregelRuntime::new(parent_graph).with_checkpointer(checkpointer.clone());
+        let parent_runtime =
+            PregelRuntime::new(parent_graph).with_checkpointer(checkpointer.clone());
 
         let mut child_graph = PregelGraph::new();
         child_graph
@@ -5060,7 +5131,8 @@ mod tests {
             .set_input_channels(vec!["in".to_string()])
             .set_output_channels(vec!["out".to_string()])
             .build_trigger_index();
-        let parent_runtime = PregelRuntime::new(parent_graph).with_checkpointer(checkpointer.clone());
+        let parent_runtime =
+            PregelRuntime::new(parent_graph).with_checkpointer(checkpointer.clone());
 
         let mut child_graph = PregelGraph::new();
         child_graph
@@ -5280,7 +5352,9 @@ mod tests {
         ) -> Result<PregelNodeOutput, AgentError> {
             let attempt = self.attempts.fetch_add(1, Ordering::SeqCst);
             if attempt < self.fail_until {
-                return Err(AgentError::ExecutionFailed(format!("transient error #{attempt}")));
+                return Err(AgentError::ExecutionFailed(format!(
+                    "transient error #{attempt}"
+                )));
             }
             let value = input.read_values.get("in").cloned().unwrap_or(json!(null));
             Ok(PregelNodeOutput {
@@ -5459,8 +5533,7 @@ mod tests {
             .build_trigger_index();
 
         let cache = Arc::new(InMemoryPregelTaskCache::new());
-        let runtime =
-            PregelRuntime::new(graph).with_task_cache(cache.clone());
+        let runtime = PregelRuntime::new(graph).with_task_cache(cache.clone());
 
         let result = runtime.invoke(json!({"in": "hello"}), None).await;
         assert!(matches!(result, Err(AgentError::Interrupted(_))));
@@ -5556,7 +5629,10 @@ mod tests {
             .build_trigger_index();
 
         let runtime = PregelRuntime::new(graph);
-        let result = runtime.invoke(json!({"in": "ephemeral"}), None).await.unwrap();
+        let result = runtime
+            .invoke(json!({"in": "ephemeral"}), None)
+            .await
+            .unwrap();
         assert_eq!(result["out"], json!("ephemeral"));
     }
 
@@ -5693,12 +5769,7 @@ mod tests {
         assert_eq!(subgraphs.len(), 1);
         assert_eq!(subgraphs[0].path, "parent/child");
         assert_eq!(
-            subgraphs[0]
-                .runtime
-                .get_graph()
-                .expect("child graph")
-                .nodes[0]
-                .name,
+            subgraphs[0].runtime.get_graph().expect("child graph").nodes[0].name,
             "echo"
         );
         assert_eq!(
@@ -5742,7 +5813,11 @@ mod tests {
             .invoke(json!({"in": "hello"}), Some(config.clone()))
             .await
             .unwrap();
-        assert_eq!(runs.load(Ordering::SeqCst), 1, "second invoke should hit cache");
+        assert_eq!(
+            runs.load(Ordering::SeqCst),
+            1,
+            "second invoke should hit cache"
+        );
 
         runtime.clear_cache().expect("cache clear should succeed");
 

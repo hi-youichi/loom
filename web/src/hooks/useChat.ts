@@ -3,6 +3,7 @@ import { useCallback, useMemo, useRef, useState, useEffect } from 'react'
 import { ToolBlockAdapter } from '../adapters/ToolBlockAdapter'
 import { ToolStreamAggregator } from '../adapters/ToolStreamAggregator'
 import { sendMessage as sendChatMessage } from '../services/chat'
+import { getUserMessages } from '../services/userMessages'
 import type {
   LoomStreamEvent,
   LoomToolEvent,
@@ -75,10 +76,12 @@ function formatThinkLine(event: LoomStreamEvent): string | null {
 
 export function useChat(options?: {
   threadId?: string
+  workspaceId?: string
   agentId?: string
   model?: string
 }) {
   const threadId = options?.threadId
+  const workspaceId = options?.workspaceId
   const agentId = options?.agentId || 'react'
   const model = options?.model
 
@@ -173,6 +176,7 @@ export function useChat(options?: {
       try {
         const reply = await sendChatMessage(text, {
           threadId,
+          workspaceId,
           agent: agentId,
           model,
           onChunk: handleTextChunk,
@@ -204,8 +208,31 @@ export function useChat(options?: {
         activeAssistantMessageIdRef.current = null
       }
     },
-    [isStreaming, threadId, agentId, model, handleTextChunk, handleEvent],
+    [isStreaming, threadId, workspaceId, agentId, model, handleTextChunk, handleEvent],
   )
+
+  const loadHistory = useCallback(async (targetThreadId: string) => {
+    const messages = await getUserMessages(targetThreadId)
+
+    const uiMessages: UIMessageItemProps[] = []
+
+    for (const msg of messages) {
+      uiMessages.push({
+        id: crypto.randomUUID(),
+        sender: msg.role === 'user' ? 'user' : 'assistant',
+        timestamp: new Date().toISOString(),
+        content: [
+          {
+            type: 'text' as const,
+            text: msg.content,
+            format: 'plain' as const,
+          },
+        ],
+      })
+    }
+
+    setMessages(uiMessages)
+  }, [])
 
   return useMemo(
     () => ({
@@ -215,7 +242,8 @@ export function useChat(options?: {
       connectionStatus,
       error,
       sendMessage,
+      loadHistory,
     }),
-    [connectionStatus, error, isStreaming, messages, sendMessage, thinkingLines],
+    [connectionStatus, error, isStreaming, messages, sendMessage, thinkingLines, loadHistory],
   )
 }

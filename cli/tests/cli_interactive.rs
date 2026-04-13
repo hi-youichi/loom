@@ -37,16 +37,7 @@ fn interactive_empty_line_then_quit_exits_success() {
 
 #[test]
 fn interactive_initial_message_with_valid_working_folder_succeeds() {
-    let out = run_with_stdin(
-        &[
-            "-i",
-            "-m",
-            "hello",
-            "--working-folder",
-            ".",
-        ],
-        "quit\n",
-    );
+    let out = run_with_stdin(&["-i", "-m", "hello", "--working-folder", "."], "quit\n");
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("Bye."));

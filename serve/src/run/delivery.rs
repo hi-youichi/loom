@@ -59,11 +59,11 @@ where
     tracing::info!("📡 Starting stream delivery for run: {}", run_id);
     let mut event_count = 0;
     let mut send_err: Option<Box<dyn std::error::Error + Send + Sync>> = None;
-    
+
     while let Some(event) = rx.recv().await {
         event_count += 1;
         tracing::debug!("📨 Sending event #{} for run: {}", event_count, run_id);
-        
+
         if let Err(e) = sender
             .send_response(&ServerResponse::RunStreamEvent(RunStreamEventResponse {
                 id: run_id.clone(),
@@ -71,13 +71,22 @@ where
             }))
             .await
         {
-            tracing::error!("❌ Failed to send event #{} for run {}: {}", event_count, run_id, e);
+            tracing::error!(
+                "❌ Failed to send event #{} for run {}: {}",
+                event_count,
+                run_id,
+                e
+            );
             send_err = Some(e);
             break;
         }
     }
-    
-    tracing::info!("✅ Stream delivery complete for run: {} (sent {} events)", run_id, event_count);
+
+    tracing::info!(
+        "✅ Stream delivery complete for run: {} (sent {} events)",
+        run_id,
+        event_count
+    );
 
     if let Some(e) = send_err {
         // Client disconnected or send failed; abort the agent task. Graceful cancellation would
@@ -89,12 +98,10 @@ where
     }
 
     tracing::info!("⏳ Waiting for run task completion: {}", run_id);
-    let (result, state, dropped_events, dropped_appends) = run_handle
-        .await
-        .map_err(|e| {
-            tracing::error!("❌ Run task failed for {}: {:?}", run_id, e);
-            Box::new(e) as Box<dyn std::error::Error + Send + Sync>
-        })?;
+    let (result, state, dropped_events, dropped_appends) = run_handle.await.map_err(|e| {
+        tracing::error!("❌ Run task failed for {}: {:?}", run_id, e);
+        Box::new(e) as Box<dyn std::error::Error + Send + Sync>
+    })?;
 
     let de = dropped_events.load(Ordering::Relaxed);
     let da = dropped_appends.load(Ordering::Relaxed);
@@ -115,7 +122,7 @@ where
                 .as_ref()
                 .map(|e| (e.session_id.clone(), e.node_id.clone(), e.event_id))
                 .unwrap_or((None, None, None));
-            
+
             tracing::debug!("📤 Sending RunEnd response for: {}", run_id);
             sender
                 .send_response(&ServerResponse::RunEnd(RunEndResponse {
@@ -149,7 +156,7 @@ where
                 .await?;
         }
     }
-    
+
     tracing::info!("🎉 Run {} fully processed and response sent", run_id);
     Ok(None)
 }

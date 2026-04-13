@@ -49,9 +49,7 @@ fn main() {
 
         manager.open_document(&test_file, content).await.unwrap();
 
-        let result = manager
-            .completion(&test_file, 2, 5)
-            .await;
+        let result = manager.completion(&test_file, 2, 5).await;
 
         assert!(result.is_ok());
     }
@@ -93,9 +91,7 @@ fn main() {
 
         manager.open_document(&test_file, content).await.unwrap();
 
-        let result = manager
-            .goto_definition(&test_file, 6, 18)
-            .await;
+        let result = manager.goto_definition(&test_file, 6, 18).await;
 
         assert!(result.is_ok());
     }
@@ -124,12 +120,12 @@ fn main() {
     async fn test_manager_creation() {
         let config = create_test_config();
         let manager = LspManager::from_configs(vec![config.clone()]);
-        
+
         let active = manager.active_servers();
         assert!(active.is_empty());
 
         manager.shutdown_all().await;
-        
+
         let active = manager.active_servers();
         assert!(active.is_empty());
     }

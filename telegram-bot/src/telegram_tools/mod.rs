@@ -27,7 +27,7 @@ impl TelegramApi for TeloxideTelegramApi {
         parse_mode: Option<&str>,
     ) -> Result<i32, String> {
         let mut request = self.bot.send_message(ChatId(chat_id), text);
-        
+
         if let Some(mode) = parse_mode {
             request = match mode {
                 "MarkdownV2" => request.parse_mode(ParseMode::MarkdownV2),
@@ -70,7 +70,7 @@ impl TelegramApi for TeloxideTelegramApi {
     ) -> Result<i32, String> {
         let file = InputFile::file(file_path);
         let mut request = self.bot.send_document(ChatId(chat_id), file);
-        
+
         if let Some(cap) = caption {
             request = request.caption(cap);
         }

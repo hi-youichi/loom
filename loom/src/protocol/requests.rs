@@ -1,7 +1,7 @@
 //! WebSocket request types (client → server).
 
-use serde::{Deserialize, Serialize};
 use crate::message::UserContent;
+use serde::{Deserialize, Serialize};
 
 /// Agent type for run requests.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

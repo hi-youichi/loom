@@ -37,9 +37,13 @@ impl TelegramToolsSource {
     #[allow(clippy::new_ret_no_self)]
     pub async fn new() -> AggregateToolSource {
         let source = AggregateToolSource::new();
-        source.register_async(Box::new(TelegramSendMessageTool)).await;
+        source
+            .register_async(Box::new(TelegramSendMessageTool))
+            .await;
         source.register_async(Box::new(TelegramSendPollTool)).await;
-        source.register_async(Box::new(TelegramSendDocumentTool)).await;
+        source
+            .register_async(Box::new(TelegramSendDocumentTool))
+            .await;
         source
     }
 }
@@ -73,7 +77,9 @@ impl ToolSource for TelegramToolsSource {
         arguments: serde_json::Value,
         ctx: Option<&crate::tool_source::ToolCallContext>,
     ) -> Result<crate::tool_source::ToolCallContent, ToolSourceError> {
-        self._source.call_tool_with_context(name, arguments, ctx).await
+        self._source
+            .call_tool_with_context(name, arguments, ctx)
+            .await
     }
 
     /// Sets the call context for this source.
