@@ -441,6 +441,19 @@ impl PregelRuntime {
                 }
                 Err(AgentError::ExecutionFailed(message))
             }
+            Err(AgentError::EmptyLlmResponse { retries }) => {
+                flush_inflight_checkpoint(&mut inflight_checkpoint, &node_ctx, &run_config).await?;
+                if checkpoint_has_recoverable_progress(&loop_state.checkpoint) {
+                    self.persist_checkpoint(
+                        &mut loop_state,
+                        &run_config,
+                        &node_ctx,
+                        CheckpointSource::Loop,
+                    )
+                    .await?;
+                }
+                Err(AgentError::EmptyLlmResponse { retries })
+            }
         }
     }
 

@@ -220,6 +220,7 @@ impl LlmUsage {
 ///
 /// **Interaction**: Returned by `LlmClient::invoke()`; ThinkNode writes
 /// `content` into a new assistant message and `tool_calls` into `ReActState::tool_calls`.
+#[derive(Debug, Clone, PartialEq)]
 pub struct LlmResponse {
     /// Assistant message content (plain text).
     pub content: String,

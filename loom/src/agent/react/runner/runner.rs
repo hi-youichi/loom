@@ -15,6 +15,7 @@ use crate::stream::StreamEvent;
 use crate::tool_source::ToolSource;
 use crate::user_message::UserMessageStore;
 use crate::{LlmClient, RunCancellation};
+use crate::llm::RetryLlmClient;
 use crate::agent::react::REACT_SYSTEM_PROMPT;
 
 use super::error::RunError;
@@ -58,15 +59,16 @@ impl ReactRunner {
         verbose: bool,
         summarize_config: Option<SummarizeConfig>,
     ) -> Result<Self, CompilationError> {
-        let llm = Arc::from(llm);
-        let think = ThinkNode::new(Arc::clone(&llm));
+        let llm: Arc<dyn LlmClient> = Arc::from(llm);
+        let retry_llm: Arc<dyn LlmClient> = Arc::new(RetryLlmClient::new(llm.clone()));
+        let think = ThinkNode::new(Arc::clone(&retry_llm));
         let act = ActNode::new(tool_source)
             .with_handle_tool_errors(HandleToolErrors::Always(None))
             .with_approval_policy(approval_policy);
         let observe = ObserveNode::with_loop();
 
         let compaction_cfg = compaction_config.unwrap_or_default();
-        let compression_graph = build_graph(compaction_cfg.clone(), Arc::clone(&llm))?;
+        let compression_graph = build_graph(compaction_cfg.clone(), Arc::clone(&retry_llm))?;
         let compress_node = Arc::new(CompressionGraphNode::new(compression_graph));
 
         let mut graph = StateGraph::<ReActState>::new();
@@ -81,10 +83,10 @@ impl ReactRunner {
 
         if summarize_enabled {
             // Summarize node for generating session summaries after first think
-            let summarize_node = SummarizeNode::new(Arc::clone(&llm));
+            let summarize_node = SummarizeNode::new(Arc::clone(&retry_llm));
 
             if completion_check_enabled {
-                let completion_check = CompletionCheckNode::new(Arc::clone(&llm))
+                let completion_check = CompletionCheckNode::new(Arc::clone(&retry_llm))
                     .with_max_iterations(10)
                     .with_message_window(5);
 
@@ -203,7 +205,7 @@ impl ReactRunner {
             }
         } else if completion_check_enabled {
             // No summarize, with completion check
-            let completion_check = CompletionCheckNode::new(Arc::clone(&llm))
+            let completion_check = CompletionCheckNode::new(Arc::clone(&retry_llm))
                 .with_max_iterations(10)
                 .with_message_window(5);
 
