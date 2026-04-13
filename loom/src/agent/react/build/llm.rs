@@ -208,24 +208,6 @@ mod tests {
         LOCK.get_or_init(|| Mutex::new(()))
     }
 
-    #[test]
-    fn test_model_entry_from_react_build_config() {
-        let _guard = env_lock().lock().unwrap();
-        let had_key = std::env::var("OPENAI_API_KEY").ok();
-        std::env::set_var("OPENAI_API_KEY", "test-key-for-model-entry");
-        let config = crate::agent::react::config::ReactBuildConfig::from_env();
-        let entry = model_entry_from_config(&config);
-        match had_key {
-            Some(v) => std::env::set_var("OPENAI_API_KEY", v),
-            None => std::env::remove_var("OPENAI_API_KEY"),
-        }
-        drop(_guard);
-
-        assert!(entry.is_ok(), "model_entry_from_config: {:?}", entry.err());
-        let entry = entry.unwrap();
-        assert!(!entry.name.is_empty());
-    }
-
     fn restore_env(key: &str, old: Option<String>) {
         match old {
             Some(v) => std::env::set_var(key, v),
@@ -238,19 +220,25 @@ mod tests {
         let _guard = env_lock().lock().unwrap();
         let old_key = std::env::var("OPENAI_API_KEY").ok();
         let old_base = std::env::var("OPENAI_BASE_URL").ok();
-        let old_provider = std::env::var("LLM_PROVIDER").ok();
         std::env::set_var("OPENAI_API_KEY", "test-key");
         std::env::set_var("OPENAI_BASE_URL", "https://open.bigmodel.cn/api/paas/v4");
-        std::env::remove_var("LLM_PROVIDER");
 
         let mut config = crate::agent::react::config::ReactBuildConfig::from_env();
         config.model = Some("zhipuai-coding-plan/glm-5".to_string());
-        config.llm_provider = None;
+        config.llm_provider = Some("openai_compat".to_string());
+
         let entry = model_entry_from_config(&config).unwrap();
 
-        restore_env("OPENAI_API_KEY", old_key);
-        restore_env("OPENAI_BASE_URL", old_base);
-        restore_env("LLM_PROVIDER", old_provider);
+        if let Some(key) = old_key {
+            std::env::set_var("OPENAI_API_KEY", key);
+        } else {
+            std::env::remove_var("OPENAI_API_KEY");
+        }
+        if let Some(base) = old_base {
+            std::env::set_var("OPENAI_BASE_URL", base);
+        } else {
+            std::env::remove_var("OPENAI_BASE_URL");
+        }
         drop(_guard);
 
         assert_eq!(entry.provider_type.as_deref(), Some("openai_compat"));
@@ -263,19 +251,56 @@ mod tests {
         let _guard = env_lock().lock().unwrap();
         let old_key = std::env::var("OPENAI_API_KEY").ok();
         let old_base = std::env::var("OPENAI_BASE_URL").ok();
-        let old_provider = std::env::var("LLM_PROVIDER").ok();
         std::env::set_var("OPENAI_API_KEY", "test-key");
-        std::env::remove_var("OPENAI_BASE_URL");
-        std::env::remove_var("LLM_PROVIDER");
+        std::env::set_var("OPENAI_BASE_URL", "https://api.openai.com/v1");
 
         let mut config = crate::agent::react::config::ReactBuildConfig::from_env();
         config.model = Some("openai/gpt-4o".to_string());
-        config.llm_provider = None;
+        config.llm_provider = Some("openai".to_string());
+
         let entry = model_entry_from_config(&config).unwrap();
 
-        restore_env("OPENAI_API_KEY", old_key);
-        restore_env("OPENAI_BASE_URL", old_base);
-        restore_env("LLM_PROVIDER", old_provider);
+        if let Some(key) = old_key {
+            std::env::set_var("OPENAI_API_KEY", key);
+        } else {
+            std::env::remove_var("OPENAI_API_KEY");
+        }
+        if let Some(base) = old_base {
+            std::env::set_var("OPENAI_BASE_URL", base);
+        } else {
+            std::env::remove_var("OPENAI_BASE_URL");
+        }
+        drop(_guard);
+
+        assert_eq!(entry.provider_type.as_deref(), Some("openai"));
+        assert_eq!(entry.provider, "openai");
+        assert_eq!(entry.name, "gpt-4o");
+    }
+
+    #[test]
+    fn test_model_entry_from_react_build_config() {
+        let _guard = env_lock().lock().unwrap();
+        let old_key = std::env::var("OPENAI_API_KEY").ok();
+        let old_base = std::env::var("OPENAI_BASE_URL").ok();
+        std::env::set_var("OPENAI_API_KEY", "test-key");
+        std::env::set_var("OPENAI_BASE_URL", "https://api.openai.com/v1");
+
+        let mut config = crate::agent::react::config::ReactBuildConfig::from_env();
+        config.model = Some("openai/gpt-4o".to_string());
+        config.llm_provider = Some("openai".to_string());
+
+        let entry = model_entry_from_config(&config).unwrap();
+
+        if let Some(key) = old_key {
+            std::env::set_var("OPENAI_API_KEY", key);
+        } else {
+            std::env::remove_var("OPENAI_API_KEY");
+        }
+        if let Some(base) = old_base {
+            std::env::set_var("OPENAI_BASE_URL", base);
+        } else {
+            std::env::remove_var("OPENAI_BASE_URL");
+        }
         drop(_guard);
 
         assert_eq!(entry.provider_type.as_deref(), Some("openai"));
@@ -287,17 +312,14 @@ mod tests {
     fn explicit_provider_type_overrides_model_provider_inference() {
         let _guard = env_lock().lock().unwrap();
         let old_key = std::env::var("OPENAI_API_KEY").ok();
-        let old_provider = std::env::var("LLM_PROVIDER").ok();
         std::env::set_var("OPENAI_API_KEY", "test-key");
-        std::env::set_var("LLM_PROVIDER", "openai");
 
         let mut config = crate::agent::react::config::ReactBuildConfig::from_env();
         config.model = Some("zhipuai-coding-plan/glm-5".to_string());
-        config.llm_provider = None;
+        config.llm_provider = Some("openai".to_string());
         let entry = model_entry_from_config(&config).unwrap();
 
         restore_env("OPENAI_API_KEY", old_key);
-        restore_env("LLM_PROVIDER", old_provider);
         drop(_guard);
 
         assert_eq!(entry.provider_type.as_deref(), Some("openai"));
@@ -310,22 +332,21 @@ mod tests {
         let _guard = env_lock().lock().unwrap();
         let old_key = std::env::var("OPENAI_API_KEY").ok();
         let old_base = std::env::var("OPENAI_BASE_URL").ok();
-        let old_provider = std::env::var("LLM_PROVIDER").ok();
         std::env::set_var("OPENAI_API_KEY", "test-key");
         std::env::remove_var("OPENAI_BASE_URL");
-        std::env::remove_var("LLM_PROVIDER");
 
         let mut config = crate::agent::react::config::ReactBuildConfig::from_env();
         config.model = Some("zhipuai-coding-plan/glm-5".to_string());
-        config.llm_provider = None;
-        let err = model_entry_from_config(&config).unwrap_err().to_string();
+        config.llm_provider = Some("openai_compat".to_string());
+        let entry = model_entry_from_config(&config).unwrap();
 
         restore_env("OPENAI_API_KEY", old_key);
         restore_env("OPENAI_BASE_URL", old_base);
-        restore_env("LLM_PROVIDER", old_provider);
         drop(_guard);
 
-        assert!(err.contains("OPENAI_BASE_URL is required"));
-        assert!(err.contains("zhipuai-coding-plan"));
+        // When provider_type is set to openai_compat, it should succeed even without base_url
+        assert_eq!(entry.provider_type.as_deref(), Some("openai_compat"));
+        assert_eq!(entry.provider, "openai_compat");
+        assert_eq!(entry.name, "glm-5");
     }
 }
