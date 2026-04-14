@@ -1,4 +1,3 @@
-import type { LoomServerMessage } from '../types/protocol/loom'
 import { getConnection } from './connection'
 
 export type UserMessageItem = {
@@ -15,13 +14,13 @@ export type UserMessagesResponse = {
 }
 
 export async function getUserMessages(
-  threadId: string,
+  sessionId: string,
   options?: { before?: number; limit?: number }
 ): Promise<UserMessageItem[]> {
   const resp = await getConnection().request({
     type: 'user_messages',
     id: crypto.randomUUID(),
-    thread_id: threadId,
+    thread_id: sessionId,
     before: options?.before,
     limit: options?.limit,
   })

@@ -11,7 +11,7 @@ declare global {
   var __workspaceDB: string
 }
 
-export async function teardown(config: any) {
+export default async function teardown(config: any) {
   console.log('🌟 Playwright Global Teardown')
   
   // Stop test servers

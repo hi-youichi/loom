@@ -14,7 +14,7 @@ declare global {
   var __mockLLMURL: string
 }
 
-export async function setup(config: any) {
+export default async function setup(config: any) {
   console.log('🌟 Playwright Global Setup')
   
   // Create temporary workspace database

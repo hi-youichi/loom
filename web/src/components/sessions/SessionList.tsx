@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import { SessionCard } from './SessionCard'
-import type { Session, SessionFilter, SessionSort } from '@/types/session'
+import type { Session, SessionSort } from '@/types/session'
 
 interface SessionListProps {
   sessions: Session[]

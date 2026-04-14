@@ -168,20 +168,20 @@ export type WorkspaceCreateRequest = {
   name?: string
 }
 
-export type WorkspaceThreadListRequest = {
+export type WorkspaceSessionListRequest = {
   type: 'workspace_thread_list'
   id: string
   workspace_id: string
 }
 
-export type WorkspaceThreadAddRequest = {
+export type WorkspaceSessionAddRequest = {
   type: 'workspace_thread_add'
   id: string
   workspace_id: string
   thread_id: string
 }
 
-export type WorkspaceThreadRemoveRequest = {
+export type WorkspaceSessionRemoveRequest = {
   type: 'workspace_thread_remove'
   id: string
   workspace_id: string
@@ -191,9 +191,9 @@ export type WorkspaceThreadRemoveRequest = {
 export type WorkspaceRequest =
   | WorkspaceListRequest
   | WorkspaceCreateRequest
-  | WorkspaceThreadListRequest
-  | WorkspaceThreadAddRequest
-  | WorkspaceThreadRemoveRequest
+  | WorkspaceSessionListRequest
+  | WorkspaceSessionAddRequest
+  | WorkspaceSessionRemoveRequest
 
 export type WorkspaceMeta = {
   id: string
@@ -201,10 +201,12 @@ export type WorkspaceMeta = {
   created_at_ms: number
 }
 
-export type ThreadInWorkspace = {
+export type SessionInWorkspace = {
   thread_id: string
   created_at_ms: number
 }
+
+export type ThreadInWorkspace = SessionInWorkspace
 
 export type WorkspaceListResponse = {
   type: 'workspace_list'
@@ -218,21 +220,21 @@ export type WorkspaceCreateResponse = {
   workspace: WorkspaceMeta
 }
 
-export type WorkspaceThreadListResponse = {
+export type WorkspaceSessionListResponse = {
   type: 'workspace_thread_list'
   id: string
   workspace_id: string
-  threads: ThreadInWorkspace[]
+  threads: SessionInWorkspace[]
 }
 
-export type WorkspaceThreadAddResponse = {
+export type WorkspaceSessionAddResponse = {
   type: 'workspace_thread_add'
   id: string
   workspace_id: string
   thread_id: string
 }
 
-export type WorkspaceThreadRemoveResponse = {
+export type WorkspaceSessionRemoveResponse = {
   type: 'workspace_thread_remove'
   id: string
   workspace_id: string
@@ -242,9 +244,13 @@ export type WorkspaceThreadRemoveResponse = {
 export type WorkspaceResponse =
   | WorkspaceListResponse
   | WorkspaceCreateResponse
-  | WorkspaceThreadListResponse
-  | WorkspaceThreadAddResponse
-  | WorkspaceThreadRemoveResponse
+  | WorkspaceSessionListResponse
+  | WorkspaceSessionAddResponse
+  | WorkspaceSessionRemoveResponse
+
+export type WorkspaceThreadListResponse = WorkspaceSessionListResponse
+export type WorkspaceThreadAddResponse = WorkspaceSessionAddResponse
+export type WorkspaceThreadRemoveResponse = WorkspaceSessionRemoveResponse
 
 // -----------------------------------------------------------------------------
 // Agent types
@@ -322,9 +328,9 @@ export type LoomServerMessage =
   | SetModelResponse
   | WorkspaceListResponse
   | WorkspaceCreateResponse
-  | WorkspaceThreadListResponse
-  | WorkspaceThreadAddResponse
-  | WorkspaceThreadRemoveResponse
+  | WorkspaceSessionListResponse
+  | WorkspaceSessionAddResponse
+  | WorkspaceSessionRemoveResponse
   | { type: string }
 
 export function isRunStreamEvent(msg: LoomServerMessage): msg is LoomRunStreamEventResponse {

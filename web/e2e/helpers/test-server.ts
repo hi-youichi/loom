@@ -6,6 +6,10 @@
 
 import { spawn, ChildProcess } from 'child_process'
 import { startMockLLMServer, stopMockLLMServer, type http } from './mock-llm-server'
+import os from 'os'
+import path from 'path'
+import { v4 as uuidv4 } from 'uuid'
+import fs from 'fs'
 
 export interface TestServerConfig {
   mockLLMPort?: number
@@ -63,6 +67,7 @@ export async function startTestServers(config: TestServerConfig = {}): Promise<T
     backendProcess = spawn('cargo', [
       'run',
       '--package', 'serve',
+      '--features', 'test-server',
       '--bin', 'test-server'
     ], {
       stdio: 'inherit',
@@ -129,7 +134,7 @@ export async function stopTestServers(servers: TestServers): Promise<void> {
  */
 async function waitForBackend(port: number, timeout: number): Promise<void> {
   const startTime = Date.now()
-  const WebSocket = require('ws')
+  const WebSocket = (await import('ws')).default
   
   while (Date.now() - startTime < timeout) {
     try {
@@ -162,10 +167,6 @@ async function waitForBackend(port: number, timeout: number): Promise<void> {
  * Create temporary workspace database
  */
 export function createTempWorkspaceDB(): string {
-  const os = require('os')
-  const path = require('path')
-  const { v4: uuidv4 } = require('uuid')
-  
   const tempDir = os.tmpdir()
   const dbPath = path.join(tempDir, `loom-test-workspace-${uuidv4()}.db`)
   
@@ -176,8 +177,6 @@ export function createTempWorkspaceDB(): string {
  * Clean up temporary files
  */
 export function cleanupTempFile(filePath: string): void {
-  const fs = require('fs')
-  
   try {
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath)

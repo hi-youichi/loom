@@ -6,7 +6,7 @@ import { DashboardView } from '../components/dashboard'
 import { AgentChatSidebar } from '../components/chat'
 import { WorkspaceSelector } from '../components/workspace'
 import { useWorkspace } from '../hooks/useWorkspace'
-import { useThread } from '../hooks/useThread'
+import { useSessionId } from '../hooks/useSessionId'
 import { useAgents } from '../hooks/useAgents'
 import { useChat } from '../hooks/useChat'
 import { useChatPanel } from '../hooks/useChatPanel'
@@ -43,43 +43,6 @@ const DEMO_FILES: FileNode[] = [
         path: 'src/index.css',
         extension: 'css',
       },
-      {
-        id: '1-4',
-        name: 'components',
-        type: 'folder',
-        path: 'src/components',
-        children: [
-          {
-            id: '1-4-1',
-            name: 'MessageComposer.tsx',
-            type: 'file',
-            path: 'src/components/MessageComposer.tsx',
-            extension: 'tsx',
-          },
-          {
-            id: '1-4-2',
-            name: 'ThinkIndicator.tsx',
-            type: 'file',
-            path: 'src/components/ThinkIndicator.tsx',
-            extension: 'tsx',
-          },
-        ],
-      },
-      {
-        id: '1-5',
-        name: 'hooks',
-        type: 'folder',
-        path: 'src/hooks',
-        children: [
-          {
-            id: '1-5-1',
-            name: 'useChat.ts',
-            type: 'file',
-            path: 'src/hooks/useChat.ts',
-            extension: 'ts',
-          },
-        ],
-      },
     ],
   },
   {
@@ -91,10 +54,10 @@ const DEMO_FILES: FileNode[] = [
   },
   {
     id: '3',
-    name: 'vite.config.ts',
+    name: 'README.md',
     type: 'file',
-    path: 'vite.config.ts',
-    extension: 'ts',
+    path: 'README.md',
+    extension: 'md',
   },
 ]
 
@@ -102,7 +65,7 @@ export function ChatPage() {
   const {
     workspaces,
     activeWorkspaceId,
-    threads,
+    sessions: workspaceSessions,
     loading: workspaceLoading,
     error: workspaceError,
     loadWorkspaces,
@@ -110,7 +73,7 @@ export function ChatPage() {
     selectWorkspace: selectWs,
   } = useWorkspace()
   const { agents } = useAgents({ autoRefresh: true, refreshInterval: 15000 })
-  const { threadId, setThreadId } = useThread(activeWorkspaceId)
+  const { sessionId, setSessionId } = useSessionId(activeWorkspaceId ?? undefined)
   const { selectedAgentId } = useChatPanel()
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
   const { models } = useModels()
@@ -129,8 +92,8 @@ export function ChatPage() {
     sendMessage: sendRealMessage,
     loadHistory,
   } = useChat({
-    threadId,
-    workspaceId: activeWorkspaceId,
+    sessionId,
+    workspaceId: activeWorkspaceId ?? undefined,
     agentId: selectedAgentId || 'dev',
     model: selectedModel,
   })
@@ -150,25 +113,25 @@ export function ChatPage() {
 
   useEffect(() => {
     const loadSessionSummary = async () => {
-      if (threads.length === 0) {
+      if (workspaceSessions.length === 0) {
         setSessions([])
         return
       }
 
       setLoadingSessions(true)
       try {
-        const sessionPromises = threads.map(async (t) => {
-          const messages = await getUserMessages(t.thread_id, { limit: 10 })
-          const firstMsg = messages.find(m => m.role === 'user')
-          const lastMsg = messages[messages.length - 1]
+        const sessionPromises = workspaceSessions.map(async (s) => {
+          const msgs = await getUserMessages(s.thread_id, { limit: 10 })
+          const firstMsg = msgs.find(m => m.role === 'user')
+          const lastMsg = msgs[msgs.length - 1]
 
           return {
-            id: t.thread_id,
-            title: firstMsg?.content?.slice(0, 50) || t.thread_id.slice(0, 8),
-            createdAt: new Date(t.created_at_ms).toISOString(),
-            updatedAt: new Date(t.created_at_ms).toISOString(),
+            id: s.thread_id,
+            title: firstMsg?.content?.slice(0, 50) || s.thread_id.slice(0, 8),
+            createdAt: new Date(s.created_at_ms).toISOString(),
+            updatedAt: new Date(s.created_at_ms).toISOString(),
             lastMessage: lastMsg?.content?.slice(0, 100) || '',
-            messageCount: messages.length,
+            messageCount: msgs.length,
             agent: '',
             model: '',
             isPinned: false,
@@ -185,7 +148,7 @@ export function ChatPage() {
     }
 
     loadSessionSummary()
-  }, [threads])
+  }, [workspaceSessions])
 
   const handleSelectWorkspace = useCallback((id: string) => {
     selectWs(id)
@@ -199,12 +162,12 @@ export function ChatPage() {
     await sendRealMessage(text)
   }, [sendRealMessage])
 
-  const handleSelectSession = useCallback(async (sessionId: string) => {
-    setThreadId(sessionId)
+  const handleSelectSession = useCallback(async (targetSessionId: string) => {
+    setSessionId(targetSessionId)
     if (loadHistory) {
-      await loadHistory(sessionId)
+      await loadHistory(targetSessionId)
     }
-  }, [loadHistory, setThreadId])
+  }, [loadHistory, setSessionId])
 
   return (
     <ChatErrorBoundary>

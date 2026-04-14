@@ -24,7 +24,7 @@ export function DashboardView({
   activeCount, 
   totalCalls,
   sessions = [],
-  loadingSessions = false,
+  loadingSessions: _loadingSessions = false,
   onSelectSession,
 }: DashboardViewProps) {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)

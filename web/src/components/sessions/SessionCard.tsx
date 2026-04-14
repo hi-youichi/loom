@@ -27,10 +27,11 @@ export const SessionCard = memo(function SessionCard({
     onPin?.(session.id)
   }
 
-  const handleDelete = (e: React.MouseEvent) => {
+  const _handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation()
     onDelete?.(session.id)
   }
+  void _handleDelete
 
   const handleMore = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -106,7 +107,7 @@ export const SessionCard = memo(function SessionCard({
           💬 {session.messageCount}
         </span>
         <span className="session-card__time" title={`更新于 ${new Date(session.updatedAt).toLocaleString()}`}>
-          {formatRelativeTime(new Date(session.updatedAt))}
+          {formatRelativeTime(session.updatedAt)}
         </span>
       </div>
 

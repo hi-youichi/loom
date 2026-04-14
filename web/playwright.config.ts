@@ -1,4 +1,9 @@
 import { defineConfig } from '@playwright/test'
+import { fileURLToPath } from 'url'
+import { dirname, resolve } from 'path'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 
 export default defineConfig({
   testDir: './e2e',
@@ -19,7 +24,7 @@ export default defineConfig({
     },
   ],
   // Global setup: start test servers before all tests
-  globalSetup: require.resolve('./e2e/global-setup.ts'),
-  // Global teardown: stop test servers after all tests
-  globalTeardown: require.resolve('./e2e/global-teardown.ts'),
+  globalSetup: resolve(__dirname, './e2e/global-setup.ts'),
+  // Global teardown: stop test servers after all tests  
+  globalTeardown: resolve(__dirname, './e2e/global-teardown.ts'),
 })

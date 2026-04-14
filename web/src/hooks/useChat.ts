@@ -70,17 +70,17 @@ function formatThinkLine(event: LoomStreamEvent): string | null {
     case 'tool_end':
       return null
     default:
-      return typeof event.type === 'string' ? event.type : null
+      return typeof event.agent === 'string' ? `${event.type} · ${event.agent}` : event.type
   }
 }
 
 export function useChat(options?: {
-  threadId?: string
+  sessionId?: string
   workspaceId?: string
   agentId?: string
   model?: string
 }) {
-  const threadId = options?.threadId
+  const sessionId = options?.sessionId
   const workspaceId = options?.workspaceId
   const agentId = options?.agentId || 'react'
   const model = options?.model
@@ -93,13 +93,12 @@ export function useChat(options?: {
   const activeAssistantMessageIdRef = useRef<string | null>(null)
   const toolAggregatorRef = useRef(new ToolStreamAggregator())
 
-  // 当 threadId 变化时，清空消息
   useEffect(() => {
     setMessages([])
     setThinkingLines([])
     toolAggregatorRef.current.reset()
     activeAssistantMessageIdRef.current = null
-  }, [threadId])
+  }, [sessionId])
 
   const updateAssistantMessage = useCallback(
     (updater: (message: UIMessageItemProps) => UIMessageItemProps) => {
@@ -175,7 +174,7 @@ export function useChat(options?: {
 
       try {
         const reply = await sendChatMessage(text, {
-          threadId,
+          sessionId,
           workspaceId,
           agent: agentId,
           model,
@@ -201,38 +200,41 @@ export function useChat(options?: {
           nextError = caughtError.message
         }
         setError(nextError)
-        setConnectionStatus('error')
-        throw caughtError
       } finally {
         setIsStreaming(false)
-        activeAssistantMessageIdRef.current = null
       }
     },
-    [isStreaming, threadId, workspaceId, agentId, model, handleTextChunk, handleEvent],
+    [isStreaming, sessionId, workspaceId, agentId, model, handleTextChunk, handleEvent, updateAssistantMessage],
   )
 
-  const loadHistory = useCallback(async (targetThreadId: string) => {
-    const messages = await getUserMessages(targetThreadId)
+  const loadHistory = useCallback(async (targetSessionId?: string) => {
+    const id = targetSessionId || sessionId
+    if (!id) return
 
-    const uiMessages: UIMessageItemProps[] = []
+    try {
+      const history = await getUserMessages(id)
+      const uiMessages: UIMessageItemProps[] = []
 
-    for (const msg of messages) {
-      uiMessages.push({
-        id: crypto.randomUUID(),
-        sender: msg.role === 'user' ? 'user' : 'assistant',
-        timestamp: new Date().toISOString(),
-        content: [
-          {
-            type: 'text' as const,
-            text: msg.content,
-            format: 'plain' as const,
-          },
-        ],
-      })
+      for (const msg of history) {
+        uiMessages.push({
+          id: crypto.randomUUID(),
+          sender: msg.role === 'user' ? 'user' : 'assistant',
+          timestamp: new Date().toISOString(),
+          content: [
+            {
+              type: 'text' as const,
+              text: msg.content,
+              format: 'plain' as const,
+            },
+          ],
+        })
+      }
+
+      setMessages(uiMessages)
+    } catch {
+      // silently fail - history loading is best-effort
     }
-
-    setMessages(uiMessages)
-  }, [])
+  }, [sessionId])
 
   return useMemo(
     () => ({
