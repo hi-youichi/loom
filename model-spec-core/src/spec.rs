@@ -1,6 +1,24 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ModelTier {
+    Light,
+    Standard,
+    Heavy,
+}
+
+impl std::fmt::Display for ModelTier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ModelTier::Light => write!(f, "light"),
+            ModelTier::Standard => write!(f, "standard"),
+            ModelTier::Heavy => write!(f, "heavy"),
+        }
+    }
+}
+
 /// Provider metadata from models.dev
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Provider {
@@ -94,6 +112,52 @@ pub struct Model {
 
 fn default_true() -> bool {
     true
+}
+
+impl Model {
+    pub fn tier(&self) -> ModelTier {
+        if let Some(ref family) = self.family {
+            let f = family.to_lowercase();
+            if f.ends_with("flash")
+                || f.ends_with("flashx")
+                || f.ends_with("haiku")
+                || f.ends_with("mini")
+                || f.ends_with("air")
+                || f.ends_with("airx")
+            {
+                return ModelTier::Light;
+            }
+            if f.ends_with("opus")
+                || f.ends_with("ultra")
+                || f.contains("o1-pro")
+                || f.ends_with("long")
+            {
+                return ModelTier::Heavy;
+            }
+        }
+
+        let id = self.id.to_lowercase();
+        let parts: Vec<&str> = id.split('-').collect();
+        if parts.iter().any(|p| matches!(*p, "flash" | "flashx" | "air" | "airx"))
+            || parts.last() == Some(&"mini")
+        {
+            return ModelTier::Light;
+        }
+        if parts.iter().any(|p| *p == "long") {
+            return ModelTier::Heavy;
+        }
+
+        if let Some(ref cost) = self.cost {
+            if cost.input < 0.5 {
+                return ModelTier::Light;
+            }
+            if cost.input > 15.0 {
+                return ModelTier::Heavy;
+            }
+        }
+
+        ModelTier::Standard
+    }
 }
 
 /// Input and output modalities
@@ -239,5 +303,150 @@ impl ModelLimit {
     pub fn with_cache_write(mut self, limit: u32) -> Self {
         self.cache_write = Some(limit);
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn model(id: &str, family: Option<&str>, cost: Option<Cost>) -> Model {
+        Model {
+            id: id.to_string(),
+            name: id.to_string(),
+            family: family.map(|s| s.to_string()),
+            attachment: false,
+            reasoning: false,
+            tool_call: false,
+            temperature: true,
+            structured_output: None,
+            knowledge: None,
+            release_date: None,
+            last_updated: None,
+            modalities: Modalities::default(),
+            open_weights: false,
+            cost,
+            limit: None,
+        }
+    }
+
+    #[test]
+    fn tier_anthropic_family() {
+        let m = model("claude-haiku-3.5", Some("claude-haiku"), None);
+        assert_eq!(m.tier(), ModelTier::Light);
+
+        let m = model("claude-sonnet-4", Some("claude-sonnet"), None);
+        assert_eq!(m.tier(), ModelTier::Standard);
+
+        let m = model("claude-opus-4", Some("claude-opus"), None);
+        assert_eq!(m.tier(), ModelTier::Heavy);
+    }
+
+    #[test]
+    fn tier_openai_family() {
+        let m = model("gpt-4o-mini", Some("gpt-4o-mini"), None);
+        assert_eq!(m.tier(), ModelTier::Light);
+
+        let m = model("gpt-4o", Some("gpt-4o"), None);
+        assert_eq!(m.tier(), ModelTier::Standard);
+    }
+
+    #[test]
+    fn tier_google_family() {
+        let m = model("gemini-2.5-flash", Some("gemini-2.5-flash"), None);
+        assert_eq!(m.tier(), ModelTier::Light);
+
+        let m = model("gemini-2.5-pro", Some("gemini-2.5-pro"), None);
+        assert_eq!(m.tier(), ModelTier::Standard);
+    }
+
+    #[test]
+    fn tier_glm_flash() {
+        let m = model("glm-4-flash", None, None);
+        assert_eq!(m.tier(), ModelTier::Light);
+
+        let m = model("glm-4-flashx", None, None);
+        assert_eq!(m.tier(), ModelTier::Light);
+
+        let m = model("glm-z1-flash", None, None);
+        assert_eq!(m.tier(), ModelTier::Light);
+
+        let m = model("glm-z1-flashx", None, None);
+        assert_eq!(m.tier(), ModelTier::Light);
+    }
+
+    #[test]
+    fn tier_glm_air() {
+        let m = model("glm-4-air", None, None);
+        assert_eq!(m.tier(), ModelTier::Light);
+
+        let m = model("glm-4-airx", None, None);
+        assert_eq!(m.tier(), ModelTier::Light);
+
+        let m = model("glm-z1-air", None, None);
+        assert_eq!(m.tier(), ModelTier::Light);
+
+        let m = model("glm-z1-airx", None, None);
+        assert_eq!(m.tier(), ModelTier::Light);
+    }
+
+    #[test]
+    fn tier_glm_standard() {
+        let m = model("glm-4-plus", None, None);
+        assert_eq!(m.tier(), ModelTier::Standard);
+
+        let m = model("glm-4.6", None, None);
+        assert_eq!(m.tier(), ModelTier::Standard);
+
+        let m = model("glm-5", None, None);
+        assert_eq!(m.tier(), ModelTier::Standard);
+    }
+
+    #[test]
+    fn tier_glm_long() {
+        let m = model("glm-4-long", None, None);
+        assert_eq!(m.tier(), ModelTier::Heavy);
+    }
+
+    #[test]
+    fn tier_deepseek() {
+        let m = model("deepseek-chat", Some("deepseek-chat"), None);
+        assert_eq!(m.tier(), ModelTier::Standard);
+
+        let m = model("deepseek-reasoner", Some("deepseek-reasoner"), None);
+        assert_eq!(m.tier(), ModelTier::Standard);
+    }
+
+    #[test]
+    fn tier_cost_fallback() {
+        let cheap = model("unknown-model", None, Some(Cost::new(0.1, 0.1)));
+        assert_eq!(cheap.tier(), ModelTier::Light);
+
+        let mid = model("unknown-model", None, Some(Cost::new(3.0, 15.0)));
+        assert_eq!(mid.tier(), ModelTier::Standard);
+
+        let expensive = model("unknown-model", None, Some(Cost::new(30.0, 120.0)));
+        assert_eq!(expensive.tier(), ModelTier::Heavy);
+    }
+
+    #[test]
+    fn tier_family_suffix_priority_over_cost() {
+        let m = model("some-flash-model", Some("some-flash"), Some(Cost::new(30.0, 120.0)));
+        assert_eq!(m.tier(), ModelTier::Light);
+    }
+
+    #[test]
+    fn tier_default_is_standard() {
+        let m = model("random-model", None, None);
+        assert_eq!(m.tier(), ModelTier::Standard);
+    }
+
+    #[test]
+    fn tier_serde_roundtrip() {
+        let tier = ModelTier::Light;
+        let json = serde_json::to_string(&tier).unwrap();
+        assert_eq!(json, "\"light\"");
+        let de: ModelTier = serde_json::from_str(&json).unwrap();
+        assert_eq!(de, ModelTier::Light);
     }
 }
