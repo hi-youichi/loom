@@ -212,7 +212,7 @@ pub use message::{
 };
 pub use model_spec::{
     CachedResolver, CompositeResolver, ConfigOverride, LocalFileResolver, ModelLimitResolver,
-    ModelSpec, ModelsDevResolver, ResolverRefresher,
+    ModelSpec, ModelTier, ModelsDevResolver, ResolverRefresher,
 };
 pub use openai_sse::{
     parse_chat_request, write_sse_line, ChatCompletionChunk, ChatCompletionRequest, ChatMessage,
