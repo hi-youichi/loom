@@ -33,32 +33,44 @@ async fn spawn_mock_llm() -> (String, tokio::task::JoinHandle<()>) {
     let handle = tokio::spawn(async move {
         loop {
             let Ok((mut stream, _)) = listener.accept().await else {
+                eprintln!("Mock server: accept failed");
                 break;
             };
             
-            // Read the HTTP request
-            let mut buf = vec![0u8; 8192];
-            let mut total_read = 0;
-            let mut headers_complete = false;
+            eprintln!("Mock server: connection accepted");
             
-            while !headers_complete && total_read < buf.len() {
-                match stream.read(&mut buf[total_read..]).await {
-                    Ok(0) => break,
+            // Read the HTTP request with better handling
+            let mut request_data = Vec::new();
+            let mut buf = vec![0u8; 1024];
+            
+            loop {
+                match stream.read(&mut buf).await {
+                    Ok(0) => {
+                        eprintln!("Mock server: connection closed by client");
+                        break;
+                    }
                     Ok(n) => {
-                        total_read += n;
-                        // Check if we've received the complete HTTP headers
-                        let request = String::from_utf8_lossy(&buf[..total_read]);
-                        if request.contains("\r\n\r\n") {
-                            headers_complete = true;
+                        request_data.extend_from_slice(&buf[..n]);
+                        // Check if we have the complete HTTP headers
+                        let request_str = String::from_utf8_lossy(&request_data);
+                        if request_str.contains("\r\n\r\n") {
+                            break;
                         }
                     }
-                    Err(_) => break,
+                    Err(e) => {
+                        eprintln!("Mock server: read error: {}", e);
+                        break;
+                    }
                 }
             }
             
-            if !headers_complete {
+            if request_data.is_empty() {
+                eprintln!("Mock server: empty request");
                 continue;
             }
+            
+            let request_str = String::from_utf8_lossy(&request_data);
+            eprintln!("Mock server received request: {}", request_str.lines().next().unwrap_or("unknown"));
             
             let response = r#"{
                 "id": "chatcmpl-test",
@@ -72,15 +84,33 @@ async fn spawn_mock_llm() -> (String, tokio::task::JoinHandle<()>) {
                 }],
                 "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
             }"#;
+            
             let resp = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
                 response.len(),
                 response
             );
-            let _ = stream.write_all(resp.as_bytes()).await;
-            let _ = stream.flush().await;
+            
+            eprintln!("Mock server sending response: {} bytes", resp.len());
+            
+            if let Err(e) = stream.write_all(resp.as_bytes()).await {
+                eprintln!("Mock server write error: {}", e);
+            } else {
+                eprintln!("Mock server: response written successfully");
+            }
+            
+            if let Err(e) = stream.flush().await {
+                eprintln!("Mock server flush error: {}", e);
+            } else {
+                eprintln!("Mock server: response flushed successfully");
+            }
+            
+            // Give time for the response to be read before closing
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            eprintln!("Mock server: closing connection");
         }
     });
+    eprintln!("Mock server started on port {}", port);
     (format!("http://127.0.0.1:{}", port), handle)
 }
 
@@ -107,8 +137,8 @@ fn interactive_initial_message_with_valid_working_folder_succeeds() {
     
     eprintln!("Mock URL: {}", mock_url);
     
-    // Give the mock server a moment to start accepting connections
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    // Give the mock server more time to start accepting connections
+    std::thread::sleep(std::time::Duration::from_millis(500));
 
     let out = run_with_stdin(
         &["-i", "-m", "hello", "--working-folder", "."],
