@@ -1,11 +1,11 @@
 import type {
   WorkspaceListResponse,
   WorkspaceCreateResponse,
-  WorkspaceThreadListResponse,
-  WorkspaceThreadAddResponse,
-  WorkspaceThreadRemoveResponse,
+  WorkspaceSessionListResponse,
+  WorkspaceSessionAddResponse,
+  WorkspaceSessionRemoveResponse,
   WorkspaceMeta,
-  ThreadInWorkspace,
+  SessionInWorkspace,
 } from '../types/protocol/loom'
 import { getConnection } from './connection'
 
@@ -31,26 +31,38 @@ export async function createWorkspace(name?: string): Promise<string> {
   return resp.workspace.id
 }
 
-export async function listThreads(workspaceId: string): Promise<ThreadInWorkspace[]> {
-  const resp = await request<WorkspaceThreadListResponse>({
+export async function listSessions(workspaceId: string): Promise<SessionInWorkspace[]> {
+  const resp = await request<WorkspaceSessionListResponse>({
     type: 'workspace_thread_list',
     workspace_id: workspaceId,
   })
   return resp.threads
 }
 
-export async function addThread(workspaceId: string, threadId: string): Promise<void> {
-  await request<WorkspaceThreadAddResponse>({
+export async function addSession(workspaceId: string, sessionId: string): Promise<void> {
+  await request<WorkspaceSessionAddResponse>({
     type: 'workspace_thread_add',
     workspace_id: workspaceId,
-    thread_id: threadId,
+    thread_id: sessionId,
   })
 }
 
-export async function removeThread(workspaceId: string, threadId: string): Promise<void> {
-  await request<WorkspaceThreadRemoveResponse>({
+export async function removeSession(workspaceId: string, sessionId: string): Promise<void> {
+  await request<WorkspaceSessionRemoveResponse>({
     type: 'workspace_thread_remove',
     workspace_id: workspaceId,
-    thread_id: threadId,
+    thread_id: sessionId,
   })
+}
+
+export async function listThreads(workspaceId: string): Promise<SessionInWorkspace[]> {
+  return listSessions(workspaceId)
+}
+
+export async function addThread(workspaceId: string, threadId: string): Promise<void> {
+  return addSession(workspaceId, threadId)
+}
+
+export async function removeThread(workspaceId: string, threadId: string): Promise<void> {
+  return removeSession(workspaceId, threadId)
 }

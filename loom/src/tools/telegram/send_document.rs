@@ -32,7 +32,10 @@ impl Tool for TelegramSendDocumentTool {
     fn spec(&self) -> ToolSpec {
         ToolSpec {
             name: TOOL_TELEGRAM_SEND_DOCUMENT.to_string(),
-            description: Some("Send a file (document, image, etc.) to a Telegram chat with an optional caption.".to_string()),
+            description: Some(
+                "Send a file (document, image, etc.) to a Telegram chat with an optional caption."
+                    .to_string(),
+            ),
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -63,12 +66,13 @@ impl Tool for TelegramSendDocumentTool {
         let params: SendDocumentParams = serde_json::from_value(args)
             .map_err(|e| ToolSourceError::InvalidInput(format!("Invalid arguments: {}", e)))?;
 
-        let api = get_telegram_api()
-            .ok_or_else(|| ToolSourceError::Transport("Telegram API not initialized".to_string()))?;
+        let api = get_telegram_api().ok_or_else(|| {
+            ToolSourceError::Transport("Telegram API not initialized".to_string())
+        })?;
 
-        let chat_id = params.chat_id.unwrap_or_else(|| {
-            get_current_chat_id().unwrap_or(0)
-        });
+        let chat_id = params
+            .chat_id
+            .unwrap_or_else(|| get_current_chat_id().unwrap_or(0));
 
         if chat_id == 0 {
             return Err(ToolSourceError::InvalidInput(

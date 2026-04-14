@@ -43,6 +43,6 @@ mod prompt;
 
 pub use config::{to_react_build_config, HelveConfig};
 pub use prompt::{
-    assemble_react_system_prompt, assemble_system_prompt, tools_requiring_approval,
-    ApprovalPolicy, ReactPromptInputs, APPROVAL_REQUIRED_EVENT_TYPE,
+    assemble_react_system_prompt, assemble_system_prompt, tools_requiring_approval, ApprovalPolicy,
+    ReactPromptInputs, APPROVAL_REQUIRED_EVENT_TYPE,
 };

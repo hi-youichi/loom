@@ -137,19 +137,19 @@ pub mod memory;
 pub mod message;
 pub mod model_spec;
 pub mod openai_sse;
-pub mod prompts;
 pub mod pregel;
+pub mod prompts;
 pub mod protocol;
 pub mod runner_common;
 pub mod skill;
 pub mod state;
 pub mod stream;
 
+pub mod services;
 pub mod tool_source;
 pub mod tools;
 pub mod traits;
 pub mod user_message;
-pub mod services;
 
 pub use agent::react::{
     build_dup_runner, build_got_runner, build_react_initial_state, build_react_run_context,
@@ -167,10 +167,11 @@ pub use channels::{
 };
 pub use cli_run::{
     build_config_from_profile, build_helve_config, list_available_profiles, load_agents_md,
-    resolve_profile, resolve_model_config, run_agent_with_llm_override, run_agent_with_options,
+    resolve_model_config, resolve_profile, run_agent_with_llm_override, run_agent_with_options,
     ActiveOperation, ActiveOperationCanceller, ActiveOperationKind, AgentProfile, AgentRunResult,
     AnyRunner, AnyStreamEvent, ProfileError, ProfileSource, ProfileSummary, ResolvedAgent,
-    ResolvedModelConfig, RunCancellation, RunCmd, RunCompletion, RunError, RunOptions, DEFAULT_WORKING_FOLDER,
+    ResolvedModelConfig, RunCancellation, RunCmd, RunCompletion, RunError, RunOptions,
+    DEFAULT_WORKING_FOLDER,
 };
 pub use compress::CompactionConfig;
 pub use config::{
@@ -206,7 +207,9 @@ pub use memory::{
     StoreError, StoreSearchHit,
 };
 pub use memory::{SqliteSaver, SqliteStore};
-pub use message::{AssistantPayload, AssistantToolCall, ContentError, ContentPart, Message, UserContent};
+pub use message::{
+    AssistantPayload, AssistantToolCall, ContentError, ContentPart, Message, UserContent,
+};
 pub use model_spec::{
     CachedResolver, CompositeResolver, ConfigOverride, LocalFileResolver, ModelLimitResolver,
     ModelSpec, ModelsDevResolver, ResolverRefresher,
@@ -225,17 +228,15 @@ pub use protocol::stream::{
     stream_event_to_protocol_value, Envelope,
 };
 pub use protocol::{
-    AgentListRequest, AgentListResponse, AgentSummary, AgentSource, AgentSourceFilter,
-    AgentType, ClientRequest, EnvelopeState, ErrorResponse, PingRequest, PongResponse,
-    ProtocolEvent, ProtocolEventEnvelope, RunEndResponse, RunRequest, RunStreamEventResponse,
-    ServerResponse, ToolShowOutput, ToolShowRequest, ToolShowResponse, ToolsListRequest,
-    ToolsListResponse, UserMessageItem, UserMessagesRequest, UserMessagesResponse,
-    WorkspaceListRequest, WorkspaceListResponse, WorkspaceMeta,
-    WorkspaceCreateRequest, WorkspaceCreateResponse,
-    WorkspaceThreadListRequest, WorkspaceThreadListResponse, ThreadInWorkspace,
-    WorkspaceThreadAddRequest, WorkspaceThreadAddResponse,
-    WorkspaceThreadRemoveRequest, WorkspaceThreadRemoveResponse,
-    ListModelsRequest, ListModelsResponse, SetModelRequest, SetModelResponse,
+    AgentListRequest, AgentListResponse, AgentSource, AgentSourceFilter, AgentSummary, AgentType,
+    ClientRequest, EnvelopeState, ErrorResponse, ListModelsRequest, ListModelsResponse,
+    PingRequest, PongResponse, ProtocolEvent, ProtocolEventEnvelope, RunEndResponse, RunRequest,
+    RunStreamEventResponse, ServerResponse, SetModelRequest, SetModelResponse, ThreadInWorkspace,
+    ToolShowOutput, ToolShowRequest, ToolShowResponse, ToolsListRequest, ToolsListResponse,
+    UserMessageItem, UserMessagesRequest, UserMessagesResponse, WorkspaceCreateRequest,
+    WorkspaceCreateResponse, WorkspaceListRequest, WorkspaceListResponse, WorkspaceMeta,
+    WorkspaceThreadAddRequest, WorkspaceThreadAddResponse, WorkspaceThreadListRequest,
+    WorkspaceThreadListResponse, WorkspaceThreadRemoveRequest, WorkspaceThreadRemoveResponse,
 };
 pub use state::{
     normalize_tool_output, NormalizationConfig, NormalizedToolOutput, ToolOutputHint,

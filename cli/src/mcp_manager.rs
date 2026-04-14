@@ -4,8 +4,8 @@
 //! that integrates with the config crate and handles CLI-specific concerns.
 
 use config::{
-    create_mcp_config_if_missing, discover_mcp_config_path, load_mcp_config_file,
-    McpConfigError, McpServerEntry,
+    create_mcp_config_if_missing, discover_mcp_config_path, load_mcp_config_file, McpConfigError,
+    McpServerEntry,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -84,13 +84,14 @@ impl McpManager {
     pub fn edit_server(&self, name: &str, args: &EditMcpArgs) -> Result<(), McpConfigError> {
         let config = load_mcp_config_file(&self.config_path)?;
 
-        let existing_entry = config
-            .mcp_servers
-            .get(name)
-            .ok_or_else(|| McpConfigError::InvalidEntry {
-                name: name.to_string(),
-                message: "Server not found".to_string(),
-            })?;
+        let existing_entry =
+            config
+                .mcp_servers
+                .get(name)
+                .ok_or_else(|| McpConfigError::InvalidEntry {
+                    name: name.to_string(),
+                    message: "Server not found".to_string(),
+                })?;
 
         let updated_entry = self.merge_server_entry(existing_entry, args)?;
         config::upsert_mcp_server(&self.config_path, name, updated_entry)?;

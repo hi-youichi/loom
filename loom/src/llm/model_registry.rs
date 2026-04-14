@@ -229,7 +229,10 @@ impl ModelRegistry {
         providers: &[ProviderConfig],
     ) -> Result<Vec<ModelEntry>, AgentError> {
         if providers.is_empty() {
-            tracing::info!(total_models = 0, "Listed all available models from model spec (no providers configured)");
+            tracing::info!(
+                total_models = 0,
+                "Listed all available models from model spec (no providers configured)"
+            );
             return Ok(Vec::new());
         }
 
@@ -317,14 +320,24 @@ impl ModelRegistry {
                 .then_with(|| a.name.cmp(&b.name))
         });
 
-        tracing::info!(total_models = all_models.len(), "Listed all available models from model spec");
+        tracing::info!(
+            total_models = all_models.len(),
+            "Listed all available models from model spec"
+        );
         Ok(all_models)
     }
 
     /// Get a specific model by its combined ID ("{provider}/{model_id}").
     /// Returns None if the model is not found or the provider doesn't exist.
-    pub async fn get_model(&self, combined_id: &str, providers: &[ProviderConfig]) -> Option<ModelEntry> {
-        self.get_model_result(combined_id, providers).await.ok().flatten()
+    pub async fn get_model(
+        &self,
+        combined_id: &str,
+        providers: &[ProviderConfig],
+    ) -> Option<ModelEntry> {
+        self.get_model_result(combined_id, providers)
+            .await
+            .ok()
+            .flatten()
     }
 
     /// Get a specific model by combined ID using model spec metadata.
@@ -357,9 +370,7 @@ impl ModelRegistry {
                 entry.base_url = Some(api.clone());
             }
         }
-        if entry.provider_type.is_none()
-            && !entry.provider.eq_ignore_ascii_case("openai")
-        {
+        if entry.provider_type.is_none() && !entry.provider.eq_ignore_ascii_case("openai") {
             entry.provider_type = Some("openai_compat".to_string());
         }
 
@@ -388,7 +399,9 @@ impl ModelRegistry {
         let fetched = ModelsDevResolver::new()
             .fetch_all_providers()
             .await
-            .map_err(|e| AgentError::ExecutionFailed(format!("failed to fetch model spec providers: {e}")))?;
+            .map_err(|e| {
+                AgentError::ExecutionFailed(format!("failed to fetch model spec providers: {e}"))
+            })?;
         let providers: HashMap<String, SpecProvider> = fetched
             .into_iter()
             .map(|(k, v)| (Self::normalize_provider_name(&k), v))
@@ -453,10 +466,14 @@ async fn fetch_models_from_api(
     let resp: OpenAiModelsResponse = req
         .send()
         .await
-        .map_err(|e| AgentError::ExecutionFailed(format!("failed to fetch models from {url}: {e}")))?
+        .map_err(|e| {
+            AgentError::ExecutionFailed(format!("failed to fetch models from {url}: {e}"))
+        })?
         .json()
         .await
-        .map_err(|e| AgentError::ExecutionFailed(format!("failed to parse models response from {url}: {e}")))?;
+        .map_err(|e| {
+            AgentError::ExecutionFailed(format!("failed to parse models response from {url}: {e}"))
+        })?;
     Ok(resp.data.into_iter().map(|m| m.id).collect())
 }
 
@@ -514,19 +531,22 @@ pub fn create_llm_client(entry: &ModelEntry) -> Result<Box<dyn LlmClient>, Agent
             Box::new(client)
         }
         _ => {
-            let api_key = entry
-                .api_key
-                .clone()
-                .ok_or_else(|| AgentError::ExecutionFailed(format!(
-                    "api_key is required for provider '{}'", provider_type
-                )))?;
+            let api_key = entry.api_key.clone().ok_or_else(|| {
+                AgentError::ExecutionFailed(format!(
+                    "api_key is required for provider '{}'",
+                    provider_type
+                ))
+            })?;
             let base_url = entry
                 .base_url
                 .clone()
                 .or_else(|| std::env::var("OPENAI_BASE_URL").ok())
-                .ok_or_else(|| AgentError::ExecutionFailed(format!(
-                    "base_url (or OPENAI_BASE_URL) is required for non-openai provider '{}'", provider_type
-                )))?;
+                .ok_or_else(|| {
+                    AgentError::ExecutionFailed(format!(
+                        "base_url (or OPENAI_BASE_URL) is required for non-openai provider '{}'",
+                        provider_type
+                    ))
+                })?;
             let mut client = ChatOpenAICompat::with_config(base_url, api_key, model);
             if let Some(temp) = entry.temperature {
                 client = client.with_temperature(temp);
@@ -593,9 +613,12 @@ mod tests {
         let entry = ModelEntry::new("openai", "gpt-4o")
             .with_base_url("https://api.openai.com/v1")
             .with_api_key("sk-test");
-        
+
         assert_eq!(entry.id, "openai/gpt-4o");
-        assert_eq!(entry.base_url, Some("https://api.openai.com/v1".to_string()));
+        assert_eq!(
+            entry.base_url,
+            Some("https://api.openai.com/v1".to_string())
+        );
         assert_eq!(entry.api_key, Some("sk-test".to_string()));
     }
 
@@ -604,7 +627,7 @@ mod tests {
         let entry = ModelEntry::new("openai", "gpt-4o")
             .with_temperature(0.7)
             .with_max_tokens(1000);
-        
+
         assert_eq!(entry.id, "openai/gpt-4o");
         assert_eq!(entry.temperature, Some(0.7));
         assert_eq!(entry.max_tokens, Some(1000));
@@ -619,12 +642,15 @@ mod tests {
             provider_type: None,
             fetch_models: false,
         };
-        
+
         let entry = ModelEntry::from_provider_config(&provider, "gpt-4o");
         assert_eq!(entry.id, "openai/gpt-4o");
         assert_eq!(entry.name, "gpt-4o");
         assert_eq!(entry.provider, "openai");
-        assert_eq!(entry.base_url, Some("https://api.openai.com/v1".to_string()));
+        assert_eq!(
+            entry.base_url,
+            Some("https://api.openai.com/v1".to_string())
+        );
         assert_eq!(entry.api_key, Some("sk-test".to_string()));
     }
 }

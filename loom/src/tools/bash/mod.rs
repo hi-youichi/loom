@@ -80,14 +80,18 @@ impl BashTool {
     ///
     /// Commands will run in the process's current directory unless `workdir` is specified.
     pub fn new() -> Self {
-        Self { working_folder: None }
+        Self {
+            working_folder: None,
+        }
     }
 
     /// Creates a new BashTool with a default working folder.
     ///
     /// When `workdir` is not specified in the call, commands will run in this folder.
     pub fn with_working_folder(working_folder: Arc<std::path::PathBuf>) -> Self {
-        Self { working_folder: Some(working_folder) }
+        Self {
+            working_folder: Some(working_folder),
+        }
     }
 }
 
@@ -184,7 +188,10 @@ impl Tool for BashTool {
 
         let workdir = match workdir_arg {
             Some(w) => Some(w.to_string()),
-            None => self.working_folder.as_ref().map(|p| p.to_string_lossy().into_owned()),
+            None => self
+                .working_folder
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned()),
         };
         let workdir_str = workdir.as_deref();
 

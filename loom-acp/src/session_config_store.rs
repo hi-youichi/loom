@@ -72,11 +72,10 @@ impl SessionConfigStore {
     /// Returns `None` if the session or key doesn't exist.
     pub fn get(&self, session_id: &SessionId, key: &str) -> rusqlite::Result<Option<String>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT value FROM session_config WHERE session_id = ?1 AND key = ?2"
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT value FROM session_config WHERE session_id = ?1 AND key = ?2")?;
         let mut rows = stmt.query(rusqlite::params![session_id.as_str(), key])?;
-        
+
         match rows.next()? {
             Some(row) => Ok(Some(row.get(0)?)),
             None => Ok(None),
@@ -86,13 +85,12 @@ impl SessionConfigStore {
     /// Get all configuration values for a session.
     pub fn get_all(&self, session_id: &SessionId) -> rusqlite::Result<HashMap<String, String>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT key, value FROM session_config WHERE session_id = ?1"
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT key, value FROM session_config WHERE session_id = ?1")?;
         let rows = stmt.query_map([session_id.as_str()], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?;
-        
+
         let mut config = HashMap::new();
         for row in rows {
             let (key, value) = row?;
@@ -148,8 +146,14 @@ mod tests {
         store.set(&session_id, "model", "gpt-4o").unwrap();
         store.set(&session_id, "mode", "code").unwrap();
 
-        assert_eq!(store.get(&session_id, "model").unwrap(), Some("gpt-4o".to_string()));
-        assert_eq!(store.get(&session_id, "mode").unwrap(), Some("code".to_string()));
+        assert_eq!(
+            store.get(&session_id, "model").unwrap(),
+            Some("gpt-4o".to_string())
+        );
+        assert_eq!(
+            store.get(&session_id, "mode").unwrap(),
+            Some("code".to_string())
+        );
         assert_eq!(store.get(&session_id, "nonexistent").unwrap(), None);
     }
 
@@ -175,7 +179,10 @@ mod tests {
         store.set(&session_id, "model", "gpt-4o").unwrap();
         store.set(&session_id, "model", "gpt-4o-mini").unwrap();
 
-        assert_eq!(store.get(&session_id, "model").unwrap(), Some("gpt-4o-mini".to_string()));
+        assert_eq!(
+            store.get(&session_id, "model").unwrap(),
+            Some("gpt-4o-mini".to_string())
+        );
     }
 
     #[test]

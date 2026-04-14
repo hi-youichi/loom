@@ -56,9 +56,7 @@ impl PregelRunner {
             let graph = Arc::clone(&graph);
             let ctx = ctx.clone();
             let runner = self.clone();
-            join_set.spawn(async move {
-                runner.run_task(task, graph, &ctx).await
-            });
+            join_set.spawn(async move { runner.run_task(task, graph, &ctx).await });
         }
 
         loop {
@@ -133,8 +131,7 @@ impl PregelRunner {
 
             let stop_early = matches!(
                 outcome,
-                TaskOutcome::Cancelled { .. }
-                    | TaskOutcome::Failed { .. }
+                TaskOutcome::Cancelled { .. } | TaskOutcome::Failed { .. }
             );
             outcomes.push(outcome);
             if stop_early {
@@ -256,14 +253,21 @@ impl PregelRunner {
     pub fn abort_inflight(&self) {}
 }
 
-fn build_node_input(prepared: &PreparedTask, ctx: &PregelNodeContext) -> crate::pregel::node::PregelNodeInput {
+fn build_node_input(
+    prepared: &PreparedTask,
+    ctx: &PregelNodeContext,
+) -> crate::pregel::node::PregelNodeInput {
     crate::pregel::node::PregelNodeInput {
         step: prepared.step,
         trigger_values: match &prepared.input {
             serde_json::Value::Object(map) => prepared
                 .triggers
                 .iter()
-                .filter_map(|trigger| map.get(trigger).cloned().map(|value| (trigger.clone(), value)))
+                .filter_map(|trigger| {
+                    map.get(trigger)
+                        .cloned()
+                        .map(|value| (trigger.clone(), value))
+                })
                 .collect(),
             _ => Default::default(),
         },
@@ -320,39 +324,42 @@ fn resolve_resume_value(
     prepared: &PreparedTask,
     ctx: &PregelNodeContext,
 ) -> Option<serde_json::Value> {
-    ctx.pending_interrupts.iter().find_map(|record| {
-        if record.task_id != prepared.id {
-            return None;
-        }
-        ctx.resume_map
-            .values_by_interrupt_id
-            .get(&record.interrupt_id)
-            .cloned()
-            .or_else(|| {
-                ctx.resume_map
-                    .values_by_namespace
-                    .get(&record.namespace)
-                    .cloned()
-            })
-    }).or_else(|| {
-        if ctx.pending_interrupts.len() != 1 {
-            return None;
-        }
-        let record = &ctx.pending_interrupts[0];
-        if record.node_name != prepared.node_name {
-            return None;
-        }
-        ctx.resume_map
-            .values_by_interrupt_id
-            .get(&record.interrupt_id)
-            .cloned()
-            .or_else(|| {
-                ctx.resume_map
-                    .values_by_namespace
-                    .get(&record.namespace)
-                    .cloned()
-            })
-    })
+    ctx.pending_interrupts
+        .iter()
+        .find_map(|record| {
+            if record.task_id != prepared.id {
+                return None;
+            }
+            ctx.resume_map
+                .values_by_interrupt_id
+                .get(&record.interrupt_id)
+                .cloned()
+                .or_else(|| {
+                    ctx.resume_map
+                        .values_by_namespace
+                        .get(&record.namespace)
+                        .cloned()
+                })
+        })
+        .or_else(|| {
+            if ctx.pending_interrupts.len() != 1 {
+                return None;
+            }
+            let record = &ctx.pending_interrupts[0];
+            if record.node_name != prepared.node_name {
+                return None;
+            }
+            ctx.resume_map
+                .values_by_interrupt_id
+                .get(&record.interrupt_id)
+                .cloned()
+                .or_else(|| {
+                    ctx.resume_map
+                        .values_by_namespace
+                        .get(&record.namespace)
+                        .cloned()
+                })
+        })
 }
 
 #[cfg(test)]

@@ -401,8 +401,10 @@ h2 {
 }
 
 .composer__button {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
   padding: 0;
   border: 0;
   border-radius: 999px;
@@ -413,27 +415,28 @@ h2 {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  visibility: visible;
+  opacity: 1;
+  cursor: pointer;
   transition:
     transform 180ms ease,
-    box-shadow 180ms ease,
     opacity 180ms ease;
-  box-shadow: 0 4px 12px oklch(from var(--primary) l c h / 20%);
 }
 
 .composer__button-icon {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
 }
 
 .composer__button:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 8px 20px oklch(from var(--primary) l c h / 30%);
-  background: oklch(from var(--primary) l c h calc(l - 0.05));
+  opacity: 0.85;
 }
 
 .composer__button:disabled {
-  opacity: 0.55;
-  box-shadow: none;
+  opacity: 0.35;
+  cursor: not-allowed;
+  visibility: visible;
 }
 
 .composer__toolbar {
@@ -441,11 +444,19 @@ h2 {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+  width: 100%;
+  position: relative;
+  z-index: 1;
 }
 
 .composer__model-selector {
+  flex: 1 1 auto;
+  min-width: 120px;
+  max-width: 200px;
+}
+
+.composer__button {
   flex: 0 0 auto;
-  min-width: 180px;
 }
 
 .model-selector {

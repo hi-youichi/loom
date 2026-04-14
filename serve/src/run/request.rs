@@ -1,6 +1,6 @@
 //! Request preparation: register thread in workspace, append initial user message, build RunOptions and RunCmd.
 
-use loom::{AgentType, protocol::AgentIdentifier, Message, RunCmd, RunOptions};
+use loom::{cli_run::RunCancellation, protocol::AgentIdentifier, AgentType, Message, RunCmd, RunOptions};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -51,11 +51,12 @@ pub(super) struct PrepareRunInput {
     pub display_max_len: usize,
 }
 
-/// Result of request preparation: options, command, and whether the initial user message was appended.
+/// Result of request preparation: options, command, whether the initial user message was appended, and cancellation handle.
 pub(super) struct PrepareRunResult {
     pub opts: RunOptions,
     pub cmd: RunCmd,
     pub initial_user_appended: bool,
+    pub cancellation: RunCancellation,
 }
 
 /// Registers thread in workspace, appends initial user message when configured, and builds
@@ -82,11 +83,37 @@ pub(super) async fn prepare_run(
 
     let resolved = loom::resolve_model_config(r.model.as_deref()).await;
 
+    // Log the model resolution
+    match &r.model {
+        Some(model) => {
+            tracing::info!("🤖 [RunRequest] Model requested from frontend: {}", model);
+            if let Some(ref resolved_model) = resolved.model {
+                tracing::info!(
+                    "✅ [RunRequest] Model resolved: {} (provider: {:?})",
+                    resolved_model,
+                    resolved.provider
+                );
+            } else {
+                tracing::warn!("⚠️  [RunRequest] Model resolution returned empty, using defaults");
+            }
+        }
+        None => {
+            tracing::info!(
+                "🤖 [RunRequest] No model specified from frontend, using default configuration"
+            );
+        }
+    }
+
+    let r_thread_id = r.thread_id.clone();
+    let r_agent = r.agent.clone();
+
+    let run_cancellation = RunCancellation::new(1);
+
     let opts = RunOptions {
         message: r.message,
         working_folder: r.working_folder.map(PathBuf::from),
         session_id: None,
-        cancellation: None,
+        cancellation: Some(run_cancellation.clone()),
         thread_id: r.thread_id,
         agent: None,
         verbose: r.verbose.unwrap_or(false),
@@ -102,7 +129,7 @@ pub(super) async fn prepare_run(
         api_key: resolved.api_key,
         provider_type: resolved.provider_type,
     };
-    
+
     // Handle both AgentType (react/dup/tot/got) and custom agent names
     let cmd = match r.agent {
         AgentIdentifier::Type(AgentType::React) => RunCmd::React,
@@ -111,18 +138,23 @@ pub(super) async fn prepare_run(
         AgentIdentifier::Type(AgentType::Got) => RunCmd::Got {
             got_adaptive: opts.got_adaptive,
         },
-        AgentIdentifier::Name(name) => {
-            // Custom agent profile name (dev, assistant, ask, etc.)
-            // For now, default to React mode with profile resolution
-            // TODO: resolve agent profile by name and run it
+        AgentIdentifier::Name(ref name) => {
             tracing::info!("Running agent profile: {}", name);
             RunCmd::React
         }
     };
 
+    // Log final run options
+    tracing::info!("🎯 Run options configured:");
+    tracing::info!("  Model: {:?}", opts.model);
+    tracing::info!("  Provider: {:?}", opts.provider);
+    tracing::info!("  Agent: {:?}", r_agent);
+    tracing::info!("  Thread ID: {:?}", r_thread_id);
+
     PrepareRunResult {
         opts,
         cmd,
         initial_user_appended,
+        cancellation: run_cancellation,
     }
 }

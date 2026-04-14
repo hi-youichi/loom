@@ -129,13 +129,12 @@ impl HandlerDeps {
 }
 
 fn build_model_catalog() -> Arc<dyn ModelCatalog> {
-    let configured_model = std::env::var("MODEL").unwrap_or_else(|_| "gpt-5.4".to_string());
+    let configured_model = "gpt-5.4".to_string(); // Removed environment variable support
     let full_config = config::load_full_config("loom").ok();
     let configured_provider = full_config
         .as_ref()
         .and_then(|cfg| cfg.default_provider.clone())
-        .or_else(|| std::env::var("LLM_PROVIDER").ok())
-        .unwrap_or_else(|| "default".to_string());
+        .unwrap_or_else(|| "default".to_string()); // Removed environment variable support
 
     let mut models = vec![ModelChoice::new(configured_model.clone())];
     if let Some(full_config) = full_config {

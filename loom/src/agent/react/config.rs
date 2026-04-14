@@ -1,9 +1,8 @@
 //! Configuration for building a ReAct run context.
 
+use env_config::McpServerDef;
 use std::path::PathBuf;
 use std::sync::Arc;
-
-use env_config::McpServerDef;
 
 use crate::skill::SkillRegistry;
 
@@ -26,13 +25,11 @@ impl Default for TotRunnerConfig {
 }
 
 /// GoT-specific runner config (adaptive mode, AGoT LLM complexity).
-#[derive(Clone, Debug)]
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub struct GotRunnerConfig {
     pub adaptive: bool,
     pub agot_llm_complexity: bool,
 }
-
 
 /// Configuration for building ReAct run context.
 #[derive(Clone, Debug)]
@@ -86,83 +83,62 @@ pub struct ReactBuildConfig {
 }
 
 impl ReactBuildConfig {
-    /// Builds config from environment variables.
     pub fn from_env() -> Self {
-        let mcp_verbose = std::env::var("MCP_VERBOSE")
-            .or_else(|_| std::env::var("VERBOSE"))
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(false);
         Self {
-            db_path: std::env::var("DB_PATH").ok(),
-            thread_id: std::env::var("THREAD_ID").ok(),
-            user_id: std::env::var("USER_ID").ok(),
-            system_prompt: std::env::var("REACT_SYSTEM_PROMPT").ok(),
+            db_path: std::env::var("LOOM_DB_PATH").ok(),
+            thread_id: std::env::var("LOOM_THREAD_ID").ok(),
+            user_id: std::env::var("LOOM_USER_ID").ok(),
+            system_prompt: std::env::var("SYSTEM_PROMPT").ok(),
             exa_api_key: std::env::var("EXA_API_KEY").ok(),
             exa_codesearch_enabled: std::env::var("LOOM_EXA_CODESEARCH")
                 .ok()
-                .is_some_and(|s| {
-                    matches!(s.as_str(), "1")
-                        || s.eq_ignore_ascii_case("true")
-                        || s.eq_ignore_ascii_case("yes")
-                }),
+                .map(|s| matches!(s.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
+                .unwrap_or(false),
             twitter_api_key: std::env::var("TWITTER_API_KEY").ok(),
             mcp_exa_url: std::env::var("MCP_EXA_URL")
-                .unwrap_or_else(|_| "https://mcp.exa.ai/mcp".to_string()),
+                .unwrap_or_else(|_| "https://exa-cp.backend.mcp.dev".to_string()),
             mcp_remote_cmd: std::env::var("MCP_REMOTE_CMD").unwrap_or_else(|_| "npx".to_string()),
             mcp_remote_args: std::env::var("MCP_REMOTE_ARGS")
-                .unwrap_or_else(|_| "-y mcp-remote".to_string()),
+                .unwrap_or_else(|_| "mcp-remote".to_string()),
             github_token: std::env::var("GITHUB_TOKEN").ok(),
             mcp_github_cmd: std::env::var("MCP_GITHUB_CMD").unwrap_or_else(|_| "npx".to_string()),
             mcp_github_args: std::env::var("MCP_GITHUB_ARGS")
-                .map(|s| s.split_whitespace().map(String::from).collect())
-                .unwrap_or_else(|_| {
-                    vec![
-                        "-y".to_string(),
-                        "@modelcontextprotocol/server-github".to_string(),
-                    ]
-                }),
+                .unwrap_or_else(|_| "-y @modelcontextprotocol/server-github".to_string())
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect(),
             mcp_github_url: std::env::var("MCP_GITHUB_URL").ok(),
-            mcp_verbose,
+            mcp_verbose: std::env::var("MCP_VERBOSE")
+                .ok()
+                .map(|s| matches!(s.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
+                .unwrap_or(false),
             openai_api_key: std::env::var("OPENAI_API_KEY").ok(),
             openai_base_url: std::env::var("OPENAI_BASE_URL").ok(),
-            model: std::env::var("MODEL")
-                .or_else(|_| std::env::var("OPENAI_MODEL"))
-                .ok(),
-            llm_provider: std::env::var("LLM_PROVIDER").ok(),
             openai_temperature: std::env::var("OPENAI_TEMPERATURE").ok(),
-            embedding_api_key: std::env::var("EMBEDDING_API_KEY")
-                .or_else(|_| std::env::var("OPENAI_API_KEY"))
-                .ok(),
-            embedding_base_url: std::env::var("EMBEDDING_API_BASE")
-                .or_else(|_| std::env::var("EMBEDDING_BASE_URL"))
-                .ok(),
+            model: None, // Removed environment variable support, use frontend/API parameters
+            llm_provider: None, // Removed environment variable support
+            embedding_api_key: std::env::var("EMBEDDING_API_KEY").ok(),
+            embedding_base_url: std::env::var("EMBEDDING_BASE_URL").ok(),
             embedding_model: std::env::var("EMBEDDING_MODEL").ok(),
             working_folder: std::env::var("WORKING_FOLDER").ok().map(PathBuf::from),
-            approval_policy: None,
+            approval_policy: std::env::var("LOOM_APPROVAL_POLICY").ok().and_then(|s| {
+                match s.to_lowercase().as_str() {
+                    "always" => Some(crate::helve::ApprovalPolicy::Always),
+                    "destructive_only" => Some(crate::helve::ApprovalPolicy::DestructiveOnly),
+                    "none" => Some(crate::helve::ApprovalPolicy::None),
+                    _ => None,
+                }
+            }),
             compaction_config: None,
-            tot_config: TotRunnerConfig {
-                max_depth: std::env::var("TOT_MAX_DEPTH")
-                    .ok()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(5),
-                candidates_per_step: std::env::var("TOT_CANDIDATES_PER_STEP")
-                    .ok()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(3),
-                research_quality_addon: std::env::var("TOT_RESEARCH_QUALITY_ADDON")
-                    .ok()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(false),
-            },
+            tot_config: TotRunnerConfig::default(),
             got_config: GotRunnerConfig {
-                adaptive: std::env::var("GOT_ADAPTIVE")
+                adaptive: std::env::var("LOOM_GOT_ADAPTIVE")
                     .ok()
-                    .and_then(|s| s.parse().ok())
+                    .map(|s| matches!(s.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
                     .unwrap_or(false),
-                agot_llm_complexity: std::env::var("GOT_AGOT_LLM_COMPLEXITY")
+                agot_llm_complexity: std::env::var("LOOM_GOT_AGOT_LLM_COMPLEXITY")
                     .ok()
-                    .and_then(|s| s.parse().ok())
+                    .map(|s| matches!(s.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
                     .unwrap_or(false),
             },
             mcp_servers: None,
@@ -170,7 +146,10 @@ impl ReactBuildConfig {
             max_sub_agent_depth: std::env::var("MAX_SUB_AGENT_DEPTH")
                 .ok()
                 .and_then(|s| s.parse().ok()),
-            dry_run: false,
+            dry_run: std::env::var("LOOM_DRY_RUN")
+                .ok()
+                .map(|s| matches!(s.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
+                .unwrap_or(false),
         }
     }
 }

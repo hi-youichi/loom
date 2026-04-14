@@ -17,7 +17,7 @@ async fn lsp_tool_spec_has_correct_properties() {
     let spec = tool.spec();
     assert_eq!(spec.name, TOOL_LSP);
     assert!(spec.description.is_some());
-    
+
     // Verify input schema has required properties
     let schema = &spec.input_schema;
     let properties = schema.get("properties").unwrap();
@@ -34,11 +34,9 @@ async fn lsp_tool_spec_has_all_actions() {
     let properties = schema.get("properties").unwrap();
     let action = properties.get("action").unwrap();
     let enum_values = action.get("enum").unwrap().as_array().unwrap();
-    
-    let actions: Vec<&str> = enum_values.iter()
-        .filter_map(|v| v.as_str())
-        .collect();
-    
+
+    let actions: Vec<&str> = enum_values.iter().filter_map(|v| v.as_str()).collect();
+
     assert!(actions.contains(&"completion"));
     assert!(actions.contains(&"diagnostics"));
     assert!(actions.contains(&"gotoDefinition"));

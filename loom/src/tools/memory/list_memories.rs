@@ -113,7 +113,9 @@ impl Tool for ListMemoriesTool {
                 crate::memory::StoreError::EmbeddingError(s) => ToolSourceError::Transport(s),
             })?;
 
-        Ok(ToolCallContent::text(serde_json::to_string(&keys)
-                .map_err(|e| ToolSourceError::InvalidInput(e.to_string()))?,))
+        Ok(ToolCallContent::text(
+            serde_json::to_string(&keys)
+                .map_err(|e| ToolSourceError::InvalidInput(e.to_string()))?,
+        ))
     }
 }

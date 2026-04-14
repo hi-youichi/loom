@@ -45,8 +45,7 @@ pub fn init_with_working_folder(working_folder: &Path) {
         return;
     };
 
-    let log_path =
-        tracing_init::resolve_log_path(log_file.as_path(), Some(working_folder));
+    let log_path = tracing_init::resolve_log_path(log_file.as_path(), Some(working_folder));
 
     if let Some(parent) = log_path.parent() {
         let _ = std::fs::create_dir_all(parent);

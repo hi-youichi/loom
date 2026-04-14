@@ -8,8 +8,8 @@
 
 use crate::lsp::cache::DiagnosticCache;
 use crate::lsp::client::LspClient;
-use env_config::LspServerConfig;
 use dashmap::DashMap;
+use env_config::LspServerConfig;
 use std::path::Path;
 use std::sync::Arc;
 use thiserror::Error;
@@ -91,7 +91,10 @@ impl LspManager {
     }
 
     /// Get or create a client for the specified language.
-    pub async fn get_client(&self, language: &str) -> Result<Arc<RwLock<LspClient>>, LspManagerError> {
+    pub async fn get_client(
+        &self,
+        language: &str,
+    ) -> Result<Arc<RwLock<LspClient>>, LspManagerError> {
         // Check if client already exists
         if let Some(client) = self.clients.get(language) {
             return Ok(client.clone());
@@ -106,9 +109,13 @@ impl LspManager {
             .clone();
 
         // Start new client
-        info!("Starting language server for {}: {}", language, config.command);
+        info!(
+            "Starting language server for {}: {}",
+            language, config.command
+        );
         let root_uri = None; // TODO: Use workspace root
-        let mut client = LspClient::start(&config.command, &config.args, root_uri).await
+        let mut client = LspClient::start(&config.command, &config.args, root_uri)
+            .await
             .map_err(LspManagerError::StartFailed)?;
 
         // Initialize the server
@@ -119,7 +126,8 @@ impl LspManager {
 
         // Store in cache
         let client_arc = Arc::new(RwLock::new(client));
-        self.clients.insert(language.to_string(), client_arc.clone());
+        self.clients
+            .insert(language.to_string(), client_arc.clone());
 
         Ok(client_arc)
     }
@@ -145,12 +153,15 @@ impl LspManager {
         let language = self
             .detect_language(file_path)
             .ok_or_else(|| LspManagerError::NoServerForFile(file_path.display().to_string()))?;
-        
+
         let client = self.get_client(&language).await?;
         let mut client = client.write().await;
 
         let uri = path_to_uri(file_path)?;
-        client.open_document(&uri, &language, content).await.map_err(Into::into)
+        client
+            .open_document(&uri, &language, content)
+            .await
+            .map_err(Into::into)
     }
 
     /// Get completions at a position.
@@ -164,7 +175,10 @@ impl LspManager {
         let mut client = client.write().await;
 
         let uri = path_to_uri(file_path)?;
-        client.completion(&uri, line, character).await.map_err(Into::into)
+        client
+            .completion(&uri, line, character)
+            .await
+            .map_err(Into::into)
     }
 
     /// Get diagnostics for a file.
@@ -190,7 +204,10 @@ impl LspManager {
         let mut client = client.write().await;
 
         let uri = path_to_uri(file_path)?;
-        client.goto_definition(&uri, line, character).await.map_err(Into::into)
+        client
+            .goto_definition(&uri, line, character)
+            .await
+            .map_err(Into::into)
     }
 
     /// Find references at a position.
@@ -204,7 +221,10 @@ impl LspManager {
         let mut client = client.write().await;
 
         let uri = path_to_uri(file_path)?;
-        client.find_references(&uri, line, character).await.map_err(Into::into)
+        client
+            .find_references(&uri, line, character)
+            .await
+            .map_err(Into::into)
     }
 
     /// Get hover information at a position.
@@ -218,7 +238,10 @@ impl LspManager {
         let mut client = client.write().await;
 
         let uri = path_to_uri(file_path)?;
-        client.hover(&uri, line, character).await.map_err(Into::into)
+        client
+            .hover(&uri, line, character)
+            .await
+            .map_err(Into::into)
     }
 
     /// Get document symbols.
@@ -253,7 +276,10 @@ impl LspManager {
 
     /// Get list of active language servers.
     pub fn active_servers(&self) -> Vec<String> {
-        self.clients.iter().map(|entry| entry.key().clone()).collect()
+        self.clients
+            .iter()
+            .map(|entry| entry.key().clone())
+            .collect()
     }
 }
 

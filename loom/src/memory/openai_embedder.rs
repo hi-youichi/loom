@@ -296,7 +296,8 @@ mod tests {
                 }],
                 "model": "text-embedding-3-small",
                 "usage": {"prompt_tokens": 4, "total_tokens": 4}
-            }).to_string();
+            })
+            .to_string();
             write_http_response(&mut stream, "200 OK", &response).await;
         });
 
@@ -327,7 +328,8 @@ mod tests {
                 }],
                 "model": "text-embedding-3-small",
                 "usage": {"prompt_tokens": 2, "total_tokens": 2}
-            }).to_string();
+            })
+            .to_string();
             write_http_response(&mut stream, "200 OK", &response).await;
         });
 

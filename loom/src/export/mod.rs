@@ -20,13 +20,21 @@ where
             let state_json = serde_json::to_value(state)?;
             json!({ "Values": state_json })
         }
-        StreamEvent::Updates { node_id, state, namespace } => {
+        StreamEvent::Updates {
+            node_id,
+            state,
+            namespace,
+        } => {
             let state_json = serde_json::to_value(state)?;
             json!({ "Updates": { "node_id": node_id, "state": state_json, "namespace": namespace } })
         }
         StreamEvent::Messages {
             chunk,
-            metadata: StreamMetadata { loom_node, namespace },
+            metadata:
+                StreamMetadata {
+                    loom_node,
+                    namespace,
+                },
         } => json!({
             "Messages": {
                 "chunk": { "content": chunk.content, "kind": format!("{:?}", chunk.kind) },
@@ -47,8 +55,14 @@ where
                 }
             })
         }
-        StreamEvent::TaskStart { node_id, namespace } => json!({ "TaskStart": { "node_id": node_id, "namespace": namespace } }),
-        StreamEvent::TaskEnd { node_id, result, namespace } => {
+        StreamEvent::TaskStart { node_id, namespace } => {
+            json!({ "TaskStart": { "node_id": node_id, "namespace": namespace } })
+        }
+        StreamEvent::TaskEnd {
+            node_id,
+            result,
+            namespace,
+        } => {
             let result_json = match result {
                 Ok(()) => json!("Ok"),
                 Err(e) => json!({ "Err": e }),

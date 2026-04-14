@@ -2,25 +2,30 @@
 //!
 //! These tools allow the agent to interact with Telegram directly.
 
+mod send_document;
 mod send_message;
 mod send_poll;
-mod send_document;
 
+pub use send_document::{TelegramSendDocumentTool, TOOL_TELEGRAM_SEND_DOCUMENT};
 pub use send_message::{TelegramSendMessageTool, TOOL_TELEGRAM_SEND_MESSAGE};
 pub use send_poll::{TelegramSendPollTool, TOOL_TELEGRAM_SEND_POLL};
-pub use send_document::{TelegramSendDocumentTool, TOOL_TELEGRAM_SEND_DOCUMENT};
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde::Deserialize;
+use std::sync::Arc;
 
 /// Trait for executing Telegram API calls.
 /// Implemented by the telegram-bot crate and injected at runtime.
 #[async_trait]
 pub trait TelegramApi: Send + Sync {
     /// Send a text message to a chat.
-    async fn send_message(&self, chat_id: i64, text: &str, parse_mode: Option<&str>) -> Result<i32, String>;
-    
+    async fn send_message(
+        &self,
+        chat_id: i64,
+        text: &str,
+        parse_mode: Option<&str>,
+    ) -> Result<i32, String>;
+
     /// Send a poll to a chat.
     async fn send_poll(
         &self,
@@ -30,9 +35,14 @@ pub trait TelegramApi: Send + Sync {
         is_anonymous: bool,
         allows_multiple_answers: bool,
     ) -> Result<i32, String>;
-    
+
     /// Send a document to a chat.
-    async fn send_document(&self, chat_id: i64, file_path: &str, caption: Option<&str>) -> Result<i32, String>;
+    async fn send_document(
+        &self,
+        chat_id: i64,
+        file_path: &str,
+        caption: Option<&str>,
+    ) -> Result<i32, String>;
 }
 
 /// Global Telegram API instance.

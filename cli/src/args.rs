@@ -213,23 +213,23 @@ pub(crate) struct AddMcpArgs {
     /// Server name
     #[arg(long, value_name = "NAME")]
     pub(crate) name: String,
-    
+
     /// Command for stdio-based servers (e.g., "npx")
     #[arg(long, value_name = "CMD")]
     pub(crate) command: Option<String>,
-    
+
     /// Arguments for the command (can be specified multiple times)
     #[arg(long = "arg", value_name = "ARG", allow_hyphen_values = true)]
     pub(crate) args: Vec<String>,
-    
+
     /// URL for HTTP-based servers
     #[arg(long, value_name = "URL")]
     pub(crate) url: Option<String>,
-    
+
     /// Environment variables (KEY=VALUE format, can be specified multiple times)
     #[arg(long = "env", value_name = "ENV", allow_hyphen_values = true)]
     pub(crate) env: Vec<String>,
-    
+
     /// Create server in disabled state
     #[arg(long)]
     pub(crate) disabled: bool,
@@ -240,23 +240,23 @@ pub(crate) struct EditMcpArgs {
     /// Server name to edit
     #[arg(value_name = "NAME")]
     pub(crate) name: String,
-    
+
     /// New command for stdio-based servers
     #[arg(long, value_name = "CMD")]
     pub(crate) command: Option<String>,
-    
+
     /// New arguments for the command (can be specified multiple times)
     #[arg(long = "arg", value_name = "ARG", allow_hyphen_values = true)]
     pub(crate) args: Vec<String>,
-    
+
     /// New URL for HTTP-based servers
     #[arg(long, value_name = "URL")]
     pub(crate) url: Option<String>,
-    
+
     /// New environment variables (KEY=VALUE format, can be specified multiple times)
     #[arg(long = "env", value_name = "ENV", allow_hyphen_values = true)]
     pub(crate) env: Vec<String>,
-    
+
     /// Set disabled state (true/false)
     #[arg(long, value_name = "BOOL")]
     pub(crate) disabled: Option<bool>,

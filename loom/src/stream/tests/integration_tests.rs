@@ -41,7 +41,11 @@ mod tests {
         let writer = StreamWriter::<DummyState>::noop();
         let tool_writer = ToolStreamWriter::noop();
 
-        assert!(!writer.emit_custom(serde_json::json!({"test": "value"})).await);
+        assert!(
+            !writer
+                .emit_custom(serde_json::json!({"test": "value"}))
+                .await
+        );
         assert!(!writer.emit_message("test", "node").await);
         assert!(!writer.emit_values(DummyState(1)).await);
 

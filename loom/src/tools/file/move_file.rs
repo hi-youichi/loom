@@ -88,6 +88,6 @@ impl Tool for MoveFileTool {
         }
         std::fs::rename(&source, &target)
             .map_err(|e| ToolSourceError::Transport(format!("failed to move: {}", e)))?;
-        Ok(ToolCallContent::text("ok".to_string(),))
+        Ok(ToolCallContent::text("ok".to_string()))
     }
 }

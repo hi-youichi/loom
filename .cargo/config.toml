@@ -1,0 +1,6 @@
+[profile.test]
+opt-level = 0
+debug = true
+
+[env]
+RUST_TEST_THREADS = "12"

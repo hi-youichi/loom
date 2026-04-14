@@ -35,7 +35,9 @@ use crate::state::ToolCall;
 use crate::stream::MessageChunk;
 use crate::tool_source::{ToolSource, ToolSourceError, ToolSpec};
 
-use super::thinking::{collect_thinking_tags, strip_thinking_tags, ThinkingSegment, ThinkingTagParser};
+use super::thinking::{
+    collect_thinking_tags, strip_thinking_tags, ThinkingSegment, ThinkingTagParser,
+};
 use super::tool_call_accumulator::{RawToolCallDelta, ToolCallAccumulator};
 use super::ToolChoiceMode;
 
@@ -219,6 +221,7 @@ pub struct ChatOpenAICompat {
     temperature: Option<f32>,
     tool_choice: Option<ToolChoiceMode>,
     parse_thinking_tags: bool,
+    headers: Option<crate::llm::LlmHeaders>,
 }
 
 impl ChatOpenAICompat {
@@ -250,6 +253,7 @@ impl ChatOpenAICompat {
             temperature: None,
             tool_choice: None,
             parse_thinking_tags: false,
+            headers: None,
         }
     }
 
@@ -300,6 +304,42 @@ impl ChatOpenAICompat {
     pub fn with_parse_thinking_tags(mut self, enable: bool) -> Self {
         self.parse_thinking_tags = enable;
         self
+    }
+
+    /// Sets HTTP headers for LLM requests.
+    ///
+    /// This allows adding custom headers like X-App-Id, X-Thread-Id, X-Trace-Id
+    /// for request tracking and observability.
+    pub fn with_headers(mut self, headers: crate::llm::LlmHeaders) -> Self {
+        self.headers = Some(headers);
+        self
+    }
+
+    fn add_headers_to_request(
+        &self,
+        request_builder: reqwest::RequestBuilder,
+        request_id: &str,
+    ) -> reqwest::RequestBuilder {
+        let mut builder = request_builder;
+
+        builder = builder.header("X-Request-Id", request_id);
+
+        if let Some(headers) = &self.headers {
+            builder = builder.header("X-App-Id", "loom");
+
+            if let Some(thread_id) = &headers.thread_id {
+                builder = builder.header("X-Thread-Id", thread_id);
+            }
+            if let Some(trace_id) = &headers.trace_id {
+                builder = builder.header("X-Trace-Id", trace_id);
+            }
+
+            for (key, value) in &headers.custom_headers {
+                builder = builder.header(key, value);
+            }
+        }
+
+        builder
     }
 
     fn chat_completions_url(&self) -> String {
@@ -472,11 +512,13 @@ impl ChatOpenAICompat {
 impl LlmClient for ChatOpenAICompat {
     async fn invoke(&self, messages: &[Message]) -> Result<LlmResponse, AgentError> {
         let trace_id = uuid6().to_string();
+        let request_id = uuid6().to_string();
         let url = self.chat_completions_url();
         let body = self.build_request(messages, false);
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         debug!(
             trace_id = %trace_id,
+            request_id = %request_id,
             url = %url,
             model = %self.model,
             message_count = messages.len(),
@@ -490,10 +532,13 @@ impl LlmClient for ChatOpenAICompat {
                 let mut attempt = 0;
                 loop {
                     match self
-                        .client
-                        .post(&url)
-                        .bearer_auth(&self.api_key)
-                        .json(&body)
+                        .add_headers_to_request(
+                            self.client
+                                .post(&url)
+                                .bearer_auth(&self.api_key)
+                                .json(&body),
+                            &request_id,
+                        )
                         .send()
                         .await
                     {
@@ -573,10 +618,13 @@ impl LlmClient for ChatOpenAICompat {
                 );
                 tokio::time::sleep(delay).await;
                 let retry_res = self
-                    .client
-                    .post(&url)
-                    .bearer_auth(&self.api_key)
-                    .json(&body)
+                    .add_headers_to_request(
+                        self.client
+                            .post(&url)
+                            .bearer_auth(&self.api_key)
+                            .json(&body),
+                        &request_id,
+                    )
                     .send()
                     .await
                     .map_err(|e| {
@@ -611,8 +659,10 @@ impl LlmClient for ChatOpenAICompat {
             )));
         };
 
-        let response: ChatCompletionResponse = serde_json::from_slice(&body_bytes)
-            .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI-compat response parse: {}", e)))?;
+        let response: ChatCompletionResponse =
+            serde_json::from_slice(&body_bytes).map_err(|e| {
+                AgentError::ExecutionFailed(format!("OpenAI-compat response parse: {}", e))
+            })?;
 
         let choice = response.choices.into_iter().next().ok_or_else(|| {
             AgentError::ExecutionFailed("OpenAI-compat returned no choices".to_string())
@@ -672,12 +722,14 @@ impl LlmClient for ChatOpenAICompat {
         }
 
         let trace_id = uuid6().to_string();
+        let request_id = uuid6().to_string();
         let chunk_tx = chunk_tx.expect("chunk_tx must be Some when streaming");
         let url = self.chat_completions_url();
         let body = self.build_request(messages, true);
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         debug!(
             trace_id = %trace_id,
+            request_id = %request_id,
             url = %url,
             model = %self.model,
             message_count = messages.len(),
@@ -690,10 +742,13 @@ impl LlmClient for ChatOpenAICompat {
             let mut attempt = 0;
             loop {
                 match self
-                    .client
-                    .post(&url)
-                    .bearer_auth(&self.api_key)
-                    .json(&body)
+                    .add_headers_to_request(
+                        self.client
+                            .post(&url)
+                            .bearer_auth(&self.api_key)
+                            .json(&body),
+                        &request_id,
+                    )
                     .send()
                     .await
                 {
@@ -747,10 +802,13 @@ impl LlmClient for ChatOpenAICompat {
                 );
                 tokio::time::sleep(delay).await;
                 let retry_res = self
-                    .client
-                    .post(&url)
-                    .bearer_auth(&self.api_key)
-                    .json(&body)
+                    .add_headers_to_request(
+                        self.client
+                            .post(&url)
+                            .bearer_auth(&self.api_key)
+                            .json(&body),
+                        &request_id,
+                    )
                     .send()
                     .await
                     .map_err(|e| {
@@ -778,7 +836,7 @@ impl LlmClient for ChatOpenAICompat {
                     )));
                 }
             }
-            
+
             match final_response {
                 Some(resp) => resp,
                 None => {
@@ -798,14 +856,12 @@ impl LlmClient for ChatOpenAICompat {
         let mut sent_any_content = false;
         let mut tool_calls_acc = ToolCallAccumulator::new();
         let mut stream_usage: Option<LlmUsage> = None;
-        let mut thinking_parser = self
-            .parse_thinking_tags
-            .then(ThinkingTagParser::new);
+        let mut thinking_parser = self.parse_thinking_tags.then(ThinkingTagParser::new);
         let mut done = false;
         let mut stream_read_attempt = 0;
 
         let mut res = response;
-        
+
         while !done {
             let chunk = match res.chunk().await {
                 Ok(Some(bytes)) => Some(bytes),
@@ -899,8 +955,7 @@ impl LlmClient for ChatOpenAICompat {
                                             let _ = chunk_tx.send(MessageChunk::message(s)).await;
                                         }
                                         ThinkingSegment::Thinking(s) => {
-                                            let _ =
-                                                chunk_tx.send(MessageChunk::thinking(s)).await;
+                                            let _ = chunk_tx.send(MessageChunk::thinking(s)).await;
                                         }
                                     }
                                 }
@@ -1028,13 +1083,17 @@ impl LlmClient for ChatOpenAICompat {
     }
 
     async fn list_models(&self) -> Result<Vec<crate::llm::ModelInfo>, AgentError> {
+        let request_id = uuid6().to_string();
         // Base URL often already includes a version path (e.g., /api/paas/v4)
         // so we only append /models, not /v1/models
         let url = format!("{}/models", self.base_url);
         let res = self
-            .client
-            .get(&url)
-            .bearer_auth(&self.api_key)
+            .add_headers_to_request(
+                self.client
+                    .get(&url)
+                    .bearer_auth(&self.api_key),
+                &request_id,
+            )
             .send()
             .await
             .map_err(|e| {

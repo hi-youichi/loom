@@ -153,7 +153,12 @@ impl PregelLoop {
 
         let interrupt_before_tasks = tasks
             .iter()
-            .filter(|task| self.interrupts.interrupt_before.iter().any(|node| node == &task.node_name))
+            .filter(|task| {
+                self.interrupts
+                    .interrupt_before
+                    .iter()
+                    .any(|node| node == &task.node_name)
+            })
             .collect::<Vec<_>>();
         if let Some(task) = interrupt_before_tasks.first() {
             self.status = LoopStatus::InterruptedBefore;
@@ -188,7 +193,8 @@ impl PregelLoop {
             .iter()
             .filter_map(|outcome| match outcome {
                 TaskOutcome::Interrupted { task, interrupt } => {
-                    let namespace = interrupt_namespace(&interrupt.0, self.checkpoint_namespace.as_str());
+                    let namespace =
+                        interrupt_namespace(&interrupt.0, self.checkpoint_namespace.as_str());
                     Some((
                         interrupt.clone(),
                         interrupt_record_from_task(&task.prepared, &interrupt.0, namespace),
@@ -233,11 +239,7 @@ impl PregelLoop {
                     .collect(),
                 &self.interrupts.consumed_interrupt_ids,
             );
-            stage_successful_task_writes(
-                &mut self.checkpoint,
-                &outcomes,
-                &excluded_task_ids,
-            );
+            stage_successful_task_writes(&mut self.checkpoint, &outcomes, &excluded_task_ids);
             self.status = LoopStatus::InterruptedAfter;
             return Err(AgentError::Interrupted(interrupt.clone()));
         }
@@ -333,11 +335,8 @@ impl PregelLoop {
         );
         let new_pending_sends = std::mem::take(&mut self.checkpoint.pending_sends);
         let new_pending_writes = std::mem::take(&mut self.checkpoint.pending_writes);
-        self.checkpoint.pending_sends = merge_pending_sends_after_commit(
-            existing_pending_sends,
-            &tasks,
-            new_pending_sends,
-        );
+        self.checkpoint.pending_sends =
+            merge_pending_sends_after_commit(existing_pending_sends, &tasks, new_pending_sends);
         self.checkpoint.pending_writes = merge_pending_writes_after_commit(
             existing_pending_writes,
             &self.checkpoint.pending_interrupts,
@@ -370,8 +369,7 @@ impl PregelLoop {
     /// If a reserved return write is present, that value wins; otherwise the
     /// full output snapshot is returned.
     pub fn final_output(&self) -> ChannelValue {
-        reserved_return_output(&self.checkpoint.pending_writes)
-            .unwrap_or_else(|| self.output())
+        reserved_return_output(&self.checkpoint.pending_writes).unwrap_or_else(|| self.output())
     }
 
     /// Returns whether the cancellation token for this run has fired.
@@ -694,6 +692,9 @@ mod tests {
             PregelConfig::default(),
         );
 
-        assert_eq!(loop_state.final_output(), serde_json::json!({"final": true}));
+        assert_eq!(
+            loop_state.final_output(),
+            serde_json::json!({"final": true})
+        );
     }
 }

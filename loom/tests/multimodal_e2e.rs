@@ -74,10 +74,13 @@ async fn vision_recognize_red_pixel() {
     ])
     .expect("No vision provider found. Add a provider with name 'openai', 'moonshotai-cn', or 'glm-vision' to ~/.loom/config.toml");
 
-    eprintln!("Using provider: {} (model: {:?})", provider.name, provider.model);
+    eprintln!(
+        "Using provider: {} (model: {:?})",
+        provider.name, provider.model
+    );
 
-    let client = build_client_from_provider(&provider)
-        .expect("Failed to build client from provider config");
+    let client =
+        build_client_from_provider(&provider).expect("Failed to build client from provider config");
 
     let msg = Message::user(UserContent::Multimodal(vec![
         ContentPart::Text {
@@ -95,8 +98,21 @@ async fn vision_recognize_red_pixel() {
             // The model should respond with some color (not empty and not a refusal)
             let content = resp.content.to_lowercase();
             let colors = [
-                "red", "blue", "green", "black", "white", "gray", "grey", "transparent",
-                "黄", "蓝", "绿", "黑", "白", "灰", "红",
+                "red",
+                "blue",
+                "green",
+                "black",
+                "white",
+                "gray",
+                "grey",
+                "transparent",
+                "黄",
+                "蓝",
+                "绿",
+                "黑",
+                "白",
+                "灰",
+                "红",
             ];
             let found_color = colors.iter().any(|c| content.contains(c));
             assert!(
@@ -127,10 +143,13 @@ async fn vision_with_image_url() {
     ])
     .expect("No provider found. Add a provider to ~/.loom/config.toml");
 
-    eprintln!("Using provider: {} (model: {:?})", provider.name, provider.model);
+    eprintln!(
+        "Using provider: {} (model: {:?})",
+        provider.name, provider.model
+    );
 
-    let client = build_client_from_provider(&provider)
-        .expect("Failed to build client from provider config");
+    let client =
+        build_client_from_provider(&provider).expect("Failed to build client from provider config");
 
     // Using a small placeholder image from a public URL
     let test_image_url = std::env::var("TEST_IMAGE_URL")
@@ -138,7 +157,8 @@ async fn vision_with_image_url() {
 
     let msg = Message::user(UserContent::Multimodal(vec![
         ContentPart::Text {
-            text: "What color is the text in this image? Answer with only the color name.".to_string(),
+            text: "What color is the text in this image? Answer with only the color name."
+                .to_string(),
         },
         ContentPart::ImageUrl {
             url: test_image_url,
@@ -152,8 +172,10 @@ async fn vision_with_image_url() {
             // The placeholder has blue background with white text, either should be acceptable
             let content = resp.content.to_lowercase();
             assert!(
-                content.contains("blue") || content.contains("white")
-                    || content.contains("蓝") || content.contains("白"),
+                content.contains("blue")
+                    || content.contains("white")
+                    || content.contains("蓝")
+                    || content.contains("白"),
                 "Expected response to mention blue or white, got: {}",
                 resp.content
             );
@@ -180,10 +202,13 @@ async fn multimodal_serialization() {
     ])
     .expect("No provider found. Add a provider to ~/.loom/config.toml");
 
-    eprintln!("Using provider: {} (model: {:?})", provider.name, provider.model);
+    eprintln!(
+        "Using provider: {} (model: {:?})",
+        provider.name, provider.model
+    );
 
-    let client = build_client_from_provider(&provider)
-        .expect("Failed to build client from provider config");
+    let client =
+        build_client_from_provider(&provider).expect("Failed to build client from provider config");
 
     // Test with multiple content parts
     let msg = Message::user(UserContent::Multimodal(vec![

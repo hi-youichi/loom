@@ -36,15 +36,15 @@
 //! }
 //! ```
 
-pub mod client;
-pub mod manager;
-pub mod sync;
 pub mod cache;
-pub mod workspace;
-pub mod performance;
+pub mod client;
 pub mod error_recovery;
 pub mod installer;
+pub mod manager;
+pub mod performance;
+pub mod sync;
 pub mod types;
+pub mod workspace;
 // mod examples; // Disabled: examples.rs uses `loom::` which is not available within the loom crate
 
 #[cfg(test)]
@@ -56,18 +56,18 @@ mod mock_server;
 #[cfg(test)]
 mod integration_tests;
 
+pub use cache::DiagnosticCache;
 pub use client::LspClient;
 pub use manager::{LspManager, LspManagerError};
-pub use sync::DocumentState;
-pub use cache::DiagnosticCache;
-pub use workspace::Workspace;
 pub use performance::PerformanceMonitor;
+pub use sync::DocumentState;
+pub use workspace::Workspace;
 // ErrorRecovery is used internally
 // LanguageServerInstaller is used internally
 pub use types::*;
 
 // Re-export LSP types from config
-pub use env_config::{LspServerConfig};
+pub use env_config::LspServerConfig;
 
 /// Result type for LSP operations
 pub type LspResult<T> = Result<T, LspManagerError>;

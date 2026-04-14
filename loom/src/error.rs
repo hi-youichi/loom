@@ -27,6 +27,10 @@ pub enum AgentError {
     /// and later resume execution with user input.
     #[error("graph interrupted: {0}")]
     Interrupted(GraphInterrupt),
+
+    /// LLM returned empty response after all retries exhausted.
+    #[error("LLM returned empty response after {retries} retries")]
+    EmptyLlmResponse { retries: u32 },
 }
 
 impl From<GraphInterrupt> for AgentError {

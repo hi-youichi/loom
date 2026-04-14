@@ -3,6 +3,8 @@ import { useCallback, useMemo, useRef, useState, useEffect } from 'react'
 import { ToolBlockAdapter } from '../adapters/ToolBlockAdapter'
 import { ToolStreamAggregator } from '../adapters/ToolStreamAggregator'
 import { sendMessage as sendChatMessage } from '../services/chat'
+import { getConnection } from '../services/connection'
+import { getUserMessages } from '../services/userMessages'
 import type {
   LoomStreamEvent,
   LoomToolEvent,
@@ -69,32 +71,36 @@ function formatThinkLine(event: LoomStreamEvent): string | null {
     case 'tool_end':
       return null
     default:
-      return typeof event.type === 'string' ? event.type : null
+      return typeof event.agent === 'string' ? `${event.type} · ${event.agent}` : event.type
   }
 }
 
 export function useChat(options?: {
-  threadId?: string
+  sessionId?: string
+  workspaceId?: string
   agentId?: string
+  model?: string
 }) {
-  const threadId = options?.threadId
+  const sessionId = options?.sessionId
+  const workspaceId = options?.workspaceId
   const agentId = options?.agentId || 'react'
+  const model = options?.model
 
   const [messages, setMessages] = useState<UIMessageItemProps[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<WebSocketStatus>('connected')
   const [error, setError] = useState<string | null>(null)
   const [thinkingLines, setThinkingLines] = useState<string[]>([])
+  const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const activeAssistantMessageIdRef = useRef<string | null>(null)
   const toolAggregatorRef = useRef(new ToolStreamAggregator())
 
-  // 当 threadId 变化时，清空消息
   useEffect(() => {
     setMessages([])
     setThinkingLines([])
     toolAggregatorRef.current.reset()
     activeAssistantMessageIdRef.current = null
-  }, [threadId])
+  }, [sessionId])
 
   const updateAssistantMessage = useCallback(
     (updater: (message: UIMessageItemProps) => UIMessageItemProps) => {
@@ -170,10 +176,18 @@ export function useChat(options?: {
 
       try {
         const reply = await sendChatMessage(text, {
-          threadId,
+          sessionId,
+          workspaceId,
           agent: agentId,
+          model,
           onChunk: handleTextChunk,
-          onEvent: handleEvent,
+          onEvent: (event: LoomStreamEvent) => {
+            // Set activeRunId when we get the first event
+            if (!activeRunId && (event as any).run_id) {
+              setActiveRunId((event as any).run_id)
+            }
+            handleEvent(event)
+          },
         })
         if (reply.content) {
           updateAssistantMessage((msg) => ({
@@ -194,15 +208,58 @@ export function useChat(options?: {
           nextError = caughtError.message
         }
         setError(nextError)
-        setConnectionStatus('error')
-        throw caughtError
       } finally {
         setIsStreaming(false)
-        activeAssistantMessageIdRef.current = null
+        setActiveRunId(null)
       }
     },
-    [isStreaming, threadId, agentId, handleTextChunk, handleEvent],
+    [isStreaming, sessionId, workspaceId, agentId, model, handleTextChunk, handleEvent, updateAssistantMessage],
   )
+
+  const loadHistory = useCallback(async (targetSessionId?: string) => {
+    const id = targetSessionId || sessionId
+    if (!id) return
+
+    try {
+      const history = await getUserMessages(id)
+      const uiMessages: UIMessageItemProps[] = []
+
+      for (const msg of history) {
+        uiMessages.push({
+          id: crypto.randomUUID(),
+          sender: msg.role === 'user' ? 'user' : 'assistant',
+          timestamp: new Date().toISOString(),
+          content: [
+            {
+              type: 'text' as const,
+              text: msg.content,
+              format: 'plain' as const,
+            },
+          ],
+        })
+      }
+
+      setMessages(uiMessages)
+    } catch {
+      // silently fail - history loading is best-effort
+    }
+  }, [sessionId])
+
+  const cancel = useCallback(async () => {
+    if (!activeRunId || !isStreaming) {
+      return
+    }
+
+    try {
+      const connection = getConnection()
+      await connection.cancelRun(activeRunId)
+    } catch (error) {
+      console.error('Failed to cancel run:', error)
+      // Even if cancel fails, we should reset the streaming state
+      setIsStreaming(false)
+      setActiveRunId(null)
+    }
+  }, [activeRunId, isStreaming])
 
   return useMemo(
     () => ({
@@ -212,7 +269,9 @@ export function useChat(options?: {
       connectionStatus,
       error,
       sendMessage,
+      loadHistory,
+      cancel,
     }),
-    [connectionStatus, error, isStreaming, messages, sendMessage, thinkingLines],
+    [connectionStatus, error, isStreaming, messages, sendMessage, thinkingLines, loadHistory, cancel],
   )
 }

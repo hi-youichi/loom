@@ -473,12 +473,10 @@ fn on_event_dup(
                 }
                 eprintln!("--- state after {} ---", node_id);
                 eprintln!("{}", format_dup_state_display(state, display_max_len));
-            } else {
-                if node_id == "plan" {
-                    s.turn += 1;
-                    if !state.core.tool_calls.is_empty() {
-                        log_tools_used(&state.core.tool_calls);
-                    }
+            } else if node_id == "plan" {
+                s.turn += 1;
+                if !state.core.tool_calls.is_empty() {
+                    log_tools_used(&state.core.tool_calls);
                 }
             }
         }
@@ -714,7 +712,7 @@ mod tests {
         TotExtension, TotRunnerConfig, UnderstandOutput,
     };
     use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex};
 
     fn react_state() -> ReActState {
         ReActState {

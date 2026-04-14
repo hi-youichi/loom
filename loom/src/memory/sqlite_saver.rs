@@ -48,21 +48,15 @@ fn i64_to_created_at(v: Option<i64>) -> Option<std::time::SystemTime> {
     v.and_then(|ms| std::time::UNIX_EPOCH.checked_add(std::time::Duration::from_millis(ms as u64)))
 }
 
-fn serialize_parents(
-    parents: &HashMap<String, String>,
-) -> Result<String, CheckpointError> {
+fn serialize_parents(parents: &HashMap<String, String>) -> Result<String, CheckpointError> {
     serde_json::to_string(parents).map_err(|e| CheckpointError::Serialization(e.to_string()))
 }
 
-fn deserialize_parents(
-    parents_json: &str,
-) -> Result<HashMap<String, String>, CheckpointError> {
+fn deserialize_parents(parents_json: &str) -> Result<HashMap<String, String>, CheckpointError> {
     serde_json::from_str(parents_json).map_err(|e| CheckpointError::Serialization(e.to_string()))
 }
 
-fn serialize_children(
-    children: &HashMap<String, Vec<String>>,
-) -> Result<String, CheckpointError> {
+fn serialize_children(children: &HashMap<String, Vec<String>>) -> Result<String, CheckpointError> {
     serde_json::to_string(children).map_err(|e| CheckpointError::Serialization(e.to_string()))
 }
 
@@ -312,7 +306,7 @@ where
             Option<i64>,
             String,
             String,
-            Option<String>,  // metadata_summary
+            Option<String>, // metadata_summary
             String,
             String,
             String,
@@ -628,7 +622,10 @@ mod tests {
         let (ck, meta) = result.unwrap();
         assert_eq!(ck.id, "ck-1");
         assert_eq!(ck.channel_values, serde_json::json!({"key": "value"}));
-        assert_eq!(ck.updated_channels.as_deref(), Some(&["key".to_string()][..]));
+        assert_eq!(
+            ck.updated_channels.as_deref(),
+            Some(&["key".to_string()][..])
+        );
         assert_eq!(
             ck.versions_seen
                 .get("node-a")

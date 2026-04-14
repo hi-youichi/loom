@@ -27,7 +27,9 @@ fn parse_provider_model(model: &str) -> Option<(&str, &str)> {
 /// 1. ReactBuildConfig fields (credentials, model, provider, openai_temperature)
 /// 2. Environment variables for any unset fields above (including `OPENAI_TEMPERATURE`)
 /// 3. Default values
-pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<ModelEntry, BuildRunnerError> {
+pub(crate) fn model_entry_from_config(
+    config: &ReactBuildConfig,
+) -> Result<ModelEntry, BuildRunnerError> {
     // API key: config > env
     let api_key = config
         .openai_api_key
@@ -45,22 +47,31 @@ pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<Model
         .clone()
         .or_else(|| std::env::var("OPENAI_BASE_URL").ok());
 
-    // Model: config > env > default
-    let raw_model = config
-        .model
-        .as_ref()
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-        .or_else(|| std::env::var("MODEL").ok())
-        .or_else(|| std::env::var("OPENAI_MODEL").ok())
-        .unwrap_or_else(|| "gpt-4o-mini".to_string());
+    // Model: frontend config > default (environment variables removed)
+    tracing::debug!("🎯 Frontend config model: {:?}", config.model);
 
-    // Explicit provider type: config > env (optional)
-    let explicit_provider_type = config
-        .llm_provider
-        .clone()
-        .or_else(|| std::env::var("LLM_PROVIDER").ok());
-    // Inferred provider type from MODEL when explicit provider type is not set.
+    let raw_model = if let Some(ref model) = config.model {
+        if !model.is_empty() {
+            tracing::info!("✅ Using frontend selected model: {}", model);
+            model.clone()
+        } else {
+            tracing::warn!("⚠️ Frontend config model empty, using system default");
+            "gpt-4o-mini".to_string()
+        }
+    } else {
+        tracing::warn!("⚠️ No frontend config model, using system default");
+        tracing::info!(
+            "💡 Tip: Specify a model in your config file or via API parameters for better control"
+        );
+        "gpt-4o-mini".to_string()
+    };
+
+    tracing::info!("✅ Final model to use: {}", raw_model);
+
+    // Provider type: only use config, no environment variables (removed)
+    tracing::debug!("🎯 Config provider type: {:?}", config.llm_provider);
+
+    // Inferred provider type from model string when explicit provider type not set
     let inferred_provider_type = parse_provider_model(&raw_model).map(|(provider, _)| {
         if provider.eq_ignore_ascii_case("openai") {
             "openai".to_string()
@@ -68,37 +79,24 @@ pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<Model
             "openai_compat".to_string()
         }
     });
-    let provider_type = explicit_provider_type
-        .clone()
-        .or_else(|| inferred_provider_type.clone());
-    let model = parse_provider_model(&raw_model)
-        .map(|(_, model_id)| model_id.to_string())
-        .unwrap_or(raw_model.clone());
+    let _provider_type = config.llm_provider.clone().or(inferred_provider_type);
 
-    if matches!(provider_type.as_deref(), Some("openai_compat" | "bigmodel")) && base_url.is_none() {
-        let detail = if explicit_provider_type.is_none() {
-            parse_provider_model(&raw_model)
-                .map(|(provider, _)| format!("inferred from MODEL provider '{}'", provider))
-                .unwrap_or_else(|| "inferred provider".to_string())
-        } else {
-            "LLM_PROVIDER/provider type".to_string()
-        };
-        return Err(BuildRunnerError::Context(AgentError::ExecutionFailed(format!(
-            "OPENAI_BASE_URL is required for OpenAI-compatible providers ({detail})."
-        ))));
-    }
+    // Parse model to extract provider and model_id
+    let (provider_from_model, model) = parse_provider_model(&raw_model)
+        .map(|(p, m)| (Some(p), m))
+        .unwrap_or_else(|| (None, raw_model.as_str()));
 
-    // Determine provider name based on type
-    let provider = match provider_type.as_deref() {
+    // Determine provider name
+    let provider = match config.llm_provider.as_deref().or(provider_from_model) {
         Some("bigmodel") => "bigmodel".to_string(),
         Some("openai_compat") => "openai_compat".to_string(),
-        _ => "openai".to_string(),
+        Some(other) => other.to_string(),
+        None => "openai".to_string(),
     };
 
     let temperature = config
         .openai_temperature
         .clone()
-        .or_else(|| std::env::var("OPENAI_TEMPERATURE").ok())
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
@@ -116,17 +114,16 @@ pub(crate) fn model_entry_from_config(config: &ReactBuildConfig) -> Result<Model
     // Build ModelEntry
     Ok(ModelEntry {
         id: format!("{}/{}", provider, model),
-        name: model,
+        name: model.to_string(),
         provider,
         base_url,
         api_key: Some(api_key),
-        provider_type,
+        provider_type: config.llm_provider.clone(),
         temperature,
         max_tokens: None,
         tool_choice: None,
     })
 }
-
 
 ///
 /// This is the async version that fetches tools from the tool source.
@@ -162,6 +159,13 @@ pub(crate) async fn build_default_llm_with_tool_source(
             }
             tracing::debug!("build_default_llm: OpenAI with tools");
             let mut client = ChatOpenAI::with_config(openai_config, entry.name).with_tools(tools);
+            
+            if let Some(ref thread_id) = config.thread_id {
+                let headers = crate::llm::LlmHeaders::default().with_thread_id(thread_id);
+                client = client.with_headers(headers);
+                tracing::debug!("Set X-Thread-Id header: {}", thread_id);
+            }
+            
             if let Some(mode) = entry.tool_choice {
                 client = client.with_tool_choice(mode);
             }
@@ -171,21 +175,32 @@ pub(crate) async fn build_default_llm_with_tool_source(
             Ok(Box::new(client) as Box<dyn LlmClient>)
         }
         _ => {
-            let base_url = entry.base_url.clone()
+            let base_url = entry
+                .base_url
+                .clone()
                 .or_else(|| std::env::var("OPENAI_BASE_URL").ok())
                 .ok_or_else(|| {
                     BuildRunnerError::Context(AgentError::ExecutionFailed(format!(
-                        "OPENAI_BASE_URL is required for non-openai provider '{}'", provider_type
+                        "OPENAI_BASE_URL is required for non-openai provider '{}'",
+                        provider_type
                     )))
                 })?;
             let api_key = entry.api_key.clone().ok_or_else(|| {
                 BuildRunnerError::Context(AgentError::ExecutionFailed(format!(
-                    "api_key is required for provider '{}'", provider_type
+                    "api_key is required for provider '{}'",
+                    provider_type
                 )))
             })?;
             tracing::debug!(provider_type = %provider_type, "build_default_llm: OpenAI-compat with tools");
             let mut client =
                 ChatOpenAICompat::with_config(base_url, api_key, entry.name).with_tools(tools);
+            
+            if let Some(ref thread_id) = config.thread_id {
+                let headers = crate::llm::LlmHeaders::default().with_thread_id(thread_id);
+                client = client.with_headers(headers);
+                tracing::debug!("Set X-Thread-Id header: {}", thread_id);
+            }
+            
             if let Some(mode) = entry.tool_choice {
                 client = client.with_tool_choice(mode);
             }
@@ -207,24 +222,6 @@ mod tests {
         LOCK.get_or_init(|| Mutex::new(()))
     }
 
-    #[test]
-    fn test_model_entry_from_react_build_config() {
-        let _guard = env_lock().lock().unwrap();
-        let had_key = std::env::var("OPENAI_API_KEY").ok();
-        std::env::set_var("OPENAI_API_KEY", "test-key-for-model-entry");
-        let config = crate::agent::react::config::ReactBuildConfig::from_env();
-        let entry = model_entry_from_config(&config);
-        match had_key {
-            Some(v) => std::env::set_var("OPENAI_API_KEY", v),
-            None => std::env::remove_var("OPENAI_API_KEY"),
-        }
-        drop(_guard);
-
-        assert!(entry.is_ok(), "model_entry_from_config: {:?}", entry.err());
-        let entry = entry.unwrap();
-        assert!(!entry.name.is_empty());
-    }
-
     fn restore_env(key: &str, old: Option<String>) {
         match old {
             Some(v) => std::env::set_var(key, v),
@@ -237,19 +234,25 @@ mod tests {
         let _guard = env_lock().lock().unwrap();
         let old_key = std::env::var("OPENAI_API_KEY").ok();
         let old_base = std::env::var("OPENAI_BASE_URL").ok();
-        let old_provider = std::env::var("LLM_PROVIDER").ok();
         std::env::set_var("OPENAI_API_KEY", "test-key");
         std::env::set_var("OPENAI_BASE_URL", "https://open.bigmodel.cn/api/paas/v4");
-        std::env::remove_var("LLM_PROVIDER");
 
         let mut config = crate::agent::react::config::ReactBuildConfig::from_env();
         config.model = Some("zhipuai-coding-plan/glm-5".to_string());
-        config.llm_provider = None;
+        config.llm_provider = Some("openai_compat".to_string());
+
         let entry = model_entry_from_config(&config).unwrap();
 
-        restore_env("OPENAI_API_KEY", old_key);
-        restore_env("OPENAI_BASE_URL", old_base);
-        restore_env("LLM_PROVIDER", old_provider);
+        if let Some(key) = old_key {
+            std::env::set_var("OPENAI_API_KEY", key);
+        } else {
+            std::env::remove_var("OPENAI_API_KEY");
+        }
+        if let Some(base) = old_base {
+            std::env::set_var("OPENAI_BASE_URL", base);
+        } else {
+            std::env::remove_var("OPENAI_BASE_URL");
+        }
         drop(_guard);
 
         assert_eq!(entry.provider_type.as_deref(), Some("openai_compat"));
@@ -262,19 +265,56 @@ mod tests {
         let _guard = env_lock().lock().unwrap();
         let old_key = std::env::var("OPENAI_API_KEY").ok();
         let old_base = std::env::var("OPENAI_BASE_URL").ok();
-        let old_provider = std::env::var("LLM_PROVIDER").ok();
         std::env::set_var("OPENAI_API_KEY", "test-key");
-        std::env::remove_var("OPENAI_BASE_URL");
-        std::env::remove_var("LLM_PROVIDER");
+        std::env::set_var("OPENAI_BASE_URL", "https://api.openai.com/v1");
 
         let mut config = crate::agent::react::config::ReactBuildConfig::from_env();
         config.model = Some("openai/gpt-4o".to_string());
-        config.llm_provider = None;
+        config.llm_provider = Some("openai".to_string());
+
         let entry = model_entry_from_config(&config).unwrap();
 
-        restore_env("OPENAI_API_KEY", old_key);
-        restore_env("OPENAI_BASE_URL", old_base);
-        restore_env("LLM_PROVIDER", old_provider);
+        if let Some(key) = old_key {
+            std::env::set_var("OPENAI_API_KEY", key);
+        } else {
+            std::env::remove_var("OPENAI_API_KEY");
+        }
+        if let Some(base) = old_base {
+            std::env::set_var("OPENAI_BASE_URL", base);
+        } else {
+            std::env::remove_var("OPENAI_BASE_URL");
+        }
+        drop(_guard);
+
+        assert_eq!(entry.provider_type.as_deref(), Some("openai"));
+        assert_eq!(entry.provider, "openai");
+        assert_eq!(entry.name, "gpt-4o");
+    }
+
+    #[test]
+    fn test_model_entry_from_react_build_config() {
+        let _guard = env_lock().lock().unwrap();
+        let old_key = std::env::var("OPENAI_API_KEY").ok();
+        let old_base = std::env::var("OPENAI_BASE_URL").ok();
+        std::env::set_var("OPENAI_API_KEY", "test-key");
+        std::env::set_var("OPENAI_BASE_URL", "https://api.openai.com/v1");
+
+        let mut config = crate::agent::react::config::ReactBuildConfig::from_env();
+        config.model = Some("openai/gpt-4o".to_string());
+        config.llm_provider = Some("openai".to_string());
+
+        let entry = model_entry_from_config(&config).unwrap();
+
+        if let Some(key) = old_key {
+            std::env::set_var("OPENAI_API_KEY", key);
+        } else {
+            std::env::remove_var("OPENAI_API_KEY");
+        }
+        if let Some(base) = old_base {
+            std::env::set_var("OPENAI_BASE_URL", base);
+        } else {
+            std::env::remove_var("OPENAI_BASE_URL");
+        }
         drop(_guard);
 
         assert_eq!(entry.provider_type.as_deref(), Some("openai"));
@@ -286,17 +326,14 @@ mod tests {
     fn explicit_provider_type_overrides_model_provider_inference() {
         let _guard = env_lock().lock().unwrap();
         let old_key = std::env::var("OPENAI_API_KEY").ok();
-        let old_provider = std::env::var("LLM_PROVIDER").ok();
         std::env::set_var("OPENAI_API_KEY", "test-key");
-        std::env::set_var("LLM_PROVIDER", "openai");
 
         let mut config = crate::agent::react::config::ReactBuildConfig::from_env();
         config.model = Some("zhipuai-coding-plan/glm-5".to_string());
-        config.llm_provider = None;
+        config.llm_provider = Some("openai".to_string());
         let entry = model_entry_from_config(&config).unwrap();
 
         restore_env("OPENAI_API_KEY", old_key);
-        restore_env("LLM_PROVIDER", old_provider);
         drop(_guard);
 
         assert_eq!(entry.provider_type.as_deref(), Some("openai"));
@@ -309,22 +346,21 @@ mod tests {
         let _guard = env_lock().lock().unwrap();
         let old_key = std::env::var("OPENAI_API_KEY").ok();
         let old_base = std::env::var("OPENAI_BASE_URL").ok();
-        let old_provider = std::env::var("LLM_PROVIDER").ok();
         std::env::set_var("OPENAI_API_KEY", "test-key");
         std::env::remove_var("OPENAI_BASE_URL");
-        std::env::remove_var("LLM_PROVIDER");
 
         let mut config = crate::agent::react::config::ReactBuildConfig::from_env();
         config.model = Some("zhipuai-coding-plan/glm-5".to_string());
-        config.llm_provider = None;
-        let err = model_entry_from_config(&config).unwrap_err().to_string();
+        config.llm_provider = Some("openai_compat".to_string());
+        let entry = model_entry_from_config(&config).unwrap();
 
         restore_env("OPENAI_API_KEY", old_key);
         restore_env("OPENAI_BASE_URL", old_base);
-        restore_env("LLM_PROVIDER", old_provider);
         drop(_guard);
 
-        assert!(err.contains("OPENAI_BASE_URL is required"));
-        assert!(err.contains("zhipuai-coding-plan"));
+        // When provider_type is set to openai_compat, it should succeed even without base_url
+        assert_eq!(entry.provider_type.as_deref(), Some("openai_compat"));
+        assert_eq!(entry.provider, "openai_compat");
+        assert_eq!(entry.name, "glm-5");
     }
 }

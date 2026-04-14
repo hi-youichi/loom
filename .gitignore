@@ -6,16 +6,13 @@ bot-runtime
 CLAUDE.md
 AGENTS.md
 
-.cargo
 tmp/
-
 idea/
 lancedb_data/
 author-name.txt
 
 # Cargo
 target
-.cargo/
 /target
 **/*.rs.bk
 Cargo.lock
@@ -46,6 +43,10 @@ Thumbs.db
 # CLI output
 out.json
 
+# Test output files
+loom_test_*.txt
+test_output_*.txt
+
 # Debug and test
 log
 logs/
@@ -58,3 +59,4 @@ coverage.lcov
 
 # Telegram bot local config
 telegram-bot.toml
+test-results/

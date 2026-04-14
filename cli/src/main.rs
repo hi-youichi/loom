@@ -26,7 +26,9 @@ use run_flow::{
     build_run_options, output_config, resolve_user_message, run_interactive_mode,
     run_single_turn_mode,
 };
-use subcommands::{handle_mcp_command, handle_models_command, handle_session_command, handle_tool_command};
+use subcommands::{
+    handle_mcp_command, handle_models_command, handle_session_command, handle_tool_command,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

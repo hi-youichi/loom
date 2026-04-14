@@ -147,7 +147,10 @@ mod tests {
             .with_prompt_template("summarize: {messages}".to_string());
         assert!(cfg.enable_completion_check);
         assert_eq!(cfg.max_length, 200);
-        assert_eq!(cfg.prompt_template.as_deref(), Some("summarize: {messages}"));
+        assert_eq!(
+            cfg.prompt_template.as_deref(),
+            Some("summarize: {messages}")
+        );
     }
 
     #[test]

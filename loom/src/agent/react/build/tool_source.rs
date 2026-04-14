@@ -7,6 +7,8 @@ use crate::tool_source::{
     register_file_tools, McpToolSource, MemoryToolsSource, ToolSource, ToolSourceError,
     YamlSpecToolSource,
 };
+#[cfg(windows)]
+use crate::tools::powershell::PowerShellTool;
 #[cfg(not(windows))]
 use crate::tools::BashTool;
 use crate::tools::{
@@ -14,8 +16,6 @@ use crate::tools::{
     ExaCodesearchTool, ExaWebsearchTool, InvokeAgentTool, LspTool, TwitterSearchTool,
     WebFetcherTool,
 };
-#[cfg(windows)]
-use crate::tools::powershell::PowerShellTool;
 
 use env_config::McpServerDef;
 
@@ -239,7 +239,7 @@ pub(crate) async fn build_tool_source(
         };
         aggregate.register_async(Box::new(ps_tool)).await;
     }
-    
+
     if let Some(ref key) = config.twitter_api_key {
         aggregate
             .register_async(Box::new(TwitterSearchTool::new(key.clone())))

@@ -132,12 +132,18 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
                                 "Session Reset",
                                 &format!("🔄 Deleted {} checkpoints.", count),
                             );
-                            ctx.deps.sender.send_formatted(ctx.chat_id(), &message).await?;
+                            ctx.deps
+                                .sender
+                                .send_formatted(ctx.chat_id(), &message)
+                                .await?;
                         }
                         Err(error) => {
                             tracing::error!("Failed to reset session: {}", error);
                             let message = markdown_notice("Reset Failed", &format!("❌ {}", error));
-                            ctx.deps.sender.send_formatted(ctx.chat_id(), &message).await?;
+                            ctx.deps
+                                .sender
+                                .send_formatted(ctx.chat_id(), &message)
+                                .await?;
                         }
                     }
                     return Ok(());

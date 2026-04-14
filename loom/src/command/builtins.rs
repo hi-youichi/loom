@@ -34,9 +34,7 @@ pub fn execute(cmd: Command, state: &mut dyn ResetState) -> CommandResult {
         Command::Compact { .. }
         | Command::Summarize
         | Command::Models { .. }
-        | Command::ModelsUse { .. } => {
-            CommandResult::PassThrough
-        }
+        | Command::ModelsUse { .. } => CommandResult::PassThrough,
     }
 }
 
@@ -59,10 +57,13 @@ where
             let pruned = prune(messages, compaction_config);
             let compacted = compact(&pruned, llm, compaction_config).await?;
 
-            let summary = compacted.first().and_then(|m| match m {
-                Message::System(s) => Some(s.clone()),
-                _ => None,
-            }).unwrap_or_default();
+            let summary = compacted
+                .first()
+                .and_then(|m| match m {
+                    Message::System(s) => Some(s.clone()),
+                    _ => None,
+                })
+                .unwrap_or_default();
 
             let summary = if let Some(ref instr) = instructions {
                 format!("{}\n\nFocus: {}", summary, instr)
@@ -90,9 +91,7 @@ where
 
             Ok(CommandResult::Reply(content))
         }
-        Command::Models { .. } | Command::ModelsUse { .. } => {
-            Ok(CommandResult::PassThrough)
-        }
+        Command::Models { .. } | Command::ModelsUse { .. } => Ok(CommandResult::PassThrough),
     }
 }
 
@@ -136,8 +135,22 @@ mod tests {
             execute(Command::Compact { instructions: None }, &mut DummyState),
             CommandResult::PassThrough
         );
-        assert_eq!(execute(Command::Summarize, &mut DummyState), CommandResult::PassThrough);
-        assert_eq!(execute(Command::Models { query: None }, &mut DummyState), CommandResult::PassThrough);
-        assert_eq!(execute(Command::ModelsUse { model_id: "gpt".into() }, &mut DummyState), CommandResult::PassThrough);
+        assert_eq!(
+            execute(Command::Summarize, &mut DummyState),
+            CommandResult::PassThrough
+        );
+        assert_eq!(
+            execute(Command::Models { query: None }, &mut DummyState),
+            CommandResult::PassThrough
+        );
+        assert_eq!(
+            execute(
+                Command::ModelsUse {
+                    model_id: "gpt".into()
+                },
+                &mut DummyState
+            ),
+            CommandResult::PassThrough
+        );
     }
 }

@@ -82,7 +82,14 @@ fn parse_patch(patch_text: &str) -> Result<Vec<Hunk>, String> {
             i += 1;
             let mut move_path = None;
             if i < lines.len() && lines[i].trim().starts_with("*** Move to:") {
-                move_path = Some(lines[i].trim().strip_prefix("*** Move to:").unwrap().trim().to_string());
+                move_path = Some(
+                    lines[i]
+                        .trim()
+                        .strip_prefix("*** Move to:")
+                        .unwrap()
+                        .trim()
+                        .to_string(),
+                );
                 i += 1;
             }
             let mut chunks = Vec::new();

@@ -317,7 +317,7 @@ pub struct ServerInfo {
 /// Language identifier based on file extension.
 pub fn language_id_from_path(path: &Path) -> Option<String> {
     let ext = path.extension()?.to_str()?;
-    
+
     let language_id = match ext {
         "rs" => "rust",
         "ts" => "typescript",
@@ -339,6 +339,6 @@ pub fn language_id_from_path(path: &Path) -> Option<String> {
         "lua" => "lua",
         _ => ext,
     };
-    
+
     Some(language_id.to_string())
 }

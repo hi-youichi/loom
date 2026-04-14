@@ -11,6 +11,7 @@ jobs:
   build:
     name: Build (release)
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.state == 'open'
     permissions:
       contents: write
     steps:

@@ -314,7 +314,7 @@ impl Tool for ExaWebsearchTool {
             highlights_max_chars: Some(2000),
         };
         let out = exa_search_request(&self.api_key, params).await?;
-        Ok(ToolCallContent::text(format_results(&out, 1500),))
+        Ok(ToolCallContent::text(format_results(&out, 1500)))
     }
 }
 
@@ -388,7 +388,7 @@ impl Tool for ExaCodesearchTool {
             highlights_max_chars: Some(3000),
         };
         let out = exa_search_request(&self.api_key, params).await?;
-        Ok(ToolCallContent::text(format_results(&out, 2000),))
+        Ok(ToolCallContent::text(format_results(&out, 2000)))
     }
 }
 

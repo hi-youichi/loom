@@ -6,22 +6,15 @@
 //! one code path.
 
 use async_openai::types::chat::{
-    ChatCompletionRequestMessageContentPartImage, ChatCompletionRequestMessageContentPartText,
     ChatCompletionMessageToolCall, ChatCompletionMessageToolCalls,
     ChatCompletionRequestAssistantMessage, ChatCompletionRequestAssistantMessageContent,
-    ChatCompletionRequestMessage, ChatCompletionRequestSystemMessage,
+    ChatCompletionRequestMessage, ChatCompletionRequestMessageContentPartImage,
+    ChatCompletionRequestMessageContentPartText, ChatCompletionRequestSystemMessage,
     ChatCompletionRequestToolMessage, ChatCompletionRequestToolMessageContent,
     ChatCompletionRequestUserMessage, ChatCompletionRequestUserMessageContent,
-    ChatCompletionRequestUserMessageContentPart,
-    ChatCompletionTool,
-    ChatCompletionToolChoiceOption,
-    ChatCompletionTools,
-    CreateChatCompletionRequestArgs,
-    FunctionCall,
-    FunctionObject,
-    ImageUrl,
-    ImageDetail,
-    ToolChoiceOptions,
+    ChatCompletionRequestUserMessageContentPart, ChatCompletionTool,
+    ChatCompletionToolChoiceOption, ChatCompletionTools, CreateChatCompletionRequestArgs,
+    FunctionCall, FunctionObject, ImageDetail, ImageUrl, ToolChoiceOptions,
 };
 
 use crate::error::AgentError;

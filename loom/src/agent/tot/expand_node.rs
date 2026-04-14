@@ -106,7 +106,11 @@ impl ThinkExpandNode {
             if !upper.contains("THOUGHT:") || !upper.contains("TOOL_CALLS:") {
                 continue;
             }
-            let thought_rest = line.split_once("THOUGHT:").map(|x| x.1).unwrap_or("").trim();
+            let thought_rest = line
+                .split_once("THOUGHT:")
+                .map(|x| x.1)
+                .unwrap_or("")
+                .trim();
             let parts: Vec<&str> = thought_rest
                 .splitn(2, "TOOL_CALLS:")
                 .map(str::trim)

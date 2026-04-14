@@ -1,7 +1,7 @@
 //! WebSocket request types (client → server).
 
-use serde::{Deserialize, Serialize};
 use crate::message::UserContent;
+use serde::{Deserialize, Serialize};
 
 /// Agent type for run requests.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -20,6 +20,15 @@ pub enum AgentIdentifier {
     Type(AgentType),
     /// Custom agent profile name (dev, assistant, ask, etc.)
     Name(String),
+}
+
+impl std::fmt::Display for AgentIdentifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AgentIdentifier::Type(t) => write!(f, "{:?}", t),
+            AgentIdentifier::Name(n) => write!(f, "{}", n),
+        }
+    }
 }
 
 /// Run request: execute one Agent run (streaming events + final RunEnd).
@@ -162,6 +171,13 @@ pub struct AgentListRequest {
     pub thread_id: Option<String>,
 }
 
+/// Cancel run request: cancel a running agent.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CancelRunRequest {
+    pub id: String,
+    pub run_id: String,
+}
+
 /// Client-to-server request envelope.
 ///
 /// Each variant maps to a JSON object with `"type": "<variant_name>"`.
@@ -181,6 +197,7 @@ pub enum ClientRequest {
     Ping(PingRequest),
     ListModels(ListModelsRequest),
     SetModel(SetModelRequest),
+    CancelRun(CancelRunRequest),
 }
 // -----------------------------------------------------------------------------
 // Workspace requests

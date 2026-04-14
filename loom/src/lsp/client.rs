@@ -16,9 +16,8 @@ use std::{
 };
 
 use lsp_types::{
-    CompletionItem, CompletionParams, Diagnostic, DidOpenTextDocumentParams,
-    InitializeParams, InitializeResult, TextDocumentIdentifier, TextDocumentItem,
-    TextDocumentPositionParams, Url,
+    CompletionItem, CompletionParams, Diagnostic, DidOpenTextDocumentParams, InitializeParams,
+    InitializeResult, TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams, Url,
 };
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{json, Value};
@@ -39,27 +38,25 @@ pub type LspResult<T> = Result<T, LspClientError>;
 pub enum LspClientError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
+
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
-    
+
     #[error("Protocol error: {0}")]
     Protocol(String),
-    
+
     #[error("Server not initialized")]
     NotInitialized,
-    
+
     #[error("Server crashed: {0}")]
     ServerCrashed(String),
-    
+
     #[error("Request timeout")]
     Timeout,
-    
+
     #[error("Request cancelled")]
     Cancelled,
 }
-
-
 
 /// Unique request ID generator
 static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
@@ -86,13 +83,9 @@ pub struct LspClient {
 
 impl LspClient {
     /// Start a new LSP client with the given command
-    pub async fn start(
-        command: &str,
-        args: &[String],
-        root_uri: Option<Url>,
-    ) -> LspResult<Self> {
+    pub async fn start(command: &str, args: &[String], root_uri: Option<Url>) -> LspResult<Self> {
         info!("Starting LSP server: {} {:?}", command, args);
-        
+
         let mut process = Command::new(command)
             .args(args)
             .stdin(std::process::Stdio::piped())
@@ -100,15 +93,17 @@ impl LspClient {
             .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| LspClientError::Protocol(format!("Failed to start {}: {}", command, e)))?;
-        
-        let stdin = process.stdin.take().ok_or_else(|| {
-            LspClientError::Protocol("Failed to get stdin".to_string())
-        })?;
-        
-        let stdout = process.stdout.take().ok_or_else(|| {
-            LspClientError::Protocol("Failed to get stdout".to_string())
-        })?;
-        
+
+        let stdin = process
+            .stdin
+            .take()
+            .ok_or_else(|| LspClientError::Protocol("Failed to get stdin".to_string()))?;
+
+        let stdout = process
+            .stdout
+            .take()
+            .ok_or_else(|| LspClientError::Protocol("Failed to get stdout".to_string()))?;
+
         let pending_requests = Arc::new(RwLock::new(HashMap::new()));
         let capabilities = Arc::new(RwLock::new(None));
         let diagnostics_cache = Arc::new(DiagnosticCache::new());
@@ -158,7 +153,7 @@ impl LspClient {
             diagnostics_cache,
         })
     }
-    
+
     /// Initialize the language server
     pub async fn initialize(&mut self) -> LspResult<InitializeResult> {
         let params = InitializeParams {
@@ -166,19 +161,19 @@ impl LspClient {
             root_uri: self.root_uri.clone(),
             ..Default::default()
         };
-        
+
         let result: InitializeResult = self.request("initialize", params).await?;
-        
+
         // Store capabilities
         *self.capabilities.write().await = Some(result.clone());
-        
+
         // Send initialized notification
         self.notify("initialized", json!({})).await?;
-        
+
         info!("LSP server initialized successfully");
         Ok(result)
     }
-    
+
     /// Open a text document in the language server
     pub async fn open_document(
         &mut self,
@@ -194,10 +189,10 @@ impl LspClient {
                 text: text.to_string(),
             },
         };
-        
+
         self.notify("textDocument/didOpen", params).await
     }
-    
+
     /// Request code completion
     pub async fn completion(
         &mut self,
@@ -214,9 +209,9 @@ impl LspClient {
             work_done_progress_params: Default::default(),
             partial_result_params: Default::default(),
         };
-        
+
         let result: Value = self.request("textDocument/completion", params).await?;
-        
+
         // Handle both CompletionList and Vec<CompletionItem>
         let items: Vec<CompletionItem> = if result.is_array() {
             serde_json::from_value(result)?
@@ -225,15 +220,19 @@ impl LspClient {
         } else {
             Vec::new()
         };
-        
+
         Ok(items)
     }
-    
+
     /// Get diagnostics for a document
     pub async fn diagnostics(&self, uri: &Url) -> LspResult<Vec<Diagnostic>> {
-        Ok(self.diagnostics_cache.get_latest(uri).await.unwrap_or_default())
+        Ok(self
+            .diagnostics_cache
+            .get_latest(uri)
+            .await
+            .unwrap_or_default())
     }
-    
+
     /// Send a request and wait for response
     async fn request<T: Serialize, R: DeserializeOwned>(
         &mut self,
@@ -241,60 +240,57 @@ impl LspClient {
         params: T,
     ) -> LspResult<R> {
         let id = REQUEST_ID.fetch_add(1, Ordering::SeqCst);
-        
+
         let (tx, rx) = oneshot::channel();
         self.pending_requests.write().await.insert(id, tx);
-        
+
         let request = json!({
             "jsonrpc": "2.0",
             "id": id,
             "method": method,
             "params": params
         });
-        
+
         self.send_message(&request).await?;
-        
+
         // Wait for response with timeout
-        let response = tokio::time::timeout(
-            Duration::from_secs(30),
-            rx
-        ).await
+        let response = tokio::time::timeout(Duration::from_secs(30), rx)
+            .await
             .map_err(|_| LspClientError::Timeout)?
             .map_err(|_| LspClientError::Cancelled)?
             .map_err(|e| LspClientError::Protocol(format!("Request {} failed: {}", method, e)))?;
-        
+
         let result: R = serde_json::from_value(response)?;
         Ok(result)
     }
-    
+
     /// Send a notification (no response expected)
-    async fn notify<T: Serialize>(
-        &mut self,
-        method: &str,
-        params: T,
-    ) -> LspResult<()> {
+    async fn notify<T: Serialize>(&mut self, method: &str, params: T) -> LspResult<()> {
         let notification = json!({
             "jsonrpc": "2.0",
             "method": method,
             "params": params
         });
-        
+
         self.send_message(&notification).await
     }
-    
+
     /// Send a JSON-RPC message
     async fn send_message(&mut self, message: &Value) -> LspResult<()> {
         let content = serde_json::to_string(message)?;
         let header = format!("Content-Length: {}\r\n\r\n", content.len());
-        
+
         self.stdin.write_all(header.as_bytes()).await?;
         self.stdin.write_all(content.as_bytes()).await?;
         self.stdin.flush().await?;
-        
-        debug!("Sent LSP message: {}", message["method"].as_str().unwrap_or("unknown"));
+
+        debug!(
+            "Sent LSP message: {}",
+            message["method"].as_str().unwrap_or("unknown")
+        );
         Ok(())
     }
-    
+
     /// Handle incoming response from server
     async fn handle_response(
         line: &str,
@@ -332,9 +328,13 @@ impl LspClient {
                     if let Some(params) = message.get("params") {
                         if let Some(uri_str) = params.get("uri").and_then(|u| u.as_str()) {
                             if let Ok(uri) = Url::parse(uri_str) {
-                                let diags: Vec<Diagnostic> =
-                                    params.get("diagnostics").and_then(|d| serde_json::from_value(d.clone()).ok()).unwrap_or_default();
-                                let version = params.get("version").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                                let diags: Vec<Diagnostic> = params
+                                    .get("diagnostics")
+                                    .and_then(|d| serde_json::from_value(d.clone()).ok())
+                                    .unwrap_or_default();
+                                let version =
+                                    params.get("version").and_then(|v| v.as_i64()).unwrap_or(0)
+                                        as i32;
                                 diagnostics_cache.put(uri, version, diags).await;
                             }
                         }
@@ -348,32 +348,30 @@ impl LspClient {
 
         Ok(())
     }
-    
+
     /// Shutdown the language server
     pub async fn shutdown(&mut self) -> LspResult<()> {
         // Send shutdown request
         let _: Value = self.request("shutdown", json!({})).await?;
-        
+
         // Send exit notification
         self.notify("exit", json!({})).await?;
-        
+
         // Signal background task to stop
         let _ = self.shutdown_tx.send(()).await;
-        
+
         // Wait for process to exit
         if let Some(mut process) = self.process.take() {
-            tokio::time::timeout(
-                Duration::from_secs(5),
-                process.wait()
-            ).await
+            tokio::time::timeout(Duration::from_secs(5), process.wait())
+                .await
                 .map_err(|_| LspClientError::Timeout)?
                 .map_err(|e| LspClientError::Protocol(format!("Process wait failed: {}", e)))?;
         }
-        
+
         info!("LSP server shut down successfully");
         Ok(())
     }
-    
+
     /// Go to definition
     pub async fn goto_definition(
         &mut self,
@@ -385,9 +383,9 @@ impl LspClient {
             text_document: lsp_types::TextDocumentIdentifier { uri: uri.clone() },
             position: lsp_types::Position { line, character },
         };
-        
+
         let result: Value = self.request("textDocument/definition", params).await?;
-        
+
         // Handle both Location and LocationLink
         let locations: Vec<lsp_types::Location> = if result.is_array() {
             serde_json::from_value(result)?
@@ -396,10 +394,10 @@ impl LspClient {
         } else {
             Vec::new()
         };
-        
+
         Ok(locations)
     }
-    
+
     /// Find references
     pub async fn find_references(
         &mut self,
@@ -415,7 +413,10 @@ impl LspClient {
 
         let max_retries = 3;
         for attempt in 0..=max_retries {
-            match self.request::<_, Value>("textDocument/references", &params).await {
+            match self
+                .request::<_, Value>("textDocument/references", &params)
+                .await
+            {
                 Ok(result) => {
                     let locations: Vec<lsp_types::Location> = serde_json::from_value(result)?;
                     return Ok(locations);
@@ -424,7 +425,11 @@ impl LspClient {
                     if msg.contains("content modified") || msg.contains("ContentModified") =>
                 {
                     if attempt < max_retries {
-                        debug!("find_references: content modified, retrying ({}/{})", attempt + 1, max_retries);
+                        debug!(
+                            "find_references: content modified, retrying ({}/{})",
+                            attempt + 1,
+                            max_retries
+                        );
                         tokio::time::sleep(Duration::from_millis(200 * (attempt as u64 + 1))).await;
                         continue;
                     }
@@ -435,7 +440,7 @@ impl LspClient {
         }
         Ok(Vec::new())
     }
-    
+
     /// Get hover information
     pub async fn hover(
         &mut self,
@@ -447,9 +452,9 @@ impl LspClient {
             text_document: lsp_types::TextDocumentIdentifier { uri: uri.clone() },
             position: lsp_types::Position { line, character },
         };
-        
+
         let result: Value = self.request("textDocument/hover", params).await?;
-        
+
         if result.is_null() {
             Ok(None)
         } else {
@@ -457,7 +462,7 @@ impl LspClient {
             Ok(Some(hover))
         }
     }
-    
+
     /// Get document symbols
     pub async fn document_symbols(
         &mut self,
@@ -476,13 +481,13 @@ impl LspClient {
         let response: lsp_types::DocumentSymbolResponse = serde_json::from_value(result)?;
         Ok(Some(response))
     }
-    
+
     /// Add workspace folder
     pub async fn add_workspace(&mut self, _uri: &Url) -> LspResult<()> {
         // TODO: Implement workspace folder support
         Ok(())
     }
-    
+
     /// Remove workspace folder
     pub async fn remove_workspace(&mut self, _uri: &Url) -> LspResult<()> {
         // TODO: Implement workspace folder support
@@ -514,12 +519,12 @@ async fn read_lsp_message<R: AsyncBufReadExt + Unpin>(reader: &mut R) -> Option<
             }
         }
     }
-    
+
     let length = content_length?;
     if length == 0 {
         return Some(String::new());
     }
-    
+
     let mut body = vec![0u8; length];
     match reader.read_exact(&mut body).await {
         Ok(_n) => {

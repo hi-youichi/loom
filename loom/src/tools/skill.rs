@@ -97,7 +97,7 @@ impl Tool for SkillTool {
                         format!("- {}: {}", e.metadata.name, desc)
                     })
                     .collect();
-                return Ok(ToolCallContent::text(lines.join("\n"),));
+                return Ok(ToolCallContent::text(lines.join("\n")));
             }
             let content = registry
                 .load_skill(name)

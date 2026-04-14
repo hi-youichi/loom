@@ -30,10 +30,10 @@ use crate::cli_run::ActiveOperationKind;
 use crate::error::AgentError;
 use crate::graph::{run_cancellable, GraphInterrupt, Interrupt, Next, Node, RunContext};
 use crate::helve::{tools_requiring_approval, ApprovalPolicy, APPROVAL_REQUIRED_EVENT_TYPE};
+use crate::memory::uuid6;
 use crate::state::tool_output_normalizer::{
     normalize_tool_output, NormalizationConfig, ToolOutputHint,
 };
-use crate::memory::uuid6;
 use crate::state::{ReActState, ToolCall, ToolResult};
 use crate::stream::{StreamEvent, StreamMode, ToolStreamWriter};
 use crate::tool_source::{ToolCallContext, ToolSource, ToolSourceError};
@@ -109,15 +109,13 @@ pub type ErrorHandlerFn =
     Arc<dyn Fn(&ToolSourceError, &str, &Value) -> String + Send + Sync + 'static>;
 
 /// Configuration for how ActNode handles tool errors.
-#[derive(Clone)]
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub enum HandleToolErrors {
     #[default]
     Never,
     Always(Option<String>),
     Custom(ErrorHandlerFn),
 }
-
 
 impl std::fmt::Debug for HandleToolErrors {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -536,9 +534,9 @@ impl Node<ReActState> for ActNode {
 
             debug!(tool = %tc.name, args = ?args, "Calling tool");
 
-            let tool_call = self
-                .tools
-                .call_tool_with_context(&tc.name, args.clone(), Some(&tool_ctx));
+            let tool_call =
+                self.tools
+                    .call_tool_with_context(&tc.name, args.clone(), Some(&tool_ctx));
             let result = match run_cancellable(
                 tool_call,
                 run_ctx.cancellation.as_ref(),
@@ -843,9 +841,6 @@ mod tests {
         }];
         let mut results = vec![ToolResult::simple(None, None, "y".into(), false)];
         backfill_tool_result_call_ids(&tcs, &mut results);
-        assert!(results[0]
-            .call_id
-            .as_deref()
-            .is_some_and(|s| !s.is_empty()));
+        assert!(results[0].call_id.as_deref().is_some_and(|s| !s.is_empty()));
     }
 }

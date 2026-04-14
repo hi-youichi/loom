@@ -146,28 +146,28 @@ pub fn create_mcp_config_if_missing(path: &Path) -> Result<(), McpConfigError> {
     if path.exists() {
         return Ok(());
     }
-    
+
     // Create parent directories if needed
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    
+
     let default_config = McpConfigFile {
         mcp_servers: HashMap::new(),
     };
-    
+
     save_mcp_config(path, &default_config)
 }
 
 /// Saves MCP config to the specified path with atomic write operation.
 pub fn save_mcp_config(path: &Path, config: &McpConfigFile) -> Result<(), McpConfigError> {
     let content = serde_json::to_string_pretty(config)?;
-    
+
     // Atomic write: write to temp file first, then rename
     let tmp_path = path.with_extension("json.tmp");
     std::fs::write(&tmp_path, &content)?;
     std::fs::rename(&tmp_path, path)?;
-    
+
     Ok(())
 }
 
@@ -189,14 +189,14 @@ pub fn upsert_mcp_server(
             mcp_servers: HashMap::new(),
         }
     };
-    
+
     let is_new = !config.mcp_servers.contains_key(name);
-    
+
     let mut updated_config = config;
     updated_config.mcp_servers.insert(name.to_string(), entry);
-    
+
     save_mcp_config(path, &updated_config)?;
-    
+
     Ok(is_new)
 }
 
@@ -205,16 +205,16 @@ pub fn remove_mcp_server(path: &Path, name: &str) -> Result<bool, McpConfigError
     if !path.exists() {
         return Ok(false);
     }
-    
+
     let content = std::fs::read_to_string(path)?;
     let mut config: McpConfigFile = serde_json::from_str(&content)?;
-    
+
     let existed = config.mcp_servers.remove(name).is_some();
-    
+
     if existed {
         save_mcp_config(path, &config)?;
     }
-    
+
     Ok(existed)
 }
 

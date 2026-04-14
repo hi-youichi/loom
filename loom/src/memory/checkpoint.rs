@@ -413,8 +413,11 @@ impl<S: Clone> Checkpoint<S> {
     /// The resulting checkpoint records the provided parent namespace/id in its
     /// lineage metadata so replay tooling can navigate the fork relationship.
     pub fn fork_from(&self, parent_namespace: String, parent_checkpoint_id: String) -> Self {
-        let mut forked =
-            Checkpoint::from_state(self.channel_values.clone(), CheckpointSource::Fork, self.metadata.step);
+        let mut forked = Checkpoint::from_state(
+            self.channel_values.clone(),
+            CheckpointSource::Fork,
+            self.metadata.step,
+        );
         forked.channel_versions = self.channel_versions.clone();
         forked.versions_seen = self.versions_seen.clone();
         forked.updated_channels = self.updated_channels.clone();

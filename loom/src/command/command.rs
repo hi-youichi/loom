@@ -3,16 +3,10 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     ResetContext,
-    Compact {
-        instructions: Option<String>,
-    },
+    Compact { instructions: Option<String> },
     Summarize,
-    Models {
-        query: Option<String>,
-    },
-    ModelsUse {
-        model_id: String,
-    },
+    Models { query: Option<String> },
+    ModelsUse { model_id: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

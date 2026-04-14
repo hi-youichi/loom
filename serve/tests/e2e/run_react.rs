@@ -2,8 +2,8 @@
 
 use super::common;
 use futures_util::{SinkExt, StreamExt};
-use loom::{AgentType, ClientRequest, ProtocolEvent, RunRequest, ServerResponse};
 use loom::protocol::AgentIdentifier;
+use loom::{AgentType, ClientRequest, ProtocolEvent, RunRequest, ServerResponse};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::timeout;

@@ -266,7 +266,10 @@ pub fn markdown_to_telegram_v2(markdown: &str) -> String {
             continue;
         }
 
-        let reserved = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!'];
+        let reserved = [
+            '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.',
+            '!',
+        ];
         if reserved.contains(&chars[i]) {
             result.push('\\');
         }
@@ -285,7 +288,10 @@ mod tests {
     fn escapes_markdown_v2_reserved_chars() {
         let input = "_*[]()~`>#+-=|{}.!";
         let escaped = escape_markdown_v2(input);
-        assert_eq!(escaped, "\\_\\*\\[\\]\\(\\)\\~\\`\\>\\#\\+\\-\\=\\|\\{\\}\\.\\!");
+        assert_eq!(
+            escaped,
+            "\\_\\*\\[\\]\\(\\)\\~\\`\\>\\#\\+\\-\\=\\|\\{\\}\\.\\!"
+        );
     }
 
     #[test]
@@ -354,7 +360,10 @@ mod tests {
 
     #[test]
     fn reserved_chars_escaped() {
-        assert_eq!(markdown_to_telegram_v2("price is $100."), "price is $100\\.");
+        assert_eq!(
+            markdown_to_telegram_v2("price is $100."),
+            "price is $100\\."
+        );
     }
 
     #[test]
@@ -392,7 +401,10 @@ mod tests {
 
     #[test]
     fn bold_with_special_chars() {
-        assert_eq!(markdown_to_telegram_v2("**price is $10.**"), "*price is $10\\.*");
+        assert_eq!(
+            markdown_to_telegram_v2("**price is $10.**"),
+            "*price is $10\\.*"
+        );
     }
 
     #[test]

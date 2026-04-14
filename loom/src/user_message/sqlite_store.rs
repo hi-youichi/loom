@@ -192,7 +192,6 @@ impl UserMessageStore for SqliteUserMessageStore {
             "loaded messages from sqlite store"
         );
         Ok(messages)
-
     }
 }
 

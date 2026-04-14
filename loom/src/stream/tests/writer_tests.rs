@@ -16,13 +16,17 @@ mod tests {
         // Without Custom mode - should not send
         let modes_without_custom = HashSet::from_iter([StreamMode::Values]);
         let writer = StreamWriter::new(Some(tx.clone()), modes_without_custom);
-        let sent = writer.emit_custom(serde_json::json!({"test": "value"})).await;
+        let sent = writer
+            .emit_custom(serde_json::json!({"test": "value"}))
+            .await;
         assert!(!sent, "should not send when Custom mode is disabled");
 
         // With Custom mode - should send
         let modes_with_custom = HashSet::from_iter([StreamMode::Custom]);
         let writer = StreamWriter::new(Some(tx.clone()), modes_with_custom);
-        let sent = writer.emit_custom(serde_json::json!({"test": "value"})).await;
+        let sent = writer
+            .emit_custom(serde_json::json!({"test": "value"}))
+            .await;
         assert!(sent, "should send when Custom mode is enabled");
 
         // Verify the event was received
@@ -105,10 +109,15 @@ mod tests {
     /// **Scenario**: StreamWriter emits nothing when no sender is available.
     #[tokio::test]
     async fn stream_writer_no_sender_returns_false() {
-        let modes = HashSet::from_iter([StreamMode::Custom, StreamMode::Messages, StreamMode::Values]);
+        let modes =
+            HashSet::from_iter([StreamMode::Custom, StreamMode::Messages, StreamMode::Values]);
         let writer = StreamWriter::<DummyState>::new(None, modes);
 
-        assert!(!writer.emit_custom(serde_json::json!({"test": "value"})).await);
+        assert!(
+            !writer
+                .emit_custom(serde_json::json!({"test": "value"}))
+                .await
+        );
         assert!(!writer.emit_message("hello", "node1").await);
         assert!(!writer.emit_values(DummyState(1)).await);
     }
@@ -244,8 +253,12 @@ mod tests {
         let writer2 = writer1.clone();
 
         // Both writers should work
-        let sent1 = writer1.emit_custom(serde_json::json!({"from": "writer1"})).await;
-        let sent2 = writer2.emit_custom(serde_json::json!({"from": "writer2"})).await;
+        let sent1 = writer1
+            .emit_custom(serde_json::json!({"from": "writer1"}))
+            .await;
+        let sent2 = writer2
+            .emit_custom(serde_json::json!({"from": "writer2"}))
+            .await;
 
         assert!(sent1, "writer1 should send");
         assert!(sent2, "writer2 should send");
@@ -253,11 +266,17 @@ mod tests {
         // Verify we received both messages
         let event1 = rx.recv().await.expect("should receive first event");
         let event2 = rx.recv().await.expect("should receive second event");
-        
+
         match (event1, event2) {
             (StreamEvent::Custom(v1), StreamEvent::Custom(v2)) => {
-                assert!(v1 == serde_json::json!({"from": "writer1"}) || v1 == serde_json::json!({"from": "writer2"}));
-                assert!(v2 == serde_json::json!({"from": "writer1"}) || v2 == serde_json::json!({"from": "writer2"}));
+                assert!(
+                    v1 == serde_json::json!({"from": "writer1"})
+                        || v1 == serde_json::json!({"from": "writer2"})
+                );
+                assert!(
+                    v2 == serde_json::json!({"from": "writer1"})
+                        || v2 == serde_json::json!({"from": "writer2"})
+                );
             }
             _ => panic!("expected Custom events"),
         }
@@ -284,7 +303,11 @@ mod tests {
         let modes_without_tools = HashSet::from_iter([StreamMode::Custom]);
         let writer = StreamWriter::new(Some(tx.clone()), modes_without_tools);
         let sent = writer
-            .emit_tool_call(Some("call1".to_string()), "test_tool".to_string(), serde_json::json!({"arg": "value"}))
+            .emit_tool_call(
+                Some("call1".to_string()),
+                "test_tool".to_string(),
+                serde_json::json!({"arg": "value"}),
+            )
             .await;
         assert!(!sent, "should not send when Tools mode is disabled");
 
@@ -292,7 +315,11 @@ mod tests {
         let modes_with_tools = HashSet::from_iter([StreamMode::Tools]);
         let writer = StreamWriter::new(Some(tx.clone()), modes_with_tools);
         let sent = writer
-            .emit_tool_call(Some("call1".to_string()), "test_tool".to_string(), serde_json::json!({"arg": "value"}))
+            .emit_tool_call(
+                Some("call1".to_string()),
+                "test_tool".to_string(),
+                serde_json::json!({"arg": "value"}),
+            )
             .await;
         assert!(sent, "should send when Tools mode is enabled");
 
@@ -320,7 +347,9 @@ mod tests {
         // With Debug mode - should send (debug includes tools)
         let modes_with_debug = HashSet::from_iter([StreamMode::Debug]);
         let writer = StreamWriter::new(Some(tx.clone()), modes_with_debug);
-        let sent = writer.emit_tool_start(Some("call1".to_string()), "test_tool".to_string()).await;
+        let sent = writer
+            .emit_tool_start(Some("call1".to_string()), "test_tool".to_string())
+            .await;
         assert!(sent, "should send when Debug mode is enabled");
 
         // Verify the event was received

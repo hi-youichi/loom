@@ -1,5 +1,5 @@
 export { useWebSocket } from './useWebSocket'
-export { useThread } from './useThread'
+export { useSessionId } from './useSessionId'
 export { useMessages } from './useMessages'
 export { useChat } from './useChat'
 export { useAgents } from './useAgents'

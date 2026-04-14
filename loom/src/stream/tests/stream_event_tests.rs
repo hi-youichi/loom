@@ -52,7 +52,8 @@ mod tests {
         }
 
         // Test Custom variant
-        let event: StreamEvent<DummyState> = StreamEvent::Custom(serde_json::json!({"test": "value"}));
+        let event: StreamEvent<DummyState> =
+            StreamEvent::Custom(serde_json::json!({"test": "value"}));
         match event {
             StreamEvent::Custom(value) => {
                 assert_eq!(value, serde_json::json!({"test": "value"}));

@@ -26,7 +26,9 @@ where
         StreamEvent::TaskStart { node_id, .. } => ProtocolEvent::NodeEnter {
             id: node_id.clone(),
         },
-        StreamEvent::TaskEnd { node_id, result, .. } => {
+        StreamEvent::TaskEnd {
+            node_id, result, ..
+        } => {
             let result_json = match result {
                 Ok(()) => json!("Ok"),
                 Err(e) => json!({ "Err": e }),

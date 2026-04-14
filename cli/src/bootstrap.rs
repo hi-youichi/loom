@@ -6,6 +6,9 @@ use crate::args::Args;
 use crate::logging;
 
 pub(crate) fn print_config_report() {
+    if std::env::var("LOOM_TEST_MODE").is_ok() {
+        return; 
+    }
     if let Ok(report) = config::load_and_apply_with_report("loom", None::<&std::path::Path>) {
         if let Some(p) = &report.dotenv_path {
             let full = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());

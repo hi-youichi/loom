@@ -50,9 +50,7 @@ mod tests {
     fn parse_compact_with_and_without_instructions() {
         assert_eq!(
             parse("/compact"),
-            Some(Command::Compact {
-                instructions: None
-            })
+            Some(Command::Compact { instructions: None })
         );
         assert_eq!(
             parse("/compact focus on auth module"),

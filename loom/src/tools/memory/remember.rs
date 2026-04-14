@@ -123,6 +123,6 @@ impl Tool for RememberTool {
                 crate::memory::StoreError::EmbeddingError(s) => ToolSourceError::Transport(s),
             })?;
 
-        Ok(ToolCallContent::text("ok".to_string(),))
+        Ok(ToolCallContent::text("ok".to_string()))
     }
 }

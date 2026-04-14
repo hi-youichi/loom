@@ -76,28 +76,27 @@ export function WorkspaceSelector({
   }, [handleCreate])
 
   return (
-    <div ref={dropdownRef} className="relative w-full">
+    <div className="relative" ref={dropdownRef}>
       <button
-        type="button"
-        onClick={() => { setOpen(prev => !prev); setCreating(false); onRefresh() }}
-        className={cn(
-          'flex items-center gap-2 w-full px-3 py-2.5 text-sm font-medium rounded-none',
-          'border-b border-border hover:bg-accent/30 transition-colors',
-          activeWorkspaceId ? 'text-foreground' : 'text-muted-foreground',
-        )}
+        data-testid="workspace-selector"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md hover:bg-accent transition-colors"
+        disabled={loading}
       >
         <span className={cn(
           'size-2 shrink-0 rounded-full',
           activeWorkspaceId ? 'bg-emerald-500' : 'bg-muted-foreground/30',
         )} />
-        <span className="truncate flex-1 text-left">{label}</span>
+        <span className="truncate flex-1 text-left" data-testid="selected-workspace-name">{label}</span>
         <ChevronDown className={cn('size-3.5 shrink-0 transition-transform', open && 'rotate-180')} />
       </button>
 
       {open && (
-        <div className={cn(
-          'absolute top-full left-0 right-0 z-50',
-          'border-b border-border bg-background shadow-lg',
+        <div
+          data-testid="workspace-selector-dropdown"
+          className={cn(
+            'absolute top-full left-0 right-0 z-50',
+            'border-b border-border bg-background shadow-lg',
         )}>
           <div className="px-3 py-2 border-b border-border/60">
             <div className="flex items-center justify-between">
@@ -122,6 +121,7 @@ export function WorkspaceSelector({
               <button
                 key={ws.id}
                 type="button"
+                data-testid={`workspace-item-${ws.id}`}
                 onClick={() => handleSelect(ws.id)}
                 className={cn(
                   'w-full text-left px-3 py-2 text-sm flex items-center gap-2',
@@ -147,6 +147,7 @@ export function WorkspaceSelector({
                   value={newName}
                   onChange={e => setNewName(e.target.value)}
                   onKeyDown={handleKeyDown}
+                  data-testid="workspace-create-input"
                   placeholder="工作空间名称"
                   className={cn(
                     'flex-1 min-w-0 px-2 py-1 text-sm rounded-md',
@@ -169,6 +170,7 @@ export function WorkspaceSelector({
             {!creating ? (
               <button
                 type="button"
+                data-testid="workspace-create-btn"
                 onClick={() => setCreating(true)}
                 className={cn(
                   'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm',
@@ -181,6 +183,7 @@ export function WorkspaceSelector({
             ) : (
               <button
                 type="button"
+                data-testid="workspace-create-confirm"
                 onClick={handleCreate}
                 disabled={loading}
                 className={cn(
