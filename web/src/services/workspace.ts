@@ -28,7 +28,7 @@ export async function createWorkspace(name?: string): Promise<string> {
     type: 'workspace_create',
     ...(name ? { name } : {}),
   })
-  return resp.workspace.id
+  return resp.workspace_id
 }
 
 export async function listSessions(workspaceId: string): Promise<SessionInWorkspace[]> {

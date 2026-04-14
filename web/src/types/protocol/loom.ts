@@ -229,7 +229,7 @@ export type WorkspaceListResponse = {
 export type WorkspaceCreateResponse = {
   type: 'workspace_create'
   id: string
-  workspace: WorkspaceMeta
+  workspace_id: string
 }
 
 export type WorkspaceSessionListResponse = {

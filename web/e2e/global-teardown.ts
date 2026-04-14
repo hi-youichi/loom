@@ -23,6 +23,9 @@ export default async function teardown(config: any) {
   if (global.__workspaceDB) {
     cleanupTempFile(global.__workspaceDB)
   }
+  if (global.__loomHome) {
+    cleanupTempFile(global.__loomHome)
+  }
   
   console.log('✅ Global teardown completed')
 }

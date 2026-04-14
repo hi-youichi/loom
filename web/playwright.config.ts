@@ -7,7 +7,7 @@ const __dirname = dirname(__filename)
 
 export default defineConfig({
   testDir: './e2e',
-  timeout: 60000, // Increased timeout for server startup
+  timeout: 60000,
   retries: 0,
   use: {
     baseURL: 'http://localhost:5173',
@@ -23,8 +23,12 @@ export default defineConfig({
       use: { browserName: 'chromium' },
     },
   ],
-  // Global setup: start test servers before all tests
+  webServer: {
+    command: 'npm run dev',
+    port: 5173,
+    reuseExistingServer: true,
+    timeout: 30000,
+  },
   globalSetup: resolve(__dirname, './e2e/global-setup.ts'),
-  // Global teardown: stop test servers after all tests  
   globalTeardown: resolve(__dirname, './e2e/global-teardown.ts'),
 })

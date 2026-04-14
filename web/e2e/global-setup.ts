@@ -10,6 +10,7 @@ import { startTestServers, createTempWorkspaceDB, getWebSocketURL, getMockLLMURL
 declare global {
   var __testServers: any
   var __workspaceDB: string
+  var __loomHome: string
   var __webSocketURL: string
   var __mockLLMURL: string
 }
@@ -31,6 +32,7 @@ export default async function setup(config: any) {
   // Store references globally
   global.__testServers = testServers
   global.__workspaceDB = workspaceDB
+  global.__loomHome = testServers.loomHome
   global.__webSocketURL = getWebSocketURL(8080)
   global.__mockLLMURL = getMockLLMURL(18080)
   

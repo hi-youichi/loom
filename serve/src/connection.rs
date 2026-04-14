@@ -32,10 +32,6 @@ impl ActiveRunRegistry {
         self.runs.insert(run_id, cancellation);
     }
 
-    fn get(&self, run_id: &str) -> Option<&RunCancellation> {
-        self.runs.get(run_id)
-    }
-
     fn cancel(&mut self, run_id: &str) -> bool {
         if let Some(cancellation) = self.runs.remove(run_id) {
             cancellation.cancel();
@@ -43,10 +39,6 @@ impl ActiveRunRegistry {
         } else {
             false
         }
-    }
-
-    fn remove(&mut self, run_id: &str) {
-        self.runs.remove(run_id);
     }
 }
 
@@ -164,22 +156,23 @@ async fn handle_request_and_send(
 
     let resp = match req {
         ClientRequest::Run(r) => {
-            tracing::info!("🚀 Starting agent run with profile: {}", r.agent);
+            tracing::info!("Starting agent run with profile: {}", r.agent);
+            let request_id = r.id.clone();
             match handle_run(r, socket, workspace_store, user_message_store, run_config).await {
                 Ok((run_id, cancellation, Some(resp))) => {
                     active_run_registry.insert(run_id, cancellation);
-                    tracing::info!("✅ Run completed with response");
+                    tracing::info!("Run completed with response");
                     resp
                 }
                 Ok((run_id, cancellation, None)) => {
                     active_run_registry.insert(run_id, cancellation);
-                    tracing::info!("✅ Run streamed to client");
+                    tracing::info!("Run streamed to client");
                     return Ok(());
                 }
                 Err(e) => {
-                    tracing::error!("❌ Run failed: {}", e);
+                    tracing::error!("Run failed: {}", e);
                     ServerResponse::Error(ErrorResponse {
-                        id: None,
+                        id: request_id,
                         error: e.to_string(),
                     })
                 }
