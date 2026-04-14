@@ -3,6 +3,7 @@ import { useCallback, useMemo, useRef, useState, useEffect } from 'react'
 import { ToolBlockAdapter } from '../adapters/ToolBlockAdapter'
 import { ToolStreamAggregator } from '../adapters/ToolStreamAggregator'
 import { sendMessage as sendChatMessage } from '../services/chat'
+import { getConnection } from '../services/connection'
 import { getUserMessages } from '../services/userMessages'
 import type {
   LoomStreamEvent,
@@ -90,6 +91,7 @@ export function useChat(options?: {
   const [connectionStatus, setConnectionStatus] = useState<WebSocketStatus>('connected')
   const [error, setError] = useState<string | null>(null)
   const [thinkingLines, setThinkingLines] = useState<string[]>([])
+  const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const activeAssistantMessageIdRef = useRef<string | null>(null)
   const toolAggregatorRef = useRef(new ToolStreamAggregator())
 
@@ -179,7 +181,13 @@ export function useChat(options?: {
           agent: agentId,
           model,
           onChunk: handleTextChunk,
-          onEvent: handleEvent,
+          onEvent: (event: LoomStreamEvent) => {
+            // Set activeRunId when we get the first event
+            if (!activeRunId && (event as any).run_id) {
+              setActiveRunId((event as any).run_id)
+            }
+            handleEvent(event)
+          },
         })
         if (reply.content) {
           updateAssistantMessage((msg) => ({
@@ -202,6 +210,7 @@ export function useChat(options?: {
         setError(nextError)
       } finally {
         setIsStreaming(false)
+        setActiveRunId(null)
       }
     },
     [isStreaming, sessionId, workspaceId, agentId, model, handleTextChunk, handleEvent, updateAssistantMessage],
@@ -236,6 +245,22 @@ export function useChat(options?: {
     }
   }, [sessionId])
 
+  const cancel = useCallback(async () => {
+    if (!activeRunId || !isStreaming) {
+      return
+    }
+
+    try {
+      const connection = getConnection()
+      await connection.cancelRun(activeRunId)
+    } catch (error) {
+      console.error('Failed to cancel run:', error)
+      // Even if cancel fails, we should reset the streaming state
+      setIsStreaming(false)
+      setActiveRunId(null)
+    }
+  }, [activeRunId, isStreaming])
+
   return useMemo(
     () => ({
       messages,
@@ -245,7 +270,8 @@ export function useChat(options?: {
       error,
       sendMessage,
       loadHistory,
+      cancel,
     }),
-    [connectionStatus, error, isStreaming, messages, sendMessage, thinkingLines, loadHistory],
+    [connectionStatus, error, isStreaming, messages, sendMessage, thinkingLines, loadHistory, cancel],
   )
 }

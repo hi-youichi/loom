@@ -1,4 +1,4 @@
-import type { LoomServerMessage } from '../types/protocol/loom'
+import type { LoomServerMessage, CancelRunRequest, CancelRunResponse } from '../types/protocol/loom'
 import { isError } from '../types/protocol/loom'
 
 function getEnvValue(name: string) {
@@ -250,6 +250,36 @@ class LoomConnection {
       throw new Error('WebSocket is not connected.')
     }
     this.ws.send(JSON.stringify(payload))
+  }
+
+  async cancelRun(runId: string): Promise<void> {
+    const requestId = crypto.randomUUID()
+    const request: CancelRunRequest = {
+      type: 'cancel_run',
+      id: requestId,
+      run_id: runId
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      const onMessage = (msg: LoomServerMessage): boolean => {
+        const cancelAck = msg as CancelRunResponse
+        if (cancelAck.type === 'cancel_run_ack' && cancelAck.id === requestId) {
+          resolve()
+          return true
+        }
+        return false
+      }
+
+      this.pending.set(requestId, { resolve: () => {}, reject, onMessage })
+
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        this.pending.delete(requestId)
+        reject(new Error('WebSocket is not connected.'))
+        return
+      }
+
+      this.ws.send(JSON.stringify(request))
+    })
   }
 
   close() {

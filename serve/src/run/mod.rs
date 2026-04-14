@@ -18,7 +18,7 @@ use crate::app::RunConfig;
 
 /// Entry point for a Run request: prepares run (register thread, append initial user
 /// message, build options), spawns the agent task, and streams events + final RunEnd/Error
-/// over the WebSocket. Returns `Ok(None)` in the normal streaming case (response already
+/// over the WebSocket. Returns `Ok((run_id, cancellation, None))` in the normal streaming case (response already
 /// sent); returns `Err` if streaming or sending the final response fails.
 pub(crate) async fn handle_run(
     r: loom::RunRequest,
@@ -26,11 +26,12 @@ pub(crate) async fn handle_run(
     workspace_store: Option<Arc<loom_workspace::Store>>,
     user_message_store: Option<Arc<dyn loom::UserMessageStore>>,
     run_config: &RunConfig,
-) -> Result<Option<ServerResponse>, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(String, loom::cli_run::RunCancellation, Option<ServerResponse>), Box<dyn std::error::Error + Send + Sync>> {
     let PrepareRunResult {
         opts,
         cmd,
         initial_user_appended,
+        cancellation,
     } = request::prepare_run(
         r,
         workspace_store.as_ref(),
@@ -60,7 +61,8 @@ pub(crate) async fn handle_run(
     }));
 
     let mut sender = delivery::WebSocketRunSender(socket);
-    delivery::handle_run_stream(run_id, rx, run_handle, &mut sender).await
+    let result = delivery::handle_run_stream(run_id.clone(), rx, run_handle, &mut sender).await?;
+    Ok((run_id, cancellation, result))
 }
 
 #[cfg(test)]

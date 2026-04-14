@@ -1,6 +1,6 @@
 //! Request preparation: register thread in workspace, append initial user message, build RunOptions and RunCmd.
 
-use loom::{protocol::AgentIdentifier, AgentType, Message, RunCmd, RunOptions};
+use loom::{cli_run::RunCancellation, protocol::AgentIdentifier, AgentType, Message, RunCmd, RunOptions};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -51,11 +51,12 @@ pub(super) struct PrepareRunInput {
     pub display_max_len: usize,
 }
 
-/// Result of request preparation: options, command, and whether the initial user message was appended.
+/// Result of request preparation: options, command, whether the initial user message was appended, and cancellation handle.
 pub(super) struct PrepareRunResult {
     pub opts: RunOptions,
     pub cmd: RunCmd,
     pub initial_user_appended: bool,
+    pub cancellation: RunCancellation,
 }
 
 /// Registers thread in workspace, appends initial user message when configured, and builds
@@ -106,11 +107,13 @@ pub(super) async fn prepare_run(
     let r_thread_id = r.thread_id.clone();
     let r_agent = r.agent.clone();
 
+    let run_cancellation = RunCancellation::new(1);
+
     let opts = RunOptions {
         message: r.message,
         working_folder: r.working_folder.map(PathBuf::from),
         session_id: None,
-        cancellation: None,
+        cancellation: Some(run_cancellation.clone()),
         thread_id: r.thread_id,
         agent: None,
         verbose: r.verbose.unwrap_or(false),
@@ -152,5 +155,6 @@ pub(super) async fn prepare_run(
         opts,
         cmd,
         initial_user_appended,
+        cancellation: run_cancellation,
     }
 }

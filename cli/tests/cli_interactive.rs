@@ -35,8 +35,31 @@ async fn spawn_mock_llm() -> (String, tokio::task::JoinHandle<()>) {
             let Ok((mut stream, _)) = listener.accept().await else {
                 break;
             };
+            
+            // Read the HTTP request
             let mut buf = vec![0u8; 8192];
-            let _ = stream.read(&mut buf).await;
+            let mut total_read = 0;
+            let mut headers_complete = false;
+            
+            while !headers_complete && total_read < buf.len() {
+                match stream.read(&mut buf[total_read..]).await {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        total_read += n;
+                        // Check if we've received the complete HTTP headers
+                        let request = String::from_utf8_lossy(&buf[..total_read]);
+                        if request.contains("\r\n\r\n") {
+                            headers_complete = true;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+            
+            if !headers_complete {
+                continue;
+            }
+            
             let response = r#"{
                 "id": "chatcmpl-test",
                 "object": "chat.completion",
@@ -55,6 +78,7 @@ async fn spawn_mock_llm() -> (String, tokio::task::JoinHandle<()>) {
                 response
             );
             let _ = stream.write_all(resp.as_bytes()).await;
+            let _ = stream.flush().await;
         }
     });
     (format!("http://127.0.0.1:{}", port), handle)
@@ -80,6 +104,11 @@ fn interactive_empty_line_then_quit_exits_success() {
 fn interactive_initial_message_with_valid_working_folder_succeeds() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let (mock_url, _handle) = rt.block_on(spawn_mock_llm());
+    
+    eprintln!("Mock URL: {}", mock_url);
+    
+    // Give the mock server a moment to start accepting connections
+    std::thread::sleep(std::time::Duration::from_millis(100));
 
     let out = run_with_stdin(
         &["-i", "-m", "hello", "--working-folder", "."],
@@ -87,6 +116,7 @@ fn interactive_initial_message_with_valid_working_folder_succeeds() {
         vec![
             ("OPENAI_API_KEY", "test-key"),
             ("OPENAI_BASE_URL", &mock_url),
+            ("LOOM_TEST_MODE", "1"),
         ],
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -95,6 +125,7 @@ fn interactive_initial_message_with_valid_working_folder_succeeds() {
         eprintln!("=== STDOUT ===\n{}", stdout);
         eprintln!("=== STDERR ===\n{}", stderr);
         eprintln!("=== STATUS ===\n{}", out.status);
+        eprintln!("=== MOCK URL ===\n{}", mock_url);
     }
     assert!(out.status.success());
     assert!(stdout.contains("Bye."));

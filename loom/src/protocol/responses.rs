@@ -130,6 +130,13 @@ pub struct AgentListResponse {
     pub agents: Vec<AgentSummary>,
 }
 
+/// Cancel run response: acknowledgment that a run has been cancelled.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CancelRunResponse {
+    pub id: String,
+    pub run_id: String,
+}
+
 /// Server-to-client response envelope.
 ///
 /// Each variant maps to a JSON object with `"type": "<variant_name>"`.
@@ -151,6 +158,7 @@ pub enum ServerResponse {
     Error(ErrorResponse),
     ListModels(ListModelsResponse),
     SetModel(SetModelResponse),
+    CancelRun(CancelRunResponse),
 }
 // -----------------------------------------------------------------------------
 // Workspace responses

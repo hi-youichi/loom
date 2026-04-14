@@ -171,6 +171,13 @@ pub struct AgentListRequest {
     pub thread_id: Option<String>,
 }
 
+/// Cancel run request: cancel a running agent.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CancelRunRequest {
+    pub id: String,
+    pub run_id: String,
+}
+
 /// Client-to-server request envelope.
 ///
 /// Each variant maps to a JSON object with `"type": "<variant_name>"`.
@@ -190,6 +197,7 @@ pub enum ClientRequest {
     Ping(PingRequest),
     ListModels(ListModelsRequest),
     SetModel(SetModelRequest),
+    CancelRun(CancelRunRequest),
 }
 // -----------------------------------------------------------------------------
 // Workspace requests

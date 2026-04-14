@@ -90,6 +90,7 @@ export function ChatPage() {
     messages,
     isStreaming,
     sendMessage: sendRealMessage,
+    cancel,
     loadHistory,
   } = useChat({
     sessionId,
@@ -207,6 +208,7 @@ export function ChatPage() {
           messages={messages}
           isStreaming={isStreaming}
           onSendMessage={handleSendMessage}
+          onCancel={cancel}
           onModelChange={setSelectedModel}
         />
       </div>

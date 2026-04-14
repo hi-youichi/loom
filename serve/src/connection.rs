@@ -1,8 +1,11 @@
 //! WebSocket connection lifecycle: recv loop and request dispatch.
 
 use axum::extract::ws::{Message, WebSocket};
+use loom::cli_run::RunCancellation;
 use loom::llm::ProviderConfig;
+use loom::protocol::responses::CancelRunResponse;
 use loom::{ClientRequest, ErrorResponse, ServerResponse};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::oneshot;
 
@@ -12,6 +15,40 @@ use super::models::{handle_list_models, handle_set_model};
 use super::response::send_response;
 use super::run::handle_run;
 use super::tools::{handle_tool_show, handle_tools_list};
+
+/// Registry for tracking active runs and their cancellation handles.
+struct ActiveRunRegistry {
+    runs: HashMap<String, RunCancellation>,
+}
+
+impl ActiveRunRegistry {
+    fn new() -> Self {
+        Self {
+            runs: HashMap::new(),
+        }
+    }
+
+    fn insert(&mut self, run_id: String, cancellation: RunCancellation) {
+        self.runs.insert(run_id, cancellation);
+    }
+
+    fn get(&self, run_id: &str) -> Option<&RunCancellation> {
+        self.runs.get(run_id)
+    }
+
+    fn cancel(&mut self, run_id: &str) -> bool {
+        if let Some(cancellation) = self.runs.remove(run_id) {
+            cancellation.cancel();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn remove(&mut self, run_id: &str) {
+        self.runs.remove(run_id);
+    }
+}
 
 pub(crate) async fn handle_socket(
     mut socket: WebSocket,
@@ -25,6 +62,7 @@ pub(crate) async fn handle_socket(
 
     let mut request_count = 0;
     let connection_start = std::time::Instant::now();
+    let mut active_run_registry = ActiveRunRegistry::new();
 
     while let Some(res) = socket.recv().await {
         let msg = match res {
@@ -60,6 +98,7 @@ pub(crate) async fn handle_socket(
             user_message_store.clone(),
             &run_config,
             providers.clone(),
+            &mut active_run_registry,
         )
         .await
         {
@@ -95,6 +134,7 @@ async fn handle_request_and_send(
     user_message_store: Option<std::sync::Arc<dyn loom::UserMessageStore>>,
     run_config: &RunConfig,
     providers: Arc<Vec<ProviderConfig>>,
+    active_run_registry: &mut ActiveRunRegistry,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let req: ClientRequest = match serde_json::from_str(text) {
         Ok(r) => r,
@@ -117,6 +157,7 @@ async fn handle_request_and_send(
             ClientRequest::Run(r) => r.id.clone(),
             ClientRequest::ListModels(r) => Some(r.id.clone()),
             ClientRequest::SetModel(r) => Some(r.id.clone()),
+            ClientRequest::CancelRun(r) => Some(r.id.clone()),
             _ => None,
         }
     );
@@ -125,11 +166,13 @@ async fn handle_request_and_send(
         ClientRequest::Run(r) => {
             tracing::info!("🚀 Starting agent run with profile: {}", r.agent);
             match handle_run(r, socket, workspace_store, user_message_store, run_config).await {
-                Ok(Some(resp)) => {
+                Ok((run_id, cancellation, Some(resp))) => {
+                    active_run_registry.insert(run_id, cancellation);
                     tracing::info!("✅ Run completed with response");
                     resp
                 }
-                Ok(None) => {
+                Ok((run_id, cancellation, None)) => {
+                    active_run_registry.insert(run_id, cancellation);
                     tracing::info!("✅ Run streamed to client");
                     return Ok(());
                 }
@@ -216,6 +259,20 @@ async fn handle_request_and_send(
         ClientRequest::WorkspaceThreadRemove(r) => {
             tracing::debug!("➖ Removing thread from workspace");
             super::workspace::handle_workspace_thread_remove(r, workspace_store.clone()).await
+        }
+        ClientRequest::CancelRun(r) => {
+            tracing::info!("🛑 Cancelling run: {}", r.run_id);
+            if active_run_registry.cancel(&r.run_id) {
+                ServerResponse::CancelRun(CancelRunResponse {
+                    id: r.id,
+                    run_id: r.run_id,
+                })
+            } else {
+                ServerResponse::Error(ErrorResponse {
+                    id: Some(r.id),
+                    error: format!("Run {} not found or already completed", r.run_id),
+                })
+            }
         }
     };
 

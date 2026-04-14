@@ -149,6 +149,18 @@ export interface LoomErrorResponse {
   error: string
 }
 
+export interface CancelRunRequest {
+  type: 'cancel_run'
+  id: string
+  run_id: string
+}
+
+export interface CancelRunResponse {
+  type: 'cancel_run_ack'
+  id: string
+  run_id: string
+}
+
 export interface ChatReply {
   content: string
 }

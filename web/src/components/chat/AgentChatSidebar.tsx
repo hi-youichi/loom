@@ -15,6 +15,7 @@ interface AgentChatSidebarProps {
   messages: UIMessageItemProps[]
   isStreaming?: boolean
   onSendMessage: (text: string) => Promise<void>
+  onCancel?: () => void
   onModelChange?: (model: string) => void
 }
 
@@ -68,6 +69,7 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
   messages,
   isStreaming = false,
   onSendMessage,
+  onCancel,
   onModelChange,
 }: AgentChatSidebarProps) {
   const { collapsed, width, selectedAgentId, toggle, expand, setWidth, selectAgent } = useChatPanel()
@@ -130,7 +132,9 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
       <div className="border-t border-border">
         <MessageComposer
           disabled={!selectedAgentId || isStreaming}
+          isStreaming={isStreaming}
           onSend={onSendMessage}
+          onCancel={onCancel}
           selectedModel={selectedModel}
           onModelChange={handleModelChange}
         />
