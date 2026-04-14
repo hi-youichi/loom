@@ -62,3 +62,4 @@ coverage.lcov
 
 # Telegram bot local config
 telegram-bot.toml
+test-results/
