@@ -35,7 +35,7 @@ pub(crate) enum RetryDecision {
 #[cfg(test)]
 pub(crate) fn classify_openai_http_status(status: u16) -> RetryDecision {
     match status {
-        429 | 500 | 502 | 503 | 504 => RetryDecision::Retryable,
+        429 | 500 | 502 | 503 | 504 | 524 | 598 | 599 => RetryDecision::Retryable,
         _ => RetryDecision::NonRetryable,
     }
 }
@@ -51,6 +51,9 @@ pub(crate) fn classify_openai_error_message(message: &str) -> RetryDecision {
         || message.contains("status code 502")
         || message.contains("status code 503")
         || message.contains("status code 504")
+        || message.contains("status code 524")
+        || message.contains("status code 598")
+        || message.contains("status code 599")
     {
         return RetryDecision::Retryable;
     }

@@ -54,7 +54,7 @@ const COMPAT_RETRY_MAX_BACKOFF: std::time::Duration = std::time::Duration::from_
 /// Returns true for transient 5xx where retry is reasonable: 500, 502, 503, 504.
 /// Other 5xx (501 Not Implemented, 505 HTTP Version Not Supported, etc.) are not retried.
 fn is_retryable_status(status: reqwest::StatusCode) -> bool {
-    matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504)
+    matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504 | 524 | 598 | 599)
 }
 
 fn backoff_for_attempt(attempt: u32) -> std::time::Duration {
