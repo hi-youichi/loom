@@ -224,10 +224,12 @@ impl ChatOpenAI {
 impl LlmClient for ChatOpenAI {
     async fn invoke(&self, messages: &[Message]) -> Result<LlmResponse, AgentError> {
         let trace_id = uuid6().to_string();
+        let request_id = uuid6().to_string();
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         let url = Self::chat_completions_url();
         debug!(
             trace_id = %trace_id,
+            request_id = %request_id,
             url = %url,
             model = %self.model,
             message_count = messages.len(),
@@ -332,11 +334,13 @@ impl LlmClient for ChatOpenAI {
         }
 
         let trace_id = uuid6().to_string();
+        let request_id = uuid6().to_string();
         let chunk_tx = chunk_tx.expect("chunk_tx must be Some when streaming");
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         let url = Self::chat_completions_url();
         debug!(
             trace_id = %trace_id,
+            request_id = %request_id,
             url = %url,
             model = %self.model,
             message_count = messages.len(),

@@ -318,11 +318,13 @@ impl ChatOpenAICompat {
     fn add_headers_to_request(
         &self,
         request_builder: reqwest::RequestBuilder,
+        request_id: &str,
     ) -> reqwest::RequestBuilder {
         let mut builder = request_builder;
 
+        builder = builder.header("X-Request-Id", request_id);
+
         if let Some(headers) = &self.headers {
-            // Fixed X-App-Id header as "loom"
             builder = builder.header("X-App-Id", "loom");
 
             if let Some(thread_id) = &headers.thread_id {
@@ -510,11 +512,13 @@ impl ChatOpenAICompat {
 impl LlmClient for ChatOpenAICompat {
     async fn invoke(&self, messages: &[Message]) -> Result<LlmResponse, AgentError> {
         let trace_id = uuid6().to_string();
+        let request_id = uuid6().to_string();
         let url = self.chat_completions_url();
         let body = self.build_request(messages, false);
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         debug!(
             trace_id = %trace_id,
+            request_id = %request_id,
             url = %url,
             model = %self.model,
             message_count = messages.len(),
@@ -533,6 +537,7 @@ impl LlmClient for ChatOpenAICompat {
                                 .post(&url)
                                 .bearer_auth(&self.api_key)
                                 .json(&body),
+                            &request_id,
                         )
                         .send()
                         .await
@@ -618,6 +623,7 @@ impl LlmClient for ChatOpenAICompat {
                             .post(&url)
                             .bearer_auth(&self.api_key)
                             .json(&body),
+                        &request_id,
                     )
                     .send()
                     .await
@@ -716,12 +722,14 @@ impl LlmClient for ChatOpenAICompat {
         }
 
         let trace_id = uuid6().to_string();
+        let request_id = uuid6().to_string();
         let chunk_tx = chunk_tx.expect("chunk_tx must be Some when streaming");
         let url = self.chat_completions_url();
         let body = self.build_request(messages, true);
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         debug!(
             trace_id = %trace_id,
+            request_id = %request_id,
             url = %url,
             model = %self.model,
             message_count = messages.len(),
@@ -739,6 +747,7 @@ impl LlmClient for ChatOpenAICompat {
                             .post(&url)
                             .bearer_auth(&self.api_key)
                             .json(&body),
+                        &request_id,
                     )
                     .send()
                     .await
@@ -798,6 +807,7 @@ impl LlmClient for ChatOpenAICompat {
                             .post(&url)
                             .bearer_auth(&self.api_key)
                             .json(&body),
+                        &request_id,
                     )
                     .send()
                     .await
@@ -1073,6 +1083,7 @@ impl LlmClient for ChatOpenAICompat {
     }
 
     async fn list_models(&self) -> Result<Vec<crate::llm::ModelInfo>, AgentError> {
+        let request_id = uuid6().to_string();
         // Base URL often already includes a version path (e.g., /api/paas/v4)
         // so we only append /models, not /v1/models
         let url = format!("{}/models", self.base_url);
@@ -1081,6 +1092,7 @@ impl LlmClient for ChatOpenAICompat {
                 self.client
                     .get(&url)
                     .bearer_auth(&self.api_key),
+                &request_id,
             )
             .send()
             .await
