@@ -6,16 +6,13 @@ bot-runtime
 CLAUDE.md
 AGENTS.md
 
-.cargo
 tmp/
-
 idea/
 lancedb_data/
 author-name.txt
 
 # Cargo
 target
-.cargo/
 /target
 **/*.rs.bk
 Cargo.lock

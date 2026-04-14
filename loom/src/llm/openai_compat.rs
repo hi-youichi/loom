@@ -1077,9 +1077,11 @@ impl LlmClient for ChatOpenAICompat {
         // so we only append /models, not /v1/models
         let url = format!("{}/models", self.base_url);
         let res = self
-            .client
-            .get(&url)
-            .bearer_auth(&self.api_key)
+            .add_headers_to_request(
+                self.client
+                    .get(&url)
+                    .bearer_auth(&self.api_key),
+            )
             .send()
             .await
             .map_err(|e| {
