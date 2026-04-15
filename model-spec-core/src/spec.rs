@@ -1,11 +1,25 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Classification tier for LLM models based on cost and capability.
+///
+/// Tiers are determined automatically by [`Model::tier()`] using a priority chain:
+/// model family name → model id keywords → cost thresholds.
+///
+/// | Tier     | Typical use                        | Examples                              |
+/// |----------|------------------------------------|---------------------------------------|
+/// | Light    | Fast / cheap tasks, compaction     | haiku, mini, flash, air               |
+/// | Standard | General-purpose agent work         | sonnet, gpt-4o, gemini-2.5-pro        |
+/// | Heavy    | Complex reasoning, premium quality | opus, ultra, o1-pro, long             |
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum ModelTier {
+    /// Fast, low-cost models suitable for summarization, compaction, and bulk tasks.
     Light,
+    /// Balanced models for general-purpose agent work.
     Standard,
+    /// High-capability models for complex reasoning or premium-quality output.
     Heavy,
 }
 
@@ -115,6 +129,44 @@ fn default_true() -> bool {
 }
 
 impl Model {
+    /// Determine the model's tier based on family name, id keywords, and cost.
+    ///
+    /// # Priority order
+    ///
+    /// 1. **Family name suffix** — checked first as the strongest signal.
+    /// 2. **Model id keywords** — fallback when family is absent or ambiguous.
+    /// 3. **Cost thresholds** — final fallback based on input price ($/M tokens).
+    ///
+    /// # Family name rules
+    ///
+    /// | Pattern (case-insensitive suffix) | Tier   |
+    /// |-----------------------------------|--------|
+    /// | `flash`, `flashx`, `haiku`, `mini`, `air`, `airx` | Light  |
+    /// | `opus`, `ultra`                   | Heavy  |
+    /// | contains `o1-pro`                 | Heavy  |
+    /// | ends with `long`                  | Heavy  |
+    ///
+    /// # Model id keyword rules
+    ///
+    /// Checked when family-based classification did not produce a result.
+    /// Splits the model id on `-` and scans tokens.
+    ///
+    /// | Keywords                     | Tier   |
+    /// |------------------------------|--------|
+    /// | `flash`, `flashx`, `air`, `airx` or last token is `mini` | Light  |
+    /// | `long`                       | Heavy  |
+    ///
+    /// # Cost thresholds (input price in $/M tokens)
+    ///
+    /// Applied when neither family nor id produced a classification.
+    ///
+    /// | Input cost         | Tier      |
+    /// |--------------------|-----------|
+    /// | `< $0.50`          | Light     |
+    /// | `> $15.00`         | Heavy     |
+    /// | between            | Standard  |
+    ///
+    /// If cost data is unavailable, defaults to [`ModelTier::Standard`].
     pub fn tier(&self) -> ModelTier {
         if let Some(ref family) = self.family {
             let f = family.to_lowercase();
