@@ -134,3 +134,30 @@ test.describe('SendButton', () => {
     await expect(button).not.toBeDisabled()
   })
 })
+
+test('点击停止按钮可以取消发送', async ({ page }) => {
+  const button = page.locator('.composer__button')
+  const textarea = page.locator('.composer__input')
+  const messageList = page.locator('.message-list')
+
+  // 输入消息
+  const testMessage = 'Test cancel message'
+  await textarea.fill(testMessage)
+
+  // 点击发送按钮
+  await button.click()
+
+  // 验证按钮变为停止状态（禁用）
+  await expect(button).toBeDisabled()
+
+  // 点击停止按钮
+  await button.click()
+
+  // 验证发送被取消，消息列表中没有用户消息
+  await page.waitForTimeout(1000)
+  const userMessages = await messageList.locator('.message--user').count()
+  expect(userMessages).toBe(0)
+
+  // 验证按钮恢复为发送状态（启用）
+  await expect(button).not.toBeDisabled()
+})
