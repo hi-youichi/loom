@@ -143,7 +143,7 @@ impl Model {
         {
             return ModelTier::Light;
         }
-        if parts.iter().any(|p| *p == "long") {
+        if parts.contains(&"long") {
             return ModelTier::Heavy;
         }
 
