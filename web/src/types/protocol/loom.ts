@@ -118,6 +118,31 @@ export type LoomToolEvent =
   | LoomToolOutputEvent
   | LoomToolEndEvent
 
+/** Session created event - server push notification */
+export type LoomSessionCreatedEvent = LoomEnvelope & {
+  type: 'session_created'
+  workspace_id: string
+  session_id: string
+  session_name?: string
+  created_at: string
+}
+
+/** Session updated event */
+export type LoomSessionUpdatedEvent = LoomEnvelope & {
+  type: 'session_updated'
+  workspace_id: string
+  session_id: string
+  session_name?: string
+  updated_at: string
+}
+
+/** Session deleted event */
+export type LoomSessionDeletedEvent = LoomEnvelope & {
+  type: 'session_deleted'
+  workspace_id: string
+  session_id: string
+}
+
 export type LoomStreamEvent =
   | LoomRunStartEvent
   | LoomNodeEnterEvent
@@ -129,6 +154,9 @@ export type LoomStreamEvent =
   | LoomUpdatesEvent
   | LoomCheckpointEvent
   | LoomToolEvent
+  | LoomSessionCreatedEvent
+  | LoomSessionUpdatedEvent
+  | LoomSessionDeletedEvent
   | LoomUnknownEvent
 
 export interface LoomRunStreamEventResponse {
@@ -331,6 +359,29 @@ export type SetModelResponse = {
 // Server message types
 // -----------------------------------------------------------------------------
 
+// Session push events from server
+export type SessionCreatedNotification = {
+  type: 'session_created'
+  workspace_id: string
+  session_id: string
+  session_name?: string
+  created_at: string
+}
+
+export type SessionUpdatedNotification = {
+  type: 'session_updated'
+  workspace_id: string
+  session_id: string
+  session_name?: string
+  updated_at: string
+}
+
+export type SessionDeletedNotification = {
+  type: 'session_deleted'
+  workspace_id: string
+  session_id: string
+}
+
 export type LoomServerMessage =
   | LoomRunStreamEventResponse
   | LoomRunEndResponse
@@ -343,6 +394,9 @@ export type LoomServerMessage =
   | WorkspaceSessionListResponse
   | WorkspaceSessionAddResponse
   | WorkspaceSessionRemoveResponse
+  | SessionCreatedNotification
+  | SessionUpdatedNotification
+  | SessionDeletedNotification
   | { type: string }
 
 export function isRunStreamEvent(msg: LoomServerMessage): msg is LoomRunStreamEventResponse {
@@ -379,4 +433,21 @@ export function isToolEvent(event: LoomStreamEvent): event is LoomToolEvent {
     event.type === 'tool_output' ||
     event.type === 'tool_end'
   )
+}
+
+// Session event type guards
+export function isSessionCreatedEvent(msg: LoomServerMessage): msg is SessionCreatedNotification {
+  return msg.type === 'session_created'
+}
+
+export function isSessionUpdatedEvent(msg: LoomServerMessage): msg is SessionUpdatedNotification {
+  return msg.type === 'session_updated'
+}
+
+export function isSessionDeletedEvent(msg: LoomServerMessage): msg is SessionDeletedNotification {
+  return msg.type === 'session_deleted'
+}
+
+export function isSessionEventStream(event: LoomStreamEvent): boolean {
+  return ['session_created', 'session_updated', 'session_deleted'].includes(event.type)
 }

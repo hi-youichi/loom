@@ -1,5 +1,10 @@
 import type { LoomServerMessage, CancelRunRequest, CancelRunResponse } from '../types/protocol/loom'
-import { isError } from '../types/protocol/loom'
+import {
+  isError,
+  isSessionCreatedEvent,
+  isSessionUpdatedEvent,
+  isSessionDeletedEvent,
+} from '../types/protocol/loom'
 
 function getEnvValue(name: string) {
   return (import.meta.env as Record<string, string | undefined>)[name]?.trim()
@@ -17,11 +22,32 @@ type PendingEntry = {
   onMessage?: MessageHandler
 }
 
-export type LoomEventType = 'models_updated' | 'connection_changed'
+export type LoomEventType =
+  | 'models_updated'
+  | 'connection_changed'
+  | 'session_created'
+  | 'session_updated'
+  | 'session_deleted'
 
 export type LoomEventMap = {
   models_updated: Model[]
   connection_changed: 'open' | 'closed'
+  session_created: {
+    workspaceId: string
+    sessionId: string
+    sessionName?: string
+    createdAt: string
+  }
+  session_updated: {
+    workspaceId: string
+    sessionId: string
+    sessionName?: string
+    updatedAt: string
+  }
+  session_deleted: {
+    workspaceId: string
+    sessionId: string
+  }
 }
 
 export interface Model {
@@ -191,6 +217,35 @@ class LoomConnection {
           entry.resolve(msg)
         }
       }
+    }
+
+    // Handle session events (server push notifications)
+    if (isSessionCreatedEvent(msg)) {
+      this.emit('session_created', {
+        workspaceId: msg.workspace_id,
+        sessionId: msg.session_id,
+        sessionName: msg.session_name,
+        createdAt: msg.created_at,
+      })
+      return
+    }
+
+    if (isSessionUpdatedEvent(msg)) {
+      this.emit('session_updated', {
+        workspaceId: msg.workspace_id,
+        sessionId: msg.session_id,
+        sessionName: msg.session_name,
+        updatedAt: msg.updated_at,
+      })
+      return
+    }
+
+    if (isSessionDeletedEvent(msg)) {
+      this.emit('session_deleted', {
+        workspaceId: msg.workspace_id,
+        sessionId: msg.session_id,
+      })
+      return
     }
   }
 
