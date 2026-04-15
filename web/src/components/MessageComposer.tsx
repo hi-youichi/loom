@@ -3,7 +3,9 @@ import { ModelSelector } from './ModelSelector'
 
 type MessageComposerProps = {
   disabled?: boolean
+  isStreaming?: boolean
   onSend: (text: string) => Promise<void>
+  onCancel?: () => void
   selectedModel?: string
   onModelChange?: (model: string) => void
 }
@@ -28,8 +30,10 @@ function resizeTextarea(element: HTMLTextAreaElement) {
 
 export function MessageComposer({
   disabled = false,
+  isStreaming = false,
   onSend,
-  selectedModel = 'claude-3-5-sonnet',
+  onCancel,
+  selectedModel = '',  // Changed from hardcoded default to empty string, parent should provide proper model ID
   onModelChange,
 }: MessageComposerProps) {
   const [value, setValue] = useState('')
@@ -52,6 +56,12 @@ export function MessageComposer({
       await onSend(text)
     } catch {
       setValue(text)
+    }
+  }
+
+  const handleCancel = () => {
+    if (onCancel) {
+      onCancel()
     }
   }
 
@@ -86,30 +96,48 @@ export function MessageComposer({
         <ModelSelector
           value={selectedModel}
           onChange={onModelChange}
-          disabled={disabled}
           className="composer__model-selector"
         />
         <button
           className="composer__button"
-          type="submit"
-          aria-label={disabled ? 'Sending message' : 'Send message'}
-          disabled={disabled || !value.trim()}
+          type={isStreaming ? "button" : "submit"}
+          onClick={isStreaming ? handleCancel : undefined}
+          aria-label={isStreaming ? "Stop" : disabled ? "Sending message" : "Send message"}
+          disabled={disabled || (!isStreaming && !value.trim())}
         >
-          <svg
-            className="composer__button-icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-hidden="true"
-          >
-            <path
-              d="M12 19V6M7 11L12 6L17 11"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          {isStreaming ? (
+            <svg
+              className="composer__button-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <rect
+                x="6"
+                y="6"
+                width="12"
+                height="12"
+                fill="currentColor"
+              />
+            </svg>
+          ) : (
+            <svg
+              className="composer__button-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <path
+                d="M12 19V6M7 11L12 6L17 11"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
         </button>
       </div>
     </form>

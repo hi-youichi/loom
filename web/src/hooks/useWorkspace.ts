@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import type { WorkspaceMeta, ThreadInWorkspace } from '../types/protocol/loom'
+import type { WorkspaceMeta, SessionInWorkspace } from '../types/protocol/loom'
 import * as wsApi from '../services/workspace'
 
 const STORAGE_KEY = 'loom-active-workspace-id'
@@ -13,144 +13,108 @@ export function useWorkspace() {
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(() => {
     return localStorage.getItem(STORAGE_KEY) || null
   })
-  const [threads, setThreads] = useState<ThreadInWorkspace[]>([])
+  const [sessions, setSessions] = useState<SessionInWorkspace[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const mountedRef = useRef(true)
 
   useEffect(() => {
     mountedRef.current = true
-    return () => {
-      mountedRef.current = false
-    }
+    return () => { mountedRef.current = false }
   }, [])
-
-  useEffect(() => {
-    if (activeWorkspaceId) {
-      localStorage.setItem(STORAGE_KEY, activeWorkspaceId)
-    } else {
-      localStorage.removeItem(STORAGE_KEY)
-    }
-  }, [activeWorkspaceId])
 
   const loadWorkspaces = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      let list = await wsApi.listWorkspaces()
-      if (list.length === 0) {
-        await wsApi.createWorkspace()
-        list = await wsApi.listWorkspaces()
-      }
-      if (mountedRef.current) {
-        setWorkspaces(list)
-        const wsId = activeWorkspaceId || list[0]?.id
-        if (wsId) {
-          setActiveWorkspaceId(wsId)
-          const threads = await wsApi.listThreads(wsId)
-          if (mountedRef.current) {
-            setThreads(threads)
-          }
-        }
-      }
+      const wsList = await wsApi.listWorkspaces()
+      if (mountedRef.current) setWorkspaces(wsList)
     } catch (e: unknown) {
-      if (mountedRef.current) {
-        setError(getErrorMessage(e, 'Failed to load workspaces'))
-      }
+      if (mountedRef.current) setError(getErrorMessage(e, 'Failed to load workspaces'))
     } finally {
-      if (mountedRef.current) {
-        setLoading(false)
-      }
-    }
-  }, [activeWorkspaceId])
-
-  const createWorkspace = useCallback(async (name?: string) => {
-    setLoading(true)
-    setError(null)
-    try {
-      const workspaceId = await wsApi.createWorkspace(name)
-      if (mountedRef.current) {
-        setActiveWorkspaceId(workspaceId)
-        await loadWorkspaces()
-      }
-      return workspaceId
-    } catch (e: unknown) {
-      if (mountedRef.current) {
-        setError(getErrorMessage(e, 'Failed to create workspace'))
-      }
-      return null
-    } finally {
-      if (mountedRef.current) {
-        setLoading(false)
-      }
-    }
-  }, [loadWorkspaces])
-
-  const selectWorkspace = useCallback(async (id: string) => {
-    setActiveWorkspaceId(id)
-    setLoading(true)
-    setError(null)
-    try {
-      const list = await wsApi.listThreads(id)
-      if (mountedRef.current) {
-        setThreads(list)
-      }
-    } catch (e: unknown) {
-      if (mountedRef.current) {
-        setError(getErrorMessage(e, 'Failed to load threads'))
-      }
-    } finally {
-      if (mountedRef.current) {
-        setLoading(false)
-      }
+      if (mountedRef.current) setLoading(false)
     }
   }, [])
 
-  const addThread = useCallback(async (threadId: string) => {
+  const createWorkspace = useCallback(async (name?: string): Promise<string> => {
+    setLoading(true)
+    try {
+      const id = await wsApi.createWorkspace(name)
+      if (mountedRef.current) {
+        const wsList = await wsApi.listWorkspaces()
+        setWorkspaces(wsList)
+        setActiveWorkspaceId(id)
+        localStorage.setItem(STORAGE_KEY, id)
+      }
+      return id
+    } catch (e: unknown) {
+      if (mountedRef.current) setError(getErrorMessage(e, 'Failed to create workspace'))
+      throw e
+    } finally {
+      if (mountedRef.current) setLoading(false)
+    }
+  }, [])
+
+  const selectWorkspace = useCallback(async (id: string) => {
+    setActiveWorkspaceId(id)
+    localStorage.setItem(STORAGE_KEY, id)
+    setLoading(true)
+    setError(null)
+    try {
+      const sessionList = await wsApi.listSessions(id)
+      if (mountedRef.current) setSessions(sessionList)
+    } catch (e: unknown) {
+      if (mountedRef.current) setError(getErrorMessage(e, 'Failed to load workspace sessions'))
+    } finally {
+      if (mountedRef.current) setLoading(false)
+    }
+  }, [])
+
+  const addSession = useCallback(async (sessionId: string) => {
     if (!activeWorkspaceId) return
     try {
-      await wsApi.addThread(activeWorkspaceId, threadId)
+      await wsApi.addSession(activeWorkspaceId, sessionId)
       if (mountedRef.current) {
-        setThreads(prev => [...prev, { thread_id: threadId, created_at_ms: Date.now() }])
+        setSessions(prev => [...prev, { thread_id: sessionId, created_at_ms: Date.now() }])
       }
     } catch (e: unknown) {
       if (mountedRef.current) {
-        setError(getErrorMessage(e, 'Failed to add thread'))
+        setError(getErrorMessage(e, 'Failed to add session'))
       }
     }
   }, [activeWorkspaceId])
 
-  const removeThread = useCallback(async (threadId: string) => {
+  const removeSession = useCallback(async (sessionId: string) => {
     if (!activeWorkspaceId) return
     try {
-      await wsApi.removeThread(activeWorkspaceId, threadId)
+      await wsApi.removeSession(activeWorkspaceId, sessionId)
       if (mountedRef.current) {
-        setThreads(prev => prev.filter(t => t.thread_id !== threadId))
+        setSessions(prev => prev.filter(t => t.thread_id !== sessionId))
       }
     } catch (e: unknown) {
       if (mountedRef.current) {
-        setError(getErrorMessage(e, 'Failed to remove thread'))
+        setError(getErrorMessage(e, 'Failed to remove session'))
       }
     }
   }, [activeWorkspaceId])
 
   const clearActiveWorkspace = useCallback(() => {
     setActiveWorkspaceId(null)
-    setThreads([])
+    setSessions([])
     localStorage.removeItem(STORAGE_KEY)
   }, [])
 
   return {
     workspaces,
     activeWorkspaceId,
-    threads,
+    sessions,
     loading,
     error,
     loadWorkspaces,
     createWorkspace,
     selectWorkspace,
-    addThread,
-    removeThread,
+    addSession,
+    removeSession,
     clearActiveWorkspace,
   }
 }

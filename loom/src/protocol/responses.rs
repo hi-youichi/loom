@@ -130,6 +130,13 @@ pub struct AgentListResponse {
     pub agents: Vec<AgentSummary>,
 }
 
+/// Cancel run response: acknowledgment that a run has been cancelled.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CancelRunResponse {
+    pub id: String,
+    pub run_id: String,
+}
+
 /// Server-to-client response envelope.
 ///
 /// Each variant maps to a JSON object with `"type": "<variant_name>"`.
@@ -147,10 +154,12 @@ pub enum ServerResponse {
     WorkspaceThreadList(WorkspaceThreadListResponse),
     WorkspaceThreadAdd(WorkspaceThreadAddResponse),
     WorkspaceThreadRemove(WorkspaceThreadRemoveResponse),
+    WorkspaceRename(WorkspaceRenameResponse),
     Pong(PongResponse),
     Error(ErrorResponse),
     ListModels(ListModelsResponse),
     SetModel(SetModelResponse),
+    CancelRun(CancelRunResponse),
 }
 // -----------------------------------------------------------------------------
 // Workspace responses
@@ -202,6 +211,14 @@ pub struct WorkspaceThreadRemoveResponse {
     pub id: String,
     pub workspace_id: String,
     pub thread_id: String,
+}
+
+/// Workspace rename response.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceRenameResponse {
+    pub id: String,
+    pub workspace_id: String,
+    pub name: String,
 }
 
 // -----------------------------------------------------------------------------
@@ -271,14 +288,12 @@ mod tests {
     fn response_tools_list_roundtrip() {
         let resp = ServerResponse::ToolsList(ToolsListResponse {
             id: "req-1".to_string(),
-            tools: vec![
-                ToolSpec {
-                    name: "test_tool".to_string(),
-                    description: Some("A test tool".to_string()),
-                    input_schema: serde_json::json!({}),
-                    output_hint: None,
-                },
-            ],
+            tools: vec![ToolSpec {
+                name: "test_tool".to_string(),
+                description: Some("A test tool".to_string()),
+                input_schema: serde_json::json!({}),
+                output_hint: None,
+            }],
         });
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"type\":\"tools_list\""));
@@ -444,5 +459,20 @@ mod tests {
         assert!(json.contains("\"type\":\"workspace_thread_remove\""));
         let parsed: ServerResponse = serde_json::from_str(&json).unwrap();
         assert!(matches!(parsed, ServerResponse::WorkspaceThreadRemove(_)));
+    }
+
+    #[test]
+    fn response_workspace_rename_roundtrip() {
+        let resp = ServerResponse::WorkspaceRename(WorkspaceRenameResponse {
+            id: "req-wr".to_string(),
+            workspace_id: "ws-1".to_string(),
+            name: "new name".to_string(),
+        });
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"type\":\"workspace_rename\""));
+        assert!(json.contains("\"workspace_id\":\"ws-1\""));
+        assert!(json.contains("\"name\":\"new name\""));
+        let parsed: ServerResponse = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, ServerResponse::WorkspaceRename(_)));
     }
 }

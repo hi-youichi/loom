@@ -61,13 +61,14 @@ mod tests {
             understood: None,
         };
         assert!(state.last_assistant_reply().is_none());
-        state.core.messages.push(Message::Assistant(
-            crate::message::AssistantPayload {
+        state
+            .core
+            .messages
+            .push(Message::Assistant(crate::message::AssistantPayload {
                 content: "hello".to_string(),
                 tool_calls: vec![],
                 reasoning_content: None,
-            },
-        ));
+            }));
         assert_eq!(state.last_assistant_reply().as_deref(), Some("hello"));
     }
 

@@ -42,7 +42,7 @@ impl ThinkExpandNode {
 
     /// Sets the number of candidates to request per step (2 or 3).
     pub fn with_candidates_per_step(mut self, n: usize) -> Self {
-        self.candidates_per_step = n.min(3).max(2);
+        self.candidates_per_step = n.clamp(2, 3);
         self
     }
 
@@ -106,7 +106,11 @@ impl ThinkExpandNode {
             if !upper.contains("THOUGHT:") || !upper.contains("TOOL_CALLS:") {
                 continue;
             }
-            let thought_rest = line.split_once("THOUGHT:").map(|x| x.1).unwrap_or("").trim();
+            let thought_rest = line
+                .split_once("THOUGHT:")
+                .map(|x| x.1)
+                .unwrap_or("")
+                .trim();
             let parts: Vec<&str> = thought_rest
                 .splitn(2, "TOOL_CALLS:")
                 .map(str::trim)

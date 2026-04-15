@@ -6,7 +6,7 @@ use std::time::Instant;
 use async_trait::async_trait;
 use serde_json::Value;
 use tokio::sync::mpsc;
-use tracing::{debug, trace, warn};
+use tracing::{debug, trace};
 
 use crate::cli_run::ActiveOperationKind;
 use crate::error::AgentError;
@@ -14,9 +14,7 @@ use crate::graph::{run_cancellable, Next, RunContext};
 use crate::llm::{LlmClient, LlmResponse, ToolCallDelta};
 use crate::message::Message;
 use crate::state::{ReActState, ToolCall};
-use crate::stream::{
-    ChunkToStreamSender, MessageChunk, StreamEvent, StreamMetadata, StreamMode,
-};
+use crate::stream::{ChunkToStreamSender, MessageChunk, StreamEvent, StreamMetadata, StreamMode};
 use crate::Node;
 
 pub struct ThinkNode {
@@ -30,11 +28,11 @@ impl ThinkNode {
 
     /// Emits stream events after the LLM returns and before state is committed (messages, tool calls).
     /// `Usage` is sent separately after [`ReActState::apply_think`] to match prior event ordering.
+    #[allow(clippy::too_many_arguments)]
     async fn emit_post_response_events(
         &self,
         ctx: &RunContext<ReActState>,
         content: &str,
-        used_fallback: bool,
         should_stream: bool,
         streamed_chunks: u64,
         tool_calls: &[ToolCall],
@@ -45,20 +43,7 @@ impl ThinkNode {
             return Ok(());
         };
 
-        if used_fallback {
-            let fallback_chunk = MessageChunk::message(content.to_string());
-            let _ = stream_tx
-                .send(StreamEvent::Messages {
-                    chunk: fallback_chunk,
-                    metadata: StreamMetadata {
-                        loom_node: self.id().to_string(),
-                        namespace: None,
-                    },
-                })
-                .await;
-        }
-
-        if should_stream && !used_fallback && !content.is_empty() && streamed_chunks == 0 {
+        if should_stream && !content.is_empty() && streamed_chunks == 0 {
             let _ = stream_tx
                 .send(StreamEvent::Messages {
                     chunk: MessageChunk::message(content.to_string()),
@@ -220,9 +205,7 @@ impl Node<ReActState> for ThinkNode {
 
         debug!(
             messages = state.messages.len(),
-            should_stream,
-            should_stream_tools,
-            "think: invoking LLM"
+            should_stream, should_stream_tools, "think: invoking LLM"
         );
 
         let call_start = Instant::now();
@@ -270,28 +253,23 @@ impl Node<ReActState> for ThinkNode {
             usage,
         } = response;
 
-        let used_fallback = resp_content.is_empty() && tool_calls.is_empty();
-        if used_fallback {
-            warn!("think: empty LLM response (no text, no tool calls); using fallback message");
-        }
-
-        let content = if used_fallback {
-            "No text response from the model. Please try again or check the API.".to_string()
-        } else {
+        let content = if !resp_content.is_empty() {
             resp_content
+        } else if let Some(reasoning) = &reasoning_content {
+            reasoning.clone()
+        } else {
+            String::new()
         };
 
         trace!(
             content_len = content.len(),
             tool_calls = tool_calls.len(),
-            used_fallback,
             "think: LLM response ready"
         );
 
         self.emit_post_response_events(
             ctx,
             &content,
-            used_fallback,
             should_stream,
             streamed_chunks,
             &tool_calls,
@@ -300,15 +278,11 @@ impl Node<ReActState> for ThinkNode {
         )
         .await?;
 
-        let new_state = state.apply_think(
-            content,
-            reasoning_content,
-            tool_calls,
-            usage,
-        );
+        let new_state = state.apply_think(content, reasoning_content, tool_calls, usage);
 
         if let Some(ref u) = new_state.usage {
-            self.emit_usage_event(ctx, call_start, first_token_at, u).await;
+            self.emit_usage_event(ctx, call_start, first_token_at, u)
+                .await;
         }
 
         Ok((new_state, Next::Continue))

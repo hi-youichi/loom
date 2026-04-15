@@ -1,18 +1,41 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
+import { MessageSquare, Activity } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AgentGrid } from './AgentGrid'
 import { ActivityFeed } from './ActivityFeed'
+import { TabNavigator, type TabState, type TabConfig } from '../tabs/TabNavigator'
+import { TabContent, TabPane } from '../tabs/TabContent'
+import { SessionList } from '../sessions/SessionList'
 import type { AgentInfo, ActivityEvent } from '@/types/agent'
+import type { Session } from '@/types/session'
 
 interface DashboardViewProps {
   agents: AgentInfo[]
   activity: ActivityEvent[]
   activeCount: number
   totalCalls: number
+  sessions?: Session[]
+  loadingSessions?: boolean
+  onSelectSession?: (sessionId: string) => void
+  onNewSession?: (agentName: string) => void
 }
 
-export function DashboardView({ agents, activity, activeCount, totalCalls }: DashboardViewProps) {
+export function DashboardView({ 
+  agents, 
+  activity, 
+  activeCount, 
+  totalCalls,
+  sessions = [],
+  loadingSessions: _loadingSessions = false,
+  onSelectSession,
+  onNewSession,
+}: DashboardViewProps) {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
+  
+  // Tab state with persistence
+  const [activeTab, setActiveTab] = useState<TabState>(() => {
+    return (localStorage.getItem('dashboard-last-tab') as TabState) || 'sessions'
+  })
 
   const handleSelectAgent = (name: string | null) => {
     if (name == null) {
@@ -21,6 +44,48 @@ export function DashboardView({ agents, activity, activeCount, totalCalls }: Das
       setSelectedAgent((prev) => (prev === name ? null : name))
     }
   }
+
+  const handleTabChange = (tab: TabState) => {
+    setActiveTab(tab)
+    localStorage.setItem('dashboard-last-tab', tab)
+  }
+
+  const handleSessionClick = (sessionId: string) => {
+    onSelectSession?.(sessionId)
+  }
+
+  const handleSessionPin = (sessionId: string) => {
+    console.log('Pin session:', sessionId)
+    // TODO: Implement pin logic
+  }
+
+  const handleSessionDelete = (sessionId: string) => {
+    if (confirm('确定要删除这个会话吗？')) {
+      console.log('Delete session:', sessionId)
+      // TODO: Implement delete logic
+    }
+  }
+
+  const handleSessionMore = (sessionId: string) => {
+    console.log('Show more options for session:', sessionId)
+    // TODO: Implement context menu
+  }
+
+  // Tab configurations
+  const tabs: TabConfig[] = useMemo(() => [
+    {
+      id: 'sessions',
+      label: '最近会话',
+      icon: <MessageSquare className="size-4" />,
+      badge: sessions.length
+    },
+    {
+      id: 'activity',
+      label: '最近活动',
+      icon: <Activity className="size-4" />,
+      badge: activity.length
+    }
+  ], [sessions.length, activity.length])
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -35,12 +100,12 @@ export function DashboardView({ agents, activity, activeCount, totalCalls }: Das
                 Agent Dashboard
               </h1>
               <p className="text-sm text-muted-foreground mt-1">
-                监控和管理你的 AI Agent 运行状态
+                管理 AI Agent 会话与活动
               </p>
             </div>
             <div className="flex items-center gap-3">
               <StatChip label="活跃" value={activeCount} accent={activeCount > 0} />
-              <StatChip label="总计" value={agents.length} accent={false} />
+              <StatChip label="Agents" value={agents.length} accent={false} />
               <StatChip label="调用" value={totalCalls} accent={false} />
             </div>
           </div>
@@ -57,7 +122,7 @@ export function DashboardView({ agents, activity, activeCount, totalCalls }: Das
             >
               <span className="size-1.5 rounded-full bg-foreground/40" />
               筛选: {selectedAgent}
-              <span className="text-muted-foreground ml-0.5">✕</span>
+              <span className="text-muted-foreground ml-0.5">×</span>
             </button>
           )}
         </header>
@@ -67,21 +132,51 @@ export function DashboardView({ agents, activity, activeCount, totalCalls }: Das
             agents={agents}
             selectedAgent={selectedAgent}
             onSelectAgent={handleSelectAgent}
+            onNewSession={onNewSession}
           />
         </section>
 
         <section className="flex-1 min-h-0 border-t border-border/60 flex flex-col">
-          <div className="shrink-0 py-3 flex items-center justify-between">
-            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-              最近活动
-            </h2>
-            {selectedAgent && (
-              <span className="text-[0.65rem] text-muted-foreground">
-                仅显示 {selectedAgent}
-              </span>
-            )}
+          {/* Tab Navigation */}
+          <div className="shrink-0 pt-4">
+            <TabNavigator
+              tabs={tabs}
+              activeTab={activeTab}
+              onTabChange={handleTabChange}
+              variant="underline"
+              size="md"
+            />
           </div>
-          <ActivityFeed events={activity} filterAgent={selectedAgent} />
+
+          {/* Tab Content */}
+          <TabContent activeTab={activeTab} animation="fade" className="flex-1 min-h-0 overflow-hidden">
+            <TabPane tabId="sessions" isActive={activeTab === 'sessions'} className="h-full overflow-y-auto">
+              <SessionList
+                sessions={sessions}
+                filterAgent={selectedAgent}
+                selectedSessionId={null}
+                onSessionClick={handleSessionClick}
+                onSessionPin={handleSessionPin}
+                onSessionDelete={handleSessionDelete}
+                onSessionMore={handleSessionMore}
+                className="py-4"
+              />
+            </TabPane>
+            
+            <TabPane tabId="activity" isActive={activeTab === 'activity'} className="h-full overflow-y-auto">
+              <div className="shrink-0 py-3 flex items-center justify-between">
+                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+                  活动记录
+                </h2>
+                {selectedAgent && (
+                  <span className="text-[0.65rem] text-muted-foreground">
+                    筛选: {selectedAgent}
+                  </span>
+                )}
+              </div>
+              <ActivityFeed events={activity} filterAgent={selectedAgent} />
+            </TabPane>
+          </TabContent>
         </section>
       </div>
     </div>

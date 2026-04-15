@@ -7,8 +7,8 @@ use std::io::Write;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 use cli::{run_cli_turn, RunCmd, RunError, RunOptions, RunOutput, StreamOut};
-use loom::UserContent;
 use loom::command::{self as loom_command};
+use loom::UserContent;
 
 use crate::output::{emit_run_output, OutputConfig};
 use crate::Command;
@@ -25,6 +25,7 @@ fn cmd_to_runcmd(cmd: &Command) -> RunCmd {
         Command::Tool(_) => unreachable!("tool handled in main"),
         Command::Session(_) => unreachable!("session handled in main"),
         Command::Models(_) => unreachable!("models handled in main"),
+        Command::Mcp(_) => unreachable!("mcp handled in main"),
     }
 }
 

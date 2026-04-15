@@ -63,13 +63,13 @@ impl OperationStats {
 pub struct PerformanceMonitor {
     /// Recent operation metrics (circular buffer)
     recent_metrics: Arc<RwLock<Vec<OperationMetric>>>,
-    
+
     /// Aggregated stats by operation type
     stats_by_operation: DashMap<String, OperationStats>,
-    
+
     /// Stats by language
     stats_by_language: DashMap<String, OperationStats>,
-    
+
     /// Maximum number of recent metrics to keep
     max_recent_metrics: usize,
 }
@@ -95,18 +95,10 @@ impl PerformanceMonitor {
         }
 
         // Update stats by operation
-        self.update_stats(
-            &metric.operation_type,
-            &self.stats_by_operation,
-            &metric,
-        );
+        self.update_stats(&metric.operation_type, &self.stats_by_operation, &metric);
 
         // Update stats by language
-        self.update_stats(
-            &metric.language,
-            &self.stats_by_language,
-            &metric,
-        );
+        self.update_stats(&metric.language, &self.stats_by_language, &metric);
 
         debug!(
             operation = %metric.operation_type,
@@ -125,26 +117,26 @@ impl PerformanceMonitor {
         metric: &OperationMetric,
     ) {
         let mut entry = map.entry(key.to_string()).or_default();
-        
+
         entry.total_count += 1;
         entry.total_duration += metric.duration;
-        
+
         if metric.success {
             entry.success_count += 1;
         } else {
             entry.failure_count += 1;
         }
-        
+
         if metric.cache_hit {
             entry.cache_hit_count += 1;
         }
-        
+
         match entry.min_duration {
             None => entry.min_duration = Some(metric.duration),
             Some(min) if metric.duration < min => entry.min_duration = Some(metric.duration),
             _ => {}
         }
-        
+
         match entry.max_duration {
             None => entry.max_duration = Some(metric.duration),
             Some(max) if metric.duration > max => entry.max_duration = Some(metric.duration),
@@ -154,7 +146,9 @@ impl PerformanceMonitor {
 
     /// Get statistics for an operation type.
     pub fn get_operation_stats(&self, operation_type: &str) -> Option<OperationStats> {
-        self.stats_by_operation.get(operation_type).map(|s| s.clone())
+        self.stats_by_operation
+            .get(operation_type)
+            .map(|s| s.clone())
     }
 
     /// Get statistics for a language.
@@ -164,12 +158,18 @@ impl PerformanceMonitor {
 
     /// Get all operation types with stats.
     pub fn operation_types(&self) -> Vec<String> {
-        self.stats_by_operation.iter().map(|entry| entry.key().clone()).collect()
+        self.stats_by_operation
+            .iter()
+            .map(|entry| entry.key().clone())
+            .collect()
     }
 
     /// Get all languages with stats.
     pub fn languages(&self) -> Vec<String> {
-        self.stats_by_language.iter().map(|entry| entry.key().clone()).collect()
+        self.stats_by_language
+            .iter()
+            .map(|entry| entry.key().clone())
+            .collect()
     }
 
     /// Clear all metrics and stats.
@@ -188,10 +188,10 @@ impl PerformanceMonitor {
         let mut total_failures = 0u64;
         let mut total_cache_hits = 0u64;
         let mut total_duration = Duration::ZERO;
-        
+
         let mut operation_breakdown = HashMap::new();
         let mut language_breakdown = HashMap::new();
-        
+
         // Aggregate operation stats
         for entry in self.stats_by_operation.iter() {
             let stats = entry.value();
@@ -200,7 +200,7 @@ impl PerformanceMonitor {
             total_failures += stats.failure_count;
             total_cache_hits += stats.cache_hit_count;
             total_duration += stats.total_duration;
-            
+
             operation_breakdown.insert(
                 entry.key().clone(),
                 OperationReport {
@@ -208,16 +208,22 @@ impl PerformanceMonitor {
                     success_rate: stats.success_rate(),
                     cache_hit_rate: stats.cache_hit_rate(),
                     average_latency_ms: stats.average_duration().as_millis() as f64,
-                    min_latency_ms: stats.min_duration.map(|d| d.as_millis() as f64).unwrap_or(0.0),
-                    max_latency_ms: stats.max_duration.map(|d| d.as_millis() as f64).unwrap_or(0.0),
+                    min_latency_ms: stats
+                        .min_duration
+                        .map(|d| d.as_millis() as f64)
+                        .unwrap_or(0.0),
+                    max_latency_ms: stats
+                        .max_duration
+                        .map(|d| d.as_millis() as f64)
+                        .unwrap_or(0.0),
                 },
             );
         }
-        
+
         // Aggregate language stats
         for entry in self.stats_by_language.iter() {
             let stats = entry.value();
-            
+
             language_breakdown.insert(
                 entry.key().clone(),
                 OperationReport {
@@ -225,18 +231,24 @@ impl PerformanceMonitor {
                     success_rate: stats.success_rate(),
                     cache_hit_rate: stats.cache_hit_rate(),
                     average_latency_ms: stats.average_duration().as_millis() as f64,
-                    min_latency_ms: stats.min_duration.map(|d| d.as_millis() as f64).unwrap_or(0.0),
-                    max_latency_ms: stats.max_duration.map(|d| d.as_millis() as f64).unwrap_or(0.0),
+                    min_latency_ms: stats
+                        .min_duration
+                        .map(|d| d.as_millis() as f64)
+                        .unwrap_or(0.0),
+                    max_latency_ms: stats
+                        .max_duration
+                        .map(|d| d.as_millis() as f64)
+                        .unwrap_or(0.0),
                 },
             );
         }
-        
+
         let average_latency_ms = if total_operations > 0 {
             total_duration.as_millis() as f64 / total_operations as f64
         } else {
             0.0
         };
-        
+
         PerformanceReport {
             total_operations,
             total_success,
@@ -251,7 +263,7 @@ impl PerformanceMonitor {
     /// Log a summary of performance metrics.
     pub fn log_summary(&self) {
         let report = self.generate_report();
-        
+
         info!(
             total_operations = %report.total_operations,
             success_rate = %report.success_rate(),
@@ -347,7 +359,7 @@ impl OperationTimer {
             cache_hit,
             timestamp: Instant::now(),
         };
-        
+
         self.monitor.record(metric);
     }
 }
@@ -359,7 +371,7 @@ mod tests {
     #[test]
     fn test_performance_monitor() {
         let monitor = PerformanceMonitor::new(100);
-        
+
         let metric = OperationMetric {
             operation_type: "completion".to_string(),
             language: "rust".to_string(),
@@ -368,9 +380,9 @@ mod tests {
             cache_hit: false,
             timestamp: Instant::now(),
         };
-        
+
         monitor.record(metric);
-        
+
         let stats = monitor.get_operation_stats("completion").unwrap();
         assert_eq!(stats.total_count, 1);
         assert_eq!(stats.success_count, 1);
@@ -378,12 +390,14 @@ mod tests {
 
     #[test]
     fn test_operation_stats() {
-        let mut stats = OperationStats::default();
-        stats.total_count = 10;
-        stats.success_count = 8;
-        stats.cache_hit_count = 5;
-        stats.total_duration = Duration::from_millis(100);
-        
+        let stats = OperationStats {
+            total_count: 10,
+            success_count: 8,
+            cache_hit_count: 5,
+            total_duration: Duration::from_millis(100),
+            ..OperationStats::default()
+        };
+
         assert_eq!(stats.success_rate(), 80.0);
         assert_eq!(stats.cache_hit_rate(), 50.0);
         assert_eq!(stats.average_duration(), Duration::from_millis(10));

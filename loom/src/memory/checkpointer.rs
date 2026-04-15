@@ -22,32 +22,6 @@ pub enum CheckpointError {
     NotFound(String),
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// **Scenario**: Display of each CheckpointError variant contains expected keywords.
-    #[test]
-    fn checkpoint_error_display_all_variants() {
-        assert!(CheckpointError::ThreadIdRequired
-            .to_string()
-            .to_lowercase()
-            .contains("thread"));
-        assert!(CheckpointError::Serialization("err".into())
-            .to_string()
-            .to_lowercase()
-            .contains("serialization"));
-        assert!(CheckpointError::Storage("io".into())
-            .to_string()
-            .to_lowercase()
-            .contains("storage"));
-        assert!(CheckpointError::NotFound("id".into())
-            .to_string()
-            .to_lowercase()
-            .contains("not found"));
-    }
-}
-
 /// Persists and retrieves checkpoints for one state type.
 ///
 /// Implementations are expected to treat `thread_id` plus checkpoint namespace as
@@ -89,4 +63,30 @@ where
         before: Option<&str>,
         after: Option<&str>,
     ) -> Result<Vec<CheckpointListItem>, CheckpointError>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// **Scenario**: Display of each CheckpointError variant contains expected keywords.
+    #[test]
+    fn checkpoint_error_display_all_variants() {
+        assert!(CheckpointError::ThreadIdRequired
+            .to_string()
+            .to_lowercase()
+            .contains("thread"));
+        assert!(CheckpointError::Serialization("err".into())
+            .to_string()
+            .to_lowercase()
+            .contains("serialization"));
+        assert!(CheckpointError::Storage("io".into())
+            .to_string()
+            .to_lowercase()
+            .contains("storage"));
+        assert!(CheckpointError::NotFound("id".into())
+            .to_string()
+            .to_lowercase()
+            .contains("not found"));
+    }
 }

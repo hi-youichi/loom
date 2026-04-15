@@ -129,7 +129,9 @@ impl Tool for PowerShellTool {
                 },
                 "required": ["command"]
             }),
-            output_hint: Some(ToolOutputHint::preferred(ToolOutputStrategy::HeadTail).prefer_head_tail()),
+            output_hint: Some(
+                ToolOutputHint::preferred(ToolOutputStrategy::HeadTail).prefer_head_tail(),
+            ),
         }
     }
 
@@ -192,20 +194,21 @@ impl Tool for PowerShellTool {
     }
 }
 
-fn parse_env_object(v: Option<&serde_json::Value>) -> Result<Vec<(String, String)>, ToolSourceError> {
+fn parse_env_object(
+    v: Option<&serde_json::Value>,
+) -> Result<Vec<(String, String)>, ToolSourceError> {
     let Some(v) = v else {
         return Ok(Vec::new());
     };
     let obj = v.as_object().ok_or_else(|| {
-        ToolSourceError::InvalidInput("'env' must be a JSON object of string keys to string values".to_string())
+        ToolSourceError::InvalidInput(
+            "'env' must be a JSON object of string keys to string values".to_string(),
+        )
     })?;
     let mut out = Vec::with_capacity(obj.len());
     for (k, val) in obj {
         let s = val.as_str().ok_or_else(|| {
-            ToolSourceError::InvalidInput(format!(
-                "env value for {:?} must be a string",
-                k
-            ))
+            ToolSourceError::InvalidInput(format!("env value for {:?} must be a string", k))
         })?;
         out.push((k.clone(), s.to_string()));
     }
@@ -225,6 +228,7 @@ where
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_powershell_command(
     shell: &str,
     shell_cmd_arg: &str,

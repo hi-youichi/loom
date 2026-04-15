@@ -4,7 +4,7 @@
 //!
 //! - **Multi-bot support** — run several bots from a single process via long polling
 //! - **Streaming agent** — real-time Think / Act streaming powered by Loom
-//! - **Slash commands** — extensible [`CommandDispatcher`] for `/model`, `/reset`, `/help`
+//! - **Slash commands** — extensible `CommandDispatcher` for `/model`, `/reset`, `/help`
 //! - **Media downloads** — photos, videos, documents with metadata
 //! - **Model selection** — SQLite-backed model catalog with fuzzy search
 //! - **Health & metrics** — axum health endpoint + atomic counters

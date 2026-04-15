@@ -40,19 +40,21 @@ pub(super) fn completion_usage_to_llm(u: &CompletionUsage) -> LlmUsage {
         prompt_tokens: u.prompt_tokens,
         completion_tokens: u.completion_tokens,
         total_tokens: u.total_tokens,
-        prompt_tokens_details: u.prompt_tokens_details.as_ref().map(|d| PromptTokensDetails {
-            cached_tokens: d.cached_tokens,
-            audio_tokens: d.audio_tokens,
-        }),
-        completion_tokens_details: u
-            .completion_tokens_details
+        prompt_tokens_details: u
+            .prompt_tokens_details
             .as_ref()
-            .map(|d| CompletionTokensDetails {
+            .map(|d| PromptTokensDetails {
+                cached_tokens: d.cached_tokens,
+                audio_tokens: d.audio_tokens,
+            }),
+        completion_tokens_details: u.completion_tokens_details.as_ref().map(|d| {
+            CompletionTokensDetails {
                 reasoning_tokens: d.reasoning_tokens,
                 audio_tokens: d.audio_tokens,
                 accepted_prediction_tokens: d.accepted_prediction_tokens,
                 rejected_prediction_tokens: d.rejected_prediction_tokens,
-            }),
+            }
+        }),
     }
 }
 
@@ -70,6 +72,7 @@ pub struct ChatOpenAI {
     tool_choice: Option<ToolChoiceMode>,
     /// When true, parse content for thinking tags and emit as MessageChunk::thinking / message.
     parse_thinking_tags: bool,
+    headers: Option<crate::llm::LlmHeaders>,
 }
 
 impl ChatOpenAI {
@@ -85,6 +88,7 @@ impl ChatOpenAI {
             temperature: None,
             tool_choice: None,
             parse_thinking_tags: false,
+            headers: None,
         }
     }
 
@@ -100,6 +104,7 @@ impl ChatOpenAI {
             temperature: None,
             tool_choice: None,
             parse_thinking_tags: false,
+            headers: None,
         }
     }
 
@@ -154,6 +159,38 @@ impl ChatOpenAI {
         self
     }
 
+    /// Sets HTTP headers for LLM requests.
+    ///
+    /// This allows adding custom headers like X-App-Id, X-Thread-Id, X-Trace-Id
+    /// for request tracking and observability.
+    pub fn with_headers(mut self, headers: crate::llm::LlmHeaders) -> Self {
+        self.headers = Some(headers);
+        self
+    }
+
+    #[allow(dead_code)]
+    fn get_headers_map(&self) -> std::collections::HashMap<String, String> {
+        let mut headers = std::collections::HashMap::new();
+
+        if let Some(config) = &self.headers {
+            // Fixed X-App-Id header as "loom"
+            headers.insert("X-App-Id".to_string(), "loom".to_string());
+
+            if let Some(thread_id) = &config.thread_id {
+                headers.insert("X-Thread-Id".to_string(), thread_id.clone());
+            }
+            if let Some(trace_id) = &config.trace_id {
+                headers.insert("X-Trace-Id".to_string(), trace_id.clone());
+            }
+
+            for (key, value) in &config.custom_headers {
+                headers.insert(key.clone(), value.clone());
+            }
+        }
+
+        headers
+    }
+
     /// Chat completions URL for logging (`OPENAI_BASE_URL` / `OPENAI_API_BASE` or default).
     pub(crate) fn chat_completions_url() -> String {
         let base = std::env::var("OPENAI_BASE_URL")
@@ -187,10 +224,12 @@ impl ChatOpenAI {
 impl LlmClient for ChatOpenAI {
     async fn invoke(&self, messages: &[Message]) -> Result<LlmResponse, AgentError> {
         let trace_id = uuid6().to_string();
+        let request_id = uuid6().to_string();
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         let url = Self::chat_completions_url();
         debug!(
             trace_id = %trace_id,
+            request_id = %request_id,
             url = %url,
             model = %self.model,
             message_count = messages.len(),
@@ -295,11 +334,13 @@ impl LlmClient for ChatOpenAI {
         }
 
         let trace_id = uuid6().to_string();
+        let request_id = uuid6().to_string();
         let chunk_tx = chunk_tx.expect("chunk_tx must be Some when streaming");
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         let url = Self::chat_completions_url();
         debug!(
             trace_id = %trace_id,
+            request_id = %request_id,
             url = %url,
             model = %self.model,
             message_count = messages.len(),

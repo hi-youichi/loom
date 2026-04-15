@@ -3,10 +3,10 @@
 use cli::RunOptions;
 
 use crate::args::{Args, Command};
-use loom::UserContent;
 use crate::display_limits::{generate_session_id, max_message_len};
 use crate::output::{emit_run_output, make_stream_out, OutputConfig};
 use crate::repl::{run_one_turn, run_repl_loop};
+use loom::UserContent;
 
 pub(crate) fn resolve_user_message(args: &Args) -> Option<String> {
     args.message.clone().or_else(|| {

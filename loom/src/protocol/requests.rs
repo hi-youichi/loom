@@ -1,7 +1,7 @@
 //! WebSocket request types (client → server).
 
-use serde::{Deserialize, Serialize};
 use crate::message::UserContent;
+use serde::{Deserialize, Serialize};
 
 /// Agent type for run requests.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -20,6 +20,15 @@ pub enum AgentIdentifier {
     Type(AgentType),
     /// Custom agent profile name (dev, assistant, ask, etc.)
     Name(String),
+}
+
+impl std::fmt::Display for AgentIdentifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AgentIdentifier::Type(t) => write!(f, "{:?}", t),
+            AgentIdentifier::Name(n) => write!(f, "{}", n),
+        }
+    }
 }
 
 /// Run request: execute one Agent run (streaming events + final RunEnd).
@@ -162,6 +171,13 @@ pub struct AgentListRequest {
     pub thread_id: Option<String>,
 }
 
+/// Cancel run request: cancel a running agent.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CancelRunRequest {
+    pub id: String,
+    pub run_id: String,
+}
+
 /// Client-to-server request envelope.
 ///
 /// Each variant maps to a JSON object with `"type": "<variant_name>"`.
@@ -178,9 +194,11 @@ pub enum ClientRequest {
     WorkspaceThreadList(WorkspaceThreadListRequest),
     WorkspaceThreadAdd(WorkspaceThreadAddRequest),
     WorkspaceThreadRemove(WorkspaceThreadRemoveRequest),
+    WorkspaceRename(WorkspaceRenameRequest),
     Ping(PingRequest),
     ListModels(ListModelsRequest),
     SetModel(SetModelRequest),
+    CancelRun(CancelRunRequest),
 }
 // -----------------------------------------------------------------------------
 // Workspace requests
@@ -221,6 +239,14 @@ pub struct WorkspaceThreadRemoveRequest {
     pub id: String,
     pub workspace_id: String,
     pub thread_id: String,
+}
+
+/// Workspace rename request: update the name of an existing workspace.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceRenameRequest {
+    pub id: String,
+    pub workspace_id: String,
+    pub name: String,
 }
 #[cfg(test)]
 mod tests {
@@ -413,6 +439,21 @@ mod tests {
         assert!(json.contains("\"type\":\"workspace_thread_remove\""));
         let parsed: ClientRequest = serde_json::from_str(&json).unwrap();
         assert!(matches!(parsed, ClientRequest::WorkspaceThreadRemove(_)));
+    }
+
+    #[test]
+    fn request_workspace_rename_roundtrip() {
+        let req = ClientRequest::WorkspaceRename(WorkspaceRenameRequest {
+            id: "req-wr".to_string(),
+            workspace_id: "ws-1".to_string(),
+            name: "new name".to_string(),
+        });
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"type\":\"workspace_rename\""));
+        assert!(json.contains("\"workspace_id\":\"ws-1\""));
+        assert!(json.contains("\"name\":\"new name\""));
+        let parsed: ClientRequest = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, ClientRequest::WorkspaceRename(_)));
     }
 
     #[test]

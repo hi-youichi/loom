@@ -16,26 +16,21 @@ pub fn estimate_tokens(messages: &[Message]) -> u32 {
             Message::System(s) => s.len(),
             Message::User(c) => match c {
                 UserContent::Text(s) => s.len(),
-                UserContent::Multimodal(parts) => {
-                    parts
-                        .iter()
-                        .map(|p| match p {
-                            ContentPart::Text { text } => text.len(),
-                            ContentPart::ImageUrl { .. } | ContentPart::ImageBase64 { .. } => 4000,
-                            ContentPart::AudioBase64 { .. } => 2000,
-                            ContentPart::VideoUrl { .. } | ContentPart::VideoBase64 { .. } => {
-                                8000
-                            }
-                            ContentPart::PdfUrl { .. } | ContentPart::PdfBase64 { .. } => 4000,
-                            ContentPart::File { .. } => 2000,
-                        })
-                        .sum::<usize>()
-                }
+                UserContent::Multimodal(parts) => parts
+                    .iter()
+                    .map(|p| match p {
+                        ContentPart::Text { text } => text.len(),
+                        ContentPart::ImageUrl { .. } | ContentPart::ImageBase64 { .. } => 4000,
+                        ContentPart::AudioBase64 { .. } => 2000,
+                        ContentPart::VideoUrl { .. } | ContentPart::VideoBase64 { .. } => 8000,
+                        ContentPart::PdfUrl { .. } | ContentPart::PdfBase64 { .. } => 4000,
+                        ContentPart::File { .. } => 2000,
+                    })
+                    .sum::<usize>(),
             },
             Message::Assistant(p) => {
                 p.content.len()
-                    + p
-                        .tool_calls
+                    + p.tool_calls
                         .iter()
                         .map(|tc| tc.id.len() + tc.name.len() + tc.arguments.len())
                         .sum::<usize>()
@@ -99,6 +94,7 @@ mod tests {
     //!   current = (prompt_tokens + completion_tokens) + estimate_tokens(messages[count..])
     //!   (hybrid: real usage for the last Think round + estimated delta for messages added after).
     //! - Otherwise: current = estimate_tokens(messages) (pure heuristic).
+    //!
     //! Overflow when: current + reserve_tokens > max_context_tokens.
 
     use crate::message::Message;
@@ -168,10 +164,7 @@ mod tests {
         // Hybrid path: usage = Some((50, 10)), message_count_after_last_think = Some(1).
         // current = (50 + 10) + estimate_tokens(messages[1..]) = 60 + estimate(["new"]) = 60 + (3/4) = 60 + 0 = 60.
         // 60 + 10 = 70 < 100 → no overflow. Demonstrates that messages after last Think are estimated, not double-counted.
-        let messages = vec![
-            Message::user("old"),
-            Message::user("new"),
-        ];
+        let messages = vec![Message::user("old"), Message::user("new")];
         let input = ContextWindowCheck {
             messages: &messages,
             usage: Some((50, 10)),

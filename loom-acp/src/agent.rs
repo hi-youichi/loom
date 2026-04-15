@@ -9,13 +9,13 @@ use crate::session::{SessionId as OurSessionId, SessionStore};
 use crate::session_config_store::SessionConfigStore;
 use crate::stream_bridge::SessionNotifier;
 use agent_client_protocol::{
-    Agent, AuthenticateRequest, AuthenticateResponse, CancelNotification,
-    ForkSessionRequest, ForkSessionResponse, InitializeRequest,
-    InitializeResponse, ListSessionsRequest, ListSessionsResponse, LoadSessionRequest,
-    LoadSessionResponse, NewSessionRequest, NewSessionResponse, PromptRequest, PromptResponse,
-    SessionId, SessionConfigOptionValue, SessionNotification,
-    SetSessionConfigOptionRequest, SetSessionConfigOptionResponse, SetSessionModeRequest,
-    SetSessionModeResponse, SetSessionModelRequest, SetSessionModelResponse, StopReason,
+    Agent, AuthenticateRequest, AuthenticateResponse, CancelNotification, ForkSessionRequest,
+    ForkSessionResponse, InitializeRequest, InitializeResponse, ListSessionsRequest,
+    ListSessionsResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
+    NewSessionResponse, PromptRequest, PromptResponse, SessionConfigOptionValue, SessionId,
+    SessionNotification, SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
+    SetSessionModeRequest, SetSessionModeResponse, SetSessionModelRequest, SetSessionModelResponse,
+    StopReason,
 };
 use loom::memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
 use loom::state::ReActState;
@@ -47,7 +47,7 @@ impl LoomAcpAgent {
         let db_path = loom::memory::default_memory_db_path();
         let config_store = SessionConfigStore::new(db_path.to_str().unwrap_or_default())
             .expect("Failed to initialize session config store");
-        
+
         Self {
             sessions: SessionStore::new(),
             agent_registry: AgentRegistry::new(),
@@ -61,7 +61,7 @@ impl LoomAcpAgent {
         let db_path = loom::memory::default_memory_db_path();
         let config_store = SessionConfigStore::new(db_path.to_str().unwrap_or_default())
             .expect("Failed to initialize session config store");
-        
+
         Self {
             sessions: SessionStore::new(),
             agent_registry: AgentRegistry::new(),
@@ -92,6 +92,7 @@ impl LoomAcpAgent {
                     base_url: p.base_url,
                     api_key: p.api_key,
                     provider_type: p.provider_type,
+                    fetch_models: p.fetch_models.unwrap_or(false),
                 })
                 .collect(),
             Err(_) => vec![],
@@ -212,10 +213,7 @@ impl Agent for LoomAcpAgent {
         tracing::debug!(session_id = %session_id, "session created");
 
         let default_mode = self.agent_registry.default_mode_id();
-        let current_model = std::env::var("MODEL")
-            .or_else(|_| std::env::var("OPENAI_MODEL"))
-            .ok()
-            .filter(|s| !s.is_empty())
+        let current_model = None // Removed environment variable support, use session config
             .or_else(crate::last_model::load)
             .unwrap_or_default();
         self.sessions.update_session_config(&our_id, |c| {
@@ -234,7 +232,7 @@ impl Agent for LoomAcpAgent {
         let modes = self.agent_registry.to_session_modes();
         let config_options =
             build_session_config_options(current_mode, &current_model, &modes, &model_options)
-            .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
+                .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
         Ok(NewSessionResponse::new(session_id)
             .modes(self.agent_registry.to_session_mode_state(current_mode))
             .config_options(config_options))
@@ -300,18 +298,20 @@ impl Agent for LoomAcpAgent {
         } else {
             entry.session_config.current_agent.clone()
         };
-        let current_model = entry.session_config.model.clone().unwrap_or_else(|| {
-            std::env::var("MODEL")
-                .or_else(|_| std::env::var("OPENAI_MODEL"))
-                .ok()
-                .filter(|s| !s.is_empty())
-                .or_else(crate::last_model::load)
-                .unwrap_or_default()
-        });
+        let current_model = entry
+            .session_config
+            .model
+            .clone()
+            .unwrap_or_else(|| crate::last_model::load().unwrap_or_default());
         let modes = self.agent_registry.to_session_modes();
         let model_options = self.get_available_models().await;
-        build_set_session_config_option_response(&current_mode, &current_model, &modes, &model_options)
-            .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))
+        build_set_session_config_option_response(
+            &current_mode,
+            &current_model,
+            &modes,
+            &model_options,
+        )
+        .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))
     }
 
     async fn set_session_mode(
@@ -323,12 +323,12 @@ impl Agent for LoomAcpAgent {
 
         let key = OurSessionId::new(args.session_id.to_string());
         self.apply_session_mode(&args.session_id, &key, &mode_id)?;
-        
+
         // Persist to database
         if let Err(e) = self.config_store.set(&key, "mode", &mode_id) {
             tracing::warn!(session_id = %args.session_id, error = %e, "Failed to persist mode config");
         }
-        
+
         Ok(SetSessionModeResponse::new())
     }
 
@@ -348,7 +348,7 @@ impl Agent for LoomAcpAgent {
         self.sessions
             .update_session_config(&key, |c| c.model = Some(model_id.clone()));
         crate::last_model::save(&model_id);
-        
+
         // Persist to database
         if let Err(e) = self.config_store.set(&key, "model", &model_id) {
             tracing::warn!(session_id = %args.session_id, error = %e, "Failed to persist model config");
@@ -365,9 +365,10 @@ impl Agent for LoomAcpAgent {
         crate::logging::init_with_working_folder(&args.cwd);
 
         let source_key = OurSessionId::new(args.session_id.to_string());
-        let source_entry = self.sessions.get(&source_key).ok_or_else(|| {
-            agent_client_protocol::Error::new(-32602, "unknown session")
-        })?;
+        let source_entry = self
+            .sessions
+            .get(&source_key)
+            .ok_or_else(|| agent_client_protocol::Error::new(-32602, "unknown session"))?;
 
         // Create new session with the same working directory and config
         let new_our_id = self.sessions.create(source_entry.working_directory.clone());
@@ -377,7 +378,7 @@ impl Agent for LoomAcpAgent {
         self.sessions.update_session_config(&new_our_id, |c| {
             *c = source_entry.session_config.clone();
         });
-        
+
         // Copy persistent config from source to target
         if let Err(e) = self.config_store.copy_config(&source_key, &new_our_id) {
             tracing::warn!(
@@ -394,15 +395,16 @@ impl Agent for LoomAcpAgent {
         } else {
             source_entry.session_config.current_agent.clone()
         };
-        let current_model = source_entry.session_config.model.clone().unwrap_or_else(|| {
-            std::env::var("MODEL")
-                .or_else(|_| std::env::var("OPENAI_MODEL"))
-                .ok()
-                .filter(|s| !s.is_empty())
-                .or_else(crate::last_model::load)
-                .unwrap_or_default()
-        });
-        // If model was resolved from fallback (env/last_model) rather than source config, persist it
+        let current_model = source_entry
+            .session_config
+            .model
+            .clone()
+            .unwrap_or_else(|| {
+                None // Removed environment variable support, use session config
+                    .or_else(crate::last_model::load)
+                    .unwrap_or_default()
+            });
+        // If model was resolved from fallback rather than source config, persist it
         if !current_model.is_empty() && source_entry.session_config.model.is_none() {
             self.sessions.update_session_config(&new_our_id, |c| {
                 c.model = Some(current_model.clone());
@@ -418,13 +420,9 @@ impl Agent for LoomAcpAgent {
 
         let model_options = self.get_available_models().await;
         let modes = self.agent_registry.to_session_modes();
-        let config_options = build_session_config_options(
-            &current_mode,
-            &current_model,
-            &modes,
-            &model_options,
-        )
-            .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
+        let config_options =
+            build_session_config_options(&current_mode, &current_model, &modes, &model_options)
+                .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
 
         Ok(ForkSessionResponse::new(new_session_id)
             .modes(self.agent_registry.to_session_mode_state(&current_mode))
@@ -443,9 +441,10 @@ impl Agent for LoomAcpAgent {
             .begin_prompt(&key)
             .ok_or_else(|| agent_client_protocol::Error::new(-32602, "unknown session"))?;
 
-        let user_content = content_blocks_to_user_content(args.prompt.as_slice()).map_err(|_| {
-            agent_client_protocol::Error::new(-32602, "content_blocks parse failed")
-        })?;
+        let user_content =
+            content_blocks_to_user_content(args.prompt.as_slice()).map_err(|_| {
+                agent_client_protocol::Error::new(-32602, "content_blocks parse failed")
+            })?;
 
         if let loom::message::UserContent::Text(ref text) = user_content {
             if let Some(cmd) = loom::command::parse(text) {
@@ -455,7 +454,8 @@ impl Agent for LoomAcpAgent {
                         tracing::info!(session_id = %args.session_id, "Context cleared via /reset command");
                         return Ok(PromptResponse::new(StopReason::EndTurn));
                     }
-                    loom::command::Command::Models { .. } | loom::command::Command::ModelsUse { .. } => {
+                    loom::command::Command::Models { .. }
+                    | loom::command::Command::ModelsUse { .. } => {
                         // ACP handles models via SetSessionConfigOption, not here
                     }
                     _ => {
@@ -497,10 +497,7 @@ impl Agent for LoomAcpAgent {
             .clone()
             .unwrap_or_else(|| PathBuf::from(loom::DEFAULT_WORKING_FOLDER));
 
-        let resolved = loom::resolve_model_config(
-            entry.session_config.model.as_deref(),
-        )
-        .await;
+        let resolved = loom::resolve_model_config(entry.session_config.model.as_deref()).await;
 
         let opts = RunOptions {
             message: user_content,
@@ -508,7 +505,10 @@ impl Agent for LoomAcpAgent {
             session_id: None,
             cancellation: Some(cancellation.clone()),
             thread_id: Some(entry.thread_id.clone()),
-            agent: Some(self.agent_registry.resolve_agent_name(&entry.session_config.current_agent)),
+            agent: Some(
+                self.agent_registry
+                    .resolve_agent_name(&entry.session_config.current_agent),
+            ),
             verbose: false,
             got_adaptive: false,
             display_max_len: 4096,
@@ -656,29 +656,22 @@ impl Agent for LoomAcpAgent {
                 tracing::warn!(session_id = %session_id, error = %e, "Failed to load persistent config");
                 std::collections::HashMap::new()
             });
-        
-        let current_mode = persisted_config.get("mode")
-            .cloned()
-            .unwrap_or_else(|| {
-                if entry.session_config.current_agent.is_empty() {
-                    self.agent_registry.default_mode_id().to_string()
-                } else {
-                    entry.session_config.current_agent.clone()
-                }
-            });
-        
-        let current_model = persisted_config.get("model")
-            .cloned()
-            .unwrap_or_else(|| {
-                entry.session_config.model.clone().unwrap_or_else(|| {
-                    std::env::var("MODEL")
-                        .or_else(|_| std::env::var("OPENAI_MODEL"))
-                        .ok()
-                        .filter(|s| !s.is_empty())
-                        .or_else(crate::last_model::load)
-                        .unwrap_or_default()
-                })
-            });
+
+        let current_mode = persisted_config.get("mode").cloned().unwrap_or_else(|| {
+            if entry.session_config.current_agent.is_empty() {
+                self.agent_registry.default_mode_id().to_string()
+            } else {
+                entry.session_config.current_agent.clone()
+            }
+        });
+
+        let current_model = persisted_config.get("model").cloned().unwrap_or_else(|| {
+            entry
+                .session_config
+                .model
+                .clone()
+                .unwrap_or_else(|| crate::last_model::load().unwrap_or_default())
+        });
         let model_options = self.get_available_models().await;
         let available_modes = self.agent_registry.to_session_modes();
         let config_options = build_session_config_options(
@@ -687,7 +680,7 @@ impl Agent for LoomAcpAgent {
             &available_modes,
             &model_options,
         )
-            .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
+        .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
 
         let modes = self.agent_registry.to_session_mode_state(&current_mode);
 
@@ -888,18 +881,16 @@ impl LoomAcpAgent {
                     let latest_summary: Option<String> = row.get(6)?;
 
                     let updated_at = last_updated_ms
-                        .and_then(|ms| DateTime::from_timestamp_millis(ms))
+                        .and_then(DateTime::from_timestamp_millis)
                         .map(|dt| dt.to_rfc3339());
 
                     // Use summary as title if available and not empty, otherwise generate from session_id
-                    let title = latest_summary
-                        .filter(|s| !s.trim().is_empty())
-                        .or_else(|| {
-                            Some(format!(
-                                "Session {}",
-                                &session_id[..8.min(session_id.len())]
-                            ))
-                        });
+                    let title = latest_summary.filter(|s| !s.trim().is_empty()).or_else(|| {
+                        Some(format!(
+                            "Session {}",
+                            &session_id[..8.min(session_id.len())]
+                        ))
+                    });
 
                     Ok(SessionInfo {
                         session_id,
@@ -1186,7 +1177,10 @@ mod tests {
     #[test]
     fn test_session_config_value_as_id_accepts_value_id_only() {
         let value_id = SessionConfigOptionValue::value_id("ask");
-        assert_eq!(session_config_value_as_id(&value_id).as_deref(), Some("ask"));
+        assert_eq!(
+            session_config_value_as_id(&value_id).as_deref(),
+            Some("ask")
+        );
 
         let boolean = SessionConfigOptionValue::boolean(true);
         assert!(session_config_value_as_id(&boolean).is_none());

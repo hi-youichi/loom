@@ -48,8 +48,8 @@ fn parse_patch(patch_text: &str) -> Result<Vec<Hunk>, String> {
     let mut i = 0;
     while i < lines.len() {
         let line = lines[i].trim();
-        if line.starts_with("*** Add File:") {
-            let path = line["*** Add File:".len()..].trim().to_string();
+        if let Some(rest) = line.strip_prefix("*** Add File:") {
+            let path = rest.trim().to_string();
             if path.is_empty() {
                 i += 1;
                 continue;
@@ -57,8 +57,8 @@ fn parse_patch(patch_text: &str) -> Result<Vec<Hunk>, String> {
             i += 1;
             let mut contents = String::new();
             while i < lines.len() && !lines[i].trim().starts_with("***") {
-                if lines[i].starts_with('+') {
-                    contents.push_str(&lines[i][1..]);
+                if let Some(l) = lines[i].strip_prefix('+') {
+                    contents.push_str(l);
                     contents.push('\n');
                 }
                 i += 1;
@@ -67,14 +67,14 @@ fn parse_patch(patch_text: &str) -> Result<Vec<Hunk>, String> {
                 contents.pop();
             }
             hunks.push(Hunk::Add { path, contents });
-        } else if line.starts_with("*** Delete File:") {
-            let path = line["*** Delete File:".len()..].trim().to_string();
+        } else if let Some(rest) = line.strip_prefix("*** Delete File:") {
+            let path = rest.trim().to_string();
             if !path.is_empty() {
                 hunks.push(Hunk::Delete { path });
             }
             i += 1;
-        } else if line.starts_with("*** Update File:") {
-            let path = line["*** Update File:".len()..].trim().to_string();
+        } else if let Some(rest) = line.strip_prefix("*** Update File:") {
+            let path = rest.trim().to_string();
             if path.is_empty() {
                 i += 1;
                 continue;
@@ -82,7 +82,14 @@ fn parse_patch(patch_text: &str) -> Result<Vec<Hunk>, String> {
             i += 1;
             let mut move_path = None;
             if i < lines.len() && lines[i].trim().starts_with("*** Move to:") {
-                move_path = Some(lines[i].trim()["*** Move to:".len()..].trim().to_string());
+                move_path = Some(
+                    lines[i]
+                        .trim()
+                        .strip_prefix("*** Move to:")
+                        .unwrap()
+                        .trim()
+                        .to_string(),
+                );
                 i += 1;
             }
             let mut chunks = Vec::new();
@@ -100,14 +107,14 @@ fn parse_patch(patch_text: &str) -> Result<Vec<Hunk>, String> {
                             i += 1;
                             break;
                         }
-                        if l.starts_with(' ') {
-                            let content = l[1..].to_string();
+                        if let Some(rest) = l.strip_prefix(' ') {
+                            let content = rest.to_string();
                             old_lines.push(content.clone());
                             new_lines.push(content);
-                        } else if l.starts_with('-') {
-                            old_lines.push(l[1..].to_string());
-                        } else if l.starts_with('+') {
-                            new_lines.push(l[1..].to_string());
+                        } else if let Some(rest) = l.strip_prefix('-') {
+                            old_lines.push(rest.to_string());
+                        } else if let Some(rest) = l.strip_prefix('+') {
+                            new_lines.push(rest.to_string());
                         }
                         i += 1;
                     }

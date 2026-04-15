@@ -118,12 +118,8 @@ impl SessionManager {
                 Ok(SessionInfo {
                     session_id,
                     checkpoint_count,
-                    created_at: created_at_ms
-                        .map(|ms| DateTime::from_timestamp_millis(ms))
-                        .flatten(),
-                    last_updated: last_updated_ms
-                        .map(|ms| DateTime::from_timestamp_millis(ms))
-                        .flatten(),
+                    created_at: created_at_ms.and_then(DateTime::from_timestamp_millis),
+                    last_updated: last_updated_ms.and_then(DateTime::from_timestamp_millis),
                     latest_step,
                     latest_source,
                 })
@@ -171,12 +167,8 @@ impl SessionManager {
                 Ok(SessionInfo {
                     session_id: session_id.to_string(),
                     checkpoint_count,
-                    created_at: created_at_ms
-                        .map(|ms| DateTime::from_timestamp_millis(ms))
-                        .flatten(),
-                    last_updated: last_updated_ms
-                        .map(|ms| DateTime::from_timestamp_millis(ms))
-                        .flatten(),
+                    created_at: created_at_ms.and_then(DateTime::from_timestamp_millis),
+                    last_updated: last_updated_ms.and_then(DateTime::from_timestamp_millis),
                     latest_step,
                     latest_source,
                 })

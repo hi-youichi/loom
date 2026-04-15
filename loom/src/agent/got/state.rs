@@ -81,8 +81,7 @@ impl Default for TaskNodeState {
 /// updates `node_states`. Checkpointer serializes the full `GotState`.
 ///
 /// **Interaction**: Flows through `StateGraph<GotState>`; see `crate::agent::got::runner`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GotState {
     /// User message used by PlanGraphNode to generate the DAG.
     #[serde(default)]
@@ -93,7 +92,6 @@ pub struct GotState {
     #[serde(default)]
     pub node_states: HashMap<String, TaskNodeState>,
 }
-
 
 impl GotState {
     /// Returns a combined result string for display (e.g. last node's result or concatenation).

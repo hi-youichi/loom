@@ -30,10 +30,10 @@ use crate::cli_run::ActiveOperationKind;
 use crate::error::AgentError;
 use crate::graph::{run_cancellable, GraphInterrupt, Interrupt, Next, Node, RunContext};
 use crate::helve::{tools_requiring_approval, ApprovalPolicy, APPROVAL_REQUIRED_EVENT_TYPE};
+use crate::memory::uuid6;
 use crate::state::tool_output_normalizer::{
     normalize_tool_output, NormalizationConfig, ToolOutputHint,
 };
-use crate::memory::uuid6;
 use crate::state::{ReActState, ToolCall, ToolResult};
 use crate::stream::{StreamEvent, StreamMode, ToolStreamWriter};
 use crate::tool_source::{ToolCallContext, ToolSource, ToolSourceError};
@@ -109,15 +109,13 @@ pub type ErrorHandlerFn =
     Arc<dyn Fn(&ToolSourceError, &str, &Value) -> String + Send + Sync + 'static>;
 
 /// Configuration for how ActNode handles tool errors.
-#[derive(Clone)]
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub enum HandleToolErrors {
     #[default]
     Never,
     Always(Option<String>),
     Custom(ErrorHandlerFn),
 }
-
 
 impl std::fmt::Debug for HandleToolErrors {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -208,7 +206,7 @@ impl ActNode {
 }
 
 /// Ensures each [`ToolResult`] has a non-empty `call_id`, preferring the paired [`ToolCall::id`].
-fn backfill_tool_result_call_ids(tool_calls: &[ToolCall], tool_results: &mut Vec<ToolResult>) {
+fn backfill_tool_result_call_ids(tool_calls: &[ToolCall], tool_results: &mut [ToolResult]) {
     for (tc, tr) in tool_calls.iter().zip(tool_results.iter_mut()) {
         let needs_fill = tr.call_id.as_deref().is_none_or(|s| s.is_empty());
         if !needs_fill {
@@ -466,6 +464,7 @@ impl Node<ReActState> for ActNode {
                                         name: tc.name.clone(),
                                         result: display_text,
                                         is_error: true,
+                                        raw_result: None,
                                     })
                                     .await;
                             }
@@ -535,9 +534,9 @@ impl Node<ReActState> for ActNode {
 
             debug!(tool = %tc.name, args = ?args, "Calling tool");
 
-            let tool_call = self
-                .tools
-                .call_tool_with_context(&tc.name, args.clone(), Some(&tool_ctx));
+            let tool_call =
+                self.tools
+                    .call_tool_with_context(&tc.name, args.clone(), Some(&tool_ctx));
             let result = match run_cancellable(
                 tool_call,
                 run_ctx.cancellation.as_ref(),
@@ -566,10 +565,11 @@ impl Node<ReActState> for ActNode {
                         result_preview = %truncate_for_log(content.as_text().unwrap(), 200),
                         "Tool returned"
                     );
+                    let raw_text = content.as_text().unwrap().to_string();
                     let normalized = normalize_tool_output(
                         &tc.name,
                         &args,
-                        content.as_text().unwrap(),
+                        &raw_text,
                         false,
                         tool_output_hints.get(&tc.name),
                         NormalizationConfig::runtime_default()
@@ -577,6 +577,11 @@ impl Node<ReActState> for ActNode {
                     );
                     let summary = truncate_for_log(&normalized.display_text, 200);
                     let display_text = normalized.display_text.clone();
+                    let raw_result_value = if display_text != raw_text {
+                        Some(raw_text)
+                    } else {
+                        None
+                    };
                     used_observation_chars += normalized.observation_chars;
 
                     tool_results.push(
@@ -593,6 +598,7 @@ impl Node<ReActState> for ActNode {
                                     name: tc.name.clone(),
                                     result: display_text,
                                     is_error: false,
+                                    raw_result: raw_result_value,
                                 })
                                 .await;
                         }
@@ -640,6 +646,7 @@ impl Node<ReActState> for ActNode {
                                     name: tc.name.clone(),
                                     result: display_text,
                                     is_error: true,
+                                    raw_result: None,
                                 })
                                 .await;
                         }
@@ -834,9 +841,6 @@ mod tests {
         }];
         let mut results = vec![ToolResult::simple(None, None, "y".into(), false)];
         backfill_tool_result_call_ids(&tcs, &mut results);
-        assert!(results[0]
-            .call_id
-            .as_deref()
-            .is_some_and(|s| !s.is_empty()));
+        assert!(results[0].call_id.as_deref().is_some_and(|s| !s.is_empty()));
     }
 }

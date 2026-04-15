@@ -31,7 +31,7 @@ function toAgentInfo(summary: AgentSummary): AgentInfo {
 export function useAgents(options?: {
   sourceFilter?: AgentListSource
   workingFolder?: string
-  threadId?: string
+  sessionId?: string
   autoRefresh?: boolean
   refreshInterval?: number
 }) {
@@ -48,7 +48,7 @@ export function useAgents(options?: {
       const summaries = await listAgents({
         sourceFilter: options?.sourceFilter,
         workingFolder: options?.workingFolder,
-        threadId: options?.threadId,
+        sessionId: options?.sessionId,
       })
       if (mountedRef.current) {
         setAgents(summaries.map(toAgentInfo))
@@ -62,7 +62,7 @@ export function useAgents(options?: {
         setLoading(false)
       }
     }
-  }, [options?.sourceFilter, options?.workingFolder, options?.threadId])
+  }, [options?.sourceFilter, options?.workingFolder, options?.sessionId])
 
   useEffect(() => {
     fetchAgents()

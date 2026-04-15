@@ -199,6 +199,10 @@ impl LlmClient for MockLlm {
                         if let Some(delay_ms) = self.stream_delay_ms {
                             tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                         }
+                        // Check if channel is still open (might indicate cancellation)
+                        if tx.is_closed() {
+                            return Ok(response);
+                        }
                         let _ = tx.send(MessageChunk::message(c.to_string())).await;
                     }
                 } else {

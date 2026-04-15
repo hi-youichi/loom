@@ -1,16 +1,81 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::str::FromStr;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum InteractionMode {
-    Streaming,
     #[default]
+    Streaming,
     PeriodicSummary,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl InteractionMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Streaming => "streaming",
+            Self::PeriodicSummary => "periodic_summary",
+        }
+    }
+}
+
+impl std::fmt::Display for InteractionMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl FromStr for InteractionMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "streaming" => Ok(Self::Streaming),
+            "periodic_summary" => Ok(Self::PeriodicSummary),
+            _ => Err(format!(
+                "unknown variant `{}`, expected one of `streaming`, `periodic_summary`",
+                s
+            )),
+        }
+    }
+}
+
+impl Serialize for InteractionMode {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for InteractionMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct InteractionModeVisitor;
+
+        impl serde::de::Visitor<'_> for InteractionModeVisitor {
+            type Value = InteractionMode;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("one of: streaming, periodic_summary")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                value.parse().map_err(serde::de::Error::custom)
+            }
+        }
+
+        deserializer.deserialize_str(InteractionModeVisitor)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TelegramBotConfig {
     #[serde(default)]
     pub settings: Settings,
@@ -18,17 +83,8 @@ pub struct TelegramBotConfig {
     #[serde(default)]
     pub bots: HashMap<String, BotConfig>,
 
+    #[serde(default)]
     pub agent: Option<AgentConfig>,
-}
-
-impl Default for TelegramBotConfig {
-    fn default() -> Self {
-        Self {
-            settings: Settings::default(),
-            bots: HashMap::new(),
-            agent: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

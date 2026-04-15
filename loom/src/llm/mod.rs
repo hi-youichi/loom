@@ -20,6 +20,7 @@
 mod mock;
 mod model_cache;
 mod model_registry;
+mod retry;
 
 use tokio::sync::mpsc;
 
@@ -52,6 +53,50 @@ impl std::str::FromStr for ToolChoiceMode {
     }
 }
 
+/// HTTP headers configuration for LLM requests.
+#[derive(Debug, Clone, Default)]
+pub struct LlmHeaders {
+    /// Thread identifier (X-Thread-Id header)
+    pub thread_id: Option<String>,
+    /// Trace identifier (X-Trace-Id header)
+    pub trace_id: Option<String>,
+    /// Custom additional headers
+    pub custom_headers: std::collections::HashMap<String, String>,
+}
+
+impl LlmHeaders {
+    /// Set the thread identifier for X-Thread-Id header
+    pub fn with_thread_id(mut self, thread_id: impl Into<String>) -> Self {
+        self.thread_id = Some(thread_id.into());
+        self
+    }
+
+    /// Set the trace identifier for X-Trace-Id header
+    pub fn with_trace_id(mut self, trace_id: impl Into<String>) -> Self {
+        self.trace_id = Some(trace_id.into());
+        self
+    }
+
+    /// Add a custom header
+    pub fn add_header(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.custom_headers.insert(key.into(), value.into());
+        self
+    }
+}
+
+/// Load LLM headers from environment variables.
+///
+/// Environment variables:
+/// - `LLM_THREAD_ID`: Thread identifier  
+/// - `LLM_TRACE_ID`: Trace identifier
+pub fn get_headers_from_env() -> LlmHeaders {
+    LlmHeaders {
+        thread_id: std::env::var("LLM_THREAD_ID").ok(),
+        trace_id: std::env::var("LLM_TRACE_ID").ok(),
+        custom_headers: std::collections::HashMap::new(),
+    }
+}
+
 pub(crate) mod thinking;
 pub(crate) mod tool_call_accumulator;
 
@@ -65,9 +110,10 @@ pub use openai_compat::ChatOpenAICompat;
 pub type ChatBigModel = ChatOpenAICompat;
 
 pub use mock::MockLlm;
-pub use openai::ChatOpenAI;
 pub use model_cache::{fetch_provider_models, ModelCache, ProviderModels};
 pub use model_registry::{create_llm_client, ModelEntry, ModelRegistry, ProviderConfig};
+pub use openai::ChatOpenAI;
+pub use retry::RetryLlmClient;
 
 use async_trait::async_trait;
 
@@ -174,6 +220,7 @@ impl LlmUsage {
 ///
 /// **Interaction**: Returned by `LlmClient::invoke()`; ThinkNode writes
 /// `content` into a new assistant message and `tool_calls` into `ReActState::tool_calls`.
+#[derive(Debug, Clone, PartialEq)]
 pub struct LlmResponse {
     /// Assistant message content (plain text).
     pub content: String,
@@ -310,6 +357,40 @@ mod tests {
     fn tool_choice_mode_from_str_rejects_unknown_value() {
         let err = "unexpected".parse::<ToolChoiceMode>().unwrap_err();
         assert!(err.contains("unknown tool_choice"));
+    }
+
+    #[test]
+    fn test_llm_headers_builder() {
+        let headers = LlmHeaders::default()
+            .with_thread_id("test-thread")
+            .with_trace_id("test-trace");
+
+        assert_eq!(headers.thread_id, Some("test-thread".to_string()));
+        assert_eq!(headers.trace_id, Some("test-trace".to_string()));
+    }
+
+    #[test]
+    fn test_custom_headers() {
+        let headers = LlmHeaders::default()
+            .add_header("X-Custom", "value")
+            .add_header("X-Another", "another-value");
+
+        assert_eq!(
+            headers.custom_headers.get("X-Custom"),
+            Some(&"value".to_string())
+        );
+        assert_eq!(
+            headers.custom_headers.get("X-Another"),
+            Some(&"another-value".to_string())
+        );
+    }
+
+    #[test]
+    fn test_llm_headers_default() {
+        let headers = LlmHeaders::default();
+        assert!(headers.thread_id.is_none());
+        assert!(headers.trace_id.is_none());
+        assert!(headers.custom_headers.is_empty());
     }
 
     #[tokio::test]

@@ -155,7 +155,7 @@ impl SessionStore {
 
     /// Begin a new prompt generation and return a fresh runtime cancellation handle.
     pub fn begin_prompt(&self, session_id: &SessionId) -> Option<RunCancellation> {
-        if let Some(entry) = self.inner.read().unwrap().get(&session_id) {
+        if let Some(entry) = self.inner.read().unwrap().get(session_id) {
             let generation = entry
                 .cancellation
                 .current_generation

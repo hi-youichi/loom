@@ -30,6 +30,7 @@ impl Drop for RestoreLoomHome {
 }
 
 /// Scenario: todo_write with valid todos then todo_read returns the same list (roundtrip).
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn todo_write_then_todo_read_roundtrip() {
     let _guard = LOOM_HOME_LOCK.lock().unwrap();
@@ -55,6 +56,7 @@ async fn todo_write_then_todo_read_roundtrip() {
 }
 
 /// Scenario: todo_read when todo file does not exist returns empty list (0 todos).
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn todo_read_when_file_missing_returns_empty() {
     let _guard = LOOM_HOME_LOCK.lock().unwrap();
@@ -69,6 +71,7 @@ async fn todo_read_when_file_missing_returns_empty() {
 }
 
 /// Scenario: todo_write with missing 'todos' returns InvalidInput.
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn todo_write_missing_todos_returns_invalid_input() {
     let _guard = LOOM_HOME_LOCK.lock().unwrap();

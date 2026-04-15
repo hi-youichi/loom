@@ -87,7 +87,10 @@ impl CompletionCheckNode {
     }
 
     /// Ask LLM to check if task is complete
-    async fn check_completion(&self, _messages: Vec<Message>) -> Result<CompletionResponse, AgentError> {
+    async fn check_completion(
+        &self,
+        _messages: Vec<Message>,
+    ) -> Result<CompletionResponse, AgentError> {
         let check_messages = vec![
             Message::system(self.system_prompt.clone()),
             Message::user("Based on the recent conversation, is the task complete?"),
@@ -97,10 +100,9 @@ impl CompletionCheckNode {
         let content = response.content.trim();
 
         // Try to parse JSON response
-        serde_json::from_str(content)
-            .map_err(|e| {
-                AgentError::ExecutionFailed(format!("Failed to parse completion check response: {}", e))
-            })
+        serde_json::from_str(content).map_err(|e| {
+            AgentError::ExecutionFailed(format!("Failed to parse completion check response: {}", e))
+        })
     }
 }
 
@@ -133,7 +135,7 @@ impl Node<ReActState> for CompletionCheckNode {
 
         // Get recent messages
         let recent_messages = self.get_recent_messages(&state);
-        
+
         if recent_messages.is_empty() {
             debug!("No messages to analyze, ending");
             state.should_continue = false;
@@ -203,7 +205,8 @@ mod tests {
 
     #[tokio::test]
     async fn completion_check_continues_when_task_incomplete() {
-        let llm = MockLlm::with_no_tool_calls(r#"{"completed": false, "reason": "More work needed"}"#);
+        let llm =
+            MockLlm::with_no_tool_calls(r#"{"completed": false, "reason": "More work needed"}"#);
 
         let node = CompletionCheckNode::new(Arc::new(llm))
             .with_max_iterations(10)

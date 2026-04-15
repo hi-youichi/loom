@@ -55,7 +55,10 @@ pub async fn run_agent_for_chat(ctx: &MessageContext<'_>, prompt: &str) -> Resul
                     outbound = ctx
                         .deps
                         .sender
-                        .send_formatted(chat_id, &FormattedMessage::markdown_v2(reply.clone(), reply.clone()))
+                        .send_formatted(
+                            chat_id,
+                            &FormattedMessage::markdown_v2(reply.clone(), reply.clone()),
+                        )
                         .await;
                 }
             }

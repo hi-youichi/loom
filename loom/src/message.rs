@@ -23,14 +23,34 @@ pub enum UserContent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentPart {
-    Text { text: String },
-    ImageUrl { url: String, detail: Option<String> },
-    ImageBase64 { media_type: String, data: String },
-    AudioBase64 { media_type: String, data: String },
-    VideoUrl { url: String },
-    VideoBase64 { media_type: String, data: String },
-    PdfUrl { url: String },
-    PdfBase64 { data: String },
+    Text {
+        text: String,
+    },
+    ImageUrl {
+        url: String,
+        detail: Option<String>,
+    },
+    ImageBase64 {
+        media_type: String,
+        data: String,
+    },
+    AudioBase64 {
+        media_type: String,
+        data: String,
+    },
+    VideoUrl {
+        url: String,
+    },
+    VideoBase64 {
+        media_type: String,
+        data: String,
+    },
+    PdfUrl {
+        url: String,
+    },
+    PdfBase64 {
+        data: String,
+    },
     File {
         file_id: Option<String>,
         file_data: Option<String>,
@@ -424,7 +444,11 @@ impl std::fmt::Display for Message {
                 f,
                 "tool[{}]: {}",
                 tool_call_id,
-                content.to_display_string().chars().take(200).collect::<String>()
+                content
+                    .to_display_string()
+                    .chars()
+                    .take(200)
+                    .collect::<String>()
             ),
             _ => write!(f, "{}: {}", self.role(), self.content()),
         }
@@ -443,7 +467,9 @@ mod tests {
         let usr = Message::user("u");
         assert!(matches!(&usr, Message::User(UserContent::Text(c)) if c == "u"));
         let ast = Message::assistant("a");
-        assert!(matches!(&ast, Message::Assistant(p) if p.content == "a" && p.tool_calls.is_empty()));
+        assert!(
+            matches!(&ast, Message::Assistant(p) if p.content == "a" && p.tool_calls.is_empty())
+        );
     }
 
     /// **Scenario**: Each Message variant round-trips through serde.
@@ -592,14 +618,17 @@ mod tests {
             tool_calls: vec![],
             reasoning_content: Some("reasoning steps".to_string()),
         };
-        
+
         let json = serde_json::to_string(&payload).unwrap();
         assert!(json.contains("reasoning_content"));
         assert!(json.contains("reasoning steps"));
-        
+
         let decoded: super::AssistantPayload = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded.content, "test content");
-        assert_eq!(decoded.reasoning_content, Some("reasoning steps".to_string()));
+        assert_eq!(
+            decoded.reasoning_content,
+            Some("reasoning steps".to_string())
+        );
         assert_eq!(decoded.tool_calls, vec![]);
     }
 
@@ -610,10 +639,10 @@ mod tests {
             tool_calls: vec![],
             reasoning_content: None,
         };
-        
+
         let json = serde_json::to_string(&payload).unwrap();
         assert!(!json.contains("reasoning_content"));
-        
+
         let decoded: super::AssistantPayload = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded.content, "test content");
         assert_eq!(decoded.reasoning_content, None);
@@ -623,13 +652,13 @@ mod tests {
     fn backward_compatibility_legacy_format() {
         let json = r#"{"Assistant":"hello"}"#;
         let msg: super::Message = serde_json::from_str(json).unwrap();
-        
+
         match msg {
             super::Message::Assistant(payload) => {
                 assert_eq!(payload.content, "hello");
                 assert_eq!(payload.tool_calls, vec![]);
                 assert_eq!(payload.reasoning_content, None);
-            },
+            }
             _ => panic!("Expected Assistant message"),
         }
     }
@@ -638,7 +667,7 @@ mod tests {
     fn backward_compatibility_structured_without_reasoning() {
         let json = r#"{"content":"hello","tool_calls":[]}"#;
         let payload: super::AssistantPayload = serde_json::from_str(json).unwrap();
-        
+
         assert_eq!(payload.content, "hello");
         assert_eq!(payload.tool_calls, vec![]);
         assert_eq!(payload.reasoning_content, None);
@@ -646,14 +675,15 @@ mod tests {
 
     #[test]
     fn message_assistant_with_reasoning() {
-        let msg = super::Message::assistant_with_reasoning("response", Some("thinking".to_string()));
-        
+        let msg =
+            super::Message::assistant_with_reasoning("response", Some("thinking".to_string()));
+
         match msg {
             super::Message::Assistant(payload) => {
                 assert_eq!(payload.content, "response");
                 assert_eq!(payload.reasoning_content, Some("thinking".to_string()));
                 assert_eq!(payload.tool_calls, vec![]);
-            },
+            }
             _ => panic!("Expected Assistant message"),
         }
     }
@@ -662,13 +692,11 @@ mod tests {
     fn message_assistant_with_tool_calls_and_reasoning() {
         use super::AssistantToolCall;
 
-        let tool_calls = vec![
-            AssistantToolCall {
-                id: "call_123".to_string(),
-                name: "test_tool".to_string(),
-                arguments: "{}".to_string(),
-            },
-        ];
+        let tool_calls = vec![AssistantToolCall {
+            id: "call_123".to_string(),
+            name: "test_tool".to_string(),
+            arguments: "{}".to_string(),
+        }];
 
         let msg = super::Message::assistant_with_tool_calls_and_reasoning(
             "response".to_string(),
@@ -681,7 +709,7 @@ mod tests {
                 assert_eq!(payload.content, "response");
                 assert_eq!(payload.tool_calls, tool_calls);
                 assert_eq!(payload.reasoning_content, Some("reasoning".to_string()));
-            },
+            }
             _ => panic!("Expected Assistant message"),
         }
     }
@@ -711,7 +739,9 @@ mod tests {
     #[test]
     fn user_content_multimodal_serialization() {
         let parts = vec![
-            ContentPart::Text { text: "see this".to_string() },
+            ContentPart::Text {
+                text: "see this".to_string(),
+            },
             ContentPart::ImageUrl {
                 url: "https://example.com/img.png".to_string(),
                 detail: Some("high".to_string()),
@@ -731,7 +761,9 @@ mod tests {
         let msg = Message::user("hello");
         assert!(matches!(msg, Message::User(UserContent::Text(s)) if s == "hello"));
 
-        let parts = vec![ContentPart::Text { text: "hi".to_string() }];
+        let parts = vec![ContentPart::Text {
+            text: "hi".to_string(),
+        }];
         let msg = Message::user_multimodal(parts).unwrap();
         assert!(matches!(msg, Message::User(UserContent::Multimodal(..))));
     }
@@ -752,31 +784,57 @@ mod tests {
     #[test]
     fn content_part_modality() {
         assert_eq!(
-            ContentPart::Text { text: "hi".to_string() }.modality(),
+            ContentPart::Text {
+                text: "hi".to_string()
+            }
+            .modality(),
             model_spec_core::spec::ModalityType::Text
         );
         assert_eq!(
-            ContentPart::ImageUrl { url: "https://x.com/img.png".to_string(), detail: None }.modality(),
+            ContentPart::ImageUrl {
+                url: "https://x.com/img.png".to_string(),
+                detail: None
+            }
+            .modality(),
             model_spec_core::spec::ModalityType::Image
         );
         assert_eq!(
-            ContentPart::ImageBase64 { media_type: "image/png".to_string(), data: "abc".to_string() }.modality(),
+            ContentPart::ImageBase64 {
+                media_type: "image/png".to_string(),
+                data: "abc".to_string()
+            }
+            .modality(),
             model_spec_core::spec::ModalityType::Image
         );
         assert_eq!(
-            ContentPart::AudioBase64 { media_type: "audio/mp3".to_string(), data: "abc".to_string() }.modality(),
+            ContentPart::AudioBase64 {
+                media_type: "audio/mp3".to_string(),
+                data: "abc".to_string()
+            }
+            .modality(),
             model_spec_core::spec::ModalityType::Audio
         );
         assert_eq!(
-            ContentPart::VideoUrl { url: "https://x.com/vid.mp4".to_string() }.modality(),
+            ContentPart::VideoUrl {
+                url: "https://x.com/vid.mp4".to_string()
+            }
+            .modality(),
             model_spec_core::spec::ModalityType::Video
         );
         assert_eq!(
-            ContentPart::PdfUrl { url: "https://x.com/doc.pdf".to_string() }.modality(),
+            ContentPart::PdfUrl {
+                url: "https://x.com/doc.pdf".to_string()
+            }
+            .modality(),
             model_spec_core::spec::ModalityType::Pdf
         );
         assert_eq!(
-            ContentPart::File { file_id: None, file_data: None, filename: Some("data.csv".to_string()) }.modality(),
+            ContentPart::File {
+                file_id: None,
+                file_data: None,
+                filename: Some("data.csv".to_string())
+            }
+            .modality(),
             model_spec_core::spec::ModalityType::Text
         );
     }
@@ -787,8 +845,12 @@ mod tests {
         assert_eq!(text.as_text(), "hello");
 
         let parts = vec![
-            ContentPart::Text { text: "first".to_string() },
-            ContentPart::Text { text: "second".to_string() },
+            ContentPart::Text {
+                text: "first".to_string(),
+            },
+            ContentPart::Text {
+                text: "second".to_string(),
+            },
         ];
         let multimodal = UserContent::Multimodal(parts);
         assert_eq!(multimodal.as_text(), "first\nsecond");
@@ -797,11 +859,19 @@ mod tests {
     #[test]
     fn user_content_modalities() {
         let text = UserContent::Text("hello".to_string());
-        assert_eq!(text.modalities(), vec![model_spec_core::spec::ModalityType::Text]);
+        assert_eq!(
+            text.modalities(),
+            vec![model_spec_core::spec::ModalityType::Text]
+        );
 
         let parts = vec![
-            ContentPart::Text { text: "hi".to_string() },
-            ContentPart::ImageUrl { url: "https://x.com/img.png".to_string(), detail: None },
+            ContentPart::Text {
+                text: "hi".to_string(),
+            },
+            ContentPart::ImageUrl {
+                url: "https://x.com/img.png".to_string(),
+                detail: None,
+            },
         ];
         let multimodal = UserContent::Multimodal(parts);
         assert_eq!(
@@ -815,7 +885,7 @@ mod tests {
 
     #[test]
     fn user_content_unsupported_modalities() {
-        use model_spec_core::spec::{Model, Modalities};
+        use model_spec_core::spec::{Modalities, Model};
 
         // Model that only supports text and image
         let model = Model {
@@ -844,16 +914,26 @@ mod tests {
 
         // Text + Image is fully supported
         let supported = UserContent::Multimodal(vec![
-            ContentPart::Text { text: "hi".to_string() },
-            ContentPart::ImageUrl { url: "https://x.com/img.png".to_string(), detail: None },
+            ContentPart::Text {
+                text: "hi".to_string(),
+            },
+            ContentPart::ImageUrl {
+                url: "https://x.com/img.png".to_string(),
+                detail: None,
+            },
         ]);
         assert!(supported.is_supported_by(&model));
         assert_eq!(supported.unsupported_modalities(&model), vec![]);
 
         // Audio is NOT supported
         let unsupported = UserContent::Multimodal(vec![
-            ContentPart::Text { text: "hi".to_string() },
-            ContentPart::AudioBase64 { media_type: "audio/mp3".to_string(), data: "abc".to_string() },
+            ContentPart::Text {
+                text: "hi".to_string(),
+            },
+            ContentPart::AudioBase64 {
+                media_type: "audio/mp3".to_string(),
+                data: "abc".to_string(),
+            },
         ]);
         assert!(!unsupported.is_supported_by(&model));
         assert_eq!(
@@ -864,7 +944,7 @@ mod tests {
 
     #[test]
     fn content_part_is_supported_by() {
-        use model_spec_core::spec::{Model, Modalities};
+        use model_spec_core::spec::{Modalities, Model};
 
         let model = Model {
             id: "test-model".to_string(),
@@ -873,7 +953,10 @@ mod tests {
             attachment: false,
             limit: None,
             modalities: Modalities {
-                input: vec![model_spec_core::spec::ModalityType::Text, model_spec_core::spec::ModalityType::Image],
+                input: vec![
+                    model_spec_core::spec::ModalityType::Text,
+                    model_spec_core::spec::ModalityType::Image,
+                ],
                 output: vec![model_spec_core::spec::ModalityType::Text],
             },
             tool_call: false,
@@ -887,7 +970,10 @@ mod tests {
             cost: None,
         };
 
-        assert!(ContentPart::Text { text: "hi".to_string() }.is_supported_by(&model));
+        assert!(ContentPart::Text {
+            text: "hi".to_string()
+        }
+        .is_supported_by(&model));
         assert!(ContentPart::ImageUrl {
             url: "https://x.com/img.png".to_string(),
             detail: None

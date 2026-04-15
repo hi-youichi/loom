@@ -4,10 +4,14 @@
 //! emits [`MessageChunk`] / [`ToolCallDelta`](crate::llm::ToolCallDelta) through channels, while
 //! assembling the final [`LlmResponse`](crate::llm::LlmResponse) content.
 
-use async_openai::types::chat::{ChatCompletionMessageToolCallChunk, CreateChatCompletionStreamResponse};
+use async_openai::types::chat::{
+    ChatCompletionMessageToolCallChunk, CreateChatCompletionStreamResponse,
+};
 use tokio::sync::mpsc;
 
-use crate::llm::thinking::{collect_thinking_tags, strip_thinking_tags, ThinkingSegment, ThinkingTagParser};
+use crate::llm::thinking::{
+    collect_thinking_tags, strip_thinking_tags, ThinkingSegment, ThinkingTagParser,
+};
 use crate::llm::tool_call_accumulator::{RawToolCallDelta, ToolCallAccumulator};
 use crate::llm::{LlmUsage, ToolCallDelta};
 use crate::stream::MessageChunk;
@@ -69,7 +73,8 @@ impl StreamAccumulator {
             }
 
             if let Some(ref tool_calls) = delta.tool_calls {
-                self.process_tool_calls_delta(tool_calls, tool_delta_tx).await;
+                self.process_tool_calls_delta(tool_calls, tool_delta_tx)
+                    .await;
             }
         }
     }
@@ -85,7 +90,11 @@ impl StreamAccumulator {
         }
     }
 
-    async fn process_content_delta(&mut self, content: &str, chunk_tx: &mpsc::Sender<MessageChunk>) {
+    async fn process_content_delta(
+        &mut self,
+        content: &str,
+        chunk_tx: &mpsc::Sender<MessageChunk>,
+    ) {
         self.full_content.push_str(content);
         self.sent_any_content = true;
 
@@ -94,7 +103,9 @@ impl StreamAccumulator {
                 Self::send_thinking_segment(chunk_tx, seg).await;
             }
         } else {
-            let _ = chunk_tx.send(MessageChunk::message(content.to_owned())).await;
+            let _ = chunk_tx
+                .send(MessageChunk::message(content.to_owned()))
+                .await;
         }
     }
 
@@ -181,12 +192,12 @@ mod tests {
     #![allow(deprecated)]
 
     use super::*;
+    use crate::llm::thinking::ThinkingSegment;
+    use crate::stream::MessageChunkKind;
     use async_openai::types::chat::{
         ChatChoiceStream, ChatCompletionMessageToolCallChunk, ChatCompletionStreamResponseDelta,
         CreateChatCompletionStreamResponse, FunctionCallStream,
     };
-    use crate::llm::thinking::ThinkingSegment;
-    use crate::stream::MessageChunkKind;
 
     fn empty_stream_response() -> CreateChatCompletionStreamResponse {
         CreateChatCompletionStreamResponse {

@@ -53,12 +53,18 @@ pub enum ChannelKind {
     LastValue,
     /// Value is cleared after each step (read-once semantics).
     Ephemeral,
-    Topic { accumulate: bool },
+    Topic {
+        accumulate: bool,
+    },
     Tasks,
-    BinaryAggregate { reducer: ReducerFn },
+    BinaryAggregate {
+        reducer: ReducerFn,
+    },
     /// Synchronization barrier: becomes available only after all `expected`
     /// names have been written. Resets after consumption.
-    NamedBarrier { expected: Vec<String> },
+    NamedBarrier {
+        expected: Vec<String>,
+    },
 }
 
 impl fmt::Debug for ChannelKind {
@@ -510,7 +516,10 @@ mod tests {
         assert!(ch.update(&[json!("temp")]));
         assert_eq!(ch.snapshot(), json!("temp"));
 
-        assert!(!ch.consume(), "first consume marks pending, does not clear yet");
+        assert!(
+            !ch.consume(),
+            "first consume marks pending, does not clear yet"
+        );
         assert_eq!(ch.snapshot(), json!("temp"), "value survives one consume");
 
         assert!(ch.consume(), "second consume actually clears");

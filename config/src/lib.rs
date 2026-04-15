@@ -10,12 +10,14 @@ mod xdg_toml;
 #[cfg(feature = "tracing-init")]
 pub mod tracing_init;
 pub use lsp_config::{
-    get_default_lsp_servers, discover_lsp_config_path, load_default_lsp_config, load_lsp_config,
-    LspConfig, LspConfigError, LspGlobalSettings, LspServerConfig, AutoInstallConfig,
+    discover_lsp_config_path, get_default_lsp_servers, load_default_lsp_config, load_lsp_config,
+    AutoInstallConfig, LspConfig, LspConfigError, LspGlobalSettings, LspServerConfig,
 };
 pub use mcp_config::{
-    discover_mcp_config_path, load_mcp_config_from_path, parse_mcp_config, McpConfigError,
-    McpConfigFile, McpServerDef, McpServerEntry,
+    create_mcp_config_if_missing, discover_mcp_config_path, get_or_create_mcp_config_path,
+    load_mcp_config_file, load_mcp_config_from_path, parse_mcp_config, remove_mcp_server,
+    save_mcp_config, upsert_mcp_server, McpConfigError, McpConfigFile, McpServerDef,
+    McpServerEntry,
 };
 pub use xdg_toml::{load_full_config, FullConfig, ProviderDef};
 
@@ -869,6 +871,7 @@ model = "other-model"
             model: Some("glm-5".to_string()),
             provider_type: None,
             temperature: None,
+            fetch_models: None,
         };
 
         let env_map = provider_env_map_with_models_dev_fallback(&provider);

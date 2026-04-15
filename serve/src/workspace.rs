@@ -3,12 +3,11 @@
 use std::sync::Arc;
 
 use loom::{
-    ErrorResponse, ServerResponse, WorkspaceCreateRequest, WorkspaceCreateResponse,
-    WorkspaceListRequest, WorkspaceListResponse, WorkspaceMeta,
-    WorkspaceThreadAddRequest, WorkspaceThreadAddResponse,
-    WorkspaceThreadListRequest, WorkspaceThreadListResponse,
+    ErrorResponse, ServerResponse, ThreadInWorkspace, WorkspaceCreateRequest,
+    WorkspaceCreateResponse, WorkspaceListRequest, WorkspaceListResponse, WorkspaceMeta,
+    WorkspaceRenameRequest, WorkspaceRenameResponse, WorkspaceThreadAddRequest,
+    WorkspaceThreadAddResponse, WorkspaceThreadListRequest, WorkspaceThreadListResponse,
     WorkspaceThreadRemoveRequest, WorkspaceThreadRemoveResponse,
-    ThreadInWorkspace,
 };
 
 fn no_store_error(id: &str) -> ServerResponse {
@@ -54,9 +53,31 @@ pub(crate) async fn handle_workspace_create(
         return no_store_error(&id);
     };
     match store.create_workspace(r.name).await {
-        Ok(workspace_id) => ServerResponse::WorkspaceCreate(WorkspaceCreateResponse {
+        Ok(workspace_id) => {
+            ServerResponse::WorkspaceCreate(WorkspaceCreateResponse { id, workspace_id })
+        }
+        Err(e) => ServerResponse::Error(ErrorResponse {
+            id: Some(id),
+            error: e.to_string(),
+        }),
+    }
+}
+
+pub(crate) async fn handle_workspace_rename(
+    r: WorkspaceRenameRequest,
+    store: Option<Arc<loom_workspace::Store>>,
+) -> ServerResponse {
+    let id = r.id.clone();
+    let workspace_id = r.workspace_id.clone();
+    let name = r.name.clone();
+    let Some(store) = store else {
+        return no_store_error(&id);
+    };
+    match store.rename_workspace(&r.workspace_id, &r.name).await {
+        Ok(()) => ServerResponse::WorkspaceRename(WorkspaceRenameResponse {
             id,
             workspace_id,
+            name,
         }),
         Err(e) => ServerResponse::Error(ErrorResponse {
             id: Some(id),
@@ -106,7 +127,10 @@ pub(crate) async fn handle_workspace_thread_add(
     let Some(store) = store else {
         return no_store_error(&id);
     };
-    match store.add_thread_to_workspace(&r.workspace_id, &r.thread_id).await {
+    match store
+        .add_thread_to_workspace(&r.workspace_id, &r.thread_id)
+        .await
+    {
         Ok(()) => ServerResponse::WorkspaceThreadAdd(WorkspaceThreadAddResponse {
             id,
             workspace_id,
@@ -129,7 +153,10 @@ pub(crate) async fn handle_workspace_thread_remove(
     let Some(store) = store else {
         return no_store_error(&id);
     };
-    match store.remove_thread_from_workspace(&r.workspace_id, &r.thread_id).await {
+    match store
+        .remove_thread_from_workspace(&r.workspace_id, &r.thread_id)
+        .await
+    {
         Ok(()) => ServerResponse::WorkspaceThreadRemove(WorkspaceThreadRemoveResponse {
             id,
             workspace_id,

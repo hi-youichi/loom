@@ -1,6 +1,6 @@
 //! Loom CLI binary: run ReAct or DUP agent from the command line.
 //!
-//! Subcommands: `react` (default ReAct), `dup` (DUP), `tot` (ToT), `got` (GoT), `tool` (list/show tools), `models` (list models).
+//! Subcommands: `react` (default ReAct), `dup` (DUP), `tot` (ToT), `got` (GoT), `tool` (list/show tools), `models` (list models), `mcp` (manage MCP servers).
 //! Dispatch lives here; see `args`, `bootstrap`, `display_limits`, `run_flow`, and `subcommands` for implementation.
 
 mod args;
@@ -8,6 +8,7 @@ mod bootstrap;
 mod display_limits;
 mod log_format;
 mod logging;
+mod mcp_manager;
 mod output;
 mod repl;
 mod run_flow;
@@ -25,7 +26,9 @@ use run_flow::{
     build_run_options, output_config, resolve_user_message, run_interactive_mode,
     run_single_turn_mode,
 };
-use subcommands::{handle_models_command, handle_session_command, handle_tool_command};
+use subcommands::{
+    handle_mcp_command, handle_models_command, handle_session_command, handle_tool_command,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -60,6 +63,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if let Some(Cmd::Models(ma)) = &args.cmd {
         if let Err(err) = handle_models_command(&args, ma).await {
+            eprintln!("{}", err);
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+    if let Some(Cmd::Mcp(ma)) = &args.cmd {
+        if let Err(err) = handle_mcp_command(ma, args.json) {
             eprintln!("{}", err);
             std::process::exit(1);
         }

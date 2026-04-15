@@ -13,8 +13,8 @@ use tokio::task::JoinHandle;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 
-use crate::cli_run::RunCancellation;
 use crate::channels::BoxedStateUpdater;
+use crate::cli_run::RunCancellation;
 use crate::error::AgentError;
 use crate::memory::{Checkpoint, CheckpointSource, Checkpointer, RunnableConfig, Store};
 use crate::stream::{StreamEvent, StreamMode};
@@ -961,7 +961,13 @@ mod tests {
     #[tokio::test]
     async fn stream_values_emits_states() {
         let graph = build_two_step_graph();
-        let stream = graph.stream(0, None, HashSet::from_iter([StreamMode::Values]), None, None);
+        let stream = graph.stream(
+            0,
+            None,
+            HashSet::from_iter([StreamMode::Values]),
+            None,
+            None,
+        );
         let events: Vec<_> = stream.events.collect().await;
         assert!(!events.is_empty(), "expected at least one Values event");
         assert!(
@@ -974,7 +980,13 @@ mod tests {
     #[tokio::test]
     async fn stream_updates_emit_node_ids_in_order() {
         let graph = build_two_step_graph();
-        let stream = graph.stream(0, None, HashSet::from_iter([StreamMode::Updates]), None, None);
+        let stream = graph.stream(
+            0,
+            None,
+            HashSet::from_iter([StreamMode::Updates]),
+            None,
+            None,
+        );
         let events: Vec<_> = stream.events.collect().await;
         let ids: Vec<_> = events
             .iter()
@@ -1008,7 +1020,13 @@ mod tests {
             retry_policy: RetryPolicy::None,
             interrupt_handler: None,
         };
-        let stream = graph.stream(0, None, HashSet::from_iter([StreamMode::Values]), None, None);
+        let stream = graph.stream(
+            0,
+            None,
+            HashSet::from_iter([StreamMode::Values]),
+            None,
+            None,
+        );
         let events: Vec<_> = stream.events.collect().await;
         assert!(
             events.is_empty(),
@@ -1097,7 +1115,13 @@ mod tests {
             user_id: Some("u1".into()),
             ..Default::default()
         };
-        let stream = graph.stream(0, Some(config), HashSet::from_iter([StreamMode::Values]), None, None);
+        let stream = graph.stream(
+            0,
+            Some(config),
+            HashSet::from_iter([StreamMode::Values]),
+            None,
+            None,
+        );
         let events: Vec<_> = stream.events.collect().await;
         assert!(!events.is_empty());
         assert!(matches!(events.last(), Some(StreamEvent::Values(v)) if *v == 3));
@@ -1689,7 +1713,10 @@ mod tests {
         if let StreamEvent::TaskStart { node_id, .. } = task_start_events[0] {
             assert_eq!(node_id, "add_one");
         }
-        if let StreamEvent::TaskEnd { node_id, result, .. } = task_end_events[0] {
+        if let StreamEvent::TaskEnd {
+            node_id, result, ..
+        } = task_end_events[0]
+        {
             assert_eq!(node_id, "add_one");
             assert!(result.is_ok());
         }
@@ -1697,7 +1724,10 @@ mod tests {
         if let StreamEvent::TaskStart { node_id, .. } = task_start_events[1] {
             assert_eq!(node_id, "add_two");
         }
-        if let StreamEvent::TaskEnd { node_id, result, .. } = task_end_events[1] {
+        if let StreamEvent::TaskEnd {
+            node_id, result, ..
+        } = task_end_events[1]
+        {
             assert_eq!(node_id, "add_two");
             assert!(result.is_ok());
         }
@@ -1720,7 +1750,13 @@ mod tests {
         let compiled = graph.compile().expect("graph compiles");
 
         // Stream without Tasks mode
-        let stream = compiled.stream(0, None, HashSet::from_iter([StreamMode::Values]), None, None);
+        let stream = compiled.stream(
+            0,
+            None,
+            HashSet::from_iter([StreamMode::Values]),
+            None,
+            None,
+        );
         let events: Vec<_> = stream.events.collect().await;
 
         // Should NOT have any TaskStart or TaskEnd events
@@ -1767,7 +1803,13 @@ mod tests {
         };
 
         // Stream with Debug mode only (should emit both checkpoints and tasks)
-        let stream = compiled.stream(0, Some(config), HashSet::from_iter([StreamMode::Debug]), None, None);
+        let stream = compiled.stream(
+            0,
+            Some(config),
+            HashSet::from_iter([StreamMode::Debug]),
+            None,
+            None,
+        );
         let events: Vec<_> = stream.events.collect().await;
 
         // Should have Checkpoint events (debug includes checkpoints)
@@ -1951,7 +1993,10 @@ mod tests {
 
         assert_eq!(task_end_events.len(), 1, "Should have 1 TaskEnd event");
 
-        if let StreamEvent::TaskEnd { node_id, result, .. } = &task_end_events[0] {
+        if let StreamEvent::TaskEnd {
+            node_id, result, ..
+        } = &task_end_events[0]
+        {
             assert_eq!(node_id, "interrupt");
             assert!(result.is_err(), "TaskEnd should have error result");
             assert!(

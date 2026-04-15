@@ -27,7 +27,12 @@ impl PregelGraph {
 
         for (name, node) in &self.nodes {
             validate_node_name(name)?;
-            validate_node_channels(name, node.as_ref(), &known_channels, &mut subscribed_channels)?;
+            validate_node_channels(
+                name,
+                node.as_ref(),
+                &known_channels,
+                &mut subscribed_channels,
+            )?;
         }
 
         validate_input_channels(&self.input_channels, &known_channels, &subscribed_channels)?;
@@ -78,7 +83,10 @@ fn validate_node_channels(
     known_channels: &HashSet<String>,
     subscribed_channels: &mut HashSet<String>,
 ) -> Result<(), AgentError> {
-    let reads_push_payload = node.triggers().iter().any(|trigger| trigger == TASKS_CHANNEL);
+    let reads_push_payload = node
+        .triggers()
+        .iter()
+        .any(|trigger| trigger == TASKS_CHANNEL);
 
     for trigger in node.triggers() {
         if !known_channels.contains(trigger) {
@@ -218,7 +226,9 @@ mod tests {
         let err = graph
             .validate_with_config(&PregelConfig::default())
             .expect_err("graph should be invalid");
-        assert!(err.to_string().contains("input channel missing is not defined"));
+        assert!(err
+            .to_string()
+            .contains("input channel missing is not defined"));
     }
 
     #[test]
@@ -243,7 +253,9 @@ mod tests {
         let err = graph
             .validate_with_config(&config)
             .expect_err("graph should be invalid");
-        assert!(err.to_string().contains("interrupt_before references unknown node missing"));
+        assert!(err
+            .to_string()
+            .contains("interrupt_before references unknown node missing"));
     }
 
     #[test]
@@ -274,9 +286,8 @@ mod tests {
         let err = graph
             .validate_with_config(&PregelConfig::default())
             .expect_err("graph should be invalid");
-        assert!(
-            err.to_string()
-                .contains("reserved channel __tasks__ must use ChannelKind::Tasks")
-        );
+        assert!(err
+            .to_string()
+            .contains("reserved channel __tasks__ must use ChannelKind::Tasks"));
     }
 }

@@ -143,13 +143,16 @@ async fn edit_act_message_if_possible(
     let body = act_body_for_edit(state);
     let final_text = truncate_text(&body, state.settings.max_act_chars);
     if let Some(mid) = msg_id {
-        let _ = sender
+        if let Err(e) = sender
             .edit_formatted(
                 chat_id,
                 mid,
                 &FormattedMessage::markdown_v2(final_text.clone(), final_text),
             )
-            .await;
+            .await
+        {
+            tracing::warn!(chat_id, msg_id = mid, "Failed to edit act message: {}", e);
+        }
     }
 }
 

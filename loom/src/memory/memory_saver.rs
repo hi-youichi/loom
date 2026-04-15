@@ -76,7 +76,10 @@ where
         let next_id = guard.next_id;
         guard.next_id = next_id.wrapping_add(1);
         let entries = guard.by_thread.entry(key).or_default();
-        if let Some(existing) = entries.iter_mut().find(|(existing_id, _)| existing_id == &id) {
+        if let Some(existing) = entries
+            .iter_mut()
+            .find(|(existing_id, _)| existing_id == &id)
+        {
             *existing = (id.clone(), cp);
         } else {
             entries.push((id.clone(), cp));
@@ -147,7 +150,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::checkpoint::{Checkpoint, CheckpointMetadata, CheckpointSource, CHECKPOINT_VERSION};
+    use crate::memory::checkpoint::{
+        Checkpoint, CheckpointMetadata, CheckpointSource, CHECKPOINT_VERSION,
+    };
 
     #[tokio::test]
     async fn put_replaces_existing_checkpoint_id_instead_of_appending() {
@@ -182,10 +187,10 @@ mod tests {
 
         let mut updated = checkpoint.clone();
         updated.channel_values = serde_json::json!({"value": 2});
-        updated.metadata.children.insert(
-            "fork".to_string(),
-            vec!["child-1".to_string()],
-        );
+        updated
+            .metadata
+            .children
+            .insert("fork".to_string(), vec!["child-1".to_string()]);
         saver.put(&config, &updated).await.unwrap();
 
         let history = saver.list(&config, None, None, None).await.unwrap();

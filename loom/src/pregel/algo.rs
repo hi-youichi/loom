@@ -8,8 +8,8 @@ use crate::pregel::cache::TaskCacheKey;
 use crate::pregel::channel::{build_channel, BoxedChannel};
 use crate::pregel::node::PregelGraph;
 use crate::pregel::types::{
-    ChannelName, ChannelValue, ChannelVersion, InterruptRecord, ReservedWrite, SendPacket,
-    TaskId, TaskKind, TASKS_CHANNEL,
+    ChannelName, ChannelValue, ChannelVersion, InterruptRecord, ReservedWrite, SendPacket, TaskId,
+    TaskKind, TASKS_CHANNEL,
 };
 
 /// A task prepared for execution in the next Pregel step.
@@ -37,12 +37,16 @@ pub struct ExecutableTask {
 /// Outcome of one task execution.
 #[derive(Debug)]
 pub enum TaskOutcome {
-    Success { task: ExecutableTask },
+    Success {
+        task: ExecutableTask,
+    },
     Interrupted {
         task: ExecutableTask,
         interrupt: crate::graph::GraphInterrupt,
     },
-    Cancelled { task: ExecutableTask },
+    Cancelled {
+        task: ExecutableTask,
+    },
     Failed {
         task: ExecutableTask,
         error: crate::error::AgentError,
@@ -68,9 +72,7 @@ pub fn prepare_next_tasks(
 }
 
 /// Normalizes persisted pending send records using packet identity semantics.
-pub fn normalize_pending_sends(
-    pending_sends: &mut Vec<(TaskId, ChannelName, ChannelValue)>,
-) {
+pub fn normalize_pending_sends(pending_sends: &mut Vec<(TaskId, ChannelName, ChannelValue)>) {
     let mut normalized = Vec::with_capacity(pending_sends.len());
     for (task_id, channel_name, value) in pending_sends.drain(..) {
         if channel_name != TASKS_CHANNEL {
@@ -92,9 +94,7 @@ pub fn normalize_pending_sends(
 /// faithfully reproduce multi-write task outputs (for example multiple scheduled packets
 /// or multiple topic-channel writes). A small set of singleton control writes keeps
 /// last-write-wins semantics by task/channel.
-pub fn normalize_pending_writes(
-    pending_writes: &mut Vec<(TaskId, ChannelName, ChannelValue)>,
-) {
+pub fn normalize_pending_writes(pending_writes: &mut Vec<(TaskId, ChannelName, ChannelValue)>) {
     let mut normalized = Vec::with_capacity(pending_writes.len());
     for (task_id, channel_name, value) in pending_writes.drain(..) {
         push_unique_pending_write(&mut normalized, task_id, channel_name, value);
@@ -185,7 +185,10 @@ pub fn apply_writes(
                     );
                 }
                 None => {
-                    grouped.entry(channel.clone()).or_default().push(value.clone());
+                    grouped
+                        .entry(channel.clone())
+                        .or_default()
+                        .push(value.clone());
                 }
             }
         }
@@ -411,10 +414,7 @@ fn decode_send_packet(
         Err(_) => {
             let object = value.as_object()?;
             let target = object.get("target")?.as_str()?.to_string();
-            let payload = object
-                .get("payload")
-                .cloned()
-                .unwrap_or(ChannelValue::Null);
+            let payload = object.get("payload").cloned().unwrap_or(ChannelValue::Null);
             let packet_id = object
                 .get("id")
                 .and_then(|v| v.as_str())
@@ -437,14 +437,17 @@ fn push_unique_pending_send(
     packet: SendPacket,
 ) {
     let value = serde_json::to_value(packet.clone()).expect("send packet serializes");
-    if let Some(existing) = pending_sends.iter_mut().find(|(_, channel, existing_value)| {
-        if channel != TASKS_CHANNEL {
-            return false;
-        }
-        decode_send_packet(existing_value.clone(), None, packet.origin_step)
-            .map(|existing_packet| existing_packet.id == packet.id)
-            .unwrap_or(false)
-    }) {
+    if let Some(existing) = pending_sends
+        .iter_mut()
+        .find(|(_, channel, existing_value)| {
+            if channel != TASKS_CHANNEL {
+                return false;
+            }
+            decode_send_packet(existing_value.clone(), None, packet.origin_step)
+                .map(|existing_packet| existing_packet.id == packet.id)
+                .unwrap_or(false)
+        })
+    {
         *existing = (task_id, TASKS_CHANNEL.to_string(), value);
         return;
     }
@@ -458,21 +461,25 @@ fn push_unique_pending_write(
     value: ChannelValue,
 ) {
     if !pending_write_is_singleton(channel.as_str()) {
-        if pending_writes.iter().any(|(existing_task_id, existing_channel, existing_value)| {
-            existing_task_id == &task_id
-                && existing_channel == &channel
-                && existing_value == &value
-        }) {
+        if pending_writes
+            .iter()
+            .any(|(existing_task_id, existing_channel, existing_value)| {
+                existing_task_id == &task_id
+                    && existing_channel == &channel
+                    && existing_value == &value
+            })
+        {
             return;
         }
         pending_writes.push((task_id, channel, value));
         return;
     }
-    if let Some(existing) = pending_writes
-        .iter_mut()
-        .find(|(existing_task_id, existing_channel, _)| {
-            existing_task_id == &task_id && existing_channel == &channel
-        })
+    if let Some(existing) =
+        pending_writes
+            .iter_mut()
+            .find(|(existing_task_id, existing_channel, _)| {
+                existing_task_id == &task_id && existing_channel == &channel
+            })
     {
         *existing = (task_id, channel, value);
         return;
@@ -897,8 +904,8 @@ mod tests {
         normalize_pending_sends(&mut pending_sends);
 
         assert_eq!(pending_sends.len(), 1);
-        let packet = decode_send_packet(pending_sends[0].2.clone(), None, 0)
-            .expect("packet should decode");
+        let packet =
+            decode_send_packet(pending_sends[0].2.clone(), None, 0).expect("packet should decode");
         assert_eq!(packet.payload["x"], serde_json::json!(2));
     }
 

@@ -132,7 +132,8 @@ impl Tool for SearchMemoriesTool {
             })
             .collect();
 
-        Ok(ToolCallContent::text(serde_json::to_string(&arr)
-                .map_err(|e| ToolSourceError::InvalidInput(e.to_string()))?,))
+        Ok(ToolCallContent::text(serde_json::to_string(&arr).map_err(
+            |e| ToolSourceError::InvalidInput(e.to_string()),
+        )?))
     }
 }

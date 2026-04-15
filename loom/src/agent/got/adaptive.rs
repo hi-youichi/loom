@@ -138,6 +138,7 @@ Output JSON with "nodes" and "edges". Node ids must be short (e.g. step1, step2)
 }
 
 /// Parses LLM expand output into (nodes, edges) with prefixed node ids.
+#[allow(clippy::type_complexity)]
 fn parse_expand_output(
     raw: &str,
     parent_id: &str,

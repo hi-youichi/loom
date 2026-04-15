@@ -46,7 +46,11 @@ pub fn split_text_for_telegram(text: &str, max_chars: usize) -> Vec<String> {
         let soft_start = start + (max_chars / 2).max(1);
         let split_at = find_split_index(&chars, soft_start, hard_end).unwrap_or(hard_end);
 
-        let chunk: String = chars[start..split_at].iter().collect::<String>().trim_end().to_string();
+        let chunk: String = chars[start..split_at]
+            .iter()
+            .collect::<String>()
+            .trim_end()
+            .to_string();
         if chunk.is_empty() {
             let forced_chunk: String = chars[start..hard_end].iter().collect();
             chunks.push(forced_chunk);
@@ -71,7 +75,10 @@ fn find_split_index(chars: &[char], start: usize, end: usize) -> Option<usize> {
         }
     }
     for idx in (start..end).rev() {
-        if matches!(chars[idx], '.' | '!' | '?' | ';' | '。' | '！' | '？' | '；') {
+        if matches!(
+            chars[idx],
+            '.' | '!' | '?' | ';' | '。' | '！' | '？' | '；'
+        ) {
             return Some(idx + 1);
         }
     }

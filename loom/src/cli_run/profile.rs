@@ -598,7 +598,7 @@ mod tests {
         let role = profile.role.as_ref().unwrap();
         let content = role.content.as_ref().unwrap();
         assert!(content.contains("Loom Agent Builder"));
-        assert!(content.contains("AgentProfile Schema Reference"));
+        assert!(content.contains("Follow the AgentProfile schema"));
     }
 
     #[test]

@@ -189,7 +189,9 @@ mod tests {
         assert!(segs.is_empty());
         let segs2 = p.feed(&format!("{}inner{}", rest_start, THINKING_END));
         assert!(
-            segs2.iter().any(|s| matches!(s, ThinkingSegment::Thinking(t) if t == "inner")),
+            segs2
+                .iter()
+                .any(|s| matches!(s, ThinkingSegment::Thinking(t) if t == "inner")),
             "expected Thinking(inner), got {:?}",
             segs2
         );

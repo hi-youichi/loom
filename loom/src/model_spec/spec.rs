@@ -1,6 +1,6 @@
 //! Model specification for runtime and compatibility wrappers.
 
-pub use model_spec_core::spec::{Cost, Modalities, ModalityType, Model, ModelLimit, Provider};
+pub use model_spec_core::spec::{Cost, Modalities, ModalityType, Model, ModelLimit, ModelTier, Provider};
 use serde::{Deserialize, Serialize};
 
 /// Legacy ModelSpec for backward compatibility

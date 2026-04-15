@@ -154,7 +154,7 @@ mod tests {
         assert!(spec
             .description
             .as_ref()
-            .map_or(false, |d| d.contains("todo") || d.contains("Write")));
+            .is_some_and(|d| d.contains("todo") || d.contains("Write")));
         let required = spec
             .input_schema
             .get("required")
@@ -164,6 +164,7 @@ mod tests {
     }
 
     /// call with valid todos writes file and returns count and list.
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn todo_write_call_valid_todos_writes_and_returns() {
         let _lock = crate::env_test_lock().lock().unwrap();
@@ -188,6 +189,7 @@ mod tests {
     }
 
     /// call with missing "todos" returns InvalidInput.
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn todo_write_call_missing_todos_returns_invalid_input() {
         let _lock = crate::env_test_lock().lock().unwrap();
@@ -202,6 +204,7 @@ mod tests {
     }
 
     /// call with todos not an array returns InvalidInput.
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn todo_write_call_todos_not_array_returns_invalid_input() {
         let _lock = crate::env_test_lock().lock().unwrap();
@@ -217,6 +220,7 @@ mod tests {
     }
 
     /// call with item missing "id" returns InvalidInput.
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn todo_write_call_item_missing_id_returns_invalid_input() {
         let _lock = crate::env_test_lock().lock().unwrap();
@@ -236,6 +240,7 @@ mod tests {
     }
 
     /// call with item missing "content" returns InvalidInput.
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn todo_write_call_item_missing_content_returns_invalid_input() {
         let _lock = crate::env_test_lock().lock().unwrap();
@@ -255,6 +260,7 @@ mod tests {
     }
 
     /// call with item as non-object returns InvalidInput.
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn todo_write_call_item_not_object_returns_invalid_input() {
         let _lock = crate::env_test_lock().lock().unwrap();
@@ -270,6 +276,7 @@ mod tests {
     }
 
     /// call with optional status/priority uses defaults (pending, medium).
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn todo_write_call_default_status_and_priority() {
         let _lock = crate::env_test_lock().lock().unwrap();
@@ -289,6 +296,7 @@ mod tests {
     }
 
     /// call with thread_id writes to thread-specific path.
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn todo_write_call_with_thread_id_writes_to_thread_path() {
         let _lock = crate::env_test_lock().lock().unwrap();

@@ -78,7 +78,9 @@ mod tests {
         };
         let (out, next) = node.run(state).await.unwrap();
         assert_eq!(out.messages.len(), 1);
-        assert!(matches!(&out.messages[0], Message::User(UserContent::Text(s)) if s.contains("Tool x returned:")));
+        assert!(
+            matches!(&out.messages[0], Message::User(UserContent::Text(s)) if s.contains("Tool x returned:"))
+        );
         assert!(matches!(next, Next::Continue));
     }
 
@@ -111,7 +113,9 @@ mod tests {
         };
         let (out, next) = node.run(state).await.unwrap();
         assert_eq!(out.messages.len(), 2);
-        assert!(matches!(&out.messages[1], Message::User(UserContent::Text(s)) if s == compaction::PRUNE_PLACEHOLDER));
+        assert!(
+            matches!(&out.messages[1], Message::User(UserContent::Text(s)) if s == compaction::PRUNE_PLACEHOLDER)
+        );
         assert!(matches!(next, Next::Continue));
     }
 }

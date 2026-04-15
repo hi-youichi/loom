@@ -1,11 +1,13 @@
 "use client"
 
-import { memo, useRef, useCallback, useState } from "react"
+import { memo, useRef, useCallback, useEffect } from "react"
 import { ChevronRight, Users, ChevronDown } from "lucide-react"
 import { useChatPanel } from "@/hooks/useChatPanel"
 import { MessageList } from "./MessageList"
 import { MessageComposer } from "../MessageComposer"
 import { ThemeToggle } from "../ThemeToggle"
+import { useModels } from "@/hooks/useModels"
+import { useAgentModel } from "@/hooks/useAgentModel"
 import type { UIMessageItemProps } from "@/types/ui/message"
 
 interface AgentChatSidebarProps {
@@ -13,6 +15,8 @@ interface AgentChatSidebarProps {
   messages: UIMessageItemProps[]
   isStreaming?: boolean
   onSendMessage: (text: string) => Promise<void>
+  onCancel?: () => void
+  onModelChange?: (model: string) => void
 }
 
 function ResizeHandle({ onDrag, onToggle }: { onDrag: (w: number) => void; onToggle: () => void }) {
@@ -65,14 +69,24 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
   messages,
   isStreaming = false,
   onSendMessage,
+  onCancel,
+  onModelChange,
 }: AgentChatSidebarProps) {
   const { collapsed, width, selectedAgentId, toggle, expand, setWidth, selectAgent } = useChatPanel()
-  const [selectedModel, setSelectedModel] = useState('claude-3-5-sonnet')
+  const { models } = useModels()
+  const { selectedModel, handleModelChange: setModel } = useAgentModel(selectedAgentId, models)
 
   const selectedAgentName = agents.find((a) => a.name === selectedAgentId)?.name || selectedAgentId
 
+  useEffect(() => {
+    if (agents.length > 0 && !selectedAgentId) {
+      selectAgent(agents[0].name)
+    }
+  }, [agents, selectedAgentId, selectAgent])
+
   const handleModelChange = (model: string) => {
-    setSelectedModel(model)
+    setModel(model)
+    onModelChange?.(model)
   }
 
   return (
@@ -99,11 +113,7 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
           <Users className="w-4 h-4 text-muted-foreground" />
           <div className="relative">
             <button
-              onClick={() => {
-                if (agents.length > 0 && !selectedAgentId) {
-                  selectAgent(agents[0].name)
-                }
-              }}
+              onClick={() => {}}
               className="flex items-center gap-2 text-sm font-medium hover:text-primary transition-colors"
             >
               <span className="truncate">{selectedAgentName || '选择 Agent'}</span>
@@ -124,7 +134,9 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
       <div className="border-t border-border">
         <MessageComposer
           disabled={!selectedAgentId || isStreaming}
+          isStreaming={isStreaming}
           onSend={onSendMessage}
+          onCancel={onCancel}
           selectedModel={selectedModel}
           onModelChange={handleModelChange}
         />

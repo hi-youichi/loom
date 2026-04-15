@@ -75,6 +75,8 @@ export function useModels() {
   }, [])
 
   useEffect(() => {
+    mountedRef.current = true
+
     const handler = (data: Model[]) => {
       if (!mountedRef.current) return
       setCachedModels(data)
@@ -87,14 +89,14 @@ export function useModels() {
     conn.on('models_updated', handler)
 
     if (getCachedModels() === null) {
-      setLoading(true)
+      refetch()
     }
 
     return () => {
       mountedRef.current = false
       conn.off('models_updated', handler)
     }
-  }, [])
+  }, [refetch])
 
   return {
     models,

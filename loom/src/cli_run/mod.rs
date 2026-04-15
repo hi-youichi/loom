@@ -322,31 +322,51 @@ pub struct ResolvedModelConfig {
 /// 3. Bare model id — no provider resolution (backward compat)
 pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfig {
     let Some(model_str) = model_str else {
+        tracing::debug!("No model string provided, using default configuration");
         return ResolvedModelConfig::default();
     };
     if model_str.is_empty() {
+        tracing::debug!("Empty model string provided, using default configuration");
         return ResolvedModelConfig::default();
     }
 
+    tracing::info!("🔍 Resolving model configuration for: {}", model_str);
+
     let providers: Vec<crate::llm::ProviderConfig> = match env_config::load_full_config("loom") {
-        Ok(config) => config
-            .providers
-            .into_iter()
-            .map(|p| crate::llm::ProviderConfig {
-                name: p.name,
-                base_url: p.base_url,
-                api_key: p.api_key,
-                provider_type: p.provider_type,
-            })
-            .collect(),
-        Err(_) => vec![],
+        Ok(config) => {
+            tracing::debug!(
+                "📋 Loaded {} provider(s) from config",
+                config.providers.len()
+            );
+            config
+                .providers
+                .into_iter()
+                .map(|p| crate::llm::ProviderConfig {
+                    name: p.name,
+                    base_url: p.base_url,
+                    api_key: p.api_key,
+                    provider_type: p.provider_type,
+                    fetch_models: p.fetch_models.unwrap_or(false),
+                })
+                .collect()
+        }
+        Err(e) => {
+            tracing::warn!("⚠️  Failed to load config: {}, using empty providers", e);
+            vec![]
+        }
     };
 
     // 1. Try ModelRegistry first
+    tracing::debug!("🔎 Searching ModelRegistry for: {}", model_str);
     if let Some(entry) = crate::llm::ModelRegistry::global()
         .get_model(model_str, &providers)
         .await
     {
+        tracing::info!(
+            "✅ Found model in registry: {} from provider {}",
+            entry.id,
+            entry.provider
+        );
         return ResolvedModelConfig {
             model: Some(entry.id.clone()),
             provider: Some(entry.provider.clone()),
@@ -355,6 +375,8 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
             provider_type: entry.provider_type,
         };
     }
+
+    tracing::warn!("❌ Model not found in registry, trying provider/model split");
 
     // 2. Try "provider/model" split
     if let Some((provider_name, model_id)) = model_str.split_once('/') {
@@ -372,6 +394,11 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
             .ok()
             .and_then(|c| c.providers.into_iter().find(|p| p.name == provider_name));
         if let Some(p) = provider_cfg {
+            tracing::info!(
+                "✅ Resolved model from provider config: {} from provider {}",
+                model_str,
+                p.name
+            );
             return ResolvedModelConfig {
                 model: Some(model_str.to_string()),
                 provider: Some(p.name),
@@ -379,10 +406,16 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
                 api_key: p.api_key,
                 provider_type: p.provider_type,
             };
+        } else {
+            tracing::warn!(
+                "⚠️  Provider '{}' not found in config, using bare model",
+                provider_name
+            );
         }
     }
 
     // 3. Bare model id — backward compat
+    tracing::info!("🔧 Using bare model ID: {}", model_str);
     ResolvedModelConfig {
         model: Some(model_str.to_string()),
         ..Default::default()
@@ -390,7 +423,14 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
 }
 
 fn apply_model_provider_resolution(opts: &mut RunOptions) {
+    tracing::debug!(
+        "🔧 apply_model_provider_resolution called with model: {:?}, provider: {:?}",
+        opts.model,
+        opts.provider
+    );
+
     if opts.model.is_none() && opts.provider.is_none() {
+        tracing::debug!("⏭️  Skipping model resolution - no model or provider specified");
         return;
     }
 
@@ -398,14 +438,20 @@ fn apply_model_provider_resolution(opts: &mut RunOptions) {
     let raw_model = match opts.model.as_deref() {
         Some(m) => m.to_string(),
         None => {
+            tracing::debug!(
+                "🔧 No model specified, resolving provider only: {:?}",
+                provider_only
+            );
             resolve_provider_fields_into_opts(provider_only.as_deref(), opts);
             return;
         }
     };
 
+    tracing::debug!("🔧 Processing model: {}", raw_model);
+
     // Validate provider/model format
     if raw_model.is_empty() {
-        tracing::warn!("Model name cannot be empty");
+        tracing::warn!("❌ Model name cannot be empty");
         opts.model = None;
         return;
     }
@@ -413,28 +459,40 @@ fn apply_model_provider_resolution(opts: &mut RunOptions) {
     let (resolved_provider, model_name) = if let Some((p, m)) = raw_model.split_once('/') {
         // Validate provider and model parts
         if p.is_empty() {
-            tracing::warn!("Provider name in 'provider/model' format cannot be empty");
+            tracing::warn!("❌ Provider name in 'provider/model' format cannot be empty");
             opts.model = None;
             return;
         }
         if m.is_empty() {
-            tracing::warn!("Model name in 'provider/model' format cannot be empty");
+            tracing::warn!("❌ Model name in 'provider/model' format cannot be empty");
             opts.model = None;
             return;
         }
+        tracing::debug!(
+            "✅ Parsed provider/model format: provider={}, model={}",
+            p,
+            m
+        );
         (Some(p.to_string()), m.to_string())
     } else {
         // Bare model name - validate it's not just whitespace
         if raw_model.trim().is_empty() {
-            tracing::warn!("Model name cannot be empty or whitespace only");
+            tracing::warn!("❌ Model name cannot be empty or whitespace only");
             opts.model = None;
             return;
         }
+        tracing::debug!("✅ Using bare model name: {}", raw_model.trim());
         (None, raw_model.trim().to_string())
     };
 
     let effective_provider = provider_only.as_deref().or(resolved_provider.as_deref());
-    opts.model = Some(model_name);
+    opts.model = Some(model_name.clone());
+
+    tracing::info!(
+        "🎯 Final resolution: model_name={}, provider={:?}",
+        model_name,
+        effective_provider
+    );
 
     if let Some(name) = effective_provider {
         let name = name.to_string();
@@ -450,12 +508,17 @@ fn resolve_provider_fields_into_opts(provider_name: Option<&str>, opts: &mut Run
         Err(_) => return,
     };
 
-    let provider = match full_config.providers.iter().find(|p| {
-        p.name.eq_ignore_ascii_case(name)
-    }) {
+    let provider = match full_config
+        .providers
+        .iter()
+        .find(|p| p.name.eq_ignore_ascii_case(name))
+    {
         Some(p) => p,
         None => {
-            tracing::warn!(provider = name, "Provider not found in config.toml [[providers]]");
+            tracing::warn!(
+                provider = name,
+                "Provider not found in config.toml [[providers]]"
+            );
             return;
         }
     };
@@ -792,9 +855,9 @@ mod tests {
     fn apply_model_provider_resolution_with_provider_model_format() {
         let mut opts = default_opts();
         opts.model = Some("openai/gpt-4o".to_string());
-        
+
         apply_model_provider_resolution(&mut opts);
-        
+
         assert_eq!(opts.model.as_deref(), Some("gpt-4o"));
     }
 
@@ -802,9 +865,9 @@ mod tests {
     fn apply_model_provider_resolution_with_bare_model() {
         let mut opts = default_opts();
         opts.model = Some("gpt-4o".to_string());
-        
+
         apply_model_provider_resolution(&mut opts);
-        
+
         assert_eq!(opts.model.as_deref(), Some("gpt-4o"));
     }
 
@@ -813,9 +876,9 @@ mod tests {
         let mut opts = default_opts();
         opts.model = Some("anthropic/claude-3-opus".to_string());
         opts.provider = Some("openai".to_string());
-        
+
         apply_model_provider_resolution(&mut opts);
-        
+
         assert_eq!(opts.model.as_deref(), Some("claude-3-opus"));
         // Provider should be overridden by --provider flag
         assert_eq!(opts.provider.as_deref(), Some("openai"));
@@ -825,18 +888,18 @@ mod tests {
     fn apply_model_provider_resolution_with_provider_only() {
         let mut opts = default_opts();
         opts.provider = Some("openai".to_string());
-        
+
         apply_model_provider_resolution(&mut opts);
-        
+
         assert_eq!(opts.provider.as_deref(), Some("openai"));
     }
 
     #[test]
     fn apply_model_provider_resolution_empty() {
         let mut opts = default_opts();
-        
+
         apply_model_provider_resolution(&mut opts);
-        
+
         assert!(opts.model.is_none());
         assert!(opts.provider.is_none());
     }
@@ -845,9 +908,9 @@ mod tests {
     fn apply_model_provider_resolution_multiple_slashes() {
         let mut opts = default_opts();
         opts.model = Some("provider/sub/model".to_string());
-        
+
         apply_model_provider_resolution(&mut opts);
-        
+
         // Should split on first slash only
         assert_eq!(opts.model.as_deref(), Some("sub/model"));
     }
@@ -856,9 +919,9 @@ mod tests {
     fn apply_model_provider_resolution_empty_model() {
         let mut opts = default_opts();
         opts.model = Some("".to_string());
-        
+
         apply_model_provider_resolution(&mut opts);
-        
+
         // Should not modify options when model is empty
         assert!(opts.model.is_none());
         assert!(opts.provider.is_none());
@@ -868,9 +931,9 @@ mod tests {
     fn apply_model_provider_resolution_whitespace_model() {
         let mut opts = default_opts();
         opts.model = Some("   ".to_string());
-        
+
         apply_model_provider_resolution(&mut opts);
-        
+
         // Should not modify options when model is whitespace only
         assert!(opts.model.is_none());
         assert!(opts.provider.is_none());
@@ -880,9 +943,9 @@ mod tests {
     fn apply_model_provider_resolution_empty_provider_in_format() {
         let mut opts = default_opts();
         opts.model = Some("/gpt-4o".to_string());
-        
+
         apply_model_provider_resolution(&mut opts);
-        
+
         // Should not modify options when provider part is empty
         assert!(opts.model.is_none());
         assert!(opts.provider.is_none());
@@ -892,9 +955,9 @@ mod tests {
     fn apply_model_provider_resolution_empty_model_in_format() {
         let mut opts = default_opts();
         opts.model = Some("openai/".to_string());
-        
+
         apply_model_provider_resolution(&mut opts);
-        
+
         // Should not modify options when model part is empty
         assert!(opts.model.is_none());
         assert!(opts.provider.is_none());

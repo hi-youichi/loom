@@ -35,7 +35,7 @@ pub(crate) enum RetryDecision {
 #[cfg(test)]
 pub(crate) fn classify_openai_http_status(status: u16) -> RetryDecision {
     match status {
-        429 | 500 | 502 | 503 | 504 => RetryDecision::Retryable,
+        429 | 500 | 502 | 503 | 504 | 524 | 598 | 599 => RetryDecision::Retryable,
         _ => RetryDecision::NonRetryable,
     }
 }
@@ -51,6 +51,9 @@ pub(crate) fn classify_openai_error_message(message: &str) -> RetryDecision {
         || message.contains("status code 502")
         || message.contains("status code 503")
         || message.contains("status code 504")
+        || message.contains("status code 524")
+        || message.contains("status code 598")
+        || message.contains("status code 599")
     {
         return RetryDecision::Retryable;
     }
@@ -99,8 +102,14 @@ mod tests {
 
     #[test]
     fn classifies_non_retryable_openai_statuses() {
-        assert_eq!(classify_openai_http_status(400), RetryDecision::NonRetryable);
-        assert_eq!(classify_openai_http_status(401), RetryDecision::NonRetryable);
+        assert_eq!(
+            classify_openai_http_status(400),
+            RetryDecision::NonRetryable
+        );
+        assert_eq!(
+            classify_openai_http_status(401),
+            RetryDecision::NonRetryable
+        );
     }
 
     #[test]
@@ -147,12 +156,16 @@ mod tests {
 
     #[test]
     fn detects_unexpected_eof() {
-        assert!(looks_like_transient_http_error_message("unexpected eof while reading"));
+        assert!(looks_like_transient_http_error_message(
+            "unexpected eof while reading"
+        ));
     }
 
     #[test]
     fn detects_connection_reset() {
-        assert!(looks_like_transient_http_error_message("connection reset by peer"));
+        assert!(looks_like_transient_http_error_message(
+            "connection reset by peer"
+        ));
     }
 
     #[test]

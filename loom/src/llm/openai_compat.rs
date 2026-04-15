@@ -35,7 +35,9 @@ use crate::state::ToolCall;
 use crate::stream::MessageChunk;
 use crate::tool_source::{ToolSource, ToolSourceError, ToolSpec};
 
-use super::thinking::{collect_thinking_tags, strip_thinking_tags, ThinkingSegment, ThinkingTagParser};
+use super::thinking::{
+    collect_thinking_tags, strip_thinking_tags, ThinkingSegment, ThinkingTagParser,
+};
 use super::tool_call_accumulator::{RawToolCallDelta, ToolCallAccumulator};
 use super::ToolChoiceMode;
 
@@ -52,13 +54,64 @@ const COMPAT_RETRY_MAX_BACKOFF: std::time::Duration = std::time::Duration::from_
 /// Returns true for transient 5xx where retry is reasonable: 500, 502, 503, 504.
 /// Other 5xx (501 Not Implemented, 505 HTTP Version Not Supported, etc.) are not retried.
 fn is_retryable_status(status: reqwest::StatusCode) -> bool {
-    matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504)
+    matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504 | 524 | 598 | 599)
 }
 
 fn backoff_for_attempt(attempt: u32) -> std::time::Duration {
     let secs = COMPAT_RETRY_INITIAL_BACKOFF.as_secs_f64() * 2_f64.powi(attempt as i32);
     let d = std::time::Duration::from_secs_f64(secs);
     d.min(COMPAT_RETRY_MAX_BACKOFF)
+}
+
+// ----- API error response parsing -----
+//
+// OpenAI-compatible providers (including Aliyun/Dashscope, Zhipu, etc.) return
+// structured JSON error bodies. We parse them to extract a clear, human-readable
+// message instead of dumping the raw JSON.
+
+#[derive(serde::Deserialize)]
+struct ApiErrorDetail {
+    #[serde(default)]
+    message: Option<String>,
+    #[serde(default)]
+    r#type: Option<String>,
+    #[serde(default)]
+    code: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct ApiErrorResponse {
+    error: Option<ApiErrorDetail>,
+}
+
+/// Format an API error body into a concise, human-readable string.
+///
+/// Tries to parse the body as `{"error":{"message":"...","code":"...","type":"..."}}`.
+/// On success, returns something like: `Access denied, please make sure your account is in good standing. (code: Arrearage)`
+/// Falls back to the raw body if parsing fails or the error object has no useful fields.
+fn format_api_error_body(body: &[u8]) -> String {
+    if let Ok(resp) = serde_json::from_slice::<ApiErrorResponse>(body) {
+        if let Some(detail) = resp.error {
+            let msg = detail.message.unwrap_or_default();
+            if !msg.is_empty() {
+                if let Some(code) = &detail.code {
+                    return format!("{} (code: {})", msg, code);
+                }
+                if let Some(ty) = &detail.r#type {
+                    return format!("{} (type: {})", msg, ty);
+                }
+                return msg;
+            }
+            // Error object parsed but has no message — try code or type alone.
+            if let Some(code) = &detail.code {
+                return format!("error code: {}", code);
+            }
+            if let Some(ty) = &detail.r#type {
+                return format!("error type: {}", ty);
+            }
+        }
+    }
+    String::from_utf8_lossy(body).into_owned()
 }
 
 // ----- Request DTOs (OpenAI-compatible) -----
@@ -219,6 +272,7 @@ pub struct ChatOpenAICompat {
     temperature: Option<f32>,
     tool_choice: Option<ToolChoiceMode>,
     parse_thinking_tags: bool,
+    headers: Option<crate::llm::LlmHeaders>,
 }
 
 impl ChatOpenAICompat {
@@ -250,6 +304,7 @@ impl ChatOpenAICompat {
             temperature: None,
             tool_choice: None,
             parse_thinking_tags: false,
+            headers: None,
         }
     }
 
@@ -300,6 +355,42 @@ impl ChatOpenAICompat {
     pub fn with_parse_thinking_tags(mut self, enable: bool) -> Self {
         self.parse_thinking_tags = enable;
         self
+    }
+
+    /// Sets HTTP headers for LLM requests.
+    ///
+    /// This allows adding custom headers like X-App-Id, X-Thread-Id, X-Trace-Id
+    /// for request tracking and observability.
+    pub fn with_headers(mut self, headers: crate::llm::LlmHeaders) -> Self {
+        self.headers = Some(headers);
+        self
+    }
+
+    fn add_headers_to_request(
+        &self,
+        request_builder: reqwest::RequestBuilder,
+        request_id: &str,
+    ) -> reqwest::RequestBuilder {
+        let mut builder = request_builder;
+
+        builder = builder.header("X-Request-Id", request_id);
+
+        if let Some(headers) = &self.headers {
+            builder = builder.header("X-App-Id", "loom");
+
+            if let Some(thread_id) = &headers.thread_id {
+                builder = builder.header("X-Thread-Id", thread_id);
+            }
+            if let Some(trace_id) = &headers.trace_id {
+                builder = builder.header("X-Trace-Id", trace_id);
+            }
+
+            for (key, value) in &headers.custom_headers {
+                builder = builder.header(key, value);
+            }
+        }
+
+        builder
     }
 
     fn chat_completions_url(&self) -> String {
@@ -472,11 +563,13 @@ impl ChatOpenAICompat {
 impl LlmClient for ChatOpenAICompat {
     async fn invoke(&self, messages: &[Message]) -> Result<LlmResponse, AgentError> {
         let trace_id = uuid6().to_string();
+        let request_id = uuid6().to_string();
         let url = self.chat_completions_url();
         let body = self.build_request(messages, false);
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         debug!(
             trace_id = %trace_id,
+            request_id = %request_id,
             url = %url,
             model = %self.model,
             message_count = messages.len(),
@@ -490,10 +583,13 @@ impl LlmClient for ChatOpenAICompat {
                 let mut attempt = 0;
                 loop {
                     match self
-                        .client
-                        .post(&url)
-                        .bearer_auth(&self.api_key)
-                        .json(&body)
+                        .add_headers_to_request(
+                            self.client
+                                .post(&url)
+                                .bearer_auth(&self.api_key)
+                                .json(&body),
+                            &request_id,
+                        )
                         .send()
                         .await
                     {
@@ -556,7 +652,7 @@ impl LlmClient for ChatOpenAICompat {
                 break 'request (status, body_bytes);
             }
             if !is_retryable_status(status) {
-                let msg = String::from_utf8_lossy(&body_bytes);
+                let msg = format_api_error_body(&body_bytes);
                 return Err(AgentError::ExecutionFailed(format!(
                     "OpenAI-compat API error {}: {}",
                     status, msg
@@ -573,10 +669,13 @@ impl LlmClient for ChatOpenAICompat {
                 );
                 tokio::time::sleep(delay).await;
                 let retry_res = self
-                    .client
-                    .post(&url)
-                    .bearer_auth(&self.api_key)
-                    .json(&body)
+                    .add_headers_to_request(
+                        self.client
+                            .post(&url)
+                            .bearer_auth(&self.api_key)
+                            .json(&body),
+                        &request_id,
+                    )
                     .send()
                     .await
                     .map_err(|e| {
@@ -590,29 +689,31 @@ impl LlmClient for ChatOpenAICompat {
                     break 'request (retry_status, retry_bytes);
                 }
                 if !is_retryable_status(retry_status) {
-                    let msg = String::from_utf8_lossy(&retry_bytes);
+                    let msg = format_api_error_body(&retry_bytes);
                     return Err(AgentError::ExecutionFailed(format!(
                         "OpenAI-compat API error {}: {}",
                         retry_status, msg
                     )));
                 }
                 if attempt == COMPAT_RETRY_MAX_RETRIES - 1 {
-                    let msg = String::from_utf8_lossy(&retry_bytes);
+                    let msg = format_api_error_body(&retry_bytes);
                     return Err(AgentError::ExecutionFailed(format!(
                         "OpenAI-compat API error {}: {} (after {} retries)",
                         retry_status, msg, COMPAT_RETRY_MAX_RETRIES
                     )));
                 }
             }
-            let msg = String::from_utf8_lossy(&body_bytes);
+            let msg = format_api_error_body(&body_bytes);
             return Err(AgentError::ExecutionFailed(format!(
                 "OpenAI-compat API error {}: {}",
                 status, msg
             )));
         };
 
-        let response: ChatCompletionResponse = serde_json::from_slice(&body_bytes)
-            .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI-compat response parse: {}", e)))?;
+        let response: ChatCompletionResponse =
+            serde_json::from_slice(&body_bytes).map_err(|e| {
+                AgentError::ExecutionFailed(format!("OpenAI-compat response parse: {}", e))
+            })?;
 
         let choice = response.choices.into_iter().next().ok_or_else(|| {
             AgentError::ExecutionFailed("OpenAI-compat returned no choices".to_string())
@@ -672,12 +773,14 @@ impl LlmClient for ChatOpenAICompat {
         }
 
         let trace_id = uuid6().to_string();
+        let request_id = uuid6().to_string();
         let chunk_tx = chunk_tx.expect("chunk_tx must be Some when streaming");
         let url = self.chat_completions_url();
         let body = self.build_request(messages, true);
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         debug!(
             trace_id = %trace_id,
+            request_id = %request_id,
             url = %url,
             model = %self.model,
             message_count = messages.len(),
@@ -690,10 +793,13 @@ impl LlmClient for ChatOpenAICompat {
             let mut attempt = 0;
             loop {
                 match self
-                    .client
-                    .post(&url)
-                    .bearer_auth(&self.api_key)
-                    .json(&body)
+                    .add_headers_to_request(
+                        self.client
+                            .post(&url)
+                            .bearer_auth(&self.api_key)
+                            .json(&body),
+                        &request_id,
+                    )
                     .send()
                     .await
                 {
@@ -729,7 +835,7 @@ impl LlmClient for ChatOpenAICompat {
             response
         } else if !is_retryable_status(status) {
             let body_bytes = response.bytes().await.unwrap_or_default();
-            let msg = String::from_utf8_lossy(&body_bytes);
+            let msg = format_api_error_body(&body_bytes);
             return Err(AgentError::ExecutionFailed(format!(
                 "OpenAI-compat stream error {}: {}",
                 status, msg
@@ -747,10 +853,13 @@ impl LlmClient for ChatOpenAICompat {
                 );
                 tokio::time::sleep(delay).await;
                 let retry_res = self
-                    .client
-                    .post(&url)
-                    .bearer_auth(&self.api_key)
-                    .json(&body)
+                    .add_headers_to_request(
+                        self.client
+                            .post(&url)
+                            .bearer_auth(&self.api_key)
+                            .json(&body),
+                        &request_id,
+                    )
                     .send()
                     .await
                     .map_err(|e| {
@@ -763,7 +872,7 @@ impl LlmClient for ChatOpenAICompat {
                 }
                 if !is_retryable_status(retry_status) {
                     let body_bytes = retry_res.bytes().await.unwrap_or_default();
-                    let msg = String::from_utf8_lossy(&body_bytes);
+                    let msg = format_api_error_body(&body_bytes);
                     return Err(AgentError::ExecutionFailed(format!(
                         "OpenAI-compat stream error {}: {}",
                         retry_status, msg
@@ -771,19 +880,19 @@ impl LlmClient for ChatOpenAICompat {
                 }
                 if attempt == COMPAT_RETRY_MAX_RETRIES - 1 {
                     let body_bytes = retry_res.bytes().await.unwrap_or_default();
-                    let msg = String::from_utf8_lossy(&body_bytes);
+                    let msg = format_api_error_body(&body_bytes);
                     return Err(AgentError::ExecutionFailed(format!(
                         "OpenAI-compat stream error {}: {} (after {} retries)",
                         retry_status, msg, COMPAT_RETRY_MAX_RETRIES
                     )));
                 }
             }
-            
+
             match final_response {
                 Some(resp) => resp,
                 None => {
                     let body_bytes = response.bytes().await.unwrap_or_default();
-                    let msg = String::from_utf8_lossy(&body_bytes);
+                    let msg = format_api_error_body(&body_bytes);
                     return Err(AgentError::ExecutionFailed(format!(
                         "OpenAI-compat stream error {}: {}",
                         status, msg
@@ -798,14 +907,12 @@ impl LlmClient for ChatOpenAICompat {
         let mut sent_any_content = false;
         let mut tool_calls_acc = ToolCallAccumulator::new();
         let mut stream_usage: Option<LlmUsage> = None;
-        let mut thinking_parser = self
-            .parse_thinking_tags
-            .then(ThinkingTagParser::new);
+        let mut thinking_parser = self.parse_thinking_tags.then(ThinkingTagParser::new);
         let mut done = false;
         let mut stream_read_attempt = 0;
 
         let mut res = response;
-        
+
         while !done {
             let chunk = match res.chunk().await {
                 Ok(Some(bytes)) => Some(bytes),
@@ -899,8 +1006,7 @@ impl LlmClient for ChatOpenAICompat {
                                             let _ = chunk_tx.send(MessageChunk::message(s)).await;
                                         }
                                         ThinkingSegment::Thinking(s) => {
-                                            let _ =
-                                                chunk_tx.send(MessageChunk::thinking(s)).await;
+                                            let _ = chunk_tx.send(MessageChunk::thinking(s)).await;
                                         }
                                     }
                                 }
@@ -1028,13 +1134,17 @@ impl LlmClient for ChatOpenAICompat {
     }
 
     async fn list_models(&self) -> Result<Vec<crate::llm::ModelInfo>, AgentError> {
+        let request_id = uuid6().to_string();
         // Base URL often already includes a version path (e.g., /api/paas/v4)
         // so we only append /models, not /v1/models
         let url = format!("{}/models", self.base_url);
         let res = self
-            .client
-            .get(&url)
-            .bearer_auth(&self.api_key)
+            .add_headers_to_request(
+                self.client
+                    .get(&url)
+                    .bearer_auth(&self.api_key),
+                &request_id,
+            )
             .send()
             .await
             .map_err(|e| {
@@ -1080,4 +1190,66 @@ struct ModelData {
     id: String,
     created: Option<i64>,
     owned_by: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_api_error_body_parses_aliyun_arrearage_error() {
+        let body = br#"{"error":{"message":"Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment","type":"Arrearage","param":null,"code":"Arrearage"},"id":"chatcmpl-test","request_id":"test"}"#;
+        let result = format_api_error_body(body);
+        assert!(
+            result.contains("Access denied"),
+            "should contain message: {}",
+            result
+        );
+        assert!(
+            result.contains("(code: Arrearage)"),
+            "should contain code: {}",
+            result
+        );
+        assert!(
+            !result.contains("\"error\""),
+            "should not contain raw JSON: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn format_api_error_body_parses_openai_style_error() {
+        let body = br#"{"error":{"message":"Rate limit exceeded","type":"rate_limit_error","param":null,"code":"rate_limit_exceeded"}}"#;
+        let result = format_api_error_body(body);
+        assert_eq!(result, "Rate limit exceeded (code: rate_limit_exceeded)");
+    }
+
+    #[test]
+    fn format_api_error_body_parses_error_with_type_only() {
+        let body = br#"{"error":{"message":"Something went wrong","type":"server_error"}}"#;
+        let result = format_api_error_body(body);
+        assert_eq!(result, "Something went wrong (type: server_error)");
+    }
+
+    #[test]
+    fn format_api_error_body_falls_back_to_raw_on_invalid_json() {
+        let body = b"not json at all";
+        let result = format_api_error_body(body);
+        assert_eq!(result, "not json at all");
+    }
+
+    #[test]
+    fn format_api_error_body_handles_empty_error_object() {
+        let body = br#"{"error":{}}"#;
+        let result = format_api_error_body(body);
+        // Empty error object: all fields are None, falls back to raw JSON.
+        assert_eq!(result, "{\"error\":{}}");
+    }
+
+    #[test]
+    fn format_api_error_body_handles_missing_error_field() {
+        let body = br#"{"message":"something"}"#;
+        let result = format_api_error_body(body);
+        assert_eq!(result, "{\"message\":\"something\"}");
+    }
 }

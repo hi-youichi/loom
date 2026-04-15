@@ -35,6 +35,4 @@ pub use local_file::LocalFileResolver;
 pub use models_dev::{HttpClient, ModelsDevResolver, ReqwestHttpClient, DEFAULT_MODELS_DEV_URL};
 pub use refresher::ResolverRefresher;
 pub use resolver::ModelLimitResolver;
-pub use spec::{
-    Cost, Model, ModelLimit, ModelSpec, Modalities, ModalityType, Provider,
-};
+pub use spec::{Cost, Modalities, ModalityType, Model, ModelLimit, ModelSpec, ModelTier, Provider};

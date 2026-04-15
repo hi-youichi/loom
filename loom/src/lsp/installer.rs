@@ -60,9 +60,7 @@ impl LspInstaller {
                     server_name: "rust-analyzer".to_string(),
                     executable: "rust-analyzer".to_string(),
                     check_args: vec!["--version".to_string()],
-                    install_commands: vec![
-                        "rustup component add rust-analyzer".to_string(),
-                    ],
+                    install_commands: vec!["rustup component add rust-analyzer".to_string()],
                     package_managers: vec!["rustup".to_string()],
                 },
                 // TypeScript
@@ -72,7 +70,7 @@ impl LspInstaller {
                     executable: "typescript-language-server".to_string(),
                     check_args: vec!["--version".to_string()],
                     install_commands: vec![
-                        "npm install -g typescript-language-server typescript".to_string(),
+                        "npm install -g typescript-language-server typescript".to_string()
                     ],
                     package_managers: vec!["npm".to_string()],
                 },
@@ -82,9 +80,7 @@ impl LspInstaller {
                     server_name: "pylsp".to_string(),
                     executable: "pylsp".to_string(),
                     check_args: vec!["--version".to_string()],
-                    install_commands: vec![
-                        "pip install python-lsp-server".to_string(),
-                    ],
+                    install_commands: vec!["pip install python-lsp-server".to_string()],
                     package_managers: vec!["pip".to_string()],
                 },
                 // Go
@@ -93,9 +89,7 @@ impl LspInstaller {
                     server_name: "gopls".to_string(),
                     executable: "gopls".to_string(),
                     check_args: vec!["version".to_string()],
-                    install_commands: vec![
-                        "go install golang.org/x/tools/gopls@latest".to_string(),
-                    ],
+                    install_commands: vec!["go install golang.org/x/tools/gopls@latest".to_string()],
                     package_managers: vec!["go".to_string()],
                 },
                 // C++
@@ -128,7 +122,9 @@ impl LspInstaller {
 
     /// Check if a language server is installed.
     pub fn check_installation(&self, language: &str) -> Result<ServerInstallation, InstallerError> {
-        let server = self.servers.iter()
+        let server = self
+            .servers
+            .iter()
             .find(|s| s.language == language)
             .ok_or_else(|| InstallerError::UnsupportedLanguage(language.to_string()))?;
 
@@ -173,16 +169,13 @@ impl LspInstaller {
     pub fn check_all(&self) -> Vec<ServerInstallation> {
         self.servers
             .iter()
-            .filter_map(|server| {
-                self.check_installation(&server.language).ok()
-            })
+            .filter_map(|server| self.check_installation(&server.language).ok())
             .collect()
     }
 
     /// Get installation instructions for a language.
     pub fn get_install_instructions(&self, language: &str) -> Option<String> {
-        let server = self.servers.iter()
-            .find(|s| s.language == language)?;
+        let server = self.servers.iter().find(|s| s.language == language)?;
 
         if server.install_commands.is_empty() {
             return None;
@@ -203,7 +196,7 @@ impl LspInstaller {
     /// Print installation status for all configured servers.
     pub fn print_status(&self) {
         println!("LSP Language Server Status:\n");
-        
+
         for installation in self.check_all() {
             let status = if installation.is_installed {
                 "✅ Installed"
@@ -215,7 +208,11 @@ impl LspInstaller {
                 "{}: {} {}",
                 installation.language,
                 status,
-                installation.version.as_ref().map(|v| format!("({})", v)).unwrap_or_default()
+                installation
+                    .version
+                    .as_ref()
+                    .map(|v| format!("({})", v))
+                    .unwrap_or_default()
             );
 
             if !installation.is_installed {
@@ -257,7 +254,7 @@ mod tests {
         let installer = LspInstaller::new();
         let result = installer.check_installation("rust");
         assert!(result.is_ok());
-        
+
         let installation = result.unwrap();
         assert_eq!(installation.language, "rust");
         assert_eq!(installation.server_name, "rust-analyzer");
@@ -266,11 +263,11 @@ mod tests {
     #[test]
     fn test_get_install_instructions() {
         let installer = LspInstaller::new();
-        
+
         let instructions = installer.get_install_instructions("rust");
         assert!(instructions.is_some());
         assert!(instructions.unwrap().contains("rustup"));
-        
+
         let instructions = installer.get_install_instructions("typescript");
         assert!(instructions.is_some());
         assert!(instructions.unwrap().contains("npm"));
@@ -280,14 +277,12 @@ mod tests {
     fn test_check_all() {
         let installer = LspInstaller::new();
         let installations = installer.check_all();
-        
+
         assert!(!installations.is_empty());
-        
+
         // At least check that we got results for expected languages
-        let languages: Vec<&str> = installations.iter()
-            .map(|i| i.language.as_str())
-            .collect();
-        
+        let languages: Vec<&str> = installations.iter().map(|i| i.language.as_str()).collect();
+
         assert!(languages.contains(&"rust"));
         assert!(languages.contains(&"typescript"));
         assert!(languages.contains(&"python"));

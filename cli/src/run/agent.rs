@@ -11,6 +11,8 @@ use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+type StreamCallback = Arc<Mutex<dyn FnMut(Value) + Send>>;
+
 use super::display::{
     format_dup_state_display, format_got_state_display, format_react_state_display,
     format_tot_state_display, truncate_display,
@@ -152,7 +154,7 @@ pub type RunAgentResult = Result<RunAgentOutput, RunError>;
 pub async fn run_agent_wrapper(
     opts: &RunOptions,
     cmd: &RunCmd,
-    stream_out: Option<Arc<Mutex<dyn FnMut(Value) + Send>>>,
+    stream_out: Option<StreamCallback>,
 ) -> RunAgentResult {
     let (helve, config, resolved_agent) = build_helve_config(opts);
     print_loaded_tools(&config).await?;
@@ -187,7 +189,7 @@ pub async fn run_agent_wrapper(
             let state_clone = state.clone();
             let on_event = Box::new(move |ev: AnyStreamEvent| {
                 let v = match state_clone.lock() {
-                    Ok(mut s) => ev.to_protocol_format(&mut *s),
+                    Ok(mut s) => ev.to_protocol_format(&mut s),
                     Err(_) => return,
                 };
                 let v = match v {
@@ -218,7 +220,7 @@ pub async fn run_agent_wrapper(
         let state_clone = state.clone();
         let on_event = Box::new(move |ev: AnyStreamEvent| {
             let v = match state_clone.lock() {
-                Ok(mut s) => ev.to_protocol_format(&mut *s),
+                Ok(mut s) => ev.to_protocol_format(&mut s),
                 Err(_) => return,
             };
             match v {
@@ -270,16 +272,16 @@ pub async fn run_agent_wrapper(
         let mut s = state_clone.lock().unwrap();
         match &ev {
             AnyStreamEvent::React(e) => {
-                on_event_react(e, &mut *s, display_max_len, verbose, output_timestamp)
+                on_event_react(e, &mut s, display_max_len, verbose, output_timestamp)
             }
             AnyStreamEvent::Dup(e) => {
-                on_event_dup(e, &mut *s, display_max_len, verbose, output_timestamp)
+                on_event_dup(e, &mut s, display_max_len, verbose, output_timestamp)
             }
             AnyStreamEvent::Tot(e) => {
-                on_event_tot(e, &mut *s, display_max_len, verbose, output_timestamp)
+                on_event_tot(e, &mut s, display_max_len, verbose, output_timestamp)
             }
             AnyStreamEvent::Got(e) => {
-                on_event_got(e, &mut *s, display_max_len, verbose, output_timestamp)
+                on_event_got(e, &mut s, display_max_len, verbose, output_timestamp)
             }
         }
     });
@@ -471,12 +473,10 @@ fn on_event_dup(
                 }
                 eprintln!("--- state after {} ---", node_id);
                 eprintln!("{}", format_dup_state_display(state, display_max_len));
-            } else {
-                if node_id == "plan" {
-                    s.turn += 1;
-                    if !state.core.tool_calls.is_empty() {
-                        log_tools_used(&state.core.tool_calls);
-                    }
+            } else if node_id == "plan" {
+                s.turn += 1;
+                if !state.core.tool_calls.is_empty() {
+                    log_tools_used(&state.core.tool_calls);
                 }
             }
         }
@@ -1164,7 +1164,7 @@ mod tests {
 
     #[tokio::test]
     async fn run_agent_wrapper_errors_for_invalid_working_folder_json_stream_mode() {
-        let sink: Arc<Mutex<dyn FnMut(Value) + Send>> = Arc::new(Mutex::new(|_v: Value| {}));
+        let sink: StreamCallback = Arc::new(Mutex::new(|_v: Value| {}));
         let res = run_agent_wrapper(&invalid_opts(true), &RunCmd::React, Some(sink)).await;
         assert!(res.is_err());
     }

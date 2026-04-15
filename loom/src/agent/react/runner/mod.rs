@@ -3,6 +3,7 @@
 mod error;
 mod initial_state;
 mod options;
+#[allow(clippy::module_inception)]
 mod runner;
 
 pub use error::RunError;

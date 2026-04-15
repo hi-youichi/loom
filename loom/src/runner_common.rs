@@ -47,9 +47,7 @@ where
             );
             return Ok(merge(checkpoint.channel_values, user_message.to_string()));
         }
-        tracing::info!(
-            "load_from_checkpoint_or_build: no checkpoint found, building fresh state"
-        );
+        tracing::info!("load_from_checkpoint_or_build: no checkpoint found, building fresh state");
     }
 
     build_fresh.await
@@ -119,13 +117,12 @@ where
             final_state = Some(s);
         }
     }
-    let completion = graph_stream
-        .completion
-        .await
-        .map_err(|e| StreamRunError::Execution(AgentError::ExecutionFailed(format!(
+    let completion = graph_stream.completion.await.map_err(|e| {
+        StreamRunError::Execution(AgentError::ExecutionFailed(format!(
             "graph stream task failed: {}",
             e
-        ))))?;
+        )))
+    })?;
     match completion {
         Ok(()) => final_state
             .map(StreamRunOutcome::Finished)

@@ -129,9 +129,7 @@ pub enum ToolCallContent {
         new_text: String,
     },
     /// Terminal command output with a terminal ID.
-    Terminal {
-        terminal_id: String,
-    },
+    Terminal { terminal_id: String },
 }
 
 impl Serialize for ToolCallContent {
@@ -141,7 +139,11 @@ impl Serialize for ToolCallContent {
     {
         match self {
             ToolCallContent::Text(t) => t.serialize(serializer),
-            ToolCallContent::Diff { path, old_text, new_text } => {
+            ToolCallContent::Diff {
+                path,
+                old_text,
+                new_text,
+            } => {
                 use serde::ser::SerializeStruct;
                 let mut s = serializer.serialize_struct("Diff", 3)?;
                 s.serialize_field("type", "diff")?;
@@ -167,30 +169,30 @@ impl<'de> Deserialize<'de> for ToolCallContent {
         D: serde::Deserializer<'de>,
     {
         use serde::de::{self, Visitor};
-        
+
         struct ToolCallContentVisitor;
-        
+
         impl<'de> Visitor<'de> for ToolCallContentVisitor {
             type Value = ToolCallContent;
-            
+
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str("a string or a diff object")
             }
-            
+
             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
             where
                 E: de::Error,
             {
                 Ok(ToolCallContent::Text(value.to_string()))
             }
-            
+
             fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
             where
                 E: de::Error,
             {
                 Ok(ToolCallContent::Text(value))
             }
-            
+
             fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
             where
                 M: de::MapAccess<'de>,
@@ -200,7 +202,7 @@ impl<'de> Deserialize<'de> for ToolCallContent {
                 let mut new_text = None;
                 let mut terminal_id = None;
                 let mut content_type = None;
-                
+
                 while let Some(key) = map.next_key::<String>()? {
                     match key.as_str() {
                         "type" => content_type = Some(map.next_value()?),
@@ -208,25 +210,32 @@ impl<'de> Deserialize<'de> for ToolCallContent {
                         "old_text" => old_text = map.next_value()?,
                         "new_text" => new_text = Some(map.next_value()?),
                         "terminal_id" => terminal_id = Some(map.next_value()?),
-                        _ => { let _ = map.next_value::<serde::de::IgnoredAny>()?; }
+                        _ => {
+                            let _ = map.next_value::<serde::de::IgnoredAny>()?;
+                        }
                     }
                 }
-                
-                let content_type: String = content_type.ok_or_else(|| de::Error::missing_field("type"))?;
+
+                let content_type: String =
+                    content_type.ok_or_else(|| de::Error::missing_field("type"))?;
                 match content_type.as_str() {
                     "terminal" => Ok(ToolCallContent::Terminal {
-                        terminal_id: terminal_id.ok_or_else(|| de::Error::missing_field("terminal_id"))?,
+                        terminal_id: terminal_id
+                            .ok_or_else(|| de::Error::missing_field("terminal_id"))?,
                     }),
                     "diff" => Ok(ToolCallContent::Diff {
                         path: path.ok_or_else(|| de::Error::missing_field("path"))?,
                         old_text,
                         new_text: new_text.ok_or_else(|| de::Error::missing_field("new_text"))?,
                     }),
-                    other => Err(de::Error::custom(format!("expected type 'diff' or 'terminal', got '{}'", other))),
+                    other => Err(de::Error::custom(format!(
+                        "expected type 'diff' or 'terminal', got '{}'",
+                        other
+                    ))),
                 }
             }
         }
-        
+
         deserializer.deserialize_any(ToolCallContentVisitor)
     }
 }
@@ -236,7 +245,11 @@ impl ToolCallContent {
         ToolCallContent::Text(text.into())
     }
 
-    pub fn diff(path: impl Into<String>, old_text: Option<String>, new_text: impl Into<String>) -> Self {
+    pub fn diff(
+        path: impl Into<String>,
+        old_text: Option<String>,
+        new_text: impl Into<String>,
+    ) -> Self {
         ToolCallContent::Diff {
             path: path.into(),
             old_text,
@@ -245,7 +258,9 @@ impl ToolCallContent {
     }
 
     pub fn terminal(terminal_id: impl Into<String>) -> Self {
-        ToolCallContent::Terminal { terminal_id: terminal_id.into() }
+        ToolCallContent::Terminal {
+            terminal_id: terminal_id.into(),
+        }
     }
 
     pub fn as_text(&self) -> Option<&str> {
@@ -329,55 +344,6 @@ pub enum ToolSourceError {
     ToolError(String),
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// **Scenario**: Display of each ToolSourceError variant contains expected keywords.
-    #[test]
-    fn tool_source_error_display_all_variants() {
-        let s = ToolSourceError::NotFound("x".into()).to_string();
-        assert!(s.to_lowercase().contains("not found"), "{}", s);
-        let s = ToolSourceError::InvalidInput("bad".into()).to_string();
-        assert!(s.to_lowercase().contains("invalid"), "{}", s);
-        let s = ToolSourceError::Transport("net".into()).to_string();
-        assert!(
-            s.to_lowercase().contains("transport") || s.to_lowercase().contains("mcp"),
-            "{}",
-            s
-        );
-        let s = ToolSourceError::JsonRpc("rpc".into()).to_string();
-        assert!(
-            s.to_lowercase().contains("json") || s.to_lowercase().contains("rpc"),
-            "{}",
-            s
-        );
-    }
-
-    /// **Scenario**: ToolSpec and ToolCallContent can be constructed and cloned.
-    #[test]
-    fn tool_spec_and_tool_call_content_construct_and_clone() {
-        let spec = ToolSpec {
-            name: "get_time".into(),
-            description: Some("Get time".into()),
-            input_schema: serde_json::json!({}),
-            output_hint: None,
-        };
-        assert_eq!(spec.name, "get_time");
-        let _ = spec.clone();
-        
-        // Test Text variant
-        let content = ToolCallContent::text("12:00");
-        assert_eq!(content.as_text(), Some("12:00"));
-        let _ = content.clone();
-        
-        // Test Diff variant
-        let diff = ToolCallContent::diff("test.rs", None, "new content");
-        assert!(diff.as_text().is_none());
-        let _ = diff.clone();
-    }
-}
-
 /// Tool source contract used by ReAct runners.
 ///
 /// [`crate::agent::react::ThinkNode`] consumes [`Self::list_tools`] to advertise
@@ -416,4 +382,53 @@ pub trait ToolSource: Send + Sync {
     /// This hook exists for implementations that prefer explicit stateful setup
     /// before one round of tool calls. The default implementation is a no-op.
     fn set_call_context(&self, _ctx: Option<ToolCallContext>) {}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// **Scenario**: Display of each ToolSourceError variant contains expected keywords.
+    #[test]
+    fn tool_source_error_display_all_variants() {
+        let s = ToolSourceError::NotFound("x".into()).to_string();
+        assert!(s.to_lowercase().contains("not found"), "{}", s);
+        let s = ToolSourceError::InvalidInput("bad".into()).to_string();
+        assert!(s.to_lowercase().contains("invalid"), "{}", s);
+        let s = ToolSourceError::Transport("net".into()).to_string();
+        assert!(
+            s.to_lowercase().contains("transport") || s.to_lowercase().contains("mcp"),
+            "{}",
+            s
+        );
+        let s = ToolSourceError::JsonRpc("rpc".into()).to_string();
+        assert!(
+            s.to_lowercase().contains("json") || s.to_lowercase().contains("rpc"),
+            "{}",
+            s
+        );
+    }
+
+    /// **Scenario**: ToolSpec and ToolCallContent can be constructed and cloned.
+    #[test]
+    fn tool_spec_and_tool_call_content_construct_and_clone() {
+        let spec = ToolSpec {
+            name: "get_time".into(),
+            description: Some("Get time".into()),
+            input_schema: serde_json::json!({}),
+            output_hint: None,
+        };
+        assert_eq!(spec.name, "get_time");
+        let _ = spec.clone();
+
+        // Test Text variant
+        let content = ToolCallContent::text("12:00");
+        assert_eq!(content.as_text(), Some("12:00"));
+        let _ = content.clone();
+
+        // Test Diff variant
+        let diff = ToolCallContent::diff("test.rs", None, "new content");
+        assert!(diff.as_text().is_none());
+        let _ = diff.clone();
+    }
 }

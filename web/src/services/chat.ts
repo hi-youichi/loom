@@ -12,11 +12,10 @@ import { getConnection } from './connection'
 import { setSessionModel } from './model'
 
 type SendMessageOptions = {
-  threadId?: string
+  sessionId?: string
   workspaceId?: string
-  agent?: string          // ← 新增：执行模式，默认 'react'
-  model?: string          // ← 新增：模型选择
-  sessionId?: string      // ← 新增：会话ID
+  agent?: string
+  model?: string
   onChunk?: (chunk: string) => void
   onEvent?: (event: LoomStreamEvent) => void
 }
@@ -63,16 +62,15 @@ export function sendMessage(
 
   const workingFolder = getWorkingFolder()
   const agentValue = options.agent || 'dev'
-  
+
   const payload: Record<string, unknown> = {
     type: 'run',
     message: content,
-    // agent can be either a builtin type (react/dup/tot/got) or custom profile name (dev/assistant/ask)
     agent: agentValue,
-    thread_id: options.threadId,
+    thread_id: options.sessionId,
     working_folder: workingFolder,
     verbose: false,
-    model: options.model,  // 新增model参数
+    model: options.model,
   }
   if (options.workspaceId) payload.workspace_id = options.workspaceId
 
@@ -81,26 +79,20 @@ export function sendMessage(
   )
 }
 
-/**
- * Send message with model selection
- */
 export async function sendMessageWithModel(
   content: string,
   modelId: string,
   options: SendMessageOptions = {}
 ): Promise<ChatReply> {
-  // Send message with model parameter
   const reply = await sendMessage(content, { ...options, model: modelId })
-  
-  // Set session model if sessionId is provided
+
   if (options.sessionId && modelId) {
     try {
       await setSessionModel(modelId, options.sessionId)
     } catch (error) {
       console.warn('Failed to set session model:', error)
-      // Don't fail the whole operation if model setting fails
     }
   }
-  
+
   return reply
 }

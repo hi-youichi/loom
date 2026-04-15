@@ -46,16 +46,16 @@ fn parse_task_graph(raw: &str, input_message: &str) -> TaskGraph {
         if let Some(nodes) = parsed.nodes {
             let graph_nodes: Vec<TaskNode> = nodes
                 .into_iter()
-                .filter_map(|n| {
+                .map(|n| {
                     let id =
                         n.id.filter(|s| !s.is_empty())
                             .unwrap_or_else(|| "task_1".to_string());
                     let description = n.description.unwrap_or_else(|| input_message.to_string());
-                    Some(TaskNode {
+                    TaskNode {
                         id,
                         description,
                         tool_calls: vec![],
-                    })
+                    }
                 })
                 .collect();
             if !graph_nodes.is_empty() {

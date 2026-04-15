@@ -58,13 +58,9 @@ impl MessageSender for TeloxideSender {
 
         let mut first_message_id: Option<i32> = None;
         for chunk in chunks {
-            let msg = send_message_with_retry(
-                &self.bot,
-                ChatId(chat_id),
-                &chunk,
-                TELEGRAM_API_RETRIES,
-            )
-            .await?;
+            let msg =
+                send_message_with_retry(&self.bot, ChatId(chat_id), &chunk, TELEGRAM_API_RETRIES)
+                    .await?;
             if first_message_id.is_none() {
                 first_message_id = Some(msg.id.0);
             }

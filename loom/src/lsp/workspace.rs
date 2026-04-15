@@ -25,21 +25,26 @@ pub enum WorkspaceError {
 pub struct Workspace {
     /// Unique workspace identifier
     pub id: String,
-    
+
     /// Root path of the workspace
     pub root_path: PathBuf,
-    
+
     /// Workspace name (optional)
     pub name: Option<String>,
 }
 
 impl Workspace {
     /// Create a new workspace.
-    pub fn new(id: String, root_path: PathBuf, name: Option<String>) -> Result<Self, WorkspaceError> {
+    pub fn new(
+        id: String,
+        root_path: PathBuf,
+        name: Option<String>,
+    ) -> Result<Self, WorkspaceError> {
         if !root_path.exists() {
-            return Err(WorkspaceError::InvalidPath(
-                format!("Path does not exist: {}", root_path.display())
-            ));
+            return Err(WorkspaceError::InvalidPath(format!(
+                "Path does not exist: {}",
+                root_path.display()
+            )));
         }
 
         Ok(Self {
@@ -97,7 +102,11 @@ impl WorkspaceManager {
         // Update active workspace if needed
         let mut active = self.active_workspace.write().await;
         if active.as_ref() == Some(&id.to_string()) {
-            *active = self.workspaces.iter().next().map(|entry| entry.key().clone());
+            *active = self
+                .workspaces
+                .iter()
+                .next()
+                .map(|entry| entry.key().clone());
         }
 
         Ok(())
@@ -105,7 +114,9 @@ impl WorkspaceManager {
 
     /// Get a workspace by ID.
     pub fn get_workspace(&self, id: &str) -> Option<Arc<Workspace>> {
-        self.workspaces.get(id).map(|entry| Arc::clone(entry.value()))
+        self.workspaces
+            .get(id)
+            .map(|entry| Arc::clone(entry.value()))
     }
 
     /// Get the active workspace.
@@ -128,7 +139,10 @@ impl WorkspaceManager {
 
     /// List all workspaces.
     pub fn list_workspaces(&self) -> Vec<Arc<Workspace>> {
-        self.workspaces.iter().map(|entry| Arc::clone(entry.value())).collect()
+        self.workspaces
+            .iter()
+            .map(|entry| Arc::clone(entry.value()))
+            .collect()
     }
 }
 

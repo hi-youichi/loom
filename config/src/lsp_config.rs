@@ -9,13 +9,13 @@ use thiserror::Error;
 pub enum LspConfigError {
     #[error("Failed to parse LSP config: {0}")]
     ParseError(#[from] toml::de::Error),
-    
+
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
-    
+
     #[error("Language server not found: {0}")]
     ServerNotFound(String),
-    
+
     #[error("Invalid configuration: {0}")]
     InvalidConfig(String),
 }
@@ -25,33 +25,33 @@ pub enum LspConfigError {
 pub struct LspServerConfig {
     /// Language identifier (e.g., "rust", "typescript")
     pub language: String,
-    
+
     /// Command to start the language server
     pub command: String,
-    
+
     /// Command-line arguments
     #[serde(default)]
     pub args: Vec<String>,
-    
+
     /// File patterns this server handles (e.g., ["*.rs"])
     pub file_patterns: Vec<String>,
-    
+
     /// Initialization options sent to the server
     #[serde(default)]
     pub initialization_options: Option<serde_json::Value>,
-    
+
     /// Root URI override (if None, uses workspace root)
     #[serde(default)]
     pub root_uri: Option<String>,
-    
+
     /// Environment variables to set when starting the server
     #[serde(default)]
     pub env: std::collections::HashMap<String, String>,
-    
+
     /// Timeout for server startup (in milliseconds)
     #[serde(default = "default_startup_timeout")]
     pub startup_timeout_ms: u64,
-    
+
     /// Auto-install configuration
     #[serde(default)]
     pub auto_install: Option<AutoInstallConfig>,
@@ -67,10 +67,10 @@ pub struct AutoInstallConfig {
     /// Whether auto-install is enabled
     #[serde(default = "default_true")]
     pub enabled: bool,
-    
+
     /// Install command (e.g., "rustup component add rust-analyzer")
     pub command: String,
-    
+
     /// Verification command to check if already installed
     #[serde(default)]
     pub verify_command: Option<String>,
@@ -85,7 +85,7 @@ fn default_true() -> bool {
 pub struct LspConfig {
     /// List of language servers
     pub servers: Vec<LspServerConfig>,
-    
+
     /// Global settings
     #[serde(default)]
     pub settings: LspGlobalSettings,
@@ -97,11 +97,11 @@ pub struct LspGlobalSettings {
     /// Maximum number of concurrent language servers
     #[serde(default = "default_max_servers")]
     pub max_concurrent_servers: usize,
-    
+
     /// Enable logging of LSP communication
     #[serde(default)]
     pub log_communication: bool,
-    
+
     /// Auto-shutdown idle servers after this many seconds (0 = never)
     #[serde(default)]
     pub idle_timeout_seconds: u64,
@@ -142,7 +142,6 @@ pub fn get_default_servers() -> Vec<LspServerConfig> {
                 verify_command: Some("rust-analyzer --version".to_string()),
             }),
         },
-        
         // TypeScript
         LspServerConfig {
             language: "typescript".to_string(),
@@ -159,7 +158,6 @@ pub fn get_default_servers() -> Vec<LspServerConfig> {
                 verify_command: Some("typescript-language-server --version".to_string()),
             }),
         },
-        
         // JavaScript
         LspServerConfig {
             language: "javascript".to_string(),
@@ -176,7 +174,6 @@ pub fn get_default_servers() -> Vec<LspServerConfig> {
                 verify_command: Some("typescript-language-server --version".to_string()),
             }),
         },
-        
         // Python
         LspServerConfig {
             language: "python".to_string(),
@@ -193,7 +190,6 @@ pub fn get_default_servers() -> Vec<LspServerConfig> {
                 verify_command: Some("pylsp --version".to_string()),
             }),
         },
-        
         // Go
         LspServerConfig {
             language: "go".to_string(),
@@ -263,10 +259,10 @@ pub fn load_lsp_config(path: &PathBuf) -> Result<LspConfig, LspConfigError> {
     if !path.exists() {
         return Ok(LspConfig::default());
     }
-    
+
     let content = std::fs::read_to_string(path)?;
     let config: LspConfig = toml::from_str(&content)?;
-    
+
     Ok(config)
 }
 
@@ -279,7 +275,7 @@ pub fn discover_lsp_config_path() -> Option<PathBuf> {
             return Some(path);
         }
     }
-    
+
     // Check home directory
     if let Some(home) = dirs::home_dir() {
         let path = home.join(".config/loom/lsp.toml");
@@ -287,7 +283,7 @@ pub fn discover_lsp_config_path() -> Option<PathBuf> {
             return Some(path);
         }
     }
-    
+
     None
 }
 
@@ -308,7 +304,7 @@ pub fn get_default_lsp_servers() -> Vec<LspServerConfig> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_default_config() {
         let config = LspConfig::default();
@@ -317,7 +313,7 @@ mod tests {
         assert!(config.servers.iter().any(|s| s.language == "typescript"));
         assert!(config.servers.iter().any(|s| s.language == "java")); // Java配置存在
     }
-    
+
     #[test]
     fn test_serialize_config() {
         let config = LspConfig::default();

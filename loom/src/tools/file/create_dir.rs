@@ -84,7 +84,7 @@ impl Tool for CreateDirTool {
         if path.exists() {
             if path.is_dir() {
                 if exist_ok {
-                    return Ok(ToolCallContent::text("ok".to_string(),));
+                    return Ok(ToolCallContent::text("ok".to_string()));
                 }
                 return Err(ToolSourceError::InvalidInput(format!(
                     "directory already exists: {}",
@@ -99,6 +99,6 @@ impl Tool for CreateDirTool {
         std::fs::create_dir_all(&path).map_err(|e| {
             ToolSourceError::Transport(format!("failed to create directory: {}", e))
         })?;
-        Ok(ToolCallContent::text("ok".to_string(),))
+        Ok(ToolCallContent::text("ok".to_string()))
     }
 }

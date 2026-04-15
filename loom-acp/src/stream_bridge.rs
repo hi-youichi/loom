@@ -73,8 +73,10 @@ pub enum StreamUpdate {
         tool_call_id: String,
         /// e.g. "running" | "success" | "failure"; maps to ToolCallStatus in ACP.
         status: String,
-        /// Result or error message.
+        /// Result or error message (possibly normalized/truncated).
         output: Option<String>,
+        /// Full un-normalized result. When set, used for ACP `raw_output` instead of `output`.
+        raw_output: Option<String>,
     },
 
     /// Incremental tool call argument chunk (during LLM streaming).
@@ -166,6 +168,7 @@ where
                     tool_call_id: id,
                     status: "running".to_string(),
                     output: None,
+                    raw_output: None,
                 }]
             }
         }
@@ -179,12 +182,14 @@ where
                 tool_call_id: id,
                 status: "running".to_string(),
                 output: Some(content.clone()),
+                raw_output: None,
             }]
         }
         StreamEvent::ToolEnd {
             call_id,
             result,
             is_error,
+            raw_result,
             ..
         } => {
             let id = call_id.clone().unwrap_or_default();
@@ -196,6 +201,7 @@ where
                     "success".to_string()
                 },
                 output: Some(result.clone()),
+                raw_output: raw_result.clone(),
             }]
         }
         StreamEvent::ToolCallChunk {
@@ -255,6 +261,7 @@ pub fn stream_update_to_session_notification(
             tool_call_id,
             status,
             output,
+            raw_output,
         } => {
             if tool_call_id.is_empty() {
                 return None;
@@ -267,9 +274,10 @@ pub fn stream_update_to_session_notification(
             };
             let mut fields = ToolCallUpdateFields::new().status(status);
             if let Some(ref s) = output {
+                let effective_raw = raw_output.as_deref().unwrap_or(s);
                 fields = fields
                     .content(vec![s.clone().into()])
-                    .raw_output(parse_text_output_to_raw_value(s));
+                    .raw_output(parse_text_output_to_raw_value(effective_raw));
             }
             SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
                 ToolCallId::new(tool_call_id.as_str()),
@@ -283,10 +291,10 @@ pub fn stream_update_to_session_notification(
         } => {
             if let Some(tool_name) = name {
                 let tc = create_tool_call(
-                    tool_call_id, 
-                    tool_name, 
-                    parse_arguments_delta(&arguments_delta).as_ref(),
-                    None
+                    tool_call_id,
+                    tool_name,
+                    parse_arguments_delta(arguments_delta).as_ref(),
+                    None,
                 );
                 tracing::debug!(
                     tool_call_id = %tool_call_id,
@@ -330,13 +338,22 @@ pub fn name_to_tool_kind(name: &str) -> ToolKind {
         ToolKind::Move
     } else if n.contains("search") || n.contains("grep") || n.contains("glob") {
         ToolKind::Search
-    } else if n.contains("run") || n.contains("bash") || n.contains("command") || n.contains("exec") || n.contains("shell") {
+    } else if n.contains("run")
+        || n.contains("bash")
+        || n.contains("command")
+        || n.contains("exec")
+        || n.contains("shell")
+    {
         ToolKind::Execute
     } else if n.contains("think") || n.contains("reason") {
         ToolKind::Think
     } else if n.contains("fetch") {
         ToolKind::Fetch
-    } else if n.contains("switch_mode") || n.contains("switchmode") || n.contains("set_mode") || n.contains("setmode") {
+    } else if n.contains("switch_mode")
+        || n.contains("switchmode")
+        || n.contains("set_mode")
+        || n.contains("setmode")
+    {
         ToolKind::SwitchMode
     } else {
         ToolKind::Other
@@ -388,13 +405,17 @@ impl SessionNotifier {
                 )],
                 Message::Assistant(payload) => {
                     for tc in &payload.tool_calls {
-                        tool_calls_map
-                            .insert(tc.id.clone(), (tc.name.clone(), serde_json::from_str(&tc.arguments).ok()));
+                        tool_calls_map.insert(
+                            tc.id.clone(),
+                            (tc.name.clone(), serde_json::from_str(&tc.arguments).ok()),
+                        );
                     }
 
                     let mut notifs = vec![SessionNotification::new(
                         self.session_id.clone(),
-                        SessionUpdate::AgentMessageChunk(ContentChunk::new(payload.content.clone().into())),
+                        SessionUpdate::AgentMessageChunk(ContentChunk::new(
+                            payload.content.clone().into(),
+                        )),
                     )];
 
                     for tc in &payload.tool_calls {
@@ -502,9 +523,9 @@ fn tool_call_content_to_raw_output(content: &loom::tool_source::ToolCallContent)
 
 pub fn create_tool_call(
     tool_call_id: &str,
-    name: &str, 
+    name: &str,
     input: Option<&Value>,
-    kind_override: Option<&str>
+    kind_override: Option<&str>,
 ) -> ToolCall {
     let id = ToolCallId::new(tool_call_id);
     let title = generate_tool_title(name, input);
@@ -514,7 +535,7 @@ pub fn create_tool_call(
     let mut tc = ToolCall::new(id.clone(), title)
         .status(ToolCallStatus::Pending)
         .kind(effective_kind);
-    
+
     if let Some(v) = input {
         tc = tc.raw_input(v.clone());
         let locations: Vec<ToolCallLocation> = extract_locations(name, v)
@@ -534,9 +555,7 @@ pub fn generate_tool_title(name: &str, input: Option<&serde_json::Value>) -> Str
 
     match kind {
         // Execute and Other: show command directly without "Running" prefix
-        ToolKind::Execute | ToolKind::Other => {
-            target.unwrap_or_else(|| name.to_string())
-        }
+        ToolKind::Execute | ToolKind::Other => target.unwrap_or_else(|| name.to_string()),
         // Others: use verb prefix
         _ => {
             let verb = match kind {
@@ -562,17 +581,27 @@ fn extract_target_from_input(name: &str, input: Option<&serde_json::Value>) -> O
     let obj = input?.as_object()?;
     let n = name.to_lowercase();
 
-    let keys: &[&[&str]] = if n.contains("read") || n.contains("file") {
-        &[&["path", "file_path", "filepath"]]
-    } else if n.contains("write") || n.contains("edit") {
-        &[&["path", "file_path", "filepath"]]
-    } else if n.contains("delete") || n.contains("remove") {
+    let keys: &[&[&str]] = if n.contains("read")
+        || n.contains("file")
+        || n.contains("write")
+        || n.contains("edit")
+        || n.contains("delete")
+        || n.contains("remove")
+    {
         &[&["path", "file_path", "filepath"]]
     } else if n.contains("move") || n.contains("rename") {
-        &[&["source", "src", "path"], &["destination", "dest", "target"]]
+        &[
+            &["source", "src", "path"],
+            &["destination", "dest", "target"],
+        ]
     } else if n.contains("search") || n.contains("grep") || n.contains("glob") {
         &[&["pattern", "query", "search"]]
-    } else if n.contains("run") || n.contains("bash") || n.contains("command") || n.contains("exec") || n.contains("shell") {
+    } else if n.contains("run")
+        || n.contains("bash")
+        || n.contains("command")
+        || n.contains("exec")
+        || n.contains("shell")
+    {
         &[&["command", "cmd"]]
     } else if n.contains("fetch") {
         &[&["url", "uri"]]

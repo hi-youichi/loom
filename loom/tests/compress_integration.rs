@@ -44,7 +44,7 @@ async fn no_compression_when_within_all_limits() {
         ..Default::default()
     };
     let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(""));
-    let graph = build_graph(config, llm).expect("compile");
+    let graph = build_graph(config, llm, None).expect("compile");
 
     let msgs = vec![
         Message::user("hello"),
@@ -80,7 +80,7 @@ async fn prune_replaces_old_tool_results_via_compression_graph() {
         ..Default::default()
     };
     let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(""));
-    let graph = build_graph(config, llm).expect("compile");
+    let graph = build_graph(config, llm, None).expect("compile");
 
     let msgs = vec![
         Message::user("What time is it?"),
@@ -94,11 +94,17 @@ async fn prune_replaces_old_tool_results_via_compression_graph() {
     assert_eq!(out.messages.len(), 4);
 
     // First message (non-tool) unchanged
-    assert!(matches!(&out.messages[0], Message::User(loom::UserContent::Text(s)) if s == "What time is it?"));
+    assert!(
+        matches!(&out.messages[0], Message::User(loom::UserContent::Text(s)) if s == "What time is it?")
+    );
 
     // Oldest two tool results pruned (each ~104 tokens, cumulative exceeds 120 after the newest)
-    assert!(matches!(&out.messages[1], Message::User(loom::UserContent::Text(s)) if s == PRUNE_PLACEHOLDER));
-    assert!(matches!(&out.messages[2], Message::User(loom::UserContent::Text(s)) if s == PRUNE_PLACEHOLDER));
+    assert!(
+        matches!(&out.messages[1], Message::User(loom::UserContent::Text(s)) if s == PRUNE_PLACEHOLDER)
+    );
+    assert!(
+        matches!(&out.messages[2], Message::User(loom::UserContent::Text(s)) if s == PRUNE_PLACEHOLDER)
+    );
 
     // Most recent tool result preserved (first ~104 tokens within 120 budget)
     assert!(
@@ -123,7 +129,7 @@ async fn compact_summarizes_messages_on_overflow() {
     };
     let summary_text = "User asked about time, assistant checked clock";
     let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(summary_text));
-    let graph = build_graph(config, llm).expect("compile");
+    let graph = build_graph(config, llm, None).expect("compile");
 
     let msgs = vec![
         Message::user("x".repeat(100)),
@@ -144,7 +150,9 @@ async fn compact_summarizes_messages_on_overflow() {
 
     // Last 2 messages preserved verbatim
     assert!(matches!(&out.messages[1], Message::Assistant(p) if p.content == "w".repeat(100)));
-    assert!(matches!(&out.messages[2], Message::User(loom::UserContent::Text(s)) if *s == "v".repeat(100)));
+    assert!(
+        matches!(&out.messages[2], Message::User(loom::UserContent::Text(s)) if *s == "v".repeat(100))
+    );
 }
 
 // ---------- Test 3: prune then compact ----------
@@ -164,10 +172,11 @@ async fn prune_then_compact_combined() {
         max_context_tokens: 80,
         reserve_tokens: 10,
         compact_keep_recent: 2,
+        ..Default::default()
     };
     let summary_text = "Conversation summary after prune and compact";
     let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(summary_text));
-    let graph = build_graph(config, llm).expect("compile");
+    let graph = build_graph(config, llm, None).expect("compile");
 
     let msgs = vec![
         Message::user("initial question"),
@@ -194,7 +203,9 @@ async fn prune_then_compact_combined() {
 
     // Last 2 messages are the original recent messages
     assert!(matches!(&out.messages[1], Message::Assistant(p) if p.content == "a".repeat(600)));
-    assert!(matches!(&out.messages[2], Message::User(loom::UserContent::Text(s)) if *s == "b".repeat(600)));
+    assert!(
+        matches!(&out.messages[2], Message::User(loom::UserContent::Text(s)) if *s == "b".repeat(600))
+    );
 }
 
 // ---------- Test 5: full ReAct loop with compression ----------
@@ -219,9 +230,10 @@ async fn compression_in_full_react_loop() {
         prune: true,
         prune_keep_tokens: 30,
         prune_minimum: Some(0),
+        ..Default::default()
     };
 
-    let compression_graph = build_graph(config, compress_llm).expect("compress graph");
+    let compression_graph = build_graph(config, compress_llm, None).expect("compress graph");
     let compress_node = Arc::new(CompressionGraphNode::new(compression_graph));
 
     let think_path_map: HashMap<String, String> =

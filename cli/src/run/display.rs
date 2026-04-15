@@ -126,7 +126,7 @@ fn indent_lines(s: &str, indent: &str) -> String {
 pub(crate) fn format_tot_state_display(state: &TotState, max: usize) -> String {
     let core_block = format_react_state_display(&state.core, max);
     let core_indented = indent_lines(&core_block, "    ");
-    let lines = vec![
+    let lines = [
         "TotState {".to_string(),
         format!("{}core:", INDENT),
         core_indented,
@@ -140,7 +140,7 @@ pub(crate) fn format_tot_state_display(state: &TotState, max: usize) -> String {
 pub(crate) fn format_dup_state_display(state: &DupState, max: usize) -> String {
     let core_block = format_react_state_display(&state.core, max);
     let core_indented = indent_lines(&core_block, "    ");
-    let lines = vec![
+    let lines = [
         "DupState {".to_string(),
         format!("{}core:", INDENT),
         core_indented,

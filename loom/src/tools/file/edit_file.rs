@@ -132,7 +132,9 @@ impl Tool for EditFileTool {
 
         // No-op: same string means no change; succeed without touching the file.
         if old_string == new_string {
-            return Ok(ToolCallContent::text("Edit applied successfully (no change).".to_string(),));
+            return Ok(ToolCallContent::text(
+                "Edit applied successfully (no change).".to_string(),
+            ));
         }
 
         // Create / overwrite the file when oldString is empty (new file semantics).
@@ -146,7 +148,9 @@ impl Tool for EditFileTool {
             }
             std::fs::write(&path, new_string)
                 .map_err(|e| ToolSourceError::Transport(format!("failed to write file: {}", e)))?;
-            return Ok(ToolCallContent::text("Edit applied successfully.".to_string(),));
+            return Ok(ToolCallContent::text(
+                "Edit applied successfully.".to_string(),
+            ));
         }
 
         if !path.exists() {
@@ -171,7 +175,9 @@ impl Tool for EditFileTool {
         std::fs::write(&path, &new_content)
             .map_err(|e| ToolSourceError::Transport(format!("failed to write file: {}", e)))?;
 
-        Ok(ToolCallContent::text("Edit applied successfully.".to_string(),))
+        Ok(ToolCallContent::text(
+            "Edit applied successfully.".to_string(),
+        ))
     }
 }
 
@@ -179,6 +185,7 @@ impl Tool for EditFileTool {
 // Levenshtein distance
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::needless_range_loop)]
 fn levenshtein(a: &str, b: &str) -> usize {
     if a.is_empty() || b.is_empty() {
         return a.len().max(b.len());
@@ -188,11 +195,11 @@ fn levenshtein(a: &str, b: &str) -> usize {
     let m = a.len();
     let n = b.len();
     let mut matrix = vec![vec![0usize; n + 1]; m + 1];
-    for i in 0..=m {
-        matrix[i][0] = i;
+    for (i, row) in matrix.iter_mut().enumerate() {
+        row[0] = i;
     }
-    for j in 0..=n {
-        matrix[0][j] = j;
+    for (j, val) in matrix[0].iter_mut().enumerate() {
+        *val = j;
     }
     for i in 1..=m {
         for j in 1..=n {
@@ -259,6 +266,7 @@ fn line_trimmed_replacer(content: &str, find: &str) -> Vec<String> {
 ///
 /// The number of anchor candidates is capped at [`MAX_REPLACER_RESULTS`] to avoid
 /// O(n²) blowup on large files with many repeated anchor lines.
+#[allow(clippy::needless_range_loop)]
 fn block_anchor_replacer(content: &str, find: &str) -> Vec<String> {
     let orig: Vec<&str> = content.split('\n').collect();
     let mut search: Vec<&str> = find.split('\n').collect();

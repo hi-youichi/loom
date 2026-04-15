@@ -118,6 +118,31 @@ export type LoomToolEvent =
   | LoomToolOutputEvent
   | LoomToolEndEvent
 
+/** Session created event - server push notification */
+export type LoomSessionCreatedEvent = LoomEnvelope & {
+  type: 'session_created'
+  workspace_id: string
+  session_id: string
+  session_name?: string
+  created_at: string
+}
+
+/** Session updated event */
+export type LoomSessionUpdatedEvent = LoomEnvelope & {
+  type: 'session_updated'
+  workspace_id: string
+  session_id: string
+  session_name?: string
+  updated_at: string
+}
+
+/** Session deleted event */
+export type LoomSessionDeletedEvent = LoomEnvelope & {
+  type: 'session_deleted'
+  workspace_id: string
+  session_id: string
+}
+
 export type LoomStreamEvent =
   | LoomRunStartEvent
   | LoomNodeEnterEvent
@@ -129,6 +154,9 @@ export type LoomStreamEvent =
   | LoomUpdatesEvent
   | LoomCheckpointEvent
   | LoomToolEvent
+  | LoomSessionCreatedEvent
+  | LoomSessionUpdatedEvent
+  | LoomSessionDeletedEvent
   | LoomUnknownEvent
 
 export interface LoomRunStreamEventResponse {
@@ -147,6 +175,18 @@ export interface LoomErrorResponse {
   type: 'error'
   id?: string
   error: string
+}
+
+export interface CancelRunRequest {
+  type: 'cancel_run'
+  id: string
+  run_id: string
+}
+
+export interface CancelRunResponse {
+  type: 'cancel_run_ack'
+  id: string
+  run_id: string
 }
 
 export interface ChatReply {
@@ -168,20 +208,20 @@ export type WorkspaceCreateRequest = {
   name?: string
 }
 
-export type WorkspaceThreadListRequest = {
+export type WorkspaceSessionListRequest = {
   type: 'workspace_thread_list'
   id: string
   workspace_id: string
 }
 
-export type WorkspaceThreadAddRequest = {
+export type WorkspaceSessionAddRequest = {
   type: 'workspace_thread_add'
   id: string
   workspace_id: string
   thread_id: string
 }
 
-export type WorkspaceThreadRemoveRequest = {
+export type WorkspaceSessionRemoveRequest = {
   type: 'workspace_thread_remove'
   id: string
   workspace_id: string
@@ -191,9 +231,9 @@ export type WorkspaceThreadRemoveRequest = {
 export type WorkspaceRequest =
   | WorkspaceListRequest
   | WorkspaceCreateRequest
-  | WorkspaceThreadListRequest
-  | WorkspaceThreadAddRequest
-  | WorkspaceThreadRemoveRequest
+  | WorkspaceSessionListRequest
+  | WorkspaceSessionAddRequest
+  | WorkspaceSessionRemoveRequest
 
 export type WorkspaceMeta = {
   id: string
@@ -201,10 +241,12 @@ export type WorkspaceMeta = {
   created_at_ms: number
 }
 
-export type ThreadInWorkspace = {
+export type SessionInWorkspace = {
   thread_id: string
   created_at_ms: number
 }
+
+export type ThreadInWorkspace = SessionInWorkspace
 
 export type WorkspaceListResponse = {
   type: 'workspace_list'
@@ -215,24 +257,24 @@ export type WorkspaceListResponse = {
 export type WorkspaceCreateResponse = {
   type: 'workspace_create'
   id: string
-  workspace: WorkspaceMeta
+  workspace_id: string
 }
 
-export type WorkspaceThreadListResponse = {
+export type WorkspaceSessionListResponse = {
   type: 'workspace_thread_list'
   id: string
   workspace_id: string
-  threads: ThreadInWorkspace[]
+  threads: SessionInWorkspace[]
 }
 
-export type WorkspaceThreadAddResponse = {
+export type WorkspaceSessionAddResponse = {
   type: 'workspace_thread_add'
   id: string
   workspace_id: string
   thread_id: string
 }
 
-export type WorkspaceThreadRemoveResponse = {
+export type WorkspaceSessionRemoveResponse = {
   type: 'workspace_thread_remove'
   id: string
   workspace_id: string
@@ -242,9 +284,13 @@ export type WorkspaceThreadRemoveResponse = {
 export type WorkspaceResponse =
   | WorkspaceListResponse
   | WorkspaceCreateResponse
-  | WorkspaceThreadListResponse
-  | WorkspaceThreadAddResponse
-  | WorkspaceThreadRemoveResponse
+  | WorkspaceSessionListResponse
+  | WorkspaceSessionAddResponse
+  | WorkspaceSessionRemoveResponse
+
+export type WorkspaceThreadListResponse = WorkspaceSessionListResponse
+export type WorkspaceThreadAddResponse = WorkspaceSessionAddResponse
+export type WorkspaceThreadRemoveResponse = WorkspaceSessionRemoveResponse
 
 // -----------------------------------------------------------------------------
 // Agent types
@@ -313,6 +359,29 @@ export type SetModelResponse = {
 // Server message types
 // -----------------------------------------------------------------------------
 
+// Session push events from server
+export type SessionCreatedNotification = {
+  type: 'session_created'
+  workspace_id: string
+  session_id: string
+  session_name?: string
+  created_at: string
+}
+
+export type SessionUpdatedNotification = {
+  type: 'session_updated'
+  workspace_id: string
+  session_id: string
+  session_name?: string
+  updated_at: string
+}
+
+export type SessionDeletedNotification = {
+  type: 'session_deleted'
+  workspace_id: string
+  session_id: string
+}
+
 export type LoomServerMessage =
   | LoomRunStreamEventResponse
   | LoomRunEndResponse
@@ -322,9 +391,12 @@ export type LoomServerMessage =
   | SetModelResponse
   | WorkspaceListResponse
   | WorkspaceCreateResponse
-  | WorkspaceThreadListResponse
-  | WorkspaceThreadAddResponse
-  | WorkspaceThreadRemoveResponse
+  | WorkspaceSessionListResponse
+  | WorkspaceSessionAddResponse
+  | WorkspaceSessionRemoveResponse
+  | SessionCreatedNotification
+  | SessionUpdatedNotification
+  | SessionDeletedNotification
   | { type: string }
 
 export function isRunStreamEvent(msg: LoomServerMessage): msg is LoomRunStreamEventResponse {
@@ -361,4 +433,21 @@ export function isToolEvent(event: LoomStreamEvent): event is LoomToolEvent {
     event.type === 'tool_output' ||
     event.type === 'tool_end'
   )
+}
+
+// Session event type guards
+export function isSessionCreatedEvent(msg: LoomServerMessage): msg is SessionCreatedNotification {
+  return msg.type === 'session_created'
+}
+
+export function isSessionUpdatedEvent(msg: LoomServerMessage): msg is SessionUpdatedNotification {
+  return msg.type === 'session_updated'
+}
+
+export function isSessionDeletedEvent(msg: LoomServerMessage): msg is SessionDeletedNotification {
+  return msg.type === 'session_deleted'
+}
+
+export function isSessionEventStream(event: LoomStreamEvent): boolean {
+  return ['session_created', 'session_updated', 'session_deleted'].includes(event.type)
 }

@@ -99,15 +99,16 @@ mod tests {
         assert!(spec
             .description
             .as_ref()
-            .map_or(false, |d| d.contains("todo")));
+            .is_some_and(|d| d.contains("todo")));
         let required = spec
             .input_schema
             .get("required")
             .and_then(serde_json::Value::as_array);
-        assert!(required.map_or(true, |a| a.is_empty()));
+        assert!(required.is_none_or(|a| a.is_empty()));
     }
 
     /// When XDG todo file does not exist, call returns "0 todos" and "[]".
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn todo_read_call_when_file_missing_returns_empty_list() {
         let _lock = crate::env_test_lock().lock().unwrap();
@@ -121,6 +122,7 @@ mod tests {
     }
 
     /// When thread-specific todo file exists with valid JSON, call returns count and list.
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn todo_read_call_when_thread_file_exists_returns_parsed_todos() {
         let _lock = crate::env_test_lock().lock().unwrap();
@@ -150,6 +152,7 @@ mod tests {
     }
 
     /// When global todo file exists with valid JSON (no thread_id), call returns count and list.
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn todo_read_call_when_global_file_exists_returns_parsed_todos() {
         let _lock = crate::env_test_lock().lock().unwrap();
@@ -174,6 +177,7 @@ mod tests {
     }
 
     /// When file exists but is invalid JSON, call returns empty list (default).
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn todo_read_call_when_invalid_json_returns_empty_list() {
         let _lock = crate::env_test_lock().lock().unwrap();

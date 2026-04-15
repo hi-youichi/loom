@@ -101,7 +101,7 @@ mod tests {
         // Clear OPENAI_BASE_URL env var to ensure test doesn't pick up system config
         let prev_base_url = std::env::var("OPENAI_BASE_URL").ok();
         std::env::remove_var("OPENAI_BASE_URL");
-        
+
         let entry = ModelEntry {
             id: "bigmodel/glm-4".to_string(),
             name: "glm-4".to_string(),
@@ -113,13 +113,12 @@ mod tests {
         };
 
         let result = create_llm_client(&entry);
-        
+
         // Restore env var
-        match prev_base_url {
-            Some(v) => std::env::set_var("OPENAI_BASE_URL", v),
-            None => {}
+        if let Some(v) = prev_base_url {
+            std::env::set_var("OPENAI_BASE_URL", v)
         }
-        
+
         assert!(result.is_err());
     }
 
@@ -131,6 +130,7 @@ mod tests {
             base_url: Some("https://api.openai.com/v1".to_string()),
             api_key: Some("sk-test".to_string()),
             provider_type: Some("openai".to_string()),
+            fetch_models: false,
         };
 
         let model_name = "gpt-4o";

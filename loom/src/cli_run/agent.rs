@@ -38,10 +38,7 @@ pub struct ActiveOperation {
 }
 
 impl ActiveOperation {
-    pub fn new(
-        kind: ActiveOperationKind,
-        canceller: Arc<dyn ActiveOperationCanceller>,
-    ) -> Self {
+    pub fn new(kind: ActiveOperationKind, canceller: Arc<dyn ActiveOperationCanceller>) -> Self {
         Self { kind, canceller }
     }
 
@@ -291,6 +288,7 @@ impl AnyStreamEvent {
 ///
 /// When `llm_override` is Some (e.g. in tests with [`crate::MockLlm`]), that client is used instead of
 /// building one from config; otherwise the default LLM is built from env/OpenAI.
+#[allow(clippy::type_complexity)]
 pub async fn run_agent(
     opts: &RunOptions,
     cmd: &RunCmd,
@@ -334,12 +332,12 @@ pub async fn run_agent(
                 .instrument(span.clone())
                 .await?;
             match outcome {
-                crate::runner_common::StreamRunOutcome::Finished(state) => RunCompletion::Finished(
-                    AgentRunResult {
+                crate::runner_common::StreamRunOutcome::Finished(state) => {
+                    RunCompletion::Finished(AgentRunResult {
                         reply: state.last_assistant_reply().unwrap_or_default(),
                         reasoning_content: state.last_reasoning_content(),
-                    },
-                ),
+                    })
+                }
                 crate::runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
             }
         }
@@ -357,12 +355,12 @@ pub async fn run_agent(
                 .instrument(span.clone())
                 .await?;
             match outcome {
-                crate::runner_common::StreamRunOutcome::Finished(state) => RunCompletion::Finished(
-                    AgentRunResult {
+                crate::runner_common::StreamRunOutcome::Finished(state) => {
+                    RunCompletion::Finished(AgentRunResult {
                         reply: state.last_assistant_reply().unwrap_or_default(),
                         reasoning_content: state.last_reasoning_content(),
-                    },
-                ),
+                    })
+                }
                 crate::runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
             }
         }
@@ -380,12 +378,12 @@ pub async fn run_agent(
                 .instrument(span.clone())
                 .await?;
             match outcome {
-                crate::runner_common::StreamRunOutcome::Finished(state) => RunCompletion::Finished(
-                    AgentRunResult {
+                crate::runner_common::StreamRunOutcome::Finished(state) => {
+                    RunCompletion::Finished(AgentRunResult {
                         reply: state.last_assistant_reply().unwrap_or_default(),
                         reasoning_content: state.last_reasoning_content(),
-                    },
-                ),
+                    })
+                }
                 crate::runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
             }
         }
@@ -403,12 +401,12 @@ pub async fn run_agent(
                 .instrument(span.clone())
                 .await?;
             match outcome {
-                crate::runner_common::StreamRunOutcome::Finished(state) => RunCompletion::Finished(
-                    AgentRunResult {
+                crate::runner_common::StreamRunOutcome::Finished(state) => {
+                    RunCompletion::Finished(AgentRunResult {
                         reply: state.summary_result(),
                         reasoning_content: None,
-                    },
-                ),
+                    })
+                }
                 crate::runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
             }
         }
@@ -490,6 +488,7 @@ pub async fn build_runner(
 ///     base_url: Some("https://api.openai.com/v1".to_string()),
 ///     api_key: Some("sk-...".to_string()),
 ///     provider_type: None,
+///     fetch_models: false,
 /// };
 ///
 /// let result = run_agent_with_provider(
@@ -524,10 +523,10 @@ pub async fn run_agent_with_provider(
     let opts = RunOptions {
         message: crate::message::UserContent::Text(message.to_string()),
         working_folder,
-            session_id: None,
-            cancellation: None,
-            thread_id: None,
-            agent: None,
+        session_id: None,
+        cancellation: None,
+        thread_id: None,
+        agent: None,
         verbose: false,
         got_adaptive: false,
         display_max_len: 120,

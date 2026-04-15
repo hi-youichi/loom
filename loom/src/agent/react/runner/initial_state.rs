@@ -19,7 +19,10 @@ pub async fn build_react_initial_state(
         user_message,
         async move {
             Ok(ReActState {
-                messages: vec![Message::system(system_prompt), Message::user(user_message_owned)],
+                messages: vec![
+                    Message::system(system_prompt),
+                    Message::user(user_message_owned),
+                ],
                 last_reasoning_content: None,
                 tool_calls: vec![],
                 tool_results: vec![],

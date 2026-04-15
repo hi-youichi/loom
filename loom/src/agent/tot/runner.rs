@@ -128,6 +128,7 @@ impl TotRunner {
     }
 
     /// Creates a ToT runner with the given LLM, tool source, and optional persistence.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         llm: Arc<dyn LlmClient>,
         tool_source: Box<dyn ToolSource>,

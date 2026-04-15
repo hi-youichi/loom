@@ -84,11 +84,16 @@ pub(crate) fn router(state: Arc<AppState>) -> Router {
 
 /// Handles `GET /`: upgrades to WebSocket and delegates to [`handle_socket`] with state clones.
 async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> Response {
+    tracing::info!("🔌 WebSocket upgrade request received");
+
     let shutdown_tx = state.shutdown_tx.lock().ok().and_then(|mut g| g.take());
     let workspace_store = state.workspace_store.clone();
     let user_message_store = state.user_message_store.clone();
     let run_config = state.run_config.clone();
     let providers = state.providers.clone();
+
+    tracing::debug!("📤 Upgrading HTTP connection to WebSocket");
+
     ws.on_upgrade(move |socket| {
         handle_socket(
             socket,

@@ -165,7 +165,11 @@ async fn invoke_does_not_retry_non_retryable_400_errors() {
         .with_api_base(format!("http://{addr}/v1"));
     let client = ChatOpenAI::with_config(config, "gpt-4o-mini");
 
-    let err = client.invoke(&[Message::user("hello")]).await.err().unwrap();
+    let err = client
+        .invoke(&[Message::user("hello")])
+        .await
+        .err()
+        .unwrap();
     assert!(err.to_string().contains("OpenAI API error"));
     assert_eq!(server.await.unwrap(), 1);
 }
@@ -208,7 +212,6 @@ async fn invoke_retries_retryable_500_errors() {
     assert_eq!(response.content, "ok");
     assert_eq!(server.await.unwrap(), 2);
 }
-
 
 #[tokio::test]
 async fn invoke_stream_with_none_channel_delegates_to_invoke() {
@@ -361,6 +364,7 @@ async fn invoke_with_mock_api_returns_ok() {
     );
 }
 
+#[allow(clippy::useless_vec)]
 #[tokio::test]
 async fn invoke_stream_with_mock_api_returns_ok() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

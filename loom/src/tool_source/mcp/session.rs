@@ -31,6 +31,28 @@ pub struct McpSession {
     receiver: crossbeam_channel::Receiver<JsonRpcMessage>,
 }
 
+#[cfg(target_os = "windows")]
+fn wrap_cmd_for_windows(command: String, args: Vec<String>) -> (String, Vec<String>) {
+    let needs_wrap = command.eq_ignore_ascii_case("npx")
+        || command.eq_ignore_ascii_case("npm")
+        || command.eq_ignore_ascii_case("yarn")
+        || command.eq_ignore_ascii_case("pnpm")
+        || command.to_ascii_lowercase().ends_with(".cmd")
+        || command.to_ascii_lowercase().ends_with(".bat");
+    if needs_wrap {
+        let mut wrapped_args = vec!["/C".to_string(), command];
+        wrapped_args.extend(args);
+        ("cmd".to_string(), wrapped_args)
+    } else {
+        (command, args)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn wrap_cmd_for_windows(command: String, args: Vec<String>) -> (String, Vec<String>) {
+    (command, args)
+}
+
 impl McpSession {
     /// Creates a new MCP session by spawning the server process and completing
     /// the initialize handshake. Returns `Err` if spawn or initialize fails.
@@ -54,6 +76,9 @@ impl McpSession {
         } else {
             StdioStream::Null
         };
+
+        let (command, args) = wrap_cmd_for_windows(command.into(), args);
+
         let mut params = StdioServerParameters::new(command)
             .args(args)
             .stderr(stderr_stream);

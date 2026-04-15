@@ -23,5 +23,9 @@ pub fn save(model: &str) {
 pub fn load() -> Option<String> {
     let s = fs::read_to_string(file_path()).ok()?;
     let trimmed = s.trim().to_string();
-    if trimmed.is_empty() { None } else { Some(trimmed) }
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
 }

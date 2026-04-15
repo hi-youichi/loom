@@ -76,15 +76,14 @@ fn parse_json_rpc_from_body(
                         return Ok(r);
                     }
                 }
-            } else if line.trim().is_empty()
-                && !data_buffer.is_empty() {
-                    if let Ok(r) = serde_json::from_str::<JsonRpcResponse>(&data_buffer) {
-                        if r.result.is_some() || r.error.is_some() {
-                            return Ok(r);
-                        }
+            } else if line.trim().is_empty() && !data_buffer.is_empty() {
+                if let Ok(r) = serde_json::from_str::<JsonRpcResponse>(&data_buffer) {
+                    if r.result.is_some() || r.error.is_some() {
+                        return Ok(r);
                     }
-                    data_buffer.clear();
                 }
+                data_buffer.clear();
+            }
         }
         if !data_buffer.is_empty() {
             if let Ok(r) = serde_json::from_str::<JsonRpcResponse>(&data_buffer) {

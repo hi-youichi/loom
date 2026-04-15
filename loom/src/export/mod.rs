@@ -20,13 +20,21 @@ where
             let state_json = serde_json::to_value(state)?;
             json!({ "Values": state_json })
         }
-        StreamEvent::Updates { node_id, state, namespace } => {
+        StreamEvent::Updates {
+            node_id,
+            state,
+            namespace,
+        } => {
             let state_json = serde_json::to_value(state)?;
             json!({ "Updates": { "node_id": node_id, "state": state_json, "namespace": namespace } })
         }
         StreamEvent::Messages {
             chunk,
-            metadata: StreamMetadata { loom_node, namespace },
+            metadata:
+                StreamMetadata {
+                    loom_node,
+                    namespace,
+                },
         } => json!({
             "Messages": {
                 "chunk": { "content": chunk.content, "kind": format!("{:?}", chunk.kind) },
@@ -47,8 +55,14 @@ where
                 }
             })
         }
-        StreamEvent::TaskStart { node_id, namespace } => json!({ "TaskStart": { "node_id": node_id, "namespace": namespace } }),
-        StreamEvent::TaskEnd { node_id, result, namespace } => {
+        StreamEvent::TaskStart { node_id, namespace } => {
+            json!({ "TaskStart": { "node_id": node_id, "namespace": namespace } })
+        }
+        StreamEvent::TaskEnd {
+            node_id,
+            result,
+            namespace,
+        } => {
             let result_json = match result {
                 Ok(()) => json!("Ok"),
                 Err(e) => json!({ "Err": e }),
@@ -129,9 +143,16 @@ where
             name,
             result,
             is_error,
-        } => json!({
-            "ToolEnd": { "call_id": call_id, "name": name, "result": result, "is_error": is_error }
-        }),
+            raw_result,
+        } => {
+            let mut obj = json!({
+                "ToolEnd": { "call_id": call_id, "name": name, "result": result, "is_error": is_error }
+            });
+            if let Some(rr) = raw_result {
+                obj["ToolEnd"]["raw_result"] = json!(rr);
+            }
+            obj
+        }
         StreamEvent::ToolApproval {
             call_id,
             name,
@@ -387,6 +408,7 @@ mod tests {
             name: "bash".to_string(),
             result: "success".to_string(),
             is_error: false,
+            raw_result: None,
         };
         let v = stream_event_to_format_a(&ev).unwrap();
         assert_eq!(v["ToolEnd"]["is_error"], false);
