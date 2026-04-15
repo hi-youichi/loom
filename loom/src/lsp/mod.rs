@@ -56,6 +56,9 @@ mod mock_server;
 #[cfg(test)]
 mod integration_tests;
 
+#[cfg(test)]
+mod java_e2e_tests;
+
 pub use client::LspClient;
 pub use manager::{LspManager, LspManagerError};
 pub use sync::DocumentState;
