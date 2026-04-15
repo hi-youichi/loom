@@ -14,7 +14,8 @@ use crate::{
 use serde_json::Value;
 use std::fmt;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::Mutex;
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 use tracing::{info_span, Instrument};
@@ -153,7 +154,7 @@ impl RunCancellation {
 }
 
 /// Options for running the Helve agent.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RunOptions {
     pub message: crate::message::UserContent,
     pub working_folder: Option<PathBuf>,
@@ -185,6 +186,37 @@ pub struct RunOptions {
     pub output_timestamp: bool,
     /// When true, do not execute tools; LLM runs but tool calls return a placeholder (CLI --dry).
     pub dry_run: bool,
+    /// Optional sender for forwarding raw `AnyStreamEvent`s to an external consumer (e.g. ACP).
+    ///
+    /// When set, this is propagated through `RunContext` → `ToolCallContext` so that
+    /// sub-agent invocations can forward stream events directly to ACP.
+    pub any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
+}
+
+impl std::fmt::Debug for RunOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RunOptions")
+            .field("message", &self.message)
+            .field("working_folder", &self.working_folder)
+            .field("session_id", &self.session_id)
+            .field("agent", &self.agent)
+            .field("verbose", &self.verbose)
+            .field("got_adaptive", &self.got_adaptive)
+            .field("display_max_len", &self.display_max_len)
+            .field("output_json", &self.output_json)
+            .field("model", &self.model)
+            .field("provider", &self.provider)
+            .field("base_url", &self.base_url)
+            .field("api_key", &self.api_key)
+            .field("provider_type", &self.provider_type)
+            .field("mcp_config_path", &self.mcp_config_path)
+            .field("cancellation", &self.cancellation)
+            .field("thread_id", &self.thread_id)
+            .field("output_timestamp", &self.output_timestamp)
+            .field("dry_run", &self.dry_run)
+            .field("any_stream_event_sender", &self.any_stream_event_sender.as_ref().map(|_| "..."))
+            .finish()
+    }
 }
 
 /// Error type for run operations.
@@ -328,7 +360,7 @@ pub async fn run_agent(
                 }
             });
             let outcome = r
-                .stream_with_config(opts.message.as_text().as_ref(), None, on_ev)
+                .stream_with_config(opts.message.as_text().as_ref(), None, on_ev, opts.any_stream_event_sender.clone())
                 .instrument(span.clone())
                 .await?;
             match outcome {
@@ -351,7 +383,7 @@ pub async fn run_agent(
                 }
             });
             let outcome = r
-                .stream_with_config(opts.message.as_text().as_ref(), None, on_ev)
+                .stream_with_config(opts.message.as_text().as_ref(), None, on_ev, opts.any_stream_event_sender.clone())
                 .instrument(span.clone())
                 .await?;
             match outcome {
@@ -374,7 +406,7 @@ pub async fn run_agent(
                 }
             });
             let outcome = r
-                .stream_with_config(opts.message.as_text().as_ref(), None, on_ev)
+                .stream_with_config(opts.message.as_text().as_ref(), None, on_ev, opts.any_stream_event_sender.clone())
                 .instrument(span.clone())
                 .await?;
             match outcome {
@@ -397,7 +429,7 @@ pub async fn run_agent(
                 }
             });
             let outcome = r
-                .stream_with_config(opts.message.as_text().as_ref(), None, on_ev)
+                .stream_with_config(opts.message.as_text().as_ref(), None, on_ev, opts.any_stream_event_sender.clone())
                 .instrument(span.clone())
                 .await?;
             match outcome {
@@ -539,6 +571,7 @@ pub async fn run_agent_with_provider(
         base_url: provider.base_url,
         api_key: provider.api_key,
         provider_type: provider.provider_type,
+        any_stream_event_sender: None,
     };
 
     // Run with LLM override
@@ -573,6 +606,7 @@ mod tests {
             base_url: None,
             api_key: None,
             provider_type: None,
+            any_stream_event_sender: None,
         }
     }
 
@@ -668,6 +702,7 @@ mod tests {
             base_url: None,
             api_key: None,
             provider_type: None,
+        any_stream_event_sender: None,
         };
         assert!(build_runner(&cfg, &opts, &RunCmd::React, None)
             .await

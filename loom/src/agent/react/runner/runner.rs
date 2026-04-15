@@ -17,6 +17,7 @@ use crate::stream::StreamEvent;
 use crate::tool_source::ToolSource;
 use crate::user_message::UserMessageStore;
 use crate::{LlmClient, RunCancellation};
+use crate::cli_run::AnyStreamEvent;
 
 use super::error::RunError;
 use super::initial_state::build_react_initial_state;
@@ -346,7 +347,7 @@ impl ReactRunner {
     where
         F: FnMut(StreamEvent<ReActState>),
     {
-        self.stream_with_config(user_message, None, on_event).await
+        self.stream_with_config(user_message, None, on_event, None).await
     }
 
     pub async fn stream_with_config<F>(
@@ -354,6 +355,7 @@ impl ReactRunner {
         user_message: &str,
         config: Option<RunnableConfig>,
         on_event: Option<F>,
+        any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
     ) -> Result<runner_common::StreamRunOutcome<ReActState>, RunError>
     where
         F: FnMut(StreamEvent<ReActState>),
@@ -373,6 +375,7 @@ impl ReactRunner {
             on_event,
             self.cancellation.as_ref().map(RunCancellation::token),
             self.cancellation.clone(),
+            any_stream_event_sender,
         )
         .await
         .map_err(|e| match e {

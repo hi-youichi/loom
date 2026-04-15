@@ -46,6 +46,7 @@ pub(crate) fn build_run_options(args: &Args, message: String, got_adaptive: bool
         base_url: None,
         api_key: None,
         provider_type: None,
+        any_stream_event_sender: None,
     }
 }
 

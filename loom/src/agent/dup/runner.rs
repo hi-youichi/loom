@@ -16,6 +16,7 @@ use crate::runner_common::{self, load_from_checkpoint_or_build};
 use crate::stream::StreamEvent;
 use crate::tool_source::ToolSource;
 use crate::LlmClient;
+use crate::cli_run::AnyStreamEvent;
 use crate::{StateGraph, END, START};
 
 use super::adapter_nodes::{DupActNode, DupObserveNode, PlanNode};
@@ -216,7 +217,7 @@ impl DupRunner {
     where
         F: FnMut(StreamEvent<DupState>),
     {
-        self.stream_with_config(user_message, None, on_event).await
+        self.stream_with_config(user_message, None, on_event, None).await
     }
 
     /// Streams with optional per-invoke config.
@@ -225,6 +226,7 @@ impl DupRunner {
         user_message: &str,
         config: Option<RunnableConfig>,
         on_event: Option<F>,
+        any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
     ) -> Result<runner_common::StreamRunOutcome<DupState>, DupRunError>
     where
         F: FnMut(StreamEvent<DupState>),
@@ -244,6 +246,7 @@ impl DupRunner {
             on_event,
             self.cancellation.clone(),
             None,
+            any_stream_event_sender,
         )
         .await
         .map_err(|e| match e {

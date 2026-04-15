@@ -275,19 +275,14 @@ impl InvokeAgentTool {
                 ))
             })?;
 
-        let on_event = ctx.and_then(|c| c.stream_writer.clone()).map(|writer| {
-            let agent = agent_name.to_string();
+        let on_event = ctx.and_then(|c| c.any_stream_event_sender.clone()).map(|sender| {
             move |event: crate::stream::StreamEvent<crate::state::ReActState>| {
-                let payload = serde_json::json!({
-                    "sub_agent": agent,
-                    "event": format!("{:?}", event),
-                });
-                writer.emit_custom(payload);
+                sender(crate::cli_run::AnyStreamEvent::React(event));
             }
         });
 
         let outcome = runner
-            .stream_with_config(task, None, on_event)
+            .stream_with_config(task, None, on_event, None)
             .await
             .map_err(|e| {
                 ToolSourceError::Transport(format!("sub-agent '{}' failed: {}", agent_name, e))
@@ -562,8 +557,14 @@ async fn invoke_single_agent(
             ToolSourceError::Transport(format!("failed to build sub-agent '{}': {}", agent_name, e))
         })?;
 
+    let on_event = ctx.and_then(|c| c.any_stream_event_sender.clone()).map(|sender| {
+        move |event: crate::stream::StreamEvent<crate::state::ReActState>| {
+            sender(crate::cli_run::AnyStreamEvent::React(event));
+        }
+    });
+
     let outcome = runner
-        .stream_with_config::<fn(_)>(task, None, None)
+        .stream_with_config(task, None, on_event, None)
         .await
         .map_err(|e| {
             ToolSourceError::Transport(format!("sub-agent '{}' failed: {}", agent_name, e))

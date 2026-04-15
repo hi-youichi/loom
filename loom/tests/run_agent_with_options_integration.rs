@@ -44,6 +44,7 @@ fn opts(working_folder: PathBuf) -> RunOptions {
         base_url: None,
         api_key: None,
         provider_type: None,
+        any_stream_event_sender: None,
     }
 }
 
@@ -201,6 +202,7 @@ async fn session_id_restores_context_from_checkpoint() {
         base_url: None,
         api_key: None,
         provider_type: None,
+    any_stream_event_sender: None,
     };
     let opts2 = RunOptions {
         message: UserContent::Text("Second message".to_string()),
@@ -221,6 +223,7 @@ async fn session_id_restores_context_from_checkpoint() {
         base_url: None,
         api_key: None,
         provider_type: None,
+    any_stream_event_sender: None,
     };
 
     let result1 = run_agent_with_llm_override(

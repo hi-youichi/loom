@@ -556,6 +556,7 @@ mod tests {
             base_url: None,
             api_key: None,
             provider_type: None,
+        any_stream_event_sender: None,
         };
         let (profile, source) = load_profile_from_options(&opts).expect("built-in dev profile");
         assert_eq!(profile.name, "dev");
@@ -590,6 +591,7 @@ mod tests {
             base_url: None,
             api_key: None,
             provider_type: None,
+        any_stream_event_sender: None,
         };
         let (profile, source) =
             load_profile_from_options(&opts).expect("built-in agent-builder profile");
@@ -899,6 +901,7 @@ tools:
             base_url: None,
             api_key: None,
             provider_type: None,
+        any_stream_event_sender: None,
         };
         let result = load_profile_from_options(&opts);
 
@@ -939,6 +942,7 @@ tools:
             base_url: None,
             api_key: None,
             provider_type: None,
+        any_stream_event_sender: None,
         };
         let result = load_profile_from_options(&opts);
         match prev_loom {

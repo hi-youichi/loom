@@ -32,6 +32,7 @@ pub(crate) async fn handle_tools_list(
         base_url: None,
         api_key: None,
         provider_type: None,
+    any_stream_event_sender: None,
     };
     let (_helve, config, _resolved_agent) = build_helve_config(&opts);
     match build_react_run_context(&config).await {
@@ -73,6 +74,7 @@ pub(crate) async fn handle_tool_show(
         base_url: None,
         api_key: None,
         provider_type: None,
+    any_stream_event_sender: None,
     };
     let (_helve, config, _resolved_agent) = build_helve_config(&opts);
     match build_react_run_context(&config).await {

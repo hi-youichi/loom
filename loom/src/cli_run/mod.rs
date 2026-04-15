@@ -596,6 +596,7 @@ mod tests {
             base_url: None,
             api_key: None,
             provider_type: None,
+            any_stream_event_sender: None,
         }
     }
 

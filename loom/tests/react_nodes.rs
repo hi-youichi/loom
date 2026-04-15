@@ -297,6 +297,7 @@ async fn think_node_stream_emits_usage_when_available() {
         runtime_context: None,
         cancellation: None,
         run_cancellation: None,
+        any_stream_event_sender: None,
     };
     let _ = node.run_with_context(state, &ctx).await.unwrap();
     drop(ctx);
@@ -420,6 +421,7 @@ async fn act_node_run_with_context_emits_step_progress_when_custom_mode() {
         runtime_context: None,
         cancellation: None,
         run_cancellation: None,
+        any_stream_event_sender: None,
     };
 
     let (out, _) = node.run_with_context(state, &ctx).await.unwrap();
@@ -499,6 +501,7 @@ async fn act_node_run_with_context_propagates_thread_user_and_depth() {
         runtime_context: None,
         cancellation: None,
         run_cancellation: None,
+        any_stream_event_sender: None,
     };
 
     let (out, _) = node.run_with_context(state, &ctx).await.unwrap();
@@ -890,6 +893,7 @@ async fn think_node_run_with_context_emits_messages_when_streaming() {
         runtime_context: None,
         cancellation: None,
         run_cancellation: None,
+        any_stream_event_sender: None,
     };
 
     // Run node with context
@@ -965,6 +969,7 @@ async fn think_node_run_with_context_no_messages_when_mode_empty() {
         runtime_context: None,
         cancellation: None,
         run_cancellation: None,
+        any_stream_event_sender: None,
     };
 
     // Run node with context
@@ -1017,6 +1022,7 @@ async fn think_node_run_with_context_no_panic_when_no_stream_tx() {
         runtime_context: None,
         cancellation: None,
         run_cancellation: None,
+        any_stream_event_sender: None,
     };
 
     // Should complete without panic
@@ -1055,6 +1061,7 @@ async fn think_node_stream_chunks_concatenate_to_full_content() {
         runtime_context: None,
         cancellation: None,
         run_cancellation: None,
+        any_stream_event_sender: None,
     };
 
     let (out, _) = node.run_with_context(state, &ctx).await.unwrap();

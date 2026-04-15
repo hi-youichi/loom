@@ -12,6 +12,7 @@ use crate::runner_common;
 use crate::stream::StreamEvent;
 use crate::tool_source::ToolSource;
 use crate::LlmClient;
+use crate::cli_run::AnyStreamEvent;
 use crate::{StateGraph, END, START};
 
 use super::dag::ready_nodes;
@@ -176,7 +177,7 @@ impl GotRunner {
     where
         F: FnMut(StreamEvent<GotState>),
     {
-        self.stream_with_config(user_message, None, on_event).await
+        self.stream_with_config(user_message, None, on_event, None).await
     }
 
     /// Streams with optional per-invoke config.
@@ -185,6 +186,7 @@ impl GotRunner {
         user_message: &str,
         config: Option<RunnableConfig>,
         on_event: Option<F>,
+        any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
     ) -> Result<runner_common::StreamRunOutcome<GotState>, GotRunError>
     where
         F: FnMut(StreamEvent<GotState>),
@@ -203,6 +205,7 @@ impl GotRunner {
             on_event,
             self.cancellation.clone(),
             None,
+            any_stream_event_sender,
         )
         .await
         .map_err(|e| match e {

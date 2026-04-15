@@ -499,6 +499,16 @@ impl Agent for LoomAcpAgent {
 
         let resolved = loom::resolve_model_config(entry.session_config.model.as_deref()).await;
 
+        let session_id_for_opts = args.session_id.clone();
+        let tx_for_opts = self.session_update_tx.clone();
+        let any_stream_event_sender = tx_for_opts.map(|sender| {
+            let session_id = session_id_for_opts;
+            std::sync::Arc::new(move |ev: AnyStreamEvent| {
+                let notifier = SessionNotifier::new(sender.clone(), session_id.clone());
+                notifier.try_send_event(&ev);
+            }) as std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>
+        });
+
         let opts = RunOptions {
             message: user_content,
             working_folder: Some(working_folder),
@@ -521,6 +531,7 @@ impl Agent for LoomAcpAgent {
             base_url: resolved.base_url,
             api_key: resolved.api_key,
             provider_type: resolved.provider_type,
+            any_stream_event_sender,
         };
 
         let session_id = args.session_id.clone();

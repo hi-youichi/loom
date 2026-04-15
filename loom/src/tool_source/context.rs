@@ -25,6 +25,9 @@
 //! }
 //! ```
 
+use std::sync::Arc;
+
+use crate::cli_run::AnyStreamEvent;
 use crate::message::Message;
 use crate::stream::ToolStreamWriter;
 use crate::RunCancellation;
@@ -58,7 +61,7 @@ use crate::RunCancellation;
 /// **Interaction**: Set by ActNode via `ToolSource::set_call_context`; read by
 /// `ShortTermMemoryToolSource::call_tool` to return recent messages; `stream_writer`
 /// used by any tool that wants to emit custom streaming events.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct ToolCallContext {
     /// Recent messages in the current conversation (current step's state.messages).
     pub recent_messages: Vec<Message>,
@@ -77,6 +80,12 @@ pub struct ToolCallContext {
     /// }
     /// ```
     pub stream_writer: Option<ToolStreamWriter>,
+
+    /// Optional sender for forwarding raw `AnyStreamEvent`s to an external consumer (e.g. ACP).
+    ///
+    /// When set, `InvokeAgentTool` uses this to forward sub-agent stream events directly
+    /// to the ACP `SessionNotifier`, bypassing the graph's custom-event path.
+    pub any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
 
     /// Optional thread/session id for the current run.
     ///
@@ -108,6 +117,7 @@ impl ToolCallContext {
         Self {
             recent_messages,
             stream_writer: None,
+            any_stream_event_sender: None,
             thread_id: None,
             user_id: None,
             depth: 0,
@@ -126,6 +136,7 @@ impl ToolCallContext {
         Self {
             recent_messages,
             stream_writer: Some(stream_writer),
+            any_stream_event_sender: None,
             thread_id: None,
             user_id: None,
             depth: 0,
@@ -149,5 +160,25 @@ impl ToolCallContext {
             .as_ref()
             .map(|w| w.emit_custom(value))
             .unwrap_or(false)
+    }
+
+    pub fn send_any_stream_event(&self, event: AnyStreamEvent) {
+        if let Some(sender) = &self.any_stream_event_sender {
+            sender(event);
+        }
+    }
+}
+
+impl std::fmt::Debug for ToolCallContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ToolCallContext")
+            .field("recent_messages", &self.recent_messages)
+            .field("stream_writer", &self.stream_writer)
+            .field("any_stream_event_sender", &self.any_stream_event_sender.as_ref().map(|_| "..."))
+            .field("thread_id", &self.thread_id)
+            .field("user_id", &self.user_id)
+            .field("depth", &self.depth)
+            .field("run_cancellation", &self.run_cancellation)
+            .finish()
     }
 }
