@@ -57,6 +57,9 @@ mod mock_server;
 mod integration_tests;
 
 pub use cache::DiagnosticCache;
+
+#[cfg(test)]
+mod java_e2e_tests;
 pub use client::LspClient;
 pub use manager::{LspManager, LspManagerError};
 pub use performance::PerformanceMonitor;

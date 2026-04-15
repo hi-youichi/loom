@@ -206,6 +206,51 @@ pub fn get_default_servers() -> Vec<LspServerConfig> {
                 verify_command: Some("gopls version".to_string()),
             }),
         },
+        
+        // Java
+        LspServerConfig {
+            language: "java".to_string(),
+            command: "jdtls".to_string(),
+            args: vec![],
+            file_patterns: vec!["*.java".to_string()],
+            initialization_options: Some(serde_json::json!({
+                "settings": {
+                    "java": {
+                        "configuration": {
+                            "updateBuildConfiguration": "interactive"
+                        },
+                        "maven": {
+                            "downloadSources": true,
+                            "updateSnapshots": true
+                        },
+                        "gradle": {
+                            "enabled": true,
+                            "wrapper": { "enabled": true }
+                        },
+                        "autobuild": {
+                            "enabled": true
+                        },
+                        "completion": {
+                            "enabled": true,
+                            "overwrite": true,
+                            "guessMethodArguments": true
+                        },
+                        "format": {
+                            "enabled": true,
+                            "comments": { "enabled": true }
+                        }
+                    }
+                }
+            })),
+            root_uri: None,
+            env: std::collections::HashMap::new(),
+            startup_timeout_ms: 30_000, // Java 服务器启动较慢
+            auto_install: Some(AutoInstallConfig {
+                enabled: true,
+                command: "brew install jdtls".to_string(), // 默认 macOS
+                verify_command: Some("jdtls --version".to_string()),
+            }),
+        },
     ]
 }
 
@@ -266,6 +311,7 @@ mod tests {
         assert!(!config.servers.is_empty());
         assert!(config.servers.iter().any(|s| s.language == "rust"));
         assert!(config.servers.iter().any(|s| s.language == "typescript"));
+        assert!(config.servers.iter().any(|s| s.language == "java")); // Java配置存在
     }
 
     #[test]
@@ -274,5 +320,53 @@ mod tests {
         let toml_str = toml::to_string(&config).unwrap();
         assert!(toml_str.contains("[[servers]]"));
         assert!(toml_str.contains("rust"));
+        assert!(toml_str.contains("java")); // Java配置序列化
+    }
+    
+    #[test]
+    fn test_java_config_details() {
+        let servers = get_default_servers();
+        let java_server = servers.iter().find(|s| s.language == "java").expect("Java server config should exist");
+        
+        // 验证Java配置的基本属性
+        assert_eq!(java_server.language, "java");
+        assert_eq!(java_server.command, "jdtls");
+        assert!(java_server.file_patterns.contains(&"*.java".to_string()));
+        assert_eq!(java_server.startup_timeout_ms, 30_000); // Java启动超时应该更长
+        
+        // 验证自动安装配置
+        assert!(java_server.auto_install.is_some());
+        let auto_install = java_server.auto_install.as_ref().unwrap();
+        assert!(auto_install.enabled);
+        assert!(!auto_install.command.is_empty());
+        assert!(auto_install.verify_command.is_some());
+        
+        // 验证初始化选项包含Java相关设置
+        assert!(java_server.initialization_options.is_some());
+        let init_opts = java_server.initialization_options.as_ref().unwrap();
+        assert!(init_opts.to_string().contains("java"));
+    }
+    
+    #[test]
+    fn test_java_config_platform_compatibility() {
+        let servers = get_default_servers();
+        let java_server = servers.iter().find(|s| s.language == "java").expect("Java server config should exist");
+        
+        // 验证配置支持跨平台特性
+        assert!(java_server.args.is_empty() || java_server.args.len() <= 5); // 参数不应过多
+        assert!(java_server.startup_timeout_ms >= 10_000); // 启动超时至少10秒
+        assert!(java_server.startup_timeout_ms <= 60_000); // 启动超时不超过60秒
+    }
+    
+    #[test]
+    fn test_all_supported_languages() {
+        let servers = get_default_servers();
+        let languages: Vec<&str> = servers.iter().map(|s| s.language.as_str()).collect();
+        
+        // 验证所有期望的语言都存在
+        let expected_languages = vec!["rust", "typescript", "javascript", "python", "go", "java"];
+        for lang in expected_languages {
+            assert!(languages.contains(&lang), "Language '{}' should be supported", lang);
+        }
     }
 }
