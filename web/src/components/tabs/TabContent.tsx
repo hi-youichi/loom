@@ -3,16 +3,18 @@ import { cn } from '@/lib/utils'
 
 interface TabPaneProps {
   tabId: string
+  isActive?: boolean
   children: ReactNode
   className?: string
 }
 
-export function TabPane({ tabId, children, className }: TabPaneProps) {
+export function TabPane({ tabId, isActive = false, children, className }: TabPaneProps) {
   return (
     <div
       id={`panel-${tabId}`}
       role="tabpanel"
       aria-labelledby={`tab-${tabId}`}
+      aria-hidden={!isActive}
       className={cn('tab-pane', className)}
     >
       {children}

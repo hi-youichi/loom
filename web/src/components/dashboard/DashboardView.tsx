@@ -146,7 +146,7 @@ export function DashboardView({
 
           {/* Tab Content */}
           <TabContent activeTab={activeTab} animation="fade" className="flex-1 min-h-0 overflow-hidden">
-            <TabPane tabId="sessions" className="h-full overflow-y-auto">
+            <TabPane tabId="sessions" isActive={activeTab === 'sessions'} className="h-full overflow-y-auto">
               <SessionList
                 sessions={sessions}
                 filterAgent={selectedAgent}
@@ -159,7 +159,7 @@ export function DashboardView({
               />
             </TabPane>
             
-            <TabPane tabId="activity" className="h-full overflow-y-auto">
+            <TabPane tabId="activity" isActive={activeTab === 'activity'} className="h-full overflow-y-auto">
               <div className="shrink-0 py-3 flex items-center justify-between">
                 <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
                   活动记录
