@@ -2,7 +2,8 @@ use super::common;
 use futures_util::StreamExt;
 use loom::{
     ClientRequest, ServerResponse, WorkspaceCreateRequest, WorkspaceListRequest,
-    WorkspaceThreadAddRequest, WorkspaceThreadListRequest, WorkspaceThreadRemoveRequest,
+    WorkspaceRenameRequest, WorkspaceThreadAddRequest, WorkspaceThreadListRequest,
+    WorkspaceThreadRemoveRequest,
 };
 use std::time::Duration;
 use tokio::time::timeout;
@@ -58,6 +59,90 @@ async fn e2e_workspace_create_and_list() {
         }
         ServerResponse::Error(e) => panic!("server error: {}", e.error),
         other => panic!("expected WorkspaceList, got {:?}", other),
+    }
+
+    drop(write);
+    drop(read);
+    let _ = timeout(Duration::from_secs(5), server_handle).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn e2e_workspace_rename() {
+    common::load_dotenv();
+    let (url, server_handle) = common::spawn_server_once().await;
+    let (ws, _) = connect_async(&url).await.unwrap();
+    let (mut write, mut read) = ws.split();
+
+    // Create workspace with a name
+    let create_req = ClientRequest::WorkspaceCreate(WorkspaceCreateRequest {
+        id: "req-create-rename".to_string(),
+        name: Some("original name".to_string()),
+    });
+    let (resp, _) = common::send_and_recv(&mut write, &mut read, &create_req)
+        .await
+        .unwrap();
+    let workspace_id = match resp {
+        ServerResponse::WorkspaceCreate(r) => r.workspace_id,
+        other => panic!("expected WorkspaceCreate, got {:?}", other),
+    };
+
+    // Rename
+    let rename_req = ClientRequest::WorkspaceRename(WorkspaceRenameRequest {
+        id: "req-rename".to_string(),
+        workspace_id: workspace_id.clone(),
+        name: "renamed".to_string(),
+    });
+    let (resp, _) = common::send_and_recv(&mut write, &mut read, &rename_req)
+        .await
+        .unwrap();
+    match resp {
+        ServerResponse::WorkspaceRename(r) => {
+            assert_eq!(r.workspace_id, workspace_id);
+            assert_eq!(r.name, "renamed");
+        }
+        other => panic!("expected WorkspaceRename, got {:?}", other),
+    }
+
+    // Verify via list
+    let list_req = ClientRequest::WorkspaceList(WorkspaceListRequest {
+        id: "req-list-after-rename".to_string(),
+    });
+    let (resp, _) = common::send_and_recv(&mut write, &mut read, &list_req)
+        .await
+        .unwrap();
+    match resp {
+        ServerResponse::WorkspaceList(r) => {
+            assert_eq!(r.workspaces.len(), 1);
+            assert_eq!(r.workspaces[0].name.as_deref(), Some("renamed"));
+        }
+        other => panic!("expected WorkspaceList, got {:?}", other),
+    }
+
+    drop(write);
+    drop(read);
+    let _ = timeout(Duration::from_secs(5), server_handle).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn e2e_workspace_rename_not_found() {
+    common::load_dotenv();
+    let (url, server_handle) = common::spawn_server_once().await;
+    let (ws, _) = connect_async(&url).await.unwrap();
+    let (mut write, mut read) = ws.split();
+
+    let rename_req = ClientRequest::WorkspaceRename(WorkspaceRenameRequest {
+        id: "req-rename-notfound".to_string(),
+        workspace_id: "nonexistent-id".to_string(),
+        name: "name".to_string(),
+    });
+    let (resp, _) = common::send_and_recv(&mut write, &mut read, &rename_req)
+        .await
+        .unwrap();
+    match resp {
+        ServerResponse::Error(r) => {
+            assert!(r.error.contains("not found"));
+        }
+        other => panic!("expected Error, got {:?}", other),
     }
 
     drop(write);

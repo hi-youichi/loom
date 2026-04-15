@@ -58,13 +58,15 @@ pub use requests::{
     AgentIdentifier, AgentListRequest, AgentSourceFilter, AgentType, ClientRequest,
     ListModelsRequest, PingRequest, RunRequest, SetModelRequest, ToolShowOutput, ToolShowRequest,
     ToolsListRequest, UserMessagesRequest, WorkspaceCreateRequest, WorkspaceListRequest,
-    WorkspaceThreadAddRequest, WorkspaceThreadListRequest, WorkspaceThreadRemoveRequest,
+    WorkspaceRenameRequest, WorkspaceThreadAddRequest, WorkspaceThreadListRequest,
+    WorkspaceThreadRemoveRequest,
 };
 pub use responses::{
     AgentListResponse, AgentSource, AgentSummary, ErrorResponse, ListModelsResponse, PongResponse,
     ProtocolEventEnvelope, RunEndResponse, RunStreamEventResponse, ServerResponse,
     SetModelResponse, ThreadInWorkspace, ToolShowResponse, ToolsListResponse, UserMessageItem,
     UserMessagesResponse, WorkspaceCreateResponse, WorkspaceListResponse, WorkspaceMeta,
-    WorkspaceThreadAddResponse, WorkspaceThreadListResponse, WorkspaceThreadRemoveResponse,
+    WorkspaceRenameResponse, WorkspaceThreadAddResponse,
+    WorkspaceThreadListResponse, WorkspaceThreadRemoveResponse,
 };
 pub use types::{AgentSource as AgentSourceExport, AgentSourceFilter as AgentSourceFilterExport};

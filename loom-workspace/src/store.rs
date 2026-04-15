@@ -159,6 +159,33 @@ impl Store {
         })
     }
 
+    /// Renames a workspace. Returns `NotFound` if the workspace does not exist.
+    pub async fn rename_workspace(
+        &self,
+        workspace_id: &str,
+        new_name: &str,
+    ) -> Result<(), StoreError> {
+        let db = self.db.clone();
+        let workspace_id = workspace_id.to_string();
+        let new_name = new_name.to_string();
+        tokio::task::block_in_place(|| {
+            let conn = db.lock().map_err(|_| StoreError::Storage("lock".into()))?;
+            let rows = conn
+                .execute(
+                    "UPDATE workspaces SET name = ?1 WHERE id = ?2",
+                    rusqlite::params![new_name, workspace_id],
+                )
+                .map_err(|e| StoreError::Storage(e.to_string()))?;
+            if rows == 0 {
+                return Err(StoreError::NotFound(format!(
+                    "workspace not found: {}",
+                    workspace_id
+                )));
+            }
+            Ok(())
+        })
+    }
+
     /// Removes a thread from a workspace.
     pub async fn remove_thread_from_workspace(
         &self,

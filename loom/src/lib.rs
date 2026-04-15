@@ -235,7 +235,8 @@ pub use protocol::{
     ToolShowOutput, ToolShowRequest, ToolShowResponse, ToolsListRequest, ToolsListResponse,
     UserMessageItem, UserMessagesRequest, UserMessagesResponse, WorkspaceCreateRequest,
     WorkspaceCreateResponse, WorkspaceListRequest, WorkspaceListResponse, WorkspaceMeta,
-    WorkspaceThreadAddRequest, WorkspaceThreadAddResponse, WorkspaceThreadListRequest,
+    WorkspaceRenameRequest, WorkspaceRenameResponse, WorkspaceThreadAddRequest,
+    WorkspaceThreadAddResponse, WorkspaceThreadListRequest,
     WorkspaceThreadListResponse, WorkspaceThreadRemoveRequest, WorkspaceThreadRemoveResponse,
 };
 pub use state::{

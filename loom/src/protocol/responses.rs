@@ -154,6 +154,7 @@ pub enum ServerResponse {
     WorkspaceThreadList(WorkspaceThreadListResponse),
     WorkspaceThreadAdd(WorkspaceThreadAddResponse),
     WorkspaceThreadRemove(WorkspaceThreadRemoveResponse),
+    WorkspaceRename(WorkspaceRenameResponse),
     Pong(PongResponse),
     Error(ErrorResponse),
     ListModels(ListModelsResponse),
@@ -210,6 +211,14 @@ pub struct WorkspaceThreadRemoveResponse {
     pub id: String,
     pub workspace_id: String,
     pub thread_id: String,
+}
+
+/// Workspace rename response.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceRenameResponse {
+    pub id: String,
+    pub workspace_id: String,
+    pub name: String,
 }
 
 // -----------------------------------------------------------------------------
@@ -450,5 +459,20 @@ mod tests {
         assert!(json.contains("\"type\":\"workspace_thread_remove\""));
         let parsed: ServerResponse = serde_json::from_str(&json).unwrap();
         assert!(matches!(parsed, ServerResponse::WorkspaceThreadRemove(_)));
+    }
+
+    #[test]
+    fn response_workspace_rename_roundtrip() {
+        let resp = ServerResponse::WorkspaceRename(WorkspaceRenameResponse {
+            id: "req-wr".to_string(),
+            workspace_id: "ws-1".to_string(),
+            name: "new name".to_string(),
+        });
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"type\":\"workspace_rename\""));
+        assert!(json.contains("\"workspace_id\":\"ws-1\""));
+        assert!(json.contains("\"name\":\"new name\""));
+        let parsed: ServerResponse = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, ServerResponse::WorkspaceRename(_)));
     }
 }

@@ -253,6 +253,10 @@ async fn handle_request_and_send(
             tracing::debug!("➖ Removing thread from workspace");
             super::workspace::handle_workspace_thread_remove(r, workspace_store.clone()).await
         }
+        ClientRequest::WorkspaceRename(r) => {
+            tracing::debug!("✏️ Renaming workspace");
+            super::workspace::handle_workspace_rename(r, workspace_store.clone()).await
+        }
         ClientRequest::CancelRun(r) => {
             tracing::info!("🛑 Cancelling run: {}", r.run_id);
             if active_run_registry.cancel(&r.run_id) {
