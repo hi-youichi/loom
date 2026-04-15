@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { cn } from '@/lib/utils'
 import type { AgentInfo, AgentSource, AgentStatus } from '@/types/agent'
+import { Plus } from 'lucide-react'
 
 const STATUS_CONFIG: Record<AgentStatus, { dot: string; label: string; ring: string; cardBorder: string }> = {
   running: {
@@ -54,9 +55,10 @@ interface AgentCardProps {
   agent: AgentInfo
   selected: boolean
   onSelect: (name: string) => void
+  onNewSession?: (agentName: string) => void
 }
 
-export const AgentCard = memo(function AgentCard({ agent, selected, onSelect }: AgentCardProps) {
+export const AgentCard = memo(function AgentCard({ agent, selected, onSelect, onNewSession }: AgentCardProps) {
   const statusConfig = STATUS_CONFIG[agent.status]
   const profile = agent.profile
   const allTools = profile?.tools ?? []
@@ -81,7 +83,7 @@ export const AgentCard = memo(function AgentCard({ agent, selected, onSelect }: 
           : 'border-border/80',
       )}
     >
-      <div className="flex items-start justify-between gap-2 mb-3">
+      <div className="flex items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2 min-w-0">
           <span
             className={cn(
@@ -94,7 +96,23 @@ export const AgentCard = memo(function AgentCard({ agent, selected, onSelect }: 
             {agent.name}
           </span>
         </div>
-
+        {onNewSession && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onNewSession(agent.name)
+            }}
+            className={cn(
+              'shrink-0 p-1.5 rounded-md text-muted-foreground transition-colors',
+              'hover:bg-accent hover:text-foreground',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            )}
+            title="新建会话"
+          >
+            <Plus className="size-4" />
+          </button>
+        )}
       </div>
 
       <div className="flex items-center justify-between text-xs text-muted-foreground mb-3">

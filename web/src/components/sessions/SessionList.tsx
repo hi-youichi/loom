@@ -159,10 +159,8 @@ export function SessionList({
       {/* Empty State */}
       {filteredSessions.length === 0 && (
         <div className="session-list__empty">
-          <div className="session-list__empty-icon">💬</div>
-          <p className="session-list__empty-title">暂无会话</p>
           <p className="session-list__empty-message">
-            {searchQuery ? '没有找到匹配的会话' : '开始新的对话来创建会话'}
+            {searchQuery ? '没有找到匹配的会话' : '暂无对话'}
           </p>
         </div>
       )}

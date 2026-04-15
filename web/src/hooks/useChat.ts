@@ -175,6 +175,9 @@ export function useChat(options?: {
       toolAggregatorRef.current.reset()
 
       try {
+        // Generate a client-side run ID immediately so cancel can work
+        const clientRunId = crypto.randomUUID()
+        setActiveRunId(clientRunId)
         const reply = await sendChatMessage(text, {
           sessionId,
           workspaceId,

@@ -11,9 +11,8 @@ import { useAgents } from '../hooks/useAgents'
 import { useChat } from '../hooks/useChat'
 import { useChatPanel } from '../hooks/useChatPanel'
 import { useModels } from '../hooks/useModels'
-import { getUserMessages } from '../services/userMessages'
+import { useRealtimeSessions } from '../hooks/useRealtimeSessions'
 import type { FileNode } from '../components/file-tree'
-import type { Session } from '../types/session'
 
 const DEMO_FILES: FileNode[] = [
   {
@@ -65,7 +64,6 @@ export function ChatPage() {
   const {
     workspaces,
     activeWorkspaceId,
-    sessions: workspaceSessions,
     loading: workspaceLoading,
     error: workspaceError,
     loadWorkspaces,
@@ -73,7 +71,7 @@ export function ChatPage() {
     selectWorkspace: selectWs,
   } = useWorkspace()
   const { agents } = useAgents({ autoRefresh: true, refreshInterval: 15000 })
-  const { sessionId, setSessionId } = useSessionId(activeWorkspaceId ?? undefined)
+  const { sessionId, setSessionId, resetSession } = useSessionId(activeWorkspaceId ?? undefined)
   const { selectedAgentId } = useChatPanel()
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
   const { models } = useModels()
@@ -109,47 +107,8 @@ export function ChatPage() {
     }
   }, [activeWorkspaceId, selectWs])
 
-  const [sessions, setSessions] = useState<Session[]>([])
-  const [loadingSessions, setLoadingSessions] = useState(false)
-
-  useEffect(() => {
-    const loadSessionSummary = async () => {
-      if (workspaceSessions.length === 0) {
-        setSessions([])
-        return
-      }
-
-      setLoadingSessions(true)
-      try {
-        const sessionPromises = workspaceSessions.map(async (s) => {
-          const msgs = await getUserMessages(s.thread_id, { limit: 10 })
-          const firstMsg = msgs.find(m => m.role === 'user')
-          const lastMsg = msgs[msgs.length - 1]
-
-          return {
-            id: s.thread_id,
-            title: firstMsg?.content?.slice(0, 50) || s.thread_id.slice(0, 8),
-            createdAt: new Date(s.created_at_ms).toISOString(),
-            updatedAt: new Date(s.created_at_ms).toISOString(),
-            lastMessage: lastMsg?.content?.slice(0, 100) || '',
-            messageCount: msgs.length,
-            agent: '',
-            model: '',
-            isPinned: false,
-          } as Session
-        })
-
-        const loadedSessions = await Promise.all(sessionPromises)
-        setSessions(loadedSessions)
-      } catch (error) {
-        console.error('Failed to load session summaries:', error)
-      } finally {
-        setLoadingSessions(false)
-      }
-    }
-
-    loadSessionSummary()
-  }, [workspaceSessions])
+  // Use real-time sessions hook for automatic updates via WebSocket
+  const { sessions, loading: loadingSessions } = useRealtimeSessions(activeWorkspaceId ?? undefined)
 
   const handleSelectWorkspace = useCallback((id: string) => {
     selectWs(id)
@@ -190,7 +149,7 @@ export function ChatPage() {
           }
         />
         <div className="flex-1 min-w-0">
-        <DashboardView
+          <DashboardView
             agents={agents}
             activity={[]}
             activeCount={agents.filter(a => a.status === 'running').length}
@@ -198,6 +157,7 @@ export function ChatPage() {
             sessions={sessions}
             loadingSessions={loadingSessions}
             onSelectSession={handleSelectSession}
+            onNewSession={resetSession}
           />
         </div>
         <AgentChatSidebar

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { MessageSquare, Activity } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AgentGrid } from './AgentGrid'
 import { ActivityFeed } from './ActivityFeed'
@@ -16,6 +17,7 @@ interface DashboardViewProps {
   sessions?: Session[]
   loadingSessions?: boolean
   onSelectSession?: (sessionId: string) => void
+  onNewSession?: (agentName: string) => void
 }
 
 export function DashboardView({ 
@@ -26,6 +28,7 @@ export function DashboardView({
   sessions = [],
   loadingSessions: _loadingSessions = false,
   onSelectSession,
+  onNewSession,
 }: DashboardViewProps) {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
   
@@ -73,13 +76,13 @@ export function DashboardView({
     {
       id: 'sessions',
       label: '最近会话',
-      icon: '💬',
+      icon: <MessageSquare className="size-4" />,
       badge: sessions.length
     },
     {
       id: 'activity',
       label: '最近活动',
-      icon: '📊',
+      icon: <Activity className="size-4" />,
       badge: activity.length
     }
   ], [sessions.length, activity.length])
@@ -129,6 +132,7 @@ export function DashboardView({
             agents={agents}
             selectedAgent={selectedAgent}
             onSelectAgent={handleSelectAgent}
+            onNewSession={onNewSession}
           />
         </section>
 

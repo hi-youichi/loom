@@ -12,12 +12,14 @@ interface AgentGridProps {
   agents: AgentInfo[]
   selectedAgent: string | null
   onSelectAgent: (name: string | null) => void
+  onNewSession?: (agentName: string) => void
 }
 
 export const AgentGrid = memo(function AgentGrid({
   agents,
   selectedAgent,
   onSelectAgent,
+  onNewSession,
 }: AgentGridProps) {
   const sorted = useMemo(
     () =>
@@ -58,6 +60,7 @@ export const AgentGrid = memo(function AgentGrid({
             agent={agent}
             selected={selectedAgent === agent.name}
             onSelect={onSelectAgent}
+            onNewSession={onNewSession}
           />
         </div>
       ))}

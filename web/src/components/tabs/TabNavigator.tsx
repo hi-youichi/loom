@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, Children, ReactElement } from 'react'
+import { useEffect, useRef, useState, Children, ReactElement, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 export type TabState = string
@@ -6,7 +6,7 @@ export type TabState = string
 export interface TabConfig {
   id: TabState
   label: string
-  icon: string
+  icon: ReactNode
   badge?: number
   disabled?: boolean
 }
