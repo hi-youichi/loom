@@ -44,7 +44,7 @@ async fn no_compression_when_within_all_limits() {
         ..Default::default()
     };
     let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(""));
-    let graph = build_graph(config, llm).expect("compile");
+    let graph = build_graph(config, llm, None).expect("compile");
 
     let msgs = vec![
         Message::user("hello"),
@@ -80,7 +80,7 @@ async fn prune_replaces_old_tool_results_via_compression_graph() {
         ..Default::default()
     };
     let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(""));
-    let graph = build_graph(config, llm).expect("compile");
+    let graph = build_graph(config, llm, None).expect("compile");
 
     let msgs = vec![
         Message::user("What time is it?"),
@@ -129,7 +129,7 @@ async fn compact_summarizes_messages_on_overflow() {
     };
     let summary_text = "User asked about time, assistant checked clock";
     let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(summary_text));
-    let graph = build_graph(config, llm).expect("compile");
+    let graph = build_graph(config, llm, None).expect("compile");
 
     let msgs = vec![
         Message::user("x".repeat(100)),
@@ -172,10 +172,11 @@ async fn prune_then_compact_combined() {
         max_context_tokens: 80,
         reserve_tokens: 10,
         compact_keep_recent: 2,
+        ..Default::default()
     };
     let summary_text = "Conversation summary after prune and compact";
     let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(summary_text));
-    let graph = build_graph(config, llm).expect("compile");
+    let graph = build_graph(config, llm, None).expect("compile");
 
     let msgs = vec![
         Message::user("initial question"),
@@ -229,9 +230,10 @@ async fn compression_in_full_react_loop() {
         prune: true,
         prune_keep_tokens: 30,
         prune_minimum: Some(0),
+        ..Default::default()
     };
 
-    let compression_graph = build_graph(config, compress_llm).expect("compress graph");
+    let compression_graph = build_graph(config, compress_llm, None).expect("compress graph");
     let compress_node = Arc::new(CompressionGraphNode::new(compression_graph));
 
     let think_path_map: HashMap<String, String> =

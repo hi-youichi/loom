@@ -20,11 +20,16 @@ use super::prune_node::PruneNode;
 pub fn build_graph(
     config: CompactionConfig,
     llm: Arc<dyn LlmClient>,
+    compact_llm: Option<Arc<dyn LlmClient>>,
 ) -> Result<CompiledStateGraph<ReActState>, CompilationError> {
     let prune_node = Arc::new(PruneNode {
         config: config.clone(),
     });
-    let compact_node = Arc::new(CompactNode { config, llm });
+    let compact_llm = compact_llm.unwrap_or(llm);
+    let compact_node = Arc::new(CompactNode {
+        config,
+        llm: compact_llm,
+    });
     let mut graph = StateGraph::<ReActState>::new();
     graph
         .add_node("prune", prune_node)
@@ -81,13 +86,13 @@ mod tests {
     #[test]
     fn build_graph_compiles() {
         let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(""));
-        let _compiled = build_graph(CompactionConfig::default(), llm).expect("compile");
+        let _compiled = build_graph(CompactionConfig::default(), llm, None).expect("compile");
     }
 
     #[tokio::test]
     async fn build_graph_invoke_preserves_messages_when_no_prune_no_overflow() {
         let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(""));
-        let compiled = build_graph(CompactionConfig::default(), llm).expect("compile");
+        let compiled = build_graph(CompactionConfig::default(), llm, None).expect("compile");
         let state = ReActState {
             messages: vec![Message::user("hello")],
             last_reasoning_content: None,
@@ -110,7 +115,7 @@ mod tests {
     #[tokio::test]
     async fn compression_graph_node_id_is_compress() {
         let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(""));
-        let inner = build_graph(CompactionConfig::default(), llm).unwrap();
+        let inner = build_graph(CompactionConfig::default(), llm, None).unwrap();
         let node = CompressionGraphNode::new(inner);
         assert_eq!(node.id(), "compress");
     }
@@ -118,7 +123,7 @@ mod tests {
     #[tokio::test]
     async fn compression_graph_node_run_invokes_inner() {
         let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(""));
-        let inner = build_graph(CompactionConfig::default(), llm).unwrap();
+        let inner = build_graph(CompactionConfig::default(), llm, None).unwrap();
         let node = CompressionGraphNode::new(inner);
         let state = ReActState {
             messages: vec![Message::user("test")],

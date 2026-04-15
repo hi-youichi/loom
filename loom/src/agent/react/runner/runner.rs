@@ -68,7 +68,7 @@ impl ReactRunner {
         let observe = ObserveNode::with_loop();
 
         let compaction_cfg = compaction_config.unwrap_or_default();
-        let compression_graph = build_graph(compaction_cfg.clone(), Arc::clone(&retry_llm))?;
+        let compression_graph = build_graph(compaction_cfg.clone(), Arc::clone(&retry_llm), None)?;
         let compress_node = Arc::new(CompressionGraphNode::new(compression_graph));
 
         let mut graph = StateGraph::<ReActState>::new();

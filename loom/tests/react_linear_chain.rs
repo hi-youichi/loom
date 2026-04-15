@@ -69,7 +69,7 @@ async fn react_linear_chain_user_to_tool_result_in_messages() {
 async fn react_multi_round_loop_then_end() {
     let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::first_tools_then_end());
     let compression_graph =
-        build_graph(CompactionConfig::default(), Arc::clone(&llm)).expect("compress graph");
+        build_graph(CompactionConfig::default(), Arc::clone(&llm), None).expect("compress graph");
     let compress_node = Arc::new(CompressionGraphNode::new(compression_graph));
 
     let think_path_map: HashMap<String, String> =
