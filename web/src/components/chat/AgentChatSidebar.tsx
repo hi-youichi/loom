@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useRef, useCallback } from "react"
+import { memo, useRef, useCallback, useEffect } from "react"
 import { ChevronRight, Users, ChevronDown } from "lucide-react"
 import { useChatPanel } from "@/hooks/useChatPanel"
 import { MessageList } from "./MessageList"
@@ -78,6 +78,12 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
 
   const selectedAgentName = agents.find((a) => a.name === selectedAgentId)?.name || selectedAgentId
 
+  useEffect(() => {
+    if (agents.length > 0 && !selectedAgentId) {
+      selectAgent(agents[0].name)
+    }
+  }, [agents, selectedAgentId, selectAgent])
+
   const handleModelChange = (model: string) => {
     setModel(model)
     onModelChange?.(model)
@@ -107,11 +113,7 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
           <Users className="w-4 h-4 text-muted-foreground" />
           <div className="relative">
             <button
-              onClick={() => {
-                if (agents.length > 0 && !selectedAgentId) {
-                  selectAgent(agents[0].name)
-                }
-              }}
+              onClick={() => {}}
               className="flex items-center gap-2 text-sm font-medium hover:text-primary transition-colors"
             >
               <span className="truncate">{selectedAgentName || '选择 Agent'}</span>
