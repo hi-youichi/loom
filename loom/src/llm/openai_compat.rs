@@ -63,6 +63,57 @@ fn backoff_for_attempt(attempt: u32) -> std::time::Duration {
     d.min(COMPAT_RETRY_MAX_BACKOFF)
 }
 
+// ----- API error response parsing -----
+//
+// OpenAI-compatible providers (including Aliyun/Dashscope, Zhipu, etc.) return
+// structured JSON error bodies. We parse them to extract a clear, human-readable
+// message instead of dumping the raw JSON.
+
+#[derive(serde::Deserialize)]
+struct ApiErrorDetail {
+    #[serde(default)]
+    message: Option<String>,
+    #[serde(default)]
+    r#type: Option<String>,
+    #[serde(default)]
+    code: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct ApiErrorResponse {
+    error: Option<ApiErrorDetail>,
+}
+
+/// Format an API error body into a concise, human-readable string.
+///
+/// Tries to parse the body as `{"error":{"message":"...","code":"...","type":"..."}}`.
+/// On success, returns something like: `Access denied, please make sure your account is in good standing. (code: Arrearage)`
+/// Falls back to the raw body if parsing fails or the error object has no useful fields.
+fn format_api_error_body(body: &[u8]) -> String {
+    if let Ok(resp) = serde_json::from_slice::<ApiErrorResponse>(body) {
+        if let Some(detail) = resp.error {
+            let msg = detail.message.unwrap_or_default();
+            if !msg.is_empty() {
+                if let Some(code) = &detail.code {
+                    return format!("{} (code: {})", msg, code);
+                }
+                if let Some(ty) = &detail.r#type {
+                    return format!("{} (type: {})", msg, ty);
+                }
+                return msg;
+            }
+            // Error object parsed but has no message — try code or type alone.
+            if let Some(code) = &detail.code {
+                return format!("error code: {}", code);
+            }
+            if let Some(ty) = &detail.r#type {
+                return format!("error type: {}", ty);
+            }
+        }
+    }
+    String::from_utf8_lossy(body).into_owned()
+}
+
 // ----- Request DTOs (OpenAI-compatible) -----
 
 #[derive(serde::Serialize)]
@@ -601,7 +652,7 @@ impl LlmClient for ChatOpenAICompat {
                 break 'request (status, body_bytes);
             }
             if !is_retryable_status(status) {
-                let msg = String::from_utf8_lossy(&body_bytes);
+                let msg = format_api_error_body(&body_bytes);
                 return Err(AgentError::ExecutionFailed(format!(
                     "OpenAI-compat API error {}: {}",
                     status, msg
@@ -638,21 +689,21 @@ impl LlmClient for ChatOpenAICompat {
                     break 'request (retry_status, retry_bytes);
                 }
                 if !is_retryable_status(retry_status) {
-                    let msg = String::from_utf8_lossy(&retry_bytes);
+                    let msg = format_api_error_body(&retry_bytes);
                     return Err(AgentError::ExecutionFailed(format!(
                         "OpenAI-compat API error {}: {}",
                         retry_status, msg
                     )));
                 }
                 if attempt == COMPAT_RETRY_MAX_RETRIES - 1 {
-                    let msg = String::from_utf8_lossy(&retry_bytes);
+                    let msg = format_api_error_body(&retry_bytes);
                     return Err(AgentError::ExecutionFailed(format!(
                         "OpenAI-compat API error {}: {} (after {} retries)",
                         retry_status, msg, COMPAT_RETRY_MAX_RETRIES
                     )));
                 }
             }
-            let msg = String::from_utf8_lossy(&body_bytes);
+            let msg = format_api_error_body(&body_bytes);
             return Err(AgentError::ExecutionFailed(format!(
                 "OpenAI-compat API error {}: {}",
                 status, msg
@@ -784,7 +835,7 @@ impl LlmClient for ChatOpenAICompat {
             response
         } else if !is_retryable_status(status) {
             let body_bytes = response.bytes().await.unwrap_or_default();
-            let msg = String::from_utf8_lossy(&body_bytes);
+            let msg = format_api_error_body(&body_bytes);
             return Err(AgentError::ExecutionFailed(format!(
                 "OpenAI-compat stream error {}: {}",
                 status, msg
@@ -821,7 +872,7 @@ impl LlmClient for ChatOpenAICompat {
                 }
                 if !is_retryable_status(retry_status) {
                     let body_bytes = retry_res.bytes().await.unwrap_or_default();
-                    let msg = String::from_utf8_lossy(&body_bytes);
+                    let msg = format_api_error_body(&body_bytes);
                     return Err(AgentError::ExecutionFailed(format!(
                         "OpenAI-compat stream error {}: {}",
                         retry_status, msg
@@ -829,7 +880,7 @@ impl LlmClient for ChatOpenAICompat {
                 }
                 if attempt == COMPAT_RETRY_MAX_RETRIES - 1 {
                     let body_bytes = retry_res.bytes().await.unwrap_or_default();
-                    let msg = String::from_utf8_lossy(&body_bytes);
+                    let msg = format_api_error_body(&body_bytes);
                     return Err(AgentError::ExecutionFailed(format!(
                         "OpenAI-compat stream error {}: {} (after {} retries)",
                         retry_status, msg, COMPAT_RETRY_MAX_RETRIES
@@ -841,7 +892,7 @@ impl LlmClient for ChatOpenAICompat {
                 Some(resp) => resp,
                 None => {
                     let body_bytes = response.bytes().await.unwrap_or_default();
-                    let msg = String::from_utf8_lossy(&body_bytes);
+                    let msg = format_api_error_body(&body_bytes);
                     return Err(AgentError::ExecutionFailed(format!(
                         "OpenAI-compat stream error {}: {}",
                         status, msg
@@ -1139,4 +1190,66 @@ struct ModelData {
     id: String,
     created: Option<i64>,
     owned_by: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_api_error_body_parses_aliyun_arrearage_error() {
+        let body = br#"{"error":{"message":"Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment","type":"Arrearage","param":null,"code":"Arrearage"},"id":"chatcmpl-test","request_id":"test"}"#;
+        let result = format_api_error_body(body);
+        assert!(
+            result.contains("Access denied"),
+            "should contain message: {}",
+            result
+        );
+        assert!(
+            result.contains("(code: Arrearage)"),
+            "should contain code: {}",
+            result
+        );
+        assert!(
+            !result.contains("\"error\""),
+            "should not contain raw JSON: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn format_api_error_body_parses_openai_style_error() {
+        let body = br#"{"error":{"message":"Rate limit exceeded","type":"rate_limit_error","param":null,"code":"rate_limit_exceeded"}}"#;
+        let result = format_api_error_body(body);
+        assert_eq!(result, "Rate limit exceeded (code: rate_limit_exceeded)");
+    }
+
+    #[test]
+    fn format_api_error_body_parses_error_with_type_only() {
+        let body = br#"{"error":{"message":"Something went wrong","type":"server_error"}}"#;
+        let result = format_api_error_body(body);
+        assert_eq!(result, "Something went wrong (type: server_error)");
+    }
+
+    #[test]
+    fn format_api_error_body_falls_back_to_raw_on_invalid_json() {
+        let body = b"not json at all";
+        let result = format_api_error_body(body);
+        assert_eq!(result, "not json at all");
+    }
+
+    #[test]
+    fn format_api_error_body_handles_empty_error_object() {
+        let body = br#"{"error":{}}"#;
+        let result = format_api_error_body(body);
+        // Empty error object: all fields are None, falls back to raw JSON.
+        assert_eq!(result, "{\"error\":{}}");
+    }
+
+    #[test]
+    fn format_api_error_body_handles_missing_error_field() {
+        let body = br#"{"message":"something"}"#;
+        let result = format_api_error_body(body);
+        assert_eq!(result, "{\"message\":\"something\"}");
+    }
 }

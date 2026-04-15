@@ -39,7 +39,7 @@ test.describe('ModelSelector', () => {
     await page.waitForSelector('.model-selector__group-title')
 
     const searchInput = page.locator('.model-selector__content input')
-    await searchInput.fill('qwen')
+    await searchInput.fill('gpt')
 
     await page.waitForTimeout(300)
 
@@ -49,7 +49,7 @@ test.describe('ModelSelector', () => {
 
     for (let i = 0; i < count; i++) {
       const text = await visibleButtons.nth(i).textContent()
-      expect(text?.toLowerCase()).toContain('qwen')
+      expect(text?.toLowerCase()).toContain('gpt')
     }
   })
 

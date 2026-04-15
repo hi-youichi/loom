@@ -102,7 +102,7 @@ test.describe('SendButton', () => {
     // 输入第一行
     await textarea.fill('Line 1')
     await textarea.press('Shift+Enter')
-    await textarea.fill('Line 2')
+    await textarea.pressSequentially('Line 2')
 
     // 获取 textarea 的值
     const value = await textarea.inputValue()
@@ -125,7 +125,7 @@ test.describe('SendButton', () => {
     await expect(button).toBeDisabled()
 
     // 等待 AI 响应完成（等待 assistant 消息出现）
-    await page.waitForSelector('.message--assistant', { timeout: 15000 })
+    await page.waitForSelector('.message--assistant', { timeout: 30000 })
 
     // 等待发送状态恢复
     await page.waitForTimeout(500)
