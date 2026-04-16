@@ -668,7 +668,7 @@ impl LlmClient for ChatOpenAICompat {
                     "OpenAI-compat retryable status, retrying"
                 );
                 tokio::time::sleep(delay).await;
-                let retry_res = self
+                let retry_res = match self
                     .add_headers_to_request(
                         self.client
                             .post(&url)
@@ -678,9 +678,26 @@ impl LlmClient for ChatOpenAICompat {
                     )
                     .send()
                     .await
-                    .map_err(|e| {
-                        AgentError::ExecutionFailed(format!("OpenAI-compat request failed: {}", e))
-                    })?;
+                {
+                    Ok(res) => res,
+                    Err(e) => {
+                        if is_retryable_reqwest_error(&e)
+                            && attempt < COMPAT_RETRY_MAX_RETRIES - 1
+                        {
+                            tracing::warn!(
+                                url = %url,
+                                attempt = attempt + 1,
+                                error = %e,
+                                "OpenAI-compat retry send failed, retrying"
+                            );
+                            continue;
+                        }
+                        return Err(AgentError::ExecutionFailed(format!(
+                            "OpenAI-compat request failed: {}",
+                            e
+                        )));
+                    }
+                };
                 let retry_status = retry_res.status();
                 let retry_bytes = retry_res.bytes().await.map_err(|e| {
                     AgentError::ExecutionFailed(format!("OpenAI-compat response read: {}", e))
@@ -852,7 +869,7 @@ impl LlmClient for ChatOpenAICompat {
                     "OpenAI-compat stream retryable status, retrying"
                 );
                 tokio::time::sleep(delay).await;
-                let retry_res = self
+                let retry_res = match self
                     .add_headers_to_request(
                         self.client
                             .post(&url)
@@ -862,9 +879,26 @@ impl LlmClient for ChatOpenAICompat {
                     )
                     .send()
                     .await
-                    .map_err(|e| {
-                        AgentError::ExecutionFailed(format!("OpenAI-compat stream request: {}", e))
-                    })?;
+                {
+                    Ok(res) => res,
+                    Err(e) => {
+                        if is_retryable_reqwest_error(&e)
+                            && attempt < COMPAT_RETRY_MAX_RETRIES - 1
+                        {
+                            tracing::warn!(
+                                url = %url,
+                                attempt = attempt + 1,
+                                error = %e,
+                                "OpenAI-compat stream retry send failed, retrying"
+                            );
+                            continue;
+                        }
+                        return Err(AgentError::ExecutionFailed(format!(
+                            "OpenAI-compat stream request: {}",
+                            e
+                        )));
+                    }
+                };
                 let retry_status = retry_res.status();
                 if retry_status.is_success() {
                     final_response = Some(retry_res);
