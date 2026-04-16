@@ -100,15 +100,20 @@ impl LoomAcpAgent {
 
         let entries = registry.list_all_models(&providers).await;
 
-        let all_models: Vec<ModelOption> = entries
+        let mut all_models: Vec<ModelOption> = entries
             .into_iter()
             .map(|entry| ModelOption {
-                // ACP select value + label: "provider/model" so the UI matches registry / RunOptions.
                 id: entry.id.clone(),
                 name: entry.id,
                 provider: entry.provider,
             })
             .collect();
+
+        all_models.insert(0, ModelOption {
+            id: "default".to_string(),
+            name: "(default)".to_string(),
+            provider: String::new(),
+        });
 
         all_models
     }
@@ -213,25 +218,27 @@ impl Agent for LoomAcpAgent {
         tracing::debug!(session_id = %session_id, "session created");
 
         let default_mode = self.agent_registry.default_mode_id();
-        let current_model = None // Removed environment variable support, use session config
+        let current_model = None
             .or_else(crate::last_model::load)
             .unwrap_or_default();
+        let is_default = current_model.is_empty() || current_model == "default";
         self.sessions.update_session_config(&our_id, |c| {
             c.current_agent = default_mode.to_string();
-            if !current_model.is_empty() {
+            if !is_default {
                 c.model = Some(current_model.clone());
             }
         });
-        if !current_model.is_empty() {
+        if !is_default {
             if let Err(e) = self.config_store.set(&our_id, "model", &current_model) {
                 tracing::warn!(session_id = %our_id, error = %e, "Failed to persist initial model config");
             }
         }
+        let display_model = if is_default { "default" } else { &current_model };
         let model_options = self.get_available_models().await;
         let current_mode = default_mode;
         let modes = self.agent_registry.to_session_modes();
         let config_options =
-            build_session_config_options(current_mode, &current_model, &modes, &model_options)
+            build_session_config_options(current_mode, display_model, &modes, &model_options)
                 .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
         Ok(NewSessionResponse::new(session_id)
             .modes(self.agent_registry.to_session_mode_state(current_mode))
@@ -266,10 +273,13 @@ impl Agent for LoomAcpAgent {
         })?;
         match config_id_str.as_str() {
             "model" => {
-                self.sessions
-                    .update_session_config(&key, |c| c.model = Some(value_str.clone()));
+                if value_str == "default" {
+                    self.sessions.update_session_config(&key, |c| c.model = None);
+                } else {
+                    self.sessions
+                        .update_session_config(&key, |c| c.model = Some(value_str.clone()));
+                }
                 crate::last_model::save(&value_str);
-                // Persist to database
                 if let Err(e) = self.config_store.set(&key, "model", &value_str) {
                     tracing::warn!(session_id = %args.session_id, error = %e, "Failed to persist model config");
                 }
@@ -948,8 +958,8 @@ struct ModelOption {
 /// If `current_model` is a bare model id (e.g. from `MODEL=`) but options use `provider/model`,
 /// rewrite to the single matching option when unambiguous.
 fn normalize_current_model_for_acp(current_model: &str, options: &[ModelOption]) -> String {
-    if current_model.is_empty() {
-        return String::new();
+    if current_model.is_empty() || current_model == "default" {
+        return "default".to_string();
     }
     if options.iter().any(|m| m.id == current_model) {
         return current_model.to_string();
@@ -1195,5 +1205,80 @@ mod tests {
 
         let boolean = SessionConfigOptionValue::boolean(true);
         assert!(session_config_value_as_id(&boolean).is_none());
+    }
+
+    #[test]
+    fn test_normalize_current_model_for_acp_default() {
+        let options = vec![ModelOption {
+            id: "default".to_string(),
+            name: "(default)".to_string(),
+            provider: String::new(),
+        }];
+        assert_eq!(
+            normalize_current_model_for_acp("default", &options),
+            "default"
+        );
+        assert_eq!(
+            normalize_current_model_for_acp("", &options),
+            "default"
+        );
+    }
+
+    #[test]
+    fn test_normalize_current_model_for_acp_specific_model() {
+        let options = vec![
+            ModelOption {
+                id: "default".to_string(),
+                name: "(default)".to_string(),
+                provider: String::new(),
+            },
+            ModelOption {
+                id: "openai/gpt-4o".to_string(),
+                name: "openai/gpt-4o".to_string(),
+                provider: "openai".to_string(),
+            },
+        ];
+        assert_eq!(
+            normalize_current_model_for_acp("openai/gpt-4o", &options),
+            "openai/gpt-4o"
+        );
+    }
+
+    #[test]
+    fn test_build_session_config_options_includes_default() {
+        let modes = vec![agent_client_protocol::SessionMode::new(
+            agent_client_protocol::SessionModeId::new("ask"),
+            "Ask",
+        )];
+        let model_options = vec![
+            ModelOption {
+                id: "default".to_string(),
+                name: "(default)".to_string(),
+                provider: String::new(),
+            },
+            ModelOption {
+                id: "openai/gpt-4o".to_string(),
+                name: "openai/gpt-4o".to_string(),
+                provider: "openai".to_string(),
+            },
+        ];
+
+        let result = build_session_config_options("ask", "default", &modes, &model_options);
+        assert!(result.is_ok());
+
+        let config_options = result.unwrap();
+        let json = serde_json::to_value(&config_options).unwrap();
+        let model_config = json
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c.get("id").and_then(|v| v.as_str()) == Some("model"))
+            .unwrap();
+        let options = model_config.get("options").unwrap().as_array().unwrap();
+        assert_eq!(options[0].get("value").unwrap().as_str(), Some("default"));
+        assert_eq!(
+            model_config.get("currentValue").unwrap().as_str(),
+            Some("default")
+        );
     }
 }
