@@ -2,7 +2,7 @@
 
 mod context;
 mod error;
-mod llm;
+pub(crate) mod llm;
 mod store;
 mod tool_source;
 
@@ -29,6 +29,7 @@ use tool_source::build_tool_source;
 
 pub use context::ReactRunContext;
 pub use error::BuildRunnerError;
+pub(crate) use llm::resolve_tier_for_config;
 
 fn to_agent_error(e: impl std::fmt::Display) -> AgentError {
     AgentError::ExecutionFailed(e.to_string())
@@ -333,6 +334,7 @@ mod tests {
             openai_api_key: None,
             openai_base_url: None,
             model: None,
+            model_tier: None,
             llm_provider: None,
             openai_temperature: None,
             embedding_api_key: None,

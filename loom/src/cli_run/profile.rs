@@ -4,6 +4,7 @@
 //! Built-in agent "dev" is loaded from crate `loom/agents/dev/` at compile time (instructions.md + config.yaml).
 
 use crate::cli_run::RunOptions;
+use crate::model_spec::ModelTier;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -138,6 +139,8 @@ fn default_true() -> bool {
 pub struct ModelConfig {
     #[serde(default)]
     pub name: Option<String>,
+    #[serde(default)]
+    pub tier: Option<ModelTier>,
     #[serde(default)]
     pub temperature: Option<f32>,
     #[serde(default)]
@@ -1212,5 +1215,43 @@ tools:
     #[test]
     fn default_true_returns_true() {
         assert!(default_true());
+    }
+
+    #[test]
+    fn model_config_deserialize_tier_light() {
+        let yaml = "tier: light\n";
+        let config: ModelConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.tier, Some(ModelTier::Light));
+        assert!(config.name.is_none());
+    }
+
+    #[test]
+    fn model_config_deserialize_tier_standard() {
+        let yaml = "tier: standard\n";
+        let config: ModelConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.tier, Some(ModelTier::Standard));
+    }
+
+    #[test]
+    fn model_config_deserialize_tier_heavy() {
+        let yaml = "tier: heavy\n";
+        let config: ModelConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.tier, Some(ModelTier::Heavy));
+    }
+
+    #[test]
+    fn model_config_deserialize_no_tier() {
+        let yaml = "name: anthropic/claude-sonnet-4\n";
+        let config: ModelConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(config.tier.is_none());
+        assert_eq!(config.name.as_deref(), Some("anthropic/claude-sonnet-4"));
+    }
+
+    #[test]
+    fn model_config_deserialize_name_and_tier() {
+        let yaml = "name: anthropic/claude-sonnet-4\ntier: light\n";
+        let config: ModelConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.name.as_deref(), Some("anthropic/claude-sonnet-4"));
+        assert_eq!(config.tier, Some(ModelTier::Light));
     }
 }

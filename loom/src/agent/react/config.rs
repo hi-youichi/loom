@@ -59,6 +59,7 @@ pub struct ReactBuildConfig {
     pub openai_api_key: Option<String>,
     pub openai_base_url: Option<String>,
     pub model: Option<String>,
+    pub model_tier: Option<crate::model_spec::ModelTier>,
     /// Explicit provider type override. When `Some("openai_compat")` or `Some("bigmodel")`, build layer uses [`crate::llm::ChatOpenAICompat`]; otherwise default is OpenAI.
     /// If unset, build layer may infer provider type from `MODEL` in `provider/model` format.
     pub llm_provider: Option<String>,
@@ -115,7 +116,8 @@ impl ReactBuildConfig {
             openai_api_key: std::env::var("OPENAI_API_KEY").ok(),
             openai_base_url: std::env::var("OPENAI_BASE_URL").ok(),
             openai_temperature: std::env::var("OPENAI_TEMPERATURE").ok(),
-            model: None, // Removed environment variable support, use frontend/API parameters
+            model: None,
+            model_tier: None,
             llm_provider: None, // Removed environment variable support
             embedding_api_key: std::env::var("EMBEDDING_API_KEY").ok(),
             embedding_base_url: std::env::var("EMBEDDING_BASE_URL").ok(),

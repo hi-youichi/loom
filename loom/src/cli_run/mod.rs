@@ -8,6 +8,7 @@ mod profile;
 
 pub use agent::{
     run_agent, run_agent_with_llm_override, run_agent_with_options, run_agent_with_provider,
+    resolve_tier_and_build_config,
     ActiveOperation, ActiveOperationCanceller, ActiveOperationKind, AgentRunResult, AnyRunner,
     AnyStreamEvent, RunCancellation, RunCmd, RunCompletion, RunError, RunOptions,
 };
@@ -109,6 +110,9 @@ pub fn build_helve_config(
     if let Some(ref prof) = profile {
         if let Some(t) = prof.model.as_ref().and_then(|m| m.temperature) {
             base.openai_temperature = Some(t.to_string());
+        }
+        if let Some(tier) = prof.model.as_ref().and_then(|m| m.tier) {
+            base.model_tier = Some(tier);
         }
     }
 
@@ -226,6 +230,9 @@ pub fn build_config_from_profile(
     if let Some(ref model) = profile.model {
         if let Some(ref name) = model.name {
             config.model = Some(name.clone());
+        }
+        if let Some(tier) = model.tier {
+            config.model_tier = Some(tier);
         }
         if let Some(t) = model.temperature {
             config.openai_temperature = Some(t.to_string());
@@ -962,5 +969,142 @@ mod tests {
         // Should not modify options when model part is empty
         assert!(opts.model.is_none());
         assert!(opts.provider.is_none());
+    }
+
+    #[test]
+    fn build_config_from_profile_passes_tier() {
+        let _lock = crate::env_test_lock().lock().unwrap();
+        let _g = ENV_LOCK.lock().unwrap();
+        let loom_home = tempfile::tempdir().unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", loom_home.path());
+
+        let profile = AgentProfile {
+            model: Some(ModelConfig {
+                tier: Some(crate::model_spec::ModelTier::Light),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let config = build_config_from_profile(&profile, &parent_config(), None);
+        assert_eq!(config.model_tier, Some(crate::model_spec::ModelTier::Light));
+        assert_eq!(config.model.as_deref(), Some("parent-model"));
+
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+    }
+
+    #[test]
+    fn build_config_from_profile_no_tier_when_not_set() {
+        let _lock = crate::env_test_lock().lock().unwrap();
+        let _g = ENV_LOCK.lock().unwrap();
+        let loom_home = tempfile::tempdir().unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", loom_home.path());
+
+        let profile = AgentProfile::default();
+        let config = build_config_from_profile(&profile, &parent_config(), None);
+        assert!(config.model_tier.is_none());
+
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+    }
+
+    #[test]
+    fn build_helve_config_passes_profile_tier() {
+        let _lock = crate::env_test_lock().lock().unwrap();
+        let _g = ENV_LOCK.lock().unwrap();
+        let loom_home = tempfile::tempdir().unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", loom_home.path());
+
+        let profile_dir = loom_home.path().join("agents").join("test-tier-agent");
+        std::fs::create_dir_all(&profile_dir).unwrap();
+        std::fs::write(
+            profile_dir.join("config.yaml"),
+            "name: test-tier-agent\nmodel:\n  tier: light\n",
+        )
+        .unwrap();
+
+        let opts = RunOptions {
+            message: crate::message::UserContent::Text(String::new()),
+            working_folder: None,
+            session_id: None,
+            cancellation: None,
+            thread_id: None,
+            agent: Some("test-tier-agent".to_string()),
+            verbose: false,
+            got_adaptive: false,
+            display_max_len: 200,
+            output_json: false,
+            model: None,
+            mcp_config_path: None,
+            output_timestamp: false,
+            dry_run: false,
+            provider: None,
+            base_url: None,
+            api_key: None,
+            provider_type: None,
+            any_stream_event_sender: None,
+        };
+        let (_helve, config, _resolved) = build_helve_config(&opts);
+        assert_eq!(config.model_tier, Some(crate::model_spec::ModelTier::Light));
+        assert!(config.model.is_none());
+
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+    }
+
+    #[test]
+    fn build_helve_config_explicit_model_ignores_tier() {
+        let _lock = crate::env_test_lock().lock().unwrap();
+        let _g = ENV_LOCK.lock().unwrap();
+        let loom_home = tempfile::tempdir().unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", loom_home.path());
+
+        let profile_dir = loom_home.path().join("agents").join("test-tier-agent2");
+        std::fs::create_dir_all(&profile_dir).unwrap();
+        std::fs::write(
+            profile_dir.join("config.yaml"),
+            "name: test-tier-agent2\nmodel:\n  tier: light\n",
+        )
+        .unwrap();
+
+        let opts = RunOptions {
+            message: crate::message::UserContent::Text(String::new()),
+            working_folder: None,
+            session_id: None,
+            cancellation: None,
+            thread_id: None,
+            agent: Some("test-tier-agent2".to_string()),
+            verbose: false,
+            got_adaptive: false,
+            display_max_len: 200,
+            output_json: false,
+            model: Some("anthropic/claude-sonnet-4".to_string()),
+            mcp_config_path: None,
+            output_timestamp: false,
+            dry_run: false,
+            provider: None,
+            base_url: None,
+            api_key: None,
+            provider_type: None,
+            any_stream_event_sender: None,
+        };
+        let (_helve, config, _resolved) = build_helve_config(&opts);
+        assert_eq!(config.model.as_deref(), Some("anthropic/claude-sonnet-4"));
+        assert_eq!(config.model_tier, Some(crate::model_spec::ModelTier::Light));
+
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
     }
 }
