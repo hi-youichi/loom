@@ -21,7 +21,7 @@ mod tests {
 
     #[test]
     fn test_detect_language() {
-        let manager = LspManager::from_configs(get_configs());
+        let _manager = LspManager::from_configs(get_configs());
     }
 
     #[test]

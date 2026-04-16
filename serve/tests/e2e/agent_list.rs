@@ -32,7 +32,7 @@ async fn e2e_agent_list() {
     match &resp {
         ServerResponse::AgentList(r) => {
             assert_eq!(r.id, id);
-            assert!(r.agents.len() > 0, "expected at least one agent");
+            assert!(!r.agents.is_empty(), "expected at least one agent");
 
             // Check that built-in agents are present
             let agent_names: Vec<&str> = r.agents.iter().map(|a| a.name.as_str()).collect();

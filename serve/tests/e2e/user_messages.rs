@@ -74,6 +74,7 @@ async fn write_sse_response(stream: &mut tokio::net::TcpStream, chunks: &[&str])
 }
 
 #[tokio::test]
+#[allow(clippy::await_holding_lock)]
 async fn e2e_user_messages_after_run() {
     let _lock = common::env_test_lock().lock().unwrap();
     let tmp = tempfile::NamedTempFile::new().unwrap();
