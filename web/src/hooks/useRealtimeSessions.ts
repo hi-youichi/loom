@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { getConnection } from '../services/connection'
 import { listSessions } from '../services/workspace'
 import type { Session } from '../types/session'
-import type { SessionInWorkspace } from '../types/workspace'
+import type { SessionInWorkspace } from '../types/protocol/loom'
 
 export type SessionEvent = {
   type: 'created' | 'updated' | 'deleted'
@@ -34,23 +34,25 @@ export function useRealtimeSessions(workspaceId?: string): UseRealtimeSessionsRe
   const [error, setError] = useState<string | null>(null)
   
   // Use ref to track workspaceId changes without triggering re-subscription
-  const workspaceIdRef = useRef(workspaceId)
+  // Initialize as undefined so the first render always triggers subscription
+  const workspaceIdRef = useRef<string | undefined>(undefined)
   
   // Convert SessionInWorkspace to Session format
   const convertToSession = useCallback((data: SessionInWorkspace): Session => {
+    const createdAt = new Date(data.created_at_ms).toISOString()
     return {
-      id: data.id,
-      title: data.name || 'Untitled Session',
-      createdAt: data.createdAt || new Date().toISOString(),
-      updatedAt: data.updatedAt || new Date().toISOString(),
-      lastMessage: data.lastMessage || '',
-      messageCount: data.messageCount || 0,
-      agent: data.agent || 'default',
-      model: data.model || 'default',
-      workspace: data.workspaceId || workspaceId,
-      isPinned: data.isPinned || false,
-      isArchived: data.isArchived || false,
-      status: data.status || 'active',
+      id: data.thread_id,
+      title: 'Untitled Session',
+      createdAt,
+      updatedAt: createdAt,
+      lastMessage: '',
+      messageCount: 0,
+      agent: 'default',
+      model: 'default',
+      workspace: workspaceId,
+      isPinned: false,
+      isArchived: false,
+      status: 'active',
     }
   }, [workspaceId])
 

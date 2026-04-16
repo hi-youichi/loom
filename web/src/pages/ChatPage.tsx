@@ -11,6 +11,7 @@ import { useAgents } from '../hooks/useAgents'
 import { useChat } from '../hooks/useChat'
 import { useChatPanel } from '../hooks/useChatPanel'
 import { useModels } from '../hooks/useModels'
+import { useAgentModel } from '../hooks/useAgentModel'
 import { useRealtimeSessions } from '../hooks/useRealtimeSessions'
 import type { FileNode } from '../components/file-tree'
 
@@ -75,14 +76,7 @@ export function ChatPage() {
   const { selectedAgentId } = useChatPanel()
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
   const { models } = useModels()
-  const [selectedModel, setSelectedModel] = useState('')
-
-  useEffect(() => {
-    if (selectedModel || models.length === 0) return
-    const fallback = 'claude-3-5-sonnet'
-    const match = models.find(m => m.id.includes(fallback) || m.name.includes(fallback))
-    setSelectedModel(match?.id || models[0].id)
-  }, [models, selectedModel])
+  const { selectedModel, handleModelChange } = useAgentModel(selectedAgentId, models)
 
   const {
     messages,
@@ -169,7 +163,7 @@ export function ChatPage() {
           isStreaming={isStreaming}
           onSendMessage={handleSendMessage}
           onCancel={cancel}
-          onModelChange={setSelectedModel}
+          onModelChange={handleModelChange}
         />
       </div>
     </ChatErrorBoundary>
