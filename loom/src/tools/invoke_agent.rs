@@ -62,7 +62,7 @@ use tokio::sync::Semaphore;
 use crate::cli_run::{build_config_from_profile, list_available_profiles, resolve_profile};
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 use crate::tools::Tool;
-use crate::{build_react_runner, ReactBuildConfig, ToolOutputHint, ToolOutputStrategy};
+use crate::{build_react_runner, resolve_tier_and_build_config, ReactBuildConfig, ToolOutputHint, ToolOutputStrategy};
 
 pub const TOOL_INVOKE_AGENT: &str = "invoke_agent";
 const DEFAULT_MAX_DEPTH: u32 = 3;
@@ -161,6 +161,11 @@ impl Tool for InvokeAgentTool {
                                 "working_folder": {
                                     "type": "string",
                                     "description": "Optional: override working folder for this sub-agent."
+                                },
+                                "model_tier": {
+                                    "type": "string",
+                                    "enum": ["light", "standard", "heavy"],
+                                    "description": "Optional: override the agent's model tier for this invocation. Switches to the best model of this tier from the same provider."
                                 }
                             },
                             "required": ["agent", "task"]
@@ -263,8 +268,17 @@ impl InvokeAgentTool {
             working_folder_override.as_deref(),
         );
 
+        if let Some(tier_str) = args.get("model_tier").and_then(|v| v.as_str()) {
+            match serde_json::from_str::<crate::model_spec::ModelTier>(tier_str) {
+                Ok(tier) => sub_config.model_tier = Some(tier),
+                Err(e) => tracing::warn!(tier = %tier_str, error = %e, "invalid model_tier, ignoring"),
+            }
+        }
+
         // Propagate depth + 1 so nested invoke_agent calls are tracked
         sub_config.thread_id = None;
+
+        let sub_config = resolve_tier_and_build_config(&sub_config).await;
 
         let runner = build_react_runner(&sub_config, None, false)
             .await
@@ -548,8 +562,17 @@ async fn invoke_single_agent(
     let mut sub_config =
         build_config_from_profile(&profile, base_config, working_folder_override.as_deref());
 
+    if let Some(tier_str) = args.get("model_tier").and_then(|v| v.as_str()) {
+        match serde_json::from_str::<crate::model_spec::ModelTier>(tier_str) {
+            Ok(tier) => sub_config.model_tier = Some(tier),
+            Err(e) => tracing::warn!(tier = %tier_str, error = %e, "invalid model_tier, ignoring"),
+        }
+    }
+
     // Propagate depth + 1 so nested invoke_agent calls are tracked
     sub_config.thread_id = None;
+
+    let sub_config = resolve_tier_and_build_config(&sub_config).await;
 
     let runner = build_react_runner(&sub_config, None, false)
         .await
