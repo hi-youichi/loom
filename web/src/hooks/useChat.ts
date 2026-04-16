@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState, useEffect } from 'react'
 
+import { parseHistoryMessages } from '../adapters/HistoryParser'
 import { ToolBlockAdapter } from '../adapters/ToolBlockAdapter'
 import { ToolStreamAggregator } from '../adapters/ToolStreamAggregator'
 import { sendMessage as sendChatMessage } from '../services/chat'
@@ -222,23 +223,7 @@ export function useChat(options?: {
 
     try {
       const history = await getUserMessages(id)
-      const uiMessages: UIMessageItemProps[] = []
-
-      for (const msg of history) {
-        uiMessages.push({
-          id: crypto.randomUUID(),
-          sender: msg.role === 'user' ? 'user' : 'assistant',
-          timestamp: new Date().toISOString(),
-          content: [
-            {
-              type: 'text' as const,
-              text: msg.content,
-              format: 'plain' as const,
-            },
-          ],
-        })
-      }
-
+      const uiMessages = parseHistoryMessages(history)
       setMessages(uiMessages)
     } catch {
       // silently fail - history loading is best-effort
