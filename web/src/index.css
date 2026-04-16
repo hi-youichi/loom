@@ -827,38 +827,39 @@ h2 {
   }
 }
 
-/* Custom scrollbar styles */
-.message-list::-webkit-scrollbar {
+/* Custom scrollbar styles — global for all scroll containers */
+*::-webkit-scrollbar {
   width: 8px;
+  height: 8px;
 }
 
-.message-list::-webkit-scrollbar-track {
+*::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.message-list::-webkit-scrollbar-thumb {
+*::-webkit-scrollbar-thumb {
   background: oklch(0.80 0 0);
   border-radius: 4px;
 }
 
-.message-list::-webkit-scrollbar-thumb:hover {
+*::-webkit-scrollbar-thumb:hover {
   background: oklch(0.70 0 0);
 }
 
-.dark .message-list::-webkit-scrollbar-thumb {
+.dark *::-webkit-scrollbar-thumb {
   background: oklch(0.40 0 0);
 }
 
-.dark .message-list::-webkit-scrollbar-thumb:hover {
+.dark *::-webkit-scrollbar-thumb:hover {
   background: oklch(0.50 0 0);
 }
 
-.message-list {
+* {
   scrollbar-width: thin;
   scrollbar-color: oklch(0.80 0 0) transparent;
 }
 
-.dark .message-list {
+.dark * {
   scrollbar-color: oklch(0.40 0 0) transparent;
 }
 
