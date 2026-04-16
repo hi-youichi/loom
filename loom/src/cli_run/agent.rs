@@ -1,5 +1,6 @@
 //! Unified agent runner: ReAct, DUP, ToT, GoT.
 
+use crate::agent::react::resolve_tier_for_config;
 use crate::cli_run::build_helve_config;
 use crate::export::stream_event_to_format_a;
 use crate::llm::LlmClient;
@@ -476,33 +477,69 @@ pub async fn build_runner(
     cmd: &RunCmd,
     llm_override: Option<Box<dyn LlmClient>>,
 ) -> Result<AnyRunner, RunError> {
+    let config = resolve_tier_and_build_config(config).await;
     let cancellation = opts.cancellation.as_ref().map(RunCancellation::token);
     match cmd {
         RunCmd::React => {
-            let r = build_react_runner(config, llm_override, opts.verbose)
+            let r = build_react_runner(&config, llm_override, opts.verbose)
                 .await?
                 .with_cancellation(opts.cancellation.clone());
             Ok(AnyRunner::React(r))
         }
         RunCmd::Dup => {
-            let r = build_dup_runner(config, llm_override, opts.verbose)
+            let r = build_dup_runner(&config, llm_override, opts.verbose)
                 .await?
                 .with_cancellation(cancellation.clone());
             Ok(AnyRunner::Dup(r))
         }
         RunCmd::Tot => {
-            let r = build_tot_runner(config, llm_override, opts.verbose)
+            let r = build_tot_runner(&config, llm_override, opts.verbose)
                 .await?
                 .with_cancellation(cancellation.clone());
             Ok(AnyRunner::Tot(r))
         }
         RunCmd::Got { .. } => {
-            let r = build_got_runner(config, llm_override, opts.verbose)
+            let r = build_got_runner(&config, llm_override, opts.verbose)
                 .await?
                 .with_cancellation(cancellation);
             Ok(AnyRunner::Got(r))
         }
     }
+}
+
+pub async fn resolve_tier_and_build_config(config: &ReactBuildConfig) -> ReactBuildConfig {
+    let Some(tier) = config.model_tier else {
+        return config.clone();
+    };
+    let mut config = config.clone();
+    match resolve_tier_for_config(&config, tier).await {
+        Some(resolved) => {
+            tracing::info!(
+                tier = ?tier,
+                resolved_model = %resolved.model_id,
+                "resolved model tier"
+            );
+            config.model = Some(resolved.model_id);
+            if config.openai_base_url.is_none() {
+                config.openai_base_url = resolved.base_url;
+            }
+            if config.openai_api_key.is_none() {
+                config.openai_api_key = resolved.api_key;
+            }
+            if config.llm_provider.is_none() && resolved.provider_type.is_some() {
+                config.llm_provider = resolved.provider_type;
+            }
+        }
+        None => {
+            tracing::warn!(
+                tier = ?tier,
+                model = ?config.model,
+                "tier resolution failed, using model as-is"
+            );
+        }
+    }
+    config.model_tier = None;
+    config
 }
 
 /// Simplified agent runner that only requires provider configuration and model name.
@@ -633,6 +670,7 @@ mod tests {
             openai_api_key: None,
             openai_base_url: None,
             model: None,
+            model_tier: None,
             llm_provider: None,
             openai_temperature: None,
             embedding_api_key: None,
@@ -769,5 +807,39 @@ mod tests {
             },
             tot: TotExtension::default(),
         };
+    }
+
+    #[tokio::test]
+    async fn resolve_tier_and_build_config_no_tier_returns_clone() {
+        let config = minimal_config_with_invalid_working_folder();
+        let resolved = resolve_tier_and_build_config(&config).await;
+        assert!(resolved.model_tier.is_none());
+        assert!(resolved.model.is_none());
+    }
+
+    #[tokio::test]
+    async fn resolve_tier_and_build_config_tier_without_model_uses_llm_provider() {
+        let mut config = minimal_config_with_invalid_working_folder();
+        config.model_tier = Some(crate::model_spec::ModelTier::Light);
+        let resolved = resolve_tier_and_build_config(&config).await;
+        assert!(resolved.model_tier.is_none());
+    }
+
+    #[tokio::test]
+    async fn resolve_tier_and_build_config_tier_with_model_no_providers() {
+        let mut config = minimal_config_with_invalid_working_folder();
+        config.model = Some("anthropic/claude-sonnet-4".to_string());
+        config.model_tier = Some(crate::model_spec::ModelTier::Light);
+        let resolved = resolve_tier_and_build_config(&config).await;
+        assert!(resolved.model_tier.is_none());
+        assert_eq!(resolved.model.as_deref(), Some("anthropic/claude-sonnet-4"));
+    }
+
+    #[tokio::test]
+    async fn resolve_tier_and_build_config_clears_model_tier() {
+        let mut config = minimal_config_with_invalid_working_folder();
+        config.model_tier = Some(crate::model_spec::ModelTier::Light);
+        let resolved = resolve_tier_and_build_config(&config).await;
+        assert!(resolved.model_tier.is_none());
     }
 }

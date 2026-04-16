@@ -4,7 +4,8 @@
 //! (including the default when the model prefix is not `openai/`) use `ChatOpenAICompat`.
 
 use crate::error::AgentError;
-use crate::llm::{ChatOpenAI, ChatOpenAICompat, ModelEntry};
+use crate::llm::{ChatOpenAI, ChatOpenAICompat, ModelEntry, ModelRegistry, ProviderConfig};
+use crate::model_spec::ModelTier;
 use crate::tool_source::ToolSource;
 use crate::LlmClient;
 
@@ -21,16 +22,81 @@ fn parse_provider_model(model: &str) -> Option<(&str, &str)> {
     Some((provider, model_id))
 }
 
-/// Extract model configuration from ReactBuildConfig into a ModelEntry.
-///
-/// Priority (highest to lowest):
-/// 1. ReactBuildConfig fields (credentials, model, provider, openai_temperature)
-/// 2. Environment variables for any unset fields above (including `OPENAI_TEMPERATURE`)
-/// 3. Default values
+pub(crate) struct ResolvedTierModel {
+    pub(crate) model_id: String,
+    pub(crate) base_url: Option<String>,
+    pub(crate) api_key: Option<String>,
+    pub(crate) provider_type: Option<String>,
+}
+
+impl ResolvedTierModel {
+    fn from_entry(entry: ModelEntry) -> Self {
+        Self {
+            model_id: entry.id,
+            base_url: entry.base_url,
+            api_key: entry.api_key,
+            provider_type: entry.provider_type,
+        }
+    }
+}
+
+pub(crate) fn load_provider_configs() -> Option<Vec<ProviderConfig>> {
+    let config = env_config::load_full_config("loom").ok()?;
+    Some(
+        config
+            .providers
+            .into_iter()
+            .map(|p| ProviderConfig {
+                name: p.name,
+                base_url: p.base_url,
+                api_key: p.api_key,
+                provider_type: p.provider_type,
+                fetch_models: p.fetch_models.unwrap_or(false),
+            })
+            .collect(),
+    )
+}
+
+pub(crate) async fn resolve_tier_for_config(
+    config: &ReactBuildConfig,
+    tier: ModelTier,
+) -> Option<ResolvedTierModel> {
+    let providers = load_provider_configs()?;
+
+    match config.model.as_deref() {
+        Some(model_id) => {
+            let entry = ModelRegistry::global()
+                .resolve_tier_for_model(model_id, tier, &providers)
+                .await?;
+            Some(ResolvedTierModel::from_entry(entry))
+        }
+        None => {
+            let provider = config.llm_provider.as_deref();
+            match provider {
+                Some(p) => {
+                    let entry = ModelRegistry::global()
+                        .resolve_tier(p, tier, &providers)
+                        .await?;
+                    Some(ResolvedTierModel::from_entry(entry))
+                }
+                None => {
+                    for p in &providers {
+                        if let Some(entry) =
+                            ModelRegistry::global().resolve_tier(&p.name, tier, &providers).await
+                        {
+                            return Some(ResolvedTierModel::from_entry(entry));
+                        }
+                    }
+                    None
+                }
+            }
+        }
+    }
+}
+
 pub(crate) fn model_entry_from_config(
     config: &ReactBuildConfig,
 ) -> Result<ModelEntry, BuildRunnerError> {
-    // API key: config > env
     let api_key = config
         .openai_api_key
         .clone()
@@ -41,13 +107,11 @@ pub(crate) fn model_entry_from_config(
             ))
         })?;
 
-    // Base URL: config > env (optional)
     let base_url = config
         .openai_base_url
         .clone()
         .or_else(|| std::env::var("OPENAI_BASE_URL").ok());
 
-    // Model: frontend config > default (environment variables removed)
     tracing::debug!("🎯 Frontend config model: {:?}", config.model);
 
     let raw_model = if let Some(ref model) = config.model {
@@ -68,10 +132,8 @@ pub(crate) fn model_entry_from_config(
 
     tracing::info!("✅ Final model to use: {}", raw_model);
 
-    // Provider type: only use config, no environment variables (removed)
     tracing::debug!("🎯 Config provider type: {:?}", config.llm_provider);
 
-    // Inferred provider type from model string when explicit provider type not set
     let inferred_provider_type = parse_provider_model(&raw_model).map(|(provider, _)| {
         if provider.eq_ignore_ascii_case("openai") {
             "openai".to_string()
@@ -81,12 +143,10 @@ pub(crate) fn model_entry_from_config(
     });
     let _provider_type = config.llm_provider.clone().or(inferred_provider_type);
 
-    // Parse model to extract provider and model_id
     let (provider_from_model, model) = parse_provider_model(&raw_model)
         .map(|(p, m)| (Some(p), m))
         .unwrap_or_else(|| (None, raw_model.as_str()));
 
-    // Determine provider name
     let provider = match config.llm_provider.as_deref().or(provider_from_model) {
         Some("bigmodel") => "bigmodel".to_string(),
         Some("openai_compat") => "openai_compat".to_string(),
@@ -111,7 +171,6 @@ pub(crate) fn model_entry_from_config(
             }
         });
 
-    // Build ModelEntry
     Ok(ModelEntry {
         id: format!("{}/{}", provider, model),
         name: model.to_string(),
