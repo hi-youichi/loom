@@ -318,7 +318,7 @@ class LoomConnection {
     return new Promise<void>((resolve, reject) => {
       const onMessage = (msg: LoomServerMessage): boolean => {
         const cancelAck = msg as CancelRunResponse
-        if (cancelAck.type === 'cancel_run_ack' && cancelAck.id === requestId) {
+        if (cancelAck.type === 'cancel_run' && cancelAck.id === requestId) {
           resolve()
           return true
         }

@@ -18,6 +18,7 @@ type SendMessageOptions = {
   model?: string
   onChunk?: (chunk: string) => void
   onEvent?: (event: LoomStreamEvent) => void
+  onRunId?: (runId: string) => void
 }
 
 function getEnvValue(name: string) {
@@ -38,8 +39,10 @@ export function sendMessage(
 
   const onMessage = (msg: LoomServerMessage): boolean => {
     if (isRunStreamEvent(msg)) {
+      const isFirst = runId === null
       runId ??= msg.id
       if (msg.id !== runId) return false
+      if (isFirst) options.onRunId?.(runId)
 
       options.onEvent?.(msg.event)
 

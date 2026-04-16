@@ -121,16 +121,17 @@ test.describe('SendButton', () => {
     await textarea.fill('Test message for button state')
     await button.click()
 
-    // 等待发送中状态
-    await expect(button).toBeDisabled()
+    // streaming 中按钮可点击（用于取消）
+    await expect(button).toBeEnabled()
 
     // 等待 AI 响应完成（等待 assistant 消息出现）
     await page.waitForSelector('.message--assistant', { timeout: 30000 })
 
-    // 等待发送状态恢复
-    await page.waitForTimeout(500)
+    // streaming 结束，输入框已清空，按钮应禁用
+    await expect(button).toBeDisabled()
 
-    // 验证按钮恢复可用
+    // 输入新内容后按钮恢复可用
+    await textarea.fill('Next message')
     await expect(button).not.toBeDisabled()
   })
 })
@@ -147,8 +148,8 @@ test('点击停止按钮可以取消发送', async ({ page }) => {
   // 点击发送按钮
   await button.click()
 
-  // 验证按钮变为停止状态（禁用）
-  await expect(button).toBeDisabled()
+  // 验证按钮变为停止状态（可点击取消）
+  await expect(button).toBeEnabled()
 
   // 点击停止按钮
   await button.click()
@@ -158,6 +159,83 @@ test('点击停止按钮可以取消发送', async ({ page }) => {
   const userMessages = await messageList.locator('.message--user').count()
   expect(userMessages).toBe(0)
 
-  // 验证按钮恢复为发送状态（启用）
-  await expect(button).not.toBeDisabled()
+  // streaming 结束，输入框已清空，按钮应禁用
+  await expect(button).toBeDisabled()
+})
+
+test('取消发送时发送 cancel_run 协议并正确处理响应', async ({ page }) => {
+  const button = page.locator('.composer__button')
+  const textarea = page.locator('.composer__input')
+
+  // 拦截 WebSocket 消息
+  const wsMessages: Array<{ direction: 'send' | 'receive'; data: unknown }> = []
+  await page.evaluate(() => {
+    const originalSend = WebSocket.prototype.send
+    WebSocket.prototype.send = function (this: WebSocket, data: string) {
+      try {
+        const parsed = JSON.parse(data)
+        ;(window as any).__wsMessages = (window as any).__wsMessages || []
+        ;(window as any).__wsMessages.push({ direction: 'send', data: parsed })
+      } catch {}
+      return originalSend.call(this, data)
+    }
+
+    const origAddEventListener = WebSocket.prototype.addEventListener
+    WebSocket.prototype.addEventListener = function (this: WebSocket, type: string, listener: EventListenerOrEventListenerObject, ...rest: any[]) {
+      if (type === 'message') {
+        const wrappedListener = (event: Event) => {
+          try {
+            const parsed = JSON.parse((event as MessageEvent).data)
+            ;(window as any).__wsMessages = (window as any).__wsMessages || []
+            ;(window as any).__wsMessages.push({ direction: 'receive', data: parsed })
+          } catch {}
+          if (typeof listener === 'function') {
+            listener(event)
+          } else if (listener && typeof listener.handleEvent === 'function') {
+            listener.handleEvent(event)
+          }
+        }
+        return origAddEventListener.call(this, type, wrappedListener, ...rest)
+      }
+      return origAddEventListener.call(this, type as any, listener as any, ...rest as any[])
+    }
+  })
+
+  // 输入并发送消息
+  await textarea.fill('Test cancel protocol')
+  await button.click()
+
+  // 等待 streaming 开始
+  await expect(button).toBeEnabled()
+
+  // 点击停止按钮
+  await button.click()
+
+  // 等待 cancel 协议交互完成
+  await page.waitForTimeout(2000)
+
+  // 获取 WebSocket 消息记录
+  const messages = await page.evaluate(() => (window as any).__wsMessages || []) as Array<{ direction: string; data: any }>
+
+  // 验证发送了 cancel_run 请求
+  const cancelRequest = messages.find(
+    (m: any) => m.direction === 'send' && m.data?.type === 'cancel_run'
+  )
+  expect(cancelRequest).toBeDefined()
+  expect(cancelRequest!.data).toHaveProperty('run_id')
+  expect(cancelRequest!.data).toHaveProperty('id')
+
+  // 验证收到 cancel_run 响应（不是 cancel_run_ack）
+  const cancelResponse = messages.find(
+    (m: any) => m.direction === 'receive' && m.data?.type === 'cancel_run'
+  )
+  expect(cancelResponse).toBeDefined()
+  expect(cancelResponse!.data).toHaveProperty('run_id')
+  expect(cancelResponse!.data).toHaveProperty('id')
+
+  // 验证没有收到 cancel_run_ack（旧协议）
+  const oldAckResponse = messages.find(
+    (m: any) => m.direction === 'receive' && m.data?.type === 'cancel_run_ack'
+  )
+  expect(oldAckResponse).toBeUndefined()
 })

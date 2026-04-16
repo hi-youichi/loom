@@ -133,7 +133,7 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
 
       <div className="border-t border-border">
         <MessageComposer
-          disabled={!selectedAgentId || isStreaming}
+          disabled={!selectedAgentId}
           isStreaming={isStreaming}
           onSend={onSendMessage}
           onCancel={onCancel}

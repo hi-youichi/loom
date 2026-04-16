@@ -175,20 +175,17 @@ export function useChat(options?: {
       toolAggregatorRef.current.reset()
 
       try {
-        // Generate a client-side run ID immediately so cancel can work
-        const clientRunId = crypto.randomUUID()
-        setActiveRunId(clientRunId)
+        setActiveRunId(null)
         const reply = await sendChatMessage(text, {
           sessionId,
           workspaceId,
           agent: agentId,
           model,
           onChunk: handleTextChunk,
+          onRunId: (serverRunId) => {
+            setActiveRunId(serverRunId)
+          },
           onEvent: (event: LoomStreamEvent) => {
-            // Set activeRunId when we get the first event
-            if (!activeRunId && (event as any).run_id) {
-              setActiveRunId((event as any).run_id)
-            }
             handleEvent(event)
           },
         })

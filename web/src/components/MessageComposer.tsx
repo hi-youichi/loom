@@ -103,7 +103,7 @@ export function MessageComposer({
           type={isStreaming ? "button" : "submit"}
           onClick={isStreaming ? handleCancel : undefined}
           aria-label={isStreaming ? "Stop" : disabled ? "Sending message" : "Send message"}
-          disabled={disabled || (!isStreaming && !value.trim())}
+          disabled={isStreaming ? false : (disabled || !value.trim())}
         >
           {isStreaming ? (
             <svg
