@@ -83,7 +83,6 @@ export function ChatPage() {
     isStreaming,
     sendMessage: sendRealMessage,
     cancel,
-    loadHistory,
   } = useChat({
     sessionId,
     workspaceId: activeWorkspaceId ?? undefined,
@@ -116,12 +115,9 @@ export function ChatPage() {
     await sendRealMessage(text)
   }, [sendRealMessage])
 
-  const handleSelectSession = useCallback(async (targetSessionId: string) => {
+  const handleSelectSession = useCallback((targetSessionId: string) => {
     setSessionId(targetSessionId)
-    if (loadHistory) {
-      await loadHistory(targetSessionId)
-    }
-  }, [loadHistory, setSessionId])
+  }, [setSessionId])
 
   return (
     <ChatErrorBoundary>

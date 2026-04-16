@@ -101,6 +101,18 @@ export function useChat(options?: {
     setThinkingLines([])
     toolAggregatorRef.current.reset()
     activeAssistantMessageIdRef.current = null
+
+    // Auto-load history when session changes (including initial mount)
+    if (sessionId) {
+      getUserMessages(sessionId)
+        .then((history) => {
+          const uiMessages = parseHistoryMessages(history)
+          setMessages(uiMessages)
+        })
+        .catch(() => {
+          // silently fail - history loading is best-effort
+        })
+    }
   }, [sessionId])
 
   const updateAssistantMessage = useCallback(
