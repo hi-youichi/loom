@@ -1233,10 +1233,10 @@ tools:
     }
 
     #[test]
-    fn model_config_deserialize_tier_heavy() {
-        let yaml = "tier: heavy\n";
+    fn model_config_deserialize_tier_strong() {
+        let yaml = "tier: strong\n";
         let config: ModelConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(config.tier, Some(ModelTier::Heavy));
+        assert_eq!(config.tier, Some(ModelTier::Strong));
     }
 
     #[test]
