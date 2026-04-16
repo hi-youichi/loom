@@ -379,8 +379,8 @@ impl ModelRegistry {
 
     /// Resolve the best model for a given provider and tier.
     ///
-    /// Filters models belonging to `provider` by `Model::tier()`, then picks the one
-    /// with the most recent `release_date`. Returns `None` if no match is found.
+    /// Delegates to [`model_spec_core::spec::pick_best_for_tier`] for filtering and ranking,
+    /// then builds a [`ModelEntry`] from the result.
     pub async fn resolve_tier(
         &self,
         provider: &str,
@@ -392,23 +392,9 @@ impl ModelRegistry {
         let normalized = Self::normalize_provider_name(provider);
         let spec_provider = spec_providers.get(&normalized)?;
 
-        let mut candidates: Vec<(&String, &model_spec_core::spec::Model)> = spec_provider
-            .models
-            .iter()
-            .filter(|(_, m)| m.tier() == tier)
-            .collect();
+        let (model_id, _model) =
+            model_spec_core::spec::pick_best_for_tier(&spec_provider.models, tier)?;
 
-        if candidates.is_empty() {
-            return None;
-        }
-
-        candidates.sort_by(|a, b| {
-            let date_a = a.1.release_date.as_deref().unwrap_or("");
-            let date_b = b.1.release_date.as_deref().unwrap_or("");
-            date_b.cmp(date_a)
-        });
-
-        let (model_id, _model) = candidates.first()?;
         let mut entry = ModelEntry::from_provider_config(provider_cfg, model_id);
         if entry.base_url.is_none() {
             if let Some(ref api) = spec_provider.api {
