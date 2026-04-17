@@ -25,7 +25,7 @@ use super::options::{resolve_run_agent_options, AgentOptions};
 use crate::agent::react::act_node::{ActNode, HandleToolErrors};
 
 use crate::agent::react::observe_node::ObserveNode;
-use crate::agent::react::title_node::TitleNode;
+use crate::agent::react::title_node::{is_first_think, TitleNode};
 use crate::agent::react::think_node::ThinkNode;
 use crate::agent::react::tools_condition;
 use crate::agent::react::with_node_logging::WithNodeLogging;
@@ -102,7 +102,12 @@ impl ReactRunner {
             .add_edge(START, "think")
             .add_conditional_edges(
                 "think",
-                Arc::new(|state: &ReActState| tools_condition(state).as_str().to_string()),
+                Arc::new(|state: &ReActState| {
+                    if is_first_think(state) {
+                        return "title".to_string();
+                    }
+                    tools_condition(state).as_str().to_string()
+                }),
                 Some(think_condition_path_map),
             )
             .add_conditional_edges(

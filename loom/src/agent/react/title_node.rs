@@ -54,12 +54,13 @@ impl Node<ReActState> for TitleNode {
     }
 
     async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
-        // Only generate title if not already present
+        tracing::debug!("title_node::run - enter");
+
         if state.summary.is_some() {
+            tracing::debug!("title_node::run - summary already set, skipping");
             return Ok((state, Next::Continue));
         }
 
-        // Extract user messages for title generation
         let user_messages: Vec<_> = state
             .messages
             .iter()
@@ -71,16 +72,20 @@ impl Node<ReActState> for TitleNode {
             .collect();
 
         if user_messages.is_empty() {
+            tracing::debug!("title_node::run - no user messages found, skipping");
             return Ok((state, Next::Continue));
         }
 
-        // Convert UserContent to text strings for the prompt
         let user_texts: Vec<_> = user_messages
             .iter()
             .map(|c| c.as_text().to_string())
             .collect();
 
-        // Generate title using LLM
+        tracing::debug!(
+            "title_node::run - generating title from {} user message(s)",
+            user_texts.len()
+        );
+
         let prompt = format!(
             r#"用一句话总结这个对话的主题（不超过50字，用对话的语言）：
 
@@ -90,7 +95,6 @@ impl Node<ReActState> for TitleNode {
             user_texts.join("\n")
         );
 
-        // Create a minimal message list for the title request
         let title_messages = vec![
             Message::system(
                 "You are a helpful assistant that creates concise conversation summaries.",
@@ -100,9 +104,19 @@ impl Node<ReActState> for TitleNode {
 
         match self.llm.invoke(&title_messages).await {
             Ok(response) => {
-                let title = clamp_summary_chars(response.content.trim());
+                let raw = response.content.trim();
+                let title = clamp_summary_chars(raw);
 
-                // Update state with title
+                if raw.len() != title.len() {
+                    tracing::debug!(
+                        "title_node::run - title truncated: {} chars -> {} chars",
+                        raw.chars().count(),
+                        title.chars().count()
+                    );
+                }
+
+                tracing::info!("title_node::run - generated title: {:?}", title);
+
                 let new_state = ReActState {
                     messages: state.messages,
                     last_reasoning_content: state.last_reasoning_content,
@@ -121,8 +135,7 @@ impl Node<ReActState> for TitleNode {
                 Ok((new_state, Next::Continue))
             }
             Err(e) => {
-                // Log error but don't fail the entire flow
-                tracing::warn!("Failed to generate session title: {}", e);
+                tracing::warn!("title_node::run - LLM invoke failed: {}", e);
                 Ok((state, Next::Continue))
             }
         }

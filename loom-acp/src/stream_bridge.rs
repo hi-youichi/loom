@@ -15,6 +15,7 @@
 //! | **tool_call** | New tool call started | Act node decides to call a tool: tool_call_id, name, input, kind, status: Pending. |
 //! | **tool_call_update** | Update to existing tool call | Start -> Pending/Running; done -> Success/Failure + output/content. |
 //! | plan / available_commands_update / current_mode_update | Plan, command list, mode | Optional; DUP/ToT/GoT etc. can map. |
+//! | **session_info_update** | Session metadata (title) update | Agent pushes title or other metadata to client. |
 //!
 //! ## Tool call and request_permission order
 //!
@@ -30,9 +31,9 @@
 
 use crate::content::extract_locations;
 use agent_client_protocol::{
-    ContentChunk, CurrentModeUpdate, SessionId, SessionModeId, SessionNotification, SessionUpdate,
-    Terminal, TerminalId, ToolCall, ToolCallId, ToolCallLocation, ToolCallStatus, ToolCallUpdate,
-    ToolCallUpdateFields, ToolKind,
+    ContentChunk, CurrentModeUpdate, SessionId, SessionModeId, SessionNotification,
+    SessionInfoUpdate, SessionUpdate, Terminal, TerminalId, ToolCall, ToolCallId,
+    ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
 };
 use loom::message::Message;
 use loom::{AnyStreamEvent, MessageChunkKind, StreamEvent};
@@ -88,6 +89,10 @@ pub enum StreamUpdate {
         /// Incremental arguments JSON delta.
         arguments_delta: String,
     },
+
+    /// Session metadata update (ACP `session_info_update`).
+    /// Used to push title and related metadata changes to the client in real time.
+    SessionInfoUpdate { title: String },
 }
 
 /// Convert one Loom stream event into zero or more [`StreamUpdate`]s.
@@ -113,10 +118,27 @@ pub enum StreamUpdate {
 /// ```
 pub fn loom_event_to_updates(ev: &AnyStreamEvent) -> Vec<StreamUpdate> {
     match ev {
-        AnyStreamEvent::React(e) => stream_event_to_updates_inner(e),
+        AnyStreamEvent::React(e) => {
+            let mut updates = stream_event_to_updates_inner(e);
+            if let Some(title_update) = extract_title_from_react_event(e) {
+                updates.push(title_update);
+            }
+            updates
+        }
         AnyStreamEvent::Dup(e) => stream_event_to_updates_inner(e),
         AnyStreamEvent::Tot(e) => stream_event_to_updates_inner(e),
         AnyStreamEvent::Got(e) => stream_event_to_updates_inner(e),
+    }
+}
+
+fn extract_title_from_react_event(ev: &StreamEvent<loom::ReActState>) -> Option<StreamUpdate> {
+    match ev {
+        StreamEvent::Updates { node_id, state, .. } if node_id == "title" => {
+            state.summary.as_ref().map(|title| StreamUpdate::SessionInfoUpdate {
+                title: title.clone(),
+            })
+        }
+        _ => None,
     }
 }
 
@@ -314,6 +336,9 @@ pub fn stream_update_to_session_notification(
                 return None;
             }
         }
+        StreamUpdate::SessionInfoUpdate { title } => {
+            SessionUpdate::SessionInfoUpdate(SessionInfoUpdate::new().title(title.clone()))
+        }
     };
     Some(SessionNotification::new(session_id.clone(), update))
 }
@@ -496,6 +521,14 @@ impl SessionNotifier {
             SessionUpdate::CurrentModeUpdate(CurrentModeUpdate::new(SessionModeId::new(
                 mode_id.to_string(),
             ))),
+        );
+        let _ = self.tx.try_send(notif);
+    }
+
+    pub fn try_send_session_info_update(&self, title: &str) {
+        let notif = SessionNotification::new(
+            self.session_id.clone(),
+            SessionUpdate::SessionInfoUpdate(SessionInfoUpdate::new().title(title.to_string())),
         );
         let _ = self.tx.try_send(notif);
     }
