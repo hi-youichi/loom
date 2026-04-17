@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 
+import type { Model } from '@graphweave/ws-client'
+
 const STORAGE_KEY = 'loom-agent-model-map'
 const LAST_MODEL_KEY = 'loom-last-selected-model'
 
@@ -34,7 +36,7 @@ function loadLastModel(): string | null {
   }
 }
 
-export function useAgentModel(agentId: string | null, models: { id: string }[]) {
+export function useAgentModel(agentId: string | null, models: Model[]) {
   const [selectedModel, setSelectedModel] = useState(() => {
     // 1. Try agent-specific persisted model
     const map = loadMap()
