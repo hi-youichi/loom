@@ -7,16 +7,23 @@
 //! # Concurrency Control
 //!
 //! This tool supports both single and batch concurrent agent invocation with
-//! **global concurrency control** to prevent resource exhaustion.
+//! **permit-inheritance** to prevent deadlocks.
+//!
+//! ## How it works
+//!
+//! A global semaphore limits the number of concurrent **top-level** agent groups.
+//! Once a permit is acquired, a `task_local` (`AGENT_SLOT`) is set for the entire
+//! execution tree. Nested `invoke_agent` calls detect the slot and **skip** permit
+//! acquisition, reusing the ancestor's slot.
+//!
+//! This eliminates the deadlock scenario where all permits are held by parent tasks
+//! while their children block waiting for new permits.
 //!
 //! ## Global Semaphore
 //!
-//! All `invoke_agent` calls (single, batch, or nested) share a global semaphore
-//! that limits the maximum number of concurrent agent executions:
-//!
-//! - **Default limit**: 3 concurrent agents
+//! - **Default limit**: 3 concurrent top-level agent groups
 //! - **Configuration**: Set `INVOKE_AGENT_MAX_CONCURRENT` environment variable
-//! - **Behavior**: When the limit is reached, new invocations wait until a slot is available
+//! - **Nested calls**: Never acquire a new permit; bounded by `max_depth` instead
 //!
 //! ## Usage
 //!
@@ -92,6 +99,16 @@ static INVOKE_AGENT_SEMAPHORE: Lazy<Arc<Semaphore>> = Lazy::new(|| {
 
     Arc::new(Semaphore::new(max_concurrent))
 });
+
+tokio::task_local! {
+    /// Marker set when executing inside an invoke_agent permit slot.
+    ///
+    /// Nested `invoke_agent` calls detect this and **skip** semaphore acquisition,
+    /// reusing the ancestor's slot. This prevents deadlocks where all semaphore
+    /// permits are held by parent tasks while their children block waiting for
+    /// new permits.
+    static AGENT_SLOT: ();
+}
 
 pub struct InvokeAgentTool {
     base_config: Arc<ReactBuildConfig>,
@@ -223,7 +240,12 @@ impl Tool for InvokeAgentTool {
 }
 
 impl InvokeAgentTool {
-    /// Invoke a single agent (existing logic, now with global concurrency control)
+    /// Invoke a single agent with permit-inheritance to prevent deadlocks.
+    ///
+    /// Only top-level calls (not already inside an `AGENT_SLOT`) acquire a
+    /// semaphore permit. Nested calls reuse the parent's slot, so the total
+    /// number of concurrently running *top-level* agent groups is bounded by
+    /// the semaphore, while nesting never deadlocks.
     async fn call_single(
         &self,
         args: Value,
@@ -237,6 +259,25 @@ impl InvokeAgentTool {
             )));
         }
 
+        let in_slot = AGENT_SLOT.try_with(|_| true).unwrap_or(false);
+
+        if in_slot {
+            self.call_single_exec(args, ctx).await
+        } else {
+            let _permit = INVOKE_AGENT_SEMAPHORE.acquire().await.map_err(|e| {
+                ToolSourceError::Transport(format!("failed to acquire semaphore: {}", e))
+            })?;
+            AGENT_SLOT.scope((), self.call_single_exec(args, ctx)).await
+        }
+    }
+
+    /// Core execution logic for a single agent invocation.
+    async fn call_single_exec(
+        &self,
+        args: Value,
+        ctx: Option<&ToolCallContext>,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+
         let agent_name = args.get("agent").and_then(|v| v.as_str()).ok_or_else(|| {
             ToolSourceError::InvalidInput("missing required argument: agent".into())
         })?;
@@ -249,11 +290,6 @@ impl InvokeAgentTool {
             .get("working_folder")
             .and_then(|v| v.as_str())
             .map(std::path::PathBuf::from);
-
-        // Acquire global semaphore permit to limit concurrency
-        let _permit = INVOKE_AGENT_SEMAPHORE.acquire().await.map_err(|e| {
-            ToolSourceError::Transport(format!("failed to acquire semaphore: {}", e))
-        })?;
 
         let profile = resolve_profile(agent_name).map_err(|e| {
             ToolSourceError::InvalidInput(format!(
@@ -352,6 +388,8 @@ impl InvokeAgentTool {
             }
         }
 
+        let in_slot = AGENT_SLOT.try_with(|_| true).unwrap_or(false);
+
         // Spawn concurrent tasks for each agent
         let mut handles = vec![];
         for agent_spec in agents {
@@ -361,13 +399,15 @@ impl InvokeAgentTool {
             let max_depth = self.max_depth;
 
             let handle = tokio::spawn(async move {
-                // Acquire global semaphore permit
-                let _permit = INVOKE_AGENT_SEMAPHORE.acquire().await.map_err(|e| {
-                    ToolSourceError::Transport(format!("failed to acquire semaphore: {}", e))
-                })?;
+                let _permit = if in_slot {
+                    None
+                } else {
+                    Some(INVOKE_AGENT_SEMAPHORE.acquire().await.map_err(|e| {
+                        ToolSourceError::Transport(format!("failed to acquire semaphore: {}", e))
+                    })?)
+                };
 
-                // Invoke single agent
-                invoke_single_agent(&base_config, args, ctx.as_ref(), max_depth).await
+                AGENT_SLOT.scope((), invoke_single_agent(&base_config, args, ctx.as_ref(), max_depth)).await
             });
 
             handles.push(handle);
@@ -480,6 +520,7 @@ impl InvokeAgentTool {
         let base_config = self.base_config.clone();
         let max_depth = self.max_depth;
         let ctx_clone = ctx.cloned();
+        let in_slot = AGENT_SLOT.try_with(|_| true).unwrap_or(false);
 
         for agent_spec in agents {
             let args = agent_spec.clone();
@@ -487,33 +528,37 @@ impl InvokeAgentTool {
             let base_config = base_config.clone();
 
             tokio::spawn(async move {
-                // Acquire global semaphore permit
-                let _permit = match INVOKE_AGENT_SEMAPHORE.acquire().await {
-                    Ok(p) => p,
-                    Err(e) => {
-                        if let Some(agent_name) = args.get("agent").and_then(|v| v.as_str()) {
-                            tracing::error!(
-                                agent = %agent_name,
-                                error = %e,
-                                "failed to acquire semaphore for async agent invocation"
-                            );
+                let _permit = if in_slot {
+                    None
+                } else {
+                    match INVOKE_AGENT_SEMAPHORE.acquire().await {
+                        Ok(p) => Some(p),
+                        Err(e) => {
+                            if let Some(agent_name) = args.get("agent").and_then(|v| v.as_str()) {
+                                tracing::error!(
+                                    agent = %agent_name,
+                                    error = %e,
+                                    "failed to acquire semaphore for async agent invocation"
+                                );
+                            }
+                            return;
                         }
-                        return;
                     }
                 };
 
-                // Invoke single agent in background
-                if let Err(e) =
-                    invoke_single_agent(&base_config, args, ctx.as_ref(), max_depth).await
-                {
-                    if let Some(agent_name) = e.to_string().split("'").nth(1) {
-                        tracing::error!(
-                            agent = %agent_name,
-                            error = %e,
-                            "async agent invocation failed"
-                        );
+                AGENT_SLOT.scope((), async {
+                    if let Err(e) =
+                        invoke_single_agent(&base_config, args, ctx.as_ref(), max_depth).await
+                    {
+                        if let Some(agent_name) = e.to_string().split("'").nth(1) {
+                            tracing::error!(
+                                agent = %agent_name,
+                                error = %e,
+                                "async agent invocation failed"
+                            );
+                        }
                     }
-                }
+                }).await
             });
         }
 
