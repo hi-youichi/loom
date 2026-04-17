@@ -84,6 +84,14 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
     }
   }, [agents, selectedAgentId, selectAgent])
 
+  // Sync the resolved model back to the parent so the run request uses the
+  // same model the user sees in the selector.
+  useEffect(() => {
+    if (selectedModel) {
+      onModelChange?.(selectedModel)
+    }
+  }, [selectedModel, onModelChange])
+
   const handleModelChange = (model: string) => {
     setModel(model)
     onModelChange?.(model)
