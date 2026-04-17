@@ -5,7 +5,7 @@ import { AgentGrid } from './AgentGrid'
 import { ActivityFeed } from './ActivityFeed'
 import { TabNavigator, type TabState, type TabConfig } from '../tabs/TabNavigator'
 import { TabContent, TabPane } from '../tabs/TabContent'
-import { SessionList } from '../sessions/SessionList'
+import { SessionList } from '@graphweave/session'
 import type { AgentInfo, ActivityEvent } from '@graphweave/types'
 import type { Session } from '@graphweave/types'
 

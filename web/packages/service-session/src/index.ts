@@ -1,1 +1,1 @@
-export { SessionService } from './session'
+export { SessionService } from '@graphweave/session'

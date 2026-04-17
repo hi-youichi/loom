@@ -1,7 +1,12 @@
 import { useState, useMemo } from 'react'
-import { cn } from '../lib/utils'
+import { clsx, type ClassValue } from 'clsx'
+import { twMerge } from 'tailwind-merge'
 import { SessionCard } from './SessionCard'
 import type { Session, SessionSort } from '@graphweave/types'
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
 
 interface SessionListProps {
   sessions: Session[]
@@ -30,31 +35,23 @@ export function SessionList({
 }: SessionListProps) {
   const [showPinnedOnly, setShowPinnedOnly] = useState(false)
 
-  // Filter and sort sessions
   const filteredSessions = useMemo(() => {
     let filtered = sessions.filter(session => {
-      // Filter by pinned status
       if (showPinnedOnly && !session.isPinned) return false
-
-      // Filter by agent
       if (filterAgent && session.agent !== filterAgent) return false
-
-      // Filter by search query
       if (searchQuery) {
         const query = searchQuery.toLowerCase()
         const titleMatch = session.title.toLowerCase().includes(query)
         const messageMatch = session.lastMessage.toLowerCase().includes(query)
         const tagMatch = session.tags?.some(tag => tag.toLowerCase().includes(query))
-        
+
         if (!titleMatch && !messageMatch && !tagMatch) return false
       }
 
       return true
     })
 
-    // Sort sessions
     return filtered.sort((a, b) => {
-      // Pinned sessions always come first
       if (a.isPinned && !b.isPinned) return -1
       if (!a.isPinned && b.isPinned) return 1
 
@@ -72,7 +69,6 @@ export function SessionList({
     })
   }, [sessions, filterAgent, searchQuery, sortBy, showPinnedOnly])
 
-  // Group sessions by date
   const groupedSessions = useMemo(() => {
     const groups: Record<string, Session[]> = {}
 
@@ -83,7 +79,7 @@ export function SessionList({
       const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
 
       let groupKey = '更早'
-      
+
       if (diffDays === 0) {
         groupKey = '今天'
       } else if (diffDays === 1) {
@@ -107,7 +103,6 @@ export function SessionList({
 
   return (
     <div data-testid="session-list" className={cn('session-list', className)}>
-      {/* Toolbar */}
       <div className="session-list__toolbar">
         <div className="session-list__search">
           <input
@@ -133,13 +128,12 @@ export function SessionList({
         )}
       </div>
 
-      {/* Session Groups */}
       {Object.entries(groupedSessions).map(([groupName, groupSessions]) => (
         <div key={groupName} className="session-list__group">
           <h3 className="session-list__group-title">
             {groupName} ({groupSessions.length})
           </h3>
-          
+
           <div className="session-list__items">
             {groupSessions.map(session => (
               <SessionCard
@@ -156,7 +150,6 @@ export function SessionList({
         </div>
       ))}
 
-      {/* Empty State */}
       {filteredSessions.length === 0 && (
         <div className="session-list__empty">
           <p className="session-list__empty-message">

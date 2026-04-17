@@ -1,7 +1,12 @@
 import { memo } from 'react'
-import { cn } from '../lib/utils'
+import { clsx, type ClassValue } from 'clsx'
+import { twMerge } from 'tailwind-merge'
 import type { Session } from '@graphweave/types'
-import { formatRelativeTime } from '@graphweave/utils'
+import { formatSessionRelativeTime } from '../utils'
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
 
 interface SessionCardProps {
   session: Session
@@ -65,7 +70,7 @@ export const SessionCard = memo(function SessionCard({
           )}
           <h3 data-testid="session-card__title" className="session-card__title">{session.title}</h3>
         </div>
-        
+
         <div className="session-card__actions">
           {onPin && (
             <button
@@ -107,7 +112,7 @@ export const SessionCard = memo(function SessionCard({
           💬 {session.messageCount}
         </span>
         <span className="session-card__time" title={`更新于 ${new Date(session.updatedAt).toLocaleString()}`}>
-          {formatRelativeTime(session.updatedAt)}
+          {formatSessionRelativeTime(session.updatedAt)}
         </span>
       </div>
 

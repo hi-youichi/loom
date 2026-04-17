@@ -6,7 +6,7 @@
 @import "../../ui/src/styles/toolComponents.css";
 @import "../../ui/src/styles/streamingIndicator.css";
 @import "../../ui/src/styles/tabs.css";
-@import "../../ui/src/styles/sessions.css";
+@import "../../session/src/styles/sessions.css";
 
 @source "../../../packages/*/src/**/*.{ts,tsx}";
 

@@ -16,7 +16,8 @@
     "dev": "tsup --watch"
   },
   "dependencies": {
-    "@graphweave/types": "workspace:*"
+    "@graphweave/types": "workspace:*",
+    "@graphweave/session": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.0.0",

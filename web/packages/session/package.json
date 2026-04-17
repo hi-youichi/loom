@@ -1,5 +1,5 @@
 {
-  "name": "@graphweave/hooks",
+  "name": "@graphweave/session",
   "version": "0.0.0",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -16,17 +16,13 @@
     "dev": "tsup --watch"
   },
   "dependencies": {
-    "@graphweave/protocol": "workspace:*",
     "@graphweave/types": "workspace:*",
-    "@graphweave/adapters": "workspace:*",
-    "@graphweave/ws-client": "workspace:*",
-    "@graphweave/session": "workspace:*",
-    "@graphweave/service-workspace": "workspace:*",
-    "@graphweave/service-agent": "workspace:*",
-    "@graphweave/service-chat": "workspace:*"
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.5.0"
   },
   "peerDependencies": {
-    "react": "^19.0.0"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "tsup": "^8.0.0",
