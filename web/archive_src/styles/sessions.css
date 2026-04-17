@@ -246,7 +246,7 @@
   padding: 2px 8px;
   font-size: 11px;
   color: var(--primary);
-  background: var(--primary/10);
+  background: color-mix(in oklch, var(--primary) 10%, transparent);
   border-radius: 12px;
 }
 
@@ -273,7 +273,7 @@
 
 .dark .session-card__tag {
   color: var(--primary);
-  background: var(--primary/10);
+  background: color-mix(in oklch, var(--primary) 10%, transparent);
 }
 
 /* ===== Responsive Design ===== */
