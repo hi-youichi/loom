@@ -1099,7 +1099,7 @@ mod tests {
             any_stream_event_sender: None,
         };
         let (_helve, config, _resolved) = build_helve_config(&opts);
-        assert_eq!(config.model.as_deref(), Some("anthropic/claude-sonnet-4"));
+        assert_eq!(config.model.as_deref(), Some("claude-sonnet-4"));
         assert_eq!(config.model_tier, Some(crate::model_spec::ModelTier::Light));
 
         match prev {

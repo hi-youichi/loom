@@ -3,8 +3,10 @@
 //! Only `LLM_PROVIDER=openai` uses the native `async_openai` client; all other providers
 //! (including the default when the model prefix is not `openai/`) use `ChatOpenAICompat`.
 
+use std::sync::Arc;
+
 use crate::error::AgentError;
-use crate::llm::{ChatOpenAI, ChatOpenAICompat, ModelEntry, ModelRegistry, ProviderConfig};
+use crate::llm::{create_llm_client, ChatOpenAI, ChatOpenAICompat, ModelEntry, ModelRegistry, ProviderConfig};
 use crate::model_spec::ModelTier;
 use crate::tool_source::ToolSource;
 use crate::LlmClient;
@@ -92,6 +94,24 @@ pub(crate) async fn resolve_tier_for_config(
             }
         }
     }
+}
+
+pub(crate) async fn resolve_title_llm(
+    config: &ReactBuildConfig,
+) -> Option<Arc<dyn LlmClient>> {
+    let resolved = resolve_tier_for_config(config, ModelTier::Light).await?;
+    let entry = ModelEntry {
+        id: resolved.model_id.clone(),
+        name: resolved.model_id,
+        provider: resolved.provider_type.clone().unwrap_or_default(),
+        base_url: resolved.base_url,
+        api_key: resolved.api_key,
+        provider_type: resolved.provider_type,
+        temperature: None,
+        max_tokens: None,
+        tool_choice: None,
+    };
+    create_llm_client(&entry).ok().map(Arc::from)
 }
 
 pub(crate) fn model_entry_from_config(
