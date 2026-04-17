@@ -23,6 +23,8 @@ pub struct SessionInfo {
     pub latest_step: i64,
     /// Source of the latest checkpoint (Input/Loop/Update/Fork)
     pub latest_source: String,
+    /// Session title/summary (from TitleNode or manual rename)
+    pub title: Option<String>,
 }
 
 /// Session detail with message history.
@@ -66,6 +68,13 @@ pub enum SessionCommand {
         /// Session ID to delete
         session_id: String,
     },
+    /// Rename a session (update title)
+    Rename {
+        /// Session ID to rename
+        session_id: String,
+        /// New title for the session
+        title: String,
+    },
 }
 
 impl SessionManager {
@@ -98,7 +107,11 @@ impl SessionManager {
                  ORDER BY metadata_created_at DESC LIMIT 1) as latest_step,
                 (SELECT metadata_source FROM checkpoints c2 
                  WHERE c2.thread_id = c1.thread_id 
-                 ORDER BY metadata_created_at DESC LIMIT 1) as latest_source
+                 ORDER BY metadata_created_at DESC LIMIT 1) as latest_source,
+                (SELECT metadata_summary FROM checkpoints c2 
+                 WHERE c2.thread_id = c1.thread_id 
+                 AND metadata_summary IS NOT NULL
+                 ORDER BY metadata_created_at DESC LIMIT 1) as title
             FROM checkpoints c1
             GROUP BY thread_id
             ORDER BY last_updated DESC
@@ -114,6 +127,7 @@ impl SessionManager {
                 let last_updated_ms: Option<i64> = row.get(3)?;
                 let latest_step: i64 = row.get(4)?;
                 let latest_source: String = row.get(5)?;
+                let title: Option<String> = row.get(6)?;
 
                 Ok(SessionInfo {
                     session_id,
@@ -122,6 +136,7 @@ impl SessionManager {
                     last_updated: last_updated_ms.and_then(DateTime::from_timestamp_millis),
                     latest_step,
                     latest_source,
+                    title,
                 })
             })
             .map_err(|e| format!("Failed to query sessions: {}", e))?
@@ -149,7 +164,11 @@ impl SessionManager {
                  ORDER BY metadata_created_at DESC LIMIT 1) as latest_step,
                 (SELECT metadata_source FROM checkpoints c2 
                  WHERE c2.thread_id = ?1 
-                 ORDER BY metadata_created_at DESC LIMIT 1) as latest_source
+                 ORDER BY metadata_created_at DESC LIMIT 1) as latest_source,
+                (SELECT metadata_summary FROM checkpoints c2 
+                 WHERE c2.thread_id = ?1 
+                 AND metadata_summary IS NOT NULL
+                 ORDER BY metadata_created_at DESC LIMIT 1) as title
             FROM checkpoints
             WHERE thread_id = ?1
             "#,
@@ -163,6 +182,7 @@ impl SessionManager {
                 let last_updated_ms: Option<i64> = row.get(2)?;
                 let latest_step: i64 = row.get(3)?;
                 let latest_source: String = row.get(4)?;
+                let title: Option<String> = row.get(5)?;
 
                 Ok(SessionInfo {
                     session_id: session_id.to_string(),
@@ -171,6 +191,7 @@ impl SessionManager {
                     last_updated: last_updated_ms.and_then(DateTime::from_timestamp_millis),
                     latest_step,
                     latest_source,
+                    title,
                 })
             })
             .optional()
@@ -237,6 +258,29 @@ impl SessionManager {
         Ok(count)
     }
 
+    /// Renames a session by updating the title on the latest checkpoint.
+    pub fn rename_session(&self, session_id: &str, title: &str) -> Result<(), String> {
+        let conn = rusqlite::Connection::open(&self.db_path)
+            .map_err(|e| format!("Failed to open database: {}", e))?;
+
+        let affected = conn
+            .execute(
+                "UPDATE checkpoints SET metadata_summary = ?1
+                 WHERE rowid = (
+                     SELECT rowid FROM checkpoints
+                     WHERE thread_id = ?2
+                     ORDER BY metadata_created_at DESC LIMIT 1
+                 )",
+                rusqlite::params![title, session_id],
+            )
+            .map_err(|e| format!("Failed to rename session: {}", e))?;
+
+        if affected == 0 {
+            return Err(format!("Session not found: {}", session_id));
+        }
+        Ok(())
+    }
+
     /// Formats a timestamp for display.
     fn format_datetime(dt: &Option<DateTime<Utc>>) -> String {
         dt.map(|t| {
@@ -259,15 +303,27 @@ impl SessionManager {
             }
 
             println!(
-                "{:<30} {:<8} {:<12} {:<20} {:<20}",
-                "SESSION ID", "CHECKPOINTS", "LATEST STEP", "CREATED", "LAST UPDATED"
+                "{:<30} {:<25} {:<8} {:<12} {:<20} {:<20}",
+                "SESSION ID", "TITLE", "CHECKPOINTS", "LATEST STEP", "CREATED", "LAST UPDATED"
             );
-            println!("{}", "-".repeat(90));
+            println!("{}", "-".repeat(115));
 
             for session in sessions {
+                let title_display = session
+                    .title
+                    .as_deref()
+                    .map(|t| {
+                        if t.chars().count() > 23 {
+                            format!("{}...", t.chars().take(22).collect::<String>())
+                        } else {
+                            t.to_string()
+                        }
+                    })
+                    .unwrap_or_else(|| "-".to_string());
                 println!(
-                    "{:<30} {:<8} {:<12} {:<20} {:<20}",
+                    "{:<30} {:<25} {:<8} {:<12} {:<20} {:<20}",
                     session.session_id,
+                    title_display,
                     session.checkpoint_count,
                     session.latest_step,
                     Self::format_datetime(&session.created_at),
@@ -289,6 +345,9 @@ impl SessionManager {
         } else {
             println!("Session: {}", detail.info.session_id);
             println!("{}", "=".repeat(60));
+            if let Some(ref title) = detail.info.title {
+                println!("Title: {}", title);
+            }
             println!("Checkpoints: {}", detail.info.checkpoint_count);
             println!("Messages: {}", detail.message_count);
             println!("Latest Step: {}", detail.info.latest_step);

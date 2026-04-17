@@ -68,6 +68,18 @@ pub(crate) async fn handle_session_command(
                 println!("Deleted session {} ({} checkpoints)", session_id, count);
             }
         }
+        SessionCommand::Rename { session_id, title } => {
+            manager.rename_session(session_id, title)?;
+            if json {
+                let result = serde_json::json!({
+                    "session_id": session_id,
+                    "title": title
+                });
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                println!("Renamed session {} to \"{}\"", session_id, title);
+            }
+        }
     }
     Ok(())
 }

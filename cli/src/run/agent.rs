@@ -356,6 +356,12 @@ fn on_event_react(
             print_stream_chunk(chunk);
         }
         StreamEvent::Updates { node_id, state, .. } => {
+            // Always show title generation result (non-verbose too)
+            if node_id == "title" {
+                if let Some(ref title) = state.summary {
+                    eprintln!("Session title: {}", title);
+                }
+            }
             if verbose {
                 let label = match node_id.as_str() {
                     "think" => {
