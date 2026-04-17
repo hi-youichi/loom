@@ -175,7 +175,7 @@ pub async fn build_react_runner(
         None,
         None,
         verbose,
-        None, // session summarize node off unless caller passes Some(SummarizeConfig { enabled: true, .. })
+        None, // session title node off unless caller passes Some(TitleConfig { enabled: true, .. })
     )?;
     Ok(runner)
 }

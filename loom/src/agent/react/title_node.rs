@@ -1,12 +1,12 @@
-//! Summarize node: generate session summary after first think.
+//! Title node: generate session title after first think.
 //!
 //! This node runs once after the first think to create a human-readable
-//! summary of the conversation for session list display.
+//! title of the conversation for session list display.
 //!
 //! **Default:** The ReAct graph omits this node unless
-//! [`crate::agent::react::runner::options::SummarizeConfig::enabled`] is set to `true`
-//! (for example via [`crate::agent::react::runner::options::AgentOptions::summarize_config`] or
-//! `ReactRunner::new` with `Some(SummarizeConfig { enabled: true, .. })`).
+//! [`crate::agent::react::runner::options::TitleConfig::enabled`] is set to `true`
+//! (for example via [`crate::agent::react::runner::options::AgentOptions::title_config`] or
+//! `ReactRunner::new` with `Some(TitleConfig { enabled: true, .. })`).
 
 use std::sync::Arc;
 
@@ -32,34 +32,34 @@ fn clamp_summary_chars(s: &str) -> String {
     format!("{}{}", s.chars().take(keep).collect::<String>(), ellipsis)
 }
 
-/// Node that generates a session summary after the first think.
+/// Node that generates a session title after the first think.
 ///
-/// Uses a separate LLM call to create a concise summary (≤50 chars)
+/// Uses a separate LLM call to create a concise title (≤50 chars)
 /// suitable for display in session lists.
-pub struct SummarizeNode {
+pub struct TitleNode {
     llm: Arc<dyn LlmClient>,
 }
 
-impl SummarizeNode {
-    /// Creates a new SummarizeNode with the given LLM client.
+impl TitleNode {
+    /// Creates a new TitleNode with the given LLM client.
     pub fn new(llm: Arc<dyn LlmClient>) -> Self {
         Self { llm }
     }
 }
 
 #[async_trait]
-impl Node<ReActState> for SummarizeNode {
+impl Node<ReActState> for TitleNode {
     fn id(&self) -> &str {
-        "summarize"
+        "title"
     }
 
     async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
-        // Only generate summary if not already present
+        // Only generate title if not already present
         if state.summary.is_some() {
             return Ok((state, Next::Continue));
         }
 
-        // Extract user messages for summary generation
+        // Extract user messages for title generation
         let user_messages: Vec<_> = state
             .messages
             .iter()
@@ -80,7 +80,7 @@ impl Node<ReActState> for SummarizeNode {
             .map(|c| c.as_text().to_string())
             .collect();
 
-        // Generate summary using LLM
+        // Generate title using LLM
         let prompt = format!(
             r#"用一句话总结这个对话的主题（不超过50字，用对话的语言）：
 
@@ -90,19 +90,19 @@ impl Node<ReActState> for SummarizeNode {
             user_texts.join("\n")
         );
 
-        // Create a minimal message list for the summary request
-        let summary_messages = vec![
+        // Create a minimal message list for the title request
+        let title_messages = vec![
             Message::system(
                 "You are a helpful assistant that creates concise conversation summaries.",
             ),
             Message::user(prompt),
         ];
 
-        match self.llm.invoke(&summary_messages).await {
+        match self.llm.invoke(&title_messages).await {
             Ok(response) => {
-                let summary = clamp_summary_chars(response.content.trim());
+                let title = clamp_summary_chars(response.content.trim());
 
-                // Update state with summary
+                // Update state with title
                 let new_state = ReActState {
                     messages: state.messages,
                     last_reasoning_content: state.last_reasoning_content,
@@ -113,7 +113,7 @@ impl Node<ReActState> for SummarizeNode {
                     usage: state.usage,
                     total_usage: state.total_usage,
                     message_count_after_last_think: state.message_count_after_last_think,
-                    summary: Some(summary),
+                    summary: Some(title),
                     think_count: state.think_count,
                     should_continue: state.should_continue,
                 };
@@ -122,14 +122,14 @@ impl Node<ReActState> for SummarizeNode {
             }
             Err(e) => {
                 // Log error but don't fail the entire flow
-                tracing::warn!("Failed to generate session summary: {}", e);
+                tracing::warn!("Failed to generate session title: {}", e);
                 Ok((state, Next::Continue))
             }
         }
     }
 }
 
-/// Determines if this is the first think (should route to summarize).
+/// Determines if this is the first think (should route to title).
 ///
 /// Returns true when:
 /// - think_count == 1 (first think just completed)
@@ -154,7 +154,7 @@ mod tests {
     }
 
     #[test]
-    fn test_is_first_think_false_already_summarized() {
+    fn test_is_first_think_false_already_titled() {
         let state = ReActState {
             messages: vec![Message::user("Hello")],
             think_count: 1,

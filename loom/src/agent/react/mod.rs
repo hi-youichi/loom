@@ -31,7 +31,7 @@ mod completion_check_node;
 mod config;
 mod observe_node;
 mod runner;
-mod summarize_node;
+mod title_node;
 mod think_node;
 mod with_node_logging;
 
@@ -51,7 +51,7 @@ pub use runner::{
     build_react_initial_state, run_agent, run_react_graph_stream, AgentOptions, ReactRunner,
     RunError,
 };
-pub use summarize_node::{is_first_think, SummarizeNode};
+pub use title_node::{is_first_think, TitleNode};
 pub use think_node::ThinkNode;
 pub use with_node_logging::WithNodeLogging;
 

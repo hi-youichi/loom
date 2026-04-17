@@ -21,12 +21,12 @@ use crate::cli_run::AnyStreamEvent;
 
 use super::error::RunError;
 use super::initial_state::build_react_initial_state;
-use super::options::SummarizeConfig;
+use super::options::TitleConfig;
 use super::options::{resolve_run_agent_options, AgentOptions};
 use crate::agent::react::act_node::{ActNode, HandleToolErrors};
 use crate::agent::react::completion_check_node::CompletionCheckNode;
 use crate::agent::react::observe_node::ObserveNode;
-use crate::agent::react::summarize_node::SummarizeNode;
+use crate::agent::react::title_node::TitleNode;
 use crate::agent::react::think_node::ThinkNode;
 use crate::agent::react::tools_condition;
 use crate::agent::react::with_node_logging::WithNodeLogging;
@@ -58,7 +58,7 @@ impl ReactRunner {
         _user_message_store: Option<Arc<dyn UserMessageStore>>,
         cancellation: Option<RunCancellation>,
         verbose: bool,
-        summarize_config: Option<SummarizeConfig>,
+        title_config: Option<TitleConfig>,
     ) -> Result<Self, CompilationError> {
         let llm: Arc<dyn LlmClient> = Arc::from(llm);
         let retry_llm: Arc<dyn LlmClient> = Arc::new(RetryLlmClient::new(llm.clone()));
@@ -78,14 +78,14 @@ impl ReactRunner {
         }
 
         // Build graph with or without summarize node based on config
-        let summarize_enabled = summarize_config.as_ref().is_some_and(|c| c.enabled);
-        let completion_check_enabled = summarize_config
+        let title_enabled = title_config.as_ref().is_some_and(|c| c.enabled);
+        let completion_check_enabled = title_config
             .as_ref()
             .is_some_and(|c| c.enable_completion_check);
 
-        if summarize_enabled {
+        if title_enabled {
             // Summarize node for generating session summaries after first think
-            let summarize_node = SummarizeNode::new(Arc::clone(&retry_llm));
+            let title_node = TitleNode::new(Arc::clone(&retry_llm));
 
             if completion_check_enabled {
                 let completion_check = CompletionCheckNode::new(Arc::clone(&retry_llm))
@@ -93,7 +93,7 @@ impl ReactRunner {
                     .with_message_window(5);
 
                 let think_condition_path_map: HashMap<String, String> = [
-                    ("summarize".into(), "summarize".into()),
+                    ("title".into(), "title".into()),
                     ("tools".into(), "act".into()),
                     ("completion_check".into(), "completion_check".into()),
                 ]
@@ -116,7 +116,7 @@ impl ReactRunner {
 
                 graph
                     .add_node("think", Arc::new(think))
-                    .add_node("summarize", Arc::new(summarize_node))
+                    .add_node("title", Arc::new(title_node))
                     .add_node("completion_check", Arc::new(completion_check))
                     .add_node("act", Arc::new(act))
                     .add_node("observe", Arc::new(observe))
@@ -134,7 +134,7 @@ impl ReactRunner {
                                 && state.summary.is_none()
                                 && state.think_count == 1
                             {
-                                "summarize".to_string()
+                                "title".to_string()
                             } else if !state.tool_calls.is_empty() {
                                 "tools".to_string()
                             } else {
@@ -144,7 +144,7 @@ impl ReactRunner {
                         Some(think_condition_path_map),
                     )
                     .add_conditional_edges(
-                        "summarize",
+                        "title",
                         Arc::new(|state: &ReActState| {
                             if !state.tool_calls.is_empty() {
                                 "tools".to_string()
@@ -171,7 +171,7 @@ impl ReactRunner {
             } else {
                 // No completion check: think/summarize -> tools or end
                 let think_condition_path_map: HashMap<String, String> = [
-                    ("summarize".into(), "summarize".into()),
+                    ("title".into(), "title".into()),
                     ("tools".into(), "act".into()),
                     (END.into(), END.into()),
                 ]
@@ -185,7 +185,7 @@ impl ReactRunner {
 
                 graph
                     .add_node("think", Arc::new(think))
-                    .add_node("summarize", Arc::new(summarize_node))
+                    .add_node("title", Arc::new(title_node))
                     .add_node("act", Arc::new(act))
                     .add_node("observe", Arc::new(observe))
                     .add_node("compress", compress_node)
@@ -202,7 +202,7 @@ impl ReactRunner {
                                 && state.summary.is_none()
                                 && state.think_count == 1
                             {
-                                "summarize".to_string()
+                                "title".to_string()
                             } else {
                                 tools_condition(state).as_str().to_string()
                             }
@@ -210,7 +210,7 @@ impl ReactRunner {
                         Some(think_condition_path_map),
                     )
                     .add_conditional_edges(
-                        "summarize",
+                        "title",
                         Arc::new(|state: &ReActState| tools_condition(state).as_str().to_string()),
                         Some(summarize_condition_path_map),
                     )
@@ -404,7 +404,7 @@ pub async fn run_agent(
         opts.user_message_store,
         None,
         opts.verbose,
-        Some(opts.summarize_config),
+        Some(opts.title_config),
     )?;
     runner.invoke(user_message).await
 }
@@ -430,7 +430,7 @@ where
         opts.user_message_store,
         None,
         opts.verbose,
-        Some(opts.summarize_config),
+        Some(opts.title_config),
     )?;
     runner.stream_with_callback(user_message, on_event).await
 }

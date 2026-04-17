@@ -8,14 +8,14 @@ use crate::tool_source::ToolSource;
 use crate::user_message::UserMessageStore;
 use crate::LlmClient;
 
-/// Configuration for session summary generation.
+/// Configuration for session title generation.
 #[derive(Debug, Clone)]
-pub struct SummarizeConfig {
-    /// Whether to enable automatic summary generation after first think.
+pub struct TitleConfig {
+    /// Whether to enable automatic title generation after first think.
     pub enabled: bool,
-    /// Maximum length of the generated summary in characters.
+    /// Maximum length of the generated title in characters.
     pub max_length: usize,
-    /// Custom prompt template for summary generation.
+    /// Custom prompt template for title generation.
     /// Use {messages} as placeholder for user messages.
     pub prompt_template: Option<String>,
     /// Whether to use LLM-based completion check when think produces no tool calls.
@@ -24,7 +24,7 @@ pub struct SummarizeConfig {
     pub enable_completion_check: bool,
 }
 
-impl Default for SummarizeConfig {
+impl Default for TitleConfig {
     fn default() -> Self {
         Self {
             enabled: false,
@@ -35,13 +35,13 @@ impl Default for SummarizeConfig {
     }
 }
 
-impl SummarizeConfig {
-    /// Create a new SummarizeConfig with default values.
+impl TitleConfig {
+    /// Create a new TitleConfig with default values.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Disable summary generation.
+    /// Disable title generation.
     pub fn disabled() -> Self {
         Self {
             enabled: false,
@@ -55,7 +55,7 @@ impl SummarizeConfig {
         self
     }
 
-    /// Set the maximum length of the summary.
+    /// Set the maximum length of the title.
     pub fn with_max_length(mut self, max_length: usize) -> Self {
         self.max_length = max_length;
         self
@@ -90,7 +90,7 @@ pub struct AgentOptions {
     /// If true, log node and state details to stderr.
     pub verbose: bool,
     /// Configuration for session summary generation. Defaults to disabled; set `enabled: true` to opt in.
-    pub summarize_config: Option<SummarizeConfig>,
+    pub title_config: Option<TitleConfig>,
 }
 
 /// Resolved form of [`AgentOptions`]: optional `llm` and `tool_source` are replaced with
@@ -104,7 +104,7 @@ pub(super) struct ResolvedRunAgentOptions {
     pub runnable_config: Option<RunnableConfig>,
     pub user_message_store: Option<Arc<dyn UserMessageStore>>,
     pub verbose: bool,
-    pub summarize_config: SummarizeConfig,
+    pub title_config: TitleConfig,
 }
 
 pub(super) fn resolve_run_agent_options(opts: AgentOptions) -> ResolvedRunAgentOptions {
@@ -122,7 +122,7 @@ pub(super) fn resolve_run_agent_options(opts: AgentOptions) -> ResolvedRunAgentO
         runnable_config: opts.runnable_config,
         user_message_store: opts.user_message_store,
         verbose: opts.verbose,
-        summarize_config: opts.summarize_config.unwrap_or_default(),
+        title_config: opts.title_config.unwrap_or_default(),
     }
 }
 
@@ -131,8 +131,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn summarize_config_default_values() {
-        let cfg = SummarizeConfig::default();
+    fn title_config_default_values() {
+        let cfg = TitleConfig::default();
         assert!(!cfg.enabled);
         assert_eq!(cfg.max_length, 50);
         assert!(cfg.prompt_template.is_none());
@@ -140,16 +140,16 @@ mod tests {
     }
 
     #[test]
-    fn summarize_config_builder_methods() {
-        let cfg = SummarizeConfig::new()
+    fn title_config_builder_methods() {
+        let cfg = TitleConfig::new()
             .with_completion_check(true)
             .with_max_length(200)
-            .with_prompt_template("summarize: {messages}".to_string());
+            .with_prompt_template("title: {messages}".to_string());
         assert!(cfg.enable_completion_check);
         assert_eq!(cfg.max_length, 200);
         assert_eq!(
             cfg.prompt_template.as_deref(),
-            Some("summarize: {messages}")
+            Some("title: {messages}")
         );
     }
 
@@ -163,7 +163,7 @@ mod tests {
         assert!(opts.runnable_config.is_none());
         assert!(opts.user_message_store.is_none());
         assert!(!opts.verbose);
-        assert!(opts.summarize_config.is_none());
+        assert!(opts.title_config.is_none());
     }
 
     #[test]
@@ -172,7 +172,7 @@ mod tests {
         assert!(!resolved.verbose);
         assert!(resolved.checkpointer.is_none());
         assert!(resolved.store.is_none());
-        assert!(!resolved.summarize_config.enabled);
+        assert!(!resolved.title_config.enabled);
     }
 
     #[test]
