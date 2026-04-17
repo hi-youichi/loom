@@ -23,7 +23,7 @@ use serde::Serialize;
 use super::config::ReactBuildConfig;
 use super::runner::ReactRunner;
 use super::REACT_SYSTEM_PROMPT;
-use llm::build_default_llm_with_tool_source;
+use llm::{build_default_llm_with_tool_source, resolve_title_llm};
 use store::build_store;
 use tool_source::build_tool_source;
 
@@ -163,6 +163,7 @@ pub async fn build_react_runner(
         .clone()
         .unwrap_or_else(|| REACT_SYSTEM_PROMPT.to_string());
     let compaction_config = resolve_compaction_config(config).await;
+    let title_llm = resolve_title_llm(config).await;
     let runner = ReactRunner::new(
         llm,
         ctx.tool_source,
@@ -175,7 +176,7 @@ pub async fn build_react_runner(
         None,
         None,
         verbose,
-        None, // session title node off unless caller passes Some(TitleConfig { enabled: true, .. })
+        title_llm,
     )?;
     Ok(runner)
 }

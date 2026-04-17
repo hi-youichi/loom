@@ -214,8 +214,8 @@ pub struct ReActState {
     /// Session summary generated after the first think; used for session list display.
     #[serde(default)]
     pub summary: Option<String>,
-    /// Flag set by CompletionCheckNode to indicate whether the task should continue.
-    /// Used by conditional routing after completion_check node.
+    /// Flag available for downstream consumers (e.g. custom graph nodes).
+    /// Defaults to `true`.
     #[serde(default)]
     pub should_continue: bool,
 }

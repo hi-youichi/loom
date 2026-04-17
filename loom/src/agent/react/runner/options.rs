@@ -8,66 +8,6 @@ use crate::tool_source::ToolSource;
 use crate::user_message::UserMessageStore;
 use crate::LlmClient;
 
-/// Configuration for session title generation.
-#[derive(Debug, Clone)]
-pub struct TitleConfig {
-    /// Whether to enable automatic title generation after first think.
-    pub enabled: bool,
-    /// Maximum length of the generated title in characters.
-    pub max_length: usize,
-    /// Custom prompt template for title generation.
-    /// Use {messages} as placeholder for user messages.
-    pub prompt_template: Option<String>,
-    /// Whether to use LLM-based completion check when think produces no tool calls.
-    /// When disabled (default), no tool calls → end immediately.
-    /// When enabled, an extra LLM call determines if task is complete or should continue.
-    pub enable_completion_check: bool,
-}
-
-impl Default for TitleConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            max_length: 50,
-            prompt_template: None,
-            enable_completion_check: false,
-        }
-    }
-}
-
-impl TitleConfig {
-    /// Create a new TitleConfig with default values.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Disable title generation.
-    pub fn disabled() -> Self {
-        Self {
-            enabled: false,
-            ..Self::default()
-        }
-    }
-
-    /// Enable LLM-based completion check when think produces no tool calls.
-    pub fn with_completion_check(mut self, enabled: bool) -> Self {
-        self.enable_completion_check = enabled;
-        self
-    }
-
-    /// Set the maximum length of the title.
-    pub fn with_max_length(mut self, max_length: usize) -> Self {
-        self.max_length = max_length;
-        self
-    }
-
-    /// Set a custom prompt template.
-    pub fn with_prompt_template(mut self, template: String) -> Self {
-        self.prompt_template = Some(template);
-        self
-    }
-}
-
 /// Optional configuration for [`super::run_agent`] and [`super::run_react_graph_stream`].
 ///
 /// When a field is `None`, defaults are used: `llm` and `tool_source` default to
@@ -89,8 +29,6 @@ pub struct AgentOptions {
     pub user_message_store: Option<Arc<dyn UserMessageStore>>,
     /// If true, log node and state details to stderr.
     pub verbose: bool,
-    /// Configuration for session summary generation. Defaults to disabled; set `enabled: true` to opt in.
-    pub title_config: Option<TitleConfig>,
 }
 
 /// Resolved form of [`AgentOptions`]: optional `llm` and `tool_source` are replaced with
@@ -104,7 +42,6 @@ pub(super) struct ResolvedRunAgentOptions {
     pub runnable_config: Option<RunnableConfig>,
     pub user_message_store: Option<Arc<dyn UserMessageStore>>,
     pub verbose: bool,
-    pub title_config: TitleConfig,
 }
 
 pub(super) fn resolve_run_agent_options(opts: AgentOptions) -> ResolvedRunAgentOptions {
@@ -122,36 +59,12 @@ pub(super) fn resolve_run_agent_options(opts: AgentOptions) -> ResolvedRunAgentO
         runnable_config: opts.runnable_config,
         user_message_store: opts.user_message_store,
         verbose: opts.verbose,
-        title_config: opts.title_config.unwrap_or_default(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn title_config_default_values() {
-        let cfg = TitleConfig::default();
-        assert!(!cfg.enabled);
-        assert_eq!(cfg.max_length, 50);
-        assert!(cfg.prompt_template.is_none());
-        assert!(!cfg.enable_completion_check);
-    }
-
-    #[test]
-    fn title_config_builder_methods() {
-        let cfg = TitleConfig::new()
-            .with_completion_check(true)
-            .with_max_length(200)
-            .with_prompt_template("title: {messages}".to_string());
-        assert!(cfg.enable_completion_check);
-        assert_eq!(cfg.max_length, 200);
-        assert_eq!(
-            cfg.prompt_template.as_deref(),
-            Some("title: {messages}")
-        );
-    }
 
     #[test]
     fn agent_options_default_all_none() {
@@ -163,7 +76,6 @@ mod tests {
         assert!(opts.runnable_config.is_none());
         assert!(opts.user_message_store.is_none());
         assert!(!opts.verbose);
-        assert!(opts.title_config.is_none());
     }
 
     #[test]
@@ -172,7 +84,6 @@ mod tests {
         assert!(!resolved.verbose);
         assert!(resolved.checkpointer.is_none());
         assert!(resolved.store.is_none());
-        assert!(!resolved.title_config.enabled);
     }
 
     #[test]

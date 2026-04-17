@@ -27,7 +27,6 @@
 
 mod act_node;
 mod build;
-mod completion_check_node;
 mod config;
 mod observe_node;
 mod runner;
@@ -44,7 +43,6 @@ pub use build::{
     build_react_runner_with_openai, build_tot_runner, BuildRunnerError, ReactRunContext,
 };
 pub(crate) use build::resolve_tier_for_config;
-pub use completion_check_node::CompletionCheckNode;
 pub use config::{GotRunnerConfig, ReactBuildConfig, TotRunnerConfig};
 pub use observe_node::ObserveNode;
 pub use runner::{
