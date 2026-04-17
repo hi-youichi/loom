@@ -2,8 +2,8 @@ import type {
   AgentListResponse,
   AgentListSource,
   AgentSummary,
-} from '@graphweave/protocol'
-import { getConnection } from '@graphweave/ws-client'
+} from '@loom/protocol'
+import { getConnection } from '@loom/ws-client'
 
 export async function listAgents(options?: {
   sourceFilter?: AgentListSource

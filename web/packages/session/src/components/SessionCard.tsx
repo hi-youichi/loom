@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import type { Session } from '@graphweave/types'
+import type { Session } from '@loom/types'
 import { formatSessionRelativeTime } from '../utils'
 
 function cn(...inputs: ClassValue[]) {

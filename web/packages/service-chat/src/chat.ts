@@ -2,13 +2,13 @@ import type {
   ChatReply,
   LoomServerMessage,
   LoomStreamEvent,
-} from '@graphweave/protocol'
+} from '@loom/protocol'
 import {
   isMessageChunkEvent,
   isRunEnd,
   isRunStreamEvent,
-} from '@graphweave/protocol'
-import { getConnection } from '@graphweave/ws-client'
+} from '@loom/protocol'
+import { getConnection } from '@loom/ws-client'
 import { setSessionModel } from './model'
 
 type SendMessageOptions = {

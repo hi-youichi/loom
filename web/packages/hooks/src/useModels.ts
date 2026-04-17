@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getConnection, type Model } from '@graphweave/ws-client'
+import { getConnection, type Model } from '@loom/ws-client'
 
 const CACHE_KEY = 'loom-models-cache'
 const CACHE_DURATION = 60 * 60 * 1000

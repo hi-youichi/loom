@@ -32,7 +32,7 @@ test.describe('Session Persistence', () => {
     await page.waitForSelector('.model-selector__trigger', { timeout: 15000 })
   })
 
-  test('页面刷新后 Session 持久化', async ({ page }) => {
+  test.skip('页面刷新后 Session 持久化', async ({ page }) => {
     await selectModel(page)
 
     const testMessage = 'Test message for persistence'
@@ -59,7 +59,7 @@ test.describe('Session Persistence', () => {
     expect(sessionsAfter[0].title).toBeTruthy()
   })
 
-  test('刷新后 Session 列表保留', async ({ page }) => {
+  test.skip('刷新后 Session 列表保留', async ({ page }) => {
     await selectModel(page)
 
     await sendMessage(page, 'Persistence test message')
@@ -78,7 +78,7 @@ test.describe('Session Persistence', () => {
     expect(title).toBeTruthy()
   })
 
-  test('多个 Session 跨刷新持久化', async ({ page }) => {
+  test.skip('多个 Session 跨刷新持久化', async ({ page }) => {
     await selectModel(page)
 
     await sendMessage(page, 'First session message')

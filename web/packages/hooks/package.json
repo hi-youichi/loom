@@ -1,5 +1,5 @@
 {
-  "name": "@graphweave/hooks",
+  "name": "@loom/hooks",
   "version": "0.0.0",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -16,20 +16,22 @@
     "dev": "tsup --watch"
   },
   "dependencies": {
-    "@graphweave/protocol": "workspace:*",
-    "@graphweave/types": "workspace:*",
-    "@graphweave/adapters": "workspace:*",
-    "@graphweave/ws-client": "workspace:*",
-    "@graphweave/session": "workspace:*",
-    "@graphweave/service-workspace": "workspace:*",
-    "@graphweave/service-agent": "workspace:*",
-    "@graphweave/service-chat": "workspace:*"
+    "@loom/protocol": "workspace:*",
+    "@loom/types": "workspace:*",
+    "@loom/adapters": "workspace:*",
+    "@loom/ws-client": "workspace:*",
+    "@loom/session": "workspace:*",
+    "@loom/service-workspace": "workspace:*",
+    "@loom/service-agent": "workspace:*",
+    "@loom/service-chat": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19.0.0"
   },
   "devDependencies": {
+    "@types/react": "^19.0.0",
     "tsup": "^8.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vite": "^6.0.0"
   }
 }

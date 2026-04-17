@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { SessionService } from '../service'
-import type { Session, SessionFilter, SessionListOptions } from '@graphweave/types'
+import type { Session, SessionFilter, SessionListOptions } from '@loom/types'
 
 export function useSessions() {
   const [sessions, setSessions] = useState<Session[]>([])

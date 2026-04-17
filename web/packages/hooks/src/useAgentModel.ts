@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 
-import type { Model } from '@graphweave/ws-client'
+import type { Model } from '@loom/ws-client'
 
 const STORAGE_KEY = 'loom-agent-model-map'
 const LAST_MODEL_KEY = 'loom-last-selected-model'

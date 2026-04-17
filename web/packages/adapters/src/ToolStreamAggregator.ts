@@ -6,7 +6,7 @@ import type {
   LoomToolOutputEvent,
   LoomToolStartEvent,
   LoomToolStatus,
-} from '@graphweave/protocol'
+} from '@loom/protocol'
 
 export type ToolStreamState = {
   callId: string

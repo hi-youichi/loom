@@ -1,10 +1,10 @@
-import type { LoomServerMessage, CancelRunRequest, CancelRunResponse } from '@graphweave/protocol'
+import type { LoomServerMessage, CancelRunRequest, CancelRunResponse } from '@loom/protocol'
 import {
   isError,
   isSessionCreatedEvent,
   isSessionUpdatedEvent,
   isSessionDeletedEvent,
-} from '@graphweave/protocol'
+} from '@loom/protocol'
 
 function getEnvValue(name: string) {
   return (import.meta.env as Record<string, string | undefined>)[name]?.trim()

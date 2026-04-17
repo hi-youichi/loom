@@ -1,5 +1,5 @@
 {
-  "name": "@graphweave/ws-client",
+  "name": "@loom/ws-client",
   "version": "0.0.0",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -16,10 +16,11 @@
     "dev": "tsup --watch"
   },
   "dependencies": {
-    "@graphweave/protocol": "workspace:*"
+    "@loom/protocol": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vite": "^6.0.0"
   }
 }

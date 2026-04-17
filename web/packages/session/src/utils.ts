@@ -1,4 +1,4 @@
-import type { Session } from '@graphweave/types'
+import type { Session } from '@loom/types'
 
 export function formatSessionRelativeTime(dateString: string): string {
   const date = new Date(dateString)

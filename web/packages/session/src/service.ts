@@ -1,4 +1,4 @@
-import type { Session } from '@graphweave/types'
+import type { Session } from '@loom/types'
 
 const SESSIONS_STORAGE_KEY = 'loom-sessions'
 const ACTIVE_SESSION_KEY = 'loom-active-session'

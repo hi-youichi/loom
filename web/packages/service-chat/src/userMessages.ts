@@ -1,4 +1,4 @@
-import { getConnection } from '@graphweave/ws-client'
+import { getConnection } from '@loom/ws-client'
 
 export type UserMessageItem = {
   role: string

@@ -3,8 +3,8 @@
  * 将规范化后的聊天消息转换为通用 UI 消息类型
  */
 
-import type { UIMessageItemProps, UITextContent, UIToolContent } from '@graphweave/types'
-import type { Message, MessageBlock, ToolBlock } from '@graphweave/types'
+import type { UIMessageItemProps, UITextContent, UIToolContent } from '@loom/types'
+import type { Message, MessageBlock, ToolBlock } from '@loom/types'
 import { ToolBlockAdapter } from './ToolBlockAdapter'
 
 /**

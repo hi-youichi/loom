@@ -5,7 +5,7 @@ export type {
   SessionFilter,
   SessionSort,
   SessionListOptions,
-} from '@graphweave/types'
+} from '@loom/types'
 
 export {
   formatSessionRelativeTime,

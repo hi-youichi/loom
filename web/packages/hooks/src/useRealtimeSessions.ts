@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getConnection } from '@graphweave/ws-client'
-import { listSessions } from '@graphweave/service-workspace'
-import type { Session } from '@graphweave/types'
-import type { SessionInWorkspace } from '@graphweave/protocol'
+import { getConnection } from '@loom/ws-client'
+import { listSessions } from '@loom/service-workspace'
+import type { Session } from '@loom/types'
+import type { SessionInWorkspace } from '@loom/protocol'
 
 export type SessionEvent = {
   type: 'created' | 'updated' | 'deleted'

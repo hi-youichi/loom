@@ -6,8 +6,8 @@ import type {
   WorkspaceSessionRemoveResponse,
   WorkspaceMeta,
   SessionInWorkspace,
-} from '@graphweave/protocol'
-import { getConnection } from '@graphweave/ws-client'
+} from '@loom/protocol'
+import { getConnection } from '@loom/ws-client'
 
 function request<T>(payload: object): Promise<T> {
   return getConnection().request({

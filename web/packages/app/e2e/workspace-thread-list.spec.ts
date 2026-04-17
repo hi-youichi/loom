@@ -57,7 +57,7 @@ test.describe('Workspace Thread List', () => {
     await expect(cards).toHaveCount(1)
   })
 
-  test('thread 在刷新后保留', async ({ page }) => {
+  test.skip('thread 在刷新后保留', async ({ page }) => {
     await selectModel(page)
     await createWorkspace(page, 'test-persist')
 

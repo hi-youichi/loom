@@ -3,7 +3,7 @@
  * 将聚合后的工具状态转换为通用 UI 类型
  */
 
-import type { UIToolContent } from '@graphweave/types'
+import type { UIToolContent } from '@loom/types'
 import type { ToolStreamState } from './ToolStreamAggregator'
 
 /**

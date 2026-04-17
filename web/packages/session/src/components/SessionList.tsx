@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import { SessionCard } from './SessionCard'
-import type { Session, SessionSort } from '@graphweave/types'
+import type { Session, SessionSort } from '@loom/types'
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))

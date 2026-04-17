@@ -7,4 +7,4 @@ export {
   getModelDisplayName,
   getSessionStatusStyle,
   truncateText,
-} from '@graphweave/session'
+} from '@loom/session'

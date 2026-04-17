@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef } from 'react'
 import { cn } from '../lib/utils'
-import { formatRelativeTime } from '@graphweave/utils'
-import type { ActivityEvent } from '@graphweave/types'
+import { formatRelativeTime } from '@loom/utils'
+import type { ActivityEvent } from '@loom/types'
 
 interface ActivityFeedProps {
   events: ActivityEvent[]

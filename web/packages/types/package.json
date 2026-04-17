@@ -1,5 +1,5 @@
 {
-  "name": "@graphweave/types",
+  "name": "@loom/types",
   "version": "0.0.0",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -16,7 +16,7 @@
     "dev": "tsup --watch"
   },
   "dependencies": {
-    "@graphweave/protocol": "workspace:*"
+    "@loom/protocol": "workspace:*"
   },
   "peerDependencies": {
     "lucide-react": "^1.7.0"

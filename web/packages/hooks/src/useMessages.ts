@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import type { UIMessageItemProps, UIMessageContent } from '@graphweave/types'
+import type { UIMessageItemProps, UIMessageContent } from '@loom/types'
 
 /**
  * useMessages Hook - 管理消息状态和操作

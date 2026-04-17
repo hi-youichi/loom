@@ -5,7 +5,7 @@ import {
   PopoverTrigger,
 } from './ui/popover'
 import { cn } from './lib/utils'
-import { useModels, type Model } from '@graphweave/hooks'
+import { useModels, type Model } from '@loom/hooks'
 
 type ModelSelectorProps = {
   value?: string

@@ -1,4 +1,4 @@
-import { ICON_MAP, type IconName } from '@graphweave/types'
+import { ICON_MAP, type IconName } from '@loom/types'
 
 export function ToolIcon({ name, size = 16, className, style }: {
   name: IconName

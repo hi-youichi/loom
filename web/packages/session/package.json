@@ -1,5 +1,5 @@
 {
-  "name": "@graphweave/session",
+  "name": "@loom/session",
   "version": "0.0.0",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -16,7 +16,7 @@
     "dev": "tsup --watch"
   },
   "dependencies": {
-    "@graphweave/types": "workspace:*",
+    "@loom/types": "workspace:*",
     "clsx": "^2.1.1",
     "tailwind-merge": "^3.5.0"
   },
@@ -25,6 +25,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@types/react": "^19.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0"
   }

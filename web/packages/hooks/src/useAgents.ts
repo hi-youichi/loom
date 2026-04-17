@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { AgentSource } from '@graphweave/types'
-import type { AgentListSource, AgentSummary } from '@graphweave/protocol'
-import type { AgentInfo } from '@graphweave/types'
-import { listAgents } from '@graphweave/service-agent'
+import type { AgentSource } from '@loom/types'
+import type { AgentListSource, AgentSummary } from '@loom/protocol'
+import type { AgentInfo } from '@loom/types'
+import { listAgents } from '@loom/service-agent'
 
 const SOURCE_MAP: Record<string, AgentSource> = {
   builtin: 'builtin',

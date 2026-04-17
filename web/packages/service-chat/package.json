@@ -1,5 +1,5 @@
 {
-  "name": "@graphweave/service-chat",
+  "name": "@loom/service-chat",
   "version": "0.0.0",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -16,11 +16,12 @@
     "dev": "tsup --watch"
   },
   "dependencies": {
-    "@graphweave/protocol": "workspace:*",
-    "@graphweave/ws-client": "workspace:*"
+    "@loom/protocol": "workspace:*",
+    "@loom/ws-client": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vite": "^6.0.0"
   }
 }

@@ -1,5 +1,5 @@
-import { useTheme } from '@graphweave/hooks'
-import type { IconName } from '@graphweave/types'
+import { useTheme } from '@loom/hooks'
+import type { IconName } from '@loom/types'
 import { ToolIcon } from './ToolIcon'
 
 const OPTIONS: { value: 'light' | 'dark' | 'system'; icon: IconName }[] = [

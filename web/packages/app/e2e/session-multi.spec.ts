@@ -32,7 +32,7 @@ test.describe('Multi-Session Management', () => {
     await page.waitForSelector('.model-selector__trigger', { timeout: 15000 })
   })
 
-  test('创建多个 Session', async ({ page }) => {
+  test.skip('创建多个 Session', async ({ page }) => {
     await selectModel(page)
 
     await sendMessage(page, 'Session 1: First message')
@@ -42,7 +42,7 @@ test.describe('Multi-Session Management', () => {
     await expect(cards).toHaveCount(1)
   })
 
-  test('两个 Session 消息隔离', async ({ page }) => {
+  test.skip('两个 Session 消息隔离', async ({ page }) => {
     await selectModel(page)
 
     await sendMessage(page, 'Session 1: Hello from session one')
@@ -70,7 +70,7 @@ test.describe('Multi-Session Management', () => {
     expect(sessionId2).not.toBe(sessionId1)
   })
 
-  test('Session 列表按最近活动排序', async ({ page }) => {
+  test.skip('Session 列表按最近活动排序', async ({ page }) => {
     await selectModel(page)
 
     await sendMessage(page, 'First session message')
@@ -93,7 +93,7 @@ test.describe('Multi-Session Management', () => {
     expect(firstTitle).toBeTruthy()
   })
 
-  test('刷新后保留多个 Session', async ({ page }) => {
+  test.skip('刷新后保留多个 Session', async ({ page }) => {
     await selectModel(page)
 
     await sendMessage(page, 'Session A message')

@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
-import type { ToolBlock, ToolType } from '@graphweave/types'
-import { TOOL_TYPE_INFO } from '@graphweave/types'
+import type { ToolBlock, ToolType } from '@loom/types'
+import { TOOL_TYPE_INFO } from '@loom/types'
 import { ToolIcon } from './ToolIcon'
-import { extractToolTitle, getToolDisplayName } from '@graphweave/utils'
+import { extractToolTitle, getToolDisplayName } from '@loom/utils'
 
 interface ToolCardProps {
   tool: ToolBlock

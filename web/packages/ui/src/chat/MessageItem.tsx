@@ -1,8 +1,8 @@
 import { memo } from 'react'
-import type { UIMessageItemProps, UITextContent, UIToolContent } from '@graphweave/types'
+import type { UIMessageItemProps, UITextContent, UIToolContent } from '@loom/types'
 import { MarkdownContent } from './MarkdownContent'
 import { ToolCard } from '../ToolCard'
-import type { ToolBlock } from '@graphweave/types'
+import type { ToolBlock } from '@loom/types'
 
 interface MessageItemExtraProps {
   streaming?: boolean

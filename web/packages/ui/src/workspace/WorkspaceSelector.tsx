@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { ChevronDown, Plus, X, Loader2 } from 'lucide-react'
 import { cn } from '../lib/utils'
-import type { WorkspaceMeta } from '@graphweave/protocol'
+import type { WorkspaceMeta } from '@loom/protocol'
 
 export interface WorkspaceSelectorProps {
   workspaces: WorkspaceMeta[]

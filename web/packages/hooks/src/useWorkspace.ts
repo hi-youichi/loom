@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import type { WorkspaceMeta, SessionInWorkspace } from '@graphweave/protocol'
-import * as wsApi from '@graphweave/service-workspace'
+import type { WorkspaceMeta, SessionInWorkspace } from '@loom/protocol'
+import * as wsApi from '@loom/service-workspace'
 
 const STORAGE_KEY = 'loom-active-workspace-id'
 

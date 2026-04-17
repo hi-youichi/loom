@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react'
-import type { AgentInfo, AgentStatus } from '@graphweave/types'
+import type { AgentInfo, AgentStatus } from '@loom/types'
 import { AgentCard } from './AgentCard'
 
 const STATUS_PRIORITY: Record<AgentStatus, number> = {

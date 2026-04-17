@@ -2,13 +2,13 @@
 
 import { memo, useRef, useCallback, useEffect } from "react"
 import { ChevronRight, Users, ChevronDown } from "lucide-react"
-import { useChatPanel } from '@graphweave/hooks'
+import { useChatPanel } from '@loom/hooks'
 import { MessageList } from "./MessageList"
 import { MessageComposer } from "../MessageComposer"
 import { ThemeToggle } from "../ThemeToggle"
-import { useModels } from '@graphweave/hooks'
-import { useAgentModel } from '@graphweave/hooks'
-import type { UIMessageItemProps } from '@graphweave/types'
+import { useModels } from '@loom/hooks'
+import { useAgentModel } from '@loom/hooks'
+import type { UIMessageItemProps } from '@loom/types'
 
 interface AgentChatSidebarProps {
   agents: Array<{ name: string; status: string }>

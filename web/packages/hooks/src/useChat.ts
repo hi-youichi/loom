@@ -1,17 +1,17 @@
 import { useCallback, useMemo, useRef, useState, useEffect } from 'react'
 
-import { ToolBlockAdapter } from '@graphweave/adapters'
-import { ToolStreamAggregator } from '@graphweave/adapters'
-import { sendMessage as sendChatMessage } from '@graphweave/service-chat'
-import { getConnection } from '@graphweave/ws-client'
-import { getUserMessages } from '@graphweave/service-chat'
+import { ToolBlockAdapter } from '@loom/adapters'
+import { ToolStreamAggregator } from '@loom/adapters'
+import { sendMessage as sendChatMessage } from '@loom/service-chat'
+import { getConnection } from '@loom/ws-client'
+import { getUserMessages } from '@loom/service-chat'
 import type {
   LoomStreamEvent,
   LoomToolEvent,
   WebSocketStatus,
-} from '@graphweave/protocol'
-import { isToolEvent } from '@graphweave/protocol'
-import type { UIMessageItemProps, UIToolContent } from '@graphweave/types'
+} from '@loom/protocol'
+import { isToolEvent } from '@loom/protocol'
+import type { UIMessageItemProps, UIToolContent } from '@loom/types'
 
 function createTextContent(text: string) {
   return {
@@ -188,19 +188,27 @@ export function useChat(options?: {
 
       try {
         setActiveRunId(null)
-        const reply = await sendChatMessage(text, {
-          sessionId,
-          workspaceId,
-          agent: agentId,
-          model,
-          onChunk: handleTextChunk,
-          onRunId: (serverRunId) => {
-            setActiveRunId(serverRunId)
-          },
-          onEvent: (event: LoomStreamEvent) => {
-            handleEvent(event)
-          },
-        })
+        const reply = await Promise.race([
+          sendChatMessage(text, {
+            sessionId,
+            workspaceId,
+            agent: agentId,
+            model,
+            onChunk: handleTextChunk,
+            onRunId: (serverRunId) => {
+              setActiveRunId(serverRunId)
+            },
+            onEvent: (event: LoomStreamEvent) => {
+              handleEvent(event)
+            },
+          }),
+          new Promise<{ content: string }>((_, reject) =>
+            setTimeout(
+              () => reject(new Error('Response timed out.')),
+              import.meta.env.VITE_RUN_TIMEOUT ? Number(import.meta.env.VITE_RUN_TIMEOUT) : 300_000,
+            ),
+          ),
+        ])
         if (reply.content) {
           updateAssistantMessage((msg) => ({
             ...msg,

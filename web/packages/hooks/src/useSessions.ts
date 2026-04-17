@@ -1,1 +1,1 @@
-export { useSessions } from '@graphweave/session'
+export { useSessions } from '@loom/session'

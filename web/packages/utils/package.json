@@ -1,5 +1,5 @@
 {
-  "name": "@graphweave/utils",
+  "name": "@loom/utils",
   "version": "0.0.0",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -16,8 +16,8 @@
     "dev": "tsup --watch"
   },
   "dependencies": {
-    "@graphweave/types": "workspace:*",
-    "@graphweave/session": "workspace:*"
+    "@loom/types": "workspace:*",
+    "@loom/session": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.0.0",

@@ -1,6 +1,6 @@
-import { ChatErrorBoundary } from '@graphweave/ui'
+import { ChatErrorBoundary } from '@loom/ui'
 import { ChatPage } from './pages/ChatPage'
-import { ThemeProvider } from '@graphweave/hooks'
+import { ThemeProvider } from '@loom/hooks'
 
 function App() {
   return (

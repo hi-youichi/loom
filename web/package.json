@@ -6,7 +6,7 @@
   "packageManager": "pnpm@10.29.3",
   "scripts": {
     "build": "turbo build",
-    "dev": "turbo dev --concurrency 13",
+    "dev": "turbo dev --concurrency 14",
     "lint": "turbo lint",
     "test": "turbo test",
     "test:watch": "turbo test -- --watch",

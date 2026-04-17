@@ -1,5 +1,5 @@
-import { getConnection } from '@graphweave/ws-client'
-import type { Model } from '@graphweave/ws-client'
+import { getConnection } from '@loom/ws-client'
+import type { Model } from '@loom/ws-client'
 
 export type { Model }
 

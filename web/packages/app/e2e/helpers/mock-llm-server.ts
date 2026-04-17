@@ -149,7 +149,7 @@ export function startMockLLMServer(config: MockLLMServerConfig): Promise<http.Se
             ]
 
             for (const chunk of sseChunks) {
-              res.write(`data: ${JSON.stringify(chunk)}\n\n`)
+              res.write(`data: ${chunk}\n\n`)
             }
 
             res.write('data: [DONE]\n\n')

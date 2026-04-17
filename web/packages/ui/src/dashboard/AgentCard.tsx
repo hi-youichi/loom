@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { cn } from '../lib/utils'
-import type { AgentInfo, AgentSource, AgentStatus } from '@graphweave/types'
+import type { AgentInfo, AgentSource, AgentStatus } from '@loom/types'
 import { Plus } from 'lucide-react'
 
 const STATUS_CONFIG: Record<AgentStatus, { dot: string; label: string; ring: string; cardBorder: string }> = {

@@ -4,5 +4,5 @@ export default defineConfig({
   format: ['esm', 'cjs'],
   dts: true,
   clean: true,
-  external: ['react', 'react-dom', '@graphweave/types'],
+  external: ['react', 'react-dom', '@loom/types'],
 })

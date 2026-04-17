@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { addSession } from '@graphweave/service-workspace'
+import { addSession } from '@loom/service-workspace'
 
 const SESSION_STORAGE_KEY = 'loom-web-session-id'
 

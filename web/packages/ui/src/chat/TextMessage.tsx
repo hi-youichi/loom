@@ -1,4 +1,4 @@
-import type { UITextContent } from '@graphweave/types'
+import type { UITextContent } from '@loom/types'
 import { MarkdownContent } from './MarkdownContent'
 
 interface TextMessageProps {

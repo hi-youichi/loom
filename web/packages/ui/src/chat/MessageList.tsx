@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { memo } from 'react'
-import type { UIMessageItemProps } from '@graphweave/types'
+import type { UIMessageItemProps } from '@loom/types'
 import { MessageItem } from './MessageItem'
 
 interface MessageListProps {
