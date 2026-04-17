@@ -605,6 +605,20 @@ fn extract_target_from_input(name: &str, input: Option<&serde_json::Value>) -> O
         &[&["command", "cmd"]]
     } else if n.contains("fetch") {
         &[&["url", "uri"]]
+    } else if n.contains("invoke_agent") || n.contains("invoke") && n.contains("agent") {
+        // Special handling for invoke_agent: extract agent names from agents array
+        if let Some(agents) = obj.get("agents").and_then(|v| v.as_array()) {
+            if !agents.is_empty() {
+                let agent_names: Vec<String> = agents
+                    .iter()
+                    .filter_map(|agent| agent.get("agent").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                    .collect();
+                if !agent_names.is_empty() {
+                    return Some(format!("{} agent(s): {}", agent_names.len(), agent_names.join(", ")));
+                }
+            }
+        }
+        &[]
     } else {
         &[]
     };
