@@ -26,6 +26,8 @@ pub struct WorkspaceMeta {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ThreadInWorkspace {
     pub thread_id: String,
+    /// Optional display name (title) for this thread, typically auto-generated from the first message.
+    pub name: Option<String>,
     /// Milliseconds since Unix epoch.
     pub created_at_ms: i64,
 }
@@ -58,6 +60,7 @@ impl Store {
                 workspace_id TEXT NOT NULL,
                 thread_id TEXT NOT NULL,
                 created_at INTEGER NOT NULL,
+                name TEXT,
                 PRIMARY KEY (workspace_id, thread_id),
                 FOREIGN KEY (workspace_id) REFERENCES workspaces(id)
             );
@@ -65,6 +68,15 @@ impl Store {
             "#,
         )
         .map_err(|e| StoreError::Storage(e.to_string()))?;
+        // Migration: add name column to workspace_threads (idempotent, ignored if column already exists)
+        match conn.execute_batch("ALTER TABLE workspace_threads ADD COLUMN name TEXT") {
+            Ok(_) => {},
+            Err(e) if e.to_string().contains("duplicate column") => {}
+            Err(e) => {
+                tracing::warn!("workspace_threads migration warning: {}", e);
+            }
+        }
+
         Ok(Self {
             db: Arc::new(Mutex::new(conn)),
         })
@@ -121,15 +133,15 @@ impl Store {
             let conn = db.lock().map_err(|_| StoreError::Storage("lock".into()))?;
             let mut stmt = conn
                 .prepare(
-                    "SELECT thread_id, created_at FROM workspace_threads WHERE workspace_id = ?1 ORDER BY created_at DESC",
+                    "SELECT thread_id, name, created_at FROM workspace_threads WHERE workspace_id = ?1 ORDER BY created_at DESC",
                 )
                 .map_err(|e| StoreError::Storage(e.to_string()))?;
             let rows = stmt
                 .query_map(rusqlite::params![workspace_id.as_str()], |row| {
-                    let created_at_ms: i64 = row.get(1)?;
                     Ok(ThreadInWorkspace {
                         thread_id: row.get(0)?,
-                        created_at_ms,
+                        name: row.get(1)?,
+                        created_at_ms: row.get(2)?,
                     })
                 })
                 .map_err(|e| StoreError::Storage(e.to_string()))?;
@@ -202,6 +214,36 @@ impl Store {
                 rusqlite::params![workspace_id, thread_id],
             )
             .map_err(|e| StoreError::Storage(e.to_string()))?;
+            Ok(())
+        })
+    }
+
+    /// Sets or updates the display name (title) of a thread within a workspace.
+    /// Returns `NotFound` if the thread is not a member of the workspace.
+    pub async fn rename_thread(
+        &self,
+        workspace_id: &str,
+        thread_id: &str,
+        name: &str,
+    ) -> Result<(), StoreError> {
+        let db = self.db.clone();
+        let workspace_id = workspace_id.to_string();
+        let thread_id = thread_id.to_string();
+        let name = name.to_string();
+        tokio::task::block_in_place(|| {
+            let conn = db.lock().map_err(|_| StoreError::Storage("lock".into()))?;
+            let rows = conn
+                .execute(
+                    "UPDATE workspace_threads SET name = ?1 WHERE workspace_id = ?2 AND thread_id = ?3",
+                    rusqlite::params![name, workspace_id, thread_id],
+                )
+                .map_err(|e| StoreError::Storage(e.to_string()))?;
+            if rows == 0 {
+                return Err(StoreError::NotFound(format!(
+                    "thread {} not found in workspace {}",
+                    thread_id, workspace_id
+                )));
+            }
             Ok(())
         })
     }

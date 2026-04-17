@@ -150,6 +150,7 @@ pub mod tool_source;
 pub mod tools;
 pub mod traits;
 pub mod user_message;
+pub mod title_generator;
 
 pub use agent::react::{
     build_dup_runner, build_got_runner, build_react_initial_state, build_react_run_context,
@@ -261,6 +262,7 @@ pub use traits::Agent;
 pub use user_message::{
     NoOpUserMessageStore, SqliteUserMessageStore, UserMessageStore, UserMessageStoreError,
 };
+pub use title_generator::generate_title;
 
 // Re-export DUP, GoT, ToT from agent for backward compatibility.
 pub use agent::{
