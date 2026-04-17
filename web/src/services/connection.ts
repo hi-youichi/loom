@@ -285,7 +285,6 @@ class LoomConnection {
     this.pending.set(id, { resolve, reject, onMessage })
 
     if ((payload as Record<string, unknown>).type === 'run') {
-      this.clearRunMapping()
       this.activeRunRequestId = id
     }
 

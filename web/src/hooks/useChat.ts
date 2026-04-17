@@ -88,6 +88,7 @@ export function useChat(options?: {
 
   const [messages, setMessages] = useState<UIMessageItemProps[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
+  const isStreamingRef = useRef(isStreaming)
   const [connectionStatus, setConnectionStatus] = useState<WebSocketStatus>('connected')
   const [error, setError] = useState<string | null>(null)
   const [thinkingLines, setThinkingLines] = useState<string[]>([])
@@ -109,9 +110,19 @@ export function useChat(options?: {
         return
       }
 
-      setMessages((current) =>
-        current.map((message) => (message.id === messageId ? updater(message) : message)),
-      )
+      setMessages((current) => {
+        const targetExists = current.some((msg) => msg.id === messageId)
+        if (!targetExists) {
+          if (import.meta.env.DEV) {
+            console.warn(`[useChat] Attempted to update non-existent message: ${messageId}`)
+          }
+          return current
+        }
+
+        return current.map((message) => 
+          message.id === messageId ? updater(message) : message
+        )
+      })
     },
     [],
   )
@@ -158,7 +169,7 @@ export function useChat(options?: {
 
   const sendMessage = useCallback(
     async (text: string) => {
-      if (isStreaming) {
+      if (isStreamingRef.current) {
         return
       }
 
@@ -170,6 +181,7 @@ export function useChat(options?: {
       setMessages((prev) => [...prev, assistantMessage])
 
       setIsStreaming(true)
+      isStreamingRef.current = true
       setError(null)
       setConnectionStatus('connected')
       toolAggregatorRef.current.reset()
@@ -210,15 +222,23 @@ export function useChat(options?: {
         setError(nextError)
       } finally {
         setIsStreaming(false)
+        isStreamingRef.current = false
         setActiveRunId(null)
       }
     },
-    [isStreaming, sessionId, workspaceId, agentId, model, handleTextChunk, handleEvent, updateAssistantMessage],
+    [sessionId, workspaceId, agentId, model, handleTextChunk, handleEvent, updateAssistantMessage],
   )
 
   const loadHistory = useCallback(async (targetSessionId?: string) => {
     const id = targetSessionId || sessionId
     if (!id) return
+
+    if (isStreamingRef.current) {
+      if (import.meta.env.DEV) {
+        console.warn('[useChat] Skipping history load while streaming')
+      }
+      return
+    }
 
     try {
       const history = await getUserMessages(id)
@@ -239,14 +259,15 @@ export function useChat(options?: {
         })
       }
 
-      setMessages(uiMessages)
+      setMessages(() => uiMessages)
+      activeAssistantMessageIdRef.current = null
     } catch {
       // silently fail - history loading is best-effort
     }
   }, [sessionId])
 
   const cancel = useCallback(async () => {
-    if (!activeRunId || !isStreaming) {
+    if (!activeRunId || !isStreamingRef.current) {
       return
     }
 
@@ -257,9 +278,10 @@ export function useChat(options?: {
       console.error('Failed to cancel run:', error)
       // Even if cancel fails, we should reset the streaming state
       setIsStreaming(false)
+      isStreamingRef.current = false
       setActiveRunId(null)
     }
-  }, [activeRunId, isStreaming])
+  }, [activeRunId])
 
   return useMemo(
     () => ({
