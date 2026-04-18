@@ -5,6 +5,8 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
+
 use crate::error::AgentError;
 use crate::llm::{create_llm_client, ChatOpenAI, ChatOpenAICompat, ModelEntry, ModelRegistry, ProviderConfig};
 use crate::model_spec::ModelTier;
@@ -24,11 +26,11 @@ fn parse_provider_model(model: &str) -> Option<(&str, &str)> {
     Some((provider, model_id))
 }
 
-pub(crate) struct ResolvedTierModel {
-    pub(crate) model_id: String,
-    pub(crate) base_url: Option<String>,
-    pub(crate) api_key: Option<String>,
-    pub(crate) provider_type: Option<String>,
+pub struct ResolvedTierModel {
+    pub model_id: String,
+    pub base_url: Option<String>,
+    pub api_key: Option<String>,
+    pub provider_type: Option<String>,
 }
 
 impl ResolvedTierModel {
@@ -59,41 +61,63 @@ pub(crate) fn load_provider_configs() -> Option<Vec<ProviderConfig>> {
     )
 }
 
-pub(crate) async fn resolve_tier_for_config(
-    config: &ReactBuildConfig,
-    tier: ModelTier,
-) -> Option<ResolvedTierModel> {
-    let providers = load_provider_configs()?;
+#[async_trait]
+pub trait TierResolver: Send + Sync {
+    async fn resolve_tier(
+        &self,
+        config: &ReactBuildConfig,
+        tier: ModelTier,
+    ) -> Option<ResolvedTierModel>;
+}
 
-    match config.model.as_deref() {
-        Some(model_id) => {
-            let entry = ModelRegistry::global()
-                .resolve_tier_for_model(model_id, tier, &providers)
-                .await?;
-            Some(ResolvedTierModel::from_entry(entry))
-        }
-        None => {
-            let provider = config.llm_provider.as_deref();
-            match provider {
-                Some(p) => {
-                    let entry = ModelRegistry::global()
-                        .resolve_tier(p, tier, &providers)
-                        .await?;
-                    Some(ResolvedTierModel::from_entry(entry))
-                }
-                None => {
-                    for p in &providers {
-                        if let Some(entry) =
-                            ModelRegistry::global().resolve_tier(&p.name, tier, &providers).await
-                        {
-                            return Some(ResolvedTierModel::from_entry(entry));
-                        }
+pub struct DefaultTierResolver;
+
+#[async_trait]
+impl TierResolver for DefaultTierResolver {
+    async fn resolve_tier(
+        &self,
+        config: &ReactBuildConfig,
+        tier: ModelTier,
+    ) -> Option<ResolvedTierModel> {
+        let providers = load_provider_configs()?;
+
+        match config.model.as_deref() {
+            Some(model_id) => {
+                let entry = ModelRegistry::global()
+                    .resolve_tier_for_model(model_id, tier, &providers)
+                    .await?;
+                Some(ResolvedTierModel::from_entry(entry))
+            }
+            None => {
+                let provider = config.llm_provider.as_deref();
+                match provider {
+                    Some(p) => {
+                        let entry = ModelRegistry::global()
+                            .resolve_tier(p, tier, &providers)
+                            .await?;
+                        Some(ResolvedTierModel::from_entry(entry))
                     }
-                    None
+                    None => {
+                        for p in &providers {
+                            if let Some(entry) =
+                                ModelRegistry::global().resolve_tier(&p.name, tier, &providers).await
+                            {
+                                return Some(ResolvedTierModel::from_entry(entry));
+                            }
+                        }
+                        None
+                    }
                 }
             }
         }
     }
+}
+
+pub(crate) async fn resolve_tier_for_config(
+    config: &ReactBuildConfig,
+    tier: ModelTier,
+) -> Option<ResolvedTierModel> {
+    DefaultTierResolver.resolve_tier(config, tier).await
 }
 
 pub(crate) async fn resolve_title_llm(

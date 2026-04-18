@@ -156,8 +156,9 @@ pub use agent::react::{
     build_dup_runner, build_got_runner, build_react_initial_state, build_react_run_context,
     build_react_runner, build_react_runner_with_openai, build_tot_runner, run_agent,
     run_react_graph_stream, tools_condition, ActNode, AgentOptions, BuildRunnerError,
-    ErrorHandlerFn, GotRunnerConfig, HandleToolErrors, ObserveNode, ReactBuildConfig,
-    ReactRunContext, ReactRunner, RunError as ReactRunError, ThinkNode, ToolsConditionResult,
+    DefaultTierResolver, ErrorHandlerFn, GotRunnerConfig, HandleToolErrors, ObserveNode,
+    ReactBuildConfig, ReactRunContext, ReactRunner, ResolvedTierModel, RunError as ReactRunError,
+    ThinkNode, TierResolver, ToolsConditionResult,
     TotRunnerConfig, WithNodeLogging, DEFAULT_EXECUTION_ERROR_TEMPLATE,
     DEFAULT_TOOL_ERROR_TEMPLATE, REACT_SYSTEM_PROMPT, STEP_PROGRESS_EVENT_TYPE,
 };
@@ -169,6 +170,7 @@ pub use channels::{
 pub use cli_run::{
     build_config_from_profile, build_helve_config, list_available_profiles, load_agents_md,
     resolve_model_config, resolve_profile, resolve_tier_and_build_config,
+    resolve_tier_and_build_config_with_resolver,
     run_agent_with_llm_override, run_agent_with_options,
     ActiveOperation, ActiveOperationCanceller, ActiveOperationKind, AgentProfile, AgentRunResult,
     AnyRunner, AnyStreamEvent, ProfileError, ProfileSource, ProfileSummary, ResolvedAgent,

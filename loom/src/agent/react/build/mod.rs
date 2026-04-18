@@ -29,7 +29,7 @@ use tool_source::build_tool_source;
 
 pub use context::ReactRunContext;
 pub use error::BuildRunnerError;
-pub(crate) use llm::resolve_tier_for_config;
+pub use llm::{DefaultTierResolver, ResolvedTierModel, TierResolver};
 
 fn to_agent_error(e: impl std::fmt::Display) -> AgentError {
     AgentError::ExecutionFailed(e.to_string())
