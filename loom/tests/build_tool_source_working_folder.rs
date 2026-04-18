@@ -1,7 +1,7 @@
-﻿//! Integration test: build_react_run_context with working_folder set includes file tools.
+//! Integration test: build_react_run_context with working_folder set includes file tools.
 //!
 //! Scenario: when ReactBuildConfig has working_folder set, the built tool source
-//! lists ls, read, write_file, move_file, delete_file, create_dir.
+//! lists ls, read, write, move_file, delete_file, create_dir.
 
 mod init_logging;
 
@@ -14,7 +14,7 @@ use loom::{build_react_run_context, ReactBuildConfig};
 #[tokio::test]
 async fn build_tool_source_with_working_folder_includes_file_tools() {
     let dir = tempfile::tempdir().unwrap();
-    let config = ReactBuildConfig {
+    let _config = ReactBuildConfig {
         db_path: None,
         thread_id: None,
         user_id: None,
@@ -52,5 +52,5 @@ async fn build_tool_source_with_working_folder_includes_file_tools() {
         max_sub_agent_depth: None,
         dry_run: false,
         builtin_tool_filter: None,
-    }
+    };
 }
