@@ -36,6 +36,11 @@ pub struct GotRunnerConfig {
 pub struct ReactBuildConfig {
     pub db_path: Option<String>,
     pub thread_id: Option<String>,
+    /// Root thread ID used for LLM trace headers (`X-Thread-Id`).
+    /// Always carries the top-level (root) agent's thread_id so that all
+    /// sub-agent LLM calls can be correlated in external tracing.
+    /// Set once at the root level, then propagated unchanged by `invoke_agent`.
+    pub trace_thread_id: Option<String>,
     pub user_id: Option<String>,
     pub system_prompt: Option<String>,
     pub exa_api_key: Option<String>,
@@ -88,6 +93,7 @@ impl ReactBuildConfig {
         Self {
             db_path: std::env::var("LOOM_DB_PATH").ok(),
             thread_id: std::env::var("LOOM_THREAD_ID").ok(),
+            trace_thread_id: None,
             user_id: std::env::var("LOOM_USER_ID").ok(),
             system_prompt: std::env::var("SYSTEM_PROMPT").ok(),
             exa_api_key: std::env::var("EXA_API_KEY").ok(),

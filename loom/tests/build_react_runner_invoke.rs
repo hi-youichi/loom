@@ -13,6 +13,7 @@ fn minimal_config() -> ReactBuildConfig {
     ReactBuildConfig {
         db_path: None,
         thread_id: None,
+        trace_thread_id: None,
         user_id: None,
         system_prompt: None,
         exa_api_key: None,
