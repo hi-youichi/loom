@@ -765,6 +765,7 @@ mod tests {
             skill_registry: None,
             max_sub_agent_depth: None,
             dry_run: false,
+            builtin_tool_filter: None,
         }
     }
 
