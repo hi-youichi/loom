@@ -4,6 +4,36 @@ mod e2e;
 
 use std::time::Duration;
 
+fn handshake(acp: &mut e2e::AcpChild) -> String {
+    let init = acp
+        .send_request_and_wait(
+            "initialize",
+            serde_json::json!({ "protocolVersion": 1 }),
+            Duration::from_secs(10),
+        )
+        .expect("initialize");
+    assert!(init.error.is_none(), "initialize failed: {:?}", init.error);
+
+    let sess = acp
+        .send_request_and_wait(
+            "session/new",
+            serde_json::json!({
+                "cwd": std::env::current_dir().unwrap().to_str().unwrap(),
+                "mcpServers": [],
+            }),
+            Duration::from_secs(10),
+        )
+        .expect("session/new");
+    assert!(sess.error.is_none(), "session/new failed: {:?}", sess.error);
+
+    sess.result
+        .expect("should have result")
+        .get("sessionId")
+        .and_then(|v| v.as_str())
+        .expect("should have sessionId")
+        .to_string()
+}
+
 #[test]
 fn e2e_prompt_capabilities_structure() {
     let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
@@ -205,4 +235,101 @@ fn e2e_prompt_capabilities_with_different_protocol_versions() {
     );
     assert!(prompt_caps.get("image").is_some(), "image should be present");
     assert!(prompt_caps.get("audio").is_some(), "audio should be present");
+}
+
+#[test]
+fn e2e_prompt_with_embedded_resource() {
+    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
+    let session_id = handshake(&mut acp);
+
+    let response = acp
+        .send_request_and_wait(
+            "session/prompt",
+            serde_json::json!({
+                "sessionId": session_id,
+                "prompt": [{
+                    "type": "text",
+                    "text": "What is in this resource?"
+                }, {
+                    "type": "resource",
+                    "resource": {
+                        "uri": "file:///tmp/test.txt",
+                        "mimeType": "text/plain",
+                        "text": "Hello from embedded resource"
+                    }
+                }],
+            }),
+            Duration::from_secs(30),
+        )
+        .expect("session/prompt response");
+
+    assert!(
+        response.error.is_none(),
+        "prompt with embedded resource should not return protocol error: {:?}",
+        response.error
+    );
+}
+
+#[test]
+fn e2e_prompt_with_image_block() {
+    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
+    let session_id = handshake(&mut acp);
+
+    let tiny_png_base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+    let response = acp
+        .send_request_and_wait(
+            "session/prompt",
+            serde_json::json!({
+                "sessionId": session_id,
+                "prompt": [{
+                    "type": "text",
+                    "text": "Describe this image"
+                }, {
+                    "type": "image",
+                    "data": tiny_png_base64,
+                    "mimeType": "image/png"
+                }],
+            }),
+            Duration::from_secs(30),
+        )
+        .expect("session/prompt response");
+
+    assert!(
+        response.error.is_none(),
+        "prompt with image block should not return protocol error: {:?}",
+        response.error
+    );
+}
+
+#[test]
+fn e2e_prompt_with_audio_block() {
+    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
+    let session_id = handshake(&mut acp);
+
+    let fake_audio_base64 = "UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
+
+    let response = acp
+        .send_request_and_wait(
+            "session/prompt",
+            serde_json::json!({
+                "sessionId": session_id,
+                "prompt": [{
+                    "type": "text",
+                    "text": "Transcribe this audio"
+                }, {
+                    "type": "audio",
+                    "data": fake_audio_base64,
+                    "mimeType": "audio/wav"
+                }],
+            }),
+            Duration::from_secs(30),
+        )
+        .expect("session/prompt response");
+
+    assert!(
+        response.error.is_none(),
+        "prompt with audio block should not return protocol error: {:?}",
+        response.error
+    );
 }
