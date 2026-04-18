@@ -12,7 +12,7 @@ use loom::{
     compress::{
         build_graph, compaction::PRUNE_PLACEHOLDER, CompactionConfig, CompressionGraphNode,
     },
-    tools_condition, ActNode, LlmClient, Message, MockLlm, MockToolSource, ObserveNode, ReActState,
+    tools_condition, ActNode, FixedLlmProvider, LlmClient, Message, MockLlm, MockToolSource, ObserveNode, ReActState,
     StateGraph, ThinkNode, END, START,
 };
 
@@ -43,7 +43,10 @@ async fn no_compression_when_within_all_limits() {
         prune_minimum: Some(0),
         ..Default::default()
     };
-    let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(""));
+    let llm: Arc<dyn LlmProvider> = Arc::new(FixedLlmProvider {
+        client: Arc::new(MockLlm::with_no_tool_calls("")),
+        model_id: "mock".to_string(),
+    });
     let graph = build_graph(config, llm, None).expect("compile");
 
     let msgs = vec![
@@ -79,7 +82,10 @@ async fn prune_replaces_old_tool_results_via_compression_graph() {
         auto: false,
         ..Default::default()
     };
-    let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(""));
+    let llm: Arc<dyn LlmProvider> = Arc::new(FixedLlmProvider {
+        client: Arc::new(MockLlm::with_no_tool_calls("")),
+        model_id: "mock".to_string(),
+    });
     let graph = build_graph(config, llm, None).expect("compile");
 
     let msgs = vec![
@@ -128,7 +134,10 @@ async fn compact_summarizes_messages_on_overflow() {
         ..Default::default()
     };
     let summary_text = "User asked about time, assistant checked clock";
-    let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(summary_text));
+    let llm: Arc<dyn LlmProvider> = Arc::new(FixedLlmProvider {
+        client: Arc::new(MockLlm::with_no_tool_calls(summary_text)),
+        model_id: "mock".to_string(),
+    });
     let graph = build_graph(config, llm, None).expect("compile");
 
     let msgs = vec![
@@ -175,7 +184,10 @@ async fn prune_then_compact_combined() {
         ..Default::default()
     };
     let summary_text = "Conversation summary after prune and compact";
-    let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(summary_text));
+    let llm: Arc<dyn LlmProvider> = Arc::new(FixedLlmProvider {
+        client: Arc::new(MockLlm::with_no_tool_calls(summary_text)),
+        model_id: "mock".to_string(),
+    });
     let graph = build_graph(config, llm, None).expect("compile");
 
     let msgs = vec![
@@ -212,9 +224,14 @@ async fn prune_then_compact_combined() {
 
 #[tokio::test]
 async fn compression_in_full_react_loop() {
-    let compress_llm: Arc<dyn LlmClient> =
-        Arc::new(MockLlm::with_no_tool_calls("Summary of conversation"));
-    let think_llm: Arc<dyn LlmClient> = Arc::new(MockLlm::first_tools_then_end());
+    let compress_llm: Arc<dyn LlmProvider> = Arc::new(FixedLlmProvider {
+        client: Arc::new(MockLlm::with_no_tool_calls("Summary of conversation")),
+        model_id: "mock".to_string(),
+    });
+    let think_llm: Arc<dyn LlmProvider> = Arc::new(FixedLlmProvider {
+        client: Arc::new(MockLlm::first_tools_then_end()),
+        model_id: "mock".to_string(),
+    });
 
     // After prune replaces tool results with placeholders, the remaining non-tool messages
     // (assistant messages with 200 chars each) must still overflow max_context_tokens.

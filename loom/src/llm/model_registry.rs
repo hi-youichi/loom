@@ -29,14 +29,75 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::sync::RwLock;
+use futures::future::join_all;
 
 use crate::error::AgentError;
-use crate::llm::{ChatOpenAI, ChatOpenAICompat, LlmClient};
+use crate::llm::{ChatOpenAI, ChatOpenAICompat, LlmClient, LlmProvider};
 use crate::model_spec::{ModelsDevResolver, Provider as SpecProvider};
 use async_openai::config::OpenAIConfig;
 
 /// Default TTL for cached model lists (5 minutes).
 const DEFAULT_CACHE_TTL: Duration = Duration::from_secs(300);
+
+/// Default TTL for provider API cache (5 minutes).
+const DEFAULT_PROVIDER_CACHE_TTL: Duration = Duration::from_secs(300);
+
+/// Cached model list from provider API or local storage.
+#[derive(Clone, Debug)]
+pub struct CachedModelList {
+    /// List of cached model entries.
+    pub models: Vec<ModelEntry>,
+    /// When the cache was created.
+    pub fetched_at: Instant,
+    /// Time-to-live for this cache entry.
+    pub ttl: Duration,
+}
+
+impl CachedModelList {
+    /// Create a new cached model list.
+    pub fn new(models: Vec<ModelEntry>, ttl: Duration) -> Self {
+        Self {
+            models,
+            fetched_at: Instant::now(),
+            ttl,
+        }
+    }
+    
+    /// Check if the cache has expired.
+    pub fn is_expired(&self) -> bool {
+        self.fetched_at.elapsed() > self.ttl
+    }
+}
+
+/// Combined model list from multiple sources.
+#[derive(Clone, Debug, Default)]
+pub struct CombinedModelList {
+    /// Models from models.dev registry.
+    pub models_dev: Vec<ModelEntry>,
+    /// Models from provider APIs.
+    pub provider_models: Vec<ModelEntry>,
+    /// Models from local storage.
+    pub local_models: Vec<ModelEntry>,
+}
+
+impl CombinedModelList {
+    /// Merge all model lists, removing duplicates.
+    pub fn merge_all(self) -> Vec<ModelEntry> {
+        let mut seen = std::collections::HashSet::new();
+        let mut result = Vec::new();
+        
+        for model in self.models_dev.into_iter()
+            .chain(self.provider_models)
+            .chain(self.local_models)
+        {
+            if seen.insert(model.id.clone()) {
+                result.push(model);
+            }
+        }
+        
+        result
+    }
+}
 
 /// Provider configuration for model registry.
 /// This is a simplified version that can be converted from config::ProviderDef.
@@ -52,6 +113,24 @@ pub struct ProviderConfig {
     pub provider_type: Option<String>,
     /// When `true`, fetch model list from `{base_url}/models` instead of models.dev.
     pub fetch_models: bool,
+    /// Cache TTL for provider API models (in seconds). Default: 300 seconds (5 minutes).
+    pub cache_ttl: Option<u64>,
+    /// When `true`, enable tier resolution for this provider. Default: `true`.
+    pub enable_tier_resolution: bool,
+}
+
+impl Default for ProviderConfig {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            base_url: None,
+            api_key: None,
+            provider_type: None,
+            fetch_models: false,
+            cache_ttl: None,
+            enable_tier_resolution: true,
+        }
+    }
 }
 
 /// A fully resolved model entry with provider configuration.
@@ -189,6 +268,10 @@ pub struct ModelRegistry {
 struct RegistryInner {
     /// Cached provider catalog from models.dev.
     cache: Option<CachedSpecProviders>,
+    /// Cached model lists from provider APIs.
+    provider_cache: HashMap<String, CachedModelList>,
+    /// Local model lists (persisted storage).
+    local_models: HashMap<String, Vec<ModelEntry>>,
 }
 
 impl ModelRegistry {
@@ -476,6 +559,279 @@ impl ModelRegistry {
     pub async fn invalidate_all(&self) {
         let mut inner = self.inner.write().await;
         inner.cache = None;
+        inner.provider_cache.clear();
+        inner.local_models.clear();
+    }
+
+    /// Get cached model list for a specific provider.
+    pub async fn get_cached_provider_models(&self, provider: &str) -> Option<Vec<ModelEntry>> {
+        let inner = self.inner.read().await;
+        inner.provider_cache.get(provider).and_then(|cached| {
+            if cached.is_expired() {
+                None
+            } else {
+                Some(cached.models.clone())
+            }
+        })
+    }
+
+    /// Cache model list for a specific provider.
+    pub async fn cache_provider_models(&self, provider: String, models: Vec<ModelEntry>, ttl: Duration) {
+        let mut inner = self.inner.write().await;
+        inner.provider_cache.insert(provider, CachedModelList::new(models, ttl));
+    }
+
+    /// Invalidate cached models for a specific provider.
+    pub async fn invalidate_provider_models(&self, provider: &str) {
+        let mut inner = self.inner.write().await;
+        inner.provider_cache.remove(provider);
+    }
+
+    /// Get local model list for a specific provider.
+    pub async fn get_local_models(&self, provider: &str) -> Option<Vec<ModelEntry>> {
+        let inner = self.inner.read().await;
+        inner.local_models.get(provider).cloned()
+    }
+
+    /// Set local model list for a specific provider.
+    pub async fn set_local_models(&self, provider: String, models: Vec<ModelEntry>) {
+        let mut inner = self.inner.write().await;
+        inner.local_models.insert(provider, models);
+    }
+
+    /// Fetch model list from provider API with caching.
+    pub async fn fetch_provider_models_cached(
+        &self,
+        provider: &ProviderConfig,
+    ) -> Result<Vec<ModelEntry>, AgentError> {
+        // Check cache first
+        if let Some(cached) = self.get_cached_provider_models(&provider.name).await {
+            tracing::debug!(
+                provider = %provider.name,
+                count = cached.len(),
+                "Using cached provider models"
+            );
+            return Ok(cached);
+        }
+
+        // Fetch from API
+        let models = self.fetch_provider_models_api(provider).await?;
+        
+        // Cache the result
+        let ttl = provider.cache_ttl
+            .map(Duration::from_secs)
+            .unwrap_or(DEFAULT_PROVIDER_CACHE_TTL);
+        
+        self.cache_provider_models(provider.name.clone(), models.clone(), ttl).await;
+        
+        Ok(models)
+    }
+
+    /// Fetch model list from provider API without caching.
+    async fn fetch_provider_models_api(
+        &self,
+        provider: &ProviderConfig,
+    ) -> Result<Vec<ModelEntry>, AgentError> {
+        let base_url = provider.base_url.as_ref().ok_or_else(|| {
+            AgentError::ExecutionFailed(format!("Provider {} has no base_url configured", provider.name))
+        })?;
+
+        let url = format!("{}/models", base_url.trim_end_matches('/'));
+        let model_ids = fetch_models_from_api(&url, provider.api_key.as_deref()).await?;
+        
+        let models: Vec<ModelEntry> = model_ids
+            .into_iter()
+            .map(|model_id| ModelEntry::from_provider_config(provider, &model_id))
+            .collect();
+
+        tracing::info!(
+            provider = %provider.name,
+            count = models.len(),
+            "Fetched models from provider API"
+        );
+
+        Ok(models)
+    }
+
+    /// Fetch models from all sources in parallel.
+    pub async fn fetch_all_model_sources(
+        &self,
+        providers: &[ProviderConfig],
+    ) -> Result<CombinedModelList, AgentError> {
+        // Fetch models.dev models
+        let models_dev_future = async {
+            match self.fetch_or_get_cached_spec_providers().await {
+                Ok(spec_providers) => {
+                    let mut models = Vec::new();
+                    for provider in providers {
+                        if !provider.fetch_models {
+                            let normalized = Self::normalize_provider_name(&provider.name);
+                            if let Some(spec_provider) = spec_providers.get(&normalized) {
+                                for model_id in spec_provider.models.keys() {
+                                    models.push(ModelEntry::from_provider_config(provider, model_id));
+                                }
+                            }
+                        }
+                    }
+                    Ok::<Vec<ModelEntry>, AgentError>(models)
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to fetch models.dev models");
+                    Ok::<Vec<ModelEntry>, AgentError>(Vec::new())
+                }
+            }
+        };
+
+        // Fetch provider API models
+        let provider_futures: Vec<_> = providers
+            .iter()
+            .filter(|p| p.fetch_models)
+            .map(|provider| async move {
+                match self.fetch_provider_models_cached(provider).await {
+                    Ok(models) => Ok(models),
+                    Err(e) => {
+                        tracing::warn!(
+                            provider = %provider.name,
+                            error = %e,
+                            "Failed to fetch models from provider API"
+                        );
+                        Ok(Vec::new())
+                    }
+                }
+            })
+            .collect();
+
+        // Execute all futures in parallel
+        let (models_dev_result, provider_results) = tokio::join!(
+            models_dev_future,
+            join_all(provider_futures)
+        );
+
+        let models_dev = models_dev_result?;
+        let provider_models: Vec<ModelEntry> = provider_results
+            .into_iter()
+            .filter_map(|result: Result<Vec<ModelEntry>, AgentError>| result.ok())
+            .flatten()
+            .collect();
+
+        // Load local models (placeholder for future implementation)
+        let local_models = Vec::new();
+
+        Ok(CombinedModelList {
+            models_dev,
+            provider_models,
+            local_models,
+        })
+    }
+
+    /// Intelligent tier resolution with multiple fallback mechanisms.
+    pub async fn resolve_tier_intelligent(
+        &self,
+        provider: &str,
+        tier: model_spec_core::spec::ModelTier,
+        providers: &[ProviderConfig],
+    ) -> Option<ModelEntry> {
+        // 1. Try models.dev tier resolution
+        if let Some(entry) = self.resolve_tier_from_dev(provider, tier, providers).await {
+            tracing::debug!(
+                provider = %provider,
+                tier = ?tier,
+                "Tier resolution succeeded using models.dev"
+            );
+            return Some(entry);
+        }
+
+        // 2. Try provider API model list matching
+        if let Some(entry) = self.resolve_tier_from_provider_api(provider, tier, providers).await {
+            tracing::debug!(
+                provider = %provider,
+                tier = ?tier,
+                "Tier resolution succeeded using provider API"
+            );
+            return Some(entry);
+        }
+
+        // 3. Try local model list matching (placeholder for future implementation)
+        if let Some(entry) = self.resolve_tier_from_local_models(provider, tier, providers).await {
+            tracing::debug!(
+                provider = %provider,
+                tier = ?tier,
+                "Tier resolution succeeded using local models"
+            );
+            return Some(entry);
+        }
+
+        tracing::warn!(
+            provider = %provider,
+            tier = ?tier,
+            "Tier resolution failed using all methods"
+        );
+        None
+    }
+
+    /// Resolve tier using models.dev.
+    async fn resolve_tier_from_dev(
+        &self,
+        provider: &str,
+        tier: model_spec_core::spec::ModelTier,
+        providers: &[ProviderConfig],
+    ) -> Option<ModelEntry> {
+        let provider_cfg = providers.iter().find(|p| p.name == provider)?;
+        let spec_providers = self.fetch_or_get_cached_spec_providers().await.ok()?;
+        let normalized = Self::normalize_provider_name(provider);
+        let spec_provider = spec_providers.get(&normalized)?;
+
+        let (model_id, _model) =
+            model_spec_core::spec::pick_best_for_tier(&spec_provider.models, tier)?;
+
+        let mut entry = ModelEntry::from_provider_config(provider_cfg, model_id);
+        if entry.base_url.is_none() {
+            if let Some(ref api) = spec_provider.api {
+                entry.base_url = Some(api.clone());
+            }
+        }
+        if entry.provider_type.is_none() && !entry.provider.eq_ignore_ascii_case("openai") {
+            entry.provider_type = Some("openai_compat".to_string());
+        }
+
+        Some(entry)
+    }
+
+    /// Resolve tier using provider API model list.
+    async fn resolve_tier_from_provider_api(
+        &self,
+        provider: &str,
+        _tier: model_spec_core::spec::ModelTier,
+        providers: &[ProviderConfig],
+    ) -> Option<ModelEntry> {
+        let provider_cfg = providers.iter().find(|p| p.name == provider)?;
+        
+        if !provider_cfg.fetch_models {
+            return None; // Provider doesn't use API model list
+        }
+
+        let model_list = self.fetch_provider_models_cached(provider_cfg).await.ok()?;
+        
+        // Simple tier matching logic - in practice, this would need more sophisticated matching
+        // For now, we'll just return the first model as a placeholder
+        // TODO: Implement proper tier matching based on model capabilities
+        if let Some(first_model) = model_list.first() {
+            return Some(first_model.clone());
+        }
+
+        None
+    }
+
+    /// Resolve tier using local model list.
+    async fn resolve_tier_from_local_models(
+        &self,
+        _provider: &str,
+        _tier: model_spec_core::spec::ModelTier,
+        _providers: &[ProviderConfig],
+    ) -> Option<ModelEntry> {
+        // Placeholder for future local model list implementation
+        // This would load from a persisted local storage
+        None
     }
 }
 
@@ -604,6 +960,40 @@ pub fn create_llm_client(entry: &ModelEntry) -> Result<Box<dyn LlmClient>, Agent
     Ok(client)
 }
 
+/// Create an [`LlmProvider`] from a [`ModelEntry`].
+///
+/// Returns an `Arc<dyn LlmProvider>` that can dynamically create [`LlmClient`] instances
+/// for any model name, and resolve [`ModelTier`] abstractions to concrete model IDs.
+pub fn create_llm_provider(
+    entry: &ModelEntry,
+    providers: Vec<ProviderConfig>,
+) -> Result<Arc<dyn LlmProvider>, AgentError> {
+    let provider_type = entry.provider_type.as_deref().unwrap_or_else(|| {
+        if entry.provider.eq_ignore_ascii_case("openai") {
+            "openai"
+        } else {
+            "openai_compat"
+        }
+    });
+
+    match provider_type {
+        "openai" => {
+            let provider = crate::llm::openai_provider::OpenAIProvider::from_entry(
+                entry,
+                providers,
+            );
+            Ok(Arc::new(provider))
+        }
+        _ => {
+            let provider = crate::llm::openai_compat_provider::OpenAICompatProvider::from_entry(
+                entry,
+                providers,
+            );
+            Ok(Arc::new(provider))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -623,6 +1013,8 @@ mod tests {
             api_key: Some("key".to_string()),
             provider_type: Some("openai".to_string()),
             fetch_models: false,
+            cache_ttl: None,
+            enable_tier_resolution: true,
         };
         let cloned = config.clone();
         assert_eq!(config.name, cloned.name);
@@ -684,6 +1076,8 @@ mod tests {
             api_key: Some("sk-test".to_string()),
             provider_type: None,
             fetch_models: false,
+            cache_ttl: None,
+            enable_tier_resolution: true,
         };
 
         let entry = ModelEntry::from_provider_config(&provider, "gpt-4o");
@@ -708,6 +1102,8 @@ mod tests {
                 api_key: Some("sk-test".to_string()),
                 provider_type: None,
                 fetch_models: false,
+                cache_ttl: None,
+                enable_tier_resolution: true,
             }];
             let result = registry
                 .resolve_tier("unknown_provider", model_spec_core::spec::ModelTier::Light, &providers)
@@ -727,6 +1123,8 @@ mod tests {
                 api_key: Some("sk-test".to_string()),
                 provider_type: None,
                 fetch_models: false,
+                cache_ttl: None,
+                enable_tier_resolution: true,
             }];
             let result = registry
                 .resolve_tier_for_model(

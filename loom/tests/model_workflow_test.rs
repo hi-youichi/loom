@@ -131,6 +131,8 @@ mod tests {
             api_key: Some("sk-test".to_string()),
             provider_type: Some("openai".to_string()),
             fetch_models: false,
+            cache_ttl: None,
+            enable_tier_resolution: true,
         };
 
         let model_name = "gpt-4o";

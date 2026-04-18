@@ -16,6 +16,8 @@ use crate::error::AgentError;
 use crate::memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
 use crate::model_spec::{ModelLimitResolver, ModelsDevResolver};
 use crate::state::ReActState;
+use crate::llm::LlmProvider;
+use crate::llm::FixedLlmProvider;
 use crate::LlmClient;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -23,7 +25,7 @@ use serde::Serialize;
 use super::config::ReactBuildConfig;
 use super::runner::ReactRunner;
 use super::REACT_SYSTEM_PROMPT;
-use llm::{build_default_llm_with_tool_source, resolve_title_llm};
+use llm::{build_default_llm_with_tool_source, build_default_provider, resolve_title_provider};
 use store::build_store;
 use tool_source::build_tool_source;
 
@@ -150,22 +152,22 @@ async fn resolve_compaction_config(config: &ReactBuildConfig) -> CompactionConfi
 
 pub async fn build_react_runner(
     config: &ReactBuildConfig,
-    llm: Option<Box<dyn LlmClient>>,
+    provider: Option<Arc<dyn LlmProvider>>,
     verbose: bool,
 ) -> Result<ReactRunner, BuildRunnerError> {
     let ctx = build_react_run_context(config).await?;
-    let llm = match llm {
-        Some(l) => l,
-        None => build_default_llm_with_tool_source(config, ctx.tool_source.as_ref()).await?,
+    let provider = match provider {
+        Some(p) => p,
+        None => build_default_provider(config, ctx.tool_source.as_ref()).await?,
     };
     let system_prompt = config
         .system_prompt
         .clone()
         .unwrap_or_else(|| REACT_SYSTEM_PROMPT.to_string());
     let compaction_config = resolve_compaction_config(config).await;
-    let title_llm = resolve_title_llm(config).await;
+    let title_provider = resolve_title_provider(config).await;
     let runner = ReactRunner::new(
-        llm,
+        provider,
         ctx.tool_source,
         ctx.checkpointer,
         ctx.store,
@@ -176,7 +178,7 @@ pub async fn build_react_runner(
         None,
         None,
         verbose,
-        title_llm,
+        title_provider,
     )?;
     Ok(runner)
 }
@@ -303,7 +305,10 @@ pub async fn build_react_runner_with_openai(
 ) -> Result<ReactRunner, BuildRunnerError> {
     use crate::llm::ChatOpenAI;
     let client = ChatOpenAI::with_config(openai_config, model);
-    build_react_runner(config, Some(Box::new(client)), verbose).await
+    build_react_runner(config, Some(Arc::new(FixedLlmProvider {
+        client: Arc::from(Box::new(client) as Box<dyn LlmClient>),
+        model_id: "openai".to_string(),
+    })), verbose).await
 }
 
 #[cfg(test)]
@@ -316,6 +321,7 @@ mod tests {
         ReactBuildConfig {
             db_path: None,
             thread_id: None,
+            trace_thread_id: None,
             user_id: None,
             system_prompt: None,
             exa_api_key: None,
@@ -425,7 +431,10 @@ mod tests {
         cfg.system_prompt = Some("test system prompt".to_string());
         let runner = build_react_runner(
             &cfg,
-            Some(Box::new(MockLlm::with_no_tool_calls("react final"))),
+            Some(Arc::new(FixedLlmProvider {
+                client: Arc::new(MockLlm::with_no_tool_calls("react final")),
+                model_id: "mock".to_string(),
+            })),
             false,
         )
         .await

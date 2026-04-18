@@ -2,10 +2,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::cost::Cost;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum ModelTier {
+    #[default]
+    None,
     Light,
     Standard,
     Strong,
@@ -14,6 +16,7 @@ pub enum ModelTier {
 impl std::fmt::Display for ModelTier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            ModelTier::None => write!(f, "none"),
             ModelTier::Light => write!(f, "light"),
             ModelTier::Standard => write!(f, "standard"),
             ModelTier::Strong => write!(f, "strong"),
@@ -22,19 +25,22 @@ impl std::fmt::Display for ModelTier {
 }
 
 impl ModelTier {
-    pub const fn variants() -> [&'static str; 3] {
-        ["light", "standard", "strong"]
+    pub const fn variants() -> [&'static str; 4] {
+        ["none", "light", "standard", "strong"]
     }
 }
 
 /// From a map of models, pick the best model matching `tier`.
 ///
 /// Filters by [`tier_of`], then picks the one with the most recent `release_date`.
-/// Returns `None` if no model matches.
+/// Returns `None` if no model matches, or if `tier` is [`ModelTier::None`].
 pub fn pick_best_for_tier<'a>(
     models: &'a std::collections::HashMap<String, crate::model::Model>,
     tier: ModelTier,
 ) -> Option<(&'a String, &'a crate::model::Model)> {
+    if tier == ModelTier::None {
+        return None;
+    }
     let mut candidates: Vec<(&'a String, &'a crate::model::Model)> = models
         .iter()
         .filter(|(_, m)| m.tier() == tier)

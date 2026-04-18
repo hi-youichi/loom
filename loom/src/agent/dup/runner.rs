@@ -132,7 +132,11 @@ impl DupRunner {
         verbose: bool,
     ) -> Result<Self, CompilationError> {
         let understand = UnderstandNode::new(Box::new(SharedLlm(Arc::clone(&llm))));
-        let plan = PlanNode::new(Box::new(SharedLlm(llm)));
+        let plan_provider: Arc<dyn crate::llm::LlmProvider> = Arc::new(crate::llm::FixedLlmProvider {
+            client: Arc::clone(&llm),
+            model_id: "dup".to_string(),
+        });
+        let plan = PlanNode::new(plan_provider);
         let act = DupActNode::new(tool_source).with_approval_policy(approval_policy);
         let observe = DupObserveNode::new();
 

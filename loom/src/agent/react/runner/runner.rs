@@ -9,14 +9,14 @@ use crate::graph::{
     CompilationError, CompiledStateGraph, LoggingNodeMiddleware, StateGraph, END, START,
 };
 use crate::helve::ApprovalPolicy;
-use crate::llm::RetryLlmClient;
+use crate::llm::LlmProvider;
 use crate::memory::{Checkpointer, RunnableConfig, Store};
 use crate::runner_common;
 use crate::state::ReActState;
 use crate::stream::StreamEvent;
 use crate::tool_source::ToolSource;
 use crate::user_message::UserMessageStore;
-use crate::{LlmClient, RunCancellation};
+use crate::{RunCancellation};
 use crate::cli_run::AnyStreamEvent;
 
 use super::error::RunError;
@@ -46,7 +46,7 @@ impl ReactRunner {
 
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        llm: Box<dyn LlmClient>,
+        provider: Arc<dyn LlmProvider>,
         tool_source: Box<dyn ToolSource>,
         checkpointer: Option<Arc<dyn Checkpointer<ReActState>>>,
         store: Option<Arc<dyn Store>>,
@@ -57,18 +57,16 @@ impl ReactRunner {
         _user_message_store: Option<Arc<dyn UserMessageStore>>,
         cancellation: Option<RunCancellation>,
         verbose: bool,
-        title_llm: Option<Arc<dyn LlmClient>>,
+        title_provider: Option<Arc<dyn LlmProvider>>,
     ) -> Result<Self, CompilationError> {
-        let llm: Arc<dyn LlmClient> = Arc::from(llm);
-        let retry_llm: Arc<dyn LlmClient> = Arc::new(RetryLlmClient::new(llm.clone()));
-        let think = ThinkNode::new(Arc::clone(&retry_llm));
+        let think = ThinkNode::new(Arc::clone(&provider));
         let act = ActNode::new(tool_source)
             .with_handle_tool_errors(HandleToolErrors::Always(None))
             .with_approval_policy(approval_policy);
         let observe = ObserveNode::with_loop();
 
         let compaction_cfg = compaction_config.unwrap_or_default();
-        let compression_graph = build_graph(compaction_cfg.clone(), Arc::clone(&retry_llm), None)?;
+        let compression_graph = build_graph(compaction_cfg.clone(), Arc::clone(&provider), None)?;
         let compress_node = Arc::new(CompressionGraphNode::new(compression_graph));
 
         let mut graph = StateGraph::<ReActState>::new();
@@ -77,7 +75,7 @@ impl ReactRunner {
         }
 
         let title_node = TitleNode::new(
-            title_llm.unwrap_or_else(|| Arc::clone(&retry_llm))
+            title_provider.unwrap_or_else(|| Arc::clone(&provider))
         );
 
         let think_condition_path_map: HashMap<String, String> = [
@@ -218,7 +216,7 @@ pub async fn run_agent(
 ) -> Result<ReActState, RunError> {
     let opts = resolve_run_agent_options(options.unwrap_or_default());
     let runner = ReactRunner::new(
-        opts.llm,
+        opts.provider,
         opts.tool_source,
         opts.checkpointer,
         opts.store,
@@ -244,7 +242,7 @@ where
 {
     let opts = resolve_run_agent_options(options.unwrap_or_default());
     let runner = ReactRunner::new(
-        opts.llm,
+        opts.provider,
         opts.tool_source,
         opts.checkpointer,
         opts.store,

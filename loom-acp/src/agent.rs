@@ -93,6 +93,8 @@ impl LoomAcpAgent {
                     api_key: p.api_key,
                     provider_type: p.provider_type,
                     fetch_models: p.fetch_models.unwrap_or(false),
+                    cache_ttl: None,
+                    enable_tier_resolution: true,
                 })
                 .collect(),
             Err(_) => vec![],

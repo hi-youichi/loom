@@ -14,7 +14,7 @@ use async_trait::async_trait;
 
 use crate::error::AgentError;
 use crate::graph::Next;
-use crate::llm::LlmClient;
+use crate::llm::LlmProvider;
 use crate::message::Message;
 use crate::state::ReActState;
 use crate::Node;
@@ -37,13 +37,12 @@ fn clamp_summary_chars(s: &str) -> String {
 /// Uses a separate LLM call to create a concise title (≤50 chars)
 /// suitable for display in session lists.
 pub struct TitleNode {
-    llm: Arc<dyn LlmClient>,
+    provider: Arc<dyn LlmProvider>,
 }
 
 impl TitleNode {
-    /// Creates a new TitleNode with the given LLM client.
-    pub fn new(llm: Arc<dyn LlmClient>) -> Self {
-        Self { llm }
+    pub fn new(provider: Arc<dyn LlmProvider>) -> Self {
+        Self { provider }
     }
 }
 
@@ -102,7 +101,9 @@ impl Node<ReActState> for TitleNode {
             Message::user(prompt),
         ];
 
-        match self.llm.invoke(&title_messages).await {
+        let model = self.provider.default_model();
+        let client = self.provider.create_client(model)?;
+        match client.invoke(&title_messages).await {
             Ok(response) => {
                 let raw = response.content.trim();
                 let title = clamp_summary_chars(raw);
@@ -117,7 +118,8 @@ impl Node<ReActState> for TitleNode {
 
                 tracing::info!("title_node::run - generated title: {:?}", title);
 
-                let new_state = ReActState {
+let new_state = ReActState {
+                    model_config: state.model_config,
                     messages: state.messages,
                     last_reasoning_content: state.last_reasoning_content,
                     tool_calls: state.tool_calls,

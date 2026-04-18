@@ -8,7 +8,7 @@ use crate::error::AgentError;
 use crate::graph::{
     CompilationError, CompiledStateGraph, Next, Node, RunContext, StateGraph, END, START,
 };
-use crate::llm::LlmClient;
+use crate::llm::LlmProvider;
 
 use crate::state::ReActState;
 
@@ -19,16 +19,18 @@ use super::prune_node::PruneNode;
 /// Builds the compression subgraph: prune → compact → END.
 pub fn build_graph(
     config: CompactionConfig,
-    llm: Arc<dyn LlmClient>,
-    compact_llm: Option<Arc<dyn LlmClient>>,
+    provider: Arc<dyn LlmProvider>,
+    compact_llm: Option<Arc<dyn LlmProvider>>,
 ) -> Result<CompiledStateGraph<ReActState>, CompilationError> {
     let prune_node = Arc::new(PruneNode {
         config: config.clone(),
     });
-    let compact_llm = compact_llm.unwrap_or(llm);
+    let compact_provider = compact_llm.unwrap_or(provider);
+    let default_model = compact_provider.default_model().to_string();
+    let compact_client = compact_provider.create_client(&default_model).expect("failed to create compact client");
     let compact_node = Arc::new(CompactNode {
         config,
-        llm: compact_llm,
+        llm: Arc::from(compact_client),
     });
     let mut graph = StateGraph::<ReActState>::new();
     graph
@@ -83,29 +85,26 @@ mod tests {
 
     use super::*;
 
+    use crate::llm::{FixedLlmProvider, LlmProvider};
+
+    fn mock_provider() -> Arc<dyn LlmProvider> {
+        Arc::new(FixedLlmProvider {
+            client: Arc::new(MockLlm::with_no_tool_calls("")),
+            model_id: "mock".to_string(),
+        })
+    }
+
     #[test]
     fn build_graph_compiles() {
-        let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(""));
-        let _compiled = build_graph(CompactionConfig::default(), llm, None).expect("compile");
+        let _compiled = build_graph(CompactionConfig::default(), mock_provider(), None).expect("compile");
     }
 
     #[tokio::test]
     async fn build_graph_invoke_preserves_messages_when_no_prune_no_overflow() {
-        let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(""));
-        let compiled = build_graph(CompactionConfig::default(), llm, None).expect("compile");
+        let compiled = build_graph(CompactionConfig::default(), mock_provider(), None).expect("compile");
         let state = ReActState {
             messages: vec![Message::user("hello")],
-            last_reasoning_content: None,
-            tool_calls: vec![],
-            tool_results: vec![],
-            turn_count: 0,
-            approval_result: None,
-            usage: None,
-            total_usage: None,
-            message_count_after_last_think: None,
-            summary: None,
-            think_count: 0,
-            should_continue: true,
+            ..Default::default()
         };
         let out = compiled.invoke(state, None).await.unwrap();
         assert_eq!(out.messages.len(), 1);
@@ -114,30 +113,20 @@ mod tests {
 
     #[tokio::test]
     async fn compression_graph_node_id_is_compress() {
-        let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(""));
-        let inner = build_graph(CompactionConfig::default(), llm, None).unwrap();
+        let inner = build_graph(CompactionConfig::default(), mock_provider(), None).unwrap();
         let node = CompressionGraphNode::new(inner);
         assert_eq!(node.id(), "compress");
     }
 
     #[tokio::test]
     async fn compression_graph_node_run_invokes_inner() {
-        let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(""));
-        let inner = build_graph(CompactionConfig::default(), llm, None).unwrap();
+        let inner = build_graph(CompactionConfig::default(), mock_provider(), None).unwrap();
         let node = CompressionGraphNode::new(inner);
         let state = ReActState {
             messages: vec![Message::user("test")],
-            last_reasoning_content: None,
-            tool_calls: vec![],
-            tool_results: vec![],
             turn_count: 1,
-            approval_result: None,
-            usage: None,
-            total_usage: None,
-            message_count_after_last_think: None,
-            summary: None,
             think_count: 1,
-            should_continue: true,
+            ..Default::default()
         };
         let (out, next) = node.run(state).await.unwrap();
         assert_eq!(out.messages.len(), 1);

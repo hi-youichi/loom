@@ -59,6 +59,12 @@ pub struct ProviderDef {
     /// When `true`, fetch model list from `{base_url}/models` instead of models.dev.
     #[serde(default)]
     pub fetch_models: Option<bool>,
+    /// Cache TTL for provider API models (in seconds). Default: 300 seconds (5 minutes).
+    #[serde(default)]
+    pub cache_ttl: Option<u64>,
+    /// When `true`, enable tier resolution for this provider. Default: `true`.
+    #[serde(default)]
+    pub enable_tier_resolution: Option<bool>,
 }
 
 impl ProviderDef {
@@ -244,6 +250,8 @@ BAR = "baz"
             provider_type: None,
             temperature: None,
             fetch_models: None,
+            cache_ttl: None,
+            enable_tier_resolution: None,
         };
         assert!(!p.to_env_map().contains_key("OPENAI_TOOL_CHOICE"));
     }
@@ -258,6 +266,8 @@ BAR = "baz"
             provider_type: None,
             temperature: Some(0.25),
             fetch_models: None,
+            cache_ttl: None,
+            enable_tier_resolution: None,
         };
         let m = p.to_env_map();
         assert_eq!(
@@ -276,6 +286,8 @@ BAR = "baz"
             provider_type: None,
             temperature: Some(f64::NAN),
             fetch_models: None,
+            cache_ttl: None,
+            enable_tier_resolution: None,
         };
         assert!(!p.to_env_map().contains_key("OPENAI_TEMPERATURE"));
     }

@@ -1,4 +1,4 @@
-﻿//! L2: build_tool_source with GitHub MCP (github_token None vs invalid command).
+//! L2: build_tool_source with GitHub MCP (github_token None vs invalid command).
 //!
 //! When github_token is None, no GitHub MCP is started. When github_token is set but
 //! mcp_github_cmd is invalid, spawn fails and we skip GitHub MCP (build still succeeds).
@@ -11,6 +11,7 @@ fn base_config(working_folder: std::path::PathBuf) -> ReactBuildConfig {
     ReactBuildConfig {
         db_path: None,
         thread_id: None,
+        trace_thread_id: None,
         user_id: None,
         system_prompt: None,
         exa_api_key: None,

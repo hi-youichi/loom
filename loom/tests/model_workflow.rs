@@ -88,6 +88,8 @@ mod tests {
             api_key: Some("test-key".to_string()),
             provider_type: None,
             fetch_models: false,
+            cache_ttl: None,
+            enable_tier_resolution: true,
         };
 
         let model = "gpt-4o";

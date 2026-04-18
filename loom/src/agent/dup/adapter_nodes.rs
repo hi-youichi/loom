@@ -10,6 +10,7 @@ use async_trait::async_trait;
 use crate::agent::react::{ActNode, HandleToolErrors, ObserveNode, ThinkNode};
 use crate::error::AgentError;
 use crate::graph::Next;
+use crate::llm::LlmProvider;
 use crate::Node;
 use crate::{helve::ApprovalPolicy, tool_source::ToolSource};
 
@@ -21,9 +22,9 @@ pub struct PlanNode {
 }
 
 impl PlanNode {
-    pub fn new(llm: Box<dyn crate::LlmClient>) -> Self {
+    pub fn new(provider: Arc<dyn LlmProvider>) -> Self {
         Self {
-            think: ThinkNode::new(Arc::from(llm)),
+            think: ThinkNode::new(provider),
         }
     }
 }

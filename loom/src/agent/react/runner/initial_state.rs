@@ -18,23 +18,24 @@ pub async fn build_react_initial_state(
         runnable_config,
         user_message,
         async move {
-            Ok(ReActState {
-                messages: vec![
-                    Message::system(system_prompt),
-                    Message::user(user_message_owned),
-                ],
-                last_reasoning_content: None,
-                tool_calls: vec![],
-                tool_results: vec![],
-                turn_count: 0,
-                approval_result: None,
-                usage: None,
-                total_usage: None,
-                message_count_after_last_think: None,
-                summary: None,
-                think_count: 0,
-                should_continue: true,
-            })
+Ok(ReActState {
+            model_config: Default::default(),
+            messages: vec![
+                Message::system(system_prompt),
+                Message::user(user_message_owned),
+            ],
+            last_reasoning_content: None,
+            tool_calls: vec![],
+            tool_results: vec![],
+            turn_count: 0,
+            approval_result: None,
+            usage: None,
+            total_usage: None,
+            message_count_after_last_think: None,
+            summary: None,
+            think_count: 0,
+            should_continue: true,
+        })
         },
         |mut state, msg| {
             state.messages.push(Message::user(msg));

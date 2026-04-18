@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 use loom::{
     compress::{build_graph, CompactionConfig, CompressionGraphNode},
-    tools_condition, ActNode, CompiledStateGraph, LlmClient, Message, MockLlm, MockToolSource,
+    tools_condition, ActNode, CompiledStateGraph, FixedLlmProvider, LlmClient, Message, MockLlm, MockToolSource,
     ObserveNode, ReActState, StateGraph, ThinkNode, END, START,
 };
 
@@ -67,7 +67,10 @@ async fn react_linear_chain_user_to_tool_result_in_messages() {
 /// observe returns Continue (to compress then think); second round think returns no tool_calls, observe returns End.
 #[tokio::test]
 async fn react_multi_round_loop_then_end() {
-    let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::first_tools_then_end());
+    let llm: Arc<dyn LlmProvider> = Arc::new(FixedLlmProvider {
+        client: Arc::new(MockLlm::first_tools_then_end()),
+        model_id: "mock".to_string(),
+    });
     let compression_graph =
         build_graph(CompactionConfig::default(), Arc::clone(&llm), None).expect("compress graph");
     let compress_node = Arc::new(CompressionGraphNode::new(compression_graph));

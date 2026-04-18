@@ -97,8 +97,12 @@ impl GotRunner {
         adaptive: bool,
         agot_llm_complexity: bool,
     ) -> Result<Self, CompilationError> {
-        let plan = PlanGraphNode::new(Box::new(super::runner::SharedLlm(Arc::clone(&llm))));
-        let execute = ExecuteGraphNode::new(llm, tool_source, adaptive, agot_llm_complexity);
+        let plan = PlanGraphNode::new(Box::new(SharedLlm(Arc::clone(&llm))));
+        let provider: Arc<dyn crate::llm::LlmProvider> = Arc::new(crate::llm::FixedLlmProvider {
+            client: Arc::clone(&llm),
+            model_id: "got".to_string(),
+        });
+        let execute = ExecuteGraphNode::new(provider, tool_source, adaptive, agot_llm_complexity);
 
         let mut graph = StateGraph::<GotState>::new();
         if let Some(s) = store {

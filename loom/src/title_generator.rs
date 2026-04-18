@@ -95,6 +95,8 @@ fn load_providers() -> Option<Vec<crate::llm::ProviderConfig>> {
                 api_key: p.api_key,
                 provider_type: p.provider_type,
                 fetch_models: p.fetch_models.unwrap_or(false),
+                cache_ttl: p.cache_ttl,
+                enable_tier_resolution: p.enable_tier_resolution.unwrap_or(true),
             })
             .collect(),
     )
