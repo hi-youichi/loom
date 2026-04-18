@@ -7,6 +7,7 @@ CLAUDE.md
 AGENTS.md
 
 tmp/
+test-output*.txt
 idea/
 lancedb_data/
 author-name.txt
