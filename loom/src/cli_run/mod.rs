@@ -8,7 +8,7 @@ mod profile;
 
 pub use agent::{
     run_agent, run_agent_with_llm_override, run_agent_with_options, run_agent_with_provider,
-    resolve_tier_and_build_config,
+    resolve_tier_and_build_config, resolve_tier_and_build_config_with_resolver,
     ActiveOperation, ActiveOperationCanceller, ActiveOperationKind, AgentRunResult, AnyRunner,
     AnyStreamEvent, RunCancellation, RunCmd, RunCompletion, RunError, RunOptions,
 };

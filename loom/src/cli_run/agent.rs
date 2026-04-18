@@ -1,6 +1,6 @@
 //! Unified agent runner: ReAct, DUP, ToT, GoT.
 
-use crate::agent::react::resolve_tier_for_config;
+use crate::agent::react::TierResolver;
 use crate::cli_run::build_helve_config;
 use crate::export::stream_event_to_format_a;
 use crate::llm::LlmClient;
@@ -508,11 +508,18 @@ pub async fn build_runner(
 }
 
 pub async fn resolve_tier_and_build_config(config: &ReactBuildConfig) -> ReactBuildConfig {
+    resolve_tier_and_build_config_with_resolver(config, &crate::agent::react::DefaultTierResolver).await
+}
+
+pub async fn resolve_tier_and_build_config_with_resolver(
+    config: &ReactBuildConfig,
+    resolver: &dyn TierResolver,
+) -> ReactBuildConfig {
     let Some(tier) = config.model_tier else {
         return config.clone();
     };
     let mut config = config.clone();
-    match resolve_tier_for_config(&config, tier).await {
+    match resolver.resolve_tier(&config, tier).await {
         Some(resolved) => {
             tracing::info!(
                 tier = ?tier,

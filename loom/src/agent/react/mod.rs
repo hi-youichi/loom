@@ -42,7 +42,7 @@ pub use build::{
     build_dup_runner, build_got_runner, build_react_run_context, build_react_runner,
     build_react_runner_with_openai, build_tot_runner, BuildRunnerError, ReactRunContext,
 };
-pub(crate) use build::resolve_tier_for_config;
+pub use build::{DefaultTierResolver, ResolvedTierModel, TierResolver};
 pub use config::{GotRunnerConfig, ReactBuildConfig, TotRunnerConfig};
 pub use observe_node::ObserveNode;
 pub use runner::{
