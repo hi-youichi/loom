@@ -237,8 +237,14 @@ impl InvokeAgentTool {
             }
         }
 
-        // Propagate depth + 1 so nested invoke_agent calls are tracked
-        sub_config.thread_id = None;
+        // Propagate thread_id with depth information for nested call tracking
+        if let Some(parent_thread_id) = &self.base_config.thread_id {
+            // Append depth info to parent thread_id for nested calls
+            sub_config.thread_id = Some(format!("{}.{}", parent_thread_id, ctx.map_or(0, |c| c.depth + 1)));
+        } else {
+            // Generate new thread_id if parent doesn't have one
+            sub_config.thread_id = Some(format!("thread-{}", chrono::Utc::now().timestamp()));
+        }
 
         let sub_config = resolve_tier_and_build_config(&sub_config).await;
 
@@ -256,9 +262,10 @@ impl InvokeAgentTool {
                 sender(crate::cli_run::AnyStreamEvent::React(event));
             }
         });
+        let any_sender = ctx.and_then(|c| c.any_stream_event_sender.clone());
 
         let outcome = runner
-            .stream_with_config(task, None, on_event, None)
+            .stream_with_config(task, None, on_event, any_sender)
             .await
             .map_err(|e| {
                 ToolSourceError::Transport(format!("sub-agent '{}' failed: {}", agent_name, e))
@@ -524,9 +531,10 @@ async fn invoke_single_agent(
             sender(crate::cli_run::AnyStreamEvent::React(event));
         }
     });
+    let any_sender = ctx.and_then(|c| c.any_stream_event_sender.clone());
 
     let outcome = runner
-        .stream_with_config(task, None, on_event, None)
+        .stream_with_config(task, None, on_event, any_sender)
         .await
         .map_err(|e| {
             ToolSourceError::Transport(format!("sub-agent '{}' failed: {}", agent_name, e))
