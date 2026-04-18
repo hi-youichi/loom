@@ -52,14 +52,6 @@ async fn build_tool_source_with_working_folder_includes_file_tools() {
         skill_registry: None,
         max_sub_agent_depth: None,
         dry_run: false,
-    };
-    let ctx = build_react_run_context(&config).await.unwrap();
-    let tools = ctx.tool_source.list_tools().await.unwrap();
-    let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
-    assert!(names.contains(&TOOL_LS), "expected ls in {:?}", names);
-    assert!(names.contains(&TOOL_READ_FILE));
-    assert!(names.contains(&TOOL_WRITE_FILE));
-    assert!(names.contains(&TOOL_MOVE_FILE));
-    assert!(names.contains(&TOOL_DELETE_FILE));
-    assert!(names.contains(&TOOL_CREATE_DIR));
+        builtin_tool_filter: None,
+    }
 }

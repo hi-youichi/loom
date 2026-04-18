@@ -211,6 +211,22 @@ pub fn build_helve_config(
         .as_ref()
         .and_then(|p| p.behavior.as_ref())
         .and_then(|b| b.max_sub_agent_depth);
+
+    // Builtin tool filter from agent profile
+    if let Some(ref prof) = profile {
+        if let Some(ref tools) = prof.tools {
+            if let Some(ref builtin) = tools.builtin {
+                let filter = crate::agent::react::BuiltinToolFilter {
+                    enabled: builtin.enabled.clone(),
+                    disabled: builtin.disabled.clone(),
+                };
+                if !filter.is_noop() {
+                    config.builtin_tool_filter = Some(filter);
+                }
+            }
+        }
+    }
+
     (helve, config, resolved_agent)
 }
 
@@ -307,6 +323,19 @@ pub fn build_config_from_profile(
         .as_ref()
         .and_then(|b| b.max_sub_agent_depth)
         .or(parent_config.max_sub_agent_depth);
+
+    // Builtin tool filter from profile
+    if let Some(ref tools) = profile.tools {
+        if let Some(ref builtin) = tools.builtin {
+            let filter = crate::agent::react::BuiltinToolFilter {
+                enabled: builtin.enabled.clone(),
+                disabled: builtin.disabled.clone(),
+            };
+            if !filter.is_noop() {
+                config.builtin_tool_filter = Some(filter);
+            }
+        }
+    }
 
     config
 }

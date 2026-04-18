@@ -6,6 +6,44 @@ use std::sync::Arc;
 
 use crate::skill::SkillRegistry;
 
+/// Filter for builtin tools: whitelist (enabled) and blacklist (disabled).
+///
+/// When `enabled` is `Some` and non-empty, only tools whose names appear in the set are kept.
+/// Then, any tools whose names appear in `disabled` are removed.
+#[derive(Clone, Debug, Default)]
+pub struct BuiltinToolFilter {
+    pub enabled: Option<Vec<String>>,
+    pub disabled: Option<Vec<String>>,
+}
+
+impl BuiltinToolFilter {
+    /// Returns true when the filter is a no-op (both lists empty or None).
+    pub fn is_noop(&self) -> bool {
+        self.enabled.as_ref().map_or(true, |v| v.is_empty())
+            && self.disabled.as_ref().map_or(true, |v| v.is_empty())
+    }
+
+    /// Returns true if the given tool name is allowed by this filter.
+    pub fn is_allowed(&self, name: &str) -> bool {
+        if let Some(ref en) = self.enabled {
+            if !en.is_empty() && !en.iter().any(|e| e == name) {
+                return false;
+            }
+        }
+        if let Some(ref dis) = self.disabled {
+            if dis.iter().any(|d| d == name) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Filters a list of tool names in place, returning the allowed subset.
+    pub fn filter_names<'a>(&self, names: &'a [String]) -> Vec<&'a String> {
+        names.iter().filter(|n| self.is_allowed(n.as_str())).collect()
+    }
+}
+
 /// ToT-specific runner config (max depth, candidates per step, etc.).
 #[derive(Clone, Debug)]
 pub struct TotRunnerConfig {
@@ -86,6 +124,9 @@ pub struct ReactBuildConfig {
     pub max_sub_agent_depth: Option<u32>,
     /// When true, tools are not executed; call_tool returns a placeholder (CLI --dry).
     pub dry_run: bool,
+    /// Optional filter for builtin tools (enabled whitelist / disabled blacklist).
+    /// Populated from agent profile `tools.builtin` config.
+    pub builtin_tool_filter: Option<BuiltinToolFilter>,
 }
 
 impl ReactBuildConfig {
@@ -158,6 +199,7 @@ impl ReactBuildConfig {
                 .ok()
                 .map(|s| matches!(s.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
                 .unwrap_or(false),
+            builtin_tool_filter: None,
         }
     }
 }
