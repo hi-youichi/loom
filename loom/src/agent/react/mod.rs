@@ -43,7 +43,7 @@ pub use build::{
     build_react_runner_with_openai, build_tot_runner, BuildRunnerError, ReactRunContext,
 };
 pub use build::{DefaultTierResolver, ResolvedTierModel, TierResolver};
-pub use config::{GotRunnerConfig, ReactBuildConfig, TotRunnerConfig};
+pub use config::{BuiltinToolFilter, GotRunnerConfig, ReactBuildConfig, TotRunnerConfig};
 pub use observe_node::ObserveNode;
 pub use runner::{
     build_react_initial_state, run_agent, run_react_graph_stream, AgentOptions, ReactRunner,

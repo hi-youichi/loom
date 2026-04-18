@@ -25,6 +25,7 @@ mod bash_tools_source;
 mod context;
 mod dry_run_tool_source;
 mod file_tool_source;
+mod filtered_tool_source;
 mod memory_tools_source;
 mod mock;
 mod read_only_dir_tool_source;
@@ -40,6 +41,7 @@ pub use bash_tools_source::{BashToolsSource, TOOL_BASH};
 pub use context::ToolCallContext;
 pub use dry_run_tool_source::DryRunToolSource;
 pub use file_tool_source::{register_file_tools, FileToolSource};
+pub use filtered_tool_source::FilteredToolSource;
 pub use memory_tools_source::MemoryToolsSource;
 pub use mock::MockToolSource;
 pub use read_only_dir_tool_source::{

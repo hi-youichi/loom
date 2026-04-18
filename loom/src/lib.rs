@@ -156,7 +156,7 @@ pub use agent::react::{
     build_dup_runner, build_got_runner, build_react_initial_state, build_react_run_context,
     build_react_runner, build_react_runner_with_openai, build_tot_runner, run_agent,
     run_react_graph_stream, tools_condition, ActNode, AgentOptions, BuildRunnerError,
-    DefaultTierResolver, ErrorHandlerFn, GotRunnerConfig, HandleToolErrors, ObserveNode,
+    BuiltinToolFilter, DefaultTierResolver, ErrorHandlerFn, GotRunnerConfig, HandleToolErrors, ObserveNode,
     ReactBuildConfig, ReactRunContext, ReactRunner, ResolvedTierModel, RunError as ReactRunError,
     ThinkNode, TierResolver, ToolsConditionResult,
     TotRunnerConfig, WithNodeLogging, DEFAULT_EXECUTION_ERROR_TEMPLATE,

@@ -398,5 +398,22 @@ pub(crate) async fn build_tool_source(
     let wrapped = YamlSpecToolSource::wrap(inner)
         .await
         .map_err(to_agent_error)?;
-    Ok(Box::new(wrapped))
+
+    // Apply builtin tool filter (enabled whitelist / disabled blacklist from agent profile).
+    let filtered: Box<dyn ToolSource> = match &config.builtin_tool_filter {
+        Some(filter) if !filter.is_noop() => {
+            tracing::info!(
+                enabled = ?filter.enabled,
+                disabled = ?filter.disabled,
+                "applying builtin tool filter"
+            );
+            Box::new(crate::tool_source::FilteredToolSource::new(
+                Box::new(wrapped),
+                filter.clone(),
+            ))
+        }
+        _ => Box::new(wrapped),
+    };
+
+    Ok(filtered)
 }
