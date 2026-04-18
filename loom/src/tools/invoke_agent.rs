@@ -654,4 +654,82 @@ mod tests {
             msg
         );
     }
+
+    struct MockTierResolver {
+        light_model_id: String,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::TierResolver for MockTierResolver {
+        async fn resolve_tier(
+            &self,
+            _config: &ReactBuildConfig,
+            tier: crate::model_spec::ModelTier,
+        ) -> Option<crate::ResolvedTierModel> {
+            assert_eq!(
+                tier,
+                crate::model_spec::ModelTier::Light,
+                "explore agent should request Light tier"
+            );
+            Some(crate::ResolvedTierModel {
+                model_id: self.light_model_id.clone(),
+                base_url: Some("https://mock.test/v1".into()),
+                api_key: Some("sk-mock".into()),
+                provider_type: Some("openai_compat".into()),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn explore_agent_resolves_light_tier_model() {
+        let profile = resolve_profile("explore").expect("explore profile should load");
+        assert_eq!(
+            profile.model.as_ref().and_then(|m| m.tier),
+            Some(crate::model_spec::ModelTier::Light),
+            "explore agent config.yaml should declare tier: light"
+        );
+
+        let mut parent_config = ReactBuildConfig::from_env();
+        parent_config.model = None;
+        parent_config.openai_base_url = None;
+        parent_config.openai_api_key = None;
+        parent_config.llm_provider = None;
+        let sub_config = build_config_from_profile(&profile, &parent_config, None);
+        assert_eq!(
+            sub_config.model_tier,
+            Some(crate::model_spec::ModelTier::Light),
+            "build_config_from_profile should propagate explore's light tier"
+        );
+
+        let resolver = MockTierResolver {
+            light_model_id: "anthropic/claude-haiku-4".to_string(),
+        };
+        let resolved =
+            crate::resolve_tier_and_build_config_with_resolver(&sub_config, &resolver).await;
+
+        assert_eq!(
+            resolved.model.as_deref(),
+            Some("anthropic/claude-haiku-4"),
+            "resolved model should be the light-tier model from MockTierResolver"
+        );
+        assert!(
+            resolved.model_tier.is_none(),
+            "model_tier should be cleared after resolution"
+        );
+        assert_eq!(
+            resolved.openai_base_url.as_deref(),
+            Some("https://mock.test/v1"),
+            "base_url should come from resolved tier model"
+        );
+        assert_eq!(
+            resolved.openai_api_key.as_deref(),
+            Some("sk-mock"),
+            "api_key should come from resolved tier model"
+        );
+        assert_eq!(
+            resolved.llm_provider.as_deref(),
+            Some("openai_compat"),
+            "provider_type should come from resolved tier model"
+        );
+    }
 }
