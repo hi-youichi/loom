@@ -479,27 +479,44 @@ pub async fn build_runner(
 ) -> Result<AnyRunner, RunError> {
     let config = resolve_tier_and_build_config(config).await;
     let cancellation = opts.cancellation.as_ref().map(RunCancellation::token);
+    let llm_override_provider: Option<Arc<dyn crate::llm::LlmProvider>> = llm_override
+        .map(|llm| {
+            Arc::new(crate::llm::FixedLlmProvider {
+                client: Arc::from(llm),
+                model_id: "override".to_string(),
+            }) as Arc<dyn crate::llm::LlmProvider>
+        });
     match cmd {
         RunCmd::React => {
-            let r = build_react_runner(&config, llm_override, opts.verbose)
+            let r = build_react_runner(&config, llm_override_provider, opts.verbose)
                 .await?
                 .with_cancellation(opts.cancellation.clone());
             Ok(AnyRunner::React(r))
         }
         RunCmd::Dup => {
-            let r = build_dup_runner(&config, llm_override, opts.verbose)
+            let llm_override_boxed = llm_override_provider.map(|p| {
+                let model = p.default_model().to_string();
+                p.create_client(&model).unwrap()
+            });
+            let r = build_dup_runner(&config, llm_override_boxed, opts.verbose)
                 .await?
                 .with_cancellation(cancellation.clone());
             Ok(AnyRunner::Dup(r))
         }
         RunCmd::Tot => {
-            let r = build_tot_runner(&config, llm_override, opts.verbose)
+            let llm_override_boxed = llm_override_provider.as_ref().map(|p| {
+                p.create_client(p.default_model()).unwrap()
+            });
+            let r = build_tot_runner(&config, llm_override_boxed, opts.verbose)
                 .await?
                 .with_cancellation(cancellation.clone());
             Ok(AnyRunner::Tot(r))
         }
         RunCmd::Got { .. } => {
-            let r = build_got_runner(&config, llm_override, opts.verbose)
+            let llm_override_boxed = llm_override_provider.as_ref().map(|p| {
+                p.create_client(p.default_model()).unwrap()
+            });
+            let r = build_got_runner(&config, llm_override_boxed, opts.verbose)
                 .await?
                 .with_cancellation(cancellation);
             Ok(AnyRunner::Got(r))
@@ -516,15 +533,17 @@ pub async fn resolve_tier_and_build_config_with_resolver(
     resolver: &dyn TierResolver,
 ) -> ReactBuildConfig {
     let Some(tier) = config.model_tier else {
+        tracing::debug!("No model_tier set, returning config as-is");
         return config.clone();
     };
     let mut config = config.clone();
+    tracing::info!("Resolving model tier: {:?}", tier);
     match resolver.resolve_tier(&config, tier).await {
         Some(resolved) => {
             tracing::info!(
                 tier = ?tier,
                 resolved_model = %resolved.model_id,
-                "resolved model tier"
+                "resolved model tier successfully"
             );
             config.model = Some(resolved.model_id);
             if config.openai_base_url.is_none() {
@@ -541,6 +560,7 @@ pub async fn resolve_tier_and_build_config_with_resolver(
             tracing::warn!(
                 tier = ?tier,
                 model = ?config.model,
+                llm_provider = ?config.llm_provider,
                 "tier resolution failed, using model as-is"
             );
         }

@@ -11,10 +11,10 @@ use crate::agent::react::{ActNode, HandleToolErrors, ObserveNode, ThinkNode};
 use crate::error::AgentError;
 use crate::graph::{Next, RunContext};
 use crate::message::Message;
+use crate::llm::LlmProvider;
 use crate::state::ReActState;
 use crate::stream::{StreamEvent, StreamMode};
 use crate::tool_source::ToolSource;
-use crate::LlmClient;
 use crate::Node;
 
 use super::adaptive::{
@@ -85,39 +85,19 @@ pub(crate) fn build_sub_task_user_message(
     parts.join("\n\n")
 }
 
-/// Wraps Arc<dyn LlmClient> for use as Box<dyn LlmClient> in ThinkNode.
-struct SharedLlm(Arc<dyn LlmClient>);
-
-#[async_trait::async_trait]
-impl LlmClient for SharedLlm {
-    async fn invoke(
-        &self,
-        messages: &[crate::message::Message],
-    ) -> Result<crate::llm::LlmResponse, AgentError> {
-        self.0.invoke(messages).await
-    }
-    async fn invoke_stream(
-        &self,
-        messages: &[crate::message::Message],
-        tx: Option<tokio::sync::mpsc::Sender<crate::stream::MessageChunk>>,
-    ) -> Result<crate::llm::LlmResponse, AgentError> {
-        self.0.invoke_stream(messages, tx).await
-    }
-}
-
 /// ExecuteGraph node: runs ready DAG nodes one at a time; each node runs as a ReAct sub-task.
 ///
 /// Holds LLM and ToolSource to run Think → Act → Observe for each task node.
 /// Emits GotNodeStart / GotNodeComplete / GotNodeFailed when Custom mode is enabled.
 /// When `adaptive` is true (AGoT), may expand complex nodes into subgraphs after completion.
 /// When `agot_llm_complexity` is true, complexity is decided by LLM instead of heuristic.
-pub struct ExecuteGraphNode {
+    pub struct ExecuteGraphNode {
     think: ThinkNode,
     act: ActNode,
     observe: ObserveNode,
     adaptive: bool,
     agot_llm_complexity: bool,
-    llm: Arc<dyn LlmClient>,
+    provider: Arc<dyn LlmProvider>,
 }
 
 impl ExecuteGraphNode {
@@ -127,12 +107,12 @@ impl ExecuteGraphNode {
     /// via LLM call after completion. When `agot_llm_complexity` is true, use LLM to
     /// classify simple vs complex instead of the heuristic.
     pub fn new(
-        llm: Arc<dyn LlmClient>,
+        provider: Arc<dyn LlmProvider>,
         tool_source: Box<dyn ToolSource>,
         adaptive: bool,
         agot_llm_complexity: bool,
     ) -> Self {
-        let think = ThinkNode::new(Arc::new(SharedLlm(Arc::clone(&llm))));
+        let think = ThinkNode::new(Arc::clone(&provider));
         let act = ActNode::new(tool_source).with_handle_tool_errors(HandleToolErrors::Always(None));
         let observe = ObserveNode::with_loop();
         Self {
@@ -141,7 +121,7 @@ impl ExecuteGraphNode {
             observe,
             adaptive,
             agot_llm_complexity,
-            llm,
+            provider,
         }
     }
 
@@ -150,7 +130,8 @@ impl ExecuteGraphNode {
     /// `user_message` is the full user content for the sub-task (task goal, predecessor
     /// results, and this node's description). Built by [`build_sub_task_user_message`].
     async fn run_sub_task(&self, user_message: &str) -> Result<String, AgentError> {
-        let mut state = ReActState {
+let mut state = ReActState {
+            model_config: Default::default(),
             messages: vec![
                 Message::system(SUB_TASK_SYSTEM),
                 Message::user(user_message.to_string()),
@@ -284,7 +265,8 @@ impl Node<GotState> for ExecuteGraphNode {
                     };
                     let complexity_override = if let Some(ref n) = node {
                         if self.agot_llm_complexity {
-                            complexity_score_via_llm(Arc::clone(&self.llm), n, &expand_ctx)
+                            let llm = Arc::from(self.provider.create_client(self.provider.default_model()).unwrap());
+                            complexity_score_via_llm(llm, n, &expand_ctx)
                                 .await
                                 .ok()
                         } else {
@@ -294,7 +276,8 @@ impl Node<GotState> for ExecuteGraphNode {
                         None
                     };
                     let subgraph = if let Some(ref n) = node {
-                        expand_node_via_llm(Arc::clone(&self.llm), &expand_ctx, n)
+                        let llm = Arc::from(self.provider.create_client(self.provider.default_model()).unwrap());
+                        expand_node_via_llm(llm, &expand_ctx, n)
                             .await
                             .ok()
                             .flatten()

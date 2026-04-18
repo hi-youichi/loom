@@ -19,8 +19,8 @@ pub struct BuiltinToolFilter {
 impl BuiltinToolFilter {
     /// Returns true when the filter is a no-op (both lists empty or None).
     pub fn is_noop(&self) -> bool {
-        self.enabled.as_ref().map_or(true, |v| v.is_empty())
-            && self.disabled.as_ref().map_or(true, |v| v.is_empty())
+        self.enabled.as_ref().is_none_or(|v| v.is_empty())
+            && self.disabled.as_ref().is_none_or(|v| v.is_empty())
     }
 
     /// Returns true if the given tool name is allowed by this filter.

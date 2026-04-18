@@ -6,11 +6,49 @@
 
 use crate::memory::uuid6;
 use crate::message::{AssistantToolCall, Message};
+use crate::llm::ToolChoiceMode;
+use crate::model_spec::ModelTier;
 use crate::LlmUsage;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use crate::state::tool_output_normalizer::{ToolOutputStrategy, ToolStorageRef};
+
+/// Model configuration carried in [`ReActState`].
+///
+/// Supports two ways to specify a model:
+/// - **Exact model**: set `model_id` to e.g. `"openai/gpt-4o"`.
+/// - **Tier abstraction**: set `tier` to `Light` / `Standard` / `Strong`;
+///   the `LlmProvider` resolves it to a concrete model at runtime.
+///
+/// Priority: `model_id` > `tier` > provider default (`None`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ModelConfig {
+    /// Exact model identifier, e.g. `"openai/gpt-4o"`. When non-empty, takes precedence over `tier`.
+    #[serde(default)]
+    pub model_id: String,
+    /// Tier abstraction. When `model_id` is empty, the provider resolves this to a concrete model.
+    /// `ModelTier::None` means "use provider default".
+    #[serde(default)]
+    pub tier: ModelTier,
+    /// Optional temperature override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    /// Optional tool_choice override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<ToolChoiceMode>,
+}
+
+impl Default for ModelConfig {
+    fn default() -> Self {
+        Self {
+            model_id: String::new(),
+            tier: ModelTier::None,
+            temperature: None,
+            tool_choice: None,
+        }
+    }
+}
 
 /// A single tool invocation produced by the LLM (Think node) and consumed by Act.
 ///
@@ -183,6 +221,9 @@ impl From<crate::state::tool_output_normalizer::NormalizedToolOutput> for ToolRe
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ReActState {
+    /// Model configuration for the current run.
+    #[serde(default)]
+    pub model_config: ModelConfig,
     /// Conversation history (System, User, Assistant). Used by Think and extended by Observe.
     pub messages: Vec<Message>,
     /// Most recent reasoning/thinking content returned by the LLM, if any.
@@ -223,6 +264,7 @@ pub struct ReActState {
 impl Default for ReActState {
     fn default() -> Self {
         Self {
+            model_config: ModelConfig::default(),
             messages: vec![],
             last_reasoning_content: None,
             tool_calls: vec![],

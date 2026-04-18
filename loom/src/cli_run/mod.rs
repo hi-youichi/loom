@@ -243,16 +243,56 @@ pub fn build_config_from_profile(
 ) -> ReactBuildConfig {
     let mut config = parent_config.clone();
 
+    tracing::debug!(
+        profile_name = %profile.name,
+        parent_model = ?parent_config.model,
+        parent_model_tier = ?parent_config.model_tier,
+        parent_provider = ?parent_config.llm_provider,
+        "Building config from profile with parent model configuration"
+    );
+
     if let Some(ref model) = profile.model {
+        tracing::debug!(
+            profile_name = %profile.name,
+            profile_model_name = ?model.name,
+            profile_model_tier = ?model.tier,
+            profile_model_temperature = ?model.temperature,
+            "Profile contains model configuration"
+        );
+
         if let Some(ref name) = model.name {
+            tracing::info!(
+                profile_name = %profile.name,
+                old_model = ?config.model,
+                new_model = %name,
+                "Overriding model from profile"
+            );
             config.model = Some(name.clone());
         }
         if let Some(tier) = model.tier {
+            // Profile configuration takes precedence over parent config for model_tier
+            tracing::info!(
+                profile_name = %profile.name,
+                old_tier = ?config.model_tier,
+                new_tier = ?tier,
+                "Overriding model_tier from profile"
+            );
             config.model_tier = Some(tier);
         }
         if let Some(t) = model.temperature {
+            tracing::debug!(
+                profile_name = %profile.name,
+                old_temperature = ?config.openai_temperature,
+                new_temperature = t,
+                "Setting temperature from profile"
+            );
             config.openai_temperature = Some(t.to_string());
         }
+    } else {
+        tracing::debug!(
+            profile_name = %profile.name,
+            "Profile has no model configuration, inheriting from parent"
+        );
     }
 
     if let Some(wf) = working_folder_override {
@@ -337,6 +377,18 @@ pub fn build_config_from_profile(
         }
     }
 
+    tracing::debug!(
+        profile_name = %profile.name,
+        final_model = ?config.model,
+        final_model_tier = ?config.model_tier,
+        final_provider = ?config.llm_provider,
+        final_temperature = ?config.openai_temperature,
+        parent_model = ?parent_config.model,
+        parent_model_tier = ?parent_config.model_tier,
+        parent_provider = ?parent_config.llm_provider,
+        "Final configuration built from profile with model inheritance details"
+    );
+
     config
 }
 
@@ -383,6 +435,8 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
                     api_key: p.api_key,
                     provider_type: p.provider_type,
                     fetch_models: p.fetch_models.unwrap_or(false),
+                    cache_ttl: p.cache_ttl,
+                    enable_tier_resolution: p.enable_tier_resolution.unwrap_or(true),
                 })
                 .collect()
         }

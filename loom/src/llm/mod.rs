@@ -26,7 +26,8 @@ use tokio::sync::mpsc;
 
 /// Tool choice mode for chat completions: when tools are present, controls whether
 /// the model may choose (auto), must not use (none), or must use (required).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ToolChoiceMode {
     /// Model can pick between message or tool calls. Default when tools are present.
     #[default]
@@ -102,8 +103,14 @@ pub(crate) mod tool_call_accumulator;
 
 mod openai;
 mod openai_compat;
+mod openai_provider;
+mod openai_compat_provider;
+mod fixed_provider;
 
 pub use openai_compat::ChatOpenAICompat;
+pub use openai_provider::OpenAIProvider;
+pub use openai_compat_provider::OpenAICompatProvider;
+pub use fixed_provider::FixedLlmProvider;
 
 /// Deprecated alias for [`ChatOpenAICompat`].
 #[deprecated(note = "renamed to ChatOpenAICompat")]
@@ -111,7 +118,7 @@ pub type ChatBigModel = ChatOpenAICompat;
 
 pub use mock::MockLlm;
 pub use model_cache::{fetch_provider_models, ModelCache, ProviderModels};
-pub use model_registry::{create_llm_client, ModelEntry, ModelRegistry, ProviderConfig};
+pub use model_registry::{create_llm_provider, create_llm_client, ModelEntry, ModelRegistry, ProviderConfig};
 pub use openai::ChatOpenAI;
 pub use retry::RetryLlmClient;
 
@@ -119,6 +126,7 @@ use async_trait::async_trait;
 
 use crate::error::AgentError;
 use crate::message::Message;
+use crate::model_spec::ModelTier;
 use crate::state::ToolCall;
 use crate::stream::MessageChunk;
 
@@ -230,6 +238,27 @@ pub struct LlmResponse {
     pub tool_calls: Vec<ToolCall>,
     /// Token usage for this call, when available (e.g. OpenAI returns this).
     pub usage: Option<LlmUsage>,
+}
+
+/// Provider-level factory that can create [`LlmClient`] instances for different model names.
+///
+/// Holds connection configuration (base_url, api_key) and resolves tier abstractions
+/// (Light / Standard / Strong) to concrete model IDs via [`ModelRegistry`].
+#[async_trait]
+pub trait LlmProvider: Send + Sync {
+    /// Create a new [`LlmClient`] for the given model name.
+    fn create_client(&self, model: &str) -> Result<Box<dyn LlmClient>, AgentError>;
+
+    /// Default model ID for this provider (used when `ModelConfig` has no explicit model).
+    fn default_model(&self) -> &str;
+
+    /// Provider name (e.g. `"openai"`, `"bigmodel"`).
+    fn provider_name(&self) -> &str;
+
+    /// Resolve a [`ModelTier`] to a concrete model ID.
+    ///
+    /// For [`ModelTier::None`], implementations should return [`Self::default_model`].
+    async fn resolve_tier(&self, tier: ModelTier) -> Result<String, AgentError>;
 }
 
 /// LLM client: given messages, returns assistant text and optional tool_calls.

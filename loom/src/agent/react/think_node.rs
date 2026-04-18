@@ -1,29 +1,60 @@
 //! Think node: read messages, call LLM, write assistant message and optional tool_calls.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
 use serde_json::Value;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, trace};
 
 use crate::cli_run::ActiveOperationKind;
 use crate::error::AgentError;
 use crate::graph::{run_cancellable, Next, RunContext};
-use crate::llm::{LlmClient, LlmResponse, ToolCallDelta};
+use crate::llm::{LlmClient, LlmProvider, LlmResponse, ToolCallDelta};
 use crate::message::Message;
-use crate::state::{ReActState, ToolCall};
+use crate::model_spec::ModelTier;
+use crate::state::{ModelConfig, ReActState, ToolCall};
 use crate::stream::{ChunkToStreamSender, MessageChunk, StreamEvent, StreamMetadata, StreamMode};
 use crate::Node;
 
 pub struct ThinkNode {
-    llm: Arc<dyn LlmClient>,
+    provider: Arc<dyn LlmProvider>,
+    client_cache: RwLock<HashMap<String, Arc<dyn LlmClient>>>,
 }
 
 impl ThinkNode {
-    pub fn new(llm: Arc<dyn LlmClient>) -> Self {
-        Self { llm }
+    pub fn new(provider: Arc<dyn LlmProvider>) -> Self {
+        Self {
+            provider,
+            client_cache: RwLock::new(HashMap::new()),
+        }
+    }
+
+    async fn resolve_client(&self, model_config: &ModelConfig) -> Result<Arc<dyn LlmClient>, AgentError> {
+        let model = if !model_config.model_id.is_empty() {
+            model_config.model_id.clone()
+        } else if model_config.tier != ModelTier::None {
+            self.provider.resolve_tier(model_config.tier).await?
+        } else {
+            self.provider.default_model().to_string()
+        };
+
+        {
+            let cache = self.client_cache.read().await;
+            if let Some(client) = cache.get(&model) {
+                return Ok(Arc::clone(client));
+            }
+        }
+
+        let client = self.provider.create_client(&model)?;
+        let client = Arc::from(client);
+        {
+            let mut cache = self.client_cache.write().await;
+            cache.entry(model).or_insert_with(|| Arc::clone(&client));
+        }
+        Ok(client)
     }
 
     /// Emits stream events after the LLM returns and before state is committed (messages, tool calls).
@@ -174,7 +205,8 @@ impl Node<ReActState> for ThinkNode {
     }
 
     async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
-        let response = self.llm.invoke(&state.messages).await?;
+        let llm = self.resolve_client(&state.model_config).await?;
+        let response = llm.invoke(&state.messages).await?;
         let new_state = state.apply_think(
             response.content,
             response.reasoning_content,
@@ -209,10 +241,11 @@ impl Node<ReActState> for ThinkNode {
         );
 
         let call_start = Instant::now();
+        let llm = self.resolve_client(&state.model_config).await?;
         let llm_call = async {
             if should_stream || should_stream_tools {
                 invoke_think_llm(
-                    &self.llm,
+                    &llm,
                     &state.messages,
                     should_stream,
                     should_stream_tools,
@@ -222,7 +255,7 @@ impl Node<ReActState> for ThinkNode {
                 .await
             } else {
                 Ok((
-                    self.llm.invoke(&state.messages).await?,
+                    llm.invoke(&state.messages).await?,
                     0u64,
                     None::<Instant>,
                 ))

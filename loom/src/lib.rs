@@ -197,8 +197,9 @@ pub use helve::{
 };
 pub use llm::{ChatOpenAI, ChatOpenAICompat};
 pub use llm::{
-    CompletionTokensDetails, LlmClient, LlmResponse, LlmUsage, MockLlm, PromptTokensDetails,
-    ToolCallDelta, ToolChoiceMode,
+    CompletionTokensDetails, FixedLlmProvider, LlmClient, LlmProvider, LlmResponse, LlmUsage,
+    MockLlm, OpenAICompatProvider, OpenAIProvider, PromptTokensDetails, ToolCallDelta,
+    ToolChoiceMode,
 };
 pub use managed::{IsLastStep, ManagedValue};
 pub use memory::Embedder;
@@ -247,7 +248,7 @@ pub use state::{
     normalize_tool_output, NormalizationConfig, NormalizedToolOutput, ToolOutputHint,
     ToolOutputStrategy, ToolStorageRef,
 };
-pub use state::{ReActState, ToolCall, ToolResult};
+pub use state::{ModelConfig, ReActState, ToolCall, ToolResult};
 pub use stream::{
     CheckpointEvent, MessageChunk, MessageChunkKind, StreamEvent, StreamMetadata, StreamMode,
     StreamWriter, ToolStreamWriter,

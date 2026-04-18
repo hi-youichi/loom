@@ -872,6 +872,8 @@ model = "other-model"
             provider_type: None,
             temperature: None,
             fetch_models: None,
+            cache_ttl: None,
+            enable_tier_resolution: None,
         };
 
         let env_map = provider_env_map_with_models_dev_fallback(&provider);
