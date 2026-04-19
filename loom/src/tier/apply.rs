@@ -20,18 +20,47 @@ pub async fn resolve_tier_and_build_config_with_resolver(
             tracing::info!(
                 tier = ?tier,
                 resolved_model = %resolved.model_id,
-                "resolved model tier successfully"
+                resolved_provider = ?resolved.provider_type,
+                resolved_base_url = ?resolved.base_url,
+                "Tier resolution successful, applying complete model configuration"
             );
+
+            // When tier resolution succeeds, apply the complete model configuration
+            // Tier is a complete description of the model, should override all model-related fields
+            // This ensures consistency and avoids mismatched model/provider/base_url/api_key
             config.model = Some(resolved.model_id);
-            if config.openai_base_url.is_none() {
-                config.openai_base_url = resolved.base_url;
+
+            // Forcefully override all model-related fields when tier resolution succeeds
+            // Previously these were only set if None, which could lead to inconsistencies
+            if let Some(base_url) = resolved.base_url {
+                tracing::debug!(
+                    base_url = %base_url,
+                    "Applying base_url from tier resolution"
+                );
+                config.openai_base_url = Some(base_url);
             }
-            if config.openai_api_key.is_none() {
-                config.openai_api_key = resolved.api_key;
+            if let Some(api_key) = resolved.api_key {
+                tracing::debug!(
+                    "Applying api_key from tier resolution (length: {})",
+                    api_key.len()
+                );
+                config.openai_api_key = Some(api_key);
             }
-            if config.llm_provider.is_none() && resolved.provider_type.is_some() {
-                config.llm_provider = resolved.provider_type;
+            if let Some(provider_type) = resolved.provider_type {
+                tracing::debug!(
+                    provider_type = %provider_type,
+                    "Applying provider_type from tier resolution"
+                );
+                config.llm_provider = Some(provider_type);
             }
+
+            tracing::debug!(
+                final_model = ?config.model,
+                final_provider = ?config.llm_provider,
+                final_base_url = ?config.openai_base_url,
+                has_api_key = config.openai_api_key.is_some(),
+                "Applied complete tier-resolved model configuration"
+            );
         }
         None => {
             tracing::warn!(

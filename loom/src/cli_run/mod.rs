@@ -118,8 +118,25 @@ pub fn build_helve_config(
         if let Some(t) = prof.model.as_ref().and_then(|m| m.temperature) {
             base.openai_temperature = Some(t.to_string());
         }
-        if let Some(tier) = prof.model.as_ref().and_then(|m| m.tier) {
-            base.model_tier = Some(tier);
+        // Only apply profile tier configuration when model is not explicitly specified
+        // This ensures:
+        // 1. ACP explicitly set model is not overridden by tier
+        // 2. CLI users can override tier via --model
+        // 3. When no model is specified, profile tier is used
+        let model_explicitly_set = effective_opts.model.is_some() || opts.model.is_some();
+        if !model_explicitly_set {
+            if let Some(tier) = prof.model.as_ref().and_then(|m| m.tier) {
+                base.model_tier = Some(tier);
+                tracing::debug!(
+                    tier = ?tier,
+                    "No explicit model specified, applying profile tier configuration"
+                );
+            }
+        } else {
+            tracing::debug!(
+                model = ?effective_opts.model,
+                "Model explicitly specified, skipping profile tier configuration to avoid override"
+            );
         }
     }
 
@@ -285,6 +302,19 @@ pub fn build_config_from_profile(
                 "Overriding model_tier from profile"
             );
             config.model_tier = Some(tier);
+
+            // Clear inherited model fields to allow clean tier resolution
+            // When profile configures a tier, it should completely override parent's model config
+            // This prevents mismatched provider/base_url/api_key from being used
+            tracing::debug!(
+                profile_name = %profile.name,
+                tier = ?tier,
+                "Clearing inherited model fields (model, provider, base_url, api_key) to allow clean tier resolution"
+            );
+            config.model = None;
+            config.llm_provider = None;
+            config.openai_base_url = None;
+            config.openai_api_key = None;
         }
         if let Some(t) = model.temperature {
             tracing::debug!(
@@ -1062,7 +1092,12 @@ mod tests {
         };
         let config = build_config_from_profile(&profile, &parent_config(), None);
         assert_eq!(config.model_tier, Some(crate::model_spec::ModelTier::Light));
-        assert_eq!(config.model.as_deref(), Some("parent-model"));
+        // Updated: When profile configures a tier, it clears the parent's model to allow clean tier resolution
+        // This ensures tier-based model selection is not contaminated by parent's model config
+        assert_eq!(config.model.as_deref(), None);
+        assert_eq!(config.llm_provider.as_deref(), None);
+        assert_eq!(config.openai_base_url.as_deref(), None);
+        assert_eq!(config.openai_api_key.as_deref(), None);
 
         match prev {
             Some(v) => std::env::set_var("LOOM_HOME", v),
@@ -1081,6 +1116,8 @@ mod tests {
         let profile = AgentProfile::default();
         let config = build_config_from_profile(&profile, &parent_config(), None);
         assert!(config.model_tier.is_none());
+        // When profile has no model config, should inherit parent's model
+        assert_eq!(config.model.as_deref(), Some("parent-model"));
 
         match prev {
             Some(v) => std::env::set_var("LOOM_HOME", v),
@@ -1174,7 +1211,8 @@ mod tests {
         };
         let (_helve, config, _resolved) = build_helve_config(&opts);
         assert_eq!(config.model.as_deref(), Some("anthropic/claude-sonnet-4"));
-        assert_eq!(config.model_tier, Some(crate::model_spec::ModelTier::Light));
+        // When model is explicitly specified, tier should NOT be set to avoid tier overriding the explicit model
+        assert_eq!(config.model_tier, None);
 
         match prev {
             Some(v) => std::env::set_var("LOOM_HOME", v),
