@@ -58,6 +58,7 @@ impl ReactRunner {
         cancellation: Option<RunCancellation>,
         verbose: bool,
         title_provider: Option<Arc<dyn LlmProvider>>,
+        title_headers: Option<crate::llm::LlmHeaders>,
     ) -> Result<Self, CompilationError> {
         let think = ThinkNode::new(Arc::clone(&provider));
         let act = ActNode::new(tool_source)
@@ -75,7 +76,8 @@ impl ReactRunner {
         }
 
         let title_node = TitleNode::new(
-            title_provider.unwrap_or_else(|| Arc::clone(&provider))
+            title_provider.unwrap_or_else(|| Arc::clone(&provider)),
+            title_headers,
         );
 
         let think_condition_path_map: HashMap<String, String> = [
@@ -228,6 +230,7 @@ pub async fn run_agent(
         None,
         opts.verbose,
         None,
+        None,
     )?;
     runner.invoke(user_message).await
 }
@@ -253,6 +256,7 @@ where
         opts.user_message_store,
         None,
         opts.verbose,
+        None,
         None,
     )?;
     runner.stream_with_callback(user_message, on_event).await

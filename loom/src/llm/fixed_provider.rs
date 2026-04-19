@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::error::AgentError;
-use crate::llm::{LlmClient, LlmProvider};
+use crate::llm::{LlmClient, LlmHeaders, LlmProvider};
 
 pub struct CloneableLlmClient(pub Arc<dyn LlmClient>);
 
@@ -40,6 +40,15 @@ pub struct FixedLlmProvider {
 impl LlmProvider for FixedLlmProvider {
     fn create_client(&self, _model: &str) -> Result<Box<dyn LlmClient>, AgentError> {
         Ok(Box::new(CloneableLlmClient(self.client.clone())))
+    }
+
+    fn create_client_with_headers(
+        &self,
+        model: &str,
+        headers: Option<LlmHeaders>,
+    ) -> Result<Box<dyn LlmClient>, AgentError> {
+        let _ = headers;
+        self.create_client(model)
     }
 
     fn default_model(&self) -> &str {

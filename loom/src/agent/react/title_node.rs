@@ -14,7 +14,7 @@ use async_trait::async_trait;
 
 use crate::error::AgentError;
 use crate::graph::Next;
-use crate::llm::LlmProvider;
+use crate::llm::{LlmHeaders, LlmProvider};
 use crate::message::Message;
 use crate::state::ReActState;
 use crate::Node;
@@ -38,11 +38,12 @@ fn clamp_summary_chars(s: &str) -> String {
 /// suitable for display in session lists.
 pub struct TitleNode {
     provider: Arc<dyn LlmProvider>,
+    headers: Option<LlmHeaders>,
 }
 
 impl TitleNode {
-    pub fn new(provider: Arc<dyn LlmProvider>) -> Self {
-        Self { provider }
+    pub fn new(provider: Arc<dyn LlmProvider>, headers: Option<LlmHeaders>) -> Self {
+        Self { provider, headers }
     }
 }
 
@@ -102,7 +103,7 @@ impl Node<ReActState> for TitleNode {
         ];
 
         let model = self.provider.default_model();
-        let client = self.provider.create_client(model)?;
+        let client = self.provider.create_client_with_headers(model, self.headers.clone())?;
         match client.invoke(&title_messages).await {
             Ok(response) => {
                 let raw = response.content.trim();

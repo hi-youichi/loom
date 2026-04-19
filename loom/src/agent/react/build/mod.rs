@@ -166,6 +166,11 @@ pub async fn build_react_runner(
         .unwrap_or_else(|| REACT_SYSTEM_PROMPT.to_string());
     let compaction_config = resolve_compaction_config(config).await;
     let title_provider = resolve_title_provider(config).await;
+    let title_headers = config
+        .trace_thread_id
+        .as_ref()
+        .or(config.thread_id.as_ref())
+        .map(|tid| crate::llm::LlmHeaders::default().with_thread_id(tid));
     let runner = ReactRunner::new(
         provider,
         ctx.tool_source,
@@ -179,6 +184,7 @@ pub async fn build_react_runner(
         None,
         verbose,
         title_provider,
+        title_headers,
     )?;
     Ok(runner)
 }

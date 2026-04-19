@@ -249,6 +249,19 @@ pub trait LlmProvider: Send + Sync {
     /// Create a new [`LlmClient`] for the given model name.
     fn create_client(&self, model: &str) -> Result<Box<dyn LlmClient>, AgentError>;
 
+    /// Create a new [`LlmClient`] with optional HTTP headers.
+    ///
+    /// Default implementation falls back to [`Self::create_client`] (ignoring headers).
+    /// Providers that support custom headers should override this.
+    fn create_client_with_headers(
+        &self,
+        model: &str,
+        headers: Option<LlmHeaders>,
+    ) -> Result<Box<dyn LlmClient>, AgentError> {
+        let _ = headers;
+        self.create_client(model)
+    }
+
     /// Default model ID for this provider (used when `ModelConfig` has no explicit model).
     fn default_model(&self) -> &str;
 

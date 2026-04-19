@@ -568,7 +568,7 @@ pub async fn run_agent_with_provider(
     };
 
     // Create LLM client from ModelEntry
-    let llm = crate::llm::create_llm_client(&entry)
+    let llm = crate::llm::create_llm_client(&entry, None)
         .map_err(|e| RunError::Build(crate::BuildRunnerError::Context(e)))?;
 
     // Create minimal RunOptions

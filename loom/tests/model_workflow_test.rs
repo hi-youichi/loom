@@ -57,7 +57,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result = create_llm_client(&entry);
+        let result = create_llm_client(&entry, None);
         assert!(result.is_ok());
     }
 
@@ -74,7 +74,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result = create_llm_client(&entry);
+        let result = create_llm_client(&entry, None);
         assert!(result.is_ok());
     }
 
@@ -91,7 +91,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result = create_llm_client(&entry);
+        let result = create_llm_client(&entry, None);
         assert!(result.is_err());
     }
 
@@ -112,7 +112,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result = create_llm_client(&entry);
+        let result = create_llm_client(&entry, None);
 
         // Restore env var
         if let Some(v) = prev_base_url {

@@ -224,7 +224,7 @@ impl ModelEntry {
 
     /// Create an LLM client from this entry.
     pub fn create_client(&self) -> Result<Box<dyn LlmClient>, AgentError> {
-        create_llm_client(self)
+        create_llm_client(self, None)
     }
 
     /// Create a ModelEntry from a ProviderConfig and model name.
@@ -669,9 +669,12 @@ async fn fetch_models_from_api(
 ///     max_tokens: None,
 ///     tool_choice: None,
 /// };
-/// let client = create_llm_client(&entry)?;
+/// let client = create_llm_client(&entry, None)?;
 /// ```
-pub fn create_llm_client(entry: &ModelEntry) -> Result<Box<dyn LlmClient>, AgentError> {
+pub fn create_llm_client(
+    entry: &ModelEntry,
+    headers: Option<crate::llm::LlmHeaders>,
+) -> Result<Box<dyn LlmClient>, AgentError> {
     let model = entry.name.clone();
     let provider_type = entry.provider_type.as_deref().unwrap_or_else(|| {
         if entry.provider.eq_ignore_ascii_case("openai") {
@@ -692,6 +695,9 @@ pub fn create_llm_client(entry: &ModelEntry) -> Result<Box<dyn LlmClient>, Agent
                 config = config.with_api_base(base_url);
             }
             let mut client = ChatOpenAI::with_config(config, model);
+            if let Some(ref h) = headers {
+                client = client.with_headers(h.clone());
+            }
             if let Some(temp) = entry.temperature {
                 client = client.with_temperature(temp);
             }
@@ -718,6 +724,9 @@ pub fn create_llm_client(entry: &ModelEntry) -> Result<Box<dyn LlmClient>, Agent
                     ))
                 })?;
             let mut client = ChatOpenAICompat::with_config(base_url, api_key, model);
+            if let Some(ref h) = headers {
+                client = client.with_headers(h.clone());
+            }
             if let Some(temp) = entry.temperature {
                 client = client.with_temperature(temp);
             }

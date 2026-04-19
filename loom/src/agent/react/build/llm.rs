@@ -43,7 +43,7 @@ pub(crate) async fn resolve_title_llm(
         max_tokens: None,
         tool_choice: None,
     };
-    create_llm_client(&entry).ok().map(Arc::from)
+    create_llm_client(&entry, None).ok().map(Arc::from)
 }
 
 pub(crate) fn model_entry_from_config(
@@ -253,7 +253,12 @@ pub(crate) async fn resolve_title_provider(
         max_tokens: None,
         tool_choice: None,
     };
-    let client = create_llm_client(&entry).ok()?;
+    let thread_id = config
+        .trace_thread_id
+        .as_ref()
+        .or(config.thread_id.as_ref());
+    let headers = thread_id.map(|tid| crate::llm::LlmHeaders::default().with_thread_id(tid));
+    let client = create_llm_client(&entry, headers).ok()?;
     Some(Arc::new(FixedLlmProvider {
         client: Arc::from(client),
         model_id: entry.name,
