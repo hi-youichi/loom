@@ -130,10 +130,11 @@ impl Tool for EditFileTool {
 
         let path = resolve_path_under(self.working_folder.as_ref(), path_param)?;
 
-        // No-op: same string means no change; succeed without touching the file.
         if old_string == new_string {
-            return Ok(ToolCallContent::text(
-                "Edit applied successfully (no change).".to_string(),
+            return Ok(ToolCallContent::diff(
+                path_param.to_string(),
+                None,
+                String::new(),
             ));
         }
 
@@ -148,8 +149,10 @@ impl Tool for EditFileTool {
             }
             std::fs::write(&path, new_string)
                 .map_err(|e| ToolSourceError::Transport(format!("failed to write file: {}", e)))?;
-            return Ok(ToolCallContent::text(
-                "Edit applied successfully.".to_string(),
+            return Ok(ToolCallContent::diff(
+                path_param.to_string(),
+                None,
+                new_string.to_string(),
             ));
         }
 
@@ -175,8 +178,10 @@ impl Tool for EditFileTool {
         std::fs::write(&path, &new_content)
             .map_err(|e| ToolSourceError::Transport(format!("failed to write file: {}", e)))?;
 
-        Ok(ToolCallContent::text(
-            "Edit applied successfully.".to_string(),
+        Ok(ToolCallContent::diff(
+            path_param.to_string(),
+            Some(content),
+            new_content,
         ))
     }
 }

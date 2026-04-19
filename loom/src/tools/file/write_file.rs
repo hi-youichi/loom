@@ -95,6 +95,12 @@ impl Tool for WriteFileTool {
                 })?;
             }
         }
+        let old_content = if path.exists() {
+            std::fs::read_to_string(&path).ok()
+        } else {
+            None
+        };
+
         let result = if append {
             std::fs::OpenOptions::new()
                 .create(true)
@@ -108,6 +114,6 @@ impl Tool for WriteFileTool {
         })?;
         std::io::Write::write_all(&mut f, content.as_bytes())
             .map_err(|e| ToolSourceError::Transport(format!("failed to write file: {}", e)))?;
-        Ok(ToolCallContent::text("ok".to_string()))
+        Ok(ToolCallContent::diff(path_param.to_string(), old_content, content.to_string()))
     }
 }
