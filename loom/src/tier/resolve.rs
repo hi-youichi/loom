@@ -1,4 +1,5 @@
 use crate::llm::{ModelEntry, ModelRegistry, ProviderConfig};
+use super::plan::tier_plans;
 
 fn entry_with_spec_fallback(
     provider_cfg: &ProviderConfig,
@@ -62,11 +63,32 @@ pub async fn resolve_from_local(
     None
 }
 
+pub fn resolve_from_plan(
+    provider: &str,
+    tier: model_spec_core::spec::ModelTier,
+    providers: &[ProviderConfig],
+) -> Option<ModelEntry> {
+    let plans = tier_plans();
+    let plan = plans.get(provider)?;
+    let model_id = plan.tiers.get(&tier)?;
+    let provider_cfg = providers.iter().find(|p| p.name == provider)?;
+    Some(ModelEntry::from_provider_config(provider_cfg, model_id))
+}
+
 pub async fn resolve_tier_intelligent(
     provider: &str,
     tier: model_spec_core::spec::ModelTier,
     providers: &[ProviderConfig],
 ) -> Option<ModelEntry> {
+    if let Some(entry) = resolve_from_plan(provider, tier, providers) {
+        tracing::debug!(
+            provider = %provider,
+            tier = ?tier,
+            "Tier resolution succeeded using plan"
+        );
+        return Some(entry);
+    }
+
     if let Some(entry) = resolve_from_spec(provider, tier, providers).await {
         tracing::debug!(
             provider = %provider,

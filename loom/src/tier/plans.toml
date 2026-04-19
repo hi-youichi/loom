@@ -1,0 +1,6 @@
+[[plan]]
+provider_id = "zhipuai-coding-plan"
+[plan.tiers]
+strong   = "glm-5.1"
+standard = "glm-4.7"
+light    = "glm-4.5-air"
