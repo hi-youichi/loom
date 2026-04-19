@@ -4,7 +4,6 @@ use async_trait::async_trait;
 
 use crate::error::AgentError;
 use crate::llm::{LlmClient, LlmProvider};
-use crate::model_spec::ModelTier;
 
 pub struct CloneableLlmClient(pub Arc<dyn LlmClient>);
 
@@ -49,12 +48,5 @@ impl LlmProvider for FixedLlmProvider {
 
     fn provider_name(&self) -> &str {
         "fixed"
-    }
-
-    async fn resolve_tier(&self, tier: ModelTier) -> Result<String, AgentError> {
-        if tier == ModelTier::None {
-            return Ok(self.default_model().to_string());
-        }
-        Ok(self.default_model().to_string())
     }
 }

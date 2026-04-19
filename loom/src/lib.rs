@@ -140,10 +140,12 @@ pub mod openai_sse;
 pub mod pregel;
 pub mod prompts;
 pub mod protocol;
+pub mod provider;
 pub mod runner_common;
 pub mod skill;
 pub mod state;
 pub mod stream;
+pub mod tier;
 
 pub mod services;
 pub mod tool_source;

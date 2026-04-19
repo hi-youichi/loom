@@ -36,7 +36,23 @@ impl ThinkNode {
         let model = if !model_config.model_id.is_empty() {
             model_config.model_id.clone()
         } else if model_config.tier != ModelTier::None {
-            self.provider.resolve_tier(model_config.tier).await?
+            let providers = crate::provider::load_provider_configs().ok_or_else(|| {
+                AgentError::ExecutionFailed("no provider configs for tier resolution".into())
+            })?;
+            let entry = crate::tier::resolve::resolve_tier_intelligent(
+                self.provider.provider_name(),
+                model_config.tier,
+                &providers,
+            )
+            .await
+            .ok_or_else(|| {
+                AgentError::ExecutionFailed(format!(
+                    "no model found for tier {:?} on provider '{}'",
+                    model_config.tier,
+                    self.provider.provider_name()
+                ))
+            })?;
+            entry.id
         } else {
             self.provider.default_model().to_string()
         };
