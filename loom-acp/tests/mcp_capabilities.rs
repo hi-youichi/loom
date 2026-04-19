@@ -11,8 +11,17 @@ fn initialize(acp: &mut e2e::AcpChild) -> serde_json::Map<String, serde_json::Va
         )
         .expect("initialize response");
 
-    assert!(response.error.is_none(), "initialize should succeed: {:?}", response.error);
-    response.result.expect("should have result").as_object().expect("result should be object").clone()
+    assert!(
+        response.error.is_none(),
+        "initialize should succeed: {:?}",
+        response.error
+    );
+    response
+        .result
+        .expect("should have result")
+        .as_object()
+        .expect("result should be object")
+        .clone()
 }
 
 #[test]
@@ -57,10 +66,7 @@ fn e2e_new_session_with_empty_mcp_servers() {
     );
 
     let result = response.result.expect("should have result");
-    assert!(
-        result.get("sessionId").is_some(),
-        "should return sessionId"
-    );
+    assert!(result.get("sessionId").is_some(), "should return sessionId");
 }
 
 #[test]

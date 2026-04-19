@@ -31,8 +31,8 @@
 
 use crate::content::extract_locations;
 use agent_client_protocol::{
-    ContentChunk, CurrentModeUpdate, SessionId, SessionModeId, SessionNotification,
-    SessionInfoUpdate, SessionUpdate, Terminal, TerminalId, ToolCall, ToolCallId,
+    ContentChunk, CurrentModeUpdate, SessionId, SessionInfoUpdate, SessionModeId,
+    SessionNotification, SessionUpdate, Terminal, TerminalId, ToolCall, ToolCallId,
     ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
 };
 use loom::message::Message;
@@ -146,11 +146,12 @@ pub fn loom_event_to_updates(ev: &AnyStreamEvent) -> Vec<StreamUpdate> {
 
 fn extract_title_from_react_event(ev: &StreamEvent<loom::ReActState>) -> Option<StreamUpdate> {
     match ev {
-        StreamEvent::Updates { node_id, state, .. } if node_id == "title" => {
-            state.summary.as_ref().map(|title| StreamUpdate::SessionInfoUpdate {
+        StreamEvent::Updates { node_id, state, .. } if node_id == "title" => state
+            .summary
+            .as_ref()
+            .map(|title| StreamUpdate::SessionInfoUpdate {
                 title: title.clone(),
-            })
-        }
+            }),
         _ => None,
     }
 }
@@ -693,10 +694,19 @@ fn extract_target_from_input(name: &str, input: Option<&serde_json::Value>) -> O
             if !agents.is_empty() {
                 let agent_names: Vec<String> = agents
                     .iter()
-                    .filter_map(|agent| agent.get("agent").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                    .filter_map(|agent| {
+                        agent
+                            .get("agent")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
+                    })
                     .collect();
                 if !agent_names.is_empty() {
-                    return Some(format!("{} agent(s): {}", agent_names.len(), agent_names.join(", ")));
+                    return Some(format!(
+                        "{} agent(s): {}",
+                        agent_names.len(),
+                        agent_names.join(", ")
+                    ));
                 }
             }
         }

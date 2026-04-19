@@ -413,7 +413,10 @@ impl AcpChild {
                 break;
             }
             if bytes_read == 0 {
-                return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "stdout closed"));
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "stdout closed",
+                ));
             }
         }
 
@@ -422,7 +425,11 @@ impl AcpChild {
     }
 
     /// Wait for a response with the given id (with timeout)
-    pub fn wait_for_response(&mut self, id: u64, timeout: Duration) -> std::io::Result<RpcResponse> {
+    pub fn wait_for_response(
+        &mut self,
+        id: u64,
+        timeout: Duration,
+    ) -> std::io::Result<RpcResponse> {
         let start = Instant::now();
 
         while start.elapsed() < timeout {
@@ -503,11 +510,17 @@ impl AcpChild {
             ));
         }
 
-        Ok(sess
+        let session_id = sess
             .result
-            .and_then(|r| r.get("sessionId").cloned())
-            .and_then(|v| v.as_str().map(String::from))
-            .unwrap_or_default())
+            .and_then(|r| {
+                r.get("sessionId")
+                    .and_then(|s| s.as_str().map(|s| s.to_string()))
+            })
+            .ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidData, "no session_id in response")
+            })?;
+
+        Ok(session_id)
     }
 
     /// Wait for and collect all session/update notifications within timeout

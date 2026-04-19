@@ -11,8 +11,17 @@ fn initialize(acp: &mut e2e::AcpChild) -> serde_json::Map<String, serde_json::Va
         )
         .expect("initialize response");
 
-    assert!(response.error.is_none(), "initialize should succeed: {:?}", response.error);
-    response.result.expect("should have result").as_object().expect("result should be object").clone()
+    assert!(
+        response.error.is_none(),
+        "initialize should succeed: {:?}",
+        response.error
+    );
+    response
+        .result
+        .expect("should have result")
+        .as_object()
+        .expect("result should be object")
+        .clone()
 }
 
 #[test]
@@ -25,7 +34,12 @@ fn e2e_agent_capabilities_completeness() {
         .and_then(|v| v.as_object())
         .expect("should have agentCapabilities");
 
-    let expected_top_level = ["loadSession", "sessionCapabilities", "promptCapabilities", "mcpCapabilities"];
+    let expected_top_level = [
+        "loadSession",
+        "sessionCapabilities",
+        "promptCapabilities",
+        "mcpCapabilities",
+    ];
     for key in &expected_top_level {
         assert!(
             capabilities.contains_key(*key),
@@ -54,15 +68,24 @@ fn e2e_agent_capabilities_field_types() {
         .expect("should have agentCapabilities");
 
     assert!(
-        capabilities.get("loadSession").and_then(|v| v.as_bool()).is_some(),
+        capabilities
+            .get("loadSession")
+            .and_then(|v| v.as_bool())
+            .is_some(),
         "loadSession should be boolean"
     );
     assert!(
-        capabilities.get("sessionCapabilities").and_then(|v| v.as_object()).is_some(),
+        capabilities
+            .get("sessionCapabilities")
+            .and_then(|v| v.as_object())
+            .is_some(),
         "sessionCapabilities should be object"
     );
     assert!(
-        capabilities.get("promptCapabilities").and_then(|v| v.as_object()).is_some(),
+        capabilities
+            .get("promptCapabilities")
+            .and_then(|v| v.as_object())
+            .is_some(),
         "promptCapabilities should be object"
     );
     if let Some(mcp_caps) = capabilities.get("mcpCapabilities") {
@@ -120,7 +143,10 @@ fn e2e_session_capabilities_list_is_object() {
         .and_then(|v| v.as_object())
         .expect("sessionCapabilities.list should be object");
 
-    assert!(list.is_empty(), "sessionCapabilities.list should be empty object");
+    assert!(
+        list.is_empty(),
+        "sessionCapabilities.list should be empty object"
+    );
 }
 
 #[test]
@@ -135,7 +161,10 @@ fn e2e_session_capabilities_fork_is_object() {
         .and_then(|v| v.as_object())
         .expect("sessionCapabilities.fork should be object");
 
-    assert!(fork.is_empty(), "sessionCapabilities.fork should be empty object");
+    assert!(
+        fork.is_empty(),
+        "sessionCapabilities.fork should be empty object"
+    );
 }
 
 #[test]
@@ -238,7 +267,10 @@ fn e2e_agent_info_title_when_present() {
         .expect("should have agentInfo");
 
     if let Some(title) = agent_info.get("title").and_then(|v| v.as_str()) {
-        assert!(!title.is_empty(), "agentInfo.title should not be empty when present");
+        assert!(
+            !title.is_empty(),
+            "agentInfo.title should not be empty when present"
+        );
     }
 }
 

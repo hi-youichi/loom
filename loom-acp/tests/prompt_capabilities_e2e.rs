@@ -219,7 +219,10 @@ fn e2e_prompt_capabilities_with_different_protocol_versions() {
         .expect("initialize response");
 
     // Should succeed with supported version
-    assert!(response.error.is_none(), "initialize with v1 should succeed");
+    assert!(
+        response.error.is_none(),
+        "initialize with v1 should succeed"
+    );
     let result = response.result.expect("should have result");
 
     // Verify prompt capabilities are present
@@ -233,8 +236,14 @@ fn e2e_prompt_capabilities_with_different_protocol_versions() {
         prompt_caps.get("embeddedContext").is_some(),
         "embeddedContext should be present"
     );
-    assert!(prompt_caps.get("image").is_some(), "image should be present");
-    assert!(prompt_caps.get("audio").is_some(), "audio should be present");
+    assert!(
+        prompt_caps.get("image").is_some(),
+        "image should be present"
+    );
+    assert!(
+        prompt_caps.get("audio").is_some(),
+        "audio should be present"
+    );
 }
 
 #[test]

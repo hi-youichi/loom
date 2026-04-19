@@ -92,8 +92,15 @@ pub fn build_helve_config(
 
     let mut base = ReactBuildConfig::from_env();
     base.dry_run = effective_opts.dry_run;
-    if let Some(ref m) = effective_opts.model {
-        base.model = Some(m.clone());
+    {
+        let model = effective_opts.model.as_deref();
+        let provider = effective_opts.provider.as_deref();
+        let has_provider_prefix = model.is_some_and(|m| m.contains('/'));
+        base.model = match (model, provider) {
+            (Some(m), Some(p)) if !has_provider_prefix => Some(format!("{}/{}", p, m)),
+            (Some(m), _) => Some(m.to_string()),
+            _ => None,
+        };
     }
 
     // Provider configuration from RunOptions (used by ACP to specify provider-specific settings)
@@ -577,6 +584,11 @@ fn apply_model_provider_resolution(opts: &mut RunOptions) {
 
     let effective_provider = provider_only.as_deref().or(resolved_provider.as_deref());
     opts.model = Some(model_name.clone());
+    if opts.provider.is_none() {
+        if let Some(ref p) = resolved_provider {
+            opts.provider = Some(p.clone());
+        }
+    }
 
     tracing::info!(
         "🎯 Final resolution: model_name={}, provider={:?}",
@@ -950,6 +962,7 @@ mod tests {
         apply_model_provider_resolution(&mut opts);
 
         assert_eq!(opts.model.as_deref(), Some("gpt-4o"));
+        assert_eq!(opts.provider.as_deref(), Some("openai"));
     }
 
     #[test]
@@ -1004,6 +1017,7 @@ mod tests {
 
         // Should split on first slash only
         assert_eq!(opts.model.as_deref(), Some("sub/model"));
+        assert_eq!(opts.provider.as_deref(), Some("provider"));
     }
 
     #[test]
@@ -1182,7 +1196,7 @@ mod tests {
             any_stream_event_sender: None,
         };
         let (_helve, config, _resolved) = build_helve_config(&opts);
-        assert_eq!(config.model.as_deref(), Some("claude-sonnet-4"));
+        assert_eq!(config.model.as_deref(), Some("anthropic/claude-sonnet-4"));
         assert_eq!(config.model_tier, Some(crate::model_spec::ModelTier::Light));
 
         match prev {
