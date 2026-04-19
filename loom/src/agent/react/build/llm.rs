@@ -241,10 +241,11 @@ pub(crate) async fn resolve_title_provider(
     config: &ReactBuildConfig,
 ) -> Option<Arc<dyn LlmProvider>> {
     let resolved = resolve_tier_for_config(config, ModelTier::Light).await?;
+    let (provider, model_name) = ModelEntry::parse_id(&resolved.model_id)?;
     let entry = ModelEntry {
         id: resolved.model_id.clone(),
-        name: resolved.model_id,
-        provider: resolved.provider_type.clone().unwrap_or_default(),
+        name: model_name.to_string(),
+        provider: provider.to_string(),
         base_url: resolved.base_url,
         api_key: resolved.api_key,
         provider_type: resolved.provider_type,
