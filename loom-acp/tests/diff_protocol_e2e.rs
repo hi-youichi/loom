@@ -24,7 +24,7 @@ fn find_diff_notification(notifications: &[serde_json::Value]) -> Option<&serde_
         update
             .get("content")
             .and_then(|c| c.as_array())
-            .is_some_and(|item| item.get("type").and_then(|v| v.as_str()) == Some("diff"))
+            .is_some_and(|items| items.iter().any(|item| item.get("type").and_then(|v| v.as_str()) == Some("diff")))
     })
 }
 

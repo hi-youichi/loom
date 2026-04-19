@@ -32,11 +32,8 @@ async fn generate_title_llm(user_message: &str, model: Option<&str>) -> Option<S
     let model_str = model?;
     let (provider, _model_id) = model_str.split_once('/')?;
 
-    let providers = load_providers()?;
-    let registry = crate::llm::ModelRegistry::global();
-    let entry = registry
-        .resolve_tier(provider, ModelTier::Light, &providers)
-        .await?;
+    let providers = load_provider_configs()?;
+    let entry = crate::tier::resolve::resolve_from_spec(provider, ModelTier::Light, &providers).await?;
 
     let config = async_openai::config::OpenAIConfig::new()
         .with_api_key(entry.api_key.unwrap_or_default());
@@ -83,21 +80,4 @@ fn fallback_title(user_message: &str) -> String {
     }
 }
 
-fn load_providers() -> Option<Vec<crate::llm::ProviderConfig>> {
-    let config = env_config::load_full_config("loom").ok()?;
-    Some(
-        config
-            .providers
-            .into_iter()
-            .map(|p| crate::llm::ProviderConfig {
-                name: p.name,
-                base_url: p.base_url,
-                api_key: p.api_key,
-                provider_type: p.provider_type,
-                fetch_models: p.fetch_models.unwrap_or(false),
-                cache_ttl: p.cache_ttl,
-                enable_tier_resolution: p.enable_tier_resolution.unwrap_or(true),
-            })
-            .collect(),
-    )
-}
+use crate::provider::load_provider_configs;

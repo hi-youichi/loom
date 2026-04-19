@@ -427,31 +427,8 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
 
     tracing::info!("🔍 Resolving model configuration for: {}", model_str);
 
-    let providers: Vec<crate::llm::ProviderConfig> = match env_config::load_full_config("loom") {
-        Ok(config) => {
-            tracing::debug!(
-                "📋 Loaded {} provider(s) from config",
-                config.providers.len()
-            );
-            config
-                .providers
-                .into_iter()
-                .map(|p| crate::llm::ProviderConfig {
-                    name: p.name,
-                    base_url: p.base_url,
-                    api_key: p.api_key,
-                    provider_type: p.provider_type,
-                    fetch_models: p.fetch_models.unwrap_or(false),
-                    cache_ttl: p.cache_ttl,
-                    enable_tier_resolution: p.enable_tier_resolution.unwrap_or(true),
-                })
-                .collect()
-        }
-        Err(e) => {
-            tracing::warn!("⚠️  Failed to load config: {}, using empty providers", e);
-            vec![]
-        }
-    };
+    let providers: Vec<crate::llm::ProviderConfig> =
+        crate::provider::load_provider_configs().unwrap_or_default();
 
     // 1. Try ModelRegistry first
     tracing::debug!("🔎 Searching ModelRegistry for: {}", model_str);

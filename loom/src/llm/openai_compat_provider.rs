@@ -2,8 +2,7 @@ use async_trait::async_trait;
 
 use crate::error::AgentError;
 use crate::llm::{ChatOpenAICompat, LlmClient, LlmProvider};
-use crate::llm::model_registry::{ModelEntry, ModelRegistry, ProviderConfig};
-use crate::model_spec::ModelTier;
+use crate::llm::model_registry::{ModelEntry, ProviderConfig};
 
 pub struct OpenAICompatProvider {
     base_url: String,
@@ -44,21 +43,5 @@ impl LlmProvider for OpenAICompatProvider {
 
     fn provider_name(&self) -> &str {
         &self.provider_name
-    }
-
-    async fn resolve_tier(&self, tier: ModelTier) -> Result<String, AgentError> {
-        if tier == ModelTier::None {
-            return Ok(self.default_model().to_string());
-        }
-        let entry = ModelRegistry::global()
-            .resolve_tier_intelligent(&self.provider_name, tier, &self.providers)
-            .await
-            .ok_or_else(|| {
-                AgentError::ExecutionFailed(format!(
-                    "no model found for tier {:?} on provider '{}'",
-                    tier, self.provider_name
-                ))
-            })?;
-        Ok(entry.id)
     }
 }

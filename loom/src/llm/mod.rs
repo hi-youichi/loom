@@ -126,7 +126,7 @@ use async_trait::async_trait;
 
 use crate::error::AgentError;
 use crate::message::Message;
-use crate::model_spec::ModelTier;
+
 use crate::state::ToolCall;
 use crate::stream::MessageChunk;
 
@@ -254,11 +254,6 @@ pub trait LlmProvider: Send + Sync {
 
     /// Provider name (e.g. `"openai"`, `"bigmodel"`).
     fn provider_name(&self) -> &str;
-
-    /// Resolve a [`ModelTier`] to a concrete model ID.
-    ///
-    /// For [`ModelTier::None`], implementations should return [`Self::default_model`].
-    async fn resolve_tier(&self, tier: ModelTier) -> Result<String, AgentError>;
 }
 
 /// LLM client: given messages, returns assistant text and optional tool_calls.

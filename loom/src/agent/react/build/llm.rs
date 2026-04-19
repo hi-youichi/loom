@@ -5,10 +5,8 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
-
 use crate::error::AgentError;
-use crate::llm::{create_llm_client, ChatOpenAI, ChatOpenAICompat, FixedLlmProvider, LlmProvider, ModelEntry, ModelRegistry, ProviderConfig};
+use crate::llm::{create_llm_client, ChatOpenAI, ChatOpenAICompat, FixedLlmProvider, LlmProvider, ModelEntry};
 use crate::model_spec::ModelTier;
 use crate::tool_source::ToolSource;
 use crate::LlmClient;
@@ -26,129 +24,8 @@ fn parse_provider_model(model: &str) -> Option<(&str, &str)> {
     Some((provider, model_id))
 }
 
-pub struct ResolvedTierModel {
-    pub model_id: String,
-    pub base_url: Option<String>,
-    pub api_key: Option<String>,
-    pub provider_type: Option<String>,
-}
-
-impl ResolvedTierModel {
-    fn from_entry(entry: ModelEntry) -> Self {
-        Self {
-            model_id: entry.id,
-            base_url: entry.base_url,
-            api_key: entry.api_key,
-            provider_type: entry.provider_type,
-        }
-    }
-}
-
-pub(crate) fn load_provider_configs() -> Option<Vec<ProviderConfig>> {
-    let config = env_config::load_full_config("loom").ok()?;
-    Some(
-        config
-            .providers
-            .into_iter()
-            .map(|p| ProviderConfig {
-                name: p.name,
-                base_url: p.base_url,
-                api_key: p.api_key,
-                provider_type: p.provider_type,
-                fetch_models: p.fetch_models.unwrap_or(false),
-                cache_ttl: p.cache_ttl,
-                enable_tier_resolution: p.enable_tier_resolution.unwrap_or(true),
-            })
-            .collect(),
-    )
-}
-
-#[async_trait]
-pub trait TierResolver: Send + Sync {
-    async fn resolve_tier(
-        &self,
-        config: &ReactBuildConfig,
-        tier: ModelTier,
-    ) -> Option<ResolvedTierModel>;
-}
-
-pub struct DefaultTierResolver;
-
-#[async_trait]
-impl TierResolver for DefaultTierResolver {
-    async fn resolve_tier(
-        &self,
-        config: &ReactBuildConfig,
-        tier: ModelTier,
-    ) -> Option<ResolvedTierModel> {
-        let providers = load_provider_configs()?;
-
-        match config.model.as_deref() {
-            Some(model_id) => {
-                // Try to extract provider from model ID first
-                if let Some((provider, _model)) = ModelEntry::parse_id(model_id) {
-                    // Check if this provider has tier resolution enabled
-                    if let Some(provider_cfg) = providers.iter().find(|p| p.name == provider) {
-                        if provider_cfg.enable_tier_resolution {
-                            let entry = ModelRegistry::global()
-                                .resolve_tier_intelligent(provider, tier, &providers)
-                                .await?;
-                            return Some(ResolvedTierModel::from_entry(entry));
-                        }
-                    }
-                }
-                
-                // Fallback to original logic for model ID based resolution
-                let entry = ModelRegistry::global()
-                    .resolve_tier_for_model(model_id, tier, &providers)
-                    .await?;
-                Some(ResolvedTierModel::from_entry(entry))
-            }
-            None => {
-                let provider = config.llm_provider.as_deref();
-                match provider {
-                    Some(p) => {
-                        // Check if this provider has tier resolution enabled
-                        if let Some(provider_cfg) = providers.iter().find(|cfg| cfg.name == p) {
-                            if !provider_cfg.enable_tier_resolution {
-                                tracing::debug!(
-                                    provider = %p,
-                                    "Tier resolution disabled for this provider"
-                                );
-                                return None;
-                            }
-                        }
-
-                        let entry = ModelRegistry::global()
-                            .resolve_tier_intelligent(p, tier, &providers)
-                            .await?;
-                        Some(ResolvedTierModel::from_entry(entry))
-                    }
-                    None => {
-                        // Try all providers with tier resolution enabled
-                        for p in &providers {
-                            if p.enable_tier_resolution {
-                                if let Some(entry) =
-                                    ModelRegistry::global().resolve_tier_intelligent(&p.name, tier, &providers).await
-                                {
-                                    return Some(ResolvedTierModel::from_entry(entry));
-                                }
-                            }
-                        }
-                        None
-                    }
-                }
-            }
-        }
-    }
-}
-
-pub(crate) async fn resolve_tier_for_config(
-    config: &ReactBuildConfig,
-    tier: ModelTier,
-) -> Option<ResolvedTierModel> {
-    DefaultTierResolver.resolve_tier(config, tier).await
-}
+pub use crate::tier::{DefaultTierResolver, ResolvedTierModel, TierResolver};
+pub(crate) use crate::tier::resolver::resolve_tier_for_config;
 
 #[allow(dead_code)]
 pub(crate) async fn resolve_title_llm(
