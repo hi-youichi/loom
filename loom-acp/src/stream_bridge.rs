@@ -90,6 +90,19 @@ pub enum StreamUpdate {
         arguments_delta: String,
     },
 
+    /// File diff update (ACP `tool_call_update` with diff content).
+    /// Shows file modifications in a format suitable for client display.
+    Diff {
+        /// The tool call that produced this diff.
+        tool_call_id: String,
+        /// File path
+        path: String,
+        /// Previous content (optional)
+        old_text: Option<String>,
+        /// New content
+        new_text: String,
+    },
+
     /// Session metadata update (ACP `session_info_update`).
     /// Used to push title and related metadata changes to the client in real time.
     SessionInfoUpdate { title: String },
@@ -197,9 +210,21 @@ where
         StreamEvent::ToolOutput {
             call_id, content, ..
         } => {
-            // Prefer Loom's call_id so the client can attach streamed tool output to the right tool call.
-            // If call_id is missing, we keep an empty id; the notification layer will drop it.
             let id = call_id.clone().unwrap_or_default();
+            
+            // Try to deserialize content as ToolCallContent to check for Diff
+            if let Ok(loom::tool_source::ToolCallContent::Diff { path, old_text, new_text }) =
+                serde_json::from_str::<loom::tool_source::ToolCallContent>(content)
+            {
+                return vec![StreamUpdate::Diff {
+                    tool_call_id: id,
+                    path,
+                    old_text,
+                    new_text,
+                }];
+            }
+            
+            // Handle regular tool output
             vec![StreamUpdate::ToolCallUpdated {
                 tool_call_id: id,
                 status: "running".to_string(),
@@ -215,16 +240,54 @@ where
             ..
         } => {
             let id = call_id.clone().unwrap_or_default();
-            vec![StreamUpdate::ToolCallUpdated {
-                tool_call_id: id,
-                status: if *is_error {
-                    "failure".to_string()
-                } else {
-                    "success".to_string()
-                },
-                output: Some(result.clone()),
-                raw_output: raw_result.clone(),
-            }]
+
+            let is_diff_output = raw_result
+                .as_deref()
+                .or(Some(result.as_str()))
+                .and_then(|s| serde_json::from_str::<loom::tool_source::ToolCallContent>(s).ok())
+                .map(|c| matches!(c, loom::tool_source::ToolCallContent::Diff { .. }))
+                .unwrap_or(false);
+
+            if is_diff_output {
+                let diff_content = raw_result
+                    .as_deref()
+                    .or(Some(result.as_str()))
+                    .and_then(|s| serde_json::from_str::<loom::tool_source::ToolCallContent>(s).ok());
+
+                let mut updates = Vec::new();
+
+                if let Some(loom::tool_source::ToolCallContent::Diff { path, old_text, new_text }) = diff_content {
+                    updates.push(StreamUpdate::Diff {
+                        tool_call_id: id.clone(),
+                        path,
+                        old_text,
+                        new_text,
+                    });
+                }
+
+                updates.push(StreamUpdate::ToolCallUpdated {
+                    tool_call_id: id,
+                    status: if *is_error {
+                        "failure".to_string()
+                    } else {
+                        "success".to_string()
+                    },
+                    output: None,
+                    raw_output: None,
+                });
+                updates
+            } else {
+                vec![StreamUpdate::ToolCallUpdated {
+                    tool_call_id: id,
+                    status: if *is_error {
+                        "failure".to_string()
+                    } else {
+                        "success".to_string()
+                    },
+                    output: Some(result.clone()),
+                    raw_output: raw_result.clone(),
+                }]
+            }
         }
         StreamEvent::ToolCallChunk {
             call_id,
@@ -306,45 +369,31 @@ pub fn stream_update_to_session_notification(
                 fields,
             ))
         }
-        StreamUpdate::ToolCallChunk {
-            tool_call_id,
-            name,
-            arguments_delta,
-        } => {
-            if let Some(tool_name) = name {
-                let tc = create_tool_call(
-                    tool_call_id,
-                    tool_name,
-                    parse_arguments_delta(arguments_delta).as_ref(),
-                    None,
-                );
-                tracing::debug!(
-                    tool_call_id = %tool_call_id,
-                    name = %tool_name,
-                    arguments_delta = %arguments_delta,
-                    "tool_call_chunk (first) session update"
-                );
-                SessionUpdate::ToolCall(tc)
-            } else {
-                // Subsequent chunks: ACP doesn't support incremental updates yet.
-                // The complete ToolCall event will be sent after streaming finishes.
-                tracing::trace!(
-                    tool_call_id = %tool_call_id,
-                    arguments_delta_len = arguments_delta.len(),
-                    "ignoring tool_call_chunk (subsequent) - ACP doesn't support incremental updates"
-                );
-                return None;
-            }
+        StreamUpdate::ToolCallChunk { .. } => {
+            return None;
+        }
+        StreamUpdate::Diff { tool_call_id, path, old_text, new_text } => {
+            let mut fields = ToolCallUpdateFields::new()
+                .content(vec![
+                    agent_client_protocol::ToolCallContent::Diff(
+                        agent_client_protocol::Diff::new(path.clone(), new_text.clone())
+                            .old_text(old_text.clone()),
+                    )
+                ]);
+            
+            let status = ToolCallStatus::Completed;
+            fields = fields.status(status);
+            
+            SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
+                ToolCallId::new(tool_call_id.as_str()),
+                fields,
+            ))
         }
         StreamUpdate::SessionInfoUpdate { title } => {
             SessionUpdate::SessionInfoUpdate(SessionInfoUpdate::new().title(title.clone()))
         }
     };
     Some(SessionNotification::new(session_id.clone(), update))
-}
-
-fn parse_arguments_delta(delta: &str) -> Option<serde_json::Value> {
-    serde_json::from_str::<serde_json::Value>(delta).ok()
 }
 
 fn parse_text_output_to_raw_value(output: &str) -> serde_json::Value {

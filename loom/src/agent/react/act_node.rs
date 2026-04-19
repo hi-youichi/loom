@@ -560,13 +560,14 @@ impl Node<ReActState> for ActNode {
 
             match result {
                 Ok(content) => {
+                    // Serialize ToolCallContent to JSON for normalization (handles Diff/Terminal/Text)
+                    let raw_text = serde_json::to_string(&content).unwrap_or_else(|_| content.clone().into_text());
                     trace!(
                         tool = %tc.name,
-                        result_len = content.as_text().unwrap().len(),
-                        result_preview = %truncate_for_log(content.as_text().unwrap(), 200),
+                        result_len = raw_text.len(),
+                        result_preview = %truncate_for_log(&raw_text, 200),
                         "Tool returned"
                     );
-                    let raw_text = content.as_text().unwrap().to_string();
                     let normalized = normalize_tool_output(
                         &tc.name,
                         &args,
