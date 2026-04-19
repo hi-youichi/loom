@@ -2,7 +2,7 @@
 //!
 //! Spawns the loom-acp binary as a subprocess and communicates via JSON-RPC over stdin/stdout.
 
-use std::io::{BufRead, BufReader, Write, Result};
+use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -123,7 +123,10 @@ impl AcpChild {
                 break;
             }
             if bytes_read == 0 {
-                return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "stdout closed"));
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "stdout closed",
+                ));
             }
         }
 
@@ -132,7 +135,11 @@ impl AcpChild {
     }
 
     /// Wait for a response with the given id (with timeout)
-    pub fn wait_for_response(&mut self, id: u64, timeout: Duration) -> std::io::Result<RpcResponse> {
+    pub fn wait_for_response(
+        &mut self,
+        id: u64,
+        timeout: Duration,
+    ) -> std::io::Result<RpcResponse> {
         let start = Instant::now();
 
         while start.elapsed() < timeout {
@@ -220,8 +227,13 @@ impl AcpChild {
 
         let session_id = new_session_response
             .result
-            .and_then(|r| r.get("sessionId").and_then(|s| s.as_str().map(|s| s.to_string())))
-            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "no session_id in response"))?;
+            .and_then(|r| {
+                r.get("sessionId")
+                    .and_then(|s| s.as_str().map(|s| s.to_string()))
+            })
+            .ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidData, "no session_id in response")
+            })?;
 
         Ok(session_id)
     }

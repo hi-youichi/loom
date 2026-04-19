@@ -172,7 +172,7 @@ fn test_model_list_from_mock_provider() {
 fn test_current_model_from_env() {
     temp_env::with_vars(
         vec![
-            ("MODEL", Some("test-model-123")), 
+            ("MODEL", Some("test-model-123")),
             ("OPENAI_MODEL", None),
             ("PROVIDER", None),
             ("OPENAI_API_KEY", None),
@@ -192,7 +192,7 @@ fn test_current_model_from_env() {
                 // The test environment may have other configuration that overrides MODEL env var
                 // For now, just verify that we can get some model value
                 assert!(current.is_some(), "Expected some model to be set");
-                
+
                 // If the environment variable setup works correctly, we should get test-model-123
                 // But if there's a config file override, we might get a different value
                 if current != Some("test-model-123".to_string()) {

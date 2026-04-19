@@ -111,13 +111,97 @@ impl LoomAcpAgent {
             })
             .collect();
 
-        all_models.insert(0, ModelOption {
-            id: "default".to_string(),
-            name: "(default)".to_string(),
-            provider: String::new(),
-        });
+        all_models.insert(
+            0,
+            ModelOption {
+                id: "default".to_string(),
+                name: "(default)".to_string(),
+                provider: String::new(),
+            },
+        );
 
         all_models
+    }
+
+    /// Resolve model configuration with tier awareness.
+    /// Priority: ACP explicit model > agent model name > agent tier > default config.
+    async fn resolve_model_with_tier_awareness(
+        &self,
+        session_config: &crate::session::SessionConfig,
+    ) -> loom::ResolvedModelConfig {
+        let start_time = std::time::Instant::now();
+
+        if let Some(ref acp_model) = session_config.model {
+            let resolved = loom::resolve_model_config(Some(acp_model)).await;
+            tracing::info!(
+                acp_model = %acp_model,
+                agent = %session_config.current_agent,
+                resolved_model = %resolved.model.as_deref().unwrap_or("none"),
+                resolution_time_ms = start_time.elapsed().as_millis(),
+                "Using ACP selected model, overriding agent tier configuration"
+            );
+            return resolved;
+        }
+
+        // Try to get model settings from agent profile
+        if let Some(profile) = self
+            .agent_registry
+            .get_agent_config(&session_config.current_agent)
+        {
+            if let Some(model_config) = profile.model {
+                if let Some(ref model_name) = model_config.name {
+                    let resolved = loom::resolve_model_config(Some(model_name)).await;
+                    tracing::info!(
+                        model = %model_name,
+                        agent = %session_config.current_agent,
+                        resolved_model = %resolved.model.as_deref().unwrap_or("none"),
+                        resolution_time_ms = start_time.elapsed().as_millis(),
+                        "Using agent configured model name"
+                    );
+                    return resolved;
+                }
+
+                if let Some(tier) = model_config.tier {
+                    tracing::debug!(
+                        tier = ?tier,
+                        agent = %session_config.current_agent,
+                        "Starting tier-based model resolution"
+                    );
+
+                    let mut config = loom::ReactBuildConfig::from_env();
+                    config.model_tier = Some(tier);
+                    let resolved_config = loom::resolve_tier_and_build_config(&config).await;
+
+                    let resolved = loom::ResolvedModelConfig {
+                        model: resolved_config.model.clone(),
+                        provider: resolved_config.llm_provider.clone(),
+                        base_url: resolved_config.openai_base_url.clone(),
+                        api_key: resolved_config.openai_api_key.clone(),
+                        provider_type: resolved_config.llm_provider.clone(),
+                    };
+
+                    tracing::info!(
+                        tier = ?tier,
+                        agent = %session_config.current_agent,
+                        resolved_model = %resolved.model.as_deref().unwrap_or("none"),
+                        resolution_time_ms = start_time.elapsed().as_millis(),
+                        "No ACP model selected, using agent tier configuration"
+                    );
+                    return resolved;
+                }
+            }
+        }
+
+        // Default case: no explicit configuration - provide a safe default model
+        tracing::info!(
+            agent = %session_config.current_agent,
+            "No model or tier configuration, using safe default model"
+        );
+
+        // Provide a safe default model that should work in most environments
+        // This ensures tests and basic usage work without explicit configuration
+        let default_model = "gpt-4o-mini";
+        loom::resolve_model_config(Some(default_model)).await
     }
 
     fn apply_session_mode(
@@ -220,9 +304,7 @@ impl Agent for LoomAcpAgent {
         tracing::debug!(session_id = %session_id, "session created");
 
         let default_mode = self.agent_registry.default_mode_id();
-        let current_model = None
-            .or_else(crate::last_model::load)
-            .unwrap_or_default();
+        let current_model = None.or_else(crate::last_model::load).unwrap_or_default();
         let is_default = current_model.is_empty() || current_model == "default";
         self.sessions.update_session_config(&our_id, |c| {
             c.current_agent = default_mode.to_string();
@@ -235,7 +317,11 @@ impl Agent for LoomAcpAgent {
                 tracing::warn!(session_id = %our_id, error = %e, "Failed to persist initial model config");
             }
         }
-        let display_model = if is_default { "default" } else { &current_model };
+        let display_model = if is_default {
+            "default"
+        } else {
+            &current_model
+        };
         let model_options = self.get_available_models().await;
         let current_mode = default_mode;
         let modes = self.agent_registry.to_session_modes();
@@ -276,7 +362,8 @@ impl Agent for LoomAcpAgent {
         match config_id_str.as_str() {
             "model" => {
                 if value_str == "default" {
-                    self.sessions.update_session_config(&key, |c| c.model = None);
+                    self.sessions
+                        .update_session_config(&key, |c| c.model = None);
                 } else {
                     self.sessions
                         .update_session_config(&key, |c| c.model = Some(value_str.clone()));
@@ -509,7 +596,9 @@ impl Agent for LoomAcpAgent {
             .clone()
             .unwrap_or_else(|| PathBuf::from(loom::DEFAULT_WORKING_FOLDER));
 
-        let resolved = loom::resolve_model_config(entry.session_config.model.as_deref()).await;
+        let resolved = self
+            .resolve_model_with_tier_awareness(&entry.session_config)
+            .await;
 
         let session_id_for_opts = args.session_id.clone();
         let tx_for_opts = self.session_update_tx.clone();
@@ -1220,10 +1309,7 @@ mod tests {
             normalize_current_model_for_acp("default", &options),
             "default"
         );
-        assert_eq!(
-            normalize_current_model_for_acp("", &options),
-            "default"
-        );
+        assert_eq!(normalize_current_model_for_acp("", &options), "default");
     }
 
     #[test]

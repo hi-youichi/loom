@@ -16,7 +16,10 @@ fn e2e_session_new_before_initialize_fails() {
         )
         .expect("session/new response");
 
-    assert!(response.error.is_some(), "session/new before initialize should fail");
+    assert!(
+        response.error.is_some(),
+        "session/new before initialize should fail"
+    );
 }
 
 #[test]
@@ -58,7 +61,10 @@ fn e2e_session_prompt_before_initialize_fails() {
         )
         .expect("session/prompt response");
 
-    assert!(response.error.is_some(), "session/prompt before initialize should fail");
+    assert!(
+        response.error.is_some(),
+        "session/prompt before initialize should fail"
+    );
 }
 
 #[test]
@@ -108,7 +114,11 @@ fn e2e_authenticate_after_initialize() {
             Duration::from_secs(10),
         )
         .expect("authenticate");
-    assert!(auth.error.is_none(), "authenticate after initialize should succeed: {:?}", auth.error);
+    assert!(
+        auth.error.is_none(),
+        "authenticate after initialize should succeed: {:?}",
+        auth.error
+    );
 }
 
 #[test]
@@ -134,11 +144,7 @@ fn e2e_initialize_missing_protocol_version_fails() {
     let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
 
     let response = acp
-        .send_request_and_wait(
-            "initialize",
-            serde_json::json!({}),
-            Duration::from_secs(10),
-        )
+        .send_request_and_wait("initialize", serde_json::json!({}), Duration::from_secs(10))
         .expect("initialize response");
 
     assert!(
@@ -159,5 +165,8 @@ fn e2e_initialize_negative_version_fails() {
         )
         .expect("initialize response");
 
-    assert!(response.error.is_some(), "negative protocolVersion should fail");
+    assert!(
+        response.error.is_some(),
+        "negative protocolVersion should fail"
+    );
 }
