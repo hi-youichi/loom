@@ -1,8 +1,9 @@
 //! E2E tests for Phase 3: Prompt Turn — conversation interaction with mock LLM.
 //!
-//! These tests use [`e2e::AcpChild::spawn_with_mock`] to start loom-acp with a mock
+//! These tests use [`common::AcpChild::spawn_with_mock`] to start loom-acp with a mock
 //! OpenAI-compatible HTTP server so no real API keys are needed.
 
+mod common;
 mod e2e;
 
 use std::time::Duration;
@@ -13,11 +14,11 @@ const TIMEOUT: Duration = Duration::from_secs(30);
 /// Send a simple text prompt and verify the agent returns `end_turn`.
 #[tokio::test]
 async fn e2e_prompt_simple_text_response() {
-    let (mut acp, _mock) = e2e::AcpChild::spawn_with_mock()
+    let (mut acp, _mock) = common::AcpChild::spawn_with_mock()
         .await
         .expect("spawn loom-acp with mock");
 
-    let session_id = acp.handshake(TIMEOUT).expect("handshake");
+    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
     assert!(!session_id.is_empty(), "session_id should not be empty");
 
     // Send a prompt
@@ -33,6 +34,7 @@ async fn e2e_prompt_simple_text_response() {
             }),
             TIMEOUT,
         )
+        .await
         .expect("session/prompt response");
 
     // Should succeed (no error)
@@ -58,15 +60,15 @@ async fn e2e_prompt_simple_text_response() {
 /// Send a prompt and verify that session/update notifications are emitted.
 #[tokio::test]
 async fn e2e_prompt_emits_update_notifications() {
-    let (mut acp, _mock) = e2e::AcpChild::spawn_with_mock()
+    let (mut acp, _mock) = common::AcpChild::spawn_with_mock()
         .await
         .expect("spawn loom-acp with mock");
 
-    let session_id = acp.handshake(TIMEOUT).expect("handshake");
+    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
 
     // Send prompt
-    let prompt_id = acp
-        .send_request(
+    let response = acp
+        .send_request_and_wait(
             "session/prompt",
             serde_json::json!({
                 "sessionId": session_id,
@@ -75,8 +77,12 @@ async fn e2e_prompt_emits_update_notifications() {
                     "text": "Say hello",
                 }],
             }),
+            TIMEOUT,
         )
+        .await
         .expect("send prompt");
+
+    let prompt_id = response.id.and_then(|v| v.as_u64()).expect("response should have ID");
 
     // Collect notifications until we get the prompt response
     let start = std::time::Instant::now();

@@ -4,6 +4,7 @@
 //! in the ACP protocol responses, covering the complete workflow from prompt
 //! to tool_call_update with Diff content.
 
+mod common;
 mod e2e;
 
 use std::time::Duration;
@@ -24,7 +25,7 @@ fn find_diff_notification(notifications: &[serde_json::Value]) -> Option<&serde_
         update
             .get("content")
             .and_then(|c| c.as_array())
-            .is_some_and(|item| item.get("type").and_then(|v| v.as_str()) == Some("diff"))
+            .is_some_and(|items| items.iter().any(|item| item.get("type").and_then(|v| v.as_str()) == Some("diff")))
     })
 }
 
@@ -34,7 +35,11 @@ fn extract_diff(notification: &serde_json::Value) -> &serde_json::Value {
         .and_then(|c| c.as_array())
         .expect("should have content array")
         .iter()
-        .find(|item| item.get("type").and_then(|v| v.as_str()) == Some("diff"))
+        .find(|item| {
+            item.as_object()
+                .and_then(|obj| obj.get("type"))
+                .and_then(|v| v.as_str()) == Some("diff")
+        })
         .expect("should have diff item")
 }
 
@@ -43,7 +48,7 @@ fn get_diff_field<'a>(diff: &'a serde_json::Value, field: &str) -> Option<&'a st
 }
 
 fn collect_notifications(
-    acp: &mut e2e::AcpChild,
+    acp: &mut common::AcpChild,
     prompt_id: u64,
 ) -> (Vec<serde_json::Value>, e2e::RpcResponse) {
     let mut notifications = Vec::new();
@@ -84,11 +89,11 @@ fn find_tool_call_notification<'a>(
 /// Test that write_file operation returns Diff content in tool_call_update.
 #[tokio::test]
 async fn test_write_operation_returns_diff_content() {
-    let (mut acp, mock) = e2e::AcpChild::spawn_with_mock()
+    let (mut acp, mock) = common::AcpChild::spawn_with_mock()
         .await
         .expect("spawn loom-acp with mock");
 
-    let session_id = acp.handshake(TIMEOUT).expect("handshake");
+    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
     assert!(!session_id.is_empty());
 
     mock.mount_tool_call_response(&[ToolCallResponse {
@@ -99,15 +104,20 @@ async fn test_write_operation_returns_diff_content() {
         }),
     }]).await;
 
-    let prompt_id = acp.send_request(
+    let prompt_id = acp.send_request_and_wait(
         "session/prompt",
         serde_json::json!({
             "sessionId": session_id,
             "prompt": [{ "type": "text", "text": "Create test_file.txt" }],
         }),
-    ).expect("send prompt");
+        TIMEOUT,
+    ).await.expect("send prompt");
+    
+    let result_ref = prompt_id.result.as_ref().expect("should have result");
+    let prompt_id_value = result_ref.get("promptId").expect("should have promptId");
+    let actual_prompt_id = prompt_id_value.as_u64().expect("promptId should be u64");
 
-    let (notifications, response) = collect_notifications(&mut acp, prompt_id);
+    let (notifications, response) = collect_notifications(&mut acp, actual_prompt_id);
     assert!(response.error.is_none(), "prompt failed: {:?}", response.error);
 
     let diff_notification = find_diff_notification(&notifications)
@@ -122,11 +132,11 @@ async fn test_write_operation_returns_diff_content() {
 /// The edit fails because the file doesn't exist, but we verify the tool_call notification.
 #[tokio::test]
 async fn test_edit_tool_call_sent_with_correct_params() {
-    let (mut acp, mock) = e2e::AcpChild::spawn_with_mock()
+    let (mut acp, mock) = common::AcpChild::spawn_with_mock()
         .await
         .expect("spawn loom-acp with mock");
 
-    let session_id = acp.handshake(TIMEOUT).expect("handshake");
+    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
     assert!(!session_id.is_empty());
 
     mock.mount_tool_call_response(&[ToolCallResponse {
@@ -138,15 +148,20 @@ async fn test_edit_tool_call_sent_with_correct_params() {
         }),
     }]).await;
 
-    let prompt_id = acp.send_request(
+    let prompt_id = acp.send_request_and_wait(
         "session/prompt",
         serde_json::json!({
             "sessionId": session_id,
             "prompt": [{ "type": "text", "text": "Edit existing_file.txt" }],
         }),
-    ).expect("send prompt");
+        TIMEOUT,
+    ).await.expect("send prompt");
+    
+    let result_ref = prompt_id.result.as_ref().expect("should have result");
+    let prompt_id_value = result_ref.get("promptId").expect("should have promptId");
+    let actual_prompt_id = prompt_id_value.as_u64().expect("promptId should be u64");
 
-    let (notifications, response) = collect_notifications(&mut acp, prompt_id);
+    let (notifications, response) = collect_notifications(&mut acp, actual_prompt_id);
     assert!(response.error.is_none(), "prompt failed: {:?}", response.error);
 
     let tool_call = find_tool_call_notification(&notifications, "edit")
@@ -162,11 +177,11 @@ async fn test_edit_tool_call_sent_with_correct_params() {
 /// Test complete workflow: write_file produces Diff with path and newText.
 #[tokio::test]
 async fn test_complete_diff_workflow() {
-    let (mut acp, mock) = e2e::AcpChild::spawn_with_mock()
+    let (mut acp, mock) = common::AcpChild::spawn_with_mock()
         .await
         .expect("spawn loom-acp with mock");
 
-    let session_id = acp.handshake(TIMEOUT).expect("handshake");
+    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
     assert!(!session_id.is_empty());
 
     mock.mount_tool_call_response(&[ToolCallResponse {
@@ -177,15 +192,20 @@ async fn test_complete_diff_workflow() {
         }),
     }]).await;
 
-    let prompt_id = acp.send_request(
+    let prompt_id = acp.send_request_and_wait(
         "session/prompt",
         serde_json::json!({
             "sessionId": session_id,
             "prompt": [{ "type": "text", "text": "Create workflow_test.txt" }],
         }),
-    ).expect("send prompt");
+        TIMEOUT,
+    ).await.expect("send prompt");
+    
+    let result_ref = prompt_id.result.as_ref().expect("should have result");
+    let prompt_id_value = result_ref.get("promptId").expect("should have promptId");
+    let actual_prompt_id = prompt_id_value.as_u64().expect("promptId should be u64");
 
-    let (notifications, _response) = collect_notifications(&mut acp, prompt_id);
+    let (notifications, _response) = collect_notifications(&mut acp, actual_prompt_id);
 
     let diff_notification = find_diff_notification(&notifications)
         .expect("should find tool_call_update with Diff content");

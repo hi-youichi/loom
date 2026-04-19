@@ -1,10 +1,12 @@
 use std::time::Duration;
 
-use crate::e2e;
+mod common;
+
+use common::AcpChild;
 
 #[test]
 fn e2e_initialize_returns_capabilities() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
+    let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
 
     // Send initialize request
     let response = acp
@@ -62,7 +64,7 @@ fn e2e_initialize_returns_capabilities() {
 
 #[test]
 fn e2e_initialize_rejects_unsupported_version() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
+    let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
 
     // Send initialize with unsupported version
     let response = acp
@@ -89,7 +91,7 @@ fn e2e_initialize_rejects_unsupported_version() {
 
 #[test]
 fn e2e_authenticate_succeeds() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
+    let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
 
     // First initialize
     let init_response = acp

@@ -10,17 +10,23 @@ use std::collections::HashMap;
 
 use loom::{
     compress::{build_graph, CompactionConfig, CompressionGraphNode},
-    tools_condition, ActNode, CompiledStateGraph, FixedLlmProvider, LlmClient, Message, MockLlm, MockToolSource,
-    ObserveNode, ReActState, StateGraph, ThinkNode, END, START,
+    tools_condition, ActNode, CompiledStateGraph, FixedLlmProvider, LlmClient, LlmProvider, Message, MockLlm, MockToolSource,
+    ModelConfig, ObserveNode, ReActState, StateGraph, ThinkNode, END, START,
 };
 
 #[tokio::test]
 async fn react_linear_chain_user_to_tool_result_in_messages() {
+    let mock_llm = Arc::new(MockLlm::with_get_time_call());
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: mock_llm,
+        model_id: "mock".to_string(),
+    });
+    
     let mut graph = StateGraph::<ReActState>::new();
     graph
         .add_node(
             "think",
-            Arc::new(ThinkNode::new(Arc::new(MockLlm::with_get_time_call()))),
+            Arc::new(ThinkNode::new(fixed_provider)),
         )
         .add_node(
             "act",
@@ -35,6 +41,7 @@ async fn react_linear_chain_user_to_tool_result_in_messages() {
     let compiled: CompiledStateGraph<ReActState> = graph.compile().expect("valid graph");
 
     let state = ReActState {
+        model_config: ModelConfig::default(),
         messages: vec![Message::user("What time is it?")],
         tool_calls: vec![],
         tool_results: vec![],
@@ -102,6 +109,7 @@ async fn react_multi_round_loop_then_end() {
     let compiled: CompiledStateGraph<ReActState> = graph.compile().expect("valid graph");
 
     let state = ReActState {
+        model_config: ModelConfig::default(),
         messages: vec![Message::user("What time is it?")],
         tool_calls: vec![],
         tool_results: vec![],

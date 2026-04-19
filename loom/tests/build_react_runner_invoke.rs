@@ -6,8 +6,9 @@
 mod init_logging;
 
 use loom::{
-    build_react_runner, GotRunnerConfig, MockLlm, ReactBuildConfig, ReactRunner, TotRunnerConfig,
+    build_react_runner, FixedLlmProvider, GotRunnerConfig, MockLlm, ReactBuildConfig, ReactRunner, TotRunnerConfig,
 };
+use std::sync::Arc;
 
 fn minimal_config() -> ReactBuildConfig {
     ReactBuildConfig {
@@ -57,8 +58,12 @@ fn minimal_config() -> ReactBuildConfig {
 #[tokio::test]
 async fn build_react_runner_then_invoke_one_turn() {
     let config = minimal_config();
-    let llm = Box::new(MockLlm::with_no_tool_calls("Hello from mock."));
-    let runner: ReactRunner = build_react_runner(&config, Some(llm), false)
+    let mock_llm = Arc::new(MockLlm::with_no_tool_calls("Hello from mock."));
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: mock_llm,
+        model_id: "mock".to_string(),
+    });
+    let runner: ReactRunner = build_react_runner(&config, Some(fixed_provider), false)
         .await
         .expect("build_react_runner");
     let state = runner.invoke("Hi").await.expect("invoke");

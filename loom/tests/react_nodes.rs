@@ -18,7 +18,7 @@ use loom::{
     tool_source::{
         FileToolSource, ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec,
     },
-    ActNode, LlmUsage, Message, MockLlm, MockToolSource, Next, Node, ObserveNode,
+    ActNode, FixedLlmProvider, LlmUsage, Message, MockLlm, MockToolSource, ModelConfig, Next, Node, ObserveNode,
     PromptTokensDetails, ReActState, ThinkNode, ToolCall, ToolOutputHint, ToolOutputStrategy,
     ToolResult, STEP_PROGRESS_EVENT_TYPE,
 };
@@ -69,15 +69,23 @@ impl ToolSource for RecordingToolSource {
 
 #[tokio::test]
 async fn think_node_id_is_think() {
-    let llm = MockLlm::with_get_time_call();
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_get_time_call());
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     assert_eq!(node.id(), "think");
 }
 
 #[tokio::test]
 async fn think_node_appends_assistant_message_and_sets_tool_calls() {
-    let llm = MockLlm::with_get_time_call();
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_get_time_call());
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("What time is it?")],
         tool_calls: vec![],
@@ -107,8 +115,12 @@ async fn think_node_appends_assistant_message_and_sets_tool_calls() {
 
 #[tokio::test]
 async fn think_node_with_no_tool_calls_sets_empty_tool_calls() {
-    let llm = MockLlm::with_no_tool_calls("Hello.");
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_no_tool_calls("Hello."));
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
@@ -130,8 +142,12 @@ async fn think_node_with_no_tool_calls_sets_empty_tool_calls() {
 
 #[tokio::test]
 async fn think_node_preserves_tool_results_from_input_state() {
-    let llm = MockLlm::with_no_tool_calls("Done.");
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_no_tool_calls("Done."));
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
@@ -157,8 +173,12 @@ async fn think_node_preserves_tool_results_from_input_state() {
 
 #[tokio::test]
 async fn think_node_sets_message_count_after_last_think() {
-    let llm = MockLlm::with_no_tool_calls("Hi.");
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_no_tool_calls("Hi."));
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("Hello")],
         tool_calls: vec![],
@@ -184,8 +204,12 @@ async fn think_node_usage_merge_none_plus_some() {
         total_tokens: 15,
         ..Default::default()
     };
-    let llm = MockLlm::with_no_tool_calls("Ok.").with_usage(usage.clone());
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_no_tool_calls("Ok.").with_usage(usage.clone()));
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
@@ -227,8 +251,12 @@ async fn think_node_usage_merge_some_plus_some() {
         }),
         completion_tokens_details: None,
     };
-    let llm = MockLlm::with_no_tool_calls("Ok.").with_usage(curr);
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_no_tool_calls("Ok.").with_usage(curr));
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
@@ -270,10 +298,14 @@ async fn think_node_stream_emits_usage_when_available() {
         total_tokens: 15,
         ..Default::default()
     };
-    let llm = MockLlm::with_no_tool_calls("Hello")
+    let llm = Arc::new(MockLlm::with_no_tool_calls("Hello")
         .with_usage(usage)
-        .with_stream_by_char();
-    let node = ThinkNode::new(Arc::new(llm));
+        .with_stream_by_char());
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
@@ -863,8 +895,12 @@ async fn observe_node_with_loop_returns_end_when_max_turns_reached() {
 #[tokio::test]
 async fn think_node_run_with_context_emits_messages_when_streaming() {
     let content = "Hello world";
-    let llm = MockLlm::with_no_tool_calls(content).with_stream_by_char();
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_no_tool_calls(content).with_stream_by_char());
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
@@ -939,8 +975,12 @@ async fn think_node_run_with_context_emits_messages_when_streaming() {
 #[tokio::test]
 async fn think_node_run_with_context_no_messages_when_mode_empty() {
     let content = "Hello world";
-    let llm = MockLlm::with_no_tool_calls(content).with_stream_by_char();
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_no_tool_calls(content).with_stream_by_char());
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
@@ -995,8 +1035,12 @@ async fn think_node_run_with_context_no_messages_when_mode_empty() {
 #[tokio::test]
 async fn think_node_run_with_context_no_panic_when_no_stream_tx() {
     let content = "Hello";
-    let llm = MockLlm::with_no_tool_calls(content);
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_no_tool_calls(content));
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
@@ -1034,8 +1078,12 @@ async fn think_node_run_with_context_no_panic_when_no_stream_tx() {
 #[tokio::test]
 async fn think_node_stream_chunks_concatenate_to_full_content() {
     let content = "Test streaming message";
-    let llm = MockLlm::with_no_tool_calls(content).with_stream_by_char();
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_no_tool_calls(content).with_stream_by_char());
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],

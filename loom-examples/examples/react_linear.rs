@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use loom::{
-    ActNode, CompiledStateGraph, Message, MockLlm, MockToolSource, ObserveNode, ReActState,
+    ActNode, CompiledStateGraph, FixedLlmProvider, Message, MockLlm, MockToolSource, ModelConfig, ObserveNode, ReActState,
     StateGraph, ThinkNode, END, REACT_SYSTEM_PROMPT, START,
 };
 
@@ -18,11 +18,17 @@ async fn main() {
         .nth(1)
         .unwrap_or_else(|| "What time is it?".to_string());
 
+    let mock_llm = Arc::new(MockLlm::with_get_time_call());
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: mock_llm,
+        model_id: "mock".to_string(),
+    });
+    
     let mut graph = StateGraph::<ReActState>::new();
     graph
         .add_node(
             "think",
-            Arc::new(ThinkNode::new(Arc::new(MockLlm::with_get_time_call()))),
+            Arc::new(ThinkNode::new(fixed_provider)),
         )
         .add_node(
             "act",
@@ -37,6 +43,7 @@ async fn main() {
     let compiled: CompiledStateGraph<ReActState> = graph.compile().expect("valid graph");
 
     let state = ReActState {
+        model_config: ModelConfig::default(),
         messages: vec![Message::system(REACT_SYSTEM_PROMPT), Message::user(input)],
         tool_calls: vec![],
         tool_results: vec![],

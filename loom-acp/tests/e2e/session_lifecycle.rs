@@ -1,10 +1,12 @@
 use std::time::Duration;
 
-use crate::e2e;
+mod common;
+
+use common::AcpChild;
 
 #[test]
 fn e2e_new_session_returns_session_id() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
+    let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
 
     // Handshake
     let session_id = acp.handshake(Duration::from_secs(10)).expect("handshake");
@@ -15,7 +17,7 @@ fn e2e_new_session_returns_session_id() {
 
 #[test]
 fn e2e_new_session_includes_modes() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
+    let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
 
     // Initialize
     acp.send_request_and_wait(
@@ -58,7 +60,7 @@ fn e2e_new_session_includes_modes() {
 
 #[test]
 fn e2e_new_session_includes_config_options() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
+    let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
 
     // Initialize
     acp.send_request_and_wait(

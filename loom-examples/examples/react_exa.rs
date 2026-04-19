@@ -29,7 +29,8 @@
 use std::sync::Arc;
 
 use loom::{
-    ActNode, ChatOpenAI, CompiledStateGraph, McpToolSource, Message, ObserveNode, ReActState,
+    ActNode, ChatOpenAI, CompiledStateGraph, FixedLlmProvider, McpToolSource, Message,
+    ModelConfig, ObserveNode, ReActState,
     StateGraph, ThinkNode, ToolSource, END, REACT_SYSTEM_PROMPT, START,
 };
 
@@ -65,8 +66,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let tools = tool_source.list_tools().await?;
     let model = "gpt-4o-mini".to_string(); // Default model, removed environment variable support
-    let llm = ChatOpenAI::new(model).with_tools(tools);
-    let think = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(ChatOpenAI::new(&model).with_tools(tools));
+    let openai_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: model.clone(),
+    });
+    let think = ThinkNode::new(openai_provider);
     let act = ActNode::new(Box::new(tool_source));
     let observe = ObserveNode::new();
 
@@ -82,6 +87,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let compiled: CompiledStateGraph<ReActState> = graph.compile()?;
     let state = ReActState {
+        model_config: ModelConfig::default(),
         messages: vec![
             Message::system(REACT_SYSTEM_PROMPT),
             Message::user(user_input.clone()),

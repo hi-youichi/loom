@@ -12,7 +12,7 @@ use loom::{
     compress::{
         build_graph, compaction::PRUNE_PLACEHOLDER, CompactionConfig, CompressionGraphNode,
     },
-    tools_condition, ActNode, FixedLlmProvider, LlmClient, Message, MockLlm, MockToolSource, ObserveNode, ReActState,
+    tools_condition, ActNode, FixedLlmProvider, LlmClient, LlmProvider, Message, MockLlm, MockToolSource, ObserveNode, ReActState,
     StateGraph, ThinkNode, END, START,
 };
 

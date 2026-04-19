@@ -10,11 +10,12 @@ mod init_logging;
 use loom::{
     parse_chat_request,
     stream::{MessageChunk, StreamMetadata},
-    ChatCompletionRequest, ChatMessage, ChunkMeta, ReActState, StreamEvent, StreamToSse,
+    ChatCompletionRequest, ChatMessage, ChunkMeta, ModelConfig, ReActState, StreamEvent, StreamToSse,
 };
 
 fn empty_state() -> ReActState {
     ReActState {
+        model_config: ModelConfig::default(),
         messages: vec![],
         tool_calls: vec![],
         tool_results: vec![],
@@ -202,6 +203,7 @@ fn adapter_emits_tool_calls_chunk_on_updates_with_tool_calls() {
     adapter.feed(StreamEvent::Updates {
         node_id: "act".to_string(),
         state: ReActState {
+            model_config: ModelConfig::default(),
             messages: vec![],
             tool_calls: vec![
                 ToolCall {

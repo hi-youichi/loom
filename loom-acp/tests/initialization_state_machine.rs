@@ -1,10 +1,11 @@
+mod common;
 mod e2e;
 
 use std::time::Duration;
 
-#[test]
-fn e2e_session_new_before_initialize_fails() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
+#[tokio::test]
+async fn e2e_session_new_before_initialize_fails() {
+    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
 
     let response = acp
         .send_request_and_wait(
@@ -14,6 +15,7 @@ fn e2e_session_new_before_initialize_fails() {
             }),
             Duration::from_secs(10),
         )
+        .await
         .expect("session/new response");
 
     assert!(
@@ -22,9 +24,9 @@ fn e2e_session_new_before_initialize_fails() {
     );
 }
 
-#[test]
-fn e2e_session_load_before_initialize() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
+#[tokio::test]
+async fn e2e_session_load_before_initialize() {
+    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
 
     let response = acp
         .send_request_and_wait(
@@ -36,6 +38,7 @@ fn e2e_session_load_before_initialize() {
             }),
             Duration::from_secs(10),
         )
+        .await
         .expect("session/load response");
 
     // Protocol may or may not enforce initialize-first ordering.
@@ -46,9 +49,9 @@ fn e2e_session_load_before_initialize() {
     );
 }
 
-#[test]
-fn e2e_session_prompt_before_initialize_fails() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
+#[tokio::test]
+async fn e2e_session_prompt_before_initialize_fails() {
+    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
 
     let response = acp
         .send_request_and_wait(
@@ -59,6 +62,7 @@ fn e2e_session_prompt_before_initialize_fails() {
             }),
             Duration::from_secs(10),
         )
+        .await
         .expect("session/prompt response");
 
     assert!(
@@ -67,9 +71,9 @@ fn e2e_session_prompt_before_initialize_fails() {
     );
 }
 
-#[test]
-fn e2e_duplicate_initialize() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
+#[tokio::test]
+async fn e2e_duplicate_initialize() {
+    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
 
     let first = acp
         .send_request_and_wait(
@@ -77,6 +81,7 @@ fn e2e_duplicate_initialize() {
             serde_json::json!({ "protocolVersion": 1 }),
             Duration::from_secs(10),
         )
+        .await
         .expect("first initialize");
     assert!(first.error.is_none(), "first initialize should succeed");
 
@@ -86,6 +91,7 @@ fn e2e_duplicate_initialize() {
             serde_json::json!({ "protocolVersion": 1 }),
             Duration::from_secs(10),
         )
+        .await
         .expect("second initialize");
 
     assert!(
@@ -94,9 +100,9 @@ fn e2e_duplicate_initialize() {
     );
 }
 
-#[test]
-fn e2e_authenticate_after_initialize() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
+#[tokio::test]
+async fn e2e_authenticate_after_initialize() {
+    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
 
     let init = acp
         .send_request_and_wait(
@@ -104,6 +110,7 @@ fn e2e_authenticate_after_initialize() {
             serde_json::json!({ "protocolVersion": 1 }),
             Duration::from_secs(10),
         )
+        .await
         .expect("initialize");
     assert!(init.error.is_none(), "initialize should succeed");
 
@@ -113,6 +120,7 @@ fn e2e_authenticate_after_initialize() {
             serde_json::json!({ "methodId": "none" }),
             Duration::from_secs(10),
         )
+        .await
         .expect("authenticate");
     assert!(
         auth.error.is_none(),
@@ -121,9 +129,9 @@ fn e2e_authenticate_after_initialize() {
     );
 }
 
-#[test]
-fn e2e_initialize_version_zero() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
+#[tokio::test]
+async fn e2e_initialize_version_zero() {
+    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
 
     let response = acp
         .send_request_and_wait(
@@ -131,6 +139,7 @@ fn e2e_initialize_version_zero() {
             serde_json::json!({ "protocolVersion": 0 }),
             Duration::from_secs(10),
         )
+        .await
         .expect("initialize response");
 
     assert!(
@@ -139,12 +148,13 @@ fn e2e_initialize_version_zero() {
     );
 }
 
-#[test]
-fn e2e_initialize_missing_protocol_version_fails() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
+#[tokio::test]
+async fn e2e_initialize_missing_protocol_version_fails() {
+    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
 
     let response = acp
         .send_request_and_wait("initialize", serde_json::json!({}), Duration::from_secs(10))
+        .await
         .expect("initialize response");
 
     assert!(
@@ -153,9 +163,9 @@ fn e2e_initialize_missing_protocol_version_fails() {
     );
 }
 
-#[test]
-fn e2e_initialize_negative_version_fails() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
+#[tokio::test]
+async fn e2e_initialize_negative_version_fails() {
+    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
 
     let response = acp
         .send_request_and_wait(
@@ -163,6 +173,7 @@ fn e2e_initialize_negative_version_fails() {
             serde_json::json!({ "protocolVersion": -1 }),
             Duration::from_secs(10),
         )
+        .await
         .expect("initialize response");
 
     assert!(

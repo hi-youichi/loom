@@ -1,33 +1,32 @@
+mod common;
 mod e2e;
 
 use std::time::Duration;
 
-fn initialize(acp: &mut e2e::AcpChild) -> serde_json::Map<String, serde_json::Value> {
+async fn initialize(acp: &mut common::AcpChild) -> serde_json::Map<String, serde_json::Value> {
     let response = acp
-        .send_request_and_wait(
-            "initialize",
-            serde_json::json!({ "protocolVersion": 1 }),
-            Duration::from_secs(10),
-        )
+        .call("initialize", serde_json::json!({ "protocolVersion": 1 }))
+        .await
         .expect("initialize response");
 
     assert!(
-        response.error.is_none(),
+        response.get("error").is_none(),
         "initialize should succeed: {:?}",
-        response.error
+        response.get("error")
     );
+    
     response
-        .result
+        .get("result")
         .expect("should have result")
         .as_object()
         .expect("result should be object")
         .clone()
 }
 
-#[test]
-fn e2e_mcp_capabilities_presence() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-    let result = initialize(&mut acp);
+#[tokio::test]
+async fn e2e_mcp_capabilities_presence() {
+    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
+    let result = initialize(&mut acp).await;
 
     let capabilities = result
         .get("agentCapabilities")
@@ -43,10 +42,10 @@ fn e2e_mcp_capabilities_presence() {
     }
 }
 
-#[test]
-fn e2e_new_session_with_empty_mcp_servers() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-    initialize(&mut acp);
+#[tokio::test]
+async fn e2e_new_session_with_empty_mcp_servers() {
+    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
+    initialize(&mut acp).await;
 
     let response = acp
         .send_request_and_wait(
@@ -57,6 +56,7 @@ fn e2e_new_session_with_empty_mcp_servers() {
             }),
             Duration::from_secs(10),
         )
+        .await
         .expect("session/new response");
 
     assert!(
@@ -69,10 +69,10 @@ fn e2e_new_session_with_empty_mcp_servers() {
     assert!(result.get("sessionId").is_some(), "should return sessionId");
 }
 
-#[test]
-fn e2e_new_session_without_mcp_servers() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-    initialize(&mut acp);
+#[tokio::test]
+async fn e2e_new_session_without_mcp_servers() {
+    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
+    initialize(&mut acp).await;
 
     // mcpServers is required by the schema
     let response = acp
@@ -84,6 +84,7 @@ fn e2e_new_session_without_mcp_servers() {
             }),
             Duration::from_secs(10),
         )
+        .await
         .expect("session/new response");
 
     assert!(
@@ -93,10 +94,10 @@ fn e2e_new_session_without_mcp_servers() {
     );
 }
 
-#[test]
-fn e2e_new_session_with_mcp_server_stdio_config() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-    initialize(&mut acp);
+#[tokio::test]
+async fn e2e_new_session_with_mcp_server_stdio_config() {
+    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
+    initialize(&mut acp).await;
 
     let response = acp
         .send_request_and_wait(
@@ -112,6 +113,7 @@ fn e2e_new_session_with_mcp_server_stdio_config() {
             }),
             Duration::from_secs(10),
         )
+        .await
         .expect("session/new response");
 
     assert!(
@@ -121,10 +123,10 @@ fn e2e_new_session_with_mcp_server_stdio_config() {
     );
 }
 
-#[test]
-fn e2e_new_session_with_invalid_mcp_config_graceful() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-    initialize(&mut acp);
+#[tokio::test]
+async fn e2e_new_session_with_invalid_mcp_config_graceful() {
+    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
+    initialize(&mut acp).await;
 
     let response = acp
         .send_request_and_wait(
@@ -137,6 +139,7 @@ fn e2e_new_session_with_invalid_mcp_config_graceful() {
             }),
             Duration::from_secs(10),
         )
+        .await
         .expect("session/new response");
 
     if response.error.is_some() {

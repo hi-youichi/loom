@@ -2,9 +2,10 @@
 //! 
 //! Tests the priority: ACP explicit model > agent model name > agent tier > default config
 
+mod common;
 mod e2e;
 
-use e2e::AcpChild;
+use common::AcpChild;
 use serde_json::json;
 
 /// Helper function to initialize ACP session
@@ -128,7 +129,7 @@ fn e2e_acp_explicit_model_overrides_tier() {
     });
     
     // Clean shutdown
-    drop(acp.stdin);
+    acp.drop_stdin();
     let status = acp.wait().expect("wait for process");
     assert!(status.success(), "loom-acp should exit successfully");
 }
@@ -156,7 +157,7 @@ fn e2e_agent_tier_used_when_no_acp_model() {
         assert!(result.is_object(), "result should be an object");
     });
     
-    drop(acp.stdin);
+    acp.drop_stdin();
     let status = acp.wait().expect("wait for process");
     assert!(status.success(), "loom-acp should exit successfully");
 }
@@ -183,7 +184,7 @@ fn e2e_default_config_when_no_model_or_tier() {
         assert!(result.is_object(), "result should be an object");
     });
     
-    drop(acp.stdin);
+    acp.drop_stdin();
     let status = acp.wait().expect("wait for process");
     assert!(status.success(), "loom-acp should exit successfully");
 }
@@ -213,7 +214,7 @@ fn e2e_model_switching_within_session() {
         assert!(response1.result.is_some() && response2.result.is_some());
     });
     
-    drop(acp.stdin);
+    acp.drop_stdin();
     let status = acp.wait().expect("wait for process");
     assert!(status.success(), "loom-acp should exit successfully");
 }
@@ -239,7 +240,7 @@ fn e2e_empty_model_string_uses_default() {
         assert!(response.result.is_some(), "prompt should have result");
     });
     
-    drop(acp.stdin);
+    acp.drop_stdin();
     let status = acp.wait().expect("wait for process");
     assert!(status.success(), "loom-acp should exit successfully");
 }
@@ -271,7 +272,7 @@ fn e2e_multiple_sessions_with_different_models() {
         assert!(response1.result.is_some() && response2.result.is_some());
     });
     
-    drop(acp.stdin);
+    acp.drop_stdin();
     let status = acp.wait().expect("wait for process");
     assert!(status.success(), "loom-acp should exit successfully");
 }
@@ -311,7 +312,7 @@ fn e2e_session_mode_switching_preserves_model() {
         assert!(response.error.is_none(), "prompt should succeed after mode switch");
     });
     
-    drop(acp.stdin);
+    acp.drop_stdin();
     let status = acp.wait().expect("wait for process");
     assert!(status.success(), "loom-acp should exit successfully");
 }
@@ -348,7 +349,7 @@ fn e2e_sub_agent_config_independence() {
         assert!(result.is_object(), "result should be an object");
     });
     
-    drop(acp.stdin);
+    acp.drop_stdin();
     let status = acp.wait().expect("wait for process");
     assert!(status.success(), "loom-acp should exit successfully");
 }
@@ -374,7 +375,7 @@ fn e2e_model_selection_with_provider_format() {
         assert!(response.result.is_some(), "prompt should have result");
     });
     
-    drop(acp.stdin);
+    acp.drop_stdin();
     let status = acp.wait().expect("wait for process");
     assert!(status.success(), "loom-acp should exit successfully");
 }
@@ -411,7 +412,7 @@ fn e2e_model_resolution_performance() {
         println!("  Prompt processing: {:?}", prompt_duration);
     });
     
-    drop(acp.stdin);
+    acp.drop_stdin();
     let status = acp.wait().expect("wait for process");
     assert!(status.success(), "loom-acp should exit successfully");
 }
@@ -468,7 +469,7 @@ fn e2e_multi_turn_model_consistency() {
         }
     });
     
-    drop(acp.stdin);
+    acp.drop_stdin();
     let status = acp.wait().expect("wait for process");
     assert!(status.success(), "loom-acp should exit successfully");
 }
@@ -511,7 +512,7 @@ fn e2e_concurrent_sessions_model_isolation() {
         assert!(all_succeeded, "All session prompts should succeed");
     });
     
-    drop(acp.stdin);
+    acp.drop_stdin();
     let status = acp.wait().expect("wait for process");
     assert!(status.success(), "loom-acp should exit successfully");
 }

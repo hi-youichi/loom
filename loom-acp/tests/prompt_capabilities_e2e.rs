@@ -1,20 +1,23 @@
 //! E2E tests for prompt capabilities
 
+mod common;
 mod e2e;
 
 use std::time::Duration;
+use serde_json::json;
 
-fn handshake(acp: &mut e2e::AcpChild) -> String {
-    let init = acp
+async fn handshake(acp: &mut common::AcpChild) -> String {
+      let init = acp
         .send_request_and_wait(
-            "initialize",
-            serde_json::json!({ "protocolVersion": 1 }),
-            Duration::from_secs(10),
+            "initialize", 
+            json!({ "protocolVersion": 1 }),
+            Duration::from_secs(10)
         )
+        .await
         .expect("initialize");
     assert!(init.error.is_none(), "initialize failed: {:?}", init.error);
 
-    let sess = acp
+    let response = acp
         .send_request_and_wait(
             "session/new",
             serde_json::json!({
@@ -23,76 +26,7 @@ fn handshake(acp: &mut e2e::AcpChild) -> String {
             }),
             Duration::from_secs(10),
         )
-        .expect("session/new");
-    assert!(sess.error.is_none(), "session/new failed: {:?}", sess.error);
-
-    sess.result
-        .expect("should have result")
-        .get("sessionId")
-        .and_then(|v| v.as_str())
-        .expect("should have sessionId")
-        .to_string()
-}
-
-#[test]
-fn e2e_prompt_capabilities_structure() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-
-    // Send initialize request
-    let response = acp
-        .send_request_and_wait(
-            "initialize",
-            serde_json::json!({
-                "protocolVersion": 1,
-            }),
-            Duration::from_secs(10),
-        )
-        .expect("initialize response");
-
-    // Should succeed
-    assert!(response.error.is_none(), "initialize should succeed");
-    let result = response.result.expect("should have result");
-
-    // Verify promptCapabilities structure exists
-    let capabilities = result
-        .get("agentCapabilities")
-        .and_then(|v| v.as_object())
-        .expect("should have agentCapabilities");
-
-    let prompt_caps = capabilities
-        .get("promptCapabilities")
-        .and_then(|v| v.as_object())
-        .expect("should have promptCapabilities");
-
-    // Verify all expected prompt capability fields exist
-    assert!(
-        prompt_caps.get("embeddedContext").is_some(),
-        "should have embeddedContext capability"
-    );
-    assert!(
-        prompt_caps.get("image").is_some(),
-        "should have image capability"
-    );
-    assert!(
-        prompt_caps.get("audio").is_some(),
-        "should have audio capability"
-    );
-}
-
-#[test]
-fn e2e_prompt_capabilities_boolean_values() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-
-    // Send initialize request
-    let response = acp
-        .send_request_and_wait(
-            "initialize",
-            serde_json::json!({
-                "protocolVersion": 1,
-            }),
-            Duration::from_secs(10),
-        )
-        .expect("initialize response");
+        .await.expect("initialize response");
 
     assert!(response.error.is_none(), "initialize should succeed");
     let result = response.result.expect("should have result");
@@ -100,31 +34,37 @@ fn e2e_prompt_capabilities_boolean_values() {
     // Get prompt capabilities
     let prompt_caps = result
         .get("agentCapabilities")
-        .and_then(|v| v.get("promptCapabilities"))
-        .and_then(|v| v.as_object())
+        .and_then(|v: &serde_json::Value| v.get("promptCapabilities"))
+        .and_then(|v: &serde_json::Value| v.as_object())
         .expect("should have promptCapabilities");
 
     // Verify all capabilities are boolean true
     assert_eq!(
-        prompt_caps.get("embeddedContext").and_then(|v| v.as_bool()),
+        prompt_caps.get("embeddedContext").and_then(|v: &serde_json::Value| v.as_bool()),
         Some(true),
         "embeddedContext should be true"
     );
     assert_eq!(
-        prompt_caps.get("image").and_then(|v| v.as_bool()),
+        prompt_caps.get("image").and_then(|v: &serde_json::Value| v.as_bool()),
         Some(true),
         "image should be true"
     );
     assert_eq!(
-        prompt_caps.get("audio").and_then(|v| v.as_bool()),
+        prompt_caps.get("audio").and_then(|v: &serde_json::Value| v.as_bool()),
         Some(true),
         "audio should be true"
     );
+    
+    result
+        .get("sessionId")
+        .and_then(|v: &serde_json::Value| v.as_str())
+        .expect("should have sessionId")
+        .to_string()
 }
 
-#[test]
-fn e2e_prompt_capabilities_type_validation() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
+#[tokio::test]
+async fn e2e_prompt_capabilities_type_validation() {
+    let mut acp = common::AcpChild::spawn(None).expect("spawn loom-acp");
 
     // Send initialize request
     let response = acp
@@ -135,7 +75,7 @@ fn e2e_prompt_capabilities_type_validation() {
             }),
             Duration::from_secs(10),
         )
-        .expect("initialize response");
+        .await.expect("initialize response");
 
     assert!(response.error.is_none(), "initialize should succeed");
     let result = response.result.expect("should have result");
@@ -143,8 +83,8 @@ fn e2e_prompt_capabilities_type_validation() {
     // Get prompt capabilities
     let prompt_caps = result
         .get("agentCapabilities")
-        .and_then(|v| v.get("promptCapabilities"))
-        .and_then(|v| v.as_object())
+        .and_then(|v: &serde_json::Value| v.get("promptCapabilities"))
+        .and_then(|v: &serde_json::Value| v.as_object())
         .expect("should have promptCapabilities");
 
     // Verify each capability is a boolean value
@@ -159,9 +99,9 @@ fn e2e_prompt_capabilities_type_validation() {
     }
 }
 
-#[test]
-fn e2e_prompt_capabilities_no_extra_fields() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
+#[tokio::test]
+async fn e2e_prompt_capabilities_no_extra_fields() {
+    let mut acp = common::AcpChild::spawn(None).expect("spawn loom-acp");
 
     // Send initialize request
     let response = acp
@@ -172,7 +112,7 @@ fn e2e_prompt_capabilities_no_extra_fields() {
             }),
             Duration::from_secs(10),
         )
-        .expect("initialize response");
+        .await.expect("initialize response");
 
     assert!(response.error.is_none(), "initialize should succeed");
     let result = response.result.expect("should have result");
@@ -180,15 +120,16 @@ fn e2e_prompt_capabilities_no_extra_fields() {
     // Get prompt capabilities
     let prompt_caps = result
         .get("agentCapabilities")
-        .and_then(|v| v.get("promptCapabilities"))
-        .and_then(|v| v.as_object())
+        .and_then(|v: &serde_json::Value| v.get("promptCapabilities"))
+        .and_then(|v: &serde_json::Value| v.as_object())
         .expect("should have promptCapabilities");
 
     // Verify only expected fields exist
     let expected_fields = ["embeddedContext", "image", "audio"];
     for (key, _value) in prompt_caps.iter() {
+        let key_str: &str = key.as_str();
         assert!(
-            expected_fields.contains(&key.as_str()),
+            expected_fields.contains(&key_str),
             "unexpected field in promptCapabilities: {}",
             key
         );
@@ -203,10 +144,10 @@ fn e2e_prompt_capabilities_no_extra_fields() {
     );
 }
 
-#[test]
-fn e2e_prompt_capabilities_with_different_protocol_versions() {
+#[tokio::test]
+async fn e2e_prompt_capabilities_with_different_protocol_versions() {
     // Test with protocol version 1 (current supported version)
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
+    let mut acp = common::AcpChild::spawn(None).expect("spawn loom-acp");
 
     let response = acp
         .send_request_and_wait(
@@ -216,7 +157,7 @@ fn e2e_prompt_capabilities_with_different_protocol_versions() {
             }),
             Duration::from_secs(10),
         )
-        .expect("initialize response");
+        .await.expect("initialize response");
 
     // Should succeed with supported version
     assert!(
@@ -228,8 +169,8 @@ fn e2e_prompt_capabilities_with_different_protocol_versions() {
     // Verify prompt capabilities are present
     let prompt_caps = result
         .get("agentCapabilities")
-        .and_then(|v| v.get("promptCapabilities"))
-        .and_then(|v| v.as_object())
+        .and_then(|v: &serde_json::Value| v.get("promptCapabilities"))
+        .and_then(|v: &serde_json::Value| v.as_object())
         .expect("should have promptCapabilities");
 
     assert!(
@@ -246,10 +187,10 @@ fn e2e_prompt_capabilities_with_different_protocol_versions() {
     );
 }
 
-#[test]
-fn e2e_prompt_with_embedded_resource() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-    let session_id = handshake(&mut acp);
+#[tokio::test]
+async fn e2e_prompt_with_embedded_resource() {
+    let mut acp = common::AcpChild::spawn(None).expect("spawn loom-acp");
+    let session_id = handshake(&mut acp).await;
 
     let response = acp
         .send_request_and_wait(
@@ -270,6 +211,7 @@ fn e2e_prompt_with_embedded_resource() {
             }),
             Duration::from_secs(30),
         )
+        .await
         .expect("session/prompt response");
 
     assert!(
@@ -279,10 +221,10 @@ fn e2e_prompt_with_embedded_resource() {
     );
 }
 
-#[test]
-fn e2e_prompt_with_image_block() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-    let session_id = handshake(&mut acp);
+#[tokio::test]
+async fn e2e_prompt_with_image_block() {
+    let mut acp = common::AcpChild::spawn(None).expect("spawn loom-acp");
+    let session_id = handshake(&mut acp).await;
 
     let tiny_png_base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
@@ -302,6 +244,7 @@ fn e2e_prompt_with_image_block() {
             }),
             Duration::from_secs(30),
         )
+        .await
         .expect("session/prompt response");
 
     assert!(
@@ -311,10 +254,10 @@ fn e2e_prompt_with_image_block() {
     );
 }
 
-#[test]
-fn e2e_prompt_with_audio_block() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-    let session_id = handshake(&mut acp);
+#[tokio::test]
+async fn e2e_prompt_with_audio_block() {
+    let mut acp = common::AcpChild::spawn(None).expect("spawn loom-acp");
+    let session_id = handshake(&mut acp).await;
 
     let fake_audio_base64 = "UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
 
@@ -334,6 +277,7 @@ fn e2e_prompt_with_audio_block() {
             }),
             Duration::from_secs(30),
         )
+        .await
         .expect("session/prompt response");
 
     assert!(
@@ -342,3 +286,4 @@ fn e2e_prompt_with_audio_block() {
         response.error
     );
 }
+

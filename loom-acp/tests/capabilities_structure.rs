@@ -1,14 +1,16 @@
+mod common;
 mod e2e;
 
 use std::time::Duration;
 
-fn initialize(acp: &mut e2e::AcpChild) -> serde_json::Map<String, serde_json::Value> {
+async fn initialize(acp: &mut common::AcpChild) -> serde_json::Map<String, serde_json::Value> {
     let response = acp
         .send_request_and_wait(
             "initialize",
             serde_json::json!({ "protocolVersion": 1 }),
             Duration::from_secs(10),
         )
+        .await
         .expect("initialize response");
 
     assert!(
@@ -24,10 +26,10 @@ fn initialize(acp: &mut e2e::AcpChild) -> serde_json::Map<String, serde_json::Va
         .clone()
 }
 
-#[test]
-fn e2e_agent_capabilities_completeness() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-    let result = initialize(&mut acp);
+#[tokio::test]
+async fn e2e_agent_capabilities_completeness() {
+    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
+    let result = initialize(&mut acp).await;
 
     let capabilities = result
         .get("agentCapabilities")
@@ -57,10 +59,10 @@ fn e2e_agent_capabilities_completeness() {
     }
 }
 
-#[test]
-fn e2e_agent_capabilities_field_types() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-    let result = initialize(&mut acp);
+#[tokio::test]
+async fn e2e_agent_capabilities_field_types() {
+    let mut acp = common::AcpChild::spawn(None).expect("spawn loom-acp");
+    let result = initialize(&mut acp).await;
 
     let capabilities = result
         .get("agentCapabilities")
@@ -96,10 +98,10 @@ fn e2e_agent_capabilities_field_types() {
     }
 }
 
-#[test]
-fn e2e_load_session_value() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-    let result = initialize(&mut acp);
+#[tokio::test]
+async fn e2e_load_session_value() {
+    let mut acp = common::AcpChild::spawn(None).expect("spawn loom-acp");
+    let result = initialize(&mut acp).await;
 
     let load_session = result
         .get("agentCapabilities")
@@ -110,10 +112,10 @@ fn e2e_load_session_value() {
     assert!(load_session, "loadSession should be true");
 }
 
-#[test]
-fn e2e_session_capabilities_structure() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-    let result = initialize(&mut acp);
+#[tokio::test]
+async fn e2e_session_capabilities_structure() {
+    let mut acp = common::AcpChild::spawn(None).expect("spawn loom-acp");
+    let result = initialize(&mut acp).await;
 
     let session_caps = result
         .get("agentCapabilities")
@@ -131,10 +133,10 @@ fn e2e_session_capabilities_structure() {
     }
 }
 
-#[test]
-fn e2e_session_capabilities_list_is_object() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-    let result = initialize(&mut acp);
+#[tokio::test]
+async fn e2e_session_capabilities_list_is_object() {
+    let mut acp = common::AcpChild::spawn(None).expect("spawn loom-acp");
+    let result = initialize(&mut acp).await;
 
     let list = result
         .get("agentCapabilities")
@@ -149,10 +151,10 @@ fn e2e_session_capabilities_list_is_object() {
     );
 }
 
-#[test]
-fn e2e_session_capabilities_fork_is_object() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-    let result = initialize(&mut acp);
+#[tokio::test]
+async fn e2e_session_capabilities_fork_is_object() {
+    let mut acp = common::AcpChild::spawn(None).expect("spawn loom-acp");
+    let result = initialize(&mut acp).await;
 
     let fork = result
         .get("agentCapabilities")
@@ -167,10 +169,10 @@ fn e2e_session_capabilities_fork_is_object() {
     );
 }
 
-#[test]
-fn e2e_session_capabilities_no_extra_fields() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-    let result = initialize(&mut acp);
+#[tokio::test]
+async fn e2e_session_capabilities_no_extra_fields() {
+    let mut acp = common::AcpChild::spawn(None).expect("spawn loom-acp");
+    let result = initialize(&mut acp).await;
 
     let session_caps = result
         .get("agentCapabilities")
@@ -189,10 +191,10 @@ fn e2e_session_capabilities_no_extra_fields() {
     assert_eq!(session_caps.len(), expected.len());
 }
 
-#[test]
-fn e2e_auth_methods_exists() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-    let result = initialize(&mut acp);
+#[tokio::test]
+async fn e2e_auth_methods_exists() {
+    let mut acp = common::AcpChild::spawn(None).expect("spawn loom-acp");
+    let result = initialize(&mut acp).await;
 
     assert!(
         result.get("authMethods").is_some(),
@@ -200,10 +202,10 @@ fn e2e_auth_methods_exists() {
     );
 }
 
-#[test]
-fn e2e_auth_methods_is_array() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-    let result = initialize(&mut acp);
+#[tokio::test]
+async fn e2e_auth_methods_is_array() {
+    let mut acp = common::AcpChild::spawn(None).expect("spawn loom-acp");
+    let result = initialize(&mut acp).await;
 
     let auth_methods = result
         .get("authMethods")
@@ -216,10 +218,10 @@ fn e2e_auth_methods_is_array() {
     );
 }
 
-#[test]
-fn e2e_agent_info_name_is_loom() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-    let result = initialize(&mut acp);
+#[tokio::test]
+async fn e2e_agent_info_name_is_loom() {
+    let mut acp = common::AcpChild::spawn(None).expect("spawn loom-acp");
+    let result = initialize(&mut acp).await;
 
     let name = result
         .get("agentInfo")
@@ -230,10 +232,10 @@ fn e2e_agent_info_name_is_loom() {
     assert_eq!(name, "loom");
 }
 
-#[test]
-fn e2e_agent_info_version_semver() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-    let result = initialize(&mut acp);
+#[tokio::test]
+async fn e2e_agent_info_version_semver() {
+    let mut acp = common::AcpChild::spawn(None).expect("spawn loom-acp");
+    let result = initialize(&mut acp).await;
 
     let version = result
         .get("agentInfo")
@@ -256,10 +258,10 @@ fn e2e_agent_info_version_semver() {
     }
 }
 
-#[test]
-fn e2e_agent_info_title_when_present() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-    let result = initialize(&mut acp);
+#[tokio::test]
+async fn e2e_agent_info_title_when_present() {
+    let mut acp = common::AcpChild::spawn(None).expect("spawn loom-acp");
+    let result = initialize(&mut acp).await;
 
     let agent_info = result
         .get("agentInfo")
@@ -274,14 +276,14 @@ fn e2e_agent_info_title_when_present() {
     }
 }
 
-#[test]
-fn e2e_agent_info_no_extra_fields() {
-    let mut acp = e2e::AcpChild::spawn(None).expect("spawn loom-acp");
-    let result = initialize(&mut acp);
+#[tokio::test]
+async fn e2e_agent_info_no_extra_fields() {
+    let mut acp = common::AcpChild::spawn(None).expect("spawn loom-acp");
+    let result = initialize(&mut acp).await;
 
     let agent_info = result
         .get("agentInfo")
-        .and_then(|v| v.as_object())
+        .and_then(|v: &serde_json::Value| v.as_object())
         .expect("should have agentInfo");
 
     let expected = ["name", "version"];
