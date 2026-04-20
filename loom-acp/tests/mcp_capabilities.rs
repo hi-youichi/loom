@@ -9,15 +9,7 @@ async fn initialize(acp: &mut common::AcpChild) -> serde_json::Map<String, serde
         .await
         .expect("initialize response");
 
-    assert!(
-        response.get("error").is_none(),
-        "initialize should succeed: {:?}",
-        response.get("error")
-    );
-    
     response
-        .get("result")
-        .expect("should have result")
         .as_object()
         .expect("result should be object")
         .clone()

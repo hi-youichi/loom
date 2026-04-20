@@ -248,7 +248,8 @@ pub async fn run_stdio_loop() -> Result<(), Box<dyn std::error::Error + Send + S
     let result = local
         .run_until(async {
             let (tx, mut rx) = mpsc::channel::<agent_client_protocol::SessionNotification>(64);
-            let agent = LoomAcpAgent::with_session_update_tx(tx);
+            let agent = LoomAcpAgent::with_session_update_tx(tx)
+                .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
             let stdin = tokio::io::stdin();
             let stdout = tokio::io::stdout();
             let stdin_compat = stdin.compat();
@@ -264,19 +265,42 @@ pub async fn run_stdio_loop() -> Result<(), Box<dyn std::error::Error + Send + S
             );
             let conn = Arc::new(connection);
             let conn_drain = conn.clone();
-            let drain = async move {
-                while let Some(n) = rx.recv().await {
-                    let _ = conn_drain.session_notification(n).await;
-                }
+
+            // Create drain task that processes session notifications concurrently
+            let drain_task = {
+                let conn = conn_drain.clone();
+                tokio::task::spawn_local(async move {
+                    while let Some(n) = rx.recv().await {
+                        match conn.session_notification(n).await {
+                            Ok(_) => {
+                                tracing::debug!("Session notification sent successfully");
+                            }
+                            Err(e) => {
+                                tracing::error!(error = ?e, "Failed to send session notification");
+                            }
+                        }
+                    }
+                    tracing::info!("Session notification channel closed");
+                })
             };
+
             tokio::select! {
                 res = io_future => {
                     tracing::info!(?res, "io_future completed");
+                    // Note: drain_task will be automatically cancelled when dropped
                     res
                 },
-                _ = drain => {
-                    tracing::info!("drain completed");
-                    Ok(())
+                result = drain_task => {
+                    match result {
+                        Ok(_) => {
+                            tracing::info!("drain completed successfully");
+                            Err(agent_client_protocol::Error::internal_error().data("Session notification task ended unexpectedly"))
+                        }
+                        Err(e) => {
+                            tracing::error!(error = ?e, "drain task failed");
+                            Err(agent_client_protocol::Error::internal_error().data(format!("Session notification task failed: {}", e)))
+                        }
+                    }
                 },
             }
         })

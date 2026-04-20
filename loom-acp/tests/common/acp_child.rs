@@ -61,7 +61,8 @@ impl AcpChild {
             std::env::current_dir().expect("Failed to get current directory")
         };
         
-        let mut process = Command::new("./target/debug/loom-acp")
+        let bin = env!("CARGO_BIN_EXE_loom-acp");
+        let mut process = Command::new(bin)
             .env("LOOM_HOME", &actual_home)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -189,6 +190,7 @@ impl AcpChild {
         // Create session
         let session_result = self.call("session/new", json!({
             "cwd": std::env::current_dir().unwrap().to_str().unwrap(),
+            "mcpServers": [],
         })).await?;
         
         let session_id = session_result.get("sessionId")

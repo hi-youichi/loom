@@ -72,31 +72,64 @@ async fn spawn_mock_llm() -> (String, tokio::task::JoinHandle<()>) {
             let request_str = String::from_utf8_lossy(&request_data);
             eprintln!("Mock server received request: {}", request_str.lines().next().unwrap_or("unknown"));
             
-            let response = r#"{
-                "id": "chatcmpl-test",
-                "object": "chat.completion",
-                "created": 1,
-                "model": "test",
-                "choices": [{
-                    "index": 0,
-                    "message": {"role": "assistant", "content": "mock reply"},
-                    "finish_reason": "stop"
-                }],
-                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
-            }"#;
+            let is_stream = request_str.contains("\"stream\":true") || request_str.contains("\"stream\": true");
             
-            let resp = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
-                response.len(),
-                response
-            );
-            
-            eprintln!("Mock server sending response: {} bytes", resp.len());
-            
-            if let Err(e) = stream.write_all(resp.as_bytes()).await {
-                eprintln!("Mock server write error: {}", e);
+            if is_stream {
+                let chunk = serde_json::json!({
+                    "id": "chatcmpl-test",
+                    "object": "chat.completion.chunk",
+                    "created": 1,
+                    "model": "test",
+                    "choices": [{
+                        "index": 0,
+                        "delta": {"role": "assistant", "content": "mock reply"},
+                        "finish_reason": null
+                    }]
+                });
+                let chunk2 = serde_json::json!({
+                    "id": "chatcmpl-test",
+                    "object": "chat.completion.chunk",
+                    "created": 1,
+                    "model": "test",
+                    "choices": [{
+                        "index": 0,
+                        "delta": {},
+                        "finish_reason": "stop"
+                    }],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+                });
+                let sse_body = format!("data: {}\n\ndata: {}\n\ndata: [DONE]\n\n", chunk, chunk2);
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
+                    sse_body.len(),
+                    sse_body
+                );
+                eprintln!("Mock server sending SSE response: {} bytes", resp.len());
+                if let Err(e) = stream.write_all(resp.as_bytes()).await {
+                    eprintln!("Mock server write error: {}", e);
+                }
             } else {
-                eprintln!("Mock server: response written successfully");
+                let response = serde_json::json!({
+                    "id": "chatcmpl-test",
+                    "object": "chat.completion",
+                    "created": 1,
+                    "model": "test",
+                    "choices": [{
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "mock reply"},
+                        "finish_reason": "stop"
+                    }],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+                }).to_string();
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
+                    response.len(),
+                    response
+                );
+                eprintln!("Mock server sending JSON response: {} bytes", resp.len());
+                if let Err(e) = stream.write_all(resp.as_bytes()).await {
+                    eprintln!("Mock server write error: {}", e);
+                }
             }
             
             if let Err(e) = stream.flush().await {
@@ -105,7 +138,6 @@ async fn spawn_mock_llm() -> (String, tokio::task::JoinHandle<()>) {
                 eprintln!("Mock server: response flushed successfully");
             }
             
-            // Give time for the response to be read before closing
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             eprintln!("Mock server: closing connection");
         }

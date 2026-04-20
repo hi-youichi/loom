@@ -57,7 +57,7 @@ fn extract_current_model(response: &NewSessionResponse) -> Option<String> {
 /// Test that new_session returns a response with config_options.
 #[tokio::test]
 async fn test_new_session_returns_config_options() {
-    let agent = LoomAcpAgent::new();
+    let agent = LoomAcpAgent::new().unwrap();
     let request = make_new_session_request();
 
     let response = agent.new_session(request).await;
@@ -80,7 +80,7 @@ async fn test_new_session_returns_config_options() {
 /// Test that set_session_config_option works for model config.
 #[tokio::test]
 async fn test_set_session_config_option_model() {
-    let agent = LoomAcpAgent::new();
+    let agent = LoomAcpAgent::new().unwrap();
 
     // First create a session
     let session_resp = agent.new_session(make_new_session_request()).await.unwrap();
@@ -105,7 +105,7 @@ async fn test_set_session_config_option_model() {
 /// Test that set_session_config_option rejects unknown config_id.
 #[tokio::test]
 async fn test_set_session_config_option_unknown_config() {
-    let agent = LoomAcpAgent::new();
+    let agent = LoomAcpAgent::new().unwrap();
 
     // First create a session
     let session_resp = agent.new_session(make_new_session_request()).await.unwrap();
@@ -129,7 +129,7 @@ async fn test_set_session_config_option_unknown_config() {
 /// Test that set_session_config_option fails for unknown session.
 #[tokio::test]
 async fn test_set_session_config_option_unknown_session() {
-    let agent = LoomAcpAgent::new();
+    let agent = LoomAcpAgent::new().unwrap();
 
     let request_json = serde_json::json!({
         "sessionId": "nonexistent-session",
@@ -151,7 +151,7 @@ async fn test_set_session_config_option_unknown_session() {
 fn test_model_list_from_mock_provider() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
-        let agent = LoomAcpAgent::new();
+        let agent = LoomAcpAgent::new().unwrap();
         let request = make_new_session_request();
 
         let response = agent.new_session(request).await.unwrap();
@@ -183,7 +183,7 @@ fn test_current_model_from_env() {
             // Use block_on to run async code in synchronous test
             let rt = tokio::runtime::Runtime::new().unwrap();
             rt.block_on(async {
-                let agent = LoomAcpAgent::new();
+                let agent = LoomAcpAgent::new().unwrap();
                 let request = make_new_session_request();
 
                 let response = agent.new_session(request).await.unwrap();

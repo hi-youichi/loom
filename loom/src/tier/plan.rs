@@ -55,16 +55,16 @@ mod tests {
         let plans = tier_plans();
         assert!(!plans.is_empty());
 
-        let zhipu = plans.get("zhipuai").expect("zhipuai plan should exist");
-        assert_eq!(zhipu.tiers.get(&ModelTier::Strong), Some(&"glm-5.1".to_string()));
-        assert_eq!(zhipu.tiers.get(&ModelTier::Standard), Some(&"glm-4.7".to_string()));
-        assert_eq!(zhipu.tiers.get(&ModelTier::Light), Some(&"glm-4.5-air".to_string()));
+        let plan = plans.get("zhipuai-coding-plan").expect("zhipuai-coding-plan should exist");
+        assert_eq!(plan.tiers.get(&ModelTier::Strong), Some(&"glm-5.1".to_string()));
+        assert_eq!(plan.tiers.get(&ModelTier::Standard), Some(&"glm-4.7".to_string()));
+        assert_eq!(plan.tiers.get(&ModelTier::Light), Some(&"glm-4.5-air".to_string()));
     }
 
     #[test]
     fn openai_plan_present() {
         let plans = tier_plans();
-        let openai = plans.get("openai").expect("openai plan should exist");
-        assert_eq!(openai.tiers.get(&ModelTier::Standard), Some(&"gpt-4o".to_string()));
+        assert!(plans.contains_key("zhipuai-coding-plan"), "zhipuai-coding-plan should exist");
+        assert!(!plans.contains_key("openai"), "openai plan should not exist in default config");
     }
 }

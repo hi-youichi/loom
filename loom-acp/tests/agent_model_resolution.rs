@@ -8,7 +8,7 @@ use loom_acp::session::SessionConfig;
 
 /// Helper function to create a test agent
 fn create_test_agent() -> LoomAcpAgent {
-    LoomAcpAgent::new()
+    LoomAcpAgent::new().unwrap()
 }
 
 /// Helper function to create a test session config
