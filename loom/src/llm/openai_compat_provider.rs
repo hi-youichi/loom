@@ -9,6 +9,7 @@ pub struct OpenAICompatProvider {
     api_key: String,
     provider_name: String,
     default_model: String,
+    #[allow(dead_code)]
     providers: Vec<ProviderConfig>,
 }
 

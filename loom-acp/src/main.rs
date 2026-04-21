@@ -121,16 +121,32 @@ fn run_reload() {
 }
 
 fn run_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let msg = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "unknown panic".to_string()
+        };
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}", l.file(), l.line()))
+            .unwrap_or_default();
+        eprintln!("loom-acp panic: {} at {}", msg, location);
+        tracing::error!(location = %location, msg = %msg, "panic caught");
+        default_hook(info);
+    }));
+
     let _ = config::load_and_apply_with_report("loom", None::<&std::path::Path>).ok();
 
-    // Set log config for delayed initialization (actual init happens on first new_session)
     loom_acp::set_log_config(loom_acp::logging::LogConfig {
         level: args.log_level.clone(),
         file: args.log_file.clone(),
         rotate: config::tracing_init::LogRotate::from_str_or_daily(&args.log_rotate),
     });
 
-    // Write PID file to default location
     let _pid_guard = write_pid_file(&acp_log_dir());
 
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -139,28 +155,40 @@ fn run_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send + Sync>
         .build()?;
 
     #[cfg(unix)]
-    let run = async {
+    let result = {
         use tokio::signal::unix::{signal, SignalKind};
         let mut sig = match signal(SignalKind::hangup()) {
             Ok(s) => s,
-            Err(_) => return loom_acp::run_stdio_loop().await,
+            Err(_) => rt.block_on(loom_acp::run_stdio_loop()),
         };
-        tokio::select! {
-            res = loom_acp::run_stdio_loop() => res,
-            _ = sig.recv() => {
-                tracing::info!("SIGHUP received, exiting for reload");
-                std::process::exit(RELOAD_EXIT_CODE);
+        rt.block_on(async {
+            tokio::select! {
+                res = loom_acp::run_stdio_loop() => res,
+                _ = sig.recv() => {
+                    tracing::info!("SIGHUP received, exiting for reload");
+                    Err(format!("reload (exit {})", RELOAD_EXIT_CODE).into())
+                }
             }
-        }
+        })
     };
 
     #[cfg(not(unix))]
-    let run = loom_acp::run_stdio_loop();
+    let result = rt.block_on(loom_acp::run_stdio_loop());
 
-    rt.block_on(run)?;
-
-    tracing::info!("loom-acp exiting normally");
-    Ok(())
+    match result {
+        Ok(()) => {
+            tracing::info!("loom-acp exiting normally");
+            Ok(())
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains(&format!("reload (exit {}", RELOAD_EXIT_CODE)) {
+                tracing::info!("Exiting for reload, PidFileGuard will clean up");
+                std::process::exit(RELOAD_EXIT_CODE);
+            }
+            Err(e)
+        }
+    }
 }
 
 /// Removes the PID file on drop (normal exit or reload).

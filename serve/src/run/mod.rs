@@ -58,6 +58,7 @@ pub(crate) async fn handle_run(
         user_message_store: user_message_store_for_append,
         thread_id: thread_id_for_append,
         append_queue_capacity: run_config.append_queue_capacity,
+        llm_override: None,
     }));
 
     let mut sender = delivery::WebSocketRunSender(socket);
@@ -69,8 +70,8 @@ pub(crate) async fn handle_run(
 mod tests {
     use async_trait::async_trait;
     use loom::{
-        AgentRunResult, EnvelopeState, ProtocolEvent, ProtocolEventEnvelope, RunCmd, RunCompletion,
-        RunError, RunOptions, ServerResponse,
+        AgentRunResult, EnvelopeState, MockLlm, ProtocolEvent, ProtocolEventEnvelope,
+        RunCmd, RunCompletion, RunError, RunOptions, ServerResponse,
     };
     use std::sync::atomic::AtomicUsize;
     use std::sync::{Arc, Mutex};
@@ -317,6 +318,7 @@ mod tests {
             user_message_store: None,
             thread_id: None,
             append_queue_capacity: APPEND_QUEUE_CAPACITY,
+            llm_override: Some(Box::new(MockLlm::with_no_tool_calls("ok"))),
         })
         .await;
         let _ = result;
@@ -358,6 +360,7 @@ mod tests {
             user_message_store: Some(store),
             thread_id: Some("thread-append".to_string()),
             append_queue_capacity: APPEND_QUEUE_CAPACITY,
+            llm_override: Some(Box::new(MockLlm::with_no_tool_calls("ok"))),
         })
         .await;
         let _ = result;

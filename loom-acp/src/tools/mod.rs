@@ -12,11 +12,14 @@ mod fs_tools;
 mod terminal_tools;
 
 pub use client_bridge::{
-    clear_client_bridge, get_client_bridge, set_client_bridge, ClientBridgeTrait, NoOpClientBridge,
-    TerminalOutput,
+    clear_client_bridge, get_client_bridge, set_client_bridge, ClientBridgeTrait,
+    NoOpClientBridge, TerminalExitResult, TerminalOutput,
 };
 pub use fs_tools::{ReadTextFileTool, WriteTextFileTool};
-pub use terminal_tools::{CreateTerminalTool, TerminalOutputTool};
+pub use terminal_tools::{
+    CreateTerminalTool, KillTerminalTool, ReleaseTerminalTool, TerminalOutputTool,
+    WaitForExitTool,
+};
 
 use crate::client_capabilities::ClientCapabilitiesInfo;
 use loom::tools::Tool;
@@ -58,6 +61,9 @@ pub fn create_acp_tools(capabilities: &ClientCapabilitiesInfo) -> Vec<Box<dyn To
     if capabilities.can_create_terminal() {
         tools.push(Box::new(CreateTerminalTool::new()));
         tools.push(Box::new(TerminalOutputTool::new()));
+        tools.push(Box::new(WaitForExitTool::new()));
+        tools.push(Box::new(KillTerminalTool::new()));
+        tools.push(Box::new(ReleaseTerminalTool::new()));
     }
 
     tools
@@ -113,7 +119,7 @@ mod tests {
         });
         let caps = ClientCapabilitiesInfo::from_json(Some(caps_json));
         let tools = create_acp_tools(&caps);
-        assert_eq!(tools.len(), 4); // 2 fs tools + 2 terminal tools
+        assert_eq!(tools.len(), 7); // 2 fs tools + 5 terminal tools
     }
 
     #[test]
@@ -136,6 +142,21 @@ mod tests {
         let output_tool = TerminalOutputTool::new();
         let spec = output_tool.spec();
         assert_eq!(spec.name, "terminal_output");
+        assert!(spec.description.is_some());
+
+        let wait_tool = WaitForExitTool::new();
+        let spec = wait_tool.spec();
+        assert_eq!(spec.name, "terminal_wait_for_exit");
+        assert!(spec.description.is_some());
+
+        let kill_tool = KillTerminalTool::new();
+        let spec = kill_tool.spec();
+        assert_eq!(spec.name, "terminal_kill");
+        assert!(spec.description.is_some());
+
+        let release_tool = ReleaseTerminalTool::new();
+        let spec = release_tool.spec();
+        assert_eq!(spec.name, "terminal_release");
         assert!(spec.description.is_some());
     }
 }

@@ -57,7 +57,7 @@ pub fn init_with_working_folder(working_folder: &Path) {
         Ok((writer, guard)) => {
             let layer = tracing_subscriber::fmt::layer()
                 .with_ansi(false)
-                .with_target(true)
+                .event_format(config::log_format::TextWithSpanIds::default())
                 .with_writer(writer);
             tracing_subscriber::registry()
                 .with(filter)

@@ -21,6 +21,7 @@ async fn initialize(acp: &mut common::AcpChild) {
     );
 }
 
+#[allow(dead_code)]
 async fn new_session(acp: &mut common::AcpChild) -> String {
     let response = acp
         .send_request_and_wait(

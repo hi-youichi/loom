@@ -66,41 +66,21 @@ async fn e2e_prompt_emits_update_notifications() {
 
     let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
 
-    // Send prompt
-    let response = acp
-        .send_request_and_wait(
-            "session/prompt",
-            serde_json::json!({
-                "sessionId": session_id,
-                "prompt": [{
-                    "type": "text",
-                    "text": "Say hello",
-                }],
-            }),
-            TIMEOUT,
-        )
-        .await
-        .expect("send prompt");
+    let request_id = acp.send_prompt_request(&session_id, "Say hello").expect("send prompt");
 
-    let prompt_id = response.id.and_then(|v| v.as_u64()).expect("response should have ID");
+    let (notifications, response) = acp
+        .collect_all_notifications(request_id, TIMEOUT)
+        .expect("collect");
 
-    // Collect notifications until we get the prompt response
-    let start = std::time::Instant::now();
-    let mut got_update = false;
-    let mut got_response = false;
+    assert!(
+        response.error.is_none(),
+        "prompt should succeed: {:?}",
+        response.error
+    );
 
-    while start.elapsed() < TIMEOUT && !got_response {
-        let message = acp.read_message().expect("read message");
+    let got_update = notifications
+        .iter()
+        .any(|msg| msg.get("method").and_then(|v| v.as_str()) == Some("session/update"));
 
-        if message.get("method").and_then(|v| v.as_str()) == Some("session/update") {
-            got_update = true;
-        }
-
-        if message.get("id").and_then(|v| v.as_u64()) == Some(prompt_id) {
-            got_response = true;
-        }
-    }
-
-    assert!(got_response, "should receive prompt response");
     assert!(got_update, "should receive at least one session/update notification");
 }

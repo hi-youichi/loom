@@ -121,6 +121,7 @@ pub(super) struct AgentTaskParams {
     pub(super) user_message_store: Option<Arc<dyn loom::UserMessageStore>>,
     pub(super) thread_id: Option<String>,
     pub(super) append_queue_capacity: usize,
+    pub(super) llm_override: Option<Box<dyn loom::LlmClient>>,
 }
 
 pub(super) async fn run_agent_task(
@@ -140,6 +141,7 @@ pub(super) async fn run_agent_task(
         user_message_store,
         thread_id,
         append_queue_capacity,
+        llm_override,
     } = params;
     let state = Arc::new(Mutex::new(EnvelopeState::new(session_id.clone())));
     let state_clone = state.clone();
@@ -210,7 +212,12 @@ pub(super) async fn run_agent_task(
         };
         process_run_stream_event(ev, &event_ctx, &append_ctx);
     });
-    let result = run_agent_with_options(&opts, &cmd, Some(on_event)).await;
+    let result = if let Some(llm) = llm_override {
+        loom::run_agent_with_llm_override(&opts, &cmd, Some(on_event), Some(llm)).await
+    } else {
+        run_agent_with_options(&opts, &cmd, Some(on_event)).await
+    };
+    opts.any_stream_event_sender = None;
     drop(append_tx_to_drop);
     if let Some(h) = append_handle {
         let _ = h.await;

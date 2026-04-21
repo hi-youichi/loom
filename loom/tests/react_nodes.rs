@@ -18,7 +18,7 @@ use loom::{
     tool_source::{
         FileToolSource, ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec,
     },
-    ActNode, FixedLlmProvider, LlmUsage, Message, MockLlm, MockToolSource, ModelConfig, Next, Node, ObserveNode,
+    ActNode, FixedLlmProvider, LlmUsage, Message, MockLlm, MockToolSource, Next, Node, ObserveNode,
     PromptTokensDetails, ReActState, ThinkNode, ToolCall, ToolOutputHint, ToolOutputStrategy,
     ToolResult, STEP_PROGRESS_EVENT_TYPE,
 };

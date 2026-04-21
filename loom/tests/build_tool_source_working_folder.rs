@@ -5,10 +5,7 @@
 
 mod init_logging;
 
-use loom::tools::{
-    TOOL_CREATE_DIR, TOOL_DELETE_FILE, TOOL_LS, TOOL_MOVE_FILE, TOOL_READ_FILE, TOOL_WRITE_FILE,
-};
-use loom::{build_react_run_context, ReactBuildConfig};
+use loom::ReactBuildConfig;
 
 /// Scenario: building run context with working_folder set yields tool source that includes file tools.
 #[tokio::test]

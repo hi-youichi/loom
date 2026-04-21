@@ -43,31 +43,31 @@ pub struct LoomAcpAgent {
 
 impl LoomAcpAgent {
     /// Construct a new Agent instance (no session/update sending).
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let db_path = loom::memory::default_memory_db_path();
         let config_store = SessionConfigStore::new(db_path.to_str().unwrap_or_default())
-            .expect("Failed to initialize session config store");
+            .map_err(|e| format!("session config store init failed: {e}"))?;
 
-        Self {
+        Ok(Self {
             sessions: SessionStore::new(),
             agent_registry: AgentRegistry::new(),
             config_store,
             session_update_tx: None,
-        }
+        })
     }
 
     /// Construct an Agent with a session/update sender for the stdio loop to push stream updates to the client.
-    pub fn with_session_update_tx(tx: mpsc::Sender<SessionNotification>) -> Self {
+    pub fn with_session_update_tx(tx: mpsc::Sender<SessionNotification>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let db_path = loom::memory::default_memory_db_path();
         let config_store = SessionConfigStore::new(db_path.to_str().unwrap_or_default())
-            .expect("Failed to initialize session config store");
+            .map_err(|e| format!("session config store init failed: {e}"))?;
 
-        Self {
+        Ok(Self {
             sessions: SessionStore::new(),
             agent_registry: AgentRegistry::new(),
             config_store,
             session_update_tx: Some(tx),
-        }
+        })
     }
 
     /// Returns read-only access to the session store.
@@ -172,22 +172,30 @@ impl LoomAcpAgent {
                     config.model_tier = Some(tier);
                     let resolved_config = loom::resolve_tier_and_build_config(&config).await;
 
-                    let resolved = loom::ResolvedModelConfig {
-                        model: resolved_config.model.clone(),
-                        provider: resolved_config.llm_provider.clone(),
-                        base_url: resolved_config.openai_base_url.clone(),
-                        api_key: resolved_config.openai_api_key.clone(),
-                        provider_type: resolved_config.llm_provider.clone(),
-                    };
+                    if resolved_config.model.is_some() {
+                        let resolved = loom::ResolvedModelConfig {
+                            model: resolved_config.model.clone(),
+                            provider: resolved_config.llm_provider.clone(),
+                            base_url: resolved_config.openai_base_url.clone(),
+                            api_key: resolved_config.openai_api_key.clone(),
+                            provider_type: resolved_config.llm_provider.clone(),
+                        };
 
-                    tracing::info!(
+                        tracing::info!(
+                            tier = ?tier,
+                            agent = %session_config.current_agent,
+                            resolved_model = %resolved.model.as_deref().unwrap_or("none"),
+                            resolution_time_ms = start_time.elapsed().as_millis(),
+                            "Tier resolution successful"
+                        );
+                        return resolved;
+                    }
+
+                    tracing::warn!(
                         tier = ?tier,
                         agent = %session_config.current_agent,
-                        resolved_model = %resolved.model.as_deref().unwrap_or("none"),
-                        resolution_time_ms = start_time.elapsed().as_millis(),
-                        "No ACP model selected, using agent tier configuration"
+                        "Tier resolution failed, falling back to default provider config"
                     );
-                    return resolved;
                 }
             }
         }
@@ -195,11 +203,41 @@ impl LoomAcpAgent {
         // Default case: no explicit configuration - provide a safe default model
         tracing::info!(
             agent = %session_config.current_agent,
-            "No model or tier configuration, using safe default model"
+            "No model or tier configuration, resolving from default provider config"
         );
 
-        // Provide a safe default model that should work in most environments
-        // This ensures tests and basic usage work without explicit configuration
+        if let Ok(full_config) = load_full_config("loom") {
+            if let Some(ref pname) = full_config.default_provider {
+                if let Some(p) = full_config.providers.iter().find(|p| p.name == *pname) {
+                    if let Some(ref model_name) = p.model {
+                        let mut resolved = loom::resolve_model_config(Some(model_name)).await;
+                        if resolved.model.is_some() {
+                            if resolved.api_key.is_none() {
+                                resolved.api_key = p.api_key.clone();
+                            }
+                            if resolved.base_url.is_none() {
+                                resolved.base_url = p.base_url.clone();
+                            }
+                            if resolved.provider.is_none() {
+                                resolved.provider = Some(p.name.clone());
+                            }
+                            if resolved.provider_type.is_none() {
+                                resolved.provider_type = p.provider_type.clone();
+                            }
+                            return resolved;
+                        }
+                    }
+                    return loom::ResolvedModelConfig {
+                        model: p.model.clone(),
+                        provider: Some(p.name.clone()),
+                        base_url: p.base_url.clone(),
+                        api_key: p.api_key.clone(),
+                        provider_type: p.provider_type.clone(),
+                    };
+                }
+            }
+        }
+
         let default_model = "gpt-4o-mini";
         loom::resolve_model_config(Some(default_model)).await
     }
@@ -236,7 +274,7 @@ impl LoomAcpAgent {
 
 impl Default for LoomAcpAgent {
     fn default() -> Self {
-        Self::new()
+        Self::new().expect("LoomAcpAgent default init failed")
     }
 }
 
@@ -647,6 +685,9 @@ impl Agent for LoomAcpAgent {
 
         let result = run_agent_with_options(&opts, &RunCmd::React, on_event).await;
         self.sessions.finish_prompt(&key, cancellation.generation());
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
         match result {
             Ok(RunCompletion::Finished(_reply)) => Ok(PromptResponse::new(StopReason::EndTurn)),
             Ok(RunCompletion::Cancelled) => Ok(PromptResponse::new(StopReason::Cancelled)),
@@ -661,20 +702,27 @@ impl Agent for LoomAcpAgent {
         &self,
         args: LoadSessionRequest,
     ) -> agent_client_protocol::Result<LoadSessionResponse> {
-        tracing::debug!(session_id = %args.session_id, cwd = ?args.cwd, "load_session called");
-        // Initialize logging with working_folder from ACP session
+        tracing::info!(session_id = %args.session_id, cwd = ?args.cwd, "load_session started");
         crate::logging::init_with_working_folder(&args.cwd);
         let session_id = args.session_id.clone();
         let our_session_id = OurSessionId::new(session_id.to_string());
-        let working_directory = Some(args.cwd.clone()); // Convert to Option<PathBuf>
+        let working_directory = Some(args.cwd.clone());
 
-        // Create or get session entry
         let entry =
             if let Some(existing) = self.sessions.get(&our_session_id) {
+                tracing::info!(
+                    session_id = %session_id,
+                    thread_id = %existing.thread_id,
+                    "Reusing existing session entry from memory"
+                );
                 existing
             } else {
-                // Create new session entry with the provided working directory
                 let thread_id = session_id.to_string();
+                tracing::info!(
+                    session_id = %session_id,
+                    thread_id = %thread_id,
+                    "Creating new session entry for load"
+                );
                 self.sessions.create_with_id(
                     our_session_id.clone(),
                     working_directory,
@@ -687,14 +735,19 @@ impl Agent for LoomAcpAgent {
                     }
                 });
                 self.sessions.get(&our_session_id).ok_or_else(|| {
-                tracing::error!(session_id = %our_session_id, "Session not found after creation");
-                agent_client_protocol::Error::internal_error()
-                    .data(format!("Session {} not found after creation", our_session_id))
-            })?
+                    tracing::error!(session_id = %our_session_id, "Session not found after creation");
+                    agent_client_protocol::Error::internal_error()
+                        .data(format!("Session {} not found after creation", our_session_id))
+                })?
             };
 
-        // Build checkpointer to load history
         let db_path = loom::memory::default_memory_db_path();
+        tracing::debug!(
+            session_id = %session_id,
+            thread_id = %entry.thread_id,
+            db_path = %db_path.display(),
+            "Querying checkpoint for session history"
+        );
         let serializer = Arc::new(JsonSerializer);
         let checkpointer: Arc<dyn Checkpointer<ReActState>> = Arc::new(
             SqliteSaver::new(db_path.to_string_lossy().as_ref(), serializer).map_err(|e| {
@@ -703,7 +756,6 @@ impl Agent for LoomAcpAgent {
             })?,
         );
 
-        // Load checkpoint using thread_id
         let config = RunnableConfig {
             thread_id: Some(entry.thread_id.clone()),
             checkpoint_id: None,
@@ -716,37 +768,55 @@ impl Agent for LoomAcpAgent {
             resume_values_by_interrupt_id: Default::default(),
         };
 
-        // Try to load checkpoint
         match checkpointer.get_tuple(&config).await {
             Ok(Some((checkpoint, _metadata))) => {
-                // Extract messages from state
                 let state: ReActState = checkpoint.channel_values;
+                let user_count = state.messages.iter().filter(|m| matches!(m, loom::Message::User(_))).count();
+                let assistant_count = state.messages.iter().filter(|m| matches!(m, loom::Message::Assistant(_))).count();
+                let tool_count = state.messages.iter().filter(|m| matches!(m, loom::Message::Tool { .. })).count();
+                let system_count = state.messages.iter().filter(|m| matches!(m, loom::Message::System(_))).count();
 
-                // Send history via session/update notifications
+                tracing::info!(
+                    session_id = %session_id,
+                    thread_id = %entry.thread_id,
+                    total = state.messages.len(),
+                    user = user_count,
+                    assistant = assistant_count,
+                    tool = tool_count,
+                    system = system_count,
+                    "Checkpoint found, replaying session history"
+                );
+
                 if let Some(ref tx) = self.session_update_tx {
                     let notifier = SessionNotifier::new(tx.clone(), session_id.clone());
                     notifier.send_history(&state.messages).await;
+                } else {
+                    tracing::warn!(
+                        session_id = %session_id,
+                        "No session_update_tx available, history not sent to client"
+                    );
                 }
 
                 tracing::info!(
                     session_id = %session_id,
                     message_count = state.messages.len(),
-                    "Loaded and replayed session history"
+                    "Session history replay completed"
                 );
             }
             Ok(None) => {
-                tracing::debug!(
+                tracing::info!(
                     session_id = %session_id,
+                    thread_id = %entry.thread_id,
                     "No checkpoint found for session, starting fresh"
                 );
             }
             Err(e) => {
                 tracing::warn!(
                     session_id = %session_id,
+                    thread_id = %entry.thread_id,
                     error = %e,
                     "Failed to load checkpoint, starting fresh"
                 );
-                // Continue without error - session can start fresh
             }
         }
 

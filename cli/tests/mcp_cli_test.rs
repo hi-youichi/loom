@@ -29,7 +29,7 @@ fn test_mcp_manager_basic_operations() {
     assert_eq!(add_args.name, "test-server");
     assert_eq!(add_args.command, Some("npx".to_string()));
     assert_eq!(add_args.args.len(), 2);
-    assert_eq!(add_args.disabled, false);
+    assert!(!add_args.disabled);
 }
 
 #[test]

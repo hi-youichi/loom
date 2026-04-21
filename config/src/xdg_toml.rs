@@ -292,8 +292,11 @@ BAR = "baz"
         assert!(!p.to_env_map().contains_key("OPENAI_TEMPERATURE"));
     }
 
+    static XDG_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn load_full_config_parses_provider_temperature() {
+        let _lock = XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dir.path().join("config.toml"),

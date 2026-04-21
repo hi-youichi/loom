@@ -31,9 +31,10 @@
 
 use crate::content::extract_locations;
 use agent_client_protocol::{
-    ContentChunk, CurrentModeUpdate, SessionId, SessionInfoUpdate, SessionModeId,
-    SessionNotification, SessionUpdate, Terminal, TerminalId, ToolCall, ToolCallId,
-    ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
+    ContentChunk, CurrentModeUpdate, Plan, PlanEntry,
+    SessionId, SessionInfoUpdate, SessionModeId, SessionNotification, SessionUpdate,
+    Terminal, TerminalId, ToolCall, ToolCallId, ToolCallLocation, ToolCallStatus,
+    ToolCallUpdate, ToolCallUpdateFields, ToolKind,
 };
 use loom::message::Message;
 use loom::{AnyStreamEvent, MessageChunkKind, StreamEvent};
@@ -106,6 +107,10 @@ pub enum StreamUpdate {
     /// Session metadata update (ACP `session_info_update`).
     /// Used to push title and related metadata changes to the client in real time.
     SessionInfoUpdate { title: String },
+
+    /// Agent execution plan (ACP `plan`).
+    /// Reports the agent's planned tasks with their priority and status.
+    Plan { entries: Vec<PlanEntry> },
 }
 
 /// Convert one Loom stream event into zero or more [`StreamUpdate`]s.
@@ -393,6 +398,9 @@ pub fn stream_update_to_session_notification(
         StreamUpdate::SessionInfoUpdate { title } => {
             SessionUpdate::SessionInfoUpdate(SessionInfoUpdate::new().title(title.clone()))
         }
+        StreamUpdate::Plan { entries } => {
+            SessionUpdate::Plan(Plan::new(entries.clone()))
+        }
     };
     Some(SessionNotification::new(session_id.clone(), update))
 }
@@ -460,15 +468,60 @@ impl SessionNotifier {
         let updates = loom_event_to_updates(event);
         for u in &updates {
             if let Some(notif) = stream_update_to_session_notification(&self.session_id, u) {
-                let _ = self.tx.try_send(notif);
+                match self.tx.try_send(notif) {
+                    Ok(_) => {
+                        tracing::trace!(
+                            session_id = %self.session_id,
+                            update_type = ?u,
+                            "Session notification sent successfully"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            session_id = %self.session_id,
+                            update_type = ?u,
+                            error = %e,
+                            "Failed to send session notification (channel full or closed)"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn try_send_plan(&self, entries: Vec<PlanEntry>) {
+        let notif = stream_update_to_session_notification(
+            &self.session_id,
+            &StreamUpdate::Plan { entries },
+        );
+        if let Some(notif) = notif {
+            if let Err(e) = self.tx.try_send(notif) {
+                tracing::warn!(
+                    session_id = %self.session_id,
+                    error = %e,
+                    "Failed to send plan notification"
+                );
             }
         }
     }
 
     pub async fn send_history(&self, messages: &[Message]) {
+        tracing::debug!(
+            session_id = %self.session_id,
+            total_messages = messages.len(),
+            "send_history started"
+        );
         let mut tool_calls_map: HashMap<String, (String, Option<Value>)> = HashMap::new();
+        let mut sent_count: usize = 0;
+        let mut skipped_system: usize = 0;
 
-        for message in messages {
+        for (idx, message) in messages.iter().enumerate() {
+            let msg_type = match message {
+                Message::User(_) => "user",
+                Message::Assistant(_) => "assistant",
+                Message::Tool { .. } => "tool",
+                Message::System(_) => "system",
+            };
             let notifications = match message {
                 Message::User(content) => vec![SessionNotification::new(
                     self.session_id.clone(),
@@ -542,15 +595,36 @@ impl SessionNotifier {
                         SessionUpdate::ToolCallUpdate(tool_call_update),
                     )]
                 }
-                Message::System(_) => continue,
+                Message::System(_) => {
+                    skipped_system += 1;
+                    continue;
+                }
             };
+
+            tracing::trace!(
+                session_id = %self.session_id,
+                index = idx,
+                msg_type = msg_type,
+                notification_count = notifications.len(),
+                "Replaying history message"
+            );
 
             for notif in notifications {
                 if let Err(e) = self.tx.send(notif).await {
-                    tracing::error!(session_id = %self.session_id, error = %e, "Failed to send session update during history replay");
+                    tracing::error!(session_id = %self.session_id, index = idx, msg_type = msg_type, error = %e, "Failed to send session update during history replay");
+                } else {
+                    sent_count += 1;
                 }
             }
         }
+
+        tracing::debug!(
+            session_id = %self.session_id,
+            total_messages = messages.len(),
+            notifications_sent = sent_count,
+            system_skipped = skipped_system,
+            "send_history completed"
+        );
     }
 
     pub async fn send_current_mode(&self, mode_id: &str) {

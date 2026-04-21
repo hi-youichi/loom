@@ -1,108 +1,208 @@
-//! Client method implementations for ACP.
-//!
-//! This module implements the Agent -> Client methods defined in ACP protocol.
-//! These allow the agent to use client capabilities like:
-//! - fs/read_text_file - Read files (including unsaved edits from IDE)
-//! - fs/write_text_file - Write/create files
-//! - terminal/* - Terminal operations (TODO)
-//!
-//! Usage: When the agent has an AgentSideConnection (implementing Client trait),
-//! it can call these methods to request operations from the IDE.
-
-use agent_client_protocol::{Client, ReadTextFileRequest, SessionId, WriteTextFileRequest};
+use agent_client_protocol::{
+    Client, CreateTerminalRequest, KillTerminalRequest, ReadTextFileRequest,
+    ReleaseTerminalRequest, SessionId, TerminalOutputRequest, WaitForTerminalExitRequest,
+    WriteTextFileRequest,
+};
 use tracing::{debug, info};
 
-/// Read a text file from the client (including unsaved edits).
-///
-/// # Arguments
-/// * `client` - The client connection implementing the Client trait
-/// * `session_id` - The ACP session this request belongs to
-/// * `path` - The file path to read
-/// * `line` - Optional line number to start reading from (1-based)
-/// * `limit` - Optional maximum number of lines to read
-///
-/// # Returns
-/// * `Ok(String)` - The file contents
-/// * `Err(agent_client_protocol::Error)` - If the read fails
-///
-/// # Usage
-/// ```ignore
-/// let contents = client_read_text_file(&client, session_id, "src/main.rs", None, None).await?;
-/// // Read lines 10-60 (50 lines starting from line 10)
-/// let contents = client_read_text_file(&client, session_id, "src/main.rs", Some(10), Some(50)).await?;
-/// ```
-pub async fn client_read_text_file<C: Client>(
-    client: &C,
-    session_id: SessionId,
+use crate::tools::{TerminalExitResult, TerminalOutput};
+
+pub async fn read_text_file(
+    client: &dyn Client,
+    session_id: &SessionId,
     path: &str,
     line: Option<u32>,
     limit: Option<u32>,
-) -> Result<String, agent_client_protocol::Error> {
-    let mut request = ReadTextFileRequest::new(session_id, path);
-
+) -> Result<String, String> {
+    let mut request = ReadTextFileRequest::new(session_id.clone(), path);
     if let Some(l) = line {
         request = request.line(l);
     }
-    if let Some(lim) = limit {
-        request = request.limit(lim);
+    if let Some(l) = limit {
+        request = request.limit(l);
     }
 
-    debug!(path = %path, line = ?line, limit = ?limit, "Reading file from client");
+    debug!(?request, "Sending fs/read_text_file request");
+    let response = client
+        .read_text_file(request)
+        .await
+        .map_err(|e| format!("fs/read_text_file error: {:?}", e))?;
 
-    let response = client.read_text_file(request).await?;
-
-    info!(path = %path, length = response.content.len(), "Successfully read file from client");
-
+    info!(
+        content_len = response.content.len(),
+        "fs/read_text_file completed"
+    );
     Ok(response.content)
 }
 
-/// Write a text file to the client.
-///
-/// # Arguments
-/// * `client` - The client connection implementing the Client trait
-/// * `session_id` - The ACP session this request belongs to
-/// * `path` - The file path to write
-/// * `contents` - The contents to write
-///
-/// # Returns
-/// * `Ok(())` - If the write succeeds
-/// * `Err(agent_client_protocol::Error)` - If the write fails
-///
-/// # Usage
-/// ```ignore
-/// client_write_text_file(&client, session_id, "src/main.rs", "fn main() {}").await?;
-/// ```
-pub async fn client_write_text_file<C: Client>(
-    client: &C,
-    session_id: SessionId,
+pub async fn write_text_file(
+    client: &dyn Client,
+    session_id: &SessionId,
     path: &str,
-    contents: &str,
-) -> Result<(), agent_client_protocol::Error> {
-    let request = WriteTextFileRequest::new(session_id, path, contents);
+    content: &str,
+) -> Result<(), String> {
+    let request = WriteTextFileRequest::new(session_id.clone(), path, content);
 
-    debug!(path = %path, length = contents.len(), "Writing file to client");
+    debug!(?request, "Sending fs/write_text_file request");
+    client
+        .write_text_file(request)
+        .await
+        .map_err(|e| format!("fs/write_text_file error: {:?}", e))?;
 
-    client.write_text_file(request).await?;
-
-    info!(path = %path, length = contents.len(), "Successfully wrote file to client");
-
+    info!("fs/write_text_file completed");
     Ok(())
 }
 
-/// Check if a client supports file operations.
-///
-/// This should be used before calling client_read_text_file or client_write_text_file
-/// to determine if the client supports these operations.
-///
-/// # Arguments
-/// * `can_read` - Whether fs/read_text_file is supported (from client capabilities)
-/// * `can_write` - Whether fs/write_text_file is supported (from client capabilities)
-///
-/// # Returns
-/// * `true` - If the client supports at least one file operation
-/// * `false` - If the client supports neither operation
-pub fn client_supports_file_operations(can_read: bool, can_write: bool) -> bool {
-    can_read || can_write
+pub async fn terminal_create(
+    client: &dyn Client,
+    session_id: &SessionId,
+    command: &str,
+    args: Vec<String>,
+    env: Vec<(String, String)>,
+    cwd: Option<String>,
+    output_byte_limit: Option<u64>,
+) -> Result<String, String> {
+    let mut request = CreateTerminalRequest::new(session_id.clone(), command);
+
+    if !args.is_empty() {
+        request = request.args(args);
+    }
+
+    if !env.is_empty() {
+        request = request.env(
+            env.into_iter()
+                .map(|(name, value)| agent_client_protocol::EnvVariable::new(name, value))
+                .collect(),
+        );
+    }
+
+    if let Some(dir) = cwd {
+        request = request.cwd(std::path::PathBuf::from(dir));
+    }
+
+    if let Some(limit) = output_byte_limit {
+        request = request.output_byte_limit(limit);
+    }
+
+    debug!(?request, "Sending terminal/create request");
+    let response = client
+        .create_terminal(request)
+        .await
+        .map_err(|e| format!("terminal/create error: {:?}", e))?;
+
+    let terminal_id = response.terminal_id.to_string();
+    info!(terminal_id = %terminal_id, "terminal/create completed");
+    Ok(terminal_id)
+}
+
+pub async fn terminal_output(
+    client: &dyn Client,
+    session_id: &SessionId,
+    terminal_id: &str,
+) -> Result<TerminalOutput, String> {
+    let request = TerminalOutputRequest::new(
+        session_id.clone(),
+        agent_client_protocol::TerminalId::new(terminal_id),
+    );
+
+    debug!(?request, "Sending terminal/output request");
+    let response = client
+        .terminal_output(request)
+        .await
+        .map_err(|e| format!("terminal/output error: {:?}", e))?;
+
+    let exit_status = response.exit_status.map(|s| {
+        agent_client_protocol::TerminalExitStatus::new()
+            .exit_code(s.exit_code)
+            .signal(s.signal)
+    });
+
+    info!(
+        output_len = response.output.len(),
+        truncated = response.truncated,
+        "terminal/output completed"
+    );
+
+    Ok(TerminalOutput {
+        output: response.output,
+        truncated: response.truncated,
+        exit_status,
+    })
+}
+
+pub async fn terminal_wait_for_exit(
+    client: &dyn Client,
+    session_id: &SessionId,
+    terminal_id: &str,
+) -> Result<TerminalExitResult, String> {
+    let request = WaitForTerminalExitRequest::new(
+        session_id.clone(),
+        agent_client_protocol::TerminalId::new(terminal_id),
+    );
+
+    debug!(?request, "Sending terminal/wait_for_exit request");
+    let response = client
+        .wait_for_terminal_exit(request)
+        .await
+        .map_err(|e| format!("terminal/wait_for_exit error: {:?}", e))?;
+
+    let exit_code = response.exit_status.exit_code;
+    let signal = response.exit_status.signal;
+
+    info!(
+        exit_code = ?exit_code,
+        signal = ?signal,
+        "terminal/wait_for_exit completed"
+    );
+
+    Ok(TerminalExitResult {
+        exit_code,
+        signal,
+    })
+}
+
+pub async fn terminal_kill(
+    client: &dyn Client,
+    session_id: &SessionId,
+    terminal_id: &str,
+) -> Result<(), String> {
+    let request = KillTerminalRequest::new(
+        session_id.clone(),
+        agent_client_protocol::TerminalId::new(terminal_id),
+    );
+
+    debug!(?request, "Sending terminal/kill request");
+    client
+        .kill_terminal(request)
+        .await
+        .map_err(|e| format!("terminal/kill error: {:?}", e))?;
+
+    info!("terminal/kill completed");
+    Ok(())
+}
+
+pub async fn terminal_release(
+    client: &dyn Client,
+    session_id: &SessionId,
+    terminal_id: &str,
+) -> Result<(), String> {
+    let request = ReleaseTerminalRequest::new(
+        session_id.clone(),
+        agent_client_protocol::TerminalId::new(terminal_id),
+    );
+
+    debug!(?request, "Sending terminal/release request");
+    client
+        .release_terminal(request)
+        .await
+        .map_err(|e| format!("terminal/release error: {:?}", e))?;
+
+    info!("terminal/release completed");
+    Ok(())
+}
+
+pub fn client_supports_file_operations(read: bool, write: bool) -> bool {
+    read || write
 }
 
 #[cfg(test)]
@@ -111,16 +211,9 @@ mod tests {
 
     #[test]
     fn test_client_supports_file_operations() {
-        // Both supported
         assert!(client_supports_file_operations(true, true));
-
-        // Only read supported
         assert!(client_supports_file_operations(true, false));
-
-        // Only write supported
         assert!(client_supports_file_operations(false, true));
-
-        // Neither supported
         assert!(!client_supports_file_operations(false, false));
     }
 }

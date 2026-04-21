@@ -8,6 +8,8 @@ mod mcp_config;
 mod xdg_toml;
 
 #[cfg(feature = "tracing-init")]
+pub mod log_format;
+#[cfg(feature = "tracing-init")]
 pub mod tracing_init;
 pub use lsp_config::{
     discover_lsp_config_path, get_default_lsp_servers, load_default_lsp_config, load_lsp_config,

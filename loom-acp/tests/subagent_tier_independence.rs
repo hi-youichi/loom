@@ -70,7 +70,7 @@ async fn test_multiple_subagents_different_tiers() {
     for (agent_name, expected_tier, expected_model) in tiers {
         let config_path = test_env.loom_home.join(format!(".loom/agents/{}/config.yaml", agent_name));
         let config = std::fs::read_to_string(&config_path)
-            .expect(&format!("Should be able to read {} config", agent_name));
+            .unwrap_or_else(|_| panic!("Should be able to read {} config", agent_name));
         assert!(config.contains(expected_tier), "{} should have {} tier", agent_name, expected_tier);
         
         let tier = mock_server.get_tier_from_model(expected_model);
