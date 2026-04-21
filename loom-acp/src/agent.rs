@@ -172,22 +172,30 @@ impl LoomAcpAgent {
                     config.model_tier = Some(tier);
                     let resolved_config = loom::resolve_tier_and_build_config(&config).await;
 
-                    let resolved = loom::ResolvedModelConfig {
-                        model: resolved_config.model.clone(),
-                        provider: resolved_config.llm_provider.clone(),
-                        base_url: resolved_config.openai_base_url.clone(),
-                        api_key: resolved_config.openai_api_key.clone(),
-                        provider_type: resolved_config.llm_provider.clone(),
-                    };
+                    if resolved_config.model.is_some() {
+                        let resolved = loom::ResolvedModelConfig {
+                            model: resolved_config.model.clone(),
+                            provider: resolved_config.llm_provider.clone(),
+                            base_url: resolved_config.openai_base_url.clone(),
+                            api_key: resolved_config.openai_api_key.clone(),
+                            provider_type: resolved_config.llm_provider.clone(),
+                        };
 
-                    tracing::info!(
+                        tracing::info!(
+                            tier = ?tier,
+                            agent = %session_config.current_agent,
+                            resolved_model = %resolved.model.as_deref().unwrap_or("none"),
+                            resolution_time_ms = start_time.elapsed().as_millis(),
+                            "Tier resolution successful"
+                        );
+                        return resolved;
+                    }
+
+                    tracing::warn!(
                         tier = ?tier,
                         agent = %session_config.current_agent,
-                        resolved_model = %resolved.model.as_deref().unwrap_or("none"),
-                        resolution_time_ms = start_time.elapsed().as_millis(),
-                        "No ACP model selected, using agent tier configuration"
+                        "Tier resolution failed, falling back to default provider config"
                     );
-                    return resolved;
                 }
             }
         }
@@ -202,8 +210,20 @@ impl LoomAcpAgent {
             if let Some(ref pname) = full_config.default_provider {
                 if let Some(p) = full_config.providers.iter().find(|p| p.name == *pname) {
                     if let Some(ref model_name) = p.model {
-                        let resolved = loom::resolve_model_config(Some(model_name)).await;
+                        let mut resolved = loom::resolve_model_config(Some(model_name)).await;
                         if resolved.model.is_some() {
+                            if resolved.api_key.is_none() {
+                                resolved.api_key = p.api_key.clone();
+                            }
+                            if resolved.base_url.is_none() {
+                                resolved.base_url = p.base_url.clone();
+                            }
+                            if resolved.provider.is_none() {
+                                resolved.provider = Some(p.name.clone());
+                            }
+                            if resolved.provider_type.is_none() {
+                                resolved.provider_type = p.provider_type.clone();
+                            }
                             return resolved;
                         }
                     }

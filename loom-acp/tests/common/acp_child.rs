@@ -93,23 +93,29 @@ pub struct ToolCallResponse {
 pub struct AcpChild {
     process: Child,
     pub reader: BufReader<std::process::ChildStdout>,
-    writer: Arc<Mutex<std::process::ChildStdin>>,
+    pub writer: Arc<Mutex<std::process::ChildStdin>>,
     request_id: Arc<Mutex<u64>>,
+    _temp_dir: Option<tempfile::TempDir>,
 }
 
 #[allow(dead_code)]
 impl AcpChild {
     pub fn spawn(home: Option<&Path>) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::spawn_with_temp_dir(home, None)
+    }
+
+    pub fn spawn_with_temp_dir(home: Option<&Path>, temp_dir: Option<tempfile::TempDir>) -> Result<Self, Box<dyn std::error::Error>> {
         let actual_home = if let Some(h) = home {
             h.to_path_buf()
         } else {
-            // 如果没有提供home路径，使用当前目录
             std::env::current_dir().expect("Failed to get current directory")
         };
         
         let bin = env!("CARGO_BIN_EXE_loom-acp");
         let mut process = Command::new(bin)
             .env("LOOM_HOME", &actual_home)
+            .env("OPENAI_API_KEY", "test-key")
+            .env_remove("OPENAI_BASE_URL")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -126,13 +132,14 @@ impl AcpChild {
             reader,
             writer,
             request_id: Arc::new(Mutex::new(0)),
+            _temp_dir: temp_dir,
         })
     }
     
     pub async fn spawn_with_mock() -> Result<(Self, MockAcpServer), Box<dyn std::error::Error>> {
         let mock = MockAcpServer::start().await;
         let temp_dir = tempfile::tempdir()?;
-        let home = temp_dir.path();
+        let home = temp_dir.path().to_path_buf();
 
         let config_toml = format!(
             r#"[default]
@@ -141,14 +148,14 @@ provider = "mock"
 [[providers]]
 name = "mock"
 api_key = "test-key"
-base_url = "{}"
+base_url = "{}/v1"
 model = "test-model"
 "#,
             mock.server.uri()
         );
         std::fs::write(home.join("config.toml"), config_toml)?;
 
-        let acp = Self::spawn(Some(home))?;
+        let acp = Self::spawn_with_temp_dir(Some(&home), Some(temp_dir))?;
         mock.mount_default_responses().await;
 
         Ok((acp, mock))
