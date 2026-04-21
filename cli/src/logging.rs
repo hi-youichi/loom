@@ -10,7 +10,9 @@ use std::str::FromStr;
 
 use config::tracing_init;
 pub use config::tracing_init::LogRotate;
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+
+use config::log_format::TextWithSpanIds;
 
 /// Log configuration from CLI args.
 #[derive(Debug, Clone)]
@@ -77,9 +79,9 @@ fn init_file_logging(path: &Path, rotate: LogRotate, filter: EnvFilter) -> LogGu
     let (writer, guard) = tracing_init::file_non_blocking_writer(path, rotate, "loom")
         .unwrap_or_else(|e| panic!("failed to open log file {}: {}", path.display(), e));
 
-    let layer = fmt::layer()
+    let layer = tracing_subscriber::fmt::layer()
         .with_ansi(false)
-        .with_target(true)
+        .event_format(TextWithSpanIds::default())
         .with_writer(writer);
 
     tracing_subscriber::registry()
@@ -108,9 +110,9 @@ fn init_sink_logging(filter: EnvFilter) -> LogGuard {
 
     let (writer, guard) = tracing_appender::non_blocking(Sink);
 
-    let layer = fmt::layer()
+    let layer = tracing_subscriber::fmt::layer()
         .with_ansi(false)
-        .with_target(true)
+        .event_format(TextWithSpanIds::default())
         .with_writer(writer);
 
     tracing_subscriber::registry()

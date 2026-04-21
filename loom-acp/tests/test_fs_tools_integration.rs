@@ -10,9 +10,10 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use loom::tool_source::ToolCallContent;
+use serial_test::serial;
 use loom::tools::Tool;
 use serde_json::json;
-use loom_acp::tools::{clear_client_bridge, set_client_bridge, ClientBridgeTrait, ReadTextFileTool, TerminalOutput, WriteTextFileTool};
+use loom_acp::tools::{clear_client_bridge, set_client_bridge, ClientBridgeTrait, ReadTextFileTool, TerminalExitResult, TerminalOutput, WriteTextFileTool};
 
 // ============================================================================
 // Mock ClientBridge
@@ -95,18 +96,31 @@ impl ClientBridgeTrait for MockBridge {
         Ok(())
     }
 
-    async fn create_terminal(
+    async fn terminal_create(
         &self,
+        _session_id: &str,
         _command: &str,
-        _args: Option<&[String]>,
-        _cwd: Option<&str>,
-        _env: Option<&HashMap<String, String>>,
-        _name: Option<&str>,
+        _args: Vec<String>,
+        _env: Vec<(String, String)>,
+        _cwd: Option<String>,
+        _output_byte_limit: Option<u64>,
     ) -> Result<String, String> {
         Err("not implemented".to_string())
     }
 
-    async fn terminal_output(&self, _terminal_id: &str) -> Result<TerminalOutput, String> {
+    async fn terminal_output(&self, _session_id: &str, _terminal_id: &str) -> Result<TerminalOutput, String> {
+        Err("not implemented".to_string())
+    }
+
+    async fn terminal_wait_for_exit(&self, _session_id: &str, _terminal_id: &str) -> Result<TerminalExitResult, String> {
+        Err("not implemented".to_string())
+    }
+
+    async fn terminal_kill(&self, _session_id: &str, _terminal_id: &str) -> Result<(), String> {
+        Err("not implemented".to_string())
+    }
+
+    async fn terminal_release(&self, _session_id: &str, _terminal_id: &str) -> Result<(), String> {
         Err("not implemented".to_string())
     }
 }
@@ -125,6 +139,7 @@ async fn setup_bridge(bridge: Arc<MockBridge>) {
 // ============================================================================
 
 #[tokio::test]
+#[serial]
 async fn test_write_new_file_returns_diff_with_no_old_text() {
     let bridge = Arc::new(MockBridge::new());
     setup_bridge(bridge.clone()).await;
@@ -165,6 +180,7 @@ async fn test_write_new_file_returns_diff_with_no_old_text() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_write_existing_file_returns_diff_with_old_text() {
     let bridge = Arc::new(MockBridge::with_file(
         "src/lib.rs",
@@ -199,6 +215,7 @@ async fn test_write_existing_file_returns_diff_with_old_text() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_write_preserves_multiline_content() {
     let old = "line 1\nline 2\nline 3\n";
     let new = "line 1\nline 2 modified\nline 3\nline 4\n";
@@ -236,6 +253,7 @@ async fn test_write_preserves_multiline_content() {
 // ============================================================================
 
 #[tokio::test]
+#[serial]
 async fn test_read_existing_file_returns_text_content() {
     let bridge = Arc::new(MockBridge::with_file(
         "README.md",
@@ -263,6 +281,7 @@ async fn test_read_existing_file_returns_text_content() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_read_missing_file_returns_error() {
     let bridge = Arc::new(MockBridge::new());
     setup_bridge(bridge.clone()).await;
@@ -285,6 +304,7 @@ async fn test_read_missing_file_returns_error() {
 // ============================================================================
 
 #[tokio::test]
+#[serial]
 async fn test_write_then_read_roundtrip() {
     let bridge = Arc::new(MockBridge::new());
     setup_bridge(bridge.clone()).await;
@@ -321,6 +341,7 @@ async fn test_write_then_read_roundtrip() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_write_then_update_diff_chain() {
     let bridge = Arc::new(MockBridge::new());
     setup_bridge(bridge.clone()).await;

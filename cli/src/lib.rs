@@ -4,7 +4,6 @@
 //! config (env, working folder, etc.) and runs or streams the graph.
 
 pub mod envelope;
-pub mod log_format;
 pub mod mcp_manager;
 pub mod model_cmd;
 pub mod run;

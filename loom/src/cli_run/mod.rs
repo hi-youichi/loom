@@ -303,16 +303,17 @@ pub fn build_config_from_profile(
             );
             config.model_tier = Some(tier);
 
-            // Clear inherited model fields to allow clean tier resolution
-            // When profile configures a tier, it should completely override parent's model config
-            // This prevents mismatched provider/base_url/api_key from being used
+            // Clear inherited model/api fields to allow clean tier resolution,
+            // but preserve llm_provider so tier resolution targets the correct provider.
+            // Without llm_provider, the resolver falls back to iterating all providers
+            // and may pick a wrong one.
             tracing::debug!(
                 profile_name = %profile.name,
                 tier = ?tier,
-                "Clearing inherited model fields (model, provider, base_url, api_key) to allow clean tier resolution"
+                preserved_provider = ?config.llm_provider,
+                "Clearing inherited model/api fields for clean tier resolution (preserving llm_provider)"
             );
             config.model = None;
-            config.llm_provider = None;
             config.openai_base_url = None;
             config.openai_api_key = None;
         }
@@ -1092,10 +1093,9 @@ mod tests {
         };
         let config = build_config_from_profile(&profile, &parent_config(), None);
         assert_eq!(config.model_tier, Some(crate::model_spec::ModelTier::Light));
-        // Updated: When profile configures a tier, it clears the parent's model to allow clean tier resolution
-        // This ensures tier-based model selection is not contaminated by parent's model config
+        // When profile configures a tier, model/api fields are cleared for clean tier resolution,
+        // but llm_provider is preserved so the resolver targets the correct provider.
         assert_eq!(config.model.as_deref(), None);
-        assert_eq!(config.llm_provider.as_deref(), None);
         assert_eq!(config.openai_base_url.as_deref(), None);
         assert_eq!(config.openai_api_key.as_deref(), None);
 

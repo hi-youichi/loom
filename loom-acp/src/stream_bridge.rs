@@ -31,9 +31,10 @@
 
 use crate::content::extract_locations;
 use agent_client_protocol::{
-    ContentChunk, CurrentModeUpdate, SessionId, SessionInfoUpdate, SessionModeId,
-    SessionNotification, SessionUpdate, Terminal, TerminalId, ToolCall, ToolCallId,
-    ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
+    ContentChunk, CurrentModeUpdate, Plan, PlanEntry,
+    SessionId, SessionInfoUpdate, SessionModeId, SessionNotification, SessionUpdate,
+    Terminal, TerminalId, ToolCall, ToolCallId, ToolCallLocation, ToolCallStatus,
+    ToolCallUpdate, ToolCallUpdateFields, ToolKind,
 };
 use loom::message::Message;
 use loom::{AnyStreamEvent, MessageChunkKind, StreamEvent};
@@ -106,6 +107,10 @@ pub enum StreamUpdate {
     /// Session metadata update (ACP `session_info_update`).
     /// Used to push title and related metadata changes to the client in real time.
     SessionInfoUpdate { title: String },
+
+    /// Agent execution plan (ACP `plan`).
+    /// Reports the agent's planned tasks with their priority and status.
+    Plan { entries: Vec<PlanEntry> },
 }
 
 /// Convert one Loom stream event into zero or more [`StreamUpdate`]s.
@@ -393,6 +398,9 @@ pub fn stream_update_to_session_notification(
         StreamUpdate::SessionInfoUpdate { title } => {
             SessionUpdate::SessionInfoUpdate(SessionInfoUpdate::new().title(title.clone()))
         }
+        StreamUpdate::Plan { entries } => {
+            SessionUpdate::Plan(Plan::new(entries.clone()))
+        }
     };
     Some(SessionNotification::new(session_id.clone(), update))
 }
@@ -477,6 +485,22 @@ impl SessionNotifier {
                         );
                     }
                 }
+            }
+        }
+    }
+
+    pub fn try_send_plan(&self, entries: Vec<PlanEntry>) {
+        let notif = stream_update_to_session_notification(
+            &self.session_id,
+            &StreamUpdate::Plan { entries },
+        );
+        if let Some(notif) = notif {
+            if let Err(e) = self.tx.try_send(notif) {
+                tracing::warn!(
+                    session_id = %self.session_id,
+                    error = %e,
+                    "Failed to send plan notification"
+                );
             }
         }
     }
