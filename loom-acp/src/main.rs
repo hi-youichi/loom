@@ -157,11 +157,14 @@ fn run_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send + Sync>
     #[cfg(unix)]
     let result = {
         use tokio::signal::unix::{signal, SignalKind};
-        let mut sig = match signal(SignalKind::hangup()) {
-            Ok(s) => s,
-            Err(_) => rt.block_on(loom_acp::run_stdio_loop()),
-        };
         rt.block_on(async {
+            let mut sig = match signal(SignalKind::hangup()) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::error!("Failed to install SIGHUP handler: {e}");
+                    return Err(e.into());
+                }
+            };
             tokio::select! {
                 res = loom_acp::run_stdio_loop() => res,
                 _ = sig.recv() => {
