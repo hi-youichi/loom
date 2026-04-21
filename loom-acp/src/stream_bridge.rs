@@ -31,7 +31,7 @@
 
 use crate::content::extract_locations;
 use agent_client_protocol::{
-    ContentChunk, CurrentModeUpdate, Plan, PlanEntry,
+    ContentChunk, CurrentModeUpdate, Plan, PlanEntry, PlanEntryPriority, PlanEntryStatus,
     SessionId, SessionInfoUpdate, SessionModeId, SessionNotification, SessionUpdate,
     Terminal, TerminalId, ToolCall, ToolCallId, ToolCallLocation, ToolCallStatus,
     ToolCallUpdate, ToolCallUpdateFields, ToolKind,
@@ -240,10 +240,10 @@ where
         }
         StreamEvent::ToolEnd {
             call_id,
+            name,
             result,
             is_error,
             raw_result,
-            ..
         } => {
             let id = call_id.clone().unwrap_or_default();
 
@@ -254,7 +254,7 @@ where
                 .map(|c| matches!(c, loom::tool_source::ToolCallContent::Diff { .. }))
                 .unwrap_or(false);
 
-            if is_diff_output {
+            let mut updates = if is_diff_output {
                 let diff_content = raw_result
                     .as_deref()
                     .or(Some(result.as_str()))
@@ -293,7 +293,15 @@ where
                     output: Some(result.clone()),
                     raw_output: raw_result.clone(),
                 }]
+            };
+
+            if name == "todo_write" && !is_error {
+                if let Some(entries) = parse_todo_result_to_plan_entries(result) {
+                    updates.push(StreamUpdate::Plan { entries });
+                }
             }
+
+            updates
         }
         StreamEvent::ToolCallChunk {
             call_id,
@@ -403,6 +411,45 @@ pub fn stream_update_to_session_notification(
         }
     };
     Some(SessionNotification::new(session_id.clone(), update))
+}
+
+fn extract_text_from_result(result: &str) -> Option<String> {
+    if let Ok(content) = serde_json::from_str::<loom::tool_source::ToolCallContent>(result) {
+        return Some(content.into_text());
+    }
+    if let Ok(s) = serde_json::from_str::<String>(result) {
+        return Some(s);
+    }
+    Some(result.to_string())
+}
+
+fn parse_todo_result_to_plan_entries(result: &str) -> Option<Vec<PlanEntry>> {
+    let text = extract_text_from_result(result)?;
+    let json_start = text.find('[')?;
+    let json_str = &text[json_start..];
+    let items: Vec<serde_json::Value> = serde_json::from_str(json_str).ok()?;
+    let entries: Vec<PlanEntry> = items
+        .iter()
+        .filter_map(|t| {
+            let content = t.get("content")?.as_str()?.to_string();
+            let priority = match t.get("priority")?.as_str()? {
+                "high" => PlanEntryPriority::High,
+                "medium" => PlanEntryPriority::Medium,
+                _ => PlanEntryPriority::Low,
+            };
+            let status = match t.get("status")?.as_str()? {
+                "in_progress" => PlanEntryStatus::InProgress,
+                "completed" | "cancelled" => PlanEntryStatus::Completed,
+                _ => PlanEntryStatus::Pending,
+            };
+            Some(PlanEntry::new(content, priority, status))
+        })
+        .collect();
+    if entries.is_empty() {
+        None
+    } else {
+        Some(entries)
+    }
 }
 
 fn parse_text_output_to_raw_value(output: &str) -> serde_json::Value {
