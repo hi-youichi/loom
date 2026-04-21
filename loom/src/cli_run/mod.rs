@@ -911,6 +911,7 @@ mod tests {
             role: Some(RoleConfig {
                 file: None,
                 content: Some("You are a sub-agent.".to_string()),
+                append: None,
             }),
             ..Default::default()
         };
