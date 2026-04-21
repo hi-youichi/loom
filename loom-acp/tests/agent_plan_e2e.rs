@@ -1,623 +1,411 @@
 mod common;
 #[allow(unused_imports)]
 mod e2e;
-#[allow(unused_imports)]
-mod mocks;
 
-use std::io::BufRead;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
+
+use serde_json::json;
+use wiremock::{Mock, MockServer, Respond, ResponseTemplate};
+use wiremock::matchers::{method, path};
+
 use common::{AcpChild, PlanEntryPriority, PlanEntryStatus};
 
 const TIMEOUT: Duration = Duration::from_secs(60);
 
-async fn spawn_acp() -> (AcpChild, common::MockAcpServer) {
-    AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock")
+fn todo_write_args() -> serde_json::Value {
+    json!({
+        "todos": [
+            {"id": "1", "content": "Analyze the codebase", "status": "pending", "priority": "high"},
+            {"id": "2", "content": "Implement changes", "status": "pending", "priority": "high"},
+            {"id": "3", "content": "Add tests", "status": "pending", "priority": "medium"}
+        ]
+    })
 }
 
-async fn handshake_and_session(acp: &mut AcpChild) -> String {
-    acp.handshake(TIMEOUT).await.expect("handshake")
+fn todo_write_updated_in_progress() -> serde_json::Value {
+    json!({
+        "todos": [
+            {"id": "1", "content": "Analyze the codebase", "status": "in_progress", "priority": "high"},
+            {"id": "2", "content": "Implement changes", "status": "pending", "priority": "high"},
+            {"id": "3", "content": "Add tests", "status": "pending", "priority": "medium"}
+        ]
+    })
 }
 
-fn assert_plan_entries_valid(plans: &[common::PlanNotification]) {
-    for plan in plans {
-        assert_eq!(plan.session_update, "plan", "sessionUpdate should be 'plan'");
-        for entry in &plan.entries {
-            assert!(!entry.content.is_empty(), "content must not be empty");
-        }
+fn todo_write_updated_completed() -> serde_json::Value {
+    json!({
+        "todos": [
+            {"id": "1", "content": "Analyze the codebase", "status": "completed", "priority": "high"},
+            {"id": "2", "content": "Implement changes", "status": "in_progress", "priority": "high"},
+            {"id": "3", "content": "Add tests", "status": "pending", "priority": "medium"}
+        ]
+    })
+}
+
+fn streaming_tool_call_response(tool_name: &str, args: &serde_json::Value) -> String {
+    let args_str = serde_json::to_string(args).unwrap_or_default();
+    let content_chunk = json!({
+        "id": "chatcmpl-plan",
+        "object": "chat.completion.chunk",
+        "created": 1234567890,
+        "model": "test-model",
+        "choices": [{
+            "index": 0,
+            "delta": { "role": "assistant", "content": "" },
+            "finish_reason": null
+        }]
+    });
+    let tool_call_chunk = json!({
+        "id": "chatcmpl-plan",
+        "object": "chat.completion.chunk",
+        "created": 1234567890,
+        "model": "test-model",
+        "choices": [{
+            "index": 0,
+            "delta": {
+                "tool_calls": [{
+                    "index": 0,
+                    "id": "call_todo_1",
+                    "type": "function",
+                    "function": { "name": tool_name, "arguments": args_str }
+                }]
+            },
+            "finish_reason": null
+        }]
+    });
+    let finish_chunk = json!({
+        "id": "chatcmpl-plan",
+        "object": "chat.completion.chunk",
+        "created": 1234567890,
+        "model": "test-model",
+        "choices": [{
+            "index": 0,
+            "delta": {},
+            "finish_reason": "tool_calls"
+        }]
+    });
+    format!(
+        "data: {}\n\ndata: {}\n\ndata: {}\n\ndata: [DONE]\n\n",
+        content_chunk, tool_call_chunk, finish_chunk
+    )
+}
+
+fn streaming_text_response(text: &str) -> String {
+    let text_chunk = json!({
+        "id": "chatcmpl-done",
+        "object": "chat.completion.chunk",
+        "created": 1234567890,
+        "model": "test-model",
+        "choices": [{
+            "index": 0,
+            "delta": { "role": "assistant", "content": text },
+            "finish_reason": null
+        }]
+    });
+    let finish_chunk = json!({
+        "id": "chatcmpl-done",
+        "object": "chat.completion.chunk",
+        "created": 1234567890,
+        "model": "test-model",
+        "choices": [{
+            "index": 0,
+            "delta": {},
+            "finish_reason": "stop"
+        }]
+    });
+    format!(
+        "data: {}\n\ndata: {}\n\ndata: [DONE]\n\n",
+        text_chunk, finish_chunk
+    )
+}
+
+struct PlanThenDoneResponder {
+    step: Arc<AtomicUsize>,
+    tool_name: String,
+    tool_args: serde_json::Value,
+}
+
+impl Respond for PlanThenDoneResponder {
+    fn respond(&self, _request: &wiremock::Request) -> ResponseTemplate {
+        let step = self.step.fetch_add(1, Ordering::SeqCst);
+        let body = if step == 0 {
+            streaming_tool_call_response(&self.tool_name, &self.tool_args)
+        } else {
+            streaming_text_response("Done.")
+        };
+        ResponseTemplate::new(200)
+            .set_body_raw(body.into_bytes(), "text/event-stream")
     }
+}
+
+struct MultiStepPlanResponder {
+    step: Arc<AtomicUsize>,
+}
+
+impl Respond for MultiStepPlanResponder {
+    fn respond(&self, _request: &wiremock::Request) -> ResponseTemplate {
+        let step = self.step.fetch_add(1, Ordering::SeqCst);
+        let body = match step {
+            0 => streaming_tool_call_response("todo_write", &todo_write_args()),
+            1 => streaming_tool_call_response("todo_write", &todo_write_updated_in_progress()),
+            2 => streaming_tool_call_response("todo_write", &todo_write_updated_completed()),
+            _ => streaming_text_response("Done."),
+        };
+        ResponseTemplate::new(200)
+            .set_body_raw(body.into_bytes(), "text/event-stream")
+    }
+}
+
+fn models_response() -> serde_json::Value {
+    json!({
+        "object": "list",
+        "data": [{
+            "id": "test-model",
+            "object": "model",
+            "created": 1234567890,
+            "owned_by": "test-org"
+        }]
+    })
+}
+
+async fn spawn_with_plan_mock(responder: impl Respond + 'static) -> (AcpChild, MockServer) {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(responder)
+        .mount(&server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(models_response()))
+        .mount(&server)
+        .await;
+
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+    let home = temp_dir.path().to_path_buf();
+    let config_toml = format!(
+        r#"[default]
+provider = "mock"
+
+[[providers]]
+name = "mock"
+api_key = "test-key"
+base_url = "{}/v1"
+model = "test-model"
+"#,
+        server.uri()
+    );
+    std::fs::write(home.join("config.toml"), config_toml).expect("write config");
+
+    let acp = AcpChild::spawn_with_temp_dir(Some(&home), Some(temp_dir)).expect("spawn");
+    (acp, server)
 }
 
 // ---------------------------------------------------------------------------
-// Phase 1: Plan notification structure validation
+// Tests
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn e2e_plan_notification_structure() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
+async fn e2e_plan_emitted_on_todo_write() {
+    let (mut acp, _server) = spawn_with_plan_mock(PlanThenDoneResponder {
+        step: Arc::new(AtomicUsize::new(0)),
+        tool_name: "todo_write".to_string(),
+        tool_args: todo_write_args(),
+    }).await;
 
+    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
     let (plans, response) = acp
-        .prompt_and_collect_plans(&session_id, "Create a multi-step plan to refactor the codebase", TIMEOUT)
+        .prompt_and_collect_plans(&session_id, "Create a plan to refactor the module", TIMEOUT)
         .expect("prompt and collect");
 
-    assert!(response.error.is_none(), "prompt should succeed: {:?}", response.error);
-
-    if !plans.is_empty() {
-        let first = &plans[0];
-        assert_eq!(first.session_update, "plan");
-        assert!(!first.entries.is_empty(), "entries should not be empty");
-    }
+    assert!(response.error.is_none(), "prompt failed: {:?}", response.error);
+    assert!(!plans.is_empty(), "should receive at least one plan notification");
 }
 
 #[tokio::test]
-async fn e2e_plan_entry_required_fields() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
+async fn e2e_plan_all_entries_pending_on_create() {
+    let (mut acp, _server) = spawn_with_plan_mock(PlanThenDoneResponder {
+        step: Arc::new(AtomicUsize::new(0)),
+        tool_name: "todo_write".to_string(),
+        tool_args: todo_write_args(),
+    }).await;
 
+    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
     let (plans, response) = acp
-        .prompt_and_collect_plans(&session_id, "Create a 3-step plan to fix bugs", TIMEOUT)
+        .prompt_and_collect_plans(&session_id, "Create a plan", TIMEOUT)
         .expect("prompt and collect");
 
-    assert!(response.error.is_none(), "prompt should succeed: {:?}", response.error);
-
-    for plan in &plans {
-        for entry in &plan.entries {
-            assert!(!entry.content.is_empty(), "content field must be present and non-empty");
-        }
-    }
+    assert!(response.error.is_none(), "prompt failed: {:?}", response.error);
+    let first = plans.first().expect("should have at least one plan");
+    assert!(first.entries.iter().all(|e| e.status == PlanEntryStatus::Pending),
+        "all initial entries should be pending: {:?}", first.entries);
 }
 
 #[tokio::test]
-async fn e2e_plan_entry_priority_values() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
+async fn e2e_plan_entries_have_correct_content() {
+    let (mut acp, _server) = spawn_with_plan_mock(PlanThenDoneResponder {
+        step: Arc::new(AtomicUsize::new(0)),
+        tool_name: "todo_write".to_string(),
+        tool_args: todo_write_args(),
+    }).await;
 
-    let (plans, response) = acp
-        .prompt_and_collect_plans(&session_id, "Create a prioritized plan with high, medium and low priority tasks", TIMEOUT)
+    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
+    let (plans, _) = acp
+        .prompt_and_collect_plans(&session_id, "Create a plan", TIMEOUT)
         .expect("prompt and collect");
 
-    assert!(response.error.is_none(), "prompt should succeed: {:?}", response.error);
-
-    for plan in &plans {
-        for entry in &plan.entries {
-            let valid = matches!(
-                entry.priority,
-                PlanEntryPriority::High | PlanEntryPriority::Medium | PlanEntryPriority::Low
-            );
-            assert!(valid, "priority must be high/medium/low, got: {:?}", entry.priority);
-        }
-    }
+    let first = plans.first().expect("should have plan");
+    assert_eq!(first.entries[0].content, "Analyze the codebase");
+    assert_eq!(first.entries[1].content, "Implement changes");
+    assert_eq!(first.entries[2].content, "Add tests");
 }
 
 #[tokio::test]
-async fn e2e_plan_entry_status_values() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
+async fn e2e_plan_entries_have_correct_priority() {
+    let (mut acp, _server) = spawn_with_plan_mock(PlanThenDoneResponder {
+        step: Arc::new(AtomicUsize::new(0)),
+        tool_name: "todo_write".to_string(),
+        tool_args: todo_write_args(),
+    }).await;
 
-    let (plans, response) = acp
-        .prompt_and_collect_plans(&session_id, "Create a step-by-step plan", TIMEOUT)
+    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
+    let (plans, _) = acp
+        .prompt_and_collect_plans(&session_id, "Create a plan", TIMEOUT)
         .expect("prompt and collect");
 
-    assert!(response.error.is_none(), "prompt should succeed: {:?}", response.error);
-
-    for plan in &plans {
-        for entry in &plan.entries {
-            let valid = matches!(
-                entry.status,
-                PlanEntryStatus::Pending | PlanEntryStatus::InProgress | PlanEntryStatus::Completed
-            );
-            assert!(valid, "status must be pending/in_progress/completed, got: {:?}", entry.status);
-        }
-    }
+    let first = plans.first().expect("should have plan");
+    assert_eq!(first.entries[0].priority, PlanEntryPriority::High);
+    assert_eq!(first.entries[1].priority, PlanEntryPriority::High);
+    assert_eq!(first.entries[2].priority, PlanEntryPriority::Medium);
 }
 
 #[tokio::test]
-async fn e2e_plan_entries_non_empty_when_triggered() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
+async fn e2e_plan_status_updates_on_todo_change() {
+    let (mut acp, _server) = spawn_with_plan_mock(MultiStepPlanResponder {
+        step: Arc::new(AtomicUsize::new(0)),
+    }).await;
 
-    let (plans, _response) = acp
-        .prompt_and_collect_plans(&session_id, "Analyze the project structure and create a comprehensive refactoring plan with at least 3 steps", TIMEOUT)
-        .expect("prompt and collect");
-
-    if !plans.is_empty() {
-        for plan in &plans {
-            assert!(!plan.entries.is_empty(), "plan entries should not be empty when triggered");
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Phase 2: Plan lifecycle
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn e2e_plan_initial_status_pending() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
-
+    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
     let (plans, response) = acp
-        .prompt_and_collect_plans(&session_id, "Create a plan to improve code quality", TIMEOUT)
+        .prompt_and_collect_plans(&session_id, "Create and execute a multi-step plan", TIMEOUT)
         .expect("prompt and collect");
 
-    assert!(response.error.is_none(), "prompt should succeed: {:?}", response.error);
+    assert!(response.error.is_none(), "prompt failed: {:?}", response.error);
+    assert!(plans.len() >= 2, "should receive multiple plan updates, got {}", plans.len());
 
-    if let Some(first) = plans.first() {
-        let all_pending = first.entries.iter().all(|e| e.status == PlanEntryStatus::Pending);
-        assert!(all_pending, "initial plan entries should all be pending: {:?}", first.entries);
-    }
+    let has_in_progress = plans.iter().any(|p| {
+        p.entries.iter().any(|e| e.status == PlanEntryStatus::InProgress)
+    });
+    assert!(has_in_progress, "at least one entry should be in_progress across plan updates");
 }
 
 #[tokio::test]
-async fn e2e_plan_progress_to_in_progress() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
+async fn e2e_plan_completed_status_correct() {
+    let (mut acp, _server) = spawn_with_plan_mock(MultiStepPlanResponder {
+        step: Arc::new(AtomicUsize::new(0)),
+    }).await;
 
-    let (plans, response) = acp
-        .prompt_and_collect_plans(&session_id, "Create a multi-step plan and start executing it: read a file, analyze it, fix issues", TIMEOUT)
+    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
+    let (plans, _) = acp
+        .prompt_and_collect_plans(&session_id, "Create and execute a multi-step plan", TIMEOUT)
         .expect("prompt and collect");
 
-    assert!(response.error.is_none(), "prompt should succeed: {:?}", response.error);
-
-    if plans.len() > 1 {
-        let has_in_progress = plans.iter().any(|p| {
-            p.entries.iter().any(|e| e.status == PlanEntryStatus::InProgress)
-        });
-        assert!(has_in_progress, "at least one entry should be in_progress across plan updates");
-    }
-}
-
-#[tokio::test]
-async fn e2e_plan_progress_to_completed() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
-
-    let (plans, response) = acp
-        .prompt_and_collect_plans(&session_id, "Say hello world", TIMEOUT)
-        .expect("prompt and collect");
-
-    assert!(response.error.is_none(), "prompt should succeed: {:?}", response.error);
-
-    if !plans.is_empty() {
-        let last = plans.last().expect("should have last plan");
-        let has_completed = last.entries.iter().any(|e| e.status == PlanEntryStatus::Completed);
-        if !last.entries.is_empty() {
-            assert!(has_completed, "final plan should have at least one completed entry: {:?}", last.entries);
-        }
-    }
+    let has_completed = plans.iter().any(|p| {
+        p.entries.iter().any(|e| e.status == PlanEntryStatus::Completed)
+    });
+    assert!(has_completed, "at least one entry should be completed across plan updates");
 }
 
 #[tokio::test]
 async fn e2e_plan_full_replacement_semantics() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
+    let (mut acp, _server) = spawn_with_plan_mock(MultiStepPlanResponder {
+        step: Arc::new(AtomicUsize::new(0)),
+    }).await;
 
-    let (plans, response) = acp
-        .prompt_and_collect_plans(&session_id, "Create a step-by-step plan to refactor the module", TIMEOUT)
+    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
+    let (plans, _) = acp
+        .prompt_and_collect_plans(&session_id, "Create and execute a multi-step plan", TIMEOUT)
         .expect("prompt and collect");
-
-    assert!(response.error.is_none(), "prompt should succeed: {:?}", response.error);
-
-    if plans.len() > 1 {
-        for plan in &plans {
-            assert_plan_entries_valid(std::slice::from_ref(plan));
-            assert!(!plan.entries.is_empty(), "each plan notification should contain full entries list");
-        }
-    }
-}
-
-#[tokio::test]
-async fn e2e_plan_order_matches_execution() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
-
-    let (plans, response) = acp
-        .prompt_and_collect_plans(&session_id, "Create a sequential plan: step A, then step B, then step C", TIMEOUT)
-        .expect("prompt and collect");
-
-    assert!(response.error.is_none(), "prompt should succeed: {:?}", response.error);
-
-    if plans.len() >= 2 {
-        let mut progress_order = Vec::new();
-        for plan in &plans {
-            for entry in &plan.entries {
-                if entry.status == PlanEntryStatus::InProgress {
-                    progress_order.push(entry.content.clone());
-                }
-            }
-        }
-        assert!(!progress_order.is_empty(), "should observe in_progress transitions");
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Phase 3: Dynamic planning
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn e2e_plan_add_entries_dynamically() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
-
-    let (plans, response) = acp
-        .prompt_and_collect_plans(&session_id, "Analyze this project and create a plan. After analysis, add new steps you discover.", TIMEOUT)
-        .expect("prompt and collect");
-
-    assert!(response.error.is_none(), "prompt should succeed: {:?}", response.error);
-
-    if plans.len() >= 2 {
-        let first_count = plans.first().map(|p| p.entries.len()).unwrap_or(0);
-        let later_count = plans.iter().map(|p| p.entries.len()).max().unwrap_or(0);
-        assert!(later_count >= first_count, "plan should grow dynamically or stay same");
-    }
-}
-
-#[tokio::test]
-async fn e2e_plan_remove_entries_dynamically() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
-
-    let (plans, response) = acp
-        .prompt_and_collect_plans(&session_id, "Create a plan with optional steps. Remove steps that are unnecessary as you go.", TIMEOUT)
-        .expect("prompt and collect");
-
-    assert!(response.error.is_none(), "prompt should succeed: {:?}", response.error);
-
-    if plans.len() >= 2 {
-        let counts: Vec<usize> = plans.iter().map(|p| p.entries.len()).collect();
-        assert!(!counts.is_empty(), "should have plan updates");
-    }
-}
-
-#[tokio::test]
-async fn e2e_plan_modify_entry_content() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
-
-    let (plans, response) = acp
-        .prompt_and_collect_plans(&session_id, "Create a rough plan, then refine the descriptions as you analyze further", TIMEOUT)
-        .expect("prompt and collect");
-
-    assert!(response.error.is_none(), "prompt should succeed: {:?}", response.error);
-
-    if plans.len() >= 2 {
-        let first_contents: Vec<String> = plans[0].entries.iter().map(|e| e.content.clone()).collect();
-        let last_contents: Vec<String> = plans.last().unwrap().entries.iter().map(|e| e.content.clone()).collect();
-        assert!(!first_contents.is_empty() || !last_contents.is_empty(), "plans should have entries");
-    }
-}
-
-#[tokio::test]
-async fn e2e_plan_modify_entry_priority() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
-
-    let (plans, response) = acp
-        .prompt_and_collect_plans(&session_id, "Create a plan and adjust priorities as you learn more about each task", TIMEOUT)
-        .expect("prompt and collect");
-
-    assert!(response.error.is_none(), "prompt should succeed: {:?}", response.error);
 
     for plan in &plans {
-        for entry in &plan.entries {
-            let valid = matches!(entry.priority, PlanEntryPriority::High | PlanEntryPriority::Medium | PlanEntryPriority::Low);
-            assert!(valid, "priority should be valid");
-        }
+        assert!(!plan.entries.is_empty(), "each plan should contain full entries list");
+        assert_eq!(plan.session_update, "plan");
     }
 }
 
-// ---------------------------------------------------------------------------
-// Phase 4: Multi-turn conversation
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
-async fn e2e_plan_in_multi_turn_conversation() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
+async fn e2e_plan_not_emitted_without_todo_write() {
+    let server = MockServer::start().await;
 
-    let (plans1, response1) = acp
-        .prompt_and_collect_plans(&session_id, "Analyze the project structure", TIMEOUT)
-        .expect("prompt 1");
-    assert!(response1.error.is_none(), "prompt 1 should succeed: {:?}", response1.error);
+    let body = streaming_text_response("Hello! I'll help you with that.");
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200)
+            .set_body_raw(body.into_bytes(), "text/event-stream"))
+        .mount(&server)
+        .await;
 
-    let (plans2, response2) = acp
-        .prompt_and_collect_plans(&session_id, "Based on the analysis, create a refactoring plan", TIMEOUT)
-        .expect("prompt 2");
-    assert!(response2.error.is_none(), "prompt 2 should succeed: {:?}", response2.error);
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(models_response()))
+        .mount(&server)
+        .await;
 
-    assert!(response1.result.is_some() || response2.result.is_some(), "both turns should have results");
-    let _ = (plans1, plans2);
-}
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+    let home = temp_dir.path().to_path_buf();
+    let config_toml = format!(
+        r#"[default]
+provider = "mock"
 
-#[tokio::test]
-async fn e2e_plan_cleared_on_new_prompt() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
+[[providers]]
+name = "mock"
+api_key = "test-key"
+base_url = "{}/v1"
+model = "test-model"
+"#,
+        server.uri()
+    );
+    std::fs::write(home.join("config.toml"), config_toml).expect("write config");
 
-    let (plans1, response1) = acp
-        .prompt_and_collect_plans(&session_id, "Create a 5-step plan to fix all bugs", TIMEOUT)
-        .expect("prompt 1");
-    assert!(response1.error.is_none(), "prompt 1 should succeed");
-
-    let (plans2, response2) = acp
-        .prompt_and_collect_plans(&session_id, "Say goodbye", TIMEOUT)
-        .expect("prompt 2");
-    assert!(response2.error.is_none(), "prompt 2 should succeed");
-
-    let _ = (plans1, plans2);
-}
-
-#[tokio::test]
-async fn e2e_plan_absent_when_no_planning_needed() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
-
+    let mut acp = AcpChild::spawn_with_temp_dir(Some(&home), Some(temp_dir)).expect("spawn");
+    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
     let (plans, response) = acp
         .prompt_and_collect_plans(&session_id, "Say hello", TIMEOUT)
         .expect("prompt and collect");
 
-    assert!(response.error.is_none(), "prompt should succeed: {:?}", response.error);
-    let _ = plans;
-}
-
-// ---------------------------------------------------------------------------
-// Phase 5: Plan and tool call interaction
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn e2e_plan_with_tool_call_flow() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
-
-    let (plans, response) = acp
-        .prompt_and_collect_plans(&session_id, "Create a plan that includes reading a file and analyzing its contents", TIMEOUT)
-        .expect("prompt and collect");
-
-    assert!(response.error.is_none(), "prompt should succeed: {:?}", response.error);
-
-    for plan in &plans {
-        assert_plan_entries_valid(std::slice::from_ref(plan));
-    }
+    assert!(response.error.is_none(), "prompt failed: {:?}", response.error);
+    assert!(plans.is_empty(), "should not receive plan notification when LLM doesn't call todo_write");
 }
 
 #[tokio::test]
-async fn e2e_plan_reflects_tool_completion() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
+async fn e2e_plan_emitted_alongside_tool_update() {
+    let (mut acp, _server) = spawn_with_plan_mock(PlanThenDoneResponder {
+        step: Arc::new(AtomicUsize::new(0)),
+        tool_name: "todo_write".to_string(),
+        tool_args: todo_write_args(),
+    }).await;
 
-    let (plans, response) = acp
-        .prompt_and_collect_plans(&session_id, "Create a plan: read Cargo.toml and summarize it", TIMEOUT)
-        .expect("prompt and collect");
+    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
+    let request_id = acp.send_prompt_request(&session_id, "Create a plan").expect("send prompt");
+    let (notifications, response) = acp.collect_all_notifications(request_id, TIMEOUT).expect("collect");
 
-    assert!(response.error.is_none(), "prompt should succeed: {:?}", response.error);
+    assert!(response.error.is_none(), "prompt failed: {:?}", response.error);
 
-    if !plans.is_empty() {
-        let last = plans.last().expect("should have last plan");
-        let has_completed = last.entries.iter().any(|e| e.status == PlanEntryStatus::Completed);
-        if !last.entries.is_empty() {
-            assert!(has_completed, "entries should reflect tool completion: {:?}", last.entries);
-        }
-    }
-}
-
-#[tokio::test]
-async fn e2e_plan_after_cancellation() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
-
-    let request_id = acp.send_prompt_request(&session_id, "Create a complex 10-step plan").expect("send prompt");
-
-    let cancel = serde_json::json!({
-        "jsonrpc": "2.0",
-        "method": "session/cancel",
-        "params": {
-            "sessionId": session_id
-        }
+    let has_tool_call = notifications.iter().any(|n: &serde_json::Value| {
+        n.pointer("/params/update/sessionUpdate").and_then(|v: &serde_json::Value| v.as_str()) == Some("tool_call")
     });
-    acp.send_raw(&serde_json::to_string(&cancel).unwrap()).expect("send cancel");
+    let has_tool_update = notifications.iter().any(|n: &serde_json::Value| {
+        n.pointer("/params/update/sessionUpdate").and_then(|v: &serde_json::Value| v.as_str()) == Some("tool_call_update")
+    });
+    let has_plan = notifications.iter().any(|n: &serde_json::Value| {
+        n.pointer("/params/update/sessionUpdate").and_then(|v: &serde_json::Value| v.as_str()) == Some("plan")
+    });
 
-    let start = std::time::Instant::now();
-    let mut got_response = false;
-    let mut plans = Vec::new();
-
-    loop {
-        if start.elapsed() > TIMEOUT {
-            break;
-        }
-        let mut line = String::new();
-        let bytes = acp.reader.read_line(&mut line).unwrap_or(0);
-        if bytes == 0 {
-            break;
-        }
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let msg: serde_json::Value = match serde_json::from_str(trimmed) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-
-        if msg.get("id").and_then(|v| v.as_u64()) == Some(request_id) {
-            got_response = true;
-            if let Some(result) = msg.get("result") {
-                let stop_reason = result.get("stopReason").and_then(|v| v.as_str()).unwrap_or("unknown");
-                assert_eq!(stop_reason, "cancelled", "stop reason should be cancelled after cancel, got: {}", stop_reason);
-            }
-            break;
-        }
-
-        if msg.get("method").and_then(|v| v.as_str()) == Some("session/update") {
-            if let Some(update) = msg.get("params").and_then(|p| p.get("update")) {
-                if update.get("sessionUpdate").and_then(|v| v.as_str()) == Some("plan") {
-                    if let Ok(plan_notif) = serde_json::from_value::<common::PlanNotification>(update.clone()) {
-                        plans.push(plan_notif);
-                    }
-                }
-            }
-        }
-    }
-
-    assert!(got_response, "should receive prompt response after cancellation");
-    let _ = plans;
-}
-
-// ---------------------------------------------------------------------------
-// Phase 6: Edge cases and robustness
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn e2e_plan_with_many_entries() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
-
-    let (plans, response) = acp
-        .prompt_and_collect_plans(&session_id, "Create a detailed 10-step plan to migrate a project from Python to Rust", TIMEOUT)
-        .expect("prompt and collect");
-
-    assert!(response.error.is_none(), "prompt should succeed: {:?}", response.error);
-
-    if !plans.is_empty() {
-        let max_entries = plans.iter().map(|p| p.entries.len()).max().unwrap_or(0);
-        assert!(max_entries >= 1, "should have at least 1 entry in plan");
-    }
-}
-
-#[tokio::test]
-async fn e2e_plan_with_unicode_content() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
-
-    let (plans, response) = acp
-        .prompt_and_collect_plans(&session_id, "创建一个多步骤计划来改进代码质量", TIMEOUT)
-        .expect("prompt and collect");
-
-    assert!(response.error.is_none(), "prompt should succeed: {:?}", response.error);
-
-    for plan in &plans {
-        for entry in &plan.entries {
-            assert!(!entry.content.is_empty(), "unicode content should be preserved");
-        }
-    }
-}
-
-#[tokio::test]
-async fn e2e_plan_notification_no_id() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
-
-    let request_id = acp.send_prompt_request(&session_id, "Create a step-by-step plan").expect("send prompt");
-
-    let start = std::time::Instant::now();
-    let mut got_response = false;
-
-    loop {
-        if start.elapsed() > TIMEOUT {
-            break;
-        }
-        let mut line = String::new();
-        let bytes = acp.reader.read_line(&mut line).unwrap_or(0);
-        if bytes == 0 {
-            break;
-        }
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let msg: serde_json::Value = match serde_json::from_str(trimmed) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-
-        if msg.get("id").and_then(|v| v.as_u64()) == Some(request_id) {
-            got_response = true;
-            break;
-        }
-
-        if msg.get("method").is_some() && msg.get("id").is_none()
-            && msg.get("method").and_then(|v| v.as_str()) == Some("session/update")
-        {
-            assert!(msg.get("id").is_none(), "session/update notification should not have id field");
-        }
-    }
-
-    assert!(got_response, "should receive prompt response");
-}
-
-#[tokio::test]
-async fn e2e_plan_after_permission_denied() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
-
-    let (plans, response) = acp
-        .prompt_and_collect_plans(&session_id, "Create a plan that includes writing to a file, then try to execute it", TIMEOUT)
-        .expect("prompt and collect");
-
-    assert!(response.error.is_none(), "prompt should succeed: {:?}", response.error);
-
-    for plan in &plans {
-        assert_plan_entries_valid(std::slice::from_ref(plan));
-    }
-}
-
-#[tokio::test]
-async fn e2e_plan_concurrent_update_race() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
-
-    let (plans1, response1) = acp
-        .prompt_and_collect_plans(&session_id, "Create plan A for task 1", TIMEOUT)
-        .expect("prompt 1");
-    assert!(response1.error.is_none(), "prompt 1 should succeed");
-
-    let (plans2, response2) = acp
-        .prompt_and_collect_plans(&session_id, "Create plan B for task 2", TIMEOUT)
-        .expect("prompt 2");
-    assert!(response2.error.is_none(), "prompt 2 should succeed");
-
-    let _ = (plans1, plans2);
-}
-
-#[tokio::test]
-async fn e2e_plan_validates_session_update_method() {
-    let (mut acp, _mock) = spawn_acp().await;
-    let session_id = handshake_and_session(&mut acp).await;
-
-    let request_id = acp.send_prompt_request(&session_id, "Create a plan to organize files").expect("send prompt");
-
-    let start = std::time::Instant::now();
-    let mut got_response = false;
-
-    loop {
-        if start.elapsed() > TIMEOUT {
-            break;
-        }
-        let mut line = String::new();
-        let bytes = acp.reader.read_line(&mut line).unwrap_or(0);
-        if bytes == 0 {
-            break;
-        }
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let msg: serde_json::Value = match serde_json::from_str(trimmed) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-
-        if msg.get("id").and_then(|v| v.as_u64()) == Some(request_id) {
-            got_response = true;
-            break;
-        }
-
-        if msg.get("method").and_then(|v| v.as_str()) == Some("session/update") {
-            if let Some(params) = msg.get("params") {
-                let msg_session = params.get("sessionId").and_then(|v| v.as_str()).unwrap_or("");
-                assert_eq!(msg_session, session_id, "notification sessionId should match");
-            }
-        }
-    }
-
-    assert!(got_response, "should receive prompt response");
+    assert!(has_tool_call, "should emit tool_call notification");
+    assert!(has_tool_update, "should emit tool_call_update notification");
+    assert!(has_plan, "should emit plan notification");
 }
