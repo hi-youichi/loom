@@ -27,8 +27,7 @@ async fn read_http_request(stream: &mut tokio::net::TcpStream) -> String {
                     if lower.starts_with("content-length:") {
                         line.strip_prefix("content-length:")
                             .or(line.strip_prefix("Content-Length:"))
-                            .map(|s| s.trim().parse::<usize>().ok())
-                            .flatten()
+                            .and_then(|s| s.trim().parse::<usize>().ok())
                     } else {
                         None
                     }
@@ -42,10 +41,10 @@ async fn read_http_request(stream: &mut tokio::net::TcpStream) -> String {
                 }
                 buf.extend_from_slice(&tmp[..n]);
             }
-            return String::from_utf8_lossy(&buf.as_slice()).to_string();
+            return String::from_utf8_lossy(buf.as_slice()).to_string();
         }
     }
-    String::from_utf8_lossy(&buf.as_slice()).to_string()
+    String::from_utf8_lossy(buf.as_slice()).to_string()
 }
 
 #[tokio::test]
@@ -100,7 +99,7 @@ async fn test_chat_openai_compat_sends_request_id() {
 async fn test_chat_openai_compat_generates_unique_request_ids() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let mut request_ids = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let request_ids = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let request_ids_clone = request_ids.clone();
 
     tokio::spawn(async move {

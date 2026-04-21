@@ -134,10 +134,9 @@ async fn e2e_new_session_with_invalid_mcp_config_graceful() {
         .await
         .expect("session/new response");
 
-    if response.error.is_some() {
-        let error = response.error.as_ref().unwrap();
+    if let Some(error) = response.error.as_ref() {
         assert!(
-            error.code != -32603 || error.message.len() > 0,
+            error.code != -32603 || !error.message.is_empty(),
             "should have meaningful error message"
         );
     }

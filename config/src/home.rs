@@ -122,9 +122,8 @@ mod tests {
         std::env::remove_var("LOOM_HOME");
         let h = loom_home();
         assert!(h.ends_with(".loom"));
-        match prev {
-            Some(v) => std::env::set_var("LOOM_HOME", v),
-            None => {}
+        if let Some(v) = prev {
+            std::env::set_var("LOOM_HOME", v);
         }
     }
 

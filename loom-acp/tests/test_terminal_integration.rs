@@ -48,7 +48,7 @@ mod tests {
 
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-        let status_before = manager.get_status(&term_id).await;
+        let _status_before = manager.get_status(&term_id).await;
 
         manager.kill(&term_id).await.unwrap();
 

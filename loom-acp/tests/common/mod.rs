@@ -1,27 +1,36 @@
+#[allow(unused_imports)]
 pub mod test_setup;
+#[allow(unused_imports)]
 pub mod config_helpers;
 pub mod acp_child;
+#[allow(dead_code)]
+pub mod plan_types;
 
-// Only export specific items that are actually used
+#[allow(unused_imports)]
 pub use test_setup::TestEnvironment;
 #[allow(unused_imports)]
 pub use config_helpers::{create_agent_config, write_last_model_file};
 
-// Common types for RPC communication
 #[derive(Debug, serde::Deserialize)]
 pub struct RpcResponse {
+    #[allow(dead_code)]
     pub jsonrpc: Option<String>,
     pub id: Option<serde_json::Value>,
+    #[allow(dead_code)]
     pub result: Option<serde_json::Value>,
+    #[allow(dead_code)]
     pub error: Option<RpcError>,
 }
 
 #[derive(Debug, serde::Deserialize)]
+#[allow(dead_code)]
 pub struct RpcError {
     pub code: i32,
     pub message: String,
     pub data: Option<serde_json::Value>,
 }
 
-// Export AcpChild and related types that are used in e2e tests
-pub use acp_child::{AcpChild, ToolCallResponse};
+#[allow(unused_imports)]
+pub use acp_child::{AcpChild, ToolCallResponse, MockAcpServer};
+#[allow(unused_imports)]
+pub use plan_types::{PlanNotification, PlanEntry, PlanEntryPriority, PlanEntryStatus};

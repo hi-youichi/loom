@@ -8,8 +8,7 @@ mod tests {
     
     // 修复clone问题 - 创建配置的副本
     fn get_configs() -> Vec<env_config::LspServerConfig> {
-        let configs = env_config::get_default_lsp_servers();
-        configs
+        env_config::get_default_lsp_servers()
     }
 
     #[test]

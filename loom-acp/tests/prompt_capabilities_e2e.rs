@@ -65,7 +65,7 @@ async fn e2e_prompt_capabilities_type_validation() {
 
     // Verify each capability is a boolean value
     for cap in ["embeddedContext", "image", "audio"] {
-        let value = prompt_caps.get(cap).expect(&format!("should have {}", cap));
+        let value = prompt_caps.get(cap).unwrap_or_else(|| panic!("should have {}", cap));
         assert!(
             value.is_boolean(),
             "{} should be a boolean value, got: {:?}",

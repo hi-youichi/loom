@@ -7,46 +7,92 @@ use std::time::Duration;
 use super::RpcResponse;
 
 // Simple mock server for testing
-#[allow(dead_code)]
 pub struct MockAcpServer {
-    responses: Arc<Mutex<Vec<serde_json::Value>>>,
+    pub server: wiremock::MockServer,
 }
 
 impl MockAcpServer {
-    #[allow(dead_code)]
-    pub fn new() -> Self {
-        Self {
-            responses: Arc::new(Mutex::new(Vec::new())),
-        }
+    pub async fn start() -> Self {
+        let server = wiremock::MockServer::start().await;
+        Self { server }
     }
-    
+
+    pub async fn mount_default_responses(&self) {
+        use wiremock::{Mock, ResponseTemplate};
+        use wiremock::matchers::{method, path};
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(Self::simple_completion()))
+            .mount(&self.server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/v1/models"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(Self::models_list()))
+            .mount(&self.server)
+            .await;
+    }
+
     #[allow(dead_code)]
-    pub async fn mount_tool_call_response(&self, responses: &[ToolCallResponse]) {
-        let mut stored = self.responses.lock().unwrap();
-        let base_len = stored.len();
-        for (i, response) in responses.iter().enumerate() {
-            stored.push(json!({
-                "jsonrpc": "2.0",
-                "id": 1,
-                "result": {
-                    "toolCallId": format!("tool_{}", base_len + i),
-                    "toolName": response.tool_name,
-                    "parameters": response.parameters
-                }
-            }));
-        }
+    pub async fn mount_completion(&self, response_body: serde_json::Value) {
+        use wiremock::{Mock, ResponseTemplate};
+        use wiremock::matchers::{method, path};
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(response_body))
+            .mount(&self.server)
+            .await;
+    }
+
+    fn simple_completion() -> serde_json::Value {
+        json!({
+            "id": "chatcmpl-mock",
+            "object": "chat.completion",
+            "created": 1234567890,
+            "model": "test-model",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "Done."
+                },
+                "finish_reason": "stop"
+            }],
+            "usage": { "prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7 }
+        })
+    }
+
+    fn models_list() -> serde_json::Value {
+        json!({
+            "object": "list",
+            "data": [{
+                "id": "test-model",
+                "object": "model",
+                "created": 1234567890,
+                "owned_by": "mock"
+            }]
+        })
+    }
+
+    #[allow(dead_code)]
+    pub async fn mount_tool_call_response(&self, _responses: &[ToolCallResponse]) {
+        self.mount_default_responses().await;
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ToolCallResponse {
+    #[allow(dead_code)]
     pub tool_name: String,
+    #[allow(dead_code)]
     pub parameters: serde_json::Value,
 }
 
 pub struct AcpChild {
     process: Child,
-    reader: BufReader<std::process::ChildStdout>,
+    pub reader: BufReader<std::process::ChildStdout>,
     writer: Arc<Mutex<std::process::ChildStdin>>,
     request_id: Arc<Mutex<u64>>,
 }
@@ -84,12 +130,27 @@ impl AcpChild {
     }
     
     pub async fn spawn_with_mock() -> Result<(Self, MockAcpServer), Box<dyn std::error::Error>> {
+        let mock = MockAcpServer::start().await;
         let temp_dir = tempfile::tempdir()?;
         let home = temp_dir.path();
-        
+
+        let config_toml = format!(
+            r#"[default]
+provider = "mock"
+
+[[providers]]
+name = "mock"
+api_key = "test-key"
+base_url = "{}"
+model = "test-model"
+"#,
+            mock.server.uri()
+        );
+        std::fs::write(home.join("config.toml"), config_toml)?;
+
         let acp = Self::spawn(Some(home))?;
-        let mock = MockAcpServer::new();
-        
+        mock.mount_default_responses().await;
+
         Ok((acp, mock))
     }
     
@@ -252,6 +313,139 @@ impl AcpChild {
         // This method is used to signal EOF to the process
         // We don't actually drop stdin since it's managed by Arc<Mutex>
         // In a real implementation, we might close the write end
+    }
+
+    pub fn prompt_and_collect_plans(
+        &mut self,
+        session_id: &str,
+        text: &str,
+        timeout: Duration,
+    ) -> Result<(Vec<super::plan_types::PlanNotification>, RpcResponse), Box<dyn std::error::Error>> {
+        let request_id = self.next_request_id();
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "session/prompt",
+            "params": {
+                "sessionId": session_id,
+                "prompt": [{ "type": "text", "text": text }]
+            }
+        });
+
+        {
+            let mut writer = self.writer.lock().unwrap();
+            writeln!(writer, "{}", serde_json::to_string(&request)?)?;
+            writer.flush()?;
+        }
+
+        let mut plans = Vec::new();
+        let start = std::time::Instant::now();
+
+        loop {
+            if start.elapsed() > timeout {
+                return Err("timeout waiting for prompt response".into());
+            }
+            let mut line = String::new();
+            let bytes = self.reader.read_line(&mut line)?;
+            if bytes == 0 {
+                return Err("EOF while reading response".into());
+            }
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            let msg: Value = match serde_json::from_str(trimmed) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+
+            if msg.get("id").and_then(|v| v.as_u64()) == Some(request_id) {
+                let response: RpcResponse = serde_json::from_value(msg)?;
+                return Ok((plans, response));
+            }
+
+            if msg.get("method").and_then(|v| v.as_str()) == Some("session/update") {
+                if let Some(update) = msg.get("params").and_then(|p| p.get("update")) {
+                    if update.get("sessionUpdate").and_then(|v| v.as_str()) == Some("plan") {
+                        if let Ok(plan_notif) = serde_json::from_value::<super::plan_types::PlanNotification>(update.clone()) {
+                            plans.push(plan_notif);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn collect_all_notifications(
+        &mut self,
+        request_id: u64,
+        timeout: Duration,
+    ) -> Result<(Vec<serde_json::Value>, RpcResponse), Box<dyn std::error::Error>> {
+        let mut notifications = Vec::new();
+        let start = std::time::Instant::now();
+
+        loop {
+            if start.elapsed() > timeout {
+                return Err("timeout waiting for response".into());
+            }
+            let mut line = String::new();
+            let bytes = self.reader.read_line(&mut line)?;
+            if bytes == 0 {
+                return Err("EOF while reading response".into());
+            }
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            let msg: Value = match serde_json::from_str(trimmed) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+
+            if msg.get("id").and_then(|v| v.as_u64()) == Some(request_id) {
+                let response: RpcResponse = serde_json::from_value(msg)?;
+                return Ok((notifications, response));
+            }
+
+            if msg.get("method").is_some() && msg.get("id").is_none() {
+                notifications.push(msg);
+            }
+        }
+    }
+
+    pub fn send_prompt_request(
+        &mut self,
+        session_id: &str,
+        text: &str,
+    ) -> Result<u64, Box<dyn std::error::Error>> {
+        let request_id = self.next_request_id();
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "session/prompt",
+            "params": {
+                "sessionId": session_id,
+                "prompt": [{ "type": "text", "text": text }]
+            }
+        });
+
+        {
+            let mut writer = self.writer.lock().unwrap();
+            writeln!(writer, "{}", serde_json::to_string(&request)?)?;
+            writer.flush()?;
+        }
+        Ok(request_id)
+    }
+
+    pub fn send_raw(&mut self, raw: &str) -> Result<(), Box<dyn std::error::Error>> {
+        {
+            let mut writer = self.writer.lock().unwrap();
+            writeln!(writer, "{}", raw)?;
+            writer.flush()?;
+        }
+        Ok(())
     }
 }
 

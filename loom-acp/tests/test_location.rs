@@ -49,7 +49,7 @@ mod tests {
         });
 
         let locations = extract_locations("grep", &input);
-        assert!(locations.len() >= 1);
+        assert!(!locations.is_empty());
         assert_eq!(locations[0].path, "/path/to/search");
     }
 

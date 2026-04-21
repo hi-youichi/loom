@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 use loom::{
     compress::{build_graph, CompactionConfig, CompressionGraphNode},
-    tools_condition, ActNode, CompiledStateGraph, FixedLlmProvider, LlmClient, LlmProvider, Message, MockLlm, MockToolSource,
+    tools_condition, ActNode, CompiledStateGraph, FixedLlmProvider, LlmProvider, Message, MockLlm, MockToolSource,
     ModelConfig, ObserveNode, ReActState, StateGraph, ThinkNode, END, START,
 };
 

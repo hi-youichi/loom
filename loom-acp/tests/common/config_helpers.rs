@@ -31,6 +31,7 @@ pub fn read_last_model_file(home: &Path) -> String {
         .to_string()
 }
 
+#[allow(dead_code)]
 pub fn write_last_model_file(home: &Path, model: &str) {
     let last_model_path = home.join("last-model");
     fs::write(last_model_path, model).expect("Failed to write last-model file");

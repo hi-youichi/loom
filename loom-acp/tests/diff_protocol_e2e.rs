@@ -82,7 +82,7 @@ fn find_tool_call_notification<'a>(
             None => return false,
         };
         update.get("sessionUpdate").and_then(|v| v.as_str()) == Some("tool_call")
-            && update.get("title").and_then(|v| v.as_str()).map_or(false, |t| t.to_lowercase().contains(tool_name))
+            && update.get("title").and_then(|v| v.as_str()).is_some_and(|t| t.to_lowercase().contains(tool_name))
     })
 }
 

@@ -195,11 +195,29 @@ impl LoomAcpAgent {
         // Default case: no explicit configuration - provide a safe default model
         tracing::info!(
             agent = %session_config.current_agent,
-            "No model or tier configuration, using safe default model"
+            "No model or tier configuration, resolving from default provider config"
         );
 
-        // Provide a safe default model that should work in most environments
-        // This ensures tests and basic usage work without explicit configuration
+        if let Ok(full_config) = load_full_config("loom") {
+            if let Some(ref pname) = full_config.default_provider {
+                if let Some(p) = full_config.providers.iter().find(|p| p.name == *pname) {
+                    if let Some(ref model_name) = p.model {
+                        let resolved = loom::resolve_model_config(Some(model_name)).await;
+                        if resolved.model.is_some() {
+                            return resolved;
+                        }
+                    }
+                    return loom::ResolvedModelConfig {
+                        model: p.model.clone(),
+                        provider: Some(p.name.clone()),
+                        base_url: p.base_url.clone(),
+                        api_key: p.api_key.clone(),
+                        provider_type: p.provider_type.clone(),
+                    };
+                }
+            }
+        }
+
         let default_model = "gpt-4o-mini";
         loom::resolve_model_config(Some(default_model)).await
     }

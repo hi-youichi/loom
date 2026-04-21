@@ -4,6 +4,7 @@
 //! configuration loading to installation readiness.
 
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod java_e2e_tests {
     use crate::lsp::LspManager;
     use crate::lsp::installer::LspInstaller;
@@ -84,7 +85,7 @@ mod java_e2e_tests {
         assert!(instructions.is_some(), "Java should have install instructions");
         
         let instructions = instructions.unwrap();
-        assert!(instructions.len() > 0, "Install instructions should not be empty");
+        assert!(!instructions.is_empty(), "Install instructions should not be empty");
         
         // 4. 验证安装说明包含相关的包管理器
         assert!(instructions.contains("brew") || instructions.contains("pip") || instructions.contains("choco"),

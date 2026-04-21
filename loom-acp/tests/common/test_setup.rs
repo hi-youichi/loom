@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use tempfile::TempDir;
 use std::fs;
 
+#[allow(dead_code)]
 pub fn setup_test_home() -> TempDir {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     
@@ -27,6 +28,7 @@ pub struct TestEnvironment {
 }
 
 impl TestEnvironment {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         let temp_dir = setup_test_home();
         let loom_home = temp_dir.path().to_path_buf();
