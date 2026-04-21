@@ -20,10 +20,75 @@ impl MockAcpServer {
     pub async fn mount_default_responses(&self) {
         use wiremock::{Mock, ResponseTemplate};
         use wiremock::matchers::{method, path};
+        use wiremock::Respond;
+
+        struct CompletionResponder;
+        impl Respond for CompletionResponder {
+            fn respond(&self, request: &wiremock::Request) -> ResponseTemplate {
+                let is_stream = std::str::from_utf8(&request.body)
+                    .map(|s| s.contains("\"stream\":true") || s.contains("\"stream\": true"))
+                    .unwrap_or(false);
+                if is_stream {
+                    ResponseTemplate::new(200)
+                        .set_body_raw(Self::streaming_body().into_bytes(), "text/event-stream")
+                } else {
+                    ResponseTemplate::new(200).set_body_json(Self::simple_completion())
+                }
+            }
+        }
+
+        impl CompletionResponder {
+            fn simple_completion() -> serde_json::Value {
+                json!({
+                    "id": "chatcmpl-mock",
+                    "object": "chat.completion",
+                    "created": 1234567890,
+                    "model": "test-model",
+                    "choices": [{
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": "Done."
+                        },
+                        "finish_reason": "stop"
+                    }],
+                    "usage": { "prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7 }
+                })
+            }
+
+            fn streaming_body() -> String {
+                let chunk = json!({
+                    "id": "chatcmpl-mock",
+                    "object": "chat.completion.chunk",
+                    "created": 1234567890,
+                    "model": "test-model",
+                    "choices": [{
+                        "index": 0,
+                        "delta": {
+                            "role": "assistant",
+                            "content": "Done."
+                        },
+                        "finish_reason": null
+                    }]
+                });
+                let done_chunk = json!({
+                    "id": "chatcmpl-mock",
+                    "object": "chat.completion.chunk",
+                    "created": 1234567890,
+                    "model": "test-model",
+                    "choices": [{
+                        "index": 0,
+                        "delta": {},
+                        "finish_reason": "stop"
+                    }]
+                });
+                format!("data: {}\n\ndata: {}\n\ndata: [DONE]\n\n", chunk, done_chunk)
+            }
+        }
 
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(Self::simple_completion()))
+            .respond_with(CompletionResponder)
             .mount(&self.server)
             .await;
 
@@ -44,24 +109,6 @@ impl MockAcpServer {
             .respond_with(ResponseTemplate::new(200).set_body_json(response_body))
             .mount(&self.server)
             .await;
-    }
-
-    fn simple_completion() -> serde_json::Value {
-        json!({
-            "id": "chatcmpl-mock",
-            "object": "chat.completion",
-            "created": 1234567890,
-            "model": "test-model",
-            "choices": [{
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": "Done."
-                },
-                "finish_reason": "stop"
-            }],
-            "usage": { "prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7 }
-        })
     }
 
     fn models_list() -> serde_json::Value {
@@ -273,6 +320,15 @@ model = "test-model"
         let mut line = String::new();
         self.reader.read_line(&mut line)?;
         Ok(serde_json::from_str(&line)?)
+    }
+
+    pub fn collect_all_notifications_with_drain(
+        &mut self,
+        request_id: u64,
+        timeout: Duration,
+        _post_response_drain: Duration,
+    ) -> Result<(Vec<serde_json::Value>, RpcResponse), Box<dyn std::error::Error>> {
+        self.collect_all_notifications(request_id, timeout)
     }
     
     pub async fn send_request_and_wait(&mut self, method: &str, params: Value, timeout: Duration) -> Result<RpcResponse, Box<dyn std::error::Error>> {

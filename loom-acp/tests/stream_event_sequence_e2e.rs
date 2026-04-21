@@ -42,24 +42,9 @@ fn extract_update_type(notification: &serde_json::Value) -> Option<String> {
     notification
         .get("params")
         .and_then(|p| p.get("update"))
-        .and_then(|u| {
-            let keys = [
-                "sessionUpdate",
-                "agent_message_chunk",
-                "agent_thought_chunk",
-                "user_message_chunk",
-                "tool_call",
-                "tool_call_update",
-                "session_info_update",
-                "plan",
-            ];
-            for key in keys {
-                if u.get(key).is_some() {
-                    return Some(key.to_string());
-                }
-            }
-            None
-        })
+        .and_then(|u| u.get("sessionUpdate"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }
 
 #[tokio::test]

@@ -118,7 +118,7 @@ async fn e2e_title_generation_produces_session_info_update() {
         .expect("send prompt");
 
     let (notifications, response) = acp
-        .collect_all_notifications(request_id, TIMEOUT)
+        .collect_all_notifications_with_drain(request_id, TIMEOUT, Duration::from_secs(3))
         .expect("collect notifications");
 
     assert!(
@@ -131,10 +131,12 @@ async fn e2e_title_generation_produces_session_info_update() {
         if n.get("method").and_then(|v| v.as_str()) != Some("session/update") {
             return false;
         }
-        n.get("params")
+        let update_type = n.get("params")
             .and_then(|p| p.get("update"))
-            .and_then(|u| u.get("session_info_update"))
-            .is_some()
+            .and_then(|u| u.get("sessionUpdate"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("???");
+        update_type == "session_info_update"
     });
 
     assert!(
@@ -156,7 +158,7 @@ async fn e2e_title_update_contains_non_empty_title() {
         .expect("send prompt");
 
     let (notifications, _response) = acp
-        .collect_all_notifications(request_id, TIMEOUT)
+        .collect_all_notifications_with_drain(request_id, TIMEOUT, Duration::from_secs(3))
         .expect("collect notifications");
 
     let titles: Vec<String> = notifications
@@ -164,10 +166,12 @@ async fn e2e_title_update_contains_non_empty_title() {
         .filter_map(|n| {
             n.get("params")
                 .and_then(|p| p.get("update"))
-                .and_then(|u| u.get("session_info_update"))
-                .and_then(|s| s.get("title"))
-                .and_then(|t| t.as_str())
-                .map(|s| s.to_string())
+                .and_then(|u| {
+                    if u.get("sessionUpdate").and_then(|v| v.as_str()) != Some("session_info_update") {
+                        return None;
+                    }
+                    u.get("title").and_then(|t| t.as_str()).map(|s| s.to_string())
+                })
         })
         .collect();
 
@@ -199,8 +203,8 @@ async fn e2e_title_only_generated_on_first_prompt() {
         .filter(|n| {
             n.get("params")
                 .and_then(|p| p.get("update"))
-                .and_then(|u| u.get("session_info_update"))
-                .is_some()
+                .and_then(|u| u.get("sessionUpdate").and_then(|v| v.as_str()))
+                == Some("session_info_update")
         })
         .count();
 
@@ -219,8 +223,8 @@ async fn e2e_title_only_generated_on_first_prompt() {
         .filter(|n| {
             n.get("params")
                 .and_then(|p| p.get("update"))
-                .and_then(|u| u.get("session_info_update"))
-                .is_some()
+                .and_then(|u| u.get("sessionUpdate").and_then(|v| v.as_str()))
+                == Some("session_info_update")
         })
         .count();
 

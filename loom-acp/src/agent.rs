@@ -685,6 +685,9 @@ impl Agent for LoomAcpAgent {
 
         let result = run_agent_with_options(&opts, &RunCmd::React, on_event).await;
         self.sessions.finish_prompt(&key, cancellation.generation());
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
         match result {
             Ok(RunCompletion::Finished(_reply)) => Ok(PromptResponse::new(StopReason::EndTurn)),
             Ok(RunCompletion::Cancelled) => Ok(PromptResponse::new(StopReason::Cancelled)),

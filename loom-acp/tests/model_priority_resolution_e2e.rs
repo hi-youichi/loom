@@ -62,10 +62,10 @@ async fn e2e_set_model_then_prompt_uses_configured_model() {
 
     let set_model_resp = acp
         .send_request_and_wait(
-            "session/setModel",
+            "session/set_model",
             serde_json::json!({
                 "sessionId": &session_id,
-                "modelId": "gpt-4o-mini",
+                "modelId": "mock/test-model",
             }),
             TIMEOUT,
         )
@@ -96,7 +96,7 @@ async fn e2e_set_model_unknown_session_returns_error() {
 
     let resp = acp
         .send_request_and_wait(
-            "session/setModel",
+            "session/set_model",
             serde_json::json!({
                 "sessionId": "nonexistent-session",
                 "modelId": "gpt-4o",
@@ -123,10 +123,10 @@ async fn e2e_set_model_persists_across_prompts() {
 
     let set_resp = acp
         .send_request_and_wait(
-            "session/setModel",
+            "session/set_model",
             serde_json::json!({
                 "sessionId": &session_id,
-                "modelId": "gpt-4o-mini",
+                "modelId": "mock/test-model",
             }),
             TIMEOUT,
         )
@@ -161,10 +161,10 @@ async fn e2e_different_sessions_independent_models() {
 
     let set1 = acp
         .send_request_and_wait(
-            "session/setModel",
+            "session/set_model",
             serde_json::json!({
                 "sessionId": &sid1,
-                "modelId": "gpt-4o-mini",
+                "modelId": "mock/test-model",
             }),
             TIMEOUT,
         )
@@ -174,10 +174,10 @@ async fn e2e_different_sessions_independent_models() {
 
     let set2 = acp
         .send_request_and_wait(
-            "session/setModel",
+            "session/set_model",
             serde_json::json!({
                 "sessionId": &sid2,
-                "modelId": "gpt-4o",
+                "modelId": "mock/test-model",
             }),
             TIMEOUT,
         )
@@ -203,10 +203,10 @@ async fn e2e_set_mode_switches_agent() {
 
     let set_mode = acp
         .send_request_and_wait(
-            "session/setMode",
+            "session/set_mode",
             serde_json::json!({
                 "sessionId": &session_id,
-                "modeId": "code",
+                "modeId": "dev",
             }),
             TIMEOUT,
         )
