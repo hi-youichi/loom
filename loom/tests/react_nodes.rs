@@ -572,13 +572,13 @@ impl ToolSource for HintingToolSource {
 }
 
 #[tokio::test]
-async fn act_node_uses_tool_spec_output_hint() {
+async fn act_node_non_whitelisted_tool_ignores_output_hint() {
     let large_result = (0..400)
         .map(|i| format!("line {} {}", i, "x".repeat(20)))
         .collect::<Vec<_>>()
         .join("\n");
     let node = ActNode::new(Box::new(HintingToolSource {
-        result: large_result,
+        result: large_result.clone(),
     }));
     let state = ReActState {
         messages: vec![],
@@ -601,8 +601,9 @@ async fn act_node_uses_tool_spec_output_hint() {
     assert_eq!(out.tool_results.len(), 1);
     assert_eq!(
         out.tool_results[0].strategy,
-        Some(ToolOutputStrategy::SummaryOnly)
+        Some(ToolOutputStrategy::Inline)
     );
+    assert!(!out.tool_results[0].truncated);
 }
 
 /// **Scenario**: ActNode with approval_policy DestructiveOnly and delete_file tool_call
@@ -682,6 +683,178 @@ async fn act_node_multiple_tool_calls_produces_multiple_results() {
     assert_eq!(out.tool_results.len(), 2);
     assert_eq!(out.tool_results[0].content, "2025-01-29 12:00:00");
     assert_eq!(out.tool_results[1].content, "2025-01-29 12:00:00");
+}
+
+struct LargeOutputToolSource {
+    tool_name: String,
+    result: String,
+}
+
+#[async_trait]
+impl ToolSource for LargeOutputToolSource {
+    async fn list_tools(&self) -> Result<Vec<ToolSpec>, ToolSourceError> {
+        Ok(vec![ToolSpec {
+            name: self.tool_name.clone(),
+            description: Some("returns large output".to_string()),
+            input_schema: json!({ "type": "object", "properties": {}, "required": [] }),
+            output_hint: None,
+        }])
+    }
+
+    async fn call_tool(
+        &self,
+        _name: &str,
+        _arguments: Value,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+        Ok(ToolCallContent::text(self.result.clone()))
+    }
+}
+
+#[tokio::test]
+async fn act_node_bash_large_output_is_truncated() {
+    let large = "line\n".repeat(2_500);
+    let node = ActNode::new(Box::new(LargeOutputToolSource {
+        tool_name: "bash".into(),
+        result: large,
+    }));
+    let state = ReActState {
+        messages: vec![],
+        tool_calls: vec![ToolCall {
+            name: "bash".into(),
+            arguments: "{}".into(),
+            id: Some("c1".into()),
+        }],
+        tool_results: vec![],
+        ..Default::default()
+    };
+    let (out, _) = node.run(state).await.unwrap();
+    assert_eq!(out.tool_results.len(), 1);
+    assert_eq!(out.tool_results[0].strategy, Some(ToolOutputStrategy::HeadTail));
+    assert!(out.tool_results[0].truncated);
+    assert!(out.tool_results[0].content.contains("Head:"));
+}
+
+#[tokio::test]
+async fn act_node_read_large_output_is_not_truncated() {
+    let large = "line\n".repeat(2_500);
+    let node = ActNode::new(Box::new(LargeOutputToolSource {
+        tool_name: "read".into(),
+        result: large.clone(),
+    }));
+    let state = ReActState {
+        messages: vec![],
+        tool_calls: vec![ToolCall {
+            name: "read".into(),
+            arguments: "{}".into(),
+            id: Some("c1".into()),
+        }],
+        tool_results: vec![],
+        ..Default::default()
+    };
+    let (out, _) = node.run(state).await.unwrap();
+    assert_eq!(out.tool_results.len(), 1);
+    assert_eq!(out.tool_results[0].strategy, Some(ToolOutputStrategy::Inline));
+    assert!(!out.tool_results[0].truncated);
+    assert_eq!(out.tool_results[0].content, large);
+}
+
+#[tokio::test]
+async fn act_node_non_whitelisted_tool_ignores_hint_inline() {
+    let large_result = (0..400)
+        .map(|i| format!("line {} {}", i, "x".repeat(20)))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let node = ActNode::new(Box::new(HintingToolSource {
+        result: large_result.clone(),
+    }));
+    let state = ReActState {
+        messages: vec![],
+        tool_calls: vec![ToolCall {
+            name: "hinted_tool".into(),
+            arguments: "{}".into(),
+            id: Some("hint-1".into()),
+        }],
+        tool_results: vec![],
+        ..Default::default()
+    };
+    let (out, _) = node.run(state).await.unwrap();
+    assert_eq!(out.tool_results[0].strategy, Some(ToolOutputStrategy::Inline));
+    assert!(!out.tool_results[0].truncated);
+    assert_eq!(out.tool_results[0].content, large_result);
+}
+
+struct MultiOutputToolSource {
+    bash_result: String,
+    read_result: String,
+}
+
+#[async_trait]
+impl ToolSource for MultiOutputToolSource {
+    async fn list_tools(&self) -> Result<Vec<ToolSpec>, ToolSourceError> {
+        Ok(vec![
+            ToolSpec {
+                name: "bash".to_string(),
+                description: Some("bash".to_string()),
+                input_schema: json!({ "type": "object", "properties": {}, "required": [] }),
+                output_hint: None,
+            },
+            ToolSpec {
+                name: "read".to_string(),
+                description: Some("read".to_string()),
+                input_schema: json!({ "type": "object", "properties": {}, "required": [] }),
+                output_hint: None,
+            },
+        ])
+    }
+
+    async fn call_tool(
+        &self,
+        name: &str,
+        _arguments: Value,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+        match name {
+            "bash" => Ok(ToolCallContent::text(self.bash_result.clone())),
+            "read" => Ok(ToolCallContent::text(self.read_result.clone())),
+            _ => Err(ToolSourceError::NotFound(name.to_string())),
+        }
+    }
+}
+
+#[tokio::test]
+async fn act_node_mixed_tools_whitelist_and_others() {
+    let large = "line\n".repeat(2_500);
+    let node = ActNode::new(Box::new(MultiOutputToolSource {
+        bash_result: large.clone(),
+        read_result: large.clone(),
+    }));
+    let state = ReActState {
+        messages: vec![],
+        tool_calls: vec![
+            ToolCall {
+                name: "bash".into(),
+                arguments: "{}".into(),
+                id: Some("c1".into()),
+            },
+            ToolCall {
+                name: "read".into(),
+                arguments: "{}".into(),
+                id: Some("c2".into()),
+            },
+        ],
+        tool_results: vec![],
+        ..Default::default()
+    };
+    let (out, _) = node.run(state).await.unwrap();
+    assert_eq!(out.tool_results.len(), 2);
+
+    let bash_result = out.tool_results.iter().find(|r| r.name.as_deref() == Some("bash")).unwrap();
+    assert_eq!(bash_result.strategy, Some(ToolOutputStrategy::HeadTail));
+    assert!(bash_result.truncated);
+
+    let read_result = out.tool_results.iter().find(|r| r.name.as_deref() == Some("read")).unwrap();
+    assert_eq!(read_result.strategy, Some(ToolOutputStrategy::Inline));
+    assert!(!read_result.truncated);
+    assert_eq!(read_result.content, large);
 }
 
 // --- ObserveNode ---
