@@ -12,6 +12,7 @@ pub struct ResolvedTierModel {
     pub base_url: Option<String>,
     pub api_key: Option<String>,
     pub provider_type: Option<String>,
+    pub provider_name: Option<String>,
 }
 
 impl ResolvedTierModel {
@@ -21,6 +22,7 @@ impl ResolvedTierModel {
             base_url: entry.base_url,
             api_key: entry.api_key,
             provider_type: entry.provider_type,
+            provider_name: Some(entry.provider),
         }
     }
 }
@@ -61,7 +63,7 @@ impl TierResolver for DefaultTierResolver {
                 Some(ResolvedTierModel::from_entry(entry))
             }
             None => {
-                let provider = config.llm_provider.as_deref();
+                let provider = extract_provider_from_config(config);
                 match provider {
                     Some(p) => {
                         if let Some(provider_cfg) = providers.iter().find(|cfg| cfg.name == p) {
@@ -74,7 +76,13 @@ impl TierResolver for DefaultTierResolver {
                             }
                         }
 
-                        let entry = resolve_tier_intelligent(p, tier, &providers).await?;
+                        tracing::debug!(
+                            provider = %p,
+                            ?tier,
+                            source = if config.parent_model_hint.is_some() { "parent_model_hint" } else { "llm_provider" },
+                            "Resolving tier from provider"
+                        );
+                        let entry = resolve_tier_intelligent(&p, tier, &providers).await?;
                         Some(ResolvedTierModel::from_entry(entry))
                     }
                     None => {
@@ -99,4 +107,17 @@ pub(crate) async fn resolve_tier_for_config(
     tier: ModelTier,
 ) -> Option<ResolvedTierModel> {
     DefaultTierResolver.resolve_tier(config, tier).await
+}
+
+fn extract_provider_from_config(config: &ReactBuildConfig) -> Option<String> {
+    if let Some(hint) = config.parent_model_hint.as_deref() {
+        if let Some((provider, _)) = ModelEntry::parse_id(hint) {
+            return Some(provider.to_string());
+        }
+    }
+    config
+        .llm_provider_name
+        .as_deref()
+        .or(config.llm_provider.as_deref())
+        .map(|p| p.to_string())
 }

@@ -294,7 +294,6 @@ pub fn build_config_from_profile(
             config.model = Some(name.clone());
         }
         if let Some(tier) = model.tier {
-            // Profile configuration takes precedence over parent config for model_tier
             tracing::info!(
                 profile_name = %profile.name,
                 old_tier = ?config.model_tier,
@@ -303,17 +302,13 @@ pub fn build_config_from_profile(
             );
             config.model_tier = Some(tier);
 
-            // Clear inherited model/api fields to allow clean tier resolution,
-            // but preserve llm_provider so tier resolution targets the correct provider.
-            // Without llm_provider, the resolver falls back to iterating all providers
-            // and may pick a wrong one.
             tracing::debug!(
                 profile_name = %profile.name,
                 tier = ?tier,
                 preserved_provider = ?config.llm_provider,
                 "Clearing inherited model/api fields for clean tier resolution (preserving llm_provider)"
             );
-            config.model = None;
+            config.parent_model_hint = config.model.take();
             config.openai_base_url = None;
             config.openai_api_key = None;
         }
@@ -1097,6 +1092,7 @@ mod tests {
         // When profile configures a tier, model/api fields are cleared for clean tier resolution,
         // but llm_provider is preserved so the resolver targets the correct provider.
         assert_eq!(config.model.as_deref(), None);
+        assert_eq!(config.parent_model_hint.as_deref(), Some("parent-model"));
         assert_eq!(config.openai_base_url.as_deref(), None);
         assert_eq!(config.openai_api_key.as_deref(), None);
 

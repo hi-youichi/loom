@@ -53,6 +53,13 @@ pub async fn resolve_tier_and_build_config_with_resolver(
                 );
                 config.llm_provider = Some(provider_type);
             }
+            if let Some(provider_name) = resolved.provider_name {
+                tracing::debug!(
+                    provider_name = %provider_name,
+                    "Applying provider_name from tier resolution"
+                );
+                config.llm_provider_name = Some(provider_name);
+            }
 
             tracing::debug!(
                 final_model = ?config.model,
@@ -72,5 +79,6 @@ pub async fn resolve_tier_and_build_config_with_resolver(
         }
     }
     config.model_tier = None;
+    config.parent_model_hint = None;
     config
 }

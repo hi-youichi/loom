@@ -103,9 +103,17 @@ pub struct ReactBuildConfig {
     pub openai_base_url: Option<String>,
     pub model: Option<String>,
     pub model_tier: Option<crate::model_spec::ModelTier>,
+    /// When a sub-agent profile declares `tier: light/standard/strong` but no explicit `model.name`,
+    /// the parent's resolved model (e.g. `"zhipuai-coding-plan/glm-4.7"`) is saved here so that
+    /// tier resolution can extract the provider and stay within the same model family.
+    pub parent_model_hint: Option<String>,
     /// Explicit provider type override. When `Some("openai_compat")` or `Some("bigmodel")`, build layer uses [`crate::llm::ChatOpenAICompat`]; otherwise default is OpenAI.
     /// If unset, build layer may infer provider type from `MODEL` in `provider/model` format.
     pub llm_provider: Option<String>,
+    /// Provider name used for tier plan lookup (e.g., `"zhipuai-coding-plan"`).
+    /// Set during tier resolution from `ModelEntry.provider`. Preserved across sub-agent config
+    /// inheritance so child tier resolution can match the correct plan.
+    pub llm_provider_name: Option<String>,
     /// Sampling temperature for chat completions. Set via `OPENAI_TEMPERATURE`.
     pub openai_temperature: Option<String>,
     pub embedding_api_key: Option<String>,
@@ -165,7 +173,9 @@ impl ReactBuildConfig {
             openai_temperature: std::env::var("OPENAI_TEMPERATURE").ok(),
             model: None,
             model_tier: None,
-            llm_provider: None, // Removed environment variable support
+            parent_model_hint: None,
+            llm_provider: None,
+            llm_provider_name: None,
             embedding_api_key: std::env::var("EMBEDDING_API_KEY").ok(),
             embedding_base_url: std::env::var("EMBEDDING_BASE_URL").ok(),
             embedding_model: std::env::var("EMBEDDING_MODEL").ok(),
