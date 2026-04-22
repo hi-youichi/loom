@@ -9,13 +9,15 @@
 
 mod client_bridge;
 mod fs_tools;
+mod terminal_executor;
 mod terminal_tools;
 
 pub use client_bridge::{
-    clear_client_bridge, get_client_bridge, set_client_bridge, ClientBridgeTrait,
-    NoOpClientBridge, TerminalExitResult, TerminalOutput,
+    clear_client_bridge, get_client_bridge, set_client_bridge, AcpClientBridge,
+    ClientBridgeTrait, NoOpClientBridge, TerminalExitResult, TerminalOutput,
 };
 pub use fs_tools::{ReadTextFileTool, WriteTextFileTool};
+pub use terminal_executor::TerminalCommandExecutor;
 pub use terminal_tools::{
     CreateTerminalTool, KillTerminalTool, ReleaseTerminalTool, TerminalOutputTool,
     WaitForExitTool,
