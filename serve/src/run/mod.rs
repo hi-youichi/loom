@@ -309,6 +309,8 @@ mod tests {
             dry_run: false,
         any_stream_event_sender: None,
             bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
         };
         let (result, state, _dropped_events, _dropped_appends) = run_agent_task(AgentTaskParams {
             session_id: "test-session".to_string(),
@@ -352,6 +354,8 @@ mod tests {
             dry_run: false,
         any_stream_event_sender: None,
             bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
         };
         let (result, state, _dropped_events, _dropped_appends) = run_agent_task(AgentTaskParams {
             session_id: "session-2".to_string(),

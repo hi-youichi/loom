@@ -34,6 +34,7 @@ pub use memory::{
     TOOL_RECALL, TOOL_REMEMBER, TOOL_SEARCH_MEMORIES,
 };
 pub use r#trait::Tool;
+pub(crate) use r#trait::ArcTool;
 pub use registry::{ToolRegistry, ToolRegistryLocked};
 pub use skill::{SkillTool, TOOL_SKILL};
 pub use telegram::{

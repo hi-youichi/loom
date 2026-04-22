@@ -53,5 +53,7 @@ async fn build_tool_source_with_working_folder_includes_file_tools() {
         dry_run: false,
         builtin_tool_filter: None,
             bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
     };
 }

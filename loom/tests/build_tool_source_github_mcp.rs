@@ -50,6 +50,8 @@ fn base_config(working_folder: std::path::PathBuf) -> ReactBuildConfig {
         dry_run: false,
         builtin_tool_filter: None,
             bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
     }
 }
 

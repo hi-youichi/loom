@@ -278,7 +278,7 @@ pub async fn run_stdio_loop() -> Result<(), Box<dyn std::error::Error + Send + S
                     while let Some(n) = rx.recv().await {
                         match conn.session_notification(n).await {
                             Ok(_) => {
-                                tracing::debug!("Session notification sent successfully");
+                                tracing::trace!("Session notification sent successfully");
                             }
                             Err(e) => {
                                 tracing::error!(error = ?e, "Failed to send session notification");

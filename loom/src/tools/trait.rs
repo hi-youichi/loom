@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 
 use serde_json::Value;
@@ -98,5 +100,26 @@ pub trait Tool: Send + Sync {
         _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
         Ok(ToolCallContent::Text("tool executed".to_string()))
+    }
+}
+
+pub(crate) struct ArcTool(pub(crate) Arc<dyn Tool>);
+
+#[async_trait]
+impl Tool for ArcTool {
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+
+    fn spec(&self) -> ToolSpec {
+        self.0.spec()
+    }
+
+    async fn call(
+        &self,
+        args: Value,
+        ctx: Option<&ToolCallContext>,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+        self.0.call(args, ctx).await
     }
 }

@@ -31,10 +31,10 @@
 
 use crate::content::extract_locations;
 use agent_client_protocol::{
-    ContentChunk, CurrentModeUpdate, Plan, PlanEntry, PlanEntryPriority, PlanEntryStatus,
-    SessionId, SessionInfoUpdate, SessionModeId, SessionNotification, SessionUpdate,
-    Terminal, TerminalId, ToolCall, ToolCallId, ToolCallLocation, ToolCallStatus,
-    ToolCallUpdate, ToolCallUpdateFields, ToolKind,
+    ContentBlock, ContentChunk, CurrentModeUpdate, Diff, Plan, PlanEntry, PlanEntryPriority,
+    PlanEntryStatus, SessionId, SessionInfoUpdate, SessionModeId, SessionNotification,
+    SessionUpdate, Terminal, TerminalId, TextContent, ToolCall, ToolCallId, ToolCallLocation,
+    ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind, ToolCallContent,
 };
 use loom::message::Message;
 use loom::{AnyStreamEvent, MessageChunkKind, StreamEvent};
@@ -389,8 +389,8 @@ pub fn stream_update_to_session_notification(
         StreamUpdate::Diff { tool_call_id, path, old_text, new_text } => {
             let mut fields = ToolCallUpdateFields::new()
                 .content(vec![
-                    agent_client_protocol::ToolCallContent::Diff(
-                        agent_client_protocol::Diff::new(path.clone(), new_text.clone())
+                    ToolCallContent::Diff(
+                        Diff::new(path.clone(), new_text.clone())
                             .old_text(old_text.clone()),
                     )
                 ]);
@@ -573,8 +573,8 @@ impl SessionNotifier {
                 Message::User(content) => vec![SessionNotification::new(
                     self.session_id.clone(),
                     SessionUpdate::UserMessageChunk(ContentChunk::new(
-                        agent_client_protocol::ContentBlock::Text(
-                            agent_client_protocol::TextContent::new(content.as_text().to_string()),
+                        ContentBlock::Text(
+                            TextContent::new(content.as_text().to_string()),
                         ),
                     )),
                 )],
@@ -611,9 +611,9 @@ impl SessionNotifier {
                     let id = ToolCallId::new(tool_call_id.clone());
                     let acp_content = match content {
                         loom::tool_source::ToolCallContent::Text(t) => {
-                            agent_client_protocol::ToolCallContent::from(
-                                agent_client_protocol::ContentBlock::Text(
-                                    agent_client_protocol::TextContent::new(t.clone()),
+                            ToolCallContent::from(
+                                ContentBlock::Text(
+                                    TextContent::new(t.clone()),
                                 ),
                             )
                         }
@@ -621,12 +621,12 @@ impl SessionNotifier {
                             path,
                             old_text,
                             new_text,
-                        } => agent_client_protocol::ToolCallContent::Diff(
-                            agent_client_protocol::Diff::new(path.clone(), new_text.clone())
+                        } => ToolCallContent::Diff(
+                            Diff::new(path.clone(), new_text.clone())
                                 .old_text(old_text.clone()),
                         ),
                         loom::tool_source::ToolCallContent::Terminal { terminal_id } => {
-                            agent_client_protocol::ToolCallContent::Terminal(Terminal::new(
+                            ToolCallContent::Terminal(Terminal::new(
                                 TerminalId::new(terminal_id.clone()),
                             ))
                         }

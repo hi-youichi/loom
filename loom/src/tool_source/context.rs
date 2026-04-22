@@ -99,6 +99,15 @@ pub struct ToolCallContext {
     /// Use for multi-tenant or store namespace. See RunnableConfig::user_id.
     pub user_id: Option<String>,
 
+    /// ACP session_id from the IDE client.
+    ///
+    /// When running under ACP (Zed, JetBrains), this carries the real `sessionId`
+    /// assigned by the IDE. Used by `AcpBridgeCommandExecutor` and ACP terminal tools
+    /// to route terminal operations to the correct session.
+    ///
+    /// `None` in non-ACP contexts (CLI, Telegram, etc.).
+    pub acp_session_id: Option<String>,
+
     ///
     /// Used by `InvokeAgentTool` to prevent infinite recursion. Each nested
     /// invocation increments this counter; calls are rejected when `depth`
@@ -120,6 +129,7 @@ impl ToolCallContext {
             any_stream_event_sender: None,
             thread_id: None,
             user_id: None,
+            acp_session_id: None,
             depth: 0,
             run_cancellation: None,
         }
@@ -139,6 +149,7 @@ impl ToolCallContext {
             any_stream_event_sender: None,
             thread_id: None,
             user_id: None,
+            acp_session_id: None,
             depth: 0,
             run_cancellation: None,
         }
@@ -177,6 +188,7 @@ impl std::fmt::Debug for ToolCallContext {
             .field("any_stream_event_sender", &self.any_stream_event_sender.as_ref().map(|_| "..."))
             .field("thread_id", &self.thread_id)
             .field("user_id", &self.user_id)
+            .field("acp_session_id", &self.acp_session_id)
             .field("depth", &self.depth)
             .field("run_cancellation", &self.run_cancellation)
             .finish()

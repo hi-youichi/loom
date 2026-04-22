@@ -24,6 +24,8 @@ fn opts(working_folder: std::path::PathBuf) -> RunOptions {
         dry_run: false,
         any_stream_event_sender: None,
             bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
         }
 }
 

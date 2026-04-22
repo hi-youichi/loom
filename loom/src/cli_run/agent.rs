@@ -192,6 +192,8 @@ pub struct RunOptions {
     /// sub-agent invocations can forward stream events directly to ACP.
     pub any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
     pub bash_executor: Option<Arc<dyn crate::tools::CommandExecutor>>,
+    pub extra_tools: Option<Arc<Vec<Arc<dyn crate::tools::Tool>>>>,
+    pub acp_session_id: Option<String>,
 }
 
 impl std::fmt::Debug for RunOptions {
@@ -217,6 +219,8 @@ impl std::fmt::Debug for RunOptions {
             .field("dry_run", &self.dry_run)
             .field("any_stream_event_sender", &self.any_stream_event_sender.as_ref().map(|_| "..."))
             .field("bash_executor", &self.bash_executor.as_ref().map(|_| "..."))
+            .field("extra_tools", &self.extra_tools.as_ref().map(|t| t.len()))
+            .field("acp_session_id", &self.acp_session_id)
             .finish()
     }
 }
@@ -332,6 +336,12 @@ pub async fn run_agent(
     let (_helve, mut config, _resolved_agent) = build_helve_config(opts);
     if let Some(ref executor) = opts.bash_executor {
         config.bash_executor = Some(executor.clone());
+    }
+    if let Some(ref tools) = opts.extra_tools {
+        config.extra_tools = Some(tools.clone());
+    }
+    if let Some(ref sid) = opts.acp_session_id {
+        config.acp_session_id = Some(sid.clone());
     }
     let thread_id_log = config.thread_id.as_deref().unwrap_or("").to_string();
     let kind = match cmd {
@@ -597,7 +607,9 @@ pub async fn run_agent_with_provider(
         api_key: provider.api_key,
         provider_type: provider.provider_type,
         any_stream_event_sender: None,
-        bash_executor: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
     };
 
     // Run with LLM override
@@ -634,6 +646,8 @@ mod tests {
             provider_type: None,
             any_stream_event_sender: None,
             bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
         }
     }
 
@@ -682,6 +696,8 @@ mod tests {
             dry_run: false,
             builtin_tool_filter: None,
             bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
         }
     }
 
@@ -737,6 +753,8 @@ mod tests {
             provider_type: None,
         any_stream_event_sender: None,
         bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
         };
         assert!(build_runner(&cfg, &opts, &RunCmd::React, None)
             .await

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
 use tokio::sync::{Notify, RwLock};
+use tracing::{debug, error, info, trace, warn};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -76,6 +77,15 @@ impl TerminalManager {
         output_byte_limit: Option<u64>,
     ) -> Result<String, TerminalError> {
         let terminal_id = format!("term-{}", Uuid::new_v4());
+        info!(
+            terminal_id = %terminal_id,
+            command = %command,
+            args = ?args,
+            cwd = ?cwd,
+            env_count = env.len(),
+            output_byte_limit = ?output_byte_limit,
+            "Creating terminal"
+        );
 
         let mut cmd = Command::new(&command);
         cmd.args(&args)
@@ -92,9 +102,13 @@ impl TerminalManager {
 
         let mut child = cmd
             .spawn()
-            .map_err(|e| TerminalError::CreationFailed(e.to_string()))?;
+            .map_err(|e| {
+                error!(terminal_id = %terminal_id, command = %command, error = %e, "Failed to spawn terminal");
+                TerminalError::CreationFailed(e.to_string())
+            })?;
 
         let pid = child.id();
+        debug!(terminal_id = %terminal_id, pid = ?pid, "Process spawned");
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
 
@@ -132,6 +146,7 @@ impl TerminalManager {
 
         self.spawn_exit_watcher(terminal_id.clone());
 
+        info!(terminal_id = %terminal_id, "Terminal created successfully");
         Ok(terminal_id)
     }
 
@@ -159,21 +174,33 @@ impl TerminalManager {
                         };
                         #[cfg(not(unix))]
                         let signal = None;
+                        info!(
+                            terminal_id = %terminal_id,
+                            exit_code = ?exit_code,
+                            signal = ?signal,
+                            "Process exited"
+                        );
                         TerminalStatus::Completed { exit_code, signal }
                     }
-                    Err(_) => TerminalStatus::Completed {
-                        exit_code: None,
-                        signal: None,
+                    Err(e) => {
+                        error!(terminal_id = %terminal_id, error = %e, "Exit watcher failed to wait for process");
+                        TerminalStatus::Completed {
+                            exit_code: None,
+                            signal: None,
+                        }
                     },
                 };
 
                 let mut map = terminals.write().await;
                 if let Some(entry) = map.get_mut(&terminal_id) {
                     if matches!(entry.session.status, TerminalStatus::Running) {
+                        debug!(terminal_id = %terminal_id, status = "running → completed", "Updating terminal status");
                         entry.session.status = status;
                         entry.exit_notify.notify_waiters();
                         entry.output_notify.notify_waiters();
                     }
+                } else {
+                    warn!(terminal_id = %terminal_id, "Terminal not found when setting exit status");
                 }
             }
         });
@@ -193,12 +220,14 @@ impl TerminalManager {
                     Ok(0) => break,
                     Ok(n) => {
                         let text = String::from_utf8_lossy(&buf[..n]);
+                        trace!(terminal_id = %terminal_id, bytes = n, "Output chunk received");
                         let mut map = terminals.write().await;
                         if let Some(entry) = map.get_mut(&terminal_id) {
                             if let Some(limit) = entry.session.output_byte_limit {
                                 let new_len = entry.session.output_buffer.len() + text.len();
                                 if new_len > limit as usize {
                                     entry.session.truncated = true;
+                                    trace!(terminal_id = %terminal_id, new_len, limit, "Output truncated (over limit)");
                                     continue;
                                 }
                             }
@@ -220,6 +249,7 @@ impl TerminalManager {
     }
 
     pub async fn wait_for_exit(&self, terminal_id: &str) -> Result<TerminalStatus, TerminalError> {
+        debug!(terminal_id = %terminal_id, "wait_for_exit called");
         let exit_notify = {
             let map = self.terminals.read().await;
             let entry = map.get(terminal_id).ok_or_else(|| {
@@ -235,15 +265,19 @@ impl TerminalManager {
         };
 
         exit_notify.notified().await;
+        debug!(terminal_id = %terminal_id, "wait_for_exit notified");
 
         let map = self.terminals.read().await;
         let entry = map.get(terminal_id).ok_or_else(|| {
             TerminalError::NotFound(terminal_id.to_string())
         })?;
-        Ok(entry.session.status.clone())
+        let status = entry.session.status.clone();
+        info!(terminal_id = %terminal_id, status = ?status, "wait_for_exit completed");
+        Ok(status)
     }
 
     pub async fn kill(&self, terminal_id: &str) -> Result<(), TerminalError> {
+        info!(terminal_id = %terminal_id, "kill called");
         let mut map = self.terminals.write().await;
         let entry = map.get_mut(terminal_id).ok_or_else(|| {
             TerminalError::NotFound(terminal_id.to_string())
@@ -271,12 +305,14 @@ impl TerminalManager {
             }
         }
         entry.session.status = TerminalStatus::Killed;
+        info!(terminal_id = %terminal_id, "Terminal killed");
         entry.exit_notify.notify_waiters();
         entry.output_notify.notify_waiters();
         Ok(())
     }
 
     pub async fn release(&self, terminal_id: &str) -> Result<(), TerminalError> {
+        info!(terminal_id = %terminal_id, "release called");
         let mut map = self.terminals.write().await;
         let entry = map.get_mut(terminal_id).ok_or_else(|| {
             TerminalError::NotFound(terminal_id.to_string())
@@ -305,6 +341,7 @@ impl TerminalManager {
         }
         entry.child = None;
         entry.session.status = TerminalStatus::Released;
+        info!(terminal_id = %terminal_id, "Terminal released");
         entry.exit_notify.notify_waiters();
         entry.output_notify.notify_waiters();
         Ok(())
@@ -323,17 +360,31 @@ impl TerminalManager {
     }
 
     pub async fn get_output(&self, terminal_id: &str) -> Option<(String, bool, Option<TerminalStatus>)> {
-        self.terminals.read().await.get(terminal_id).map(|e| {
+        let result = self.terminals.read().await.get(terminal_id).map(|e| {
+            let output_len = e.session.output_buffer.len();
+            let truncated = e.session.truncated;
+            let status = if !matches!(e.session.status, TerminalStatus::Running) {
+                Some(e.session.status.clone())
+            } else {
+                None
+            };
+            debug!(
+                terminal_id = %terminal_id,
+                output_len,
+                truncated,
+                has_exit_status = status.is_some(),
+                "get_output"
+            );
             (
                 e.session.output_buffer.clone(),
-                e.session.truncated,
-                if !matches!(e.session.status, TerminalStatus::Running) {
-                    Some(e.session.status.clone())
-                } else {
-                    None
-                },
+                truncated,
+                status,
             )
-        })
+        });
+        if result.is_none() {
+            warn!(terminal_id = %terminal_id, "get_output: terminal not found");
+        }
+        result
     }
 
     pub async fn append_output(&self, terminal_id: &str, output: &str) {

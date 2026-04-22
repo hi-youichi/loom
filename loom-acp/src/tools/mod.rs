@@ -2,7 +2,6 @@
 //!
 //! These tools allow Loom to leverage IDE capabilities when running as an ACP agent:
 //! - File system operations (fs/read_text_file, fs/write_text_file)
-//! - Terminal operations (terminal/create, etc.)
 //!
 //! Tools are only available when the Client declares support in initialize request.
 //! If a capability is not available, tools fall back to local execution or return errors.
@@ -10,18 +9,13 @@
 mod client_bridge;
 mod fs_tools;
 mod terminal_executor;
-mod terminal_tools;
 
 pub use client_bridge::{
     clear_client_bridge, get_client_bridge, set_client_bridge, AcpClientBridge,
     ClientBridgeTrait, NoOpClientBridge, TerminalExitResult, TerminalOutput,
 };
 pub use fs_tools::{ReadTextFileTool, WriteTextFileTool};
-pub use terminal_executor::TerminalCommandExecutor;
-pub use terminal_tools::{
-    CreateTerminalTool, KillTerminalTool, ReleaseTerminalTool, TerminalOutputTool,
-    WaitForExitTool,
-};
+pub use terminal_executor::{AcpBridgeCommandExecutor, TerminalCommandExecutor};
 
 use crate::client_capabilities::ClientCapabilitiesInfo;
 use loom::tools::Tool;
@@ -57,15 +51,6 @@ pub fn create_acp_tools(capabilities: &ClientCapabilitiesInfo) -> Vec<Box<dyn To
 
     if capabilities.can_write_text_file() {
         tools.push(Box::new(WriteTextFileTool::new()));
-    }
-
-    // Terminal tools
-    if capabilities.can_create_terminal() {
-        tools.push(Box::new(CreateTerminalTool::new()));
-        tools.push(Box::new(TerminalOutputTool::new()));
-        tools.push(Box::new(WaitForExitTool::new()));
-        tools.push(Box::new(KillTerminalTool::new()));
-        tools.push(Box::new(ReleaseTerminalTool::new()));
     }
 
     tools
@@ -110,19 +95,6 @@ mod tests {
         assert_eq!(tools.len(), 2);
     }
 
-    #[test]
-    fn test_create_acp_tools_all() {
-        let caps_json = json!({
-            "fs": {
-                "readTextFile": true,
-                "writeTextFile": true
-            },
-            "terminal": true
-        });
-        let caps = ClientCapabilitiesInfo::from_json(Some(caps_json));
-        let tools = create_acp_tools(&caps);
-        assert_eq!(tools.len(), 7); // 2 fs tools + 5 terminal tools
-    }
 
     #[test]
     fn test_tool_specs() {
@@ -134,31 +106,6 @@ mod tests {
         let write_tool = WriteTextFileTool::new();
         let spec = write_tool.spec();
         assert_eq!(spec.name, "fs/write_text_file");
-        assert!(spec.description.is_some());
-
-        let create_terminal_tool = CreateTerminalTool::new();
-        let spec = create_terminal_tool.spec();
-        assert_eq!(spec.name, "terminal_create");
-        assert!(spec.description.is_some());
-
-        let output_tool = TerminalOutputTool::new();
-        let spec = output_tool.spec();
-        assert_eq!(spec.name, "terminal_output");
-        assert!(spec.description.is_some());
-
-        let wait_tool = WaitForExitTool::new();
-        let spec = wait_tool.spec();
-        assert_eq!(spec.name, "terminal_wait_for_exit");
-        assert!(spec.description.is_some());
-
-        let kill_tool = KillTerminalTool::new();
-        let spec = kill_tool.spec();
-        assert_eq!(spec.name, "terminal_kill");
-        assert!(spec.description.is_some());
-
-        let release_tool = ReleaseTerminalTool::new();
-        let spec = release_tool.spec();
-        assert_eq!(spec.name, "terminal_release");
         assert!(spec.description.is_some());
     }
 }

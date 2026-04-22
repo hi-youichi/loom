@@ -136,6 +136,8 @@ pub struct ReactBuildConfig {
     /// Populated from agent profile `tools.builtin` config.
     pub builtin_tool_filter: Option<BuiltinToolFilter>,
     pub bash_executor: Option<Arc<dyn crate::tools::CommandExecutor>>,
+    pub extra_tools: Option<Arc<Vec<Arc<dyn crate::tools::Tool>>>>,
+    pub acp_session_id: Option<String>,
 }
 
 impl std::fmt::Debug for ReactBuildConfig {
@@ -145,6 +147,7 @@ impl std::fmt::Debug for ReactBuildConfig {
             .field("working_folder", &self.working_folder)
             .field("model", &self.model)
             .field("bash_executor", &self.bash_executor.as_ref().map(|_| "..."))
+            .field("extra_tools", &self.extra_tools.as_ref().map(|t| t.len()))
             .finish()
     }
 }
@@ -223,6 +226,8 @@ impl ReactBuildConfig {
                 .unwrap_or(false),
             builtin_tool_filter: None,
             bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
         }
     }
 }

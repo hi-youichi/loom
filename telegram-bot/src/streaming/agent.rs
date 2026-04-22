@@ -63,6 +63,8 @@ pub async fn run_loom_agent_streaming(
         dry_run: false,
     any_stream_event_sender: None,
             bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
         };
 
     let mapper = StreamEventMapper::new(tx.clone(), settings.streaming.show_act_phase);

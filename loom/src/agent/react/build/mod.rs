@@ -81,6 +81,7 @@ fn build_runnable_config(config: &ReactBuildConfig) -> Option<RunnableConfig> {
         user_id: config.user_id.clone(),
         resume_from_node_id: None,
         depth: None,
+        acp_session_id: config.acp_session_id.clone(),
         resume_value: None,
         resume_values_by_namespace: Default::default(),
         resume_values_by_interrupt_id: Default::default(),
@@ -366,6 +367,8 @@ mod tests {
             dry_run: false,
             builtin_tool_filter: None,
             bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
         }
     }
 

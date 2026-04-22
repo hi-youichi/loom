@@ -130,6 +130,8 @@ pub(super) async fn prepare_run(
         provider_type: resolved.provider_type,
     any_stream_event_sender: None,
             bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
         };
 
     // Handle both AgentType (react/dup/tot/got) and custom agent names

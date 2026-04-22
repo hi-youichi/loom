@@ -26,6 +26,15 @@ pub struct RunnableConfig {
     /// Current sub-agent nesting depth. Used by `InvokeAgentTool` to prevent
     /// infinite recursion. `None` or `Some(0)` means top-level.
     pub depth: Option<u32>,
+    /// ACP session_id from the IDE client.
+    ///
+    /// When running under ACP (Zed, JetBrains), this carries the real `sessionId`
+    /// assigned by the IDE. Propagated through `RunContext` → `ToolCallContext`
+    /// so that `AcpBridgeCommandExecutor` and ACP terminal tools can route
+    /// terminal operations to the correct session.
+    ///
+    /// `None` in non-ACP contexts (CLI, Telegram, etc.).
+    pub acp_session_id: Option<String>,
     /// Default resume value used when resuming a single pending interrupt.
     pub resume_value: Option<serde_json::Value>,
     /// Resume values keyed by checkpoint namespace.
@@ -61,6 +70,7 @@ mod tests {
             user_id: Some("u1".into()),
             resume_from_node_id: None,
             depth: None,
+            acp_session_id: None,
             resume_value: None,
             resume_values_by_namespace: Default::default(),
             resume_values_by_interrupt_id: Default::default(),

@@ -199,6 +199,12 @@ pub(crate) async fn build_tool_source(
                 }
             }
         }
+    if let Some(ref tools) = config.extra_tools {
+        for tool in tools.iter() {
+            use crate::tools::ArcTool;
+            aggregate.register_async(Box::new(ArcTool(tool.clone()))).await;
+        }
+    }
         aggregate
             .register_async(Box::new(InvokeAgentTool::new(
                 Arc::new(config.clone()),
@@ -404,6 +410,13 @@ pub(crate) async fn build_tool_source(
                     tracing::warn!("GitHub MCP spawn_blocking join failed: {}", join_e);
                 }
             }
+        }
+    }
+
+    if let Some(ref tools) = config.extra_tools {
+        for tool in tools.iter() {
+            use crate::tools::ArcTool;
+            aggregate.register_async(Box::new(ArcTool(tool.clone()))).await;
         }
     }
 

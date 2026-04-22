@@ -519,6 +519,7 @@ impl Node<ReActState> for ActNode {
                 depth: run_ctx.config.depth.unwrap_or(0),
                 run_cancellation: run_ctx.run_cancellation.clone(),
                 any_stream_event_sender: run_ctx.any_stream_event_sender.clone(),
+                acp_session_id: run_ctx.config.acp_session_id.clone(),
             };
             self.tools.set_call_context(Some(tool_ctx.clone()));
 

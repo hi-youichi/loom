@@ -1,3 +1,4 @@
+use config::log_format::{JsonWithSpanIds, TextWithSpanIds};
 use config::tracing_init::{
     build_env_filter, file_non_blocking_writer, resolve_log_path, LogRotate,
 };
@@ -5,10 +6,17 @@ use telegram_bot::TelegramBotConfig;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+fn is_json_format() -> bool {
+    std::env::var("LOG_FORMAT")
+        .map(|s| s.eq_ignore_ascii_case("json"))
+        .unwrap_or(false)
+}
+
 pub fn setup_logging(
     config: &TelegramBotConfig,
 ) -> Option<tracing_appender::non_blocking::WorkerGuard> {
     let filter = build_env_filter(&config.settings.log_level, &[]);
+    let json = is_json_format();
 
     if let Some(log_file) = &config.settings.log_file {
         let log_path = resolve_log_path(log_file.as_path(), None);
@@ -19,15 +27,29 @@ pub fn setup_logging(
 
         match file_non_blocking_writer(&log_path, LogRotate::None, "telegram-bot") {
             Ok((writer, guard)) => {
-                tracing_subscriber::registry()
-                    .with(filter)
-                    .with(tracing_subscriber::fmt::layer().with_writer(std::io::stdout))
-                    .with(
-                        tracing_subscriber::fmt::layer()
-                            .with_writer(writer)
-                            .with_ansi(false),
-                    )
-                    .init();
+                if json {
+                    tracing_subscriber::registry()
+                        .with(filter)
+                        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stdout))
+                        .with(
+                            tracing_subscriber::fmt::layer()
+                                .with_writer(writer)
+                                .with_ansi(false)
+                                .event_format(JsonWithSpanIds::default()),
+                        )
+                        .init();
+                } else {
+                    tracing_subscriber::registry()
+                        .with(filter)
+                        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stdout))
+                        .with(
+                            tracing_subscriber::fmt::layer()
+                                .with_writer(writer)
+                                .with_ansi(false)
+                                .event_format(TextWithSpanIds::default()),
+                        )
+                        .init();
+                };
 
                 info!("Logging to file: {:?}", log_path);
                 Some(guard)

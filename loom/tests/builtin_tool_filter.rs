@@ -51,6 +51,8 @@ fn make_config(filter: Option<BuiltinToolFilter>) -> (ReactBuildConfig, tempfile
         dry_run: false,
         builtin_tool_filter: filter,
         bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
     };
     (config, dir)
 }

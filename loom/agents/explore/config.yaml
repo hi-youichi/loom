@@ -1,7 +1,7 @@
 name: explore
 description: "File search specialist for navigating and exploring codebases."
 model:
-  tier: light
+  tier: standard
 tools:
   builtin:
     enabled:

@@ -3,13 +3,14 @@
 //! [`LoomAcpAgent`] implements `agent_client_protocol::Agent` and maps ACP requests
 //! to Loom sessions and execution. See [`crate::protocol`] for protocol and behavior details.
 
+use crate::client_capabilities::ClientCapabilitiesInfo;
 use crate::agent_registry::AgentRegistry;
 use crate::content::content_blocks_to_user_content;
 use crate::session::{SessionId as OurSessionId, SessionStore};
 use crate::session_config_store::SessionConfigStore;
 use crate::stream_bridge::SessionNotifier;
 use crate::terminal::TerminalManager;
-use crate::tools::TerminalCommandExecutor;
+use crate::tools::{create_acp_tools, AcpBridgeCommandExecutor, TerminalCommandExecutor};
 use agent_client_protocol::{
     Agent, AuthenticateRequest, AuthenticateResponse, CancelNotification, ForkSessionRequest,
     ForkSessionResponse, InitializeRequest, InitializeResponse, ListSessionsRequest,
@@ -40,6 +41,7 @@ pub struct LoomAcpAgent {
     pub(crate) config_store: SessionConfigStore,
     pub(crate) session_update_tx: Option<mpsc::Sender<SessionNotification>>,
     pub(crate) terminal_mgr: Arc<TerminalManager>,
+    pub(crate) client_capabilities: std::sync::RwLock<ClientCapabilitiesInfo>,
 }
 
 impl std::fmt::Debug for LoomAcpAgent {
@@ -67,6 +69,7 @@ impl LoomAcpAgent {
             config_store,
             session_update_tx: None,
             terminal_mgr: Arc::new(TerminalManager::new()),
+            client_capabilities: std::sync::RwLock::new(ClientCapabilitiesInfo::default()),
         })
     }
 
@@ -81,6 +84,7 @@ impl LoomAcpAgent {
             config_store,
             session_update_tx: Some(tx),
             terminal_mgr: Arc::new(TerminalManager::new()),
+            client_capabilities: std::sync::RwLock::new(ClientCapabilitiesInfo::default()),
         })
     }
 
@@ -299,6 +303,17 @@ impl Agent for LoomAcpAgent {
         args: InitializeRequest,
     ) -> agent_client_protocol::Result<InitializeResponse> {
         tracing::info!(protocol_version = ?args.protocol_version, "initialize called");
+        let caps_json = serde_json::to_value(&args.client_capabilities).ok();
+        let caps = ClientCapabilitiesInfo::from_json(caps_json);
+        if let Ok(mut guard) = self.client_capabilities.write() {
+            *guard = caps.clone();
+        }
+        tracing::info!(
+            terminal = caps.supports_terminal(),
+            fs_read = caps.can_read_text_file(),
+            fs_write = caps.can_write_text_file(),
+            "Client capabilities saved"
+        );
         // Build base response using the standard builder
         let base_response = InitializeResponse::new(args.protocol_version).agent_info(
             agent_client_protocol::Implementation::new("loom", env!("CARGO_PKG_VERSION")),
@@ -685,9 +700,29 @@ impl Agent for LoomAcpAgent {
             api_key: resolved.api_key,
             provider_type: resolved.provider_type,
             any_stream_event_sender,
-            bash_executor: Some(Arc::new(TerminalCommandExecutor::new(
-                self.terminal_mgr.clone(),
-            ))),
+            acp_session_id: Some(args.session_id.to_string()),
+            bash_executor: {
+                let caps = self.client_capabilities.read().unwrap_or_else(|e| e.into_inner());
+                if caps.supports_terminal() {
+                    tracing::info!("Using ACP bridge for bash execution");
+                    Some(Arc::new(AcpBridgeCommandExecutor::new()) as Arc<dyn loom::tools::CommandExecutor>)
+                } else {
+                    tracing::info!("Using local terminal for bash execution");
+                    Some(Arc::new(TerminalCommandExecutor::new(
+                        self.terminal_mgr.clone(),
+                    )) as Arc<dyn loom::tools::CommandExecutor>)
+                }
+            },
+            extra_tools: {
+                let caps = self.client_capabilities.read().unwrap_or_else(|e| e.into_inner());
+                let tools = create_acp_tools(&caps);
+                if tools.is_empty() {
+                    None
+                } else {
+                    tracing::info!(count = tools.len(), "Registering ACP tools");
+                    Some(Arc::new(tools.into_iter().map(|t| Arc::from(t) as Arc<dyn loom::tools::Tool>).collect()))
+                }
+            },
         };
 
         let session_id = args.session_id.clone();
@@ -780,6 +815,7 @@ impl Agent for LoomAcpAgent {
             user_id: None,
             resume_from_node_id: None,
             depth: None,
+            acp_session_id: None,
             resume_value: None,
             resume_values_by_namespace: Default::default(),
             resume_values_by_interrupt_id: Default::default(),

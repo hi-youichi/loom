@@ -304,6 +304,8 @@ pub fn extract_locations(tool_name: &str, args: &serde_json::Value) -> Vec<ToolC
 pub fn content_blocks_to_user_content(
     blocks: &[agent_client_protocol::ContentBlock],
 ) -> Result<UserContent, ContentError> {
+    use agent_client_protocol::{EmbeddedResource, EmbeddedResourceResource};
+
     if blocks.is_empty() {
         return Err(ContentError::EmptyMessage);
     }
@@ -351,9 +353,8 @@ pub fn content_blocks_to_user_content(
                 });
             }
 
-            agent_client_protocol::ContentBlock::Resource(r) => {
-                use agent_client_protocol::EmbeddedResourceResource;
-                match &r.resource {
+            agent_client_protocol::ContentBlock::Resource(EmbeddedResource { resource, .. }) => {
+                match resource {
                     EmbeddedResourceResource::TextResourceContents(text_res) => {
                         parts.push(ContentPart::Text {
                             text: format!(
@@ -377,10 +378,6 @@ pub fn content_blocks_to_user_content(
                                 data: blob_res.blob.clone(),
                             });
                         } else {
-                            let mime = blob_res
-                                .mime_type
-                                .as_deref()
-                                .unwrap_or("application/octet-stream");
                             parts.push(ContentPart::Text {
                                 text: format!(
                                     "--- Binary Resource ---\nURI: {}\nMIME: {}\nSize: {} bytes\n--- End Resource ---",

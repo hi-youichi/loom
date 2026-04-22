@@ -22,6 +22,7 @@ thiserror = { workspace = true }
 ureq = { version = "3", default-features = true }
 tracing-subscriber = { version = "0.3", optional = true, features = [
     "env-filter",
+    "json",
 ] }
 tracing-appender = { version = "0.2", optional = true }
 tracing-core = { version = "0.1", optional = true }

@@ -8,6 +8,7 @@
 //! Subcommand `reload`: sends SIGHUP to the process whose PID is in the PID file (Unix only).
 
 use std::path::PathBuf;
+use std::str::FromStr;
 
 /// Exit code used when exiting for reload (caller should restart the process).
 pub const RELOAD_EXIT_CODE: i32 = 203;
@@ -55,6 +56,10 @@ struct Args {
     /// Log rotation strategy: none, daily, hourly, minutely
     #[arg(long, default_value = "daily", value_name = "STRATEGY")]
     log_rotate: String,
+
+    /// Log output format: text (default) or json
+    #[arg(long, default_value = "text", value_name = "FORMAT")]
+    log_format: String,
 
     #[command(subcommand)]
     cmd: Option<Cmd>,
@@ -145,6 +150,7 @@ fn run_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send + Sync>
         level: args.log_level.clone(),
         file: args.log_file.clone(),
         rotate: config::tracing_init::LogRotate::from_str_or_daily(&args.log_rotate),
+        format: loom_acp::logging::LogFormat::from_str(&args.log_format).unwrap_or_default(),
     });
 
     let _pid_guard = write_pid_file(&acp_log_dir());
