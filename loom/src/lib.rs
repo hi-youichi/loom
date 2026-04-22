@@ -262,7 +262,7 @@ pub use tool_source::{
     TOOL_BASH, TOOL_GET_RECENT_MESSAGES, TOOL_LIST_MEMORIES, TOOL_RECALL, TOOL_REMEMBER,
     TOOL_SEARCH_MEMORIES, TOOL_WEB_FETCHER,
 };
-pub use tools::{register_mcp_tools, BashTool, McpToolAdapter};
+pub use tools::{register_mcp_tools, BashTool, CommandExecutor, LocalCommandExecutor, McpToolAdapter};
 pub use traits::Agent;
 pub use user_message::{
     NoOpUserMessageStore, SqliteUserMessageStore, UserMessageStore, UserMessageStoreError,

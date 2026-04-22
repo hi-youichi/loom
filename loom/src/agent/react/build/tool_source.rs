@@ -42,10 +42,20 @@ pub(crate) async fn build_tool_source(
         aggregate
             .register_async(Box::new(WebFetcherTool::new()))
             .await;
-        #[cfg(not(windows))]
-        let bash_tool = match &working_folder_arc {
-            Some(wf) => BashTool::with_working_folder(Arc::clone(wf)),
-            None => BashTool::new(),
+    #[cfg(not(windows))]
+        let bash_tool = if let Some(ref executor) = config.bash_executor {
+            match &working_folder_arc {
+                Some(wf) => BashTool::with_working_folder_and_executor(
+                    Arc::clone(wf),
+                    executor.clone(),
+                ),
+                None => BashTool::with_executor(executor.clone()),
+            }
+        } else {
+            match &working_folder_arc {
+                Some(wf) => BashTool::with_working_folder(Arc::clone(wf)),
+                None => BashTool::new(),
+            }
         };
         #[cfg(not(windows))]
         aggregate.register_async(Box::new(bash_tool)).await;
@@ -224,9 +234,19 @@ pub(crate) async fn build_tool_source(
         .register_async(Box::new(WebFetcherTool::new()))
         .await;
     #[cfg(not(windows))]
-    let bash_tool = match &working_folder_arc {
-        Some(wf) => BashTool::with_working_folder(Arc::clone(wf)),
-        None => BashTool::new(),
+    let bash_tool = if let Some(ref executor) = config.bash_executor {
+        match &working_folder_arc {
+            Some(wf) => BashTool::with_working_folder_and_executor(
+                Arc::clone(wf),
+                executor.clone(),
+            ),
+            None => BashTool::with_executor(executor.clone()),
+        }
+    } else {
+        match &working_folder_arc {
+            Some(wf) => BashTool::with_working_folder(Arc::clone(wf)),
+            None => BashTool::new(),
+        }
     };
     #[cfg(not(windows))]
     aggregate.register_async(Box::new(bash_tool)).await;

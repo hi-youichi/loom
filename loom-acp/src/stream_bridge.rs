@@ -161,6 +161,14 @@ fn extract_title_from_react_event(ev: &StreamEvent<loom::ReActState>) -> Option<
     }
 }
 
+fn resolve_tool_call_id(call_id: &Option<String>) -> String {
+    call_id
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("tool-{}", Uuid::new_v4()))
+}
+
 /// Uniform mapping for any `StreamEvent<S>` (uses only S-independent fields).
 fn stream_event_to_updates_inner<S>(ev: &StreamEvent<S>) -> Vec<StreamUpdate>
 where
@@ -190,9 +198,7 @@ where
             name,
             arguments,
         } => {
-            let id = call_id
-                .clone()
-                .unwrap_or_else(|| format!("tool-{}", Uuid::new_v4()));
+            let id = resolve_tool_call_id(call_id);
             vec![StreamUpdate::ToolCallStarted {
                 tool_call_id: id,
                 name: name.clone(),
@@ -201,22 +207,18 @@ where
             }]
         }
         StreamEvent::ToolStart { call_id, name: _ } => {
-            let id = call_id.clone().unwrap_or_default();
-            if id.is_empty() {
-                vec![]
-            } else {
-                vec![StreamUpdate::ToolCallUpdated {
-                    tool_call_id: id,
-                    status: "running".to_string(),
-                    output: None,
-                    raw_output: None,
-                }]
-            }
+            let id = resolve_tool_call_id(call_id);
+            vec![StreamUpdate::ToolCallUpdated {
+                tool_call_id: id,
+                status: "running".to_string(),
+                output: None,
+                raw_output: None,
+            }]
         }
         StreamEvent::ToolOutput {
             call_id, content, ..
         } => {
-            let id = call_id.clone().unwrap_or_default();
+            let id = resolve_tool_call_id(call_id);
             
             // Try to deserialize content as ToolCallContent to check for Diff
             if let Ok(loom::tool_source::ToolCallContent::Diff { path, old_text, new_text }) =
@@ -245,7 +247,7 @@ where
             is_error,
             raw_result,
         } => {
-            let id = call_id.clone().unwrap_or_default();
+            let id = resolve_tool_call_id(call_id);
 
             let is_diff_output = raw_result
                 .as_deref()
@@ -309,9 +311,7 @@ where
             arguments_delta,
         } => {
             // Generate or use existing call_id
-            let id = call_id
-                .clone()
-                .unwrap_or_else(|| format!("tool-chunk-{}", Uuid::new_v4()));
+            let id = resolve_tool_call_id(call_id);
             vec![StreamUpdate::ToolCallChunk {
                 tool_call_id: id,
                 name: name.clone(),
@@ -453,7 +453,7 @@ fn parse_todo_result_to_plan_entries(result: &str) -> Option<Vec<PlanEntry>> {
 }
 
 fn parse_text_output_to_raw_value(output: &str) -> serde_json::Value {
-    serde_json::json!(output)
+    serde_json::from_str(output).unwrap_or_else(|_| serde_json::json!(output))
 }
 
 pub fn name_to_tool_kind(name: &str) -> ToolKind {

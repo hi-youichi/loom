@@ -266,6 +266,11 @@ pub async fn run_stdio_loop() -> Result<(), Box<dyn std::error::Error + Send + S
             let conn = Arc::new(connection);
             let conn_drain = conn.clone();
 
+            tools::set_client_bridge(Arc::new(
+                tools::AcpClientBridge::new(conn.clone()),
+            ))
+            .await;
+
             // Create drain task that processes session notifications concurrently
             let drain_task = {
                 let conn = conn_drain.clone();

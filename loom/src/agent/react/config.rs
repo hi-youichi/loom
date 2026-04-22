@@ -70,7 +70,7 @@ pub struct GotRunnerConfig {
 }
 
 /// Configuration for building ReAct run context.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ReactBuildConfig {
     pub db_path: Option<String>,
     pub thread_id: Option<String>,
@@ -135,6 +135,18 @@ pub struct ReactBuildConfig {
     /// Optional filter for builtin tools (enabled whitelist / disabled blacklist).
     /// Populated from agent profile `tools.builtin` config.
     pub builtin_tool_filter: Option<BuiltinToolFilter>,
+    pub bash_executor: Option<Arc<dyn crate::tools::CommandExecutor>>,
+}
+
+impl std::fmt::Debug for ReactBuildConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ReactBuildConfig")
+            .field("db_path", &self.db_path)
+            .field("working_folder", &self.working_folder)
+            .field("model", &self.model)
+            .field("bash_executor", &self.bash_executor.as_ref().map(|_| "..."))
+            .finish()
+    }
 }
 
 impl ReactBuildConfig {
@@ -210,6 +222,7 @@ impl ReactBuildConfig {
                 .map(|s| matches!(s.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
                 .unwrap_or(false),
             builtin_tool_filter: None,
+            bash_executor: None,
         }
     }
 }

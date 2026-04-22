@@ -49,6 +49,7 @@ fn base_config(working_folder: std::path::PathBuf) -> ReactBuildConfig {
         max_sub_agent_depth: None,
         dry_run: false,
         builtin_tool_filter: None,
+            bash_executor: None,
     }
 }
 

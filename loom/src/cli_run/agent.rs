@@ -191,6 +191,7 @@ pub struct RunOptions {
     /// When set, this is propagated through `RunContext` → `ToolCallContext` so that
     /// sub-agent invocations can forward stream events directly to ACP.
     pub any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
+    pub bash_executor: Option<Arc<dyn crate::tools::CommandExecutor>>,
 }
 
 impl std::fmt::Debug for RunOptions {
@@ -215,6 +216,7 @@ impl std::fmt::Debug for RunOptions {
             .field("output_timestamp", &self.output_timestamp)
             .field("dry_run", &self.dry_run)
             .field("any_stream_event_sender", &self.any_stream_event_sender.as_ref().map(|_| "..."))
+            .field("bash_executor", &self.bash_executor.as_ref().map(|_| "..."))
             .finish()
     }
 }
@@ -328,6 +330,9 @@ pub async fn run_agent(
     llm_override: Option<Box<dyn LlmClient>>,
 ) -> Result<RunCompletion, RunError> {
     let (_helve, mut config, _resolved_agent) = build_helve_config(opts);
+    if let Some(ref executor) = opts.bash_executor {
+        config.bash_executor = Some(executor.clone());
+    }
     let thread_id_log = config.thread_id.as_deref().unwrap_or("").to_string();
     let kind = match cmd {
         RunCmd::React => "react",
@@ -592,6 +597,7 @@ pub async fn run_agent_with_provider(
         api_key: provider.api_key,
         provider_type: provider.provider_type,
         any_stream_event_sender: None,
+        bash_executor: None,
     };
 
     // Run with LLM override
@@ -627,6 +633,7 @@ mod tests {
             api_key: None,
             provider_type: None,
             any_stream_event_sender: None,
+            bash_executor: None,
         }
     }
 
@@ -674,6 +681,7 @@ mod tests {
             max_sub_agent_depth: None,
             dry_run: false,
             builtin_tool_filter: None,
+            bash_executor: None,
         }
     }
 
@@ -728,6 +736,7 @@ mod tests {
             api_key: None,
             provider_type: None,
         any_stream_event_sender: None,
+        bash_executor: None,
         };
         assert!(build_runner(&cfg, &opts, &RunCmd::React, None)
             .await
