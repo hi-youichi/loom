@@ -1053,6 +1053,7 @@ mod tests {
                 base_url: Some("https://mock.test/v1".into()),
                 api_key: Some("sk-mock".into()),
                 provider_type: Some("openai_compat".into()),
+                provider_name: Some("mock-provider".into()),
             })
         }
     }
