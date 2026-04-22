@@ -2,18 +2,37 @@
 mod tests {
     use loom_acp::terminal::{TerminalError, TerminalManager, TerminalStatus};
 
+    fn echo_cmd(msg: &str) -> (String, Vec<String>) {
+        if cfg!(windows) {
+            ("cmd".to_string(), vec!["/C".to_string(), format!("echo {}", msg)])
+        } else {
+            ("/bin/sh".to_string(), vec!["-c".to_string(), format!("echo {}", msg)])
+        }
+    }
+
+    fn long_running_cmd() -> (String, Vec<String>) {
+        if cfg!(windows) {
+            ("cmd".to_string(), vec!["/C".to_string(), "ping -n 60 127.0.0.1".to_string()])
+        } else {
+            ("/bin/sh".to_string(), vec!["-c".to_string(), "sleep 60".to_string()])
+        }
+    }
+
+    fn env_echo_cmd() -> (String, Vec<String>) {
+        if cfg!(windows) {
+            ("cmd".to_string(), vec!["/C".to_string(), "echo %MY_VAR%".to_string()])
+        } else {
+            ("/bin/sh".to_string(), vec!["-c".to_string(), "echo $MY_VAR".to_string()])
+        }
+    }
+
     #[tokio::test]
     async fn test_terminal_create_and_output() {
         let manager = TerminalManager::new();
+        let (cmd, args) = echo_cmd("hello");
 
         let term_id = manager
-            .create_terminal(
-                "cmd".to_string(),
-                vec!["/C".to_string(), "echo hello".to_string()],
-                None,
-                vec![],
-                None,
-            )
+            .create_terminal(cmd, args, None, vec![], None)
             .await
             .unwrap();
 
@@ -34,15 +53,10 @@ mod tests {
     #[tokio::test]
     async fn test_terminal_kill() {
         let manager = TerminalManager::new();
+        let (cmd, args) = long_running_cmd();
 
         let term_id = manager
-            .create_terminal(
-                "cmd".to_string(),
-                vec!["/C".to_string(), "ping -n 60 127.0.0.1".to_string()],
-                None,
-                vec![],
-                None,
-            )
+            .create_terminal(cmd, args, None, vec![], None)
             .await
             .unwrap();
 
@@ -61,15 +75,10 @@ mod tests {
     #[tokio::test]
     async fn test_terminal_release() {
         let manager = TerminalManager::new();
+        let (cmd, args) = long_running_cmd();
 
         let term_id = manager
-            .create_terminal(
-                "cmd".to_string(),
-                vec!["/C".to_string(), "ping -n 60 127.0.0.1".to_string()],
-                None,
-                vec![],
-                None,
-            )
+            .create_terminal(cmd, args, None, vec![], None)
             .await
             .unwrap();
 
@@ -87,15 +96,10 @@ mod tests {
     #[tokio::test]
     async fn test_terminal_wait_for_exit() {
         let manager = TerminalManager::new();
+        let (cmd, args) = echo_cmd("done");
 
         let term_id = manager
-            .create_terminal(
-                "cmd".to_string(),
-                vec!["/C".to_string(), "echo done".to_string()],
-                None,
-                vec![],
-                None,
-            )
+            .create_terminal(cmd, args, None, vec![], None)
             .await
             .unwrap();
 
@@ -134,11 +138,12 @@ mod tests {
     #[tokio::test]
     async fn test_terminal_env_vars() {
         let manager = TerminalManager::new();
+        let (cmd, args) = env_echo_cmd();
 
         let term_id = manager
             .create_terminal(
-                "cmd".to_string(),
-                vec!["/C".to_string(), "echo %MY_VAR%".to_string()],
+                cmd,
+                args,
                 None,
                 vec![("MY_VAR".to_string(), "test_value".to_string())],
                 None,
@@ -162,24 +167,15 @@ mod tests {
     async fn test_multiple_terminals() {
         let manager = TerminalManager::new();
 
+        let (cmd1, args1) = echo_cmd("one");
+        let (cmd2, args2) = echo_cmd("two");
+
         let term1 = manager
-            .create_terminal(
-                "cmd".to_string(),
-                vec!["/C".to_string(), "echo one".to_string()],
-                None,
-                vec![],
-                None,
-            )
+            .create_terminal(cmd1, args1, None, vec![], None)
             .await
             .unwrap();
         let term2 = manager
-            .create_terminal(
-                "cmd".to_string(),
-                vec!["/C".to_string(), "echo two".to_string()],
-                None,
-                vec![],
-                None,
-            )
+            .create_terminal(cmd2, args2, None, vec![], None)
             .await
             .unwrap();
 
@@ -197,15 +193,10 @@ mod tests {
     #[tokio::test]
     async fn test_terminal_output_byte_limit() {
         let manager = TerminalManager::new();
+        let (cmd, args) = echo_cmd("abcdefghijklmnopqrstuvwxyz");
 
         let term_id = manager
-            .create_terminal(
-                "cmd".to_string(),
-                vec!["/C".to_string(), "echo abcdefghijklmnopqrstuvwxyz".to_string()],
-                None,
-                vec![],
-                Some(10),
-            )
+            .create_terminal(cmd, args, None, vec![], Some(10))
             .await
             .unwrap();
 
