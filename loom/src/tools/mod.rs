@@ -18,7 +18,7 @@ pub mod twitter;
 pub mod web;
 
 pub use aggregate_source::AggregateToolSource;
-pub use bash::{BashTool, TOOL_BASH};
+pub use bash::{BashTool, CommandExecutor, LocalCommandExecutor, TOOL_BASH};
 pub use batch::{BatchTool, TOOL_BATCH};
 pub use conversation::{GetRecentMessagesTool, TOOL_GET_RECENT_MESSAGES};
 pub use exa::{ExaCodesearchTool, ExaWebsearchTool};

@@ -363,6 +363,7 @@ mod tests {
             max_sub_agent_depth: None,
             dry_run: false,
             builtin_tool_filter: None,
+            bash_executor: None,
         }
     }
 

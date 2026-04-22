@@ -8,6 +8,8 @@ use crate::content::content_blocks_to_user_content;
 use crate::session::{SessionId as OurSessionId, SessionStore};
 use crate::session_config_store::SessionConfigStore;
 use crate::stream_bridge::SessionNotifier;
+use crate::terminal::TerminalManager;
+use crate::tools::TerminalCommandExecutor;
 use agent_client_protocol::{
     Agent, AuthenticateRequest, AuthenticateResponse, CancelNotification, ForkSessionRequest,
     ForkSessionResponse, InitializeRequest, InitializeResponse, ListSessionsRequest,
@@ -32,13 +34,24 @@ use tokio::sync::mpsc;
 /// Handle for Loom as an ACP Agent. Implements [`Agent`], holds the session store.
 /// If [`session_update_tx`](Self::session_update_tx) is set, prompt execution sends
 /// session/update notifications through this channel.
-#[derive(Debug)]
 pub struct LoomAcpAgent {
     pub(crate) sessions: SessionStore,
     pub(crate) agent_registry: AgentRegistry,
     pub(crate) config_store: SessionConfigStore,
-    /// If Some, on_event during prompt converts stream events to SessionNotification and try_sends here.
     pub(crate) session_update_tx: Option<mpsc::Sender<SessionNotification>>,
+    pub(crate) terminal_mgr: Arc<TerminalManager>,
+}
+
+impl std::fmt::Debug for LoomAcpAgent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LoomAcpAgent")
+            .field("sessions", &"..")
+            .field("agent_registry", &"..")
+            .field("config_store", &"..")
+            .field("session_update_tx", &self.session_update_tx.is_some())
+            .field("terminal_mgr", &"..")
+            .finish()
+    }
 }
 
 impl LoomAcpAgent {
@@ -53,10 +66,10 @@ impl LoomAcpAgent {
             agent_registry: AgentRegistry::new(),
             config_store,
             session_update_tx: None,
+            terminal_mgr: Arc::new(TerminalManager::new()),
         })
     }
 
-    /// Construct an Agent with a session/update sender for the stdio loop to push stream updates to the client.
     pub fn with_session_update_tx(tx: mpsc::Sender<SessionNotification>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let db_path = loom::memory::default_memory_db_path();
         let config_store = SessionConfigStore::new(db_path.to_str().unwrap_or_default())
@@ -67,6 +80,7 @@ impl LoomAcpAgent {
             agent_registry: AgentRegistry::new(),
             config_store,
             session_update_tx: Some(tx),
+            terminal_mgr: Arc::new(TerminalManager::new()),
         })
     }
 
@@ -671,6 +685,9 @@ impl Agent for LoomAcpAgent {
             api_key: resolved.api_key,
             provider_type: resolved.provider_type,
             any_stream_event_sender,
+            bash_executor: Some(Arc::new(TerminalCommandExecutor::new(
+                self.terminal_mgr.clone(),
+            ))),
         };
 
         let session_id = args.session_id.clone();

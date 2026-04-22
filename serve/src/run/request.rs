@@ -129,7 +129,8 @@ pub(super) async fn prepare_run(
         api_key: resolved.api_key,
         provider_type: resolved.provider_type,
     any_stream_event_sender: None,
-    };
+            bash_executor: None,
+        };
 
     // Handle both AgentType (react/dup/tot/got) and custom agent names
     let cmd = match r.agent {

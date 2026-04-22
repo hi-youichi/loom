@@ -47,7 +47,8 @@ pub(crate) fn build_run_options(args: &Args, message: String, got_adaptive: bool
         api_key: None,
         provider_type: None,
         any_stream_event_sender: None,
-    }
+            bash_executor: None,
+        }
 }
 
 fn print_session_status(session_id: Option<&str>, ended: bool, json: bool) {

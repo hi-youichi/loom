@@ -60,5 +60,6 @@ pub fn run_options_from_issues_event(
         api_key: None,
         provider_type: None,
         any_stream_event_sender: None,
-    }
+            bash_executor: None,
+        }
 }

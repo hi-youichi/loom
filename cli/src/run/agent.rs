@@ -767,6 +767,7 @@ mod tests {
             max_sub_agent_depth: None,
             dry_run: false,
             builtin_tool_filter: None,
+            bash_executor: None,
         }
     }
 
@@ -1157,6 +1158,7 @@ mod tests {
             api_key: None,
             provider_type: None,
     any_stream_event_sender: None,
+            bash_executor: None,
         }
     }
 

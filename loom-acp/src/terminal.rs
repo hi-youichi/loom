@@ -45,6 +45,7 @@ pub enum TerminalError {
 struct TerminalEntry {
     session: TerminalSession,
     child: Option<Child>,
+    pid: Option<u32>,
     output_notify: Arc<Notify>,
     exit_notify: Arc<Notify>,
 }
@@ -93,6 +94,7 @@ impl TerminalManager {
             .spawn()
             .map_err(|e| TerminalError::CreationFailed(e.to_string()))?;
 
+        let pid = child.id();
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
 
@@ -114,6 +116,7 @@ impl TerminalManager {
         let entry = TerminalEntry {
             session,
             child: Some(child),
+            pid,
             output_notify: output_notify.clone(),
             exit_notify: exit_notify.clone(),
         };
@@ -148,22 +151,15 @@ impl TerminalManager {
                 let result = child.wait().await;
                 let status = match result {
                     Ok(exit_status) => {
-                        if exit_status.success() {
-                            TerminalStatus::Completed {
-                                exit_code: exit_status.code().map(|c| c as u32),
-                                signal: None,
-                            }
-                        } else if exit_status.code().is_some() {
-                            TerminalStatus::Completed {
-                                exit_code: exit_status.code().map(|c| c as u32),
-                                signal: None,
-                            }
-                        } else {
-                            TerminalStatus::Completed {
-                                exit_code: None,
-                                signal: None,
-                            }
-                        }
+                        let exit_code = exit_status.code().map(|c| c as u32);
+                        #[cfg(unix)]
+                        let signal = {
+                            use std::os::unix::process::ExitStatusExt;
+                            exit_status.signal().map(|s| format!("SIG{}", s))
+                        };
+                        #[cfg(not(unix))]
+                        let signal = None;
+                        TerminalStatus::Completed { exit_code, signal }
                     }
                     Err(_) => TerminalStatus::Completed {
                         exit_code: None,
@@ -202,15 +198,8 @@ impl TerminalManager {
                             if let Some(limit) = entry.session.output_byte_limit {
                                 let new_len = entry.session.output_buffer.len() + text.len();
                                 if new_len > limit as usize {
-                                    let excess = new_len - limit as usize;
-                                    let current_len = entry.session.output_buffer.len();
-                                    if excess < current_len {
-                                        entry.session.output_buffer =
-                                            entry.session.output_buffer[excess..].to_string();
-                                    } else {
-                                        entry.session.output_buffer.clear();
-                                    }
                                     entry.session.truncated = true;
+                                    continue;
                                 }
                             }
                             entry.session.output_buffer.push_str(&text);
@@ -239,6 +228,9 @@ impl TerminalManager {
             if matches!(entry.session.status, TerminalStatus::Released) {
                 return Err(TerminalError::AlreadyReleased(terminal_id.to_string()));
             }
+            if !matches!(entry.session.status, TerminalStatus::Running) {
+                return Ok(entry.session.status.clone());
+            }
             entry.exit_notify.clone()
         };
 
@@ -263,6 +255,20 @@ impl TerminalManager {
 
         if let Some(ref mut child) = entry.child {
             let _ = child.kill().await;
+        } else if let Some(pid) = entry.pid {
+            #[cfg(unix)]
+            {
+                unsafe {
+                    libc::kill(pid as i32, libc::SIGKILL);
+                }
+            }
+            #[cfg(windows)]
+            {
+                let _ = Command::new("taskkill")
+                    .args(["/PID", &pid.to_string(), "/F", "/T"])
+                    .output()
+                    .await;
+            }
         }
         entry.session.status = TerminalStatus::Killed;
         entry.exit_notify.notify_waiters();
@@ -282,6 +288,20 @@ impl TerminalManager {
 
         if let Some(ref mut child) = entry.child {
             let _ = child.kill().await;
+        } else if let Some(pid) = entry.pid {
+            #[cfg(unix)]
+            {
+                unsafe {
+                    libc::kill(pid as i32, libc::SIGKILL);
+                }
+            }
+            #[cfg(windows)]
+            {
+                let _ = Command::new("taskkill")
+                    .args(["/PID", &pid.to_string(), "/F", "/T"])
+                    .output()
+                    .await;
+            }
         }
         entry.child = None;
         entry.session.status = TerminalStatus::Released;

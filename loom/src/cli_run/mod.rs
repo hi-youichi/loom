@@ -707,6 +707,7 @@ mod tests {
             api_key: None,
             provider_type: None,
             any_stream_event_sender: None,
+            bash_executor: None,
         }
     }
 
@@ -1161,6 +1162,7 @@ mod tests {
             api_key: None,
             provider_type: None,
             any_stream_event_sender: None,
+            bash_executor: None,
         };
         let (_helve, config, _resolved) = build_helve_config(&opts);
         assert_eq!(config.model_tier, Some(crate::model_spec::ModelTier::Light));
@@ -1208,6 +1210,7 @@ mod tests {
             api_key: None,
             provider_type: None,
             any_stream_event_sender: None,
+            bash_executor: None,
         };
         let (_helve, config, _resolved) = build_helve_config(&opts);
         assert_eq!(config.model.as_deref(), Some("anthropic/claude-sonnet-4"));

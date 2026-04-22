@@ -1,4 +1,4 @@
-﻿//! Integration test: build_react_runner then invoke (config → runner → one invoke).
+//! Integration test: build_react_runner then invoke (config → runner → one invoke).
 //!
 //! Phase 0 refactoring: ensures the full pipeline from ReactBuildConfig through
 //! build_react_runner and ReactRunner::invoke is covered by a test.
@@ -50,6 +50,7 @@ fn minimal_config() -> ReactBuildConfig {
         max_sub_agent_depth: None,
         dry_run: false,
         builtin_tool_filter: None,
+            bash_executor: None,
     }
 }
 

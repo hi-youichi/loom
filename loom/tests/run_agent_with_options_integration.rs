@@ -45,7 +45,8 @@ fn opts(working_folder: PathBuf) -> RunOptions {
         api_key: None,
         provider_type: None,
         any_stream_event_sender: None,
-    }
+            bash_executor: None,
+        }
 }
 
 /// Integration test: run_agent_with_options with invalid working folder returns Err.
@@ -203,7 +204,8 @@ async fn session_id_restores_context_from_checkpoint() {
         api_key: None,
         provider_type: None,
     any_stream_event_sender: None,
-    };
+            bash_executor: None,
+        };
     let opts2 = RunOptions {
         message: UserContent::Text("Second message".to_string()),
         working_folder: Some(working),
@@ -224,7 +226,8 @@ async fn session_id_restores_context_from_checkpoint() {
         api_key: None,
         provider_type: None,
     any_stream_event_sender: None,
-    };
+            bash_executor: None,
+        };
 
     let result1 = run_agent_with_llm_override(
         &opts1,

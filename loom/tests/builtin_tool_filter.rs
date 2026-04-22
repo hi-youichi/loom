@@ -48,6 +48,7 @@ fn make_config(filter: Option<BuiltinToolFilter>) -> (ReactBuildConfig, tempfile
         max_sub_agent_depth: None,
         dry_run: false,
         builtin_tool_filter: filter,
+        bash_executor: None,
     };
     (config, dir)
 }
