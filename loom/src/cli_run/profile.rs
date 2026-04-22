@@ -93,6 +93,8 @@ pub struct RoleConfig {
     pub file: Option<PathBuf>,
     #[serde(default)]
     pub content: Option<String>,
+    #[serde(default)]
+    pub append: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -228,8 +230,30 @@ fn resolve_extends_path(parent: &Path, extends: &str) -> Option<PathBuf> {
     None
 }
 
+fn resolve_role_content(role: &RoleConfig) -> String {
+    role.content.clone().unwrap_or_default()
+}
+
+fn merge_role(base: Option<RoleConfig>, over: Option<RoleConfig>) -> Option<RoleConfig> {
+    match (base, over) {
+        (None, over) => over,
+        (base, None) => base,
+        (Some(base), Some(over)) if over.append == Some(true) => {
+            let base_content = resolve_role_content(&base);
+            let over_content = resolve_role_content(&over);
+            Some(RoleConfig {
+                file: None,
+                content: Some(format!("{}\n\n{}", base_content, over_content)),
+                append: Some(false),
+            })
+        }
+        (_, Some(over)) => Some(over),
+    }
+}
+
 /// Merges base and override. Override wins for simple values and arrays; objects merged recursively.
 /// Special: `tools.builtin.disabled` is combined (base + override, deduped).
+/// Special: `role.append == true` appends override instructions after base instructions.
 fn merge_profiles(mut base: AgentProfile, over: AgentProfile) -> AgentProfile {
     if !over.name.is_empty() {
         base.name = over.name;
@@ -241,7 +265,7 @@ fn merge_profiles(mut base: AgentProfile, over: AgentProfile) -> AgentProfile {
         base.version = over.version;
     }
     if over.role.is_some() {
-        base.role = over.role;
+        base.role = merge_role(base.role, over.role);
     }
     if over.model.is_some() {
         base.model = over.model;
@@ -310,6 +334,7 @@ pub fn load_agent_profile(path: &Path) -> Result<AgentProfile, ProfileError> {
         profile.role = Some(RoleConfig {
             file: None,
             content: Some(body),
+            append: None,
         });
     }
 
@@ -1257,5 +1282,88 @@ tools:
         let config: ModelConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.name.as_deref(), Some("anthropic/claude-sonnet-4"));
         assert_eq!(config.tier, Some(ModelTier::Light));
+    }
+
+    #[test]
+    fn merge_role_override_when_no_append() {
+        let base = Some(RoleConfig {
+            file: None,
+            content: Some("base instructions".to_string()),
+            append: None,
+        });
+        let over = Some(RoleConfig {
+            file: None,
+            content: Some("override instructions".to_string()),
+            append: None,
+        });
+        let result = merge_role(base, over);
+        assert_eq!(result.unwrap().content.as_deref(), Some("override instructions"));
+    }
+
+    #[test]
+    fn merge_role_append_concatenates() {
+        let base = Some(RoleConfig {
+            file: None,
+            content: Some("base instructions".to_string()),
+            append: None,
+        });
+        let over = Some(RoleConfig {
+            file: None,
+            content: Some("extra instructions".to_string()),
+            append: Some(true),
+        });
+        let result = merge_role(base, over);
+        let role = result.unwrap();
+        assert_eq!(role.append, Some(false));
+        assert!(role.content.as_ref().unwrap().starts_with("base instructions"));
+        assert!(role.content.as_ref().unwrap().ends_with("extra instructions"));
+        assert!(role.content.as_ref().unwrap().contains("\n\n"));
+    }
+
+    #[test]
+    fn merge_role_base_kept_when_over_none() {
+        let base = Some(RoleConfig {
+            file: None,
+            content: Some("base".to_string()),
+            append: None,
+        });
+        let result = merge_role(base, None);
+        assert_eq!(result.unwrap().content.as_deref(), Some("base"));
+    }
+
+    #[test]
+    fn merge_role_over_kept_when_base_none() {
+        let over = Some(RoleConfig {
+            file: None,
+            content: Some("over".to_string()),
+            append: Some(true),
+        });
+        let result = merge_role(None, over);
+        assert_eq!(result.unwrap().content.as_deref(), Some("over"));
+    }
+
+    #[test]
+    fn merge_profiles_role_append_true() {
+        let base = AgentProfile {
+            name: "base".to_string(),
+            role: Some(RoleConfig {
+                file: None,
+                content: Some("base role".to_string()),
+                append: None,
+            }),
+            ..Default::default()
+        };
+        let over = AgentProfile {
+            name: "child".to_string(),
+            role: Some(RoleConfig {
+                file: None,
+                content: Some("child role".to_string()),
+                append: Some(true),
+            }),
+            ..Default::default()
+        };
+        let merged = merge_profiles(base, over);
+        let content = merged.role.unwrap().content.unwrap();
+        assert_eq!(content, "base role\n\nchild role");
     }
 }
