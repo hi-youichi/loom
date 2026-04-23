@@ -10,7 +10,8 @@ use crate::session::{SessionId as OurSessionId, SessionStore};
 use crate::session_config_store::SessionConfigStore;
 use crate::stream_bridge::SessionNotifier;
 use crate::terminal::TerminalManager;
-use crate::tools::{create_acp_tools, AcpBridgeCommandExecutor, TerminalCommandExecutor};
+use crate::tools::{create_acp_tools, AcpBridgeCommandExecutor};
+use loom::tools::bash::LocalCommandExecutor;
 use agent_client_protocol::{
     Agent, AuthenticateRequest, AuthenticateResponse, CancelNotification, ForkSessionRequest,
     ForkSessionResponse, InitializeRequest, InitializeResponse, ListSessionsRequest,
@@ -707,10 +708,8 @@ impl Agent for LoomAcpAgent {
                     tracing::info!("Using ACP bridge for bash execution");
                     Some(Arc::new(AcpBridgeCommandExecutor::new()) as Arc<dyn loom::tools::CommandExecutor>)
                 } else {
-                    tracing::info!("Using local terminal for bash execution");
-                    Some(Arc::new(TerminalCommandExecutor::new(
-                        self.terminal_mgr.clone(),
-                    )) as Arc<dyn loom::tools::CommandExecutor>)
+                    tracing::info!("Using local bash executor");
+                    Some(Arc::new(LocalCommandExecutor) as Arc<dyn loom::tools::CommandExecutor>)
                 }
             },
             extra_tools: {

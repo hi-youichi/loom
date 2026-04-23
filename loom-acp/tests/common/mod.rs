@@ -5,6 +5,7 @@ pub mod config_helpers;
 pub mod acp_child;
 #[allow(dead_code)]
 pub mod plan_types;
+pub mod terminal_handler;
 
 #[allow(unused_imports)]
 pub use test_setup::TestEnvironment;
