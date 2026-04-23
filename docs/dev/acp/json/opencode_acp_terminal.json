@@ -1,0 +1,644 @@
+[
+  {
+    "_direction": "outgoing",
+    "_type": "request",
+    "id": 3,
+    "method": "session/prompt",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "prompt": [
+        {
+          "type": "text",
+          "text": "bash pwd"
+        }
+      ]
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "agent_thought_chunk",
+        "content": {
+          "type": "text",
+          "text": "The user is asking me to run the bash command \"pwd\" which prints the current working directory.\n"
+        },
+        "messageId": "msg_db9a09fd1001MTA42Zj6RSFDxM"
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "agent_thought_chunk",
+        "content": {
+          "type": "text",
+          "text": ""
+        },
+        "messageId": "msg_db9a09fd1001MTA42Zj6RSFDxM"
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "tool_call",
+        "toolCallId": "call_function_pqh70u9pyjz0_1",
+        "title": "bash",
+        "kind": "execute",
+        "rawInput": {}
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "tool_call_update",
+        "toolCallId": "call_function_pqh70u9pyjz0_1",
+        "kind": "execute",
+        "status": "in_progress",
+        "title": "bash",
+        "locations": [],
+        "rawInput": {
+          "command": "pwd",
+          "description": "Print current working directory"
+        }
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "tool_call_update",
+        "toolCallId": "call_function_pqh70u9pyjz0_1",
+        "kind": "execute",
+        "status": "in_progress",
+        "title": "bash",
+        "locations": [],
+        "rawInput": {
+          "command": "pwd",
+          "description": "Print current working directory"
+        }
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "tool_call_update",
+        "toolCallId": "call_function_pqh70u9pyjz0_1",
+        "kind": "execute",
+        "status": "in_progress",
+        "title": "bash",
+        "content": [
+          {
+            "type": "content",
+            "content": {
+              "type": "text",
+              "text": "/Users/apple/dev/loom/dev\n"
+            }
+          }
+        ],
+        "locations": [],
+        "rawInput": {
+          "command": "pwd",
+          "description": "Print current working directory"
+        }
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "tool_call_update",
+        "toolCallId": "call_function_pqh70u9pyjz0_1",
+        "kind": "execute",
+        "status": "completed",
+        "title": "Print current working directory",
+        "content": [
+          {
+            "type": "content",
+            "content": {
+              "type": "text",
+              "text": "/Users/apple/dev/loom/dev\n"
+            }
+          }
+        ],
+        "rawInput": {
+          "command": "pwd",
+          "description": "Print current working directory"
+        },
+        "rawOutput": {
+          "output": "/Users/apple/dev/loom/dev\n",
+          "metadata": {
+            "output": "/Users/apple/dev/loom/dev\n",
+            "exit": 0,
+            "description": "Print current working directory",
+            "truncated": false
+          }
+        }
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "agent_thought_chunk",
+        "content": {
+          "type": "text",
+          "text": "The user ran a simple bash command to see the current working directory. I showed the result.\n"
+        },
+        "messageId": "msg_db9a0b23f001AZVVoWvh1F1ZIo"
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "agent_thought_chunk",
+        "content": {
+          "type": "text",
+          "text": ""
+        },
+        "messageId": "msg_db9a0b23f001AZVVoWvh1F1ZIo"
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "text",
+          "text": "\n\n`/Users/apple/dev/loom/dev`"
+        },
+        "messageId": "msg_db9a0b23f001AZVVoWvh1F1ZIo"
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "usage_update",
+        "used": 14423,
+        "size": 200000,
+        "cost": {
+          "amount": 0.0,
+          "currency": "USD"
+        }
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "response",
+    "id": 3,
+    "method": "session/prompt",
+    "params": {
+      "stopReason": "end_turn",
+      "usage": {
+        "totalTokens": 14455,
+        "inputTokens": 12583,
+        "outputTokens": 32,
+        "cachedReadTokens": 1840
+      },
+      "_meta": {}
+    }
+  },
+  {
+    "_direction": "outgoing",
+    "_type": "request",
+    "id": 4,
+    "method": "session/prompt",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "prompt": [
+        {
+          "type": "text",
+          "text": "测试 todo"
+        }
+      ]
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "agent_thought_chunk",
+        "content": {
+          "type": "text",
+          "text": "The user is testing the todo tool.\n"
+        },
+        "messageId": "msg_db9a295770016JpZwRNmLcgxSw"
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "agent_thought_chunk",
+        "content": {
+          "type": "text",
+          "text": ""
+        },
+        "messageId": "msg_db9a295770016JpZwRNmLcgxSw"
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "tool_call",
+        "toolCallId": "call_function_cod6cyorkjeg_1",
+        "title": "todowrite",
+        "rawInput": {}
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "tool_call_update",
+        "toolCallId": "call_function_cod6cyorkjeg_1",
+        "kind": "other",
+        "status": "in_progress",
+        "title": "todowrite",
+        "locations": [],
+        "rawInput": {
+          "todos": [
+            {
+              "content": "Test todo item",
+              "priority": "medium",
+              "status": "in_progress"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "plan",
+        "entries": [
+          {
+            "content": "Test todo item",
+            "priority": "medium",
+            "status": "in_progress"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "tool_call_update",
+        "toolCallId": "call_function_cod6cyorkjeg_1",
+        "kind": "other",
+        "status": "completed",
+        "title": "1 todos",
+        "content": [
+          {
+            "type": "content",
+            "content": {
+              "type": "text",
+              "text": "[\n  {\n    \"content\": \"Test todo item\",\n    \"priority\": \"medium\",\n    \"status\": \"in_progress\"\n  }\n]"
+            }
+          }
+        ],
+        "rawInput": {
+          "todos": [
+            {
+              "content": "Test todo item",
+              "priority": "medium",
+              "status": "in_progress"
+            }
+          ]
+        },
+        "rawOutput": {
+          "output": "[\n  {\n    \"content\": \"Test todo item\",\n    \"priority\": \"medium\",\n    \"status\": \"in_progress\"\n  }\n]",
+          "metadata": {
+            "todos": [
+              {
+                "content": "Test todo item",
+                "priority": "medium",
+                "status": "in_progress"
+              }
+            ],
+            "truncated": false
+          }
+        }
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "agent_thought_chunk",
+        "content": {
+          "type": "text",
+          "text": "The user is testing the todo feature. I'll mark it complete to show how it works.\n"
+        },
+        "messageId": "msg_db9a2cbf1001dDZnS7Zut8F2ZU"
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "agent_thought_chunk",
+        "content": {
+          "type": "text",
+          "text": ""
+        },
+        "messageId": "msg_db9a2cbf1001dDZnS7Zut8F2ZU"
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "tool_call",
+        "toolCallId": "call_function_qg1zrma44z1n_1",
+        "title": "todowrite",
+        "rawInput": {}
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "tool_call_update",
+        "toolCallId": "call_function_qg1zrma44z1n_1",
+        "kind": "other",
+        "status": "in_progress",
+        "title": "todowrite",
+        "locations": [],
+        "rawInput": {
+          "todos": [
+            {
+              "content": "Test todo item",
+              "priority": "medium",
+              "status": "completed"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "plan",
+        "entries": [
+          {
+            "content": "Test todo item",
+            "priority": "medium",
+            "status": "completed"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "tool_call_update",
+        "toolCallId": "call_function_qg1zrma44z1n_1",
+        "kind": "other",
+        "status": "completed",
+        "title": "0 todos",
+        "content": [
+          {
+            "type": "content",
+            "content": {
+              "type": "text",
+              "text": "[\n  {\n    \"content\": \"Test todo item\",\n    \"priority\": \"medium\",\n    \"status\": \"completed\"\n  }\n]"
+            }
+          }
+        ],
+        "rawInput": {
+          "todos": [
+            {
+              "content": "Test todo item",
+              "priority": "medium",
+              "status": "completed"
+            }
+          ]
+        },
+        "rawOutput": {
+          "output": "[\n  {\n    \"content\": \"Test todo item\",\n    \"priority\": \"medium\",\n    \"status\": \"completed\"\n  }\n]",
+          "metadata": {
+            "todos": [
+              {
+                "content": "Test todo item",
+                "priority": "medium",
+                "status": "completed"
+              }
+            ],
+            "truncated": false
+          }
+        }
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "agent_thought_chunk",
+        "content": {
+          "type": "text",
+          "text": "The user sent \"测试 todo\" which means \"test todo\" in Chinese. I've created a todo item, marked it as in_progress, then completed it. Todo is working correctly.\n"
+        },
+        "messageId": "msg_db9a2e20c001XcKYu7ZhfXslD0"
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "agent_thought_chunk",
+        "content": {
+          "type": "text",
+          "text": ""
+        },
+        "messageId": "msg_db9a2e20c001XcKYu7ZhfXslD0"
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "text",
+          "text": "\n\nTodo 功能正常，已创建并完成测试任务。"
+        },
+        "messageId": "msg_db9a2e20c001XcKYu7ZhfXslD0"
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "notification",
+    "id": null,
+    "method": "session/update",
+    "params": {
+      "sessionId": "ses_2465fd79affek47umBlhipi2PK",
+      "update": {
+        "sessionUpdate": "usage_update",
+        "used": 14621,
+        "size": 200000,
+        "cost": {
+          "amount": 0.0,
+          "currency": "USD"
+        }
+      }
+    }
+  },
+  {
+    "_direction": "incoming",
+    "_type": "response",
+    "id": 4,
+    "method": "session/prompt",
+    "params": {
+      "stopReason": "end_turn",
+      "usage": {
+        "totalTokens": 14671,
+        "inputTokens": 285,
+        "outputTokens": 50,
+        "cachedReadTokens": 14336
+      },
+      "_meta": {}
+    }
+  }
+]
