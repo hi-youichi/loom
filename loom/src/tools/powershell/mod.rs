@@ -4,38 +4,24 @@
 //! Shell choice is cached after the first probe. Cancellation and timeouts follow
 //! the same pattern as [`crate::tools::BashTool`].
 
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 
 use serde_json::json;
-use tokio::io::AsyncReadExt;
-use tokio::sync::watch;
 
-use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError};
+use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 use crate::tools::Tool;
-use crate::{ActiveOperation, ActiveOperationCanceller, ActiveOperationKind};
 use crate::{ToolOutputHint, ToolOutputStrategy};
 
-/// Tool name for the PowerShell execution operation.
+mod executor;
+pub use executor::{LocalPowerShellExecutor, PowerShellExecutor};
+
 pub const TOOL_POWERSHELL: &str = "powershell";
 
-/// Tool that runs PowerShell commands and returns stdout and stderr.
-///
-/// Registered only on Windows in the ReAct tool source; on other platforms use `bash`.
 pub struct PowerShellTool {
     working_folder: Option<Arc<std::path::PathBuf>>,
-}
-
-#[derive(Debug)]
-struct ChildProcessCanceller {
-    kill_tx: watch::Sender<bool>,
-}
-
-impl ActiveOperationCanceller for ChildProcessCanceller {
-    fn cancel(&self) {
-        let _ = self.kill_tx.send(true);
-    }
+    executor: Arc<dyn PowerShellExecutor>,
 }
 
 impl Default for PowerShellTool {
@@ -48,33 +34,32 @@ impl PowerShellTool {
     pub fn new() -> Self {
         Self {
             working_folder: None,
+            executor: Arc::new(LocalPowerShellExecutor),
         }
     }
 
     pub fn with_working_folder(working_folder: Arc<std::path::PathBuf>) -> Self {
         Self {
             working_folder: Some(working_folder),
+            executor: Arc::new(LocalPowerShellExecutor),
         }
     }
 
-    /// Prefer `pwsh` when it runs; otherwise `powershell` (Windows PowerShell 5.1).
-    fn detect_powershell() -> (&'static str, &'static str) {
-        static CACHED: OnceLock<(&'static str, &'static str)> = OnceLock::new();
-        *CACHED.get_or_init(|| {
-            let pwsh_ok = std::process::Command::new("pwsh")
-                .args(["-NoProfile", "-NonInteractive", "-Command", "exit 0"])
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false);
-            if pwsh_ok {
-                ("pwsh", "-Command")
-            } else {
-                ("powershell", "-Command")
-            }
-        })
+    pub fn with_executor(executor: Arc<dyn PowerShellExecutor>) -> Self {
+        Self {
+            working_folder: None,
+            executor,
+        }
+    }
+
+    pub fn with_working_folder_and_executor(
+        working_folder: Arc<std::path::PathBuf>,
+        executor: Arc<dyn PowerShellExecutor>,
+    ) -> Self {
+        Self {
+            working_folder: Some(working_folder),
+            executor,
+        }
     }
 }
 
@@ -84,8 +69,8 @@ impl Tool for PowerShellTool {
         TOOL_POWERSHELL
     }
 
-    fn spec(&self) -> crate::tool_source::ToolSpec {
-        crate::tool_source::ToolSpec {
+    fn spec(&self) -> ToolSpec {
+        ToolSpec {
             name: TOOL_POWERSHELL.to_string(),
             description: Some(
                 "Executes a PowerShell command on Windows (WMI, Registry, .NET, COM). \
@@ -146,19 +131,18 @@ impl Tool for PowerShellTool {
             .ok_or_else(|| ToolSourceError::InvalidInput("missing command".to_string()))?;
 
         let workdir_arg = args.get("workdir").and_then(|v| v.as_str());
-        let workdir = match workdir_arg {
-            Some(w) => Some(w.to_string()),
+        let working_dir = match workdir_arg {
+            Some(dir) => Some(std::path::PathBuf::from(dir)),
             None => self
                 .working_folder
                 .as_ref()
-                .map(|p| p.to_string_lossy().into_owned()),
+                .map(|p| p.as_ref().clone()),
         };
 
         let timeout_ms = args
             .get("timeout")
             .or_else(|| args.get("timeout_ms"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(120_000);
+            .and_then(|v| v.as_u64());
 
         let use_legacy = args
             .get("use_legacy_powershell")
@@ -172,25 +156,17 @@ impl Tool for PowerShellTool {
 
         let env_pairs = parse_env_object(args.get("env"))?;
 
-        let (shell, shell_cmd_arg) = if use_legacy {
-            ("powershell", "-Command")
-        } else {
-            Self::detect_powershell()
-        };
-
-        let text = run_powershell_command(
-            shell,
-            shell_cmd_arg,
-            command,
-            workdir.as_deref(),
-            &env_pairs,
-            execution_policy,
-            timeout_ms,
-            ctx,
-        )
-        .await?;
-
-        Ok(ToolCallContent::text(text))
+        self.executor
+            .execute(
+                command,
+                working_dir.as_deref(),
+                timeout_ms,
+                env_pairs,
+                execution_policy,
+                use_legacy,
+                ctx,
+            )
+            .await
     }
 }
 
@@ -215,111 +191,6 @@ fn parse_env_object(
     Ok(out)
 }
 
-async fn read_pipe<R>(pipe: Option<R>) -> String
-where
-    R: tokio::io::AsyncRead + Unpin,
-{
-    if let Some(mut pipe) = pipe {
-        let mut buf = Vec::new();
-        let _ = pipe.read_to_end(&mut buf).await;
-        String::from_utf8_lossy(&buf).into_owned()
-    } else {
-        String::new()
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn run_powershell_command(
-    shell: &str,
-    shell_cmd_arg: &str,
-    command: &str,
-    workdir: Option<&str>,
-    env_pairs: &[(String, String)],
-    execution_policy: Option<&str>,
-    timeout_ms: u64,
-    ctx: Option<&ToolCallContext>,
-) -> Result<String, ToolSourceError> {
-    let mut cmd = tokio::process::Command::new(shell);
-    if let Some(ep) = execution_policy {
-        cmd.arg("-ExecutionPolicy").arg(ep);
-    }
-    cmd.arg(shell_cmd_arg).arg(command);
-    for (k, v) in env_pairs {
-        cmd.env(k, v);
-    }
-    if let Some(dir) = workdir {
-        cmd.current_dir(dir);
-    }
-    cmd.stdin(std::process::Stdio::piped());
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::piped());
-
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| ToolSourceError::Transport(format!("failed to spawn PowerShell: {}", e)))?;
-
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-    let stdout_reader = tokio::spawn(async move { read_pipe(stdout).await });
-    let stderr_reader = tokio::spawn(async move { read_pipe(stderr).await });
-
-    let (kill_tx, mut kill_rx) = watch::channel(false);
-    if let Some(run_cancellation) = ctx.and_then(|c| c.run_cancellation.clone()) {
-        run_cancellation.set_active_operation(ActiveOperation::new(
-            ActiveOperationKind::ChildProcess,
-            Arc::new(ChildProcessCanceller { kill_tx }),
-        ));
-    }
-
-    let status = if timeout_ms == 0 {
-        tokio::select! {
-            _ = kill_rx.changed() => {
-                let _ = child.kill().await;
-                return Err(ToolSourceError::Transport("PowerShell command cancelled".to_string()));
-            }
-            status = child.wait() => status,
-        }
-    } else {
-        tokio::select! {
-            _ = kill_rx.changed() => {
-                let _ = child.kill().await;
-                return Err(ToolSourceError::Transport("PowerShell command cancelled".to_string()));
-            }
-            _ = tokio::time::sleep(std::time::Duration::from_millis(timeout_ms)) => {
-                let _ = child.kill().await;
-                return Err(ToolSourceError::Transport(format!(
-                    "PowerShell command timed out after {} ms",
-                    timeout_ms
-                )));
-            }
-            status = child.wait() => status,
-        }
-    }
-    .map_err(|e| ToolSourceError::Transport(format!("failed to wait for PowerShell: {}", e)))?;
-
-    let stdout = stdout_reader
-        .await
-        .map_err(|e| ToolSourceError::Transport(format!("failed to read stdout: {}", e)))?;
-    let stderr = stderr_reader
-        .await
-        .map_err(|e| ToolSourceError::Transport(format!("failed to read stderr: {}", e)))?;
-
-    let mut text = if stderr.is_empty() {
-        stdout
-    } else if stdout.is_empty() {
-        format!("stderr:\n{}", stderr)
-    } else {
-        format!("stdout:\n{}\nstderr:\n{}", stdout, stderr)
-    };
-
-    if !status.success() {
-        let code = status.code().unwrap_or(-1);
-        text.push_str(&format!("\n[PowerShell exited with code {}]", code));
-    }
-
-    Ok(text)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -337,13 +208,5 @@ mod tests {
         assert_eq!(spec.name, "powershell");
         assert!(spec.description.is_some());
         assert!(spec.output_hint.is_some());
-    }
-
-    #[test]
-    fn test_detect_powershell_returns_valid() {
-        let (shell, arg) = PowerShellTool::detect_powershell();
-        assert!(!shell.is_empty());
-        assert_eq!(arg, "-Command");
-        assert!(shell == "pwsh" || shell == "powershell");
     }
 }
