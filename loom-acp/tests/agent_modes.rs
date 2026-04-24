@@ -1,7 +1,7 @@
 //! ACP Agent integration tests for session modes feature.
 
-use agent_client_protocol::{
-    Agent, LoadSessionRequest, NewSessionRequest, SetSessionConfigOptionRequest,
+use agent_client_protocol::schema::{
+    LoadSessionRequest, NewSessionRequest, SetSessionConfigOptionRequest,
     SetSessionModeRequest,
 };
 use loom_acp::LoomAcpAgent;

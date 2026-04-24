@@ -3,8 +3,8 @@
 //! These tests verify the ACP model selection functionality using the real
 //! provider configuration from ~/.loom/config.toml.
 
-use agent_client_protocol::{
-    Agent, NewSessionRequest, NewSessionResponse, SetSessionConfigOptionRequest,
+use agent_client_protocol::schema::{
+    NewSessionRequest, NewSessionResponse, SetSessionConfigOptionRequest,
 };
 use loom_acp::LoomAcpAgent;
 use std::path::PathBuf;

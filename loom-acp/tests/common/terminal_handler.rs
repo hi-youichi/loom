@@ -3,6 +3,7 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct TerminalCall {
     pub method: String,
     pub params: Value,

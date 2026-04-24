@@ -521,6 +521,7 @@ async fn act_node_run_with_context_propagates_thread_user_and_depth() {
             user_id: Some("user-456".into()),
             resume_from_node_id: None,
             depth: Some(2),
+            acp_session_id: None,
             resume_value: None,
             resume_values_by_interrupt_id: Default::default(),
             resume_values_by_namespace: Default::default(),

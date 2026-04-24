@@ -11,6 +11,8 @@ use crate::tool_source::{
 use crate::tools::powershell::PowerShellTool;
 #[cfg(not(windows))]
 use crate::tools::BashTool;
+#[cfg(windows)]
+use crate::tools::BashTool;
 use crate::tools::{
     register_mcp_tools, register_mcp_tools_with_specs, AggregateToolSource, BatchTool,
     ExaCodesearchTool, ExaWebsearchTool, InvokeAgentTool, LspTool, TwitterSearchTool,
@@ -41,8 +43,8 @@ pub(crate) async fn build_tool_source(
         let aggregate = Arc::new(AggregateToolSource::new());
         aggregate
             .register_async(Box::new(WebFetcherTool::new()))
-            .await;
-    #[cfg(not(windows))]
+    .await;
+        #[cfg(not(windows))]
         let bash_tool = if let Some(ref executor) = config.bash_executor {
             match &working_folder_arc {
                 Some(wf) => BashTool::with_working_folder_and_executor(
@@ -60,7 +62,16 @@ pub(crate) async fn build_tool_source(
         #[cfg(not(windows))]
         aggregate.register_async(Box::new(bash_tool)).await;
         #[cfg(windows)]
-        {
+        if let Some(ref executor) = config.bash_executor {
+            let bash_tool = match &working_folder_arc {
+                Some(wf) => BashTool::with_working_folder_and_executor(
+                    Arc::clone(wf),
+                    executor.clone(),
+                ),
+                None => BashTool::with_executor(executor.clone()),
+            };
+            aggregate.register_async(Box::new(bash_tool)).await;
+        } else {
             let ps_tool = match &working_folder_arc {
                 Some(wf) => PowerShellTool::with_working_folder(Arc::clone(wf)),
                 None => PowerShellTool::new(),
@@ -238,7 +249,7 @@ pub(crate) async fn build_tool_source(
 
     aggregate
         .register_async(Box::new(WebFetcherTool::new()))
-        .await;
+    .await;
     #[cfg(not(windows))]
     let bash_tool = if let Some(ref executor) = config.bash_executor {
         match &working_folder_arc {
@@ -258,7 +269,16 @@ pub(crate) async fn build_tool_source(
     aggregate.register_async(Box::new(bash_tool)).await;
 
     #[cfg(windows)]
-    {
+    if let Some(ref executor) = config.bash_executor {
+        let bash_tool = match &working_folder_arc {
+            Some(wf) => BashTool::with_working_folder_and_executor(
+                Arc::clone(wf),
+                executor.clone(),
+            ),
+            None => BashTool::with_executor(executor.clone()),
+        };
+        aggregate.register_async(Box::new(bash_tool)).await;
+    } else {
         let ps_tool = match &working_folder_arc {
             Some(wf) => PowerShellTool::with_working_folder(Arc::clone(wf)),
             None => PowerShellTool::new(),

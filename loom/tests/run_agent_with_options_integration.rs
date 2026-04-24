@@ -27,7 +27,7 @@ fn env_lock() -> &'static Mutex<()> {
 fn opts(working_folder: PathBuf) -> RunOptions {
     RunOptions {
         message: UserContent::Text("Hi".to_string()),
-        working_folder: Some(working),
+        working_folder: Some(working_folder),
         session_id: None,
         cancellation: None,
         thread_id: None,

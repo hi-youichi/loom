@@ -1,4 +1,4 @@
-use agent_client_protocol::{PlanEntry, PlanEntryPriority, PlanEntryStatus};
+use agent_client_protocol::schema::{PlanEntry, PlanEntryPriority, PlanEntryStatus};
 
 use loom_acp::stream_bridge::{loom_event_to_updates, StreamUpdate};
 use loom::{AnyStreamEvent, StreamEvent};

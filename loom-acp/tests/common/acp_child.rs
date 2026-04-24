@@ -132,6 +132,7 @@ impl MockAcpServer {
         self.mount_default_responses().await;
     }
 
+    #[allow(dead_code)]
     pub async fn mount_bash_tool_call(
         &self,
         command: &str,
@@ -139,6 +140,7 @@ impl MockAcpServer {
         self.mount_bash_tool_call_with_timeout(command, None).await
     }
 
+    #[allow(dead_code)]
     pub async fn mount_bash_tool_call_with_timeout(
         &self,
         command: &str,

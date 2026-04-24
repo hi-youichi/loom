@@ -66,9 +66,9 @@ fn extract_thread_id_from_fields(fields: &str) -> Option<String> {
     let prefix = "thread_id=";
     let start = fields.find(prefix)?;
     let rest = &fields[start + prefix.len()..];
-    if rest.starts_with('"') {
-        let end = rest[1..].find('"')?;
-        Some(rest[1..end + 1].to_string())
+    if let Some(stripped) = rest.strip_prefix('"') {
+        let end = stripped.find('"')?;
+        Some(stripped[..end].to_string())
     } else {
         let end = rest
             .find(|c: char| c.is_whitespace())

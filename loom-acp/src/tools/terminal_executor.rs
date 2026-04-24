@@ -30,7 +30,7 @@ impl CommandExecutor for TerminalCommandExecutor {
         _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
         let (shell, args) = if cfg!(windows) {
-            ("cmd".to_string(), vec!["/C".to_string(), command.to_string()])
+            ("powershell".to_string(), vec!["-NoProfile".to_string(), "-Command".to_string(), command.to_string()])
         } else {
             ("sh".to_string(), vec!["-c".to_string(), command.to_string()])
         };
@@ -119,6 +119,12 @@ impl CommandExecutor for TerminalCommandExecutor {
 
 pub struct AcpBridgeCommandExecutor;
 
+impl Default for AcpBridgeCommandExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AcpBridgeCommandExecutor {
     pub fn new() -> Self {
         Self
@@ -147,7 +153,7 @@ impl CommandExecutor for AcpBridgeCommandExecutor {
         }
 
         let (shell, args) = if cfg!(windows) {
-            ("cmd".to_string(), vec!["/C".to_string(), command.to_string()])
+            ("powershell".to_string(), vec!["-NoProfile".to_string(), "-Command".to_string(), command.to_string()])
         } else {
             ("sh".to_string(), vec!["-c".to_string(), command.to_string()])
         };

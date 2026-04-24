@@ -5,7 +5,56 @@ mod mocks;
 use std::time::Duration;
 use std::sync::atomic::Ordering;
 
-const TIMEOUT: Duration = Duration::from_secs(60);
+const TIMEOUT: Duration = Duration::from_secs(30);
+const TIMEOUT_SHORT: Duration = Duration::from_secs(10);
+
+fn platform_echo(msg: &str) -> String {
+    format!("echo {}", msg)
+}
+
+fn platform_exit(code: i32) -> String {
+    if cfg!(windows) {
+        format!("exit {}", code)
+    } else {
+        format!("sh -c 'exit {}'", code)
+    }
+}
+
+fn platform_stderr_echo(stdout_msg: &str, stderr_msg: &str) -> String {
+    if cfg!(windows) {
+        format!("Write-Output {}; Write-Error {}", stdout_msg, stderr_msg)
+    } else {
+        format!("echo {} && echo {} >&2", stdout_msg, stderr_msg)
+    }
+}
+
+fn platform_sleep(secs: u64) -> String {
+    if cfg!(windows) {
+        format!("Start-Sleep -Seconds {}", secs)
+    } else {
+        format!("sleep {}", secs)
+    }
+}
+
+fn platform_seq(from: i32, to: i32) -> String {
+    if cfg!(windows) {
+        format!("{}..{}", from, to)
+    } else {
+        format!("seq {} {}", from, to)
+    }
+}
+
+fn platform_pwd() -> String {
+    "pwd".to_string()
+}
+
+fn expected_shell() -> &'static str {
+    if cfg!(windows) {
+        "powershell"
+    } else {
+        "sh"
+    }
+}
 
 async fn setup_with_terminal() -> (common::AcpChild, common::MockAcpServer, String) {
     let (mut acp, mock) = common::AcpChild::spawn_with_mock_and_terminal()
@@ -99,7 +148,7 @@ async fn e2e_terminal_capability_absent() {
 #[tokio::test]
 async fn e2e_terminal_create_basic() {
     let (mut acp, mock, session_id) = setup_with_terminal().await;
-    let call_count = mock.mount_bash_tool_call("echo hello").await;
+    let _call_count = mock.mount_bash_tool_call("echo hello").await;
 
     let request_id = acp.send_prompt_request(&session_id, "Run echo hello").expect("send prompt");
     let (_notifications, response) = acp
@@ -114,7 +163,7 @@ async fn e2e_terminal_create_basic() {
 
     let params = &create_call.params;
     let command = params.get("command").and_then(|v| v.as_str()).unwrap_or("");
-    assert_eq!(command, "sh", "command should be 'sh', got: {}", command);
+    assert_eq!(command, expected_shell(), "command should be '{}', got: {}", expected_shell(), command);
     let args = params.get("args").and_then(|v| v.as_array());
     let args_str = args.map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(" ")).unwrap_or_default();
     assert!(args_str.contains("echo hello"), "args should contain 'echo hello', got: {}", args_str);
@@ -130,9 +179,9 @@ async fn e2e_terminal_create_basic() {
 #[tokio::test]
 async fn e2e_terminal_create_with_args() {
     let (mut acp, mock, session_id) = setup_with_terminal().await;
-    let _call_count = mock.mount_bash_tool_call("/bin/sh -c 'echo hello'").await;
+    let _call_count = mock.mount_bash_tool_call(&platform_echo("hello")).await;
 
-    let request_id = acp.send_prompt_request(&session_id, "Run /bin/sh -c echo hello").expect("send prompt");
+    let request_id = acp.send_prompt_request(&session_id, "Run echo hello").expect("send prompt");
     let (_notifications, response) = acp
         .collect_all_notifications_handling_terminal(request_id, TIMEOUT)
         .expect("collect");
@@ -197,9 +246,9 @@ async fn e2e_terminal_output_after_completion() {
 #[tokio::test]
 async fn e2e_terminal_output_includes_stdout_stderr() {
     let (mut acp, mock, session_id) = setup_with_terminal().await;
-    let _call_count = mock.mount_bash_tool_call("echo out && echo err >&2").await;
+    let _call_count = mock.mount_bash_tool_call(&platform_stderr_echo("out", "err")).await;
 
-    let request_id = acp.send_prompt_request(&session_id, "Run echo out && echo err >&2").expect("send prompt");
+    let request_id = acp.send_prompt_request(&session_id, "Run echo out and echo err to stderr").expect("send prompt");
     let (_notifications, response) = acp
         .collect_all_notifications_handling_terminal(request_id, TIMEOUT)
         .expect("collect");
@@ -243,7 +292,7 @@ async fn e2e_terminal_wait_for_exit_success() {
 #[tokio::test]
 async fn e2e_terminal_wait_for_exit_failure() {
     let (mut acp, mock, session_id) = setup_with_terminal().await;
-    let _call_count = mock.mount_bash_tool_call("sh -c 'exit 1'").await;
+    let _call_count = mock.mount_bash_tool_call(&platform_exit(1)).await;
 
     let request_id = acp.send_prompt_request(&session_id, "Run exit 1").expect("send prompt");
     let (_notifications, response) = acp
@@ -269,11 +318,11 @@ async fn e2e_terminal_wait_for_exit_failure() {
 #[ignore] // Requires bash tool timeout behavior — the agent's internal retry loop makes this timing-sensitive
 async fn e2e_terminal_kill_running() {
     let (mut acp, mock, session_id) = setup_with_terminal().await;
-    let _call_count = mock.mount_bash_tool_call_with_timeout("sleep 300", Some(5000)).await;
+    let _call_count = mock.mount_bash_tool_call_with_timeout(&platform_sleep(300), Some(5000)).await;
 
     let request_id = acp.send_prompt_request(&session_id, "Run sleep 300").expect("send prompt");
     let (_notifications, response) = acp
-        .collect_all_notifications_handling_terminal(request_id, Duration::from_secs(15))
+        .collect_all_notifications_handling_terminal(request_id, TIMEOUT_SHORT)
         .expect("collect");
 
     assert!(response.error.is_none(), "prompt should succeed: {:?}", response.error);
@@ -286,7 +335,9 @@ async fn e2e_terminal_kill_running() {
     if let Some(wait) = wait_call {
         if let Some(result) = &wait.response_result {
             let signal = result.get("signal").and_then(|v| v.as_str());
-            assert!(signal.is_some(), "killed process should have signal");
+            if !cfg!(windows) {
+                assert!(signal.is_some(), "killed process should have signal");
+            }
         }
     }
 
@@ -327,11 +378,11 @@ async fn e2e_terminal_release_after_completion() {
 #[ignore] // Requires bash tool timeout behavior — the agent's internal retry loop makes this timing-sensitive
 async fn e2e_terminal_release_running() {
     let (mut acp, mock, session_id) = setup_with_terminal().await;
-    let _call_count = mock.mount_bash_tool_call_with_timeout("sleep 300", Some(5000)).await;
+    let _call_count = mock.mount_bash_tool_call_with_timeout(&platform_sleep(300), Some(5000)).await;
 
     let request_id = acp.send_prompt_request(&session_id, "Run sleep 300").expect("send prompt");
     let (_notifications, response) = acp
-        .collect_all_notifications_handling_terminal(request_id, Duration::from_secs(15))
+        .collect_all_notifications_handling_terminal(request_id, TIMEOUT_SHORT)
         .expect("collect");
 
     assert!(response.error.is_none(), "prompt should succeed: {:?}", response.error);
@@ -394,7 +445,7 @@ async fn e2e_prompt_bash_output_in_response() {
 #[tokio::test]
 async fn e2e_prompt_bash_working_dir() {
     let (mut acp, mock, session_id) = setup_with_terminal().await;
-    let _call_count = mock.mount_bash_tool_call("pwd").await;
+    let _call_count = mock.mount_bash_tool_call(&platform_pwd()).await;
 
     let request_id = acp.send_prompt_request(&session_id, "Run pwd").expect("send prompt");
     let (_notifications, response) = acp
@@ -439,7 +490,7 @@ async fn e2e_local_bash_echo() {
 #[tokio::test]
 async fn e2e_local_bash_exit_code_nonzero() {
     let (mut acp, mock, session_id) = setup_without_terminal().await;
-    let _call_count = mock.mount_bash_tool_call("exit 1").await;
+    let _call_count = mock.mount_bash_tool_call(&platform_exit(1)).await;
 
     let request_id = acp.send_prompt_request(&session_id, "Run exit 1").expect("send prompt");
     let (_notifications, response) = acp
@@ -500,7 +551,7 @@ async fn e2e_terminal_unicode_output() {
 #[tokio::test]
 async fn e2e_terminal_large_output() {
     let (mut acp, mock, session_id) = setup_with_terminal().await;
-    let _call_count = mock.mount_bash_tool_call("seq 1 1000").await;
+    let _call_count = mock.mount_bash_tool_call(&platform_seq(1, 1000)).await;
 
     let request_id = acp.send_prompt_request(&session_id, "Run seq 1 1000").expect("send prompt");
     let (_notifications, response) = acp

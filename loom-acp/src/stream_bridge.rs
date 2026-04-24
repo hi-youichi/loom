@@ -30,7 +30,7 @@
 //! `agent_client_protocol::SessionNotification` for the upper layer to send via the connection.
 
 use crate::content::extract_locations;
-use agent_client_protocol::{
+use agent_client_protocol::schema::{
     ContentBlock, ContentChunk, CurrentModeUpdate, Diff, Plan, PlanEntry, PlanEntryPriority,
     PlanEntryStatus, SessionId, SessionInfoUpdate, SessionModeId, SessionNotification,
     SessionUpdate, Terminal, TerminalId, TextContent, ToolCall, ToolCallId, ToolCallLocation,

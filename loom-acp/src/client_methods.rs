@@ -1,6 +1,8 @@
-use agent_client_protocol::{
-    Client, CreateTerminalRequest, KillTerminalRequest, ReadTextFileRequest,
-    ReleaseTerminalRequest, SessionId, TerminalOutputRequest, WaitForTerminalExitRequest,
+use agent_client_protocol::{Client, ConnectionTo};
+use agent_client_protocol::schema::{
+    CreateTerminalRequest, KillTerminalRequest, ReadTextFileRequest,
+    ReleaseTerminalRequest, SessionId, TerminalId, TerminalOutputRequest,
+    TerminalExitStatus, EnvVariable, WaitForTerminalExitRequest,
     WriteTextFileRequest,
 };
 use tracing::{debug, info};
@@ -8,7 +10,7 @@ use tracing::{debug, info};
 use crate::tools::{TerminalExitResult, TerminalOutput};
 
 pub async fn read_text_file(
-    client: &dyn Client,
+    conn: &ConnectionTo<Client>,
     session_id: &SessionId,
     path: &str,
     line: Option<u32>,
@@ -23,8 +25,9 @@ pub async fn read_text_file(
     }
 
     debug!(?request, "Sending fs/read_text_file request");
-    let response = client
-        .read_text_file(request)
+    let response = conn
+        .send_request(request)
+        .block_task()
         .await
         .map_err(|e| format!("fs/read_text_file error: {:?}", e))?;
 
@@ -36,7 +39,7 @@ pub async fn read_text_file(
 }
 
 pub async fn write_text_file(
-    client: &dyn Client,
+    conn: &ConnectionTo<Client>,
     session_id: &SessionId,
     path: &str,
     content: &str,
@@ -44,8 +47,8 @@ pub async fn write_text_file(
     let request = WriteTextFileRequest::new(session_id.clone(), path, content);
 
     debug!(?request, "Sending fs/write_text_file request");
-    client
-        .write_text_file(request)
+    conn.send_request(request)
+        .block_task()
         .await
         .map_err(|e| format!("fs/write_text_file error: {:?}", e))?;
 
@@ -54,7 +57,7 @@ pub async fn write_text_file(
 }
 
 pub async fn terminal_create(
-    client: &dyn Client,
+    conn: &ConnectionTo<Client>,
     session_id: &SessionId,
     command: &str,
     args: Vec<String>,
@@ -71,7 +74,7 @@ pub async fn terminal_create(
     if !env.is_empty() {
         request = request.env(
             env.into_iter()
-                .map(|(name, value)| agent_client_protocol::EnvVariable::new(name, value))
+                .map(|(name, value)| EnvVariable::new(name, value))
                 .collect(),
         );
     }
@@ -85,8 +88,9 @@ pub async fn terminal_create(
     }
 
     debug!(?request, "Sending terminal/create request");
-    let response = client
-        .create_terminal(request)
+    let response = conn
+        .send_request(request)
+        .block_task()
         .await
         .map_err(|e| format!("terminal/create error: {:?}", e))?;
 
@@ -96,23 +100,24 @@ pub async fn terminal_create(
 }
 
 pub async fn terminal_output(
-    client: &dyn Client,
+    conn: &ConnectionTo<Client>,
     session_id: &SessionId,
     terminal_id: &str,
 ) -> Result<TerminalOutput, String> {
     let request = TerminalOutputRequest::new(
         session_id.clone(),
-        agent_client_protocol::TerminalId::new(terminal_id),
+        TerminalId::new(terminal_id),
     );
 
     debug!(?request, "Sending terminal/output request");
-    let response = client
-        .terminal_output(request)
+    let response = conn
+        .send_request(request)
+        .block_task()
         .await
         .map_err(|e| format!("terminal/output error: {:?}", e))?;
 
     let exit_status = response.exit_status.map(|s| {
-        agent_client_protocol::TerminalExitStatus::new()
+        TerminalExitStatus::new()
             .exit_code(s.exit_code)
             .signal(s.signal)
     });
@@ -131,18 +136,19 @@ pub async fn terminal_output(
 }
 
 pub async fn terminal_wait_for_exit(
-    client: &dyn Client,
+    conn: &ConnectionTo<Client>,
     session_id: &SessionId,
     terminal_id: &str,
 ) -> Result<TerminalExitResult, String> {
     let request = WaitForTerminalExitRequest::new(
         session_id.clone(),
-        agent_client_protocol::TerminalId::new(terminal_id),
+        TerminalId::new(terminal_id),
     );
 
     debug!(?request, "Sending terminal/wait_for_exit request");
-    let response = client
-        .wait_for_terminal_exit(request)
+    let response = conn
+        .send_request(request)
+        .block_task()
         .await
         .map_err(|e| format!("terminal/wait_for_exit error: {:?}", e))?;
 
@@ -162,18 +168,18 @@ pub async fn terminal_wait_for_exit(
 }
 
 pub async fn terminal_kill(
-    client: &dyn Client,
+    conn: &ConnectionTo<Client>,
     session_id: &SessionId,
     terminal_id: &str,
 ) -> Result<(), String> {
     let request = KillTerminalRequest::new(
         session_id.clone(),
-        agent_client_protocol::TerminalId::new(terminal_id),
+        TerminalId::new(terminal_id),
     );
 
     debug!(?request, "Sending terminal/kill request");
-    client
-        .kill_terminal(request)
+    conn.send_request(request)
+        .block_task()
         .await
         .map_err(|e| format!("terminal/kill error: {:?}", e))?;
 
@@ -182,18 +188,18 @@ pub async fn terminal_kill(
 }
 
 pub async fn terminal_release(
-    client: &dyn Client,
+    conn: &ConnectionTo<Client>,
     session_id: &SessionId,
     terminal_id: &str,
 ) -> Result<(), String> {
     let request = ReleaseTerminalRequest::new(
         session_id.clone(),
-        agent_client_protocol::TerminalId::new(terminal_id),
+        TerminalId::new(terminal_id),
     );
 
     debug!(?request, "Sending terminal/release request");
-    client
-        .release_terminal(request)
+    conn.send_request(request)
+        .block_task()
         .await
         .map_err(|e| format!("terminal/release error: {:?}", e))?;
 

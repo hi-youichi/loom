@@ -1,11 +1,10 @@
-use std::sync::{Arc, OnceLock};
-use tokio::sync::{mpsc, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 
 #[derive(Debug, Clone)]
 pub struct TerminalOutput {
     pub output: String,
     pub truncated: bool,
-    pub exit_status: Option<agent_client_protocol::TerminalExitStatus>,
+    pub exit_status: Option<agent_client_protocol::schema::TerminalExitStatus>,
 }
 
 #[derive(Debug, Clone)]
@@ -72,174 +71,40 @@ fn global_bridge_store() -> &'static BridgeStore {
 
 pub async fn set_client_bridge(bridge: Arc<dyn ClientBridgeTrait>) {
     let store = global_bridge_store();
-    *store.write().await = Some(bridge);
+    *store.write().unwrap() = Some(bridge);
 }
 
 pub async fn clear_client_bridge() {
     let store = global_bridge_store();
-    *store.write().await = None;
+    *store.write().unwrap() = None;
 }
 
 pub async fn get_client_bridge() -> Result<Arc<dyn ClientBridgeTrait>, String> {
     let store = global_bridge_store();
-    let guard = store.read().await;
+    let guard = store.read().unwrap();
     guard
         .clone()
         .ok_or_else(|| "No client bridge available".to_string())
 }
 
-enum BridgeRequest {
-    ReadTextFile {
-        path: String,
-        line: Option<u32>,
-        limit: Option<u32>,
-        reply: tokio::sync::oneshot::Sender<Result<String, String>>,
-    },
-    WriteTextFile {
-        path: String,
-        content: String,
-        reply: tokio::sync::oneshot::Sender<Result<(), String>>,
-    },
-    TerminalCreate {
-        session_id: String,
-        command: String,
-        args: Vec<String>,
-        env: Vec<(String, String)>,
-        cwd: Option<String>,
-        output_byte_limit: Option<u64>,
-        reply: tokio::sync::oneshot::Sender<Result<String, String>>,
-    },
-    TerminalOutput {
-        session_id: String,
-        terminal_id: String,
-        reply: tokio::sync::oneshot::Sender<Result<TerminalOutput, String>>,
-    },
-    TerminalWaitForExit {
-        session_id: String,
-        terminal_id: String,
-        reply: tokio::sync::oneshot::Sender<Result<TerminalExitResult, String>>,
-    },
-    TerminalKill {
-        session_id: String,
-        terminal_id: String,
-        reply: tokio::sync::oneshot::Sender<Result<(), String>>,
-    },
-    TerminalRelease {
-        session_id: String,
-        terminal_id: String,
-        reply: tokio::sync::oneshot::Sender<Result<(), String>>,
-    },
-}
+
 
 pub struct AcpClientBridge {
-    tx: mpsc::Sender<BridgeRequest>,
+    conn: Arc<tokio::sync::RwLock<Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>>>,
 }
 
 impl AcpClientBridge {
-    pub fn new<C: agent_client_protocol::Client + 'static>(client: Arc<C>) -> Self {
-        let (tx, mut rx) = mpsc::channel::<BridgeRequest>(64);
-        tokio::task::spawn_local(async move {
-            while let Some(req) = rx.recv().await {
-                match req {
-                    BridgeRequest::ReadTextFile { path, line, limit, reply } => {
-                        let result = crate::client_methods::read_text_file(
-                            client.as_ref(),
-                            &agent_client_protocol::SessionId::new("default"),
-                            &path,
-                            line,
-                            limit,
-                        )
-                        .await;
-                        let _ = reply.send(result);
-                    }
-                    BridgeRequest::WriteTextFile { path, content, reply } => {
-                        let result = crate::client_methods::write_text_file(
-                            client.as_ref(),
-                            &agent_client_protocol::SessionId::new("default"),
-                            &path,
-                            &content,
-                        )
-                        .await;
-                        let _ = reply.send(result);
-                    }
-                    BridgeRequest::TerminalCreate {
-                        session_id,
-                        command,
-                        args,
-                        env,
-                        cwd,
-                        output_byte_limit,
-                        reply,
-                    } => {
-                        let result = crate::client_methods::terminal_create(
-                            client.as_ref(),
-                            &agent_client_protocol::SessionId::new(&*session_id),
-                            &command,
-                            args,
-                            env,
-                            cwd,
-                            output_byte_limit,
-                        )
-                        .await;
-                        let _ = reply.send(result);
-                    }
-                    BridgeRequest::TerminalOutput {
-                        session_id,
-                        terminal_id,
-                        reply,
-                    } => {
-                        let result = crate::client_methods::terminal_output(
-                            client.as_ref(),
-                            &agent_client_protocol::SessionId::new(&*session_id),
-                            &terminal_id,
-                        )
-                        .await;
-                        let _ = reply.send(result);
-                    }
-                    BridgeRequest::TerminalWaitForExit {
-                        session_id,
-                        terminal_id,
-                        reply,
-                    } => {
-                        let result = crate::client_methods::terminal_wait_for_exit(
-                            client.as_ref(),
-                            &agent_client_protocol::SessionId::new(&*session_id),
-                            &terminal_id,
-                        )
-                        .await;
-                        let _ = reply.send(result);
-                    }
-                    BridgeRequest::TerminalKill {
-                        session_id,
-                        terminal_id,
-                        reply,
-                    } => {
-                        let result = crate::client_methods::terminal_kill(
-                            client.as_ref(),
-                            &agent_client_protocol::SessionId::new(&*session_id),
-                            &terminal_id,
-                        )
-                        .await;
-                        let _ = reply.send(result);
-                    }
-                    BridgeRequest::TerminalRelease {
-                        session_id,
-                        terminal_id,
-                        reply,
-                    } => {
-                        let result = crate::client_methods::terminal_release(
-                            client.as_ref(),
-                            &agent_client_protocol::SessionId::new(&*session_id),
-                            &terminal_id,
-                        )
-                        .await;
-                        let _ = reply.send(result);
-                    }
-                }
-            }
-        });
-        Self { tx }
+    pub fn new(conn: Arc<tokio::sync::RwLock<Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>>>) -> Self {
+        Self { conn }
     }
+}
+
+pub fn set_connection(conn: Arc<tokio::sync::RwLock<Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>>>) {
+    let bridge = Arc::new(AcpClientBridge::new(conn));
+    let store = global_bridge_store();
+    tracing::info!(store_ptr = Arc::as_ptr(store) as usize, "set_connection: storing bridge synchronously");
+    *store.write().unwrap() = Some(bridge);
+    tracing::info!("set_connection: bridge stored successfully");
 }
 
 #[async_trait::async_trait]
@@ -254,30 +119,28 @@ impl ClientBridgeTrait for AcpClientBridge {
         line: Option<u32>,
         limit: Option<u32>,
     ) -> Result<String, String> {
-        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-        self.tx
-            .send(BridgeRequest::ReadTextFile {
-                path: path.to_string(),
-                line,
-                limit,
-                reply: reply_tx,
-            })
-            .await
-            .map_err(|_| "bridge channel closed".to_string())?;
-        reply_rx.await.map_err(|_| "bridge response dropped".to_string())?
+        let guard: tokio::sync::RwLockReadGuard<Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>> = self.conn.read().await;
+        let conn = guard.as_ref().ok_or_else(|| "No connection available".to_string())?;
+        crate::client_methods::read_text_file(
+            conn,
+            &agent_client_protocol::schema::SessionId::new("default"),
+            path,
+            line,
+            limit,
+        )
+        .await
     }
 
     async fn write_text_file(&self, path: &str, content: &str) -> Result<(), String> {
-        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-        self.tx
-            .send(BridgeRequest::WriteTextFile {
-                path: path.to_string(),
-                content: content.to_string(),
-                reply: reply_tx,
-            })
-            .await
-            .map_err(|_| "bridge channel closed".to_string())?;
-        reply_rx.await.map_err(|_| "bridge response dropped".to_string())?
+        let guard: tokio::sync::RwLockReadGuard<Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>> = self.conn.read().await;
+        let conn = guard.as_ref().ok_or_else(|| "No connection available".to_string())?;
+        crate::client_methods::write_text_file(
+            conn,
+            &agent_client_protocol::schema::SessionId::new("default"),
+            path,
+            content,
+        )
+        .await
     }
 
     async fn terminal_create(
@@ -289,20 +152,18 @@ impl ClientBridgeTrait for AcpClientBridge {
         cwd: Option<String>,
         output_byte_limit: Option<u64>,
     ) -> Result<String, String> {
-        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-        self.tx
-            .send(BridgeRequest::TerminalCreate {
-                session_id: session_id.to_string(),
-                command: command.to_string(),
-                args,
-                env,
-                cwd,
-                output_byte_limit,
-                reply: reply_tx,
-            })
-            .await
-            .map_err(|_| "bridge channel closed".to_string())?;
-        reply_rx.await.map_err(|_| "bridge response dropped".to_string())?
+        let guard: tokio::sync::RwLockReadGuard<Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>> = self.conn.read().await;
+        let conn = guard.as_ref().ok_or_else(|| "No connection available".to_string())?;
+        crate::client_methods::terminal_create(
+            conn,
+            &agent_client_protocol::schema::SessionId::new(session_id),
+            command,
+            args,
+            env,
+            cwd,
+            output_byte_limit,
+        )
+        .await
     }
 
     async fn terminal_output(
@@ -310,16 +171,14 @@ impl ClientBridgeTrait for AcpClientBridge {
         session_id: &str,
         terminal_id: &str,
     ) -> Result<TerminalOutput, String> {
-        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-        self.tx
-            .send(BridgeRequest::TerminalOutput {
-                session_id: session_id.to_string(),
-                terminal_id: terminal_id.to_string(),
-                reply: reply_tx,
-            })
-            .await
-            .map_err(|_| "bridge channel closed".to_string())?;
-        reply_rx.await.map_err(|_| "bridge response dropped".to_string())?
+        let guard: tokio::sync::RwLockReadGuard<Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>> = self.conn.read().await;
+        let conn = guard.as_ref().ok_or_else(|| "No connection available".to_string())?;
+        crate::client_methods::terminal_output(
+            conn,
+            &agent_client_protocol::schema::SessionId::new(session_id),
+            terminal_id,
+        )
+        .await
     }
 
     async fn terminal_wait_for_exit(
@@ -327,16 +186,14 @@ impl ClientBridgeTrait for AcpClientBridge {
         session_id: &str,
         terminal_id: &str,
     ) -> Result<TerminalExitResult, String> {
-        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-        self.tx
-            .send(BridgeRequest::TerminalWaitForExit {
-                session_id: session_id.to_string(),
-                terminal_id: terminal_id.to_string(),
-                reply: reply_tx,
-            })
-            .await
-            .map_err(|_| "bridge channel closed".to_string())?;
-        reply_rx.await.map_err(|_| "bridge response dropped".to_string())?
+        let guard: tokio::sync::RwLockReadGuard<Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>> = self.conn.read().await;
+        let conn = guard.as_ref().ok_or_else(|| "No connection available".to_string())?;
+        crate::client_methods::terminal_wait_for_exit(
+            conn,
+            &agent_client_protocol::schema::SessionId::new(session_id),
+            terminal_id,
+        )
+        .await
     }
 
     async fn terminal_kill(
@@ -344,16 +201,14 @@ impl ClientBridgeTrait for AcpClientBridge {
         session_id: &str,
         terminal_id: &str,
     ) -> Result<(), String> {
-        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-        self.tx
-            .send(BridgeRequest::TerminalKill {
-                session_id: session_id.to_string(),
-                terminal_id: terminal_id.to_string(),
-                reply: reply_tx,
-            })
-            .await
-            .map_err(|_| "bridge channel closed".to_string())?;
-        reply_rx.await.map_err(|_| "bridge response dropped".to_string())?
+        let guard: tokio::sync::RwLockReadGuard<Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>> = self.conn.read().await;
+        let conn = guard.as_ref().ok_or_else(|| "No connection available".to_string())?;
+        crate::client_methods::terminal_kill(
+            conn,
+            &agent_client_protocol::schema::SessionId::new(session_id),
+            terminal_id,
+        )
+        .await
     }
 
     async fn terminal_release(
@@ -361,16 +216,14 @@ impl ClientBridgeTrait for AcpClientBridge {
         session_id: &str,
         terminal_id: &str,
     ) -> Result<(), String> {
-        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-        self.tx
-            .send(BridgeRequest::TerminalRelease {
-                session_id: session_id.to_string(),
-                terminal_id: terminal_id.to_string(),
-                reply: reply_tx,
-            })
-            .await
-            .map_err(|_| "bridge channel closed".to_string())?;
-        reply_rx.await.map_err(|_| "bridge response dropped".to_string())?
+        let guard: tokio::sync::RwLockReadGuard<Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>> = self.conn.read().await;
+        let conn = guard.as_ref().ok_or_else(|| "No connection available".to_string())?;
+        crate::client_methods::terminal_release(
+            conn,
+            &agent_client_protocol::schema::SessionId::new(session_id),
+            terminal_id,
+        )
+        .await
     }
 }
 

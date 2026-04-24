@@ -4,7 +4,7 @@ mod tests {
 
     fn echo_cmd(msg: &str) -> (String, Vec<String>) {
         if cfg!(windows) {
-            ("cmd".to_string(), vec!["/C".to_string(), format!("echo {}", msg)])
+            ("powershell".to_string(), vec!["-NoProfile".to_string(), "-Command".to_string(), format!("echo {}", msg)])
         } else {
             ("/bin/sh".to_string(), vec!["-c".to_string(), format!("echo {}", msg)])
         }
@@ -12,7 +12,7 @@ mod tests {
 
     fn long_running_cmd() -> (String, Vec<String>) {
         if cfg!(windows) {
-            ("cmd".to_string(), vec!["/C".to_string(), "ping -n 60 127.0.0.1".to_string()])
+            ("powershell".to_string(), vec!["-NoProfile".to_string(), "-Command".to_string(), "Start-Sleep -Seconds 60".to_string()])
         } else {
             ("/bin/sh".to_string(), vec!["-c".to_string(), "sleep 60".to_string()])
         }
@@ -20,7 +20,7 @@ mod tests {
 
     fn env_echo_cmd() -> (String, Vec<String>) {
         if cfg!(windows) {
-            ("cmd".to_string(), vec!["/C".to_string(), "echo %MY_VAR%".to_string()])
+            ("powershell".to_string(), vec!["-NoProfile".to_string(), "-Command".to_string(), "Write-Output $env:MY_VAR".to_string()])
         } else {
             ("/bin/sh".to_string(), vec!["-c".to_string(), "echo $MY_VAR".to_string()])
         }

@@ -12,19 +12,18 @@ use crate::stream_bridge::SessionNotifier;
 use crate::terminal::TerminalManager;
 use crate::tools::{create_acp_tools, AcpBridgeCommandExecutor};
 use loom::tools::bash::LocalCommandExecutor;
-use agent_client_protocol::{
-    Agent, AuthenticateRequest, AuthenticateResponse, CancelNotification, ForkSessionRequest,
+use agent_client_protocol::schema::{
+    AuthenticateRequest, AuthenticateResponse, CancelNotification, ForkSessionRequest,
     ForkSessionResponse, InitializeRequest, InitializeResponse, ListSessionsRequest,
     ListSessionsResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
-    NewSessionResponse, PromptRequest, PromptResponse, SessionConfigOptionValue, SessionId,
-    SessionNotification, SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
+    NewSessionResponse, PromptRequest, PromptResponse, SessionConfigOptionValue,
+    SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
     SetSessionModeRequest, SetSessionModeResponse, SetSessionModelRequest, SetSessionModelResponse,
-    StopReason,
+    StopReason, SessionId, SessionNotification,
 };
 use loom::memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
 use loom::state::ReActState;
 
-use async_trait::async_trait;
 use chrono::DateTime;
 use config::load_full_config;
 use loom::{run_agent_with_options, AnyStreamEvent, RunCmd, RunCompletion, RunError, RunOptions};
@@ -41,6 +40,7 @@ pub struct LoomAcpAgent {
     pub(crate) agent_registry: AgentRegistry,
     pub(crate) config_store: SessionConfigStore,
     pub(crate) session_update_tx: Option<mpsc::Sender<SessionNotification>>,
+    #[allow(dead_code)]
     pub(crate) terminal_mgr: Arc<TerminalManager>,
     pub(crate) client_capabilities: std::sync::RwLock<ClientCapabilitiesInfo>,
 }
@@ -297,9 +297,8 @@ impl Default for LoomAcpAgent {
     }
 }
 
-#[async_trait(?Send)]
-impl Agent for LoomAcpAgent {
-    async fn initialize(
+impl LoomAcpAgent {
+    pub async fn initialize(
         &self,
         args: InitializeRequest,
     ) -> agent_client_protocol::Result<InitializeResponse> {
@@ -317,7 +316,7 @@ impl Agent for LoomAcpAgent {
         );
         // Build base response using the standard builder
         let base_response = InitializeResponse::new(args.protocol_version).agent_info(
-            agent_client_protocol::Implementation::new("loom", env!("CARGO_PKG_VERSION")),
+            agent_client_protocol::schema::Implementation::new("loom", env!("CARGO_PKG_VERSION")),
         );
 
         // Add loadSession capability by serializing, modifying, and deserializing
@@ -350,7 +349,8 @@ impl Agent for LoomAcpAgent {
         Ok(response)
     }
 
-    async fn authenticate(
+    #[allow(dead_code)]
+    pub async fn authenticate(
         &self,
         _args: AuthenticateRequest,
     ) -> agent_client_protocol::Result<AuthenticateResponse> {
@@ -358,7 +358,7 @@ impl Agent for LoomAcpAgent {
         Ok(AuthenticateResponse::default())
     }
 
-    async fn new_session(
+    pub async fn new_session(
         &self,
         args: NewSessionRequest,
     ) -> agent_client_protocol::Result<NewSessionResponse> {
@@ -401,14 +401,14 @@ impl Agent for LoomAcpAgent {
             .config_options(config_options))
     }
 
-    async fn cancel(&self, args: CancelNotification) -> agent_client_protocol::Result<()> {
+    pub async fn cancel(&self, args: CancelNotification) -> agent_client_protocol::Result<()> {
         tracing::debug!(session_id = %args.session_id, "cancel called");
         let key = OurSessionId::new(args.session_id.to_string());
         self.sessions.cancel_current_generation(&key);
         Ok(())
     }
 
-    async fn set_session_config_option(
+    pub async fn set_session_config_option(
         &self,
         args: SetSessionConfigOptionRequest,
     ) -> agent_client_protocol::Result<SetSessionConfigOptionResponse> {
@@ -481,7 +481,7 @@ impl Agent for LoomAcpAgent {
         .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))
     }
 
-    async fn set_session_mode(
+    pub async fn set_session_mode(
         &self,
         args: SetSessionModeRequest,
     ) -> agent_client_protocol::Result<SetSessionModeResponse> {
@@ -499,7 +499,7 @@ impl Agent for LoomAcpAgent {
         Ok(SetSessionModeResponse::new())
     }
 
-    async fn set_session_model(
+    pub async fn set_session_model(
         &self,
         args: SetSessionModelRequest,
     ) -> agent_client_protocol::Result<SetSessionModelResponse> {
@@ -524,7 +524,7 @@ impl Agent for LoomAcpAgent {
         Ok(SetSessionModelResponse::new())
     }
 
-    async fn fork_session(
+    pub async fn fork_session(
         &self,
         args: ForkSessionRequest,
     ) -> agent_client_protocol::Result<ForkSessionResponse> {
@@ -596,7 +596,7 @@ impl Agent for LoomAcpAgent {
             .config_options(config_options))
     }
 
-    async fn prompt(&self, args: PromptRequest) -> agent_client_protocol::Result<PromptResponse> {
+    pub async fn prompt(&self, args: PromptRequest) -> agent_client_protocol::Result<PromptResponse> {
         tracing::debug!(session_id = %args.session_id, prompt_blocks = args.prompt.len(), "prompt called");
         let key = OurSessionId::new(args.session_id.to_string());
         let entry = self
@@ -749,7 +749,7 @@ impl Agent for LoomAcpAgent {
         }
     }
 
-    async fn load_session(
+    pub async fn load_session(
         &self,
         args: LoadSessionRequest,
     ) -> agent_client_protocol::Result<LoadSessionResponse> {
@@ -929,7 +929,7 @@ impl Agent for LoomAcpAgent {
         Ok(response)
     }
 
-    async fn list_sessions(
+    pub async fn list_sessions(
         &self,
         args: ListSessionsRequest,
     ) -> agent_client_protocol::Result<ListSessionsResponse> {
@@ -944,18 +944,18 @@ impl Agent for LoomAcpAgent {
 
         // Convert our SessionInfo to JSON and then deserialize to protocol types
         // This is necessary because agent_client_protocol types are non_exhaustive
-        let protocol_sessions: Vec<agent_client_protocol::SessionInfo> = our_sessions
+        let protocol_sessions: Vec<agent_client_protocol::schema::SessionInfo> = our_sessions
             .into_iter()
             .map(|s| {
                 // Convert cwd: Option<String> to PathBuf string (use default if None)
                 let cwd_str = s
                     .cwd
                     .unwrap_or_else(|| loom::DEFAULT_WORKING_FOLDER.to_string());
+                let cwd_path = std::path::PathBuf::from(&cwd_str);
 
-                // Build JSON for SessionInfo
                 let mut session_json = serde_json::json!({
                     "sessionId": s.session_id,
-                    "cwd": cwd_str,
+                    "cwd": cwd_path,
                 });
 
                 if let Some(title) = s.title {
@@ -1058,7 +1058,7 @@ impl LoomAcpAgent {
         &self,
         cwd_filter: Option<&str>,
         _cursor: Option<&str>,
-    ) -> Result<Vec<SessionInfo>, agent_client_protocol::Error> {
+    ) -> Result<Vec<crate::agent::SessionInfo>, agent_client_protocol::Error> {
         let db_path = loom::memory::default_memory_db_path();
         let cwd_filter = cwd_filter.map(String::from);
 
@@ -1190,9 +1190,9 @@ fn normalize_current_model_for_acp(current_model: &str, options: &[ModelOption])
 fn build_session_config_options(
     current_mode: &str,
     current_model: &str,
-    modes: &[agent_client_protocol::SessionMode],
+    modes: &[agent_client_protocol::schema::SessionMode],
     model_options: &[ModelOption],
-) -> Result<Vec<agent_client_protocol::SessionConfigOption>, serde_json::Error> {
+) -> Result<Vec<agent_client_protocol::schema::SessionConfigOption>, serde_json::Error> {
     let current_model = normalize_current_model_for_acp(current_model, model_options);
     let mode_options: Vec<_> = modes
         .iter()
@@ -1235,7 +1235,7 @@ fn build_session_config_options(
 fn build_set_session_config_option_response(
     current_mode: &str,
     current_model: &str,
-    modes: &[agent_client_protocol::SessionMode],
+    modes: &[agent_client_protocol::schema::SessionMode],
     model_options: &[ModelOption],
 ) -> Result<SetSessionConfigOptionResponse, serde_json::Error> {
     let config_options =
@@ -1261,7 +1261,7 @@ mod tests {
 
     #[test]
     fn test_session_config_select_option_structure() {
-        use agent_client_protocol::{SessionConfigSelectOption, SessionConfigValueId};
+        use agent_client_protocol::schema::{SessionConfigSelectOption, SessionConfigValueId};
 
         let option_id = SessionConfigValueId::new("gpt-4o".to_string());
         let select_option = SessionConfigSelectOption::new(option_id, "GPT-4o".to_string());
@@ -1274,12 +1274,12 @@ mod tests {
     #[test]
     fn test_build_session_config_options_populates_options() {
         let modes = vec![
-            agent_client_protocol::SessionMode::new(
-                agent_client_protocol::SessionModeId::new("ask"),
+            agent_client_protocol::schema::SessionMode::new(
+                agent_client_protocol::schema::SessionModeId::new("ask"),
                 "Ask",
             ),
-            agent_client_protocol::SessionMode::new(
-                agent_client_protocol::SessionModeId::new("default"),
+            agent_client_protocol::schema::SessionMode::new(
+                agent_client_protocol::schema::SessionModeId::new("default"),
                 "Default",
             ),
         ];
@@ -1361,8 +1361,8 @@ mod tests {
 
     #[test]
     fn test_build_session_config_options_handles_empty_model_list() {
-        let modes = vec![agent_client_protocol::SessionMode::new(
-            agent_client_protocol::SessionModeId::new("ask"),
+        let modes = vec![agent_client_protocol::schema::SessionMode::new(
+            agent_client_protocol::schema::SessionModeId::new("ask"),
             "Ask",
         )];
         let result = build_session_config_options("ask", "", &modes, &[]);
@@ -1389,8 +1389,8 @@ mod tests {
 
     #[test]
     fn test_build_set_session_config_option_response() {
-        let modes = vec![agent_client_protocol::SessionMode::new(
-            agent_client_protocol::SessionModeId::new("ask"),
+        let modes = vec![agent_client_protocol::schema::SessionMode::new(
+            agent_client_protocol::schema::SessionModeId::new("ask"),
             "Ask",
         )];
         let model_options = vec![ModelOption {
@@ -1456,8 +1456,8 @@ mod tests {
 
     #[test]
     fn test_build_session_config_options_includes_default() {
-        let modes = vec![agent_client_protocol::SessionMode::new(
-            agent_client_protocol::SessionModeId::new("ask"),
+        let modes = vec![agent_client_protocol::schema::SessionMode::new(
+            agent_client_protocol::schema::SessionModeId::new("ask"),
             "Ask",
         )];
         let model_options = vec![
