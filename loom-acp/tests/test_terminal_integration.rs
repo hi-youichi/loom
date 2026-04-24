@@ -38,12 +38,21 @@ mod tests {
 
         assert!(term_id.starts_with("term-"));
 
-        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-
-        let result = manager.get_output(&term_id).await;
-        assert!(result.is_some());
-        let (output, _truncated, status) = result.unwrap();
-        assert!(output.contains("hello"), "Expected 'hello' in output, got: {}", output);
+        let (_output, _truncated, status) = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            async {
+                loop {
+                    if let Some((output, truncated, status)) = manager.get_output(&term_id).await {
+                        if output.contains("hello") {
+                            return (output, truncated, status);
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+            },
+        )
+        .await
+        .expect("timed out waiting for output");
 
         if let Some(TerminalStatus::Completed { exit_code, .. }) = status {
             assert_eq!(exit_code, Some(0));
@@ -60,16 +69,25 @@ mod tests {
             .await
             .unwrap();
 
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         let _status_before = manager.get_status(&term_id).await;
 
         manager.kill(&term_id).await.unwrap();
 
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-
-        let status = manager.get_status(&term_id).await;
-        assert_eq!(status, Some(TerminalStatus::Killed));
+        let _status = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            async {
+                loop {
+                    if let Some(TerminalStatus::Killed) = manager.get_status(&term_id).await {
+                        return TerminalStatus::Killed;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+            },
+        )
+        .await
+        .expect("timed out waiting for kill");
     }
 
     #[tokio::test]
@@ -82,7 +100,7 @@ mod tests {
             .await
             .unwrap();
 
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         manager.release(&term_id).await.unwrap();
 
@@ -151,16 +169,21 @@ mod tests {
             .await
             .unwrap();
 
-        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-
-        let result = manager.get_output(&term_id).await;
-        assert!(result.is_some());
-        let (output, _, _) = result.unwrap();
-        assert!(
-            output.contains("test_value"),
-            "Expected 'test_value' in output, got: {}",
-            output
-        );
+        let (_output, _, _) = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            async {
+                loop {
+                    if let Some((output, truncated, status)) = manager.get_output(&term_id).await {
+                        if output.contains("test_value") {
+                            return (output, truncated, status);
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+            },
+        )
+        .await
+        .expect("timed out waiting for output");
     }
 
     #[tokio::test]
@@ -181,13 +204,23 @@ mod tests {
 
         assert_ne!(term1, term2);
 
-        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-
-        let (output1, _, _) = manager.get_output(&term1).await.unwrap();
-        let (output2, _, _) = manager.get_output(&term2).await.unwrap();
-
-        assert!(output1.contains("one"));
-        assert!(output2.contains("two"));
+        let (_output1, _output2) = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            async {
+                loop {
+                    let r1 = manager.get_output(&term1).await;
+                    let r2 = manager.get_output(&term2).await;
+                    if let (Some((o1, _, _)), Some((o2, _, _))) = (r1, r2) {
+                        if o1.contains("one") && o2.contains("two") {
+                            return (o1, o2);
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+            },
+        )
+        .await
+        .expect("timed out waiting for output");
     }
 
     #[tokio::test]
@@ -200,11 +233,20 @@ mod tests {
             .await
             .unwrap();
 
-        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-
-        let result = manager.get_output(&term_id).await;
-        assert!(result.is_some());
-        let (_, truncated, _) = result.unwrap();
-        assert!(truncated, "Expected output to be truncated");
+        let (_, truncated, _) = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            async {
+                loop {
+                    if let Some((output, truncated, status)) = manager.get_output(&term_id).await {
+                        if truncated {
+                            return (output, truncated, status);
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+            },
+        )
+        .await
+        .expect("timed out waiting for output");
     }
 }

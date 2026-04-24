@@ -12,7 +12,7 @@ use wiremock::matchers::{method, path};
 
 use common::{AcpChild, PlanEntryPriority, PlanEntryStatus};
 
-const TIMEOUT: Duration = Duration::from_secs(60);
+const TIMEOUT: Duration = Duration::from_secs(20);
 
 fn todo_write_args() -> serde_json::Value {
     json!({

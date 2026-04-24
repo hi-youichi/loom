@@ -30,7 +30,8 @@ impl CommandExecutor for TerminalCommandExecutor {
         _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
         let (shell, args) = if cfg!(windows) {
-            ("powershell".to_string(), vec!["-NoProfile".to_string(), "-Command".to_string(), command.to_string()])
+            let wrapped = format!("[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; {}", command);
+            ("powershell".to_string(), vec!["-NoProfile".to_string(), "-Command".to_string(), wrapped])
         } else {
             ("sh".to_string(), vec!["-c".to_string(), command.to_string()])
         };
@@ -153,7 +154,8 @@ impl CommandExecutor for AcpBridgeCommandExecutor {
         }
 
         let (shell, args) = if cfg!(windows) {
-            ("powershell".to_string(), vec!["-NoProfile".to_string(), "-Command".to_string(), command.to_string()])
+            let wrapped = format!("[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; {}", command);
+            ("powershell".to_string(), vec!["-NoProfile".to_string(), "-Command".to_string(), wrapped])
         } else {
             ("sh".to_string(), vec!["-c".to_string(), command.to_string()])
         };
