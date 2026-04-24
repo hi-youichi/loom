@@ -51,7 +51,7 @@ test_output_*.txt
 # Debug and test
 log
 logs/
-*.pdb
+*.pid
 **/mutants.out*/
 coverage/
 coverage.lcov

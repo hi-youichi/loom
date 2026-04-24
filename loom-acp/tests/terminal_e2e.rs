@@ -5,8 +5,8 @@ mod mocks;
 use std::time::Duration;
 use std::sync::atomic::Ordering;
 
-const TIMEOUT: Duration = Duration::from_secs(30);
-const TIMEOUT_SHORT: Duration = Duration::from_secs(10);
+const TIMEOUT: Duration = Duration::from_secs(10);
+const TIMEOUT_SHORT: Duration = Duration::from_secs(5);
 
 fn platform_echo(msg: &str) -> String {
     format!("echo {}", msg)

@@ -3,7 +3,7 @@ mod e2e;
 
 use std::time::Duration;
 
-const TIMEOUT: Duration = Duration::from_secs(30);
+const TIMEOUT: Duration = Duration::from_secs(10);
 
 async fn handshake(acp: &mut common::AcpChild) -> String {
     let init = acp
