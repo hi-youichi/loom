@@ -351,13 +351,11 @@ pub async fn run_stdio_loop() -> Result<(), Box<dyn std::error::Error + Send + S
                 .on_receive_request(
                     move |req: PromptRequest, responder: Responder<PromptResponse>, _conn: ConnectionTo<Client>| {
                         let agent = agent3.clone();
-                        // Spawn the work - don't await it
-                        tokio::task::spawn_local(async move {
+                        async move {
                             let result = agent.prompt(req).await;
                             let _ = responder.respond_with_result(result);
-                        });
-                        // Return Ok(()) immediately to unblock the IO loop
-                        async { Ok(()) }
+                            Ok(())
+                        }
                     },
                     on_receive_request!(),
                 )
