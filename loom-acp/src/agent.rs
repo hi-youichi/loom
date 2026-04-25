@@ -363,8 +363,8 @@ impl LoomAcpAgent {
         args: NewSessionRequest,
     ) -> agent_client_protocol::Result<NewSessionResponse> {
         tracing::debug!(cwd = ?args.cwd, "new_session called");
-        // Initialize logging with working_folder from ACP session
-        crate::logging::init_with_working_folder(&args.cwd);
+        // Logging is initialized at startup; this is a no-op if already initialized
+        crate::logging::init_logging(Some(&args.cwd));
 
         let working_directory = Some(args.cwd.clone());
         let our_id = self.sessions.create(working_directory);
@@ -529,7 +529,8 @@ impl LoomAcpAgent {
         args: ForkSessionRequest,
     ) -> agent_client_protocol::Result<ForkSessionResponse> {
         tracing::debug!(session_id = %args.session_id, cwd = ?args.cwd, "fork_session called");
-        crate::logging::init_with_working_folder(&args.cwd);
+        // Logging is initialized at startup; this is a no-op if already initialized
+        crate::logging::init_logging(Some(&args.cwd));
 
         let source_key = OurSessionId::new(args.session_id.to_string());
         let source_entry = self
@@ -754,7 +755,8 @@ impl LoomAcpAgent {
         args: LoadSessionRequest,
     ) -> agent_client_protocol::Result<LoadSessionResponse> {
         tracing::info!(session_id = %args.session_id, cwd = ?args.cwd, "load_session started");
-        crate::logging::init_with_working_folder(&args.cwd);
+        // Logging is initialized at startup; this is a no-op if already initialized
+        crate::logging::init_logging(Some(&args.cwd));
         let session_id = args.session_id.clone();
         let our_session_id = OurSessionId::new(session_id.to_string());
         let working_directory = Some(args.cwd.clone());

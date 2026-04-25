@@ -180,7 +180,7 @@
 //! | [`content`] | Parse ContentBlock into user message string |
 //! | [`stream_bridge`] | Loom stream events -> ACP SessionUpdate |
 //! | [`protocol`] | Protocol and Loom mapping summary (initialize/prompt/update/cancel, etc.) |
-//! | [`logging`] | Delayed log initialization with working_folder from ACP session |
+//! | [`logging`] | Log initialization at startup, with optional working_folder from ACP session |
 
 use std::sync::OnceLock;
 
@@ -258,6 +258,10 @@ pub async fn run_stdio_loop() -> Result<(), Box<dyn std::error::Error + Send + S
     use std::sync::Arc;
     use tokio::sync::mpsc;
     use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
+    
+    // Initialize logging at startup (before any tracing calls)
+    logging::init_logging(None);
+    
     tracing::info!("run_stdio_loop starting");
 
     let local = tokio::task::LocalSet::new();
@@ -349,13 +353,17 @@ pub async fn run_stdio_loop() -> Result<(), Box<dyn std::error::Error + Send + S
                     on_receive_request!(),
                 )
                 .on_receive_request(
-                    move |req: PromptRequest, responder: Responder<PromptResponse>, _conn: ConnectionTo<Client>| {
+                    move |req: PromptRequest, responder: Responder<PromptResponse>, conn: ConnectionTo<Client>| {
                         let agent = agent3.clone();
-                        async move {
+                        // Spawn the prompt task to avoid blocking the event loop
+                        let _ = conn.spawn(async move {
                             let result = agent.prompt(req).await;
+                            // Ignore "receiver dropped" errors - connection may have closed
                             let _ = responder.respond_with_result(result);
                             Ok(())
-                        }
+                        });
+                        // Return immediately to unblock the IO loop
+                        async { Ok(()) }
                     },
                     on_receive_request!(),
                 )

@@ -49,22 +49,13 @@ impl LogRotate {
     }
 }
 
-/// Resolve a log path template: `{working_folder}` substitution, then relative paths against
-/// `working_folder` when provided (otherwise relative paths stay as-is).
+/// Resolve a log path: relative paths are resolved against `working_folder` when provided,
+/// otherwise they stay as-is. Absolute paths are returned unchanged.
 pub fn resolve_log_path(path: &Path, working_folder: Option<&Path>) -> PathBuf {
-    let path_str = path.to_string_lossy();
-    if path_str.contains("{working_folder}") {
-        if let Some(wf) = working_folder {
-            PathBuf::from(path_str.replace("{working_folder}", &wf.to_string_lossy()))
-        } else {
-            path.to_path_buf()
-        }
-    } else if !path.is_absolute() {
-        if let Some(wf) = working_folder {
-            wf.join(path)
-        } else {
-            path.to_path_buf()
-        }
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else if let Some(wf) = working_folder {
+        wf.join(path)
     } else {
         path.to_path_buf()
     }
@@ -164,16 +155,6 @@ mod tests {
         assert_eq!(
             resolve_log_path(p, Some(wf)),
             PathBuf::from("/var/log/x.log")
-        );
-    }
-
-    #[test]
-    fn resolve_working_folder_placeholder() {
-        let wf = Path::new("/workspace");
-        let p = Path::new("{working_folder}/out.log");
-        assert_eq!(
-            resolve_log_path(p, Some(wf)),
-            PathBuf::from("/workspace/out.log")
         );
     }
 

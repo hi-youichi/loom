@@ -49,7 +49,7 @@ struct Args {
     #[arg(long, default_value = "info")]
     log_level: String,
 
-    /// Log file path. Supports {working_folder} variable. Default: ~/.loom/acp/loom-acp.log
+    /// Log file path. Relative paths are resolved against the session working_folder. Default: ~/.loom/acp/loom-acp.log
     #[arg(long, value_name = "PATH")]
     log_file: Option<PathBuf>,
 

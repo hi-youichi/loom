@@ -52,10 +52,11 @@ pub struct LogConfig {
     pub format: LogFormat,
 }
 
-/// Initialize logging with working_folder from ACP session.
-/// This should be called once when the first session is created.
-/// Subsequent calls are no-ops.
-pub fn init_with_working_folder(working_folder: &Path) {
+/// Initialize logging at application startup.
+/// - If no working_folder is provided, relative paths are resolved relative to the current process working directory.
+/// - If working_folder is provided, relative paths are resolved relative to that folder.
+/// This should be called once at startup. Subsequent calls are no-ops.
+pub fn init_logging(working_folder: Option<&Path>) {
     if LOG_GUARD.get().is_some() {
         return;
     }
@@ -73,7 +74,7 @@ pub fn init_with_working_folder(working_folder: &Path) {
         return;
     };
 
-    let log_path = tracing_init::resolve_log_path(log_file.as_path(), Some(working_folder));
+    let log_path = tracing_init::resolve_log_path(log_file.as_path(), working_folder);
 
     if let Some(parent) = log_path.parent() {
         let _ = std::fs::create_dir_all(parent);
