@@ -381,6 +381,31 @@ impl AcpChild {
         Self::spawn_with_mock_and_capabilities(false).await
     }
 
+    pub async fn spawn_with_mock_at_home(
+        home: &Path,
+    ) -> Result<(Self, MockAcpServer), Box<dyn std::error::Error>> {
+        let mock = MockAcpServer::start().await;
+
+        let config_toml = format!(
+            r#"[default]
+provider = "mock"
+
+[[providers]]
+name = "mock"
+api_key = "test-key"
+base_url = "{}/v1"
+model = "test-model"
+"#,
+            mock.server.uri()
+        );
+        std::fs::write(home.join("config.toml"), config_toml)?;
+
+        let acp = Self::spawn_with_temp_dir(Some(home), None)?;
+        mock.mount_default_responses().await;
+
+        Ok((acp, mock))
+    }
+
     pub async fn spawn_with_mock_and_terminal(
     ) -> Result<(Self, MockAcpServer), Box<dyn std::error::Error>> {
         Self::spawn_with_mock_and_capabilities(true).await
@@ -416,9 +441,14 @@ model = "test-model"
         Ok((acp, mock))
     }
 
-    fn next_request_id(&self) -> u64 {
+    pub fn next_request_id(&self) -> u64 {
         let mut id = self.request_id.lock().unwrap();
         *id += 1;
+        *id
+    }
+
+    pub fn current_request_id(&self) -> u64 {
+        let id = self.request_id.lock().unwrap();
         *id
     }
 
@@ -910,6 +940,38 @@ model = "test-model"
             writer.flush()?;
         }
         Ok(())
+    }
+
+    pub fn send_load_request(
+        &mut self,
+        session_id: &str,
+        cwd: &str,
+    ) -> Result<u64, Box<dyn std::error::Error>> {
+        let request_id = self.next_request_id();
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "session/load",
+            "params": {
+                "sessionId": session_id,
+                "cwd": cwd,
+                "mcpServers": []
+            }
+        });
+        let mut writer = self.writer.lock().unwrap();
+        writeln!(writer, "{}", serde_json::to_string(&request)?)?;
+        writer.flush()?;
+        Ok(request_id)
+    }
+
+    pub fn load_and_collect_notifications(
+        &mut self,
+        session_id: &str,
+        cwd: &str,
+        timeout: Duration,
+    ) -> Result<(Vec<serde_json::Value>, RpcResponse), Box<dyn std::error::Error>> {
+        let request_id = self.send_load_request(session_id, cwd)?;
+        self.collect_all_notifications(request_id, timeout)
     }
 }
 
