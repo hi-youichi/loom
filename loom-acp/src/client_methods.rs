@@ -5,9 +5,11 @@ use agent_client_protocol::schema::{
     TerminalExitStatus, EnvVariable, WaitForTerminalExitRequest,
     WriteTextFileRequest,
 };
-use tracing::{debug, info};
+use tracing::{debug, info, instrument};
 
 use crate::tools::{TerminalExitResult, TerminalOutput};
+
+
 
 pub async fn read_text_file(
     conn: &ConnectionTo<Client>,
@@ -25,11 +27,12 @@ pub async fn read_text_file(
     }
 
     debug!(?request, "Sending fs/read_text_file request");
+
     let response = conn
         .send_request(request)
         .block_task()
         .await
-        .map_err(|e| format!("fs/read_text_file error: {:?}", e))?;
+        .map_err(|e| e.to_string())?;
 
     info!(
         content_len = response.content.len(),
@@ -47,15 +50,18 @@ pub async fn write_text_file(
     let request = WriteTextFileRequest::new(session_id.clone(), path, content);
 
     debug!(?request, "Sending fs/write_text_file request");
-    conn.send_request(request)
+
+    conn
+        .send_request(request)
         .block_task()
         .await
-        .map_err(|e| format!("fs/write_text_file error: {:?}", e))?;
+        .map_err(|e| e.to_string())?;
 
     info!("fs/write_text_file completed");
     Ok(())
 }
 
+#[instrument(skip(conn), fields(session_id, command, args_count = args.len()))]
 pub async fn terminal_create(
     conn: &ConnectionTo<Client>,
     session_id: &SessionId,
@@ -65,6 +71,15 @@ pub async fn terminal_create(
     cwd: Option<String>,
     output_byte_limit: Option<u64>,
 ) -> Result<String, String> {
+    info!(
+        command = %command,
+        args_count = args.len(),
+        env_count = env.len(),
+        cwd = ?cwd,
+        output_byte_limit = ?output_byte_limit,
+        "sending terminal/create request"
+    );
+
     let mut request = CreateTerminalRequest::new(session_id.clone(), command);
 
     if !args.is_empty() {
@@ -79,7 +94,7 @@ pub async fn terminal_create(
         );
     }
 
-    if let Some(dir) = cwd {
+    if let Some(ref dir) = cwd {
         request = request.cwd(std::path::PathBuf::from(dir));
     }
 
@@ -87,46 +102,49 @@ pub async fn terminal_create(
         request = request.output_byte_limit(limit);
     }
 
-    debug!(?request, "Sending terminal/create request");
     let response = conn
         .send_request(request)
         .block_task()
         .await
-        .map_err(|e| format!("terminal/create error: {:?}", e))?;
+        .map_err(|e| e.to_string())?;
 
     let terminal_id = response.terminal_id.to_string();
     info!(terminal_id = %terminal_id, "terminal/create completed");
     Ok(terminal_id)
 }
 
+#[instrument(skip(conn), fields(session_id, terminal_id))]
 pub async fn terminal_output(
     conn: &ConnectionTo<Client>,
     session_id: &SessionId,
     terminal_id: &str,
 ) -> Result<TerminalOutput, String> {
+    info!(terminal_id = %terminal_id, "sending terminal/output request");
+
     let request = TerminalOutputRequest::new(
         session_id.clone(),
         TerminalId::new(terminal_id),
     );
 
-    debug!(?request, "Sending terminal/output request");
     let response = conn
         .send_request(request)
         .block_task()
         .await
-        .map_err(|e| format!("terminal/output error: {:?}", e))?;
+        .map_err(|e| e.to_string())?;
+
+    info!(
+        terminal_id = %terminal_id,
+        output_len = response.output.len(),
+        truncated = response.truncated,
+        exit_code = ?response.exit_status.as_ref().and_then(|s| s.exit_code),
+        "terminal/output completed"
+    );
 
     let exit_status = response.exit_status.map(|s| {
         TerminalExitStatus::new()
             .exit_code(s.exit_code)
             .signal(s.signal)
     });
-
-    info!(
-        output_len = response.output.len(),
-        truncated = response.truncated,
-        "terminal/output completed"
-    );
 
     Ok(TerminalOutput {
         output: response.output,
@@ -135,27 +153,30 @@ pub async fn terminal_output(
     })
 }
 
+#[instrument(skip(conn), fields(session_id, terminal_id))]
 pub async fn terminal_wait_for_exit(
     conn: &ConnectionTo<Client>,
     session_id: &SessionId,
     terminal_id: &str,
 ) -> Result<TerminalExitResult, String> {
+    info!(terminal_id = %terminal_id, "sending terminal/wait_for_exit request");
+
     let request = WaitForTerminalExitRequest::new(
         session_id.clone(),
         TerminalId::new(terminal_id),
     );
 
-    debug!(?request, "Sending terminal/wait_for_exit request");
     let response = conn
         .send_request(request)
         .block_task()
         .await
-        .map_err(|e| format!("terminal/wait_for_exit error: {:?}", e))?;
+        .map_err(|e| e.to_string())?;
 
     let exit_code = response.exit_status.exit_code;
     let signal = response.exit_status.signal;
 
     info!(
+        terminal_id = %terminal_id,
         exit_code = ?exit_code,
         signal = ?signal,
         "terminal/wait_for_exit completed"
@@ -178,32 +199,37 @@ pub async fn terminal_kill(
     );
 
     debug!(?request, "Sending terminal/kill request");
-    conn.send_request(request)
+
+    conn
+        .send_request(request)
         .block_task()
         .await
-        .map_err(|e| format!("terminal/kill error: {:?}", e))?;
+        .map_err(|e| e.to_string())?;
 
     info!("terminal/kill completed");
     Ok(())
 }
 
+#[instrument(skip(conn), fields(session_id, terminal_id))]
 pub async fn terminal_release(
     conn: &ConnectionTo<Client>,
     session_id: &SessionId,
     terminal_id: &str,
 ) -> Result<(), String> {
+    info!(terminal_id = %terminal_id, "sending terminal/release request");
+
     let request = ReleaseTerminalRequest::new(
         session_id.clone(),
         TerminalId::new(terminal_id),
     );
 
-    debug!(?request, "Sending terminal/release request");
-    conn.send_request(request)
+    conn
+        .send_request(request)
         .block_task()
         .await
-        .map_err(|e| format!("terminal/release error: {:?}", e))?;
+        .map_err(|e| e.to_string())?;
 
-    info!("terminal/release completed");
+    info!(terminal_id = %terminal_id, "terminal/release completed");
     Ok(())
 }
 

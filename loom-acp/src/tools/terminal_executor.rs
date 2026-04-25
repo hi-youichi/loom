@@ -5,7 +5,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use loom::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError};
 use loom::tools::CommandExecutor;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, instrument, warn};
 
 use crate::terminal::TerminalManager;
 
@@ -21,6 +21,7 @@ impl TerminalCommandExecutor {
 
 #[async_trait]
 impl CommandExecutor for TerminalCommandExecutor {
+    #[instrument(skip_all, fields(command, working_dir, timeout_ms, executor = "local"))]
     async fn execute(
         &self,
         command: &str,
@@ -37,7 +38,6 @@ impl CommandExecutor for TerminalCommandExecutor {
         };
 
         info!(
-            executor = "local",
             command = %command,
             shell = %shell,
             working_dir = ?working_dir,
@@ -57,40 +57,41 @@ impl CommandExecutor for TerminalCommandExecutor {
             )
             .await
             .map_err(|e| {
-                error!(command = %command, error = %e, "bash execute: terminal create failed");
+                error!(error = %e, "terminal create failed");
                 ToolSourceError::Transport(e.to_string())
             })?;
 
-        debug!(terminal_id = %terminal_id, "bash execute: terminal created");
+        info!(terminal_id = %terminal_id, "terminal created");
 
         let result = if let Some(timeout) = timeout_ms {
-            debug!(terminal_id = %terminal_id, timeout_ms = timeout, "bash execute: waiting with timeout");
+            info!(terminal_id = %terminal_id, timeout_ms = timeout, "waiting for exit with timeout");
             tokio::select! {
                 status = self.terminal_mgr.wait_for_exit(&terminal_id) => {
-                    debug!(terminal_id = %terminal_id, "bash execute: process exited before timeout");
+                    info!(terminal_id = %terminal_id, "process exited before timeout");
                     status.map_err(|e| {
-                        error!(terminal_id = %terminal_id, error = %e, "bash execute: wait_for_exit failed");
+                        error!(terminal_id = %terminal_id, error = %e, "wait_for_exit failed");
                         ToolSourceError::Transport(e.to_string())
                     })
                 }
                 _ = tokio::time::sleep(Duration::from_millis(timeout)) => {
-                    warn!(terminal_id = %terminal_id, timeout_ms = timeout, "bash execute: command timed out");
+                    warn!(terminal_id = %terminal_id, timeout_ms = timeout, "command timed out");
                     self.terminal_mgr.kill(&terminal_id).await.ok();
                     Err(ToolSourceError::Transport("Command timed out".into()))
                 }
             }
         } else {
-            debug!(terminal_id = %terminal_id, "bash execute: waiting for exit");
+            info!(terminal_id = %terminal_id, "waiting for exit (no timeout)");
             self.terminal_mgr
                 .wait_for_exit(&terminal_id)
                 .await
                 .map_err(|e| {
-                    error!(terminal_id = %terminal_id, error = %e, "bash execute: wait_for_exit failed");
+                    error!(terminal_id = %terminal_id, error = %e, "wait_for_exit failed");
                     ToolSourceError::Transport(e.to_string())
                 })
         };
 
-        let _ = result;
+        let exit_status = result.as_ref().ok();
+        info!(terminal_id = %terminal_id, exit_status = ?exit_status, "wait_for_exit completed");
 
         let (output, _truncated, _status) = self
             .terminal_mgr
@@ -98,15 +99,15 @@ impl CommandExecutor for TerminalCommandExecutor {
             .await
             .unwrap_or_default();
 
-        debug!(
+        info!(
             terminal_id = %terminal_id,
             output_len = output.len(),
             truncated = _truncated,
-            "bash execute: output retrieved"
+            "output retrieved"
         );
 
         let _ = self.terminal_mgr.release(&terminal_id).await;
-        debug!(terminal_id = %terminal_id, "bash execute: terminal released");
+        info!(terminal_id = %terminal_id, "terminal released");
 
         if output.is_empty() {
             info!(terminal_id = %terminal_id, output_len = 0, "bash execute completed");
@@ -134,6 +135,7 @@ impl AcpBridgeCommandExecutor {
 
 #[async_trait]
 impl CommandExecutor for AcpBridgeCommandExecutor {
+    #[instrument(skip_all, fields(command, working_dir, timeout_ms, executor = "acp_bridge"))]
     async fn execute(
         &self,
         command: &str,
@@ -148,7 +150,7 @@ impl CommandExecutor for AcpBridgeCommandExecutor {
 
         if session_id == "default" {
             warn!(
-                "bash execute: using fallback session_id='default'. \
+                "using fallback session_id='default'. \
                  acp_session_id not set in ToolCallContext — check RunOptions propagation chain"
             );
         }
@@ -161,7 +163,6 @@ impl CommandExecutor for AcpBridgeCommandExecutor {
         };
 
         info!(
-            executor = "acp_bridge",
             command = %command,
             session_id = %session_id,
             shell = %shell,
@@ -174,9 +175,11 @@ impl CommandExecutor for AcpBridgeCommandExecutor {
         let bridge = crate::tools::get_client_bridge()
             .await
             .map_err(|e| {
-                error!(command = %command, error = %e, "bash execute: failed to get client bridge");
+                error!(error = %e, "failed to get client bridge");
                 ToolSourceError::Transport(e)
             })?;
+
+        info!("client bridge acquired");
 
         let cwd = working_dir.map(|p| p.display().to_string());
 
@@ -184,47 +187,63 @@ impl CommandExecutor for AcpBridgeCommandExecutor {
             .terminal_create(session_id, &shell, args, env, cwd, None)
             .await
             .map_err(|e| {
-                error!(command = %command, session_id = %session_id, error = %e, "bash execute: terminal create failed");
+                error!(session_id = %session_id, error = %e, "terminal create failed");
                 ToolSourceError::Transport(e)
             })?;
 
-        debug!(terminal_id = %terminal_id, "bash execute: terminal created via bridge");
+        info!(terminal_id = %terminal_id, "terminal created via bridge");
 
         if let Some(timeout) = timeout_ms {
-            debug!(terminal_id = %terminal_id, timeout_ms = timeout, "bash execute: waiting with timeout");
+            info!(terminal_id = %terminal_id, timeout_ms = timeout, "waiting for exit with timeout");
             tokio::select! {
                 result = bridge.terminal_wait_for_exit(session_id, &terminal_id) => {
-                    debug!(terminal_id = %terminal_id, "bash execute: process exited before timeout");
+                    match &result {
+                        Ok(exit_result) => {
+                            info!(terminal_id = %terminal_id, exit_code = ?exit_result.exit_code, signal = ?exit_result.signal, "process exited before timeout");
+                        }
+                        Err(e) => {
+                            error!(terminal_id = %terminal_id, error = %e, "wait_for_exit failed");
+                        }
+                    }
                     let _ = result;
                 }
                 _ = tokio::time::sleep(Duration::from_millis(timeout)) => {
-                    warn!(terminal_id = %terminal_id, timeout_ms = timeout, "bash execute: command timed out, killing");
+                    warn!(terminal_id = %terminal_id, timeout_ms = timeout, "command timed out, killing");
                     let _ = bridge.terminal_kill(session_id, &terminal_id).await;
                     let _ = bridge.terminal_release(session_id, &terminal_id).await;
                     return Err(ToolSourceError::Transport("Command timed out".into()));
                 }
             }
         } else {
-            debug!(terminal_id = %terminal_id, "bash execute: waiting for exit");
-            let _ = bridge
+            info!(terminal_id = %terminal_id, "waiting for exit (no timeout)");
+            let exit_result = bridge
                 .terminal_wait_for_exit(session_id, &terminal_id)
                 .await
                 .map_err(|e| {
-                    error!(terminal_id = %terminal_id, error = %e, "bash execute: wait_for_exit failed");
+                    error!(terminal_id = %terminal_id, error = %e, "wait_for_exit failed");
                     ToolSourceError::Transport(format!("terminal wait: {}", e))
                 })?;
+            info!(terminal_id = %terminal_id, exit_code = ?exit_result.exit_code, signal = ?exit_result.signal, "wait_for_exit completed");
         }
 
+        info!(terminal_id = %terminal_id, "fetching terminal output");
         let output = bridge
             .terminal_output(session_id, &terminal_id)
             .await
             .map_err(|e| {
-                error!(terminal_id = %terminal_id, error = %e, "bash execute: terminal_output failed");
+                error!(terminal_id = %terminal_id, error = %e, "terminal_output failed");
                 ToolSourceError::Transport(format!("terminal output: {}", e))
             })?;
 
+        info!(
+            terminal_id = %terminal_id,
+            output_len = output.output.len(),
+            truncated = output.truncated,
+            "terminal output retrieved"
+        );
+
         let _ = bridge.terminal_release(session_id, &terminal_id).await;
-        debug!(terminal_id = %terminal_id, output_len = output.output.len(), "bash execute: terminal released");
+        info!(terminal_id = %terminal_id, "terminal released");
 
         if output.output.is_empty() {
             info!(terminal_id = %terminal_id, output_len = 0, "bash execute completed");
