@@ -184,6 +184,22 @@
 
 use std::sync::OnceLock;
 
+fn is_connection_closed_error(e: &agent_client_protocol::Error) -> bool {
+    let msg = &e.message;
+    msg.contains("receiver dropped")
+        || msg.contains("failed to send response")
+        || msg.contains("broken pipe")
+        || msg.contains("unexpected eof")
+        || e.data.as_ref().map_or(false, |d| {
+            d.as_str().map_or(false, |s| {
+                s.contains("receiver dropped")
+                    || s.contains("failed to send response")
+                    || s.contains("broken pipe")
+                    || s.contains("unexpected eof")
+            })
+        })
+}
+
 pub mod agent;
 pub mod agent_registry;
 pub mod client_capabilities;
@@ -454,11 +470,18 @@ pub async fn run_stdio_loop() -> Result<(), Box<dyn std::error::Error + Send + S
 
             Ok(())
         })
-        .await
-        .map_err(|e: agent_client_protocol::Error| {
-            tracing::error!(?e, "run_stdio_loop error");
-            Box::new(e) as Box<dyn std::error::Error + Send + Sync>
-        });
-    tracing::info!("run_stdio_loop finished");
-    result
+        .await;
+
+    match result {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            if is_connection_closed_error(&e) {
+                tracing::info!("run_stdio_loop finished (connection closed)");
+                Ok(())
+            } else {
+                tracing::error!(?e, "run_stdio_loop error");
+                Err(Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+            }
+        }
+    }
 }
