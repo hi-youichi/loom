@@ -322,6 +322,12 @@ impl ReActState {
                 arguments: tc.arguments.clone(),
             })
             .collect();
+        let is_empty_think = content.trim().is_empty()
+            && reasoning_content
+                .as_ref()
+                .is_none_or(|s| s.trim().is_empty())
+            && tool_calls.is_empty();
+
         let think_message = if assistant_tool_calls.is_empty() {
             Message::assistant_with_reasoning(content, reasoning_content.clone())
         } else {
@@ -331,29 +337,36 @@ impl ReActState {
                 reasoning_content.clone(),
             )
         };
-        self.messages.push(think_message);
-        debug!(
-            message_count = self.messages.len(),
-            tool_call_count = tool_calls.len(),
-            tool_calls = ?tool_calls
-                .iter()
-                .map(|tc| format!(
-                    "id={} name={} args_len={}",
-                    tc.id.as_deref().unwrap_or(""),
-                    tc.name,
-                    tc.arguments.len()
-                ))
-                .collect::<Vec<_>>(),
-            reasoning_len = reasoning_content.as_ref().map(|s| s.len()),
-            content_len = self
-                .messages
-                .last()
-                .and_then(|m| match m {
-                    Message::Assistant(payload) => Some(payload.content.len()),
-                    _ => None,
-                }),
-            "react_state apply_think wrote assistant message and tool_calls"
-        );
+
+        if is_empty_think {
+            debug!(
+                "react_state apply_think skipped empty assistant message"
+            );
+        } else {
+            self.messages.push(think_message);
+            debug!(
+                message_count = self.messages.len(),
+                tool_call_count = tool_calls.len(),
+                tool_calls = ?tool_calls
+                    .iter()
+                    .map(|tc| format!(
+                        "id={} name={} args_len={}",
+                        tc.id.as_deref().unwrap_or(""),
+                        tc.name,
+                        tc.arguments.len()
+                    ))
+                    .collect::<Vec<_>>(),
+                reasoning_len = reasoning_content.as_ref().map(|s| s.len()),
+                content_len = self
+                    .messages
+                    .last()
+                    .and_then(|m| match m {
+                        Message::Assistant(payload) => Some(payload.content.len()),
+                        _ => None,
+                    }),
+                "react_state apply_think wrote assistant message and tool_calls"
+            );
+        }
         self.last_reasoning_content = reasoning_content;
         self.tool_calls = tool_calls;
         self.usage = usage;
@@ -484,5 +497,50 @@ mod tests {
         assert_eq!(total.prompt_tokens, 13);
         assert_eq!(total.completion_tokens, 7);
         assert_eq!(total.total_tokens, 20);
+    }
+
+    #[test]
+    fn apply_think_skips_empty_content_no_reasoning_no_tools() {
+        let state = ReActState::default();
+        let next = state.apply_think("".to_string(), None, vec![], None);
+        assert!(next.messages.is_empty());
+        assert_eq!(next.think_count, 1);
+    }
+
+    #[test]
+    fn apply_think_skips_whitespace_only_content() {
+        let state = ReActState::default();
+        let next = state.apply_think("   ".to_string(), None, vec![], None);
+        assert!(next.messages.is_empty());
+    }
+
+    #[test]
+    fn apply_think_keeps_message_with_reasoning_fallback() {
+        let state = ReActState::default();
+        let next = state.apply_think("".to_string(), Some("thinking".to_string()), vec![], None);
+        assert_eq!(next.messages.len(), 1);
+    }
+
+    #[test]
+    fn apply_think_keeps_message_with_tool_calls() {
+        let state = ReActState::default();
+        let next = state.apply_think(
+            "".to_string(),
+            None,
+            vec![ToolCall {
+                name: "fn".into(),
+                arguments: "{}".into(),
+                id: Some("c1".into()),
+            }],
+            None,
+        );
+        assert_eq!(next.messages.len(), 1);
+    }
+
+    #[test]
+    fn apply_think_skips_empty_reasoning_string() {
+        let state = ReActState::default();
+        let next = state.apply_think("".to_string(), Some("   ".to_string()), vec![], None);
+        assert!(next.messages.is_empty());
     }
 }

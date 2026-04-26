@@ -9,8 +9,8 @@
 //!
 //! | Variant | Meaning | Loom source |
 //! |---------|---------|-------------|
-//! | **user_message_chunk** | Chunk of user message | Think node text output (so client can show it as user message). |
-//! | **agent_message_chunk** | Chunk of agent reply (streamed text) | Reply node / other non-think message output. |
+//! | **user_message_chunk** | Chunk of user message | History replay only (`Message::User`). |
+//! | **agent_message_chunk** | Chunk of agent reply (streamed text) | Any node's non-Thinking text output. |
 //! | **agent_thought_chunk** | Chunk of agent reasoning | `StreamEvent::Messages` with `chunk.kind == Thinking`, or `TaskStart` (node entry). |
 //! | **tool_call** | New tool call started | Act node decides to call a tool: tool_call_id, name, input, kind, status: Pending. |
 //! | **tool_call_update** | Update to existing tool call | Start -> Pending/Running; done -> Success/Failure + output/content. |
@@ -39,6 +39,7 @@ use agent_client_protocol::schema::{
 use loom::message::Message;
 use loom::{AnyStreamEvent, MessageChunkKind, StreamEvent};
 use serde_json::Value;
+use std::sync::Mutex;
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -49,14 +50,23 @@ use uuid::Uuid;
 /// convert to the protocol type and call `connection.send_notification(session/update)`.
 #[derive(Clone, Debug)]
 pub enum StreamUpdate {
-    /// Chunk of user message (ACP `user_message_chunk`). Used for think node text so client shows it as user message.
-    UserMessageChunk { text: String },
+    /// Chunk of user message (ACP `user_message_chunk`). History replay only; streaming never produces this variant.
+    UserMessageChunk {
+        text: String,
+        message_id: Option<String>,
+    },
 
     /// Chunk of model output text (ACP `agent_message_chunk`).
-    AgentMessageChunk { text: String },
+    AgentMessageChunk {
+        text: String,
+        message_id: Option<String>,
+    },
 
     /// Chunk of agent reasoning / node entry (ACP `agent_thought_chunk`).
-    AgentThoughtChunk { text: String },
+    AgentThoughtChunk {
+        text: String,
+        message_id: Option<String>,
+    },
 
     /// New tool call started (ACP `tool_call`, status: Pending).
     ToolCallStarted {
@@ -176,20 +186,16 @@ where
 {
     match ev {
         StreamEvent::TaskStart { node_id: _, .. } => vec![],
-        StreamEvent::Messages { chunk, metadata } => {
-            // Only chunk.kind == Thinking (e.g. <think> tags) → thought.
+        StreamEvent::Messages { chunk, .. } => {
             if chunk.kind == MessageChunkKind::Thinking {
                 vec![StreamUpdate::AgentThoughtChunk {
                     text: chunk.content.clone(),
-                }]
-            } else if metadata.loom_node == "think" {
-                // Think node text → user_message_chunk (so client shows it as user message).
-                vec![StreamUpdate::UserMessageChunk {
-                    text: chunk.content.clone(),
+                    message_id: None,
                 }]
             } else {
                 vec![StreamUpdate::AgentMessageChunk {
                     text: chunk.content.clone(),
+                    message_id: None,
                 }]
             }
         }
@@ -330,14 +336,20 @@ pub fn stream_update_to_session_notification(
     u: &StreamUpdate,
 ) -> Option<SessionNotification> {
     let update = match u {
-        StreamUpdate::UserMessageChunk { text } => {
-            SessionUpdate::UserMessageChunk(ContentChunk::new(text.clone().into()))
+        StreamUpdate::UserMessageChunk { text, message_id } => {
+            let mut chunk = ContentChunk::new(text.clone().into());
+            chunk = chunk.message_id(message_id.clone());
+            SessionUpdate::UserMessageChunk(chunk)
         }
-        StreamUpdate::AgentMessageChunk { text } => {
-            SessionUpdate::AgentMessageChunk(ContentChunk::new(text.clone().into()))
+        StreamUpdate::AgentMessageChunk { text, message_id } => {
+            let mut chunk = ContentChunk::new(text.clone().into());
+            chunk = chunk.message_id(message_id.clone());
+            SessionUpdate::AgentMessageChunk(chunk)
         }
-        StreamUpdate::AgentThoughtChunk { text } => {
-            SessionUpdate::AgentThoughtChunk(ContentChunk::new(text.clone().into()))
+        StreamUpdate::AgentThoughtChunk { text, message_id } => {
+            let mut chunk = ContentChunk::new(text.clone().into());
+            chunk = chunk.message_id(message_id.clone());
+            SessionUpdate::AgentThoughtChunk(chunk)
         }
         StreamUpdate::ToolCallStarted {
             tool_call_id,
@@ -493,17 +505,23 @@ pub fn name_to_tool_kind(name: &str) -> ToolKind {
 pub struct SessionNotifier {
     tx: mpsc::Sender<SessionNotification>,
     session_id: SessionId,
+    current_message_id: Mutex<Option<String>>,
 }
 
 impl SessionNotifier {
     pub fn new(tx: mpsc::Sender<SessionNotification>, session_id: SessionId) -> Self {
-        Self { tx, session_id }
+        Self {
+            tx,
+            session_id,
+            current_message_id: Mutex::new(None),
+        }
     }
 
     pub async fn send_event(&self, event: &AnyStreamEvent) {
         let updates = loom_event_to_updates(event);
-        for u in &updates {
-            if let Some(notif) = stream_update_to_session_notification(&self.session_id, u) {
+        for u in updates {
+            let u = self.inject_message_id(u);
+            if let Some(notif) = stream_update_to_session_notification(&self.session_id, &u) {
                 if let Err(e) = self.tx.send(notif).await {
                     tracing::error!(session_id = %self.session_id, error = %e, "Failed to send stream event notification");
                 }
@@ -513,8 +531,9 @@ impl SessionNotifier {
 
     pub fn try_send_event(&self, event: &AnyStreamEvent) {
         let updates = loom_event_to_updates(event);
-        for u in &updates {
-            if let Some(notif) = stream_update_to_session_notification(&self.session_id, u) {
+        for u in updates {
+            let u = self.inject_message_id(u);
+            if let Some(notif) = stream_update_to_session_notification(&self.session_id, &u) {
                 match self.tx.try_send(notif) {
                     Ok(_) => {
                         tracing::trace!(
@@ -532,6 +551,39 @@ impl SessionNotifier {
                         );
                     }
                 }
+            }
+        }
+    }
+
+    fn inject_message_id(&self, update: StreamUpdate) -> StreamUpdate {
+        match update {
+            StreamUpdate::AgentMessageChunk { text, .. } => {
+                let id = self.current_message_id
+                    .lock()
+                    .unwrap()
+                    .get_or_insert_with(|| Uuid::new_v4().to_string())
+                    .clone();
+                StreamUpdate::AgentMessageChunk { text, message_id: Some(id) }
+            }
+            StreamUpdate::AgentThoughtChunk { text, .. } => {
+                let id = self.current_message_id
+                    .lock()
+                    .unwrap()
+                    .get_or_insert_with(|| Uuid::new_v4().to_string())
+                    .clone();
+                StreamUpdate::AgentThoughtChunk { text, message_id: Some(id) }
+            }
+            StreamUpdate::UserMessageChunk { text, .. } => {
+                let id = self.current_message_id
+                    .lock()
+                    .unwrap()
+                    .get_or_insert_with(|| Uuid::new_v4().to_string())
+                    .clone();
+                StreamUpdate::UserMessageChunk { text, message_id: Some(id) }
+            }
+            other => {
+                *self.current_message_id.lock().unwrap() = None;
+                other
             }
         }
     }
@@ -572,13 +624,26 @@ impl SessionNotifier {
             let notifications = match message {
                 Message::User(content) => vec![SessionNotification::new(
                     self.session_id.clone(),
-                    SessionUpdate::UserMessageChunk(ContentChunk::new(
-                        ContentBlock::Text(
-                            TextContent::new(content.as_text().to_string()),
-                        ),
-                    )),
+                    SessionUpdate::UserMessageChunk(
+                        ContentChunk::new(
+                            ContentBlock::Text(
+                                TextContent::new(content.as_text().to_string()),
+                            ),
+                        )
+                        .message_id(Some(Uuid::new_v4().to_string())),
+                    ),
                 )],
                 Message::Assistant(payload) => {
+                    let is_empty_assistant = payload.content.trim().is_empty()
+                        && payload
+                            .reasoning_content
+                            .as_ref()
+                            .is_none_or(|s| s.trim().is_empty())
+                        && payload.tool_calls.is_empty();
+                    if is_empty_assistant {
+                        continue;
+                    }
+
                     for tc in &payload.tool_calls {
                         tool_calls_map.insert(
                             tc.id.clone(),
@@ -586,11 +651,15 @@ impl SessionNotifier {
                         );
                     }
 
+                    let msg_id = Uuid::new_v4().to_string();
                     let mut notifs = vec![SessionNotification::new(
                         self.session_id.clone(),
-                        SessionUpdate::AgentMessageChunk(ContentChunk::new(
-                            payload.content.clone().into(),
-                        )),
+                        SessionUpdate::AgentMessageChunk(
+                            ContentChunk::new(
+                                payload.content.clone().into(),
+                            )
+                            .message_id(Some(msg_id)),
+                        ),
                     )];
 
                     for tc in &payload.tool_calls {
