@@ -50,12 +50,12 @@ impl Default for ReadTextFileTool {
 #[async_trait]
 impl Tool for ReadTextFileTool {
     fn name(&self) -> &str {
-        "fs/read_text_file"
+        "fs_read_text_file"
     }
 
     fn spec(&self) -> ToolSpec {
         create_tool_spec(
-            "fs/read_text_file",
+            "fs_read_text_file",
             "Read a text file from the IDE's workspace. This can access files that are \
              open in the IDE with unsaved changes, providing access to the current buffer \
              content rather than what's on disk. Use this instead of the local filesystem \
@@ -139,12 +139,12 @@ impl Default for WriteTextFileTool {
 #[async_trait]
 impl Tool for WriteTextFileTool {
     fn name(&self) -> &str {
-        "fs/write_text_file"
+        "fs_write_text_file"
     }
 
     fn spec(&self) -> ToolSpec {
         create_tool_spec(
-            "fs/write_text_file",
+            "fs_write_text_file",
             "Write a text file to the IDE's workspace. The IDE may show the file as unsaved \
              or prompt for confirmation. Use this when you need to create or modify files \
              in the user's workspace.",
@@ -199,7 +199,7 @@ mod tests {
     fn test_read_text_file_spec() {
         let tool = ReadTextFileTool::new();
         let spec = tool.spec();
-        assert_eq!(spec.name, "fs/read_text_file");
+        assert_eq!(spec.name, "fs_read_text_file");
         assert!(spec.description.is_some());
     }
 
@@ -207,7 +207,7 @@ mod tests {
     fn test_write_text_file_spec() {
         let tool = WriteTextFileTool::new();
         let spec = tool.spec();
-        assert_eq!(spec.name, "fs/write_text_file");
+        assert_eq!(spec.name, "fs_write_text_file");
         assert!(spec.description.is_some());
     }
 }

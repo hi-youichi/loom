@@ -79,7 +79,7 @@ mod tests {
         let caps = ClientCapabilitiesInfo::from_json(Some(caps_json));
         let tools = create_acp_tools(&caps);
         assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name(), "fs/read_text_file");
+        assert_eq!(tools[0].name(), "fs_read_text_file");
     }
 
     #[test]
@@ -100,12 +100,12 @@ mod tests {
     fn test_tool_specs() {
         let read_tool = ReadTextFileTool::new();
         let spec = read_tool.spec();
-        assert_eq!(spec.name, "fs/read_text_file");
+        assert_eq!(spec.name, "fs_read_text_file");
         assert!(spec.description.is_some());
 
         let write_tool = WriteTextFileTool::new();
         let spec = write_tool.spec();
-        assert_eq!(spec.name, "fs/write_text_file");
+        assert_eq!(spec.name, "fs_write_text_file");
         assert!(spec.description.is_some());
     }
 }
