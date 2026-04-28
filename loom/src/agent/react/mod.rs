@@ -35,7 +35,7 @@ mod think_node;
 mod with_node_logging;
 
 pub use act_node::{
-    ActNode, ErrorHandlerFn, HandleToolErrors, DEFAULT_EXECUTION_ERROR_TEMPLATE,
+    ActNode, DEFAULT_EXECUTION_ERROR_TEMPLATE,
     DEFAULT_TOOL_ERROR_TEMPLATE, STEP_PROGRESS_EVENT_TYPE,
 };
 pub use build::{

@@ -22,7 +22,7 @@ use crate::cli_run::AnyStreamEvent;
 use super::error::RunError;
 use super::initial_state::build_react_initial_state;
 use super::options::{resolve_run_agent_options, AgentOptions};
-use crate::agent::react::act_node::{ActNode, HandleToolErrors};
+use crate::agent::react::act_node::ActNode;
 
 use crate::agent::react::observe_node::ObserveNode;
 use crate::agent::react::title_node::{is_first_think, TitleNode};
@@ -62,7 +62,6 @@ impl ReactRunner {
     ) -> Result<Self, CompilationError> {
         let think = ThinkNode::new(Arc::clone(&provider));
         let act = ActNode::new(tool_source)
-            .with_handle_tool_errors(HandleToolErrors::Always(None))
             .with_approval_policy(approval_policy);
         let observe = ObserveNode::with_loop();
 

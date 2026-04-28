@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::agent::react::{ActNode, HandleToolErrors, ObserveNode, ThinkNode};
+use crate::agent::react::{ActNode, ObserveNode, ThinkNode};
 use crate::error::AgentError;
 use crate::graph::{Next, RunContext};
 use crate::message::Message;
@@ -113,7 +113,7 @@ impl ExecuteGraphNode {
         agot_llm_complexity: bool,
     ) -> Self {
         let think = ThinkNode::new(Arc::clone(&provider));
-        let act = ActNode::new(tool_source).with_handle_tool_errors(HandleToolErrors::Always(None));
+        let act = ActNode::new(tool_source);
         let observe = ObserveNode::with_loop();
         Self {
             think,

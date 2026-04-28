@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::agent::react::{ActNode, HandleToolErrors, ObserveNode, ThinkNode};
+use crate::agent::react::{ActNode, ObserveNode, ThinkNode};
 use crate::error::AgentError;
 use crate::graph::Next;
 use crate::llm::LlmProvider;
@@ -55,7 +55,7 @@ pub struct DupActNode {
 impl DupActNode {
     pub fn new(tool_source: Box<dyn ToolSource>) -> Self {
         Self {
-            act: ActNode::new(tool_source).with_handle_tool_errors(HandleToolErrors::Always(None)),
+            act: ActNode::new(tool_source),
         }
     }
 
