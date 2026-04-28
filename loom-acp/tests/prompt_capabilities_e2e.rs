@@ -4,7 +4,6 @@ mod common;
 mod e2e;
 
 use std::time::Duration;
-use serde_json::json;
 
 #[tokio::test]
 async fn e2e_prompt_capabilities_type_validation() {

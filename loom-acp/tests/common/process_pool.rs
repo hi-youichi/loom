@@ -7,12 +7,14 @@ use tokio::sync::{OnceCell, Semaphore};
 const SHORT_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
+#[allow(dead_code)]
 struct PooledProcess {
     acp: std::sync::Mutex<AcpChild>,
     mock: tokio::sync::Mutex<MockAcpServer>,
     initialized: std::sync::Mutex<bool>,
 }
 
+#[allow(dead_code)]
 impl PooledProcess {
     fn is_alive(&self) -> bool {
         self.acp.lock().unwrap().is_alive()
@@ -41,27 +43,15 @@ impl PooledProcess {
             *self.initialized.lock().unwrap() = true;
         }
     }
-
-    async fn drain_by_ping(&self) {
-        self.acp.lock().unwrap()
-            .send_request_and_wait(
-                "session/new",
-                serde_json::json!({
-                    "cwd": "/tmp/pool-drain",
-                    "mcpServers": [],
-                }),
-                SHORT_TIMEOUT,
-            )
-            .await
-            .expect("drain ping");
-    }
 }
 
+#[allow(dead_code)]
 pub struct AcpProcessPool {
     slots: Vec<Arc<PooledProcess>>,
     semaphore: Arc<Semaphore>,
 }
 
+#[allow(dead_code)]
 impl AcpProcessPool {
     async fn new(pool_size: usize) -> Self {
         let mut slots = Vec::with_capacity(pool_size);
@@ -104,11 +94,13 @@ impl AcpProcessPool {
     }
 }
 
+#[allow(dead_code)]
 pub struct PooledAcpGuard {
     inner: Arc<PooledProcess>,
     _permit: tokio::sync::OwnedSemaphorePermit,
 }
 
+#[allow(dead_code)]
 impl PooledAcpGuard {
     pub fn acp(&self) -> std::sync::MutexGuard<'_, AcpChild> {
         self.inner.acp.lock().unwrap()
@@ -163,8 +155,10 @@ impl PooledAcpGuard {
     }
 }
 
+#[allow(dead_code)]
 static POOL: OnceCell<AcpProcessPool> = OnceCell::const_new();
 
+#[allow(dead_code)]
 pub async fn get_pool() -> &'static AcpProcessPool {
     POOL.get_or_init(|| async {
         let pool_size = std::thread::available_parallelism()

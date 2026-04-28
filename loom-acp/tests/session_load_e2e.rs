@@ -97,7 +97,7 @@ async fn e2e_load_session_after_process_restart_restores_history() {
     let shared_home_path = shared_home.path().to_path_buf();
 
     {
-        let (mut acp_a, mut mock_a) = common::AcpChild::spawn_with_mock_at_home(&shared_home_path)
+        let (mut acp_a, mock_a) = common::AcpChild::spawn_with_mock_at_home(&shared_home_path)
             .await
             .expect("spawn process A");
         mock_a.mount_default_responses().await;
@@ -116,7 +116,7 @@ async fn e2e_load_session_after_process_restart_restores_history() {
     let session_id = std::fs::read_to_string(shared_home_path.join("test-session-id.txt"))
         .expect("read session id");
 
-    let (mut acp_b, mut mock_b) = common::AcpChild::spawn_with_mock_at_home(&shared_home_path)
+    let (mut acp_b, mock_b) = common::AcpChild::spawn_with_mock_at_home(&shared_home_path)
         .await
         .expect("spawn process B");
     mock_b.mount_default_responses().await;
@@ -323,7 +323,7 @@ async fn e2e_load_session_after_restart_restores_tool_and_thought_history() {
     let shared_home_path = shared_home.path().to_path_buf();
 
     {
-        let (mut acp_a, mut mock_a) = common::AcpChild::spawn_with_mock_at_home(&shared_home_path)
+        let (mut acp_a, mock_a) = common::AcpChild::spawn_with_mock_at_home(&shared_home_path)
             .await
             .expect("spawn process A");
         mock_a.mount_default_responses().await;
@@ -342,7 +342,7 @@ async fn e2e_load_session_after_restart_restores_tool_and_thought_history() {
 
     let session_id = std::fs::read_to_string(shared_home_path.join("test-session-id.txt")).expect("read session id");
 
-    let (mut acp_b, mut mock_b) = common::AcpChild::spawn_with_mock_at_home(&shared_home_path)
+    let (mut acp_b, mock_b) = common::AcpChild::spawn_with_mock_at_home(&shared_home_path)
         .await
         .expect("spawn process B");
     mock_b.mount_default_responses().await;
