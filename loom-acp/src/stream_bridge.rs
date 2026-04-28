@@ -662,6 +662,22 @@ impl SessionNotifier {
                         ),
                     )];
 
+                    // 🔧 修复：发送 reasoning_content
+                    if let Some(ref reasoning) = payload.reasoning_content {
+                        if !reasoning.trim().is_empty() {
+                            let reasoning_msg_id = Uuid::new_v4().to_string();
+                            notifs.push(SessionNotification::new(
+                                self.session_id.clone(),
+                                SessionUpdate::AgentThoughtChunk(
+                                    ContentChunk::new(
+                                        reasoning.clone().into(),
+                                    )
+                                    .message_id(Some(reasoning_msg_id)),
+                                ),
+                            ));
+                        }
+                    }
+
                     for tc in &payload.tool_calls {
                         let args = serde_json::from_str::<Value>(&tc.arguments).ok();
                         let tool_call = create_tool_call(&tc.id, &tc.name, args.as_ref(), None);
