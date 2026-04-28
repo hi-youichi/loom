@@ -1,0 +1,13 @@
+[store]
+dir = "target/nextest"
+
+[profile.default]
+retries = 0
+timeout = "60s"
+slow-timeout = { period = "10s", terminate-after = 3, grace-period = "5s" }
+failure-output = "immediate-final"
+success-output = "never"
+status-level = "pass"
+
+[profile.default.junit]
+path = "target/nextest/junit.xml"
