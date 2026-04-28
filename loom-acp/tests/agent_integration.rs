@@ -1,29 +1,47 @@
-//! ACP Agent integration tests for model selection feature.
-//!
-//! These tests verify the ACP model selection functionality using the real
-//! provider configuration from ~/.loom/config.toml.
-
 use agent_client_protocol::schema::{
     NewSessionRequest, NewSessionResponse, SetSessionConfigOptionRequest,
 };
-use loom_acp::LoomAcpAgent;
+use loom_acp::{LoomAcpAgent, ModelOption, ModelProvider};
 use std::path::PathBuf;
+use std::sync::Arc;
 
-/// Helper to create a NewSessionRequest with a temp directory.
 fn make_new_session_request() -> NewSessionRequest {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     NewSessionRequest::new(cwd)
 }
 
-/// Helper to extract model options from NewSessionResponse.
+struct MockModelProvider;
+
+#[async_trait::async_trait]
+impl ModelProvider for MockModelProvider {
+    async fn fetch_models(&self) -> Vec<ModelOption> {
+        vec![
+            ModelOption {
+                id: "default".to_string(),
+                name: "(default)".to_string(),
+                provider: String::new(),
+            },
+            ModelOption {
+                id: "gpt-4o".to_string(),
+                name: "GPT-4o".to_string(),
+                provider: "openai".to_string(),
+            },
+        ]
+    }
+}
+
+fn create_test_agent() -> LoomAcpAgent {
+    LoomAcpAgent::new()
+        .unwrap()
+        .with_model_provider(Arc::new(MockModelProvider))
+}
+
 fn extract_model_options(response: &NewSessionResponse) -> Vec<String> {
     let mut models = Vec::new();
 
-    // Serialize response to JSON to inspect structure
     if let Ok(json) = serde_json::to_value(response) {
         if let Some(config_options) = json.get("configOptions").and_then(|v| v.as_array()) {
             for config in config_options {
-                // Each config should have an "options" array
                 if let Some(options) = config.get("options").and_then(|v| v.as_array()) {
                     for option in options {
                         if let Some(id) = option.get("value").and_then(|v| v.as_str()) {
@@ -38,7 +56,6 @@ fn extract_model_options(response: &NewSessionResponse) -> Vec<String> {
     models
 }
 
-/// Helper to extract current model from NewSessionResponse.
 fn extract_current_model(response: &NewSessionResponse) -> Option<String> {
     if let Ok(json) = serde_json::to_value(response) {
         if let Some(config_options) = json.get("configOptions").and_then(|v| v.as_array()) {
@@ -54,10 +71,9 @@ fn extract_current_model(response: &NewSessionResponse) -> Option<String> {
     None
 }
 
-/// Test that new_session returns a response with config_options.
 #[tokio::test]
 async fn test_new_session_returns_config_options() {
-    let agent = LoomAcpAgent::new().unwrap();
+    let agent = create_test_agent();
     let request = make_new_session_request();
 
     let response = agent.new_session(request).await;
@@ -69,7 +85,6 @@ async fn test_new_session_returns_config_options() {
 
     let response = response.unwrap();
 
-    // Serialize to JSON to check structure
     let json = serde_json::to_value(&response).expect("Should serialize to JSON");
     assert!(
         json.get("configOptions").is_some(),
@@ -77,16 +92,13 @@ async fn test_new_session_returns_config_options() {
     );
 }
 
-/// Test that set_session_config_option works for model config.
 #[tokio::test]
 async fn test_set_session_config_option_model() {
-    let agent = LoomAcpAgent::new().unwrap();
+    let agent = create_test_agent();
 
-    // First create a session
     let session_resp = agent.new_session(make_new_session_request()).await.unwrap();
     let session_id = session_resp.session_id.clone();
 
-    // Now try to set the model - construct request via JSON since types are non_exhaustive
     let request_json = serde_json::json!({
         "sessionId": session_id,
         "configId": "model",
@@ -102,16 +114,13 @@ async fn test_set_session_config_option_model() {
     );
 }
 
-/// Test that set_session_config_option rejects unknown config_id.
 #[tokio::test]
 async fn test_set_session_config_option_unknown_config() {
-    let agent = LoomAcpAgent::new().unwrap();
+    let agent = create_test_agent();
 
-    // First create a session
     let session_resp = agent.new_session(make_new_session_request()).await.unwrap();
     let session_id = session_resp.session_id.clone();
 
-    // Try to set an unknown config
     let request_json = serde_json::json!({
         "sessionId": session_id,
         "configId": "unknown_config",
@@ -126,10 +135,9 @@ async fn test_set_session_config_option_unknown_config() {
     );
 }
 
-/// Test that set_session_config_option fails for unknown session.
 #[tokio::test]
 async fn test_set_session_config_option_unknown_session() {
-    let agent = LoomAcpAgent::new().unwrap();
+    let agent = create_test_agent();
 
     let request_json = serde_json::json!({
         "sessionId": "nonexistent-session",
@@ -145,20 +153,16 @@ async fn test_set_session_config_option_unknown_session() {
     );
 }
 
-/// Test model list from mocked provider config.
-/// Uses temp-env to set a mock OpenAI endpoint so no real API is called.
 #[test]
 fn test_model_list_from_mock_provider() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
-        let agent = LoomAcpAgent::new().unwrap();
+        let agent = create_test_agent();
         let request = make_new_session_request();
 
         let response = agent.new_session(request).await.unwrap();
         let models = extract_model_options(&response);
 
-        // With no real provider configured in CI, we just verify the response
-        // is well-formed (config_options present, current_model set).
         let current = extract_current_model(&response);
         assert!(current.is_some(), "current model should be set");
         for m in &models {
@@ -167,7 +171,6 @@ fn test_model_list_from_mock_provider() {
     });
 }
 
-/// Test that current model is set from environment or default.
 #[test]
 fn test_current_model_from_env() {
     temp_env::with_vars(
@@ -180,21 +183,16 @@ fn test_current_model_from_env() {
             ("ANTHROPIC_API_KEY", None),
         ],
         || {
-            // Use block_on to run async code in synchronous test
             let rt = tokio::runtime::Runtime::new().unwrap();
             rt.block_on(async {
-                let agent = LoomAcpAgent::new().unwrap();
+                let agent = create_test_agent();
                 let request = make_new_session_request();
 
                 let response = agent.new_session(request).await.unwrap();
                 let current = extract_current_model(&response);
 
-                // The test environment may have other configuration that overrides MODEL env var
-                // For now, just verify that we can get some model value
                 assert!(current.is_some(), "Expected some model to be set");
 
-                // If the environment variable setup works correctly, we should get test-model-123
-                // But if there's a config file override, we might get a different value
                 if current != Some("test-model-123".to_string()) {
                     eprintln!("Warning: Expected test-model-123 but got {:?}", current);
                     eprintln!("This may be due to config file override");

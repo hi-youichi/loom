@@ -213,7 +213,7 @@ pub mod stream_bridge;
 pub mod terminal;
 pub mod tools;
 
-pub use agent::LoomAcpAgent;
+pub use agent::{LoomAcpAgent, ModelOption, ModelProvider};
 pub use content::{content_blocks_to_message, ContentBlockLike, ContentError};
 pub use session::{SessionConfig, SessionEntry, SessionId, SessionStore};
 pub use stream_bridge::{

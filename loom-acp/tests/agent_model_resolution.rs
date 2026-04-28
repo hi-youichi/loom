@@ -2,13 +2,36 @@
 //!
 //! Tests the priority: ACP explicit model > agent model name > agent tier > default config
 
-use loom_acp::agent::LoomAcpAgent;
+use loom_acp::LoomAcpAgent;
+use loom_acp::{ModelOption, ModelProvider};
 use loom_acp::agent_registry::AgentRegistry;
 use loom_acp::session::SessionConfig;
+use std::sync::Arc;
 
-/// Helper function to create a test agent
+struct MockModelProvider;
+
+#[async_trait::async_trait]
+impl ModelProvider for MockModelProvider {
+    async fn fetch_models(&self) -> Vec<ModelOption> {
+        vec![
+            ModelOption {
+                id: "default".to_string(),
+                name: "(default)".to_string(),
+                provider: String::new(),
+            },
+            ModelOption {
+                id: "test-model".to_string(),
+                name: "Test Model".to_string(),
+                provider: "test".to_string(),
+            },
+        ]
+    }
+}
+
 fn create_test_agent() -> LoomAcpAgent {
-    LoomAcpAgent::new().unwrap()
+    LoomAcpAgent::new()
+        .unwrap()
+        .with_model_provider(Arc::new(MockModelProvider))
 }
 
 /// Helper function to create a test session config

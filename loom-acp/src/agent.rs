@@ -32,6 +32,63 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
+#[async_trait::async_trait]
+pub trait ModelProvider: Send + Sync {
+    async fn fetch_models(&self) -> Vec<ModelOption>;
+}
+
+struct RealModelProvider;
+
+#[async_trait::async_trait]
+impl ModelProvider for RealModelProvider {
+    async fn fetch_models(&self) -> Vec<ModelOption> {
+        fetch_available_models().await
+    }
+}
+
+async fn fetch_available_models() -> Vec<ModelOption> {
+    let registry = loom::llm::ModelRegistry::global();
+
+    let providers: Vec<loom::llm::ProviderConfig> = match load_full_config("loom") {
+        Ok(config) => config
+            .providers
+            .into_iter()
+            .map(|p| loom::llm::ProviderConfig {
+                name: p.name,
+                base_url: p.base_url,
+                api_key: p.api_key,
+                provider_type: p.provider_type,
+                fetch_models: p.fetch_models.unwrap_or(false),
+                cache_ttl: None,
+                enable_tier_resolution: true,
+            })
+            .collect(),
+        Err(_) => vec![],
+    };
+
+    let entries = registry.list_all_models(&providers).await;
+
+    let mut all_models: Vec<ModelOption> = entries
+        .into_iter()
+        .map(|entry| ModelOption {
+            id: entry.id.clone(),
+            name: entry.id,
+            provider: entry.provider,
+        })
+        .collect();
+
+    all_models.insert(
+        0,
+        ModelOption {
+            id: "default".to_string(),
+            name: "(default)".to_string(),
+            provider: String::new(),
+        },
+    );
+
+    all_models
+}
+
 /// Handle for Loom as an ACP Agent. Implements [`Agent`], holds the session store.
 /// If [`session_update_tx`](Self::session_update_tx) is set, prompt execution sends
 /// session/update notifications through this channel.
@@ -43,6 +100,7 @@ pub struct LoomAcpAgent {
     #[allow(dead_code)]
     pub(crate) terminal_mgr: Arc<TerminalManager>,
     pub(crate) client_capabilities: std::sync::RwLock<ClientCapabilitiesInfo>,
+    pub(crate) model_provider: Arc<dyn ModelProvider>,
 }
 
 impl std::fmt::Debug for LoomAcpAgent {
@@ -71,6 +129,7 @@ impl LoomAcpAgent {
             session_update_tx: None,
             terminal_mgr: Arc::new(TerminalManager::new()),
             client_capabilities: std::sync::RwLock::new(ClientCapabilitiesInfo::default()),
+            model_provider: Arc::new(RealModelProvider),
         })
     }
 
@@ -86,7 +145,13 @@ impl LoomAcpAgent {
             session_update_tx: Some(tx),
             terminal_mgr: Arc::new(TerminalManager::new()),
             client_capabilities: std::sync::RwLock::new(ClientCapabilitiesInfo::default()),
+            model_provider: Arc::new(RealModelProvider),
         })
+    }
+
+    pub fn with_model_provider(mut self, provider: Arc<dyn ModelProvider>) -> Self {
+        self.model_provider = provider;
+        self
     }
 
     /// Returns read-only access to the session store.
@@ -99,47 +164,7 @@ impl LoomAcpAgent {
     /// Returns a list of ModelOption for the ACP config_options response.
     /// Uses ModelRegistry for caching and unified model access.
     async fn get_available_models(&self) -> Vec<ModelOption> {
-        let registry = loom::llm::ModelRegistry::global();
-
-        // Load provider configs from config file
-        let providers: Vec<loom::llm::ProviderConfig> = match load_full_config("loom") {
-            Ok(config) => config
-                .providers
-                .into_iter()
-                .map(|p| loom::llm::ProviderConfig {
-                    name: p.name,
-                    base_url: p.base_url,
-                    api_key: p.api_key,
-                    provider_type: p.provider_type,
-                    fetch_models: p.fetch_models.unwrap_or(false),
-                    cache_ttl: None,
-                    enable_tier_resolution: true,
-                })
-                .collect(),
-            Err(_) => vec![],
-        };
-
-        let entries = registry.list_all_models(&providers).await;
-
-        let mut all_models: Vec<ModelOption> = entries
-            .into_iter()
-            .map(|entry| ModelOption {
-                id: entry.id.clone(),
-                name: entry.id,
-                provider: entry.provider,
-            })
-            .collect();
-
-        all_models.insert(
-            0,
-            ModelOption {
-                id: "default".to_string(),
-                name: "(default)".to_string(),
-                provider: String::new(),
-            },
-        );
-
-        all_models
+        self.model_provider.fetch_models().await
     }
 
     /// Resolve model configuration with tier awareness.
@@ -843,6 +868,8 @@ impl LoomAcpAgent {
                 if let Some(ref tx) = self.session_update_tx {
                     let notifier = SessionNotifier::new(tx.clone(), session_id.clone());
                     notifier.send_history(&state.messages).await;
+                    tokio::task::yield_now().await;
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                 } else {
                     tracing::warn!(
                         session_id = %session_id,
@@ -1160,13 +1187,10 @@ fn map_run_error(e: RunError) -> agent_client_protocol::Error {
 
 /// Model option for ACP config dropdown.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-struct ModelOption {
-    /// Combined id `provider/model` (select value and display; matches [`loom::llm::ModelEntry::id`]).
-    id: String,
-    /// Same as `id` for the select row label (ACP shows `provider/model`).
-    name: String,
-    /// Provider name (e.g., "openai", "bigmodel")
-    provider: String,
+pub struct ModelOption {
+    pub id: String,
+    pub name: String,
+    pub provider: String,
 }
 
 /// If `current_model` is a bare model id (e.g. from `MODEL=`) but options use `provider/model`,
