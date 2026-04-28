@@ -10,7 +10,6 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
-/// Exit code used when exiting for reload (caller should restart the process).
 pub const RELOAD_EXIT_CODE: i32 = 203;
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -185,8 +184,12 @@ fn run_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send + Sync>
     let result = rt.block_on(loom_acp::run_stdio_loop());
 
     match result {
-        Ok(()) => {
-            tracing::info!("loom-acp exiting normally");
+        Ok(r) => {
+            if r.connection_closed {
+                tracing::info!("loom-acp exiting: client connection closed");
+            } else {
+                tracing::info!("loom-acp exiting normally");
+            }
             Ok(())
         }
         Err(e) => {

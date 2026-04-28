@@ -184,19 +184,18 @@
 
 use std::sync::OnceLock;
 
+fn is_connection_closed_error_str(s: &str) -> bool {
+    s.contains("receiver dropped")
+        || s.contains("failed to send response")
+        || s.contains("broken pipe")
+        || s.contains("unexpected eof")
+}
+
 fn is_connection_closed_error(e: &agent_client_protocol::Error) -> bool {
     let msg = &e.message;
-    msg.contains("receiver dropped")
-        || msg.contains("failed to send response")
-        || msg.contains("broken pipe")
-        || msg.contains("unexpected eof")
+    is_connection_closed_error_str(msg)
         || e.data.as_ref().map_or(false, |d| {
-            d.as_str().map_or(false, |s| {
-                s.contains("receiver dropped")
-                    || s.contains("failed to send response")
-                    || s.contains("broken pipe")
-                    || s.contains("unexpected eof")
-            })
+            d.as_str().map_or(false, |s| is_connection_closed_error_str(s))
         })
 }
 
@@ -254,7 +253,12 @@ pub fn get_log_config() -> Option<&'static logging::LogConfig> {
 /// let rt = tokio::runtime::Runtime::new()?;
 /// rt.block_on(loom_acp::run_stdio_loop())?;
 /// ```
-pub async fn run_stdio_loop() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+#[derive(Debug)]
+pub struct StdioLoopResult {
+    pub connection_closed: bool,
+}
+
+pub async fn run_stdio_loop() -> Result<StdioLoopResult, Box<dyn std::error::Error + Send + Sync>> {
     use agent_client_protocol::{
         Agent, ByteStreams, Client, ConnectionTo, Responder,
         on_receive_notification, on_receive_request,
@@ -308,6 +312,7 @@ pub async fn run_stdio_loop() -> Result<(), Box<dyn std::error::Error + Send + S
             let agent9 = agent.clone();
             let agent10 = agent.clone();
             let agent11 = agent.clone();
+            let agent12 = agent.clone();
 
             let drain_conn = conn_shared.clone();
             let _drain_task = tokio::task::spawn_local(async move {
@@ -464,20 +469,26 @@ pub async fn run_stdio_loop() -> Result<(), Box<dyn std::error::Error + Send + S
                 .connect_to(ByteStreams::new(stdout_compat, stdin_compat))
                 .await
                 .map_err(|e| {
-                    tracing::error!(?e, "connect_to failed");
-                    agent_client_protocol::Error::internal_error().data(format!("{:?}", e))
+                    let err_str = format!("{:?}", e);
+                    if is_connection_closed_error_str(&err_str) {
+                        tracing::info!("connect_to finished: connection closed");
+                    } else {
+                        tracing::error!(?e, "connect_to failed");
+                    }
+                    agent_client_protocol::Error::internal_error().data(err_str)
                 })?;
 
+            agent12.cancel_all();
             Ok(())
         })
         .await;
 
     match result {
-        Ok(_) => Ok(()),
+        Ok(_) => Ok(StdioLoopResult { connection_closed: false }),
         Err(e) => {
             if is_connection_closed_error(&e) {
                 tracing::info!("run_stdio_loop finished (connection closed)");
-                Ok(())
+                Ok(StdioLoopResult { connection_closed: true })
             } else {
                 tracing::error!(?e, "run_stdio_loop error");
                 Err(Box::new(e) as Box<dyn std::error::Error + Send + Sync>)

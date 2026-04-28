@@ -10,7 +10,7 @@ use crate::session::{SessionId as OurSessionId, SessionStore};
 use crate::session_config_store::SessionConfigStore;
 use crate::stream_bridge::SessionNotifier;
 use crate::terminal::TerminalManager;
-use crate::tools::{create_acp_tools, AcpBridgeCommandExecutor};
+use crate::tools::create_acp_tools;
 use loom::tools::bash::LocalCommandExecutor;
 use agent_client_protocol::schema::{
     AuthenticateRequest, AuthenticateResponse, CancelNotification, ForkSessionRequest,
@@ -408,6 +408,10 @@ impl LoomAcpAgent {
         Ok(())
     }
 
+    pub fn cancel_all(&self) {
+        self.sessions.cancel_all_generations();
+    }
+
     pub async fn set_session_config_option(
         &self,
         args: SetSessionConfigOptionRequest,
@@ -705,14 +709,8 @@ impl LoomAcpAgent {
             any_stream_event_sender,
             acp_session_id: Some(args.session_id.to_string()),
             bash_executor: {
-                let caps = self.client_capabilities.read().unwrap_or_else(|e| e.into_inner());
-                if caps.supports_terminal() {
-                    tracing::info!("Using ACP bridge for bash execution");
-                    Some(Arc::new(AcpBridgeCommandExecutor::new()) as Arc<dyn loom::tools::CommandExecutor>)
-                } else {
-                    tracing::info!("Using local bash executor");
-                    Some(Arc::new(LocalCommandExecutor) as Arc<dyn loom::tools::CommandExecutor>)
-                }
+                tracing::info!("Using local bash executor (ACP terminal disabled)");
+                Some(Arc::new(LocalCommandExecutor) as Arc<dyn loom::tools::CommandExecutor>)
             },
             extra_tools: {
                 let caps = self.client_capabilities.read().unwrap_or_else(|e| e.into_inner());

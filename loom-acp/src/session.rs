@@ -201,7 +201,20 @@ impl SessionStore {
         }
     }
 
-    /// Clear the current running turn when the prompt owner finishes.
+    pub fn cancel_all_generations(&self) {
+        let inner = recover_read(&self.inner);
+        for (session_id, entry) in inner.iter() {
+            entry.cancelled.store(true, Ordering::SeqCst);
+            if let Ok(current_turn) = entry.cancellation.current_turn.read() {
+                if let Some(turn) = current_turn.as_ref() {
+                    turn.cancellation.cancel();
+                    tracing::info!(session_id = %session_id, "cancelled active generation on connection close");
+                }
+            }
+        }
+    }
+
+
     pub fn finish_prompt(&self, session_id: &SessionId, generation: u64) {
         if let Some(entry) = recover_read(&self.inner).get(session_id) {
             if let Ok(mut current_turn) = entry.cancellation.current_turn.write() {
