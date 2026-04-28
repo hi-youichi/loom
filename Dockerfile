@@ -1,9 +1,13 @@
 # syntax=docker/dockerfile:1
 FROM rust:bookworm AS builder
 
+ARG LOOM_BUILD_VERSION=dev
+
 WORKDIR /build
 
 COPY . .
+
+ENV LOOM_BUILD_VERSION=${LOOM_BUILD_VERSION}
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/build/target \

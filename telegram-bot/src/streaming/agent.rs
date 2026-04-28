@@ -45,7 +45,9 @@ pub async fn run_loom_agent_streaming(
     let opts = RunOptions {
         message: UserContent::Text(message.to_string()),
         thread_id: Some(thread_id),
-        working_folder: Some(PathBuf::from(".")),
+        working_folder: Some(PathBuf::from(
+            std::env::var("WORKING_DIR").unwrap_or_else(|_| ".".to_string())
+        )),
         session_id: None,
         agent: None,
         verbose: false,
