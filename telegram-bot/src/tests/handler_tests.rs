@@ -235,17 +235,14 @@ fn test_truncate_text_empty() {
 fn test_streaming_config_default() {
     use crate::config::StreamingConfig;
     let config = StreamingConfig::default();
-    assert_eq!(config.max_act_chars, 500);
-    assert!(config.show_act_phase);
-    assert_eq!(config.act_emoji, "⚡");
+    assert_eq!(config.max_retries, 3);
 }
 
 #[test]
 fn test_settings_default_streaming() {
     use crate::config::Settings;
     let settings = Settings::default();
-    assert_eq!(settings.streaming.max_act_chars, 500);
-    assert!(settings.streaming.show_act_phase);
+    assert_eq!(settings.streaming.max_retries, 3);
     assert_eq!(settings.telegram_message_max_chars, 4096);
     assert_eq!(settings.telegram_safe_reply_chars, 3800);
 }

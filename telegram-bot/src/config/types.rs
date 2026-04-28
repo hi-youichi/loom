@@ -1,79 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::str::FromStr;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum InteractionMode {
-    #[default]
-    Streaming,
-    PeriodicSummary,
-}
-
-impl InteractionMode {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Streaming => "streaming",
-            Self::PeriodicSummary => "periodic_summary",
-        }
-    }
-}
-
-impl std::fmt::Display for InteractionMode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
-}
-
-impl FromStr for InteractionMode {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "streaming" => Ok(Self::Streaming),
-            "periodic_summary" => Ok(Self::PeriodicSummary),
-            _ => Err(format!(
-                "unknown variant `{}`, expected one of `streaming`, `periodic_summary`",
-                s
-            )),
-        }
-    }
-}
-
-impl Serialize for InteractionMode {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(self.as_str())
-    }
-}
-
-impl<'de> Deserialize<'de> for InteractionMode {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct InteractionModeVisitor;
-
-        impl serde::de::Visitor<'_> for InteractionModeVisitor {
-            type Value = InteractionMode;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("one of: streaming, periodic_summary")
-            }
-
-            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                value.parse().map_err(serde::de::Error::custom)
-            }
-        }
-
-        deserializer.deserialize_str(InteractionModeVisitor)
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TelegramBotConfig {
@@ -135,32 +62,11 @@ impl Default for Settings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamingConfig {
-    #[serde(default)]
-    pub interaction_mode: InteractionMode,
-
-    #[serde(default = "default_max_act_chars")]
-    pub max_act_chars: usize,
-
-    #[serde(default = "default_show_act_phase")]
-    pub show_act_phase: bool,
-
-    #[serde(default = "default_act_emoji")]
-    pub act_emoji: String,
-
     #[serde(default = "default_throttle_ms")]
     pub throttle_ms: u64,
 
     #[serde(default = "default_max_retries")]
     pub max_retries: u32,
-
-    #[serde(default = "default_summary_interval_secs")]
-    pub summary_interval_secs: u64,
-
-    #[serde(default = "default_periodic_summary_ms")]
-    pub periodic_summary_ms: u64,
-
-    #[serde(default = "default_max_tool_result_chars")]
-    pub max_tool_result_chars: usize,
 
     #[serde(default = "default_ack_placeholder_text")]
     pub ack_placeholder_text: String,
@@ -172,15 +78,8 @@ pub struct StreamingConfig {
 impl Default for StreamingConfig {
     fn default() -> Self {
         Self {
-            interaction_mode: InteractionMode::default(),
-            max_act_chars: default_max_act_chars(),
-            show_act_phase: default_show_act_phase(),
-            act_emoji: default_act_emoji(),
             throttle_ms: default_throttle_ms(),
             max_retries: default_max_retries(),
-            summary_interval_secs: default_summary_interval_secs(),
-            periodic_summary_ms: default_periodic_summary_ms(),
-            max_tool_result_chars: default_max_tool_result_chars(),
             ack_placeholder_text: default_ack_placeholder_text(),
             busy_text: default_busy_text(),
         }
@@ -250,18 +149,6 @@ fn default_telegram_safe_reply_chars() -> usize {
     crate::constants::telegram::SAFE_REPLY_CHARS
 }
 
-fn default_max_act_chars() -> usize {
-    500
-}
-
-fn default_show_act_phase() -> bool {
-    true
-}
-
-fn default_act_emoji() -> String {
-    "⚡".to_string()
-}
-
 fn default_throttle_ms() -> u64 {
     crate::constants::streaming::EDIT_THROTTLE_BASE_MS
 }
@@ -274,22 +161,10 @@ fn default_memory_limit() -> usize {
     100
 }
 
-fn default_periodic_summary_ms() -> u64 {
-    3000
-}
-
-fn default_max_tool_result_chars() -> usize {
-    500
-}
-
 fn default_ack_placeholder_text() -> String {
     "已收到，开始处理。处理时间较长时我会定期同步进展。".to_string()
 }
 
 fn default_busy_text() -> String {
     "上一个请求还在处理中，请稍后再发新消息。".to_string()
-}
-
-fn default_summary_interval_secs() -> u64 {
-    300
 }

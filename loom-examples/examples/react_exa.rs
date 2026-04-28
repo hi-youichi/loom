@@ -65,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let tools = tool_source.list_tools().await?;
-    let model = "gpt-4o-mini".to_string(); // Default model, removed environment variable support
+    let model = std::env::var("MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string());
     let llm = Arc::new(ChatOpenAI::new(&model).with_tools(tools));
     let openai_provider = Arc::new(FixedLlmProvider {
         client: llm,

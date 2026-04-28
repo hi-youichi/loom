@@ -66,21 +66,13 @@ pub(crate) fn model_entry_from_config(
 
     tracing::debug!("🎯 Frontend config model: {:?}", config.model);
 
-    let raw_model = if let Some(ref model) = config.model {
-        if !model.is_empty() {
-            tracing::info!("✅ Using frontend selected model: {}", model);
-            model.clone()
-        } else {
-            tracing::warn!("⚠️ Frontend config model empty, using system default");
-            "gpt-4o-mini".to_string()
-        }
-    } else {
-        tracing::warn!("⚠️ No frontend config model, using system default");
-        tracing::info!(
-            "💡 Tip: Specify a model in your config file or via API parameters for better control"
-        );
-        "gpt-4o-mini".to_string()
-    };
+    let raw_model = config
+        .model
+        .as_deref()
+        .filter(|m| !m.is_empty())
+        .map(String::from)
+        .or_else(|| std::env::var("MODEL").ok())
+        .unwrap_or_else(|| "gpt-4o-mini".to_string());
 
     tracing::info!("✅ Final model to use: {}", raw_model);
 

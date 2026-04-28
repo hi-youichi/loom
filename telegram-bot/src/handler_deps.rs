@@ -129,7 +129,7 @@ impl HandlerDeps {
 }
 
 fn build_model_catalog() -> Arc<dyn ModelCatalog> {
-    let configured_model = "gpt-5.4".to_string(); // Removed environment variable support
+    let configured_model = config::default_model();
     let full_config = config::load_full_config("loom").ok();
     let configured_provider = full_config
         .as_ref()

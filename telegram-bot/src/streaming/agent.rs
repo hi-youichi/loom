@@ -67,7 +67,7 @@ pub async fn run_loom_agent_streaming(
             acp_session_id: None,
         };
 
-    let mapper = StreamEventMapper::new(tx.clone(), settings.streaming.show_act_phase);
+    let mapper = StreamEventMapper::new(tx.clone());
     let on_event = mapper.boxed_callback();
 
     let result = run_agent_with_options(&opts, &RunCmd::React, Some(on_event)).await;

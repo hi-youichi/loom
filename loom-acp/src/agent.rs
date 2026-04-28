@@ -257,8 +257,8 @@ impl LoomAcpAgent {
             }
         }
 
-        let default_model = "gpt-4o-mini";
-        loom::resolve_model_config(Some(default_model)).await
+        let default_model = config::default_model();
+        loom::resolve_model_config(Some(&default_model)).await
     }
 
     fn apply_session_mode(
@@ -568,7 +568,8 @@ impl LoomAcpAgent {
             .model
             .clone()
             .unwrap_or_else(|| {
-                None // Removed environment variable support, use session config
+                std::env::var("MODEL")
+                    .ok()
                     .or_else(crate::last_model::load)
                     .unwrap_or_default()
             });

@@ -7,7 +7,6 @@ use async_trait::async_trait;
 use std::path::PathBuf;
 use teloxide::types::{Document, ParseMode, PhotoSize, Video};
 
-use crate::config::InteractionMode;
 use crate::download::FileMetadata;
 use crate::error::BotError;
 use crate::formatting::FormattedMessage;
@@ -16,7 +15,6 @@ use crate::formatting::FormattedMessage;
 pub struct AgentRunContext {
     pub user_message_id: Option<i32>,
     pub ack_message_id: Option<i32>,
-    pub interaction_mode: InteractionMode,
     pub model_override: Option<String>,
 }
 

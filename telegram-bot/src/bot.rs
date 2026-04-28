@@ -52,8 +52,6 @@ impl BotManager {
             bot = %name,
             bot_username = %bot_username,
             only_respond_when_mentioned = settings.only_respond_when_mentioned,
-            interaction_mode = ?settings.streaming.interaction_mode,
-            show_act_phase = settings.streaming.show_act_phase,
             "Resolved bot runtime configuration"
         );
 
@@ -119,8 +117,6 @@ pub async fn run_with_config(
         only_respond_when_mentioned = settings.only_respond_when_mentioned,
         log_level = %settings.log_level,
         log_file = ?settings.log_file,
-        interaction_mode = ?settings.streaming.interaction_mode,
-        show_act_phase = settings.streaming.show_act_phase,
         "Starting Telegram bot manager with configuration"
     );
     let mut managers: Vec<BotManager> = Vec::new();
