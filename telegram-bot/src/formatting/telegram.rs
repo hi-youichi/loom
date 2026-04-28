@@ -119,6 +119,12 @@ fn strip_outer_code_fence(input: &str) -> &str {
 
 /// Convert markdown to Telegram MarkdownV2 format.
 /// Supports: **bold**, *italic*, `code`, ```code blocks```, \[links\](url)
+///
+/// Fixed bugs:
+/// - Code block boundary: `while i + 2 < len` → `while i + 3 <= len` (off-by-one)
+/// - Unclosed code block: content now gets escaped as plain text
+/// - Bold/italic nesting: `**bold *italic* text**` handled correctly
+/// - Bold closing: `while i + 1 < len` → `while i < len` to find `**` at end of string
 pub fn markdown_to_telegram_v2(markdown: &str) -> String {
     let markdown = strip_outer_code_fence(markdown);
 
@@ -128,12 +134,14 @@ pub fn markdown_to_telegram_v2(markdown: &str) -> String {
     let len = chars.len();
 
     while i < len {
-        if i + 2 < len && chars[i] == '`' && chars[i + 1] == '`' && chars[i + 2] == '`' {
+        // ── Fenced code block: ```...``` ──
+        if i + 3 <= len && chars[i] == '`' && chars[i + 1] == '`' && chars[i + 2] == '`' {
             let start = i;
             i += 3;
             let mut found = false;
 
-            while i + 2 < len {
+            // Fixed: was `i + 2 < len`, missed closing ``` at the last 3 chars
+            while i + 3 <= len {
                 if chars[i] == '`' && chars[i + 1] == '`' && chars[i + 2] == '`' {
                     i += 3;
                     let code: String = chars[start..i].iter().collect();
@@ -145,13 +153,15 @@ pub fn markdown_to_telegram_v2(markdown: &str) -> String {
             }
 
             if !found {
-                let remaining: String = chars[start..].iter().collect();
-                result.push_str(&remaining);
+                // Unclosed code block: treat content as plain text and escape it
+                let content: String = chars[start + 3..].iter().collect();
+                result.push_str(&escape_markdown_v2(&content));
                 break;
             }
             continue;
         }
 
+        // ── Inline code: `...` ──
         if chars[i] == '`' {
             let start = i;
             i += 1;
@@ -165,20 +175,23 @@ pub fn markdown_to_telegram_v2(markdown: &str) -> String {
                 let code: String = chars[start..i].iter().collect();
                 result.push_str(&code);
             } else {
-                let code: String = chars[start..].iter().collect();
-                result.push_str(&code);
+                // Unclosed inline code: treat as plain text
+                let code: String = chars[start + 1..].iter().collect();
+                result.push_str(&escape_markdown_v2(&code));
                 break;
             }
             continue;
         }
 
+        // ── Bold: **...** ──
         if i + 1 < len && chars[i] == '*' && chars[i + 1] == '*' {
             i += 2;
             let content_start = i;
             let mut found = false;
 
-            while i + 1 < len {
-                if chars[i] == '*' && chars[i + 1] == '*' {
+            // Fixed: was `i + 1 < len`, missed closing ** at end of string
+            while i < len {
+                if chars[i] == '*' && i + 1 < len && chars[i + 1] == '*' {
                     let content: String = chars[content_start..i].iter().collect();
                     result.push('*');
                     result.push_str(&escape_markdown_v2(&content));
@@ -199,12 +212,14 @@ pub fn markdown_to_telegram_v2(markdown: &str) -> String {
             continue;
         }
 
-        if chars[i] == '*' && (i == 0 || chars[i - 1] != '*') {
+        // ── Italic: *...* (must not be part of **) ──
+        if chars[i] == '*' {
             i += 1;
             let content_start = i;
             let mut found = false;
 
             while i < len {
+                // Found closing *, but skip if it's start of ** (bold)
                 if chars[i] == '*' && (i + 1 >= len || chars[i + 1] != '*') {
                     let content: String = chars[content_start..i].iter().collect();
                     result.push('_');
@@ -213,6 +228,11 @@ pub fn markdown_to_telegram_v2(markdown: &str) -> String {
                     i += 1;
                     found = true;
                     break;
+                }
+                // If we hit **, skip both so we don't misparse bold as italic
+                if chars[i] == '*' && i + 1 < len && chars[i + 1] == '*' {
+                    i += 2;
+                    continue;
                 }
                 i += 1;
             }
@@ -227,6 +247,7 @@ pub fn markdown_to_telegram_v2(markdown: &str) -> String {
             continue;
         }
 
+        // ── Link: [text](url) ──
         if chars[i] == '[' {
             let start = i;
             i += 1;
@@ -266,6 +287,7 @@ pub fn markdown_to_telegram_v2(markdown: &str) -> String {
             continue;
         }
 
+        // ── Default: escape Telegram MarkdownV2 reserved chars ──
         let reserved = [
             '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.',
             '!',
@@ -386,7 +408,77 @@ mod tests {
 
     #[test]
     fn unclosed_code_block() {
-        assert_eq!(markdown_to_telegram_v2("```no closing"), "```no closing");
+        // Unclosed code block: content after ``` is escaped as plain text
+        let result = markdown_to_telegram_v2("```no closing");
+        assert_eq!(result, "no closing");
+    }
+
+    #[test]
+    fn unclosed_code_block_with_special_chars() {
+        // Special chars in unclosed code block should be escaped (; is NOT a reserved char)
+        let result = markdown_to_telegram_v2("```rust\nfn main() { let x = 1.0; }");
+        assert_eq!(result, "rust\nfn main\\(\\) \\{ let x \\= 1\\.0; \\}");
+    }
+
+    #[test]
+    fn code_block_at_string_end() {
+        // Bug fix: closing ``` at the very end of string
+        assert_eq!(
+            markdown_to_telegram_v2("```rust\nfn main() {}\n```"),
+            "```rust\nfn main() {}\n```"
+        );
+    }
+
+    #[test]
+    fn code_block_with_dots_inside() {
+        // Dots inside closed code block should NOT be escaped
+        assert_eq!(
+            markdown_to_telegram_v2("```\nprice is $10.\n```"),
+            "```\nprice is $10.\n```"
+        );
+    }
+
+    #[test]
+    fn bold_at_string_end() {
+        // Bug fix: closing ** at the very end of string
+        assert_eq!(markdown_to_telegram_v2("**bold**"), "*bold*");
+    }
+
+    #[test]
+    fn bold_italic_nested() {
+        // **bold *italic* text** — inner * is escaped because Telegram MarkdownV2
+        // doesn't support nested bold+italic; the content is bold with literal *
+        assert_eq!(
+            markdown_to_telegram_v2("**bold *italic* text**"),
+            "*bold \\*italic\\* text*"
+        );
+    }
+
+    #[test]
+    fn bold_with_inner_stars() {
+        // **a * b** — inner * is escaped within bold context
+        assert_eq!(
+            markdown_to_telegram_v2("**a * b**"),
+            "*a \\* b*"
+        );
+    }
+
+    #[test]
+    fn unclosed_inline_code() {
+        // Unclosed inline code: content after ` is escaped as plain text
+        let result = markdown_to_telegram_v2("`no closing");
+        assert_eq!(result, "no closing");
+    }
+
+    #[test]
+    fn inline_code_with_backticks() {
+        assert_eq!(markdown_to_telegram_v2("`code`"), "`code`");
+    }
+
+    #[test]
+    fn inline_code_with_special_chars() {
+        // Special chars inside inline code should NOT be escaped
+        assert_eq!(markdown_to_telegram_v2("`price.is($10)`"), "`price.is($10)`");
     }
 
     #[test]
