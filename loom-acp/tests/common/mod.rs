@@ -3,6 +3,7 @@ pub mod test_setup;
 #[allow(unused_imports)]
 pub mod config_helpers;
 pub mod acp_child;
+pub mod process_pool;
 #[allow(dead_code)]
 pub mod plan_types;
 pub mod terminal_handler;

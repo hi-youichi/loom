@@ -5,52 +5,16 @@ use std::time::Duration;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
-async fn handshake(acp: &mut common::AcpChild) -> String {
-    let init = acp
-        .send_request_and_wait(
-            "initialize",
-            serde_json::json!({ "protocolVersion": 1 }),
-            Duration::from_secs(10),
-        )
-        .await
-        .expect("initialize");
-    assert!(init.error.is_none(), "initialize failed: {:?}", init.error);
-
-    let session = acp
-        .send_request_and_wait(
-            "session/new",
-            serde_json::json!({
-                "cwd": std::env::current_dir().unwrap().to_str().unwrap(),
-                "mcpServers": [],
-            }),
-            TIMEOUT,
-        )
-        .await
-        .expect("session/new");
-    assert!(session.error.is_none(), "session/new failed: {:?}", session.error);
-
-    session
-        .result
-        .expect("should have result")
-        .get("sessionId")
-        .and_then(|v| v.as_str())
-        .expect("should have sessionId")
-        .to_string()
-}
-
 #[tokio::test]
 async fn e2e_prompt_and_cancel_returns_cancelled_stop_reason() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock()
-        .await
-        .expect("spawn loom-acp with mock");
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
 
-    let session_id = handshake(&mut acp).await;
-
-    let request_id = acp
+    let request_id = guard.acp_mut()
         .send_prompt_request(&session_id, "Write a long essay about Rust")
         .expect("send prompt request");
 
-    acp.send_raw(
+    guard.acp_mut().send_raw(
         &serde_json::json!({
             "jsonrpc": "2.0",
             "method": "session/cancel",
@@ -60,7 +24,7 @@ async fn e2e_prompt_and_cancel_returns_cancelled_stop_reason() {
     )
     .expect("send cancel");
 
-    let (notifications, response) = acp
+    let (notifications, response) = guard.acp_mut()
         .collect_all_notifications(request_id, TIMEOUT)
         .expect("collect notifications");
 
@@ -83,17 +47,14 @@ async fn e2e_prompt_and_cancel_returns_cancelled_stop_reason() {
 
 #[tokio::test]
 async fn e2e_cancel_then_new_prompt_succeeds() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock()
-        .await
-        .expect("spawn loom-acp with mock");
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
 
-    let session_id = handshake(&mut acp).await;
-
-    let req_id_1 = acp
+    let req_id_1 = guard.acp_mut()
         .send_prompt_request(&session_id, "Hello")
         .expect("send first prompt");
 
-    acp.send_raw(
+    guard.acp_mut().send_raw(
         &serde_json::json!({
             "jsonrpc": "2.0",
             "method": "session/cancel",
@@ -103,11 +64,11 @@ async fn e2e_cancel_then_new_prompt_succeeds() {
     )
     .expect("send cancel");
 
-    let (_, _resp1) = acp
+    let (_, _resp1) = guard.acp_mut()
         .collect_all_notifications(req_id_1, TIMEOUT)
         .expect("collect first response");
 
-    let resp2 = acp
+    let resp2 = guard.acp_mut()
         .send_request_and_wait(
             "session/prompt",
             serde_json::json!({

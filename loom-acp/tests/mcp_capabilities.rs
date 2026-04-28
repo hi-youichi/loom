@@ -17,8 +17,8 @@ async fn initialize(acp: &mut common::AcpChild) -> serde_json::Map<String, serde
 
 #[tokio::test]
 async fn e2e_mcp_capabilities_presence() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
-    let result = initialize(&mut acp).await;
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let result = initialize(&mut guard.acp_mut()).await;
 
     let capabilities = result
         .get("agentCapabilities")
@@ -36,10 +36,10 @@ async fn e2e_mcp_capabilities_presence() {
 
 #[tokio::test]
 async fn e2e_new_session_with_empty_mcp_servers() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
-    initialize(&mut acp).await;
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    initialize(&mut guard.acp_mut()).await;
 
-    let response = acp
+    let response = guard.acp_mut()
         .send_request_and_wait(
             "session/new",
             serde_json::json!({
@@ -63,11 +63,11 @@ async fn e2e_new_session_with_empty_mcp_servers() {
 
 #[tokio::test]
 async fn e2e_new_session_without_mcp_servers() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
-    initialize(&mut acp).await;
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    initialize(&mut guard.acp_mut()).await;
 
     // mcpServers is required by the schema
-    let response = acp
+    let response = guard.acp_mut()
         .send_request_and_wait(
             "session/new",
             serde_json::json!({
@@ -88,10 +88,10 @@ async fn e2e_new_session_without_mcp_servers() {
 
 #[tokio::test]
 async fn e2e_new_session_with_mcp_server_stdio_config() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
-    initialize(&mut acp).await;
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    initialize(&mut guard.acp_mut()).await;
 
-    let response = acp
+    let response = guard.acp_mut()
         .send_request_and_wait(
             "session/new",
             serde_json::json!({
@@ -117,10 +117,10 @@ async fn e2e_new_session_with_mcp_server_stdio_config() {
 
 #[tokio::test]
 async fn e2e_new_session_with_invalid_mcp_config_graceful() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
-    initialize(&mut acp).await;
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    initialize(&mut guard.acp_mut()).await;
 
-    let response = acp
+    let response = guard.acp_mut()
         .send_request_and_wait(
             "session/new",
             serde_json::json!({

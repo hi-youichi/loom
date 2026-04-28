@@ -1,6 +1,6 @@
 //! E2E tests for Phase 3: Prompt Turn — conversation interaction with mock LLM.
 //!
-//! These tests use [`common::AcpChild::spawn_with_mock`] to start loom-acp with a mock
+//! These tests use [`common::process_pool::get_pool`] to start loom-acp with a mock
 //! OpenAI-compatible HTTP server so no real API keys are needed.
 
 mod common;
@@ -8,21 +8,17 @@ mod e2e;
 
 use std::time::Duration;
 
-
 const TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Send a simple text prompt and verify the agent returns `end_turn`.
 #[tokio::test]
 async fn e2e_prompt_simple_text_response() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock()
-        .await
-        .expect("spawn loom-acp with mock");
-
-    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
     assert!(!session_id.is_empty(), "session_id should not be empty");
 
     // Send a prompt
-    let prompt_response = acp
+    let prompt_response = guard.acp_mut()
         .send_request_and_wait(
             "session/prompt",
             serde_json::json!({
@@ -60,15 +56,12 @@ async fn e2e_prompt_simple_text_response() {
 /// Send a prompt and verify that session/update notifications are emitted.
 #[tokio::test]
 async fn e2e_prompt_emits_update_notifications() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock()
-        .await
-        .expect("spawn loom-acp with mock");
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
 
-    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
+    let request_id = guard.acp_mut().send_prompt_request(&session_id, "Say hello").expect("send prompt");
 
-    let request_id = acp.send_prompt_request(&session_id, "Say hello").expect("send prompt");
-
-    let (notifications, response) = acp
+    let (notifications, response) = guard.acp_mut()
         .collect_all_notifications(request_id, TIMEOUT)
         .expect("collect");
 

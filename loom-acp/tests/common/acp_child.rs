@@ -561,6 +561,12 @@ model = "test-model"
         Ok(())
     }
 
+    pub fn is_alive(&mut self) -> bool {
+        self.process.try_wait()
+            .map(|status| status.is_none())
+            .unwrap_or(false)
+    }
+
     pub fn has_terminal_handler(&self) -> bool {
         self.terminal_handler.is_some()
     }

@@ -48,7 +48,7 @@ fn get_diff_field<'a>(diff: &'a serde_json::Value, field: &str) -> Option<&'a st
 }
 
 fn collect_notifications(
-    acp: &mut common::AcpChild,
+    guard: &mut common::process_pool::PooledAcpGuard,
     prompt_id: u64,
 ) -> (Vec<serde_json::Value>, e2e::RpcResponse) {
     let mut notifications = Vec::new();
@@ -56,7 +56,7 @@ fn collect_notifications(
     let start = std::time::Instant::now();
 
     while start.elapsed() < TIMEOUT && response.is_none() {
-        let message = acp.read_message().expect("read message");
+        let message = guard.acp_mut().read_message().expect("read message");
 
         if message.get("method").and_then(|v| v.as_str()) == Some("session/update") {
             notifications.push(message.clone());
@@ -90,14 +90,10 @@ fn find_tool_call_notification<'a>(
 #[tokio::test]
 #[ignore = "requires mock LLM server infrastructure"]
 async fn test_write_operation_returns_diff_content() {
-    let (mut acp, mock) = common::AcpChild::spawn_with_mock()
-        .await
-        .expect("spawn loom-acp with mock");
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
 
-    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
-    assert!(!session_id.is_empty());
-
-    mock.mount_tool_call_response(&[ToolCallResponse {
+    guard.mock_mut().await.mount_tool_call_response(&[ToolCallResponse {
         tool_name: "write_file".to_string(),
         parameters: serde_json::json!({
             "path": "test_file.txt",
@@ -105,7 +101,7 @@ async fn test_write_operation_returns_diff_content() {
         }),
     }]).await;
 
-    let prompt_id = acp.send_request_and_wait(
+    let prompt_id = guard.acp_mut().send_request_and_wait(
         "session/prompt",
         serde_json::json!({
             "sessionId": session_id,
@@ -118,7 +114,7 @@ async fn test_write_operation_returns_diff_content() {
     let prompt_id_value = result_ref.get("promptId").expect("should have promptId");
     let actual_prompt_id = prompt_id_value.as_u64().expect("promptId should be u64");
 
-    let (notifications, response) = collect_notifications(&mut acp, actual_prompt_id);
+    let (notifications, response) = collect_notifications(&mut guard, actual_prompt_id);
     assert!(response.error.is_none(), "prompt failed: {:?}", response.error);
 
     let diff_notification = find_diff_notification(&notifications)
@@ -134,14 +130,10 @@ async fn test_write_operation_returns_diff_content() {
 #[tokio::test]
 #[ignore = "requires mock LLM server infrastructure"]
 async fn test_edit_tool_call_sent_with_correct_params() {
-    let (mut acp, mock) = common::AcpChild::spawn_with_mock()
-        .await
-        .expect("spawn loom-acp with mock");
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
 
-    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
-    assert!(!session_id.is_empty());
-
-    mock.mount_tool_call_response(&[ToolCallResponse {
+    guard.mock_mut().await.mount_tool_call_response(&[ToolCallResponse {
         tool_name: "edit".to_string(),
         parameters: serde_json::json!({
             "path": "existing_file.txt",
@@ -150,7 +142,7 @@ async fn test_edit_tool_call_sent_with_correct_params() {
         }),
     }]).await;
 
-    let prompt_id = acp.send_request_and_wait(
+    let prompt_id = guard.acp_mut().send_request_and_wait(
         "session/prompt",
         serde_json::json!({
             "sessionId": session_id,
@@ -163,7 +155,7 @@ async fn test_edit_tool_call_sent_with_correct_params() {
     let prompt_id_value = result_ref.get("promptId").expect("should have promptId");
     let actual_prompt_id = prompt_id_value.as_u64().expect("promptId should be u64");
 
-    let (notifications, response) = collect_notifications(&mut acp, actual_prompt_id);
+    let (notifications, response) = collect_notifications(&mut guard, actual_prompt_id);
     assert!(response.error.is_none(), "prompt failed: {:?}", response.error);
 
     let tool_call = find_tool_call_notification(&notifications, "edit")
@@ -180,14 +172,10 @@ async fn test_edit_tool_call_sent_with_correct_params() {
 #[tokio::test]
 #[ignore = "requires mock LLM server infrastructure"]
 async fn test_complete_diff_workflow() {
-    let (mut acp, mock) = common::AcpChild::spawn_with_mock()
-        .await
-        .expect("spawn loom-acp with mock");
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
 
-    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
-    assert!(!session_id.is_empty());
-
-    mock.mount_tool_call_response(&[ToolCallResponse {
+    guard.mock_mut().await.mount_tool_call_response(&[ToolCallResponse {
         tool_name: "write_file".to_string(),
         parameters: serde_json::json!({
             "path": "workflow_test.txt",
@@ -195,7 +183,7 @@ async fn test_complete_diff_workflow() {
         }),
     }]).await;
 
-    let prompt_id = acp.send_request_and_wait(
+    let prompt_id = guard.acp_mut().send_request_and_wait(
         "session/prompt",
         serde_json::json!({
             "sessionId": session_id,
@@ -208,7 +196,7 @@ async fn test_complete_diff_workflow() {
     let prompt_id_value = result_ref.get("promptId").expect("should have promptId");
     let actual_prompt_id = prompt_id_value.as_u64().expect("promptId should be u64");
 
-    let (notifications, _response) = collect_notifications(&mut acp, actual_prompt_id);
+    let (notifications, _response) = collect_notifications(&mut guard, actual_prompt_id);
 
     let diff_notification = find_diff_notification(&notifications)
         .expect("should find tool_call_update with Diff content");

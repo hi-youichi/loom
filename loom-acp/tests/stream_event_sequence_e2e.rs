@@ -5,39 +5,6 @@ use std::time::Duration;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
-async fn handshake(acp: &mut common::AcpChild) -> String {
-    let init = acp
-        .send_request_and_wait(
-            "initialize",
-            serde_json::json!({ "protocolVersion": 1 }),
-            Duration::from_secs(10),
-        )
-        .await
-        .expect("initialize");
-    assert!(init.error.is_none(), "initialize failed: {:?}", init.error);
-
-    let session = acp
-        .send_request_and_wait(
-            "session/new",
-            serde_json::json!({
-                "cwd": std::env::current_dir().unwrap().to_str().unwrap(),
-                "mcpServers": [],
-            }),
-            TIMEOUT,
-        )
-        .await
-        .expect("session/new");
-    assert!(session.error.is_none(), "session/new failed: {:?}", session.error);
-
-    session
-        .result
-        .expect("should have result")
-        .get("sessionId")
-        .and_then(|v| v.as_str())
-        .expect("should have sessionId")
-        .to_string()
-}
-
 fn extract_update_type(notification: &serde_json::Value) -> Option<String> {
     notification
         .get("params")
@@ -49,17 +16,14 @@ fn extract_update_type(notification: &serde_json::Value) -> Option<String> {
 
 #[tokio::test]
 async fn e2e_prompt_emits_session_update_notifications() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock()
-        .await
-        .expect("spawn loom-acp with mock");
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
 
-    let session_id = handshake(&mut acp).await;
-
-    let request_id = acp
+    let request_id = guard.acp_mut()
         .send_prompt_request(&session_id, "Hello!")
         .expect("send prompt");
 
-    let (notifications, response) = acp
+    let (notifications, response) = guard.acp_mut()
         .collect_all_notifications(request_id, TIMEOUT)
         .expect("collect notifications");
 
@@ -82,17 +46,14 @@ async fn e2e_prompt_emits_session_update_notifications() {
 
 #[tokio::test]
 async fn e2e_prompt_notifications_contain_session_id() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock()
-        .await
-        .expect("spawn loom-acp with mock");
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
 
-    let session_id = handshake(&mut acp).await;
-
-    let request_id = acp
+    let request_id = guard.acp_mut()
         .send_prompt_request(&session_id, "Test session_id in notifications")
         .expect("send prompt");
 
-    let (notifications, _response) = acp
+    let (notifications, _response) = guard.acp_mut()
         .collect_all_notifications(request_id, TIMEOUT)
         .expect("collect notifications");
 
@@ -116,17 +77,14 @@ async fn e2e_prompt_notifications_contain_session_id() {
 
 #[tokio::test]
 async fn e2e_prompt_response_has_stop_reason() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock()
-        .await
-        .expect("spawn loom-acp with mock");
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
 
-    let session_id = handshake(&mut acp).await;
-
-    let request_id = acp
+    let request_id = guard.acp_mut()
         .send_prompt_request(&session_id, "Hello!")
         .expect("send prompt");
 
-    let (_notifications, response) = acp
+    let (_notifications, response) = guard.acp_mut()
         .collect_all_notifications(request_id, TIMEOUT)
         .expect("collect notifications");
 
@@ -149,17 +107,14 @@ async fn e2e_prompt_response_has_stop_reason() {
 
 #[tokio::test]
 async fn e2e_prompt_emits_agent_message_chunks() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock()
-        .await
-        .expect("spawn loom-acp with mock");
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
 
-    let session_id = handshake(&mut acp).await;
-
-    let request_id = acp
+    let request_id = guard.acp_mut()
         .send_prompt_request(&session_id, "Tell me something")
         .expect("send prompt");
 
-    let (notifications, _response) = acp
+    let (notifications, _response) = guard.acp_mut()
         .collect_all_notifications(request_id, TIMEOUT)
         .expect("collect notifications");
 

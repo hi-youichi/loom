@@ -5,39 +5,6 @@ use std::time::Duration;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
 
-async fn handshake(acp: &mut common::AcpChild) -> String {
-    let init = acp
-        .send_request_and_wait(
-            "initialize",
-            serde_json::json!({ "protocolVersion": 1 }),
-            Duration::from_secs(10),
-        )
-        .await
-        .expect("initialize");
-    assert!(init.error.is_none(), "initialize failed: {:?}", init.error);
-
-    let session = acp
-        .send_request_and_wait(
-            "session/new",
-            serde_json::json!({
-                "cwd": std::env::current_dir().unwrap().to_str().unwrap(),
-                "mcpServers": [],
-            }),
-            TIMEOUT,
-        )
-        .await
-        .expect("session/new");
-    assert!(session.error.is_none(), "session/new failed: {:?}", session.error);
-
-    session
-        .result
-        .expect("should have result")
-        .get("sessionId")
-        .and_then(|v| v.as_str())
-        .expect("should have sessionId")
-        .to_string()
-}
-
 fn extract_models_from_requests(requests: &Option<Vec<wiremock::Request>>) -> Vec<String> {
     requests
         .as_ref()
@@ -59,17 +26,14 @@ fn extract_models_from_requests(requests: &Option<Vec<wiremock::Request>>) -> Ve
 
 #[tokio::test]
 async fn e2e_title_generation_uses_light_tier_model() {
-    let (mut acp, mock) = common::AcpChild::spawn_with_mock()
-        .await
-        .expect("spawn loom-acp with mock");
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
 
-    let session_id = handshake(&mut acp).await;
-
-    let request_id = acp
+    let request_id = guard.acp_mut()
         .send_prompt_request(&session_id, "Hello, help me with Rust")
         .expect("send prompt");
 
-    let (_notifications, response) = acp
+    let (_notifications, response) = guard.acp_mut()
         .collect_all_notifications(request_id, TIMEOUT)
         .expect("collect notifications");
 
@@ -79,7 +43,7 @@ async fn e2e_title_generation_uses_light_tier_model() {
         response.error
     );
 
-    let requests = mock.server.received_requests().await;
+    let requests = guard.mock_mut().await.server.received_requests().await;
     let models_used = extract_models_from_requests(&requests);
 
     assert!(
@@ -107,17 +71,14 @@ async fn e2e_title_generation_uses_light_tier_model() {
 
 #[tokio::test]
 async fn e2e_title_generation_produces_session_info_update() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock()
-        .await
-        .expect("spawn loom-acp with mock");
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
 
-    let session_id = handshake(&mut acp).await;
-
-    let request_id = acp
+    let request_id = guard.acp_mut()
         .send_prompt_request(&session_id, "Hello, help me with Rust")
         .expect("send prompt");
 
-    let (notifications, response) = acp
+    let (notifications, response) = guard.acp_mut()
         .collect_all_notifications_with_drain(request_id, TIMEOUT, Duration::from_secs(3))
         .expect("collect notifications");
 
@@ -147,17 +108,14 @@ async fn e2e_title_generation_produces_session_info_update() {
 
 #[tokio::test]
 async fn e2e_title_update_contains_non_empty_title() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock()
-        .await
-        .expect("spawn loom-acp with mock");
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
 
-    let session_id = handshake(&mut acp).await;
-
-    let request_id = acp
+    let request_id = guard.acp_mut()
         .send_prompt_request(&session_id, "What is Rust?")
         .expect("send prompt");
 
-    let (notifications, _response) = acp
+    let (notifications, _response) = guard.acp_mut()
         .collect_all_notifications_with_drain(request_id, TIMEOUT, Duration::from_secs(3))
         .expect("collect notifications");
 
@@ -185,16 +143,13 @@ async fn e2e_title_update_contains_non_empty_title() {
 
 #[tokio::test]
 async fn e2e_title_only_generated_on_first_prompt() {
-    let (mut acp, mock) = common::AcpChild::spawn_with_mock()
-        .await
-        .expect("spawn loom-acp with mock");
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
 
-    let session_id = handshake(&mut acp).await;
-
-    let req1 = acp
+    let req1 = guard.acp_mut()
         .send_prompt_request(&session_id, "First message")
         .expect("send first prompt");
-    let (notifs1, _resp1) = acp
+    let (notifs1, _resp1) = guard.acp_mut()
         .collect_all_notifications(req1, TIMEOUT)
         .expect("collect first");
 
@@ -208,13 +163,13 @@ async fn e2e_title_only_generated_on_first_prompt() {
         })
         .count();
 
-    let requests_after_first = mock.server.received_requests().await;
+    let requests_after_first = guard.mock_mut().await.server.received_requests().await;
     let models_after_first = extract_models_from_requests(&requests_after_first);
 
-    let req2 = acp
+    let req2 = guard.acp_mut()
         .send_prompt_request(&session_id, "Second message")
         .expect("send second prompt");
-    let (notifs2, _resp2) = acp
+    let (notifs2, _resp2) = guard.acp_mut()
         .collect_all_notifications(req2, TIMEOUT)
         .expect("collect second");
 
@@ -228,7 +183,7 @@ async fn e2e_title_only_generated_on_first_prompt() {
         })
         .count();
 
-    let requests_after_second = mock.server.received_requests().await;
+    let requests_after_second = guard.mock_mut().await.server.received_requests().await;
     let models_after_second = extract_models_from_requests(&requests_after_second);
 
     let new_models: Vec<_> = models_after_second

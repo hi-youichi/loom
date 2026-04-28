@@ -6,38 +6,6 @@ mod e2e;
 use std::time::Duration;
 use serde_json::json;
 
-async fn handshake(acp: &mut common::AcpChild) -> String {
-    let init = acp
-        .send_request_and_wait(
-            "initialize",
-            json!({ "protocolVersion": 1 }),
-            Duration::from_secs(10),
-        )
-        .await
-        .expect("initialize");
-    assert!(init.error.is_none(), "initialize failed: {:?}", init.error);
-
-    let response = acp
-        .send_request_and_wait(
-            "session/new",
-            serde_json::json!({
-                "cwd": std::env::current_dir().unwrap().to_str().unwrap(),
-                "mcpServers": [],
-            }),
-            Duration::from_secs(10),
-        )
-        .await.expect("session/new response");
-
-    assert!(response.error.is_none(), "session/new should succeed");
-    let result = response.result.expect("should have result");
-
-    result
-        .get("sessionId")
-        .and_then(|v: &serde_json::Value| v.as_str())
-        .expect("should have sessionId")
-        .to_string()
-}
-
 #[tokio::test]
 async fn e2e_prompt_capabilities_type_validation() {
     let mut acp = common::AcpChild::spawn(None).expect("spawn loom-acp");
@@ -166,10 +134,10 @@ async fn e2e_prompt_capabilities_with_different_protocol_versions() {
 #[tokio::test]
 #[ignore = "requires configured LLM API access"]
 async fn e2e_prompt_with_embedded_resource() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
-    let session_id = handshake(&mut acp).await;
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
 
-    let response = acp
+    let response = guard.acp_mut()
         .send_request_and_wait(
             "session/prompt",
             serde_json::json!({
@@ -201,12 +169,12 @@ async fn e2e_prompt_with_embedded_resource() {
 #[tokio::test]
 #[ignore = "requires configured LLM API access"]
 async fn e2e_prompt_with_image_block() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
-    let session_id = handshake(&mut acp).await;
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
 
     let tiny_png_base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
-    let response = acp
+    let response = guard.acp_mut()
         .send_request_and_wait(
             "session/prompt",
             serde_json::json!({
@@ -235,12 +203,12 @@ async fn e2e_prompt_with_image_block() {
 #[tokio::test]
 #[ignore = "requires configured LLM API access"]
 async fn e2e_prompt_with_audio_block() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock().await.expect("spawn loom-acp with mock");
-    let session_id = handshake(&mut acp).await;
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
 
     let fake_audio_base64 = "UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
 
-    let response = acp
+    let response = guard.acp_mut()
         .send_request_and_wait(
             "session/prompt",
             serde_json::json!({

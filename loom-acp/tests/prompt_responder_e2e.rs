@@ -5,39 +5,6 @@ use std::time::Duration;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
 
-async fn handshake(acp: &mut common::AcpChild) -> String {
-    let init = acp
-        .send_request_and_wait(
-            "initialize",
-            serde_json::json!({ "protocolVersion": 1 }),
-            Duration::from_secs(10),
-        )
-        .await
-        .expect("initialize");
-    assert!(init.error.is_none(), "initialize failed: {:?}", init.error);
-
-    let session = acp
-        .send_request_and_wait(
-            "session/new",
-            serde_json::json!({
-                "cwd": std::env::current_dir().unwrap().to_str().unwrap(),
-                "mcpServers": [],
-            }),
-            TIMEOUT,
-        )
-        .await
-        .expect("session/new");
-    assert!(session.error.is_none(), "session/new failed: {:?}", session.error);
-
-    session
-        .result
-        .expect("should have result")
-        .get("sessionId")
-        .and_then(|v| v.as_str())
-        .expect("should have sessionId")
-        .to_string()
-}
-
 fn assert_no_receiver_dropped_error(resp: &common::RpcResponse, context: &str) {
     if let Some(err) = &resp.error {
         assert_ne!(
@@ -50,14 +17,11 @@ fn assert_no_receiver_dropped_error(resp: &common::RpcResponse, context: &str) {
 
 #[tokio::test]
 async fn e2e_prompt_sequential_no_receiver_dropped() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock()
-        .await
-        .expect("spawn loom-acp with mock");
-
-    let session_id = handshake(&mut acp).await;
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
 
     for i in 0..5 {
-        let resp = acp
+        let resp = guard.acp_mut()
             .send_request_and_wait(
                 "session/prompt",
                 serde_json::json!({
@@ -81,13 +45,10 @@ async fn e2e_prompt_sequential_no_receiver_dropped() {
 
 #[tokio::test]
 async fn e2e_prompt_response_not_internal_error() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock()
-        .await
-        .expect("spawn loom-acp with mock");
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
 
-    let session_id = handshake(&mut acp).await;
-
-    let resp = acp
+    let resp = guard.acp_mut()
         .send_request_and_wait(
             "session/prompt",
             serde_json::json!({
@@ -112,16 +73,13 @@ async fn e2e_prompt_response_not_internal_error() {
 
 #[tokio::test]
 async fn e2e_prompt_multi_session_no_receiver_dropped() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock()
-        .await
-        .expect("spawn loom-acp with mock");
-
-    let sid1 = handshake(&mut acp).await;
-    let sid2 = handshake(&mut acp).await;
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let sid1 = guard.new_session().await;
+    let sid2 = guard.new_session().await;
 
     assert_ne!(sid1, sid2, "sessions should differ");
 
-    let r1 = acp
+    let r1 = guard.acp_mut()
         .send_request_and_wait(
             "session/prompt",
             serde_json::json!({
@@ -136,7 +94,7 @@ async fn e2e_prompt_multi_session_no_receiver_dropped() {
     assert!(r1.error.is_none(), "session 1 prompt error: {:?}", r1.error);
     assert_no_receiver_dropped_error(&r1, "session 1 prompt");
 
-    let r2 = acp
+    let r2 = guard.acp_mut()
         .send_request_and_wait(
             "session/prompt",
             serde_json::json!({
@@ -154,17 +112,14 @@ async fn e2e_prompt_multi_session_no_receiver_dropped() {
 
 #[tokio::test]
 async fn e2e_prompt_with_notifications_no_receiver_dropped() {
-    let (mut acp, _mock) = common::AcpChild::spawn_with_mock()
-        .await
-        .expect("spawn loom-acp with mock");
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
 
-    let session_id = handshake(&mut acp).await;
-
-    let request_id = acp
+    let request_id = guard.acp_mut()
         .send_prompt_request(&session_id, "Say hello")
         .expect("send prompt");
 
-    let (notifications, response) = acp
+    let (notifications, response) = guard.acp_mut()
         .collect_all_notifications(request_id, TIMEOUT)
         .expect("collect");
 
