@@ -1,8 +1,10 @@
 pub(crate) mod streaming {
     pub const EDIT_THROTTLE_BASE_MS: u64 = 300;
 
+    #[allow(dead_code)]
     pub const SMALL_MESSAGE_THRESHOLD: usize = 200;
 
+    #[allow(dead_code)]
     pub const LARGE_MESSAGE_THRESHOLD: usize = 3000;
 }
 

@@ -9,12 +9,14 @@ pub enum StreamCommand {
     Flush,
 }
 
+#[allow(dead_code)]
 pub struct MessageState {
     pub msg_id: Option<i32>,
     _ack_message_id: Option<i32>,
     _user_message_id: Option<i32>,
 }
 
+#[allow(dead_code)]
 impl MessageState {
     pub fn new(_settings: &crate::config::StreamingConfig, context: AgentRunContext) -> Self {
         Self {
@@ -54,6 +56,7 @@ pub async fn stream_message_handler_with_context(
 ) -> String {
     // Simply drain commands until Flush or channel closes.
     // The actual reply is sent by agent_orchestrator after the agent run completes.
+    #[allow(clippy::never_loop)]
     while let Some(cmd) = rx.recv().await {
         match cmd {
             StreamCommand::Flush => break,

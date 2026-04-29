@@ -9,6 +9,7 @@ use tokio::io::AsyncReadExt;
 use tokio::sync::watch;
 
 #[async_trait]
+#[allow(clippy::too_many_arguments)]
 pub trait PowerShellExecutor: Send + Sync {
     async fn execute(
         &self,

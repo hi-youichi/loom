@@ -55,6 +55,7 @@ pub struct LogConfig {
 /// Initialize logging at application startup.
 /// - If no working_folder is provided, relative paths are resolved relative to the current process working directory.
 /// - If working_folder is provided, relative paths are resolved relative to that folder.
+///
 /// This should be called once at startup. Subsequent calls are no-ops.
 pub fn init_logging(working_folder: Option<&Path>) {
     if LOG_GUARD.get().is_some() {

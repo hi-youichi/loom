@@ -12,7 +12,7 @@ use wiremock::matchers::{method, path};
 
 use common::{AcpChild, PlanEntryPriority, PlanEntryStatus};
 
-const TIMEOUT: Duration = Duration::from_secs(20);
+const TIMEOUT: Duration = Duration::from_secs(10);
 
 fn todo_write_args() -> serde_json::Value {
     json!({
@@ -140,6 +140,16 @@ impl Respond for PlanThenDoneResponder {
     }
 }
 
+struct TextOnlyResponder;
+
+impl Respond for TextOnlyResponder {
+    fn respond(&self, _request: &wiremock::Request) -> ResponseTemplate {
+        let body = streaming_text_response("Hello! I'll help you with that.");
+        ResponseTemplate::new(200)
+            .set_body_raw(body.into_bytes(), "text/event-stream")
+    }
+}
+
 struct MultiStepPlanResponder {
     step: Arc<AtomicUsize>,
 }
@@ -223,7 +233,7 @@ model = "test-model"
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn e2e_plan_emitted_on_todo_write() {
+async fn e2e_plan_basic_properties() {
     let (mut acp, _server) = spawn_with_plan_mock(PlanThenDoneResponder {
         step: Arc::new(AtomicUsize::new(0)),
         tool_name: "todo_write".to_string(),
@@ -237,67 +247,20 @@ async fn e2e_plan_emitted_on_todo_write() {
 
     assert!(response.error.is_none(), "prompt failed: {:?}", response.error);
     assert!(!plans.is_empty(), "should receive at least one plan notification");
-}
 
-#[tokio::test]
-async fn e2e_plan_all_entries_pending_on_create() {
-    let (mut acp, _server) = spawn_with_plan_mock(PlanThenDoneResponder {
-        step: Arc::new(AtomicUsize::new(0)),
-        tool_name: "todo_write".to_string(),
-        tool_args: todo_write_args(),
-    }).await;
-
-    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
-    let (plans, response) = acp
-        .prompt_and_collect_plans(&session_id, "Create a plan", TIMEOUT)
-        .expect("prompt and collect");
-
-    assert!(response.error.is_none(), "prompt failed: {:?}", response.error);
     let first = plans.first().expect("should have at least one plan");
     assert!(first.entries.iter().all(|e| e.status == PlanEntryStatus::Pending),
         "all initial entries should be pending: {:?}", first.entries);
-}
-
-#[tokio::test]
-async fn e2e_plan_entries_have_correct_content() {
-    let (mut acp, _server) = spawn_with_plan_mock(PlanThenDoneResponder {
-        step: Arc::new(AtomicUsize::new(0)),
-        tool_name: "todo_write".to_string(),
-        tool_args: todo_write_args(),
-    }).await;
-
-    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
-    let (plans, _) = acp
-        .prompt_and_collect_plans(&session_id, "Create a plan", TIMEOUT)
-        .expect("prompt and collect");
-
-    let first = plans.first().expect("should have plan");
     assert_eq!(first.entries[0].content, "Analyze the codebase");
     assert_eq!(first.entries[1].content, "Implement changes");
     assert_eq!(first.entries[2].content, "Add tests");
-}
-
-#[tokio::test]
-async fn e2e_plan_entries_have_correct_priority() {
-    let (mut acp, _server) = spawn_with_plan_mock(PlanThenDoneResponder {
-        step: Arc::new(AtomicUsize::new(0)),
-        tool_name: "todo_write".to_string(),
-        tool_args: todo_write_args(),
-    }).await;
-
-    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
-    let (plans, _) = acp
-        .prompt_and_collect_plans(&session_id, "Create a plan", TIMEOUT)
-        .expect("prompt and collect");
-
-    let first = plans.first().expect("should have plan");
     assert_eq!(first.entries[0].priority, PlanEntryPriority::High);
     assert_eq!(first.entries[1].priority, PlanEntryPriority::High);
     assert_eq!(first.entries[2].priority, PlanEntryPriority::Medium);
 }
 
 #[tokio::test]
-async fn e2e_plan_status_updates_on_todo_change() {
+async fn e2e_plan_multi_step_status_and_replacement() {
     let (mut acp, _server) = spawn_with_plan_mock(MultiStepPlanResponder {
         step: Arc::new(AtomicUsize::new(0)),
     }).await;
@@ -314,35 +277,11 @@ async fn e2e_plan_status_updates_on_todo_change() {
         p.entries.iter().any(|e| e.status == PlanEntryStatus::InProgress)
     });
     assert!(has_in_progress, "at least one entry should be in_progress across plan updates");
-}
-
-#[tokio::test]
-async fn e2e_plan_completed_status_correct() {
-    let (mut acp, _server) = spawn_with_plan_mock(MultiStepPlanResponder {
-        step: Arc::new(AtomicUsize::new(0)),
-    }).await;
-
-    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
-    let (plans, _) = acp
-        .prompt_and_collect_plans(&session_id, "Create and execute a multi-step plan", TIMEOUT)
-        .expect("prompt and collect");
 
     let has_completed = plans.iter().any(|p| {
         p.entries.iter().any(|e| e.status == PlanEntryStatus::Completed)
     });
     assert!(has_completed, "at least one entry should be completed across plan updates");
-}
-
-#[tokio::test]
-async fn e2e_plan_full_replacement_semantics() {
-    let (mut acp, _server) = spawn_with_plan_mock(MultiStepPlanResponder {
-        step: Arc::new(AtomicUsize::new(0)),
-    }).await;
-
-    let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
-    let (plans, _) = acp
-        .prompt_and_collect_plans(&session_id, "Create and execute a multi-step plan", TIMEOUT)
-        .expect("prompt and collect");
 
     for plan in &plans {
         assert!(!plan.entries.is_empty(), "each plan should contain full entries list");
@@ -352,39 +291,8 @@ async fn e2e_plan_full_replacement_semantics() {
 
 #[tokio::test]
 async fn e2e_plan_not_emitted_without_todo_write() {
-    let server = MockServer::start().await;
+    let (mut acp, _server) = spawn_with_plan_mock(TextOnlyResponder).await;
 
-    let body = streaming_text_response("Hello! I'll help you with that.");
-    Mock::given(method("POST"))
-        .and(path("/v1/chat/completions"))
-        .respond_with(ResponseTemplate::new(200)
-            .set_body_raw(body.into_bytes(), "text/event-stream"))
-        .mount(&server)
-        .await;
-
-    Mock::given(method("GET"))
-        .and(path("/v1/models"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(models_response()))
-        .mount(&server)
-        .await;
-
-    let temp_dir = tempfile::tempdir().expect("tempdir");
-    let home = temp_dir.path().to_path_buf();
-    let config_toml = format!(
-        r#"[default]
-provider = "mock"
-
-[[providers]]
-name = "mock"
-api_key = "test-key"
-base_url = "{}/v1"
-model = "test-model"
-"#,
-        server.uri()
-    );
-    std::fs::write(home.join("config.toml"), config_toml).expect("write config");
-
-    let mut acp = AcpChild::spawn_with_temp_dir(Some(&home), Some(temp_dir)).expect("spawn");
     let session_id = acp.handshake(TIMEOUT).await.expect("handshake");
     let (plans, response) = acp
         .prompt_and_collect_plans(&session_id, "Say hello", TIMEOUT)

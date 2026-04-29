@@ -194,8 +194,8 @@ fn is_connection_closed_error_str(s: &str) -> bool {
 fn is_connection_closed_error(e: &agent_client_protocol::Error) -> bool {
     let msg = &e.message;
     is_connection_closed_error_str(msg)
-        || e.data.as_ref().map_or(false, |d| {
-            d.as_str().map_or(false, |s| is_connection_closed_error_str(s))
+        || e.data.as_ref().is_some_and(|d| {
+            d.as_str().is_some_and(is_connection_closed_error_str)
         })
 }
 
