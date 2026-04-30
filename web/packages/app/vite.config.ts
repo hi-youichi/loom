@@ -8,5 +8,23 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
+    dedupe: [
+      '@loom/ws-client',
+      '@loom/protocol',
+      '@loom/service-agent',
+      '@loom/service-chat',
+      '@loom/service-session',
+      '@loom/service-workspace',
+    ],
+  },
+  optimizeDeps: {
+    include: [
+      '@loom/ws-client',
+      '@loom/protocol',
+      '@loom/service-agent',
+      '@loom/service-chat',
+      '@loom/service-session',
+      '@loom/service-workspace',
+    ],
   },
 })

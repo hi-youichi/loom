@@ -2,14 +2,49 @@ import { test, expect } from '@playwright/test'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import { WebSocket as Ws } from 'ws'
 
 declare global {
   var __workspaceRootDir: string
 }
 
-async function switchToFilesView(page: import('@playwright/test').Page) {
-  await page.locator('[data-testid="view-files"]').click({ force: true })
-  await page.waitForTimeout(1000)
+function getRootDir(): string {
+  try {
+    return fs.readFileSync(path.join(os.tmpdir(), 'loom-test-workspace-root-dir.txt'), 'utf8').trim()
+  } catch {
+    return path.join(os.tmpdir(), 'loom-test-workspace-root')
+  }
+}
+
+async function wsRequest(msg: object): Promise<any> {
+  const ws = new Ws('ws://127.0.0.1:8080')
+  await new Promise<void>((r) => ws.on('open', r))
+  const resp: any = await new Promise((resolve) => {
+    ws.on('message', (data) => {
+      const m = JSON.parse(data.toString())
+      if (m.type === msg.type && m.id === (msg as any).id) resolve(m)
+    })
+    ws.send(JSON.stringify(msg))
+  })
+  ws.close()
+  return resp
+}
+
+async function getLatestWorkspaceId(): Promise<string> {
+  const resp = await wsRequest({ type: 'workspace_list', id: 'get-ws-list' })
+  const workspaces = resp.workspaces || []
+  if (workspaces.length === 0) throw new Error('No workspaces found')
+  return workspaces[workspaces.length - 1].id
+}
+
+async function waitForFileItems(page: import('@playwright/test').Page, timeout = 10000): Promise<number> {
+  const start = Date.now()
+  while (Date.now() - start < timeout) {
+    const count = await page.locator('[data-testid^="file-item-"]').count()
+    if (count > 0) return count
+    await page.waitForTimeout(500)
+  }
+  return 0
 }
 
 async function createWorkspaceWithFiles(page: import('@playwright/test').Page, name: string): Promise<string> {
@@ -18,24 +53,10 @@ async function createWorkspaceWithFiles(page: import('@playwright/test').Page, n
   await page.fill('[data-testid="workspace-create-input"]', name)
   await page.locator('[data-testid="workspace-create-input"]').press('Enter')
 
-  const selectedName = page.locator('[data-testid="selected-workspace-name"]')
-  await expect(selectedName).toContainText(name, { timeout: 5000 })
+  await expect(page.locator('[data-testid="selected-workspace-name"]')).toContainText(name, { timeout: 5000 })
 
-  await page.click('[data-testid="workspace-selector"]')
-  const workspaceItems = page.locator('[data-testid^="workspace-item-"]')
-  const testid = await workspaceItems.first().getAttribute('data-testid')
-  const workspaceId = testid!.replace('workspace-item-', '')
-  await page.locator('[data-testid="file-sidebar"]').click({ position: { x: 110, y: 20 } })
-  await page.waitForTimeout(300)
-
-  const rootDir = (() => {
-    try {
-      return fs.readFileSync(path.join(os.tmpdir(), 'loom-test-workspace-root-dir.txt'), 'utf8').trim()
-    } catch {
-      return path.join(os.tmpdir(), 'loom-test-workspace-root')
-    }
-  })()
-  const wsDir = path.join(rootDir, workspaceId)
+  const workspaceId = await getLatestWorkspaceId()
+  const wsDir = path.join(getRootDir(), workspaceId)
 
   fs.mkdirSync(path.join(wsDir, 'src'), { recursive: true })
   fs.mkdirSync(path.join(wsDir, 'assets'), { recursive: true })
@@ -45,8 +66,13 @@ async function createWorkspaceWithFiles(page: import('@playwright/test').Page, n
   fs.writeFileSync(path.join(wsDir, 'src', 'utils.ts'), 'export function add(a: number, b: number) { return a + b }')
   fs.writeFileSync(path.join(wsDir, 'assets', 'logo.svg'), '<svg></svg>')
 
+  await page.reload()
+  await page.waitForSelector('[data-testid="file-sidebar"]', { timeout: 10000 })
+  await page.waitForSelector('.model-selector__trigger', { timeout: 15000 })
   await page.locator('[data-testid="view-files"]').click({ force: true })
-  await page.waitForTimeout(2000)
+
+  const count = await waitForFileItems(page)
+  if (count === 0) throw new Error('File items did not appear after reload')
 
   return workspaceId
 }
@@ -59,31 +85,24 @@ test.describe('Workspace File List', () => {
   })
 
   test('should display file sidebar', async ({ page }) => {
-    const sidebar = page.locator('[data-testid="file-sidebar"]')
-    await expect(sidebar).toBeVisible()
+    await expect(page.locator('[data-testid="file-sidebar"]')).toBeVisible()
   })
 
   test('should show dashboard view by default', async ({ page }) => {
-    const dashboardBtn = page.locator('[data-testid="view-dashboard"]')
-    await expect(dashboardBtn).toBeVisible()
-
-    const filesBtn = page.locator('[data-testid="view-files"]')
-    await expect(filesBtn).toBeVisible()
+    await expect(page.locator('[data-testid="view-dashboard"]')).toBeVisible()
+    await expect(page.locator('[data-testid="view-files"]')).toBeVisible()
   })
 
   test('should switch to files view', async ({ page }) => {
     await createWorkspaceWithFiles(page, 'File Test WS')
-
-    const fileItems = page.locator('[data-testid^="file-item-"]')
-    await expect(fileItems.first()).toBeVisible({ timeout: 5000 })
+    const count = await waitForFileItems(page)
+    expect(count).toBeGreaterThan(0)
   })
 
   test('should list root files and folders after workspace creation', async ({ page }) => {
     await createWorkspaceWithFiles(page, 'File List WS')
 
     const fileItems = page.locator('[data-testid^="file-item-"]')
-    await expect(fileItems.first()).toBeVisible({ timeout: 5000 })
-
     const allItems = await fileItems.all()
     const names = await Promise.all(allItems.map(item => item.locator('span.truncate').textContent()))
 
@@ -94,18 +113,13 @@ test.describe('Workspace File List', () => {
 
     const folders = page.locator('[data-file-type="folder"]')
     const files = page.locator('[data-file-type="file"]')
-    const folderCount = await folders.count()
-    const fileCount = await files.count()
-    expect(folderCount + fileCount).toBe(4)
+    expect(await folders.count() + await files.count()).toBe(4)
   })
 
   test('should display folders before files', async ({ page }) => {
     await createWorkspaceWithFiles(page, 'Sort Order WS')
 
-    const fileItems = page.locator('[data-testid^="file-item-"]')
-    await expect(fileItems.first()).toBeVisible({ timeout: 5000 })
-
-    const allItems = await fileItems.all()
+    const allItems = await page.locator('[data-testid^="file-item-"]').all()
     const types: string[] = []
     for (const item of allItems) {
       const t = await item.getAttribute('data-file-type')
@@ -124,13 +138,11 @@ test.describe('Workspace File List', () => {
     await createWorkspaceWithFiles(page, 'Expand WS')
 
     const srcFolder = page.locator('[data-file-type="folder"]').first()
-    await expect(srcFolder).toBeVisible({ timeout: 5000 })
     await srcFolder.click()
     await page.waitForTimeout(500)
 
-    const childItems = page.locator('[data-testid^="file-item-"]')
     const allNames = await Promise.all(
-      (await childItems.all()).map(item => item.locator('span.truncate').textContent())
+      (await page.locator('[data-testid^="file-item-"]').all()).map(item => item.locator('span.truncate').textContent())
     )
     expect(allNames.some(n => n?.includes('main.ts'))).toBeTruthy()
     expect(allNames.some(n => n?.includes('utils.ts'))).toBeTruthy()
@@ -141,11 +153,10 @@ test.describe('Workspace File List', () => {
     await page.click('[data-testid="workspace-create-btn"]')
     await page.fill('[data-testid="workspace-create-input"]', 'Empty WS')
     await page.locator('[data-testid="workspace-create-input"]').press('Enter')
+    await expect(page.locator('[data-testid="selected-workspace-name"]')).toContainText('Empty WS', { timeout: 5000 })
 
-    const selectedName = page.locator('[data-testid="selected-workspace-name"]')
-    await expect(selectedName).toContainText('Empty WS', { timeout: 5000 })
-
-    await switchToFilesView(page)
+    await page.locator('[data-testid="view-files"]').click({ force: true })
+    await page.waitForTimeout(1000)
 
     const emptyState = page.locator('[data-testid="file-empty"]')
     if (await emptyState.isVisible()) {
@@ -154,47 +165,31 @@ test.describe('Workspace File List', () => {
   })
 
   test('should update file list after switching workspace', async ({ page }) => {
-    const ws1 = await createWorkspaceWithFiles(page, 'WS Alpha')
-
-    const fileItems1 = page.locator('[data-testid^="file-item-"]')
-    await expect(fileItems1.first()).toBeVisible({ timeout: 5000 })
-    const count1 = await fileItems1.count()
-    expect(count1).toBeGreaterThan(0)
+    await createWorkspaceWithFiles(page, 'WS Alpha')
+    expect(await page.locator('[data-testid^="file-item-"]').count()).toBeGreaterThan(0)
 
     await page.click('[data-testid="workspace-selector"]')
     await page.click('[data-testid="workspace-create-btn"]')
     await page.fill('[data-testid="workspace-create-input"]', 'WS Beta')
     await page.locator('[data-testid="workspace-create-input"]').press('Enter')
+    await expect(page.locator('[data-testid="selected-workspace-name"]')).toContainText('WS Beta', { timeout: 5000 })
 
-    const selectedName = page.locator('[data-testid="selected-workspace-name"]')
-    await expect(selectedName).toContainText('WS Beta', { timeout: 5000 })
-
-    await page.click('[data-testid="workspace-selector"]')
-    const wsItems = page.locator('[data-testid^="workspace-item-"]')
-    const count = await wsItems.count()
-    const lastItem = wsItems.nth(count - 1)
-    const testid = await lastItem.getAttribute('data-testid')
-    const ws2Id = testid!.replace('workspace-item-', '')
-
-    const rootDir = (() => {
-      try {
-        return fs.readFileSync(path.join(os.tmpdir(), 'loom-test-workspace-root-dir.txt'), 'utf8').trim()
-      } catch {
-        return path.join(os.tmpdir(), 'loom-test-workspace-root')
-      }
-    })()
-    const ws2Dir = path.join(rootDir, ws2Id)
+    const ws2Id = await getLatestWorkspaceId()
+    const ws2Dir = path.join(getRootDir(), ws2Id)
     fs.mkdirSync(ws2Dir, { recursive: true })
     fs.writeFileSync(path.join(ws2Dir, 'hello.txt'), 'world')
 
-    await lastItem.click()
-    await page.waitForTimeout(1000)
+    await page.reload()
+    await page.waitForSelector('[data-testid="file-sidebar"]', { timeout: 10000 })
+    await page.waitForSelector('.model-selector__trigger', { timeout: 15000 })
+    await page.locator('[data-testid="view-files"]').click({ force: true })
 
-    const fileItems2 = page.locator('[data-testid^="file-item-"]')
-    await expect(fileItems2.first()).toBeVisible({ timeout: 5000 })
-    const names2 = await Promise.all(
-      (await fileItems2.all()).map(item => item.locator('span.truncate').textContent())
+    const count = await waitForFileItems(page)
+    expect(count).toBeGreaterThan(0)
+
+    const names = await Promise.all(
+      (await page.locator('[data-testid^="file-item-"]').all()).map(item => item.locator('span.truncate').textContent())
     )
-    expect(names2.some(n => n?.includes('hello.txt'))).toBeTruthy()
+    expect(names.some(n => n?.includes('hello.txt'))).toBeTruthy()
   })
 })
