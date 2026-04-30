@@ -257,6 +257,14 @@ async fn handle_request_and_send(
             tracing::debug!("✏️ Renaming workspace");
             super::workspace::handle_workspace_rename(r, workspace_store.clone()).await
         }
+        ClientRequest::WorkspaceFileList(r) => {
+            tracing::debug!("📂 Listing workspace files: {}:{}", r.workspace_id, r.path.as_deref().unwrap_or(""));
+            super::workspace::handle_workspace_file_list(r, workspace_store.clone()).await
+        }
+        ClientRequest::WorkspaceFileRead(r) => {
+            tracing::debug!("📄 Reading workspace file: {}:{} ", r.workspace_id, r.path);
+            super::workspace::handle_workspace_file_read(r, workspace_store.clone()).await
+        }
         ClientRequest::CancelRun(r) => {
             tracing::info!("🛑 Cancelling run: {}", r.run_id);
             if active_run_registry.cancel(&r.run_id) {

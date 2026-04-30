@@ -155,6 +155,8 @@ pub enum ServerResponse {
     WorkspaceThreadAdd(WorkspaceThreadAddResponse),
     WorkspaceThreadRemove(WorkspaceThreadRemoveResponse),
     WorkspaceRename(WorkspaceRenameResponse),
+    WorkspaceFileList(WorkspaceFileListResponse),
+    WorkspaceFileRead(WorkspaceFileReadResponse),
     Pong(PongResponse),
     Error(ErrorResponse),
     ListModels(ListModelsResponse),
@@ -219,6 +221,43 @@ pub struct WorkspaceRenameResponse {
     pub id: String,
     pub workspace_id: String,
     pub name: String,
+}
+
+// -----------------------------------------------------------------------------
+// File responses
+// -----------------------------------------------------------------------------
+
+/// A single file/directory entry in a workspace file listing.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FileEntry {
+    pub name: String,
+    /// "file" or "folder"
+    pub kind: String,
+    pub path: String,
+    /// File extension (only for files)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extension: Option<String>,
+    /// File size in bytes (only for files)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+}
+
+/// Workspace file list response.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceFileListResponse {
+    pub id: String,
+    pub workspace_id: String,
+    pub path: String,
+    pub entries: Vec<FileEntry>,
+}
+
+/// Workspace file read response.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceFileReadResponse {
+    pub id: String,
+    pub workspace_id: String,
+    pub path: String,
+    pub content: String,
 }
 
 // -----------------------------------------------------------------------------

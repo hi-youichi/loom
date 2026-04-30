@@ -293,6 +293,48 @@ export type WorkspaceThreadAddResponse = WorkspaceSessionAddResponse
 export type WorkspaceThreadRemoveResponse = WorkspaceSessionRemoveResponse
 
 // -----------------------------------------------------------------------------
+// File types
+// -----------------------------------------------------------------------------
+
+export type FileEntry = {
+  name: string
+  kind: 'file' | 'folder'
+  path: string
+  extension?: string
+  size?: number
+}
+
+export type WorkspaceFileListRequest = {
+  type: 'workspace_file_list'
+  id: string
+  workspace_id: string
+  path?: string
+}
+
+export type WorkspaceFileListResponse = {
+  type: 'workspace_file_list'
+  id: string
+  workspace_id: string
+  path: string
+  entries: FileEntry[]
+}
+
+export type WorkspaceFileReadRequest = {
+  type: 'workspace_file_read'
+  id: string
+  workspace_id: string
+  path: string
+}
+
+export type WorkspaceFileReadResponse = {
+  type: 'workspace_file_read'
+  id: string
+  workspace_id: string
+  path: string
+  content: string
+}
+
+// -----------------------------------------------------------------------------
 // Agent types
 // -----------------------------------------------------------------------------
 
@@ -394,6 +436,8 @@ export type LoomServerMessage =
   | WorkspaceSessionListResponse
   | WorkspaceSessionAddResponse
   | WorkspaceSessionRemoveResponse
+  | WorkspaceFileListResponse
+  | WorkspaceFileReadResponse
   | SessionCreatedNotification
   | SessionUpdatedNotification
   | SessionDeletedNotification

@@ -9,6 +9,7 @@ import { stopTestServers, cleanupTempFile } from './helpers/test-server'
 declare global {
   var __testServers: any
   var __workspaceDB: string
+  var __workspaceRootDir: string
 }
 
 export default async function teardown(config: any) {
@@ -25,6 +26,9 @@ export default async function teardown(config: any) {
   }
   if (global.__loomHome) {
     cleanupTempFile(global.__loomHome)
+  }
+  if (global.__workspaceRootDir) {
+    cleanupTempFile(global.__workspaceRootDir)
   }
   
   console.log('✅ Global teardown completed')

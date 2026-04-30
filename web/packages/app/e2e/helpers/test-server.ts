@@ -15,6 +15,7 @@ export interface TestServers {
   mockLLMServer: http.Server | null
   backendProcess: ChildProcess | null
   loomHome: string
+  workspaceRootDir: string
 }
 
 function createTestLoomHome(mockLLMPort: number): string {
@@ -72,6 +73,9 @@ export async function startTestServers(config: TestServerConfig = {}): Promise<T
     throw error
   }
 
+  const workspaceRootDir = path.join(os.tmpdir(), `loom-test-workspace-root-${uuidv4()}`)
+  fs.mkdirSync(workspaceRootDir, { recursive: true })
+
   let backendProcess: ChildProcess | null = null
   const loomHome = createTestLoomHome(mockLLMPort)
   console.log(`Created test LOOM_HOME: ${loomHome}`)
@@ -85,6 +89,7 @@ export async function startTestServers(config: TestServerConfig = {}): Promise<T
       RUST_LOG: 'info',
       TEST_SERVER_PORT: backendPort.toString(),
       LOOM_HOME: loomHome,
+      WORKSPACE_ROOT_DIR: workspaceRootDir,
     }
 
     if (workspaceDB) {
@@ -122,6 +127,7 @@ export async function startTestServers(config: TestServerConfig = {}): Promise<T
     mockLLMServer,
     backendProcess,
     loomHome,
+    workspaceRootDir,
   }
 }
 

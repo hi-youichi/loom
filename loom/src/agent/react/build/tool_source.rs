@@ -132,7 +132,7 @@ pub(crate) async fn build_tool_source(
                             }
                         }
                     }
-                    McpServerDef::Http { name, url, headers } => {
+                    McpServerDef::Http { name, url, headers, oauth, .. } => {
                         let headers_iter = headers.iter().map(|(k, v)| (k.as_str(), v.as_str()));
                         match McpToolSource::new_http(url.clone(), headers_iter).await {
                             Ok(mcp) => {
@@ -356,7 +356,7 @@ pub(crate) async fn build_tool_source(
                         }
                     }
                 }
-                McpServerDef::Http { name, url, headers } => {
+                McpServerDef::Http { name, url, headers, oauth, .. } => {
                     let headers_iter = headers.iter().map(|(k, v)| (k.as_str(), v.as_str()));
                     match McpToolSource::new_http(url.clone(), headers_iter).await {
                         Ok(mcp) => {

@@ -5,6 +5,7 @@
  */
 
 import { startTestServers, createTempWorkspaceDB, getWebSocketURL, getMockLLMURL } from './helpers/test-server'
+import os from 'os'
 
 // Store server references globally for teardown
 declare global {
@@ -13,6 +14,7 @@ declare global {
   var __loomHome: string
   var __webSocketURL: string
   var __mockLLMURL: string
+  var __workspaceRootDir: string
 }
 
 export default async function setup(config: any) {
@@ -33,7 +35,12 @@ export default async function setup(config: any) {
   global.__testServers = testServers
   global.__workspaceDB = workspaceDB
   global.__loomHome = testServers.loomHome
+  global.__workspaceRootDir = testServers.workspaceRootDir
   global.__webSocketURL = getWebSocketURL(8080)
+  process.env.LOOM_TEST_WORKSPACE_ROOT_DIR = testServers.workspaceRootDir
+  const fs = await import('fs')
+  const path = await import('path')
+  fs.writeFileSync(path.join(os.tmpdir(), 'loom-test-workspace-root-dir.txt'), testServers.workspaceRootDir)
   global.__mockLLMURL = getMockLLMURL(18080)
   
   console.log('✅ Global setup completed')

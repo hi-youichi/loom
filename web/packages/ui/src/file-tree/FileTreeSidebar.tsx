@@ -1,11 +1,12 @@
 import { memo, useMemo, useState } from 'react'
 import { LayoutDashboard, Search, RefreshCw, FolderTree } from 'lucide-react'
 import { cn } from '../lib/utils'
-import type { FileTreeSidebarProps } from './types'
+import type { FileTreeSidebarProps, FileNode } from './types'
 import { FileTree } from './FileTree'
 import { FileTreeProvider } from './FileTreeContext'
 import { useFileTree } from './useFileTree'
 import { filterTree } from './utils'
+import { useToast } from '../ui/toast'
 
 export const FileTreeSidebar = memo(function FileTreeSidebar({
   files,
@@ -14,17 +15,26 @@ export const FileTreeSidebar = memo(function FileTreeSidebar({
   title = '文件',
   className,
   workspaceSlot,
+  loading,
+  onRename,
+  onDelete,
+  onCreateFile,
+  onCreateFolder,
+  onRefresh,
 }: FileTreeSidebarProps) {
   const [activeView, setActiveView] = useState<'files' | 'dashboard'>('dashboard')
+  const { addToast } = useToast()
 
   return (
     <div
+      data-testid="file-sidebar"
       className={cn('flex flex-col h-full border-r border-border bg-background', className)}
       style={{ width: '220px' }}
     >
       {workspaceSlot}
       <button
         type="button"
+        data-testid="view-dashboard"
         onClick={() => setActiveView(activeView === 'dashboard' ? 'files' : 'dashboard')}
         className={cn(
           'flex items-center gap-2 px-3 py-2.5 border-b border-border w-full transition-colors',
@@ -41,6 +51,7 @@ export const FileTreeSidebar = memo(function FileTreeSidebar({
       </button>
       <button
         type="button"
+        data-testid="view-files"
         onClick={() => setActiveView(activeView === 'files' ? 'dashboard' : 'files')}
         className={cn(
           'flex items-center justify-between px-3 py-2.5 border-b border-border w-full transition-colors',
@@ -63,7 +74,7 @@ export const FileTreeSidebar = memo(function FileTreeSidebar({
                 className="p-1 rounded hover:bg-muted transition-colors"
                 onClick={(e) => {
                   e.stopPropagation()
-                  window.location.reload()
+                  onRefresh?.()
                 }}
               >
                 <RefreshCw className="size-3.5 text-muted-foreground" />
@@ -77,9 +88,50 @@ export const FileTreeSidebar = memo(function FileTreeSidebar({
       </button>
 
       {activeView === 'files' ? (
-        <FileTreeProvider selectedId={selectedId} onSelect={onSelect}>
-          <TreeContent files={files} />
-        </FileTreeProvider>
+        <>
+          <div className="flex items-center justify-end px-2 py-1 border-b border-border">
+            <button
+              type="button"
+              data-testid="file-refresh-btn"
+              onClick={() => onRefresh?.()}
+              className="p-1 rounded hover:bg-muted transition-colors"
+            >
+              <RefreshCw className="size-3.5 text-muted-foreground" />
+            </button>
+          </div>
+          {loading ? (
+          <div data-testid="file-loading" className="flex-1 flex items-center justify-center py-8 text-sm text-muted-foreground">
+            加载中...
+          </div>
+          ) : (
+          <FileTreeProvider
+            selectedId={selectedId}
+            onSelect={onSelect}
+            onRename={onRename}
+            onDelete={(node) => {
+              const name = node.name
+              addToast({
+                title: `确认删除 "${name}"？`,
+                description: node.type === 'folder' ? '文件夹及其内容将被永久删除' : '文件将被永久删除',
+                variant: 'destructive',
+              })
+              onDelete?.(node)
+            }}
+            onCreateFile={onCreateFile}
+            onCreateFolder={onCreateFolder}
+            onRefresh={onRefresh}
+            onCopyPath={(node) => {
+              navigator.clipboard.writeText(node.path).then(() => {
+                addToast({ title: `已复制: ${node.path}` })
+              }).catch(() => {
+                addToast({ title: '复制失败', variant: 'destructive' })
+              })
+            }}
+          >
+            <TreeContent files={files} />
+          </FileTreeProvider>
+          )}
+        </>
       ) : (
         <SidebarDashboardHint />
       )}
@@ -111,7 +163,7 @@ const TreeContent = memo(function TreeContent({ files }: { files: FileTreeSideba
       {filteredFiles.length > 0 ? (
         <InnerTree files={filteredFiles} />
       ) : (
-        <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+        <div data-testid="file-empty" className="px-4 py-8 text-center text-sm text-muted-foreground">
           没有找到匹配的文件
         </div>
       )}

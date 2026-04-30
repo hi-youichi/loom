@@ -41,6 +41,22 @@ pub struct McpServerEntry {
     pub url: Option<String>,
     #[serde(default)]
     pub headers: HashMap<String, String>,
+    #[serde(default)]
+    pub oauth: Option<OAuthConfig>,
+}
+
+/// OAuth configuration for an MCP HTTP server.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct OAuthConfig {
+    /// Enable OAuth for this server.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Pre-registered client_id (if DCR is not supported).
+    #[serde(default)]
+    pub client_id: Option<String>,
+    /// OAuth scope to request.
+    #[serde(default)]
+    pub scope: Option<String>,
 }
 
 /// Parsed definition for one MCP server: stdio (spawn process) or HTTP (remote URL).
@@ -56,6 +72,7 @@ pub enum McpServerDef {
         name: String,
         url: String,
         headers: HashMap<String, String>,
+        oauth: Option<OAuthConfig>,
     },
 }
 
@@ -84,6 +101,7 @@ pub fn parse_mcp_config(content: &str) -> Result<Vec<McpServerDef>, McpConfigErr
                 name: name.clone(),
                 url: url.clone(),
                 headers: entry.headers,
+                oauth: entry.oauth,
             }
         } else if let Some(ref cmd) = entry.command {
             if cmd.is_empty() {
@@ -342,7 +360,7 @@ mod tests {
         let list = parse_mcp_config(json).unwrap();
         assert_eq!(list.len(), 1);
         match &list[0] {
-            McpServerDef::Http { name, url, headers } => {
+            McpServerDef::Http { name, url, headers, .. } => {
                 assert_eq!(name, "my-service");
                 assert_eq!(url, "https://mcp.example.com/sse");
                 assert!(headers.is_empty());
@@ -366,7 +384,7 @@ mod tests {
         let list = parse_mcp_config(json).unwrap();
         assert_eq!(list.len(), 1);
         match &list[0] {
-            McpServerDef::Http { name, url, headers } => {
+            McpServerDef::Http { name, url, headers, .. } => {
                 assert_eq!(name, "my-service");
                 assert_eq!(url, "https://mcp.example.com/sse");
                 assert_eq!(

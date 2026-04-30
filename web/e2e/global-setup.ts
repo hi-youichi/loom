@@ -13,6 +13,7 @@ declare global {
   var __loomHome: string
   var __webSocketURL: string
   var __mockLLMURL: string
+  var __workspaceRootDir: string
 }
 
 export default async function setup(config: any) {
@@ -33,6 +34,7 @@ export default async function setup(config: any) {
   global.__testServers = testServers
   global.__workspaceDB = workspaceDB
   global.__loomHome = testServers.loomHome
+  global.__workspaceRootDir = testServers.workspaceRootDir
   global.__webSocketURL = getWebSocketURL(8080)
   global.__mockLLMURL = getMockLLMURL(18080)
   

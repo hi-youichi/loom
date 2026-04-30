@@ -16,7 +16,7 @@ use telegram_bot::{
         StubFileDownloader,
     },
     AgentRunner, ChatRunRegistry, FileDownloader, HandlerDeps, InMemorySearchSessionStore,
-    InteractionMode, MessageSender, ModelChoice, ModelSelectionService, SessionManager, Settings,
+    MessageSender, ModelChoice, ModelSelectionService, SessionManager, Settings,
     SqliteModelSelectionStore, StaticModelCatalog, StreamingConfig,
 };
 
@@ -127,7 +127,6 @@ async fn periodic_summary_default_sends_ack_then_final_and_passes_context() {
     let agent = Arc::new(MockAgentRunner::new("final answer"));
     let settings = Arc::new(Settings {
         streaming: StreamingConfig {
-            interaction_mode: InteractionMode::PeriodicSummary,
             ..Default::default()
         },
         ..Default::default()
@@ -160,7 +159,6 @@ async fn streaming_mode_router_skips_echo_of_run_return_when_progress_flags_on()
     let agent = Arc::new(MockAgentRunner::new("would duplicate"));
     let settings = Arc::new(Settings {
         streaming: StreamingConfig {
-            interaction_mode: InteractionMode::Streaming,
             ..Default::default()
         },
         ..Default::default()
@@ -190,8 +188,6 @@ async fn streaming_mode_router_sends_reply_when_both_phases_hidden() {
     let agent = Arc::new(MockAgentRunner::new("only channel"));
     let settings = Arc::new(Settings {
         streaming: StreamingConfig {
-            interaction_mode: InteractionMode::Streaming,
-            show_act_phase: false,
             ..Default::default()
         },
         ..Default::default()
@@ -806,7 +802,6 @@ async fn same_chat_second_request_receives_busy_message_while_first_runs() {
         agent,
         Arc::new(Settings {
             streaming: StreamingConfig {
-                interaction_mode: InteractionMode::PeriodicSummary,
                 ..Default::default()
             },
             ..Default::default()

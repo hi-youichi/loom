@@ -61,3 +61,6 @@ coverage.lcov
 # Telegram bot local config
 telegram-bot.toml
 test-results/
+
+# Reference repos
+typescript-sdk

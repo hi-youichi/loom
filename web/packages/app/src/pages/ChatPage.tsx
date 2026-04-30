@@ -1,64 +1,24 @@
 import { useState, useCallback, useEffect } from 'react'
 
-import { ChatErrorBoundary } from '@loom/ui'
-import { FileTreeSidebar } from '@loom/ui'
-import { DashboardView } from '@loom/ui'
-import { AgentChatSidebar } from '@loom/ui'
-import { WorkspaceSelector } from '@loom/ui'
-import { useWorkspace } from '@loom/hooks'
-import { useSessionId } from '@loom/hooks'
-import { useAgents } from '@loom/hooks'
-import { useChat } from '@loom/hooks'
-import { useChatPanel } from '@loom/hooks'
-import { useModels } from '@loom/hooks'
-import { useRealtimeSessions } from '@loom/hooks'
-import type { FileNode } from '@loom/ui'
+import { ChatErrorBoundary, FileTreeSidebar, DashboardView, AgentChatSidebar, WorkspaceSelector, ToastProvider } from '@loom/ui'
+import { useWorkspace, useSessionId, useAgents, useChat, useChatPanel, useModels, useRealtimeSessions, useWorkspaceFiles } from '@loom/hooks'
+import type { FileNode as UIFileNode } from '@loom/ui'
+import { TabBar } from '@loom/ui'
 
-const DEMO_FILES: FileNode[] = [
-  {
-    id: '1',
-    name: 'src',
-    type: 'folder',
-    path: 'src',
-    children: [
-      {
-        id: '1-1',
-        name: 'App.tsx',
-        type: 'file',
-        path: 'src/App.tsx',
-        extension: 'tsx',
-      },
-      {
-        id: '1-2',
-        name: 'main.tsx',
-        type: 'file',
-        path: 'src/main.tsx',
-        extension: 'tsx',
-      },
-      {
-        id: '1-3',
-        name: 'index.css',
-        type: 'file',
-        path: 'src/index.css',
-        extension: 'css',
-      },
-    ],
-  },
-  {
-    id: '2',
-    name: 'package.json',
-    type: 'file',
-    path: 'package.json',
-    extension: 'json',
-  },
-  {
-    id: '3',
-    name: 'README.md',
-    type: 'file',
-    path: 'README.md',
-    extension: 'md',
-  },
-]
+// -----------------------------------------------------------------------------
+// Tab types
+// -----------------------------------------------------------------------------
+
+type Tab = {
+  id: string
+  title: string
+  type: 'dashboard' | 'file'
+  path?: string
+}
+
+// -----------------------------------------------------------------------------
+// ChatPage
+// -----------------------------------------------------------------------------
 
 export function ChatPage() {
   const {
@@ -73,9 +33,17 @@ export function ChatPage() {
   const { agents } = useAgents({ autoRefresh: true, refreshInterval: 15000 })
   const { sessionId, setSessionId, resetSession } = useSessionId(activeWorkspaceId ?? undefined)
   const { selectedAgentId } = useChatPanel()
-  const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
   const { models } = useModels()
   const [selectedModel, setSelectedModel] = useState('')
+
+  // Tabs
+  const [tabs, setTabs] = useState<Tab[]>([
+    { id: 'dashboard', title: '仪表盘', type: 'dashboard' },
+  ])
+  const [activeTabId, setActiveTabId] = useState('dashboard')
+
+  // File tree from workspace
+  const { rootFiles, loading: filesLoading, loadChildren, refresh: refreshFiles } = useWorkspaceFiles(activeWorkspaceId)
 
   useEffect(() => {
     if (selectedModel || models.length === 0) return
@@ -107,7 +75,6 @@ export function ChatPage() {
     }
   }, [activeWorkspaceId, selectWs])
 
-  // Use real-time sessions hook for automatic updates via WebSocket
   const { sessions, loading: loadingSessions } = useRealtimeSessions(activeWorkspaceId ?? undefined)
 
   const handleSelectWorkspace = useCallback((id: string) => {
@@ -129,13 +96,48 @@ export function ChatPage() {
     }
   }, [loadHistory, setSessionId])
 
+  // Handle file selection from tree → open tab
+  const handleFileSelect = useCallback((node: UIFileNode) => {
+    if (node.type === 'folder') {
+      // Expand folder via loadChildren
+      loadChildren(node.path)
+      return
+    }
+
+    // Open file in new tab (or focus existing)
+    const tabId = `file:${node.path}`
+    setTabs(prev => {
+      if (prev.some(t => t.id === tabId)) return prev
+      return [...prev, { id: tabId, title: node.name, type: 'file', path: node.path }]
+    })
+    setActiveTabId(tabId)
+  }, [loadChildren])
+
+  const handleCloseTab = useCallback((tabId: string) => {
+    setTabs(prev => {
+      const next = prev.filter(t => t.id !== tabId)
+      // If closing active tab, switch to dashboard
+      return next
+    })
+    if (activeTabId === tabId) {
+      setActiveTabId('dashboard')
+    }
+  }, [activeTabId])
+
+  // Convert hook FileNode to UI FileNode (compatible types)
+  const uiFiles: UIFileNode[] = rootFiles.map(f => convertNode(f))
+
+  const activeTab = tabs.find(t => t.id === activeTabId) ?? tabs[0]
+
   return (
+    <ToastProvider>
     <ChatErrorBoundary>
       <div className="flex h-screen overflow-hidden">
         <FileTreeSidebar
-          files={DEMO_FILES}
-          selectedId={selectedFileId}
-          onSelect={(node) => setSelectedFileId(node.id)}
+          files={uiFiles}
+          selectedId={activeTab?.type === 'file' && activeTab.path ? `file:${activeTab.path}` : null}
+          onSelect={handleFileSelect}
+          loading={filesLoading}
           workspaceSlot={
             <WorkspaceSelector
               workspaces={workspaces}
@@ -147,18 +149,39 @@ export function ChatPage() {
               onRefresh={loadWorkspaces}
             />
           }
+          onRefresh={refreshFiles}
         />
-        <div className="flex-1 min-w-0">
-          <DashboardView
-            agents={agents}
-            activity={[]}
-            activeCount={agents.filter(a => a.status === 'running').length}
-            totalCalls={agents.reduce((sum, a) => sum + a.callCount, 0)}
-            sessions={sessions}
-            loadingSessions={loadingSessions}
-            onSelectSession={handleSelectSession}
-            onNewSession={resetSession}
-          />
+        <div className="flex-1 min-w-0 flex flex-col">
+          {/* Tab bar */}
+          {tabs.length > 1 && (
+            <TabBar
+              tabs={tabs.map(t => ({
+                id: t.id,
+                title: t.title,
+                closable: t.type !== 'dashboard',
+              }))}
+              activeId={activeTabId}
+              onSelect={setActiveTabId}
+              onClose={handleCloseTab}
+            />
+          )}
+          {/* Tab content */}
+          <div className="flex-1 min-h-0 overflow-auto">
+            {activeTab?.type === 'dashboard' ? (
+              <DashboardView
+                agents={agents}
+                activity={[]}
+                activeCount={agents.filter(a => a.status === 'running').length}
+                totalCalls={agents.reduce((sum, a) => sum + a.callCount, 0)}
+                sessions={sessions}
+                loadingSessions={loadingSessions}
+                onSelectSession={handleSelectSession}
+                onNewSession={resetSession}
+              />
+            ) : (
+              <FileContentView filePath={activeTab?.path ?? ''} workspaceId={activeWorkspaceId ?? ''} />
+            )}
+          </div>
         </div>
         <AgentChatSidebar
           agents={agents.map(agent => ({
@@ -173,5 +196,58 @@ export function ChatPage() {
         />
       </div>
     </ChatErrorBoundary>
+    </ToastProvider>
   )
+}
+
+// -----------------------------------------------------------------------------
+// File content viewer (placeholder — reads file content from API)
+// -----------------------------------------------------------------------------
+
+function FileContentView({ filePath, workspaceId }: { filePath: string; workspaceId: string }) {
+  const [content, setContent] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!filePath || !workspaceId) return
+    setLoading(true)
+    setError(null)
+    import('@loom/service-workspace').then(ws => {
+      ws.readFile(workspaceId, filePath)
+        .then(c => { setContent(c); setLoading(false) })
+        .catch(e => { setError(e instanceof Error ? e.message : 'Failed to read file'); setLoading(false) })
+    })
+  }, [filePath, workspaceId])
+
+  if (loading) {
+    return <div className="flex items-center justify-center h-full text-muted-foreground text-sm">加载中...</div>
+  }
+  if (error) {
+    return <div className="flex items-center justify-center h-full text-destructive text-sm">{error}</div>
+  }
+  return (
+    <div className="p-4">
+      <div className="text-xs text-muted-foreground mb-2">{filePath}</div>
+      <pre className="text-sm whitespace-pre-wrap font-mono bg-muted/30 rounded p-4 overflow-auto max-h-[calc(100vh-6rem)]">
+        {content}
+      </pre>
+    </div>
+  )
+}
+
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+
+function convertNode(node: import('@loom/hooks').FileNode): UIFileNode {
+  return {
+    id: node.id,
+    name: node.name,
+    type: node.type,
+    path: node.path,
+    extension: node.extension,
+    size: node.size,
+    children: node.children?.map(convertNode),
+  }
 }

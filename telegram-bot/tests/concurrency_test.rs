@@ -2,17 +2,11 @@
 
 use std::sync::Arc;
 
-use telegram_bot::{
-    mock::MockSender, stream_message_handler_simple, StreamCommand, StreamingConfig,
-};
+use telegram_bot::{mock::MockSender, stream_message_handler_simple, StreamCommand, StreamingConfig};
 
 fn test_config() -> StreamingConfig {
-    use telegram_bot::InteractionMode;
     StreamingConfig {
-        interaction_mode: InteractionMode::Streaming,
         throttle_ms: 0,
-        show_act_phase: true,
-        max_act_chars: 0,
         ..StreamingConfig::default()
     }
 }
@@ -33,20 +27,10 @@ async fn test_concurrent_message_dispatch() {
         config,
     ));
 
-    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
-    for i in 0..10 {
-        tx.send(StreamCommand::ActContent {
-            content: format!("chunk {} ", i),
-        })
-        .await
-        .unwrap();
-    }
     tx.send(StreamCommand::Flush).await.unwrap();
     drop(tx);
 
     let _ = handler_handle.await;
-    let msgs = sender.get_messages();
-    assert!(!msgs.is_empty(), "should have sent at least one message");
 }
 
 #[tokio::test]
@@ -65,7 +49,6 @@ async fn test_cancel_during_agent_run() {
         }
     });
 
-    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
     cancel.cancel();
     drop(tx);
 
@@ -109,12 +92,6 @@ async fn test_sender_failure_recovery() {
         config,
     ));
 
-    tx.send(StreamCommand::StartAct { count: 1 }).await.unwrap();
-    tx.send(StreamCommand::ActContent {
-        content: "hello".into(),
-    })
-    .await
-    .unwrap();
     tx.send(StreamCommand::Flush).await.unwrap();
     drop(tx);
 

@@ -195,6 +195,8 @@ pub enum ClientRequest {
     WorkspaceThreadAdd(WorkspaceThreadAddRequest),
     WorkspaceThreadRemove(WorkspaceThreadRemoveRequest),
     WorkspaceRename(WorkspaceRenameRequest),
+    WorkspaceFileList(WorkspaceFileListRequest),
+    WorkspaceFileRead(WorkspaceFileReadRequest),
     Ping(PingRequest),
     ListModels(ListModelsRequest),
     SetModel(SetModelRequest),
@@ -247,6 +249,25 @@ pub struct WorkspaceRenameRequest {
     pub id: String,
     pub workspace_id: String,
     pub name: String,
+}
+
+/// Workspace file list request: list files/dirs in a workspace directory.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceFileListRequest {
+    pub id: String,
+    pub workspace_id: String,
+    /// Relative path within the workspace root (empty string = root).
+    #[serde(default)]
+    pub path: Option<String>,
+}
+
+/// Workspace file read request: read a file's content from a workspace.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceFileReadRequest {
+    pub id: String,
+    pub workspace_id: String,
+    /// Relative path of the file within the workspace root.
+    pub path: String,
 }
 #[cfg(test)]
 mod tests {

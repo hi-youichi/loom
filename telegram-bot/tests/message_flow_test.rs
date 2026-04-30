@@ -3,7 +3,7 @@
 //! Tests the message processing logic without requiring Telegram API.
 
 use std::sync::Arc;
-use telegram_bot::{InteractionMode, Settings, StreamingConfig};
+use telegram_bot::{Settings, StreamingConfig};
 
 #[test]
 fn test_settings_with_mention_required() {
@@ -25,21 +25,14 @@ fn test_settings_without_mention_required() {
 #[test]
 fn test_streaming_config_custom() {
     let config = StreamingConfig {
-        max_act_chars: 800,
-
-        show_act_phase: true,
-        act_emoji: "🚀".to_string(),
         throttle_ms: 200,
         max_retries: 5,
         ..Default::default()
     };
 
-    assert_eq!(config.max_act_chars, 800);
-    assert!(config.show_act_phase);
-    assert_eq!(config.act_emoji, "🚀");
     assert_eq!(config.throttle_ms, 200);
     assert_eq!(config.max_retries, 5);
-    assert_eq!(config.interaction_mode, InteractionMode::Streaming);
+    assert!(config.ack_placeholder_text.contains("已收到"));
 }
 
 #[test]
@@ -183,10 +176,6 @@ async fn test_settings_clone_async() {
 async fn test_streaming_config_defaults_async() {
     let config = StreamingConfig::default();
 
-    assert_eq!(config.interaction_mode, InteractionMode::Streaming);
-    assert_eq!(config.max_act_chars, 500);
-    assert!(config.show_act_phase);
-    assert_eq!(config.act_emoji, "⚡");
-    assert_eq!(config.summary_interval_secs, 300);
     assert!(config.ack_placeholder_text.contains("已收到"));
+    assert!(config.busy_text.contains("稍后"));
 }

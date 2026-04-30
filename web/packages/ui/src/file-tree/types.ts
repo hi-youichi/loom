@@ -16,6 +16,18 @@ export interface FileTreeContextValue {
   onSelect: (node: FileNode) => void
   onToggle: (id: string) => void
   setSearchQuery: (query: string) => void
+  renamingId: string | null
+  startRename: (id: string) => void
+  cancelRename: () => void
+  commitRename: (id: string, newName: string) => void
+  creatingIn: string | null
+  creatingType: 'file' | 'folder' | null
+  startCreate: (parentId: string, type: 'file' | 'folder') => void
+  cancelCreate: () => void
+  commitCreate: (parentId: string, type: 'file' | 'folder', name: string) => void
+  onDelete: (node: FileNode) => void
+  onCopyPath: (node: FileNode) => void
+  onRefresh: () => void
 }
 
 export interface FileTreeProps {
@@ -37,4 +49,10 @@ export interface FileTreeSidebarProps {
   title?: string
   className?: string
   workspaceSlot?: React.ReactNode
+  loading?: boolean
+  onRename?: (node: FileNode, newName: string) => void
+  onDelete?: (node: FileNode) => void
+  onCreateFile?: (parentId: string, name: string) => void
+  onCreateFolder?: (parentId: string, name: string) => void
+  onRefresh?: () => void
 }

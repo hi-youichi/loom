@@ -6,6 +6,9 @@ import type {
   WorkspaceSessionRemoveResponse,
   WorkspaceMeta,
   SessionInWorkspace,
+  FileEntry,
+  WorkspaceFileListResponse,
+  WorkspaceFileReadResponse,
 } from '@loom/protocol'
 import { getConnection } from '@loom/ws-client'
 
@@ -65,4 +68,22 @@ export async function addThread(workspaceId: string, threadId: string): Promise<
 
 export async function removeThread(workspaceId: string, threadId: string): Promise<void> {
   return removeSession(workspaceId, threadId)
+}
+
+export async function listFiles(workspaceId: string, path?: string): Promise<FileEntry[]> {
+  const resp = await request<WorkspaceFileListResponse>({
+    type: 'workspace_file_list',
+    workspace_id: workspaceId,
+    ...(path ? { path } : {}),
+  })
+  return resp.entries
+}
+
+export async function readFile(workspaceId: string, path: string): Promise<string> {
+  const resp = await request<WorkspaceFileReadResponse>({
+    type: 'workspace_file_read',
+    workspace_id: workspaceId,
+    path,
+  })
+  return resp.content
 }
