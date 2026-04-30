@@ -69,5 +69,6 @@ pub use responses::{
     WorkspaceRenameResponse, WorkspaceThreadAddResponse,
     WorkspaceThreadListResponse, WorkspaceThreadRemoveResponse,
     WorkspaceFileListResponse, FileEntry, WorkspaceFileReadResponse,
+    WorkspaceFileChangedResponse, FileChange,
 };
 pub use types::{AgentSource as AgentSourceExport, AgentSourceFilter as AgentSourceFilterExport};

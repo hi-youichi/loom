@@ -334,6 +334,17 @@ export type WorkspaceFileReadResponse = {
   content: string
 }
 
+export type FileChange = {
+  path: string
+  kind: string
+}
+
+export type WorkspaceFileChangedNotification = {
+  type: 'workspace_file_changed'
+  workspace_id: string
+  changes: FileChange[]
+}
+
 // -----------------------------------------------------------------------------
 // Agent types
 // -----------------------------------------------------------------------------
@@ -438,6 +449,7 @@ export type LoomServerMessage =
   | WorkspaceSessionRemoveResponse
   | WorkspaceFileListResponse
   | WorkspaceFileReadResponse
+  | WorkspaceFileChangedNotification
   | SessionCreatedNotification
   | SessionUpdatedNotification
   | SessionDeletedNotification
@@ -494,4 +506,8 @@ export function isSessionDeletedEvent(msg: LoomServerMessage): msg is SessionDel
 
 export function isSessionEventStream(event: LoomStreamEvent): boolean {
   return ['session_created', 'session_updated', 'session_deleted'].includes(event.type)
+}
+
+export function isWorkspaceFileChanged(msg: LoomServerMessage): msg is WorkspaceFileChangedNotification {
+  return msg.type === 'workspace_file_changed'
 }

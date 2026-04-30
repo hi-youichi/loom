@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type { FileEntry } from '@loom/protocol'
 import * as wsApi from '@loom/service-workspace'
+import { getConnection } from '@loom/ws-client'
 
 export type FileNode = {
   id: string
@@ -81,6 +82,20 @@ export function useWorkspaceFiles(workspaceId: string | null | undefined) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId])
+
+  useEffect(() => {
+    if (!workspaceId) return
+    const conn = getConnection()
+    const handler = (data: { workspaceId: string; changes: Array<{ path: string; kind: string }> }) => {
+      if (data.workspaceId === workspaceId) {
+        refresh()
+      }
+    }
+    conn.on('workspace_file_changed', handler)
+    return () => {
+      conn.off('workspace_file_changed', handler)
+    }
+  }, [workspaceId, refresh])
 
   return { rootFiles, loading, error, loadChildren, refresh }
 }

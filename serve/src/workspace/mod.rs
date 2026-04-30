@@ -6,6 +6,7 @@ mod rename;
 mod thread_add;
 mod thread_list;
 mod thread_remove;
+pub mod watcher;
 
 use loom::{ErrorResponse, ServerResponse};
 

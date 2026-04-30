@@ -4,6 +4,7 @@ import {
   isSessionCreatedEvent,
   isSessionUpdatedEvent,
   isSessionDeletedEvent,
+  isWorkspaceFileChanged,
 } from '@loom/protocol'
 
 function getEnvValue(name: string) {
@@ -28,6 +29,7 @@ export type LoomEventType =
   | 'session_created'
   | 'session_updated'
   | 'session_deleted'
+  | 'workspace_file_changed'
 
 export type LoomEventMap = {
   models_updated: Model[]
@@ -47,6 +49,10 @@ export type LoomEventMap = {
   session_deleted: {
     workspaceId: string
     sessionId: string
+  }
+  workspace_file_changed: {
+    workspaceId: string
+    changes: Array<{ path: string; kind: string }>
   }
 }
 
@@ -244,6 +250,14 @@ class LoomConnection {
       this.emit('session_deleted', {
         workspaceId: msg.workspace_id,
         sessionId: msg.session_id,
+      })
+      return
+    }
+
+    if (isWorkspaceFileChanged(msg)) {
+      this.emit('workspace_file_changed', {
+        workspaceId: msg.workspace_id,
+        changes: msg.changes,
       })
       return
     }

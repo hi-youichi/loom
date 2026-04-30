@@ -47,7 +47,7 @@ pub(crate) async fn handle_workspace_file_list(
 }
 
 /// Resolve workspace root directory from env var or default.
-fn resolve_workspace_root(workspace_id: &str) -> PathBuf {
+fn resolve_workspace_root(workspace_id: &str) -> std::path::PathBuf {
     let base = std::env::var("WORKSPACE_ROOT_DIR")
         .ok()
         .unwrap_or_else(|| "workspaces".to_string());
@@ -55,13 +55,13 @@ fn resolve_workspace_root(workspace_id: &str) -> PathBuf {
 }
 
 /// Validate that the resolved path stays within the workspace root.
-fn validate_and_resolve(root: &PathBuf, relative_path: &str) -> Result<PathBuf, String> {
+fn validate_and_resolve(root: &std::path::Path, relative_path: &str) -> Result<PathBuf, String> {
     let canonical_root = root
         .canonicalize()
-        .unwrap_or_else(|_| root.clone());
+        .unwrap_or_else(|_| root.to_path_buf());
 
     let target = if relative_path.is_empty() {
-        root.clone()
+        root.to_path_buf()
     } else {
         root.join(relative_path)
     };
@@ -83,8 +83,8 @@ fn validate_and_resolve(root: &PathBuf, relative_path: &str) -> Result<PathBuf, 
 
 /// List directory entries, sorted: folders first, then files, alphabetically.
 fn list_dir_entries(
-    dir: &PathBuf,
-    _root: &PathBuf,
+    dir: &std::path::Path,
+    _root: &std::path::Path,
 ) -> Result<Vec<FileEntry>, Box<dyn std::error::Error>> {
     let mut folders = Vec::new();
     let mut files = Vec::new();
@@ -128,8 +128,8 @@ fn list_dir_entries(
         }
     }
 
-    folders.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    files.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    folders.sort_by_cached_key(|a| a.name.to_lowercase());
+    files.sort_by_cached_key(|a| a.name.to_lowercase());
 
     let mut entries = folders;
     entries.extend(files);

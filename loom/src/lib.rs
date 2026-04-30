@@ -247,6 +247,7 @@ pub use protocol::{
     WorkspaceThreadListResponse, WorkspaceThreadRemoveRequest, WorkspaceThreadRemoveResponse,
     WorkspaceFileListRequest, WorkspaceFileListResponse, FileEntry,
     WorkspaceFileReadRequest, WorkspaceFileReadResponse,
+    WorkspaceFileChangedResponse, FileChange,
 };
 pub use state::{
     normalize_tool_output, NormalizationConfig, NormalizedToolOutput, ToolOutputHint,

@@ -45,17 +45,17 @@ pub(crate) async fn handle_workspace_file_read(
     })
 }
 
-fn resolve_workspace_root(workspace_id: &str) -> PathBuf {
+fn resolve_workspace_root(workspace_id: &str) -> std::path::PathBuf {
     let base = std::env::var("WORKSPACE_ROOT_DIR")
         .ok()
         .unwrap_or_else(|| "workspaces".to_string());
     PathBuf::from(base).join(workspace_id)
 }
 
-fn validate_and_resolve_file(root: &PathBuf, relative_path: &str) -> Result<PathBuf, String> {
+fn validate_and_resolve_file(root: &std::path::Path, relative_path: &str) -> Result<PathBuf, String> {
     let canonical_root = root
         .canonicalize()
-        .unwrap_or_else(|_| root.clone());
+        .unwrap_or_else(|_| root.to_path_buf());
 
     let target = root.join(relative_path);
 

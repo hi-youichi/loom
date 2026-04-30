@@ -15,6 +15,8 @@ use super::models::{handle_list_models, handle_set_model};
 use super::response::send_response;
 use super::run::handle_run;
 use super::tools::{handle_tool_show, handle_tools_list};
+use super::workspace::watcher::{WorkspaceWatcher, workspace_dir};
+use loom::WorkspaceFileChangedResponse;
 
 /// Registry for tracking active runs and their cancellation handles.
 struct ActiveRunRegistry {
@@ -55,56 +57,78 @@ pub(crate) async fn handle_socket(
     let mut request_count = 0;
     let connection_start = std::time::Instant::now();
     let mut active_run_registry = ActiveRunRegistry::new();
+    let (file_change_tx, mut file_change_rx) = tokio::sync::broadcast::channel(64);
+    let mut watchers: HashMap<String, WorkspaceWatcher> = HashMap::new();
 
-    while let Some(res) = socket.recv().await {
-        let msg = match res {
-            Ok(m) => m,
-            Err(e) => {
-                tracing::warn!("❌ WebSocket read error (client closed?): {}", e);
-                let _ = socket.close().await;
-                break;
+    loop {
+        tokio::select! {
+            res = socket.recv() => {
+                let msg = match res {
+                    Some(Ok(m)) => m,
+                    Some(Err(e)) => {
+                        tracing::warn!("❌ WebSocket read error (client closed?): {}", e);
+                        let _ = socket.close().await;
+                        break;
+                    }
+                    None => {
+                        tracing::info!("WebSocket stream ended");
+                        break;
+                    }
+                };
+                let text = match &msg {
+                    Message::Text(t) => t.clone(),
+                    Message::Binary(b) => String::from_utf8_lossy(b).into_owned(),
+                    _ => {
+                        tracing::debug!("Received non-text message, skipping");
+                        continue;
+                    }
+                };
+
+                request_count += 1;
+                tracing::debug!(
+                    "📨 Request #{}: {}",
+                    request_count,
+                    text.chars().take(100).collect::<String>()
+                );
+
+                let request_start = std::time::Instant::now();
+
+                if let Err(e) = handle_request_and_send(
+                    &text,
+                    &mut socket,
+                    workspace_store.clone(),
+                    user_message_store.clone(),
+                    &run_config,
+                    providers.clone(),
+                    &mut active_run_registry,
+                    &file_change_tx,
+                    &mut watchers,
+                )
+                .await
+                {
+                    tracing::error!("❌ Request #{} failed: {}", request_count, e);
+                    let _ = socket.close().await;
+                    break;
+                }
+
+                let duration = request_start.elapsed();
+                tracing::debug!(
+                    "✅ Request #{} completed in {}ms",
+                    request_count,
+                    duration.as_millis()
+                );
             }
-        };
-        let text = match &msg {
-            Message::Text(t) => t.clone(),
-            Message::Binary(b) => String::from_utf8_lossy(b).into_owned(),
-            _ => {
-                tracing::debug!("Received non-text message, skipping");
-                continue;
+            res = recv_file_change(&mut file_change_rx) => {
+                if let Ok(notification) = res {
+                    let json = serde_json::to_string(&notification).unwrap_or_default();
+                    tracing::debug!("📤 Pushing file change notification");
+                    if socket.send(Message::Text(json)).await.is_err() {
+                        tracing::warn!("Failed to send file change notification");
+                        break;
+                    }
+                }
             }
-        };
-
-        request_count += 1;
-        tracing::debug!(
-            "📨 Request #{}: {}",
-            request_count,
-            text.chars().take(100).collect::<String>()
-        );
-
-        let request_start = std::time::Instant::now();
-
-        if let Err(e) = handle_request_and_send(
-            &text,
-            &mut socket,
-            workspace_store.clone(),
-            user_message_store.clone(),
-            &run_config,
-            providers.clone(),
-            &mut active_run_registry,
-        )
-        .await
-        {
-            tracing::error!("❌ Request #{} failed: {}", request_count, e);
-            let _ = socket.close().await;
-            break;
         }
-
-        let duration = request_start.elapsed();
-        tracing::debug!(
-            "✅ Request #{} completed in {}ms",
-            request_count,
-            duration.as_millis()
-        );
     }
 
     let connection_duration = connection_start.elapsed();
@@ -119,6 +143,13 @@ pub(crate) async fn handle_socket(
     }
 }
 
+async fn recv_file_change(
+    rx: &mut tokio::sync::broadcast::Receiver<WorkspaceFileChangedResponse>,
+) -> Result<WorkspaceFileChangedResponse, tokio::sync::broadcast::error::RecvError> {
+    rx.recv().await
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn handle_request_and_send(
     text: &str,
     socket: &mut WebSocket,
@@ -127,6 +158,8 @@ async fn handle_request_and_send(
     run_config: &RunConfig,
     providers: Arc<Vec<ProviderConfig>>,
     active_run_registry: &mut ActiveRunRegistry,
+    file_change_tx: &tokio::sync::broadcast::Sender<WorkspaceFileChangedResponse>,
+    watchers: &mut HashMap<String, WorkspaceWatcher>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let req: ClientRequest = match serde_json::from_str(text) {
         Ok(r) => r,
@@ -239,7 +272,26 @@ async fn handle_request_and_send(
         }
         ClientRequest::WorkspaceCreate(r) => {
             tracing::debug!("📁 Creating workspace");
-            super::workspace::handle_workspace_create(r, workspace_store.clone()).await
+            let resp = super::workspace::handle_workspace_create(r, workspace_store.clone()).await;
+            if let ServerResponse::WorkspaceCreate(ref create_resp) = resp {
+                if let Some(dir) = workspace_dir(&create_resp.workspace_id) {
+                    if !watchers.contains_key(&create_resp.workspace_id) {
+                        match WorkspaceWatcher::start(
+                            create_resp.workspace_id.clone(),
+                            dir,
+                            file_change_tx.clone(),
+                        ) {
+                            Ok(w) => {
+                                watchers.insert(create_resp.workspace_id.clone(), w);
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to start file watcher: {}", e);
+                            }
+                        }
+                    }
+                }
+            }
+            resp
         }
         ClientRequest::WorkspaceThreadList(r) => {
             tracing::debug!("📋 Listing workspace threads");

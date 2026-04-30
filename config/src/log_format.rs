@@ -393,7 +393,7 @@ mod tests {
         });
 
         let output = String::from_utf8(sink.lock().unwrap().clone()).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(output.trim()).expect(&format!("not valid JSON: {output}"));
+        let parsed: serde_json::Value = serde_json::from_str(output.trim()).unwrap_or_else(|e| panic!("not valid JSON: {output}: {e}"));
         assert!(parsed.get("timestamp").is_some(), "missing timestamp");
         assert_eq!(parsed["level"], "INFO");
         assert!(parsed.get("target").is_some());
@@ -422,7 +422,7 @@ mod tests {
         });
 
         let output = String::from_utf8(sink.lock().unwrap().clone()).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(output.trim()).expect(&format!("not valid JSON: {output}"));
+        let parsed: serde_json::Value = serde_json::from_str(output.trim()).unwrap_or_else(|e| panic!("not valid JSON: {output}: {e}"));
         assert!(parsed.get("trace_id").is_none(), "unexpected trace_id");
         assert!(parsed.get("span_id").is_none(), "unexpected span_id");
     }

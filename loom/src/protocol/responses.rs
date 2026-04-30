@@ -260,6 +260,20 @@ pub struct WorkspaceFileReadResponse {
     pub content: String,
 }
 
+/// A single file change event.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FileChange {
+    pub path: String,
+    pub kind: String,
+}
+
+/// Workspace file changed notification (server push, no request id).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceFileChangedResponse {
+    pub workspace_id: String,
+    pub changes: Vec<FileChange>,
+}
+
 // -----------------------------------------------------------------------------
 // Model responses
 // -----------------------------------------------------------------------------
