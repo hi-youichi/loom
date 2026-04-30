@@ -147,6 +147,7 @@ let mut state = ReActState {
             summary: None,
             think_count: 0,
             should_continue: true,
+            force_compact: false,
         };
 
         for _ in 0..MAX_SUB_TASK_TURNS {

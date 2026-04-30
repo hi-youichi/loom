@@ -133,6 +133,7 @@ let new_state = ReActState {
                     summary: Some(title),
                     think_count: state.think_count,
                     should_continue: state.should_continue,
+                    force_compact: state.force_compact,
                 };
 
                 Ok((new_state, Next::Continue))

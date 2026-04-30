@@ -747,6 +747,7 @@ impl LoomAcpAgent {
                     Some(Arc::new(tools.into_iter().map(|t| Arc::from(t) as Arc<dyn loom::tools::Tool>).collect()))
                 }
             },
+            force_compact: false,
         };
 
         let session_id = args.session_id.clone();

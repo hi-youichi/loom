@@ -270,8 +270,20 @@ pub struct FileChange {
 /// Workspace file changed notification (server push, no request id).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WorkspaceFileChangedResponse {
+    #[serde(rename = "type")]
+    pub msg_type: String,
     pub workspace_id: String,
     pub changes: Vec<FileChange>,
+}
+
+impl WorkspaceFileChangedResponse {
+    pub fn new(workspace_id: String, changes: Vec<FileChange>) -> Self {
+        Self {
+            msg_type: "workspace_file_changed".to_string(),
+            workspace_id,
+            changes,
+        }
+    }
 }
 
 // -----------------------------------------------------------------------------

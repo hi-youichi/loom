@@ -150,7 +150,7 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
                     return Ok(());
                 }
                 loom_command::Command::Compact { instructions } => {
-                    let thread_id = format!("telegram_{}", ctx.chat_id());
+                    let _thread_id = format!("telegram_{}", ctx.chat_id());
                     let compact_prompt = instructions
                         .as_deref()
                         .unwrap_or("Compress the conversation history, keeping the most important context.");
@@ -197,7 +197,7 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
                     return Ok(());
                 }
                 loom_command::Command::Summarize => {
-                    let thread_id = format!("telegram_{}", ctx.chat_id());
+                    let _thread_id = format!("telegram_{}", ctx.chat_id());
                     
                     ctx.deps
                         .sender

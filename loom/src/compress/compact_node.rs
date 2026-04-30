@@ -56,7 +56,10 @@ impl Node<ReActState> for CompactNode {
             "context window check"
         );
 
-        let messages = if self.config.auto && overflow {
+        let messages = if state.force_compact || (self.config.auto && overflow) {
+            if state.force_compact {
+                debug!("force_compact=true, compacting regardless of overflow");
+            }
             compaction::compact(&state.messages, self.llm.as_ref(), &self.config).await?
         } else {
             let reason = if !self.config.auto {
@@ -67,7 +70,7 @@ impl Node<ReActState> for CompactNode {
             debug!(reason, current_tokens, "compact skipped");
             state.messages
         };
-        Ok((ReActState { messages, ..state }, Next::Continue))
+        Ok((ReActState { messages, force_compact: false, ..state }, Next::Continue))
     }
 }
 

@@ -257,8 +257,12 @@ pub struct ReActState {
     pub summary: Option<String>,
     /// Flag available for downstream consumers (e.g. custom graph nodes).
     /// Defaults to `true`.
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub should_continue: bool,
+    /// When true, forces CompactNode to compact regardless of overflow status.
+    /// Set by `/compact` command to trigger immediate context compression.
+    #[serde(default)]
+    pub force_compact: bool,
 }
 
 impl Default for ReActState {
@@ -277,8 +281,13 @@ impl Default for ReActState {
             think_count: 0,
             summary: None,
             should_continue: true,
+            force_compact: false,
         }
     }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn normalize_tool_call_ids(mut calls: Vec<ToolCall>) -> Vec<ToolCall> {

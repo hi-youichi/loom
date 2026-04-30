@@ -35,6 +35,7 @@ Ok(ReActState {
             summary: None,
             think_count: 0,
             should_continue: true,
+            force_compact: false,
         })
         },
         |mut state, msg| {

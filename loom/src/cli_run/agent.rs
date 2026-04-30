@@ -194,6 +194,9 @@ pub struct RunOptions {
     pub bash_executor: Option<Arc<dyn crate::tools::CommandExecutor>>,
     pub extra_tools: Option<Arc<Vec<Arc<dyn crate::tools::Tool>>>>,
     pub acp_session_id: Option<String>,
+    /// When true, forces CompactNode to compact regardless of overflow.
+    /// Set by `/compact` command to trigger immediate context compression.
+    pub force_compact: bool,
 }
 
 impl std::fmt::Debug for RunOptions {
@@ -610,6 +613,7 @@ pub async fn run_agent_with_provider(
             bash_executor: None,
             extra_tools: None,
             acp_session_id: None,
+            force_compact: false,
     };
 
     // Run with LLM override
@@ -648,6 +652,7 @@ mod tests {
             bash_executor: None,
             extra_tools: None,
             acp_session_id: None,
+            force_compact: false,
         }
     }
 
