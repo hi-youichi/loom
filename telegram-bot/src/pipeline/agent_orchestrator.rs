@@ -1,4 +1,3 @@
-use crate::config::InteractionMode;
 use crate::error::BotError;
 use crate::formatting::FormattedMessage;
 use crate::pipeline::MessageContext;
@@ -36,7 +35,6 @@ pub async fn run_agent_for_chat(ctx: &MessageContext<'_>, prompt: &str) -> Resul
             AgentRunContext {
                 user_message_id: Some(message_id),
                 ack_message_id: None,
-                interaction_mode: ctx.deps.settings.streaming.interaction_mode,
                 model_override: Some(ctx.deps.model_selection.current_model(chat_id)?),
             },
         )
@@ -48,19 +46,14 @@ pub async fn run_agent_for_chat(ctx: &MessageContext<'_>, prompt: &str) -> Resul
     match run_result {
         Ok(reply) => {
             if !reply.trim().is_empty() {
-                let skip_final_send = ctx.deps.settings.streaming.interaction_mode
-                    == InteractionMode::Streaming
-                    && ctx.deps.settings.streaming.show_act_phase;
-                if !skip_final_send {
-                    outbound = ctx
-                        .deps
-                        .sender
-                        .send_formatted(
-                            chat_id,
-                            &FormattedMessage::markdown_v2(reply.clone(), reply.clone()),
-                        )
-                        .await;
-                }
+                outbound = ctx
+                    .deps
+                    .sender
+                    .send_formatted(
+                        chat_id,
+                        &FormattedMessage::markdown_v2(reply.clone(), reply.clone()),
+                    )
+                    .await;
             }
         }
         Err(e) => {

@@ -10,6 +10,13 @@ use rusqlite::Connection;
 
 use crate::session::SessionId;
 
+fn recover_lock<T>(lock: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    lock.lock().unwrap_or_else(|e| {
+        tracing::warn!("Mutex poisoned, recovering");
+        e.into_inner()
+    })
+}
+
 /// Persistent store for session configuration key-value pairs.
 ///
 /// Schema:
@@ -39,7 +46,7 @@ impl SessionConfigStore {
     }
 
     fn init_schema(&self) -> rusqlite::Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = recover_lock(&self.conn);
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS session_config (
                 session_id TEXT NOT NULL,
@@ -58,7 +65,7 @@ impl SessionConfigStore {
     ///
     /// Uses INSERT OR REPLACE to upsert.
     pub fn set(&self, session_id: &SessionId, key: &str, value: &str) -> rusqlite::Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = recover_lock(&self.conn);
         conn.execute(
             "INSERT OR REPLACE INTO session_config (session_id, key, value, updated_at) 
              VALUES (?1, ?2, ?3, strftime('%s', 'now'))",
@@ -71,7 +78,7 @@ impl SessionConfigStore {
     ///
     /// Returns `None` if the session or key doesn't exist.
     pub fn get(&self, session_id: &SessionId, key: &str) -> rusqlite::Result<Option<String>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = recover_lock(&self.conn);
         let mut stmt =
             conn.prepare("SELECT value FROM session_config WHERE session_id = ?1 AND key = ?2")?;
         let mut rows = stmt.query(rusqlite::params![session_id.as_str(), key])?;
@@ -84,7 +91,7 @@ impl SessionConfigStore {
 
     /// Get all configuration values for a session.
     pub fn get_all(&self, session_id: &SessionId) -> rusqlite::Result<HashMap<String, String>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = recover_lock(&self.conn);
         let mut stmt =
             conn.prepare("SELECT key, value FROM session_config WHERE session_id = ?1")?;
         let rows = stmt.query_map([session_id.as_str()], |row| {
@@ -103,7 +110,7 @@ impl SessionConfigStore {
     ///
     /// Useful for cleanup when a session is removed.
     pub fn delete_session(&self, session_id: &SessionId) -> rusqlite::Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = recover_lock(&self.conn);
         conn.execute(
             "DELETE FROM session_config WHERE session_id = ?1",
             [session_id.as_str()],
@@ -115,7 +122,7 @@ impl SessionConfigStore {
     ///
     /// Used by fork_session to duplicate config.
     pub fn copy_config(&self, from: &SessionId, to: &SessionId) -> rusqlite::Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = recover_lock(&self.conn);
         conn.execute(
             "INSERT INTO session_config (session_id, key, value, updated_at)
              SELECT ?1, key, value, strftime('%s', 'now')

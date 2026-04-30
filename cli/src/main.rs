@@ -6,7 +6,6 @@
 mod args;
 mod bootstrap;
 mod display_limits;
-mod log_format;
 mod logging;
 mod mcp_manager;
 mod output;

@@ -9,7 +9,7 @@ OPENAI_API_KEY = "sk-your-key"
 LANGGRAPH_API_KEY = "your-secret-key"
 
 # Logging: applied as env vars; loom CLI reads LOG_FILE / RUST_LOG after loading this file.
-# LOG_FILE path is relative to cwd unless you use {working_folder} with -w/--working-folder.
+# LOG_FILE can be absolute or relative path (relative paths are resolved against working_folder in ACP mode).
 RUST_LOG = "info"
 LOG_FILE = "logs/loom.log"
 

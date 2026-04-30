@@ -23,7 +23,7 @@
 use std::sync::Arc;
 
 use loom::{
-    ActNode, CompiledStateGraph, McpToolSource, Message, MockLlm, ObserveNode, ReActState,
+    ActNode, CompiledStateGraph, FixedLlmProvider, McpToolSource, Message, MockLlm, ModelConfig, ObserveNode, ReActState,
     StateGraph, ThinkNode, ToolCall, END, START,
 };
 
@@ -61,9 +61,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }],
     );
 
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: Arc::new(mock_llm),
+        model_id: "mock".to_string(),
+    });
+    
     let mut graph = StateGraph::<ReActState>::new();
     graph
-        .add_node("think", Arc::new(ThinkNode::new(Arc::new(mock_llm))))
+        .add_node("think", Arc::new(ThinkNode::new(fixed_provider)))
         .add_node("act", Arc::new(ActNode::new(Box::new(tool_source))))
         .add_node("observe", Arc::new(ObserveNode::new()))
         .add_edge(START, "think")
@@ -74,6 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let compiled: CompiledStateGraph<ReActState> = graph.compile()?;
 
     let state = ReActState {
+        model_config: ModelConfig::default(),
         messages: vec![Message::user(input)],
         tool_calls: vec![],
         tool_results: vec![],

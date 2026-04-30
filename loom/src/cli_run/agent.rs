@@ -14,7 +14,8 @@ use crate::{
 use serde_json::Value;
 use std::fmt;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::Mutex;
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 use tracing::{info_span, Instrument};
@@ -153,7 +154,7 @@ impl RunCancellation {
 }
 
 /// Options for running the Helve agent.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RunOptions {
     pub message: crate::message::UserContent,
     pub working_folder: Option<PathBuf>,
@@ -185,6 +186,43 @@ pub struct RunOptions {
     pub output_timestamp: bool,
     /// When true, do not execute tools; LLM runs but tool calls return a placeholder (CLI --dry).
     pub dry_run: bool,
+    /// Optional sender for forwarding raw `AnyStreamEvent`s to an external consumer (e.g. ACP).
+    ///
+    /// When set, this is propagated through `RunContext` → `ToolCallContext` so that
+    /// sub-agent invocations can forward stream events directly to ACP.
+    pub any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
+    pub bash_executor: Option<Arc<dyn crate::tools::CommandExecutor>>,
+    pub extra_tools: Option<Arc<Vec<Arc<dyn crate::tools::Tool>>>>,
+    pub acp_session_id: Option<String>,
+}
+
+impl std::fmt::Debug for RunOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RunOptions")
+            .field("message", &self.message)
+            .field("working_folder", &self.working_folder)
+            .field("session_id", &self.session_id)
+            .field("agent", &self.agent)
+            .field("verbose", &self.verbose)
+            .field("got_adaptive", &self.got_adaptive)
+            .field("display_max_len", &self.display_max_len)
+            .field("output_json", &self.output_json)
+            .field("model", &self.model)
+            .field("provider", &self.provider)
+            .field("base_url", &self.base_url)
+            .field("api_key", &self.api_key)
+            .field("provider_type", &self.provider_type)
+            .field("mcp_config_path", &self.mcp_config_path)
+            .field("cancellation", &self.cancellation)
+            .field("thread_id", &self.thread_id)
+            .field("output_timestamp", &self.output_timestamp)
+            .field("dry_run", &self.dry_run)
+            .field("any_stream_event_sender", &self.any_stream_event_sender.as_ref().map(|_| "..."))
+            .field("bash_executor", &self.bash_executor.as_ref().map(|_| "..."))
+            .field("extra_tools", &self.extra_tools.as_ref().map(|t| t.len()))
+            .field("acp_session_id", &self.acp_session_id)
+            .finish()
+    }
 }
 
 /// Error type for run operations.
@@ -296,6 +334,15 @@ pub async fn run_agent(
     llm_override: Option<Box<dyn LlmClient>>,
 ) -> Result<RunCompletion, RunError> {
     let (_helve, mut config, _resolved_agent) = build_helve_config(opts);
+    if let Some(ref executor) = opts.bash_executor {
+        config.bash_executor = Some(executor.clone());
+    }
+    if let Some(ref tools) = opts.extra_tools {
+        config.extra_tools = Some(tools.clone());
+    }
+    if let Some(ref sid) = opts.acp_session_id {
+        config.acp_session_id = Some(sid.clone());
+    }
     let thread_id_log = config.thread_id.as_deref().unwrap_or("").to_string();
     let kind = match cmd {
         RunCmd::React => "react",
@@ -328,7 +375,7 @@ pub async fn run_agent(
                 }
             });
             let outcome = r
-                .stream_with_config(opts.message.as_text().as_ref(), None, on_ev)
+                .stream_with_config(opts.message.as_text().as_ref(), None, on_ev, opts.any_stream_event_sender.clone())
                 .instrument(span.clone())
                 .await?;
             match outcome {
@@ -351,7 +398,7 @@ pub async fn run_agent(
                 }
             });
             let outcome = r
-                .stream_with_config(opts.message.as_text().as_ref(), None, on_ev)
+                .stream_with_config(opts.message.as_text().as_ref(), None, on_ev, opts.any_stream_event_sender.clone())
                 .instrument(span.clone())
                 .await?;
             match outcome {
@@ -374,7 +421,7 @@ pub async fn run_agent(
                 }
             });
             let outcome = r
-                .stream_with_config(opts.message.as_text().as_ref(), None, on_ev)
+                .stream_with_config(opts.message.as_text().as_ref(), None, on_ev, opts.any_stream_event_sender.clone())
                 .instrument(span.clone())
                 .await?;
             match outcome {
@@ -397,7 +444,7 @@ pub async fn run_agent(
                 }
             });
             let outcome = r
-                .stream_with_config(opts.message.as_text().as_ref(), None, on_ev)
+                .stream_with_config(opts.message.as_text().as_ref(), None, on_ev, opts.any_stream_event_sender.clone())
                 .instrument(span.clone())
                 .await?;
             match outcome {
@@ -444,34 +491,54 @@ pub async fn build_runner(
     cmd: &RunCmd,
     llm_override: Option<Box<dyn LlmClient>>,
 ) -> Result<AnyRunner, RunError> {
+    let config = resolve_tier_and_build_config(config).await;
     let cancellation = opts.cancellation.as_ref().map(RunCancellation::token);
+    let llm_override_provider: Option<Arc<dyn crate::llm::LlmProvider>> = llm_override
+        .map(|llm| {
+            Arc::new(crate::llm::FixedLlmProvider {
+                client: Arc::from(llm),
+                model_id: "override".to_string(),
+            }) as Arc<dyn crate::llm::LlmProvider>
+        });
     match cmd {
         RunCmd::React => {
-            let r = build_react_runner(config, llm_override, opts.verbose)
+            let r = build_react_runner(&config, llm_override_provider, opts.verbose)
                 .await?
                 .with_cancellation(opts.cancellation.clone());
             Ok(AnyRunner::React(r))
         }
         RunCmd::Dup => {
-            let r = build_dup_runner(config, llm_override, opts.verbose)
+            let llm_override_boxed = llm_override_provider.map(|p| {
+                let model = p.default_model().to_string();
+                p.create_client(&model).unwrap()
+            });
+            let r = build_dup_runner(&config, llm_override_boxed, opts.verbose)
                 .await?
                 .with_cancellation(cancellation.clone());
             Ok(AnyRunner::Dup(r))
         }
         RunCmd::Tot => {
-            let r = build_tot_runner(config, llm_override, opts.verbose)
+            let llm_override_boxed = llm_override_provider.as_ref().map(|p| {
+                p.create_client(p.default_model()).unwrap()
+            });
+            let r = build_tot_runner(&config, llm_override_boxed, opts.verbose)
                 .await?
                 .with_cancellation(cancellation.clone());
             Ok(AnyRunner::Tot(r))
         }
         RunCmd::Got { .. } => {
-            let r = build_got_runner(config, llm_override, opts.verbose)
+            let llm_override_boxed = llm_override_provider.as_ref().map(|p| {
+                p.create_client(p.default_model()).unwrap()
+            });
+            let r = build_got_runner(&config, llm_override_boxed, opts.verbose)
                 .await?
                 .with_cancellation(cancellation);
             Ok(AnyRunner::Got(r))
         }
     }
 }
+
+pub use crate::tier::{resolve_tier_and_build_config, resolve_tier_and_build_config_with_resolver};
 
 /// Simplified agent runner that only requires provider configuration and model name.
 ///
@@ -516,7 +583,7 @@ pub async fn run_agent_with_provider(
     };
 
     // Create LLM client from ModelEntry
-    let llm = crate::llm::create_llm_client(&entry)
+    let llm = crate::llm::create_llm_client(&entry, None)
         .map_err(|e| RunError::Build(crate::BuildRunnerError::Context(e)))?;
 
     // Create minimal RunOptions
@@ -539,6 +606,10 @@ pub async fn run_agent_with_provider(
         base_url: provider.base_url,
         api_key: provider.api_key,
         provider_type: provider.provider_type,
+        any_stream_event_sender: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
     };
 
     // Run with LLM override
@@ -573,6 +644,10 @@ mod tests {
             base_url: None,
             api_key: None,
             provider_type: None,
+            any_stream_event_sender: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
         }
     }
 
@@ -580,6 +655,7 @@ mod tests {
         ReactBuildConfig {
             db_path: None,
             thread_id: None,
+            trace_thread_id: None,
             user_id: None,
             system_prompt: None,
             exa_api_key: None,
@@ -599,8 +675,11 @@ mod tests {
             openai_api_key: None,
             openai_base_url: None,
             model: None,
-            llm_provider: None,
-            openai_temperature: None,
+            model_tier: None,
+            parent_model_hint: None,
+        llm_provider: None,
+        llm_provider_name: None,
+        openai_temperature: None,
             embedding_api_key: None,
             embedding_base_url: None,
             embedding_model: None,
@@ -615,6 +694,10 @@ mod tests {
             skill_registry: None,
             max_sub_agent_depth: None,
             dry_run: false,
+            builtin_tool_filter: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
         }
     }
 
@@ -668,6 +751,10 @@ mod tests {
             base_url: None,
             api_key: None,
             provider_type: None,
+        any_stream_event_sender: None,
+        bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
         };
         assert!(build_runner(&cfg, &opts, &RunCmd::React, None)
             .await
@@ -734,5 +821,65 @@ mod tests {
             },
             tot: TotExtension::default(),
         };
+    }
+
+    #[tokio::test]
+    async fn resolve_tier_and_build_config_no_tier_returns_clone() {
+        let config = minimal_config_with_invalid_working_folder();
+        let resolved = resolve_tier_and_build_config(&config).await;
+        assert!(resolved.model_tier.is_none());
+        assert!(resolved.model.is_none());
+    }
+
+    #[tokio::test]
+    async fn resolve_tier_and_build_config_tier_without_model_uses_llm_provider() {
+        let mut config = minimal_config_with_invalid_working_folder();
+        config.model_tier = Some(crate::model_spec::ModelTier::Light);
+        let resolved = resolve_tier_and_build_config(&config).await;
+        assert!(resolved.model_tier.is_none());
+    }
+
+    #[tokio::test]
+    async fn resolve_tier_and_build_config_tier_with_model_no_providers() {
+        let mut config = minimal_config_with_invalid_working_folder();
+        config.model = Some("anthropic/claude-sonnet-4".to_string());
+        config.model_tier = Some(crate::model_spec::ModelTier::Light);
+        let resolved = resolve_tier_and_build_config(&config).await;
+        assert!(resolved.model_tier.is_none());
+        assert_eq!(resolved.model.as_deref(), Some("anthropic/claude-sonnet-4"));
+    }
+
+    #[tokio::test]
+    async fn resolve_tier_and_build_config_clears_model_tier() {
+        let mut config = minimal_config_with_invalid_working_folder();
+        config.model_tier = Some(crate::model_spec::ModelTier::Light);
+        let resolved = resolve_tier_and_build_config(&config).await;
+        assert!(resolved.model_tier.is_none());
+    }
+
+    #[tokio::test]
+    async fn resolve_tier_and_build_config_sets_provider_name() {
+        let mut config = minimal_config_with_invalid_working_folder();
+        config.model = Some("zhipuai-coding-plan/glm-5.1".to_string());
+        config.model_tier = Some(crate::model_spec::ModelTier::Light);
+        let resolved = resolve_tier_and_build_config(&config).await;
+        assert!(resolved.model_tier.is_none());
+        if let Some(ref name) = resolved.llm_provider_name {
+            assert_eq!(name, "zhipuai-coding-plan");
+        }
+    }
+
+    #[tokio::test]
+    async fn resolve_tier_prefers_provider_name_over_llm_provider() {
+        let mut config = minimal_config_with_invalid_working_folder();
+        config.model = None;
+        config.llm_provider = Some("openai_compat".to_string());
+        config.llm_provider_name = Some("zhipuai-coding-plan".to_string());
+        config.model_tier = Some(crate::model_spec::ModelTier::Light);
+        let resolved = resolve_tier_and_build_config(&config).await;
+        assert!(resolved.model_tier.is_none());
+        if resolved.model.is_some() {
+            assert_eq!(resolved.llm_provider_name.as_deref(), Some("zhipuai-coding-plan"));
+        }
     }
 }

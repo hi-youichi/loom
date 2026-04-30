@@ -41,8 +41,13 @@ jobs:
       - name: Clippy
         run: cargo clippy -p telegram-bot --all-targets -- -D warnings
 
+      - name: Install nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
       - name: Test
-        run: cargo test -p telegram-bot
+        run: cargo nextest run -p telegram-bot
 
       - name: Doc check
         run: cargo doc -p telegram-bot --no-deps

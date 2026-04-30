@@ -121,6 +121,7 @@ pub(super) struct AgentTaskParams {
     pub(super) user_message_store: Option<Arc<dyn loom::UserMessageStore>>,
     pub(super) thread_id: Option<String>,
     pub(super) append_queue_capacity: usize,
+    pub(super) llm_override: Option<Box<dyn loom::LlmClient>>,
 }
 
 pub(super) async fn run_agent_task(
@@ -134,12 +135,13 @@ pub(super) async fn run_agent_task(
     let AgentTaskParams {
         session_id,
         tx,
-        opts,
+        mut opts,
         cmd,
         initial_user_appended,
         user_message_store,
         thread_id,
         append_queue_capacity,
+        llm_override,
     } = params;
     let state = Arc::new(Mutex::new(EnvelopeState::new(session_id.clone())));
     let state_clone = state.clone();
@@ -170,6 +172,32 @@ pub(super) async fn run_agent_task(
     let dropped_events_clone = dropped_events.clone();
     let dropped_appends_clone = dropped_appends.clone();
 
+    // Clone shared state for the sub-agent event forwarding callback.
+    // When `invoke_agent` spawns a sub-agent, it reads `any_stream_event_sender`
+    // from `ToolCallContext` (set by ActNode from `RunContext`). If this is `None`,
+    // sub-agent stream events are silently discarded and never reach the client.
+    let any_tx = tx.clone();
+    let any_state = state.clone();
+    let any_dropped_events = dropped_events.clone();
+    let any_append_tx = append_tx_for_closure.clone();
+    let any_thread_id = thread_id.clone();
+    let any_message_count = message_count.clone();
+    let any_dropped_appends = dropped_appends.clone();
+    opts.any_stream_event_sender = Some(Arc::new(move |ev: AnyStreamEvent| {
+        let event_ctx = EventContext {
+            state: &any_state,
+            tx: &any_tx,
+            dropped_events: Some(&any_dropped_events),
+        };
+        let append_ctx = AppendContext {
+            append_tx: any_append_tx.as_ref(),
+            thread_id: any_thread_id.as_ref(),
+            message_count: &any_message_count,
+            dropped_appends: Some(&any_dropped_appends),
+        };
+        process_run_stream_event(ev, &event_ctx, &append_ctx);
+    }));
+
     let on_event = Box::new(move |ev: AnyStreamEvent| {
         let event_ctx = EventContext {
             state: &state_clone,
@@ -184,7 +212,12 @@ pub(super) async fn run_agent_task(
         };
         process_run_stream_event(ev, &event_ctx, &append_ctx);
     });
-    let result = run_agent_with_options(&opts, &cmd, Some(on_event)).await;
+    let result = if let Some(llm) = llm_override {
+        loom::run_agent_with_llm_override(&opts, &cmd, Some(on_event), Some(llm)).await
+    } else {
+        run_agent_with_options(&opts, &cmd, Some(on_event)).await
+    };
+    opts.any_stream_event_sender = None;
     drop(append_tx_to_drop);
     if let Some(h) = append_handle {
         let _ = h.await;

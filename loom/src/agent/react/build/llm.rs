@@ -3,8 +3,11 @@
 //! Only `LLM_PROVIDER=openai` uses the native `async_openai` client; all other providers
 //! (including the default when the model prefix is not `openai/`) use `ChatOpenAICompat`.
 
+use std::sync::Arc;
+
 use crate::error::AgentError;
-use crate::llm::{ChatOpenAI, ChatOpenAICompat, ModelEntry};
+use crate::llm::{create_llm_client, ChatOpenAI, ChatOpenAICompat, FixedLlmProvider, LlmProvider, ModelEntry};
+use crate::model_spec::ModelTier;
 use crate::tool_source::ToolSource;
 use crate::LlmClient;
 
@@ -21,16 +24,31 @@ fn parse_provider_model(model: &str) -> Option<(&str, &str)> {
     Some((provider, model_id))
 }
 
-/// Extract model configuration from ReactBuildConfig into a ModelEntry.
-///
-/// Priority (highest to lowest):
-/// 1. ReactBuildConfig fields (credentials, model, provider, openai_temperature)
-/// 2. Environment variables for any unset fields above (including `OPENAI_TEMPERATURE`)
-/// 3. Default values
+pub use crate::tier::{DefaultTierResolver, ResolvedTierModel, TierResolver};
+pub(crate) use crate::tier::resolver::resolve_tier_for_config;
+
+#[allow(dead_code)]
+pub(crate) async fn resolve_title_llm(
+    config: &ReactBuildConfig,
+) -> Option<Arc<dyn LlmClient>> {
+    let resolved = resolve_tier_for_config(config, ModelTier::Light).await?;
+    let entry = ModelEntry {
+        id: resolved.model_id.clone(),
+        name: resolved.model_id,
+        provider: resolved.provider_type.clone().unwrap_or_default(),
+        base_url: resolved.base_url,
+        api_key: resolved.api_key,
+        provider_type: resolved.provider_type,
+        temperature: None,
+        max_tokens: None,
+        tool_choice: None,
+    };
+    create_llm_client(&entry, None).ok().map(Arc::from)
+}
+
 pub(crate) fn model_entry_from_config(
     config: &ReactBuildConfig,
 ) -> Result<ModelEntry, BuildRunnerError> {
-    // API key: config > env
     let api_key = config
         .openai_api_key
         .clone()
@@ -41,37 +59,25 @@ pub(crate) fn model_entry_from_config(
             ))
         })?;
 
-    // Base URL: config > env (optional)
     let base_url = config
         .openai_base_url
         .clone()
         .or_else(|| std::env::var("OPENAI_BASE_URL").ok());
 
-    // Model: frontend config > default (environment variables removed)
     tracing::debug!("🎯 Frontend config model: {:?}", config.model);
 
-    let raw_model = if let Some(ref model) = config.model {
-        if !model.is_empty() {
-            tracing::info!("✅ Using frontend selected model: {}", model);
-            model.clone()
-        } else {
-            tracing::warn!("⚠️ Frontend config model empty, using system default");
-            "gpt-4o-mini".to_string()
-        }
-    } else {
-        tracing::warn!("⚠️ No frontend config model, using system default");
-        tracing::info!(
-            "💡 Tip: Specify a model in your config file or via API parameters for better control"
-        );
-        "gpt-4o-mini".to_string()
-    };
+    let raw_model = config
+        .model
+        .as_deref()
+        .filter(|m| !m.is_empty())
+        .map(String::from)
+        .or_else(|| std::env::var("MODEL").ok())
+        .unwrap_or_else(|| "gpt-4o-mini".to_string());
 
     tracing::info!("✅ Final model to use: {}", raw_model);
 
-    // Provider type: only use config, no environment variables (removed)
     tracing::debug!("🎯 Config provider type: {:?}", config.llm_provider);
 
-    // Inferred provider type from model string when explicit provider type not set
     let inferred_provider_type = parse_provider_model(&raw_model).map(|(provider, _)| {
         if provider.eq_ignore_ascii_case("openai") {
             "openai".to_string()
@@ -81,12 +87,10 @@ pub(crate) fn model_entry_from_config(
     });
     let _provider_type = config.llm_provider.clone().or(inferred_provider_type);
 
-    // Parse model to extract provider and model_id
     let (provider_from_model, model) = parse_provider_model(&raw_model)
         .map(|(p, m)| (Some(p), m))
         .unwrap_or_else(|| (None, raw_model.as_str()));
 
-    // Determine provider name
     let provider = match config.llm_provider.as_deref().or(provider_from_model) {
         Some("bigmodel") => "bigmodel".to_string(),
         Some("openai_compat") => "openai_compat".to_string(),
@@ -111,7 +115,6 @@ pub(crate) fn model_entry_from_config(
             }
         });
 
-    // Build ModelEntry
     Ok(ModelEntry {
         id: format!("{}/{}", provider, model),
         name: model.to_string(),
@@ -160,7 +163,8 @@ pub(crate) async fn build_default_llm_with_tool_source(
             tracing::debug!("build_default_llm: OpenAI with tools");
             let mut client = ChatOpenAI::with_config(openai_config, entry.name).with_tools(tools);
             
-            if let Some(ref thread_id) = config.thread_id {
+            let trace_id = config.trace_thread_id.as_ref().or(config.thread_id.as_ref());
+            if let Some(thread_id) = trace_id {
                 let headers = crate::llm::LlmHeaders::default().with_thread_id(thread_id);
                 client = client.with_headers(headers);
                 tracing::debug!("Set X-Thread-Id header: {}", thread_id);
@@ -195,7 +199,8 @@ pub(crate) async fn build_default_llm_with_tool_source(
             let mut client =
                 ChatOpenAICompat::with_config(base_url, api_key, entry.name).with_tools(tools);
             
-            if let Some(ref thread_id) = config.thread_id {
+            let trace_id = config.trace_thread_id.as_ref().or(config.thread_id.as_ref());
+            if let Some(thread_id) = trace_id {
                 let headers = crate::llm::LlmHeaders::default().with_thread_id(thread_id);
                 client = client.with_headers(headers);
                 tracing::debug!("Set X-Thread-Id header: {}", thread_id);
@@ -210,6 +215,46 @@ pub(crate) async fn build_default_llm_with_tool_source(
             Ok(Box::new(client) as Box<dyn LlmClient>)
         }
     }
+}
+
+pub(crate) async fn build_default_provider(
+    config: &ReactBuildConfig,
+    tool_source: &dyn ToolSource,
+) -> Result<Arc<dyn LlmProvider>, BuildRunnerError> {
+    let llm = build_default_llm_with_tool_source(config, tool_source).await?;
+    let entry = model_entry_from_config(config)?;
+    Ok(Arc::new(FixedLlmProvider {
+        client: Arc::from(llm),
+        model_id: entry.name,
+    }))
+}
+
+pub(crate) async fn resolve_title_provider(
+    config: &ReactBuildConfig,
+) -> Option<Arc<dyn LlmProvider>> {
+    let resolved = resolve_tier_for_config(config, ModelTier::Light).await?;
+    let (provider, model_name) = ModelEntry::parse_id(&resolved.model_id)?;
+    let entry = ModelEntry {
+        id: resolved.model_id.clone(),
+        name: model_name.to_string(),
+        provider: provider.to_string(),
+        base_url: resolved.base_url,
+        api_key: resolved.api_key,
+        provider_type: resolved.provider_type,
+        temperature: None,
+        max_tokens: None,
+        tool_choice: None,
+    };
+    let thread_id = config
+        .trace_thread_id
+        .as_ref()
+        .or(config.thread_id.as_ref());
+    let headers = thread_id.map(|tid| crate::llm::LlmHeaders::default().with_thread_id(tid));
+    let client = create_llm_client(&entry, headers).ok()?;
+    Some(Arc::new(FixedLlmProvider {
+        client: Arc::from(client),
+        model_id: entry.name,
+    }))
 }
 
 #[cfg(test)]

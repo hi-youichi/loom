@@ -101,17 +101,7 @@ mod tests {
         };
         let state = ReActState {
             messages: vec![Message::user("a".repeat(200_000))], // would overflow if checked
-            last_reasoning_content: None,
-            tool_calls: vec![],
-            tool_results: vec![],
-            turn_count: 0,
-            approval_result: None,
-            usage: None,
-            total_usage: None,
-            message_count_after_last_think: None,
-            think_count: 0,
-            summary: None,
-            should_continue: true,
+            ..Default::default()
         };
         let (out, next) = node.run(state).await.unwrap();
         assert_eq!(out.messages.len(), 1);
@@ -131,17 +121,7 @@ mod tests {
         };
         let state = ReActState {
             messages: vec![Message::user("short")],
-            last_reasoning_content: None,
-            tool_calls: vec![],
-            tool_results: vec![],
-            turn_count: 0,
-            approval_result: None,
-            usage: None,
-            total_usage: None,
-            message_count_after_last_think: None,
-            think_count: 0,
-            summary: None,
-            should_continue: true,
+            ..Default::default()
         };
         let (out, next) = node.run(state).await.unwrap();
         assert_eq!(out.messages.len(), 1);

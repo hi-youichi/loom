@@ -22,7 +22,11 @@ fn opts(working_folder: std::path::PathBuf) -> RunOptions {
         cancellation: None,
         output_timestamp: false,
         dry_run: false,
-    }
+        any_stream_event_sender: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
+        }
 }
 
 /// Scenario: working_folder has .loom/skills/code-review/SKILL.md with front matter.

@@ -208,7 +208,7 @@ pub fn normalize_tool_output(
         }
     };
 
-    apply_observation_budget(&mut output, remaining_budget);
+    apply_observation_budget(&mut output, remaining_budget, tool_name);
     output
 }
 
@@ -345,6 +345,9 @@ fn build_file_ref_output(
     }
 }
 
+/// Tools whose output may be truncated/normalized. All others are always Inline.
+const TRUNCATABLE_TOOLS: &[&str] = &["bash", "powershell", "web_fetcher", "web_search"];
+
 /// Determine the appropriate normalization strategy.
 fn determine_strategy(
     tool_name: &str,
@@ -354,6 +357,10 @@ fn determine_strategy(
     remaining_budget: usize,
     config: &NormalizationConfig,
 ) -> ToolOutputStrategy {
+    if !TRUNCATABLE_TOOLS.contains(&tool_name) {
+        return ToolOutputStrategy::Inline;
+    }
+
     if let Some(hint) = output_hint {
         let safe_inline_limit = hint.safe_inline_chars.unwrap_or(config.inline_limit);
         if raw_chars <= safe_inline_limit && remaining_budget >= raw_chars {
@@ -404,6 +411,10 @@ fn determine_strategy(
         }
     }
 
+    if !TRUNCATABLE_TOOLS.contains(&tool_name) {
+        return ToolOutputStrategy::Inline;
+    }
+
     let base_strategy = match tool_name {
         "bash" | "powershell" => {
             if raw_chars <= config.inline_limit {
@@ -414,25 +425,9 @@ fn determine_strategy(
                 ToolOutputStrategy::FileRefWithExcerpt
             }
         }
-        "web_fetcher" | "mcp_call_tool" => {
+        "web_fetcher" | "web_search" => {
             if raw_chars <= config.inline_limit {
                 ToolOutputStrategy::Inline
-            } else {
-                ToolOutputStrategy::FileRefWithExcerpt
-            }
-        }
-        "get_recent_messages" => {
-            if raw_chars <= config.inline_limit / 2 {
-                ToolOutputStrategy::Inline
-            } else {
-                ToolOutputStrategy::SummaryOnly
-            }
-        }
-        "invoke_agent" => {
-            if raw_chars <= config.inline_limit {
-                ToolOutputStrategy::Inline
-            } else if raw_chars <= config.file_ref_threshold {
-                ToolOutputStrategy::HeadTail
             } else {
                 ToolOutputStrategy::FileRefWithExcerpt
             }
@@ -468,10 +463,9 @@ fn determine_strategy(
             "bash" | "powershell" if remaining_budget >= config.head_tail_limit / 2 => {
                 ToolOutputStrategy::HeadTail
             }
-            "web_fetcher" | "invoke_agent" | "mcp_call_tool" => {
+            "web_fetcher" | "web_search" => {
                 ToolOutputStrategy::FileRefWithExcerpt
             }
-            "get_recent_messages" => ToolOutputStrategy::SummaryOnly,
             _ if raw_chars > config.file_ref_threshold / 2 => {
                 ToolOutputStrategy::FileRefWithExcerpt
             }
@@ -563,7 +557,15 @@ fn generate_summary(
     }
 }
 
-fn apply_observation_budget(output: &mut NormalizedToolOutput, remaining_budget: usize) {
+fn apply_observation_budget(
+    output: &mut NormalizedToolOutput,
+    remaining_budget: usize,
+    tool_name: &str,
+) {
+    if !TRUNCATABLE_TOOLS.contains(&tool_name) {
+        return;
+    }
+
     if output.observation_chars <= remaining_budget {
         return;
     }
@@ -771,8 +773,7 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_get_recent_messages_summary() {
-        // get_recent_messages uses inline_limit/2 (2000); need > 2000. 300 * 9 = 2700
+    fn test_normalize_get_recent_messages_always_inline() {
         let text = "message\n".repeat(300);
         let result = normalize_tool_output(
             "get_recent_messages",
@@ -783,9 +784,8 @@ mod tests {
             NormalizationConfig::default(),
         );
 
-        assert_eq!(result.strategy, ToolOutputStrategy::SummaryOnly);
-        assert!(result.truncated);
-        assert!(result.observation_text.contains("get_recent_messages"));
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
     }
 
     #[test]
@@ -807,8 +807,7 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_error_gets_head_tail() {
-        // Unknown tool + error: need > inline_limit (4000) for HeadTail. 400 * 11 = 4400
+    fn test_normalize_unknown_tool_error_always_inline() {
         let text = "error line\n".repeat(400);
         let result = normalize_tool_output(
             "unknown_tool",
@@ -819,8 +818,8 @@ mod tests {
             NormalizationConfig::default(),
         );
 
-        assert_eq!(result.strategy, ToolOutputStrategy::HeadTail);
-        assert!(result.truncated);
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
     }
 
     #[test]
@@ -856,5 +855,419 @@ mod tests {
         assert!(summary.contains("20 lines"));
         assert!(summary.contains("line1"));
         assert!(!summary.contains("line20"));
+    }
+
+    // --- Whitelist tests ---
+
+    #[test]
+    fn a1_bash_small_output_inline() {
+        let text = "x".repeat(100);
+        let result = normalize_tool_output(
+            "bash",
+            &json!({}),
+            &text,
+            false,
+            None,
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
+        assert_eq!(result.observation_text, text);
+    }
+
+    #[test]
+    fn a2_bash_medium_output_head_tail() {
+        let text = "x".repeat(5_000);
+        let result = normalize_tool_output(
+            "bash",
+            &json!({}),
+            &text,
+            false,
+            None,
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::HeadTail);
+        assert!(result.truncated);
+        assert!(result.observation_text.contains("Head:"));
+    }
+
+    #[test]
+    fn a3_bash_large_output_head_tail_when_no_persistence() {
+        let text = "x".repeat(20_000);
+        let result = normalize_tool_output(
+            "bash",
+            &json!({}),
+            &text,
+            false,
+            None,
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::HeadTail);
+        assert!(result.truncated);
+    }
+
+    #[test]
+    fn a4_powershell_medium_output_head_tail() {
+        let text = "x".repeat(5_000);
+        let result = normalize_tool_output(
+            "powershell",
+            &json!({}),
+            &text,
+            false,
+            None,
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::HeadTail);
+        assert!(result.truncated);
+    }
+
+    #[test]
+    fn a5_web_fetcher_small_output_inline() {
+        let text = "x".repeat(100);
+        let result = normalize_tool_output(
+            "web_fetcher",
+            &json!({}),
+            &text,
+            false,
+            None,
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
+    }
+
+    #[test]
+    fn a6_web_fetcher_large_output_file_ref_with_excerpt() {
+        let text = "x".repeat(20_000);
+        let result = normalize_tool_output(
+            "web_fetcher",
+            &json!({}),
+            &text,
+            false,
+            None,
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::FileRefWithExcerpt);
+        assert!(result.truncated);
+    }
+
+    #[test]
+    fn a7_web_search_small_output_inline() {
+        let text = "x".repeat(100);
+        let result = normalize_tool_output(
+            "web_search",
+            &json!({}),
+            &text,
+            false,
+            None,
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
+    }
+
+    #[test]
+    fn a8_web_search_large_output_file_ref_with_excerpt() {
+        let text = "x".repeat(20_000);
+        let result = normalize_tool_output(
+            "web_search",
+            &json!({}),
+            &text,
+            false,
+            None,
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::FileRefWithExcerpt);
+        assert!(result.truncated);
+    }
+
+    // --- Non-whitelisted tools always Inline ---
+
+    #[test]
+    fn b1_read_large_output_inline() {
+        let text = "x".repeat(20_000);
+        let result = normalize_tool_output(
+            "read",
+            &json!({}),
+            &text,
+            false,
+            None,
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
+        assert_eq!(result.observation_text, text);
+    }
+
+    #[test]
+    fn b2_grep_large_output_inline() {
+        let text = "x".repeat(20_000);
+        let result = normalize_tool_output(
+            "grep",
+            &json!({}),
+            &text,
+            false,
+            None,
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
+    }
+
+    #[test]
+    fn b3_glob_large_output_inline() {
+        let text = "x".repeat(20_000);
+        let result = normalize_tool_output(
+            "glob",
+            &json!({}),
+            &text,
+            false,
+            None,
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
+    }
+
+    #[test]
+    fn b4_invoke_agent_large_output_inline() {
+        let text = "x".repeat(20_000);
+        let result = normalize_tool_output(
+            "invoke_agent",
+            &json!({}),
+            &text,
+            false,
+            None,
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
+    }
+
+    #[test]
+    fn b5_get_recent_messages_large_output_inline() {
+        let text = "x".repeat(5_000);
+        let result = normalize_tool_output(
+            "get_recent_messages",
+            &json!({}),
+            &text,
+            false,
+            None,
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
+    }
+
+    #[test]
+    fn b6_unknown_tool_error_inline() {
+        let text = "x".repeat(5_000);
+        let result = normalize_tool_output(
+            "unknown_tool",
+            &json!({}),
+            &text,
+            true,
+            None,
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
+    }
+
+    #[test]
+    fn b7_random_tool_small_output_inline() {
+        let text = "x".repeat(100);
+        let result = normalize_tool_output(
+            "any_random_tool",
+            &json!({}),
+            &text,
+            false,
+            None,
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
+    }
+
+    // --- Non-whitelisted tools ignore ToolOutputHint ---
+
+    #[test]
+    fn c1_read_ignores_preferred_strategy_hint() {
+        let text = "x".repeat(20_000);
+        let hint = ToolOutputHint {
+            preferred_strategy: Some(ToolOutputStrategy::HeadTail),
+            safe_inline_chars: None,
+            prefer_head_tail: false,
+        };
+        let result = normalize_tool_output(
+            "read",
+            &json!({}),
+            &text,
+            false,
+            Some(&hint),
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+    }
+
+    #[test]
+    fn c2_read_ignores_safe_inline_chars_hint() {
+        let text = "x".repeat(500);
+        let hint = ToolOutputHint {
+            preferred_strategy: None,
+            safe_inline_chars: Some(100),
+            prefer_head_tail: false,
+        };
+        let result = normalize_tool_output(
+            "read",
+            &json!({}),
+            &text,
+            false,
+            Some(&hint),
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+    }
+
+    #[test]
+    fn c3_read_ignores_prefer_head_tail_hint() {
+        let text = "x".repeat(20_000);
+        let hint = ToolOutputHint {
+            preferred_strategy: None,
+            safe_inline_chars: None,
+            prefer_head_tail: true,
+        };
+        let result = normalize_tool_output(
+            "read",
+            &json!({}),
+            &text,
+            false,
+            Some(&hint),
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+    }
+
+    // --- Whitelisted tools respect ToolOutputHint ---
+
+    #[test]
+    fn d1_bash_respects_safe_inline_chars_hint() {
+        let text = "x".repeat(500);
+        let hint = ToolOutputHint {
+            preferred_strategy: None,
+            safe_inline_chars: Some(100),
+            prefer_head_tail: true,
+        };
+        let result = normalize_tool_output(
+            "bash",
+            &json!({}),
+            &text,
+            false,
+            Some(&hint),
+            NormalizationConfig::default(),
+        );
+        assert_ne!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(result.truncated);
+    }
+
+    #[test]
+    fn d2_web_fetcher_respects_preferred_strategy_hint() {
+        let text = "x".repeat(5_000);
+        let hint = ToolOutputHint {
+            preferred_strategy: Some(ToolOutputStrategy::SummaryOnly),
+            safe_inline_chars: None,
+            prefer_head_tail: false,
+        };
+        let result = normalize_tool_output(
+            "web_fetcher",
+            &json!({}),
+            &text,
+            false,
+            Some(&hint),
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::SummaryOnly);
+    }
+
+    // --- Budget mechanism ---
+
+    #[test]
+    fn e1_bash_budget_exhausted_degrades() {
+        let text = "x".repeat(5_000);
+        let result = normalize_tool_output(
+            "bash",
+            &json!({}),
+            &text,
+            false,
+            None,
+            NormalizationConfig::default().with_used_observation_chars(7_900),
+        );
+        assert!(matches!(
+            result.strategy,
+            ToolOutputStrategy::SummaryOnly | ToolOutputStrategy::FileRefWithExcerpt
+        ));
+    }
+
+    #[test]
+    fn e2_read_budget_exhausted_still_inline() {
+        let text = "x".repeat(20_000);
+        let result = normalize_tool_output(
+            "read",
+            &json!({}),
+            &text,
+            false,
+            None,
+            NormalizationConfig::default().with_used_observation_chars(7_900),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
+        assert_eq!(result.observation_text, text);
+    }
+
+    // --- Boundary ---
+
+    #[test]
+    fn f1_bash_exactly_inline_limit_inline() {
+        let text = "x".repeat(4_000);
+        let result = normalize_tool_output(
+            "bash",
+            &json!({}),
+            &text,
+            false,
+            None,
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
+    }
+
+    #[test]
+    fn f2_bash_inline_limit_plus_one_head_tail() {
+        let text = "x".repeat(4_001);
+        let result = normalize_tool_output(
+            "bash",
+            &json!({}),
+            &text,
+            false,
+            None,
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::HeadTail);
+        assert!(result.truncated);
+    }
+
+    #[test]
+    fn f3_read_empty_output_inline() {
+        let result = normalize_tool_output(
+            "read",
+            &json!({}),
+            "",
+            false,
+            None,
+            NormalizationConfig::default(),
+        );
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
+        assert_eq!(result.observation_text, "");
     }
 }

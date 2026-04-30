@@ -18,7 +18,7 @@ pub mod twitter;
 pub mod web;
 
 pub use aggregate_source::AggregateToolSource;
-pub use bash::{BashTool, TOOL_BASH};
+pub use bash::{BashTool, CommandExecutor, LocalCommandExecutor, TOOL_BASH};
 pub use batch::{BatchTool, TOOL_BATCH};
 pub use conversation::{GetRecentMessagesTool, TOOL_GET_RECENT_MESSAGES};
 pub use exa::{ExaCodesearchTool, ExaWebsearchTool};
@@ -34,6 +34,7 @@ pub use memory::{
     TOOL_RECALL, TOOL_REMEMBER, TOOL_SEARCH_MEMORIES,
 };
 pub use r#trait::Tool;
+pub(crate) use r#trait::ArcTool;
 pub use registry::{ToolRegistry, ToolRegistryLocked};
 pub use skill::{SkillTool, TOOL_SKILL};
 pub use telegram::{
@@ -47,4 +48,4 @@ pub use web::{WebFetcherTool, TOOL_WEB_FETCHER};
 
 pub use invoke_agent::{InvokeAgentTool, TOOL_INVOKE_AGENT};
 pub use mcp_adapter::{register_mcp_tools, register_mcp_tools_with_specs, McpToolAdapter};
-pub use powershell::{PowerShellTool, TOOL_POWERSHELL};
+pub use powershell::{LocalPowerShellExecutor, PowerShellExecutor, PowerShellTool, TOOL_POWERSHELL};

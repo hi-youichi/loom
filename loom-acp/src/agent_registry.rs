@@ -3,7 +3,7 @@
 //! Delegates all agent discovery and loading to loom core library.
 //! Each ACP Session Mode maps 1:1 to a Loom Agent Profile.
 
-use agent_client_protocol::{SessionMode, SessionModeId, SessionModeState};
+use agent_client_protocol::schema::{SessionMode, SessionModeId, SessionModeState};
 use loom::{list_available_profiles, resolve_profile, AgentProfile, ProfileSummary};
 
 #[derive(Debug, Clone)]

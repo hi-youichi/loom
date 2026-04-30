@@ -180,10 +180,24 @@
 //! | [`content`] | Parse ContentBlock into user message string |
 //! | [`stream_bridge`] | Loom stream events -> ACP SessionUpdate |
 //! | [`protocol`] | Protocol and Loom mapping summary (initialize/prompt/update/cancel, etc.) |
-//! | [`logging`] | Delayed log initialization with working_folder from ACP session |
+//! | [`logging`] | Log initialization at startup, with optional working_folder from ACP session |
 
-use agent_client_protocol::Client;
 use std::sync::OnceLock;
+
+fn is_connection_closed_error_str(s: &str) -> bool {
+    s.contains("receiver dropped")
+        || s.contains("failed to send response")
+        || s.contains("broken pipe")
+        || s.contains("unexpected eof")
+}
+
+fn is_connection_closed_error(e: &agent_client_protocol::Error) -> bool {
+    let msg = &e.message;
+    is_connection_closed_error_str(msg)
+        || e.data.as_ref().is_some_and(|d| {
+            d.as_str().is_some_and(is_connection_closed_error_str)
+        })
+}
 
 pub mod agent;
 pub mod agent_registry;
@@ -199,7 +213,7 @@ pub mod stream_bridge;
 pub mod terminal;
 pub mod tools;
 
-pub use agent::LoomAcpAgent;
+pub use agent::{LoomAcpAgent, ModelOption, ModelProvider};
 pub use content::{content_blocks_to_message, ContentBlockLike, ContentError};
 pub use session::{SessionConfig, SessionEntry, SessionId, SessionStore};
 pub use stream_bridge::{
@@ -239,52 +253,246 @@ pub fn get_log_config() -> Option<&'static logging::LogConfig> {
 /// let rt = tokio::runtime::Runtime::new()?;
 /// rt.block_on(loom_acp::run_stdio_loop())?;
 /// ```
-pub async fn run_stdio_loop() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+#[derive(Debug)]
+pub struct StdioLoopResult {
+    pub connection_closed: bool,
+}
+
+pub async fn run_stdio_loop() -> Result<StdioLoopResult, Box<dyn std::error::Error + Send + Sync>> {
+    use agent_client_protocol::{
+        Agent, ByteStreams, Client, ConnectionTo, Responder,
+        on_receive_notification, on_receive_request,
+    };
+    use agent_client_protocol::schema::{
+        AuthenticateRequest, AuthenticateResponse, CancelNotification,
+        ForkSessionRequest, ForkSessionResponse,
+        InitializeRequest, InitializeResponse,
+        ListSessionsRequest, ListSessionsResponse,
+        LoadSessionRequest, LoadSessionResponse,
+        NewSessionRequest, NewSessionResponse,
+        PromptRequest, PromptResponse,
+        SessionNotification, SetSessionConfigOptionRequest,
+        SetSessionConfigOptionResponse, SetSessionModeRequest,
+        SetSessionModeResponse, SetSessionModelRequest, SetSessionModelResponse,
+    };
     use std::sync::Arc;
     use tokio::sync::mpsc;
     use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
+    
+    // Initialize logging at startup (before any tracing calls)
+    logging::init_logging(None);
+    
     tracing::info!("run_stdio_loop starting");
+
     let local = tokio::task::LocalSet::new();
     let result = local
         .run_until(async {
-            let (tx, mut rx) = mpsc::channel::<agent_client_protocol::SessionNotification>(64);
-            let agent = LoomAcpAgent::with_session_update_tx(tx);
+            let (tx, rx) = mpsc::channel::<SessionNotification>(64);
+            let agent = LoomAcpAgent::with_session_update_tx(tx)
+                .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
+
             let stdin = tokio::io::stdin();
             let stdout = tokio::io::stdout();
             let stdin_compat = stdin.compat();
             let stdout_compat =
                 <tokio::io::Stdout as TokioAsyncWriteCompatExt>::compat_write(stdout);
-            let (connection, io_future) = agent_client_protocol::AgentSideConnection::new(
-                agent,
-                stdout_compat,
-                stdin_compat,
-                |fut| {
-                    tokio::task::spawn_local(fut);
-                },
-            );
-            let conn = Arc::new(connection);
-            let conn_drain = conn.clone();
-            let drain = async move {
+
+            let agent = Arc::new(agent);
+            let conn_shared: Arc<tokio::sync::RwLock<Option<ConnectionTo<Client>>>> =
+                Arc::new(tokio::sync::RwLock::new(None));
+
+            let agent1 = agent.clone();
+            let agent2 = agent.clone();
+            let agent3 = agent.clone();
+            let agent4 = agent.clone();
+            let agent5 = agent.clone();
+            let agent6 = agent.clone();
+            let agent7 = agent.clone();
+            let agent8 = agent.clone();
+            let agent9 = agent.clone();
+            let agent10 = agent.clone();
+            let agent11 = agent.clone();
+            let agent12 = agent.clone();
+
+            let drain_conn = conn_shared.clone();
+            let _drain_task = tokio::task::spawn_local(async move {
+                let mut rx = rx;
                 while let Some(n) = rx.recv().await {
-                    let _ = conn_drain.session_notification(n).await;
+                    let guard = drain_conn.read().await;
+                    if let Some(conn) = guard.as_ref() {
+                        if let Err(e) = conn.send_notification(n) {
+                            tracing::error!(error = ?e, "Failed to send session notification");
+                        }
+                    } else {
+                        tracing::trace!("Session notification dropped (no connection yet)");
+                    }
                 }
-            };
-            tokio::select! {
-                res = io_future => {
-                    tracing::info!(?res, "io_future completed");
-                    res
-                },
-                _ = drain => {
-                    tracing::info!("drain completed");
-                    Ok(())
-                },
-            }
+                tracing::info!("Session notification channel closed");
+            });
+
+            let conn_for_init = conn_shared.clone();
+            Agent
+                .builder()
+                .on_receive_request(
+                    move |req: InitializeRequest, responder: Responder<InitializeResponse>, conn: ConnectionTo<Client>| {
+                        let agent = agent1.clone();
+                        let conn_for_init = conn_for_init.clone();
+                        async move {
+                            let result = agent.initialize(req).await;
+                            let _ = responder.respond_with_result(result);
+                            {
+                                let mut guard = conn_for_init.write().await;
+                                *guard = Some(conn);
+                            }
+                            let conn_shared_clone = conn_for_init.clone();
+                            crate::tools::set_connection(conn_shared_clone);
+                            Ok(())
+                        }
+                    },
+                    on_receive_request!(),
+                )
+                .on_receive_request(
+                    move |req: AuthenticateRequest, responder: Responder<AuthenticateResponse>, _conn: ConnectionTo<Client>| {
+                        let agent = agent11.clone();
+                        async move {
+                            let result = agent.authenticate(req).await;
+                            let _ = responder.respond_with_result(result);
+                            Ok(())
+                        }
+                    },
+                    on_receive_request!(),
+                )
+                .on_receive_request(
+                    move |req: NewSessionRequest, responder: Responder<NewSessionResponse>, _conn: ConnectionTo<Client>| {
+                        let agent = agent2.clone();
+                        async move {
+                            let result = agent.new_session(req).await;
+                            let _ = responder.respond_with_result(result);
+                            Ok(())
+                        }
+                    },
+                    on_receive_request!(),
+                )
+                .on_receive_request(
+                    move |req: PromptRequest, responder: Responder<PromptResponse>, conn: ConnectionTo<Client>| {
+                        let agent = agent3.clone();
+                        // Spawn the prompt task to avoid blocking the event loop
+                        let _ = conn.spawn(async move {
+                            let result = agent.prompt(req).await;
+                            // Ignore "receiver dropped" errors - connection may have closed
+                            let _ = responder.respond_with_result(result);
+                            Ok(())
+                        });
+                        // Return immediately to unblock the IO loop
+                        async { Ok(()) }
+                    },
+                    on_receive_request!(),
+                )
+                .on_receive_request(
+                    move |req: ForkSessionRequest, responder: Responder<ForkSessionResponse>, _conn: ConnectionTo<Client>| {
+                        let agent = agent4.clone();
+                        async move {
+                            let result = agent.fork_session(req).await;
+                            let _ = responder.respond_with_result(result);
+                            Ok(())
+                        }
+                    },
+                    on_receive_request!(),
+                )
+                .on_receive_request(
+                    move |req: LoadSessionRequest, responder: Responder<LoadSessionResponse>, _conn: ConnectionTo<Client>| {
+                        let agent = agent5.clone();
+                        async move {
+                            let result = agent.load_session(req).await;
+                            let _ = responder.respond_with_result(result);
+                            Ok(())
+                        }
+                    },
+                    on_receive_request!(),
+                )
+                .on_receive_request(
+                    move |req: ListSessionsRequest, responder: Responder<ListSessionsResponse>, _conn: ConnectionTo<Client>| {
+                        let agent = agent6.clone();
+                        async move {
+                            let result = agent.list_sessions(req).await;
+                            let _ = responder.respond_with_result(result);
+                            Ok(())
+                        }
+                    },
+                    on_receive_request!(),
+                )
+                .on_receive_request(
+                    move |req: SetSessionConfigOptionRequest, responder: Responder<SetSessionConfigOptionResponse>, _conn: ConnectionTo<Client>| {
+                        let agent = agent7.clone();
+                        async move {
+                            let result = agent.set_session_config_option(req).await;
+                            let _ = responder.respond_with_result(result);
+                            Ok(())
+                        }
+                    },
+                    on_receive_request!(),
+                )
+                .on_receive_request(
+                    move |req: SetSessionModeRequest, responder: Responder<SetSessionModeResponse>, _conn: ConnectionTo<Client>| {
+                        let agent = agent8.clone();
+                        async move {
+                            let result = agent.set_session_mode(req).await;
+                            let _ = responder.respond_with_result(result);
+                            Ok(())
+                        }
+                    },
+                    on_receive_request!(),
+                )
+                .on_receive_request(
+                    move |req: SetSessionModelRequest, responder: Responder<SetSessionModelResponse>, _conn: ConnectionTo<Client>| {
+                        let agent = agent9.clone();
+                        async move {
+                            let result = agent.set_session_model(req).await;
+                            let _ = responder.respond_with_result(result);
+                            Ok(())
+                        }
+                    },
+                    on_receive_request!(),
+                )
+                .on_receive_notification(
+                    move |notif: CancelNotification, _conn: ConnectionTo<Client>| {
+                        let agent = agent10.clone();
+                        async move {
+                            if let Err(e) = agent.cancel(notif).await {
+                                tracing::error!(error = ?e, "cancel notification handler failed");
+                            }
+                            Ok(())
+                        }
+                    },
+                    on_receive_notification!(),
+                )
+                .connect_to(ByteStreams::new(stdout_compat, stdin_compat))
+                .await
+                .map_err(|e| {
+                    let err_str = format!("{:?}", e);
+                    if is_connection_closed_error_str(&err_str) {
+                        tracing::info!("connect_to finished: connection closed");
+                    } else {
+                        tracing::error!(?e, "connect_to failed");
+                    }
+                    agent_client_protocol::Error::internal_error().data(err_str)
+                })?;
+
+            agent12.cancel_all();
+            Ok(())
         })
-        .await
-        .map_err(|e: agent_client_protocol::Error| {
-            tracing::error!(?e, "run_stdio_loop error");
-            Box::new(e) as Box<dyn std::error::Error + Send + Sync>
-        });
-    tracing::info!("run_stdio_loop finished");
-    result
+        .await;
+
+    match result {
+        Ok(_) => Ok(StdioLoopResult { connection_closed: false }),
+        Err(e) => {
+            if is_connection_closed_error(&e) {
+                tracing::info!("run_stdio_loop finished (connection closed)");
+                Ok(StdioLoopResult { connection_closed: true })
+            } else {
+                tracing::error!(?e, "run_stdio_loop error");
+                Err(Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+            }
+        }
+    }
 }

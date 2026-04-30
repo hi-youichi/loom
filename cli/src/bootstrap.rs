@@ -47,6 +47,7 @@ pub(crate) fn init_logging(args: &Args) -> logging::LogGuard {
         log_level,
         log_file,
         &args.log_rotate,
+        &args.log_format,
         args.working_folder.clone(),
     );
     logging::init(&log_args)

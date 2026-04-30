@@ -64,17 +64,7 @@ mod tests {
         };
         let state = ReActState {
             messages: vec![Message::user("Tool x returned: y")],
-            last_reasoning_content: None,
-            tool_calls: vec![],
-            tool_results: vec![],
-            turn_count: 0,
-            approval_result: None,
-            usage: None,
-            total_usage: None,
-            message_count_after_last_think: None,
-            think_count: 0,
-            summary: None,
-            should_continue: true,
+            ..Default::default()
         };
         let (out, next) = node.run(state).await.unwrap();
         assert_eq!(out.messages.len(), 1);
@@ -99,17 +89,7 @@ mod tests {
                 Message::user("u"),
                 Message::user("Tool a returned: xxxxxxxxxxxxxxxxxxxx"), // 5 tokens
             ],
-            last_reasoning_content: None,
-            tool_calls: vec![],
-            tool_results: vec![],
-            turn_count: 0,
-            approval_result: None,
-            usage: None,
-            total_usage: None,
-            message_count_after_last_think: None,
-            think_count: 0,
-            summary: None,
-            should_continue: true,
+            ..Default::default()
         };
         let (out, next) = node.run(state).await.unwrap();
         assert_eq!(out.messages.len(), 2);

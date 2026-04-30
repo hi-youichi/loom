@@ -6,6 +6,44 @@ use std::sync::Arc;
 
 use crate::skill::SkillRegistry;
 
+/// Filter for builtin tools: whitelist (enabled) and blacklist (disabled).
+///
+/// When `enabled` is `Some` and non-empty, only tools whose names appear in the set are kept.
+/// Then, any tools whose names appear in `disabled` are removed.
+#[derive(Clone, Debug, Default)]
+pub struct BuiltinToolFilter {
+    pub enabled: Option<Vec<String>>,
+    pub disabled: Option<Vec<String>>,
+}
+
+impl BuiltinToolFilter {
+    /// Returns true when the filter is a no-op (both lists empty or None).
+    pub fn is_noop(&self) -> bool {
+        self.enabled.as_ref().is_none_or(|v| v.is_empty())
+            && self.disabled.as_ref().is_none_or(|v| v.is_empty())
+    }
+
+    /// Returns true if the given tool name is allowed by this filter.
+    pub fn is_allowed(&self, name: &str) -> bool {
+        if let Some(ref en) = self.enabled {
+            if !en.is_empty() && !en.iter().any(|e| e == name) {
+                return false;
+            }
+        }
+        if let Some(ref dis) = self.disabled {
+            if dis.iter().any(|d| d == name) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Filters a list of tool names in place, returning the allowed subset.
+    pub fn filter_names<'a>(&self, names: &'a [String]) -> Vec<&'a String> {
+        names.iter().filter(|n| self.is_allowed(n.as_str())).collect()
+    }
+}
+
 /// ToT-specific runner config (max depth, candidates per step, etc.).
 #[derive(Clone, Debug)]
 pub struct TotRunnerConfig {
@@ -32,10 +70,15 @@ pub struct GotRunnerConfig {
 }
 
 /// Configuration for building ReAct run context.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ReactBuildConfig {
     pub db_path: Option<String>,
     pub thread_id: Option<String>,
+    /// Root thread ID used for LLM trace headers (`X-Thread-Id`).
+    /// Always carries the top-level (root) agent's thread_id so that all
+    /// sub-agent LLM calls can be correlated in external tracing.
+    /// Set once at the root level, then propagated unchanged by `invoke_agent`.
+    pub trace_thread_id: Option<String>,
     pub user_id: Option<String>,
     pub system_prompt: Option<String>,
     pub exa_api_key: Option<String>,
@@ -59,9 +102,18 @@ pub struct ReactBuildConfig {
     pub openai_api_key: Option<String>,
     pub openai_base_url: Option<String>,
     pub model: Option<String>,
+    pub model_tier: Option<crate::model_spec::ModelTier>,
+    /// When a sub-agent profile declares `tier: light/standard/strong` but no explicit `model.name`,
+    /// the parent's resolved model (e.g. `"zhipuai-coding-plan/glm-4.7"`) is saved here so that
+    /// tier resolution can extract the provider and stay within the same model family.
+    pub parent_model_hint: Option<String>,
     /// Explicit provider type override. When `Some("openai_compat")` or `Some("bigmodel")`, build layer uses [`crate::llm::ChatOpenAICompat`]; otherwise default is OpenAI.
     /// If unset, build layer may infer provider type from `MODEL` in `provider/model` format.
     pub llm_provider: Option<String>,
+    /// Provider name used for tier plan lookup (e.g., `"zhipuai-coding-plan"`).
+    /// Set during tier resolution from `ModelEntry.provider`. Preserved across sub-agent config
+    /// inheritance so child tier resolution can match the correct plan.
+    pub llm_provider_name: Option<String>,
     /// Sampling temperature for chat completions. Set via `OPENAI_TEMPERATURE`.
     pub openai_temperature: Option<String>,
     pub embedding_api_key: Option<String>,
@@ -80,6 +132,24 @@ pub struct ReactBuildConfig {
     pub max_sub_agent_depth: Option<u32>,
     /// When true, tools are not executed; call_tool returns a placeholder (CLI --dry).
     pub dry_run: bool,
+    /// Optional filter for builtin tools (enabled whitelist / disabled blacklist).
+    /// Populated from agent profile `tools.builtin` config.
+    pub builtin_tool_filter: Option<BuiltinToolFilter>,
+    pub bash_executor: Option<Arc<dyn crate::tools::CommandExecutor>>,
+    pub extra_tools: Option<Arc<Vec<Arc<dyn crate::tools::Tool>>>>,
+    pub acp_session_id: Option<String>,
+}
+
+impl std::fmt::Debug for ReactBuildConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ReactBuildConfig")
+            .field("db_path", &self.db_path)
+            .field("working_folder", &self.working_folder)
+            .field("model", &self.model)
+            .field("bash_executor", &self.bash_executor.as_ref().map(|_| "..."))
+            .field("extra_tools", &self.extra_tools.as_ref().map(|t| t.len()))
+            .finish()
+    }
 }
 
 impl ReactBuildConfig {
@@ -87,6 +157,7 @@ impl ReactBuildConfig {
         Self {
             db_path: std::env::var("LOOM_DB_PATH").ok(),
             thread_id: std::env::var("LOOM_THREAD_ID").ok(),
+            trace_thread_id: None,
             user_id: std::env::var("LOOM_USER_ID").ok(),
             system_prompt: std::env::var("SYSTEM_PROMPT").ok(),
             exa_api_key: std::env::var("EXA_API_KEY").ok(),
@@ -115,8 +186,11 @@ impl ReactBuildConfig {
             openai_api_key: std::env::var("OPENAI_API_KEY").ok(),
             openai_base_url: std::env::var("OPENAI_BASE_URL").ok(),
             openai_temperature: std::env::var("OPENAI_TEMPERATURE").ok(),
-            model: None, // Removed environment variable support, use frontend/API parameters
-            llm_provider: None, // Removed environment variable support
+            model: None,
+            model_tier: None,
+            parent_model_hint: None,
+            llm_provider: None,
+            llm_provider_name: None,
             embedding_api_key: std::env::var("EMBEDDING_API_KEY").ok(),
             embedding_base_url: std::env::var("EMBEDDING_BASE_URL").ok(),
             embedding_model: std::env::var("EMBEDDING_MODEL").ok(),
@@ -150,6 +224,10 @@ impl ReactBuildConfig {
                 .ok()
                 .map(|s| matches!(s.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
                 .unwrap_or(false),
+            builtin_tool_filter: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
         }
     }
 }

@@ -28,7 +28,11 @@ fn opts(working_folder: PathBuf) -> RunOptions {
         base_url: None,
         api_key: None,
         provider_type: None,
-    }
+        any_stream_event_sender: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
+        }
 }
 
 /// L3 e2e: project with .loom/mcp.json is discovered; run_agent with MockLlm completes and returns the mock reply.

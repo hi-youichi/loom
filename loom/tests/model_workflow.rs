@@ -21,7 +21,7 @@ mod tests {
             tool_choice: None,
         };
 
-        let result = create_llm_client(&entry);
+        let result = create_llm_client(&entry, None);
         assert!(result.is_ok(), "Should create LLM client from ModelEntry");
     }
 
@@ -40,7 +40,7 @@ mod tests {
             tool_choice: None,
         };
 
-        let result = create_llm_client(&entry);
+        let result = create_llm_client(&entry, None);
         assert!(
             result.is_ok(),
             "Should create BigModel client from ModelEntry"
@@ -66,7 +66,7 @@ mod tests {
             tool_choice: None,
         };
 
-        let result = create_llm_client(&entry);
+        let result = create_llm_client(&entry, None);
 
         // Restore env var
         if let Some(v) = prev_base_url {
@@ -88,6 +88,8 @@ mod tests {
             api_key: Some("test-key".to_string()),
             provider_type: None,
             fetch_models: false,
+            cache_ttl: None,
+            enable_tier_resolution: true,
         };
 
         let model = "gpt-4o";
@@ -103,7 +105,7 @@ mod tests {
             tool_choice: None,
         };
 
-        let result = create_llm_client(&entry);
+        let result = create_llm_client(&entry, None);
         assert!(
             result.is_ok(),
             "Should create client from ProviderConfig-derived ModelEntry"

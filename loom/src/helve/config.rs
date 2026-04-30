@@ -73,10 +73,12 @@ pub fn to_react_build_config(helve: &HelveConfig, base: ReactBuildConfig) -> Rea
     };
     let system_prompt = Some(assemble_react_system_prompt(&prompt_inputs));
 
+    let resolved_thread_id = helve.thread_id.clone().or(base.thread_id);
     ReactBuildConfig {
         system_prompt,
         working_folder: helve.working_folder.clone().or(base.working_folder),
-        thread_id: helve.thread_id.clone().or(base.thread_id),
+        thread_id: resolved_thread_id.clone(),
+        trace_thread_id: resolved_thread_id,
         user_id: helve.user_id.clone().or(base.user_id),
         approval_policy: helve.approval_policy.or(base.approval_policy),
         ..base

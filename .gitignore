@@ -7,6 +7,7 @@ CLAUDE.md
 AGENTS.md
 
 tmp/
+test-output*.txt
 idea/
 lancedb_data/
 author-name.txt
@@ -50,7 +51,7 @@ test_output_*.txt
 # Debug and test
 log
 logs/
-*.pdb
+*.pid
 **/mutants.out*/
 coverage/
 coverage.lcov
@@ -60,3 +61,6 @@ coverage.lcov
 # Telegram bot local config
 telegram-bot.toml
 test-results/
+
+# Reference repos
+typescript-sdk

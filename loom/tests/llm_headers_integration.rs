@@ -16,7 +16,7 @@ fn test_chat_openai_compat_with_headers() {
     // In a real integration test, we would make an actual HTTP request
     // and verify the headers are present
     // The model field is private, so we just verify the client was created
-    assert!(true); // Test passes if compilation succeeds
+    // Test passes if compilation succeeds
 }
 
 #[test]

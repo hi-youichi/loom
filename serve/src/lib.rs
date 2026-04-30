@@ -55,32 +55,8 @@ pub async fn run_serve_on_listener(
 
     // Load provider configs from config file
     info!("📡 Loading providers from config file...");
-    let providers: Vec<ProviderConfig> = match config::load_full_config("loom") {
-        Ok(full_config) => {
-            info!(
-                "✅ Loaded config with {} providers",
-                full_config.providers.len()
-            );
-            full_config
-                .providers
-                .into_iter()
-                .map(|p| {
-                    info!("  📋 Provider: {} ({:?})", p.name, p.provider_type);
-                    ProviderConfig {
-                        name: p.name,
-                        base_url: p.base_url,
-                        api_key: p.api_key,
-                        provider_type: p.provider_type,
-                        fetch_models: p.fetch_models.unwrap_or(false),
-                    }
-                })
-                .collect()
-        }
-        Err(e) => {
-            info!("⚠️  No config file found or error loading config: {}", e);
-            vec![]
-        }
-    };
+    let providers: Vec<ProviderConfig> =
+        loom::provider::load_provider_configs().unwrap_or_default();
 
     // Load models from configured providers
     info!("🤖 Loading models from {} provider(s)...", providers.len());

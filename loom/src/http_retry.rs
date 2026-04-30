@@ -24,6 +24,10 @@ pub(crate) fn looks_like_transient_http_error_message(message: &str) -> bool {
         || message.contains("connection reset")
         || message.contains("broken pipe")
         || message.contains("error decoding")
+        || message.contains("error sending request")
+        || message.contains("request failed")
+        || message.contains("tls")
+        || message.contains("ssl")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,7 +39,7 @@ pub(crate) enum RetryDecision {
 #[cfg(test)]
 pub(crate) fn classify_openai_http_status(status: u16) -> RetryDecision {
     match status {
-        429 | 500 | 502 | 503 | 504 => RetryDecision::Retryable,
+        429 | 500 | 502 | 503 | 504 | 524 | 598 | 599 => RetryDecision::Retryable,
         _ => RetryDecision::NonRetryable,
     }
 }
@@ -51,6 +55,9 @@ pub(crate) fn classify_openai_error_message(message: &str) -> RetryDecision {
         || message.contains("status code 502")
         || message.contains("status code 503")
         || message.contains("status code 504")
+        || message.contains("status code 524")
+        || message.contains("status code 598")
+        || message.contains("status code 599")
     {
         return RetryDecision::Retryable;
     }
@@ -168,5 +175,22 @@ mod tests {
     #[test]
     fn detects_broken_pipe() {
         assert!(looks_like_transient_http_error_message("broken pipe"));
+    }
+
+    #[test]
+    fn detects_error_sending_request() {
+        assert!(looks_like_transient_http_error_message(
+            "error sending request for url (https://api.example.com/v1/chat/completions)"
+        ));
+    }
+
+    #[test]
+    fn detects_request_failed() {
+        assert!(looks_like_transient_http_error_message("request failed"));
+    }
+
+    #[test]
+    fn detects_tls_error() {
+        assert!(looks_like_transient_http_error_message("tls handshake failed"));
     }
 }

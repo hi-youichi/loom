@@ -5,8 +5,11 @@ mod dotenv;
 pub mod home;
 mod lsp_config;
 mod mcp_config;
+mod model;
 mod xdg_toml;
 
+#[cfg(feature = "tracing-init")]
+pub mod log_format;
 #[cfg(feature = "tracing-init")]
 pub mod tracing_init;
 pub use lsp_config::{
@@ -20,6 +23,9 @@ pub use mcp_config::{
     McpServerEntry,
 };
 pub use xdg_toml::{load_full_config, FullConfig, ProviderDef};
+
+// Re-export model resolution helpers
+pub use model::{default_model, default_provider_name};
 
 use model_spec_core::extract_provider_api_from_models_dev_json;
 use std::path::{Path, PathBuf};
@@ -872,6 +878,8 @@ model = "other-model"
             provider_type: None,
             temperature: None,
             fetch_models: None,
+            cache_ttl: None,
+            enable_tier_resolution: None,
         };
 
         let env_map = provider_env_map_with_models_dev_fallback(&provider);

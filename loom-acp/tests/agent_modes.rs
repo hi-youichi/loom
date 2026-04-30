@@ -1,15 +1,40 @@
-//! ACP Agent integration tests for session modes feature.
-
-use agent_client_protocol::{
-    Agent, LoadSessionRequest, NewSessionRequest, SetSessionConfigOptionRequest,
+use agent_client_protocol::schema::{
+    LoadSessionRequest, NewSessionRequest, SetSessionConfigOptionRequest,
     SetSessionModeRequest,
 };
-use loom_acp::LoomAcpAgent;
+use loom_acp::{LoomAcpAgent, ModelOption, ModelProvider};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 fn make_new_session_request() -> NewSessionRequest {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     NewSessionRequest::new(cwd)
+}
+
+struct MockModelProvider;
+
+#[async_trait::async_trait]
+impl ModelProvider for MockModelProvider {
+    async fn fetch_models(&self) -> Vec<ModelOption> {
+        vec![
+            ModelOption {
+                id: "default".to_string(),
+                name: "(default)".to_string(),
+                provider: String::new(),
+            },
+            ModelOption {
+                id: "test-model".to_string(),
+                name: "Test Model".to_string(),
+                provider: "test".to_string(),
+            },
+        ]
+    }
+}
+
+fn create_test_agent() -> LoomAcpAgent {
+    LoomAcpAgent::new()
+        .unwrap()
+        .with_model_provider(Arc::new(MockModelProvider))
 }
 
 fn extract_mode_ids_from_json(json: &serde_json::Value) -> Vec<String> {
@@ -49,7 +74,7 @@ fn extract_current_mode_id(json: &serde_json::Value) -> Option<String> {
 
 #[tokio::test]
 async fn test_new_session_returns_modes_with_ask_and_default() {
-    let agent = LoomAcpAgent::new();
+    let agent = create_test_agent();
     let response = agent.new_session(make_new_session_request()).await.unwrap();
     let json = serde_json::to_value(&response).unwrap();
 
@@ -68,7 +93,7 @@ async fn test_new_session_returns_modes_with_ask_and_default() {
 
 #[tokio::test]
 async fn test_new_session_default_mode_is_dev() {
-    let agent = LoomAcpAgent::new();
+    let agent = create_test_agent();
     let response = agent.new_session(make_new_session_request()).await.unwrap();
     let json = serde_json::to_value(&response).unwrap();
 
@@ -78,7 +103,7 @@ async fn test_new_session_default_mode_is_dev() {
 
 #[tokio::test]
 async fn test_set_session_mode_and_load_preserves_mode() {
-    let agent = LoomAcpAgent::new();
+    let agent = create_test_agent();
     let ns_response = agent.new_session(make_new_session_request()).await.unwrap();
     let session_id = ns_response.session_id.clone();
 
@@ -108,7 +133,7 @@ async fn test_set_session_mode_and_load_preserves_mode() {
 
 #[tokio::test]
 async fn test_set_session_mode_rejects_unknown_mode() {
-    let agent = LoomAcpAgent::new();
+    let agent = create_test_agent();
     let ns_response = agent.new_session(make_new_session_request()).await.unwrap();
     let session_id = ns_response.session_id.clone();
 
@@ -124,7 +149,7 @@ async fn test_set_session_mode_rejects_unknown_mode() {
 
 #[tokio::test]
 async fn test_set_session_mode_rejects_unknown_session() {
-    let agent = LoomAcpAgent::new();
+    let agent = create_test_agent();
 
     let set_request: SetSessionModeRequest = serde_json::from_value(serde_json::json!({
         "sessionId": "nonexistent-session",
@@ -138,7 +163,7 @@ async fn test_set_session_mode_rejects_unknown_session() {
 
 #[tokio::test]
 async fn test_load_session_new_entry_defaults_to_dev() {
-    let agent = LoomAcpAgent::new();
+    let agent = create_test_agent();
     let ns_response = agent.new_session(make_new_session_request()).await.unwrap();
     let session_id = ns_response.session_id.clone();
 
@@ -160,7 +185,7 @@ async fn test_load_session_new_entry_defaults_to_dev() {
 
 #[tokio::test]
 async fn test_load_session_modes_list_contains_builtins() {
-    let agent = LoomAcpAgent::new();
+    let agent = create_test_agent();
     let fake_session_id = "session-load-test-002";
 
     let load_request: LoadSessionRequest = serde_json::from_value(serde_json::json!({
@@ -188,7 +213,7 @@ async fn test_load_session_modes_list_contains_builtins() {
 
 #[tokio::test]
 async fn test_set_session_config_option_mode_switches_mode_and_returns_mode_first() {
-    let agent = LoomAcpAgent::new();
+    let agent = create_test_agent();
     let ns_response = agent.new_session(make_new_session_request()).await.unwrap();
     let session_id = ns_response.session_id.clone();
 
@@ -230,11 +255,10 @@ async fn test_set_session_config_option_mode_switches_mode_and_returns_mode_firs
 
 #[tokio::test]
 async fn test_set_session_config_option_mode_accepts_typed_value_payload() {
-    let agent = LoomAcpAgent::new();
+    let agent = create_test_agent();
     let ns_response = agent.new_session(make_new_session_request()).await.unwrap();
     let session_id = ns_response.session_id.clone();
 
-    // Simulate ACP typed payload used by newer clients.
     let set_config_request: SetSessionConfigOptionRequest =
         serde_json::from_value(serde_json::json!({
             "sessionId": session_id.to_string(),

@@ -1,0 +1,207 @@
+//! E2E tests for Diff content in ACP protocol
+//!
+//! These tests verify that write/edit operations produce correct Diff content
+//! in the ACP protocol responses, covering the complete workflow from prompt
+//! to tool_call_update with Diff content.
+
+mod common;
+mod e2e;
+
+use std::time::Duration;
+
+use e2e::ToolCallResponse;
+
+const TIMEOUT: Duration = Duration::from_secs(30);
+
+fn find_diff_notification(notifications: &[serde_json::Value]) -> Option<&serde_json::Value> {
+    notifications.iter().find(|n| {
+        let update = match n.pointer("/params/update") {
+            Some(u) => u,
+            None => return false,
+        };
+        if update.get("sessionUpdate").and_then(|v| v.as_str()) != Some("tool_call_update") {
+            return false;
+        }
+        update
+            .get("content")
+            .and_then(|c| c.as_array())
+            .is_some_and(|items| items.iter().any(|item| item.get("type").and_then(|v| v.as_str()) == Some("diff")))
+    })
+}
+
+fn extract_diff(notification: &serde_json::Value) -> &serde_json::Value {
+    notification
+        .pointer("/params/update/content")
+        .and_then(|c| c.as_array())
+        .expect("should have content array")
+        .iter()
+        .find(|item| {
+            item.as_object()
+                .and_then(|obj| obj.get("type"))
+                .and_then(|v| v.as_str()) == Some("diff")
+        })
+        .expect("should have diff item")
+}
+
+fn get_diff_field<'a>(diff: &'a serde_json::Value, field: &str) -> Option<&'a str> {
+    diff.get(field).and_then(|v| v.as_str())
+}
+
+fn collect_notifications(
+    guard: &mut common::process_pool::PooledAcpGuard,
+    prompt_id: u64,
+) -> (Vec<serde_json::Value>, e2e::RpcResponse) {
+    let mut notifications = Vec::new();
+    let mut response = None;
+    let start = std::time::Instant::now();
+
+    while start.elapsed() < TIMEOUT && response.is_none() {
+        let message = guard.acp_mut().read_message().expect("read message");
+
+        if message.get("method").and_then(|v| v.as_str()) == Some("session/update") {
+            notifications.push(message.clone());
+        }
+
+        if message.get("id").and_then(|v| v.as_u64()) == Some(prompt_id) {
+            let r: e2e::RpcResponse = serde_json::from_value(message).expect("parse response");
+            response = Some(r);
+        }
+    }
+
+    let r = response.expect("should receive prompt response");
+    (notifications, r)
+}
+
+fn find_tool_call_notification<'a>(
+    notifications: &'a [serde_json::Value],
+    tool_name: &str,
+) -> Option<&'a serde_json::Value> {
+    notifications.iter().find(|n| {
+        let update = match n.pointer("/params/update") {
+            Some(u) => u,
+            None => return false,
+        };
+        update.get("sessionUpdate").and_then(|v| v.as_str()) == Some("tool_call")
+            && update.get("title").and_then(|v| v.as_str()).is_some_and(|t| t.to_lowercase().contains(tool_name))
+    })
+}
+
+/// Test that write_file operation returns Diff content in tool_call_update.
+#[tokio::test]
+#[ignore = "requires mock LLM server infrastructure"]
+async fn test_write_operation_returns_diff_content() {
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
+
+    guard.mock_mut().await.mount_tool_call_response(&[ToolCallResponse {
+        tool_name: "write_file".to_string(),
+        parameters: serde_json::json!({
+            "path": "test_file.txt",
+            "content": "Hello, World!"
+        }),
+    }]).await;
+
+    let prompt_id = guard.acp_mut().send_request_and_wait(
+        "session/prompt",
+        serde_json::json!({
+            "sessionId": session_id,
+            "prompt": [{ "type": "text", "text": "Create test_file.txt" }],
+        }),
+        TIMEOUT,
+    ).await.expect("send prompt");
+    
+    let result_ref = prompt_id.result.as_ref().expect("should have result");
+    let prompt_id_value = result_ref.get("promptId").expect("should have promptId");
+    let actual_prompt_id = prompt_id_value.as_u64().expect("promptId should be u64");
+
+    let (notifications, response) = collect_notifications(&mut guard, actual_prompt_id);
+    assert!(response.error.is_none(), "prompt failed: {:?}", response.error);
+
+    let diff_notification = find_diff_notification(&notifications)
+        .expect("should find tool_call_update with Diff content");
+
+    let diff = extract_diff(diff_notification);
+    assert_eq!(get_diff_field(diff, "path"), Some("test_file.txt"));
+    assert_eq!(get_diff_field(diff, "newText"), Some("Hello, World!"));
+}
+
+/// Test that edit tool_call is sent with correct parameters.
+/// The edit fails because the file doesn't exist, but we verify the tool_call notification.
+#[tokio::test]
+#[ignore = "requires mock LLM server infrastructure"]
+async fn test_edit_tool_call_sent_with_correct_params() {
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
+
+    guard.mock_mut().await.mount_tool_call_response(&[ToolCallResponse {
+        tool_name: "edit".to_string(),
+        parameters: serde_json::json!({
+            "path": "existing_file.txt",
+            "oldString": "Original content",
+            "newString": "Modified content"
+        }),
+    }]).await;
+
+    let prompt_id = guard.acp_mut().send_request_and_wait(
+        "session/prompt",
+        serde_json::json!({
+            "sessionId": session_id,
+            "prompt": [{ "type": "text", "text": "Edit existing_file.txt" }],
+        }),
+        TIMEOUT,
+    ).await.expect("send prompt");
+    
+    let result_ref = prompt_id.result.as_ref().expect("should have result");
+    let prompt_id_value = result_ref.get("promptId").expect("should have promptId");
+    let actual_prompt_id = prompt_id_value.as_u64().expect("promptId should be u64");
+
+    let (notifications, response) = collect_notifications(&mut guard, actual_prompt_id);
+    assert!(response.error.is_none(), "prompt failed: {:?}", response.error);
+
+    let tool_call = find_tool_call_notification(&notifications, "edit")
+        .expect("should find tool_call for edit");
+
+    let raw_input = tool_call.pointer("/params/update/rawInput")
+        .expect("should have rawInput");
+    assert_eq!(raw_input.get("path").and_then(|v| v.as_str()), Some("existing_file.txt"));
+    assert_eq!(raw_input.get("oldString").and_then(|v| v.as_str()), Some("Original content"));
+    assert_eq!(raw_input.get("newString").and_then(|v| v.as_str()), Some("Modified content"));
+}
+
+/// Test complete workflow: write_file produces Diff with path and newText.
+#[tokio::test]
+#[ignore = "requires mock LLM server infrastructure"]
+async fn test_complete_diff_workflow() {
+    let mut guard = common::process_pool::get_pool().await.acquire().await;
+    let session_id = guard.new_session().await;
+
+    guard.mock_mut().await.mount_tool_call_response(&[ToolCallResponse {
+        tool_name: "write_file".to_string(),
+        parameters: serde_json::json!({
+            "path": "workflow_test.txt",
+            "content": "Initial content"
+        }),
+    }]).await;
+
+    let prompt_id = guard.acp_mut().send_request_and_wait(
+        "session/prompt",
+        serde_json::json!({
+            "sessionId": session_id,
+            "prompt": [{ "type": "text", "text": "Create workflow_test.txt" }],
+        }),
+        TIMEOUT,
+    ).await.expect("send prompt");
+    
+    let result_ref = prompt_id.result.as_ref().expect("should have result");
+    let prompt_id_value = result_ref.get("promptId").expect("should have promptId");
+    let actual_prompt_id = prompt_id_value.as_u64().expect("promptId should be u64");
+
+    let (notifications, _response) = collect_notifications(&mut guard, actual_prompt_id);
+
+    let diff_notification = find_diff_notification(&notifications)
+        .expect("should find tool_call_update with Diff content");
+
+    let diff = extract_diff(diff_notification);
+    assert_eq!(get_diff_field(diff, "path"), Some("workflow_test.txt"));
+    assert_eq!(get_diff_field(diff, "newText"), Some("Initial content"));
+}

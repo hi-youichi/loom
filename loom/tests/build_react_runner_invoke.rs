@@ -1,4 +1,4 @@
-﻿//! Integration test: build_react_runner then invoke (config → runner → one invoke).
+//! Integration test: build_react_runner then invoke (config → runner → one invoke).
 //!
 //! Phase 0 refactoring: ensures the full pipeline from ReactBuildConfig through
 //! build_react_runner and ReactRunner::invoke is covered by a test.
@@ -6,13 +6,15 @@
 mod init_logging;
 
 use loom::{
-    build_react_runner, GotRunnerConfig, MockLlm, ReactBuildConfig, ReactRunner, TotRunnerConfig,
+    build_react_runner, FixedLlmProvider, GotRunnerConfig, MockLlm, ReactBuildConfig, ReactRunner, TotRunnerConfig,
 };
+use std::sync::Arc;
 
 fn minimal_config() -> ReactBuildConfig {
     ReactBuildConfig {
         db_path: None,
         thread_id: None,
+        trace_thread_id: None,
         user_id: None,
         system_prompt: None,
         exa_api_key: None,
@@ -32,7 +34,10 @@ fn minimal_config() -> ReactBuildConfig {
         openai_api_key: None,
         openai_base_url: None,
         model: None,
+        model_tier: None,
+        parent_model_hint: None,
         llm_provider: None,
+        llm_provider_name: None,
         openai_temperature: None,
         embedding_api_key: None,
         embedding_base_url: None,
@@ -46,6 +51,10 @@ fn minimal_config() -> ReactBuildConfig {
         skill_registry: None,
         max_sub_agent_depth: None,
         dry_run: false,
+        builtin_tool_filter: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
     }
 }
 
@@ -54,8 +63,12 @@ fn minimal_config() -> ReactBuildConfig {
 #[tokio::test]
 async fn build_react_runner_then_invoke_one_turn() {
     let config = minimal_config();
-    let llm = Box::new(MockLlm::with_no_tool_calls("Hello from mock."));
-    let runner: ReactRunner = build_react_runner(&config, Some(llm), false)
+    let mock_llm = Arc::new(MockLlm::with_no_tool_calls("Hello from mock."));
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: mock_llm,
+        model_id: "mock".to_string(),
+    });
+    let runner: ReactRunner = build_react_runner(&config, Some(fixed_provider), false)
         .await
         .expect("build_react_runner");
     let state = runner.invoke("Hi").await.expect("invoke");

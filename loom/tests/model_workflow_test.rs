@@ -57,7 +57,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result = create_llm_client(&entry);
+        let result = create_llm_client(&entry, None);
         assert!(result.is_ok());
     }
 
@@ -74,7 +74,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result = create_llm_client(&entry);
+        let result = create_llm_client(&entry, None);
         assert!(result.is_ok());
     }
 
@@ -91,7 +91,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result = create_llm_client(&entry);
+        let result = create_llm_client(&entry, None);
         assert!(result.is_err());
     }
 
@@ -112,7 +112,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result = create_llm_client(&entry);
+        let result = create_llm_client(&entry, None);
 
         // Restore env var
         if let Some(v) = prev_base_url {
@@ -131,6 +131,8 @@ mod tests {
             api_key: Some("sk-test".to_string()),
             provider_type: Some("openai".to_string()),
             fetch_models: false,
+            cache_ttl: None,
+            enable_tier_resolution: true,
         };
 
         let model_name = "gpt-4o";

@@ -194,6 +194,9 @@ pub enum ClientRequest {
     WorkspaceThreadList(WorkspaceThreadListRequest),
     WorkspaceThreadAdd(WorkspaceThreadAddRequest),
     WorkspaceThreadRemove(WorkspaceThreadRemoveRequest),
+    WorkspaceRename(WorkspaceRenameRequest),
+    WorkspaceFileList(WorkspaceFileListRequest),
+    WorkspaceFileRead(WorkspaceFileReadRequest),
     Ping(PingRequest),
     ListModels(ListModelsRequest),
     SetModel(SetModelRequest),
@@ -238,6 +241,33 @@ pub struct WorkspaceThreadRemoveRequest {
     pub id: String,
     pub workspace_id: String,
     pub thread_id: String,
+}
+
+/// Workspace rename request: update the name of an existing workspace.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceRenameRequest {
+    pub id: String,
+    pub workspace_id: String,
+    pub name: String,
+}
+
+/// Workspace file list request: list files/dirs in a workspace directory.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceFileListRequest {
+    pub id: String,
+    pub workspace_id: String,
+    /// Relative path within the workspace root (empty string = root).
+    #[serde(default)]
+    pub path: Option<String>,
+}
+
+/// Workspace file read request: read a file's content from a workspace.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceFileReadRequest {
+    pub id: String,
+    pub workspace_id: String,
+    /// Relative path of the file within the workspace root.
+    pub path: String,
 }
 #[cfg(test)]
 mod tests {
@@ -430,6 +460,21 @@ mod tests {
         assert!(json.contains("\"type\":\"workspace_thread_remove\""));
         let parsed: ClientRequest = serde_json::from_str(&json).unwrap();
         assert!(matches!(parsed, ClientRequest::WorkspaceThreadRemove(_)));
+    }
+
+    #[test]
+    fn request_workspace_rename_roundtrip() {
+        let req = ClientRequest::WorkspaceRename(WorkspaceRenameRequest {
+            id: "req-wr".to_string(),
+            workspace_id: "ws-1".to_string(),
+            name: "new name".to_string(),
+        });
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"type\":\"workspace_rename\""));
+        assert!(json.contains("\"workspace_id\":\"ws-1\""));
+        assert!(json.contains("\"name\":\"new name\""));
+        let parsed: ClientRequest = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, ClientRequest::WorkspaceRename(_)));
     }
 
     #[test]

@@ -1,4 +1,4 @@
-﻿//! L2: build_tool_source with GitHub MCP (github_token None vs invalid command).
+//! L2: build_tool_source with GitHub MCP (github_token None vs invalid command).
 //!
 //! When github_token is None, no GitHub MCP is started. When github_token is set but
 //! mcp_github_cmd is invalid, spawn fails and we skip GitHub MCP (build still succeeds).
@@ -11,6 +11,7 @@ fn base_config(working_folder: std::path::PathBuf) -> ReactBuildConfig {
     ReactBuildConfig {
         db_path: None,
         thread_id: None,
+        trace_thread_id: None,
         user_id: None,
         system_prompt: None,
         exa_api_key: None,
@@ -30,7 +31,10 @@ fn base_config(working_folder: std::path::PathBuf) -> ReactBuildConfig {
         openai_api_key: None,
         openai_base_url: None,
         model: None,
+        model_tier: None,
+        parent_model_hint: None,
         llm_provider: None,
+        llm_provider_name: None,
         openai_temperature: None,
         embedding_api_key: None,
         embedding_base_url: None,
@@ -44,6 +48,10 @@ fn base_config(working_folder: std::path::PathBuf) -> ReactBuildConfig {
         skill_registry: None,
         max_sub_agent_depth: None,
         dry_run: false,
+        builtin_tool_filter: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
     }
 }
 

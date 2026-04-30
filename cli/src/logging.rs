@@ -3,6 +3,7 @@
 //! Resolution order (after `config.toml` / `.env` are applied to the process environment):
 //! - `--log-level` overrides `RUST_LOG`; otherwise `RUST_LOG`, else `info`
 //! - `--log-file` overrides `LOG_FILE`; when neither is set, logs are dropped (stdout stays clean)
+//! - `--log-format`: `text` (default) or `json`
 //! - `--log-rotate`: Rotation strategy when writing to a file (none, daily, hourly, minutely)
 
 use std::path::Path;
@@ -10,7 +11,29 @@ use std::str::FromStr;
 
 use config::tracing_init;
 pub use config::tracing_init::LogRotate;
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+
+use config::log_format::{JsonWithSpanIds, TextWithSpanIds};
+
+/// Log output format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LogFormat {
+    #[default]
+    Text,
+    Json,
+}
+
+impl FromStr for LogFormat {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "text" => Ok(Self::Text),
+            "json" => Ok(Self::Json),
+            other => Err(format!("unknown log format `{}`, expected `text` or `json`", other)),
+        }
+    }
+}
 
 /// Log configuration from CLI args.
 #[derive(Debug, Clone)]
@@ -21,6 +44,8 @@ pub struct LogArgs {
     pub file: Option<std::path::PathBuf>,
     /// Rotation strategy
     pub rotate: LogRotate,
+    /// Output format (text or json)
+    pub format: LogFormat,
     /// Working folder for variable substitution in log file path
     pub working_folder: Option<std::path::PathBuf>,
 }
@@ -31,12 +56,14 @@ impl LogArgs {
         level: String,
         file: Option<std::path::PathBuf>,
         rotate: &str,
+        format: &str,
         working_folder: Option<std::path::PathBuf>,
     ) -> Self {
         Self {
             level,
             file,
             rotate: LogRotate::from_str(rotate).unwrap_or_default(),
+            format: LogFormat::from_str(format).unwrap_or_default(),
             working_folder,
         }
     }
@@ -67,25 +94,38 @@ pub fn init(args: &LogArgs) -> LogGuard {
     let log_file = args.resolve_log_file();
 
     if let Some(ref path) = log_file {
-        init_file_logging(path, args.rotate, filter)
+        init_file_logging(path, args.rotate, args.format, filter)
     } else {
         init_sink_logging(filter)
     }
 }
 
-fn init_file_logging(path: &Path, rotate: LogRotate, filter: EnvFilter) -> LogGuard {
+fn init_file_logging(path: &Path, rotate: LogRotate, format: LogFormat, filter: EnvFilter) -> LogGuard {
     let (writer, guard) = tracing_init::file_non_blocking_writer(path, rotate, "loom")
         .unwrap_or_else(|e| panic!("failed to open log file {}: {}", path.display(), e));
 
-    let layer = fmt::layer()
-        .with_ansi(false)
-        .with_target(true)
-        .with_writer(writer);
-
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(layer)
-        .init();
+    match format {
+        LogFormat::Text => {
+            let layer = tracing_subscriber::fmt::layer()
+                .with_ansi(false)
+                .event_format(TextWithSpanIds::default())
+                .with_writer(writer);
+            tracing_subscriber::registry()
+                .with(filter)
+                .with(layer)
+                .init();
+        }
+        LogFormat::Json => {
+            let layer = tracing_subscriber::fmt::layer()
+                .with_ansi(false)
+                .event_format(JsonWithSpanIds::default())
+                .with_writer(writer);
+            tracing_subscriber::registry()
+                .with(filter)
+                .with(layer)
+                .init();
+        }
+    }
 
     LogGuard {
         _guard: Some(guard),
@@ -108,9 +148,9 @@ fn init_sink_logging(filter: EnvFilter) -> LogGuard {
 
     let (writer, guard) = tracing_appender::non_blocking(Sink);
 
-    let layer = fmt::layer()
+    let layer = tracing_subscriber::fmt::layer()
         .with_ansi(false)
-        .with_target(true)
+        .event_format(TextWithSpanIds::default())
         .with_writer(writer);
 
     tracing_subscriber::registry()

@@ -27,7 +27,11 @@ fn opts(working_folder: PathBuf) -> RunOptions {
         cancellation: None,
         output_timestamp: false,
         dry_run: false,
-    }
+        any_stream_event_sender: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
+        }
 }
 
 /// mcp_servers from .loom/mcp.json are injected; build_react_run_context succeeds (MCP may fail to start and be skipped).

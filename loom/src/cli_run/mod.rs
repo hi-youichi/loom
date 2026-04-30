@@ -8,6 +8,7 @@ mod profile;
 
 pub use agent::{
     run_agent, run_agent_with_llm_override, run_agent_with_options, run_agent_with_provider,
+    resolve_tier_and_build_config, resolve_tier_and_build_config_with_resolver,
     ActiveOperation, ActiveOperationCanceller, ActiveOperationKind, AgentRunResult, AnyRunner,
     AnyStreamEvent, RunCancellation, RunCmd, RunCompletion, RunError, RunOptions,
 };
@@ -91,8 +92,15 @@ pub fn build_helve_config(
 
     let mut base = ReactBuildConfig::from_env();
     base.dry_run = effective_opts.dry_run;
-    if let Some(ref m) = effective_opts.model {
-        base.model = Some(m.clone());
+    {
+        let model = effective_opts.model.as_deref();
+        let provider = effective_opts.provider.as_deref();
+        let has_provider_prefix = model.is_some_and(|m| m.contains('/'));
+        base.model = match (model, provider) {
+            (Some(m), Some(p)) if !has_provider_prefix => Some(format!("{}/{}", p, m)),
+            (Some(m), _) => Some(m.to_string()),
+            _ => None,
+        };
     }
 
     // Provider configuration from RunOptions (used by ACP to specify provider-specific settings)
@@ -109,6 +117,26 @@ pub fn build_helve_config(
     if let Some(ref prof) = profile {
         if let Some(t) = prof.model.as_ref().and_then(|m| m.temperature) {
             base.openai_temperature = Some(t.to_string());
+        }
+        // Only apply profile tier configuration when model is not explicitly specified
+        // This ensures:
+        // 1. ACP explicitly set model is not overridden by tier
+        // 2. CLI users can override tier via --model
+        // 3. When no model is specified, profile tier is used
+        let model_explicitly_set = effective_opts.model.is_some() || opts.model.is_some();
+        if !model_explicitly_set {
+            if let Some(tier) = prof.model.as_ref().and_then(|m| m.tier) {
+                base.model_tier = Some(tier);
+                tracing::debug!(
+                    tier = ?tier,
+                    "No explicit model specified, applying profile tier configuration"
+                );
+            }
+        } else {
+            tracing::debug!(
+                model = ?effective_opts.model,
+                "Model explicitly specified, skipping profile tier configuration to avoid override"
+            );
         }
     }
 
@@ -207,6 +235,22 @@ pub fn build_helve_config(
         .as_ref()
         .and_then(|p| p.behavior.as_ref())
         .and_then(|b| b.max_sub_agent_depth);
+
+    // Builtin tool filter from agent profile
+    if let Some(ref prof) = profile {
+        if let Some(ref tools) = prof.tools {
+            if let Some(ref builtin) = tools.builtin {
+                let filter = crate::agent::react::BuiltinToolFilter {
+                    enabled: builtin.enabled.clone(),
+                    disabled: builtin.disabled.clone(),
+                };
+                if !filter.is_noop() {
+                    config.builtin_tool_filter = Some(filter);
+                }
+            }
+        }
+    }
+
     (helve, config, resolved_agent)
 }
 
@@ -223,13 +267,65 @@ pub fn build_config_from_profile(
 ) -> ReactBuildConfig {
     let mut config = parent_config.clone();
 
+    tracing::debug!(
+        profile_name = %profile.name,
+        parent_model = ?parent_config.model,
+        parent_model_tier = ?parent_config.model_tier,
+        parent_provider = ?parent_config.llm_provider,
+        "Building config from profile with parent model configuration"
+    );
+
     if let Some(ref model) = profile.model {
+        tracing::debug!(
+            profile_name = %profile.name,
+            profile_model_name = ?model.name,
+            profile_model_tier = ?model.tier,
+            profile_model_temperature = ?model.temperature,
+            "Profile contains model configuration"
+        );
+
         if let Some(ref name) = model.name {
+            tracing::info!(
+                profile_name = %profile.name,
+                old_model = ?config.model,
+                new_model = %name,
+                "Overriding model from profile"
+            );
             config.model = Some(name.clone());
         }
+        if let Some(tier) = model.tier {
+            tracing::info!(
+                profile_name = %profile.name,
+                old_tier = ?config.model_tier,
+                new_tier = ?tier,
+                "Overriding model_tier from profile"
+            );
+            config.model_tier = Some(tier);
+
+            tracing::debug!(
+                profile_name = %profile.name,
+                tier = ?tier,
+                preserved_provider = ?config.llm_provider,
+                "Clearing inherited model/api fields for clean tier resolution (preserving llm_provider)"
+            );
+            config.parent_model_hint = config.model.take();
+            config.openai_base_url = None;
+            config.openai_api_key = None;
+        }
         if let Some(t) = model.temperature {
+            tracing::debug!(
+                profile_name = %profile.name,
+                old_temperature = ?config.openai_temperature,
+                new_temperature = t,
+                "Setting temperature from profile"
+            );
             config.openai_temperature = Some(t.to_string());
         }
+    } else {
+        tracing::debug!(
+            profile_name = %profile.name,
+            "Profile has no model configuration, inheriting from parent"
+        );
     }
 
     if let Some(wf) = working_folder_override {
@@ -301,6 +397,31 @@ pub fn build_config_from_profile(
         .and_then(|b| b.max_sub_agent_depth)
         .or(parent_config.max_sub_agent_depth);
 
+    // Builtin tool filter from profile
+    if let Some(ref tools) = profile.tools {
+        if let Some(ref builtin) = tools.builtin {
+            let filter = crate::agent::react::BuiltinToolFilter {
+                enabled: builtin.enabled.clone(),
+                disabled: builtin.disabled.clone(),
+            };
+            if !filter.is_noop() {
+                config.builtin_tool_filter = Some(filter);
+            }
+        }
+    }
+
+    tracing::debug!(
+        profile_name = %profile.name,
+        final_model = ?config.model,
+        final_model_tier = ?config.model_tier,
+        final_provider = ?config.llm_provider,
+        final_temperature = ?config.openai_temperature,
+        parent_model = ?parent_config.model,
+        parent_model_tier = ?parent_config.model_tier,
+        parent_provider = ?parent_config.llm_provider,
+        "Final configuration built from profile with model inheritance details"
+    );
+
     config
 }
 
@@ -332,29 +453,8 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
 
     tracing::info!("🔍 Resolving model configuration for: {}", model_str);
 
-    let providers: Vec<crate::llm::ProviderConfig> = match env_config::load_full_config("loom") {
-        Ok(config) => {
-            tracing::debug!(
-                "📋 Loaded {} provider(s) from config",
-                config.providers.len()
-            );
-            config
-                .providers
-                .into_iter()
-                .map(|p| crate::llm::ProviderConfig {
-                    name: p.name,
-                    base_url: p.base_url,
-                    api_key: p.api_key,
-                    provider_type: p.provider_type,
-                    fetch_models: p.fetch_models.unwrap_or(false),
-                })
-                .collect()
-        }
-        Err(e) => {
-            tracing::warn!("⚠️  Failed to load config: {}, using empty providers", e);
-            vec![]
-        }
-    };
+    let providers: Vec<crate::llm::ProviderConfig> =
+        crate::provider::load_provider_configs().unwrap_or_default();
 
     // 1. Try ModelRegistry first
     tracing::debug!("🔎 Searching ModelRegistry for: {}", model_str);
@@ -487,6 +587,11 @@ fn apply_model_provider_resolution(opts: &mut RunOptions) {
 
     let effective_provider = provider_only.as_deref().or(resolved_provider.as_deref());
     opts.model = Some(model_name.clone());
+    if opts.provider.is_none() {
+        if let Some(ref p) = resolved_provider {
+            opts.provider = Some(p.clone());
+        }
+    }
 
     tracing::info!(
         "🎯 Final resolution: model_name={}, provider={:?}",
@@ -596,6 +701,10 @@ mod tests {
             base_url: None,
             api_key: None,
             provider_type: None,
+            any_stream_event_sender: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
         }
     }
 
@@ -801,6 +910,7 @@ mod tests {
             role: Some(RoleConfig {
                 file: None,
                 content: Some("You are a sub-agent.".to_string()),
+                append: None,
             }),
             ..Default::default()
         };
@@ -859,6 +969,7 @@ mod tests {
         apply_model_provider_resolution(&mut opts);
 
         assert_eq!(opts.model.as_deref(), Some("gpt-4o"));
+        assert_eq!(opts.provider.as_deref(), Some("openai"));
     }
 
     #[test]
@@ -913,6 +1024,7 @@ mod tests {
 
         // Should split on first slash only
         assert_eq!(opts.model.as_deref(), Some("sub/model"));
+        assert_eq!(opts.provider.as_deref(), Some("provider"));
     }
 
     #[test]
@@ -961,5 +1073,156 @@ mod tests {
         // Should not modify options when model part is empty
         assert!(opts.model.is_none());
         assert!(opts.provider.is_none());
+    }
+
+    #[test]
+    fn build_config_from_profile_passes_tier() {
+        let _lock = crate::env_test_lock().lock().unwrap();
+        let _g = ENV_LOCK.lock().unwrap();
+        let loom_home = tempfile::tempdir().unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", loom_home.path());
+
+        let profile = AgentProfile {
+            model: Some(ModelConfig {
+                tier: Some(crate::model_spec::ModelTier::Light),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let config = build_config_from_profile(&profile, &parent_config(), None);
+        assert_eq!(config.model_tier, Some(crate::model_spec::ModelTier::Light));
+        // When profile configures a tier, model/api fields are cleared for clean tier resolution,
+        // but llm_provider is preserved so the resolver targets the correct provider.
+        assert_eq!(config.model.as_deref(), None);
+        assert_eq!(config.parent_model_hint.as_deref(), Some("parent-model"));
+        assert_eq!(config.openai_base_url.as_deref(), None);
+        assert_eq!(config.openai_api_key.as_deref(), None);
+
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+    }
+
+    #[test]
+    fn build_config_from_profile_no_tier_when_not_set() {
+        let _lock = crate::env_test_lock().lock().unwrap();
+        let _g = ENV_LOCK.lock().unwrap();
+        let loom_home = tempfile::tempdir().unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", loom_home.path());
+
+        let profile = AgentProfile::default();
+        let config = build_config_from_profile(&profile, &parent_config(), None);
+        assert!(config.model_tier.is_none());
+        // When profile has no model config, should inherit parent's model
+        assert_eq!(config.model.as_deref(), Some("parent-model"));
+
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+    }
+
+    #[test]
+    fn build_helve_config_passes_profile_tier() {
+        let _lock = crate::env_test_lock().lock().unwrap();
+        let _g = ENV_LOCK.lock().unwrap();
+        let loom_home = tempfile::tempdir().unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", loom_home.path());
+
+        let profile_dir = loom_home.path().join("agents").join("test-tier-agent");
+        std::fs::create_dir_all(&profile_dir).unwrap();
+        std::fs::write(
+            profile_dir.join("config.yaml"),
+            "name: test-tier-agent\nmodel:\n  tier: light\n",
+        )
+        .unwrap();
+
+        let opts = RunOptions {
+            message: crate::message::UserContent::Text(String::new()),
+            working_folder: None,
+            session_id: None,
+            cancellation: None,
+            thread_id: None,
+            agent: Some("test-tier-agent".to_string()),
+            verbose: false,
+            got_adaptive: false,
+            display_max_len: 200,
+            output_json: false,
+            model: None,
+            mcp_config_path: None,
+            output_timestamp: false,
+            dry_run: false,
+            provider: None,
+            base_url: None,
+            api_key: None,
+            provider_type: None,
+            any_stream_event_sender: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
+        };
+        let (_helve, config, _resolved) = build_helve_config(&opts);
+        assert_eq!(config.model_tier, Some(crate::model_spec::ModelTier::Light));
+        assert!(config.model.is_none());
+
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
+    }
+
+    #[test]
+    fn build_helve_config_explicit_model_ignores_tier() {
+        let _lock = crate::env_test_lock().lock().unwrap();
+        let _g = ENV_LOCK.lock().unwrap();
+        let loom_home = tempfile::tempdir().unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", loom_home.path());
+
+        let profile_dir = loom_home.path().join("agents").join("test-tier-agent2");
+        std::fs::create_dir_all(&profile_dir).unwrap();
+        std::fs::write(
+            profile_dir.join("config.yaml"),
+            "name: test-tier-agent2\nmodel:\n  tier: light\n",
+        )
+        .unwrap();
+
+        let opts = RunOptions {
+            message: crate::message::UserContent::Text(String::new()),
+            working_folder: None,
+            session_id: None,
+            cancellation: None,
+            thread_id: None,
+            agent: Some("test-tier-agent2".to_string()),
+            verbose: false,
+            got_adaptive: false,
+            display_max_len: 200,
+            output_json: false,
+            model: Some("anthropic/claude-sonnet-4".to_string()),
+            mcp_config_path: None,
+            output_timestamp: false,
+            dry_run: false,
+            provider: None,
+            base_url: None,
+            api_key: None,
+            provider_type: None,
+            any_stream_event_sender: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
+        };
+        let (_helve, config, _resolved) = build_helve_config(&opts);
+        assert_eq!(config.model.as_deref(), Some("anthropic/claude-sonnet-4"));
+        // When model is explicitly specified, tier should NOT be set to avoid tier overriding the explicit model
+        assert_eq!(config.model_tier, None);
+
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
     }
 }

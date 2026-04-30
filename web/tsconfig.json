@@ -1,13 +1,17 @@
 {
   "files": [],
   "references": [
-    { "path": "./tsconfig.app.json" },
-    { "path": "./tsconfig.node.json" }
-  ],
-  "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  }
+    { "path": "packages/protocol" },
+    { "path": "packages/types" },
+    { "path": "packages/utils" },
+    { "path": "packages/adapters" },
+    { "path": "packages/ws-client" },
+    { "path": "packages/service-session" },
+    { "path": "packages/service-workspace" },
+    { "path": "packages/service-agent" },
+    { "path": "packages/service-chat" },
+    { "path": "packages/hooks" },
+    { "path": "packages/ui" },
+    { "path": "packages/app" }
+  ]
 }

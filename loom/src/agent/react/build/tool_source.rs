@@ -11,6 +11,8 @@ use crate::tool_source::{
 use crate::tools::powershell::PowerShellTool;
 #[cfg(not(windows))]
 use crate::tools::BashTool;
+#[cfg(windows)]
+use crate::tools::BashTool;
 use crate::tools::{
     register_mcp_tools, register_mcp_tools_with_specs, AggregateToolSource, BatchTool,
     ExaCodesearchTool, ExaWebsearchTool, InvokeAgentTool, LspTool, TwitterSearchTool,
@@ -41,16 +43,35 @@ pub(crate) async fn build_tool_source(
         let aggregate = Arc::new(AggregateToolSource::new());
         aggregate
             .register_async(Box::new(WebFetcherTool::new()))
-            .await;
+    .await;
         #[cfg(not(windows))]
-        let bash_tool = match &working_folder_arc {
-            Some(wf) => BashTool::with_working_folder(Arc::clone(wf)),
-            None => BashTool::new(),
+        let bash_tool = if let Some(ref executor) = config.bash_executor {
+            match &working_folder_arc {
+                Some(wf) => BashTool::with_working_folder_and_executor(
+                    Arc::clone(wf),
+                    executor.clone(),
+                ),
+                None => BashTool::with_executor(executor.clone()),
+            }
+        } else {
+            match &working_folder_arc {
+                Some(wf) => BashTool::with_working_folder(Arc::clone(wf)),
+                None => BashTool::new(),
+            }
         };
         #[cfg(not(windows))]
         aggregate.register_async(Box::new(bash_tool)).await;
         #[cfg(windows)]
-        {
+        if let Some(ref executor) = config.bash_executor {
+            let bash_tool = match &working_folder_arc {
+                Some(wf) => BashTool::with_working_folder_and_executor(
+                    Arc::clone(wf),
+                    executor.clone(),
+                ),
+                None => BashTool::with_executor(executor.clone()),
+            };
+            aggregate.register_async(Box::new(bash_tool)).await;
+        } else {
             let ps_tool = match &working_folder_arc {
                 Some(wf) => PowerShellTool::with_working_folder(Arc::clone(wf)),
                 None => PowerShellTool::new(),
@@ -111,7 +132,7 @@ pub(crate) async fn build_tool_source(
                             }
                         }
                     }
-                    McpServerDef::Http { name, url, headers } => {
+                    McpServerDef::Http { name, url, headers, oauth, .. } => {
                         let headers_iter = headers.iter().map(|(k, v)| (k.as_str(), v.as_str()));
                         match McpToolSource::new_http(url.clone(), headers_iter).await {
                             Ok(mcp) => {
@@ -189,6 +210,12 @@ pub(crate) async fn build_tool_source(
                 }
             }
         }
+    if let Some(ref tools) = config.extra_tools {
+        for tool in tools.iter() {
+            use crate::tools::ArcTool;
+            aggregate.register_async(Box::new(ArcTool(tool.clone()))).await;
+        }
+    }
         aggregate
             .register_async(Box::new(InvokeAgentTool::new(
                 Arc::new(config.clone()),
@@ -222,17 +249,36 @@ pub(crate) async fn build_tool_source(
 
     aggregate
         .register_async(Box::new(WebFetcherTool::new()))
-        .await;
+    .await;
     #[cfg(not(windows))]
-    let bash_tool = match &working_folder_arc {
-        Some(wf) => BashTool::with_working_folder(Arc::clone(wf)),
-        None => BashTool::new(),
+    let bash_tool = if let Some(ref executor) = config.bash_executor {
+        match &working_folder_arc {
+            Some(wf) => BashTool::with_working_folder_and_executor(
+                Arc::clone(wf),
+                executor.clone(),
+            ),
+            None => BashTool::with_executor(executor.clone()),
+        }
+    } else {
+        match &working_folder_arc {
+            Some(wf) => BashTool::with_working_folder(Arc::clone(wf)),
+            None => BashTool::new(),
+        }
     };
     #[cfg(not(windows))]
     aggregate.register_async(Box::new(bash_tool)).await;
 
     #[cfg(windows)]
-    {
+    if let Some(ref executor) = config.bash_executor {
+        let bash_tool = match &working_folder_arc {
+            Some(wf) => BashTool::with_working_folder_and_executor(
+                Arc::clone(wf),
+                executor.clone(),
+            ),
+            None => BashTool::with_executor(executor.clone()),
+        };
+        aggregate.register_async(Box::new(bash_tool)).await;
+    } else {
         let ps_tool = match &working_folder_arc {
             Some(wf) => PowerShellTool::with_working_folder(Arc::clone(wf)),
             None => PowerShellTool::new(),
@@ -310,7 +356,7 @@ pub(crate) async fn build_tool_source(
                         }
                     }
                 }
-                McpServerDef::Http { name, url, headers } => {
+                McpServerDef::Http { name, url, headers, oauth, .. } => {
                     let headers_iter = headers.iter().map(|(k, v)| (k.as_str(), v.as_str()));
                     match McpToolSource::new_http(url.clone(), headers_iter).await {
                         Ok(mcp) => {
@@ -387,6 +433,13 @@ pub(crate) async fn build_tool_source(
         }
     }
 
+    if let Some(ref tools) = config.extra_tools {
+        for tool in tools.iter() {
+            use crate::tools::ArcTool;
+            aggregate.register_async(Box::new(ArcTool(tool.clone()))).await;
+        }
+    }
+
     aggregate
         .register_async(Box::new(InvokeAgentTool::new(
             Arc::new(config.clone()),
@@ -398,5 +451,22 @@ pub(crate) async fn build_tool_source(
     let wrapped = YamlSpecToolSource::wrap(inner)
         .await
         .map_err(to_agent_error)?;
-    Ok(Box::new(wrapped))
+
+    // Apply builtin tool filter (enabled whitelist / disabled blacklist from agent profile).
+    let filtered: Box<dyn ToolSource> = match &config.builtin_tool_filter {
+        Some(filter) if !filter.is_noop() => {
+            tracing::info!(
+                enabled = ?filter.enabled,
+                disabled = ?filter.disabled,
+                "applying builtin tool filter"
+            );
+            Box::new(crate::tool_source::FilteredToolSource::new(
+                Box::new(wrapped),
+                filter.clone(),
+            ))
+        }
+        _ => Box::new(wrapped),
+    };
+
+    Ok(filtered)
 }

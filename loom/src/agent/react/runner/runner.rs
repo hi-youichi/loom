@@ -9,23 +9,23 @@ use crate::graph::{
     CompilationError, CompiledStateGraph, LoggingNodeMiddleware, StateGraph, END, START,
 };
 use crate::helve::ApprovalPolicy;
-use crate::llm::RetryLlmClient;
+use crate::llm::LlmProvider;
 use crate::memory::{Checkpointer, RunnableConfig, Store};
 use crate::runner_common;
 use crate::state::ReActState;
 use crate::stream::StreamEvent;
 use crate::tool_source::ToolSource;
 use crate::user_message::UserMessageStore;
-use crate::{LlmClient, RunCancellation};
+use crate::{RunCancellation};
+use crate::cli_run::AnyStreamEvent;
 
 use super::error::RunError;
 use super::initial_state::build_react_initial_state;
-use super::options::SummarizeConfig;
 use super::options::{resolve_run_agent_options, AgentOptions};
-use crate::agent::react::act_node::{ActNode, HandleToolErrors};
-use crate::agent::react::completion_check_node::CompletionCheckNode;
+use crate::agent::react::act_node::ActNode;
+
 use crate::agent::react::observe_node::ObserveNode;
-use crate::agent::react::summarize_node::SummarizeNode;
+use crate::agent::react::title_node::{is_first_think, TitleNode};
 use crate::agent::react::think_node::ThinkNode;
 use crate::agent::react::tools_condition;
 use crate::agent::react::with_node_logging::WithNodeLogging;
@@ -46,7 +46,7 @@ impl ReactRunner {
 
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        llm: Box<dyn LlmClient>,
+        provider: Arc<dyn LlmProvider>,
         tool_source: Box<dyn ToolSource>,
         checkpointer: Option<Arc<dyn Checkpointer<ReActState>>>,
         store: Option<Arc<dyn Store>>,
@@ -57,18 +57,16 @@ impl ReactRunner {
         _user_message_store: Option<Arc<dyn UserMessageStore>>,
         cancellation: Option<RunCancellation>,
         verbose: bool,
-        summarize_config: Option<SummarizeConfig>,
+        title_provider: Option<Arc<dyn LlmProvider>>,
+        title_headers: Option<crate::llm::LlmHeaders>,
     ) -> Result<Self, CompilationError> {
-        let llm: Arc<dyn LlmClient> = Arc::from(llm);
-        let retry_llm: Arc<dyn LlmClient> = Arc::new(RetryLlmClient::new(llm.clone()));
-        let think = ThinkNode::new(Arc::clone(&retry_llm));
+        let think = ThinkNode::new(Arc::clone(&provider));
         let act = ActNode::new(tool_source)
-            .with_handle_tool_errors(HandleToolErrors::Always(None))
             .with_approval_policy(approval_policy);
         let observe = ObserveNode::with_loop();
 
         let compaction_cfg = compaction_config.unwrap_or_default();
-        let compression_graph = build_graph(compaction_cfg.clone(), Arc::clone(&retry_llm))?;
+        let compression_graph = build_graph(compaction_cfg.clone(), Arc::clone(&provider), None)?;
         let compress_node = Arc::new(CompressionGraphNode::new(compression_graph));
 
         let mut graph = StateGraph::<ReActState>::new();
@@ -76,222 +74,49 @@ impl ReactRunner {
             graph = graph.with_store(s);
         }
 
-        // Build graph with or without summarize node based on config
-        let summarize_enabled = summarize_config.as_ref().is_some_and(|c| c.enabled);
-        let completion_check_enabled = summarize_config
-            .as_ref()
-            .is_some_and(|c| c.enable_completion_check);
+        let title_node = TitleNode::new(
+            title_provider.unwrap_or_else(|| Arc::clone(&provider)),
+            title_headers,
+        );
 
-        if summarize_enabled {
-            // Summarize node for generating session summaries after first think
-            let summarize_node = SummarizeNode::new(Arc::clone(&retry_llm));
+        let think_condition_path_map: HashMap<String, String> = [
+            ("title".into(), "title".into()),
+            ("tools".into(), "act".into()),
+            (END.into(), END.into()),
+        ]
+        .into_iter()
+        .collect();
 
-            if completion_check_enabled {
-                let completion_check = CompletionCheckNode::new(Arc::clone(&retry_llm))
-                    .with_max_iterations(10)
-                    .with_message_window(5);
-
-                let think_condition_path_map: HashMap<String, String> = [
-                    ("summarize".into(), "summarize".into()),
-                    ("tools".into(), "act".into()),
-                    ("completion_check".into(), "completion_check".into()),
-                ]
+        let summarize_condition_path_map: HashMap<String, String> =
+            [("tools".into(), "act".into()), (END.into(), END.into())]
                 .into_iter()
                 .collect();
 
-                let summarize_condition_path_map: HashMap<String, String> = [
-                    ("tools".into(), "act".into()),
-                    ("completion_check".into(), "completion_check".into()),
-                ]
-                .into_iter()
-                .collect();
-
-                let completion_check_path_map: HashMap<String, String> = [
-                    ("continue".into(), "think".into()),
-                    (END.into(), END.into()),
-                ]
-                .into_iter()
-                .collect();
-
-                graph
-                    .add_node("think", Arc::new(think))
-                    .add_node("summarize", Arc::new(summarize_node))
-                    .add_node("completion_check", Arc::new(completion_check))
-                    .add_node("act", Arc::new(act))
-                    .add_node("observe", Arc::new(observe))
-                    .add_node("compress", compress_node)
-                    .add_edge(START, "think")
-                    .add_conditional_edges(
-                        "think",
-                        Arc::new(|state: &ReActState| {
-                            let user_msg_count = state
-                                .messages
-                                .iter()
-                                .filter(|m| matches!(m, crate::message::Message::User(_)))
-                                .count();
-                            if user_msg_count == 1
-                                && state.summary.is_none()
-                                && state.think_count == 1
-                            {
-                                "summarize".to_string()
-                            } else if !state.tool_calls.is_empty() {
-                                "tools".to_string()
-                            } else {
-                                "completion_check".to_string()
-                            }
-                        }),
-                        Some(think_condition_path_map),
-                    )
-                    .add_conditional_edges(
-                        "summarize",
-                        Arc::new(|state: &ReActState| {
-                            if !state.tool_calls.is_empty() {
-                                "tools".to_string()
-                            } else {
-                                "completion_check".to_string()
-                            }
-                        }),
-                        Some(summarize_condition_path_map),
-                    )
-                    .add_conditional_edges(
-                        "completion_check",
-                        Arc::new(|state: &ReActState| {
-                            if state.should_continue {
-                                "continue".to_string()
-                            } else {
-                                END.to_string()
-                            }
-                        }),
-                        Some(completion_check_path_map),
-                    )
-                    .add_edge("act", "observe")
-                    .add_edge("observe", "compress")
-                    .add_edge("compress", "think");
-            } else {
-                // No completion check: think/summarize -> tools or end
-                let think_condition_path_map: HashMap<String, String> = [
-                    ("summarize".into(), "summarize".into()),
-                    ("tools".into(), "act".into()),
-                    (END.into(), END.into()),
-                ]
-                .into_iter()
-                .collect();
-
-                let summarize_condition_path_map: HashMap<String, String> =
-                    [("tools".into(), "act".into()), (END.into(), END.into())]
-                        .into_iter()
-                        .collect();
-
-                graph
-                    .add_node("think", Arc::new(think))
-                    .add_node("summarize", Arc::new(summarize_node))
-                    .add_node("act", Arc::new(act))
-                    .add_node("observe", Arc::new(observe))
-                    .add_node("compress", compress_node)
-                    .add_edge(START, "think")
-                    .add_conditional_edges(
-                        "think",
-                        Arc::new(|state: &ReActState| {
-                            let user_msg_count = state
-                                .messages
-                                .iter()
-                                .filter(|m| matches!(m, crate::message::Message::User(_)))
-                                .count();
-                            if user_msg_count == 1
-                                && state.summary.is_none()
-                                && state.think_count == 1
-                            {
-                                "summarize".to_string()
-                            } else {
-                                tools_condition(state).as_str().to_string()
-                            }
-                        }),
-                        Some(think_condition_path_map),
-                    )
-                    .add_conditional_edges(
-                        "summarize",
-                        Arc::new(|state: &ReActState| tools_condition(state).as_str().to_string()),
-                        Some(summarize_condition_path_map),
-                    )
-                    .add_edge("act", "observe")
-                    .add_edge("observe", "compress")
-                    .add_edge("compress", "think");
-            }
-        } else if completion_check_enabled {
-            // No summarize, with completion check
-            let completion_check = CompletionCheckNode::new(Arc::clone(&retry_llm))
-                .with_max_iterations(10)
-                .with_message_window(5);
-
-            let think_condition_path_map: HashMap<String, String> = [
-                ("tools".into(), "act".into()),
-                ("completion_check".into(), "completion_check".into()),
-                (END.into(), END.into()),
-            ]
-            .into_iter()
-            .collect();
-
-            let completion_check_path_map: HashMap<String, String> = [
-                ("continue".into(), "think".into()),
-                (END.into(), END.into()),
-            ]
-            .into_iter()
-            .collect();
-
-            graph
-                .add_node("think", Arc::new(think))
-                .add_node("completion_check", Arc::new(completion_check))
-                .add_node("act", Arc::new(act))
-                .add_node("observe", Arc::new(observe))
-                .add_node("compress", compress_node)
-                .add_edge(START, "think")
-                .add_conditional_edges(
-                    "think",
-                    Arc::new(|state: &ReActState| {
-                        if !state.tool_calls.is_empty() {
-                            "tools".to_string()
-                        } else {
-                            "completion_check".to_string()
-                        }
-                    }),
-                    Some(think_condition_path_map),
-                )
-                .add_conditional_edges(
-                    "completion_check",
-                    Arc::new(|state: &ReActState| {
-                        if state.should_continue {
-                            "continue".to_string()
-                        } else {
-                            END.to_string()
-                        }
-                    }),
-                    Some(completion_check_path_map),
-                )
-                .add_edge("act", "observe")
-                .add_edge("observe", "compress")
-                .add_edge("compress", "think");
-        } else {
-            // No summarize, no completion check - original graph
-            let think_condition_path_map: HashMap<String, String> =
-                [("tools".into(), "act".into()), (END.into(), END.into())]
-                    .into_iter()
-                    .collect();
-
-            graph
-                .add_node("think", Arc::new(think))
-                .add_node("act", Arc::new(act))
-                .add_node("observe", Arc::new(observe))
-                .add_node("compress", compress_node)
-                .add_edge(START, "think")
-                .add_conditional_edges(
-                    "think",
-                    Arc::new(|state: &ReActState| tools_condition(state).as_str().to_string()),
-                    Some(think_condition_path_map),
-                )
-                .add_edge("act", "observe")
-                .add_edge("observe", "compress")
-                .add_edge("compress", "think");
-        }
+        graph
+            .add_node("think", Arc::new(think))
+            .add_node("title", Arc::new(title_node))
+            .add_node("act", Arc::new(act))
+            .add_node("observe", Arc::new(observe))
+            .add_node("compress", compress_node)
+            .add_edge(START, "think")
+            .add_conditional_edges(
+                "think",
+                Arc::new(|state: &ReActState| {
+                    if is_first_think(state) {
+                        return "title".to_string();
+                    }
+                    tools_condition(state).as_str().to_string()
+                }),
+                Some(think_condition_path_map),
+            )
+            .add_conditional_edges(
+                "title",
+                Arc::new(|state: &ReActState| tools_condition(state).as_str().to_string()),
+                Some(summarize_condition_path_map),
+            )
+            .add_edge("act", "observe")
+            .add_edge("observe", "compress")
+            .add_edge("compress", "think");
 
         let graph = if verbose {
             graph.with_node_logging()
@@ -346,7 +171,7 @@ impl ReactRunner {
     where
         F: FnMut(StreamEvent<ReActState>),
     {
-        self.stream_with_config(user_message, None, on_event).await
+        self.stream_with_config(user_message, None, on_event, None).await
     }
 
     pub async fn stream_with_config<F>(
@@ -354,6 +179,7 @@ impl ReactRunner {
         user_message: &str,
         config: Option<RunnableConfig>,
         on_event: Option<F>,
+        any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
     ) -> Result<runner_common::StreamRunOutcome<ReActState>, RunError>
     where
         F: FnMut(StreamEvent<ReActState>),
@@ -373,6 +199,7 @@ impl ReactRunner {
             on_event,
             self.cancellation.as_ref().map(RunCancellation::token),
             self.cancellation.clone(),
+            any_stream_event_sender,
         )
         .await
         .map_err(|e| match e {
@@ -390,7 +217,7 @@ pub async fn run_agent(
 ) -> Result<ReActState, RunError> {
     let opts = resolve_run_agent_options(options.unwrap_or_default());
     let runner = ReactRunner::new(
-        opts.llm,
+        opts.provider,
         opts.tool_source,
         opts.checkpointer,
         opts.store,
@@ -401,7 +228,8 @@ pub async fn run_agent(
         opts.user_message_store,
         None,
         opts.verbose,
-        Some(opts.summarize_config),
+        None,
+        None,
     )?;
     runner.invoke(user_message).await
 }
@@ -416,7 +244,7 @@ where
 {
     let opts = resolve_run_agent_options(options.unwrap_or_default());
     let runner = ReactRunner::new(
-        opts.llm,
+        opts.provider,
         opts.tool_source,
         opts.checkpointer,
         opts.store,
@@ -427,7 +255,8 @@ where
         opts.user_message_store,
         None,
         opts.verbose,
-        Some(opts.summarize_config),
+        None,
+        None,
     )?;
     runner.stream_with_callback(user_message, on_event).await
 }

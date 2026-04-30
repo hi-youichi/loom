@@ -50,7 +50,7 @@
 //!
 //! - **Method**: Notification (Agent -> Client, no response).
 //! - **SessionNotification**: `session_id`, `session_update` (SessionUpdate union).
-//! - **SessionUpdate variants**: user_message_chunk, **agent_message_chunk**, **agent_thought_chunk**, **tool_call**, **tool_call_update**, plan, available_commands_update, current_mode_update, config_option_update.
+//! - **SessionUpdate variants**: user_message_chunk, **agent_message_chunk**, **agent_thought_chunk**, **tool_call**, **tool_call_update**, plan, available_commands_update, current_mode_update, config_option_update, **session_info_update**.
 //! - Loom sources: think output -> agent_message_chunk/agent_thought_chunk; Act decides to call tool -> tool_call (Pending); during/after execution -> tool_call_update (Running/Success/Failure).
 //!
 //! ## Tool call and SessionUpdate mapping (stream_bridge)

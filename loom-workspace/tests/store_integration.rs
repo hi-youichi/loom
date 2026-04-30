@@ -152,3 +152,45 @@ async fn list_threads_isolates_workspaces() {
     assert_eq!(threads_b.len(), 1);
     assert_eq!(threads_b[0].thread_id, "thread-b1");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn rename_workspace_updates_name() {
+    let file = NamedTempFile::new().unwrap();
+    let store = Store::new(file.path()).unwrap();
+
+    let ws_id = store.create_workspace(Some("original".into())).await.unwrap();
+
+    store.rename_workspace(&ws_id, "renamed").await.unwrap();
+
+    let workspaces = store.list_workspaces().await.unwrap();
+    assert_eq!(workspaces.len(), 1);
+    assert_eq!(workspaces[0].id, ws_id);
+    assert_eq!(workspaces[0].name.as_deref(), Some("renamed"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn rename_workspace_not_found() {
+    let file = NamedTempFile::new().unwrap();
+    let store = Store::new(file.path()).unwrap();
+
+    let err = store
+        .rename_workspace("nonexistent-id", "name")
+        .await
+        .unwrap_err();
+    assert!(matches!(err, loom_workspace::StoreError::NotFound(_)));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn rename_workspace_from_none_to_some() {
+    let file = NamedTempFile::new().unwrap();
+    let store = Store::new(file.path()).unwrap();
+
+    // Create workspace without a name
+    let ws_id = store.create_workspace(None).await.unwrap();
+
+    // Rename to give it a name
+    store.rename_workspace(&ws_id, "now named").await.unwrap();
+
+    let workspaces = store.list_workspaces().await.unwrap();
+    assert_eq!(workspaces[0].name.as_deref(), Some("now named"));
+}

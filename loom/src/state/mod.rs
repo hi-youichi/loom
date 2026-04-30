@@ -28,7 +28,7 @@
 pub mod react_state;
 pub mod tool_output_normalizer;
 
-pub use react_state::{ReActState, ToolCall, ToolResult};
+pub use react_state::{ModelConfig, ReActState, ToolCall, ToolResult};
 pub use tool_output_normalizer::{
     normalize_tool_output, NormalizationConfig, NormalizedToolOutput, ToolOutputHint,
     ToolOutputStrategy, ToolStorageRef,

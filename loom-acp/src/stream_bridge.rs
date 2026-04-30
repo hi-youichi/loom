@@ -9,12 +9,13 @@
 //!
 //! | Variant | Meaning | Loom source |
 //! |---------|---------|-------------|
-//! | **user_message_chunk** | Chunk of user message | Think node text output (so client can show it as user message). |
-//! | **agent_message_chunk** | Chunk of agent reply (streamed text) | Reply node / other non-think message output. |
+//! | **user_message_chunk** | Chunk of user message | History replay only (`Message::User`). |
+//! | **agent_message_chunk** | Chunk of agent reply (streamed text) | Any node's non-Thinking text output. |
 //! | **agent_thought_chunk** | Chunk of agent reasoning | `StreamEvent::Messages` with `chunk.kind == Thinking`, or `TaskStart` (node entry). |
 //! | **tool_call** | New tool call started | Act node decides to call a tool: tool_call_id, name, input, kind, status: Pending. |
 //! | **tool_call_update** | Update to existing tool call | Start -> Pending/Running; done -> Success/Failure + output/content. |
 //! | plan / available_commands_update / current_mode_update | Plan, command list, mode | Optional; DUP/ToT/GoT etc. can map. |
+//! | **session_info_update** | Session metadata (title) update | Agent pushes title or other metadata to client. |
 //!
 //! ## Tool call and request_permission order
 //!
@@ -29,14 +30,16 @@
 //! `agent_client_protocol::SessionNotification` for the upper layer to send via the connection.
 
 use crate::content::extract_locations;
-use agent_client_protocol::{
-    ContentChunk, CurrentModeUpdate, SessionId, SessionModeId, SessionNotification, SessionUpdate,
-    Terminal, TerminalId, ToolCall, ToolCallId, ToolCallLocation, ToolCallStatus, ToolCallUpdate,
-    ToolCallUpdateFields, ToolKind,
+use agent_client_protocol::schema::{
+    ContentBlock, ContentChunk, CurrentModeUpdate, Diff, Plan, PlanEntry, PlanEntryPriority,
+    PlanEntryStatus, SessionId, SessionInfoUpdate, SessionModeId, SessionNotification,
+    SessionUpdate, Terminal, TerminalId, TextContent, ToolCall, ToolCallId, ToolCallLocation,
+    ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind, ToolCallContent,
 };
 use loom::message::Message;
 use loom::{AnyStreamEvent, MessageChunkKind, StreamEvent};
 use serde_json::Value;
+use std::sync::Mutex;
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -47,14 +50,23 @@ use uuid::Uuid;
 /// convert to the protocol type and call `connection.send_notification(session/update)`.
 #[derive(Clone, Debug)]
 pub enum StreamUpdate {
-    /// Chunk of user message (ACP `user_message_chunk`). Used for think node text so client shows it as user message.
-    UserMessageChunk { text: String },
+    /// Chunk of user message (ACP `user_message_chunk`). History replay only; streaming never produces this variant.
+    UserMessageChunk {
+        text: String,
+        message_id: Option<String>,
+    },
 
     /// Chunk of model output text (ACP `agent_message_chunk`).
-    AgentMessageChunk { text: String },
+    AgentMessageChunk {
+        text: String,
+        message_id: Option<String>,
+    },
 
     /// Chunk of agent reasoning / node entry (ACP `agent_thought_chunk`).
-    AgentThoughtChunk { text: String },
+    AgentThoughtChunk {
+        text: String,
+        message_id: Option<String>,
+    },
 
     /// New tool call started (ACP `tool_call`, status: Pending).
     ToolCallStarted {
@@ -88,6 +100,27 @@ pub enum StreamUpdate {
         /// Incremental arguments JSON delta.
         arguments_delta: String,
     },
+
+    /// File diff update (ACP `tool_call_update` with diff content).
+    /// Shows file modifications in a format suitable for client display.
+    Diff {
+        /// The tool call that produced this diff.
+        tool_call_id: String,
+        /// File path
+        path: String,
+        /// Previous content (optional)
+        old_text: Option<String>,
+        /// New content
+        new_text: String,
+    },
+
+    /// Session metadata update (ACP `session_info_update`).
+    /// Used to push title and related metadata changes to the client in real time.
+    SessionInfoUpdate { title: String },
+
+    /// Agent execution plan (ACP `plan`).
+    /// Reports the agent's planned tasks with their priority and status.
+    Plan { entries: Vec<PlanEntry> },
 }
 
 /// Convert one Loom stream event into zero or more [`StreamUpdate`]s.
@@ -113,11 +146,37 @@ pub enum StreamUpdate {
 /// ```
 pub fn loom_event_to_updates(ev: &AnyStreamEvent) -> Vec<StreamUpdate> {
     match ev {
-        AnyStreamEvent::React(e) => stream_event_to_updates_inner(e),
+        AnyStreamEvent::React(e) => {
+            let mut updates = stream_event_to_updates_inner(e);
+            if let Some(title_update) = extract_title_from_react_event(e) {
+                updates.push(title_update);
+            }
+            updates
+        }
         AnyStreamEvent::Dup(e) => stream_event_to_updates_inner(e),
         AnyStreamEvent::Tot(e) => stream_event_to_updates_inner(e),
         AnyStreamEvent::Got(e) => stream_event_to_updates_inner(e),
     }
+}
+
+fn extract_title_from_react_event(ev: &StreamEvent<loom::ReActState>) -> Option<StreamUpdate> {
+    match ev {
+        StreamEvent::Updates { node_id, state, .. } if node_id == "title" => state
+            .summary
+            .as_ref()
+            .map(|title| StreamUpdate::SessionInfoUpdate {
+                title: title.clone(),
+            }),
+        _ => None,
+    }
+}
+
+fn resolve_tool_call_id(call_id: &Option<String>) -> String {
+    call_id
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("tool-{}", Uuid::new_v4()))
 }
 
 /// Uniform mapping for any `StreamEvent<S>` (uses only S-independent fields).
@@ -127,20 +186,16 @@ where
 {
     match ev {
         StreamEvent::TaskStart { node_id: _, .. } => vec![],
-        StreamEvent::Messages { chunk, metadata } => {
-            // Only chunk.kind == Thinking (e.g. <think> tags) → thought.
+        StreamEvent::Messages { chunk, .. } => {
             if chunk.kind == MessageChunkKind::Thinking {
                 vec![StreamUpdate::AgentThoughtChunk {
                     text: chunk.content.clone(),
-                }]
-            } else if metadata.loom_node == "think" {
-                // Think node text → user_message_chunk (so client shows it as user message).
-                vec![StreamUpdate::UserMessageChunk {
-                    text: chunk.content.clone(),
+                    message_id: None,
                 }]
             } else {
                 vec![StreamUpdate::AgentMessageChunk {
                     text: chunk.content.clone(),
+                    message_id: None,
                 }]
             }
         }
@@ -149,9 +204,7 @@ where
             name,
             arguments,
         } => {
-            let id = call_id
-                .clone()
-                .unwrap_or_else(|| format!("tool-{}", Uuid::new_v4()));
+            let id = resolve_tool_call_id(call_id);
             vec![StreamUpdate::ToolCallStarted {
                 tool_call_id: id,
                 name: name.clone(),
@@ -160,24 +213,32 @@ where
             }]
         }
         StreamEvent::ToolStart { call_id, name: _ } => {
-            let id = call_id.clone().unwrap_or_default();
-            if id.is_empty() {
-                vec![]
-            } else {
-                vec![StreamUpdate::ToolCallUpdated {
-                    tool_call_id: id,
-                    status: "running".to_string(),
-                    output: None,
-                    raw_output: None,
-                }]
-            }
+            let id = resolve_tool_call_id(call_id);
+            vec![StreamUpdate::ToolCallUpdated {
+                tool_call_id: id,
+                status: "running".to_string(),
+                output: None,
+                raw_output: None,
+            }]
         }
         StreamEvent::ToolOutput {
             call_id, content, ..
         } => {
-            // Prefer Loom's call_id so the client can attach streamed tool output to the right tool call.
-            // If call_id is missing, we keep an empty id; the notification layer will drop it.
-            let id = call_id.clone().unwrap_or_default();
+            let id = resolve_tool_call_id(call_id);
+            
+            // Try to deserialize content as ToolCallContent to check for Diff
+            if let Ok(loom::tool_source::ToolCallContent::Diff { path, old_text, new_text }) =
+                serde_json::from_str::<loom::tool_source::ToolCallContent>(content)
+            {
+                return vec![StreamUpdate::Diff {
+                    tool_call_id: id,
+                    path,
+                    old_text,
+                    new_text,
+                }];
+            }
+            
+            // Handle regular tool output
             vec![StreamUpdate::ToolCallUpdated {
                 tool_call_id: id,
                 status: "running".to_string(),
@@ -187,22 +248,68 @@ where
         }
         StreamEvent::ToolEnd {
             call_id,
+            name,
             result,
             is_error,
             raw_result,
-            ..
         } => {
-            let id = call_id.clone().unwrap_or_default();
-            vec![StreamUpdate::ToolCallUpdated {
-                tool_call_id: id,
-                status: if *is_error {
-                    "failure".to_string()
-                } else {
-                    "success".to_string()
-                },
-                output: Some(result.clone()),
-                raw_output: raw_result.clone(),
-            }]
+            let id = resolve_tool_call_id(call_id);
+
+            let is_diff_output = raw_result
+                .as_deref()
+                .or(Some(result.as_str()))
+                .and_then(|s| serde_json::from_str::<loom::tool_source::ToolCallContent>(s).ok())
+                .map(|c| matches!(c, loom::tool_source::ToolCallContent::Diff { .. }))
+                .unwrap_or(false);
+
+            let mut updates = if is_diff_output {
+                let diff_content = raw_result
+                    .as_deref()
+                    .or(Some(result.as_str()))
+                    .and_then(|s| serde_json::from_str::<loom::tool_source::ToolCallContent>(s).ok());
+
+                let mut updates = Vec::new();
+
+                if let Some(loom::tool_source::ToolCallContent::Diff { path, old_text, new_text }) = diff_content {
+                    updates.push(StreamUpdate::Diff {
+                        tool_call_id: id.clone(),
+                        path,
+                        old_text,
+                        new_text,
+                    });
+                }
+
+                updates.push(StreamUpdate::ToolCallUpdated {
+                    tool_call_id: id,
+                    status: if *is_error {
+                        "failure".to_string()
+                    } else {
+                        "success".to_string()
+                    },
+                    output: None,
+                    raw_output: None,
+                });
+                updates
+            } else {
+                vec![StreamUpdate::ToolCallUpdated {
+                    tool_call_id: id,
+                    status: if *is_error {
+                        "failure".to_string()
+                    } else {
+                        "success".to_string()
+                    },
+                    output: Some(result.clone()),
+                    raw_output: raw_result.clone(),
+                }]
+            };
+
+            if name == "todo_write" && !is_error {
+                if let Some(entries) = parse_todo_result_to_plan_entries(result) {
+                    updates.push(StreamUpdate::Plan { entries });
+                }
+            }
+
+            updates
         }
         StreamEvent::ToolCallChunk {
             call_id,
@@ -210,9 +317,7 @@ where
             arguments_delta,
         } => {
             // Generate or use existing call_id
-            let id = call_id
-                .clone()
-                .unwrap_or_else(|| format!("tool-chunk-{}", Uuid::new_v4()));
+            let id = resolve_tool_call_id(call_id);
             vec![StreamUpdate::ToolCallChunk {
                 tool_call_id: id,
                 name: name.clone(),
@@ -231,14 +336,20 @@ pub fn stream_update_to_session_notification(
     u: &StreamUpdate,
 ) -> Option<SessionNotification> {
     let update = match u {
-        StreamUpdate::UserMessageChunk { text } => {
-            SessionUpdate::UserMessageChunk(ContentChunk::new(text.clone().into()))
+        StreamUpdate::UserMessageChunk { text, message_id } => {
+            let mut chunk = ContentChunk::new(text.clone().into());
+            chunk = chunk.message_id(message_id.clone());
+            SessionUpdate::UserMessageChunk(chunk)
         }
-        StreamUpdate::AgentMessageChunk { text } => {
-            SessionUpdate::AgentMessageChunk(ContentChunk::new(text.clone().into()))
+        StreamUpdate::AgentMessageChunk { text, message_id } => {
+            let mut chunk = ContentChunk::new(text.clone().into());
+            chunk = chunk.message_id(message_id.clone());
+            SessionUpdate::AgentMessageChunk(chunk)
         }
-        StreamUpdate::AgentThoughtChunk { text } => {
-            SessionUpdate::AgentThoughtChunk(ContentChunk::new(text.clone().into()))
+        StreamUpdate::AgentThoughtChunk { text, message_id } => {
+            let mut chunk = ContentChunk::new(text.clone().into());
+            chunk = chunk.message_id(message_id.clone());
+            SessionUpdate::AgentThoughtChunk(chunk)
         }
         StreamUpdate::ToolCallStarted {
             tool_call_id,
@@ -284,46 +395,77 @@ pub fn stream_update_to_session_notification(
                 fields,
             ))
         }
-        StreamUpdate::ToolCallChunk {
-            tool_call_id,
-            name,
-            arguments_delta,
-        } => {
-            if let Some(tool_name) = name {
-                let tc = create_tool_call(
-                    tool_call_id,
-                    tool_name,
-                    parse_arguments_delta(arguments_delta).as_ref(),
-                    None,
-                );
-                tracing::debug!(
-                    tool_call_id = %tool_call_id,
-                    name = %tool_name,
-                    arguments_delta = %arguments_delta,
-                    "tool_call_chunk (first) session update"
-                );
-                SessionUpdate::ToolCall(tc)
-            } else {
-                // Subsequent chunks: ACP doesn't support incremental updates yet.
-                // The complete ToolCall event will be sent after streaming finishes.
-                tracing::trace!(
-                    tool_call_id = %tool_call_id,
-                    arguments_delta_len = arguments_delta.len(),
-                    "ignoring tool_call_chunk (subsequent) - ACP doesn't support incremental updates"
-                );
-                return None;
-            }
+        StreamUpdate::ToolCallChunk { .. } => {
+            return None;
+        }
+        StreamUpdate::Diff { tool_call_id, path, old_text, new_text } => {
+            let mut fields = ToolCallUpdateFields::new()
+                .content(vec![
+                    ToolCallContent::Diff(
+                        Diff::new(path.clone(), new_text.clone())
+                            .old_text(old_text.clone()),
+                    )
+                ]);
+            
+            let status = ToolCallStatus::Completed;
+            fields = fields.status(status);
+            
+            SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
+                ToolCallId::new(tool_call_id.as_str()),
+                fields,
+            ))
+        }
+        StreamUpdate::SessionInfoUpdate { title } => {
+            SessionUpdate::SessionInfoUpdate(SessionInfoUpdate::new().title(title.clone()))
+        }
+        StreamUpdate::Plan { entries } => {
+            SessionUpdate::Plan(Plan::new(entries.clone()))
         }
     };
     Some(SessionNotification::new(session_id.clone(), update))
 }
 
-fn parse_arguments_delta(delta: &str) -> Option<serde_json::Value> {
-    serde_json::from_str::<serde_json::Value>(delta).ok()
+fn extract_text_from_result(result: &str) -> Option<String> {
+    if let Ok(content) = serde_json::from_str::<loom::tool_source::ToolCallContent>(result) {
+        return Some(content.into_text());
+    }
+    if let Ok(s) = serde_json::from_str::<String>(result) {
+        return Some(s);
+    }
+    Some(result.to_string())
+}
+
+fn parse_todo_result_to_plan_entries(result: &str) -> Option<Vec<PlanEntry>> {
+    let text = extract_text_from_result(result)?;
+    let json_start = text.find('[')?;
+    let json_str = &text[json_start..];
+    let items: Vec<serde_json::Value> = serde_json::from_str(json_str).ok()?;
+    let entries: Vec<PlanEntry> = items
+        .iter()
+        .filter_map(|t| {
+            let content = t.get("content")?.as_str()?.to_string();
+            let priority = match t.get("priority")?.as_str()? {
+                "high" => PlanEntryPriority::High,
+                "medium" => PlanEntryPriority::Medium,
+                _ => PlanEntryPriority::Low,
+            };
+            let status = match t.get("status")?.as_str()? {
+                "in_progress" => PlanEntryStatus::InProgress,
+                "completed" | "cancelled" => PlanEntryStatus::Completed,
+                _ => PlanEntryStatus::Pending,
+            };
+            Some(PlanEntry::new(content, priority, status))
+        })
+        .collect();
+    if entries.is_empty() {
+        None
+    } else {
+        Some(entries)
+    }
 }
 
 fn parse_text_output_to_raw_value(output: &str) -> serde_json::Value {
-    serde_json::json!(output)
+    serde_json::from_str(output).unwrap_or_else(|_| serde_json::json!(output))
 }
 
 pub fn name_to_tool_kind(name: &str) -> ToolKind {
@@ -363,17 +505,23 @@ pub fn name_to_tool_kind(name: &str) -> ToolKind {
 pub struct SessionNotifier {
     tx: mpsc::Sender<SessionNotification>,
     session_id: SessionId,
+    current_message_id: Mutex<Option<String>>,
 }
 
 impl SessionNotifier {
     pub fn new(tx: mpsc::Sender<SessionNotification>, session_id: SessionId) -> Self {
-        Self { tx, session_id }
+        Self {
+            tx,
+            session_id,
+            current_message_id: Mutex::new(None),
+        }
     }
 
     pub async fn send_event(&self, event: &AnyStreamEvent) {
         let updates = loom_event_to_updates(event);
-        for u in &updates {
-            if let Some(notif) = stream_update_to_session_notification(&self.session_id, u) {
+        for u in updates {
+            let u = self.inject_message_id(u);
+            if let Some(notif) = stream_update_to_session_notification(&self.session_id, &u) {
                 if let Err(e) = self.tx.send(notif).await {
                     tracing::error!(session_id = %self.session_id, error = %e, "Failed to send stream event notification");
                 }
@@ -383,27 +531,119 @@ impl SessionNotifier {
 
     pub fn try_send_event(&self, event: &AnyStreamEvent) {
         let updates = loom_event_to_updates(event);
-        for u in &updates {
-            if let Some(notif) = stream_update_to_session_notification(&self.session_id, u) {
-                let _ = self.tx.try_send(notif);
+        for u in updates {
+            let u = self.inject_message_id(u);
+            if let Some(notif) = stream_update_to_session_notification(&self.session_id, &u) {
+                match self.tx.try_send(notif) {
+                    Ok(_) => {
+                        tracing::trace!(
+                            session_id = %self.session_id,
+                            update_type = ?u,
+                            "Session notification sent successfully"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            session_id = %self.session_id,
+                            update_type = ?u,
+                            error = %e,
+                            "Failed to send session notification (channel full or closed)"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    fn inject_message_id(&self, update: StreamUpdate) -> StreamUpdate {
+        match update {
+            StreamUpdate::AgentMessageChunk { text, .. } => {
+                let id = self.current_message_id
+                    .lock()
+                    .unwrap()
+                    .get_or_insert_with(|| Uuid::new_v4().to_string())
+                    .clone();
+                StreamUpdate::AgentMessageChunk { text, message_id: Some(id) }
+            }
+            StreamUpdate::AgentThoughtChunk { text, .. } => {
+                let id = self.current_message_id
+                    .lock()
+                    .unwrap()
+                    .get_or_insert_with(|| Uuid::new_v4().to_string())
+                    .clone();
+                StreamUpdate::AgentThoughtChunk { text, message_id: Some(id) }
+            }
+            StreamUpdate::UserMessageChunk { text, .. } => {
+                let id = self.current_message_id
+                    .lock()
+                    .unwrap()
+                    .get_or_insert_with(|| Uuid::new_v4().to_string())
+                    .clone();
+                StreamUpdate::UserMessageChunk { text, message_id: Some(id) }
+            }
+            other => {
+                *self.current_message_id.lock().unwrap() = None;
+                other
+            }
+        }
+    }
+
+    pub fn try_send_plan(&self, entries: Vec<PlanEntry>) {
+        let notif = stream_update_to_session_notification(
+            &self.session_id,
+            &StreamUpdate::Plan { entries },
+        );
+        if let Some(notif) = notif {
+            if let Err(e) = self.tx.try_send(notif) {
+                tracing::warn!(
+                    session_id = %self.session_id,
+                    error = %e,
+                    "Failed to send plan notification"
+                );
             }
         }
     }
 
     pub async fn send_history(&self, messages: &[Message]) {
+        tracing::debug!(
+            session_id = %self.session_id,
+            total_messages = messages.len(),
+            "send_history started"
+        );
         let mut tool_calls_map: HashMap<String, (String, Option<Value>)> = HashMap::new();
+        let mut sent_count: usize = 0;
+        let mut skipped_system: usize = 0;
 
-        for message in messages {
+        for (idx, message) in messages.iter().enumerate() {
+            let msg_type = match message {
+                Message::User(_) => "user",
+                Message::Assistant(_) => "assistant",
+                Message::Tool { .. } => "tool",
+                Message::System(_) => "system",
+            };
             let notifications = match message {
                 Message::User(content) => vec![SessionNotification::new(
                     self.session_id.clone(),
-                    SessionUpdate::UserMessageChunk(ContentChunk::new(
-                        agent_client_protocol::ContentBlock::Text(
-                            agent_client_protocol::TextContent::new(content.as_text().to_string()),
-                        ),
-                    )),
+                    SessionUpdate::UserMessageChunk(
+                        ContentChunk::new(
+                            ContentBlock::Text(
+                                TextContent::new(content.as_text().to_string()),
+                            ),
+                        )
+                        .message_id(Some(Uuid::new_v4().to_string())),
+                    ),
                 )],
                 Message::Assistant(payload) => {
+                    let is_empty_assistant = payload.content.trim().is_empty()
+                        && payload
+                            .reasoning_content
+                            .as_ref()
+                            .is_none_or(|s| s.trim().is_empty())
+                        && payload.tool_calls.is_empty();
+                    if is_empty_assistant {
+                        continue;
+                    }
+
                     for tc in &payload.tool_calls {
                         tool_calls_map.insert(
                             tc.id.clone(),
@@ -411,12 +651,32 @@ impl SessionNotifier {
                         );
                     }
 
+                    let msg_id = Uuid::new_v4().to_string();
                     let mut notifs = vec![SessionNotification::new(
                         self.session_id.clone(),
-                        SessionUpdate::AgentMessageChunk(ContentChunk::new(
-                            payload.content.clone().into(),
-                        )),
+                        SessionUpdate::AgentMessageChunk(
+                            ContentChunk::new(
+                                payload.content.clone().into(),
+                            )
+                            .message_id(Some(msg_id)),
+                        ),
                     )];
+
+                    // 🔧 修复：发送 reasoning_content
+                    if let Some(ref reasoning) = payload.reasoning_content {
+                        if !reasoning.trim().is_empty() {
+                            let reasoning_msg_id = Uuid::new_v4().to_string();
+                            notifs.push(SessionNotification::new(
+                                self.session_id.clone(),
+                                SessionUpdate::AgentThoughtChunk(
+                                    ContentChunk::new(
+                                        reasoning.clone().into(),
+                                    )
+                                    .message_id(Some(reasoning_msg_id)),
+                                ),
+                            ));
+                        }
+                    }
 
                     for tc in &payload.tool_calls {
                         let args = serde_json::from_str::<Value>(&tc.arguments).ok();
@@ -436,9 +696,9 @@ impl SessionNotifier {
                     let id = ToolCallId::new(tool_call_id.clone());
                     let acp_content = match content {
                         loom::tool_source::ToolCallContent::Text(t) => {
-                            agent_client_protocol::ToolCallContent::from(
-                                agent_client_protocol::ContentBlock::Text(
-                                    agent_client_protocol::TextContent::new(t.clone()),
+                            ToolCallContent::from(
+                                ContentBlock::Text(
+                                    TextContent::new(t.clone()),
                                 ),
                             )
                         }
@@ -446,12 +706,12 @@ impl SessionNotifier {
                             path,
                             old_text,
                             new_text,
-                        } => agent_client_protocol::ToolCallContent::Diff(
-                            agent_client_protocol::Diff::new(path.clone(), new_text.clone())
+                        } => ToolCallContent::Diff(
+                            Diff::new(path.clone(), new_text.clone())
                                 .old_text(old_text.clone()),
                         ),
                         loom::tool_source::ToolCallContent::Terminal { terminal_id } => {
-                            agent_client_protocol::ToolCallContent::Terminal(Terminal::new(
+                            ToolCallContent::Terminal(Terminal::new(
                                 TerminalId::new(terminal_id.clone()),
                             ))
                         }
@@ -467,15 +727,36 @@ impl SessionNotifier {
                         SessionUpdate::ToolCallUpdate(tool_call_update),
                     )]
                 }
-                Message::System(_) => continue,
+                Message::System(_) => {
+                    skipped_system += 1;
+                    continue;
+                }
             };
+
+            tracing::trace!(
+                session_id = %self.session_id,
+                index = idx,
+                msg_type = msg_type,
+                notification_count = notifications.len(),
+                "Replaying history message"
+            );
 
             for notif in notifications {
                 if let Err(e) = self.tx.send(notif).await {
-                    tracing::error!(session_id = %self.session_id, error = %e, "Failed to send session update during history replay");
+                    tracing::error!(session_id = %self.session_id, index = idx, msg_type = msg_type, error = %e, "Failed to send session update during history replay");
+                } else {
+                    sent_count += 1;
                 }
             }
         }
+
+        tracing::debug!(
+            session_id = %self.session_id,
+            total_messages = messages.len(),
+            notifications_sent = sent_count,
+            system_skipped = skipped_system,
+            "send_history completed"
+        );
     }
 
     pub async fn send_current_mode(&self, mode_id: &str) {
@@ -496,6 +777,14 @@ impl SessionNotifier {
             SessionUpdate::CurrentModeUpdate(CurrentModeUpdate::new(SessionModeId::new(
                 mode_id.to_string(),
             ))),
+        );
+        let _ = self.tx.try_send(notif);
+    }
+
+    pub fn try_send_session_info_update(&self, title: &str) {
+        let notif = SessionNotification::new(
+            self.session_id.clone(),
+            SessionUpdate::SessionInfoUpdate(SessionInfoUpdate::new().title(title.to_string())),
         );
         let _ = self.tx.try_send(notif);
     }
@@ -605,6 +894,29 @@ fn extract_target_from_input(name: &str, input: Option<&serde_json::Value>) -> O
         &[&["command", "cmd"]]
     } else if n.contains("fetch") {
         &[&["url", "uri"]]
+    } else if n.contains("invoke_agent") || n.contains("invoke") && n.contains("agent") {
+        // Special handling for invoke_agent: extract agent names from agents array
+        if let Some(agents) = obj.get("agents").and_then(|v| v.as_array()) {
+            if !agents.is_empty() {
+                let agent_names: Vec<String> = agents
+                    .iter()
+                    .filter_map(|agent| {
+                        agent
+                            .get("agent")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
+                    })
+                    .collect();
+                if !agent_names.is_empty() {
+                    return Some(format!(
+                        "{} agent(s): {}",
+                        agent_names.len(),
+                        agent_names.join(", ")
+                    ));
+                }
+            }
+        }
+        &[]
     } else {
         &[]
     };

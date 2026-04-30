@@ -12,6 +12,7 @@ use crate::runner_common;
 use crate::stream::StreamEvent;
 use crate::tool_source::ToolSource;
 use crate::LlmClient;
+use crate::cli_run::AnyStreamEvent;
 use crate::{StateGraph, END, START};
 
 use super::dag::ready_nodes;
@@ -96,8 +97,12 @@ impl GotRunner {
         adaptive: bool,
         agot_llm_complexity: bool,
     ) -> Result<Self, CompilationError> {
-        let plan = PlanGraphNode::new(Box::new(super::runner::SharedLlm(Arc::clone(&llm))));
-        let execute = ExecuteGraphNode::new(llm, tool_source, adaptive, agot_llm_complexity);
+        let plan = PlanGraphNode::new(Box::new(SharedLlm(Arc::clone(&llm))));
+        let provider: Arc<dyn crate::llm::LlmProvider> = Arc::new(crate::llm::FixedLlmProvider {
+            client: Arc::clone(&llm),
+            model_id: "got".to_string(),
+        });
+        let execute = ExecuteGraphNode::new(provider, tool_source, adaptive, agot_llm_complexity);
 
         let mut graph = StateGraph::<GotState>::new();
         if let Some(s) = store {
@@ -176,7 +181,7 @@ impl GotRunner {
     where
         F: FnMut(StreamEvent<GotState>),
     {
-        self.stream_with_config(user_message, None, on_event).await
+        self.stream_with_config(user_message, None, on_event, None).await
     }
 
     /// Streams with optional per-invoke config.
@@ -185,6 +190,7 @@ impl GotRunner {
         user_message: &str,
         config: Option<RunnableConfig>,
         on_event: Option<F>,
+        any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
     ) -> Result<runner_common::StreamRunOutcome<GotState>, GotRunError>
     where
         F: FnMut(StreamEvent<GotState>),
@@ -203,6 +209,7 @@ impl GotRunner {
             on_event,
             self.cancellation.clone(),
             None,
+            any_stream_event_sender,
         )
         .await
         .map_err(|e| match e {

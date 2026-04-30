@@ -27,30 +27,29 @@
 
 mod act_node;
 mod build;
-mod completion_check_node;
 mod config;
 mod observe_node;
 mod runner;
-mod summarize_node;
+mod title_node;
 mod think_node;
 mod with_node_logging;
 
 pub use act_node::{
-    ActNode, ErrorHandlerFn, HandleToolErrors, DEFAULT_EXECUTION_ERROR_TEMPLATE,
+    ActNode, DEFAULT_EXECUTION_ERROR_TEMPLATE,
     DEFAULT_TOOL_ERROR_TEMPLATE, STEP_PROGRESS_EVENT_TYPE,
 };
 pub use build::{
     build_dup_runner, build_got_runner, build_react_run_context, build_react_runner,
     build_react_runner_with_openai, build_tot_runner, BuildRunnerError, ReactRunContext,
 };
-pub use completion_check_node::CompletionCheckNode;
-pub use config::{GotRunnerConfig, ReactBuildConfig, TotRunnerConfig};
+pub use build::{DefaultTierResolver, ResolvedTierModel, TierResolver};
+pub use config::{BuiltinToolFilter, GotRunnerConfig, ReactBuildConfig, TotRunnerConfig};
 pub use observe_node::ObserveNode;
 pub use runner::{
     build_react_initial_state, run_agent, run_react_graph_stream, AgentOptions, ReactRunner,
     RunError,
 };
-pub use summarize_node::{is_first_think, SummarizeNode};
+pub use title_node::{is_first_think, TitleNode};
 pub use think_node::ThinkNode;
 pub use with_node_logging::WithNodeLogging;
 

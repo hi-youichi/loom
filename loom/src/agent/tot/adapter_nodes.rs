@@ -4,7 +4,7 @@
 
 use async_trait::async_trait;
 
-use crate::agent::react::{ActNode, HandleToolErrors, ObserveNode};
+use crate::agent::react::{ActNode, ObserveNode};
 use crate::error::AgentError;
 use crate::graph::Next;
 use crate::Node;
@@ -23,7 +23,7 @@ pub struct TotActNode {
 impl TotActNode {
     pub fn new(tool_source: Box<dyn ToolSource>) -> Self {
         Self {
-            act: ActNode::new(tool_source).with_handle_tool_errors(HandleToolErrors::Always(None)),
+            act: ActNode::new(tool_source),
         }
     }
 

@@ -6,12 +6,7 @@
 //!
 //! # Error Handling
 //!
-//! By default, tool errors propagate and short-circuit the graph. Use `with_handle_tool_errors`
-//! to configure error handling:
-//!
-//! - `HandleToolErrors::Never` - Errors propagate (default)
-//! - `HandleToolErrors::Always` - Errors are caught and returned as error messages
-//! - `HandleToolErrors::Custom(handler)` - Custom error handler function
+//! Tool errors are caught and returned as error messages to the LLM for further handling.
 //!
 //! # Streaming Support
 //!
@@ -23,7 +18,6 @@
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::Arc;
 use tracing::{debug, trace, warn};
 
 use crate::cli_run::ActiveOperationKind;
@@ -36,7 +30,7 @@ use crate::state::tool_output_normalizer::{
 };
 use crate::state::{ReActState, ToolCall, ToolResult};
 use crate::stream::{StreamEvent, StreamMode, ToolStreamWriter};
-use crate::tool_source::{ToolCallContext, ToolSource, ToolSourceError};
+use crate::tool_source::{ToolCallContext, ToolSource};
 
 /// Event type for Custom stream events emitted after each tool call (step progress).
 /// Server or clients can use this to show progress (e.g. "Calling list_dir", "Done: 12 entries").
@@ -104,28 +98,7 @@ pub const DEFAULT_TOOL_ERROR_TEMPLATE: &str = "Error: {error}\n Please fix your 
 pub const DEFAULT_EXECUTION_ERROR_TEMPLATE: &str =
     "Error executing tool '{tool_name}' with kwargs {tool_kwargs} with error:\n {error}\n Please fix the error and try again.";
 
-/// Error handler function type.
-pub type ErrorHandlerFn =
-    Arc<dyn Fn(&ToolSourceError, &str, &Value) -> String + Send + Sync + 'static>;
 
-/// Configuration for how ActNode handles tool errors.
-#[derive(Clone, Default)]
-pub enum HandleToolErrors {
-    #[default]
-    Never,
-    Always(Option<String>),
-    Custom(ErrorHandlerFn),
-}
-
-impl std::fmt::Debug for HandleToolErrors {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Never => write!(f, "HandleToolErrors::Never"),
-            Self::Always(msg) => write!(f, "HandleToolErrors::Always({:?})", msg),
-            Self::Custom(_) => write!(f, "HandleToolErrors::Custom(<fn>)"),
-        }
-    }
-}
 
 fn approval_required_payload(tc: &ToolCall, args: &Value) -> Value {
     serde_json::json!({
@@ -140,7 +113,6 @@ fn approval_required_payload(tc: &ToolCall, args: &Value) -> Value {
 /// Act node: one ReAct step that executes tool_calls and produces tool_results.
 pub struct ActNode {
     tools: Box<dyn ToolSource>,
-    handle_tool_errors: HandleToolErrors,
     approval_policy: Option<ApprovalPolicy>,
 }
 
@@ -148,7 +120,6 @@ impl ActNode {
     pub fn new(tools: Box<dyn ToolSource>) -> Self {
         Self {
             tools,
-            handle_tool_errors: HandleToolErrors::Never,
             approval_policy: None,
         }
     }
@@ -165,31 +136,7 @@ impl ActNode {
         }
     }
 
-    pub fn with_handle_tool_errors(mut self, handle_tool_errors: HandleToolErrors) -> Self {
-        self.handle_tool_errors = handle_tool_errors;
-        self
-    }
 
-    fn handle_error(
-        &self,
-        error: &ToolSourceError,
-        tool_name: &str,
-        tool_args: &Value,
-    ) -> Option<String> {
-        match &self.handle_tool_errors {
-            HandleToolErrors::Never => None,
-            HandleToolErrors::Always(custom_msg) => {
-                let msg = custom_msg.clone().unwrap_or_else(|| {
-                    DEFAULT_EXECUTION_ERROR_TEMPLATE
-                        .replace("{tool_name}", tool_name)
-                        .replace("{tool_kwargs}", &tool_args.to_string())
-                        .replace("{error}", &error.to_string())
-                });
-                Some(msg)
-            }
-            HandleToolErrors::Custom(handler) => Some(handler(error, tool_name, tool_args)),
-        }
-    }
 
     async fn load_tool_output_hints(&self) -> HashMap<String, ToolOutputHint> {
         match self.tools.list_tools().await {
@@ -326,13 +273,10 @@ impl Node<ReActState> for ActNode {
                 }
                 Err(e) => {
                     warn!(tool = %tc.name, error = %e, "Tool call failed");
-                    let error_text = if let Some(error_msg) = self.handle_error(&e, &tc.name, &args)
-                    {
-                        error_msg
-                    } else {
-                        self.tools.set_call_context(None);
-                        return Err(AgentError::ExecutionFailed(e.to_string()));
-                    };
+                    let error_text = DEFAULT_EXECUTION_ERROR_TEMPLATE
+                        .replace("{tool_name}", &tc.name)
+                        .replace("{tool_kwargs}", &args.to_string())
+                        .replace("{error}", &e.to_string());
 
                     // Use unified tool output normalization for errors
                     let normalized = normalize_tool_output(
@@ -518,6 +462,8 @@ impl Node<ReActState> for ActNode {
                 user_id: run_ctx.config.user_id.clone(),
                 depth: run_ctx.config.depth.unwrap_or(0),
                 run_cancellation: run_ctx.run_cancellation.clone(),
+                any_stream_event_sender: run_ctx.any_stream_event_sender.clone(),
+                acp_session_id: run_ctx.config.acp_session_id.clone(),
             };
             self.tools.set_call_context(Some(tool_ctx.clone()));
 
@@ -559,13 +505,14 @@ impl Node<ReActState> for ActNode {
 
             match result {
                 Ok(content) => {
+                    // Serialize ToolCallContent to JSON for normalization (handles Diff/Terminal/Text)
+                    let raw_text = serde_json::to_string(&content).unwrap_or_else(|_| content.clone().into_text());
                     trace!(
                         tool = %tc.name,
-                        result_len = content.as_text().unwrap().len(),
-                        result_preview = %truncate_for_log(content.as_text().unwrap(), 200),
+                        result_len = raw_text.len(),
+                        result_preview = %truncate_for_log(&raw_text, 200),
                         "Tool returned"
                     );
-                    let raw_text = content.as_text().unwrap().to_string();
                     let normalized = normalize_tool_output(
                         &tc.name,
                         &args,
@@ -610,13 +557,10 @@ impl Node<ReActState> for ActNode {
                 }
                 Err(e) => {
                     warn!(tool = %tc.name, error = %e, "Tool call failed");
-                    let error_text = if let Some(error_msg) = self.handle_error(&e, &tc.name, &args)
-                    {
-                        error_msg
-                    } else {
-                        self.tools.set_call_context(None);
-                        return Err(AgentError::ExecutionFailed(e.to_string()));
-                    };
+                    let error_text = DEFAULT_EXECUTION_ERROR_TEMPLATE
+                        .replace("{tool_name}", &tc.name)
+                        .replace("{tool_kwargs}", &args.to_string())
+                        .replace("{error}", &e.to_string());
 
                     let normalized = normalize_tool_output(
                         &tc.name,
@@ -730,69 +674,6 @@ mod tests {
         assert_eq!(p["tool_name"], "bash");
         assert_eq!(p["call_id"], "c1");
         assert_eq!(p["summary"], "done");
-    }
-
-    #[test]
-    fn handle_tool_errors_default_is_never() {
-        let h = HandleToolErrors::default();
-        assert!(matches!(h, HandleToolErrors::Never));
-    }
-
-    #[test]
-    fn handle_tool_errors_debug_format() {
-        assert!(format!("{:?}", HandleToolErrors::Never).contains("Never"));
-        assert!(format!("{:?}", HandleToolErrors::Always(None)).contains("Always"));
-        assert!(format!("{:?}", HandleToolErrors::Always(Some("msg".to_string()))).contains("msg"));
-        let custom = HandleToolErrors::Custom(Arc::new(|_, _, _| "err".to_string()));
-        assert!(format!("{:?}", custom).contains("Custom"));
-    }
-
-    #[test]
-    fn handle_error_never_returns_none() {
-        use crate::tool_source::MockToolSource;
-        let node = ActNode::new(Box::new(MockToolSource::default()));
-        let err = ToolSourceError::InvalidInput("test".to_string());
-        assert!(node
-            .handle_error(&err, "bash", &serde_json::json!({}))
-            .is_none());
-    }
-
-    #[test]
-    fn handle_error_always_default_template() {
-        use crate::tool_source::MockToolSource;
-        let node = ActNode::new(Box::new(MockToolSource::default()))
-            .with_handle_tool_errors(HandleToolErrors::Always(None));
-        let err = ToolSourceError::InvalidInput("bad input".to_string());
-        let msg = node
-            .handle_error(&err, "bash", &serde_json::json!({"cmd": "ls"}))
-            .unwrap();
-        assert!(msg.contains("bash"));
-        assert!(msg.contains("bad input"));
-    }
-
-    #[test]
-    fn handle_error_always_custom_message() {
-        use crate::tool_source::MockToolSource;
-        let node = ActNode::new(Box::new(MockToolSource::default()))
-            .with_handle_tool_errors(HandleToolErrors::Always(Some("custom error".to_string())));
-        let err = ToolSourceError::InvalidInput("test".to_string());
-        let msg = node
-            .handle_error(&err, "bash", &serde_json::json!({}))
-            .unwrap();
-        assert_eq!(msg, "custom error");
-    }
-
-    #[test]
-    fn handle_error_custom_handler() {
-        use crate::tool_source::MockToolSource;
-        let handler: ErrorHandlerFn = Arc::new(|e, name, _args| format!("{}: {}", name, e));
-        let node = ActNode::new(Box::new(MockToolSource::default()))
-            .with_handle_tool_errors(HandleToolErrors::Custom(handler));
-        let err = ToolSourceError::InvalidInput("test".to_string());
-        let msg = node
-            .handle_error(&err, "bash", &serde_json::json!({}))
-            .unwrap();
-        assert!(msg.contains("bash"));
     }
 
     #[test]

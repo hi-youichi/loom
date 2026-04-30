@@ -154,6 +154,9 @@ pub enum ServerResponse {
     WorkspaceThreadList(WorkspaceThreadListResponse),
     WorkspaceThreadAdd(WorkspaceThreadAddResponse),
     WorkspaceThreadRemove(WorkspaceThreadRemoveResponse),
+    WorkspaceRename(WorkspaceRenameResponse),
+    WorkspaceFileList(WorkspaceFileListResponse),
+    WorkspaceFileRead(WorkspaceFileReadResponse),
     Pong(PongResponse),
     Error(ErrorResponse),
     ListModels(ListModelsResponse),
@@ -210,6 +213,51 @@ pub struct WorkspaceThreadRemoveResponse {
     pub id: String,
     pub workspace_id: String,
     pub thread_id: String,
+}
+
+/// Workspace rename response.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceRenameResponse {
+    pub id: String,
+    pub workspace_id: String,
+    pub name: String,
+}
+
+// -----------------------------------------------------------------------------
+// File responses
+// -----------------------------------------------------------------------------
+
+/// A single file/directory entry in a workspace file listing.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FileEntry {
+    pub name: String,
+    /// "file" or "folder"
+    pub kind: String,
+    pub path: String,
+    /// File extension (only for files)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extension: Option<String>,
+    /// File size in bytes (only for files)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+}
+
+/// Workspace file list response.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceFileListResponse {
+    pub id: String,
+    pub workspace_id: String,
+    pub path: String,
+    pub entries: Vec<FileEntry>,
+}
+
+/// Workspace file read response.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceFileReadResponse {
+    pub id: String,
+    pub workspace_id: String,
+    pub path: String,
+    pub content: String,
 }
 
 // -----------------------------------------------------------------------------
@@ -450,5 +498,20 @@ mod tests {
         assert!(json.contains("\"type\":\"workspace_thread_remove\""));
         let parsed: ServerResponse = serde_json::from_str(&json).unwrap();
         assert!(matches!(parsed, ServerResponse::WorkspaceThreadRemove(_)));
+    }
+
+    #[test]
+    fn response_workspace_rename_roundtrip() {
+        let resp = ServerResponse::WorkspaceRename(WorkspaceRenameResponse {
+            id: "req-wr".to_string(),
+            workspace_id: "ws-1".to_string(),
+            name: "new name".to_string(),
+        });
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"type\":\"workspace_rename\""));
+        assert!(json.contains("\"workspace_id\":\"ws-1\""));
+        assert!(json.contains("\"name\":\"new name\""));
+        let parsed: ServerResponse = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, ServerResponse::WorkspaceRename(_)));
     }
 }

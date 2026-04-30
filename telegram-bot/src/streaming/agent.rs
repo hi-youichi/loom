@@ -45,7 +45,9 @@ pub async fn run_loom_agent_streaming(
     let opts = RunOptions {
         message: UserContent::Text(message.to_string()),
         thread_id: Some(thread_id),
-        working_folder: Some(PathBuf::from(".")),
+        working_folder: Some(PathBuf::from(
+            std::env::var("WORKING_DIR").unwrap_or_else(|_| ".".to_string())
+        )),
         session_id: None,
         agent: None,
         verbose: false,
@@ -61,9 +63,13 @@ pub async fn run_loom_agent_streaming(
         cancellation: None,
         output_timestamp: false,
         dry_run: false,
-    };
+    any_stream_event_sender: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
+        };
 
-    let mapper = StreamEventMapper::new(tx.clone(), settings.streaming.show_act_phase);
+    let mapper = StreamEventMapper::new(tx.clone());
     let on_event = mapper.boxed_callback();
 
     let result = run_agent_with_options(&opts, &RunCmd::React, Some(on_event)).await;

@@ -25,8 +25,7 @@ fn test_thread_id_transfer_to_llm_headers() {
         "gpt-4"
     ).with_headers(headers);
     
-    // The client was created successfully - this proves the API works
-    assert!(true);
+    // If we get here without panic, the client was created successfully
 }
 
 #[test]
@@ -165,7 +164,6 @@ fn test_chat_openai_compat_with_various_header_configurations() {
         ).with_headers(headers);
         
         // If we get here without panic, the client was created successfully
-        assert!(true);
     }
 }
 

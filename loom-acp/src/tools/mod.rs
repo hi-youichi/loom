@@ -2,21 +2,20 @@
 //!
 //! These tools allow Loom to leverage IDE capabilities when running as an ACP agent:
 //! - File system operations (fs/read_text_file, fs/write_text_file)
-//! - Terminal operations (terminal/create, etc.)
 //!
 //! Tools are only available when the Client declares support in initialize request.
 //! If a capability is not available, tools fall back to local execution or return errors.
 
 mod client_bridge;
 mod fs_tools;
-mod terminal_tools;
+mod terminal_executor;
 
 pub use client_bridge::{
-    clear_client_bridge, get_client_bridge, set_client_bridge, ClientBridgeTrait, NoOpClientBridge,
-    TerminalOutput,
+    clear_client_bridge, get_client_bridge, set_client_bridge, set_connection,
+    AcpClientBridge, ClientBridgeTrait, NoOpClientBridge, TerminalExitResult, TerminalOutput,
 };
 pub use fs_tools::{ReadTextFileTool, WriteTextFileTool};
-pub use terminal_tools::{CreateTerminalTool, TerminalOutputTool};
+pub use terminal_executor::{AcpBridgeCommandExecutor, TerminalCommandExecutor};
 
 use crate::client_capabilities::ClientCapabilitiesInfo;
 use loom::tools::Tool;
@@ -54,12 +53,6 @@ pub fn create_acp_tools(capabilities: &ClientCapabilitiesInfo) -> Vec<Box<dyn To
         tools.push(Box::new(WriteTextFileTool::new()));
     }
 
-    // Terminal tools
-    if capabilities.can_create_terminal() {
-        tools.push(Box::new(CreateTerminalTool::new()));
-        tools.push(Box::new(TerminalOutputTool::new()));
-    }
-
     tools
 }
 
@@ -86,7 +79,7 @@ mod tests {
         let caps = ClientCapabilitiesInfo::from_json(Some(caps_json));
         let tools = create_acp_tools(&caps);
         assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name(), "fs/read_text_file");
+        assert_eq!(tools[0].name(), "fs_read_text_file");
     }
 
     #[test]
@@ -102,40 +95,17 @@ mod tests {
         assert_eq!(tools.len(), 2);
     }
 
-    #[test]
-    fn test_create_acp_tools_all() {
-        let caps_json = json!({
-            "fs": {
-                "readTextFile": true,
-                "writeTextFile": true
-            },
-            "terminal": true
-        });
-        let caps = ClientCapabilitiesInfo::from_json(Some(caps_json));
-        let tools = create_acp_tools(&caps);
-        assert_eq!(tools.len(), 4); // 2 fs tools + 2 terminal tools
-    }
 
     #[test]
     fn test_tool_specs() {
         let read_tool = ReadTextFileTool::new();
         let spec = read_tool.spec();
-        assert_eq!(spec.name, "fs/read_text_file");
+        assert_eq!(spec.name, "fs_read_text_file");
         assert!(spec.description.is_some());
 
         let write_tool = WriteTextFileTool::new();
         let spec = write_tool.spec();
-        assert_eq!(spec.name, "fs/write_text_file");
-        assert!(spec.description.is_some());
-
-        let create_terminal_tool = CreateTerminalTool::new();
-        let spec = create_terminal_tool.spec();
-        assert_eq!(spec.name, "terminal_create");
-        assert!(spec.description.is_some());
-
-        let output_tool = TerminalOutputTool::new();
-        let spec = output_tool.spec();
-        assert_eq!(spec.name, "terminal_output");
+        assert_eq!(spec.name, "fs_write_text_file");
         assert!(spec.description.is_some());
     }
 }

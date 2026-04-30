@@ -150,6 +150,7 @@ impl McpManager {
                 env,
                 disabled: args.disabled,
                 headers: HashMap::new(),
+                oauth: None,
             })
         } else if let Some(url) = &args.url {
             Ok(McpServerEntry {
@@ -159,6 +160,7 @@ impl McpManager {
                 env,
                 disabled: args.disabled,
                 headers: HashMap::new(),
+                oauth: None,
             })
         } else {
             Err(McpConfigError::InvalidEntry {
@@ -203,6 +205,7 @@ impl McpManager {
             env,
             disabled,
             headers: existing.headers.clone(),
+            oauth: existing.oauth.clone(),
         })
     }
 

@@ -17,6 +17,7 @@ use crate::runner_common::{self, load_from_checkpoint_or_build};
 use crate::stream::StreamEvent;
 use crate::tool_source::ToolSource;
 use crate::LlmClient;
+use crate::cli_run::AnyStreamEvent;
 use crate::{StateGraph, END, START};
 
 use super::adapter_nodes::{TotActNode, TotObserveNode};
@@ -247,7 +248,7 @@ impl TotRunner {
     where
         F: FnMut(StreamEvent<TotState>),
     {
-        self.stream_with_config(user_message, None, on_event).await
+        self.stream_with_config(user_message, None, on_event, None).await
     }
 
     /// Streams with optional per-invoke config.
@@ -256,6 +257,7 @@ impl TotRunner {
         user_message: &str,
         config: Option<RunnableConfig>,
         on_event: Option<F>,
+        any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
     ) -> Result<runner_common::StreamRunOutcome<TotState>, TotRunError>
     where
         F: FnMut(StreamEvent<TotState>),
@@ -275,6 +277,7 @@ impl TotRunner {
             on_event,
             self.cancellation.clone(),
             None,
+            any_stream_event_sender,
         )
         .await
         .map_err(|e| match e {

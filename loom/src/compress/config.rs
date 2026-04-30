@@ -2,6 +2,8 @@
 //!
 //! Controls when and how to prune tool results and compact conversation history.
 
+use model_spec_core::spec::ModelTier;
+
 /// Configuration for context compression: pruning and compaction.
 #[derive(Debug, Clone)]
 pub struct CompactionConfig {
@@ -19,6 +21,8 @@ pub struct CompactionConfig {
     pub prune_minimum: Option<u32>,
     /// When compacting, keep this many most recent messages; older ones are summarized.
     pub compact_keep_recent: usize,
+    /// Model tier to use for compaction (defaults to Light).
+    pub compact_tier: ModelTier,
 }
 
 impl Default for CompactionConfig {
@@ -31,6 +35,7 @@ impl Default for CompactionConfig {
             prune_keep_tokens: 40_000,
             prune_minimum: Some(20_000),
             compact_keep_recent: 20,
+            compact_tier: ModelTier::Light,
         }
     }
 }
@@ -44,6 +49,11 @@ impl CompactionConfig {
             max_context_tokens,
             ..Self::default()
         }
+    }
+
+    pub fn with_compact_tier(mut self, tier: ModelTier) -> Self {
+        self.compact_tier = tier;
+        self
     }
 }
 
@@ -61,6 +71,7 @@ mod tests {
         assert_eq!(c.prune_keep_tokens, 40_000);
         assert_eq!(c.prune_minimum, Some(20_000));
         assert_eq!(c.compact_keep_recent, 20);
+        assert_eq!(c.compact_tier, ModelTier::Light);
     }
 
     #[test]
@@ -73,5 +84,12 @@ mod tests {
         assert_eq!(c.prune_keep_tokens, 40_000);
         assert_eq!(c.prune_minimum, Some(20_000));
         assert_eq!(c.compact_keep_recent, 20);
+        assert_eq!(c.compact_tier, ModelTier::Light);
+    }
+
+    #[test]
+    fn with_compact_tier_overrides_default() {
+        let c = CompactionConfig::default().with_compact_tier(ModelTier::Standard);
+        assert_eq!(c.compact_tier, ModelTier::Standard);
     }
 }

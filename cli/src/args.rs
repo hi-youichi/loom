@@ -89,6 +89,10 @@ pub(crate) struct Args {
     /// Log rotation strategy: none, daily, hourly, minutely (requires --log-file)
     #[arg(long, global = true, default_value = "daily", value_name = "STRATEGY")]
     pub(crate) log_rotate: String,
+
+    /// Log output format: text (default) or json
+    #[arg(long, global = true, default_value = "text", value_name = "FORMAT")]
+    pub(crate) log_format: String,
 }
 
 #[derive(Subcommand, Debug, Clone)]

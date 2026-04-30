@@ -31,7 +31,7 @@ async fn e2e_tools_list() {
     match &resp {
         ServerResponse::ToolsList(r) => {
             assert_eq!(r.id, id);
-            assert!(r.tools.len() > 0, "expected at least one tool");
+            assert!(!r.tools.is_empty(), "expected at least one tool");
         }
         ServerResponse::Error(e) => panic!("server error: {}", e.error),
         _ => panic!("expected ToolsList, got {:?}", resp),

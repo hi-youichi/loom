@@ -356,6 +356,12 @@ fn on_event_react(
             print_stream_chunk(chunk);
         }
         StreamEvent::Updates { node_id, state, .. } => {
+            // Always show title generation result (non-verbose too)
+            if node_id == "title" {
+                if let Some(ref title) = state.summary {
+                    eprintln!("Session title: {}", title);
+                }
+            }
             if verbose {
                 let label = match node_id.as_str() {
                     "think" => {
@@ -725,6 +731,7 @@ mod tests {
         loom::ReactBuildConfig {
             db_path: None,
             thread_id: None,
+            trace_thread_id: None,
             user_id: None,
             system_prompt: None,
             exa_api_key: None,
@@ -744,7 +751,10 @@ mod tests {
             openai_api_key: None,
             openai_base_url: None,
             model: None,
+            model_tier: None,
+            parent_model_hint: None,
             llm_provider: None,
+            llm_provider_name: None,
             openai_temperature: None,
             embedding_api_key: None,
             embedding_base_url: None,
@@ -758,6 +768,10 @@ mod tests {
             skill_registry: None,
             max_sub_agent_depth: None,
             dry_run: false,
+            builtin_tool_filter: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
         }
     }
 
@@ -1147,6 +1161,10 @@ mod tests {
             base_url: None,
             api_key: None,
             provider_type: None,
+    any_stream_event_sender: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
         }
     }
 

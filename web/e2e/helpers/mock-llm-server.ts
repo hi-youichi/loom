@@ -61,6 +61,17 @@ export function startMockLLMServer(config: MockLLMServerConfig): Promise<http.Se
       return
     }
 
+    if (req.url?.includes('/models')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({
+        object: 'list',
+        data: [
+          { id: 'gpt-4o-mini', object: 'model', created: 1, owned_by: 'mock' },
+        ],
+      }))
+      return
+    }
+
     if (req.method !== 'POST') {
       res.writeHead(405, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: 'Method not allowed' }))
@@ -85,7 +96,7 @@ export function startMockLLMServer(config: MockLLMServerConfig): Promise<http.Se
         const response: MockLLMResponse = {
           id: `chatcmpl-${Math.random().toString(36).substr(2, 9)}`,
           object: 'chat.completion',
-          created: Date.now(),
+          created: Math.floor(Date.now() / 1000),
           model: requestBody.model || 'test-model',
           choices: [{
             index: 0,
@@ -106,8 +117,47 @@ export function startMockLLMServer(config: MockLLMServerConfig): Promise<http.Se
 
         // Simulate network delay
         setTimeout(() => {
-          res.writeHead(200, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify(response))
+          if (requestBody.stream) {
+            res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' })
+
+            const chunkId = response.id
+            const model = response.model
+
+            const sseChunks = [
+              JSON.stringify({
+                id: chunkId,
+                object: 'chat.completion.chunk',
+                created: Math.floor(Date.now() / 1000),
+                model,
+                choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }],
+              }),
+              JSON.stringify({
+                id: chunkId,
+                object: 'chat.completion.chunk',
+                created: Math.floor(Date.now() / 1000),
+                model,
+                choices: [{ index: 0, delta: { content: responseContent }, finish_reason: null }],
+              }),
+              JSON.stringify({
+                id: chunkId,
+                object: 'chat.completion.chunk',
+                created: Math.floor(Date.now() / 1000),
+                model,
+                choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+                usage: response.usage,
+              }),
+            ]
+
+            for (const chunk of sseChunks) {
+              res.write(`data: ${JSON.stringify(chunk)}\n\n`)
+            }
+
+            res.write('data: [DONE]\n\n')
+            res.end()
+          } else {
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify(response))
+          }
         }, responseDelay)
         
       } catch (error) {
@@ -134,19 +184,18 @@ function generateDefaultResponse(request: MockLLMRequest): string {
   if (lastMessage.role === 'user') {
     const userContent = lastMessage.content.toLowerCase()
     
-    // Simple response generation based on user input
     if (userContent.includes('hello') || userContent.includes('hi')) {
-      return 'Hello! How can I help you today?'
+      return '{"completed": true, "reason": "Greeting received"}'
     } else if (userContent.includes('test')) {
-      return 'This is a test response from the mock LLM server.'
+      return '{"completed": true, "reason": "Test completed"}'
     } else if (userContent.includes('error')) {
-      return 'This is a simulated error response.'
+      return '{"completed": true, "reason": "Error simulated"}'
     } else {
-      return `I received your message: "${lastMessage.content}". This is a mock response for testing purposes.`
+      return '{"completed": true, "reason": "Task finished"}'
     }
   }
   
-  return 'This is a mock LLM response.'
+  return '{"completed": true, "reason": "Done"}'
 }
 
 /**

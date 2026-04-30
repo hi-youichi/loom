@@ -140,23 +140,27 @@ pub mod openai_sse;
 pub mod pregel;
 pub mod prompts;
 pub mod protocol;
+pub mod provider;
 pub mod runner_common;
 pub mod skill;
 pub mod state;
 pub mod stream;
+pub mod tier;
 
 pub mod services;
 pub mod tool_source;
 pub mod tools;
 pub mod traits;
 pub mod user_message;
+pub mod title_generator;
 
 pub use agent::react::{
     build_dup_runner, build_got_runner, build_react_initial_state, build_react_run_context,
     build_react_runner, build_react_runner_with_openai, build_tot_runner, run_agent,
     run_react_graph_stream, tools_condition, ActNode, AgentOptions, BuildRunnerError,
-    ErrorHandlerFn, GotRunnerConfig, HandleToolErrors, ObserveNode, ReactBuildConfig,
-    ReactRunContext, ReactRunner, RunError as ReactRunError, ThinkNode, ToolsConditionResult,
+    BuiltinToolFilter, DefaultTierResolver, GotRunnerConfig, ObserveNode,
+    ReactBuildConfig, ReactRunContext, ReactRunner, ResolvedTierModel, RunError as ReactRunError,
+    ThinkNode, TierResolver, ToolsConditionResult,
     TotRunnerConfig, WithNodeLogging, DEFAULT_EXECUTION_ERROR_TEMPLATE,
     DEFAULT_TOOL_ERROR_TEMPLATE, REACT_SYSTEM_PROMPT, STEP_PROGRESS_EVENT_TYPE,
 };
@@ -167,7 +171,9 @@ pub use channels::{
 };
 pub use cli_run::{
     build_config_from_profile, build_helve_config, list_available_profiles, load_agents_md,
-    resolve_model_config, resolve_profile, run_agent_with_llm_override, run_agent_with_options,
+    resolve_model_config, resolve_profile, resolve_tier_and_build_config,
+    resolve_tier_and_build_config_with_resolver,
+    run_agent_with_llm_override, run_agent_with_options,
     ActiveOperation, ActiveOperationCanceller, ActiveOperationKind, AgentProfile, AgentRunResult,
     AnyRunner, AnyStreamEvent, ProfileError, ProfileSource, ProfileSummary, ResolvedAgent,
     ResolvedModelConfig, RunCancellation, RunCmd, RunCompletion, RunError, RunOptions,
@@ -193,8 +199,9 @@ pub use helve::{
 };
 pub use llm::{ChatOpenAI, ChatOpenAICompat};
 pub use llm::{
-    CompletionTokensDetails, LlmClient, LlmResponse, LlmUsage, MockLlm, PromptTokensDetails,
-    ToolCallDelta, ToolChoiceMode,
+    CompletionTokensDetails, FixedLlmProvider, LlmClient, LlmProvider, LlmResponse, LlmUsage,
+    MockLlm, OpenAICompatProvider, OpenAIProvider, PromptTokensDetails, ToolCallDelta,
+    ToolChoiceMode,
 };
 pub use managed::{IsLastStep, ManagedValue};
 pub use memory::Embedder;
@@ -212,7 +219,7 @@ pub use message::{
 };
 pub use model_spec::{
     CachedResolver, CompositeResolver, ConfigOverride, LocalFileResolver, ModelLimitResolver,
-    ModelSpec, ModelsDevResolver, ResolverRefresher,
+    ModelSpec, ModelTier, ModelsDevResolver, ResolverRefresher,
 };
 pub use openai_sse::{
     parse_chat_request, write_sse_line, ChatCompletionChunk, ChatCompletionRequest, ChatMessage,
@@ -235,14 +242,17 @@ pub use protocol::{
     ToolShowOutput, ToolShowRequest, ToolShowResponse, ToolsListRequest, ToolsListResponse,
     UserMessageItem, UserMessagesRequest, UserMessagesResponse, WorkspaceCreateRequest,
     WorkspaceCreateResponse, WorkspaceListRequest, WorkspaceListResponse, WorkspaceMeta,
-    WorkspaceThreadAddRequest, WorkspaceThreadAddResponse, WorkspaceThreadListRequest,
+    WorkspaceRenameRequest, WorkspaceRenameResponse, WorkspaceThreadAddRequest,
+    WorkspaceThreadAddResponse, WorkspaceThreadListRequest,
     WorkspaceThreadListResponse, WorkspaceThreadRemoveRequest, WorkspaceThreadRemoveResponse,
+    WorkspaceFileListRequest, WorkspaceFileListResponse, FileEntry,
+    WorkspaceFileReadRequest, WorkspaceFileReadResponse,
 };
 pub use state::{
     normalize_tool_output, NormalizationConfig, NormalizedToolOutput, ToolOutputHint,
     ToolOutputStrategy, ToolStorageRef,
 };
-pub use state::{ReActState, ToolCall, ToolResult};
+pub use state::{ModelConfig, ReActState, ToolCall, ToolResult};
 pub use stream::{
     CheckpointEvent, MessageChunk, MessageChunkKind, StreamEvent, StreamMetadata, StreamMode,
     StreamWriter, ToolStreamWriter,
@@ -254,11 +264,12 @@ pub use tool_source::{
     TOOL_BASH, TOOL_GET_RECENT_MESSAGES, TOOL_LIST_MEMORIES, TOOL_RECALL, TOOL_REMEMBER,
     TOOL_SEARCH_MEMORIES, TOOL_WEB_FETCHER,
 };
-pub use tools::{register_mcp_tools, BashTool, McpToolAdapter};
+pub use tools::{register_mcp_tools, BashTool, CommandExecutor, LocalCommandExecutor, McpToolAdapter};
 pub use traits::Agent;
 pub use user_message::{
     NoOpUserMessageStore, SqliteUserMessageStore, UserMessageStore, UserMessageStoreError,
 };
+pub use title_generator::generate_title;
 
 // Re-export DUP, GoT, ToT from agent for backward compatibility.
 pub use agent::{

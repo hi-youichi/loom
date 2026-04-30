@@ -274,6 +274,10 @@ mod tests {
             mcp_config_path: None,
             output_timestamp: false,
             dry_run: false,
+    any_stream_event_sender: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
         }
     }
 

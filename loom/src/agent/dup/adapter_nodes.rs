@@ -7,9 +7,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::agent::react::{ActNode, HandleToolErrors, ObserveNode, ThinkNode};
+use crate::agent::react::{ActNode, ObserveNode, ThinkNode};
 use crate::error::AgentError;
 use crate::graph::Next;
+use crate::llm::LlmProvider;
 use crate::Node;
 use crate::{helve::ApprovalPolicy, tool_source::ToolSource};
 
@@ -21,9 +22,9 @@ pub struct PlanNode {
 }
 
 impl PlanNode {
-    pub fn new(llm: Box<dyn crate::LlmClient>) -> Self {
+    pub fn new(provider: Arc<dyn LlmProvider>) -> Self {
         Self {
-            think: ThinkNode::new(Arc::from(llm)),
+            think: ThinkNode::new(provider),
         }
     }
 }
@@ -54,7 +55,7 @@ pub struct DupActNode {
 impl DupActNode {
     pub fn new(tool_source: Box<dyn ToolSource>) -> Self {
         Self {
-            act: ActNode::new(tool_source).with_handle_tool_errors(HandleToolErrors::Always(None)),
+            act: ActNode::new(tool_source),
         }
     }
 

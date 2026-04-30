@@ -77,6 +77,8 @@ async fn query_providers_models_from_spec(providers: &[ProviderDef]) -> Vec<Prov
             api_key: p.api_key.clone(),
             provider_type: p.provider_type.clone(),
             fetch_models: p.fetch_models.unwrap_or(false),
+            cache_ttl: None,
+            enable_tier_resolution: true,
         })
         .collect();
 

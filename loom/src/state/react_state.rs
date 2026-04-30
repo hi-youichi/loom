@@ -6,11 +6,49 @@
 
 use crate::memory::uuid6;
 use crate::message::{AssistantToolCall, Message};
+use crate::llm::ToolChoiceMode;
+use crate::model_spec::ModelTier;
 use crate::LlmUsage;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use crate::state::tool_output_normalizer::{ToolOutputStrategy, ToolStorageRef};
+
+/// Model configuration carried in [`ReActState`].
+///
+/// Supports two ways to specify a model:
+/// - **Exact model**: set `model_id` to e.g. `"openai/gpt-4o"`.
+/// - **Tier abstraction**: set `tier` to `Light` / `Standard` / `Strong`;
+///   the `LlmProvider` resolves it to a concrete model at runtime.
+///
+/// Priority: `model_id` > `tier` > provider default (`None`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ModelConfig {
+    /// Exact model identifier, e.g. `"openai/gpt-4o"`. When non-empty, takes precedence over `tier`.
+    #[serde(default)]
+    pub model_id: String,
+    /// Tier abstraction. When `model_id` is empty, the provider resolves this to a concrete model.
+    /// `ModelTier::None` means "use provider default".
+    #[serde(default)]
+    pub tier: ModelTier,
+    /// Optional temperature override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    /// Optional tool_choice override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<ToolChoiceMode>,
+}
+
+impl Default for ModelConfig {
+    fn default() -> Self {
+        Self {
+            model_id: String::new(),
+            tier: ModelTier::None,
+            temperature: None,
+            tool_choice: None,
+        }
+    }
+}
 
 /// A single tool invocation produced by the LLM (Think node) and consumed by Act.
 ///
@@ -183,6 +221,9 @@ impl From<crate::state::tool_output_normalizer::NormalizedToolOutput> for ToolRe
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ReActState {
+    /// Model configuration for the current run.
+    #[serde(default)]
+    pub model_config: ModelConfig,
     /// Conversation history (System, User, Assistant). Used by Think and extended by Observe.
     pub messages: Vec<Message>,
     /// Most recent reasoning/thinking content returned by the LLM, if any.
@@ -214,8 +255,8 @@ pub struct ReActState {
     /// Session summary generated after the first think; used for session list display.
     #[serde(default)]
     pub summary: Option<String>,
-    /// Flag set by CompletionCheckNode to indicate whether the task should continue.
-    /// Used by conditional routing after completion_check node.
+    /// Flag available for downstream consumers (e.g. custom graph nodes).
+    /// Defaults to `true`.
     #[serde(default)]
     pub should_continue: bool,
 }
@@ -223,6 +264,7 @@ pub struct ReActState {
 impl Default for ReActState {
     fn default() -> Self {
         Self {
+            model_config: ModelConfig::default(),
             messages: vec![],
             last_reasoning_content: None,
             tool_calls: vec![],
@@ -280,6 +322,12 @@ impl ReActState {
                 arguments: tc.arguments.clone(),
             })
             .collect();
+        let is_empty_think = content.trim().is_empty()
+            && reasoning_content
+                .as_ref()
+                .is_none_or(|s| s.trim().is_empty())
+            && tool_calls.is_empty();
+
         let think_message = if assistant_tool_calls.is_empty() {
             Message::assistant_with_reasoning(content, reasoning_content.clone())
         } else {
@@ -289,29 +337,36 @@ impl ReActState {
                 reasoning_content.clone(),
             )
         };
-        self.messages.push(think_message);
-        debug!(
-            message_count = self.messages.len(),
-            tool_call_count = tool_calls.len(),
-            tool_calls = ?tool_calls
-                .iter()
-                .map(|tc| format!(
-                    "id={} name={} args_len={}",
-                    tc.id.as_deref().unwrap_or(""),
-                    tc.name,
-                    tc.arguments.len()
-                ))
-                .collect::<Vec<_>>(),
-            reasoning_len = reasoning_content.as_ref().map(|s| s.len()),
-            content_len = self
-                .messages
-                .last()
-                .and_then(|m| match m {
-                    Message::Assistant(payload) => Some(payload.content.len()),
-                    _ => None,
-                }),
-            "react_state apply_think wrote assistant message and tool_calls"
-        );
+
+        if is_empty_think {
+            debug!(
+                "react_state apply_think skipped empty assistant message"
+            );
+        } else {
+            self.messages.push(think_message);
+            debug!(
+                message_count = self.messages.len(),
+                tool_call_count = tool_calls.len(),
+                tool_calls = ?tool_calls
+                    .iter()
+                    .map(|tc| format!(
+                        "id={} name={} args_len={}",
+                        tc.id.as_deref().unwrap_or(""),
+                        tc.name,
+                        tc.arguments.len()
+                    ))
+                    .collect::<Vec<_>>(),
+                reasoning_len = reasoning_content.as_ref().map(|s| s.len()),
+                content_len = self
+                    .messages
+                    .last()
+                    .and_then(|m| match m {
+                        Message::Assistant(payload) => Some(payload.content.len()),
+                        _ => None,
+                    }),
+                "react_state apply_think wrote assistant message and tool_calls"
+            );
+        }
         self.last_reasoning_content = reasoning_content;
         self.tool_calls = tool_calls;
         self.usage = usage;
@@ -442,5 +497,50 @@ mod tests {
         assert_eq!(total.prompt_tokens, 13);
         assert_eq!(total.completion_tokens, 7);
         assert_eq!(total.total_tokens, 20);
+    }
+
+    #[test]
+    fn apply_think_skips_empty_content_no_reasoning_no_tools() {
+        let state = ReActState::default();
+        let next = state.apply_think("".to_string(), None, vec![], None);
+        assert!(next.messages.is_empty());
+        assert_eq!(next.think_count, 1);
+    }
+
+    #[test]
+    fn apply_think_skips_whitespace_only_content() {
+        let state = ReActState::default();
+        let next = state.apply_think("   ".to_string(), None, vec![], None);
+        assert!(next.messages.is_empty());
+    }
+
+    #[test]
+    fn apply_think_keeps_message_with_reasoning_fallback() {
+        let state = ReActState::default();
+        let next = state.apply_think("".to_string(), Some("thinking".to_string()), vec![], None);
+        assert_eq!(next.messages.len(), 1);
+    }
+
+    #[test]
+    fn apply_think_keeps_message_with_tool_calls() {
+        let state = ReActState::default();
+        let next = state.apply_think(
+            "".to_string(),
+            None,
+            vec![ToolCall {
+                name: "fn".into(),
+                arguments: "{}".into(),
+                id: Some("c1".into()),
+            }],
+            None,
+        );
+        assert_eq!(next.messages.len(), 1);
+    }
+
+    #[test]
+    fn apply_think_skips_empty_reasoning_string() {
+        let state = ReActState::default();
+        let next = state.apply_think("".to_string(), Some("   ".to_string()), vec![], None);
+        assert!(next.messages.is_empty());
     }
 }

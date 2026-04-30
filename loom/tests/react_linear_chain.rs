@@ -10,17 +10,23 @@ use std::collections::HashMap;
 
 use loom::{
     compress::{build_graph, CompactionConfig, CompressionGraphNode},
-    tools_condition, ActNode, CompiledStateGraph, LlmClient, Message, MockLlm, MockToolSource,
-    ObserveNode, ReActState, StateGraph, ThinkNode, END, START,
+    tools_condition, ActNode, CompiledStateGraph, FixedLlmProvider, LlmProvider, Message, MockLlm, MockToolSource,
+    ModelConfig, ObserveNode, ReActState, StateGraph, ThinkNode, END, START,
 };
 
 #[tokio::test]
 async fn react_linear_chain_user_to_tool_result_in_messages() {
+    let mock_llm = Arc::new(MockLlm::with_get_time_call());
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: mock_llm,
+        model_id: "mock".to_string(),
+    });
+    
     let mut graph = StateGraph::<ReActState>::new();
     graph
         .add_node(
             "think",
-            Arc::new(ThinkNode::new(Arc::new(MockLlm::with_get_time_call()))),
+            Arc::new(ThinkNode::new(fixed_provider)),
         )
         .add_node(
             "act",
@@ -35,6 +41,7 @@ async fn react_linear_chain_user_to_tool_result_in_messages() {
     let compiled: CompiledStateGraph<ReActState> = graph.compile().expect("valid graph");
 
     let state = ReActState {
+        model_config: ModelConfig::default(),
         messages: vec![Message::user("What time is it?")],
         tool_calls: vec![],
         tool_results: vec![],
@@ -67,9 +74,12 @@ async fn react_linear_chain_user_to_tool_result_in_messages() {
 /// observe returns Continue (to compress then think); second round think returns no tool_calls, observe returns End.
 #[tokio::test]
 async fn react_multi_round_loop_then_end() {
-    let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::first_tools_then_end());
+    let llm: Arc<dyn LlmProvider> = Arc::new(FixedLlmProvider {
+        client: Arc::new(MockLlm::first_tools_then_end()),
+        model_id: "mock".to_string(),
+    });
     let compression_graph =
-        build_graph(CompactionConfig::default(), Arc::clone(&llm)).expect("compress graph");
+        build_graph(CompactionConfig::default(), Arc::clone(&llm), None).expect("compress graph");
     let compress_node = Arc::new(CompressionGraphNode::new(compression_graph));
 
     let think_path_map: HashMap<String, String> =
@@ -99,6 +109,7 @@ async fn react_multi_round_loop_then_end() {
     let compiled: CompiledStateGraph<ReActState> = graph.compile().expect("valid graph");
 
     let state = ReActState {
+        model_config: ModelConfig::default(),
         messages: vec![Message::user("What time is it?")],
         tool_calls: vec![],
         tool_results: vec![],

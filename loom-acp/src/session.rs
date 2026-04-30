@@ -23,6 +23,20 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use uuid::Uuid;
 
+fn recover_read<T>(lock: &std::sync::RwLock<T>) -> std::sync::RwLockReadGuard<'_, T> {
+    lock.read().unwrap_or_else(|e| {
+        tracing::warn!("RwLock read poisoned, recovering");
+        e.into_inner()
+    })
+}
+
+fn recover_write<T>(lock: &std::sync::RwLock<T>) -> std::sync::RwLockWriteGuard<'_, T> {
+    lock.write().unwrap_or_else(|e| {
+        tracing::warn!("RwLock write poisoned, recovering");
+        e.into_inner()
+    })
+}
+
 /// Unique session identifier.
 ///
 /// Without ACP this type (inner `String`) is used; at the boundary it can be converted to/from
@@ -126,7 +140,7 @@ impl SessionStore {
         working_directory: Option<PathBuf>,
         thread_id: String,
     ) -> SessionEntry {
-        let mut guard = self.inner.write().unwrap();
+        let mut guard = recover_write(&self.inner);
         if let Some(existing) = guard.get(&session_id) {
             return existing.clone();
         }
@@ -143,7 +157,7 @@ impl SessionStore {
 
     /// Look up a session by session_id; returns `None` if not found.
     pub fn get(&self, session_id: &SessionId) -> Option<SessionEntry> {
-        self.inner.read().unwrap().get(session_id).cloned()
+        recover_read(&self.inner).get(session_id).cloned()
     }
 
     /// Mark the given session as cancelled (call when receiving `session/cancel`).
@@ -155,7 +169,7 @@ impl SessionStore {
 
     /// Begin a new prompt generation and return a fresh runtime cancellation handle.
     pub fn begin_prompt(&self, session_id: &SessionId) -> Option<RunCancellation> {
-        if let Some(entry) = self.inner.read().unwrap().get(session_id) {
+        if let Some(entry) = recover_read(&self.inner).get(session_id) {
             let generation = entry
                 .cancellation
                 .current_generation
@@ -177,7 +191,7 @@ impl SessionStore {
 
     /// Mark the current generation as cancelled and trigger its runtime token.
     pub fn cancel_current_generation(&self, session_id: &SessionId) {
-        if let Some(entry) = self.inner.read().unwrap().get(session_id) {
+        if let Some(entry) = recover_read(&self.inner).get(session_id) {
             entry.cancelled.store(true, Ordering::SeqCst);
             if let Ok(current_turn) = entry.cancellation.current_turn.read() {
                 if let Some(turn) = current_turn.as_ref() {
@@ -187,9 +201,22 @@ impl SessionStore {
         }
     }
 
-    /// Clear the current running turn when the prompt owner finishes.
+    pub fn cancel_all_generations(&self) {
+        let inner = recover_read(&self.inner);
+        for (session_id, entry) in inner.iter() {
+            entry.cancelled.store(true, Ordering::SeqCst);
+            if let Ok(current_turn) = entry.cancellation.current_turn.read() {
+                if let Some(turn) = current_turn.as_ref() {
+                    turn.cancellation.cancel();
+                    tracing::info!(session_id = %session_id, "cancelled active generation on connection close");
+                }
+            }
+        }
+    }
+
+
     pub fn finish_prompt(&self, session_id: &SessionId, generation: u64) {
-        if let Some(entry) = self.inner.read().unwrap().get(session_id) {
+        if let Some(entry) = recover_read(&self.inner).get(session_id) {
             if let Ok(mut current_turn) = entry.cancellation.current_turn.write() {
                 let should_clear = current_turn
                     .as_ref()
@@ -206,9 +233,7 @@ impl SessionStore {
     ///
     /// Returns `false` if session_id is not in the store.
     pub fn is_cancelled(&self, session_id: &SessionId) -> bool {
-        self.inner
-            .read()
-            .unwrap()
+        recover_read(&self.inner)
             .get(session_id)
             .map(|e| e.cancelled.load(Ordering::SeqCst))
             .unwrap_or(false)

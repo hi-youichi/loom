@@ -3,24 +3,27 @@
 //! [`LoomAcpAgent`] implements `agent_client_protocol::Agent` and maps ACP requests
 //! to Loom sessions and execution. See [`crate::protocol`] for protocol and behavior details.
 
+use crate::client_capabilities::ClientCapabilitiesInfo;
 use crate::agent_registry::AgentRegistry;
 use crate::content::content_blocks_to_user_content;
 use crate::session::{SessionId as OurSessionId, SessionStore};
 use crate::session_config_store::SessionConfigStore;
 use crate::stream_bridge::SessionNotifier;
-use agent_client_protocol::{
-    Agent, AuthenticateRequest, AuthenticateResponse, CancelNotification, ForkSessionRequest,
+use crate::terminal::TerminalManager;
+use crate::tools::create_acp_tools;
+use loom::tools::bash::LocalCommandExecutor;
+use agent_client_protocol::schema::{
+    AuthenticateRequest, AuthenticateResponse, CancelNotification, ForkSessionRequest,
     ForkSessionResponse, InitializeRequest, InitializeResponse, ListSessionsRequest,
     ListSessionsResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
-    NewSessionResponse, PromptRequest, PromptResponse, SessionConfigOptionValue, SessionId,
-    SessionNotification, SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
+    NewSessionResponse, PromptRequest, PromptResponse, SessionConfigOptionValue,
+    SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
     SetSessionModeRequest, SetSessionModeResponse, SetSessionModelRequest, SetSessionModelResponse,
-    StopReason,
+    StopReason, SessionId, SessionNotification,
 };
 use loom::memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
 use loom::state::ReActState;
 
-use async_trait::async_trait;
 use chrono::DateTime;
 use config::load_full_config;
 use loom::{run_agent_with_options, AnyStreamEvent, RunCmd, RunCompletion, RunError, RunOptions};
@@ -29,45 +32,126 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
+#[async_trait::async_trait]
+pub trait ModelProvider: Send + Sync {
+    async fn fetch_models(&self) -> Vec<ModelOption>;
+}
+
+struct RealModelProvider;
+
+#[async_trait::async_trait]
+impl ModelProvider for RealModelProvider {
+    async fn fetch_models(&self) -> Vec<ModelOption> {
+        fetch_available_models().await
+    }
+}
+
+async fn fetch_available_models() -> Vec<ModelOption> {
+    let registry = loom::llm::ModelRegistry::global();
+
+    let providers: Vec<loom::llm::ProviderConfig> = match load_full_config("loom") {
+        Ok(config) => config
+            .providers
+            .into_iter()
+            .map(|p| loom::llm::ProviderConfig {
+                name: p.name,
+                base_url: p.base_url,
+                api_key: p.api_key,
+                provider_type: p.provider_type,
+                fetch_models: p.fetch_models.unwrap_or(false),
+                cache_ttl: None,
+                enable_tier_resolution: true,
+            })
+            .collect(),
+        Err(_) => vec![],
+    };
+
+    let entries = registry.list_all_models(&providers).await;
+
+    let mut all_models: Vec<ModelOption> = entries
+        .into_iter()
+        .map(|entry| ModelOption {
+            id: entry.id.clone(),
+            name: entry.id,
+            provider: entry.provider,
+        })
+        .collect();
+
+    all_models.insert(
+        0,
+        ModelOption {
+            id: "default".to_string(),
+            name: "(default)".to_string(),
+            provider: String::new(),
+        },
+    );
+
+    all_models
+}
+
 /// Handle for Loom as an ACP Agent. Implements [`Agent`], holds the session store.
 /// If [`session_update_tx`](Self::session_update_tx) is set, prompt execution sends
 /// session/update notifications through this channel.
-#[derive(Debug)]
 pub struct LoomAcpAgent {
     pub(crate) sessions: SessionStore,
     pub(crate) agent_registry: AgentRegistry,
     pub(crate) config_store: SessionConfigStore,
-    /// If Some, on_event during prompt converts stream events to SessionNotification and try_sends here.
     pub(crate) session_update_tx: Option<mpsc::Sender<SessionNotification>>,
+    #[allow(dead_code)]
+    pub(crate) terminal_mgr: Arc<TerminalManager>,
+    pub(crate) client_capabilities: std::sync::RwLock<ClientCapabilitiesInfo>,
+    pub(crate) model_provider: Arc<dyn ModelProvider>,
+}
+
+impl std::fmt::Debug for LoomAcpAgent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LoomAcpAgent")
+            .field("sessions", &"..")
+            .field("agent_registry", &"..")
+            .field("config_store", &"..")
+            .field("session_update_tx", &self.session_update_tx.is_some())
+            .field("terminal_mgr", &"..")
+            .finish()
+    }
 }
 
 impl LoomAcpAgent {
     /// Construct a new Agent instance (no session/update sending).
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let db_path = loom::memory::default_memory_db_path();
         let config_store = SessionConfigStore::new(db_path.to_str().unwrap_or_default())
-            .expect("Failed to initialize session config store");
+            .map_err(|e| format!("session config store init failed: {e}"))?;
 
-        Self {
+        Ok(Self {
             sessions: SessionStore::new(),
             agent_registry: AgentRegistry::new(),
             config_store,
             session_update_tx: None,
-        }
+            terminal_mgr: Arc::new(TerminalManager::new()),
+            client_capabilities: std::sync::RwLock::new(ClientCapabilitiesInfo::default()),
+            model_provider: Arc::new(RealModelProvider),
+        })
     }
 
-    /// Construct an Agent with a session/update sender for the stdio loop to push stream updates to the client.
-    pub fn with_session_update_tx(tx: mpsc::Sender<SessionNotification>) -> Self {
+    pub fn with_session_update_tx(tx: mpsc::Sender<SessionNotification>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let db_path = loom::memory::default_memory_db_path();
         let config_store = SessionConfigStore::new(db_path.to_str().unwrap_or_default())
-            .expect("Failed to initialize session config store");
+            .map_err(|e| format!("session config store init failed: {e}"))?;
 
-        Self {
+        Ok(Self {
             sessions: SessionStore::new(),
             agent_registry: AgentRegistry::new(),
             config_store,
             session_update_tx: Some(tx),
-        }
+            terminal_mgr: Arc::new(TerminalManager::new()),
+            client_capabilities: std::sync::RwLock::new(ClientCapabilitiesInfo::default()),
+            model_provider: Arc::new(RealModelProvider),
+        })
+    }
+
+    pub fn with_model_provider(mut self, provider: Arc<dyn ModelProvider>) -> Self {
+        self.model_provider = provider;
+        self
     }
 
     /// Returns read-only access to the session store.
@@ -80,37 +164,126 @@ impl LoomAcpAgent {
     /// Returns a list of ModelOption for the ACP config_options response.
     /// Uses ModelRegistry for caching and unified model access.
     async fn get_available_models(&self) -> Vec<ModelOption> {
-        let registry = loom::llm::ModelRegistry::global();
+        self.model_provider.fetch_models().await
+    }
 
-        // Load provider configs from config file
-        let providers: Vec<loom::llm::ProviderConfig> = match load_full_config("loom") {
-            Ok(config) => config
-                .providers
-                .into_iter()
-                .map(|p| loom::llm::ProviderConfig {
-                    name: p.name,
-                    base_url: p.base_url,
-                    api_key: p.api_key,
-                    provider_type: p.provider_type,
-                    fetch_models: p.fetch_models.unwrap_or(false),
-                })
-                .collect(),
-            Err(_) => vec![],
-        };
+    /// Resolve model configuration with tier awareness.
+    /// Priority: ACP explicit model > agent model name > agent tier > default config.
+    async fn resolve_model_with_tier_awareness(
+        &self,
+        session_config: &crate::session::SessionConfig,
+    ) -> loom::ResolvedModelConfig {
+        let start_time = std::time::Instant::now();
 
-        let entries = registry.list_all_models(&providers).await;
+        if let Some(ref acp_model) = session_config.model {
+            let resolved = loom::resolve_model_config(Some(acp_model)).await;
+            tracing::info!(
+                acp_model = %acp_model,
+                agent = %session_config.current_agent,
+                resolved_model = %resolved.model.as_deref().unwrap_or("none"),
+                resolution_time_ms = start_time.elapsed().as_millis(),
+                "Using ACP selected model, overriding agent tier configuration"
+            );
+            return resolved;
+        }
 
-        let all_models: Vec<ModelOption> = entries
-            .into_iter()
-            .map(|entry| ModelOption {
-                // ACP select value + label: "provider/model" so the UI matches registry / RunOptions.
-                id: entry.id.clone(),
-                name: entry.id,
-                provider: entry.provider,
-            })
-            .collect();
+        // Try to get model settings from agent profile
+        if let Some(profile) = self
+            .agent_registry
+            .get_agent_config(&session_config.current_agent)
+        {
+            if let Some(model_config) = profile.model {
+                if let Some(ref model_name) = model_config.name {
+                    let resolved = loom::resolve_model_config(Some(model_name)).await;
+                    tracing::info!(
+                        model = %model_name,
+                        agent = %session_config.current_agent,
+                        resolved_model = %resolved.model.as_deref().unwrap_or("none"),
+                        resolution_time_ms = start_time.elapsed().as_millis(),
+                        "Using agent configured model name"
+                    );
+                    return resolved;
+                }
 
-        all_models
+                if let Some(tier) = model_config.tier {
+                    tracing::debug!(
+                        tier = ?tier,
+                        agent = %session_config.current_agent,
+                        "Starting tier-based model resolution"
+                    );
+
+                    let mut config = loom::ReactBuildConfig::from_env();
+                    config.model_tier = Some(tier);
+                    let resolved_config = loom::resolve_tier_and_build_config(&config).await;
+
+                    if resolved_config.model.is_some() {
+                        let resolved = loom::ResolvedModelConfig {
+                            model: resolved_config.model.clone(),
+                            provider: resolved_config.llm_provider.clone(),
+                            base_url: resolved_config.openai_base_url.clone(),
+                            api_key: resolved_config.openai_api_key.clone(),
+                            provider_type: resolved_config.llm_provider.clone(),
+                        };
+
+                        tracing::info!(
+                            tier = ?tier,
+                            agent = %session_config.current_agent,
+                            resolved_model = %resolved.model.as_deref().unwrap_or("none"),
+                            resolution_time_ms = start_time.elapsed().as_millis(),
+                            "Tier resolution successful"
+                        );
+                        return resolved;
+                    }
+
+                    tracing::warn!(
+                        tier = ?tier,
+                        agent = %session_config.current_agent,
+                        "Tier resolution failed, falling back to default provider config"
+                    );
+                }
+            }
+        }
+
+        // Default case: no explicit configuration - provide a safe default model
+        tracing::info!(
+            agent = %session_config.current_agent,
+            "No model or tier configuration, resolving from default provider config"
+        );
+
+        if let Ok(full_config) = load_full_config("loom") {
+            if let Some(ref pname) = full_config.default_provider {
+                if let Some(p) = full_config.providers.iter().find(|p| p.name == *pname) {
+                    if let Some(ref model_name) = p.model {
+                        let mut resolved = loom::resolve_model_config(Some(model_name)).await;
+                        if resolved.model.is_some() {
+                            if resolved.api_key.is_none() {
+                                resolved.api_key = p.api_key.clone();
+                            }
+                            if resolved.base_url.is_none() {
+                                resolved.base_url = p.base_url.clone();
+                            }
+                            if resolved.provider.is_none() {
+                                resolved.provider = Some(p.name.clone());
+                            }
+                            if resolved.provider_type.is_none() {
+                                resolved.provider_type = p.provider_type.clone();
+                            }
+                            return resolved;
+                        }
+                    }
+                    return loom::ResolvedModelConfig {
+                        model: p.model.clone(),
+                        provider: Some(p.name.clone()),
+                        base_url: p.base_url.clone(),
+                        api_key: p.api_key.clone(),
+                        provider_type: p.provider_type.clone(),
+                    };
+                }
+            }
+        }
+
+        let default_model = config::default_model();
+        loom::resolve_model_config(Some(&default_model)).await
     }
 
     fn apply_session_mode(
@@ -145,20 +318,30 @@ impl LoomAcpAgent {
 
 impl Default for LoomAcpAgent {
     fn default() -> Self {
-        Self::new()
+        Self::new().expect("LoomAcpAgent default init failed")
     }
 }
 
-#[async_trait(?Send)]
-impl Agent for LoomAcpAgent {
-    async fn initialize(
+impl LoomAcpAgent {
+    pub async fn initialize(
         &self,
         args: InitializeRequest,
     ) -> agent_client_protocol::Result<InitializeResponse> {
         tracing::info!(protocol_version = ?args.protocol_version, "initialize called");
+        let caps_json = serde_json::to_value(&args.client_capabilities).ok();
+        let caps = ClientCapabilitiesInfo::from_json(caps_json);
+        if let Ok(mut guard) = self.client_capabilities.write() {
+            *guard = caps.clone();
+        }
+        tracing::info!(
+            terminal = caps.supports_terminal(),
+            fs_read = caps.can_read_text_file(),
+            fs_write = caps.can_write_text_file(),
+            "Client capabilities saved"
+        );
         // Build base response using the standard builder
         let base_response = InitializeResponse::new(args.protocol_version).agent_info(
-            agent_client_protocol::Implementation::new("loom", env!("CARGO_PKG_VERSION")),
+            agent_client_protocol::schema::Implementation::new("loom", env!("CARGO_PKG_VERSION")),
         );
 
         // Add loadSession capability by serializing, modifying, and deserializing
@@ -191,7 +374,8 @@ impl Agent for LoomAcpAgent {
         Ok(response)
     }
 
-    async fn authenticate(
+    #[allow(dead_code)]
+    pub async fn authenticate(
         &self,
         _args: AuthenticateRequest,
     ) -> agent_client_protocol::Result<AuthenticateResponse> {
@@ -199,13 +383,13 @@ impl Agent for LoomAcpAgent {
         Ok(AuthenticateResponse::default())
     }
 
-    async fn new_session(
+    pub async fn new_session(
         &self,
         args: NewSessionRequest,
     ) -> agent_client_protocol::Result<NewSessionResponse> {
         tracing::debug!(cwd = ?args.cwd, "new_session called");
-        // Initialize logging with working_folder from ACP session
-        crate::logging::init_with_working_folder(&args.cwd);
+        // Logging is initialized at startup; this is a no-op if already initialized
+        crate::logging::init_logging(Some(&args.cwd));
 
         let working_directory = Some(args.cwd.clone());
         let our_id = self.sessions.create(working_directory);
@@ -213,39 +397,47 @@ impl Agent for LoomAcpAgent {
         tracing::debug!(session_id = %session_id, "session created");
 
         let default_mode = self.agent_registry.default_mode_id();
-        let current_model = None // Removed environment variable support, use session config
-            .or_else(crate::last_model::load)
-            .unwrap_or_default();
+        let current_model = None.or_else(crate::last_model::load).unwrap_or_default();
+        let is_default = current_model.is_empty() || current_model == "default";
         self.sessions.update_session_config(&our_id, |c| {
             c.current_agent = default_mode.to_string();
-            if !current_model.is_empty() {
+            if !is_default {
                 c.model = Some(current_model.clone());
             }
         });
-        if !current_model.is_empty() {
+        if !is_default {
             if let Err(e) = self.config_store.set(&our_id, "model", &current_model) {
                 tracing::warn!(session_id = %our_id, error = %e, "Failed to persist initial model config");
             }
         }
+        let display_model = if is_default {
+            "default"
+        } else {
+            &current_model
+        };
         let model_options = self.get_available_models().await;
         let current_mode = default_mode;
         let modes = self.agent_registry.to_session_modes();
         let config_options =
-            build_session_config_options(current_mode, &current_model, &modes, &model_options)
+            build_session_config_options(current_mode, display_model, &modes, &model_options)
                 .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
         Ok(NewSessionResponse::new(session_id)
             .modes(self.agent_registry.to_session_mode_state(current_mode))
             .config_options(config_options))
     }
 
-    async fn cancel(&self, args: CancelNotification) -> agent_client_protocol::Result<()> {
+    pub async fn cancel(&self, args: CancelNotification) -> agent_client_protocol::Result<()> {
         tracing::debug!(session_id = %args.session_id, "cancel called");
         let key = OurSessionId::new(args.session_id.to_string());
         self.sessions.cancel_current_generation(&key);
         Ok(())
     }
 
-    async fn set_session_config_option(
+    pub fn cancel_all(&self) {
+        self.sessions.cancel_all_generations();
+    }
+
+    pub async fn set_session_config_option(
         &self,
         args: SetSessionConfigOptionRequest,
     ) -> agent_client_protocol::Result<SetSessionConfigOptionResponse> {
@@ -266,10 +458,14 @@ impl Agent for LoomAcpAgent {
         })?;
         match config_id_str.as_str() {
             "model" => {
-                self.sessions
-                    .update_session_config(&key, |c| c.model = Some(value_str.clone()));
+                if value_str == "default" {
+                    self.sessions
+                        .update_session_config(&key, |c| c.model = None);
+                } else {
+                    self.sessions
+                        .update_session_config(&key, |c| c.model = Some(value_str.clone()));
+                }
                 crate::last_model::save(&value_str);
-                // Persist to database
                 if let Err(e) = self.config_store.set(&key, "model", &value_str) {
                     tracing::warn!(session_id = %args.session_id, error = %e, "Failed to persist model config");
                 }
@@ -314,7 +510,7 @@ impl Agent for LoomAcpAgent {
         .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))
     }
 
-    async fn set_session_mode(
+    pub async fn set_session_mode(
         &self,
         args: SetSessionModeRequest,
     ) -> agent_client_protocol::Result<SetSessionModeResponse> {
@@ -332,7 +528,7 @@ impl Agent for LoomAcpAgent {
         Ok(SetSessionModeResponse::new())
     }
 
-    async fn set_session_model(
+    pub async fn set_session_model(
         &self,
         args: SetSessionModelRequest,
     ) -> agent_client_protocol::Result<SetSessionModelResponse> {
@@ -357,12 +553,13 @@ impl Agent for LoomAcpAgent {
         Ok(SetSessionModelResponse::new())
     }
 
-    async fn fork_session(
+    pub async fn fork_session(
         &self,
         args: ForkSessionRequest,
     ) -> agent_client_protocol::Result<ForkSessionResponse> {
         tracing::debug!(session_id = %args.session_id, cwd = ?args.cwd, "fork_session called");
-        crate::logging::init_with_working_folder(&args.cwd);
+        // Logging is initialized at startup; this is a no-op if already initialized
+        crate::logging::init_logging(Some(&args.cwd));
 
         let source_key = OurSessionId::new(args.session_id.to_string());
         let source_entry = self
@@ -400,7 +597,8 @@ impl Agent for LoomAcpAgent {
             .model
             .clone()
             .unwrap_or_else(|| {
-                None // Removed environment variable support, use session config
+                std::env::var("MODEL")
+                    .ok()
                     .or_else(crate::last_model::load)
                     .unwrap_or_default()
             });
@@ -429,7 +627,7 @@ impl Agent for LoomAcpAgent {
             .config_options(config_options))
     }
 
-    async fn prompt(&self, args: PromptRequest) -> agent_client_protocol::Result<PromptResponse> {
+    pub async fn prompt(&self, args: PromptRequest) -> agent_client_protocol::Result<PromptResponse> {
         tracing::debug!(session_id = %args.session_id, prompt_blocks = args.prompt.len(), "prompt called");
         let key = OurSessionId::new(args.session_id.to_string());
         let entry = self
@@ -497,7 +695,19 @@ impl Agent for LoomAcpAgent {
             .clone()
             .unwrap_or_else(|| PathBuf::from(loom::DEFAULT_WORKING_FOLDER));
 
-        let resolved = loom::resolve_model_config(entry.session_config.model.as_deref()).await;
+        let resolved = self
+            .resolve_model_with_tier_awareness(&entry.session_config)
+            .await;
+
+        let session_id_for_opts = args.session_id.clone();
+        let tx_for_opts = self.session_update_tx.clone();
+        let any_stream_event_sender = tx_for_opts.map(|sender| {
+            let session_id = session_id_for_opts;
+            std::sync::Arc::new(move |ev: AnyStreamEvent| {
+                let notifier = SessionNotifier::new(sender.clone(), session_id.clone());
+                notifier.try_send_event(&ev);
+            }) as std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>
+        });
 
         let opts = RunOptions {
             message: user_content,
@@ -521,6 +731,22 @@ impl Agent for LoomAcpAgent {
             base_url: resolved.base_url,
             api_key: resolved.api_key,
             provider_type: resolved.provider_type,
+            any_stream_event_sender,
+            acp_session_id: Some(args.session_id.to_string()),
+            bash_executor: {
+                tracing::info!("Using local bash executor (ACP terminal disabled)");
+                Some(Arc::new(LocalCommandExecutor) as Arc<dyn loom::tools::CommandExecutor>)
+            },
+            extra_tools: {
+                let caps = self.client_capabilities.read().unwrap_or_else(|e| e.into_inner());
+                let tools = create_acp_tools(&caps);
+                if tools.is_empty() {
+                    None
+                } else {
+                    tracing::info!(count = tools.len(), "Registering ACP tools");
+                    Some(Arc::new(tools.into_iter().map(|t| Arc::from(t) as Arc<dyn loom::tools::Tool>).collect()))
+                }
+            },
         };
 
         let session_id = args.session_id.clone();
@@ -535,6 +761,9 @@ impl Agent for LoomAcpAgent {
 
         let result = run_agent_with_options(&opts, &RunCmd::React, on_event).await;
         self.sessions.finish_prompt(&key, cancellation.generation());
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
         match result {
             Ok(RunCompletion::Finished(_reply)) => Ok(PromptResponse::new(StopReason::EndTurn)),
             Ok(RunCompletion::Cancelled) => Ok(PromptResponse::new(StopReason::Cancelled)),
@@ -545,24 +774,32 @@ impl Agent for LoomAcpAgent {
         }
     }
 
-    async fn load_session(
+    pub async fn load_session(
         &self,
         args: LoadSessionRequest,
     ) -> agent_client_protocol::Result<LoadSessionResponse> {
-        tracing::debug!(session_id = %args.session_id, cwd = ?args.cwd, "load_session called");
-        // Initialize logging with working_folder from ACP session
-        crate::logging::init_with_working_folder(&args.cwd);
+        tracing::info!(session_id = %args.session_id, cwd = ?args.cwd, "load_session started");
+        // Logging is initialized at startup; this is a no-op if already initialized
+        crate::logging::init_logging(Some(&args.cwd));
         let session_id = args.session_id.clone();
         let our_session_id = OurSessionId::new(session_id.to_string());
-        let working_directory = Some(args.cwd.clone()); // Convert to Option<PathBuf>
+        let working_directory = Some(args.cwd.clone());
 
-        // Create or get session entry
         let entry =
             if let Some(existing) = self.sessions.get(&our_session_id) {
+                tracing::info!(
+                    session_id = %session_id,
+                    thread_id = %existing.thread_id,
+                    "Reusing existing session entry from memory"
+                );
                 existing
             } else {
-                // Create new session entry with the provided working directory
                 let thread_id = session_id.to_string();
+                tracing::info!(
+                    session_id = %session_id,
+                    thread_id = %thread_id,
+                    "Creating new session entry for load"
+                );
                 self.sessions.create_with_id(
                     our_session_id.clone(),
                     working_directory,
@@ -575,14 +812,19 @@ impl Agent for LoomAcpAgent {
                     }
                 });
                 self.sessions.get(&our_session_id).ok_or_else(|| {
-                tracing::error!(session_id = %our_session_id, "Session not found after creation");
-                agent_client_protocol::Error::internal_error()
-                    .data(format!("Session {} not found after creation", our_session_id))
-            })?
+                    tracing::error!(session_id = %our_session_id, "Session not found after creation");
+                    agent_client_protocol::Error::internal_error()
+                        .data(format!("Session {} not found after creation", our_session_id))
+                })?
             };
 
-        // Build checkpointer to load history
         let db_path = loom::memory::default_memory_db_path();
+        tracing::debug!(
+            session_id = %session_id,
+            thread_id = %entry.thread_id,
+            db_path = %db_path.display(),
+            "Querying checkpoint for session history"
+        );
         let serializer = Arc::new(JsonSerializer);
         let checkpointer: Arc<dyn Checkpointer<ReActState>> = Arc::new(
             SqliteSaver::new(db_path.to_string_lossy().as_ref(), serializer).map_err(|e| {
@@ -591,7 +833,6 @@ impl Agent for LoomAcpAgent {
             })?,
         );
 
-        // Load checkpoint using thread_id
         let config = RunnableConfig {
             thread_id: Some(entry.thread_id.clone()),
             checkpoint_id: None,
@@ -599,42 +840,63 @@ impl Agent for LoomAcpAgent {
             user_id: None,
             resume_from_node_id: None,
             depth: None,
+            acp_session_id: None,
             resume_value: None,
             resume_values_by_namespace: Default::default(),
             resume_values_by_interrupt_id: Default::default(),
         };
 
-        // Try to load checkpoint
         match checkpointer.get_tuple(&config).await {
             Ok(Some((checkpoint, _metadata))) => {
-                // Extract messages from state
                 let state: ReActState = checkpoint.channel_values;
+                let user_count = state.messages.iter().filter(|m| matches!(m, loom::Message::User(_))).count();
+                let assistant_count = state.messages.iter().filter(|m| matches!(m, loom::Message::Assistant(_))).count();
+                let tool_count = state.messages.iter().filter(|m| matches!(m, loom::Message::Tool { .. })).count();
+                let system_count = state.messages.iter().filter(|m| matches!(m, loom::Message::System(_))).count();
 
-                // Send history via session/update notifications
+                tracing::info!(
+                    session_id = %session_id,
+                    thread_id = %entry.thread_id,
+                    total = state.messages.len(),
+                    user = user_count,
+                    assistant = assistant_count,
+                    tool = tool_count,
+                    system = system_count,
+                    "Checkpoint found, replaying session history"
+                );
+
                 if let Some(ref tx) = self.session_update_tx {
                     let notifier = SessionNotifier::new(tx.clone(), session_id.clone());
                     notifier.send_history(&state.messages).await;
+                    tokio::task::yield_now().await;
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                } else {
+                    tracing::warn!(
+                        session_id = %session_id,
+                        "No session_update_tx available, history not sent to client"
+                    );
                 }
 
                 tracing::info!(
                     session_id = %session_id,
                     message_count = state.messages.len(),
-                    "Loaded and replayed session history"
+                    "Session history replay completed"
                 );
             }
             Ok(None) => {
-                tracing::debug!(
+                tracing::info!(
                     session_id = %session_id,
+                    thread_id = %entry.thread_id,
                     "No checkpoint found for session, starting fresh"
                 );
             }
             Err(e) => {
                 tracing::warn!(
                     session_id = %session_id,
+                    thread_id = %entry.thread_id,
                     error = %e,
                     "Failed to load checkpoint, starting fresh"
                 );
-                // Continue without error - session can start fresh
             }
         }
 
@@ -695,7 +957,7 @@ impl Agent for LoomAcpAgent {
         Ok(response)
     }
 
-    async fn list_sessions(
+    pub async fn list_sessions(
         &self,
         args: ListSessionsRequest,
     ) -> agent_client_protocol::Result<ListSessionsResponse> {
@@ -710,18 +972,18 @@ impl Agent for LoomAcpAgent {
 
         // Convert our SessionInfo to JSON and then deserialize to protocol types
         // This is necessary because agent_client_protocol types are non_exhaustive
-        let protocol_sessions: Vec<agent_client_protocol::SessionInfo> = our_sessions
+        let protocol_sessions: Vec<agent_client_protocol::schema::SessionInfo> = our_sessions
             .into_iter()
             .map(|s| {
                 // Convert cwd: Option<String> to PathBuf string (use default if None)
                 let cwd_str = s
                     .cwd
                     .unwrap_or_else(|| loom::DEFAULT_WORKING_FOLDER.to_string());
+                let cwd_path = std::path::PathBuf::from(&cwd_str);
 
-                // Build JSON for SessionInfo
                 let mut session_json = serde_json::json!({
                     "sessionId": s.session_id,
-                    "cwd": cwd_str,
+                    "cwd": cwd_path,
                 });
 
                 if let Some(title) = s.title {
@@ -824,7 +1086,7 @@ impl LoomAcpAgent {
         &self,
         cwd_filter: Option<&str>,
         _cursor: Option<&str>,
-    ) -> Result<Vec<SessionInfo>, agent_client_protocol::Error> {
+    ) -> Result<Vec<crate::agent::SessionInfo>, agent_client_protocol::Error> {
         let db_path = loom::memory::default_memory_db_path();
         let cwd_filter = cwd_filter.map(String::from);
 
@@ -925,20 +1187,17 @@ fn map_run_error(e: RunError) -> agent_client_protocol::Error {
 
 /// Model option for ACP config dropdown.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-struct ModelOption {
-    /// Combined id `provider/model` (select value and display; matches [`loom::llm::ModelEntry::id`]).
-    id: String,
-    /// Same as `id` for the select row label (ACP shows `provider/model`).
-    name: String,
-    /// Provider name (e.g., "openai", "bigmodel")
-    provider: String,
+pub struct ModelOption {
+    pub id: String,
+    pub name: String,
+    pub provider: String,
 }
 
 /// If `current_model` is a bare model id (e.g. from `MODEL=`) but options use `provider/model`,
 /// rewrite to the single matching option when unambiguous.
 fn normalize_current_model_for_acp(current_model: &str, options: &[ModelOption]) -> String {
-    if current_model.is_empty() {
-        return String::new();
+    if current_model.is_empty() || current_model == "default" {
+        return "default".to_string();
     }
     if options.iter().any(|m| m.id == current_model) {
         return current_model.to_string();
@@ -956,9 +1215,9 @@ fn normalize_current_model_for_acp(current_model: &str, options: &[ModelOption])
 fn build_session_config_options(
     current_mode: &str,
     current_model: &str,
-    modes: &[agent_client_protocol::SessionMode],
+    modes: &[agent_client_protocol::schema::SessionMode],
     model_options: &[ModelOption],
-) -> Result<Vec<agent_client_protocol::SessionConfigOption>, serde_json::Error> {
+) -> Result<Vec<agent_client_protocol::schema::SessionConfigOption>, serde_json::Error> {
     let current_model = normalize_current_model_for_acp(current_model, model_options);
     let mode_options: Vec<_> = modes
         .iter()
@@ -1001,7 +1260,7 @@ fn build_session_config_options(
 fn build_set_session_config_option_response(
     current_mode: &str,
     current_model: &str,
-    modes: &[agent_client_protocol::SessionMode],
+    modes: &[agent_client_protocol::schema::SessionMode],
     model_options: &[ModelOption],
 ) -> Result<SetSessionConfigOptionResponse, serde_json::Error> {
     let config_options =
@@ -1027,7 +1286,7 @@ mod tests {
 
     #[test]
     fn test_session_config_select_option_structure() {
-        use agent_client_protocol::{SessionConfigSelectOption, SessionConfigValueId};
+        use agent_client_protocol::schema::{SessionConfigSelectOption, SessionConfigValueId};
 
         let option_id = SessionConfigValueId::new("gpt-4o".to_string());
         let select_option = SessionConfigSelectOption::new(option_id, "GPT-4o".to_string());
@@ -1040,12 +1299,12 @@ mod tests {
     #[test]
     fn test_build_session_config_options_populates_options() {
         let modes = vec![
-            agent_client_protocol::SessionMode::new(
-                agent_client_protocol::SessionModeId::new("ask"),
+            agent_client_protocol::schema::SessionMode::new(
+                agent_client_protocol::schema::SessionModeId::new("ask"),
                 "Ask",
             ),
-            agent_client_protocol::SessionMode::new(
-                agent_client_protocol::SessionModeId::new("default"),
+            agent_client_protocol::schema::SessionMode::new(
+                agent_client_protocol::schema::SessionModeId::new("default"),
                 "Default",
             ),
         ];
@@ -1127,8 +1386,8 @@ mod tests {
 
     #[test]
     fn test_build_session_config_options_handles_empty_model_list() {
-        let modes = vec![agent_client_protocol::SessionMode::new(
-            agent_client_protocol::SessionModeId::new("ask"),
+        let modes = vec![agent_client_protocol::schema::SessionMode::new(
+            agent_client_protocol::schema::SessionModeId::new("ask"),
             "Ask",
         )];
         let result = build_session_config_options("ask", "", &modes, &[]);
@@ -1155,8 +1414,8 @@ mod tests {
 
     #[test]
     fn test_build_set_session_config_option_response() {
-        let modes = vec![agent_client_protocol::SessionMode::new(
-            agent_client_protocol::SessionModeId::new("ask"),
+        let modes = vec![agent_client_protocol::schema::SessionMode::new(
+            agent_client_protocol::schema::SessionModeId::new("ask"),
             "Ask",
         )];
         let model_options = vec![ModelOption {
@@ -1184,5 +1443,77 @@ mod tests {
 
         let boolean = SessionConfigOptionValue::boolean(true);
         assert!(session_config_value_as_id(&boolean).is_none());
+    }
+
+    #[test]
+    fn test_normalize_current_model_for_acp_default() {
+        let options = vec![ModelOption {
+            id: "default".to_string(),
+            name: "(default)".to_string(),
+            provider: String::new(),
+        }];
+        assert_eq!(
+            normalize_current_model_for_acp("default", &options),
+            "default"
+        );
+        assert_eq!(normalize_current_model_for_acp("", &options), "default");
+    }
+
+    #[test]
+    fn test_normalize_current_model_for_acp_specific_model() {
+        let options = vec![
+            ModelOption {
+                id: "default".to_string(),
+                name: "(default)".to_string(),
+                provider: String::new(),
+            },
+            ModelOption {
+                id: "openai/gpt-4o".to_string(),
+                name: "openai/gpt-4o".to_string(),
+                provider: "openai".to_string(),
+            },
+        ];
+        assert_eq!(
+            normalize_current_model_for_acp("openai/gpt-4o", &options),
+            "openai/gpt-4o"
+        );
+    }
+
+    #[test]
+    fn test_build_session_config_options_includes_default() {
+        let modes = vec![agent_client_protocol::schema::SessionMode::new(
+            agent_client_protocol::schema::SessionModeId::new("ask"),
+            "Ask",
+        )];
+        let model_options = vec![
+            ModelOption {
+                id: "default".to_string(),
+                name: "(default)".to_string(),
+                provider: String::new(),
+            },
+            ModelOption {
+                id: "openai/gpt-4o".to_string(),
+                name: "openai/gpt-4o".to_string(),
+                provider: "openai".to_string(),
+            },
+        ];
+
+        let result = build_session_config_options("ask", "default", &modes, &model_options);
+        assert!(result.is_ok());
+
+        let config_options = result.unwrap();
+        let json = serde_json::to_value(&config_options).unwrap();
+        let model_config = json
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c.get("id").and_then(|v| v.as_str()) == Some("model"))
+            .unwrap();
+        let options = model_config.get("options").unwrap().as_array().unwrap();
+        assert_eq!(options[0].get("value").unwrap().as_str(), Some("default"));
+        assert_eq!(
+            model_config.get("currentValue").unwrap().as_str(),
+            Some("default")
+        );
     }
 }

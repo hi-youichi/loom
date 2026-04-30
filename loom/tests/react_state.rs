@@ -4,7 +4,7 @@
 
 mod init_logging;
 
-use loom::{Message, ReActState, ToolCall, ToolResult};
+use loom::{Message, ModelConfig, ReActState, ToolCall, ToolResult};
 
 // --- ToolCall ---
 
@@ -153,6 +153,7 @@ fn react_state_default() {
 #[test]
 fn react_state_construction_and_clone() {
     let state = ReActState {
+        model_config: ModelConfig::default(),
         messages: vec![
             Message::user("What time is it?"),
             Message::assistant("I'll check."),
@@ -193,6 +194,7 @@ fn react_state_construction_and_clone() {
 #[test]
 fn react_state_clone_field_by_field() {
     let state = ReActState {
+        model_config: ModelConfig::default(),
         messages: vec![
             Message::system("You are helpful."),
             Message::user("Hi"),
@@ -249,6 +251,7 @@ fn react_state_clone_field_by_field() {
 #[test]
 fn react_state_with_all_message_variants() {
     let state = ReActState {
+        model_config: ModelConfig::default(),
         messages: vec![
             Message::system("System prompt"),
             Message::user("User input"),
@@ -284,6 +287,7 @@ fn react_state_with_all_message_variants() {
 #[test]
 fn react_state_empty_tool_calls_non_empty_results() {
     let state = ReActState {
+        model_config: ModelConfig::default(),
         messages: vec![Message::user("hi")],
         tool_calls: vec![],
         tool_results: vec![ToolResult {
@@ -311,6 +315,7 @@ fn react_state_empty_tool_calls_non_empty_results() {
 #[test]
 fn react_state_debug() {
     let state = ReActState {
+        model_config: ModelConfig::default(),
         messages: vec![Message::user("hi")],
         tool_calls: vec![ToolCall {
             name: "get_time".into(),

@@ -30,6 +30,7 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+use crate::cli_run::AnyStreamEvent;
 use crate::cli_run::RunCancellation;
 use crate::managed::ManagedValue;
 use crate::memory::{RunnableConfig, Store};
@@ -103,6 +104,8 @@ where
     pub cancellation: Option<CancellationToken>,
     /// Shared cancellation handle with active-operation tracking for the current run.
     pub run_cancellation: Option<RunCancellation>,
+    /// Optional sender for forwarding raw `AnyStreamEvent`s to an external consumer (e.g. ACP).
+    pub any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
 }
 
 impl<S> RunContext<S>
@@ -121,6 +124,7 @@ where
             runtime_context: None,
             cancellation: None,
             run_cancellation: None,
+            any_stream_event_sender: None,
         }
     }
 

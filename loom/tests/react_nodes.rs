@@ -18,7 +18,7 @@ use loom::{
     tool_source::{
         FileToolSource, ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec,
     },
-    ActNode, LlmUsage, Message, MockLlm, MockToolSource, Next, Node, ObserveNode,
+    ActNode, FixedLlmProvider, LlmUsage, Message, MockLlm, MockToolSource, Next, Node, ObserveNode,
     PromptTokensDetails, ReActState, ThinkNode, ToolCall, ToolOutputHint, ToolOutputStrategy,
     ToolResult, STEP_PROGRESS_EVENT_TYPE,
 };
@@ -69,15 +69,23 @@ impl ToolSource for RecordingToolSource {
 
 #[tokio::test]
 async fn think_node_id_is_think() {
-    let llm = MockLlm::with_get_time_call();
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_get_time_call());
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     assert_eq!(node.id(), "think");
 }
 
 #[tokio::test]
 async fn think_node_appends_assistant_message_and_sets_tool_calls() {
-    let llm = MockLlm::with_get_time_call();
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_get_time_call());
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("What time is it?")],
         tool_calls: vec![],
@@ -107,8 +115,12 @@ async fn think_node_appends_assistant_message_and_sets_tool_calls() {
 
 #[tokio::test]
 async fn think_node_with_no_tool_calls_sets_empty_tool_calls() {
-    let llm = MockLlm::with_no_tool_calls("Hello.");
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_no_tool_calls("Hello."));
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
@@ -130,8 +142,12 @@ async fn think_node_with_no_tool_calls_sets_empty_tool_calls() {
 
 #[tokio::test]
 async fn think_node_preserves_tool_results_from_input_state() {
-    let llm = MockLlm::with_no_tool_calls("Done.");
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_no_tool_calls("Done."));
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
@@ -157,8 +173,12 @@ async fn think_node_preserves_tool_results_from_input_state() {
 
 #[tokio::test]
 async fn think_node_sets_message_count_after_last_think() {
-    let llm = MockLlm::with_no_tool_calls("Hi.");
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_no_tool_calls("Hi."));
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("Hello")],
         tool_calls: vec![],
@@ -184,8 +204,12 @@ async fn think_node_usage_merge_none_plus_some() {
         total_tokens: 15,
         ..Default::default()
     };
-    let llm = MockLlm::with_no_tool_calls("Ok.").with_usage(usage.clone());
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_no_tool_calls("Ok.").with_usage(usage.clone()));
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
@@ -227,8 +251,12 @@ async fn think_node_usage_merge_some_plus_some() {
         }),
         completion_tokens_details: None,
     };
-    let llm = MockLlm::with_no_tool_calls("Ok.").with_usage(curr);
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_no_tool_calls("Ok.").with_usage(curr));
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
@@ -270,10 +298,14 @@ async fn think_node_stream_emits_usage_when_available() {
         total_tokens: 15,
         ..Default::default()
     };
-    let llm = MockLlm::with_no_tool_calls("Hello")
+    let llm = Arc::new(MockLlm::with_no_tool_calls("Hello")
         .with_usage(usage)
-        .with_stream_by_char();
-    let node = ThinkNode::new(Arc::new(llm));
+        .with_stream_by_char());
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
@@ -297,6 +329,7 @@ async fn think_node_stream_emits_usage_when_available() {
         runtime_context: None,
         cancellation: None,
         run_cancellation: None,
+        any_stream_event_sender: None,
     };
     let _ = node.run_with_context(state, &ctx).await.unwrap();
     drop(ctx);
@@ -420,6 +453,7 @@ async fn act_node_run_with_context_emits_step_progress_when_custom_mode() {
         runtime_context: None,
         cancellation: None,
         run_cancellation: None,
+        any_stream_event_sender: None,
     };
 
     let (out, _) = node.run_with_context(state, &ctx).await.unwrap();
@@ -487,6 +521,7 @@ async fn act_node_run_with_context_propagates_thread_user_and_depth() {
             user_id: Some("user-456".into()),
             resume_from_node_id: None,
             depth: Some(2),
+            acp_session_id: None,
             resume_value: None,
             resume_values_by_interrupt_id: Default::default(),
             resume_values_by_namespace: Default::default(),
@@ -499,6 +534,7 @@ async fn act_node_run_with_context_propagates_thread_user_and_depth() {
         runtime_context: None,
         cancellation: None,
         run_cancellation: None,
+        any_stream_event_sender: None,
     };
 
     let (out, _) = node.run_with_context(state, &ctx).await.unwrap();
@@ -537,13 +573,13 @@ impl ToolSource for HintingToolSource {
 }
 
 #[tokio::test]
-async fn act_node_uses_tool_spec_output_hint() {
+async fn act_node_non_whitelisted_tool_ignores_output_hint() {
     let large_result = (0..400)
         .map(|i| format!("line {} {}", i, "x".repeat(20)))
         .collect::<Vec<_>>()
         .join("\n");
     let node = ActNode::new(Box::new(HintingToolSource {
-        result: large_result,
+        result: large_result.clone(),
     }));
     let state = ReActState {
         messages: vec![],
@@ -566,8 +602,9 @@ async fn act_node_uses_tool_spec_output_hint() {
     assert_eq!(out.tool_results.len(), 1);
     assert_eq!(
         out.tool_results[0].strategy,
-        Some(ToolOutputStrategy::SummaryOnly)
+        Some(ToolOutputStrategy::Inline)
     );
+    assert!(!out.tool_results[0].truncated);
 }
 
 /// **Scenario**: ActNode with approval_policy DestructiveOnly and delete_file tool_call
@@ -647,6 +684,178 @@ async fn act_node_multiple_tool_calls_produces_multiple_results() {
     assert_eq!(out.tool_results.len(), 2);
     assert_eq!(out.tool_results[0].content, "2025-01-29 12:00:00");
     assert_eq!(out.tool_results[1].content, "2025-01-29 12:00:00");
+}
+
+struct LargeOutputToolSource {
+    tool_name: String,
+    result: String,
+}
+
+#[async_trait]
+impl ToolSource for LargeOutputToolSource {
+    async fn list_tools(&self) -> Result<Vec<ToolSpec>, ToolSourceError> {
+        Ok(vec![ToolSpec {
+            name: self.tool_name.clone(),
+            description: Some("returns large output".to_string()),
+            input_schema: json!({ "type": "object", "properties": {}, "required": [] }),
+            output_hint: None,
+        }])
+    }
+
+    async fn call_tool(
+        &self,
+        _name: &str,
+        _arguments: Value,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+        Ok(ToolCallContent::text(self.result.clone()))
+    }
+}
+
+#[tokio::test]
+async fn act_node_bash_large_output_is_truncated() {
+    let large = "line\n".repeat(2_500);
+    let node = ActNode::new(Box::new(LargeOutputToolSource {
+        tool_name: "bash".into(),
+        result: large,
+    }));
+    let state = ReActState {
+        messages: vec![],
+        tool_calls: vec![ToolCall {
+            name: "bash".into(),
+            arguments: "{}".into(),
+            id: Some("c1".into()),
+        }],
+        tool_results: vec![],
+        ..Default::default()
+    };
+    let (out, _) = node.run(state).await.unwrap();
+    assert_eq!(out.tool_results.len(), 1);
+    assert_eq!(out.tool_results[0].strategy, Some(ToolOutputStrategy::HeadTail));
+    assert!(out.tool_results[0].truncated);
+    assert!(out.tool_results[0].content.contains("Head:"));
+}
+
+#[tokio::test]
+async fn act_node_read_large_output_is_not_truncated() {
+    let large = "line\n".repeat(2_500);
+    let node = ActNode::new(Box::new(LargeOutputToolSource {
+        tool_name: "read".into(),
+        result: large.clone(),
+    }));
+    let state = ReActState {
+        messages: vec![],
+        tool_calls: vec![ToolCall {
+            name: "read".into(),
+            arguments: "{}".into(),
+            id: Some("c1".into()),
+        }],
+        tool_results: vec![],
+        ..Default::default()
+    };
+    let (out, _) = node.run(state).await.unwrap();
+    assert_eq!(out.tool_results.len(), 1);
+    assert_eq!(out.tool_results[0].strategy, Some(ToolOutputStrategy::Inline));
+    assert!(!out.tool_results[0].truncated);
+    assert_eq!(out.tool_results[0].content, large);
+}
+
+#[tokio::test]
+async fn act_node_non_whitelisted_tool_ignores_hint_inline() {
+    let large_result = (0..400)
+        .map(|i| format!("line {} {}", i, "x".repeat(20)))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let node = ActNode::new(Box::new(HintingToolSource {
+        result: large_result.clone(),
+    }));
+    let state = ReActState {
+        messages: vec![],
+        tool_calls: vec![ToolCall {
+            name: "hinted_tool".into(),
+            arguments: "{}".into(),
+            id: Some("hint-1".into()),
+        }],
+        tool_results: vec![],
+        ..Default::default()
+    };
+    let (out, _) = node.run(state).await.unwrap();
+    assert_eq!(out.tool_results[0].strategy, Some(ToolOutputStrategy::Inline));
+    assert!(!out.tool_results[0].truncated);
+    assert_eq!(out.tool_results[0].content, large_result);
+}
+
+struct MultiOutputToolSource {
+    bash_result: String,
+    read_result: String,
+}
+
+#[async_trait]
+impl ToolSource for MultiOutputToolSource {
+    async fn list_tools(&self) -> Result<Vec<ToolSpec>, ToolSourceError> {
+        Ok(vec![
+            ToolSpec {
+                name: "bash".to_string(),
+                description: Some("bash".to_string()),
+                input_schema: json!({ "type": "object", "properties": {}, "required": [] }),
+                output_hint: None,
+            },
+            ToolSpec {
+                name: "read".to_string(),
+                description: Some("read".to_string()),
+                input_schema: json!({ "type": "object", "properties": {}, "required": [] }),
+                output_hint: None,
+            },
+        ])
+    }
+
+    async fn call_tool(
+        &self,
+        name: &str,
+        _arguments: Value,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+        match name {
+            "bash" => Ok(ToolCallContent::text(self.bash_result.clone())),
+            "read" => Ok(ToolCallContent::text(self.read_result.clone())),
+            _ => Err(ToolSourceError::NotFound(name.to_string())),
+        }
+    }
+}
+
+#[tokio::test]
+async fn act_node_mixed_tools_whitelist_and_others() {
+    let large = "line\n".repeat(2_500);
+    let node = ActNode::new(Box::new(MultiOutputToolSource {
+        bash_result: large.clone(),
+        read_result: large.clone(),
+    }));
+    let state = ReActState {
+        messages: vec![],
+        tool_calls: vec![
+            ToolCall {
+                name: "bash".into(),
+                arguments: "{}".into(),
+                id: Some("c1".into()),
+            },
+            ToolCall {
+                name: "read".into(),
+                arguments: "{}".into(),
+                id: Some("c2".into()),
+            },
+        ],
+        tool_results: vec![],
+        ..Default::default()
+    };
+    let (out, _) = node.run(state).await.unwrap();
+    assert_eq!(out.tool_results.len(), 2);
+
+    let bash_result = out.tool_results.iter().find(|r| r.name.as_deref() == Some("bash")).unwrap();
+    assert_eq!(bash_result.strategy, Some(ToolOutputStrategy::HeadTail));
+    assert!(bash_result.truncated);
+
+    let read_result = out.tool_results.iter().find(|r| r.name.as_deref() == Some("read")).unwrap();
+    assert_eq!(read_result.strategy, Some(ToolOutputStrategy::Inline));
+    assert!(!read_result.truncated);
+    assert_eq!(read_result.content, large);
 }
 
 // --- ObserveNode ---
@@ -860,8 +1069,12 @@ async fn observe_node_with_loop_returns_end_when_max_turns_reached() {
 #[tokio::test]
 async fn think_node_run_with_context_emits_messages_when_streaming() {
     let content = "Hello world";
-    let llm = MockLlm::with_no_tool_calls(content).with_stream_by_char();
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_no_tool_calls(content).with_stream_by_char());
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
@@ -890,6 +1103,7 @@ async fn think_node_run_with_context_emits_messages_when_streaming() {
         runtime_context: None,
         cancellation: None,
         run_cancellation: None,
+        any_stream_event_sender: None,
     };
 
     // Run node with context
@@ -935,8 +1149,12 @@ async fn think_node_run_with_context_emits_messages_when_streaming() {
 #[tokio::test]
 async fn think_node_run_with_context_no_messages_when_mode_empty() {
     let content = "Hello world";
-    let llm = MockLlm::with_no_tool_calls(content).with_stream_by_char();
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_no_tool_calls(content).with_stream_by_char());
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
@@ -965,6 +1183,7 @@ async fn think_node_run_with_context_no_messages_when_mode_empty() {
         runtime_context: None,
         cancellation: None,
         run_cancellation: None,
+        any_stream_event_sender: None,
     };
 
     // Run node with context
@@ -990,8 +1209,12 @@ async fn think_node_run_with_context_no_messages_when_mode_empty() {
 #[tokio::test]
 async fn think_node_run_with_context_no_panic_when_no_stream_tx() {
     let content = "Hello";
-    let llm = MockLlm::with_no_tool_calls(content);
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_no_tool_calls(content));
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
@@ -1017,6 +1240,7 @@ async fn think_node_run_with_context_no_panic_when_no_stream_tx() {
         runtime_context: None,
         cancellation: None,
         run_cancellation: None,
+        any_stream_event_sender: None,
     };
 
     // Should complete without panic
@@ -1028,8 +1252,12 @@ async fn think_node_run_with_context_no_panic_when_no_stream_tx() {
 #[tokio::test]
 async fn think_node_stream_chunks_concatenate_to_full_content() {
     let content = "Test streaming message";
-    let llm = MockLlm::with_no_tool_calls(content).with_stream_by_char();
-    let node = ThinkNode::new(Arc::new(llm));
+    let llm = Arc::new(MockLlm::with_no_tool_calls(content).with_stream_by_char());
+    let fixed_provider = Arc::new(FixedLlmProvider {
+        client: llm,
+        model_id: "mock".to_string(),
+    });
+    let node = ThinkNode::new(fixed_provider);
     let state = ReActState {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
@@ -1055,6 +1283,7 @@ async fn think_node_stream_chunks_concatenate_to_full_content() {
         runtime_context: None,
         cancellation: None,
         run_cancellation: None,
+        any_stream_event_sender: None,
     };
 
     let (out, _) = node.run_with_context(state, &ctx).await.unwrap();
