@@ -104,7 +104,6 @@ pub fn workspace_root_dir() -> Option<PathBuf> {
     std::env::var("WORKSPACE_ROOT_DIR")
         .ok()
         .map(PathBuf::from)
-        .filter(|p| p.exists())
 }
 
 pub fn workspace_dir(workspace_id: &str) -> Option<PathBuf> {

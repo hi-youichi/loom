@@ -253,7 +253,7 @@ impl Tool for GrepTool {
         }
 
         // Sort by modification time descending (most recently modified first).
-        matches.sort_by(|a, b| b.mod_time.cmp(&a.mod_time));
+        matches.sort_by_key(|a| std::cmp::Reverse(a.mod_time));
 
         let truncated = matches.len() > MAX_MATCHES;
         if truncated {

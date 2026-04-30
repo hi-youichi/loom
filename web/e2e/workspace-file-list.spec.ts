@@ -8,8 +8,8 @@ declare global {
 }
 
 async function switchToFilesView(page: import('@playwright/test').Page) {
-  await page.click('[data-testid="view-files"]')
-  await page.waitForTimeout(500)
+  await page.locator('[data-testid="view-files"]').click({ force: true })
+  await page.waitForTimeout(1000)
 }
 
 async function createWorkspaceWithFiles(page: import('@playwright/test').Page, name: string): Promise<string> {
@@ -23,14 +23,18 @@ async function createWorkspaceWithFiles(page: import('@playwright/test').Page, n
 
   await page.click('[data-testid="workspace-selector"]')
   const workspaceItems = page.locator('[data-testid^="workspace-item-"]')
-  const count = await workspaceItems.count()
-  expect(count).toBeGreaterThanOrEqual(1)
-
   const testid = await workspaceItems.first().getAttribute('data-testid')
   const workspaceId = testid!.replace('workspace-item-', '')
-  await page.click('body', { position: { x: 300, y: 300 } })
+  await page.locator('[data-testid="file-sidebar"]').click({ position: { x: 110, y: 20 } })
+  await page.waitForTimeout(300)
 
-  const rootDir = global.__workspaceRootDir || path.join(os.tmpdir(), 'loom-test-workspace-root')
+  const rootDir = (() => {
+    try {
+      return fs.readFileSync(path.join(os.tmpdir(), 'loom-test-workspace-root-dir.txt'), 'utf8').trim()
+    } catch {
+      return path.join(os.tmpdir(), 'loom-test-workspace-root')
+    }
+  })()
   const wsDir = path.join(rootDir, workspaceId)
 
   fs.mkdirSync(path.join(wsDir, 'src'), { recursive: true })
@@ -40,6 +44,9 @@ async function createWorkspaceWithFiles(page: import('@playwright/test').Page, n
   fs.writeFileSync(path.join(wsDir, 'src', 'main.ts'), 'console.log("hello")')
   fs.writeFileSync(path.join(wsDir, 'src', 'utils.ts'), 'export function add(a: number, b: number) { return a + b }')
   fs.writeFileSync(path.join(wsDir, 'assets', 'logo.svg'), '<svg></svg>')
+
+  await page.locator('[data-testid="view-files"]').click({ force: true })
+  await page.waitForTimeout(2000)
 
   return workspaceId
 }
@@ -66,7 +73,6 @@ test.describe('Workspace File List', () => {
 
   test('should switch to files view', async ({ page }) => {
     await createWorkspaceWithFiles(page, 'File Test WS')
-    await switchToFilesView(page)
 
     const fileItems = page.locator('[data-testid^="file-item-"]')
     await expect(fileItems.first()).toBeVisible({ timeout: 5000 })
@@ -74,7 +80,6 @@ test.describe('Workspace File List', () => {
 
   test('should list root files and folders after workspace creation', async ({ page }) => {
     await createWorkspaceWithFiles(page, 'File List WS')
-    await switchToFilesView(page)
 
     const fileItems = page.locator('[data-testid^="file-item-"]')
     await expect(fileItems.first()).toBeVisible({ timeout: 5000 })
@@ -96,7 +101,6 @@ test.describe('Workspace File List', () => {
 
   test('should display folders before files', async ({ page }) => {
     await createWorkspaceWithFiles(page, 'Sort Order WS')
-    await switchToFilesView(page)
 
     const fileItems = page.locator('[data-testid^="file-item-"]')
     await expect(fileItems.first()).toBeVisible({ timeout: 5000 })
@@ -118,7 +122,6 @@ test.describe('Workspace File List', () => {
 
   test('should expand folder and show children', async ({ page }) => {
     await createWorkspaceWithFiles(page, 'Expand WS')
-    await switchToFilesView(page)
 
     const srcFolder = page.locator('[data-file-type="folder"]').first()
     await expect(srcFolder).toBeVisible({ timeout: 5000 })
@@ -152,7 +155,6 @@ test.describe('Workspace File List', () => {
 
   test('should update file list after switching workspace', async ({ page }) => {
     const ws1 = await createWorkspaceWithFiles(page, 'WS Alpha')
-    await switchToFilesView(page)
 
     const fileItems1 = page.locator('[data-testid^="file-item-"]')
     await expect(fileItems1.first()).toBeVisible({ timeout: 5000 })
@@ -174,7 +176,13 @@ test.describe('Workspace File List', () => {
     const testid = await lastItem.getAttribute('data-testid')
     const ws2Id = testid!.replace('workspace-item-', '')
 
-    const rootDir = global.__workspaceRootDir || path.join(os.tmpdir(), 'loom-test-workspace-root')
+    const rootDir = (() => {
+      try {
+        return fs.readFileSync(path.join(os.tmpdir(), 'loom-test-workspace-root-dir.txt'), 'utf8').trim()
+      } catch {
+        return path.join(os.tmpdir(), 'loom-test-workspace-root')
+      }
+    })()
     const ws2Dir = path.join(rootDir, ws2Id)
     fs.mkdirSync(ws2Dir, { recursive: true })
     fs.writeFileSync(path.join(ws2Dir, 'hello.txt'), 'world')

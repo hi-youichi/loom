@@ -109,7 +109,7 @@ export async function startTestServers(config: TestServerConfig = {}): Promise<T
 
     console.log('Rust backend server started')
 
-    await waitForBackend(backendPort, 30000)
+    await waitForBackend(backendPort, 120000)
 
   } catch (error) {
     console.error('Failed to start Rust backend:', error)

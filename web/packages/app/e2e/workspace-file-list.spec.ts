@@ -46,8 +46,6 @@ async function createWorkspaceWithFiles(page: import('@playwright/test').Page, n
   fs.writeFileSync(path.join(wsDir, 'assets', 'logo.svg'), '<svg></svg>')
 
   await page.locator('[data-testid="view-files"]').click({ force: true })
-  await page.waitForTimeout(500)
-  await page.locator('[data-testid="file-refresh-btn"]').click()
   await page.waitForTimeout(2000)
 
   return workspaceId

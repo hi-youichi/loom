@@ -26,7 +26,13 @@ async function setupWorkspaceWithFiles(page: import('@playwright/test').Page) {
   const workspaceId = testid!.replace('workspace-item-', '')
   await page.click('body', { position: { x: 300, y: 300 } })
 
-  const rootDir = global.__workspaceRootDir || path.join(os.tmpdir(), 'loom-test-workspace-root')
+  const rootDir = (() => {
+    try {
+      return fs.readFileSync(path.join(os.tmpdir(), 'loom-test-workspace-root-dir.txt'), 'utf8').trim()
+    } catch {
+      return path.join(os.tmpdir(), 'loom-test-workspace-root')
+    }
+  })()
   const wsDir = path.join(rootDir, workspaceId)
 
   fs.mkdirSync(path.join(wsDir, 'src'), { recursive: true })

@@ -99,7 +99,7 @@ pub(crate) async fn build_tool_source(
                             let mcp = McpToolSource::new_with_env(
                                 command,
                                 args,
-                                env_vec.into_iter(),
+                                env_vec,
                                 mcp_verbose,
                             )
                             .map_err(|e| ToolSourceError::Transport(e.to_string()))?;

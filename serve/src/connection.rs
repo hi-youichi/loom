@@ -276,6 +276,7 @@ async fn handle_request_and_send(
             if let ServerResponse::WorkspaceCreate(ref create_resp) = resp {
                 if let Some(dir) = workspace_dir(&create_resp.workspace_id) {
                     if !watchers.contains_key(&create_resp.workspace_id) {
+                        let _ = std::fs::create_dir_all(&dir);
                         match WorkspaceWatcher::start(
                             create_resp.workspace_id.clone(),
                             dir,
