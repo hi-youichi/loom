@@ -1,16 +1,17 @@
 //! Delivering run stream to the client: RunStreamSender abstraction and handle_run_stream.
 
 use async_trait::async_trait;
-use axum::extract::ws::WebSocket;
+use axum::extract::ws::Message;
+use futures::SinkExt;
 use loom::{
     EnvelopeState, ErrorResponse, ProtocolEventEnvelope, RunCompletion, RunEndResponse, RunError,
     RunStreamEventResponse, ServerResponse,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::mpsc;
 
-use crate::response::send_response;
+use crate::connection::SharedSink;
 
 /// Abstraction for sending run-related server responses (RunStreamEvent, RunEnd, Error).
 #[async_trait]
@@ -23,23 +24,31 @@ pub(crate) trait RunStreamSender: Send {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
 
-/// Wraps the WebSocket in [`RunStreamSender`] so stream handling can be tested with a mock.
-pub(super) struct WebSocketRunSender<'a>(pub(super) &'a mut WebSocket);
+pub(super) struct WebSocketRunSender(pub(super) SharedSink);
 
 #[async_trait]
-impl RunStreamSender for WebSocketRunSender<'_> {
+impl RunStreamSender for WebSocketRunSender {
     async fn send_response(
         &mut self,
         response: &ServerResponse,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        send_response(self.0, response).await
+        let json = serde_json::to_string(response).unwrap_or_else(|_| {
+            serde_json::to_string(&ServerResponse::Error(ErrorResponse {
+                id: None,
+                error: "serialization error".to_string(),
+            }))
+            .unwrap()
+        });
+        let mut s = self.0.lock().await;
+        s.send(Message::Text(json)).await?;
+        Ok(())
     }
 }
 
 /// Result of the run task (result, state, dropped_events, dropped_appends).
 pub(super) type RunTaskResult = (
     Result<RunCompletion, RunError>,
-    Arc<Mutex<EnvelopeState>>,
+    Arc<StdMutex<EnvelopeState>>,
     Arc<AtomicUsize>,
     Arc<AtomicUsize>,
 );

@@ -57,11 +57,17 @@ pub async fn run_serve_on_listener(
     info!("📡 Loading providers from config file...");
     let providers: Vec<ProviderConfig> =
         loom::provider::load_provider_configs().unwrap_or_default();
+    info!("📡 Found {} provider config(s)", providers.len());
+    for (i, p) in providers.iter().enumerate() {
+        info!("  Provider {}: name={}, base_url={}", i + 1, p.name, p.base_url.as_deref().unwrap_or("none"));
+    }
 
     // Load models from configured providers
     info!("🤖 Loading models from {} provider(s)...", providers.len());
     let load_start = Instant::now();
+    info!("🤖 Calling registry.list_all_models()...");
     let models = registry.list_all_models(&providers).await;
+    info!("🤖 registry.list_all_models() returned {} models", models.len());
     let model_count = models.len();
     info!(
         "✅ Model loading completed (took {}ms)",

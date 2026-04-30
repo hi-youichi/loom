@@ -7,13 +7,13 @@ mod delivery;
 mod request;
 mod stream;
 
-use axum::extract::ws::WebSocket;
 use loom::{ProtocolEventEnvelope, ServerResponse};
 use request::{PrepareRunInput, PrepareRunResult};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+use crate::connection::SharedSink;
 use crate::app::RunConfig;
 
 /// Entry point for a Run request: prepares run (register thread, append initial user
@@ -22,7 +22,7 @@ use crate::app::RunConfig;
 /// sent); returns `Err` if streaming or sending the final response fails.
 pub(crate) async fn handle_run(
     r: loom::RunRequest,
-    socket: &mut WebSocket,
+    sink: &SharedSink,
     workspace_store: Option<Arc<loom_workspace::Store>>,
     user_message_store: Option<Arc<dyn loom::UserMessageStore>>,
     run_config: &RunConfig,
@@ -61,7 +61,7 @@ pub(crate) async fn handle_run(
         llm_override: None,
     }));
 
-    let mut sender = delivery::WebSocketRunSender(socket);
+    let mut sender = delivery::WebSocketRunSender(sink.clone());
     let result = delivery::handle_run_stream(run_id.clone(), rx, run_handle, &mut sender).await?;
     Ok((run_id, cancellation, result))
 }

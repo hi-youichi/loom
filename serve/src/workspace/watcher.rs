@@ -69,10 +69,12 @@ impl WorkspaceWatcher {
                             return;
                         }
 
-                        let notification = WorkspaceFileChangedResponse {
-                            workspace_id: wid.clone(),
+                        let notification = WorkspaceFileChangedResponse::new(
+                            wid.clone(),
                             changes,
-                        };
+                        );
+
+                        tracing::info!("📤 File change detected for workspace {}: {} changes", wid, notification.changes.len());
 
                         let _ = tx.send(notification);
                     }

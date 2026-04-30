@@ -1,24 +1,23 @@
-//! WebSocket connection lifecycle: recv loop and request dispatch.
-
 use axum::extract::ws::{Message, WebSocket};
+use futures::{SinkExt, StreamExt};
 use loom::cli_run::RunCancellation;
 use loom::llm::ProviderConfig;
 use loom::protocol::responses::CancelRunResponse;
 use loom::{ClientRequest, ErrorResponse, ServerResponse};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, Mutex};
 
 use super::agents::handle_agent_list;
 use super::app::RunConfig;
 use super::models::{handle_list_models, handle_set_model};
-use super::response::send_response;
 use super::run::handle_run;
 use super::tools::{handle_tool_show, handle_tools_list};
 use super::workspace::watcher::{WorkspaceWatcher, workspace_dir};
 use loom::WorkspaceFileChangedResponse;
 
-/// Registry for tracking active runs and their cancellation handles.
+pub(crate) type SharedSink = Arc<Mutex<futures::stream::SplitSink<WebSocket, Message>>>;
+
 struct ActiveRunRegistry {
     runs: HashMap<String, RunCancellation>,
 }
@@ -45,7 +44,7 @@ impl ActiveRunRegistry {
 }
 
 pub(crate) async fn handle_socket(
-    mut socket: WebSocket,
+    socket: WebSocket,
     shutdown_tx: Option<oneshot::Sender<()>>,
     workspace_store: Option<Arc<loom_workspace::Store>>,
     user_message_store: Option<std::sync::Arc<dyn loom::UserMessageStore>>,
@@ -54,82 +53,95 @@ pub(crate) async fn handle_socket(
 ) {
     tracing::info!("🔗 New WebSocket connection established");
 
+    let (sink, mut stream) = socket.split();
+    let sink: SharedSink = Arc::new(Mutex::new(sink));
+
     let mut request_count = 0;
     let connection_start = std::time::Instant::now();
     let mut active_run_registry = ActiveRunRegistry::new();
-    let (file_change_tx, mut file_change_rx) = tokio::sync::broadcast::channel(64);
+    let (file_change_tx, mut file_change_rx) = tokio::sync::broadcast::channel::<WorkspaceFileChangedResponse>(64);
     let mut watchers: HashMap<String, WorkspaceWatcher> = HashMap::new();
 
-    loop {
-        tokio::select! {
-            res = socket.recv() => {
-                let msg = match res {
-                    Some(Ok(m)) => m,
-                    Some(Err(e)) => {
-                        tracing::warn!("❌ WebSocket read error (client closed?): {}", e);
-                        let _ = socket.close().await;
-                        break;
-                    }
-                    None => {
-                        tracing::info!("WebSocket stream ended");
-                        break;
-                    }
-                };
-                let text = match &msg {
-                    Message::Text(t) => t.clone(),
-                    Message::Binary(b) => String::from_utf8_lossy(b).into_owned(),
-                    _ => {
-                        tracing::debug!("Received non-text message, skipping");
-                        continue;
-                    }
-                };
-
-                request_count += 1;
-                tracing::debug!(
-                    "📨 Request #{}: {}",
-                    request_count,
-                    text.chars().take(100).collect::<String>()
-                );
-
-                let request_start = std::time::Instant::now();
-
-                if let Err(e) = handle_request_and_send(
-                    &text,
-                    &mut socket,
-                    workspace_store.clone(),
-                    user_message_store.clone(),
-                    &run_config,
-                    providers.clone(),
-                    &mut active_run_registry,
-                    &file_change_tx,
-                    &mut watchers,
-                )
-                .await
-                {
-                    tracing::error!("❌ Request #{} failed: {}", request_count, e);
-                    let _ = socket.close().await;
-                    break;
-                }
-
-                let duration = request_start.elapsed();
-                tracing::debug!(
-                    "✅ Request #{} completed in {}ms",
-                    request_count,
-                    duration.as_millis()
-                );
-            }
-            res = recv_file_change(&mut file_change_rx) => {
-                if let Ok(notification) = res {
+    let notify_sink = sink.clone();
+    let notify_handle = tokio::spawn(async move {
+        loop {
+            match file_change_rx.recv().await {
+                Ok(notification) => {
+                    tracing::info!(
+                        "📤 Pushing file change notification: workspace={}, changes={}",
+                        notification.workspace_id,
+                        notification.changes.len()
+                    );
                     let json = serde_json::to_string(&notification).unwrap_or_default();
-                    tracing::debug!("📤 Pushing file change notification");
-                    if socket.send(Message::Text(json)).await.is_err() {
+                    let mut s = notify_sink.lock().await;
+                    if s.send(Message::Text(json)).await.is_err() {
                         tracing::warn!("Failed to send file change notification");
                         break;
                     }
                 }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!("File change notifications lagged: skipped {}", n);
+                }
+                Err(_) => break,
             }
         }
+    });
+
+    while let Some(res) = stream.next().await {
+        let msg = match res {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::warn!("❌ WebSocket read error (client closed?): {}", e);
+                break;
+            }
+        };
+        let text = match &msg {
+            Message::Text(t) => t.clone(),
+            Message::Binary(b) => String::from_utf8_lossy(b).into_owned(),
+            _ => {
+                tracing::debug!("Received non-text message, skipping");
+                continue;
+            }
+        };
+
+        request_count += 1;
+        tracing::debug!(
+            "📨 Request #{}: {}",
+            request_count,
+            text.chars().take(100).collect::<String>()
+        );
+
+        let request_start = std::time::Instant::now();
+
+        if let Err(e) = handle_request_and_send(
+            &text,
+            &sink,
+            workspace_store.clone(),
+            user_message_store.clone(),
+            &run_config,
+            providers.clone(),
+            &mut active_run_registry,
+            &file_change_tx,
+            &mut watchers,
+        )
+        .await
+        {
+            tracing::error!("❌ Request #{} failed: {}", request_count, e);
+            break;
+        }
+
+        let duration = request_start.elapsed();
+        tracing::debug!(
+            "✅ Request #{} completed in {}ms",
+            request_count,
+            duration.as_millis()
+        );
     }
+
+    notify_handle.abort();
+
+    let mut s = sink.lock().await;
+    let _ = s.close().await;
 
     let connection_duration = connection_start.elapsed();
     tracing::info!(
@@ -143,16 +155,10 @@ pub(crate) async fn handle_socket(
     }
 }
 
-async fn recv_file_change(
-    rx: &mut tokio::sync::broadcast::Receiver<WorkspaceFileChangedResponse>,
-) -> Result<WorkspaceFileChangedResponse, tokio::sync::broadcast::error::RecvError> {
-    rx.recv().await
-}
-
 #[allow(clippy::too_many_arguments)]
 async fn handle_request_and_send(
     text: &str,
-    socket: &mut WebSocket,
+    sink: &SharedSink,
     workspace_store: Option<Arc<loom_workspace::Store>>,
     user_message_store: Option<std::sync::Arc<dyn loom::UserMessageStore>>,
     run_config: &RunConfig,
@@ -169,7 +175,7 @@ async fn handle_request_and_send(
                 id: None,
                 error: format!("parse error: {}", e),
             });
-            send_response(socket, &resp).await?;
+            send_response_to_sink(sink, &resp).await?;
             return Ok(());
         }
     };
@@ -191,7 +197,7 @@ async fn handle_request_and_send(
         ClientRequest::Run(r) => {
             tracing::info!("Starting agent run with profile: {}", r.agent);
             let request_id = r.id.clone();
-            match handle_run(r, socket, workspace_store, user_message_store, run_config).await {
+            match handle_run(r, sink, workspace_store, user_message_store, run_config).await {
                 Ok((run_id, cancellation, Some(resp))) => {
                     active_run_registry.insert(run_id, cancellation);
                     tracing::info!("Run completed with response");
@@ -229,8 +235,8 @@ async fn handle_request_and_send(
         }
         ClientRequest::Ping(r) => {
             tracing::debug!("🏓 Ping received");
-            send_response(
-                socket,
+            send_response_to_sink(
+                sink,
                 &ServerResponse::Pong(loom::PongResponse { id: r.id }),
             )
             .await?;
@@ -248,7 +254,7 @@ async fn handle_request_and_send(
                 }
                 _ => {}
             }
-            send_response(socket, &resp).await?;
+            send_response_to_sink(sink, &resp).await?;
             return Ok(());
         }
         ClientRequest::SetModel(r) => {
@@ -263,7 +269,7 @@ async fn handle_request_and_send(
                 ServerResponse::Error(e) => tracing::error!("❌ Failed to set model: {}", e.error),
                 _ => {}
             }
-            send_response(socket, &resp).await?;
+            send_response_to_sink(sink, &resp).await?;
             return Ok(());
         }
         ClientRequest::WorkspaceList(r) => {
@@ -335,6 +341,22 @@ async fn handle_request_and_send(
     };
 
     tracing::debug!("📤 Sending response for: {}", request_type);
-    send_response(socket, &resp).await?;
+    send_response_to_sink(sink, &resp).await?;
+    Ok(())
+}
+
+async fn send_response_to_sink(
+    sink: &SharedSink,
+    response: &ServerResponse,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let json = serde_json::to_string(response).unwrap_or_else(|_| {
+        serde_json::to_string(&ServerResponse::Error(ErrorResponse {
+            id: None,
+            error: "serialization error".to_string(),
+        }))
+        .unwrap()
+    });
+    let mut s = sink.lock().await;
+    s.send(Message::Text(json)).await?;
     Ok(())
 }

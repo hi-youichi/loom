@@ -132,6 +132,7 @@ pub(super) async fn prepare_run(
             bash_executor: None,
             extra_tools: None,
             acp_session_id: None,
+            force_compact: false,
         };
 
     // Handle both AgentType (react/dup/tot/got) and custom agent names
