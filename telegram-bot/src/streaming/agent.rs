@@ -19,6 +19,7 @@ pub async fn run_loom_agent_streaming(
     sender: Arc<dyn MessageSender>,
     context: AgentRunContext,
     settings: &Settings,
+    force_compact: bool,
 ) -> Result<String> {
     tracing::info!("Running Loom agent (streaming) for chat {}", chat_id);
 
@@ -67,7 +68,9 @@ pub async fn run_loom_agent_streaming(
             bash_executor: None,
             extra_tools: None,
             acp_session_id: None,
+            force_compact,
         };
+
 
     let mapper = StreamEventMapper::new(tx.clone());
     let on_event = mapper.boxed_callback();

@@ -9,6 +9,7 @@ use crate::download::{is_bot_mentioned, is_reply_to_bot};
 use crate::error::BotError;
 use crate::formatting::telegram::markdown_notice;
 use crate::handler_deps::HandlerDeps;
+use crate::traits::AgentRunContext;
 use loom::command as loom_command;
 use teloxide::types::Message;
 
@@ -148,11 +149,95 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
                     }
                     return Ok(());
                 }
-                loom_command::Command::Compact { .. } | loom_command::Command::Summarize => {
+                loom_command::Command::Compact { instructions } => {
+                    let thread_id = format!("telegram_{}", ctx.chat_id());
+                    let compact_prompt = instructions
+                        .as_deref()
+                        .unwrap_or("Compress the conversation history, keeping the most important context.");
+                    
                     ctx.deps
                         .sender
-                        .send_text(ctx.chat_id(), "Command not yet supported in Telegram bot.")
+                        .send_text(ctx.chat_id(), "⏳ 正在压缩上下文...")
                         .await?;
+
+                    // Run agent with force_compact=true
+                    let chat_id = ctx.chat_id();
+                    let message_id = ctx.message_id();
+                    let sender = ctx.deps.sender.clone();
+                    let settings = ctx.deps.settings.clone();
+                    let model = ctx.deps.model_selection.current_model(chat_id)?;
+                    
+                    let run_context = AgentRunContext {
+                        user_message_id: Some(message_id),
+                        ack_message_id: None,
+                        model_override: Some(model),
+                    };
+                    
+                    match crate::streaming::run_loom_agent_streaming(
+                        compact_prompt,
+                        chat_id,
+                        sender,
+                        run_context,
+                        &settings,
+                        true, // force_compact
+                    ).await {
+                        Ok(reply) => {
+                            let msg = if reply.trim().is_empty() {
+                                "✅ 上下文已压缩".to_string()
+                            } else {
+                                reply
+                            };
+                            ctx.deps.sender.send_text(ctx.chat_id(), &msg).await?;
+                        }
+                        Err(e) => {
+                            tracing::error!("Compact failed: {}", e);
+                            ctx.deps.sender.send_text(ctx.chat_id(), &format!("❌ 压缩失败: {}", e)).await?;
+                        }
+                    }
+                    return Ok(());
+                }
+                loom_command::Command::Summarize => {
+                    let thread_id = format!("telegram_{}", ctx.chat_id());
+                    
+                    ctx.deps
+                        .sender
+                        .send_text(ctx.chat_id(), "⏳ 正在生成摘要...")
+                        .await?;
+
+                    // Run agent with force_compact=true for summarize too
+                    let chat_id = ctx.chat_id();
+                    let message_id = ctx.message_id();
+                    let sender = ctx.deps.sender.clone();
+                    let settings = ctx.deps.settings.clone();
+                    let model = ctx.deps.model_selection.current_model(chat_id)?;
+                    
+                    let run_context = AgentRunContext {
+                        user_message_id: Some(message_id),
+                        ack_message_id: None,
+                        model_override: Some(model),
+                    };
+                    
+                    match crate::streaming::run_loom_agent_streaming(
+                        "Summarize the conversation so far.",
+                        chat_id,
+                        sender,
+                        run_context,
+                        &settings,
+                        true,
+                    ).await {
+                        Ok(reply) => {
+                            let msg = if reply.trim().is_empty() {
+                                "✅ 摘要已生成".to_string()
+                            } else {
+                                reply
+                            };
+                            ctx.deps.sender.send_text(ctx.chat_id(), &msg).await?;
+                        }
+                        Err(e) => {
+                            tracing::error!("Summarize failed: {}", e);
+                            ctx.deps.sender.send_text(ctx.chat_id(), &format!("❌ 摘要失败: {}", e)).await?;
+                        }
+                    }
                     return Ok(());
                 }
                 loom_command::Command::Models { .. } | loom_command::Command::ModelsUse { .. } => {
