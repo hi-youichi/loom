@@ -73,7 +73,7 @@ export function sendMessage(
     thread_id: options.sessionId,
     working_folder: workingFolder,
     verbose: false,
-    model: options.model,
+    model: options.model || undefined,
   }
   if (options.workspaceId) payload.workspace_id = options.workspaceId
 

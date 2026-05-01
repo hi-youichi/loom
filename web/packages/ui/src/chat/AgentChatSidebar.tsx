@@ -4,6 +4,7 @@ import { memo, useRef, useCallback, useEffect } from "react"
 import { ChevronRight, Users, ChevronDown } from "lucide-react"
 import { useChatPanel } from '@loom/hooks'
 import { MessageList } from "./MessageList"
+import { ChatError } from "./ChatError"
 import { MessageComposer } from "../MessageComposer"
 import { ThemeToggle } from "../ThemeToggle"
 import { useModels } from '@loom/hooks'
@@ -14,9 +15,11 @@ interface AgentChatSidebarProps {
   agents: Array<{ name: string; status: string }>
   messages: UIMessageItemProps[]
   isStreaming?: boolean
+  error?: string | null
   onSendMessage: (text: string) => Promise<void>
   onCancel?: () => void
   onModelChange?: (model: string) => void
+  onDismissError?: () => void
 }
 
 function ResizeHandle({ onDrag, onToggle }: { onDrag: (w: number) => void; onToggle: () => void }) {
@@ -68,9 +71,11 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
   agents,
   messages,
   isStreaming = false,
+  error,
   onSendMessage,
   onCancel,
   onModelChange,
+  onDismissError,
 }: AgentChatSidebarProps) {
   const { collapsed, width, selectedAgentId, toggle, expand, setWidth, selectAgent } = useChatPanel()
   const { models } = useModels()
@@ -131,6 +136,9 @@ export const AgentChatSidebar = memo(function AgentChatSidebar({
         )}
       </div>
 
+      {error && (
+        <ChatError error={error} onDismiss={onDismissError} />
+      )}
       <div className="border-t border-border">
         <MessageComposer
           disabled={!selectedAgentId}

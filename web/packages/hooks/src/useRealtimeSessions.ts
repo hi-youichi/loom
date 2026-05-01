@@ -34,7 +34,7 @@ export function useRealtimeSessions(workspaceId?: string): UseRealtimeSessionsRe
   const [error, setError] = useState<string | null>(null)
   
   // Use ref to track workspaceId changes without triggering re-subscription
-  const workspaceIdRef = useRef(workspaceId)
+  const workspaceIdRef = useRef<string | undefined>(undefined)
   
   // Convert SessionInWorkspace to Session format
   const convertToSession = useCallback((data: SessionInWorkspace): Session => {

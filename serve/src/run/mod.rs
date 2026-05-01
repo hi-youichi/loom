@@ -27,6 +27,7 @@ pub(crate) async fn handle_run(
     user_message_store: Option<Arc<dyn loom::UserMessageStore>>,
     run_config: &RunConfig,
 ) -> Result<(String, loom::cli_run::RunCancellation, Option<ServerResponse>), Box<dyn std::error::Error + Send + Sync>> {
+    let request_id = r.id.clone();
     let PrepareRunResult {
         opts,
         cmd,
@@ -62,7 +63,7 @@ pub(crate) async fn handle_run(
     }));
 
     let mut sender = delivery::WebSocketRunSender(sink.clone());
-    let result = delivery::handle_run_stream(run_id.clone(), rx, run_handle, &mut sender).await?;
+    let result = delivery::handle_run_stream(run_id.clone(), request_id, rx, run_handle, &mut sender).await?;
     Ok((run_id, cancellation, result))
 }
 
@@ -147,7 +148,7 @@ mod tests {
             last_run_end: None,
             last_error: None,
         };
-        let out = handle_run_stream("run-1".to_string(), rx, run_handle, &mut sender).await;
+        let out = handle_run_stream("run-1".to_string(), None, rx, run_handle, &mut sender).await;
         assert!(out.is_err());
         assert_eq!(out.unwrap_err().to_string(), "mock send failure");
     }
@@ -174,7 +175,7 @@ mod tests {
             last_run_end: None,
             last_error: None,
         };
-        let out = handle_run_stream("run-1".to_string(), rx, run_handle, &mut sender).await;
+        let out = handle_run_stream("run-1".to_string(), None, rx, run_handle, &mut sender).await;
         assert!(out.is_ok());
         assert!(out.unwrap().is_none());
         assert_eq!(sender.send_count, 1);
@@ -202,7 +203,7 @@ mod tests {
             last_run_end: None,
             last_error: None,
         };
-        let out = handle_run_stream("run-1".to_string(), rx, run_handle, &mut sender).await;
+        let out = handle_run_stream("run-1".to_string(), None, rx, run_handle, &mut sender).await;
         assert!(out.is_ok());
         assert_eq!(sender.send_count, 1);
         let (id, error) = sender.last_error.as_ref().unwrap();
@@ -223,7 +224,7 @@ mod tests {
             last_run_end: None,
             last_error: None,
         };
-        let out = handle_run_stream("run-1".to_string(), rx, run_handle, &mut sender).await;
+        let out = handle_run_stream("run-1".to_string(), None, rx, run_handle, &mut sender).await;
         assert!(out.is_err());
         assert_eq!(sender.send_count, 0);
     }

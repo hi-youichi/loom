@@ -38,6 +38,8 @@ pub struct HelveConfig {
     pub system_prompt_override: Option<String>,
     /// Skills prompt: available_skills summary (and optionally preloaded content). Injected between agents_md and base_content.
     pub skills_prompt: Option<String>,
+    /// Runtime environment context (OS, locale, agent intro). Prepended before all other prefix sections.
+    pub env_context: Option<String>,
 }
 
 /// Converts a HelveConfig and a base ReactBuildConfig into a single ReactBuildConfig.
@@ -68,6 +70,7 @@ pub fn to_react_build_config(helve: &HelveConfig, base: ReactBuildConfig) -> Rea
         role_setting: helve.role_setting.clone(),
         agents_md: helve.agents_md.clone(),
         skills_prompt: helve.skills_prompt.clone(),
+        env_context: helve.env_context.clone(),
         working_folder: helve.working_folder.clone(),
         approval_policy: helve.approval_policy,
     };
@@ -135,6 +138,7 @@ mod tests {
         assert!(c.agents_md.is_none());
         assert!(c.system_prompt_override.is_none());
         assert!(c.skills_prompt.is_none());
+        assert!(c.env_context.is_none());
     }
 
     /// **Scenario**: role_setting is prepended to assembled prompt when no system_prompt_override.
@@ -208,5 +212,26 @@ mod tests {
         let skills_pos = prompt.find("SKILLS").unwrap();
         let base_pos = prompt.find("BASE").unwrap();
         assert!(role_pos < agents_pos && agents_pos < skills_pos && skills_pos < base_pos);
+    }
+
+    #[test]
+    fn to_react_build_config_env_context_first() {
+        let mut base = ReactBuildConfig::from_env();
+        base.system_prompt = Some("BASE".to_string());
+        let helve = HelveConfig {
+            env_context: Some("ENV".to_string()),
+            role_setting: Some("ROLE".to_string()),
+            agents_md: Some("AGENTS".to_string()),
+            skills_prompt: Some("SKILLS".to_string()),
+            ..Default::default()
+        };
+        let out = to_react_build_config(&helve, base);
+        let prompt = out.system_prompt.as_deref().unwrap();
+        let env_pos = prompt.find("ENV").unwrap();
+        let role_pos = prompt.find("ROLE").unwrap();
+        let agents_pos = prompt.find("AGENTS").unwrap();
+        let skills_pos = prompt.find("SKILLS").unwrap();
+        let base_pos = prompt.find("BASE").unwrap();
+        assert!(env_pos < role_pos && role_pos < agents_pos && agents_pos < skills_pos && skills_pos < base_pos);
     }
 }

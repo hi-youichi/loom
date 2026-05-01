@@ -588,6 +588,7 @@ mod tests {
             bash_executor: None,
             extra_tools: None,
             acp_session_id: None,
+            force_compact: false,
         };
         let (profile, source) = load_profile_from_options(&opts).expect("built-in dev profile");
         assert_eq!(profile.name, "dev");
@@ -626,6 +627,7 @@ mod tests {
             bash_executor: None,
             extra_tools: None,
             acp_session_id: None,
+            force_compact: false,
         };
         let (profile, source) =
             load_profile_from_options(&opts).expect("built-in agent-builder profile");
@@ -939,6 +941,7 @@ tools:
             bash_executor: None,
             extra_tools: None,
             acp_session_id: None,
+            force_compact: false,
         };
         let result = load_profile_from_options(&opts);
 
@@ -983,6 +986,7 @@ tools:
             bash_executor: None,
             extra_tools: None,
             acp_session_id: None,
+            force_compact: false,
         };
         let result = load_profile_from_options(&opts);
         match prev_loom {

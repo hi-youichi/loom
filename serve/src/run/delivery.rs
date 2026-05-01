@@ -58,6 +58,7 @@ pub(super) type RunTaskResult = (
 /// events or appends were dropped.
 pub(super) async fn handle_run_stream<S>(
     run_id: String,
+    request_id: Option<String>,
     mut rx: mpsc::Receiver<ProtocolEventEnvelope>,
     run_handle: tokio::task::JoinHandle<RunTaskResult>,
     sender: &mut S,
@@ -76,6 +77,7 @@ where
         if let Err(e) = sender
             .send_response(&ServerResponse::RunStreamEvent(RunStreamEventResponse {
                 id: run_id.clone(),
+                request_id: request_id.clone(),
                 event,
             }))
             .await
@@ -136,6 +138,7 @@ where
             sender
                 .send_response(&ServerResponse::RunEnd(RunEndResponse {
                     id: run_id.clone(),
+                    request_id: request_id.clone(),
                     reply: result.reply,
                     reasoning_content: result.reasoning_content,
                     usage: None,

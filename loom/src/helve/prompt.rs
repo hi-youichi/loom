@@ -44,6 +44,8 @@ pub struct ReactPromptInputs {
     pub agents_md: Option<String>,
     /// Optional skills section prepended after `agents_md`.
     pub skills_prompt: Option<String>,
+    /// Optional runtime environment context (OS, locale, agent intro) prepended before all other sections.
+    pub env_context: Option<String>,
     /// Working folder displayed in the workdir section when present.
     pub working_folder: Option<PathBuf>,
     /// Approval policy appended after the workdir section when present.
@@ -95,6 +97,7 @@ fn build_approval_section(approval_policy: Option<ApprovalPolicy>) -> String {
 
 fn collect_prefix_sections(inputs: &ReactPromptInputs) -> Vec<&str> {
     [
+        inputs.env_context.as_deref(),
         inputs.role_setting.as_deref(),
         inputs.agents_md.as_deref(),
         inputs.skills_prompt.as_deref(),
@@ -156,6 +159,24 @@ pub fn assemble_react_system_prompt(inputs: &ReactPromptInputs) -> String {
 /// let prompt = assemble_system_prompt(Path::new("/tmp/workspace"), Some(ApprovalPolicy::DestructiveOnly));
 /// config.system_prompt = Some(prompt);
 /// ```
+/// Builds a runtime environment context string for inclusion in the system prompt.
+///
+/// Detects the current OS, locale/language, and includes a brief Loom agent introduction.
+pub fn build_env_context() -> String {
+    let os = std::env::consts::OS;
+    let lang = std::env::var("LANG")
+        .or_else(|_| std::env::var("LC_ALL"))
+        .or_else(|_| std::env::var("LANGUAGE"))
+        .unwrap_or_else(|_| "en_US.UTF-8".to_string());
+    format!(
+        "ENVIRONMENT:\n\
+         - OS: {os}\n\
+         - Locale: {lang}\n\
+         - Agent: Loom (a Rust-native AI agent framework with ReAct/ToT/GoT/DUP reasoning \
+         patterns, tool use, streaming, and session management)"
+    )
+}
+
 pub fn assemble_system_prompt(
     working_folder: &Path,
     approval_policy: Option<ApprovalPolicy>,
@@ -209,5 +230,30 @@ mod tests {
         assert!(p.contains(REACT_SYSTEM_PROMPT));
         assert!(p.contains("/tmp/ws"));
         assert!(p.contains("APPROVAL"));
+    }
+
+    #[test]
+    fn env_context_prepended_before_role_setting() {
+        let p = assemble_react_system_prompt(&ReactPromptInputs {
+            env_context: Some("ENVIRONMENT:\n- OS: linux\n- Locale: en_US.UTF-8\n- Agent: Loom".to_string()),
+            role_setting: Some("You are helpful.".to_string()),
+            working_folder: Some(PathBuf::from("/tmp/ws")),
+            ..Default::default()
+        });
+        assert!(p.starts_with("ENVIRONMENT:"));
+        assert!(p.contains("You are helpful."));
+        let env_pos = p.find("ENVIRONMENT:").unwrap();
+        let role_pos = p.find("You are helpful.").unwrap();
+        let workdir_pos = p.find("/tmp/ws").unwrap();
+        assert!(env_pos < role_pos && role_pos < workdir_pos);
+    }
+
+    #[test]
+    fn build_env_context_contains_os_and_agent() {
+        let ctx = build_env_context();
+        assert!(ctx.contains("OS:"));
+        assert!(ctx.contains("Locale:"));
+        assert!(ctx.contains("Agent: Loom"));
+        assert!(ctx.starts_with("ENVIRONMENT:"));
     }
 }

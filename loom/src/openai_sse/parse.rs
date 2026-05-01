@@ -136,6 +136,7 @@ pub fn parse_chat_request(req: &ChatCompletionRequest) -> Result<ParsedChatReque
             agents_md: None,
             system_prompt_override: None,
             skills_prompt: None,
+            env_context: None,
         })
     } else {
         None

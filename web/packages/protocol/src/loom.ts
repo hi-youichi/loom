@@ -162,12 +162,14 @@ export type LoomStreamEvent =
 export interface LoomRunStreamEventResponse {
   type: 'run_stream_event'
   id: string
+  request_id?: string
   event: LoomStreamEvent
 }
 
 export interface LoomRunEndResponse {
   type: 'run_end'
   id: string
+  request_id?: string
   reply: string
 }
 

@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect } from 'react'
 
 import { ChatErrorBoundary, FileTreeSidebar, DashboardView, AgentChatSidebar, WorkspaceSelector, ToastProvider } from '@loom/ui'
-import { useWorkspace, useSessionId, useAgents, useChat, useChatPanel, useModels, useRealtimeSessions, useWorkspaceFiles } from '@loom/hooks'
+import { useWorkspace, useSessionId, useAgents, useChat, useChatPanel, useModels, useRealtimeSessions, useWorkspaceFiles, useAgentModel } from '@loom/hooks'
+import { readFile as wsReadFile } from '@loom/service-workspace'
 import type { FileNode as UIFileNode } from '@loom/ui'
 import { TabBar } from '@loom/ui'
 
@@ -34,23 +35,14 @@ export function ChatPage() {
   const { sessionId, setSessionId, resetSession } = useSessionId(activeWorkspaceId ?? undefined)
   const { selectedAgentId } = useChatPanel()
   const { models } = useModels()
-  const [selectedModel, setSelectedModel] = useState('')
+  const { selectedModel, handleModelChange } = useAgentModel(selectedAgentId, models)
 
-  // Tabs
   const [tabs, setTabs] = useState<Tab[]>([
     { id: 'dashboard', title: '仪表盘', type: 'dashboard' },
   ])
   const [activeTabId, setActiveTabId] = useState('dashboard')
 
-  // File tree from workspace
   const { rootFiles, loading: filesLoading, loadChildren, refresh: refreshFiles } = useWorkspaceFiles(activeWorkspaceId)
-
-  useEffect(() => {
-    if (selectedModel || models.length === 0) return
-    const fallback = 'claude-3-5-sonnet'
-    const match = models.find(m => m.id.includes(fallback) || m.name.includes(fallback))
-    setSelectedModel(match?.id || models[0]?.id || '')
-  }, [models, selectedModel])
 
   const {
     messages,
@@ -58,6 +50,8 @@ export function ChatPage() {
     sendMessage: sendRealMessage,
     cancel,
     loadHistory,
+    error: chatError,
+    dismissError,
   } = useChat({
     sessionId,
     workspaceId: activeWorkspaceId ?? undefined,
@@ -192,7 +186,9 @@ export function ChatPage() {
           isStreaming={isStreaming}
           onSendMessage={handleSendMessage}
           onCancel={cancel}
-          onModelChange={setSelectedModel}
+          onModelChange={handleModelChange}
+          error={chatError}
+          onDismissError={dismissError}
         />
       </div>
     </ChatErrorBoundary>
@@ -213,11 +209,9 @@ function FileContentView({ filePath, workspaceId }: { filePath: string; workspac
     if (!filePath || !workspaceId) return
     setLoading(true)
     setError(null)
-    import('@loom/service-workspace').then(ws => {
-      ws.readFile(workspaceId, filePath)
-        .then(c => { setContent(c); setLoading(false) })
-        .catch(e => { setError(e instanceof Error ? e.message : 'Failed to read file'); setLoading(false) })
-    })
+    wsReadFile(workspaceId, filePath)
+      .then(c => { setContent(c); setLoading(false) })
+      .catch(e => { setError(e instanceof Error ? e.message : 'Failed to read file'); setLoading(false) })
   }, [filePath, workspaceId])
 
   if (loading) {

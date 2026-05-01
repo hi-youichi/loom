@@ -73,8 +73,6 @@ class LoomConnection {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private intentionalClose = false
   private opening: Promise<void> | null = null
-  private activeRunRequestId: string | null = null
-  private activeRunId: string | null = null
   private listeners = new Map<string, Set<Listener<unknown>>>()
 
   constructor() {
@@ -162,70 +160,34 @@ class LoomConnection {
 
   private handleMessage(msg: LoomServerMessage) {
     const id = (msg as Record<string, unknown>).id as string | undefined
-    const type = (msg as Record<string, unknown>).type as string | undefined
+    const requestId = (msg as Record<string, unknown>).request_id as string | undefined
 
     if (isError(msg)) {
-      if (id && this.pending.has(id)) {
-        const entry = this.pending.get(id)!
-        this.pending.delete(id)
+      const lookupId = requestId || id
+      if (lookupId && this.pending.has(lookupId)) {
+        const entry = this.pending.get(lookupId)!
+        this.pending.delete(lookupId)
         entry.reject(new Error(msg.error || 'Unknown error from server.'))
-      } else if (this.activeRunRequestId) {
-        const reqId = this.activeRunRequestId
-        const entry = this.pending.get(reqId)
-        if (entry) {
-          this.pending.delete(reqId)
-          this.clearRunMapping()
-          entry.reject(new Error(msg.error || 'Unknown error from server.'))
-        }
       }
       return
     }
 
-    if (id && this.pending.has(id)) {
-      const entry = this.pending.get(id)!
+    const lookupId = requestId || id
+    if (lookupId && this.pending.has(lookupId)) {
+      const entry = this.pending.get(lookupId)!
       if (entry.onMessage) {
         const done = entry.onMessage(msg)
         if (done) {
-          this.pending.delete(id)
-          this.clearRunMapping()
+          this.pending.delete(lookupId)
           entry.resolve(msg)
         }
       } else {
-        this.pending.delete(id)
-        this.clearRunMapping()
+        this.pending.delete(lookupId)
         entry.resolve(msg)
       }
       return
     }
 
-    if ((type === 'run_stream_event' || type === 'run_end') && id) {
-      if (!this.activeRunId && this.activeRunRequestId) {
-        this.activeRunId = id
-        const reqId = this.activeRunRequestId
-        const entry = this.pending.get(reqId)
-        if (entry) {
-          this.pending.set(id, entry)
-          this.pending.delete(reqId)
-        }
-      }
-      if (this.activeRunId === id && this.pending.has(id)) {
-        const entry = this.pending.get(id)!
-        if (entry.onMessage) {
-          const done = entry.onMessage(msg)
-          if (done) {
-            this.pending.delete(id)
-            this.clearRunMapping()
-            entry.resolve(msg)
-          }
-        } else {
-          this.pending.delete(id)
-          this.clearRunMapping()
-          entry.resolve(msg)
-        }
-      }
-    }
-
-    // Handle session events (server push notifications)
     if (isSessionCreatedEvent(msg)) {
       this.emit('session_created', {
         workspaceId: msg.workspace_id,
@@ -263,13 +225,7 @@ class LoomConnection {
     }
   }
 
-  private clearRunMapping() {
-    this.activeRunRequestId = null
-    this.activeRunId = null
-  }
-
   private rejectAllPending(error: Error) {
-    this.clearRunMapping()
     for (const [id, entry] of this.pending) {
       this.pending.delete(id)
       entry.reject(error)
@@ -296,13 +252,9 @@ class LoomConnection {
     const request = { ...payload, id }
 
     return new Promise<LoomServerMessage>((resolve, reject) => {
-    this.pending.set(id, { resolve, reject, onMessage })
+      this.pending.set(id, { resolve, reject, onMessage })
 
-    if ((payload as Record<string, unknown>).type === 'run') {
-      this.activeRunRequestId = id
-    }
-
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
         this.pending.delete(id)
         reject(new Error('WebSocket is not connected.'))
         return

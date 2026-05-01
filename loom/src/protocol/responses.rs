@@ -35,6 +35,8 @@ impl ProtocolEventEnvelope {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RunStreamEventResponse {
     pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
     pub event: ProtocolEventEnvelope,
 }
 
@@ -42,6 +44,8 @@ pub struct RunStreamEventResponse {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RunEndResponse {
     pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
     pub reply: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_content: Option<String>,
@@ -327,6 +331,7 @@ mod tests {
     fn response_run_end_roundtrip() {
         let resp = ServerResponse::RunEnd(RunEndResponse {
             id: "req-1".to_string(),
+            request_id: None,
             reply: "hello".to_string(),
             reasoning_content: None,
             usage: Some(LlmUsage {

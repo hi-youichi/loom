@@ -760,6 +760,7 @@ mod tests {
         bash_executor: None,
             extra_tools: None,
             acp_session_id: None,
+            force_compact: false,
         };
         assert!(build_runner(&cfg, &opts, &RunCmd::React, None)
             .await

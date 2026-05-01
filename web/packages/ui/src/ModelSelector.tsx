@@ -83,7 +83,7 @@ export function ModelSelector({
           <div
             className={cn(
               "model-selector__trigger",
-              "flex items-center gap-2 px-3 border border-border bg-background",
+              "flex items-center gap-1 px-2 border border-border bg-background",
               "hover:bg-accent/50",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               "disabled:opacity-50 disabled:cursor-not-allowed",
@@ -93,13 +93,19 @@ export function ModelSelector({
             {loading && !selectedModel ? (
               <LoadingIcon className="h-3.5 w-3.5" />
             ) : (
-              <span className="truncate text-sm">
-                {selectedModel ? selectedModel.name : 'Select model...'}
+              <span className="truncate text-xs">
+                {selectedModel ? (
+                  <>
+                    <span className="text-muted-foreground">{selectedModel.provider || 'Other'}</span>
+                    {' · '}
+                    <span>{selectedModel.name}</span>
+                  </>
+                ) : 'Select model...'}
               </span>
             )}
             <svg
               className={cn(
-                "ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                "ml-auto h-3 w-3 shrink-0 text-muted-foreground transition-transform",
                 open && "rotate-180"
               )}
               xmlns="http://www.w3.org/2000/svg"

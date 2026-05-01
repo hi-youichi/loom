@@ -237,6 +237,10 @@ export function useChat(options?: {
     [sessionId, workspaceId, agentId, model, handleTextChunk, handleEvent, updateAssistantMessage],
   )
 
+  const dismissError = useCallback(() => {
+    setError(null)
+  }, [])
+
   const loadHistory = useCallback(async (targetSessionId?: string) => {
     const id = targetSessionId || sessionId
     if (!id) return
@@ -301,7 +305,8 @@ export function useChat(options?: {
       sendMessage,
       loadHistory,
       cancel,
+      dismissError,
     }),
-    [connectionStatus, error, isStreaming, messages, sendMessage, thinkingLines, loadHistory, cancel],
+    [connectionStatus, error, isStreaming, messages, sendMessage, thinkingLines, loadHistory, cancel, dismissError],
   )
 }
