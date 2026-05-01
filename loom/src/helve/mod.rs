@@ -38,11 +38,13 @@
 //! - **config**: [`HelveConfig`], [`to_react_build_config`].
 //! - **prompt**: [`assemble_react_system_prompt`], [`assemble_system_prompt`], [`ApprovalPolicy`], [`tools_requiring_approval`], [`APPROVAL_REQUIRED_EVENT_TYPE`].
 
+pub mod env_context;
 mod config;
 mod prompt;
 
 pub use config::{to_react_build_config, HelveConfig};
+pub use env_context::{EnvContext, LocaleInfo, OsInfo, ProjectInfo, RuntimeInfo, ShellInfo};
 pub use prompt::{
-    assemble_react_system_prompt, assemble_system_prompt, build_env_context,
+    assemble_react_system_prompt, assemble_system_prompt,
     tools_requiring_approval, ApprovalPolicy, ReactPromptInputs, APPROVAL_REQUIRED_EVENT_TYPE,
 };

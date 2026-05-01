@@ -7,6 +7,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::agent::react::REACT_SYSTEM_PROMPT;
+use super::env_context::EnvContext;
 
 /// Approval policy for destructive or high-risk file operations.
 ///
@@ -45,7 +46,7 @@ pub struct ReactPromptInputs {
     /// Optional skills section prepended after `agents_md`.
     pub skills_prompt: Option<String>,
     /// Optional runtime environment context (OS, locale, agent intro) prepended before all other sections.
-    pub env_context: Option<String>,
+    pub env_context: Option<EnvContext>,
     /// Working folder displayed in the workdir section when present.
     pub working_folder: Option<PathBuf>,
     /// Approval policy appended after the workdir section when present.
@@ -95,18 +96,27 @@ fn build_approval_section(approval_policy: Option<ApprovalPolicy>) -> String {
     }
 }
 
-fn collect_prefix_sections(inputs: &ReactPromptInputs) -> Vec<&str> {
-    [
-        inputs.env_context.as_deref(),
-        inputs.role_setting.as_deref(),
-        inputs.agents_md.as_deref(),
-        inputs.skills_prompt.as_deref(),
-    ]
-    .into_iter()
-    .flatten()
-    .map(str::trim)
-    .filter(|s| !s.is_empty())
-    .collect()
+fn push_trimmed(sections: &mut Vec<String>, opt: Option<&String>) {
+    if let Some(s) = opt {
+        let trimmed = s.trim();
+        if !trimmed.is_empty() {
+            sections.push(trimmed.to_string());
+        }
+    }
+}
+
+fn collect_prefix_sections(inputs: &ReactPromptInputs) -> Vec<String> {
+    let mut sections = Vec::new();
+    if let Some(ctx) = &inputs.env_context {
+        let s = ctx.to_prompt_section();
+        if !s.trim().is_empty() {
+            sections.push(s);
+        }
+    }
+    push_trimmed(&mut sections, inputs.role_setting.as_ref());
+    push_trimmed(&mut sections, inputs.agents_md.as_ref());
+    push_trimmed(&mut sections, inputs.skills_prompt.as_ref());
+    sections
 }
 
 /// Assembles the final ReAct system prompt from loaded prompt materials.
@@ -159,24 +169,6 @@ pub fn assemble_react_system_prompt(inputs: &ReactPromptInputs) -> String {
 /// let prompt = assemble_system_prompt(Path::new("/tmp/workspace"), Some(ApprovalPolicy::DestructiveOnly));
 /// config.system_prompt = Some(prompt);
 /// ```
-/// Builds a runtime environment context string for inclusion in the system prompt.
-///
-/// Detects the current OS, locale/language, and includes a brief Loom agent introduction.
-pub fn build_env_context() -> String {
-    let os = std::env::consts::OS;
-    let lang = std::env::var("LANG")
-        .or_else(|_| std::env::var("LC_ALL"))
-        .or_else(|_| std::env::var("LANGUAGE"))
-        .unwrap_or_else(|_| "en_US.UTF-8".to_string());
-    format!(
-        "ENVIRONMENT:\n\
-         - OS: {os}\n\
-         - Locale: {lang}\n\
-         - Agent: Loom (a Rust-native AI agent framework with ReAct/ToT/GoT/DUP reasoning \
-         patterns, tool use, streaming, and session management)"
-    )
-}
-
 pub fn assemble_system_prompt(
     working_folder: &Path,
     approval_policy: Option<ApprovalPolicy>,
@@ -234,8 +226,9 @@ mod tests {
 
     #[test]
     fn env_context_prepended_before_role_setting() {
+        let ctx = EnvContext::default();
         let p = assemble_react_system_prompt(&ReactPromptInputs {
-            env_context: Some("ENVIRONMENT:\n- OS: linux\n- Locale: en_US.UTF-8\n- Agent: Loom".to_string()),
+            env_context: Some(ctx),
             role_setting: Some("You are helpful.".to_string()),
             working_folder: Some(PathBuf::from("/tmp/ws")),
             ..Default::default()
@@ -249,11 +242,12 @@ mod tests {
     }
 
     #[test]
-    fn build_env_context_contains_os_and_agent() {
-        let ctx = build_env_context();
-        assert!(ctx.contains("OS:"));
-        assert!(ctx.contains("Locale:"));
-        assert!(ctx.contains("Agent: Loom"));
-        assert!(ctx.starts_with("ENVIRONMENT:"));
+    fn env_context_to_prompt_section_contains_os_and_agent() {
+        let ctx = super::EnvContext::detect();
+        let section = ctx.to_prompt_section();
+        assert!(section.contains("OS:"));
+        assert!(section.contains("Locale:"));
+        assert!(section.contains("Agent: Loom"));
+        assert!(section.starts_with("ENVIRONMENT:"));
     }
 }

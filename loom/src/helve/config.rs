@@ -6,6 +6,7 @@
 
 use std::path::PathBuf;
 
+use super::env_context::EnvContext;
 use super::prompt::{assemble_react_system_prompt, ApprovalPolicy, ReactPromptInputs};
 use crate::agent::react::ReactBuildConfig;
 
@@ -39,7 +40,7 @@ pub struct HelveConfig {
     /// Skills prompt: available_skills summary (and optionally preloaded content). Injected between agents_md and base_content.
     pub skills_prompt: Option<String>,
     /// Runtime environment context (OS, locale, agent intro). Prepended before all other prefix sections.
-    pub env_context: Option<String>,
+    pub env_context: Option<EnvContext>,
 }
 
 /// Converts a HelveConfig and a base ReactBuildConfig into a single ReactBuildConfig.
@@ -218,8 +219,9 @@ mod tests {
     fn to_react_build_config_env_context_first() {
         let mut base = ReactBuildConfig::from_env();
         base.system_prompt = Some("BASE".to_string());
+        let ctx = EnvContext::default();
         let helve = HelveConfig {
-            env_context: Some("ENV".to_string()),
+            env_context: Some(ctx),
             role_setting: Some("ROLE".to_string()),
             agents_md: Some("AGENTS".to_string()),
             skills_prompt: Some("SKILLS".to_string()),
@@ -227,7 +229,7 @@ mod tests {
         };
         let out = to_react_build_config(&helve, base);
         let prompt = out.system_prompt.as_deref().unwrap();
-        let env_pos = prompt.find("ENV").unwrap();
+        let env_pos = prompt.find("ENVIRONMENT:").unwrap();
         let role_pos = prompt.find("ROLE").unwrap();
         let agents_pos = prompt.find("AGENTS").unwrap();
         let skills_pos = prompt.find("SKILLS").unwrap();

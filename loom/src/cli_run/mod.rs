@@ -14,6 +14,8 @@ pub use agent::{
 };
 
 use crate::skill::SkillRegistry;
+use crate::helve::env_context::ProjectInfo;
+use crate::helve::EnvContext;
 use crate::{
     assemble_react_system_prompt, to_react_build_config, HelveConfig, ReactBuildConfig,
     ReactPromptInputs,
@@ -228,7 +230,9 @@ pub fn build_helve_config(
         agents_md: load_agents_md(Some(&working_folder)),
         system_prompt_override: None,
         skills_prompt,
-        env_context: Some(crate::helve::build_env_context()),
+        env_context: Some(EnvContext::detect().with_project(
+            ProjectInfo::detect(&working_folder),
+        )),
     };
     let mut config = to_react_build_config(&helve, base);
     config.skill_registry = Some(skill_registry.0);
