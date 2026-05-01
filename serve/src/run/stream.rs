@@ -67,6 +67,12 @@ fn forward_react_messages_to_append(
 
 /// Handles a single stream event: forward new messages to append channel, convert to
 /// protocol envelope and send to `tx`. Increments drop counters when queues are full.
+/// Callback invoked when the title node produces a session title.
+pub(super) type OnTitleFn = Arc<dyn Fn(String) + Send + Sync>;
+
+/// Handles a single stream event: forward new messages to append channel, detect title
+/// updates and invoke the on_title callback, convert to protocol envelope and send to `tx`.
+/// Increments drop counters when queues are full.
 struct AppendContext<'a> {
     append_tx: Option<&'a mpsc::Sender<(String, Message)>>,
     thread_id: Option<&'a String>,
@@ -78,6 +84,7 @@ struct EventContext<'a> {
     state: &'a Arc<Mutex<EnvelopeState>>,
     tx: &'a mpsc::Sender<ProtocolEventEnvelope>,
     dropped_events: Option<&'a Arc<AtomicUsize>>,
+    on_title: Option<&'a OnTitleFn>,
 }
 
 fn process_run_stream_event(
@@ -85,6 +92,16 @@ fn process_run_stream_event(
     event_ctx: &EventContext<'_>,
     append_ctx: &AppendContext<'_>,
 ) {
+    if let Some(on_title) = event_ctx.on_title {
+        if let AnyStreamEvent::React(StreamEvent::Updates { node_id, state, .. }) = &ev {
+            if node_id == "title" {
+                if let Some(ref title) = state.summary {
+                    on_title(title.clone());
+                }
+            }
+        }
+    }
+
     forward_react_messages_to_append(
         &ev,
         append_ctx.append_tx,
@@ -122,6 +139,7 @@ pub(super) struct AgentTaskParams {
     pub(super) thread_id: Option<String>,
     pub(super) append_queue_capacity: usize,
     pub(super) llm_override: Option<Box<dyn loom::LlmClient>>,
+    pub(super) on_title: Option<OnTitleFn>,
 }
 
 pub(super) async fn run_agent_task(
@@ -142,6 +160,7 @@ pub(super) async fn run_agent_task(
         thread_id,
         append_queue_capacity,
         llm_override,
+        on_title,
     } = params;
     let state = Arc::new(Mutex::new(EnvelopeState::new(session_id.clone())));
     let state_clone = state.clone();
@@ -183,11 +202,13 @@ pub(super) async fn run_agent_task(
     let any_thread_id = thread_id.clone();
     let any_message_count = message_count.clone();
     let any_dropped_appends = dropped_appends.clone();
+    let any_on_title = on_title.clone();
     opts.any_stream_event_sender = Some(Arc::new(move |ev: AnyStreamEvent| {
         let event_ctx = EventContext {
             state: &any_state,
             tx: &any_tx,
             dropped_events: Some(&any_dropped_events),
+            on_title: any_on_title.as_ref(),
         };
         let append_ctx = AppendContext {
             append_tx: any_append_tx.as_ref(),
@@ -198,11 +219,13 @@ pub(super) async fn run_agent_task(
         process_run_stream_event(ev, &event_ctx, &append_ctx);
     }));
 
+    let main_on_title = on_title.clone();
     let on_event = Box::new(move |ev: AnyStreamEvent| {
         let event_ctx = EventContext {
             state: &state_clone,
             tx: &tx,
             dropped_events: Some(&dropped_events_clone),
+            on_title: main_on_title.as_ref(),
         };
         let append_ctx = AppendContext {
             append_tx: append_tx_for_closure.as_ref(),

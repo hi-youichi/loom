@@ -64,7 +64,7 @@ pub use requests::{
 pub use responses::{
     AgentListResponse, AgentSource, AgentSummary, ErrorResponse, ListModelsResponse, PongResponse,
     ProtocolEventEnvelope, RunEndResponse, RunStreamEventResponse, ServerResponse,
-    SetModelResponse, ThreadInWorkspace, ToolShowResponse, ToolsListResponse, UserMessageItem,
+    SessionUpdatedResponse, SetModelResponse, ThreadInWorkspace, ToolShowResponse, ToolsListResponse, UserMessageItem,
     UserMessagesResponse, WorkspaceCreateResponse, WorkspaceListResponse, WorkspaceMeta,
     WorkspaceRenameResponse, WorkspaceThreadAddResponse,
     WorkspaceThreadListResponse, WorkspaceThreadRemoveResponse,

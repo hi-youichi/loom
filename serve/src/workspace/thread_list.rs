@@ -22,6 +22,7 @@ pub(crate) async fn handle_workspace_thread_list(
                 .into_iter()
                 .map(|t| ThreadInWorkspace {
                     thread_id: t.thread_id,
+                    name: t.name,
                     created_at_ms: t.created_at_ms,
                 })
                 .collect();

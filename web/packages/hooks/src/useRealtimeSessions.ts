@@ -40,7 +40,7 @@ export function useRealtimeSessions(workspaceId?: string): UseRealtimeSessionsRe
   const convertToSession = useCallback((data: SessionInWorkspace): Session => {
     return {
       id: data.thread_id,
-      title: 'Untitled Session',
+      title: data.name || 'Untitled Session',
       createdAt: new Date(data.created_at_ms).toISOString(),
       updatedAt: new Date(data.created_at_ms).toISOString(),
       lastMessage: '',

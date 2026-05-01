@@ -245,6 +245,7 @@ export type WorkspaceMeta = {
 
 export type SessionInWorkspace = {
   thread_id: string
+  name?: string | null
   created_at_ms: number
 }
 

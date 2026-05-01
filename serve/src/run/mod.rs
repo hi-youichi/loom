@@ -7,14 +7,16 @@ mod delivery;
 mod request;
 mod stream;
 
-use loom::{ProtocolEventEnvelope, ServerResponse};
+use loom::{ProtocolEventEnvelope, ServerResponse, SessionUpdatedResponse};
 use request::{PrepareRunInput, PrepareRunResult};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use uuid::Uuid;
+use futures::SinkExt;
 
 use crate::connection::SharedSink;
 use crate::app::RunConfig;
+use stream::OnTitleFn;
 
 /// Entry point for a Run request: prepares run (register thread, append initial user
 /// message, build options), spawns the agent task, and streams events + final RunEnd/Error
@@ -28,6 +30,7 @@ pub(crate) async fn handle_run(
     run_config: &RunConfig,
 ) -> Result<(String, loom::cli_run::RunCancellation, Option<ServerResponse>), Box<dyn std::error::Error + Send + Sync>> {
     let request_id = r.id.clone();
+    let workspace_id_for_title = r.workspace_id.clone();
     let PrepareRunResult {
         opts,
         cmd,
@@ -50,6 +53,45 @@ pub(crate) async fn handle_run(
     let cmd = cmd.clone();
     let thread_id_for_append = opts.thread_id.clone();
     let user_message_store_for_append = user_message_store.clone();
+
+    let on_title: Option<OnTitleFn> = match (&workspace_store, &workspace_id_for_title, &thread_id_for_append) {
+        (Some(store), Some(ws_id), Some(tid)) => {
+            let store = store.clone();
+            let ws_id = ws_id.clone();
+            let tid = tid.clone();
+            let sink_clone = sink.clone();
+            Some(Arc::new(move |title: String| {
+                let store = store.clone();
+                let ws_id = ws_id.clone();
+                let tid = tid.clone();
+                let sink = sink_clone.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = store.rename_thread(&ws_id, &tid, &title).await {
+                        tracing::warn!("workspace rename_thread: {}", e);
+                    }
+                    let resp = ServerResponse::SessionUpdated(SessionUpdatedResponse {
+                        workspace_id: ws_id,
+                        session_id: tid,
+                        session_name: Some(title),
+                        updated_at: Some(chrono::Utc::now().to_rfc3339()),
+                    });
+                    let json = match serde_json::to_string(&resp) {
+                        Ok(j) => j,
+                        Err(e) => {
+                            tracing::warn!("session_updated serialize: {}", e);
+                            return;
+                        }
+                    };
+                    let mut s = sink.lock().await;
+                    if let Err(e) = s.send(axum::extract::ws::Message::Text(json)).await {
+                        tracing::warn!("session_updated send: {}", e);
+                    }
+                });
+            }))
+        }
+        _ => None,
+    };
+
     let run_handle = tokio::spawn(stream::run_agent_task(stream::AgentTaskParams {
         session_id,
         tx,
@@ -60,6 +102,7 @@ pub(crate) async fn handle_run(
         thread_id: thread_id_for_append,
         append_queue_capacity: run_config.append_queue_capacity,
         llm_override: None,
+        on_title,
     }));
 
     let mut sender = delivery::WebSocketRunSender(sink.clone());
@@ -323,6 +366,7 @@ mod tests {
             thread_id: None,
             append_queue_capacity: APPEND_QUEUE_CAPACITY,
             llm_override: Some(Box::new(MockLlm::with_no_tool_calls("ok"))),
+            on_title: None,
         })
         .await;
         let _ = result;
@@ -368,6 +412,7 @@ mod tests {
             thread_id: Some("thread-append".to_string()),
             append_queue_capacity: APPEND_QUEUE_CAPACITY,
             llm_override: Some(Box::new(MockLlm::with_no_tool_calls("ok"))),
+            on_title: None,
         })
         .await;
         let _ = result;

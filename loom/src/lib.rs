@@ -239,7 +239,7 @@ pub use protocol::{
     AgentListRequest, AgentListResponse, AgentSource, AgentSourceFilter, AgentSummary, AgentType,
     ClientRequest, EnvelopeState, ErrorResponse, ListModelsRequest, ListModelsResponse,
     PingRequest, PongResponse, ProtocolEvent, ProtocolEventEnvelope, RunEndResponse, RunRequest,
-    RunStreamEventResponse, ServerResponse, SetModelRequest, SetModelResponse, ThreadInWorkspace,
+    RunStreamEventResponse, ServerResponse, SessionUpdatedResponse, SetModelRequest, SetModelResponse, ThreadInWorkspace,
     ToolShowOutput, ToolShowRequest, ToolShowResponse, ToolsListRequest, ToolsListResponse,
     UserMessageItem, UserMessagesRequest, UserMessagesResponse, WorkspaceCreateRequest,
     WorkspaceCreateResponse, WorkspaceListRequest, WorkspaceListResponse, WorkspaceMeta,

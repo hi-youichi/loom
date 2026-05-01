@@ -141,6 +141,18 @@ pub struct CancelRunResponse {
     pub run_id: String,
 }
 
+/// Session updated notification (server push).
+/// Sent when a session's title or other metadata changes.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SessionUpdatedResponse {
+    pub workspace_id: String,
+    pub session_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+}
+
 /// Server-to-client response envelope.
 ///
 /// Each variant maps to a JSON object with `"type": "<variant_name>"`.
@@ -166,6 +178,7 @@ pub enum ServerResponse {
     ListModels(ListModelsResponse),
     SetModel(SetModelResponse),
     CancelRun(CancelRunResponse),
+    SessionUpdated(SessionUpdatedResponse),
 }
 // -----------------------------------------------------------------------------
 // Workspace responses
@@ -195,6 +208,8 @@ pub struct WorkspaceCreateResponse {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ThreadInWorkspace {
     pub thread_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     pub created_at_ms: i64,
 }
 /// Workspace thread list response.
@@ -495,6 +510,7 @@ mod tests {
             workspace_id: "ws-1".to_string(),
             threads: vec![ThreadInWorkspace {
                 thread_id: "t-1".to_string(),
+                name: None,
                 created_at_ms: 1712649600000,
             }],
         });
