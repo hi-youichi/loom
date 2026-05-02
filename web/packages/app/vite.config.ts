@@ -1,6 +1,12 @@
+import fs from 'fs'
 import path from 'path'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+
+const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'))
+const workspaceDeps = Object.keys(pkg.dependencies ?? {})
+  .filter((name) => pkg.dependencies[name] === 'workspace:*')
+  .sort()
 
 export default defineConfig({
   plugins: [react()],
@@ -8,23 +14,9 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
-    dedupe: [
-      '@loom/ws-client',
-      '@loom/protocol',
-      '@loom/service-agent',
-      '@loom/service-chat',
-      '@loom/service-session',
-      '@loom/service-workspace',
-    ],
+    dedupe: workspaceDeps,
   },
   optimizeDeps: {
-    include: [
-      '@loom/ws-client',
-      '@loom/protocol',
-      '@loom/service-agent',
-      '@loom/service-chat',
-      '@loom/service-session',
-      '@loom/service-workspace',
-    ],
+    include: workspaceDeps,
   },
 })
