@@ -11,16 +11,24 @@ use tracing_core::Subscriber;
 use tracing_subscriber::fmt::format::{FormatEvent, FormatFields, Writer};
 // FormattedFields is re-exported at the fmt level in newer versions
 use tracing_subscriber::fmt::FormattedFields;
-use tracing_subscriber::fmt::time::{FormatTime, SystemTime};
+use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::fmt::FmtContext;
 use tracing_subscriber::registry::{LookupSpan, SpanRef};
+
+struct LocalTimer;
+
+impl FormatTime for LocalTimer {
+    fn format_time(&self, w: &mut Writer<'_>) -> std::fmt::Result {
+        write!(w, "{}", chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%:z"))
+    }
+}
 
 /// Plain-text formatter that prefixes each line with `thread_id`, `trace_id`, and `span_id` from the current span scope.
 ///
 /// Output format: `TIMESTAMP thread_id=TID trace_id=X span_id=Y LEVEL target: event_fields` when the event has a parent span;
 /// otherwise `TIMESTAMP thread_id=TID LEVEL target: event_fields` (no trace_id/span_id prefix).
 pub struct TextWithSpanIds {
-    timer: SystemTime,
+    timer: LocalTimer,
     pub(crate) with_level: bool,
     pub(crate) with_target: bool,
     pub(crate) with_module_path: bool,
@@ -29,7 +37,7 @@ pub struct TextWithSpanIds {
 impl Default for TextWithSpanIds {
     fn default() -> Self {
         Self {
-            timer: SystemTime,
+            timer: LocalTimer,
             with_level: true,
             with_target: true,
             with_module_path: true,
@@ -154,13 +162,13 @@ where
 /// Each event is a single JSON object on one line (NDJSON-friendly).
 /// Fields attached to the event are inlined at the top level of the object.
 pub struct JsonWithSpanIds {
-    timer: SystemTime,
+    timer: LocalTimer,
 }
 
 impl Default for JsonWithSpanIds {
     fn default() -> Self {
         Self {
-            timer: SystemTime,
+            timer: LocalTimer,
         }
     }
 }

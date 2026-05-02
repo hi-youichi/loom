@@ -31,8 +31,19 @@ use subcommands::{
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args = Args::parse();
+    let mut args = Args::parse();
     print_config_report();
+
+    if let Some(Cmd::Serve(_)) = &args.cmd {
+        if args.log_file.is_none() && std::env::var_os("LOG_FILE").is_none() {
+            let log_dir = config::home::loom_home().join("logs");
+            let _ = std::fs::create_dir_all(&log_dir);
+            let log_path = log_dir.join("serve.log");
+            eprintln!("config: log_file={}", log_path.display());
+            args.log_file = Some(log_path);
+        }
+    }
+
     let _log_guard = init_logging(&args);
 
     if let Some(Cmd::Serve(sa)) = &args.cmd {
