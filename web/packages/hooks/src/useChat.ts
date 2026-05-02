@@ -11,7 +11,7 @@ import type {
   WebSocketStatus,
 } from '@loom/protocol'
 import { isToolEvent } from '@loom/protocol'
-import type { UIMessageItemProps, UIToolContent } from '@loom/types'
+import type { UIMessageContent, UIMessageItemProps, UIToolContent } from '@loom/types'
 
 function createTextContent(text: string) {
   return {
@@ -257,17 +257,102 @@ export function useChat(options?: {
       const uiMessages: UIMessageItemProps[] = []
 
       for (const msg of history) {
+        if (msg.role === 'system') continue
+
+        if (msg.role === 'tool') {
+          // Tool result messages: pair with the last assistant message's matching tool call
+          const lastAssistant = uiMessages.length > 0 ? uiMessages[uiMessages.length - 1] : null
+          if (lastAssistant && lastAssistant.sender === 'assistant') {
+            try {
+              const parsed = JSON.parse(msg.content)
+              const callId = parsed.tool_call_id ?? ''
+              const toolContent = parsed.content ?? msg.content
+              const existingToolIdx = lastAssistant.content.findIndex(
+                (b) => b.type === 'tool' && b.id === callId,
+              )
+              if (existingToolIdx !== -1) {
+                const existing = lastAssistant.content[existingToolIdx] as UIToolContent
+                lastAssistant.content[existingToolIdx] = {
+                  ...existing,
+                  resultText: toolContent,
+                  status: 'success',
+                }
+              } else {
+                lastAssistant.content.push({
+                  type: 'tool',
+                  id: callId || crypto.randomUUID(),
+                  name: 'unknown',
+                  status: 'success',
+                  argumentsText: '',
+                  outputText: '',
+                  resultText: toolContent,
+                  isError: false,
+                })
+              }
+            } catch {
+              // If parsing fails, skip this tool message
+            }
+          }
+          continue
+        }
+
+        if (msg.role === 'assistant') {
+          const contentBlocks: UIMessageContent[] = []
+
+          // Try parsing as JSON payload (assistant with tool_calls)
+          const trimmed = msg.content.trimStart()
+          if (trimmed.startsWith('{')) {
+            try {
+              const parsed = JSON.parse(msg.content)
+              if (typeof parsed === 'object' && parsed !== null) {
+                if (parsed.content) {
+                  contentBlocks.push(createTextContent(parsed.content))
+                }
+                if (Array.isArray(parsed.tool_calls)) {
+                  for (const tc of parsed.tool_calls) {
+                    contentBlocks.push({
+                      type: 'tool',
+                      id: tc.id || crypto.randomUUID(),
+                      name: tc.name || 'unknown',
+                      status: 'success',
+                      argumentsText: tc.arguments || '',
+                      outputText: '',
+                      resultText: '',
+                      isError: false,
+                    })
+                  }
+                }
+                if (contentBlocks.length > 0) {
+                  uiMessages.push({
+                    id: crypto.randomUUID(),
+                    sender: 'assistant',
+                    timestamp: new Date().toISOString(),
+                    content: contentBlocks,
+                  })
+                  continue
+                }
+              }
+            } catch {
+              // Not valid JSON, fall through to plain text
+            }
+          }
+
+          // Plain text assistant message
+          uiMessages.push({
+            id: crypto.randomUUID(),
+            sender: 'assistant',
+            timestamp: new Date().toISOString(),
+            content: [createTextContent(msg.content)],
+          })
+          continue
+        }
+
+        // User message (or any other role)
         uiMessages.push({
           id: crypto.randomUUID(),
-          sender: msg.role === 'user' ? 'user' : 'assistant',
+          sender: 'user',
           timestamp: new Date().toISOString(),
-          content: [
-            {
-              type: 'text' as const,
-              text: msg.content,
-              format: 'plain' as const,
-            },
-          ],
+          content: [createTextContent(msg.content)],
         })
       }
 
