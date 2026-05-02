@@ -1,0 +1,9 @@
+{
+  "name": "com.loom.browser",
+  "description": "Loom Browser Extension Native Messaging Host",
+  "path": "C:\\Users\\heycj\\dev\\worktrees\\telegram\\browser-extension\\host\\native-host-wrapper.bat",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://apmjddkjeolhmiaoinfkomlhogchcjdc/"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "browser-extension",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser automation extension for Loom Agent",
+  "scripts": {
+    "postinstall": "cd host && npm install"
+  }
+}
