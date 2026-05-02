@@ -64,5 +64,6 @@ pub fn run_options_from_issues_event(
             extra_tools: None,
             acp_session_id: None,
             force_compact: false,
+            chat_id: None,
         }
 }

@@ -748,6 +748,7 @@ impl LoomAcpAgent {
                 }
             },
             force_compact: false,
+            chat_id: None,
         };
 
         let session_id = args.session_id.clone();

@@ -133,6 +133,7 @@ pub(super) async fn prepare_run(
             extra_tools: None,
             acp_session_id: None,
             force_compact: false,
+            chat_id: None,
         };
 
     // Handle both AgentType (react/dup/tot/got) and custom agent names

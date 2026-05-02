@@ -51,6 +51,7 @@ pub(crate) fn build_run_options(args: &Args, message: String, got_adaptive: bool
             extra_tools: None,
             acp_session_id: None,
             force_compact: false,
+            chat_id: None,
         }
 }
 

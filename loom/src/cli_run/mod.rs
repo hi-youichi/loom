@@ -230,9 +230,15 @@ pub fn build_helve_config(
         agents_md: load_agents_md(Some(&working_folder)),
         system_prompt_override: None,
         skills_prompt,
-        env_context: Some(EnvContext::detect().with_project(
-            ProjectInfo::detect(&working_folder),
-        )),
+        env_context: Some({
+            let mut ctx = EnvContext::detect().with_project(
+                ProjectInfo::detect(&working_folder),
+            );
+            if let Some(cid) = effective_opts.chat_id {
+                ctx = ctx.with_chat_id(cid);
+            }
+            ctx
+        }),
     };
     let mut config = to_react_build_config(&helve, base);
     config.skill_registry = Some(skill_registry.0);
@@ -711,6 +717,7 @@ mod tests {
             extra_tools: None,
             acp_session_id: None,
             force_compact: false,
+            chat_id: None,
         }
     }
 
@@ -1171,6 +1178,7 @@ mod tests {
             extra_tools: None,
             acp_session_id: None,
             force_compact: false,
+            chat_id: None,
         };
         let (_helve, config, _resolved) = build_helve_config(&opts);
         assert_eq!(config.model_tier, Some(crate::model_spec::ModelTier::Light));
@@ -1222,6 +1230,7 @@ mod tests {
             extra_tools: None,
             acp_session_id: None,
             force_compact: false,
+            chat_id: None,
         };
         let (_helve, config, _resolved) = build_helve_config(&opts);
         assert_eq!(config.model.as_deref(), Some("anthropic/claude-sonnet-4"));

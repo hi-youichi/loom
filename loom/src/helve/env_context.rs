@@ -64,6 +64,13 @@ impl EnvContext {
         self
     }
 
+    pub fn with_chat_id(mut self, chat_id: i64) -> Self {
+        if let Some(ref mut rt) = self.runtime {
+            rt.chat_id = Some(chat_id);
+        }
+        self
+    }
+
     pub fn to_prompt_section(&self) -> String {
         let mut lines: Vec<String> = Vec::new();
 
@@ -94,6 +101,9 @@ impl EnvContext {
             lines.push(format!("- Agent: {}", rt.agent_name));
             if rt.is_container {
                 lines.push("- Container: yes".to_string());
+            }
+            if let Some(cid) = rt.chat_id {
+                lines.push(format!("- Chat ID: {cid}"));
             }
         }
 
@@ -329,6 +339,7 @@ impl ProjectInfo {
 pub struct RuntimeInfo {
     pub agent_name: String,
     pub is_container: bool,
+    pub chat_id: Option<i64>,
 }
 
 impl RuntimeInfo {
@@ -341,6 +352,7 @@ impl RuntimeInfo {
         Self {
             agent_name: "Loom".to_string(),
             is_container,
+            chat_id: None,
         }
     }
 
@@ -349,7 +361,13 @@ impl RuntimeInfo {
         Self {
             agent_name: "Loom".to_string(),
             is_container: false,
+            chat_id: None,
         }
+    }
+
+    pub fn with_chat_id(mut self, chat_id: i64) -> Self {
+        self.chat_id = Some(chat_id);
+        self
     }
 }
 
@@ -499,6 +517,7 @@ mod tests {
             runtime: Some(RuntimeInfo {
                 agent_name: "Loom".to_string(),
                 is_container: false,
+                chat_id: None,
             }),
         };
         let s = ctx.to_prompt_section();

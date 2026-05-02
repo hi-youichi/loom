@@ -197,6 +197,8 @@ pub struct RunOptions {
     /// When true, forces CompactNode to compact regardless of overflow.
     /// Set by `/compact` command to trigger immediate context compression.
     pub force_compact: bool,
+    /// Telegram chat ID for the current conversation. Injected into system prompt ENVIRONMENT section.
+    pub chat_id: Option<i64>,
 }
 
 impl std::fmt::Debug for RunOptions {
@@ -614,6 +616,7 @@ pub async fn run_agent_with_provider(
             extra_tools: None,
             acp_session_id: None,
             force_compact: false,
+            chat_id: None,
     };
 
     // Run with LLM override
@@ -653,6 +656,7 @@ mod tests {
             extra_tools: None,
             acp_session_id: None,
             force_compact: false,
+            chat_id: None,
         }
     }
 
@@ -761,6 +765,7 @@ mod tests {
             extra_tools: None,
             acp_session_id: None,
             force_compact: false,
+            chat_id: None,
         };
         assert!(build_runner(&cfg, &opts, &RunCmd::React, None)
             .await
