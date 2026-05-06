@@ -604,7 +604,7 @@ impl LlmClient for ChatOpenAICompat {
                                 attempt = attempt + 1,
                                 max_retries = TRANSIENT_HTTP_MAX_RETRIES,
                                 delay_secs = delay.as_secs_f64(),
-                                error = %e,
+                                error = ?e,
                                 "OpenAI-compat request transport failed, retrying"
                             );
                             attempt += 1;
@@ -633,8 +633,8 @@ impl LlmClient for ChatOpenAICompat {
                         attempt = transport_attempt + 1,
                         max_retries = TRANSIENT_HTTP_MAX_RETRIES,
                         delay_secs = delay.as_secs_f64(),
-                        error = %e,
-                        "OpenAI-compat response body read failed, retrying"
+error = ?e,
+                                "OpenAI-compat response body read failed, retrying"
                     );
                     transport_attempt += 1;
                     tokio::time::sleep(delay).await;
@@ -687,7 +687,7 @@ impl LlmClient for ChatOpenAICompat {
                             tracing::warn!(
                                 url = %url,
                                 attempt = attempt + 1,
-                                error = %e,
+                                error = ?e,
                                 "OpenAI-compat retry send failed, retrying"
                             );
                             continue;
@@ -831,7 +831,7 @@ impl LlmClient for ChatOpenAICompat {
                             attempt = attempt + 1,
                             max_retries = TRANSIENT_HTTP_MAX_RETRIES,
                             delay_secs = delay.as_secs_f64(),
-                            error = %e,
+                            error = ?e,
                             "OpenAI-compat stream request failed, retrying"
                         );
                         attempt += 1;
@@ -888,7 +888,7 @@ impl LlmClient for ChatOpenAICompat {
                             tracing::warn!(
                                 url = %url,
                                 attempt = attempt + 1,
-                                error = %e,
+                                error = ?e,
                                 "OpenAI-compat stream retry send failed, retrying"
                             );
                             continue;
@@ -961,7 +961,7 @@ impl LlmClient for ChatOpenAICompat {
                         attempt = stream_read_attempt + 1,
                         max_retries = TRANSIENT_HTTP_MAX_RETRIES,
                         delay_secs = delay.as_secs_f64(),
-                        error = %e,
+                        error = ?e,
                         "OpenAI-compat stream body read failed, retrying"
                     );
                     stream_read_attempt += 1;
