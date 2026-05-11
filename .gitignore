@@ -6,6 +6,7 @@ bot-runtime
 .claude
 CLAUDE.md
 AGENTS.md
+thirdparty
 
 tmp/
 test-output*.txt
