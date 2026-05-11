@@ -5,6 +5,7 @@
 
 mod args;
 mod bootstrap;
+mod codex_event_builder;
 mod display_limits;
 mod logging;
 mod mcp_manager;

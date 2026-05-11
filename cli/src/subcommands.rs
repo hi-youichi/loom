@@ -80,6 +80,16 @@ pub(crate) async fn handle_session_command(
                 println!("Renamed session {} to \"{}\"", session_id, title);
             }
         }
+        SessionCommand::Cat { session_id } => {
+            let events = manager.cat_session(session_id)?;
+            if json {
+                for event in &events {
+                    println!("{}", serde_json::to_string(event)?);
+                }
+            } else {
+                crate::codex_event_builder::print_cat_text(&events);
+            }
+        }
     }
     Ok(())
 }

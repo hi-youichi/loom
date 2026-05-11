@@ -75,6 +75,11 @@ pub enum SessionCommand {
         /// New title for the session
         title: String,
     },
+    /// Cat session as Codex-compatible JSONL event stream
+    Cat {
+        /// Session ID to cat
+        session_id: String,
+    },
 }
 
 impl SessionManager {
@@ -279,6 +284,34 @@ impl SessionManager {
             return Err(format!("Session not found: {}", session_id));
         }
         Ok(())
+    }
+
+    pub fn cat_session(&self, session_id: &str) -> Result<Vec<stream_event::CodexEvent>, String> {
+        let conn = rusqlite::Connection::open(&self.db_path)
+            .map_err(|e| format!("Failed to open database: {}", e))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT payload FROM checkpoints WHERE thread_id = ?1 ORDER BY metadata_created_at ASC",
+            )
+            .map_err(|e| format!("Failed to prepare statement: {}", e))?;
+
+        let payloads: Vec<Vec<u8>> = stmt
+            .query_map([session_id], |row| row.get(0))
+            .map_err(|e| format!("Failed to query checkpoints: {}", e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Failed to collect payloads: {}", e))?;
+
+        if payloads.is_empty() {
+            return Err(format!("Session not found: {}", session_id));
+        }
+
+        let states: Vec<loom::state::ReActState> = payloads
+            .iter()
+            .filter_map(|data| serde_json::from_slice(data).ok())
+            .collect();
+
+        Ok(crate::codex_event_builder::build_codex_events(session_id, &states))
     }
 
     /// Formats a timestamp for display.
