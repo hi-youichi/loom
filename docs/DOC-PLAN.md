@@ -16,8 +16,10 @@
 | 记忆与存储 | Checkpointer、Store、Channels | 1 |
 | 流式输出 | StreamEvent、StreamMode、StreamWriter | 1 |
 | CLI | 安装、配置、子命令、REPL | 1 |
-| Bot Runtime | Telegram Bot、容器化部署、Docker Compose | 1 |
+| Bot Runtime | Headless 服务、容器化部署、Docker Compose | 1 |
 | Agent 编排 | 多 Agent 协作、AgentTool、Orchestrator | 1 |
+
+| Claude Code 兼容 | JSON 协议、Schema 类型、适配层 | 4 |
 
 ---
 
@@ -50,9 +52,15 @@
 流式与可观测
   └── 流式输出与 StreamEvent               [流式]
 
+Claude Code 兼容
+  ├── JSON 协议参考                        [兼容]
+  ├── JSON Schema 类型详解                 [兼容]
+  ├── 兼容层设计                           [兼容]
+  └── Schema Crate ADR                     [兼容]
+
 部署与运维
   ├── CLI 安装与配置                        [部署]
-  ├── Bot Runtime（Telegram 部署）          [部署]
+  ├── Bot Runtime（Headless 部署）          [部署]
   └── 故障排查                              [部署]
 
 进阶
@@ -88,7 +96,7 @@
 - Checkpointer 与 Store → 需要持久化和断点续传时
 - Agent 编排 → 需要多 Agent 协作时
 - 流式输出 → 需要实时响应时
-- Bot Runtime → 需要部署到 Telegram 时
+- Bot Runtime → 需要部署为 Headless 服务时
 - CLI → 需要命令行工具时
 ```
 
@@ -217,7 +225,7 @@
 - **覆盖**: cargo install、config.toml 配置、.env、子命令（react/dup/tot/got/tool/models/mcp）、REPL 模式
 - **文件**: `docs/deployment/cli.md`
 
-#### Bot Runtime（Telegram 部署）
+#### Bot Runtime（Headless 部署）
 - **模板**: 概念页（模板 3）
 - **覆盖**: bot-runtime 架构、Docker Compose 部署、bot.toml 配置、环境变量
 - **文件**: `docs/deployment/bot-runtime.md`
@@ -233,6 +241,28 @@
 - **模板**: API 参考（模板 4）
 - **覆盖**: 所有公开 trait 和结构体的详细签名
 - **文件**: `docs/advanced/api-reference.md`
+
+### Claude Code 兼容
+
+#### JSON 协议参考
+- **模板**: 参考文档
+- **覆盖**: Claude Code CLI `--output-format stream-json` 完整协议字段说明、输入协议、事件时序
+- **文件**: `docs/reference/claude-code-json-protocol.md`
+
+#### JSON Schema 类型详解
+- **模板**: 参考文档
+- **覆盖**: StreamJsonEvent、ResultEnvelope、Message、ContentBlock、ApiStreamEvent 等核心类型的结构、用途和序列化约束
+- **文件**: `docs/reference/claude-code-schema-types.md`
+
+#### 兼容层设计
+- **模板**: 设计文档
+- **覆盖**: 三层兼容架构（消费端 / 适配层 / 服务端）、Loom → Claude Code 单向转换映射、Headless Server 设计
+- **文件**: `docs/design/claude-code-compat.md`
+
+#### Schema Crate ADR
+- **模板**: 架构决策记录
+- **覆盖**: `claude-code-schema` crate 的选型理由、类型设计、序列化策略
+- **文件**: `docs/adr/claude-code-schema.md`
 
 #### 架构决策记录
 - **模板**: 自定义
@@ -310,7 +340,14 @@ docs/
     api-reference.md
     architecture.md
     performance.md
+  reference/        (协议参考)
+    claude-code-json-protocol.md
+    claude-code-schema-types.md
   design/           (已有，保留)
+    claude-code-compat.md
+  adr/              (架构决策)
+    claude-code-schema.md
+    act-node-refactoring.md
   dev/              (已有，保留)
   rfcs/             (已有，保留)
   DOC-PLAN.md       (本文件)

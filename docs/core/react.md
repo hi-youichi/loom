@@ -1,3 +1,9 @@
+---
+sidebar_position: 3
+title: "ReAct 运行模式"
+description: "Think-Act-Observe 循环推理"
+---
+
 # ReAct 运行模式
 
 基于图结构循环推理的智能体运行模式，通过 Think-Act-Observe 循环实现复杂任务的逐步推理和工具调用。

@@ -1,3 +1,9 @@
+---
+sidebar_position: 6
+title: "GoT 运行模式"
+description: "Graph of Thought 有向无环图推理"
+---
+
 # GoT (Graph of Thought) 运行模式
 
 基于有向无环图（DAG）的复杂任务分解与执行模式，通过智能体协作实现多步骤任务的并行处理。

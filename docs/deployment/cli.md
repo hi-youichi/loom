@@ -1,3 +1,9 @@
+---
+sidebar_position: 1
+title: "CLI 安装与配置"
+description: "命令行界面安装与使用"
+---
+
 # Loom CLI 安装与配置
 
 Loom 框架的命令行界面，支持多种智能体运行模式和交互式会话管理。

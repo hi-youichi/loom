@@ -1,3 +1,9 @@
+---
+sidebar_position: 1
+title: "API 参考手册"
+description: "完整的公共 API 文档"
+---
+
 # Loom API 参考手册
 
 Loom 框架完整的公共 API 文档，按模块组织并提供详细的参数说明和使用示例。
@@ -709,4 +715,4 @@ where
 
 ---
 
-**相关文档**: [核心概念](../core/) | [运行模式](../core/) | [工具开发](../core/tool-system.md) | [内存管理](../memory/checkpointer-store.md)
+**相关文档**: [核心概念](../core/state-graph.md) | [运行模式](../core/react.md) | [工具开发](../tools/tool-system.md) | [内存管理](../memory/checkpointer-store.md)

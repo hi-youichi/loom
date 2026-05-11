@@ -1,3 +1,9 @@
+---
+sidebar_position: 2
+title: "MCP 集成"
+description: "Model Context Protocol 工具发现和调用"
+---
+
 # MCP (Model Context Protocol) 集成
 
 标准化的工具发现和调用协议，让 Loom 智能体能够与 MCP 服务器无缝集成，扩展工具能力。
@@ -285,12 +291,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 | **Stdio 模式** | | | |
 | name | String | ✅ | 服务器唯一标识符 |
 | command | String | ✅ | 启动命令 |
-| args | Vec<String> | ✅ | 命令参数 |
-| env | HashMap<String, String> | ❌ | 环境变量 |
+| args | `Vec<String>` | ✅ | 命令参数 |
+| env | `HashMap<String, String>` | ❌ | 环境变量 |
 | **HTTP 模式** | | | |
 | name | String | ✅ | 服务器唯一标识符 |
 | url | String | ✅ | MCP 服务器 URL |
-| headers | HashMap<String, String> | ❌ | HTTP 请求头 |
+| headers | `HashMap<String, String>` | ❌ | HTTP 请求头 |
 
 ### 环境变量
 

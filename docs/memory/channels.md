@@ -1,3 +1,9 @@
+---
+sidebar_position: 2
+title: "通道 (Channels)"
+description: "状态字段聚合控制机制"
+---
+
 # 通道 (Channels)
 
 状态字段聚合控制机制，定义智能体图中节点间数据传递和合并的语义。
@@ -341,12 +347,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 - **示例**: 当前温度、执行状态、最后一条消息
 - **优势**: 简单高效，内存占用小
 
-### 消息历史：Topic { accumulate: true }
+### 消息历史：`Topic { accumulate: true }`
 - **适用场景**: 需要持久化的消息历史、日志流
 - **示例**: 聊天对话历史、操作日志、事件流
 - **优势**: 自动累积，跨步骤保持
 
-### 步骤级数据：Topic { accumulate: false }
+### 步骤级数据：`Topic { accumulate: false }`
 - **适用场景**: 当前步骤的中间结果
 - **示例**: 当前步骤的工具调用结果、临时输出
 - **优势**: 自动清理，避免内存泄漏

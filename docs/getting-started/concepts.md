@@ -1,3 +1,9 @@
+---
+sidebar_position: 3
+title: "核心概念索引"
+description: "Loom 框架的核心概念导航"
+---
+
 # 核心概念索引
 
 Loom 框架的核心概念导航，快速了解各个模块的功能和用法。
@@ -30,4 +36,4 @@ Loom 框架的核心概念导航，快速了解各个模块的功能和用法。
 ## 部署
 
 - [CLI](../deployment/cli.md) — 命令行界面，直接运行和测试智能体应用
-- [Bot Runtime](../deployment/bot-runtime.md) — 机器人运行时，将智能体部署到 Telegram 等平台
+- [Bot Runtime](../deployment/bot-runtime.md) — 机器人运行时，将智能体部署为 Headless 服务

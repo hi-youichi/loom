@@ -1,3 +1,9 @@
+---
+sidebar_position: 5
+title: "ToT 运行模式"
+description: "Tree of Thoughts 树状思维推理"
+---
+
 # ToT (Tree of Thoughts) 运行模式
 
 基于树状思维推理的智能体运行模式，通过多候选思维生成和评估实现复杂任务的分支探索。

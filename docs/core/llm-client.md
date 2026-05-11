@@ -1,3 +1,9 @@
+---
+sidebar_position: 7
+title: "LLM 客户端与模型配置"
+description: "统一的 LLM 客户端接口和模型配置"
+---
+
 # LLM 客户端与模型配置
 
 统一的 LLM 客户端接口和模型配置管理系统，支持多种提供商和灵活的配置方式。

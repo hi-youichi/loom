@@ -1,3 +1,9 @@
+---
+sidebar_position: 3
+title: "Skills"
+description: "可复用的技能指令包"
+---
+
 # Skills
 
 This document describes the Loom **Skills** system: how skills are discovered, injected into the system prompt, and loaded at runtime by the agent.

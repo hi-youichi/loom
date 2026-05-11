@@ -1,3 +1,9 @@
+---
+sidebar_position: 1
+title: "Loom 框架概览"
+description: "图智能代理框架"
+---
+
 # Loom 框架概览
 图智能代理框架
 
@@ -8,7 +14,7 @@
 | 快速上手基础 Agent | [快速入门](./quickstart.md) | 学习 ReAct 模式和基本工具使用 |
 | 构建复杂多步骤应用 | [DUP 模式](../core/dup.md) | 理解 Understand-Plan-Act-Observe 流程 |
 | 实现多 Agent 协作 | [ReAct 模式](../core/react.md) | 掌握 ReAct 运行器和工具使用 |
-| 部署 Telegram 机器人 | [Bot 部署](../deployment/cli.md) | 了解 CLI 和容器化部署流程 |
+| 部署 Headless 服务 | [Bot 部署](../deployment/cli.md) | 了解 CLI 和容器化部署流程 |
 | 深度思考和推理 | [ToT 模式](../core/tot.md) / [GoT 模式](../core/got.md) | 探索树状和图状思维算法 |
 | 集成外部工具和服务 | [Skills 系统](../skills.md) | 扩展 Agent 能力和生态系统 |
 

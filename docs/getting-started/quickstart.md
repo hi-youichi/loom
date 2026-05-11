@@ -1,3 +1,9 @@
+---
+sidebar_position: 2
+title: "快速入门"
+description: "5 分钟跑通你的第一个 ReAct Agent"
+---
+
 # 5 分钟跑通你的第一个 ReAct Agent
 
 ## 前置要求
