@@ -105,6 +105,8 @@ impl ThinkingTagParser {
                             .buf
                             .len()
                             .saturating_sub(THINKING_START.len().saturating_sub(1));
+                        // Ensure keep is on a valid UTF-8 character boundary
+                        let keep = self.buf.floor_char_boundary(keep);
                         let to_send = self.buf[..keep].to_string();
                         self.buf = self.buf[keep..].to_string();
                         if !to_send.is_empty() {
@@ -126,6 +128,8 @@ impl ThinkingTagParser {
                             .buf
                             .len()
                             .saturating_sub(THINKING_END.len().saturating_sub(1));
+                        // Ensure keep is on a valid UTF-8 character boundary
+                        let keep = self.buf.floor_char_boundary(keep);
                         let to_send = self.buf[..keep].to_string();
                         self.buf = self.buf[keep..].to_string();
                         if !to_send.is_empty() {

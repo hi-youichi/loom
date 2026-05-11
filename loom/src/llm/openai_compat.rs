@@ -303,7 +303,7 @@ impl ChatOpenAICompat {
             tools: None,
             temperature: None,
             tool_choice: None,
-            parse_thinking_tags: false,
+            parse_thinking_tags: true,
             headers: None,
         }
     }

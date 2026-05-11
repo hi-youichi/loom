@@ -87,7 +87,7 @@ impl ChatOpenAI {
             tools: None,
             temperature: None,
             tool_choice: None,
-            parse_thinking_tags: false,
+            parse_thinking_tags: true,
             headers: None,
         }
     }
@@ -103,7 +103,7 @@ impl ChatOpenAI {
             tools: None,
             temperature: None,
             tool_choice: None,
-            parse_thinking_tags: false,
+            parse_thinking_tags: true,
             headers: None,
         }
     }
