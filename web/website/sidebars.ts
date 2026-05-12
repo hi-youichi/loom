@@ -30,6 +30,8 @@ const sidebars: SidebarsConfig = {
       label: '工具与集成',
       items: [
         'tools/tool-system',
+        'tools/shell-background-timeout',
+        'tools/codex-shell-execution',
         'tools/mcp',
         'skills',
       ],

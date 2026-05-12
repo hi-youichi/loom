@@ -160,6 +160,84 @@ print(f'items: {items}')
 
 预期：turn 数量显著增加（从 4 → 约 50+），每个 turn 含 1-3 个 item。
 
+### 测试方案
+
+在 `cli/src/codex_event_builder.rs` 底部新增 `#[cfg(test)] mod tests`，纯函数单元测试，零外部依赖。
+
+#### Fixture 辅助函数
+
+```rust
+fn usage(prompt: u32, completion: u32) -> LlmUsage {
+    LlmUsage {
+        prompt_tokens: prompt,
+        completion_tokens: completion,
+        total_tokens: prompt + completion,
+        ..Default::default()
+    }
+}
+
+fn assistant_with_tools(reasoning: Option<&str>, content: &str, tools: Vec<(&str, &str)>) -> Message
+fn assistant_reply(content: &str) -> Message
+fn tool_result(call_id: &str, text: &str) -> Message
+fn checkpoint(messages: Vec<Message>, usage: Option<LlmUsage>, total_usage: Option<LlmUsage>) -> ReActState
+
+fn count_event_type(events: &[CodexEvent], matcher: fn(&CodexEvent) -> bool) -> usize
+fn is_turn_started(e: &CodexEvent) -> bool
+fn is_turn_completed(e: &CodexEvent) -> bool
+```
+
+#### 测试用例
+
+| # | 测试名 | 场景 | 核心断言 |
+|---|--------|------|----------|
+| 1 | `single_assistant_no_tools` | 1 checkpoint: System + User + Assistant(reply) | 1 turn_started + 1 turn_completed，1 agent_message item |
+| 2 | `single_assistant_with_tools` | 1 checkpoint: Assistant(tool_call) → Tool → Assistant(reply) | **2 turns**（拆分点：第 2 个 Assistant），turn[0] 含 1 mcp_tool_call，turn[1] 含 1 agent_message |
+| 3 | `multi_assistant_in_one_checkpoint` | 1 checkpoint: Assistant₁(reasoning+2 tools) → Tool₁ → Tool₂ → Assistant₂(tool) → Tool₃ → Assistant₃(reply) | **3 turns**，与「目标行为」完全一致 |
+| 4 | `multi_checkpoint_delta` | 2 checkpoints: cp1=[User+Assistant₁+Tool₁]，cp2=[+Assistant₂+Tool₂+Assistant₃] | cp1 产生 1 turn，cp2 delta 产生 **2 turns** |
+| 5 | `checkpoint_no_assistant_skipped` | 2 checkpoints: cp1=[User+Assistant]，cp2=[+Tool only] | cp2 delta 无 Assistant → 跳过，总共 1 turn |
+| 6 | `empty_checkpoints` | 0 checkpoints | 仅 ThreadStarted，无 turn |
+| 7 | `usage_per_turn_with_state_usage` | 每个 checkpoint 有 `state.usage` | 每个 turn_completed 的 usage 等于该 checkpoint 的 `usage` |
+| 8 | `usage_delta_from_total_usage` | 仅 `total_usage` 无 `usage` | 最后一个 turn 获得总 usage，前面的 turn usage 为零（降级策略） |
+| 9 | `usage_zero_when_no_usage` | 无任何 usage | 所有 turn_completed 的 usage 均为零 |
+| 10 | `item_id_sequential` | 多个 turn | item_id 全局递增（item_0, item_1, item_2…），跨 turn 不重置 |
+| 11 | `tool_result_filled_in_items` | Assistant(bash call) → Tool(ok) / Assistant(mcp call) → Tool(error) | command_execution item 的 exit_code/status 正确，mcp_tool_call item 的 error/status 正确 |
+| 12 | `user_message_not_splitting` | 中间穿插 User 消息 | User 消息不触发 turn 拆分，仅 Assistant 边界拆分 |
+
+#### 关键断言模式
+
+```rust
+// turn 数量 = Assistant 消息数量
+assert_eq!(count(&events, is_turn_started), expected_assistant_count);
+// turn_started / turn_completed 配对
+assert_eq!(count(&events, is_turn_started), count(&events, is_turn_completed));
+// 每个 turn 内 item 类型顺序
+// e.g. turn 1: [reasoning, mcp_tool_call, mcp_tool_call]
+//      turn 2: [mcp_tool_call]
+//      turn 3: [agent_message]
+```
+
+#### 测试 3 与设计文档「目标行为」的映射
+
+输入：
+
+```
+Assistant₁(reasoning + 2 tools) → Tool₁ → Tool₂ → Assistant₂(tool) → Tool₃ → Assistant₃(reply)
+```
+
+预期输出：
+
+```
+turn 1: reasoning₁ + mcp_tool_call₁ + mcp_tool_call₂
+turn 2: mcp_tool_call₃
+turn 3: agent_message₃
+```
+
+#### 不需要测试的范围
+
+- `print_cat_text`（纯输出格式，视觉验证）
+- `split_server_tool`（纯字符串分割，trivial）
+- 流式/并发场景（`build_codex_events` 是纯函数，无副作用）
+
 ---
 
 ## 任务 2：降级策略 — 未完成的 Turn emit turn.failed
