@@ -1,7 +1,7 @@
 use serde::Serialize;
 use serde_json::Value;
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CodexEvent {
     ThreadStarted {
@@ -28,7 +28,7 @@ pub enum CodexEvent {
     },
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CodexUsage {
     pub input_tokens: u32,
     pub cached_input_tokens: u32,
@@ -36,7 +36,31 @@ pub struct CodexUsage {
     pub reasoning_output_tokens: u32,
 }
 
-#[derive(Clone, Debug, Serialize)]
+impl CodexUsage {
+    pub fn zero() -> Self {
+        Self {
+            input_tokens: 0,
+            cached_input_tokens: 0,
+            output_tokens: 0,
+            reasoning_output_tokens: 0,
+        }
+    }
+}
+
+impl std::ops::Sub for CodexUsage {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self {
+        Self {
+            input_tokens: self.input_tokens.saturating_sub(rhs.input_tokens),
+            cached_input_tokens: self.cached_input_tokens.saturating_sub(rhs.cached_input_tokens),
+            output_tokens: self.output_tokens.saturating_sub(rhs.output_tokens),
+            reasoning_output_tokens: self.reasoning_output_tokens.saturating_sub(rhs.reasoning_output_tokens),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CodexErrorInfo {
     pub message: String,
 }
