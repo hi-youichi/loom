@@ -56,6 +56,7 @@ async fn main() {
         think_count: 0,
         summary: None,
         should_continue: true,
+        force_compact: false,
     };
 
     match compiled.invoke(state, None).await {

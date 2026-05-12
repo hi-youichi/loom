@@ -278,6 +278,8 @@ mod tests {
             bash_executor: None,
             extra_tools: None,
             acp_session_id: None,
+            force_compact: false,
+            chat_id: None,
         }
     }
 

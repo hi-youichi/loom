@@ -179,6 +179,7 @@ fn react_state_construction_and_clone() {
         think_count: 0,
         summary: None,
         should_continue: true,
+        force_compact: false,
     };
     assert_eq!(state.messages.len(), 2);
     assert_eq!(state.tool_calls.len(), 1);
@@ -237,6 +238,7 @@ fn react_state_clone_field_by_field() {
         think_count: 0,
         summary: None,
         should_continue: true,
+        force_compact: false,
     };
     let cloned = state.clone();
     assert_eq!(cloned.messages.len(), 3);
@@ -268,6 +270,7 @@ fn react_state_with_all_message_variants() {
         think_count: 0,
         summary: None,
         should_continue: true,
+        force_compact: false,
     };
     assert_eq!(state.messages.len(), 3);
     match &state.messages[0] {
@@ -306,6 +309,7 @@ fn react_state_empty_tool_calls_non_empty_results() {
         think_count: 0,
         summary: None,
         should_continue: true,
+        force_compact: false,
     };
     assert!(state.tool_calls.is_empty());
     assert_eq!(state.tool_results.len(), 1);
@@ -332,6 +336,7 @@ fn react_state_debug() {
         think_count: 0,
         summary: None,
         should_continue: true,
+        force_compact: false,
     };
     let s = format!("{:?}", state);
     assert!(s.contains("messages"));

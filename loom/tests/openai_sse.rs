@@ -28,6 +28,7 @@ fn empty_state() -> ReActState {
         think_count: 0,
         summary: None,
         should_continue: true,
+        force_compact: false,
     }
 }
 
@@ -227,6 +228,7 @@ fn adapter_emits_tool_calls_chunk_on_updates_with_tool_calls() {
             think_count: 0,
             summary: None,
             should_continue: true,
+        force_compact: false,
         },
         namespace: None,
     });

@@ -103,6 +103,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         think_count: 0,
         summary: None,
         should_continue: true,
+        force_compact: false,
     };
 
     println!("User: {}", user_input);

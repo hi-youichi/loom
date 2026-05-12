@@ -233,7 +233,7 @@ mod tests {
             .await
             .unwrap();
 
-        let (_, truncated, _) = tokio::time::timeout(
+        let (_, _truncated, _) = tokio::time::timeout(
             std::time::Duration::from_secs(3),
             async {
                 loop {

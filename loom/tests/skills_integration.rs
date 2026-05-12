@@ -26,6 +26,8 @@ fn opts(working_folder: std::path::PathBuf) -> RunOptions {
             bash_executor: None,
             extra_tools: None,
             acp_session_id: None,
+            force_compact: false,
+            chat_id: None,
         }
 }
 
@@ -34,6 +36,8 @@ fn opts(working_folder: std::path::PathBuf) -> RunOptions {
 #[test]
 fn build_helve_config_discovers_skills_and_injects_prompt() {
     let dir = tempfile::tempdir().unwrap();
+    let prev = std::env::var("LOOM_HOME").ok();
+    std::env::set_var("LOOM_HOME", dir.path().join("empty_loom_home"));
     let skills_dir = dir.path().join(".loom").join("skills");
     std::fs::create_dir_all(skills_dir.join("code-review")).unwrap();
     let skill_md = r#"---
@@ -50,6 +54,10 @@ Check correctness, security, and style.
 
     let run_opts = opts(dir.path().to_path_buf());
     let (helve, config, _resolved_agent) = build_helve_config(&run_opts);
+    match prev {
+        Some(v) => std::env::set_var("LOOM_HOME", v),
+        None => std::env::remove_var("LOOM_HOME"),
+    }
 
     assert!(
         helve
