@@ -3,7 +3,6 @@ dir = "target/nextest"
 
 [profile.default]
 retries = 0
-test-timeout = "60s"
 slow-timeout = { period = "10s", terminate-after = 3, grace-period = "5s" }
 failure-output = "immediate-final"
 success-output = "never"
@@ -14,11 +13,14 @@ path = "target/nextest/junit.xml"
 
 [profile.fast]
 retries = 0
-test-timeout = "10s"
 slow-timeout = { period = "2s" }
 failure-output = "immediate"
 success-output = "never"
 status-level = "pass"
+
+[[profile.default.overrides]]
+filter = "test(log_file_resolves_working_folder_placeholder)"
+slow-timeout = { period = "60s", terminate-after = 1, grace-period = "5s" }
 
 [profile.fast.junit]
 path = "target/nextest/fast-junit.xml"
