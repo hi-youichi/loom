@@ -153,10 +153,10 @@ async fn periodic_summary_default_sends_ack_then_final_and_passes_context() {
 }
 
 #[tokio::test]
-async fn streaming_mode_router_skips_echo_of_run_return_when_progress_flags_on() {
+async fn streaming_mode_router_sends_reaction_and_reply() {
     let sender = Arc::new(MockSender::new());
     let sender_trait: Arc<dyn MessageSender> = sender.clone();
-    let agent = Arc::new(MockAgentRunner::new("would duplicate"));
+    let agent = Arc::new(MockAgentRunner::new("agent reply"));
     let settings = Arc::new(Settings {
         streaming: StreamingConfig {
             ..Default::default()
@@ -174,8 +174,9 @@ async fn streaming_mode_router_skips_echo_of_run_return_when_progress_flags_on()
     handle_message_with_deps(&deps, &msg).await.unwrap();
 
     let messages = sender.get_messages();
-    assert_eq!(messages.len(), 1, "should send reaction in streaming mode");
+    assert_eq!(messages.len(), 2, "should send reaction then reply");
     assert_eq!(messages[0].1, "👌");
+    assert_eq!(messages[1].1, "agent reply");
     let calls = agent.get_calls();
     assert_eq!(calls.len(), 1);
     assert!(calls[0].contains("task"));
