@@ -1,4 +1,4 @@
-mod aggregate_source;
+pub mod aggregate_source;
 pub mod bash;
 mod batch;
 mod conversation;
@@ -11,6 +11,7 @@ mod mcp_adapter;
 mod memory;
 pub mod powershell;
 mod registry;
+pub mod shared;
 pub mod skill;
 pub mod telegram;
 pub mod todo;
@@ -41,6 +42,7 @@ pub use powershell::{LocalPowerShellExecutor, PowerShellExecutor, PowerShellTool
 pub use r#trait::Tool;
 pub(crate) use r#trait::ArcTool;
 pub use registry::{ToolRegistry, ToolRegistryLocked};
+pub use shared::shell_output::format_terminal_timed_out_output;
 pub use skill::{SkillTool, TOOL_SKILL};
 pub use telegram::{
     set_current_chat_id, set_telegram_api, TelegramApi, TelegramSendDocumentTool,

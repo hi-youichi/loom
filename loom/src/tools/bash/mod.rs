@@ -68,7 +68,11 @@ impl Tool for BashTool {
             name: TOOL_BASH.to_string(),
             description: Some(
                 "Executes a bash/shell command on the local machine and returns the output. \
-                 Use this tool to run shell commands, scripts, install packages, etc."
+                 Use this tool to run shell commands, scripts, install packages, etc. \
+                 When a command exceeds the timeout, it continues running in the background. \
+                 The tool returns the PID and output file paths. \
+                 Use `cat <stdout_file>` to read the latest output, `kill <PID>` to stop the process, \
+                 `kill -0 <PID>` to check if the process is still running."
                     .to_string(),
             ),
             input_schema: json!({
@@ -84,7 +88,7 @@ impl Tool for BashTool {
                     },
                     "timeout_ms": {
                         "type": "integer",
-                        "description": "Optional timeout in milliseconds. If not specified, uses 120000 (120 seconds). Set to 0 for no timeout."
+                        "description": "Timeout in milliseconds. Default 120000 (120 seconds). The command runs in the background after timeout."
                     },
                     "description": {
                         "type": "string",

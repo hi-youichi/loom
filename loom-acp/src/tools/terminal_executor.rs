@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use loom::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError};
+use loom::tools::format_terminal_timed_out_output;
 use loom::tools::CommandExecutor;
 use tracing::{error, info, instrument, warn};
 
@@ -63,58 +64,93 @@ impl CommandExecutor for TerminalCommandExecutor {
 
         info!(terminal_id = %terminal_id, "terminal created");
 
-        let result = if let Some(timeout) = timeout_ms {
+        if let Some(timeout) = timeout_ms {
             info!(terminal_id = %terminal_id, timeout_ms = timeout, "waiting for exit with timeout");
             tokio::select! {
                 status = self.terminal_mgr.wait_for_exit(&terminal_id) => {
                     info!(terminal_id = %terminal_id, "process exited before timeout");
-                    status.map_err(|e| {
+                    let _exit_status = status.map_err(|e| {
                         error!(terminal_id = %terminal_id, error = %e, "wait_for_exit failed");
                         ToolSourceError::Transport(e.to_string())
-                    })
+                    })?;
+
+                    let (output, _truncated, _status) = self
+                        .terminal_mgr
+                        .get_output(&terminal_id)
+                        .await
+                        .unwrap_or_default();
+
+                    info!(
+                        terminal_id = %terminal_id,
+                        output_len = output.len(),
+                        "output retrieved"
+                    );
+
+                    let _ = self.terminal_mgr.release(&terminal_id).await;
+                    info!(terminal_id = %terminal_id, "terminal released");
+
+                    if output.is_empty() {
+                        Ok(ToolCallContent::text("(no output)"))
+                    } else {
+                        Ok(ToolCallContent::text(output))
+                    }
                 }
                 _ = tokio::time::sleep(Duration::from_millis(timeout)) => {
-                    warn!(terminal_id = %terminal_id, timeout_ms = timeout, "command timed out");
-                    self.terminal_mgr.kill(&terminal_id).await.ok();
-                    Err(ToolSourceError::Transport("Command timed out".into()))
+                    warn!(terminal_id = %terminal_id, timeout_ms = timeout, "command timed out, detaching terminal");
+
+                    let (output, _truncated, _status) = self
+                        .terminal_mgr
+                        .get_output(&terminal_id)
+                        .await
+                        .unwrap_or_default();
+
+                    let text = format_terminal_timed_out_output(&terminal_id, &output);
+
+                    info!(
+                        terminal_id = %terminal_id,
+                        output_len = output.len(),
+                        "terminal detached, partial output returned"
+                    );
+
+                    Ok(ToolCallContent::text(text))
                 }
             }
         } else {
             info!(terminal_id = %terminal_id, "waiting for exit (no timeout)");
-            self.terminal_mgr
+            let exit_status = self
+                .terminal_mgr
                 .wait_for_exit(&terminal_id)
                 .await
                 .map_err(|e| {
                     error!(terminal_id = %terminal_id, error = %e, "wait_for_exit failed");
                     ToolSourceError::Transport(e.to_string())
-                })
-        };
+                })?;
 
-        let exit_status = result.as_ref().ok();
-        info!(terminal_id = %terminal_id, exit_status = ?exit_status, "wait_for_exit completed");
+            info!(terminal_id = %terminal_id, exit_status = ?exit_status, "wait_for_exit completed");
 
-        let (output, _truncated, _status) = self
-            .terminal_mgr
-            .get_output(&terminal_id)
-            .await
-            .unwrap_or_default();
+            let (output, _truncated, _status) = self
+                .terminal_mgr
+                .get_output(&terminal_id)
+                .await
+                .unwrap_or_default();
 
-        info!(
-            terminal_id = %terminal_id,
-            output_len = output.len(),
-            truncated = _truncated,
-            "output retrieved"
-        );
+            info!(
+                terminal_id = %terminal_id,
+                output_len = output.len(),
+                truncated = _truncated,
+                "output retrieved"
+            );
 
-        let _ = self.terminal_mgr.release(&terminal_id).await;
-        info!(terminal_id = %terminal_id, "terminal released");
+            let _ = self.terminal_mgr.release(&terminal_id).await;
+            info!(terminal_id = %terminal_id, "terminal released");
 
-        if output.is_empty() {
-            info!(terminal_id = %terminal_id, output_len = 0, "bash execute completed");
-            Ok(ToolCallContent::text("(no output)"))
-        } else {
-            info!(terminal_id = %terminal_id, output_len = output.len(), "bash execute completed");
-            Ok(ToolCallContent::text(output))
+            if output.is_empty() {
+                info!(terminal_id = %terminal_id, output_len = 0, "bash execute completed");
+                Ok(ToolCallContent::text("(no output)"))
+            } else {
+                info!(terminal_id = %terminal_id, output_len = output.len(), "bash execute completed");
+                Ok(ToolCallContent::text(output))
+            }
         }
     }
 }

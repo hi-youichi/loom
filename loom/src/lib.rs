@@ -266,6 +266,8 @@ pub use tool_source::{
     TOOL_BASH, TOOL_GET_RECENT_MESSAGES, TOOL_LIST_MEMORIES, TOOL_RECALL, TOOL_REMEMBER,
     TOOL_SEARCH_MEMORIES, TOOL_WEB_FETCHER,
 };
+pub use tools::shared::shell_output::{ShellOutput, format_shell_output, format_timed_out_output, format_terminal_timed_out_output, format_size, shell_output_dir, create_output_file, generate_run_id, make_relative};
+pub use tools::shared::canceller::{ChildProcessCanceller, setup_cancellation};
 pub use tools::{register_mcp_tools, BashTool, CommandExecutor, LocalCommandExecutor, McpToolAdapter};
 pub use traits::Agent;
 pub use user_message::{

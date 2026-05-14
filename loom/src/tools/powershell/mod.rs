@@ -4,6 +4,7 @@
 //! Shell choice is cached after the first probe. Cancellation and timeouts follow
 //! the same pattern as [`crate::tools::BashTool`].
 
+use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -15,7 +16,22 @@ use crate::tools::Tool;
 use crate::{ToolOutputHint, ToolOutputStrategy};
 
 mod executor;
-pub use executor::{LocalPowerShellExecutor, PowerShellExecutor};
+pub use executor::LocalPowerShellExecutor;
+
+#[async_trait]
+#[allow(clippy::too_many_arguments)]
+pub trait PowerShellExecutor: Send + Sync {
+    async fn execute(
+        &self,
+        command: &str,
+        working_dir: Option<&Path>,
+        timeout_ms: Option<u64>,
+        env: Vec<(String, String)>,
+        execution_policy: Option<&str>,
+        use_legacy: bool,
+        ctx: Option<&ToolCallContext>,
+    ) -> Result<ToolCallContent, ToolSourceError>;
+}
 
 pub const TOOL_POWERSHELL: &str = "powershell";
 
