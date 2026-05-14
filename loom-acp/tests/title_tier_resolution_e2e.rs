@@ -3,7 +3,7 @@ mod e2e;
 
 use std::time::Duration;
 
-const TIMEOUT: Duration = Duration::from_secs(30);
+const TIMEOUT: Duration = Duration::from_secs(15);
 
 fn extract_models_from_requests(requests: &Option<Vec<wiremock::Request>>) -> Vec<String> {
     requests

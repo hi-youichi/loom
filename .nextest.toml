@@ -1,7 +1,15 @@
 [profile.default]
 test-threads = "num-cpus"
-slow-timeout = { period = "30s", terminate-after = 3 }
+slow-timeout = { period = "10s", terminate-after = 3 }
 fail-fast = false
+
+[[profile.default.overrides]]
+filter = "test(e2e_)"
+slow-timeout = { period = "30s", terminate-after = 2 }
+
+[[profile.default.overrides]]
+filter = "package(loom-acp)"
+slow-timeout = { period = "20s", terminate-after = 2 }
 
 [profile.ci]
 test-threads = 8

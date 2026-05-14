@@ -7,9 +7,17 @@ description: |
     Prefer workdir over "cd ... && command".
   - Use for git, npm, cargo, docker, etc. Do NOT use for file read/write/search — use read, grep, glob, edit instead.
   - Quote paths with spaces (e.g. rm "path with spaces/file.txt").
-  - Optional timeout in milliseconds (default 120000). Give a short description in the description field when calling.
+  - When running multiple commands: if independent, make multiple bash calls in one message; if sequential, use a single call with "&&" (e.g. git add . && git commit -m "msg").
 
-  When running multiple commands: if independent, make multiple bash calls in one message; if sequential, use a single call with "&&" (e.g. git add . && git commit -m "msg").
+  When a command exceeds the timeout, it continues running in the background. The tool returns:
+  - The PID of the background process
+  - Partial output captured so far
+  - File paths to the output files (.loom/shell/{date}/{id}.stdout and .stderr)
+
+  After a timeout, you can:
+  - Use `cat .loom/shell/{date}/{id}.stdout` to read the latest output
+  - Use `kill <PID>` to stop the process
+  - Use `kill -0 <PID>` to check if the process is still running
 input_schema:
   type: object
   properties:
@@ -21,7 +29,7 @@ input_schema:
       description: Directory to run the command in (relative to working folder or absolute). Omit to use working folder.
     timeout:
       type: integer
-      description: Timeout in milliseconds. Default 120000 (2 minutes).
+      description: Timeout in milliseconds. Default 120000 (2 minutes). The command runs in the background after timeout.
       default: 120000
     description:
       type: string

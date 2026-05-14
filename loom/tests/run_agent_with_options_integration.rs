@@ -393,7 +393,7 @@ async fn run_agent_with_llm_override_returns_cancelled_during_streaming() {
         Some(Box::new(
             MockLlm::with_no_tool_calls("This is a streamed response that should be cancelled.")
                 .with_stream_by_char()
-                .with_stream_delay_ms(5),
+                .with_stream_delay_ms(1),
         )),
     )
     .await

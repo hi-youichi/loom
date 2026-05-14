@@ -4,8 +4,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{OnceCell, Semaphore};
 
-const SHORT_TIMEOUT: Duration = Duration::from_secs(10);
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+const SHORT_TIMEOUT: Duration = Duration::from_secs(5);
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[allow(dead_code)]
 struct PooledProcess {
@@ -162,9 +162,19 @@ static POOL: OnceCell<AcpProcessPool> = OnceCell::const_new();
 pub async fn get_pool() -> &'static AcpProcessPool {
     POOL.get_or_init(|| async {
         let pool_size = std::thread::available_parallelism()
-            .map(|n| n.get().min(8))
-            .unwrap_or(4);
+            .map(|n| n.get().min(4))
+            .unwrap_or(2);
         eprintln!("[pool] initializing with {} processes", pool_size);
         AcpProcessPool::new(pool_size).await
     }).await
+}
+
+#[cfg(test)]
+mod warm_up {
+    use super::get_pool;
+    #[ctor::ctor]
+    fn warm_up_process_pool() {
+        let rt = tokio::runtime::Runtime::new().expect("create runtime for pool warmup");
+        rt.block_on(get_pool());
+    }
 }

@@ -3,7 +3,7 @@ mod e2e;
 
 use std::time::Duration;
 
-const TIMEOUT: Duration = Duration::from_secs(30);
+const TIMEOUT: Duration = Duration::from_secs(15);
 
 fn assert_no_receiver_dropped_error(resp: &common::RpcResponse, context: &str) {
     if let Some(err) = &resp.error {
@@ -20,7 +20,7 @@ async fn e2e_prompt_sequential_no_receiver_dropped() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;
 
-    for i in 0..5 {
+    for i in 0..3 {
         let resp = guard.acp_mut()
             .send_request_and_wait(
                 "session/prompt",

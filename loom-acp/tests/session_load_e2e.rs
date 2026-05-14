@@ -31,8 +31,8 @@ impl SessionUpdateType {
     }
 }
 
-const TIMEOUT: Duration = Duration::from_secs(30);
-const SHORT_TIMEOUT: Duration = Duration::from_secs(10);
+const TIMEOUT: Duration = Duration::from_secs(15);
+const SHORT_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn cwd() -> String {
     std::env::current_dir().unwrap().to_str().unwrap().to_string()

@@ -153,7 +153,7 @@ async fn e2e_prompt_with_embedded_resource() {
                     }
                 }],
             }),
-            Duration::from_secs(30),
+            Duration::from_secs(15),
         )
         .await
         .expect("session/prompt response");
@@ -187,7 +187,7 @@ async fn e2e_prompt_with_image_block() {
                     "mimeType": "image/png"
                 }],
             }),
-            Duration::from_secs(30),
+            Duration::from_secs(15),
         )
         .await
         .expect("session/prompt response");
@@ -221,7 +221,7 @@ async fn e2e_prompt_with_audio_block() {
                     "mimeType": "audio/wav"
                 }],
             }),
-            Duration::from_secs(30),
+            Duration::from_secs(15),
         )
         .await
         .expect("session/prompt response");

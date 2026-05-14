@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use e2e::ToolCallResponse;
 
-const TIMEOUT: Duration = Duration::from_secs(30);
+const TIMEOUT: Duration = Duration::from_secs(15);
 
 fn find_diff_notification(notifications: &[serde_json::Value]) -> Option<&serde_json::Value> {
     notifications.iter().find(|n| {

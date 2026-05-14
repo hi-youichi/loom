@@ -8,7 +8,7 @@ mod e2e;
 
 use std::time::Duration;
 
-const TIMEOUT: Duration = Duration::from_secs(30);
+const TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Send a simple text prompt and verify the agent returns `end_turn`.
 #[tokio::test]
