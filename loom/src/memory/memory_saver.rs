@@ -151,7 +151,7 @@ where
 mod tests {
     use super::*;
     use crate::memory::checkpoint::{
-        Checkpoint, CheckpointMetadata, CheckpointSource, KernelMetadata, CHECKPOINT_VERSION,
+        Checkpoint, CheckpointSource, KernelMetadata, CHECKPOINT_VERSION,
     };
 
     #[tokio::test]

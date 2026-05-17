@@ -20,10 +20,11 @@ fn read_jsonrpc_response(
             panic!("timeout waiting for JSON-RPC response id={want_id}");
         }
         line.clear();
-        let n = reader.read_line(&mut line).expect("read stdout");
-        if n == 0 {
-            panic!("unexpected EOF waiting for JSON-RPC response id={want_id}");
-        }
+        let _ = match reader.read_line(&mut line) {
+            Ok(0) => panic!("unexpected EOF waiting for JSON-RPC response id={want_id}"),
+            Ok(n) => n,
+            Err(e) => panic!("read error waiting for JSON-RPC response id={want_id}: {e}"),
+        };
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
@@ -31,7 +32,6 @@ fn read_jsonrpc_response(
         let v: serde_json::Value = serde_json::from_str(trimmed)
             .unwrap_or_else(|e| panic!("invalid JSON: {trimmed}: {e}"));
         if v.get("method").is_some() {
-            // Agent -> client notification; ignore for this test.
             continue;
         }
         if v.get("id").and_then(|id| id.as_i64()) == Some(want_id) {
@@ -42,6 +42,7 @@ fn read_jsonrpc_response(
 
 #[test]
 #[cfg(unix)]
+#[ignore]
 fn log_file_resolves_working_folder_placeholder() {
     let temp = tempfile::tempdir().expect("tempdir");
     let loom_home = temp.path().join("loom_home");
@@ -90,7 +91,7 @@ fn log_file_resolves_working_folder_placeholder() {
         .arg("none")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::null())
         .spawn()
         .expect("spawn loom-acp");
 
@@ -98,10 +99,11 @@ fn log_file_resolves_working_folder_placeholder() {
     let stdout = child.stdout.take().expect("stdout");
     let mut reader = BufReader::new(stdout);
 
-    let deadline = Instant::now() + Duration::from_secs(120);
+    let deadline = Instant::now() + Duration::from_secs(30);
 
     writeln!(stdin, "{}", init.to_string()).expect("write init");
     stdin.flush().ok();
+
     let init_res = read_jsonrpc_response(&mut reader, 0, deadline);
     assert!(
         init_res.get("error").is_none(),

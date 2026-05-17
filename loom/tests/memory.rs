@@ -4,7 +4,7 @@
 mod init_logging;
 
 use loom::memory::{
-    Checkpoint, CheckpointMetadata, CheckpointSource, KernelMetadata, MemorySaver, RunnableConfig,
+    Checkpoint, CheckpointSource, KernelMetadata, MemorySaver, RunnableConfig,
     CHECKPOINT_VERSION,
 };
 use loom::Checkpointer;

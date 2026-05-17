@@ -3,7 +3,7 @@
 mod init_logging;
 
 use loom::memory::{
-    Checkpoint, CheckpointMetadata, CheckpointSource, Checkpointer, JsonSerializer,
+    Checkpoint, CheckpointSource, Checkpointer, JsonSerializer,
     KernelMetadata, RunnableConfig, SearchOptions, SqliteSaver, SqliteStore, Store,
     CHECKPOINT_VERSION,
 };
