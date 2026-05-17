@@ -60,7 +60,7 @@ impl ListMemoriesTool {
     /// # Examples
     ///
     /// ```
-    /// use loom::tools::memory::ListMemoriesTool;
+    /// use loom::tools::ListMemoriesTool;
     /// use loom::memory::{InMemoryStore, Namespace};
     /// use std::sync::Arc;
     ///

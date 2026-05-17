@@ -53,6 +53,14 @@ fn wrap_cmd_for_windows(command: String, args: Vec<String>) -> (String, Vec<Stri
     (command, args)
 }
 
+fn initialize_timeout() -> Duration {
+    std::env::var("LOOM_MCP_INIT_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(Duration::from_secs)
+        .unwrap_or(Duration::from_secs(20))
+}
+
 impl McpSession {
     /// Creates a new MCP session by spawning the server process and completing
     /// the initialize handshake. Returns `Err` if spawn or initialize fails.
@@ -117,7 +125,7 @@ impl McpSession {
         });
         self.send_request(INITIALIZE_REQUEST_ID, "initialize", params)?;
 
-        match self.wait_for_result(INITIALIZE_REQUEST_ID, Duration::from_secs(20))? {
+        match self.wait_for_result(INITIALIZE_REQUEST_ID, initialize_timeout())? {
             Some(result) => {
                 if result.error.is_some() {
                     return Err(McpSessionError::Initialize(

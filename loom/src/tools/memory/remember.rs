@@ -59,7 +59,7 @@ impl RememberTool {
     /// # Examples
     ///
     /// ```
-    /// use loom::tools::memory::RememberTool;
+    /// use loom::tools::RememberTool;
     /// use loom::memory::{InMemoryStore, Namespace};
     /// use std::sync::Arc;
     ///

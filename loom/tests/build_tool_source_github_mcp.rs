@@ -5,6 +5,16 @@
 
 mod init_logging;
 
+use std::sync::OnceLock;
+
+static MCP_SHORT_TIMEOUT: OnceLock<()> = OnceLock::new();
+
+fn ensure_short_mcp_timeout() {
+    MCP_SHORT_TIMEOUT.get_or_init(|| {
+        std::env::set_var("LOOM_MCP_INIT_TIMEOUT_SECS", "1");
+    });
+}
+
 use loom::{build_react_run_context, ReactBuildConfig};
 
 fn base_config(working_folder: std::path::PathBuf) -> ReactBuildConfig {
@@ -58,6 +68,7 @@ fn base_config(working_folder: std::path::PathBuf) -> ReactBuildConfig {
 /// github_token None: build succeeds, no GitHub MCP started (base tools only).
 #[tokio::test]
 async fn github_token_none_build_succeeds() {
+    ensure_short_mcp_timeout();
     let dir = tempfile::tempdir().unwrap();
     let config = base_config(dir.path().to_path_buf());
     let ctx = build_react_run_context(&config)
@@ -71,6 +82,7 @@ async fn github_token_none_build_succeeds() {
 /// github_token Some but invalid command: spawn fails, we skip GitHub MCP, build still succeeds.
 #[tokio::test]
 async fn github_mcp_invalid_command_build_succeeds_github_skipped() {
+    ensure_short_mcp_timeout();
     let dir = tempfile::tempdir().unwrap();
     let mut config = base_config(dir.path().to_path_buf());
     config.github_token = Some("x".to_string());

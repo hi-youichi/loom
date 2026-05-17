@@ -59,7 +59,7 @@ impl SearchMemoriesTool {
     /// # Examples
     ///
     /// ```
-    /// use loom::tools::memory::SearchMemoriesTool;
+    /// use loom::tools::SearchMemoriesTool;
     /// use loom::memory::{InMemoryStore, Namespace};
     /// use std::sync::Arc;
     ///

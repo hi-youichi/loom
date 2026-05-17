@@ -4,6 +4,16 @@
 
 mod init_logging;
 
+use std::sync::OnceLock;
+
+static MCP_SHORT_TIMEOUT: OnceLock<()> = OnceLock::new();
+
+fn ensure_short_mcp_timeout() {
+    MCP_SHORT_TIMEOUT.get_or_init(|| {
+        std::env::set_var("LOOM_MCP_INIT_TIMEOUT_SECS", "1");
+    });
+}
+
 use loom::{build_helve_config, build_react_run_context, RunOptions};
 use std::path::PathBuf;
 
@@ -39,6 +49,7 @@ fn opts(working_folder: PathBuf) -> RunOptions {
 /// mcp_servers from .loom/mcp.json are injected; build_react_run_context succeeds (MCP may fail to start and be skipped).
 #[tokio::test]
 async fn mcp_config_injected_into_build_tool_source() {
+    ensure_short_mcp_timeout();
     let dir = tempfile::tempdir().unwrap();
     let working = dir.path().to_path_buf();
     let loom_dir = working.join(".loom");

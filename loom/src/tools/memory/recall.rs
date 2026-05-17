@@ -58,7 +58,7 @@ impl RecallTool {
     /// # Examples
     ///
     /// ```
-    /// use loom::tools::memory::RecallTool;
+    /// use loom::tools::RecallTool;
     /// use loom::memory::{InMemoryStore, Namespace};
     /// use std::sync::Arc;
     ///

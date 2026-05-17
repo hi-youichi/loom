@@ -7,13 +7,23 @@
 
 mod init_logging;
 
+use std::sync::OnceLock;
+
+static MCP_SHORT_TIMEOUT: OnceLock<()> = OnceLock::new();
+
+fn ensure_short_mcp_timeout() {
+    MCP_SHORT_TIMEOUT.get_or_init(|| {
+        std::env::set_var("LOOM_MCP_INIT_TIMEOUT_SECS", "1");
+    });
+}
+
 use loom::{
     run_agent_with_llm_override, run_agent_with_options, AnyStreamEvent, Checkpointer, MockLlm,
     RunCancellation, RunCmd, RunCompletion, RunOptions, StreamEvent, UserContent,
 };
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 #[cfg(unix)]
 use std::time::Instant;
 
@@ -68,6 +78,7 @@ async fn run_agent_with_options_invalid_working_folder_returns_err() {
 /// Uses run_agent_with_llm_override so no real API is needed; asserts reply and that on_event was called.
 #[tokio::test]
 async fn run_agent_with_options_success_path_with_on_event_receives_events() {
+    ensure_short_mcp_timeout();
     let dir = tempfile::tempdir().expect("tempdir");
     let working = dir.path().to_path_buf();
     let loom_dir = working.join(".loom");
@@ -109,6 +120,7 @@ async fn run_agent_with_options_success_path_with_on_event_receives_events() {
 /// tool result is "(dry run: get_time was not executed)" and the run completes successfully.
 #[tokio::test]
 async fn dry_run_returns_placeholder_for_tool_calls() {
+    ensure_short_mcp_timeout();
     let dir = tempfile::tempdir().expect("tempdir");
     let working = dir.path().to_path_buf();
     let loom_dir = working.join(".loom");
@@ -292,6 +304,7 @@ async fn session_id_restores_context_from_checkpoint() {
 /// Integration test: a pre-cancelled run returns RunCompletion::Cancelled.
 #[tokio::test]
 async fn run_agent_with_llm_override_returns_cancelled_when_token_is_pre_cancelled() {
+    ensure_short_mcp_timeout();
     let dir = tempfile::tempdir().expect("tempdir");
     let working = dir.path().to_path_buf();
     let loom_dir = working.join(".loom");
@@ -320,6 +333,7 @@ async fn run_agent_with_llm_override_returns_cancelled_when_token_is_pre_cancell
 #[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn cancelled_run_does_not_persist_checkpoint() {
+    ensure_short_mcp_timeout();
     let _guard = env_lock().lock().expect("lock env");
     let dir = tempfile::tempdir().expect("tempdir");
     let working = dir.path().to_path_buf();
@@ -375,6 +389,7 @@ async fn cancelled_run_does_not_persist_checkpoint() {
 /// Integration test: cancelling during streamed output returns Cancelled.
 #[tokio::test]
 async fn run_agent_with_llm_override_returns_cancelled_during_streaming() {
+    ensure_short_mcp_timeout();
     let dir = tempfile::tempdir().expect("tempdir");
     let working = dir.path().to_path_buf();
     let loom_dir = working.join(".loom");
