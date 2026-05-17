@@ -48,8 +48,9 @@ pub type PendingWrite = (String, String, Value);
 pub type ChannelVersions = HashMap<String, String>;
 
 /// Metadata describing where a checkpoint came from and how it relates to others.
+/// Belongs to the execution engine — does NOT contain domain-specific fields.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct CheckpointMetadata {
+pub struct KernelMetadata {
     /// The source of the checkpoint (input, loop, update, fork).
     pub source: CheckpointSource,
     /// The step number of the checkpoint (-1 for input, 0 for first loop, etc.).
@@ -62,11 +63,35 @@ pub struct CheckpointMetadata {
     /// Child checkpoint IDs grouped by child checkpoint namespace.
     #[serde(default)]
     pub children: HashMap<String, Vec<String>>,
-    /// Optional session summary for display in session list.
-    /// Generated after the first think in ReAct loop.
+    /// Session title extracted from state by the metadata extractor closure.
+    /// Populated by `CompiledStateGraph` when a `metadata_extractor` is registered.
     #[serde(default)]
     pub summary: Option<String>,
 }
+
+/// Trait for user-defined checkpoint metadata.
+///
+/// Implementors define how their metadata is persisted to and read from
+/// the database. The kernel never interprets the content — it only
+/// clones and transports the value.
+///
+/// `to_persist()` output **must** be a valid JSON object (e.g. `{"summary":"..."}`)
+/// so that SQLite `json_extract()` can query individual keys directly.
+pub trait CheckpointUserMeta: Clone + std::fmt::Debug + Send + Sync + 'static {
+    fn to_persist(&self) -> Option<String>;
+    fn from_persist(s: &str) -> Self;
+}
+
+impl CheckpointUserMeta for () {
+    fn to_persist(&self) -> Option<String> {
+        None
+    }
+    fn from_persist(_: &str) -> Self {}
+}
+
+/// Backwards-compatible type alias.
+/// `CheckpointMetadata` now equals `KernelMetadata` (summary field removed).
+pub type CheckpointMetadata = KernelMetadata;
 
 /// Why a checkpoint was created.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -96,13 +121,13 @@ mod tests {
         let s = CheckpointSource::Input;
         let _ = format!("{:?}", s);
         let c = s.clone();
-        let _ = CheckpointMetadata {
+        let _ = KernelMetadata {
             source: c,
             step: 0,
             created_at: None,
             parents: HashMap::new(),
             children: HashMap::new(),
-            summary: None,
+                summary: None,
         };
     }
 
@@ -159,7 +184,7 @@ mod tests {
         );
 
         assert_eq!(checkpoint.id, custom_id);
-        assert_eq!(checkpoint.metadata.step, 5);
+        assert_eq!(checkpoint.kernel.step, 5);
         assert_eq!(checkpoint.v, CHECKPOINT_VERSION);
     }
 
@@ -194,7 +219,7 @@ mod tests {
         assert!(checkpoint.versions_seen.is_empty());
         assert!(checkpoint.pending_sends.is_empty());
         assert!(checkpoint.updated_channels.is_none());
-        assert_eq!(checkpoint.metadata.source, CheckpointSource::Input);
+        assert_eq!(checkpoint.kernel.source, CheckpointSource::Input);
     }
 
     /// **Scenario**: CheckpointTuple holds all expected fields.
@@ -203,7 +228,7 @@ mod tests {
         let checkpoint: Checkpoint<String> =
             Checkpoint::from_state("state".to_string(), CheckpointSource::Loop, 1);
         let config = RunnableConfig::default();
-        let metadata = checkpoint.metadata.clone();
+        let metadata = checkpoint.kernel.clone();
 
         let tuple = CheckpointTuple {
             config: config.clone(),
@@ -234,7 +259,7 @@ mod tests {
     /// **Scenario**: CheckpointMetadata has correct defaults.
     #[test]
     fn checkpoint_metadata_default() {
-        let metadata = CheckpointMetadata::default();
+        let metadata = KernelMetadata::default();
 
         assert_eq!(metadata.source, CheckpointSource::Input);
         assert_eq!(metadata.step, 0);
@@ -254,15 +279,17 @@ fn default_checkpoint_version() -> u32 {
 /// a [`crate::memory::Checkpointer`]. `channel_values` stores the user-visible
 /// state snapshot, while the version and pending-write fields preserve enough
 /// runtime context to continue execution or inspect lineage later.
+///
+/// The `M` parameter is the user-defined metadata type. Default `M = ()` means
+/// no user metadata. The kernel never interprets `M` — it only clones and
+/// transports the value.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct Checkpoint<S> {
+#[serde(bound = "S: serde::Serialize + serde::de::DeserializeOwned, M: Clone + Default + serde::Serialize + serde::de::DeserializeOwned")]
+pub struct Checkpoint<S, M = ()> {
     /// The version of the checkpoint format. Currently `2`.
     #[serde(default = "default_checkpoint_version")]
     pub v: u32,
     /// Unique checkpoint id.
-    ///
-    /// Newly created checkpoints use UUID6 so lexicographic ordering generally
-    /// tracks creation time.
     pub id: String,
     /// Creation timestamp expressed as milliseconds since the Unix epoch.
     pub ts: String,
@@ -272,8 +299,6 @@ pub struct Checkpoint<S> {
     #[serde(default)]
     pub channel_versions: ChannelVersions,
     /// Per-node view of channel versions already observed.
-    ///
-    /// Runtimes use this to decide which nodes still need to react to newer channel values.
     #[serde(default)]
     pub versions_seen: HashMap<String, ChannelVersions>,
     /// Channels updated at the barrier that produced this checkpoint.
@@ -288,8 +313,11 @@ pub struct Checkpoint<S> {
     /// Pending interrupts persisted so a later run can resume them.
     #[serde(default)]
     pub pending_interrupts: Vec<Value>,
-    /// Metadata describing the checkpoint's source and lineage.
-    pub metadata: CheckpointMetadata,
+    /// Kernel metadata describing source, step, and lineage.
+    pub kernel: KernelMetadata,
+    /// User-defined metadata. The kernel never interprets this field.
+    #[serde(default)]
+    pub user: M,
 }
 
 /// Lightweight checkpoint list item for history and time-travel UIs.
@@ -298,29 +326,26 @@ pub struct CheckpointListItem {
     /// Unique checkpoint id.
     pub checkpoint_id: String,
     /// Metadata associated with the checkpoint.
-    pub metadata: CheckpointMetadata,
+    pub metadata: KernelMetadata,
 }
 
 /// Expanded checkpoint record returned by [`crate::memory::Checkpointer::get_tuple`].
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CheckpointTuple<S> {
+#[serde(bound = "S: serde::Serialize + serde::de::DeserializeOwned, M: Clone + Default + serde::Serialize + serde::de::DeserializeOwned")]
+pub struct CheckpointTuple<S, M = ()> {
     /// Configuration used to load this checkpoint.
     pub config: RunnableConfig,
     /// The checkpoint snapshot.
-    pub checkpoint: Checkpoint<S>,
+    pub checkpoint: Checkpoint<S, M>,
     /// Metadata duplicated for convenience.
-    pub metadata: CheckpointMetadata,
+    pub metadata: KernelMetadata,
     /// Parent configuration, when the backend can reconstruct it.
     pub parent_config: Option<RunnableConfig>,
     /// Pending writes returned separately by some backends.
     pub pending_writes: Option<Vec<PendingWrite>>,
 }
 
-impl<S> Checkpoint<S> {
-    /// Creates a fresh checkpoint from state, source, and step metadata.
-    ///
-    /// The checkpoint id is generated with UUID6 so new checkpoints are unique
-    /// and roughly time-ordered.
+impl<S, M: Default> Checkpoint<S, M> {
     pub fn from_state(state: S, source: CheckpointSource, step: i64) -> Self {
         let now = SystemTime::now();
         let id = uuid6().to_string();
@@ -341,7 +366,7 @@ impl<S> Checkpoint<S> {
             pending_sends: Vec::new(),
             pending_writes: Vec::new(),
             pending_interrupts: Vec::new(),
-            metadata: CheckpointMetadata {
+            kernel: KernelMetadata {
                 source,
                 step,
                 created_at: Some(now),
@@ -349,12 +374,10 @@ impl<S> Checkpoint<S> {
                 children: HashMap::new(),
                 summary: None,
             },
+            user: M::default(),
         }
     }
 
-    /// Creates a fresh checkpoint with a caller-provided id.
-    ///
-    /// This is mainly useful for import, restore, or backend-specific migration flows.
     pub fn with_id(id: String, state: S, source: CheckpointSource, step: i64) -> Self {
         let now = SystemTime::now();
         let ts = format!(
@@ -374,7 +397,7 @@ impl<S> Checkpoint<S> {
             pending_sends: Vec::new(),
             pending_writes: Vec::new(),
             pending_interrupts: Vec::new(),
-            metadata: CheckpointMetadata {
+            kernel: KernelMetadata {
                 source,
                 step,
                 created_at: Some(now),
@@ -382,12 +405,12 @@ impl<S> Checkpoint<S> {
                 children: HashMap::new(),
                 summary: None,
             },
+            user: M::default(),
         }
     }
 }
 
-impl<S: Clone> Checkpoint<S> {
-    /// Returns a deep copy of the checkpoint.
+impl<S: Clone, M: Clone> Checkpoint<S, M> {
     pub fn copy(&self) -> Self {
         Self {
             v: self.v,
@@ -404,19 +427,19 @@ impl<S: Clone> Checkpoint<S> {
             pending_sends: self.pending_sends.clone(),
             pending_writes: self.pending_writes.clone(),
             pending_interrupts: self.pending_interrupts.clone(),
-            metadata: self.metadata.clone(),
+            kernel: self.kernel.clone(),
+            user: self.user.clone(),
         }
     }
 
-    /// Creates a forked checkpoint with a new id but the same execution frontier.
-    ///
-    /// The resulting checkpoint records the provided parent namespace/id in its
-    /// lineage metadata so replay tooling can navigate the fork relationship.
-    pub fn fork_from(&self, parent_namespace: String, parent_checkpoint_id: String) -> Self {
+    pub fn fork_from(&self, parent_namespace: String, parent_checkpoint_id: String) -> Self
+    where
+        M: Default,
+    {
         let mut forked = Checkpoint::from_state(
             self.channel_values.clone(),
             CheckpointSource::Fork,
-            self.metadata.step,
+            self.kernel.step,
         );
         forked.channel_versions = self.channel_versions.clone();
         forked.versions_seen = self.versions_seen.clone();
@@ -424,18 +447,17 @@ impl<S: Clone> Checkpoint<S> {
         forked.pending_sends = self.pending_sends.clone();
         forked.pending_writes = self.pending_writes.clone();
         forked.pending_interrupts = self.pending_interrupts.clone();
-        forked.metadata.parents = self.metadata.parents.clone();
+        forked.kernel.parents = self.kernel.parents.clone();
         forked
-            .metadata
+            .kernel
             .parents
             .insert(parent_namespace, parent_checkpoint_id);
-        forked.metadata.children = self.metadata.children.clone();
+        forked.kernel.children = self.kernel.children.clone();
         forked
     }
 }
 
-impl<S: Default> Default for Checkpoint<S> {
-    /// Creates an empty checkpoint with default state and fresh metadata.
+impl<S: Default, M: Default> Default for Checkpoint<S, M> {
     fn default() -> Self {
         let now = SystemTime::now();
         let id = uuid6().to_string();
@@ -456,7 +478,8 @@ impl<S: Default> Default for Checkpoint<S> {
             pending_sends: Vec::new(),
             pending_writes: Vec::new(),
             pending_interrupts: Vec::new(),
-            metadata: CheckpointMetadata::default(),
+            kernel: KernelMetadata::default(),
+            user: M::default(),
         }
     }
 }

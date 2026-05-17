@@ -73,7 +73,7 @@ impl PregelLoop {
         config: PregelConfig,
     ) -> Self {
         Self {
-            step: checkpoint.metadata.step.max(0) as u64,
+            step: checkpoint.kernel.step.max(0) as u64,
             stop: config.max_steps,
             status: LoopStatus::Running,
             graph,
@@ -347,7 +347,7 @@ impl PregelLoop {
         self.updated_channels = updated;
         self.pending_writes = self.checkpoint.pending_writes.clone();
         self.step += 1;
-        self.checkpoint.metadata.step = self.step as i64;
+        self.checkpoint.kernel.step = self.step as i64;
         if !self.interrupts.consumed_interrupt_ids.is_empty() {
             self.checkpoint.pending_interrupts = retain_unconsumed_interrupts(
                 &self.checkpoint.pending_interrupts,

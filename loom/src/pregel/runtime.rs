@@ -555,7 +555,7 @@ impl PregelRuntime {
             .map(|(index, update)| {
                 synthetic_update_task(
                     index,
-                    checkpoint.metadata.step.max(0) as u64,
+                    checkpoint.kernel.step.max(0) as u64,
                     update,
                     &self.graph,
                 )
@@ -580,7 +580,7 @@ impl PregelRuntime {
         checkpoint.pending_writes.extend(new_pending_writes);
         normalize_checkpoint_frontier(&mut checkpoint);
         checkpoint.updated_channels = Some(updated_channels);
-        checkpoint.metadata.step = checkpoint.metadata.step.max(0) + 1;
+        checkpoint.kernel.step = checkpoint.kernel.step.max(0) + 1;
 
         let checkpoint = if self.checkpointer.is_some() {
             self.persist_raw_checkpoint(&config, &checkpoint).await?
@@ -671,7 +671,7 @@ impl PregelRuntime {
                 let forked =
                     checkpoint.fork_from(source_config.checkpoint_ns.clone(), checkpoint_id);
                 let source_children = checkpoint
-                    .metadata
+                    .kernel
                     .children
                     .entry(config.checkpoint_ns.clone())
                     .or_default();
@@ -788,7 +788,7 @@ impl PregelRuntime {
                         });
 
                     child_checkpoint
-                        .metadata
+                        .kernel
                         .parents
                         .insert(config.checkpoint_ns.clone(), checkpoint_id);
                     checkpointer
@@ -1030,7 +1030,7 @@ async fn emit_checkpoint_event(
             .send(StreamEvent::Checkpoint(crate::stream::CheckpointEvent {
                 checkpoint_id: checkpoint.id.clone(),
                 timestamp: checkpoint.ts.clone(),
-                step: checkpoint.metadata.step,
+                step: checkpoint.kernel.step,
                 state: checkpoint.channel_values.clone(),
                 thread_id: config.thread_id.clone(),
                 checkpoint_ns: if config.checkpoint_ns.is_empty() {
@@ -1070,7 +1070,7 @@ fn next_checkpoint(
     let mut checkpoint = Checkpoint::from_state(
         current.channel_values.clone(),
         source,
-        current.metadata.step,
+        current.kernel.step,
     );
     checkpoint.channel_versions = current.channel_versions.clone();
     checkpoint.versions_seen = current.versions_seen.clone();
@@ -1078,30 +1078,14 @@ fn next_checkpoint(
     checkpoint.pending_sends = current.pending_sends.clone();
     checkpoint.pending_writes = current.pending_writes.clone();
     checkpoint.pending_interrupts = current.pending_interrupts.clone();
-    checkpoint.metadata.parents = current.metadata.parents.clone();
-    checkpoint.metadata.children = current.metadata.children.clone();
-    checkpoint.metadata.summary = current
-        .metadata
-        .summary
-        .clone()
-        .or_else(|| extract_summary_from_channel_values(&current.channel_values));
+    checkpoint.kernel.parents = current.kernel.parents.clone();
+    checkpoint.kernel.children = current.kernel.children.clone();
     checkpoint
-}
-
-/// Extract the `summary` field from serialized channel values (e.g. ReActState).
-/// This bridges the gap between state-level summary and checkpoint metadata,
-/// ensuring summaries are persisted even when the metadata was not explicitly set.
-fn extract_summary_from_channel_values(channel_values: &serde_json::Value) -> Option<String> {
-    channel_values
-        .get("summary")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
 }
 
 fn merge_subgraph_links(checkpoint: &mut Checkpoint<ChannelValue>, ctx: &PregelNodeContext) {
     for (namespace, checkpoint_ids) in ctx.subgraph_links() {
-        let entry = checkpoint.metadata.children.entry(namespace).or_default();
+        let entry = checkpoint.kernel.children.entry(namespace).or_default();
         for checkpoint_id in checkpoint_ids {
             if !entry.iter().any(|existing| existing == &checkpoint_id) {
                 entry.push(checkpoint_id);
@@ -5891,30 +5875,4 @@ mod tests {
         assert_eq!(node_b_runs.load(Ordering::SeqCst), 1);
     }
 
-    #[test]
-    fn extract_summary_from_channel_values_returns_summary_when_present() {
-        let channel_values = serde_json::json!({"summary": "Hello world", "messages": []});
-        assert_eq!(
-            extract_summary_from_channel_values(&channel_values),
-            Some("Hello world".to_string())
-        );
-    }
-
-    #[test]
-    fn extract_summary_from_channel_values_returns_none_when_null() {
-        let channel_values = serde_json::json!({"summary": null, "messages": []});
-        assert_eq!(extract_summary_from_channel_values(&channel_values), None);
-    }
-
-    #[test]
-    fn extract_summary_from_channel_values_returns_none_when_empty_string() {
-        let channel_values = serde_json::json!({"summary": "", "messages": []});
-        assert_eq!(extract_summary_from_channel_values(&channel_values), None);
-    }
-
-    #[test]
-    fn extract_summary_from_channel_values_returns_none_when_field_missing() {
-        let channel_values = serde_json::json!({"messages": []});
-        assert_eq!(extract_summary_from_channel_values(&channel_values), None);
-    }
 }

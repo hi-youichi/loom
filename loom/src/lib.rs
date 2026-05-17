@@ -211,7 +211,7 @@ pub use memory::LanceStore;
 pub use memory::OpenAIEmbedder;
 pub use memory::{
     Checkpoint, CheckpointError, CheckpointListItem, CheckpointMetadata, CheckpointSource,
-    Checkpointer, InMemoryStore, JsonSerializer, MemorySaver, Namespace, RunnableConfig, Store,
+    CheckpointUserMeta, Checkpointer, InMemoryStore, JsonSerializer, KernelMetadata, MemorySaver, Namespace, RunnableConfig, Store,
     StoreError, StoreSearchHit,
 };
 pub use memory::{SqliteSaver, SqliteStore};

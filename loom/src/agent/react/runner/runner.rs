@@ -124,6 +124,10 @@ impl ReactRunner {
             graph
         };
 
+        let graph = graph.with_metadata_extractor(Arc::new(|state: &ReActState| {
+            state.summary.clone()
+        }));
+
         let compiled = match (&checkpointer, verbose) {
             (Some(cp), true) => {
                 let mw = Arc::new(LoggingNodeMiddleware::<ReActState>::default());

@@ -56,6 +56,9 @@ pub struct CompiledStateGraph<S> {
     pub(super) retry_policy: RetryPolicy,
     /// Optional interrupt handler for human-in-the-loop scenarios.
     pub(super) interrupt_handler: Option<Arc<dyn InterruptHandler>>,
+    /// Optional closure that extracts checkpoint summary from state.
+    /// The kernel calls this closure when saving a checkpoint.
+    pub(super) metadata_extractor: Option<Arc<dyn Fn(&S) -> Option<String> + Send + Sync>>,
 }
 
 /// Streaming graph execution: event stream plus final completion result.
@@ -195,8 +198,11 @@ where
                     if let (Some(cp), Some(cfg)) = (&self.checkpointer, config) {
                         if cfg.thread_id.is_some() {
                             // Save checkpoint before interrupt so we can resume later
-                            let checkpoint =
+                            let mut checkpoint =
                                 Checkpoint::from_state(state.clone(), CheckpointSource::Update, 0);
+                            if let Some(ref extractor) = self.metadata_extractor {
+                                checkpoint.kernel.summary = extractor(&checkpoint.channel_values);
+                            }
                             let _ = cp.put(cfg, &checkpoint).await;
 
                             // Emit checkpoint event if enabled
@@ -215,7 +221,7 @@ where
                                                 crate::stream::CheckpointEvent {
                                                     checkpoint_id: checkpoint.id.clone(),
                                                     timestamp: checkpoint.ts.clone(),
-                                                    step: checkpoint.metadata.step,
+                                                    step: checkpoint.kernel.step,
                                                     state: state.clone(),
                                                     thread_id: cfg.thread_id.clone(),
                                                     checkpoint_ns,
@@ -361,8 +367,11 @@ where
             if should_end {
                 if let (Some(cp), Some(cfg)) = (&self.checkpointer, config) {
                     if cfg.thread_id.is_some() {
-                        let checkpoint =
+                        let mut checkpoint =
                             Checkpoint::from_state(state.clone(), CheckpointSource::Update, 0);
+                        if let Some(ref extractor) = self.metadata_extractor {
+                            checkpoint.kernel.summary = extractor(&checkpoint.channel_values);
+                        }
                         let _ = cp.put(cfg, &checkpoint).await;
                         if let Some(ctx) = run_ctx {
                             if let Some(tx) = &ctx.stream_tx {
@@ -379,7 +388,7 @@ where
                                             crate::stream::CheckpointEvent {
                                                 checkpoint_id: checkpoint.id.clone(),
                                                 timestamp: checkpoint.ts.clone(),
-                                                step: checkpoint.metadata.step,
+                                                step: checkpoint.kernel.step,
                                                 state: state.clone(),
                                                 thread_id: cfg.thread_id.clone(),
                                                 checkpoint_ns,
@@ -553,6 +562,7 @@ mod tests {
             state_updater: Arc::new(crate::channels::ReplaceUpdater),
             retry_policy: RetryPolicy::None,
             interrupt_handler: None,
+            metadata_extractor: None,
         };
         let state = crate::state::ReActState::default();
         let result = graph.invoke(state, None).await;
@@ -1023,6 +1033,7 @@ mod tests {
             state_updater: Arc::new(crate::channels::ReplaceUpdater),
             retry_policy: RetryPolicy::None,
             interrupt_handler: None,
+            metadata_extractor: None,
         };
         let stream = graph.stream(
             0,

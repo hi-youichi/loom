@@ -10,7 +10,7 @@ use rusqlite::params;
 
 use crate::memory::checkpoint::{
     ChannelVersions, Checkpoint, CheckpointListItem, CheckpointMetadata, CheckpointSource,
-    CHECKPOINT_VERSION,
+    KernelMetadata, CHECKPOINT_VERSION,
 };
 use crate::memory::checkpointer::{CheckpointError, Checkpointer};
 use crate::memory::config::RunnableConfig;
@@ -234,12 +234,12 @@ where
         let channel_versions = serde_json::to_string(&checkpoint.channel_versions)
             .map_err(|e| CheckpointError::Serialization(e.to_string()))?;
         let versions_seen = serialize_json_field(&checkpoint.versions_seen)?;
-        let metadata_source = source_to_str(&checkpoint.metadata.source).to_string();
-        let metadata_step = checkpoint.metadata.step;
-        let metadata_created_at = created_at_to_i64(&checkpoint.metadata.created_at);
-        let metadata_parents = serialize_parents(&checkpoint.metadata.parents)?;
-        let metadata_children = serialize_children(&checkpoint.metadata.children)?;
-        let metadata_summary = checkpoint.metadata.summary.clone();
+        let metadata_source = source_to_str(&checkpoint.kernel.source).to_string();
+        let metadata_step = checkpoint.kernel.step;
+        let metadata_created_at = created_at_to_i64(&checkpoint.kernel.created_at);
+        let metadata_parents = serialize_parents(&checkpoint.kernel.parents)?;
+        let metadata_children = serialize_children(&checkpoint.kernel.children)?;
+        let metadata_summary = checkpoint.kernel.summary.clone();
         let updated_channels = serialize_json_field(&checkpoint.updated_channels)?;
         let pending_sends = serialize_json_field(&checkpoint.pending_sends)?;
         let pending_writes = serialize_json_field(&checkpoint.pending_writes)?;
@@ -402,8 +402,10 @@ where
             source: str_to_source(&metadata_source),
             step: metadata_step,
             created_at: i64_to_created_at(metadata_created_at),
-            parents: deserialize_parents(&metadata_parents)?,
-            children: deserialize_children(&metadata_children)?,
+            parents: serde_json::from_str(&metadata_parents)
+                .unwrap_or_else(|_| HashMap::new()),
+            children: serde_json::from_str(&metadata_children)
+                .unwrap_or_else(|_| HashMap::new()),
             summary: metadata_summary,
         };
         let checkpoint = Checkpoint {
@@ -417,9 +419,10 @@ where
             pending_sends: deserialize_json_field(&pending_sends_json)?,
             pending_writes: deserialize_json_field(&pending_writes_json)?,
             pending_interrupts: deserialize_json_field(&pending_interrupts_json)?,
-            metadata: metadata.clone(),
+            kernel: metadata.clone(),
+            user: (),
         };
-        Ok(Some((checkpoint, metadata)))
+        Ok(Some((checkpoint, metadata.clone())))
     }
 
     async fn list(
@@ -449,7 +452,7 @@ where
                 .query_map(params![thread_id, checkpoint_ns], |row| {
                     Ok(CheckpointListItem {
                         checkpoint_id: row.get(0)?,
-                        metadata: CheckpointMetadata {
+                        metadata: KernelMetadata {
                             source: str_to_source(&row.get::<_, String>(1)?),
                             step: row.get::<_, i64>(2)?,
                             created_at: i64_to_created_at(row.get(3)?),
@@ -597,7 +600,8 @@ mod tests {
                 serde_json::json!({"kind": "approval_required"}),
             )],
             pending_interrupts: vec![serde_json::json!({"interrupt_id": "int-1"})],
-            metadata: CheckpointMetadata {
+            user: (),
+            kernel: KernelMetadata {
                 source: CheckpointSource::Input,
                 step: 1,
                 created_at: Some(now),
@@ -672,13 +676,14 @@ mod tests {
                 pending_sends: Vec::new(),
                 pending_writes: Vec::new(),
                 pending_interrupts: Vec::new(),
-                metadata: CheckpointMetadata {
+                user: (),
+                kernel: KernelMetadata {
                     source: CheckpointSource::Loop,
                     step: i,
                     created_at: Some(base + Duration::from_secs(i as u64)),
                     parents: HashMap::new(),
                     children: HashMap::new(),
-                    summary: None,
+                summary: None,
                 },
             };
             saver.put(&config, &checkpoint).await.unwrap();

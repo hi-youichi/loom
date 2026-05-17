@@ -67,6 +67,7 @@ pub struct StateGraph<S> {
     retry_policy: RetryPolicy,
     /// Optional interrupt handler for human-in-the-loop scenarios.
     interrupt_handler: Option<Arc<dyn InterruptHandler>>,
+    metadata_extractor: Option<Arc<dyn Fn(&S) -> Option<String> + Send + Sync>>,
 }
 
 impl<S> Default for StateGraph<S>
@@ -93,6 +94,7 @@ where
             state_updater: None,
             retry_policy: RetryPolicy::None,
             interrupt_handler: None,
+            metadata_extractor: None,
         }
     }
 
@@ -190,6 +192,16 @@ where
     pub fn with_interrupt_handler(self, handler: Arc<dyn InterruptHandler>) -> Self {
         Self {
             interrupt_handler: Some(handler),
+            ..self
+        }
+    }
+
+    pub fn with_metadata_extractor(
+        self,
+        extractor: Arc<dyn Fn(&S) -> Option<String> + Send + Sync>,
+    ) -> Self {
+        Self {
+            metadata_extractor: Some(extractor),
             ..self
         }
     }
@@ -422,6 +434,7 @@ where
             state_updater,
             retry_policy: self.retry_policy,
             interrupt_handler: self.interrupt_handler,
+            metadata_extractor: self.metadata_extractor,
         })
     }
 }

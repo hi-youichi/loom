@@ -8,7 +8,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 
-use crate::memory::checkpoint::{Checkpoint, CheckpointListItem, CheckpointMetadata};
+use crate::memory::checkpoint::{Checkpoint, CheckpointListItem, CheckpointMetadata, KernelMetadata};
 use crate::memory::checkpointer::{CheckpointError, Checkpointer};
 use crate::memory::config::RunnableConfig;
 
@@ -100,9 +100,9 @@ where
         let result = if let Some(cid) = &config.checkpoint_id {
             list.iter()
                 .find(|(id, _)| id == cid)
-                .map(|(_, cp)| (cp.clone(), cp.metadata.clone()))
+                .map(|(_, cp)| (cp.clone(), cp.kernel.clone()))
         } else {
-            list.last().map(|(_, cp)| (cp.clone(), cp.metadata.clone()))
+            list.last().map(|(_, cp)| (cp.clone(), cp.kernel.clone()))
         };
         Ok(result)
     }
@@ -124,7 +124,7 @@ where
             .iter()
             .map(|(id, cp)| CheckpointListItem {
                 checkpoint_id: id.clone(),
-                metadata: cp.metadata.clone(),
+                metadata: cp.kernel.clone(),
             })
             .collect();
         if let Some(a) = after {
@@ -151,7 +151,7 @@ where
 mod tests {
     use super::*;
     use crate::memory::checkpoint::{
-        Checkpoint, CheckpointMetadata, CheckpointSource, CHECKPOINT_VERSION,
+        Checkpoint, CheckpointMetadata, CheckpointSource, KernelMetadata, CHECKPOINT_VERSION,
     };
 
     #[tokio::test]
@@ -174,7 +174,8 @@ mod tests {
             pending_sends: Vec::new(),
             pending_writes: Vec::new(),
             pending_interrupts: Vec::new(),
-            metadata: CheckpointMetadata {
+            user: (),
+            kernel: KernelMetadata {
                 source: CheckpointSource::Loop,
                 step: 1,
                 created_at: None,
@@ -188,7 +189,7 @@ mod tests {
         let mut updated = checkpoint.clone();
         updated.channel_values = serde_json::json!({"value": 2});
         updated
-            .metadata
+            .kernel
             .children
             .insert("fork".to_string(), vec!["child-1".to_string()]);
         saver.put(&config, &updated).await.unwrap();
@@ -199,7 +200,7 @@ mod tests {
         let latest = saver.get_tuple(&config).await.unwrap().unwrap().0;
         assert_eq!(latest.channel_values["value"], serde_json::json!(2));
         assert_eq!(
-            latest.metadata.children.get("fork"),
+            latest.kernel.children.get("fork"),
             Some(&vec!["child-1".to_string()])
         );
     }

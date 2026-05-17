@@ -5,6 +5,7 @@
 //! and result content.
 
 use crate::memory::uuid6;
+use crate::memory::CheckpointUserMeta;
 use crate::message::{AssistantToolCall, Message};
 use crate::llm::ToolChoiceMode;
 use crate::model_spec::ModelTier;
@@ -288,6 +289,24 @@ impl Default for ReActState {
 
 fn default_true() -> bool {
     true
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct ReActCheckpointMeta {
+    pub summary: Option<String>,
+}
+
+impl CheckpointUserMeta for ReActCheckpointMeta {
+    fn to_persist(&self) -> Option<String> {
+        if self.summary.as_ref().is_some_and(|s| !s.is_empty()) {
+            serde_json::to_string(self).ok()
+        } else {
+            None
+        }
+    }
+    fn from_persist(s: &str) -> Self {
+        serde_json::from_str(s).unwrap_or_default()
+    }
 }
 
 fn normalize_tool_call_ids(mut calls: Vec<ToolCall>) -> Vec<ToolCall> {

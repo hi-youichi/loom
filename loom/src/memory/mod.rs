@@ -68,10 +68,11 @@ pub(crate) mod sqlite_util;
 mod sqlite_vec_store;
 
 pub use checkpoint::{
-    writes_idx_map, ChannelVersions, Checkpoint, CheckpointListItem, CheckpointMetadata,
-    CheckpointSource, CheckpointTuple, PendingWrite, CHECKPOINT_VERSION, ERROR, INTERRUPT, RESUME,
-    SCHEDULED,
+    writes_idx_map, ChannelVersions, Checkpoint, CheckpointListItem, CheckpointSource,
+    CheckpointTuple, CheckpointUserMeta, KernelMetadata, PendingWrite, CHECKPOINT_VERSION, ERROR,
+    INTERRUPT, RESUME, SCHEDULED,
 };
+pub use checkpoint::CheckpointMetadata;
 pub use checkpointer::{CheckpointError, Checkpointer};
 pub use config::RunnableConfig;
 pub use in_memory_store::InMemoryStore;

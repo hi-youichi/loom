@@ -4,7 +4,7 @@
 mod init_logging;
 
 use loom::memory::{
-    Checkpoint, CheckpointMetadata, CheckpointSource, MemorySaver, RunnableConfig,
+    Checkpoint, CheckpointMetadata, CheckpointSource, KernelMetadata, MemorySaver, RunnableConfig,
     CHECKPOINT_VERSION,
 };
 use loom::Checkpointer;
@@ -35,13 +35,14 @@ async fn memory_saver_put_and_get_tuple() {
         pending_sends: Vec::new(),
         pending_writes: Vec::new(),
         pending_interrupts: Vec::new(),
-        metadata: CheckpointMetadata {
+            user: (),
+        kernel: KernelMetadata {
             source: CheckpointSource::Update,
             step: 0,
             created_at: None,
             parents: HashMap::new(),
             children: HashMap::new(),
-            summary: None,
+                summary: None,
         },
     };
     let id = saver.put(&config, &checkpoint).await.unwrap();
@@ -80,10 +81,10 @@ async fn checkpoint_from_state() {
     let state = TestState {
         value: "test".into(),
     };
-    let cp = Checkpoint::from_state(state, CheckpointSource::Update, 1);
+    let cp: Checkpoint<TestState, ()> = Checkpoint::from_state(state, CheckpointSource::Update, 1);
     assert!(!cp.id.is_empty());
     assert!(!cp.ts.is_empty());
     assert_eq!(cp.channel_values.value, "test");
-    assert_eq!(cp.metadata.step, 1);
+    assert_eq!(cp.kernel.step, 1);
     assert!(cp.channel_versions.is_empty());
 }

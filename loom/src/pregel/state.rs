@@ -22,10 +22,10 @@ impl PregelStateSnapshot {
     pub fn from_checkpoint(checkpoint: &Checkpoint<ChannelValue>) -> Self {
         Self {
             checkpoint_id: checkpoint.id.clone(),
-            step: checkpoint.metadata.step.max(0) as u64,
+            step: checkpoint.kernel.step.max(0) as u64,
             channels: checkpoint.channel_values.clone(),
-            parents: checkpoint.metadata.parents.clone(),
-            children: checkpoint.metadata.children.clone(),
+            parents: checkpoint.kernel.parents.clone(),
+            children: checkpoint.kernel.children.clone(),
             updated_channels: checkpoint.updated_channels.clone().unwrap_or_default(),
             pending_sends: checkpoint.pending_sends.clone(),
             pending_writes: checkpoint.pending_writes.clone(),

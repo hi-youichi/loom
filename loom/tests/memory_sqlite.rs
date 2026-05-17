@@ -3,8 +3,9 @@
 mod init_logging;
 
 use loom::memory::{
-    Checkpoint, CheckpointMetadata, CheckpointSource, Checkpointer, JsonSerializer, RunnableConfig,
-    SearchOptions, SqliteSaver, SqliteStore, Store, CHECKPOINT_VERSION,
+    Checkpoint, CheckpointMetadata, CheckpointSource, Checkpointer, JsonSerializer,
+    KernelMetadata, RunnableConfig, SearchOptions, SqliteSaver, SqliteStore, Store,
+    CHECKPOINT_VERSION,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -38,13 +39,14 @@ async fn sqlite_saver_put_and_get_tuple() {
         pending_sends: Vec::new(),
         pending_writes: Vec::new(),
         pending_interrupts: Vec::new(),
-        metadata: CheckpointMetadata {
+            user: (),
+        kernel: KernelMetadata {
             source: CheckpointSource::Update,
             step: 0,
             created_at: None,
             parents: HashMap::new(),
             children: HashMap::new(),
-            summary: None,
+                summary: None,
         },
     };
     let id = saver.put(&config, &checkpoint).await.unwrap();
@@ -97,13 +99,14 @@ async fn sqlite_saver_list() {
         pending_sends: Vec::new(),
         pending_writes: Vec::new(),
         pending_interrupts: Vec::new(),
-        metadata: CheckpointMetadata {
+            user: (),
+        kernel: KernelMetadata {
             source: CheckpointSource::Input,
             step: 1,
             created_at: None,
             parents: HashMap::new(),
             children: HashMap::new(),
-            summary: None,
+                summary: None,
         },
     };
     saver.put(&config, &checkpoint).await.unwrap();
