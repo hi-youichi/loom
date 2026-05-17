@@ -215,8 +215,8 @@ pub fn build_codex_events(session_id: &str, checkpoints: &[ReActState]) -> Vec<C
     events
 }
 
-fn build_tool_result_map_from_refs<'a>(
-    messages: &[&'a Message],
+fn build_tool_result_map_from_refs(
+    messages: &[&Message],
 ) -> HashMap<String, (String, bool)> {
     let mut map = HashMap::new();
     for msg in messages {

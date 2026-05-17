@@ -31,6 +31,9 @@ use crate::graph::node_middleware::NodeMiddleware;
 use crate::graph::retry::RetryPolicy;
 use crate::memory::{Checkpointer, Store};
 
+/// Type alias for metadata extractor closure used to extract checkpoint summaries from state.
+pub type MetadataExtractorFn<S> = Arc<dyn Fn(&S) -> Option<String> + Send + Sync>;
+
 /// Sentinel for graph entry: use as `from_id` in `add_edge(START, first_node_id)`.
 pub const START: &str = "__start__";
 
@@ -67,7 +70,7 @@ pub struct StateGraph<S> {
     retry_policy: RetryPolicy,
     /// Optional interrupt handler for human-in-the-loop scenarios.
     interrupt_handler: Option<Arc<dyn InterruptHandler>>,
-    metadata_extractor: Option<Arc<dyn Fn(&S) -> Option<String> + Send + Sync>>,
+    metadata_extractor: Option<MetadataExtractorFn<S>>,
 }
 
 impl<S> Default for StateGraph<S>
@@ -198,7 +201,7 @@ where
 
     pub fn with_metadata_extractor(
         self,
-        extractor: Arc<dyn Fn(&S) -> Option<String> + Send + Sync>,
+        extractor: MetadataExtractorFn<S>,
     ) -> Self {
         Self {
             metadata_extractor: Some(extractor),

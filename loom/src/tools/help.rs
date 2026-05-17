@@ -45,6 +45,12 @@ impl HelpTool {
     }
 }
 
+impl Default for HelpTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl Tool for HelpTool {
     fn name(&self) -> &str {

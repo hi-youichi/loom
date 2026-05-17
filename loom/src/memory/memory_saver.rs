@@ -8,7 +8,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 
-use crate::memory::checkpoint::{Checkpoint, CheckpointListItem, CheckpointMetadata, KernelMetadata};
+use crate::memory::checkpoint::{Checkpoint, CheckpointListItem, CheckpointMetadata};
 use crate::memory::checkpointer::{CheckpointError, Checkpointer};
 use crate::memory::config::RunnableConfig;
 

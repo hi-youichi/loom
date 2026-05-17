@@ -17,7 +17,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct EnvContext {
     pub os: OsInfo,
     pub locale: LocaleInfo,
@@ -26,17 +26,7 @@ pub struct EnvContext {
     pub runtime: Option<RuntimeInfo>,
 }
 
-impl Default for EnvContext {
-    fn default() -> Self {
-        Self {
-            os: OsInfo::default(),
-            locale: LocaleInfo::default(),
-            shell: None,
-            project: None,
-            runtime: None,
-        }
-    }
-}
+
 
 impl EnvContext {
     pub fn detect() -> Self {

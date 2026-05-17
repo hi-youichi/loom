@@ -58,7 +58,7 @@ pub struct CompiledStateGraph<S> {
     pub(super) interrupt_handler: Option<Arc<dyn InterruptHandler>>,
     /// Optional closure that extracts checkpoint summary from state.
     /// The kernel calls this closure when saving a checkpoint.
-    pub(super) metadata_extractor: Option<Arc<dyn Fn(&S) -> Option<String> + Send + Sync>>,
+    pub(super) metadata_extractor: Option<super::state_graph::MetadataExtractorFn<S>>,
 }
 
 /// Streaming graph execution: event stream plus final completion result.

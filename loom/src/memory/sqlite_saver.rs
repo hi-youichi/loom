@@ -52,18 +52,8 @@ fn serialize_parents(parents: &HashMap<String, String>) -> Result<String, Checkp
     serde_json::to_string(parents).map_err(|e| CheckpointError::Serialization(e.to_string()))
 }
 
-fn deserialize_parents(parents_json: &str) -> Result<HashMap<String, String>, CheckpointError> {
-    serde_json::from_str(parents_json).map_err(|e| CheckpointError::Serialization(e.to_string()))
-}
-
 fn serialize_children(children: &HashMap<String, Vec<String>>) -> Result<String, CheckpointError> {
     serde_json::to_string(children).map_err(|e| CheckpointError::Serialization(e.to_string()))
-}
-
-fn deserialize_children(
-    children_json: &str,
-) -> Result<HashMap<String, Vec<String>>, CheckpointError> {
-    serde_json::from_str(children_json).map_err(|e| CheckpointError::Serialization(e.to_string()))
 }
 
 fn serialize_json_field<T: serde::Serialize>(value: &T) -> Result<String, CheckpointError> {
