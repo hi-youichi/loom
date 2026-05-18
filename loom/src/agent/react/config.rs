@@ -304,4 +304,40 @@ mod tests {
             assert!(config.mcp_github_url.is_none());
         });
     }
+
+    #[test]
+    fn sub_agent_config_inherits_trace_thread_id() {
+        let parent = ReactBuildConfig::from_env();
+        let mut parent_with_trace = parent.clone();
+        parent_with_trace.trace_thread_id = Some("parent-trace-id".to_string());
+
+        let sub_config = ReactBuildConfig::from_env();
+
+        assert_eq!(sub_config.trace_thread_id, None);
+    }
+
+    #[test]
+    fn nested_sub_agent_keeps_same_trace_thread_id() {
+        let parent = ReactBuildConfig::from_env();
+        let mut parent_with_trace = parent.clone();
+        parent_with_trace.trace_thread_id = Some("root-trace-id".to_string());
+
+        let mut sub_config = ReactBuildConfig::from_env();
+        sub_config.trace_thread_id = parent_with_trace.trace_thread_id.clone();
+
+        assert_eq!(sub_config.trace_thread_id, Some("root-trace-id".to_string()));
+    }
+
+    #[test]
+    fn trace_thread_id_falls_back_to_thread_id() {
+        let config = ReactBuildConfig::from_env();
+
+        let trace_id = config.trace_thread_id.clone();
+        let thread_id = config.thread_id.clone();
+
+        assert!(trace_id.is_none());
+
+        let fallback = trace_id.or(thread_id);
+        assert!(fallback.is_none());
+    }
 }

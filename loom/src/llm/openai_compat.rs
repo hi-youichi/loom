@@ -308,6 +308,26 @@ impl ChatOpenAICompat {
         }
     }
 
+    #[cfg(test)]
+    pub fn with_test_client(
+        base_url: impl Into<String>,
+        api_key: impl Into<String>,
+        model: impl Into<String>,
+        client: reqwest::Client,
+    ) -> Self {
+        Self {
+            client,
+            base_url: base_url.into(),
+            api_key: api_key.into(),
+            model: model.into(),
+            tools: None,
+            temperature: None,
+            tool_choice: None,
+            parse_thinking_tags: false,
+            headers: None,
+        }
+    }
+
     /// Builds a client with tools loaded from a [`ToolSource`].
     ///
     /// This eagerly calls `tool_source.list_tools().await` and then stores the
@@ -1229,6 +1249,11 @@ struct ModelData {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::llm::LlmHeaders;
+    use crate::Message;
+    use crate::test_util::shared_client::test_client;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    use wiremock::matchers::method;
 
     #[test]
     fn format_api_error_body_parses_aliyun_arrearage_error() {
@@ -1285,5 +1310,153 @@ mod tests {
         let body = br#"{"message":"something"}"#;
         let result = format_api_error_body(body);
         assert_eq!(result, "{\"message\":\"something\"}");
+    }
+
+    const CHAT_COMPLETION_RESPONSE: &str = r#"{"id":"chatcmpl-test","object":"chat.completion","created":1234567890,"model":"test-model","choices":[{"index":0,"message":{"role":"assistant","content":"Hello!"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}"#;
+
+    fn extract_x_request_id(req: &wiremock::Request) -> String {
+        req.headers.get("x-request-id")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string()
+    }
+
+    #[tokio::test]
+    async fn test_chat_openai_compat_sends_request_id() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(CHAT_COMPLETION_RESPONSE))
+            .mount(&server)
+            .await;
+        let client = ChatOpenAICompat::with_test_client(&server.uri(), "test-key", "gpt-4", test_client());
+        let messages = vec![Message::user("Hello!".to_string())];
+        let _result = client.invoke(&messages).await.unwrap();
+        let received = server.received_requests().await.unwrap();
+        assert!(received[0].headers.contains_key("x-request-id"));
+    }
+
+    #[tokio::test]
+    async fn test_chat_openai_compat_generates_unique_request_ids() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(CHAT_COMPLETION_RESPONSE))
+            .expect(2)
+            .mount(&server)
+            .await;
+        let client = ChatOpenAICompat::with_test_client(&server.uri(), "test-key", "gpt-4", test_client());
+        let messages = vec![Message::user("First request".to_string())];
+        let _result1 = client.invoke(&messages).await.unwrap();
+        let messages = vec![Message::user("Second request".to_string())];
+        let _result2 = client.invoke(&messages).await.unwrap();
+        let received = server.received_requests().await.unwrap();
+        assert_eq!(received.len(), 2);
+        let id1 = extract_x_request_id(&received[0]);
+        let id2 = extract_x_request_id(&received[1]);
+        assert_ne!(id1, id2);
+    }
+
+    #[tokio::test]
+    async fn test_chat_openai_compat_request_id_with_other_headers() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(CHAT_COMPLETION_RESPONSE))
+            .mount(&server)
+            .await;
+
+        let headers = LlmHeaders::default()
+            .with_thread_id("test-thread-123")
+            .with_trace_id("test-trace-456");
+
+        let client = ChatOpenAICompat::with_test_client(&server.uri(), "test-key", "gpt-4", test_client()).with_headers(headers);
+        let messages = vec![Message::user("Hello!".to_string())];
+        let _result = client.invoke(&messages).await.unwrap();
+        let received = server.received_requests().await.unwrap();
+        assert!(received[0].headers.contains_key("x-request-id"));
+        assert!(received[0].headers.contains_key("x-app-id"));
+        assert!(received[0].headers.contains_key("x-thread-id"));
+    }
+
+    const CHAT_COMPLETION_RESPONSE_TRACING: &str = r#"{"id":"chatcmpl-test","object":"chat.completion","created":1,"model":"gpt-4","choices":[{"index":0,"message":{"role":"assistant","content":"mock response"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#;
+
+    fn extract_header(req: &wiremock::Request, name: &str) -> Option<String> {
+        req.headers.get(name).and_then(|v| v.to_str().ok()).map(|s| s.to_string())
+    }
+
+    #[tokio::test]
+    async fn root_and_sub_agent_send_same_x_thread_id() {
+        let server = MockServer::start().await;
+        let shared_trace_id = "shared-trace-id-xyz";
+
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(CHAT_COMPLETION_RESPONSE_TRACING))
+            .expect(2)
+            .mount(&server)
+            .await;
+
+        let headers = LlmHeaders::default().with_thread_id(shared_trace_id);
+
+        let root_client = ChatOpenAICompat::with_test_client(&server.uri(), "test-key", "gpt-4", test_client())
+            .with_headers(headers.clone());
+        let sub_client =
+            ChatOpenAICompat::with_test_client(&server.uri(), "test-key", "gpt-4", test_client()).with_headers(headers);
+
+        let messages = vec![Message::user("hello")];
+        let r1 = root_client.invoke(&messages).await;
+        let r2 = sub_client.invoke(&messages).await;
+
+        assert!(r1.is_ok(), "root client request should succeed");
+        assert!(r2.is_ok(), "sub-agent client request should succeed");
+
+        let received = server.received_requests().await.unwrap();
+        assert_eq!(received.len(), 2);
+        let id1 = extract_header(&received[0], "x-thread-id").unwrap_or_default();
+        let id2 = extract_header(&received[1], "x-thread-id").unwrap_or_default();
+        assert_eq!(id1, id2);
+        assert_eq!(id1, shared_trace_id);
+    }
+
+    #[tokio::test]
+    async fn trace_thread_id_appears_as_x_thread_id_header() {
+        let server = MockServer::start().await;
+        let trace_id = "root-trace-from-config";
+
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(CHAT_COMPLETION_RESPONSE_TRACING))
+            .mount(&server)
+            .await;
+
+        let headers = LlmHeaders::default().with_thread_id(trace_id);
+        let client = ChatOpenAICompat::with_test_client(&server.uri(), "test-key", "gpt-4", test_client())
+            .with_headers(headers);
+
+        let messages = vec![Message::user("test")];
+        let result = client.invoke(&messages).await;
+        assert!(result.is_ok());
+
+        let received = server.received_requests().await.unwrap();
+        assert_eq!(extract_header(&received[0], "x-thread-id"), Some(trace_id.to_string()));
+    }
+
+    #[tokio::test]
+    async fn x_thread_id_and_x_app_id_both_present() {
+        let server = MockServer::start().await;
+        let trace_id = "trace-with-app-id";
+
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(CHAT_COMPLETION_RESPONSE_TRACING))
+            .mount(&server)
+            .await;
+
+        let headers = LlmHeaders::default().with_thread_id(trace_id);
+        let client = ChatOpenAICompat::with_test_client(&server.uri(), "test-key", "gpt-4", test_client())
+            .with_headers(headers);
+
+        let messages = vec![Message::user("test")];
+        let result = client.invoke(&messages).await;
+        assert!(result.is_ok());
+
+        let received = server.received_requests().await.unwrap();
+        assert_eq!(extract_header(&received[0], "x-thread-id"), Some(trace_id.to_string()));
+        assert_eq!(extract_header(&received[0], "x-app-id"), Some("loom".to_string()));
     }
 }

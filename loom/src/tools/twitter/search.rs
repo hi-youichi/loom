@@ -210,3 +210,66 @@ impl Tool for TwitterSearchTool {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use crate::test_util::shared_client::test_client;
+
+    #[tokio::test]
+    async fn twitter_search_tool_name_returns_twitter_search() {
+        let tool = TwitterSearchTool::with_client("test_key", test_client());
+        assert_eq!(tool.name(), TOOL_TWITTER_SEARCH);
+    }
+
+    #[tokio::test]
+    async fn twitter_search_tool_spec_has_correct_properties() {
+        let tool = TwitterSearchTool::with_client("test_key", test_client());
+        let spec = tool.spec();
+        assert_eq!(spec.name, TOOL_TWITTER_SEARCH);
+        assert!(spec.description.is_some());
+        let desc = spec.description.unwrap();
+        let desc_lower = desc.to_lowercase();
+        assert!(desc_lower.contains("search") && desc_lower.contains("query"));
+        assert_eq!(spec.input_schema["properties"]["query"]["type"], "string");
+        assert_eq!(
+            spec.input_schema["properties"]["query_type"]["enum"],
+            json!(["Latest", "Top"])
+        );
+        assert!(spec.input_schema["required"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("query")));
+    }
+
+    #[tokio::test]
+    async fn twitter_search_tool_call_missing_query_returns_error() {
+        let tool = TwitterSearchTool::with_client("test_key", test_client());
+        let args = json!({});
+        let result = tool.call(args, None).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("query") || err.to_string().contains("InvalidInput"));
+    }
+
+    #[tokio::test]
+    async fn twitter_search_tool_call_empty_query_returns_error() {
+        let tool = TwitterSearchTool::with_client("test_key", test_client());
+        let args = json!({"query": "   "});
+        let result = tool.call(args, None).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("empty") || err.to_string().contains("InvalidInput"));
+    }
+
+    #[tokio::test]
+    async fn twitter_search_tool_call_invalid_query_type_returns_error() {
+        let tool = TwitterSearchTool::with_client("test_key", test_client());
+        let args = json!({"query": "AI", "query_type": "Invalid"});
+        let result = tool.call(args, None).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Latest") || err.to_string().contains("InvalidInput"));
+    }
+}

@@ -357,6 +357,7 @@ pub trait LlmClient: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_util::shared_client::test_client;
 
     struct StubLlm {
         content: String,
@@ -451,5 +452,40 @@ mod tests {
         let resp = llm.invoke_stream(&[], Some(tx)).await.unwrap();
         assert!(resp.content.is_empty());
         assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn test_thread_id_transfer_to_llm_headers() {
+        let thread_id = "test-session-123";
+        let headers = LlmHeaders::default()
+            .with_thread_id(thread_id)
+            .with_trace_id("trace-456")
+            .add_header("X-Custom-Header", "custom-value");
+        
+        assert_eq!(headers.thread_id, Some(thread_id.to_string()));
+        assert_eq!(headers.trace_id, Some("trace-456".to_string()));
+        assert_eq!(headers.custom_headers.len(), 1);
+        
+        let _client = ChatOpenAICompat::with_test_client(
+            "https://api.openai.com/v1",
+            "test-api-key",
+            "gpt-4",
+            test_client()
+        ).with_headers(headers);
+    }
+
+    #[test]
+    fn test_chat_openai_compat_with_various_header_configurations() {
+        let thread_ids = vec!["simple", "with-dashes", "with_underscores", "with.dots"];
+        
+        for thread_id in thread_ids {
+            let headers = LlmHeaders::default().with_thread_id(thread_id);
+            let _client = ChatOpenAICompat::with_test_client(
+                "https://api.openai.com/v1",
+                "test-key",
+                "gpt-4",
+                test_client()
+            ).with_headers(headers);
+        }
     }
 }
