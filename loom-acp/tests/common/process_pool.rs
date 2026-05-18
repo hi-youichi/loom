@@ -4,8 +4,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{OnceCell, Semaphore};
 
-const SHORT_TIMEOUT: Duration = Duration::from_secs(5);
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
+const SHORT_TIMEOUT: Duration = Duration::from_secs(2);
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[allow(dead_code)]
 struct PooledProcess {

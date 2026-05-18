@@ -40,5 +40,5 @@ async fn e2e_tool_show_nonexistent() {
 
     drop(write);
     drop(read);
-    let _ = timeout(Duration::from_secs(5), server_handle).await;
+    let _ = timeout(Duration::from_secs(2), server_handle).await;
 }

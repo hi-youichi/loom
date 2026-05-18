@@ -3,7 +3,7 @@ mod e2e;
 
 use std::time::Duration;
 
-const TIMEOUT: Duration = Duration::from_secs(10);
+const TIMEOUT: Duration = Duration::from_secs(5);
 
 #[tokio::test]
 async fn e2e_prompt_and_cancel_returns_cancelled_stop_reason() {

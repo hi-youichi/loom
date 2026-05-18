@@ -149,7 +149,7 @@ async fn e2e_user_messages_after_run() {
         model: None,
     });
 
-    let read_timeout = Duration::from_secs(90);
+    let read_timeout = Duration::from_secs(3);
     let (final_resp, _) =
         common::send_run_and_recv_end(&mut write, &mut read, &run_req, read_timeout)
             .await
@@ -195,7 +195,7 @@ async fn e2e_user_messages_after_run() {
     }
 
     drop(write);
-    let _ = timeout(Duration::from_secs(5), server_handle).await;
+    let _ = timeout(Duration::from_secs(2), server_handle).await;
     drop(mock_handle);
 
     match prev_user_message_db {

@@ -144,7 +144,7 @@ async fn e2e_run_then_disconnect() {
     drop(write);
     drop(read);
     tokio::time::sleep(Duration::from_millis(200)).await;
-    let _ = timeout(Duration::from_secs(5), server_handle).await;
+    let _ = timeout(Duration::from_secs(2), server_handle).await;
 }
 
 #[tokio::test]
@@ -217,7 +217,7 @@ async fn e2e_run_react() {
         model: None,
         verbose: Some(false),
     });
-    let read_timeout = Duration::from_secs(30);
+    let read_timeout = Duration::from_secs(3);
     let req_json = serde_json::to_string(&req).unwrap();
     write.send(Message::Text(req_json)).await.unwrap();
 
@@ -254,7 +254,7 @@ async fn e2e_run_react() {
 
     drop(write);
     drop(read);
-    let _ = timeout(Duration::from_secs(5), server_handle).await;
+    let _ = timeout(Duration::from_secs(2), server_handle).await;
     drop(mock_handle);
 
     match prev_api_key {

@@ -46,7 +46,7 @@ async fn e2e_new_session_with_empty_mcp_servers() {
                 "cwd": std::env::current_dir().unwrap().to_str().unwrap(),
                 "mcpServers": [],
             }),
-            Duration::from_secs(10),
+            Duration::from_secs(5),
         )
         .await
         .expect("session/new response");
@@ -74,7 +74,7 @@ async fn e2e_new_session_without_mcp_servers() {
                 "cwd": std::env::current_dir().unwrap().to_str().unwrap(),
                 "mcpServers": [],
             }),
-            Duration::from_secs(10),
+            Duration::from_secs(5),
         )
         .await
         .expect("session/new response");
@@ -103,7 +103,7 @@ async fn e2e_new_session_with_mcp_server_stdio_config() {
                     "env": []
                 }],
             }),
-            Duration::from_secs(10),
+            Duration::from_secs(5),
         )
         .await
         .expect("session/new response");
@@ -129,7 +129,7 @@ async fn e2e_new_session_with_invalid_mcp_config_graceful() {
                     "name": "bad-server",
                 }],
             }),
-            Duration::from_secs(10),
+            Duration::from_secs(5),
         )
         .await
         .expect("session/new response");

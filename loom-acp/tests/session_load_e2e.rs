@@ -31,7 +31,7 @@ impl SessionUpdateType {
     }
 }
 
-const TIMEOUT: Duration = Duration::from_secs(15);
+const TIMEOUT: Duration = Duration::from_secs(5);
 const SHORT_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn cwd() -> String {

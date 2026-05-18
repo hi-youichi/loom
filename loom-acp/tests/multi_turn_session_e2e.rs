@@ -3,7 +3,7 @@ mod e2e;
 
 use std::time::Duration;
 
-const TIMEOUT: Duration = Duration::from_secs(10);
+const TIMEOUT: Duration = Duration::from_secs(5);
 
 async fn prompt_and_wait(
     guard: &mut common::process_pool::PooledAcpGuard,
@@ -56,7 +56,7 @@ async fn e2e_multi_turn_different_sessions_independent() {
         .send_request_and_wait(
             "initialize",
             serde_json::json!({ "protocolVersion": 1 }),
-            Duration::from_secs(10),
+            Duration::from_secs(5),
         )
         .await
         .expect("initialize");
@@ -117,7 +117,7 @@ async fn e2e_prompt_unknown_session_returns_error() {
         .send_request_and_wait(
             "initialize",
             serde_json::json!({ "protocolVersion": 1 }),
-            Duration::from_secs(10),
+            Duration::from_secs(5),
         )
         .await
         .expect("initialize");

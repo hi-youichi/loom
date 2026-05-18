@@ -18,7 +18,7 @@ async fn e2e_invalid_json_returns_error() {
         .send(Message::Text("not valid json".to_string()))
         .await
         .unwrap();
-    let read_timeout = Duration::from_secs(5);
+    let read_timeout = Duration::from_secs(2);
     let opt = timeout(read_timeout, read.next()).await.unwrap();
     let msg = opt.expect("expected one response").expect("ws message");
     let text = msg.to_text().unwrap_or("");
@@ -39,5 +39,5 @@ async fn e2e_invalid_json_returns_error() {
 
     drop(write);
     drop(read);
-    let _ = timeout(Duration::from_secs(5), server_handle).await;
+    let _ = timeout(Duration::from_secs(2), server_handle).await;
 }

@@ -3,7 +3,7 @@ mod e2e;
 
 use std::time::Duration;
 
-const TIMEOUT: Duration = Duration::from_secs(15);
+const TIMEOUT: Duration = Duration::from_secs(5);
 
 fn assert_no_receiver_dropped_error(resp: &common::RpcResponse, context: &str) {
     if let Some(err) = &resp.error {
