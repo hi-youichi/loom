@@ -76,7 +76,6 @@ async fn write_sse_response(stream: &mut tokio::net::TcpStream, chunks: &[&str])
 #[tokio::test]
 #[allow(clippy::await_holding_lock)]
 async fn e2e_user_messages_after_run() {
-    let _lock = common::env_test_lock().lock().unwrap();
     let tmp = tempfile::NamedTempFile::new().unwrap();
     let db_path = tmp.path().to_string_lossy().to_string();
     let prev_user_message_db = std::env::var("USER_MESSAGE_DB").ok();

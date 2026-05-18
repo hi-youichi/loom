@@ -41,3 +41,4 @@ futures-util = "0.3"
 dotenv = "0.15"
 loom = { path = "../loom" }
 tempfile = "3"
+temp-env = { version = "0.3", features = ["async_closure"] }

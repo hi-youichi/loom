@@ -10,85 +10,15 @@
 
 mod init_logging;
 
-use std::sync::{Arc, Mutex};
-
 use loom::llm::{ChatOpenAICompat, LlmClient, LlmHeaders};
 use loom::Message;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
+use wiremock::{Mock, MockServer, ResponseTemplate};
+use wiremock::matchers::method;
 
-// ---------------------------------------------------------------------------
-// Helpers (adapted from llm_headers_http_test.rs)
-// ---------------------------------------------------------------------------
+const CHAT_COMPLETION_RESPONSE: &str = r#"{"id":"chatcmpl-test","object":"chat.completion","created":1,"model":"gpt-4","choices":[{"index":0,"message":{"role":"assistant","content":"mock response"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#;
 
-async fn read_http_request(stream: &mut tokio::net::TcpStream) -> String {
-    let mut buf = Vec::new();
-    let mut tmp = [0u8; 8192];
-    loop {
-        let n = stream.read(&mut tmp).await.unwrap();
-        if n == 0 {
-            break;
-        }
-        buf.extend_from_slice(&tmp[..n]);
-        if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
-            let header_end = pos + 4;
-            let headers = String::from_utf8_lossy(&buf[..header_end]).to_string();
-            let content_length = headers
-                .lines()
-                .find_map(|line| {
-                    let lower = line.to_ascii_lowercase();
-                    lower
-                        .strip_prefix("content-length:")
-                        .and_then(|v| v.trim().parse::<usize>().ok())
-                })
-                .unwrap_or(0);
-            while buf.len() < header_end + content_length {
-                let m = stream.read(&mut tmp).await.unwrap();
-                if m == 0 {
-                    break;
-                }
-                buf.extend_from_slice(&tmp[..m]);
-            }
-            return String::from_utf8_lossy(&buf).to_string();
-        }
-    }
-    String::new()
-}
-
-async fn write_http_response(stream: &mut tokio::net::TcpStream, status: &str, body: &str) {
-    let resp = format!(
-        "HTTP/1.1 {}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
-        status,
-        body.len(),
-        body
-    );
-    stream.write_all(resp.as_bytes()).await.unwrap();
-}
-
-fn openai_completion_response() -> &'static str {
-    r#"{
-        "id": "chatcmpl-test",
-        "object": "chat.completion",
-        "created": 1,
-        "model": "gpt-4",
-        "choices": [{
-            "index": 0,
-            "message": {"role": "assistant", "content": "mock response"},
-            "finish_reason": "stop"
-        }],
-        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
-    }"#
-}
-
-fn extract_header_value<'a>(request: &'a str, header_name: &str) -> Option<&'a str> {
-    for line in request.lines() {
-        let lower = line.to_ascii_lowercase();
-        let prefix = format!("{}:", header_name.to_ascii_lowercase());
-        if lower.starts_with(&prefix) {
-            return Some(line.split(':').nth(1).map(|v| v.trim()).unwrap_or(""));
-        }
-    }
-    None
+fn extract_header(req: &wiremock::Request, name: &str) -> Option<String> {
+    req.headers.get(name).and_then(|v| v.to_str().ok()).map(|s| s.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -186,33 +116,21 @@ fn trace_thread_id_falls_back_to_thread_id() {
 /// with the same trace_thread_id must send the same X-Thread-Id header.
 #[tokio::test]
 async fn root_and_sub_agent_send_same_x_thread_id() {
-    let mock_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let mock_port = mock_listener.local_addr().unwrap().port();
-    let mock_url = format!("http://127.0.0.1:{}", mock_port);
-
+    let server = MockServer::start().await;
     let shared_trace_id = "shared-trace-id-xyz";
 
-    let captured: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-    let captured_clone = captured.clone();
-
-    let mock_handle = tokio::spawn(async move {
-        for _ in 0..2 {
-            let (mut stream, _) = mock_listener.accept().await.unwrap();
-            let request = read_http_request(&mut stream).await;
-            let x_thread_id = extract_header_value(&request, "x-thread-id")
-                .unwrap_or("MISSING")
-                .to_string();
-            captured_clone.lock().unwrap().push(x_thread_id);
-            write_http_response(&mut stream, "200 OK", openai_completion_response()).await;
-        }
-    });
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(CHAT_COMPLETION_RESPONSE))
+        .expect(2)
+        .mount(&server)
+        .await;
 
     let headers = LlmHeaders::default().with_thread_id(shared_trace_id);
 
-    let root_client = ChatOpenAICompat::with_config(&mock_url, "test-key", "gpt-4")
+    let root_client = ChatOpenAICompat::with_config(&server.uri(), "test-key", "gpt-4")
         .with_headers(headers.clone());
     let sub_client =
-        ChatOpenAICompat::with_config(&mock_url, "test-key", "gpt-4").with_headers(headers);
+        ChatOpenAICompat::with_config(&server.uri(), "test-key", "gpt-4").with_headers(headers);
 
     let messages = vec![Message::user("hello")];
     let r1 = root_client.invoke(&messages).await;
@@ -220,87 +138,58 @@ async fn root_and_sub_agent_send_same_x_thread_id() {
 
     assert!(r1.is_ok(), "root client request should succeed");
     assert!(r2.is_ok(), "sub-agent client request should succeed");
-    mock_handle.await.unwrap();
 
-    let captured = captured.lock().unwrap();
-    assert_eq!(captured.len(), 2, "should have captured 2 requests");
-    assert_eq!(
-        captured[0], captured[1],
-        "root and sub-agent X-Thread-Id must be identical"
-    );
-    assert_eq!(captured[0], shared_trace_id);
+    let received = server.received_requests().await.unwrap();
+    assert_eq!(received.len(), 2);
+    let id1 = extract_header(&received[0], "x-thread-id").unwrap_or_default();
+    let id2 = extract_header(&received[1], "x-thread-id").unwrap_or_default();
+    assert_eq!(id1, id2);
+    assert_eq!(id1, shared_trace_id);
 }
 
 /// Verify the full chain: root config trace_thread_id -> LlmHeaders -> X-Thread-Id HTTP header.
 #[tokio::test]
 async fn trace_thread_id_appears_as_x_thread_id_header() {
-    let mock_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let mock_port = mock_listener.local_addr().unwrap().port();
-    let mock_url = format!("http://127.0.0.1:{}", mock_port);
-
+    let server = MockServer::start().await;
     let trace_id = "root-trace-from-config";
 
-    let captured: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
-    let captured_clone = captured.clone();
-
-    let mock_handle = tokio::spawn(async move {
-        let (mut stream, _) = mock_listener.accept().await.unwrap();
-        let request = read_http_request(&mut stream).await;
-        let x_thread_id = extract_header_value(&request, "x-thread-id")
-            .unwrap_or("MISSING")
-            .to_string();
-        *captured_clone.lock().unwrap() = x_thread_id;
-        write_http_response(&mut stream, "200 OK", openai_completion_response()).await;
-    });
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(CHAT_COMPLETION_RESPONSE))
+        .mount(&server)
+        .await;
 
     let headers = LlmHeaders::default().with_thread_id(trace_id);
-    let client = ChatOpenAICompat::with_config(&mock_url, "test-key", "gpt-4")
+    let client = ChatOpenAICompat::with_config(&server.uri(), "test-key", "gpt-4")
         .with_headers(headers);
 
     let messages = vec![Message::user("test")];
     let result = client.invoke(&messages).await;
     assert!(result.is_ok());
-    mock_handle.await.unwrap();
 
-    let captured = captured.lock().unwrap();
-    assert_eq!(*captured, trace_id, "X-Thread-Id must equal trace_thread_id");
+    let received = server.received_requests().await.unwrap();
+    assert_eq!(extract_header(&received[0], "x-thread-id"), Some(trace_id.to_string()));
 }
 
 /// Verify X-App-Id is also set alongside X-Thread-Id.
 #[tokio::test]
 async fn x_thread_id_and_x_app_id_both_present() {
-    let mock_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let mock_port = mock_listener.local_addr().unwrap().port();
-    let mock_url = format!("http://127.0.0.1:{}", mock_port);
-
+    let server = MockServer::start().await;
     let trace_id = "trace-with-app-id";
 
-    let captured: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
-    let captured_clone = captured.clone();
-
-    let mock_handle = tokio::spawn(async move {
-        let (mut stream, _) = mock_listener.accept().await.unwrap();
-        let request = read_http_request(&mut stream).await;
-        *captured_clone.lock().unwrap() = request;
-        write_http_response(&mut stream, "200 OK", openai_completion_response()).await;
-    });
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(CHAT_COMPLETION_RESPONSE))
+        .mount(&server)
+        .await;
 
     let headers = LlmHeaders::default().with_thread_id(trace_id);
-    let client = ChatOpenAICompat::with_config(&mock_url, "test-key", "gpt-4")
+    let client = ChatOpenAICompat::with_config(&server.uri(), "test-key", "gpt-4")
         .with_headers(headers);
 
     let messages = vec![Message::user("test")];
     let result = client.invoke(&messages).await;
     assert!(result.is_ok());
-    mock_handle.await.unwrap();
 
-    let request = captured.lock().unwrap();
-    assert_eq!(
-        extract_header_value(&request, "x-thread-id"),
-        Some(trace_id)
-    );
-    assert_eq!(
-        extract_header_value(&request, "x-app-id"),
-        Some("loom")
-    );
+    let received = server.received_requests().await.unwrap();
+    assert_eq!(extract_header(&received[0], "x-thread-id"), Some(trace_id.to_string()));
+    assert_eq!(extract_header(&received[0], "x-app-id"), Some("loom".to_string()));
 }

@@ -151,7 +151,6 @@ async fn e2e_run_then_disconnect() {
 #[allow(clippy::await_holding_lock)]
 async fn e2e_run_react() {
     common::load_dotenv();
-    let _lock = common::env_test_lock().lock().unwrap();
 
     let prev_api_key = std::env::var("OPENAI_API_KEY").ok();
     let prev_base_url = std::env::var("OPENAI_BASE_URL").ok();

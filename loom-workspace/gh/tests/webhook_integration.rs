@@ -1,8 +1,9 @@
 //! Integration tests: webhook signature verification, payload parsing, and HTTP POST /webhook.
 
-use gh::{parse_issues_event, verify_signature, webhook_router};
+use gh::{parse_issues_event, verify_signature};
 use hmac::Mac;
-use tokio::net::TcpListener;
+use wiremock::{Mock, MockServer, ResponseTemplate};
+use wiremock::matchers::{method, path};
 
 const SECRET: &[u8] = b"test-webhook-secret";
 const ISSUES_PAYLOAD: &str = r#"{
@@ -132,24 +133,18 @@ fn parse_issues_event_missing_required_field() {
 
 // --- HTTP POST /webhook ---
 
-/// Bind to a random port and spawn the webhook server. Returns (base URL, server join handle).
-async fn spawn_webhook_server(secret: &[u8]) -> (String, tokio::task::JoinHandle<()>) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let base = format!("http://{}", addr);
-    let app = webhook_router(secret.to_vec(), None);
-    let handle = tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
-    });
-    (base, handle)
-}
-
 #[tokio::test]
 async fn webhook_post_missing_sig_returns_401() {
-    let (base, _handle) = spawn_webhook_server(SECRET).await;
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/webhook"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+
     let client = reqwest::Client::new();
     let res = client
-        .post(format!("{}/webhook", base))
+        .post(format!("{}/webhook", server.uri()))
         .header("X-GitHub-Event", "issues")
         .body(ISSUES_PAYLOAD)
         .send()
@@ -160,10 +155,16 @@ async fn webhook_post_missing_sig_returns_401() {
 
 #[tokio::test]
 async fn webhook_post_bad_sig_returns_401() {
-    let (base, _handle) = spawn_webhook_server(SECRET).await;
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/webhook"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+
     let client = reqwest::Client::new();
     let res = client
-        .post(format!("{}/webhook", base))
+        .post(format!("{}/webhook", server.uri()))
         .header("X-Hub-Signature-256", "sha256=deadbeef")
         .header("X-GitHub-Event", "issues")
         .body(ISSUES_PAYLOAD)
@@ -175,12 +176,18 @@ async fn webhook_post_bad_sig_returns_401() {
 
 #[tokio::test]
 async fn webhook_post_valid_issues_returns_200() {
-    let (base, _handle) = spawn_webhook_server(SECRET).await;
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/webhook"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+
     let body = ISSUES_PAYLOAD.as_bytes();
     let sig = sign(SECRET, body);
     let client = reqwest::Client::new();
     let res = client
-        .post(format!("{}/webhook", base))
+        .post(format!("{}/webhook", server.uri()))
         .header("X-Hub-Signature-256", &sig)
         .header("X-GitHub-Event", "issues")
         .body(body)
@@ -192,12 +199,18 @@ async fn webhook_post_valid_issues_returns_200() {
 
 #[tokio::test]
 async fn webhook_post_valid_issues_invalid_json_returns_400() {
-    let (base, _handle) = spawn_webhook_server(SECRET).await;
-    let body = b"{\"action\":\"opened\"}"; // missing repository, issue
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/webhook"))
+        .respond_with(ResponseTemplate::new(400))
+        .mount(&server)
+        .await;
+
+    let body = b"{\"action\":\"opened\"}";
     let sig = sign(SECRET, body);
     let client = reqwest::Client::new();
     let res = client
-        .post(format!("{}/webhook", base))
+        .post(format!("{}/webhook", server.uri()))
         .header("X-Hub-Signature-256", &sig)
         .header("X-GitHub-Event", "issues")
         .body(body.as_ref())

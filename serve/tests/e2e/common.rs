@@ -3,20 +3,11 @@
 
 use futures_util::{SinkExt, StreamExt};
 use loom::{ClientRequest, ServerResponse};
-use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::Message;
 
-static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-
-pub fn env_test_lock() -> &'static Mutex<()> {
-    ENV_LOCK.get_or_init(|| Mutex::new(()))
-}
-
-/// Loads .env from the current directory (or project root when run via `cargo test`).
-/// Call at the start of each e2e test so the server and config see OPENAI_API_KEY etc.
 pub fn load_dotenv() {
     let _ = dotenv::dotenv();
 }
@@ -52,7 +43,7 @@ where
 {
     let json = serde_json::to_string(req)?;
     write.send(Message::Text(json)).await?;
-    let read_timeout = Duration::from_secs(10);
+    let read_timeout = Duration::from_secs(3);
     let opt = timeout(read_timeout, read.next()).await.map_err(|_| {
         std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout waiting for response")
     })?;

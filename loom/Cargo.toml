@@ -84,4 +84,6 @@ tempfile = "3"
 libc = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ctor = "0.2"
+wiremock = "0.6"
+temp-env = { version = "0.3", features = ["async_closure"] }
 

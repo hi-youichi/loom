@@ -157,6 +157,7 @@ pub async fn build_react_runner(
     verbose: bool,
 ) -> Result<ReactRunner, BuildRunnerError> {
     let ctx = build_react_run_context(config).await?;
+    let provider_override = provider.is_some();
     let provider = match provider {
         Some(p) => p,
         None => build_default_provider(config, ctx.tool_source.as_ref()).await?,
@@ -166,7 +167,11 @@ pub async fn build_react_runner(
         .clone()
         .unwrap_or_else(|| REACT_SYSTEM_PROMPT.to_string());
     let compaction_config = resolve_compaction_config(config).await;
-    let title_provider = resolve_title_provider(config).await;
+    let title_provider = if provider_override {
+        None
+    } else {
+        resolve_title_provider(config).await
+    };
     let title_headers = config
         .trace_thread_id
         .as_ref()
