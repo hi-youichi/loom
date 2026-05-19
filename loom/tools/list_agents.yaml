@@ -1,0 +1,14 @@
+name: list_agents
+description: |
+  List all available agent profiles that can be used with `invoke_agent`.
+
+  Discovers agents from three sources:
+  - Built-in: agents bundled with Loom (dev, explore, agent-builder, orchestrator, ask)
+  - Project: `.loom/agents/` in the working directory
+  - User: `~/.loom/agents/`
+
+  Returns each agent's name, description, and source. Use this before `invoke_agent` to find
+  the right agent for a task.
+input_schema:
+  type: object
+  properties: {}
