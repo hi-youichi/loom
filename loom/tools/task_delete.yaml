@@ -1,0 +1,29 @@
+name: task_delete
+description: |
+  Delete a task by ID.
+
+  Permanently removes a task from the database. This action cannot be undone.
+
+  ## When to Use
+  - When a task is no longer relevant and should be removed entirely
+  - When cleaning up stale or duplicate tasks
+  - When a user explicitly asks to delete a task
+
+  ## When NOT to Use
+  - To mark a task as done — use `task_update` with `status: "completed"` instead
+  - To stop working on a task — use `task_update` with `status: "cancelled"` instead
+
+  ## ID Resolution
+  Supports ID prefix matching (>= 4 chars), same as `task_show`.
+
+  ## Output
+  Returns the deleted task summary: `{\"id\": \"...\", \"name\": \"...\", \"deleted\": true}`
+
+input_schema:
+  type: object
+  properties:
+    id:
+      type: string
+      description: "Task ID or prefix (>= 4 characters)."
+  required:
+    - id

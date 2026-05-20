@@ -1,0 +1,67 @@
+name: task_list
+description: |
+  List tasks with optional filters, sorting, and pagination.
+
+  Use this tool to get an overview of all tasks or a filtered subset. Supports filtering by status,
+  assignee, and name (substring match). Results can be sorted and paginated.
+
+  ## When to Use
+  - To get an overview of all tasks
+  - To find tasks assigned to a specific person
+  - To filter tasks by status (e.g., all pending tasks)
+  - To search for tasks by name
+
+  ## Parameters (all optional)
+  - `status`: Filter by status — pending, in_progress, completed, cancelled
+  - `assignee`: Filter by assignee (exact match)
+  - `name`: Filter by name (substring match, case-insensitive)
+  - `sort_by`: Sort field — created_at (default), start_time, name, status
+  - `sort_order`: Sort direction — desc (default) or asc
+  - `limit`: Page size (default 20)
+  - `page`: Page number, 1-based (default 1)
+
+  ## Output
+  Returns a paginated result:
+  ```json
+  {
+    "tasks": [...],
+    "total": 42,
+    "limit": 20,
+    "page": 1,
+    "has_more": true
+  }
+  ```
+
+  ## Examples
+  - List all tasks: `{}` (no parameters)
+  - Pending tasks: `{"status": "pending"}`
+  - Search by name: `{"name": "login"}`
+  - Tasks for Alice: `{"assignee": "Alice", "sort_by": "start_time", "sort_order": "asc"}`
+
+input_schema:
+  type: object
+  properties:
+    status:
+      type: string
+      enum: [pending, in_progress, completed, cancelled]
+      description: "Filter by status."
+    assignee:
+      type: string
+      description: "Filter by assignee (exact match)."
+    name:
+      type: string
+      description: "Filter by name (substring match)."
+    sort_by:
+      type: string
+      enum: [created_at, start_time, name, status]
+      description: "Sort field. Default: created_at."
+    sort_order:
+      type: string
+      enum: [asc, desc]
+      description: "Sort direction. Default: desc."
+    limit:
+      type: integer
+      description: "Page size. Default: 20."
+    page:
+      type: integer
+      description: "Page number (1-based). Default: 1."
