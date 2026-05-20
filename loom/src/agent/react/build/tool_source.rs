@@ -305,6 +305,11 @@ pub(crate) async fn build_tool_source(
     if let Some(ref wf) = config.working_folder {
         register_file_tools(aggregate.as_ref(), wf, config.skill_registry.clone())
             .map_err(to_agent_error)?;
+
+        let db_path = wf.join("tasks.db");
+        if let Ok(db) = task_core::TaskDb::open(&db_path) {
+            crate::tools::task::register_task_tools(&aggregate, Arc::new(db)).await;
+        }
     }
     aggregate.register_sync(Box::new(BatchTool::new(Arc::clone(&aggregate))));
     aggregate.register_sync(Box::new(LspTool::default()));

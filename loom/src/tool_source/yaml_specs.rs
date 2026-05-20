@@ -51,6 +51,11 @@ const TOOL_YAML_FILES: &[&str] = embed_tool_yaml!(
     "../../tools/invoke_agent.yaml",
     "../../tools/list_agents.yaml",
     "../../tools/help.yaml",
+    "../../tools/task_create.yaml",
+    "../../tools/task_show.yaml",
+    "../../tools/task_list.yaml",
+    "../../tools/task_update.yaml",
+    "../../tools/task_delete.yaml",
 );
 
 /// Errors from loading or using YAML tool specs.

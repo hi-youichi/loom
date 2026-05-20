@@ -14,6 +14,7 @@ pub mod powershell;
 mod registry;
 pub mod shared;
 pub mod skill;
+pub mod task;
 pub mod telegram;
 pub mod todo;
 mod r#trait;
