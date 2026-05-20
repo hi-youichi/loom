@@ -7,6 +7,8 @@ bot-runtime
 CLAUDE.md
 AGENTS.md
 thirdparty
+.codex
+.cursor
 
 tmp/
 test-output*.txt

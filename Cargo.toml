@@ -12,6 +12,9 @@ members = [
     "loom-acp",
     "loom-workspace/gh",
     "telegram-bot",
+    "task-core",
+    "task-cli",
+    "task-mcp-server",
 ]
 
 [workspace.package]
