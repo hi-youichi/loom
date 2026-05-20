@@ -17,9 +17,10 @@ struct Args {
     db_path: PathBuf,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args = Args::parse();
-    let db = TaskDb::open(&args.db_path).expect("failed to open tasks.db");
+    let db = TaskDb::open(&args.db_path).await.expect("failed to open tasks.db");
     let db = Arc::new(db);
 
     let mut server = McpServer::new(
@@ -68,8 +69,7 @@ fn main() {
         .unwrap();
 
     let server = Arc::new(std::sync::Mutex::new(server));
-    let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
-    rt.block_on(run_stdio(server));
+    run_stdio(server).await;
 }
 
 async fn run_stdio(server: Arc<std::sync::Mutex<McpServer>>) {
@@ -200,15 +200,13 @@ impl ToolHandler for Handler {
                         .map(String::from),
                     status,
                 };
-                let task = db
-                    .create_task(&params)
+                let task = db.create_task(&params).await
                     .map_err(|e| mcp_server::ServerError::Handler(e.to_string()))?;
                 ok_text(&task)
             }
             Handler::Show(db) => {
                 let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                let task = db
-                    .show_task(id)
+                let task = db.show_task(id).await
                     .map_err(|e| mcp_server::ServerError::Handler(e.to_string()))?;
                 ok_text(&task)
             }
@@ -248,8 +246,7 @@ impl ToolHandler for Handler {
                         .and_then(|v| v.as_u64())
                         .unwrap_or(1) as u32,
                 };
-                let list = db
-                    .list_tasks(&params)
+                let list = db.list_tasks(&params).await
                     .map_err(|e| mcp_server::ServerError::Handler(e.to_string()))?;
                 ok_text(&list)
             }
@@ -285,15 +282,13 @@ impl ToolHandler for Handler {
                         .map(String::from),
                     status,
                 };
-                let task = db
-                    .update_task(&params)
+                let task = db.update_task(&params).await
                     .map_err(|e| mcp_server::ServerError::Handler(e.to_string()))?;
                 ok_text(&task)
             }
             Handler::Delete(db) => {
                 let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                let deleted = db
-                    .delete_task(id)
+                let deleted = db.delete_task(id).await
                     .map_err(|e| mcp_server::ServerError::Handler(e.to_string()))?;
                 ok_text(&serde_json::json!({
                     "id": deleted.id,

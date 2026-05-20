@@ -1,55 +1,73 @@
 use std::path::Path;
-use std::sync::Mutex;
 
 use chrono::Local;
-use rusqlite::{params, Connection};
-use serde::Serialize;
-use uuid::Uuid;
+use thiserror::Error;
 
 use crate::models::{Task, TaskStatus};
 use crate::params::{CreateParams, ListParams, UpdateParams};
 
-const INIT_SQL: &str = "\
-CREATE TABLE IF NOT EXISTS tasks (\
-    id          TEXT PRIMARY KEY,\
-    name        TEXT NOT NULL,\
-    description TEXT NOT NULL DEFAULT '',\
-    assignee    TEXT NOT NULL DEFAULT '',\
-    start_time  TEXT NOT NULL,\
-    created_at  TEXT NOT NULL,\
-    status      TEXT NOT NULL DEFAULT 'pending'\
-                CHECK(status IN ('pending','in_progress','completed','cancelled'))\
-)";
+#[derive(Debug, Error)]
+pub enum TaskDbError {
+    #[error("database error: {0}")]
+    Sqlx(#[from] sqlx::Error),
+    #[error("json error: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("{0}")]
+    Other(String),
+}
 
 pub struct TaskDb {
-    conn: Mutex<Connection>,
+    pool: sqlx::SqlitePool,
+    db_path: std::path::PathBuf,
 }
 
 impl TaskDb {
-    pub fn open(db_path: &Path) -> rusqlite::Result<Self> {
-        let conn = Connection::open(db_path)?;
-        conn.execute_batch("PRAGMA journal_mode=WAL;")?;
-        conn.execute_batch(INIT_SQL)?;
+    pub async fn open(db_path: &Path) -> Result<Self, TaskDbError> {
+        let url = format!("sqlite:{}?mode=rwc", db_path.display());
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect(&url)
+            .await?;
+
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .map_err(|e| TaskDbError::Other(e.to_string()))?;
+
         Ok(Self {
-            conn: Mutex::new(conn),
+            pool,
+            db_path: db_path.to_path_buf(),
         })
     }
 
-    pub fn create_task(&self, p: &CreateParams) -> Result<Task, Box<dyn std::error::Error>> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+    pub fn path(&self) -> &Path {
+        &self.db_path
+    }
+
+    pub async fn create_task(&self, p: &CreateParams) -> Result<Task, TaskDbError> {
         let now = Local::now().to_rfc3339();
         let start_time = p
             .start_time
             .as_deref()
             .map(parse_time_input)
-            .transpose()?
+            .transpose()
+            .map_err(|e| TaskDbError::Other(e))?
             .unwrap_or_else(|| now.clone());
-        let id = Uuid::new_v4().to_string();
+        let id = uuid::Uuid::new_v4().to_string();
+        let status_str = p.status.as_str().to_string();
 
-        conn.execute(
-            "INSERT INTO tasks (id, name, description, assignee, start_time, created_at, status) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![id, p.name, p.description, p.assignee, start_time, now, p.status.as_str()],
-        )?;
+        sqlx::query(
+            "INSERT INTO tasks (id, name, description, assignee, start_time, created_at, status, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, '{}')",
+        )
+        .bind(&id)
+        .bind(&p.name)
+        .bind(&p.description)
+        .bind(&p.assignee)
+        .bind(&start_time)
+        .bind(&now)
+        .bind(&status_str)
+        .execute(&self.pool)
+        .await?;
 
         Ok(Task {
             id,
@@ -59,11 +77,12 @@ impl TaskDb {
             start_time,
             created_at: now,
             status: p.status,
+            metadata: "{}".to_string(),
         })
     }
 
-    pub fn show_task(&self, id_prefix: &str) -> Result<Task, ShowError> {
-        let tasks = self.find_by_id_prefix(id_prefix)?;
+    pub async fn show_task(&self, id_prefix: &str) -> Result<Task, ShowError> {
+        let tasks = self.find_by_id_prefix(id_prefix).await?;
         match tasks.len() {
             0 => Err(ShowError::NotFound(id_prefix.to_string())),
             1 => Ok(tasks.into_iter().next().unwrap()),
@@ -74,24 +93,35 @@ impl TaskDb {
         }
     }
 
-    pub fn list_tasks(&self, p: &ListParams) -> Result<TaskList, Box<dyn std::error::Error>> {
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+    pub async fn list_tasks(&self, p: &ListParams) -> Result<TaskList, TaskDbError> {
         let mut where_clauses = Vec::new();
-        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        let mut param_idx = 1usize;
 
+        let status_filter;
         if let Some(ref status) = p.status {
-            where_clauses.push(format!("status = ?{}", param_values.len() + 1));
-            param_values.push(Box::new(status.as_str().to_string()));
+            where_clauses.push(format!("status = ?{}", param_idx));
+            status_filter = Some(status.as_str().to_string());
+            param_idx += 1;
+        } else {
+            status_filter = None;
         }
 
+        let assignee_filter;
         if let Some(ref assignee) = p.assignee {
-            where_clauses.push(format!("assignee = ?{}", param_values.len() + 1));
-            param_values.push(Box::new(assignee.clone()));
+            where_clauses.push(format!("assignee = ?{}", param_idx));
+            assignee_filter = Some(assignee.clone());
+            param_idx += 1;
+        } else {
+            assignee_filter = None;
         }
 
+        let name_filter;
         if let Some(ref name) = p.name {
-            where_clauses.push(format!("name LIKE ?{}", param_values.len() + 1));
-            param_values.push(Box::new(format!("%{}%", name)));
+            where_clauses.push(format!("name LIKE ?{}", param_idx));
+            name_filter = Some(format!("%{}%", name));
+            param_idx += 1;
+        } else {
+            name_filter = None;
         }
 
         let where_sql = if where_clauses.is_empty() {
@@ -100,17 +130,19 @@ impl TaskDb {
             format!("WHERE {}", where_clauses.join(" AND "))
         };
 
-        let count_sql = format!("SELECT COUNT(*) FROM tasks {}", where_sql);
-        let total: u32 = conn.query_row(
-            &count_sql,
-            param_values
-                .as_slice()
-                .iter()
-                .map(|p| p.as_ref())
-                .collect::<Vec<_>>()
-                .as_slice(),
-            |row| row.get(0),
-        )?;
+        let count_sql = format!("SELECT COUNT(*) as count FROM tasks {}", where_sql);
+        let total: i64 = if status_filter.is_some() || assignee_filter.is_some() || name_filter.is_some() {
+            let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
+            if let Some(ref v) = status_filter { q = q.bind(v); }
+            if let Some(ref v) = assignee_filter { q = q.bind(v); }
+            if let Some(ref v) = name_filter { q = q.bind(v); }
+            q.fetch_one(&self.pool).await?
+        } else {
+            sqlx::query_scalar::<_, i64>(&count_sql)
+                .fetch_one(&self.pool)
+                .await?
+        };
+        let total = total as u32;
 
         let sort_field = match p.sort_by.as_str() {
             "start_time" => "start_time",
@@ -125,21 +157,18 @@ impl TaskDb {
 
         let offset = (p.page.saturating_sub(1)) * p.limit;
         let data_sql = format!(
-            "SELECT id, name, description, assignee, start_time, created_at, status FROM tasks {} ORDER BY {} {} LIMIT ?{} OFFSET ?{}",
-            where_sql, sort_field, sort_dir, param_values.len() + 1, param_values.len() + 2
+            "SELECT id, name, description, assignee, start_time, created_at, status, metadata FROM tasks {} ORDER BY {} {} LIMIT ?{} OFFSET ?{}",
+            where_sql, sort_field, sort_dir, param_idx, param_idx + 1
         );
 
-        let mut all_params: Vec<Box<dyn rusqlite::types::ToSql>> = param_values;
-        all_params.push(Box::new(p.limit));
-        all_params.push(Box::new(offset));
+        let mut q = sqlx::query_as::<_, Task>(&data_sql);
+        if let Some(ref v) = status_filter { q = q.bind(v); }
+        if let Some(ref v) = assignee_filter { q = q.bind(v); }
+        if let Some(ref v) = name_filter { q = q.bind(v); }
+        q = q.bind(p.limit);
+        q = q.bind(offset);
 
-        let mut stmt = conn.prepare(&data_sql)?;
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
-            all_params.iter().map(|p| p.as_ref()).collect();
-        let tasks = stmt
-            .query_map(param_refs.as_slice(), |row| Ok(row_to_task(row)))?
-            .filter_map(|t| t.ok())
-            .collect();
+        let tasks = q.fetch_all(&self.pool).await?;
 
         Ok(TaskList {
             tasks,
@@ -150,36 +179,55 @@ impl TaskDb {
         })
     }
 
-    pub fn update_task(&self, p: &UpdateParams) -> Result<Task, Box<dyn std::error::Error>> {
-        let existing = self.show_task(&p.id)?;
-        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+    pub async fn update_task(&self, p: &UpdateParams) -> Result<Task, Box<dyn std::error::Error + Send + Sync>> {
+        let existing = self.show_task(&p.id).await.map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })?;
         let mut set_clauses = Vec::new();
-        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        let mut param_idx = 1usize;
 
+        let name_val;
         if let Some(ref name) = p.name {
-            set_clauses.push(format!("name = ?{}", param_values.len() + 1));
-            param_values.push(Box::new(name.clone()));
+            set_clauses.push(format!("name = ?{}", param_idx));
+            name_val = Some(name.clone());
+            param_idx += 1;
+        } else {
+            name_val = None;
         }
 
+        let desc_val;
         if let Some(ref description) = p.description {
-            set_clauses.push(format!("description = ?{}", param_values.len() + 1));
-            param_values.push(Box::new(description.clone()));
+            set_clauses.push(format!("description = ?{}", param_idx));
+            desc_val = Some(description.clone());
+            param_idx += 1;
+        } else {
+            desc_val = None;
         }
 
+        let assignee_val;
         if let Some(ref assignee) = p.assignee {
-            set_clauses.push(format!("assignee = ?{}", param_values.len() + 1));
-            param_values.push(Box::new(assignee.clone()));
+            set_clauses.push(format!("assignee = ?{}", param_idx));
+            assignee_val = Some(assignee.clone());
+            param_idx += 1;
+        } else {
+            assignee_val = None;
         }
 
+        let start_time_val;
         if let Some(ref start_time) = p.start_time {
             let parsed = parse_time_input(start_time)?;
-            set_clauses.push(format!("start_time = ?{}", param_values.len() + 1));
-            param_values.push(Box::new(parsed));
+            set_clauses.push(format!("start_time = ?{}", param_idx));
+            start_time_val = Some(parsed);
+            param_idx += 1;
+        } else {
+            start_time_val = None;
         }
 
+        let status_val;
         if let Some(ref status) = p.status {
-            set_clauses.push(format!("status = ?{}", param_values.len() + 1));
-            param_values.push(Box::new(status.as_str().to_string()));
+            set_clauses.push(format!("status = ?{}", param_idx));
+            status_val = Some(status.as_str().to_string());
+            param_idx += 1;
+        } else {
+            status_val = None;
         }
 
         if set_clauses.is_empty() {
@@ -189,64 +237,93 @@ impl TaskDb {
         let sql = format!(
             "UPDATE tasks SET {} WHERE id = ?{}",
             set_clauses.join(", "),
-            param_values.len() + 1
+            param_idx
         );
-        param_values.push(Box::new(existing.id.clone()));
 
-        conn.execute(
-            &sql,
-            param_values
-                .as_slice()
-                .iter()
-                .map(|p| p.as_ref())
-                .collect::<Vec<_>>()
-                .as_slice(),
-        )?;
+        let mut q = sqlx::query(&sql);
+        if let Some(ref v) = name_val { q = q.bind(v); }
+        if let Some(ref v) = desc_val { q = q.bind(v); }
+        if let Some(ref v) = assignee_val { q = q.bind(v); }
+        if let Some(ref v) = start_time_val { q = q.bind(v); }
+        if let Some(ref v) = status_val { q = q.bind(v); }
+        q = q.bind(&existing.id);
 
-        drop(conn);
-        self.show_task(&existing.id)
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+        q.execute(&self.pool).await?;
+
+        self.show_task(&existing.id).await.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }
 
-    pub fn delete_task(&self, id_prefix: &str) -> Result<Task, ShowError> {
-        let task = self.show_task(id_prefix)?;
-        let conn = self.conn.lock().map_err(|e| ShowError::DbError(e.to_string()))?;
-        conn.execute("DELETE FROM tasks WHERE id = ?1", params![task.id])
+    pub async fn delete_task(&self, id_prefix: &str) -> Result<Task, ShowError> {
+        let task = self.show_task(id_prefix).await?;
+        sqlx::query("DELETE FROM tasks WHERE id = ?")
+            .bind(&task.id)
+            .execute(&self.pool)
+            .await
             .map_err(|e| ShowError::DbError(e.to_string()))?;
         Ok(task)
     }
 
-    fn find_by_id_prefix(&self, prefix: &str) -> Result<Vec<Task>, ShowError> {
-        let conn = self.conn.lock().map_err(|e| ShowError::DbError(e.to_string()))?;
+    pub async fn get_meta(
+        &self,
+        id_prefix: &str,
+        key: &str,
+    ) -> Result<Option<serde_json::Value>, Box<dyn std::error::Error + Send + Sync>> {
+        let task = self.show_task(id_prefix).await?;
+        let meta: serde_json::Value = serde_json::from_str(&task.metadata)?;
+        Ok(meta.get(key).cloned())
+    }
+
+    pub async fn set_meta(
+        &self,
+        id_prefix: &str,
+        key: &str,
+        value: &serde_json::Value,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let task = self.show_task(id_prefix).await?;
+        let mut metadata: serde_json::Value = serde_json::from_str(&task.metadata)?;
+        if let Some(obj) = metadata.as_object_mut() {
+            obj.insert(key.to_string(), value.clone());
+        }
+        let metadata_str = metadata.to_string();
+        sqlx::query("UPDATE tasks SET metadata = ? WHERE id = ?")
+            .bind(&metadata_str)
+            .bind(&task.id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn atomic_update_status(
+        &self,
+        id_prefix: &str,
+        from: TaskStatus,
+        to: TaskStatus,
+    ) -> Result<bool, TaskDbError> {
+        let like_pattern = format!("{}%", id_prefix);
+        let result = sqlx::query(
+            "UPDATE tasks SET status = ? WHERE id = (SELECT id FROM tasks WHERE id LIKE ? AND status = ? LIMIT 1)",
+        )
+        .bind(to.as_str())
+        .bind(&like_pattern)
+        .bind(from.as_str())
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn find_by_id_prefix(&self, prefix: &str) -> Result<Vec<Task>, ShowError> {
         let like_pattern = format!("{}%", prefix);
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, name, description, assignee, start_time, created_at, status FROM tasks WHERE id LIKE ?1",
-            )
-            .map_err(|e| ShowError::DbError(e.to_string()))?;
-        let tasks = stmt
-            .query_map(params![like_pattern], |row| Ok(row_to_task(row)))
-            .map_err(|e| ShowError::DbError(e.to_string()))?
-            .filter_map(|t| t.ok())
-            .collect();
-        Ok(tasks)
+        sqlx::query_as::<_, Task>(
+            "SELECT id, name, description, assignee, start_time, created_at, status, metadata FROM tasks WHERE id LIKE ?",
+        )
+        .bind(&like_pattern)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| ShowError::DbError(e.to_string()))
     }
 }
 
-fn row_to_task(row: &rusqlite::Row<'_>) -> Task {
-    let status_str: String = row.get(6).unwrap_or_default();
-    Task {
-        id: row.get(0).unwrap_or_default(),
-        name: row.get(1).unwrap_or_default(),
-        description: row.get(2).unwrap_or_default(),
-        assignee: row.get(3).unwrap_or_default(),
-        start_time: row.get(4).unwrap_or_default(),
-        created_at: row.get(5).unwrap_or_default(),
-        status: TaskStatus::from_str(&status_str).unwrap_or(TaskStatus::Pending),
-    }
-}
-
-#[derive(Debug, Serialize)]
+#[derive(Debug, serde::Serialize)]
 pub struct TaskList {
     pub tasks: Vec<Task>,
     pub total: u32,
@@ -326,4 +403,151 @@ fn parse_time_input(input: &str) -> Result<String, String> {
         "invalid time format: '{}'. Expected formats: 2025-08-20T10:00:00, 2025-08-20 10:00:00, 2025-08-20",
         input
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::NamedTempFile;
+
+    async fn test_db() -> TaskDb {
+        let f = NamedTempFile::new().unwrap();
+        let path = f.path().to_path_buf();
+        std::mem::forget(f);
+        TaskDb::open(&path).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_create_and_show() {
+        let db = test_db().await;
+        let task = db.create_task(&CreateParams {
+            name: "test".into(),
+            description: "desc".into(),
+            assignee: "alice".into(),
+            start_time: None,
+            status: TaskStatus::Pending,
+        }).await.unwrap();
+
+        let found = db.show_task(&task.id[..8]).await.unwrap();
+        assert_eq!(found.name, "test");
+        assert_eq!(found.status, TaskStatus::Pending);
+    }
+
+    #[tokio::test]
+    async fn test_list_tasks() {
+        let db = test_db().await;
+        for i in 0..3 {
+            db.create_task(&CreateParams {
+                name: format!("task-{}", i),
+                description: String::new(),
+                assignee: String::new(),
+                start_time: None,
+                status: TaskStatus::Pending,
+            }).await.unwrap();
+        }
+
+        let list = db.list_tasks(&ListParams::default()).await.unwrap();
+        assert_eq!(list.total, 3);
+    }
+
+    #[tokio::test]
+    async fn test_update_task() {
+        let db = test_db().await;
+        let task = db.create_task(&CreateParams {
+            name: "before".into(),
+            description: String::new(),
+            assignee: String::new(),
+            start_time: None,
+            status: TaskStatus::Pending,
+        }).await.unwrap();
+
+        let updated = db.update_task(&UpdateParams {
+            id: task.id.clone(),
+            name: Some("after".into()),
+            description: None,
+            assignee: None,
+            start_time: None,
+            status: Some(TaskStatus::InProgress),
+        }).await.unwrap();
+
+        assert_eq!(updated.name, "after");
+        assert_eq!(updated.status, TaskStatus::InProgress);
+    }
+
+    #[tokio::test]
+    async fn test_delete_task() {
+        let db = test_db().await;
+        let task = db.create_task(&CreateParams {
+            name: "to-delete".into(),
+            description: String::new(),
+            assignee: String::new(),
+            start_time: None,
+            status: TaskStatus::Pending,
+        }).await.unwrap();
+
+        let deleted = db.delete_task(&task.id).await.unwrap();
+        assert_eq!(deleted.name, "to-delete");
+
+        assert!(db.show_task(&task.id).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_get_set_meta() {
+        let db = test_db().await;
+        let task = db.create_task(&CreateParams {
+            name: "meta-test".into(),
+            description: String::new(),
+            assignee: String::new(),
+            start_time: None,
+            status: TaskStatus::InProgress,
+        }).await.unwrap();
+
+        let val = serde_json::json!({"iteration": 5, "tool": "loom"});
+        db.set_meta(&task.id, "goal", &val).await.unwrap();
+
+        let got = db.get_meta(&task.id, "goal").await.unwrap().unwrap();
+        assert_eq!(got["iteration"], 5);
+        assert_eq!(got["tool"], "loom");
+    }
+
+    #[tokio::test]
+    async fn test_atomic_update_status() {
+        let db = test_db().await;
+        let task = db.create_task(&CreateParams {
+            name: "atomic".into(),
+            description: String::new(),
+            assignee: String::new(),
+            start_time: None,
+            status: TaskStatus::Pending,
+        }).await.unwrap();
+
+        let ok = db.atomic_update_status(&task.id, TaskStatus::Pending, TaskStatus::InProgress).await.unwrap();
+        assert!(ok);
+
+        let ok = db.atomic_update_status(&task.id, TaskStatus::Pending, TaskStatus::InProgress).await.unwrap();
+        assert!(!ok);
+
+        let found = db.show_task(&task.id).await.unwrap();
+        assert_eq!(found.status, TaskStatus::InProgress);
+    }
+
+    #[tokio::test]
+    async fn test_migration_from_old_db() {
+        let f = NamedTempFile::new().unwrap();
+        let path = f.path().to_path_buf();
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS tasks (
+                id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+                assignee TEXT NOT NULL DEFAULT '', start_time TEXT NOT NULL, created_at TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending');
+            INSERT INTO tasks (id, name, description, assignee, start_time, created_at, status)
+                VALUES ('old-id', 'old-task', '', '', '2025-01-01T00:00:00Z', '2025-01-01T00:00:00Z', 'pending');"
+        ).unwrap();
+        drop(conn);
+
+        let db = TaskDb::open(&path).await.unwrap();
+        let task = db.show_task("old-id").await.unwrap();
+        assert_eq!(task.name, "old-task");
+    }
 }

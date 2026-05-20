@@ -50,7 +50,7 @@ impl Tool for TaskShowTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolSourceError::InvalidInput("missing 'id'".to_string()))?;
 
-        let task = self.db.show_task(id).map_err(|e| match e {
+        let task = self.db.show_task(id).await.map_err(|e| match e {
             ShowError::NotFound(_) => ToolSourceError::ToolError(e.to_string()),
             ShowError::Ambiguous { .. } => ToolSourceError::ToolError(e.to_string()),
             ShowError::DbError(_) => ToolSourceError::ToolError(e.to_string()),

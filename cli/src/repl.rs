@@ -27,6 +27,7 @@ fn cmd_to_runcmd(cmd: &Command) -> RunCmd {
         Command::Models(_) => unreachable!("models handled in main"),
         Command::Mcp(_) => unreachable!("mcp handled in main"),
         Command::Agent(_) => unreachable!("agent handled in main"),
+        Command::Goal(_) => unreachable!("goal handled in main"),
     }
 }
 

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use sqlx::FromRow;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Task {
     pub id: String,
     pub name: String,
@@ -10,6 +11,18 @@ pub struct Task {
     pub created_at: String,
     #[serde(serialize_with = "serialize_status", deserialize_with = "deserialize_status")]
     pub status: TaskStatus,
+    #[serde(default)]
+    pub metadata: String,
+}
+
+impl Task {
+    pub fn metadata_value(&self) -> serde_json::Value {
+        serde_json::from_str(&self.metadata).unwrap_or_else(|_| serde_json::json!({}))
+    }
+
+    pub fn set_metadata_value(&mut self, val: &serde_json::Value) {
+        self.metadata = val.to_string();
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,6 +61,28 @@ impl TaskStatus {
 impl std::fmt::Display for TaskStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+use sqlx::sqlite::{SqliteArgumentValue, SqliteTypeInfo, SqliteValueRef};
+
+impl sqlx::Type<sqlx::Sqlite> for TaskStatus {
+    fn type_info() -> SqliteTypeInfo {
+        <String as sqlx::Type<sqlx::Sqlite>>::type_info()
+    }
+}
+
+impl sqlx::Encode<'_, sqlx::Sqlite> for TaskStatus {
+    fn encode_by_ref(&self, buf: &mut Vec<SqliteArgumentValue<'_>>) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
+        <&str as sqlx::Encode<'_, sqlx::Sqlite>>::encode_by_ref(&self.as_str(), buf)
+    }
+}
+
+impl sqlx::Decode<'_, sqlx::Sqlite> for TaskStatus {
+    fn decode(value: SqliteValueRef<'_>) -> Result<Self, sqlx::error::BoxDynError> {
+        let s = <String as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
+        TaskStatus::from_str(&s)
+            .ok_or_else(|| format!("invalid status: {}", s).into())
     }
 }
 

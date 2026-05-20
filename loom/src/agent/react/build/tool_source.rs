@@ -307,7 +307,7 @@ pub(crate) async fn build_tool_source(
             .map_err(to_agent_error)?;
 
         let db_path = wf.join("tasks.db");
-        if let Ok(db) = task_core::TaskDb::open(&db_path) {
+        if let Ok(db) = task_core::TaskDb::open(&db_path).await {
             crate::tools::task::register_task_tools(&aggregate, Arc::new(db)).await;
         }
     }

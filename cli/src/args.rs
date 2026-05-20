@@ -117,6 +117,8 @@ pub(crate) enum Command {
     Mcp(McpArgs),
     /// Manage agent profiles (list, export)
     Agent(AgentArgs),
+    /// Run autonomous goal loop with an external coding tool
+    Goal(GoalArgs),
 }
 
 #[derive(clap::Args, Debug, Clone)]
@@ -299,4 +301,27 @@ pub(crate) struct ExportArgs {
     /// Dry run: print to stdout instead of writing files
     #[arg(long)]
     pub(crate) dry_run: bool,
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct GoalArgs {
+    /// Goal description (objective to achieve)
+    #[arg(value_name = "DESCRIPTION")]
+    pub(crate) description: Option<String>,
+
+    /// External coding tool to use: codex, claude, cursor, or a custom command
+    #[arg(short, long, value_name = "TOOL", default_value = "codex")]
+    pub(crate) tool: String,
+
+    /// Resume a paused goal by task ID (prefix)
+    #[arg(long, value_name = "ID")]
+    pub(crate) resume: Option<String>,
+
+    /// Use a specific task ID instead of generating one
+    #[arg(long, value_name = "ID")]
+    pub(crate) id: Option<String>,
+
+    /// Print verbose iteration info to stderr
+    #[arg(long)]
+    pub(crate) verbose: bool,
 }

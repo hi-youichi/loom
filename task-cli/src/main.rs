@@ -126,12 +126,13 @@ fn resolve_work_folder(args: &Args) -> PathBuf {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args = Args::parse();
     let work_dir = resolve_work_folder(&args);
     let db_path = work_dir.join("tasks.db");
 
-    let task_db = match TaskDb::open(&db_path) {
+    let task_db = match TaskDb::open(&db_path).await {
         Ok(db) => db,
         Err(e) => {
             print_error("database_error", &e.to_string());
@@ -139,7 +140,7 @@ fn main() {
         }
     };
 
-    let result = run(&args, &task_db);
+    let result = run(&args, &task_db).await;
     match result {
         Ok(json_value) => {
             print_ok(&json_value);
@@ -182,7 +183,7 @@ fn main() {
     }
 }
 
-fn run(args: &Args, db: &TaskDb) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+async fn run(args: &Args, db: &TaskDb) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     match &args.command {
         TaskCommand::Create(cli) => {
             let status = parse_status(&cli.status)?;
@@ -193,12 +194,12 @@ fn run(args: &Args, db: &TaskDb) -> Result<serde_json::Value, Box<dyn std::error
                 start_time: cli.start_time.clone(),
                 status,
             };
-            let task = db.create_task(&params)?;
+            let task = db.create_task(&params).await?;
             Ok(serde_json::to_value(&task)?)
         }
 
         TaskCommand::Show { id } => {
-            let task = db.show_task(id)?;
+            let task = db.show_task(id).await?;
             Ok(serde_json::to_value(&task)?)
         }
 
@@ -217,7 +218,7 @@ fn run(args: &Args, db: &TaskDb) -> Result<serde_json::Value, Box<dyn std::error
                 limit: cli.limit,
                 page: cli.page,
             };
-            let list = db.list_tasks(&params)?;
+            let list = db.list_tasks(&params).await?;
             Ok(serde_json::to_value(&list)?)
         }
 
@@ -235,12 +236,12 @@ fn run(args: &Args, db: &TaskDb) -> Result<serde_json::Value, Box<dyn std::error
                 start_time: cli.start_time.clone(),
                 status,
             };
-            let task = db.update_task(&params)?;
+            let task = db.update_task(&params).await.map_err(|e| e as Box<dyn std::error::Error>)?;
             Ok(serde_json::to_value(&task)?)
         }
 
         TaskCommand::Delete { id } => {
-            let deleted = db.delete_task(id)?;
+            let deleted = db.delete_task(id).await?;
             Ok(serde_json::json!({
                 "id": deleted.id,
                 "name": deleted.name,

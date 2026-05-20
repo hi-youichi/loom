@@ -33,6 +33,9 @@ tracing-appender = "0.2"
 tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 futures-util = "0.3"
 rusqlite = { version = "0.31", features = ["bundled"] }
+task-core = { path = "../task-core" }
+tokio-util = { version = "0.7", features = ["rt"] }
+ctrlc = "3"
 
 [dev-dependencies]
 dotenv = { workspace = true }

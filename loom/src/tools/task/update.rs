@@ -81,9 +81,7 @@ impl Tool for TaskUpdateTool {
             status,
         };
 
-        let task = self
-            .db
-            .update_task(&params)
+        let task = self.db.update_task(&params).await
             .map_err(|e| ToolSourceError::ToolError(e.to_string()))?;
         let out = serde_json::to_string_pretty(&task)
             .map_err(|e| ToolSourceError::ToolError(e.to_string()))?;

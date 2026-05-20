@@ -81,9 +81,7 @@ impl Tool for TaskListTool {
                 .unwrap_or(1) as u32,
         };
 
-        let list = self
-            .db
-            .list_tasks(&params)
+        let list = self.db.list_tasks(&params).await
             .map_err(|e| ToolSourceError::ToolError(e.to_string()))?;
         let out = serde_json::to_string_pretty(&list)
             .map_err(|e| ToolSourceError::ToolError(e.to_string()))?;

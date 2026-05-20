@@ -7,6 +7,7 @@ mod args;
 mod bootstrap;
 mod codex_event_builder;
 mod display_limits;
+mod goal_cmd;
 mod logging;
 mod mcp_manager;
 mod output;
@@ -92,6 +93,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("{}", err);
             std::process::exit(1);
         }
+        return Ok(());
+    }
+    if let Some(Cmd::Goal(ga)) = &args.cmd {
+        goal_cmd::handle_goal_command(ga).await?;
         return Ok(());
     }
 
