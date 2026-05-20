@@ -72,6 +72,10 @@ const sidebars: SidebarsConfig = {
         'design/claude-code-compat',
         'codex-goal-feature',
         'design/session-cat-tasks',
+        'design/task-integration',
+        'design/meta-agent-architecture',
+        'design/goal-ralph-loop',
+        'design/goal-external-loop',
       ],
     },
     {
