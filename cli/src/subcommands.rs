@@ -2,7 +2,11 @@
 
 use cli::{cli_list_models, cli_list_tools, cli_show_tool, ToolShowFormat};
 
-use crate::args::{Args, McpArgs, McpCommand, ModelsArgs, ModelsCommand, ToolArgs, ToolCommand};
+use crate::args::{
+    AgentArgs, AgentCommand, Args, ExportArgs, McpArgs, McpCommand, ModelsArgs,
+    ModelsCommand, ToolArgs, ToolCommand,
+};
+use loom::profile_convert::ExportFormat;
 use crate::mcp_manager::{AddMcpArgs, EditMcpArgs, McpManager, ServerDetail, ServerInfo};
 use crate::run_flow::build_run_options;
 use crate::session::{SessionArgs, SessionCommand, SessionManager};
@@ -224,4 +228,67 @@ fn print_server_detail(detail: &ServerDetail) {
             println!("  {}: {}", key, value);
         }
     }
+}
+
+pub(crate) fn handle_agent_command(
+    agent_args: &AgentArgs,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match &agent_args.command {
+        AgentCommand::List => handle_agent_list(),
+        AgentCommand::Export(export_args) => handle_agent_export(export_args),
+    }
+}
+
+fn handle_agent_list() -> Result<(), Box<dyn std::error::Error>> {
+    let profiles = loom::list_available_profiles();
+    if profiles.is_empty() {
+        println!("No agent profiles found.");
+        return Ok(());
+    }
+    println!("Agent profiles:");
+    for p in &profiles {
+        if let Some(desc) = &p.description {
+            println!("  • {} — {}", p.name, desc);
+        } else {
+            println!("  • {}", p.name);
+        }
+    }
+    Ok(())
+}
+
+fn handle_agent_export(export_args: &ExportArgs) -> Result<(), Box<dyn std::error::Error>> {
+    use loom::profile_convert::export;
+
+    let format: ExportFormat = export_args.format.parse()?;
+
+    let agent_names: Vec<String> = match &export_args.agent {
+        Some(name) => vec![name.clone()],
+        None => loom::list_available_profiles()
+            .into_iter()
+            .map(|p| p.name)
+            .collect(),
+    };
+
+    if agent_names.is_empty() {
+        println!("No agent profiles found.");
+        return Ok(());
+    }
+
+    for agent_name in &agent_names {
+        let output = export(agent_name, format)?;
+
+        if export_args.dry_run {
+            println!("--- {} ---", output.path.display());
+            println!("{}", output.content);
+        } else {
+            let full_path = export_args.output.join(&output.path);
+            if let Some(parent) = full_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&full_path, &output.content)?;
+            println!("Exported {} -> {}", agent_name, full_path.display());
+        }
+    }
+
+    Ok(())
 }

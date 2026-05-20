@@ -142,6 +142,7 @@ pub mod openai_sse;
 pub mod pregel;
 pub mod prompts;
 pub mod protocol;
+pub mod profile_convert;
 pub mod provider;
 pub mod runner_common;
 pub mod skill;

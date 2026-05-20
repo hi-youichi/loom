@@ -19,6 +19,7 @@
 | [rfc-model-in-react-state](./rfc-model-in-react-state.md) | ReAct State 中嵌入 Model 信息 | Draft |
 | [limit-tool-output-truncation-scope](./limit-tool-output-truncation-scope.md) | 限定工具输出截断范围 | Draft |
 | [tier-resolver-cohesion](./tier-resolver-cohesion.md) | Tier Resolver 内聚性重构 | Draft |
+| [rfc-profile-convert](./rfc-profile-convert.md) | Agent Profile 导出为第三方工具配置 | Draft |
 
 ## 编写规范
 

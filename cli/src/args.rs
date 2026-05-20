@@ -115,6 +115,8 @@ pub(crate) enum Command {
     Models(ModelsArgs),
     /// Manage MCP servers (list, show, add, edit, delete, enable, disable)
     Mcp(McpArgs),
+    /// Manage agent profiles (list, export)
+    Agent(AgentArgs),
 }
 
 #[derive(clap::Args, Debug, Clone)]
@@ -264,4 +266,37 @@ pub(crate) struct EditMcpArgs {
     /// Set disabled state (true/false)
     #[arg(long, value_name = "BOOL")]
     pub(crate) disabled: Option<bool>,
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct AgentArgs {
+    #[command(subcommand)]
+    pub(crate) command: AgentCommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub(crate) enum AgentCommand {
+    /// List available agent profiles
+    List,
+    /// Export agent profile to third-party tool format
+    Export(ExportArgs),
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct ExportArgs {
+    /// Export format: claude-code, codex, cursor
+    #[arg(value_name = "FORMAT")]
+    pub(crate) format: String,
+
+    /// Agent profile name (default: all project agents)
+    #[arg(value_name = "AGENT")]
+    pub(crate) agent: Option<String>,
+
+    /// Output directory (default: current directory)
+    #[arg(short, long, value_name = "DIR", default_value = ".")]
+    pub(crate) output: PathBuf,
+
+    /// Dry run: print to stdout instead of writing files
+    #[arg(long)]
+    pub(crate) dry_run: bool,
 }

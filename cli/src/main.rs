@@ -27,7 +27,8 @@ use run_flow::{
     run_single_turn_mode,
 };
 use subcommands::{
-    handle_mcp_command, handle_models_command, handle_session_command, handle_tool_command,
+    handle_agent_command, handle_mcp_command, handle_models_command, handle_session_command,
+    handle_tool_command,
 };
 
 #[tokio::main]
@@ -81,6 +82,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if let Some(Cmd::Mcp(ma)) = &args.cmd {
         if let Err(err) = handle_mcp_command(ma, args.json) {
+            eprintln!("{}", err);
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+    if let Some(Cmd::Agent(aa)) = &args.cmd {
+        if let Err(err) = handle_agent_command(aa) {
             eprintln!("{}", err);
             std::process::exit(1);
         }
