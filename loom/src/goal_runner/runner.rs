@@ -126,14 +126,22 @@ impl GoalRunner {
                     self.consecutive_failures = 0;
                     if let Some(ref reasoning) = turn_result.reasoning_content {
                         if !reasoning.trim().is_empty() {
-                            eprintln!("[reasoning] {}", reasoning);
+                            eprintln!("{}",
+                                crate::stream_display::panel_format::format_panel_line(
+                                    "THINKING", &format!("{}", crate::stream_display::render_markdown(reasoning))
+                                )
+                            );
                         }
                     }
                     if !turn_result.reply.trim().is_empty() {
-                        eprintln!("{}", turn_result.reply);
+                        eprintln!("{}", crate::stream_display::render_markdown(&turn_result.reply));
                     }
                     for tc in &turn_result.tool_calls_summary {
-                        eprintln!("[tool] {} -> {}", tc.tool_name, tc.result_preview);
+                        eprintln!("{}",
+                            crate::stream_display::panel_format::format_panel_line(
+                                "TOOL", &format!("{} → {}", tc.tool_name, tc.result_preview)
+                            )
+                        );
                     }
                 }
                 Err(ToolError::Aborted) => {
