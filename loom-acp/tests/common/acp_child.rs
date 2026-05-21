@@ -355,6 +355,7 @@ impl AcpChild {
             .arg(&log_file)
             .env("LOOM_HOME", &actual_home)
             .env("OPENAI_API_KEY", "test-key")
+            .env("LOOM_GOAL_MAX_ITERATIONS", "1")
             .env_remove("OPENAI_BASE_URL")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

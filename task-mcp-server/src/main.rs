@@ -72,6 +72,7 @@ async fn main() {
     run_stdio(server).await;
 }
 
+#[allow(clippy::await_holding_lock)]
 async fn run_stdio(server: Arc<std::sync::Mutex<McpServer>>) {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -122,6 +123,7 @@ async fn run_stdio(server: Arc<std::sync::Mutex<McpServer>>) {
                     Err(e) => eprintln!("handle_request error: {}", e),
                 }
             }
+            #[allow(clippy::await_holding_lock)]
             JsonRpcMessage::Notification(notif) => {
                 let srv = server.lock().unwrap();
                 let _ = srv.server().handle_notification(notif, None).await;
@@ -181,7 +183,7 @@ impl ToolHandler for Handler {
                     .and_then(|v| v.as_str())
                     .unwrap_or("pending");
                 let status =
-                    parse_status(status_str).map_err(|e| mcp_server::ServerError::Handler(e))?;
+                    parse_status(status_str).map_err(mcp_server::ServerError::Handler)?;
                 let params = CreateParams {
                     name,
                     description: args

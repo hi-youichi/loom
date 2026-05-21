@@ -60,7 +60,7 @@ impl Tool for TaskCreateTool {
             .and_then(|v| v.as_str())
             .unwrap_or("pending");
         let status = parse_status(status_str)
-            .map_err(|e| ToolSourceError::InvalidInput(e))?;
+            .map_err(ToolSourceError::InvalidInput)?;
 
         let params = CreateParams {
             name,

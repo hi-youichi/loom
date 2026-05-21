@@ -35,10 +35,7 @@ pub fn parse(text: &str) -> Option<Command> {
                 .strip_prefix("/goal")
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty());
-            match description {
-                Some(desc) => Some(Command::Goal { description: desc }),
-                None => None,
-            }
+            description.map(|desc| Command::Goal { description: desc })
         }
         _ => None,
     }

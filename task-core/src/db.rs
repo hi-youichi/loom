@@ -51,7 +51,7 @@ impl TaskDb {
             .as_deref()
             .map(parse_time_input)
             .transpose()
-            .map_err(|e| TaskDbError::Other(e))?
+            .map_err(TaskDbError::Other)?
             .unwrap_or_else(|| now.clone());
         let id = uuid::Uuid::new_v4().to_string();
         let status_str = p.status.as_str().to_string();

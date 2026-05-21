@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::args::GoalArgs;
@@ -36,9 +36,8 @@ pub(crate) async fn handle_goal_command(ga: &GoalArgs) -> Result<(), Box<dyn std
         print_task_id(runner.task_id());
         let outcome = runner.run().await;
         print_outcome(&outcome);
-        match outcome {
-            GoalOutcome::Error(_) => std::process::exit(1),
-            _ => {}
+        if let GoalOutcome::Error(_) = outcome {
+            std::process::exit(1);
         }
         return Ok(());
     }
@@ -80,9 +79,8 @@ pub(crate) async fn handle_goal_command(ga: &GoalArgs) -> Result<(), Box<dyn std
     print_task_id(runner.task_id());
     let outcome = runner.run().await;
     print_outcome(&outcome);
-    match outcome {
-        GoalOutcome::Error(_) => std::process::exit(1),
-        _ => {}
+    if let GoalOutcome::Error(_) = outcome {
+        std::process::exit(1);
     }
     Ok(())
 }
@@ -92,13 +90,14 @@ fn print_task_id(task_id: &str) {
 }
 
 fn print_outcome(outcome: &GoalOutcome) {
-    match outcome {
-        GoalOutcome::Achieved => eprintln!("goal achieved"),
-        GoalOutcome::Error(e) => eprintln!("goal failed: {}", e),
+    if let GoalOutcome::Error(e) = outcome {
+        eprintln!("goal failed: {}", e);
+    } else {
+        eprintln!("goal achieved");
     }
 }
 
-fn write_mcp_config(db_path: &PathBuf, working_dir: &PathBuf) -> Result<PathBuf, Box<dyn std::error::Error>> {
+fn write_mcp_config(db_path: &Path, working_dir: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let config_content = generate_mcp_config("task", db_path);
     let config_dir = working_dir.join(".loom");
     std::fs::create_dir_all(&config_dir)?;

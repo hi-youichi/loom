@@ -167,6 +167,7 @@ impl CodingTool for LoomTool {
                         display_max_len: 10000,
                         output_timestamp: false,
                         agent_display: None,
+                        use_spinner: true,
                     },
                 ))
             };

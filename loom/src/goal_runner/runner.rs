@@ -68,6 +68,12 @@ impl GoalRunner {
         &self.task_id
     }
 
+    /// Set the maximum number of iterations the goal loop will run.
+    pub fn with_max_iterations(mut self, max: u32) -> Self {
+        self.max_iterations = max;
+        self
+    }
+
     pub async fn run(&mut self) -> GoalOutcome {
         let start = Instant::now();
         loop {
@@ -107,8 +113,13 @@ impl GoalRunner {
                 "executing goal turn"
             );
 
-            eprintln!("\n--- goal iteration {} | tool: {} | time: {}s ---",
-                self.iteration, self.tool.name(), self.time_used_seconds);
+            eprintln!("\n{}",
+                crate::stream_display::panel_format::format_panel_line(
+                    "GOAL",
+                    &format!("iteration {} | tool: {} | time: {}s",
+                        self.iteration, self.tool.name(), self.time_used_seconds),
+                )
+            );
 
             match self.tool.execute(&prompt, &self.working_dir).await {
                 Ok(turn_result) => {

@@ -3,6 +3,8 @@
 mod agent;
 mod contract;
 mod display;
+pub mod panel_format;
+pub mod spinner;
 
 pub use agent::{
     print_reply_timestamp, run_agent_wrapper, RunAgentOutput, RunAgentResult, RunStopReason,

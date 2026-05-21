@@ -96,6 +96,9 @@ fn handle_repl_command(cmd: loom_command::Command) -> String {
         loom_command::Command::Models { .. } | loom_command::Command::ModelsUse { .. } => {
             unreachable!("handled above")
         }
+        loom_command::Command::Goal { .. } => {
+            "/goal requires an active session with LLM access.".into()
+        }
     }
 }
 

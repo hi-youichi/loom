@@ -154,17 +154,9 @@ fn emit_text_reply(
     max_reply_len: usize,
     timestamp: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if timestamp {
-        cli::run::print_reply_timestamp();
-    }
-
-    let text = if max_reply_len == 0 {
-        reply.to_string()
-    } else {
-        crate::display_limits::truncate_message(reply, max_reply_len)
-    };
-    println!("{text}");
-    std::io::stdout().flush()?;
+    let _ = reply;
+    let _ = max_reply_len;
+    let _ = timestamp;
     Ok(())
 }
 

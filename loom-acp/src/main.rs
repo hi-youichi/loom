@@ -198,6 +198,8 @@ fn run_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send + Sync>
                 tracing::info!("Exiting for reload, PidFileGuard will clean up");
                 std::process::exit(RELOAD_EXIT_CODE);
             }
+            eprintln!("loom-acp fatal error: {}", msg);
+            eprintln!("Hint: check logs at ~/.loom/acp/loom-acp.log or run with --log-level debug");
             Err(e)
         }
     }

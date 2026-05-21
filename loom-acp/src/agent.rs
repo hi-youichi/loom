@@ -673,8 +673,6 @@ impl LoomAcpAgent {
                             });
 
                         let cancel = tokio_util::sync::CancellationToken::new();
-                        // Store cancel token so session/cancel can abort it
-                        self.sessions.cancel_current_generation(&key);
 
                         let result = crate::goal_runner::run_goal(
                             description,

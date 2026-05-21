@@ -16,6 +16,18 @@ use loom::goal_runner::{
 };
 use loom::AnyStreamEvent;
 
+/// Default max iterations for ACP goal runs.
+const ACP_DEFAULT_MAX_ITERATIONS: u32 = 30;
+
+/// Reads the max iterations from env var `LOOM_GOAL_MAX_ITERATIONS`,
+/// falling back to `ACP_DEFAULT_MAX_ITERATIONS`.
+fn max_iterations_from_env() -> u32 {
+    std::env::var("LOOM_GOAL_MAX_ITERATIONS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(ACP_DEFAULT_MAX_ITERATIONS)
+}
+
 /// Runs a goal loop inside the ACP process.
 ///
 /// Creates a `TaskDb` at `working_dir/tasks.db`, builds a `LoomTool` with the
@@ -27,6 +39,26 @@ pub async fn run_goal(
     cancel: CancellationToken,
     event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
     run_cancellation: Option<RunCancellation>,
+) -> Result<GoalResult, GoalRunError> {
+    run_goal_with_max_iterations(
+        objective,
+        working_dir,
+        cancel,
+        event_sender,
+        run_cancellation,
+        max_iterations_from_env(),
+    )
+    .await
+}
+
+/// Same as [`run_goal`] but with a configurable max iterations.
+pub async fn run_goal_with_max_iterations(
+    objective: String,
+    working_dir: PathBuf,
+    cancel: CancellationToken,
+    event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
+    run_cancellation: Option<RunCancellation>,
+    max_iterations: u32,
 ) -> Result<GoalResult, GoalRunError> {
     // Ensure working dir exists
     std::fs::create_dir_all(&working_dir)
@@ -65,10 +97,11 @@ pub async fn run_goal(
         tool = tool.with_event_sender(sender);
     }
 
-    // Create and run the GoalRunner
+    // Create and run the GoalRunner with configurable max iterations
     let mut runner = GoalRunner::new(objective.clone(), working_dir, db, Box::new(tool), cancel)
         .await
-        .map_err(|e| GoalRunError::Init(format!("failed to create goal runner: {}", e)))?;
+        .map_err(|e| GoalRunError::Init(format!("failed to create goal runner: {}", e)))?
+        .with_max_iterations(max_iterations);
 
     let task_id = runner.task_id().to_string();
     let outcome = runner.run().await;

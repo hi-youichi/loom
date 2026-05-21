@@ -243,6 +243,9 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
                 loom_command::Command::Models { .. } | loom_command::Command::ModelsUse { .. } => {
                     // fall through to existing model handling below
                 }
+                loom_command::Command::Goal { .. } => {
+                    // fall through to normal message handling
+                }
             }
         }
 

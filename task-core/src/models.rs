@@ -43,7 +43,7 @@ impl TaskStatus {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse_status(s: &str) -> Option<Self> {
         match s {
             "pending" => Some(TaskStatus::Pending),
             "in_progress" => Some(TaskStatus::InProgress),
@@ -81,7 +81,7 @@ impl sqlx::Encode<'_, sqlx::Sqlite> for TaskStatus {
 impl sqlx::Decode<'_, sqlx::Sqlite> for TaskStatus {
     fn decode(value: SqliteValueRef<'_>) -> Result<Self, sqlx::error::BoxDynError> {
         let s = <String as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
-        TaskStatus::from_str(&s)
+        TaskStatus::parse_status(&s)
             .ok_or_else(|| format!("invalid status: {}", s).into())
     }
 }
@@ -92,6 +92,6 @@ fn serialize_status<S: Serializer>(status: &TaskStatus, s: S) -> Result<S::Ok, S
 
 fn deserialize_status<'de, D: Deserializer<'de>>(d: D) -> Result<TaskStatus, D::Error> {
     let s = String::deserialize(d)?;
-    TaskStatus::from_str(&s)
+    TaskStatus::parse_status(&s)
         .ok_or_else(|| serde::de::Error::custom(format!("invalid status: {}", s)))
 }

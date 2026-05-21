@@ -36,6 +36,7 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 task-core = { path = "../task-core" }
 tokio-util = { version = "0.7", features = ["rt"] }
 ctrlc = "3"
+termsize = "0.1"
 
 [dev-dependencies]
 dotenv = { workspace = true }

@@ -17,6 +17,7 @@ use super::display::{
     format_dup_state_display, format_got_state_display, format_react_state_display,
     format_tot_state_display, truncate_display,
 };
+use super::panel_format;
 use crate::envelope::EnvelopeState;
 use loom::{RunCmd, RunOptions, StreamEvent};
 
@@ -39,18 +40,20 @@ fn completion_reply(result: loom::RunCompletion) -> (String, Option<String>, Run
     }
 }
 
-/// Prints agent profile info to stderr at startup.
+/// Prints agent profile info to stderr at startup (structured panel format).
 fn print_agent_banner(resolved: &Option<ResolvedAgent>) {
     match resolved {
         Some(ra) => {
-            let desc = ra
-                .description
-                .as_deref()
-                .map(|d| format!(" — {}", d))
-                .unwrap_or_default();
-            eprintln!("agent: {} ({}){}", ra.name, ra.source, desc);
+                eprintln!(
+                    "{}",
+                    panel_format::format_agent_line(
+                        &ra.name,
+                        &ra.source.to_string(),
+                        ra.description.as_deref(),
+                    )
+                );
         }
-        None => eprintln!("agent: (none)"),
+        None => eprintln!("{}", panel_format::format_panel_line("AGENT", "(none)")),
     }
 }
 
@@ -86,8 +89,9 @@ fn log_tools_used(tool_calls: &[ToolCall]) {
     if tool_calls.is_empty() {
         return;
     }
-    let names: Vec<&str> = tool_calls.iter().map(|tc| tc.name.as_str()).collect();
-    eprintln!("tools: {}", names.join(", "));
+    for tc in tool_calls {
+        eprintln!("{}", panel_format::format_tool_call(&tc.name, &tc.arguments));
+    }
 }
 
 /// Formats context limit for display (e.g., "128K" or "1.5M").
@@ -101,12 +105,12 @@ fn format_context_limit(limit: u32) -> String {
     }
 }
 
-/// Prints model name and context limit to stderr at startup.
+/// Prints current model name and context info to stderr at startup (structured panel format).
 async fn print_model_info(model: Option<&String>) {
     let model_name = match model {
         Some(m) if !m.is_empty() => m.as_str(),
         _ => {
-            eprintln!("model: (default)");
+            eprintln!("{}", panel_format::format_model_line("(default)", "unknown context"));
             return;
         }
     };
@@ -120,9 +124,11 @@ async fn print_model_info(model: Option<&String>) {
     match spec {
         Some(spec) => {
             eprintln!(
-                "model: {} ({} context)",
-                model_name,
-                format_context_limit(spec.context_limit)
+                "{}",
+                panel_format::format_model_line(
+                    model_name,
+                    &format!("{} context", format_context_limit(spec.context_limit)),
+                )
             );
         }
         None => {
@@ -131,7 +137,7 @@ async fn print_model_info(model: Option<&String>) {
                  The model may not be in the models.dev database, or there was a network error.",
                 model_name
             );
-            eprintln!("model: {} (context: unknown)", model_name);
+            eprintln!("{}", panel_format::format_model_line(model_name, "context: unknown"));
         }
     }
 }
@@ -263,6 +269,11 @@ pub async fn run_agent_wrapper(
         agent_display,
         total_prompt_tokens: 0,
         total_completion_tokens: 0,
+        in_thinking: false,
+        last_prefill_duration: None,
+        last_decode_duration: None,
+        spinner: None,
+        pending_tool_calls: Vec::new(),
     }));
 
     let state_clone = state.clone();
@@ -297,15 +308,23 @@ pub async fn run_agent_wrapper(
     }
     if let Ok(s) = state.lock() {
         let total_tokens = s.total_prompt_tokens as u64 + s.total_completion_tokens as u64;
+        let duration = duration;
         let secs = duration.as_secs_f64();
-        let tokens_per_sec = if secs > 0.0 {
+        let _tokens_per_sec = if secs > 0.0 {
             total_tokens as f64 / secs
         } else {
             0.0
         };
         eprintln!(
-            "LLM: {:.2}s, {:.0} tokens/s (prompt: {}, completion: {})",
-            secs, tokens_per_sec, s.total_prompt_tokens, s.total_completion_tokens
+            "{}",
+            panel_format::format_usage_line(
+                duration,
+                s.total_prompt_tokens,
+                s.total_completion_tokens,
+                s.last_prefill_duration,
+                s.last_decode_duration,
+                verbose,
+            )
         );
     }
     let (reply, reasoning_content, stop_reason) = completion_reply(result);
@@ -320,7 +339,8 @@ pub async fn run_agent_wrapper(
 
 fn print_stream_chunk(chunk: &loom::MessageChunk) {
     if chunk.kind == MessageChunkKind::Thinking {
-        eprint!("{}", chunk.content);
+        // Thinking content: dimmed on TTY, prefixed on pipe
+        eprint!("{}", panel_format::dim(&chunk.content));
         let _ = std::io::Write::flush(&mut std::io::stderr());
     } else {
         print!("{}", chunk.content);
@@ -338,27 +358,49 @@ fn on_event_react(
     match ev {
         StreamEvent::TaskStart { node_id, .. } => {
             if node_id == "think" {
-                eprintln!("Think");
+                // Finish previous spinner and create new one
+                if let Some(sp) = s.spinner.take() {
+                    sp.finish_box();
+                }
+                let label = if s.turn == 0 {
+                    "Thinking...".to_string()
+                } else {
+                    format!("Thinking... (turn {})", s.turn + 1)
+                };
+                s.spinner = Some(Box::new(super::spinner::Spinner::new(label)));
             }
             log_node_enter(s.last_node.as_deref(), node_id, verbose);
             s.last_node = Some(node_id.clone());
         }
         StreamEvent::Messages { chunk, .. } => {
+            if chunk.kind == MessageChunkKind::Thinking {
+                // Track that we've seen thinking content
+                s.in_thinking = true;
+            }
             if !s.reply_started {
+                // Finish spinner before first output
+                if let Some(sp) = s.spinner.take() {
+                    sp.finish_box();
+                }
                 if let Some(ref ad) = s.agent_display {
-                    eprintln!("AGENT: {}", ad);
+                    eprintln!("{}", panel_format::format_panel_line("AGENT", ad));
                 }
                 if output_timestamp {
                     print_reply_timestamp();
                 }
                 s.reply_started = true;
             }
+            // Print separator when transitioning from thinking to reply
+            if s.in_thinking && chunk.kind != MessageChunkKind::Thinking {
+                eprintln!("{}", panel_format::format_thinking_separator());
+                s.in_thinking = false;
+            }
             print_stream_chunk(chunk);
         }
-        StreamEvent::Updates { node_id, state, .. } => {
+        StreamEvent::Updates { node_id, state: react_state, .. } => {
             // Always show title generation result (non-verbose too)
             if node_id == "title" {
-                if let Some(ref title) = state.summary {
+                if let Some(ref title) = react_state.summary {
                     eprintln!("Session title: {}", title);
                 }
             }
@@ -373,12 +415,25 @@ fn on_event_react(
                     _ => format!("state after {}", node_id),
                 };
                 eprintln!("--- {} ---", label);
-                eprintln!("{}", format_react_state_display(state, display_max_len));
-                if node_id == "think" && state.tool_calls.is_empty() {
+                eprintln!("{}", format_react_state_display(react_state, display_max_len));
+                if node_id == "think" && react_state.tool_calls.is_empty() {
                     eprintln!("(think → END: tool_calls empty, LLM gave FINAL_ANSWER)");
                 }
-            } else if node_id == "think" && !state.tool_calls.is_empty() {
-                log_tools_used(&state.tool_calls);
+            } else if node_id == "think" && !react_state.tool_calls.is_empty() {
+                log_tools_used(&react_state.tool_calls);
+                // Update spinner with tool info
+                if let Some(ref mut sp) = s.spinner {
+                    if let Some(tc) = react_state.tool_calls.first() {
+                        sp.update(format!("Executing tool: {}", tc.name));
+                    }
+                }
+                s.pending_tool_calls = react_state.tool_calls.clone();
+            }
+            // Print DONE lines on observe
+            if node_id == "observe" {
+                for tc in s.pending_tool_calls.drain(..) {
+                    eprintln!("{}", panel_format::format_tool_done(&tc.name, &tc.arguments));
+                }
             }
         }
         StreamEvent::Usage {
@@ -391,36 +446,8 @@ fn on_event_react(
             s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
             s.total_completion_tokens =
                 s.total_completion_tokens.saturating_add(*completion_tokens);
-
-            match (prefill_duration, decode_duration) {
-                (Some(prefill), Some(decode)) => {
-                    let prefill_secs = prefill.as_secs_f64();
-                    let decode_secs = decode.as_secs_f64();
-                    let total_secs = prefill_secs + decode_secs;
-                    let prefill_rate = if prefill_secs > 0.0 {
-                        *prompt_tokens as f64 / prefill_secs
-                    } else {
-                        0.0
-                    };
-                    let decode_rate = if decode_secs > 0.0 {
-                        *completion_tokens as f64 / decode_secs
-                    } else {
-                        0.0
-                    };
-                    eprintln!(
-                        "\nLLM: {:.2}s | prefill: {}t / {:.2}s = {:.0} t/s | decode: {}t / {:.2}s = {:.0} t/s",
-                        total_secs,
-                        prompt_tokens, prefill_secs, prefill_rate,
-                        completion_tokens, decode_secs, decode_rate
-                    );
-                }
-                _ => {
-                    eprintln!(
-                        "\nLLM: prompt={}, completion={}",
-                        prompt_tokens, completion_tokens
-                    );
-                }
-            }
+            s.last_prefill_duration = *prefill_duration;
+            s.last_decode_duration = *decode_duration;
 
             tracing::info!(
                 prompt_tokens,
@@ -447,8 +474,12 @@ fn on_event_dup(
         }
         StreamEvent::Messages { chunk, .. } => {
             if !s.reply_started {
+                // Finish spinner before first output
+                if let Some(sp) = s.spinner.take() {
+                    sp.finish_box();
+                }
                 if let Some(ref ad) = s.agent_display {
-                    eprintln!("AGENT: {}", ad);
+                    eprintln!("{}", panel_format::format_panel_line("AGENT", ad));
                 }
                 if output_timestamp {
                     print_reply_timestamp();
@@ -483,17 +514,27 @@ fn on_event_dup(
                 s.turn += 1;
                 if !state.core.tool_calls.is_empty() {
                     log_tools_used(&state.core.tool_calls);
+                    if let Some(ref mut sp) = s.spinner {
+                        if let Some(tc) = state.core.tool_calls.first() {
+                            sp.update(format!("Executing tool: {}", tc.name));
+                        }
+                    }
                 }
             }
         }
         StreamEvent::Usage {
             prompt_tokens,
             completion_tokens,
+            prefill_duration,
+            decode_duration,
             ..
         } => {
             s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
             s.total_completion_tokens =
                 s.total_completion_tokens.saturating_add(*completion_tokens);
+            s.last_prefill_duration = *prefill_duration;
+            s.last_decode_duration = *decode_duration;
+
             tracing::info!(
                 prompt_tokens,
                 completion_tokens,
@@ -543,8 +584,12 @@ fn on_event_tot(
         }
         StreamEvent::Messages { chunk, .. } => {
             if !s.reply_started {
+                // Finish spinner before first output
+                if let Some(sp) = s.spinner.take() {
+                    sp.finish_box();
+                }
                 if let Some(ref ad) = s.agent_display {
-                    eprintln!("AGENT: {}", ad);
+                    eprintln!("{}", panel_format::format_panel_line("AGENT", ad));
                 }
                 if output_timestamp {
                     print_reply_timestamp();
@@ -571,11 +616,16 @@ fn on_event_tot(
         StreamEvent::Usage {
             prompt_tokens,
             completion_tokens,
+            prefill_duration,
+            decode_duration,
             ..
         } => {
             s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
             s.total_completion_tokens =
                 s.total_completion_tokens.saturating_add(*completion_tokens);
+            s.last_prefill_duration = *prefill_duration;
+            s.last_decode_duration = *decode_duration;
+
             tracing::info!(
                 prompt_tokens,
                 completion_tokens,
@@ -598,8 +648,19 @@ struct EventState {
     total_prompt_tokens: u32,
     /// Accumulated completion tokens from all StreamEvent::Usage in this run.
     total_completion_tokens: u32,
+    /// Whether we're currently in a thinking state (for separator on transition).
+    in_thinking: bool,
+    /// Last prefill duration (for unified usage display).
+    last_prefill_duration: Option<std::time::Duration>,
+    /// Last decode duration (for unified usage display).
+    last_decode_duration: Option<std::time::Duration>,
+    /// Active spinner (if any). Created on TaskStart, finished when streaming begins.
+    spinner: Option<Box<dyn super::spinner::SpinnerTrait>>,
+    /// Tool names that were called in the current turn (for DONE lines).
+    pending_tool_calls: Vec<ToolCall>,
 }
 
+/// Prints loaded tools info to stderr at startup (structured panel format).
 async fn print_loaded_tools(config: &loom::ReactBuildConfig) -> Result<(), RunError> {
     let ctx = build_react_run_context(config)
         .await
@@ -610,7 +671,7 @@ async fn print_loaded_tools(config: &loom::ReactBuildConfig) -> Result<(), RunEr
         ))
     })?;
     let names: Vec<&str> = tools.iter().map(|s| s.name.as_str()).collect();
-    eprintln!("loaded tools: {}", names.join(", "));
+    eprintln!("{}", panel_format::format_tools_line(&names));
     Ok(())
 }
 
@@ -694,11 +755,16 @@ fn on_event_got(
         StreamEvent::Usage {
             prompt_tokens,
             completion_tokens,
+            prefill_duration,
+            decode_duration,
             ..
         } => {
             s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
             s.total_completion_tokens =
                 s.total_completion_tokens.saturating_add(*completion_tokens);
+            s.last_prefill_duration = *prefill_duration;
+            s.last_decode_duration = *decode_duration;
+
             tracing::info!(
                 prompt_tokens,
                 completion_tokens,
@@ -801,6 +867,11 @@ mod tests {
             agent_display: None,
             total_prompt_tokens: 0,
             total_completion_tokens: 0,
+            in_thinking: false,
+            last_prefill_duration: None,
+            last_decode_duration: None,
+            spinner: None,
+            pending_tool_calls: Vec::new(),
         };
         on_event_react(
             &StreamEvent::TaskStart {
@@ -837,6 +908,11 @@ mod tests {
             agent_display: None,
             total_prompt_tokens: 0,
             total_completion_tokens: 0,
+            in_thinking: false,
+            last_prefill_duration: None,
+            last_decode_duration: None,
+            spinner: None,
+            pending_tool_calls: Vec::new(),
         };
 
         let dup_state = DupState {
@@ -980,6 +1056,11 @@ mod tests {
             agent_display: None,
             total_prompt_tokens: 0,
             total_completion_tokens: 0,
+            in_thinking: false,
+            last_prefill_duration: None,
+            last_decode_duration: None,
+            spinner: None,
+            pending_tool_calls: Vec::new(),
         };
         let react_with_tool = ReActState {
             tool_calls: vec![ToolCall {
@@ -1040,6 +1121,11 @@ mod tests {
             agent_display: None,
             total_prompt_tokens: 0,
             total_completion_tokens: 0,
+            in_thinking: false,
+            last_prefill_duration: None,
+            last_decode_duration: None,
+            spinner: None,
+            pending_tool_calls: Vec::new(),
         };
 
         on_event_tot(

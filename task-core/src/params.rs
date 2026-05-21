@@ -1,7 +1,7 @@
 use crate::models::TaskStatus;
 
 pub fn parse_status(s: &str) -> Result<TaskStatus, String> {
-    TaskStatus::from_str(s).ok_or_else(|| {
+    TaskStatus::parse_status(s).ok_or_else(|| {
         format!(
             "invalid status '{}'. Valid values: {}",
             s,
