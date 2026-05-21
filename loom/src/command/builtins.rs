@@ -34,7 +34,8 @@ pub fn execute(cmd: Command, state: &mut dyn ResetState) -> CommandResult {
         Command::Compact { .. }
         | Command::Summarize
         | Command::Models { .. }
-        | Command::ModelsUse { .. } => CommandResult::PassThrough,
+        | Command::ModelsUse { .. }
+        | Command::Goal { .. } => CommandResult::PassThrough,
     }
 }
 
@@ -91,7 +92,7 @@ where
 
             Ok(CommandResult::Reply(content))
         }
-        Command::Models { .. } | Command::ModelsUse { .. } => Ok(CommandResult::PassThrough),
+        Command::Models { .. } | Command::ModelsUse { .. } | Command::Goal { .. } => Ok(CommandResult::PassThrough),
     }
 }
 

@@ -30,6 +30,16 @@ pub fn parse(text: &str) -> Option<Command> {
                 None => Some(Command::Models { query: None }),
             }
         }
+        "/goal" => {
+            let description = trimmed
+                .strip_prefix("/goal")
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            match description {
+                Some(desc) => Some(Command::Goal { description: desc }),
+                None => None,
+            }
+        }
         _ => None,
     }
 }
@@ -80,6 +90,28 @@ mod tests {
                 model_id: "gpt-4o".into()
             })
         );
+    }
+
+    #[test]
+    fn parse_goal_with_description() {
+        assert_eq!(
+            parse("/goal fix the login bug"),
+            Some(Command::Goal {
+                description: "fix the login bug".into()
+            })
+        );
+        assert_eq!(
+            parse("/goal  migrate to Pydantic v2  "),
+            Some(Command::Goal {
+                description: "migrate to Pydantic v2".into()
+            })
+        );
+    }
+
+    #[test]
+    fn parse_goal_without_description_returns_none() {
+        assert_eq!(parse("/goal"), None);
+        assert_eq!(parse("/goal   "), None);
     }
 
     #[test]

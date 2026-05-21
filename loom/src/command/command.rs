@@ -7,6 +7,7 @@ pub enum Command {
     Summarize,
     Models { query: Option<String> },
     ModelsUse { model_id: String },
+    Goal { description: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

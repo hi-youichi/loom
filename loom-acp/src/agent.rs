@@ -652,6 +652,58 @@ impl LoomAcpAgent {
                         tracing::info!(session_id = %args.session_id, "Context cleared via /reset command");
                         return Ok(PromptResponse::new(StopReason::EndTurn));
                     }
+                    loom::command::Command::Goal { description } => {
+                        tracing::info!(
+                            session_id = %args.session_id,
+                            goal = %description,
+                            "Goal mode activated via /goal command"
+                        );
+                        let working_folder = entry
+                            .working_directory
+                            .clone()
+                            .unwrap_or_else(|| PathBuf::from(loom::DEFAULT_WORKING_FOLDER));
+
+                        let event_sender: Option<std::sync::Arc<dyn Fn(loom::AnyStreamEvent) + Send + Sync>> =
+                            self.session_update_tx.clone().map(|sender| {
+                                let session_id = args.session_id.clone();
+                                std::sync::Arc::new(move |ev: loom::AnyStreamEvent| {
+                                    let notifier = SessionNotifier::new(sender.clone(), session_id.clone());
+                                    notifier.try_send_event(&ev);
+                                }) as std::sync::Arc<dyn Fn(loom::AnyStreamEvent) + Send + Sync>
+                            });
+
+                        let cancel = tokio_util::sync::CancellationToken::new();
+                        // Store cancel token so session/cancel can abort it
+                        self.sessions.cancel_current_generation(&key);
+
+                        let result = crate::goal_runner::run_goal(
+                            description,
+                            working_folder,
+                            cancel,
+                            event_sender,
+                            Some(cancellation.clone()),
+                        ).await;
+
+                        match result {
+                            Ok(goal_result) => {
+                                tracing::info!(
+                                    session_id = %args.session_id,
+                                    task_id = %goal_result.task_id,
+                                    outcome = %goal_result.outcome,
+                                    "Goal finished"
+                                );
+                                return Ok(PromptResponse::new(StopReason::EndTurn));
+                            }
+                            Err(e) => {
+                                tracing::error!(
+                                    session_id = %args.session_id,
+                                    error = %e,
+                                    "Goal run failed"
+                                );
+                                return Ok(PromptResponse::new(StopReason::EndTurn));
+                            }
+                        }
+                    }
                     loom::command::Command::Models { .. }
                     | loom::command::Command::ModelsUse { .. } => {
                         // ACP handles models via SetSessionConfigOption, not here

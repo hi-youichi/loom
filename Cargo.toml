@@ -5,6 +5,7 @@ members = [
     "config",
     "model-spec-core",
     "loom-examples",
+    "loom-evolution",
     "cli",
     "serve",
     "stream-event",

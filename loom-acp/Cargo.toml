@@ -15,6 +15,7 @@ path = "src/lib.rs"
 
 [dependencies]
 loom = { path = "../loom" }
+task-core = { path = "../task-core" }
 config = { path = "../config", features = ["tracing-init"] }
 agent-client-protocol = { version = "0.11.1", features = ["unstable_boolean_config", "unstable_session_model", "unstable_session_fork", "unstable_message_id"] }
 async-trait = { workspace = true }
