@@ -310,7 +310,7 @@ pub(crate) struct GoalArgs {
     pub(crate) description: Option<String>,
 
     /// External coding tool to use: codex, claude, cursor, or a custom command
-    #[arg(short, long, value_name = "TOOL", default_value = "codex")]
+    #[arg(short, long, value_name = "TOOL", default_value = "loom")]
     pub(crate) tool: String,
 
     /// Resume a paused goal by task ID (prefix)
@@ -324,4 +324,8 @@ pub(crate) struct GoalArgs {
     /// Print verbose iteration info to stderr
     #[arg(long)]
     pub(crate) verbose: bool,
+
+    /// Override LLM model for goal turns (e.g. "gpt-4o", "zhipuai-coding-plan/glm-5.1")
+    #[arg(short('M'), long, value_name = "MODEL")]
+    pub(crate) model: Option<String>,
 }

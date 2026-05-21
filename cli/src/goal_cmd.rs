@@ -5,6 +5,7 @@ use crate::args::GoalArgs;
 use loom::goal_runner::{
     GoalOutcome, GoalRunner, LoomTool, ShellTool, generate_mcp_config, resume,
 };
+use loom::cli_run::RunCancellation;
 use task_core::TaskDb;
 use tokio_util::sync::CancellationToken;
 
@@ -20,15 +21,18 @@ pub(crate) async fn handle_goal_command(ga: &GoalArgs) -> Result<(), Box<dyn std
     let db_path = ensure_task_db()?;
     let db = Arc::new(TaskDb::open(&db_path).await?);
     let cancel = CancellationToken::new();
+    let run_cancellation = RunCancellation::new(0);
 
     let cancel_clone = cancel.clone();
+    let rc_clone = run_cancellation.clone();
     ctrlc::set_handler(move || {
         cancel_clone.cancel();
+        rc_clone.cancel();
     })?;
 
     if let Some(ref id) = ga.resume {
         eprintln!("resuming goal {}...", id);
-        let mut runner = resume(id, working_dir, db, cancel).await?;
+        let mut runner = resume(id, working_dir, db, cancel, Some(run_cancellation)).await?;
         print_task_id(runner.task_id());
         let outcome = runner.run().await;
         print_outcome(&outcome);
@@ -50,11 +54,16 @@ pub(crate) async fn handle_goal_command(ga: &GoalArgs) -> Result<(), Box<dyn std
     let tool: Box<dyn loom::goal_runner::CodingTool> = match ga.tool.as_str() {
         "loom" => {
             let mcp_config_path = write_mcp_config(&db_path, &working_dir)?;
-            Box::new(LoomTool::new(
+            let mut loom_tool = LoomTool::new(
                 "goal-session".to_string(),
                 working_dir.clone(),
                 mcp_config_path,
-            ))
+            )
+            .with_cancellation(run_cancellation.clone());
+            if let Some(ref model) = ga.model {
+                loom_tool = loom_tool.with_model(model.clone());
+            }
+            Box::new(loom_tool)
         }
         name => {
             let args = match name {

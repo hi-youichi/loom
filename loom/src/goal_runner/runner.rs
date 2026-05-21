@@ -94,6 +94,7 @@ impl GoalRunner {
             }
 
             let prompt = message::build_continuation_prompt(
+                &self.task_id,
                 &self.objective,
                 self.time_used_seconds,
             );
@@ -106,9 +107,23 @@ impl GoalRunner {
                 "executing goal turn"
             );
 
+            eprintln!("\n--- goal iteration {} | tool: {} | time: {}s ---",
+                self.iteration, self.tool.name(), self.time_used_seconds);
+
             match self.tool.execute(&prompt, &self.working_dir).await {
-                Ok(_turn_result) => {
+                Ok(turn_result) => {
                     self.consecutive_failures = 0;
+                    if let Some(ref reasoning) = turn_result.reasoning_content {
+                        if !reasoning.trim().is_empty() {
+                            eprintln!("[reasoning] {}", reasoning);
+                        }
+                    }
+                    if !turn_result.reply.trim().is_empty() {
+                        eprintln!("{}", turn_result.reply);
+                    }
+                    for tc in &turn_result.tool_calls_summary {
+                        eprintln!("[tool] {} -> {}", tc.tool_name, tc.result_preview);
+                    }
                 }
                 Err(ToolError::Aborted) => {
                     tracing::info!(session_id = %self.task_id, iteration = self.iteration, "tool aborted");
@@ -240,6 +255,18 @@ pub async fn resume(
     working_dir: PathBuf,
     db: Arc<TaskDb>,
     cancel: CancellationToken,
+    run_cancellation: Option<crate::cli_run::RunCancellation>,
+) -> Result<GoalRunner, GoalError> {
+    resume_with_event_sender(id, working_dir, db, cancel, run_cancellation, None).await
+}
+
+pub async fn resume_with_event_sender(
+    id: &str,
+    working_dir: PathBuf,
+    db: Arc<TaskDb>,
+    cancel: CancellationToken,
+    run_cancellation: Option<crate::cli_run::RunCancellation>,
+    event_sender: Option<Arc<dyn Fn(crate::cli_run::AnyStreamEvent) + Send + Sync>>,
 ) -> Result<GoalRunner, GoalError> {
     let updated = db
         .atomic_update_status(id, TaskStatus::Pending, TaskStatus::InProgress)
@@ -263,7 +290,7 @@ pub async fn resume(
         None => GoalMeta::default(),
     };
 
-    let tool: Box<dyn CodingTool> = resolve_tool(&meta.tool, db.path(), &working_dir)?;
+    let tool: Box<dyn CodingTool> = resolve_tool(&meta.tool, db.path(), &working_dir, &run_cancellation, &event_sender)?;
     let mcp_server = spawn_mcp_server(&db).ok();
 
     Ok(GoalRunner {
@@ -281,15 +308,28 @@ pub async fn resume(
     })
 }
 
-fn resolve_tool(tool_name: &str, db_path: &std::path::Path, working_dir: &std::path::Path) -> Result<Box<dyn CodingTool>, GoalError> {
+fn resolve_tool(
+    tool_name: &str,
+    db_path: &std::path::Path,
+    working_dir: &std::path::Path,
+    run_cancellation: &Option<crate::cli_run::RunCancellation>,
+    event_sender: &Option<Arc<dyn Fn(crate::cli_run::AnyStreamEvent) + Send + Sync>>,
+) -> Result<Box<dyn CodingTool>, GoalError> {
     match tool_name {
         "loom" => {
             let mcp_config_path = write_mcp_config(db_path, working_dir)?;
-            Ok(Box::new(super::tool::LoomTool::new(
+            let mut tool = super::tool::LoomTool::new(
                 "goal-session".to_string(),
                 working_dir.to_path_buf(),
                 mcp_config_path,
-            )))
+            );
+            if let Some(ref rc) = run_cancellation {
+                tool = tool.with_cancellation(rc.clone());
+            }
+            if let Some(ref sender) = event_sender {
+                tool = tool.with_event_sender(sender.clone());
+            }
+            Ok(Box::new(tool))
         }
         name => {
             let args = match name {

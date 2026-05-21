@@ -129,6 +129,7 @@ pub mod error;
 pub mod export;
 pub mod graph;
 pub mod goal_runner;
+pub mod stream_display;
 pub mod helve;
 mod http_retry;
 #[cfg(test)]

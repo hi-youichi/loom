@@ -71,6 +71,7 @@ mod tests {
             working_dir,
             db,
             cancel,
+            None,
         ).await;
 
         assert!(result.is_err());

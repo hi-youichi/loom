@@ -1,7 +1,10 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+
+use crate::cli_run::AnyStreamEvent;
 
 use super::state::{ToolError, TurnResult};
 
@@ -91,6 +94,7 @@ pub struct LoomTool {
     api_key: Option<String>,
     provider_type: Option<String>,
     agent: Option<String>,
+    any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
 }
 
 impl LoomTool {
@@ -111,6 +115,7 @@ impl LoomTool {
             api_key: None,
             provider_type: None,
             agent: None,
+            any_stream_event_sender: None,
         }
     }
 
@@ -133,6 +138,14 @@ impl LoomTool {
         self.agent = Some(a);
         self
     }
+
+    pub fn with_event_sender(
+        mut self,
+        sender: Arc<dyn Fn(AnyStreamEvent) + Send + Sync>,
+    ) -> Self {
+        self.any_stream_event_sender = Some(sender);
+        self
+    }
 }
 
 #[async_trait]
@@ -140,6 +153,23 @@ impl CodingTool for LoomTool {
     async fn execute(&self, prompt: &str, working_dir: &Path) -> Result<TurnResult, ToolError> {
         use crate::cli_run::{RunCmd, RunCompletion, RunOptions};
         use crate::message::UserContent;
+
+        let on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>> =
+            if let Some(ref sender) = self.any_stream_event_sender {
+                let sender = sender.clone();
+                Some(Box::new(move |ev: AnyStreamEvent| {
+                    sender(ev);
+                }))
+            } else {
+                Some(crate::stream_display::create_stdio_event_callback(
+                    crate::stream_display::StreamDisplayConfig {
+                        verbose: self.verbose,
+                        display_max_len: 10000,
+                        output_timestamp: false,
+                        agent_display: None,
+                    },
+                ))
+            };
 
         let opts = RunOptions {
             message: UserContent::Text(prompt.to_string()),
@@ -160,7 +190,7 @@ impl CodingTool for LoomTool {
             thread_id: Some(self.session_id.clone()),
             output_timestamp: false,
             dry_run: false,
-            any_stream_event_sender: None,
+            any_stream_event_sender: self.any_stream_event_sender.clone(),
             bash_executor: None,
             extra_tools: None,
             acp_session_id: None,
@@ -168,7 +198,7 @@ impl CodingTool for LoomTool {
             chat_id: None,
         };
 
-        let result = crate::cli_run::run_agent_with_options(&opts, &RunCmd::React, None)
+        let result = crate::cli_run::run_agent_with_options(&opts, &RunCmd::React, on_event)
             .await
             .map_err(|e| ToolError::ExecutionFailed(format!("loom agent error: {}", e)))?;
 
