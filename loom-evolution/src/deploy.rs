@@ -10,6 +10,15 @@ pub struct RunStore {
     base_dir: PathBuf,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RunSummary {
+    pub skill_name: String,
+    pub timestamp: String,
+    pub baseline_score: f64,
+    pub evolved_score: f64,
+    pub accepted: bool,
+}
+
 impl RunStore {
     pub fn new(base_dir: &Path) -> Self {
         Self {
@@ -102,6 +111,102 @@ impl RunStore {
         backups.sort();
         backups.reverse(); // Most recent first
         Ok(backups)
+    }
+
+    pub fn default_path() -> PathBuf {
+        let home = std::env::var("LOOM_HOME")
+            .ok()
+            .or_else(|| std::env::var("HOME").ok().map(|h| format!("{}/.loom", h)))
+            .unwrap_or_else(|| "~/.loom".to_string());
+        PathBuf::from(home).join("data").join("evolution")
+    }
+
+    pub fn list_recent(&self, limit: usize) -> Result<Vec<RunSummary>, DeployError> {
+        let runs_dir = self.base_dir.join("runs");
+        if !runs_dir.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut summaries = Vec::new();
+        for skill_entry in fs::read_dir(&runs_dir)?.filter_map(|e| e.ok()) {
+            if !skill_entry.file_type()?.is_dir() {
+                continue;
+            }
+            for run_entry in fs::read_dir(skill_entry.path())?.filter_map(|e| e.ok()) {
+                let metrics_path = run_entry.path().join("metrics.json");
+                if let Ok(data) = fs::read_to_string(&metrics_path) {
+                    if let Ok(result) = serde_json::from_str::<EvolutionResult>(&data) {
+                        summaries.push(RunSummary {
+                            skill_name: result.skill_name.clone(),
+                            timestamp: result.timestamp.to_rfc3339(),
+                            baseline_score: result.baseline_score,
+                            evolved_score: result.evolved_score,
+                            accepted: result.accepted,
+                        });
+                    }
+                }
+            }
+        }
+
+        summaries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        summaries.truncate(limit);
+        Ok(summaries)
+    }
+
+    pub fn load_latest(&self, skill_name: &str) -> Result<Option<EvolutionResult>, DeployError> {
+        let runs_dir = self.base_dir.join("runs").join(skill_name);
+        if !runs_dir.exists() {
+            return Ok(None);
+        }
+
+        let mut entries: Vec<String> = fs::read_dir(&runs_dir)?
+            .filter_map(|e| e.ok())
+            .filter_map(|e| e.file_name().to_str().map(|s| s.to_string()))
+            .collect();
+        entries.sort();
+        entries.reverse();
+
+        for name in &entries {
+            let metrics_path = runs_dir.join(name).join("metrics.json");
+            if let Ok(data) = fs::read_to_string(&metrics_path) {
+                if let Ok(result) = serde_json::from_str::<EvolutionResult>(&data) {
+                    return Ok(Some(result));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn accept(&self, skill_name: &str) -> Result<(), DeployError> {
+        if let Some(mut result) = self.load_latest(skill_name)? {
+            result.accepted = true;
+            let run_dir = self.base_dir
+                .join("runs")
+                .join(skill_name)
+                .join(result.timestamp.format("%Y%m%d_%H%M%S").to_string());
+            if run_dir.exists() {
+                let metrics_path = run_dir.join("metrics.json");
+                let data = serde_json::to_string_pretty(&result)?;
+                fs::write(&metrics_path, data)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn reject(&self, skill_name: &str) -> Result<(), DeployError> {
+        if let Some(mut result) = self.load_latest(skill_name)? {
+            result.accepted = false;
+            let run_dir = self.base_dir
+                .join("runs")
+                .join(skill_name)
+                .join(result.timestamp.format("%Y%m%d_%H%M%S").to_string());
+            if run_dir.exists() {
+                let metrics_path = run_dir.join("metrics.json");
+                let data = serde_json::to_string_pretty(&result)?;
+                fs::write(&metrics_path, data)?;
+            }
+        }
+        Ok(())
     }
 
     /// Load a backup by version string (timestamp).

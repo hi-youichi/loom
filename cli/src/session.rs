@@ -286,6 +286,92 @@ impl SessionManager {
         Ok(())
     }
 
+    pub fn list_sessions_since(
+        &self,
+        since: DateTime<Utc>,
+    ) -> Result<Vec<SessionInfo>, String> {
+        let since_ms = since.timestamp_millis();
+        let all = self.list_sessions()?;
+        Ok(all
+            .into_iter()
+            .filter(|s| {
+                s.last_updated
+                    .map(|t| t.timestamp_millis() >= since_ms)
+                    .unwrap_or(false)
+            })
+            .collect())
+    }
+
+    pub fn search_sessions(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<SessionInfo>, String> {
+        let conn = rusqlite::Connection::open(&self.db_path)
+            .map_err(|e| format!("Failed to open database: {}", e))?;
+
+        let query_lower = query.to_lowercase();
+
+        let mut stmt = conn
+            .prepare(
+                r#"
+            SELECT thread_id
+            FROM checkpoints
+            ORDER BY metadata_created_at DESC
+            "#,
+            )
+            .map_err(|e| format!("Failed to prepare statement: {}", e))?;
+
+        let thread_ids: Vec<String> = stmt
+            .query_map([], |row| row.get(0))
+            .map_err(|e| format!("Failed to query: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        let mut matched = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for thread_id in &thread_ids {
+            if matched.len() >= limit {
+                break;
+            }
+            if seen.contains(thread_id) {
+                continue;
+            }
+            seen.insert(thread_id.clone());
+
+            let payloads: Vec<Vec<u8>> = conn
+                .prepare("SELECT payload FROM checkpoints WHERE thread_id = ?1 ORDER BY metadata_created_at DESC LIMIT 3")
+                .and_then(|mut s| {
+                    s.query_map([thread_id], |row| row.get(0))
+                        .map(|rows| rows.filter_map(|r| r.ok()).collect())
+                })
+                .unwrap_or_default();
+
+            let found = payloads.iter().any(|data| {
+                serde_json::from_slice::<loom::state::ReActState>(data)
+                    .map(|state| {
+                        state.messages.iter().any(|m| match m {
+                            loom::message::Message::System(s) => s.to_lowercase().contains(&query_lower),
+                            loom::message::Message::User(uc) => uc.as_text().to_lowercase().contains(&query_lower),
+                            loom::message::Message::Assistant(a) => a.content.to_lowercase().contains(&query_lower),
+                            loom::message::Message::Tool { content, .. } => {
+                                content.as_text().map(|t| t.to_lowercase().contains(&query_lower)).unwrap_or(false)
+                            }
+                        })
+                    })
+                    .unwrap_or(false)
+            });
+
+            if found {
+                if let Ok(Some(detail)) = self.show_session(thread_id) {
+                    matched.push(detail.info);
+                }
+            }
+        }
+
+        Ok(matched)
+    }
+
     pub fn cat_session(&self, session_id: &str) -> Result<Vec<stream_event::CodexEvent>, String> {
         let conn = rusqlite::Connection::open(&self.db_path)
             .map_err(|e| format!("Failed to open database: {}", e))?;

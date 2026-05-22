@@ -82,8 +82,8 @@ fn truncate_to_char_boundary(s: &str, max_bytes: usize) -> &str {
 
 /// Formats a tool call line: `_CALL  tool_name: args_summary`
 pub fn format_tool_call(tool_name: &str, args_summary: &str) -> String {
-    let args = if args_summary.len() > 60 {
-        format!("{}...", truncate_to_char_boundary(args_summary, 57))
+    let args = if args_summary.len() > 80 {
+        format!("{}…", truncate_to_char_boundary(args_summary, 77))
     } else {
         args_summary.to_string()
     };
@@ -91,14 +91,23 @@ pub fn format_tool_call(tool_name: &str, args_summary: &str) -> String {
     format_panel_line("CALL", &msg)
 }
 
-/// Formats a tool completion line: `_DONE  tool_name: args_summary ✓`
-pub fn format_tool_done(tool_name: &str, args_summary: &str) -> String {
-    let args = if args_summary.len() > 60 {
-        format!("{}...", truncate_to_char_boundary(args_summary, 57))
-    } else {
-        args_summary.to_string()
+/// Formats a tool completion line: `_DONE  tool_name  result_summary (X.Xs) ✓`
+///
+/// In the new lean UX, DONE shows the tool name + result summary + timing.
+/// If timing is None, just shows tool name + result summary.
+pub fn format_tool_done(tool_name: &str, result_summary: &str, elapsed: Option<Duration>) -> String {
+    let timing = match elapsed {
+        Some(d) => format!(" {}", crate::stream_display::tool_summary::format_elapsed(d)),
+        None => String::new(),
     };
-    let msg = format!("{}: {} {}", tool_name, args, green("✓"));
+    let summary = if result_summary.is_empty() {
+        String::new()
+    } else if result_summary.len() > 60 {
+        format!(" {}", &truncate_to_char_boundary(result_summary, 57))
+    } else {
+        format!(" {}", result_summary)
+    };
+    let msg = format!("{}{}{} {}", tool_name, summary, timing, green("✓"));
     format_panel_line("DONE", &msg)
 }
 
@@ -235,7 +244,7 @@ mod tests {
 
     #[test]
     fn format_tool_done_contains_checkmark() {
-        let line = format_tool_done("read", "src/main.rs");
+        let line = format_tool_done("read", "3 lines", None);
         assert!(line.contains("✓"));
     }
 
@@ -243,7 +252,7 @@ mod tests {
     fn format_tool_call_truncates_long_args() {
         let long_args: String = "x".repeat(100);
         let line = format_tool_call("bash", &long_args);
-        assert!(line.contains("..."));
+        assert!(line.contains("…"));
         assert!(line.len() < 120);
     }
 

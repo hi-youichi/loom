@@ -8,6 +8,8 @@ pub enum Command {
     Models { query: Option<String> },
     ModelsUse { model_id: String },
     Goal { description: String },
+    /// Trigger a background review of the current session to extract skills and memory.
+    ReviewSkill { scope: Option<String> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

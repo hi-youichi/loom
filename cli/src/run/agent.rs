@@ -90,7 +90,8 @@ fn log_tools_used(tool_calls: &[ToolCall]) {
         return;
     }
     for tc in tool_calls {
-        eprintln!("{}", panel_format::format_tool_call(&tc.name, &tc.arguments));
+        let summary = loom::stream_display::format_call_summary(&tc.name, &tc.arguments);
+        eprintln!("{}", panel_format::format_tool_call(&tc.name, &summary));
     }
 }
 
@@ -274,6 +275,7 @@ pub async fn run_agent_wrapper(
         last_decode_duration: None,
         spinner: None,
         pending_tool_calls: Vec::new(),
+        pending_tool_start: None,
     }));
 
     let state_clone = state.clone();
@@ -429,12 +431,48 @@ fn on_event_react(
                     }
                 }
                 s.pending_tool_calls = react_state.tool_calls.clone();
+                s.pending_tool_start = Some(std::time::Instant::now());
             }
-            // Print DONE lines on observe
+            // Print PREVIEW/DIFF and DONE lines on observe
             if node_id == "observe" {
+                let elapsed = s.pending_tool_start.map(|t| t.elapsed());
                 for tc in s.pending_tool_calls.drain(..) {
-                    eprintln!("{}", panel_format::format_tool_done(&tc.name, &tc.arguments));
+                    // Find matching tool result for PREVIEW/DIFF
+                    let result_text = loom::stream_display::find_tool_result(
+                        &react_state.tool_results, &tc.name, &tc.id,
+                    );
+
+                    // Show PREVIEW for read/glob/grep/todo tools
+                    if let Some(ref result) = result_text {
+                        if let Some(preview) = loom::stream_display::format_preview(
+                            &tc.name, &tc.arguments, result, false,
+                        ) {
+                            eprintln!("{}", preview);
+                        }
+                    }
+
+                    // Show DIFF for edit/multiedit tools
+                    if let Some(ref result) = result_text {
+                        if let Some(diff) = loom::stream_display::format_diff(
+                            &tc.name, &tc.arguments, result, false,
+                        ) {
+                            eprintln!("{}", diff);
+                        }
+                    }
+
+                    // DONE line with smart summary
+                    let done_summary = match result_text {
+                        Some(ref result) => {
+                            let is_error = loom::stream_display::find_tool_result_error(
+                                &react_state.tool_results, &tc.name, &tc.id,
+                            );
+                            loom::stream_display::format_done_summary(&tc.name, result, is_error)
+                        }
+                        None => loom::stream_display::format_call_summary(&tc.name, &tc.arguments),
+                    };
+                    eprintln!("{}", panel_format::format_tool_done(&tc.name, &done_summary, elapsed));
                 }
+                s.pending_tool_start = None;
             }
         }
         StreamEvent::Usage {
@@ -659,6 +697,8 @@ struct EventState {
     spinner: Option<Box<dyn super::spinner::SpinnerTrait>>,
     /// Tool names that were called in the current turn (for DONE lines).
     pending_tool_calls: Vec<ToolCall>,
+    /// Time when pending_tool_calls were received (for elapsed timing).
+    pending_tool_start: Option<std::time::Instant>,
 }
 
 /// Prints loaded tools info to stderr at startup (structured panel format).
@@ -873,6 +913,7 @@ mod tests {
             last_decode_duration: None,
             spinner: None,
             pending_tool_calls: Vec::new(),
+            pending_tool_start: None,
         };
         on_event_react(
             &StreamEvent::TaskStart {
@@ -914,6 +955,7 @@ mod tests {
             last_decode_duration: None,
             spinner: None,
             pending_tool_calls: Vec::new(),
+            pending_tool_start: None,
         };
 
         let dup_state = DupState {
@@ -1062,6 +1104,7 @@ mod tests {
             last_decode_duration: None,
             spinner: None,
             pending_tool_calls: Vec::new(),
+            pending_tool_start: None,
         };
         let react_with_tool = ReActState {
             tool_calls: vec![ToolCall {
@@ -1127,6 +1170,7 @@ mod tests {
             last_decode_duration: None,
             spinner: None,
             pending_tool_calls: Vec::new(),
+            pending_tool_start: None,
         };
 
         on_event_tot(

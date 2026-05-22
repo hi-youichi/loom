@@ -119,6 +119,14 @@ pub(crate) enum Command {
     Agent(AgentArgs),
     /// Run autonomous goal loop with an external coding tool
     Goal(GoalArgs),
+    /// Manage skills (list, show, create, edit, delete, evolve)
+    Skills(SkillsArgs),
+    /// Run and manage skill evolution
+    Evolve(EvolveArgs),
+    /// Manage skill lifecycle (stale detection, archiving)
+    Curator(CuratorCmdArgs),
+    /// View and edit agent memory (user preferences, project facts)
+    Memory(MemoryCmdArgs),
 }
 
 #[derive(clap::Args, Debug, Clone)]
@@ -328,4 +336,92 @@ pub(crate) struct GoalArgs {
     /// Override LLM model for goal turns (e.g. "gpt-4o", "zhipuai-coding-plan/glm-5.1")
     #[arg(short('M'), long, value_name = "MODEL")]
     pub(crate) model: Option<String>,
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct SkillsArgs {
+    #[command(subcommand)]
+    pub(crate) command: SkillsCommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub(crate) enum SkillsCommand {
+    /// List all skills
+    List,
+    /// Show skill details
+    Show { name: String },
+    /// Create a new skill
+    Create {
+        name: String,
+        #[arg(long, value_name = "DESC")]
+        description: Option<String>,
+        #[arg(long = "trigger", value_name = "KW")]
+        triggers: Vec<String>,
+    },
+    /// Edit an existing skill (opens $EDITOR)
+    Edit { name: String },
+    /// Delete a skill
+    Delete { name: String },
+    /// Evolve a skill using GEPA optimizer
+    Evolve {
+        name: String,
+        #[arg(long, default_value = "synthetic")]
+        source: String,
+        #[arg(long, default_value = "5")]
+        iterations: u32,
+        #[arg(long, value_name = "COUNT")]
+        samples: Option<usize>,
+    },
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct EvolveArgs {
+    #[command(subcommand)]
+    pub(crate) command: EvolveCommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub(crate) enum EvolveCommand {
+    /// Run evolution for all eligible skills
+    Run,
+    /// Show evolution history
+    Status,
+    /// Compare baseline vs evolved skill
+    Compare { name: String },
+    /// Accept evolved result
+    Accept { name: String },
+    /// Reject evolved result
+    Reject { name: String },
+    /// List backup versions
+    Backups { name: String },
+    /// Rollback to a specific version
+    Rollback { name: String, #[arg(long, value_name = "VER")] version: Option<String> },
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct CuratorCmdArgs {
+    /// Dry run: report but don't modify
+    #[arg(long)]
+    pub(crate) dry_run: bool,
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct MemoryCmdArgs {
+    #[command(subcommand)]
+    pub(crate) command: MemoryCommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub(crate) enum MemoryCommand {
+    /// Show all memory files
+    Show,
+    /// Edit a memory file (opens $EDITOR)
+    Edit {
+        #[arg(value_name = "FILE")]
+        file: String,
+    },
+    /// Search memory for a keyword
+    Search {
+        query: String,
+    },
 }

@@ -37,6 +37,15 @@ pub fn parse(text: &str) -> Option<Command> {
                 .filter(|s| !s.is_empty());
             description.map(|desc| Command::Goal { description: desc })
         }
+        "/review-skill" | "/review-skills" | "/rs" => {
+            let scope = trimmed
+                .strip_prefix("/review-skill")
+                .or_else(|| trimmed.strip_prefix("/review-skills"))
+                .or_else(|| trimmed.strip_prefix("/rs"))
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            Some(Command::ReviewSkill { scope })
+        }
         _ => None,
     }
 }

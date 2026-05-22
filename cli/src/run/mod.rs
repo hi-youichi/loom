@@ -2,8 +2,12 @@
 
 mod agent;
 mod contract;
+pub mod curator;
 mod display;
+pub mod memory;
 pub mod panel_format;
+pub mod review;
+pub mod skill_registry;
 pub mod spinner;
 
 pub use agent::{

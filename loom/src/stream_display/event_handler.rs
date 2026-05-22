@@ -28,10 +28,14 @@ pub struct EventState {
     pub last_prefill_duration: Option<std::time::Duration>,
     pub last_decode_duration: Option<std::time::Duration>,
     pub pending_tool_calls: Vec<ToolCall>,
+    /// Time when pending_tool_calls were received (for elapsed timing).
+    pub pending_tool_start: Option<std::time::Instant>,
     /// Active spinner (if any). Created on TaskStart, finished when streaming begins.
     pub spinner: Option<Box<dyn SpinnerTrait>>,
     /// Whether to use animated spinners.
     pub use_spinner: bool,
+    /// Whether to use compact mode (hide PREVIEW/DIFF).
+    pub compact: bool,
 }
 
 impl EventState {
@@ -47,8 +51,10 @@ impl EventState {
             last_prefill_duration: None,
             last_decode_duration: None,
             pending_tool_calls: Vec::new(),
+            pending_tool_start: None,
             spinner: None,
             use_spinner,
+            compact: false,
         }
     }
 
@@ -109,7 +115,8 @@ pub fn log_tools_used(tool_calls: &[ToolCall]) {
         return;
     }
     for tc in tool_calls {
-        eprintln!("{}", panel_format::format_tool_call(&tc.name, &tc.arguments));
+        let summary = crate::stream_display::tool_summary::format_call_summary(&tc.name, &tc.arguments);
+        eprintln!("{}", panel_format::format_tool_call(&tc.name, &summary));
     }
 }
 
@@ -127,11 +134,10 @@ fn handle_messages(s: &mut EventState, chunk: &MessageChunk, output_timestamp: b
     if chunk.kind == MessageChunkKind::Thinking {
         s.in_thinking = true;
     }
+    if let Some(sp) = s.spinner.take() {
+        sp.finish_box();
+    }
     if !s.reply_started {
-        // Finish spinner before first output
-        if let Some(sp) = s.spinner.take() {
-            sp.finish_box();
-        }
         if let Some(ref ad) = s.agent_display {
             eprintln!("{}", panel_format::format_panel_line("AGENT", ad));
         }
@@ -243,11 +249,44 @@ pub fn on_event_react(
                     }
                 }
                 s.pending_tool_calls = state.tool_calls.clone();
+                s.pending_tool_start = Some(std::time::Instant::now());
             }
             if node_id == "observe" {
+                let elapsed = s.pending_tool_start.map(|t| t.elapsed());
+                let compact = s.compact;
                 for tc in s.pending_tool_calls.drain(..) {
-                    eprintln!("{}", panel_format::format_tool_done(&tc.name, &tc.arguments));
+                    // Find matching tool result for PREVIEW/DIFF
+                    let result_text = find_tool_result(&state.tool_results, &tc.name, &tc.id);
+                    
+                    // Show PREVIEW for read/glob/grep/todo tools
+                    if let Some(ref result) = result_text {
+                        if let Some(preview) = crate::stream_display::tool_preview::format_preview(
+                            &tc.name, &tc.arguments, result, compact,
+                        ) {
+                            eprintln!("{}", preview);
+                        }
+                    }
+                    
+                    // Show DIFF for edit/multiedit tools
+                    if let Some(ref result) = result_text {
+                        if let Some(diff) = crate::stream_display::tool_preview::format_diff(
+                            &tc.name, &tc.arguments, result, compact,
+                        ) {
+                            eprintln!("{}", diff);
+                        }
+                    }
+                    
+                    // DONE line with smart summary
+                    let done_summary = match result_text {
+                        Some(ref result) => {
+                            let is_error = find_tool_result_error(&state.tool_results, &tc.name, &tc.id);
+                            crate::stream_display::tool_summary::format_done_summary(&tc.name, result, is_error)
+                        }
+                        None => crate::stream_display::tool_summary::format_call_summary(&tc.name, &tc.arguments),
+                    };
+                    eprintln!("{}", panel_format::format_tool_done(&tc.name, &done_summary, elapsed));
                 }
+                s.pending_tool_start = None;
             }
         }
         StreamEvent::Usage {
@@ -472,4 +511,42 @@ pub fn on_event_got(
         }
         _ => {}
     }
+}
+
+
+// ── Tool result helpers ──────────────────────────────────────────
+
+use crate::state::ToolResult;
+
+/// Find the tool result text matching a tool call by name and/or id.
+pub fn find_tool_result(results: &[ToolResult], tool_name: &str, call_id: &Option<String>) -> Option<String> {
+    // Try matching by id first
+    if let Some(ref id) = call_id {
+        if let Some(tr) = results.iter().find(|r| r.call_id.as_deref() == Some(id.as_str())) {
+            return Some(tr.observation_text.clone().unwrap_or_else(|| tr.content.clone()));
+        }
+    }
+    // Fallback: match by name
+    if let Some(tr) = results.iter().find(|r| r.name.as_deref() == Some(tool_name)) {
+        return Some(tr.observation_text.clone().unwrap_or_else(|| tr.content.clone()));
+    }
+    // Last resort: return first result if only one
+    if results.len() == 1 {
+        let tr = &results[0];
+        return Some(tr.observation_text.clone().unwrap_or_else(|| tr.content.clone()));
+    }
+    None
+}
+
+/// Check if a tool result is an error.
+pub fn find_tool_result_error(results: &[ToolResult], tool_name: &str, call_id: &Option<String>) -> bool {
+    if let Some(ref id) = call_id {
+        if let Some(tr) = results.iter().find(|r| r.call_id.as_deref() == Some(id.as_str())) {
+            return tr.is_error;
+        }
+    }
+    if let Some(tr) = results.iter().find(|r| r.name.as_deref() == Some(tool_name)) {
+        return tr.is_error;
+    }
+    false
 }

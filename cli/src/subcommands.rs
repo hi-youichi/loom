@@ -3,8 +3,9 @@
 use cli::{cli_list_models, cli_list_tools, cli_show_tool, ToolShowFormat};
 
 use crate::args::{
-    AgentArgs, AgentCommand, Args, ExportArgs, McpArgs, McpCommand, ModelsArgs,
-    ModelsCommand, ToolArgs, ToolCommand,
+    AgentArgs, AgentCommand, Args, CuratorCmdArgs, EvolveArgs, EvolveCommand, ExportArgs, McpArgs,
+    McpCommand, MemoryCmdArgs, MemoryCommand, ModelsArgs, ModelsCommand, SkillsArgs,
+    SkillsCommand, ToolArgs, ToolCommand,
 };
 use loom::profile_convert::ExportFormat;
 use crate::mcp_manager::{AddMcpArgs, EditMcpArgs, McpManager, ServerDetail, ServerInfo};
@@ -290,5 +291,264 @@ fn handle_agent_export(export_args: &ExportArgs) -> Result<(), Box<dyn std::erro
         }
     }
 
+    Ok(())
+}
+
+pub(crate) fn handle_skills_command(
+    skills_args: &SkillsArgs,
+    json: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use cli::run::skill_registry::{SkillRegistry, Source, SkillContent, Lifecycle};
+
+    let registry = SkillRegistry::new(&SkillRegistry::default_path());
+
+    match &skills_args.command {
+        SkillsCommand::List => {
+            let skills = registry.list()?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&skills)?);
+            } else if skills.is_empty() {
+                println!("No skills found.");
+            } else {
+                println!("Skills:");
+                for s in &skills {
+                    let src = match s.source {
+                        Source::Auto => "[auto]",
+                        Source::Manual => "[manual]",
+                        Source::Evolved => "[evolved]",
+                    };
+                    let lc = match s.lifecycle {
+                        Lifecycle::Active => "",
+                        Lifecycle::Stale => " [stale]",
+                        Lifecycle::Archived => " [archived]",
+                    };
+                    println!("  • {} {}{} — {}", s.name, src, lc, s.description);
+                }
+            }
+        }
+        SkillsCommand::Show { name } => {
+            let skill = registry.load(name)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&skill)?);
+            } else {
+                println!("Skill: {}", skill.name);
+                println!("{}", "═".repeat(60));
+                println!("Description: {}", skill.description);
+                println!("Source: {:?}", skill.source);
+                println!("Lifecycle: {:?}", skill.lifecycle);
+                println!("Triggers: {}", skill.triggers.join(", "));
+                println!();
+                println!("{}", skill.body);
+            }
+        }
+        SkillsCommand::Create { name, description, triggers } => {
+            let skill = SkillContent {
+                name: name.clone(),
+                description: description.clone().unwrap_or_default(),
+                triggers: triggers.clone(),
+                lifecycle: Lifecycle::Active,
+                source: Source::Manual,
+                body: String::new(),
+                raw: String::new(),
+            };
+            registry.save(name, &skill)?;
+            println!("Created skill: {}", name);
+        }
+        SkillsCommand::Edit { name } => {
+            let skill = registry.load(name)?;
+            let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+            let tmp_dir = std::env::temp_dir();
+            let tmp_path = tmp_dir.join(format!("loom-skill-{}.md", name));
+            std::fs::write(&tmp_path, &skill.raw)?;
+            let status = std::process::Command::new(&editor).arg(&tmp_path).status()?;
+            if status.success() {
+                let edited = std::fs::read_to_string(&tmp_path)?;
+                let mut updated = skill.clone();
+                updated.raw = edited;
+                registry.save(name, &updated)?;
+                println!("Updated skill: {}", name);
+            }
+            let _ = std::fs::remove_file(&tmp_path);
+        }
+        SkillsCommand::Delete { name } => {
+            registry.delete(name)?;
+            println!("Deleted skill: {}", name);
+        }
+        SkillsCommand::Evolve { name, source, iterations, samples } => {
+            println!("Evolution of '{}' requires LLM connection.", name);
+            println!("Source: {}, Iterations: {}, Samples: {:?}", source, iterations, samples);
+            println!("Use 'loom evolve run' with proper LLM configuration.");
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn handle_evolve_command(
+    evolve_args: &EvolveArgs,
+    json: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let _registry = cli::run::skill_registry::SkillRegistry::new(
+        &cli::run::skill_registry::SkillRegistry::default_path()
+    );
+    let run_store_path = loom_evolution::RunStore::default_path();
+
+    match &evolve_args.command {
+        EvolveCommand::Run => {
+            println!("Running evolution for all eligible skills...");
+            println!("RunStore: {}", run_store_path.display());
+        }
+        EvolveCommand::Status => {
+            let store = loom_evolution::RunStore::new(&run_store_path);
+            let runs = store.list_recent(20)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&runs)?);
+            } else if runs.is_empty() {
+                println!("No evolution runs found.");
+            } else {
+                println!("Recent evolution runs:");
+                for run in &runs {
+                    println!("  {} | {} | score: {:.3} -> {:.3} | {}",
+                        run.skill_name, run.timestamp, run.baseline_score, run.evolved_score,
+                        if run.accepted { "accepted" } else { "pending" }
+                    );
+                }
+            }
+        }
+        EvolveCommand::Compare { name } => {
+            let store = loom_evolution::RunStore::new(&run_store_path);
+            match store.load_latest(name)? {
+                Some(result) => {
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&result)?);
+                    } else {
+                        println!("Evolved content for '{}':", name);
+                        println!("{}", "─".repeat(60));
+                        println!("{}", result.evolved_content);
+                    }
+                }
+                None => println!("No evolution result found for '{}'.", name),
+            }
+        }
+        EvolveCommand::Accept { name } => {
+            let store = loom_evolution::RunStore::new(&run_store_path);
+            store.accept(name)?;
+            println!("Accepted evolved result for '{}'.", name);
+        }
+        EvolveCommand::Reject { name } => {
+            let store = loom_evolution::RunStore::new(&run_store_path);
+            store.reject(name)?;
+            println!("Rejected evolved result for '{}'.", name);
+        }
+        EvolveCommand::Backups { name } => {
+            let store = loom_evolution::RunStore::new(&run_store_path);
+            let backups = store.list_backups(name)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&backups)?);
+            } else if backups.is_empty() {
+                println!("No backups found for '{}'.", name);
+            } else {
+                println!("Backups for '{}':", name);
+                for b in &backups {
+                    println!("  {}", b);
+                }
+            }
+        }
+        EvolveCommand::Rollback { name, version } => {
+            println!("Rollback '{}' to version {:?}...", name, version);
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn handle_curator_command(
+    curator_args: &CuratorCmdArgs,
+    json: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use cli::run::curator::{Curator, CuratorConfig, CuratorReport};
+    use cli::run::skill_registry::SkillRegistry;
+
+    let skills = SkillRegistry::new(&SkillRegistry::default_path());
+    let curator = Curator::new(skills, CuratorConfig::default());
+    let report: CuratorReport = curator.run(curator_args.dry_run)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        println!("Curator Report:");
+        println!("{}", "═".repeat(60));
+        println!("Active: {}", report.active);
+        println!("Stale: {}", report.stale.len());
+        for s in &report.stale { println!("  • {}", s); }
+        println!("Archived: {}", report.archived.len());
+        for s in &report.archived { println!("  • {}", s); }
+        if !report.overlapping.is_empty() {
+            println!("Overlapping:");
+            for o in &report.overlapping {
+                println!("  • {} <-> {} (similarity: {:.2})", o.skill_a, o.skill_b, o.similarity);
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn handle_memory_command(
+    memory_args: &MemoryCmdArgs,
+    json: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use cli::run::memory::{MemoryFile, MemoryStore};
+
+    let store = MemoryStore::new(&MemoryStore::default_path());
+
+    match &memory_args.command {
+        MemoryCommand::Show => {
+            let user = store.load(MemoryFile::User)?;
+            let project = store.load(MemoryFile::Project)?;
+            let facts = store.load(MemoryFile::Facts)?;
+            if json {
+                let obj = serde_json::json!({
+                    "user": user,
+                    "project": project,
+                    "facts": facts,
+                });
+                println!("{}", serde_json::to_string_pretty(&obj)?);
+            } else {
+                println!("USER.md:\n{}\n", if user.is_empty() { "(empty)".to_string() } else { user });
+                println!("PROJECT.md:\n{}\n", if project.is_empty() { "(empty)".to_string() } else { project });
+                println!("FACTS.md:\n{}\n", if facts.is_empty() { "(empty)".to_string() } else { facts });
+            }
+        }
+        MemoryCommand::Edit { file } => {
+            let mf = match file.to_lowercase().as_str() {
+                "user" | "user.md" => MemoryFile::User,
+                "project" | "project.md" => MemoryFile::Project,
+                "facts" | "facts.md" => MemoryFile::Facts,
+                _ => { return Err(format!("Unknown memory file: {}. Use USER, PROJECT, or FACTS.", file).into()); }
+            };
+            let content = store.load(mf)?;
+            let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+            let tmp_dir = std::env::temp_dir();
+            let tmp_path = tmp_dir.join(format!("loom-memory-{}.md", file));
+            std::fs::write(&tmp_path, &content)?;
+            let status = std::process::Command::new(&editor).arg(&tmp_path).status()?;
+            if status.success() {
+                let edited = std::fs::read_to_string(&tmp_path)?;
+                store.replace(mf, &edited)?;
+                println!("Updated {}.", file);
+            }
+            let _ = std::fs::remove_file(&tmp_path);
+        }
+        MemoryCommand::Search { query } => {
+            let matches = store.search(query)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&matches)?);
+            } else if matches.is_empty() {
+                println!("No matches for '{}'.", query);
+            } else {
+                for m in &matches {
+                    println!("{:?}:{} | {}", m.file, m.line_number, m.line);
+                }
+            }
+        }
+    }
     Ok(())
 }
