@@ -392,6 +392,7 @@ fn on_event_react(
             }
             // Print separator when transitioning from thinking to reply
             if s.in_thinking && chunk.kind != MessageChunkKind::Thinking {
+                eprint!("\n");
                 eprintln!("{}", panel_format::format_thinking_separator());
                 s.in_thinking = false;
             }

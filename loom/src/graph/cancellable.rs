@@ -12,6 +12,9 @@ use crate::error::AgentError;
 /// Returns `Ok(Ok(value))` when the inner future completes successfully, `Ok(Err(e))` when
 /// the inner future returns an error, and `Err(AgentError::Cancelled)` when the graph
 /// token fires or the task is aborted.
+///
+/// When neither `cancellation` nor `run_cancellation` is provided, a 10-minute fallback
+/// timeout is applied so the future cannot hang indefinitely.
 pub async fn run_cancellable<T, E>(
     future: impl std::future::Future<Output = Result<T, E>>,
     cancellation: Option<&CancellationToken>,
@@ -33,8 +36,20 @@ pub async fn run_cancellable<T, E>(
             }
             r = task => r,
         }
+    } else if let Some(rc) = run_cancellation {
+        let rc_token = rc.token();
+        tokio::select! {
+            _ = rc_token.cancelled() => {
+                rc.cancel_active_operation();
+                return Err(AgentError::Cancelled);
+            }
+            r = task => r,
+        }
     } else {
-        task.await
+        match tokio::time::timeout(std::time::Duration::from_secs(600), task).await {
+            Ok(outcome) => outcome,
+            Err(_) => return Err(AgentError::Cancelled),
+        }
     };
 
     if let Some(rc) = run_cancellation {

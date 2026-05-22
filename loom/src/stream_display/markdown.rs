@@ -23,7 +23,7 @@ pub fn render_markdown(input: &str) -> String {
     let mut output = String::with_capacity(input.len() + 128);
     let mut in_code_block = false;
     let mut code_block_lang = String::new();
-    let mut heading_prefix = "";
+    let mut _heading_prefix = "";
 
     for line in input.lines() {
         // Toggle code block state
@@ -62,7 +62,7 @@ pub fn render_markdown(input: &str) -> String {
         if let Some((level, content)) = parse_heading(line) {
             output.push_str(&format_heading(level, content));
             output.push('\n');
-            heading_prefix = "";
+            _heading_prefix = "";
             continue;
         }
 
@@ -77,7 +77,7 @@ pub fn render_markdown(input: &str) -> String {
         if let Some(content) = parse_unordered_list_item(line) {
             output.push_str(&format_list_item("•", content));
             output.push('\n');
-            heading_prefix = "";
+            _heading_prefix = "";
             continue;
         }
 
@@ -85,7 +85,7 @@ pub fn render_markdown(input: &str) -> String {
         if let Some((num, content)) = parse_ordered_list_item(line) {
             output.push_str(&format_list_item(&format!("{}.", num), content));
             output.push('\n');
-            heading_prefix = "";
+            _heading_prefix = "";
             continue;
         }
 
@@ -93,7 +93,7 @@ pub fn render_markdown(input: &str) -> String {
         if !line.is_empty() {
             output.push_str(&render_inline(line));
             output.push('\n');
-            heading_prefix = "";
+            _heading_prefix = "";
         } else {
             output.push('\n');
         }
@@ -333,7 +333,7 @@ fn format_italic(text: &str) -> String {
     if color_enabled() {
         format!("\x1b[3m{}\x1b[0m", text)
     } else {
-        text
+        text.to_string()
     }
 }
 

@@ -296,7 +296,10 @@ impl ChatOpenAICompat {
         model: impl Into<String>,
     ) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
             base_url: base_url.into(),
             api_key: api_key.into(),
             model: model.into(),

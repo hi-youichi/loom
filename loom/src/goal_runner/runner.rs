@@ -309,7 +309,7 @@ pub async fn resume_with_event_sender(
         None => GoalMeta::default(),
     };
 
-    let tool: Box<dyn CodingTool> = resolve_tool(&meta.tool, db.path(), &working_dir, &run_cancellation, &event_sender)?;
+    let tool: Box<dyn CodingTool> = resolve_tool(&meta.tool, db.path(), &working_dir, &run_cancellation, &event_sender, &cancel)?;
     let mcp_server = spawn_mcp_server(&db).ok();
 
     Ok(GoalRunner {
@@ -333,6 +333,7 @@ fn resolve_tool(
     working_dir: &std::path::Path,
     run_cancellation: &Option<crate::cli_run::RunCancellation>,
     event_sender: &Option<Arc<dyn Fn(crate::cli_run::AnyStreamEvent) + Send + Sync>>,
+    cancel: &CancellationToken,
 ) -> Result<Box<dyn CodingTool>, GoalError> {
     match tool_name {
         "loom" => {
@@ -360,7 +361,7 @@ fn resolve_tool(
             Ok(Box::new(super::tool::ShellTool::new(
                 name.to_string(),
                 args,
-            )))
+            ).with_cancel(cancel.clone())))
         }
     }
 }

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use tokio_util::sync::CancellationToken;
 
 use crate::cli_run::AnyStreamEvent;
 
@@ -20,6 +21,7 @@ pub struct ShellTool {
     command: String,
     args: Vec<String>,
     timeout: Duration,
+    cancel: Option<CancellationToken>,
 }
 
 impl ShellTool {
@@ -28,11 +30,17 @@ impl ShellTool {
             command,
             args,
             timeout: Duration::from_secs(DEFAULT_TOOL_TIMEOUT_SECS),
+            cancel: None,
         }
     }
 
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
+        self
+       }
+
+    pub fn with_cancel(mut self, cancel: CancellationToken) -> Self {
+        self.cancel = Some(cancel);
         self
     }
 }
@@ -40,31 +48,68 @@ impl ShellTool {
 #[async_trait]
 impl CodingTool for ShellTool {
     async fn execute(&self, prompt: &str, working_dir: &Path) -> Result<TurnResult, ToolError> {
-        let result = tokio::time::timeout(self.timeout, async {
-            let mut cmd = tokio::process::Command::new(&self.command);
-            cmd.args(&self.args)
-                .current_dir(working_dir)
-                .env("LOOM_GOAL_PROMPT", prompt)
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped());
+        let mut cmd = tokio::process::Command::new(&self.command);
+        cmd.args(&self.args)
+            .current_dir(working_dir)
+            .env("LOOM_GOAL_PROMPT", prompt)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
 
-            cmd.output().await
-        })
-        .await
-        .map_err(|_| ToolError::Timeout)?;
-
-        let output = result.map_err(|e| {
-            ToolError::ExecutionFailed(format!("failed to run {}: {}", self.command, e))
+        let mut child = cmd.spawn().map_err(|e| {
+            ToolError::ExecutionFailed(format!("failed to spawn {}: {}", self.command, e))
         })?;
 
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let output_fut = async {
+            let stdout = child.stdout.take();
+            let stderr = child.stderr.take();
+            let status = child.wait().await?;
+            let mut stdout_buf = Vec::new();
+            let mut stderr_buf = Vec::new();
+            if let Some(mut out) = stdout {
+                use tokio::io::AsyncReadExt;
+                let _ = out.read_to_end(&mut stdout_buf).await;
+            }
+            if let Some(mut err) = stderr {
+                use tokio::io::AsyncReadExt;
+                let _ = err.read_to_end(&mut stderr_buf).await;
+            }
+            Ok::<_, std::io::Error>((status, stdout_buf, stderr_buf))
+        };
 
-        if !output.status.success() {
+        let result = if let Some(ref cancel) = self.cancel {
+            tokio::select! {
+                res = output_fut => res,
+                _ = cancel.cancelled() => {
+                    let _ = child.kill().await;
+                    return Err(ToolError::Aborted);
+                }
+            }
+        } else {
+            match tokio::time::timeout(self.timeout, output_fut).await {
+                Ok(res) => res,
+                Err(_) => {
+                    let _ = child.kill().await;
+                    return Err(ToolError::Timeout);
+                }
+            }
+        }.map_err(|e| ToolError::ExecutionFailed(format!("{} failed: {}", self.command, e)))?;
+
+        let (status, stdout_buf, stderr_buf) = result;
+
+        if let Some(ref cancel) = self.cancel {
+            if cancel.is_cancelled() {
+                return Err(ToolError::Aborted);
+            }
+        }
+
+        let stdout = String::from_utf8_lossy(&stdout_buf).to_string();
+        let stderr = String::from_utf8_lossy(&stderr_buf).to_string();
+
+        if !status.success() {
             return Err(ToolError::ExecutionFailed(format!(
                 "{} exited with {}: {}",
                 self.command,
-                output.status,
+                status,
                 stderr.trim()
             )));
         }

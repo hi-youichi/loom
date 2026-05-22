@@ -100,37 +100,41 @@ impl Drop for Spinner {
 fn run_tty_spinner(rx: mpsc::Receiver<SpinnerMsg>, initial_label: &str) {
     let mut label = initial_label.to_string();
     let mut frame_idx = 0usize;
-    let stderr = std::io::stderr();
-    let mut stderr_lock = stderr.lock();
 
-    // Print initial frame
-    let _ = write!(stderr_lock, "\r{} {}", SPINNER_FRAMES[0], label);
-    let _ = stderr_lock.flush();
+    {
+        let stderr = std::io::stderr();
+        let mut stderr_lock = stderr.lock();
+        let _ = write!(stderr_lock, "\r{} {}", SPINNER_FRAMES[0], label);
+        let _ = stderr_lock.flush();
+    }
 
     loop {
-        // Check for messages with timeout
         match rx.recv_timeout(TICK_INTERVAL) {
             Ok(SpinnerMsg::Update(new_label)) => {
                 label = new_label;
                 frame_idx = (frame_idx + 1) % SPINNER_FRAMES.len();
+                let stderr = std::io::stderr();
+                let mut stderr_lock = stderr.lock();
                 let _ = write!(
                     stderr_lock,
                     "\r{} {}",
                     SPINNER_FRAMES[frame_idx],
-                    truncate_to_terminal_width(&label, 2) // 2 = spinner char + space
+                    truncate_to_terminal_width(&label, 2)
                 );
                 let _ = stderr_lock.flush();
             }
             Ok(SpinnerMsg::Finish) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                // Clear the spinner line
+                let stderr = std::io::stderr();
+                let mut stderr_lock = stderr.lock();
                 let _ = write!(stderr_lock, "\r{}", " ".repeat(80));
                 let _ = write!(stderr_lock, "\r");
                 let _ = stderr_lock.flush();
                 return;
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                // Next frame
                 frame_idx = (frame_idx + 1) % SPINNER_FRAMES.len();
+                let stderr = std::io::stderr();
+                let mut stderr_lock = stderr.lock();
                 let _ = write!(
                     stderr_lock,
                     "\r{} {}",

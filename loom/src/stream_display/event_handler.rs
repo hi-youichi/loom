@@ -141,7 +141,8 @@ fn handle_messages(s: &mut EventState, chunk: &MessageChunk, output_timestamp: b
         s.reply_started = true;
     }
     if s.in_thinking && chunk.kind != MessageChunkKind::Thinking {
-        eprintln!("{}", panel_format::format_thinking_separator());
+                eprint!("\n");
+                eprintln!("{}", panel_format::format_thinking_separator());
         s.in_thinking = false;
     }
     print_stream_chunk(chunk);

@@ -23,6 +23,7 @@ use clap::Parser;
 use args::{Args, Command as Cmd, GotArgs};
 use bootstrap::{init_logging, print_config_report};
 use display_limits::max_reply_len;
+use loom::cli_run::RunCancellation;
 use run_flow::{
     build_run_options, output_config, resolve_user_message, run_interactive_mode,
     run_single_turn_mode,
@@ -108,7 +109,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cmd = args.cmd.clone().unwrap_or(Cmd::React);
     let got_adaptive = matches!(&cmd, Cmd::Got(GotArgs { got_adaptive: true }));
+    let run_cancellation = RunCancellation::new(0);
+    let rc_clone = run_cancellation.clone();
+    ctrlc::set_handler(move || {
+        rc_clone.cancel();
+    })?;
+
     let mut opts = build_run_options(&args, message.clone().unwrap_or_default(), got_adaptive);
+    opts.cancellation = Some(run_cancellation);
     let output = output_config(&args);
     let reply_len = max_reply_len();
 

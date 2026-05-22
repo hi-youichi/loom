@@ -71,7 +71,7 @@ pub(crate) async fn handle_goal_command(ga: &GoalArgs) -> Result<(), Box<dyn std
                 "cursor" => vec!["--goal-prompt".to_string()],
                 _ => vec![],
             };
-            Box::new(ShellTool::new(name.to_string(), args))
+            Box::new(ShellTool::new(name.to_string(), args).with_cancel(cancel.clone()))
         }
     };
 
