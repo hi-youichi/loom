@@ -26,6 +26,7 @@ pub struct GoalRunner {
     max_iterations: u32,
     cancel: CancellationToken,
     consecutive_failures: u32,
+    last_errors: Vec<String>,
     time_used_seconds: i64,
 }
 
@@ -60,6 +61,7 @@ impl GoalRunner {
             max_iterations: DEFAULT_MAX_ITERATIONS,
             cancel,
             consecutive_failures: 0,
+            last_errors: Vec::new(),
             time_used_seconds: 0,
         })
     }
@@ -124,6 +126,7 @@ impl GoalRunner {
             match self.tool.execute(&prompt, &self.working_dir).await {
                 Ok(turn_result) => {
                     self.consecutive_failures = 0;
+                    self.last_errors.clear();
                     if let Some(ref reasoning) = turn_result.reasoning_content {
                         if !reasoning.trim().is_empty() {
                             eprintln!("{}",
@@ -157,6 +160,7 @@ impl GoalRunner {
                 }
                 Err(ToolError::ExecutionFailed(e)) => {
                     self.consecutive_failures += 1;
+                    self.last_errors.push(e.clone());
                     if self.consecutive_failures >= MAX_CONSECUTIVE_FAILURES {
                         tracing::error!(
                             session_id = %self.task_id,
@@ -165,7 +169,8 @@ impl GoalRunner {
                             "consecutive failures limit reached"
                         );
                         self.cleanup().await;
-                        return GoalOutcome::Error("consecutive tool failures".into());
+                        let details = self.last_errors.join("\n");
+                        return GoalOutcome::Error(format!("consecutive tool failures:\n{}", details));
                     }
                     tracing::error!(
                         session_id = %self.task_id,
@@ -323,6 +328,7 @@ pub async fn resume_with_event_sender(
         max_iterations: DEFAULT_MAX_ITERATIONS,
         cancel,
         consecutive_failures: 0,
+        last_errors: Vec::new(),
         time_used_seconds: meta.time_used_seconds,
     })
 }

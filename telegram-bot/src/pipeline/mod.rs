@@ -246,6 +246,9 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
                 loom_command::Command::Goal { .. } => {
                     // fall through to normal message handling
                 }
+                loom_command::Command::ReviewSkill { .. } => {
+                    // not supported in telegram bot; fall through
+                }
             }
         }
 

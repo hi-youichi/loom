@@ -5,7 +5,7 @@ use chrono::Local;
 use loom::{
     build_helve_config, build_react_run_context, list_available_profiles, run_agent_with_options,
     AnyStreamEvent, DupState, Envelope, GotState, MessageChunkKind, ModelLimitResolver,
-    ModelsDevResolver, ReActState, ResolvedAgent, ToolCall, TotState,
+    ModelsDevResolver, ReActState, ResolvedAgent, ToolCall, ToolResult, TotState,
 };
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
@@ -274,8 +274,9 @@ pub async fn run_agent_wrapper(
         last_prefill_duration: None,
         last_decode_duration: None,
         spinner: None,
-        pending_tool_calls: Vec::new(),
-        pending_tool_start: None,
+            pending_tool_calls: Vec::new(),
+            pending_tool_results: Vec::new(),
+            pending_tool_start: None,
     }));
 
     let state_clone = state.clone();
@@ -422,24 +423,45 @@ fn on_event_react(
                 if node_id == "think" && react_state.tool_calls.is_empty() {
                     eprintln!("(think → END: tool_calls empty, LLM gave FINAL_ANSWER)");
                 }
-            } else if node_id == "think" && !react_state.tool_calls.is_empty() {
-                log_tools_used(&react_state.tool_calls);
-                // Update spinner with tool info
-                if let Some(ref mut sp) = s.spinner {
-                    if let Some(tc) = react_state.tool_calls.first() {
-                        sp.update(format!("Executing tool: {}", tc.name));
+            } else {
+                // Save tool_calls during think (non-verbose)
+                if node_id == "think" && !react_state.tool_calls.is_empty() {
+                    log_tools_used(&react_state.tool_calls);
+                    // Update spinner with tool info
+                    if let Some(ref mut sp) = s.spinner {
+                        if let Some(tc) = react_state.tool_calls.first() {
+                            let desc = serde_json::from_str::<Value>(&tc.arguments)
+                                .ok()
+                                .and_then(|v| v.get("description").and_then(|d| d.as_str()).map(String::from));
+                            let label = match desc {
+                                Some(d) if !d.is_empty() => format!("{} - {}", tc.name, d),
+                                _ => tc.name.clone(),
+                            };
+                            sp.update(label);
+                        }
                     }
+                    s.pending_tool_calls = react_state.tool_calls.clone();
+                    s.pending_tool_start = Some(std::time::Instant::now());
                 }
-                s.pending_tool_calls = react_state.tool_calls.clone();
-                s.pending_tool_start = Some(std::time::Instant::now());
+                // Save tool_results during act (observe will clear them)
+                if node_id == "act" && !react_state.tool_results.is_empty() {
+                    s.pending_tool_results = react_state.tool_results.clone();
+                }
             }
             // Print PREVIEW/DIFF and DONE lines on observe
             if node_id == "observe" {
                 let elapsed = s.pending_tool_start.map(|t| t.elapsed());
+                // Use cached tool results from act (observe clears tool_results)
+                let tool_results = if react_state.tool_results.is_empty() {
+                    &s.pending_tool_results
+                } else {
+                    // Fallback: some paths may have results directly in observe state
+                    &react_state.tool_results
+                };
                 for tc in s.pending_tool_calls.drain(..) {
                     // Find matching tool result for PREVIEW/DIFF
                     let result_text = loom::stream_display::find_tool_result(
-                        &react_state.tool_results, &tc.name, &tc.id,
+                        tool_results, &tc.name, &tc.id,
                     );
 
                     // Show PREVIEW for read/glob/grep/todo tools
@@ -464,7 +486,7 @@ fn on_event_react(
                     let done_summary = match result_text {
                         Some(ref result) => {
                             let is_error = loom::stream_display::find_tool_result_error(
-                                &react_state.tool_results, &tc.name, &tc.id,
+                                tool_results, &tc.name, &tc.id,
                             );
                             loom::stream_display::format_done_summary(&tc.name, result, is_error)
                         }
@@ -473,6 +495,7 @@ fn on_event_react(
                     eprintln!("{}", panel_format::format_tool_done(&tc.name, &done_summary, elapsed));
                 }
                 s.pending_tool_start = None;
+                s.pending_tool_results.clear();
             }
         }
         StreamEvent::Usage {
@@ -555,7 +578,14 @@ fn on_event_dup(
                     log_tools_used(&state.core.tool_calls);
                     if let Some(ref mut sp) = s.spinner {
                         if let Some(tc) = state.core.tool_calls.first() {
-                            sp.update(format!("Executing tool: {}", tc.name));
+                            let desc = serde_json::from_str::<Value>(&tc.arguments)
+                                .ok()
+                                .and_then(|v| v.get("description").and_then(|d| d.as_str()).map(String::from));
+                            let label = match desc {
+                                Some(d) if !d.is_empty() => format!("{} - {}", tc.name, d),
+                                _ => tc.name.clone(),
+                            };
+                            sp.update(label);
                         }
                     }
                 }
@@ -697,6 +727,8 @@ struct EventState {
     spinner: Option<Box<dyn super::spinner::SpinnerTrait>>,
     /// Tool names that were called in the current turn (for DONE lines).
     pending_tool_calls: Vec<ToolCall>,
+    /// Tool results from the act node (saved before observe clears them).
+    pending_tool_results: Vec<ToolResult>,
     /// Time when pending_tool_calls were received (for elapsed timing).
     pending_tool_start: Option<std::time::Instant>,
 }
@@ -913,6 +945,7 @@ mod tests {
             last_decode_duration: None,
             spinner: None,
             pending_tool_calls: Vec::new(),
+            pending_tool_results: Vec::new(),
             pending_tool_start: None,
         };
         on_event_react(
@@ -955,6 +988,7 @@ mod tests {
             last_decode_duration: None,
             spinner: None,
             pending_tool_calls: Vec::new(),
+            pending_tool_results: Vec::new(),
             pending_tool_start: None,
         };
 
@@ -1104,6 +1138,7 @@ mod tests {
             last_decode_duration: None,
             spinner: None,
             pending_tool_calls: Vec::new(),
+            pending_tool_results: Vec::new(),
             pending_tool_start: None,
         };
         let react_with_tool = ReActState {
@@ -1170,6 +1205,7 @@ mod tests {
             last_decode_duration: None,
             spinner: None,
             pending_tool_calls: Vec::new(),
+            pending_tool_results: Vec::new(),
             pending_tool_start: None,
         };
 

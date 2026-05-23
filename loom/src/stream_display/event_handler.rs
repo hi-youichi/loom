@@ -3,7 +3,7 @@ use std::sync::Mutex;
 
 use crate::cli_run::AnyStreamEvent;
 use crate::stream::{MessageChunk, MessageChunkKind, StreamEvent};
-use crate::{DupState, GotState, ReActState, ToolCall, TotState};
+use crate::{DupState, GotState, ReActState, ToolCall, ToolResult, TotState};
 use crate::stream_display::format::*;
 use crate::stream_display::panel_format;
 use crate::stream_display::spinner::{NoopSpinner, Spinner, SpinnerTrait};
@@ -30,6 +30,8 @@ pub struct EventState {
     pub pending_tool_calls: Vec<ToolCall>,
     /// Time when pending_tool_calls were received (for elapsed timing).
     pub pending_tool_start: Option<std::time::Instant>,
+    /// Tool results from the act node (saved before observe clears them).
+    pub pending_tool_results: Vec<ToolResult>,
     /// Active spinner (if any). Created on TaskStart, finished when streaming begins.
     pub spinner: Option<Box<dyn SpinnerTrait>>,
     /// Whether to use animated spinners.
@@ -52,6 +54,7 @@ impl EventState {
             last_decode_duration: None,
             pending_tool_calls: Vec::new(),
             pending_tool_start: None,
+            pending_tool_results: Vec::new(),
             spinner: None,
             use_spinner,
             compact: false,
@@ -240,23 +243,36 @@ pub fn on_event_react(
                 if node_id == "think" && state.tool_calls.is_empty() {
                     eprintln!("(think → END: tool_calls empty, LLM gave FINAL_ANSWER)");
                 }
-            } else if node_id == "think" && !state.tool_calls.is_empty() {
-                log_tools_used(&state.tool_calls);
-                // Update spinner with tool info
-                if let Some(ref mut sp) = s.spinner {
-                    if let Some(tc) = state.tool_calls.first() {
-                        sp.update(format!("Executing tool: {}", tc.name));
+            } else {
+                // Save tool_calls during think (non-verbose)
+                if node_id == "think" && !state.tool_calls.is_empty() {
+                    log_tools_used(&state.tool_calls);
+                    // Update spinner with tool info
+                    if let Some(ref mut sp) = s.spinner {
+                        if let Some(tc) = state.tool_calls.first() {
+                            sp.update(format!("Executing tool: {}", tc.name));
+                        }
                     }
+                    s.pending_tool_calls = state.tool_calls.clone();
+                    s.pending_tool_start = Some(std::time::Instant::now());
                 }
-                s.pending_tool_calls = state.tool_calls.clone();
-                s.pending_tool_start = Some(std::time::Instant::now());
+                // Save tool_results during act (observe will clear them)
+                if node_id == "act" && !state.tool_results.is_empty() {
+                    s.pending_tool_results = state.tool_results.clone();
+                }
             }
             if node_id == "observe" {
                 let elapsed = s.pending_tool_start.map(|t| t.elapsed());
                 let compact = s.compact;
+                // Use cached tool results from act (observe clears tool_results)
+                let tool_results = if state.tool_results.is_empty() {
+                    &s.pending_tool_results
+                } else {
+                    &state.tool_results
+                };
                 for tc in s.pending_tool_calls.drain(..) {
                     // Find matching tool result for PREVIEW/DIFF
-                    let result_text = find_tool_result(&state.tool_results, &tc.name, &tc.id);
+                    let result_text = find_tool_result(tool_results, &tc.name, &tc.id);
                     
                     // Show PREVIEW for read/glob/grep/todo tools
                     if let Some(ref result) = result_text {
@@ -279,7 +295,7 @@ pub fn on_event_react(
                     // DONE line with smart summary
                     let done_summary = match result_text {
                         Some(ref result) => {
-                            let is_error = find_tool_result_error(&state.tool_results, &tc.name, &tc.id);
+                            let is_error = find_tool_result_error(tool_results, &tc.name, &tc.id);
                             crate::stream_display::tool_summary::format_done_summary(&tc.name, result, is_error)
                         }
                         None => crate::stream_display::tool_summary::format_call_summary(&tc.name, &tc.arguments),
@@ -287,6 +303,7 @@ pub fn on_event_react(
                     eprintln!("{}", panel_format::format_tool_done(&tc.name, &done_summary, elapsed));
                 }
                 s.pending_tool_start = None;
+                s.pending_tool_results.clear();
             }
         }
         StreamEvent::Usage {
@@ -515,8 +532,6 @@ pub fn on_event_got(
 
 
 // ── Tool result helpers ──────────────────────────────────────────
-
-use crate::state::ToolResult;
 
 /// Find the tool result text matching a tool call by name and/or id.
 pub fn find_tool_result(results: &[ToolResult], tool_name: &str, call_id: &Option<String>) -> Option<String> {

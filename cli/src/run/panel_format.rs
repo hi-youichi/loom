@@ -70,7 +70,8 @@ pub fn format_panel_line(category: &str, message: &str) -> String {
 /// Formats a tool call line: `_CALL  tool_name: args_summary`
 pub fn format_tool_call(tool_name: &str, args_summary: &str) -> String {
     let args = if args_summary.len() > 60 {
-        format!("{}...", &args_summary[..57])
+        let end = args_summary.char_indices().take_while(|(i, _)| *i < 57).last().map_or(0, |(i, c)| i + c.len_utf8());
+        format!("{}...", &args_summary[..end])
     } else {
         args_summary.to_string()
     };
@@ -87,7 +88,8 @@ pub fn format_tool_done(tool_name: &str, result_summary: &str, elapsed: Option<D
     let summary = if result_summary.is_empty() {
         String::new()
     } else if result_summary.len() > 60 {
-        format!(" {}", &result_summary[..57])
+        let end = result_summary.char_indices().take_while(|(i, _)| *i < 57).last().map_or(0, |(i, c)| i + c.len_utf8());
+        format!(" {}", &result_summary[..end])
     } else {
         format!(" {}", result_summary)
     };

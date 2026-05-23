@@ -12,6 +12,9 @@ mod logging;
 mod mcp_manager;
 mod output;
 mod repl;
+mod review_history;
+mod review_cmd;
+mod review_skill_cmd;
 mod run_flow;
 mod session;
 mod subcommands;
@@ -124,6 +127,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if let Some(Cmd::Memory(ma)) = &args.cmd {
         if let Err(err) = handle_memory_command(ma, args.json) {
+            eprintln!("{}", err);
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+    if let Some(Cmd::ReviewSkill(ra)) = &args.cmd {
+        if let Err(err) = review_skill_cmd::handle_review_skill_command(ra).await {
+            eprintln!("{}", err);
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+    if let Some(Cmd::Review(ra)) = &args.cmd {
+        if let Err(err) = review_cmd::handle_review_command(ra, args.json).await {
             eprintln!("{}", err);
             std::process::exit(1);
         }

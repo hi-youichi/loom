@@ -32,6 +32,8 @@ fn cmd_to_runcmd(cmd: &Command) -> RunCmd {
         Command::Evolve(_) => unreachable!("evolve handled in main"),
         Command::Curator(_) => unreachable!("curator handled in main"),
         Command::Memory(_) => unreachable!("memory handled in main"),
+        Command::ReviewSkill(_) => unreachable!("review-skill handled in main"),
+        Command::Review(_) => unreachable!("review handled in main"),
     }
 }
 
@@ -102,6 +104,9 @@ fn handle_repl_command(cmd: loom_command::Command) -> String {
         }
         loom_command::Command::Goal { .. } => {
             "/goal requires an active session with LLM access.".into()
+        }
+        loom_command::Command::ReviewSkill { .. } => {
+            "/review-skill requires an active session with LLM access.".into()
         }
     }
 }

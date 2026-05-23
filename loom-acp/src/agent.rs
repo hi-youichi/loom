@@ -702,6 +702,15 @@ impl LoomAcpAgent {
                             }
                         }
                     }
+                    loom::command::Command::ReviewSkill { scope } => {
+                        tracing::info!(
+                            session_id = %args.session_id,
+                            scope = ?scope,
+                            "Review-skill command triggered"
+                        );
+                        tracing::warn!("review-skill is not yet supported in ACP mode");
+                        return Ok(PromptResponse::new(StopReason::EndTurn));
+                    }
                     loom::command::Command::Models { .. }
                     | loom::command::Command::ModelsUse { .. } => {
                         // ACP handles models via SetSessionConfigOption, not here

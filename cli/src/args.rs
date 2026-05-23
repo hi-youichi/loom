@@ -127,6 +127,87 @@ pub(crate) enum Command {
     Curator(CuratorCmdArgs),
     /// View and edit agent memory (user preferences, project facts)
     Memory(MemoryCmdArgs),
+    /// Review session or files to extract skills and memory updates
+    ReviewSkill(ReviewSkillArgs),
+    /// Review sessions to extract skills and memory updates
+    Review(ReviewArgs),
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct ReviewSkillArgs {
+    /// Input file to review (omit to read from stdin)
+    #[arg(long)]
+    pub(crate) input: Option<PathBuf>,
+    /// Model to use for review
+    #[arg(long)]
+    pub(crate) model: Option<String>,
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct ReviewArgs {
+    #[command(subcommand)]
+    pub(crate) command: ReviewCommand,
+
+    /// Model to use for review (overrides config/env default)
+    #[arg(long, value_name = "MODEL")]
+    pub(crate) model: Option<String>,
+
+    /// Verbose output
+    #[arg(long)]
+    pub(crate) verbose: bool,
+
+    /// Dry run: show what would be reviewed without calling LLM
+    #[arg(long)]
+    pub(crate) dry_run: bool,
+
+    /// Only extract memory updates (skip skills)
+    #[arg(long)]
+    pub(crate) memory_only: bool,
+
+    /// Only extract skill suggestions (skip memory)
+    #[arg(long)]
+    pub(crate) skills_only: bool,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub(crate) enum ReviewCommand {
+    /// Review a single session by session ID
+    Session {
+        /// Session ID to review
+        session_id: String,
+    },
+    /// Batch review multiple sessions
+    Sessions {
+        /// Review sessions from the last N days (e.g. "7d", "30d")
+        #[arg(long, value_name = "DURATION")]
+        recent: Option<String>,
+        /// Review all unreviewed sessions
+        #[arg(long)]
+        all_unreviewed: bool,
+        /// Search sessions by keyword and review matches
+        #[arg(long, value_name = "QUERY")]
+        query: Option<String>,
+    },
+    /// Show review history
+    History {
+        /// Filter by trigger type: manual, auto, batch
+        #[arg(long)]
+        trigger: Option<String>,
+        /// Show last N records (default: 20)
+        #[arg(long, default_value = "20")]
+        limit: usize,
+    },
+    /// Show review result for a specific session
+    Show {
+        /// Session ID
+        session_id: String,
+    },
+    /// List sessions that have not been reviewed yet
+    Pending {
+        /// Maximum sessions to list (default: 20)
+        #[arg(long, default_value = "20")]
+        limit: usize,
+    },
 }
 
 #[derive(clap::Args, Debug, Clone)]

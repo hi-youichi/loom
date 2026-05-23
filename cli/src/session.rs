@@ -500,6 +500,55 @@ impl SessionManager {
         }
         Ok(())
     }
+
+    pub fn extract_session_text(&self, session_id: &str) -> Result<String, String> {
+        let conn = rusqlite::Connection::open(&self.db_path)
+            .map_err(|e| format!("Failed to open database: {}", e))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT payload FROM checkpoints WHERE thread_id = ?1 ORDER BY metadata_created_at ASC",
+            )
+            .map_err(|e| format!("Failed to prepare statement: {}", e))?;
+
+        let payloads: Vec<Vec<u8>> = stmt
+            .query_map([session_id], |row| row.get(0))
+            .map_err(|e| format!("Query failed: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        if payloads.is_empty() {
+            return Err(format!("Session not found: {}", session_id));
+        }
+
+        let mut parts: Vec<String> = Vec::new();
+        for data in &payloads {
+            if let Ok(state) = serde_json::from_slice::<loom::state::ReActState>(data) {
+                for msg in &state.messages {
+                    match msg {
+                        loom::message::Message::User(u) => {
+                            parts.push(format!("User: {}", u.as_text()));
+                        }
+                        loom::message::Message::Assistant(a) => {
+                            if !a.content.is_empty() {
+                                parts.push(format!("Assistant: {}", a.content));
+                            }
+                        }
+                        loom::message::Message::Tool { content, .. } => {
+                            if let Some(text) = content.as_text() {
+                                if !text.is_empty() {
+                                    parts.push(format!("Tool: {}", text));
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        Ok(parts.join("\n"))
+    }
 }
 
 #[cfg(test)]
