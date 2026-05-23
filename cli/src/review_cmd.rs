@@ -1,0 +1,443 @@
+use crate::args::{ReviewArgs, ReviewCommand};
+use crate::review_history::{ReviewHistory, ReviewRecord};
+use crate::review_skill_cmd::{resolve_config, RealLlm};
+use crate::session::SessionManager;
+use chrono::{Duration, Utc};
+use cli::run::memory::MemoryStore;
+use cli::run::review::{ReviewAgent, ReviewConfig, ReviewOutput};
+use cli::run::skill_registry::SkillRegistry;
+use std::time::Instant;
+
+pub(crate) async fn handle_review_command(
+    args: &ReviewArgs,
+    json: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match &args.command {
+        ReviewCommand::Session { session_id } => {
+            let args = args.clone();
+            let sid = session_id.clone();
+            let result = tokio::task::spawn_blocking(move || {
+                do_review_single(&sid, &args, json).map_err(|e| e.to_string())
+            })
+            .await??;
+            Ok(result)
+        }
+        ReviewCommand::Sessions {
+            recent,
+            all_unreviewed,
+            query,
+        } => {
+            let args = args.clone();
+            let recent = recent.clone();
+            let query = query.clone();
+            let all_unreviewed = *all_unreviewed;
+            let result = tokio::task::spawn_blocking(move || {
+                do_review_batch(&recent, all_unreviewed, &query, &args, json)
+                    .map_err(|e| e.to_string())
+            })
+            .await??;
+            Ok(result)
+        }
+        ReviewCommand::History { trigger, limit } => show_history(trigger, *limit, json),
+        ReviewCommand::Show { session_id } => show_review(session_id, json),
+        ReviewCommand::Pending { limit } => show_pending(*limit, json),
+    }
+}
+
+fn do_review_single(
+    session_id: &str,
+    args: &ReviewArgs,
+    json: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let start = Instant::now();
+    let loom_home = config::home::loom_home();
+    let history = ReviewHistory::new(&loom_home);
+
+    let mgr = SessionManager::with_default_path();
+    let text = mgr
+        .extract_session_text(session_id)
+        .map_err(|e| format!("Failed to load session '{}': {}", session_id, e))?;
+
+    if args.dry_run {
+        if json {
+            let dry = serde_json::json!({
+                "session_id": session_id,
+                "text_length": text.len(),
+                "dry_run": true,
+            });
+            println!("{}", serde_json::to_string_pretty(&dry)?);
+        } else {
+            println!("[DRY RUN] Would review session: {}", session_id);
+            println!("  Text length: {} chars", text.len());
+            if args.verbose && !text.is_empty() {
+                let preview = if text.len() > 2000 { &text[..2000] } else { &text };
+                println!("\n--- Session Content (first 2000 chars) ---\n");
+                println!("{}", preview);
+            }
+        }
+        return Ok(());
+    }
+
+    if text.len() < 200 {
+        let record = ReviewRecord {
+            session_id: session_id.to_string(),
+            reviewed_at: Utc::now(),
+            trigger: "manual".to_string(),
+            model: String::new(),
+            memory_update_count: 0,
+            skill_update_count: 0,
+            skipped: true,
+            skip_reason: Some("insufficient_content".to_string()),
+            duration_ms: start.elapsed().as_millis() as u64,
+        };
+        history.append(&record)?;
+        if json {
+            println!("{}", serde_json::to_string_pretty(&record)?);
+        } else {
+            println!(
+                "Skipped: session content too short ({} chars, minimum 200)",
+                text.len()
+            );
+        }
+        return Ok(());
+    }
+
+    let (api_key, base_url, default_model) = resolve_config()?;
+    let model = args
+        .model
+        .as_deref()
+        .unwrap_or(&default_model)
+        .to_string();
+    let llm = RealLlm::new(api_key, base_url, model.clone());
+
+    let memory = MemoryStore::new(&loom_home);
+    let skills_dir = loom_home.join("skills");
+    let skills = SkillRegistry::new(&skills_dir);
+
+    let config = ReviewConfig {
+        auto_create_threshold: 1,
+        max_session_chars: 24000,
+    };
+    let agent = ReviewAgent::with_config(&llm, &memory, &skills, config);
+
+    if !json {
+        eprintln!("Reviewing session: {}", session_id);
+    }
+
+    match agent.review_session(&text) {
+        Ok(output) => {
+            let record = ReviewRecord {
+                session_id: session_id.to_string(),
+                reviewed_at: Utc::now(),
+                trigger: "manual".to_string(),
+                model,
+                memory_update_count: output.memory_updates.len(),
+                skill_update_count: output.skill_suggestions.len(),
+                skipped: false,
+                skip_reason: None,
+                duration_ms: start.elapsed().as_millis() as u64,
+            };
+            history.append(&record)?;
+
+            if json {
+                let result = serde_json::json!({
+                    "record": record,
+                    "output": output,
+                });
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                print_review_output(&output, args.verbose);
+                eprintln!("Duration: {}ms", start.elapsed().as_millis());
+            }
+        }
+        Err(e) => {
+            let record = ReviewRecord {
+                session_id: session_id.to_string(),
+                reviewed_at: Utc::now(),
+                trigger: "manual".to_string(),
+                model: String::new(),
+                memory_update_count: 0,
+                skill_update_count: 0,
+                skipped: true,
+                skip_reason: Some(format!("llm_error: {}", e)),
+                duration_ms: start.elapsed().as_millis() as u64,
+            };
+            history.append(&record)?;
+            return Err(e.into());
+        }
+    }
+    Ok(())
+}
+
+fn do_review_batch(
+    recent: &Option<String>,
+    all_unreviewed: bool,
+    query: &Option<String>,
+    args: &ReviewArgs,
+    json: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let loom_home = config::home::loom_home();
+    let history = ReviewHistory::new(&loom_home);
+    let mgr = SessionManager::with_default_path();
+
+    let sessions = if let Some(q) = query {
+        mgr.search_sessions(q, 100)?
+    } else if let Some(dur_str) = recent {
+        let days = parse_duration_days(dur_str)?;
+        let since = Utc::now() - Duration::days(days as i64);
+        mgr.list_sessions_since(since)?
+    } else if all_unreviewed {
+        let reviewed = history.reviewed_session_ids()?;
+        mgr.list_sessions()?
+            .into_iter()
+            .filter(|s| !reviewed.contains(&s.session_id))
+            .collect()
+    } else {
+        return Err(
+            "Specify --recent <Nd>, --all-unreviewed, or --query <text>".into(),
+        );
+    };
+
+    if sessions.is_empty() {
+        if json {
+            println!("{}", serde_json::json!({"sessions_found": 0}));
+        } else {
+            println!("No sessions to review.");
+        }
+        return Ok(());
+    }
+
+    if args.dry_run {
+        if json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "sessions_to_review": sessions.len(),
+                    "session_ids": sessions.iter().map(|s| &s.session_id).collect::<Vec<_>>(),
+                    "dry_run": true,
+                }))?
+            );
+        } else {
+            println!("Found {} sessions to review (dry run):", sessions.len());
+            for (i, s) in sessions.iter().enumerate() {
+                let title = s.title.as_deref().unwrap_or("(untitled)");
+                let time = s
+                    .last_updated
+                    .map(|t| t.format("%Y-%m-%d %H:%M").to_string())
+                    .unwrap_or_default();
+                println!(
+                    "  [{}] {} | {} | {}",
+                    i + 1,
+                    &s.session_id[..8.min(s.session_id.len())],
+                    time,
+                    title
+                );
+            }
+        }
+        return Ok(());
+    }
+
+    eprintln!("Reviewing {} sessions...", sessions.len());
+
+    let mut reviewed_count = 0usize;
+    let mut skipped_count = 0usize;
+
+    for (i, session) in sessions.iter().enumerate() {
+        let short_id = &session.session_id[..8.min(session.session_id.len())];
+        eprint!("  [{}/{}] {} — ", i + 1, sessions.len(), short_id);
+
+        let single_args = ReviewArgs {
+            command: ReviewCommand::Session {
+                session_id: session.session_id.clone(),
+            },
+            model: args.model.clone(),
+            verbose: false,
+            dry_run: false,
+            memory_only: args.memory_only,
+            skills_only: args.skills_only,
+        };
+
+        match do_review_single(&session.session_id, &single_args, false) {
+            Ok(()) => reviewed_count += 1,
+            Err(e) => {
+                eprintln!("ERROR: {}", e);
+                skipped_count += 1;
+            }
+        }
+    }
+
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "total": sessions.len(),
+                "reviewed": reviewed_count,
+                "skipped": skipped_count,
+            })
+        );
+    } else {
+        eprintln!(
+            "\nSummary: {} reviewed, {} skipped",
+            reviewed_count, skipped_count
+        );
+    }
+    Ok(())
+}
+
+fn show_history(
+    trigger: &Option<String>,
+    limit: usize,
+    json: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let loom_home = config::home::loom_home();
+    let history = ReviewHistory::new(&loom_home);
+    let records = history.list(limit)?;
+
+    let filtered: Vec<_> = if let Some(t) = trigger {
+        records.into_iter().filter(|r| r.trigger == *t).collect()
+    } else {
+        records
+    };
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&filtered)?);
+    } else if filtered.is_empty() {
+        println!("No review history found.");
+    } else {
+        for r in &filtered {
+            let status = if r.skipped { "SKIP" } else { "OK" };
+            let short_id = &r.session_id[..8.min(r.session_id.len())];
+            println!(
+                "[{}] {} | {} | {} | mem:{} skills:{} | {}ms",
+                status,
+                short_id,
+                r.reviewed_at.format("%Y-%m-%d %H:%M"),
+                r.trigger,
+                r.memory_update_count,
+                r.skill_update_count,
+                r.duration_ms,
+            );
+            if let Some(reason) = &r.skip_reason {
+                println!("       reason: {}", reason);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn show_review(
+    session_id: &str,
+    json: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let loom_home = config::home::loom_home();
+    let history = ReviewHistory::new(&loom_home);
+    match history.find_by_session(session_id)? {
+        Some(record) => {
+            if json {
+                println!("{}", serde_json::to_string_pretty(&record)?);
+            } else {
+                println!("Session: {}", record.session_id);
+                println!(
+                    "Reviewed: {}",
+                    record.reviewed_at.format("%Y-%m-%d %H:%M:%S")
+                );
+                println!("Trigger: {}", record.trigger);
+                println!("Model: {}", record.model);
+                println!("Memory updates: {}", record.memory_update_count);
+                println!("Skill updates: {}", record.skill_update_count);
+                println!("Skipped: {}", record.skipped);
+                if let Some(reason) = &record.skip_reason {
+                    println!("Skip reason: {}", reason);
+                }
+                println!("Duration: {}ms", record.duration_ms);
+            }
+        }
+        None => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({"error": "not_found", "session_id": session_id})
+                );
+            } else {
+                eprintln!("No review record found for session: {}", session_id);
+            }
+            std::process::exit(1);
+        }
+    }
+    Ok(())
+}
+
+fn show_pending(limit: usize, json: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let loom_home = config::home::loom_home();
+    let history = ReviewHistory::new(&loom_home);
+    let mgr = SessionManager::with_default_path();
+
+    let reviewed = history.reviewed_session_ids()?;
+    let all = mgr.list_sessions()?;
+    let pending: Vec<_> = all
+        .into_iter()
+        .filter(|s| !reviewed.contains(&s.session_id))
+        .take(limit)
+        .collect();
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&pending)?);
+    } else if pending.is_empty() {
+        println!("All sessions have been reviewed.");
+    } else {
+        println!("{} pending sessions:", pending.len());
+        for s in &pending {
+            let short_id = &s.session_id[..8.min(s.session_id.len())];
+            let time = s
+                .last_updated
+                .map(|t| t.format("%Y-%m-%d %H:%M").to_string())
+                .unwrap_or_default();
+            println!(
+                "  {} | {} | steps:{}",
+                short_id, time, s.latest_step
+            );
+        }
+    }
+    Ok(())
+}
+
+fn parse_duration_days(s: &str) -> Result<usize, String> {
+    let s = s.trim().to_lowercase();
+    if let Some(num) = s.strip_suffix('d') {
+        num.parse::<usize>()
+            .map_err(|e| format!("Invalid duration '{}': {}", s, e))
+    } else {
+        s.parse::<usize>().map_err(|_| {
+            format!(
+                "Invalid duration '{}': expected 'Nd' format (e.g. '7d')",
+                s
+            )
+        })
+    }
+}
+
+fn print_review_output(output: &ReviewOutput, verbose: bool) {
+    if output.memory_updates.is_empty() && output.skill_suggestions.is_empty() {
+        println!("  No updates extracted.");
+        return;
+    }
+
+    for update in &output.memory_updates {
+        println!(
+            "  + {} ({}): {} chars",
+            update.action,
+            update.file,
+            update.content.len()
+        );
+        if verbose && update.content.len() <= 300 {
+            println!("    {}", update.content);
+        }
+    }
+
+    for skill in &output.skill_suggestions {
+        println!("  ~ {}: {}", skill.name, skill.description);
+        if verbose {
+            println!("    Triggers: {:?}", skill.triggers);
+        }
+    }
+}
