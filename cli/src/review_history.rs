@@ -53,7 +53,7 @@ impl ReviewHistory {
         let reader = std::io::BufReader::new(file);
         let records: Vec<ReviewRecord> = reader
             .lines()
-            .filter_map(|line| line.ok())
+            .map_while(Result::ok)
             .filter_map(|line| serde_json::from_str(&line).ok())
             .collect();
         let start = records.len().saturating_sub(limit);

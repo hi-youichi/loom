@@ -45,6 +45,8 @@ pub struct ReactPromptInputs {
     pub agents_md: Option<String>,
     /// Optional skills section prepended after `agents_md`.
     pub skills_prompt: Option<String>,
+    /// Optional memory context (user preferences, project facts) prepended after `skills_prompt`.
+    pub memory_prompt: Option<String>,
     /// Optional runtime environment context (OS, locale, agent intro) prepended before all other sections.
     pub env_context: Option<EnvContext>,
     /// Working folder displayed in the workdir section when present.
@@ -116,6 +118,7 @@ fn collect_prefix_sections(inputs: &ReactPromptInputs) -> Vec<String> {
     push_trimmed(&mut sections, inputs.role_setting.as_ref());
     push_trimmed(&mut sections, inputs.agents_md.as_ref());
     push_trimmed(&mut sections, inputs.skills_prompt.as_ref());
+    push_trimmed(&mut sections, inputs.memory_prompt.as_ref());
     sections
 }
 

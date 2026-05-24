@@ -23,7 +23,7 @@ pub fn format_elapsed(duration: Duration) -> String {
 }
 
 /// Truncate a string to max chars, appending "…" if truncated.
-fn truncate(s: &str, max: usize) -> String {
+pub fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         s.to_string()
     } else {
@@ -127,6 +127,14 @@ pub fn format_call_summary(tool_name: &str, args_json: &str) -> String {
 
         "create_dir" => {
             let path = json_str(&args, "path").unwrap_or("?");
+            path.to_string()
+        }
+
+        "ls" => {
+            let path = json_str(&args, "path")
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .unwrap_or(".");
             path.to_string()
         }
 
@@ -417,6 +425,11 @@ pub fn format_done_summary(tool_name: &str, result: &str, is_error: bool) -> Str
         "help" => "ok".to_string(),
         "todo_write" => "saved".to_string(),
         "todo_read" => "ok".to_string(),
+
+        "ls" => {
+            let file_count = result.lines().filter(|l| !l.trim().is_empty()).count();
+            format!("{} files", file_count)
+        }
 
         _ => truncate(result.lines().next().unwrap_or("ok"), 60).to_string(),
     }

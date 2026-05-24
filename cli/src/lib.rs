@@ -6,6 +6,7 @@
 pub mod envelope;
 pub mod mcp_manager;
 pub mod model_cmd;
+pub mod review_history;
 pub mod run;
 pub mod tool_cmd;
 

@@ -164,6 +164,8 @@ pub async fn run_agent_wrapper(
     stream_out: Option<StreamCallback>,
 ) -> RunAgentResult {
     let (helve, config, resolved_agent) = build_helve_config(opts);
+
+
     print_loaded_tools(&config).await?;
     if !opts.output_json {
         if opts.dry_run {
@@ -311,7 +313,6 @@ pub async fn run_agent_wrapper(
     }
     if let Ok(s) = state.lock() {
         let total_tokens = s.total_prompt_tokens as u64 + s.total_completion_tokens as u64;
-        let duration = duration;
         let secs = duration.as_secs_f64();
         let _tokens_per_sec = if secs > 0.0 {
             total_tokens as f64 / secs
@@ -331,6 +332,29 @@ pub async fn run_agent_wrapper(
         );
     }
     let (reply, reasoning_content, stop_reason) = completion_reply(result);
+
+    if matches!(stop_reason, RunStopReason::EndTurn) && !reply.is_empty() {
+        let _ = super::background_review::trigger_post_turn_review(opts, &reply);
+
+        let session_id = opts
+            .thread_id.clone()
+            .or_else(|| opts.session_id.clone())
+            .unwrap_or_else(|| format!("auto-{}", std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()));
+        let user_msg = match &opts.message {
+            loom::UserContent::Text(t) => t.clone(),
+            _ => String::new(),
+        };
+        let store = super::session_store::FileSessionStore::new(
+            &super::session_store::FileSessionStore::default_path(),
+        );
+        let _ = super::session_store::store_session_from_conversation(
+            &store, &session_id, &user_msg, &reply, vec!["auto".to_string()],
+        );
+    }
+
     Ok(RunAgentOutput {
         reply,
         reasoning_content,
@@ -360,11 +384,11 @@ fn on_event_react(
 ) {
     match ev {
         StreamEvent::TaskStart { node_id, .. } => {
+            if let Some(sp) = s.spinner.take() {
+                sp.finish_box();
+                eprintln!();
+            }
             if node_id == "think" {
-                // Finish previous spinner and create new one
-                if let Some(sp) = s.spinner.take() {
-                    sp.finish_box();
-                }
                 let label = if s.turn == 0 {
                     "Thinking...".to_string()
                 } else {
@@ -377,14 +401,13 @@ fn on_event_react(
         }
         StreamEvent::Messages { chunk, .. } => {
             if chunk.kind == MessageChunkKind::Thinking {
-                // Track that we've seen thinking content
+                // Thinking content: dimmed on TTY, prefixed on pipe
                 s.in_thinking = true;
             }
+            if let Some(sp) = s.spinner.take() {
+                sp.finish_box();
+            }
             if !s.reply_started {
-                // Finish spinner before first output
-                if let Some(sp) = s.spinner.take() {
-                    sp.finish_box();
-                }
                 if let Some(ref ad) = s.agent_display {
                     eprintln!("{}", panel_format::format_panel_line("AGENT", ad));
                 }
@@ -395,7 +418,7 @@ fn on_event_react(
             }
             // Print separator when transitioning from thinking to reply
             if s.in_thinking && chunk.kind != MessageChunkKind::Thinking {
-                eprint!("\n");
+                eprintln!();
                 eprintln!("{}", panel_format::format_thinking_separator());
                 s.in_thinking = false;
             }
@@ -424,21 +447,21 @@ fn on_event_react(
                     eprintln!("(think → END: tool_calls empty, LLM gave FINAL_ANSWER)");
                 }
             } else {
-                // Save tool_calls during think (non-verbose)
+            // Save tool_calls during think (non-verbose)
                 if node_id == "think" && !react_state.tool_calls.is_empty() {
+                    if let Some(sp) = s.spinner.take() {
+                        sp.finish_box();
+                    }
                     log_tools_used(&react_state.tool_calls);
-                    // Update spinner with tool info
-                    if let Some(ref mut sp) = s.spinner {
-                        if let Some(tc) = react_state.tool_calls.first() {
-                            let desc = serde_json::from_str::<Value>(&tc.arguments)
-                                .ok()
-                                .and_then(|v| v.get("description").and_then(|d| d.as_str()).map(String::from));
-                            let label = match desc {
-                                Some(d) if !d.is_empty() => format!("{} - {}", tc.name, d),
-                                _ => tc.name.clone(),
-                            };
-                            sp.update(label);
-                        }
+                    if let Some(tc) = react_state.tool_calls.first() {
+                        let desc = serde_json::from_str::<Value>(&tc.arguments)
+                            .ok()
+                            .and_then(|v| v.get("description").and_then(|d| d.as_str()).map(String::from));
+                        let label = match desc {
+                            Some(d) if !d.is_empty() => format!("{} - {}", tc.name, d),
+                            _ => tc.name.clone(),
+                        };
+                        s.spinner = Some(Box::new(super::spinner::Spinner::new(label)));
                     }
                     s.pending_tool_calls = react_state.tool_calls.clone();
                     s.pending_tool_start = Some(std::time::Instant::now());
@@ -459,21 +482,33 @@ fn on_event_react(
                     &react_state.tool_results
                 };
                 for tc in s.pending_tool_calls.drain(..) {
-                    // Find matching tool result for PREVIEW/DIFF
                     let result_text = loom::stream_display::find_tool_result(
                         tool_results, &tc.name, &tc.id,
                     );
+                    let is_error = loom::stream_display::find_tool_result_error(
+                        tool_results, &tc.name, &tc.id,
+                    );
 
-                    // Show PREVIEW for read/glob/grep/todo tools
+                    if is_error {
+                        let err_msg = match &result_text {
+                            Some(r) => r.lines().next().unwrap_or("error"),
+                            None => "error",
+                        };
+                        eprintln!("{}", panel_format::format_panel_line("ERROR", &format!("{}: {}", tc.name, loom::stream_display::tool_summary::truncate(err_msg, 80))));
+                    }
+
                     if let Some(ref result) = result_text {
                         if let Some(preview) = loom::stream_display::format_preview(
                             &tc.name, &tc.arguments, result, false,
                         ) {
                             eprintln!("{}", preview);
+                        } else if !is_error && !result.trim().is_empty() {
+                            eprintln!("{}", loom::stream_display::tool_preview::format_result_preview(
+                                &tc.name, result, elapsed,
+                            ));
                         }
                     }
 
-                    // Show DIFF for edit/multiedit tools
                     if let Some(ref result) = result_text {
                         if let Some(diff) = loom::stream_display::format_diff(
                             &tc.name, &tc.arguments, result, false,
@@ -482,17 +517,22 @@ fn on_event_react(
                         }
                     }
 
-                    // DONE line with smart summary
-                    let done_summary = match result_text {
-                        Some(ref result) => {
-                            let is_error = loom::stream_display::find_tool_result_error(
-                                tool_results, &tc.name, &tc.id,
-                            );
-                            loom::stream_display::format_done_summary(&tc.name, result, is_error)
-                        }
-                        None => loom::stream_display::format_call_summary(&tc.name, &tc.arguments),
-                    };
-                    eprintln!("{}", panel_format::format_tool_done(&tc.name, &done_summary, elapsed));
+                    // Print DONE line for each completed tool
+                    if tc.name == "ls" {
+                        let path = serde_json::from_str::<serde_json::Value>(&tc.arguments)
+                            .ok()
+                            .and_then(|v| v.get("path").and_then(|p| p.as_str()).map(|s| s.trim().to_string()))
+                            .filter(|s| !s.is_empty())
+                            .unwrap_or_else(|| ".".to_string());
+                        let timing = match elapsed {
+                            Some(d) => format!(" {:.1}s", d.as_secs_f64()),
+                            None => String::new(),
+                        };
+                        eprintln!("ls {}{}", path, timing);
+                    } else {
+                        let result_summary = result_text.as_deref().unwrap_or("");
+                        eprintln!("{}", panel_format::format_tool_done(&tc.name, result_summary, elapsed));
+                    }
                 }
                 s.pending_tool_start = None;
                 s.pending_tool_results.clear();
@@ -535,11 +575,10 @@ fn on_event_dup(
             s.last_node = Some(node_id.clone());
         }
         StreamEvent::Messages { chunk, .. } => {
+            if let Some(sp) = s.spinner.take() {
+                sp.finish_box();
+            }
             if !s.reply_started {
-                // Finish spinner before first output
-                if let Some(sp) = s.spinner.take() {
-                    sp.finish_box();
-                }
                 if let Some(ref ad) = s.agent_display {
                     eprintln!("{}", panel_format::format_panel_line("AGENT", ad));
                 }
@@ -575,18 +614,18 @@ fn on_event_dup(
             } else if node_id == "plan" {
                 s.turn += 1;
                 if !state.core.tool_calls.is_empty() {
-                    log_tools_used(&state.core.tool_calls);
-                    if let Some(ref mut sp) = s.spinner {
-                        if let Some(tc) = state.core.tool_calls.first() {
-                            let desc = serde_json::from_str::<Value>(&tc.arguments)
-                                .ok()
-                                .and_then(|v| v.get("description").and_then(|d| d.as_str()).map(String::from));
-                            let label = match desc {
-                                Some(d) if !d.is_empty() => format!("{} - {}", tc.name, d),
-                                _ => tc.name.clone(),
-                            };
-                            sp.update(label);
-                        }
+                    if let Some(sp) = s.spinner.take() {
+                        sp.finish_box();
+                    }
+                    if let Some(tc) = state.core.tool_calls.first() {
+                        let desc = serde_json::from_str::<Value>(&tc.arguments)
+                            .ok()
+                            .and_then(|v| v.get("description").and_then(|d| d.as_str()).map(String::from));
+                        let label = match desc {
+                            Some(d) if !d.is_empty() => format!("{} - {}", tc.name, d),
+                            _ => tc.name.clone(),
+                        };
+                        s.spinner = Some(Box::new(super::spinner::Spinner::new(label)));
                     }
                 }
             }
@@ -652,11 +691,10 @@ fn on_event_tot(
             }
         }
         StreamEvent::Messages { chunk, .. } => {
+            if let Some(sp) = s.spinner.take() {
+                sp.finish_box();
+            }
             if !s.reply_started {
-                // Finish spinner before first output
-                if let Some(sp) = s.spinner.take() {
-                    sp.finish_box();
-                }
                 if let Some(ref ad) = s.agent_display {
                     eprintln!("{}", panel_format::format_panel_line("AGENT", ad));
                 }
@@ -679,7 +717,6 @@ fn on_event_tot(
                 eprintln!("--- {} ---", label);
                 eprintln!("{}", format_tot_state_display(state, display_max_len));
             } else if node_id == "act" && !state.core.tool_calls.is_empty() {
-                log_tools_used(&state.core.tool_calls);
             }
         }
         StreamEvent::Usage {
@@ -808,6 +845,9 @@ fn on_event_got(
             }
         }
         StreamEvent::Messages { chunk, .. } => {
+            if let Some(sp) = s.spinner.take() {
+                sp.finish_box();
+            }
             if !s.reply_started {
                 if let Some(ref ad) = s.agent_display {
                     eprintln!("AGENT: {}", ad);
@@ -1334,6 +1374,7 @@ mod tests {
             acp_session_id: None,
             force_compact: false,
             chat_id: None,
+            debug_llm: false,
         }
     }
 

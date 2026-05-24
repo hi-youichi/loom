@@ -37,6 +37,7 @@ fn opts(working_folder: PathBuf) -> RunOptions {
         cancellation: None,
         output_timestamp: false,
         dry_run: false,
+        debug_llm: false,
         any_stream_event_sender: None,
             bash_executor: None,
             extra_tools: None,

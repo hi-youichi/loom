@@ -232,6 +232,16 @@ export function useChat(options?: {
         setIsStreaming(false)
         isStreamingRef.current = false
         setActiveRunId(null)
+        setThinkingLines([])
+        // Mark any tool cards still in "running" state as "success"
+        updateAssistantMessage((msg) => ({
+          ...msg,
+          content: msg.content.map((block) =>
+            block.type === 'tool' && block.status === 'running'
+              ? { ...block, status: 'success' as const }
+              : block,
+          ),
+        }))
       }
     },
     [sessionId, workspaceId, agentId, model, handleTextChunk, handleEvent, updateAssistantMessage],
@@ -373,10 +383,19 @@ export function useChat(options?: {
       await connection.cancelRun(activeRunId)
     } catch (error) {
       console.error('Failed to cancel run:', error)
-      // Even if cancel fails, we should reset the streaming state
+    } finally {
       setIsStreaming(false)
       isStreamingRef.current = false
       setActiveRunId(null)
+      setThinkingLines([])
+      updateAssistantMessage((msg) => ({
+        ...msg,
+        content: msg.content.map((block) =>
+          block.type === 'tool' && block.status === 'running'
+            ? { ...block, status: 'success' as const }
+            : block,
+        ),
+      }))
     }
   }, [activeRunId])
 

@@ -1,10 +1,11 @@
 use crate::args::{ReviewArgs, ReviewCommand};
 use crate::review_history::{ReviewHistory, ReviewRecord};
-use crate::review_skill_cmd::{resolve_config, RealLlm};
+use crate::review_skill_cmd::build_review_client;
 use crate::session::SessionManager;
 use chrono::{Duration, Utc};
 use cli::run::memory::MemoryStore;
 use cli::run::review::{ReviewAgent, ReviewConfig, ReviewOutput};
+use cli::run::review_agent_loop::ReviewMode;
 use cli::run::skill_registry::SkillRegistry;
 use std::time::Instant;
 
@@ -13,38 +14,19 @@ pub(crate) async fn handle_review_command(
     json: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match &args.command {
-        ReviewCommand::Session { session_id } => {
-            let args = args.clone();
-            let sid = session_id.clone();
-            let result = tokio::task::spawn_blocking(move || {
-                do_review_single(&sid, &args, json).map_err(|e| e.to_string())
-            })
-            .await??;
-            Ok(result)
-        }
+        ReviewCommand::Session { session_id } => do_review_single(session_id, args, json).await,
         ReviewCommand::Sessions {
             recent,
             all_unreviewed,
             query,
-        } => {
-            let args = args.clone();
-            let recent = recent.clone();
-            let query = query.clone();
-            let all_unreviewed = *all_unreviewed;
-            let result = tokio::task::spawn_blocking(move || {
-                do_review_batch(&recent, all_unreviewed, &query, &args, json)
-                    .map_err(|e| e.to_string())
-            })
-            .await??;
-            Ok(result)
-        }
+        } => do_review_batch(recent, all_unreviewed, query, args, json).await,
         ReviewCommand::History { trigger, limit } => show_history(trigger, *limit, json),
         ReviewCommand::Show { session_id } => show_review(session_id, json),
         ReviewCommand::Pending { limit } => show_pending(*limit, json),
     }
 }
 
-fn do_review_single(
+async fn do_review_single(
     session_id: &str,
     args: &ReviewArgs,
     json: bool,
@@ -102,35 +84,29 @@ fn do_review_single(
         return Ok(());
     }
 
-    let (api_key, base_url, default_model) = resolve_config()?;
-    let model = args
-        .model
-        .as_deref()
-        .unwrap_or(&default_model)
-        .to_string();
-    let llm = RealLlm::new(api_key, base_url, model.clone());
+    let llm = build_review_client(args.model.as_deref())?;
+    let memory = MemoryStore::new(&MemoryStore::default_path());
+    let skills = SkillRegistry::new(&SkillRegistry::default_path());
 
-    let memory = MemoryStore::new(&loom_home);
-    let skills_dir = loom_home.join("skills");
-    let skills = SkillRegistry::new(&skills_dir);
-
-    let config = ReviewConfig {
+    let review_config = ReviewConfig {
         auto_create_threshold: 1,
         max_session_chars: 24000,
+        max_iterations: 10,
+        mode: ReviewMode::Json,
     };
-    let agent = ReviewAgent::with_config(&llm, &memory, &skills, config);
+    let agent = ReviewAgent::with_config(llm, memory, skills, review_config);
 
     if !json {
         eprintln!("Reviewing session: {}", session_id);
     }
 
-    match agent.review_session(&text) {
+    match agent.review_session(&text).await {
         Ok(output) => {
             let record = ReviewRecord {
                 session_id: session_id.to_string(),
                 reviewed_at: Utc::now(),
                 trigger: "manual".to_string(),
-                model,
+                model: String::new(),
                 memory_update_count: output.memory_updates.len(),
                 skill_update_count: output.skill_suggestions.len(),
                 skipped: false,
@@ -169,9 +145,9 @@ fn do_review_single(
     Ok(())
 }
 
-fn do_review_batch(
+async fn do_review_batch(
     recent: &Option<String>,
-    all_unreviewed: bool,
+    all_unreviewed: &bool,
     query: &Option<String>,
     args: &ReviewArgs,
     json: bool,
@@ -186,7 +162,7 @@ fn do_review_batch(
         let days = parse_duration_days(dur_str)?;
         let since = Utc::now() - Duration::days(days as i64);
         mgr.list_sessions_since(since)?
-    } else if all_unreviewed {
+    } else if *all_unreviewed {
         let reviewed = history.reviewed_session_ids()?;
         mgr.list_sessions()?
             .into_iter()
@@ -257,7 +233,7 @@ fn do_review_batch(
             skills_only: args.skills_only,
         };
 
-        match do_review_single(&session.session_id, &single_args, false) {
+        match do_review_single(&session.session_id, &single_args, false).await {
             Ok(()) => reviewed_count += 1,
             Err(e) => {
                 eprintln!("ERROR: {}", e);

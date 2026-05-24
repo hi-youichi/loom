@@ -72,11 +72,7 @@ impl MemoryStore {
     }
 
     pub fn default_path() -> PathBuf {
-        let home = std::env::var("LOOM_HOME")
-            .ok()
-            .or_else(|| std::env::var("HOME").ok().map(|h| format!("{}/.loom", h)))
-            .unwrap_or_else(|| "~/.loom".to_string());
-        PathBuf::from(home).join("data").join("memory")
+        config::home::loom_home().join("data").join("memory")
     }
 
     fn file_path(&self, file: MemoryFile) -> PathBuf {

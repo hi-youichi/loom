@@ -250,7 +250,7 @@ ShellTool 实现（codex / claude / cursor）。
 ## Phase 7 — 持久化与恢复
 
 Ctrl+C → save Paused → 关闭 MCP server。
-loom goal --resume --id <id> → 重新启动 MCP server → 恢复状态 → 继续循环。
+loom goal --resume --id `<id>` → 重新启动 MCP server → 恢复状态 → 继续循环。
 原子性并发恢复保护。
 
 ### 7.1 验收标准

@@ -222,8 +222,8 @@ fn is_horizontal_rule(s: &str) -> bool {
 }
 
 fn find_closing_backtick(chars: &[char], start: usize) -> usize {
-    for i in start..chars.len() {
-        if chars[i] == '`' {
+    for (i, &ch) in chars.iter().enumerate().skip(start) {
+        if ch == '`' {
             return i;
         }
     }
@@ -232,8 +232,8 @@ fn find_closing_backtick(chars: &[char], start: usize) -> usize {
 
 fn find_closing_marker(chars: &[char], start: usize, marker: char, count: usize) -> Option<usize> {
     let mut found = 0;
-    for i in start..chars.len() {
-        if chars[i] == marker {
+    for (i, &ch) in chars.iter().enumerate().skip(start) {
+        if ch == marker {
             found += 1;
             if found == count {
                 return Some(i - count + 1);
@@ -249,8 +249,8 @@ fn find_link_end(chars: &[char], start: usize) -> Option<(usize, usize)> {
     // Find closing ]
     let mut depth = 0;
     let mut text_end = None;
-    for i in start..chars.len() {
-        match chars[i] {
+    for (i, &ch) in chars.iter().enumerate().skip(start) {
+        match ch {
             '[' => depth += 1,
             ']' => {
                 if depth == 1 {
@@ -268,8 +268,8 @@ fn find_link_end(chars: &[char], start: usize) -> Option<(usize, usize)> {
     if text_end + 1 >= chars.len() || chars[text_end + 1] != '(' {
         return None;
     }
-    for i in (text_end + 2)..chars.len() {
-        if chars[i] == ')' {
+    for (i, &ch) in chars.iter().enumerate().skip(text_end + 2) {
+        if ch == ')' {
             return Some((text_end, i));
         }
     }

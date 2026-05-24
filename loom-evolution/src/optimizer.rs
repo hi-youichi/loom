@@ -270,7 +270,7 @@ impl<'a> GepaOptimizer<'a> {
         let analyses: Vec<String> = failed_traces
             .iter()
             .take(3)
-            .map(|t| failure_analysis_prompt(t))
+            .map(failure_analysis_prompt)
             .collect();
 
         let mut combined = String::new();

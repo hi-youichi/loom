@@ -66,6 +66,26 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
+      label: '进化子系统',
+      items: [
+        'evolution/README',
+        'evolution/gepa',
+        'evolution/gepa-comprehensive',
+        'evolution/usage',
+        'evolution/skills',
+        'evolution/curator',
+        'evolution/memory',
+        'evolution/commands',
+        'evolution/config',
+        'evolution/data-structures',
+        'evolution/decisions',
+        'evolution/implementation-plan',
+        'evolution/review',
+        'evolution/roadmap',
+      ],
+    },
+    {
+      type: 'category',
       label: '设计文档',
       items: [
         'design/session-dump',

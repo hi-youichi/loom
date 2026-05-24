@@ -38,6 +38,7 @@ pub(crate) async fn handle_tools_list(
         acp_session_id: None,
             force_compact: false,
             chat_id: None,
+            debug_llm: false,
     };
     let (_helve, config, _resolved_agent) = build_helve_config(&opts);
     match build_react_run_context(&config).await {
@@ -85,6 +86,7 @@ pub(crate) async fn handle_tool_show(
         acp_session_id: None,
             force_compact: false,
             chat_id: None,
+            debug_llm: false,
     };
     let (_helve, config, _resolved_agent) = build_helve_config(&opts);
     match build_react_run_context(&config).await {

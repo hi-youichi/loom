@@ -186,6 +186,8 @@ pub struct RunOptions {
     pub output_timestamp: bool,
     /// When true, do not execute tools; LLM runs but tool calls return a placeholder (CLI --dry).
     pub dry_run: bool,
+    /// When true, print full system prompt and messages to stderr before sending to LLM (CLI --debug-llm).
+    pub debug_llm: bool,
     /// Optional sender for forwarding raw `AnyStreamEvent`s to an external consumer (e.g. ACP).
     ///
     /// When set, this is propagated through `RunContext` → `ToolCallContext` so that
@@ -222,6 +224,7 @@ impl std::fmt::Debug for RunOptions {
             .field("thread_id", &self.thread_id)
             .field("output_timestamp", &self.output_timestamp)
             .field("dry_run", &self.dry_run)
+            .field("debug_llm", &self.debug_llm)
             .field("any_stream_event_sender", &self.any_stream_event_sender.as_ref().map(|_| "..."))
             .field("bash_executor", &self.bash_executor.as_ref().map(|_| "..."))
             .field("extra_tools", &self.extra_tools.as_ref().map(|t| t.len()))
@@ -339,6 +342,22 @@ pub async fn run_agent(
     llm_override: Option<Box<dyn LlmClient>>,
 ) -> Result<RunCompletion, RunError> {
     let (_helve, mut config, _resolved_agent) = build_helve_config(opts);
+    if opts.debug_llm {
+        eprintln!("========== [DEBUG-LLM] System Prompt ==========");
+        if let Some(ref sp) = config.system_prompt {
+            eprintln!("{}", sp);
+        } else {
+            eprintln!("(none)");
+        }
+        eprintln!("========== [DEBUG-LLM] User Message ==========");
+        eprintln!("{}", opts.message.as_text());
+        eprintln!("========== [DEBUG-LLM] Config ==========");
+        eprintln!("model: {:?}", config.model);
+        eprintln!("provider: {:?}", config.llm_provider_name);
+        eprintln!("working_folder: {:?}", config.working_folder);
+        eprintln!("thread_id: {:?}", config.thread_id);
+        eprintln!("================================================");
+    }
     if let Some(ref executor) = opts.bash_executor {
         config.bash_executor = Some(executor.clone());
     }
@@ -607,6 +626,7 @@ pub async fn run_agent_with_provider(
         model: Some(model.to_string()),
         mcp_config_path: None,
         dry_run: false,
+        debug_llm: false,
         provider: Some(provider.name),
         base_url: provider.base_url,
         api_key: provider.api_key,
@@ -617,7 +637,7 @@ pub async fn run_agent_with_provider(
             acp_session_id: None,
             force_compact: false,
             chat_id: None,
-    };
+        };
 
     // Run with LLM override
     run_agent(&opts, &RunCmd::React, None, Some(llm)).await
@@ -647,6 +667,7 @@ mod tests {
             mcp_config_path: None,
             output_timestamp: false,
             dry_run: false,
+            debug_llm: false,
             provider: None,
             base_url: None,
             api_key: None,
@@ -756,6 +777,7 @@ mod tests {
             mcp_config_path: None,
             output_timestamp: false,
             dry_run: false,
+            debug_llm: false,
             provider: None,
             base_url: None,
             api_key: None,

@@ -1,5 +1,12 @@
-use crate::run::memory::{MemoryFile, MemoryStore};
+use crate::run::memory::MemoryFile;
+use crate::run::review_agent_loop::{AgentReviewConfig, ReviewMode};
 use crate::run::skill_registry::{Lifecycle, SkillContent, SkillRegistry, Source};
+#[cfg(test)]
+use async_trait::async_trait;
+use loom::llm::LlmClient;
+use loom::message::Message;
+#[cfg(test)]
+use loom::llm::LlmResponse;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
@@ -26,13 +33,11 @@ pub struct SkillSuggestion {
     pub body: String,
 }
 
-pub trait ReviewLlm: Send + Sync {
-    fn complete(&self, prompt: &str) -> Result<String, String>;
-}
-
 pub struct ReviewConfig {
     pub auto_create_threshold: usize,
     pub max_session_chars: usize,
+    pub max_iterations: u32,
+    pub mode: ReviewMode,
 }
 
 impl Default for ReviewConfig {
@@ -40,22 +45,26 @@ impl Default for ReviewConfig {
         Self {
             auto_create_threshold: 5,
             max_session_chars: 12000,
+            max_iterations: 10,
+            mode: ReviewMode::Json,
         }
     }
 }
 
-pub struct ReviewAgent<'a> {
-    llm: &'a dyn ReviewLlm,
-    memory: &'a MemoryStore,
-    skills: &'a SkillRegistry,
+use crate::run::memory::MemoryStore;
+
+pub struct ReviewAgent {
+    llm: Box<dyn LlmClient>,
+    memory: MemoryStore,
+    skills: SkillRegistry,
     config: ReviewConfig,
 }
 
-impl<'a> ReviewAgent<'a> {
+impl ReviewAgent {
     pub fn new(
-        llm: &'a dyn ReviewLlm,
-        memory: &'a MemoryStore,
-        skills: &'a SkillRegistry,
+        llm: Box<dyn LlmClient>,
+        memory: MemoryStore,
+        skills: SkillRegistry,
     ) -> Self {
         Self {
             llm,
@@ -66,9 +75,9 @@ impl<'a> ReviewAgent<'a> {
     }
 
     pub fn with_config(
-        llm: &'a dyn ReviewLlm,
-        memory: &'a MemoryStore,
-        skills: &'a SkillRegistry,
+        llm: Box<dyn LlmClient>,
+        memory: MemoryStore,
+        skills: SkillRegistry,
         config: ReviewConfig,
     ) -> Self {
         Self {
@@ -79,32 +88,78 @@ impl<'a> ReviewAgent<'a> {
         }
     }
 
-    pub fn review_session(&self, session_content: &str) -> Result<ReviewOutput, String> {
+    pub async fn review_session(&self, session_content: &str) -> Result<ReviewOutput, String> {
+        match self.config.mode {
+            ReviewMode::Agent => self.review_agent(session_content).await,
+            ReviewMode::Json => self.review_json(session_content).await,
+        }
+    }
+
+    async fn review_agent(&self, session_content: &str) -> Result<ReviewOutput, String> {
+        let config = AgentReviewConfig {
+            max_iterations: self.config.max_iterations,
+            max_session_chars: self.config.max_session_chars,
+            mode: ReviewMode::Agent,
+            review_memory: true,
+            review_skills: true,
+        };
+        let result = crate::run::review_agent_loop::AgentReviewRunner::run_with_refs(
+            &*self.llm,
+            &self.memory,
+            &self.skills,
+            session_content,
+            &config,
+        )
+        .await?;
+
+        Ok(ReviewOutput {
+            memory_updates: result
+                .actions
+                .iter()
+                .filter(|a| a.kind == "memory")
+                .map(|a| MemoryUpdate {
+                    file: a.target.clone(),
+                    action: "update".to_string(),
+                    content: String::new(),
+                })
+                .collect(),
+            skill_suggestions: result
+                .actions
+                .iter()
+                .filter(|a| a.kind == "skill" || a.kind == "skill_file")
+                .map(|a| SkillSuggestion {
+                    name: a.target.clone(),
+                    description: a.summary.clone(),
+                    triggers: vec![],
+                    body: String::new(),
+                })
+                .collect(),
+        })
+    }
+
+    async fn review_json(&self, session_content: &str) -> Result<ReviewOutput, String> {
         let truncated = if session_content.len() > self.config.max_session_chars {
-            &session_content[..self.config.max_session_chars]
+            let end = session_content
+                .char_indices()
+                .take_while(|(i, _)| *i <= self.config.max_session_chars)
+                .last()
+                .map(|(i, c)| i + c.len_utf8())
+                .unwrap_or(0);
+            &session_content[..end]
         } else {
             session_content
         };
 
         let prompt = build_review_prompt(truncated);
-        let mut retries = 0;
-        let response = loop {
-            match self.llm.complete(&prompt) {
-                Ok(r) => break r,
-                Err(e) => {
-                    retries += 1;
-                    if retries >= 3 {
-                        return Err(format!(
-                            "Review LLM call failed after {} retries: {}",
-                            retries, e
-                        ));
-                    }
-                    warn!("Review LLM call failed (attempt {}): {}", retries, e);
-                }
-            }
-        };
+        let messages = vec![Message::user(prompt)];
 
-        let output = parse_review_response(&response)?;
+        let response = self
+            .llm
+            .invoke(&messages)
+            .await
+            .map_err(|e| format!("Review LLM call failed: {}", e))?;
+
+        let output = parse_review_response(&response.content)?;
         self.apply_memory_updates(&output.memory_updates)?;
         self.apply_skill_suggestions(&output.skill_suggestions)?;
         Ok(output)
@@ -124,11 +179,15 @@ impl<'a> ReviewAgent<'a> {
 
             match update.action.to_lowercase().as_str() {
                 "append" => {
-                    self.memory.append(file, &update.content).map_err(|e| e.to_string())?;
+                    self.memory
+                        .append(file, &update.content)
+                        .map_err(|e| e.to_string())?;
                     info!("Appended to {:?}: {} chars", file, update.content.len());
                 }
                 "replace" => {
-                    self.memory.replace(file, &update.content).map_err(|e| e.to_string())?;
+                    self.memory
+                        .replace(file, &update.content)
+                        .map_err(|e| e.to_string())?;
                     info!("Replaced {:?}: {} chars", file, update.content.len());
                 }
                 other => {
@@ -158,7 +217,9 @@ impl<'a> ReviewAgent<'a> {
                         body: suggestion.body.clone(),
                         raw: String::new(),
                     };
-                    self.skills.save(&suggestion.name, &skill).map_err(|e| e.to_string())?;
+                    self.skills
+                        .save(&suggestion.name, &skill)
+                        .map_err(|e| e.to_string())?;
                     info!("Auto-created skill: {}", suggestion.name);
                 }
             }
@@ -202,7 +263,7 @@ fn build_review_prompt(session_content: &str) -> String {
 - memory_updates 中的 file 只能是 USER、PROJECT 或 FACTS
 - action 只能是 append 或 replace
 - 没有需要记录的内容时，对应数组为空
-- skill_suggestions 只在有明确可复用模式时才填写"#,
+- skill_suggestions 只在有明确可复用模式时才填写"#
     )
 }
 
@@ -235,26 +296,28 @@ fn parse_review_response(response: &str) -> Result<ReviewOutput, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::RefCell;
 
-    struct MockLlm {
+    struct ReviewMockLlm {
         response: String,
-        call_count: std::sync::Mutex<usize>,
     }
 
-    impl MockLlm {
+    impl ReviewMockLlm {
         fn new(response: &str) -> Self {
             Self {
                 response: response.to_string(),
-                call_count: std::sync::Mutex::new(0),
             }
         }
     }
 
-    impl ReviewLlm for MockLlm {
-        fn complete(&self, _prompt: &str) -> Result<String, String> {
-            *self.call_count.lock().unwrap() += 1;
-            Ok(self.response.clone())
+    #[async_trait]
+    impl LlmClient for ReviewMockLlm {
+        async fn invoke(&self, _messages: &[Message]) -> Result<LlmResponse, loom::AgentError> {
+            Ok(LlmResponse {
+                content: self.response.clone(),
+                tool_calls: vec![],
+                reasoning_content: None,
+                usage: None,
+            })
         }
     }
 
@@ -299,26 +362,26 @@ mod tests {
         assert!(output.skill_suggestions.is_empty());
     }
 
-    #[test]
-    fn full_review_flow() {
+    #[tokio::test]
+    async fn full_review_flow() {
         let dir = tempfile::tempdir().unwrap();
         let memory = MemoryStore::new(dir.path());
         let skills_dir = dir.path().join("skills");
         let skills = SkillRegistry::new(&skills_dir);
 
-        let llm = MockLlm::new(&make_valid_response());
-        let agent = ReviewAgent::new(&llm, &memory, &skills);
+        let llm = ReviewMockLlm::new(&make_valid_response());
+        let agent = ReviewAgent::new(Box::new(llm), memory, skills);
 
         let session = "User asked to fix a Rust compiler error in main.rs";
-        let output = agent.review_session(session).unwrap();
+        let output = agent.review_session(session).await.unwrap();
 
         assert_eq!(output.memory_updates.len(), 2);
         assert_eq!(output.skill_suggestions.len(), 1);
 
-        let user_content = memory.load(MemoryFile::User).unwrap();
+        let user_content = agent.memory.load(MemoryFile::User).unwrap();
         assert!(user_content.contains("prefers Rust"));
 
-        let loaded_skill = skills.load("debug-rust-errors").unwrap();
+        let loaded_skill = agent.skills.load("debug-rust-errors").unwrap();
         assert_eq!(loaded_skill.source, Source::Auto);
     }
 }

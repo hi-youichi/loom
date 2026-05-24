@@ -8,6 +8,7 @@ pub(crate) const DEFAULT_MAX_REPLY_LEN: usize = 0;
 
 /// Truncates `s` to at most `max` chars. When truncated, appends `...` (total length = max).
 /// Uses character boundaries for safe UTF-8 handling.
+#[allow(dead_code)] // Public utility for display limits
 pub(crate) fn truncate_message(s: &str, max: usize) -> String {
     const SUFFIX: &str = "...";
     let suffix_len = 3;

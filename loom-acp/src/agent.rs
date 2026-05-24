@@ -786,6 +786,7 @@ impl LoomAcpAgent {
             mcp_config_path: None,
             output_timestamp: false,
             dry_run: false,
+            debug_llm: false,
             provider: resolved.provider,
             base_url: resolved.base_url,
             api_key: resolved.api_key,

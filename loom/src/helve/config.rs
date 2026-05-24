@@ -39,6 +39,8 @@ pub struct HelveConfig {
     pub system_prompt_override: Option<String>,
     /// Skills prompt: available_skills summary (and optionally preloaded content). Injected between agents_md and base_content.
     pub skills_prompt: Option<String>,
+    /// Memory context: persistent user/project/facts loaded from MemoryStore. Injected after skills_prompt, before base_content.
+    pub memory_prompt: Option<String>,
     /// Runtime environment context (OS, locale, agent intro). Prepended before all other prefix sections.
     pub env_context: Option<EnvContext>,
 }
@@ -71,6 +73,7 @@ pub fn to_react_build_config(helve: &HelveConfig, base: ReactBuildConfig) -> Rea
         role_setting: helve.role_setting.clone(),
         agents_md: helve.agents_md.clone(),
         skills_prompt: helve.skills_prompt.clone(),
+        memory_prompt: helve.memory_prompt.clone(),
         env_context: helve.env_context.clone(),
         working_folder: helve.working_folder.clone(),
         approval_policy: helve.approval_policy,
@@ -139,6 +142,7 @@ mod tests {
         assert!(c.agents_md.is_none());
         assert!(c.system_prompt_override.is_none());
         assert!(c.skills_prompt.is_none());
+        assert!(c.memory_prompt.is_none());
         assert!(c.env_context.is_none());
     }
 

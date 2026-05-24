@@ -1,13 +1,15 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 
 use crate::cli_run::AnyStreamEvent;
+use crate::stream::StreamEvent;
 
-use super::state::{ToolError, TurnResult};
+use super::state::{ToolCallSummary, ToolError, TurnResult};
 
 const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 300;
 
@@ -199,14 +201,19 @@ impl CodingTool for LoomTool {
         use crate::cli_run::{RunCmd, RunCompletion, RunOptions};
         use crate::message::UserContent;
 
+        let tool_summaries: Arc<Mutex<Vec<ToolCallSummary>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
         let on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>> =
             if let Some(ref sender) = self.any_stream_event_sender {
                 let sender = sender.clone();
+                let summaries = tool_summaries.clone();
                 Some(Box::new(move |ev: AnyStreamEvent| {
+                    collect_tool_summary(&ev, &summaries);
                     sender(ev);
                 }))
             } else {
-                Some(crate::stream_display::create_stdio_event_callback(
+                let mut original = crate::stream_display::create_stdio_event_callback(
                     crate::stream_display::StreamDisplayConfig {
                         verbose: self.verbose,
                         display_max_len: 10000,
@@ -214,7 +221,12 @@ impl CodingTool for LoomTool {
                         agent_display: None,
                         use_spinner: true,
                     },
-                ))
+                );
+                let summaries = tool_summaries.clone();
+                Some(Box::new(move |ev: AnyStreamEvent| {
+                    collect_tool_summary(&ev, &summaries);
+                    original(ev);
+                }))
             };
 
         let opts = RunOptions {
@@ -236,6 +248,7 @@ impl CodingTool for LoomTool {
             thread_id: Some(self.session_id.clone()),
             output_timestamp: false,
             dry_run: false,
+            debug_llm: false,
             any_stream_event_sender: self.any_stream_event_sender.clone(),
             bash_executor: None,
             extra_tools: None,
@@ -248,11 +261,13 @@ impl CodingTool for LoomTool {
             .await
             .map_err(|e| ToolError::ExecutionFailed(format!("loom agent error: {}", e)))?;
 
+        let tool_calls_summary = tool_summaries.lock().unwrap().drain(..).collect();
+
         match result {
             RunCompletion::Finished(agent_result) => Ok(TurnResult {
                 reply: agent_result.reply,
                 reasoning_content: agent_result.reasoning_content,
-                tool_calls_summary: Vec::new(),
+                tool_calls_summary,
                 usage: None,
             }),
             RunCompletion::Cancelled => Err(ToolError::Aborted),
@@ -267,14 +282,25 @@ impl CodingTool for LoomTool {
 pub fn generate_mcp_config(_tool_name: &str, db_path: &Path) -> String {
     let db_path_str = db_path.to_string_lossy().replace('\\', "\\\\");
     format!(
-        r#"{{
-  "mcpServers": {{
-    "task": {{
-      "command": "task-mcp-server",
-      "args": ["--db-path", "{}"]
-    }}
-  }}
-}}"#,
+        r#"{{"mcpServers":{{"task":{{"command":"task-mcp-server","args":["--db-path","{}"]}}}}}}"#,
         db_path_str
     )
+}
+
+/// Extract tool name + result preview from `StreamEvent::ToolEnd` events
+/// into a shared summary list for the goal runner to display after each turn.
+fn collect_tool_summary(
+    ev: &AnyStreamEvent,
+    summaries: &Arc<Mutex<Vec<ToolCallSummary>>>,
+) {
+    if let AnyStreamEvent::React(StreamEvent::ToolEnd { name, result, .. }) = ev {
+        let preview = crate::stream_display::tool_summary::truncate(
+            result.lines().next().unwrap_or(result),
+            80,
+        );
+        summaries.lock().unwrap().push(ToolCallSummary {
+            tool_name: name.clone(),
+            result_preview: preview.to_string(),
+        });
+    }
 }

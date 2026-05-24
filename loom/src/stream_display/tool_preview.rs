@@ -6,7 +6,7 @@
 //! PREVIEW: Shows a snapshot of tool output (read, glob, grep, etc.)
 //! DIFF: Shows edit changes with red/green highlighting
 
-use crate::stream_display::panel_format::{color_enabled, format_panel_line};
+use crate::stream_display::panel_format::color_enabled;
 
 /// Maximum number of preview lines before collapsing.
 const MAX_PREVIEW_LINES: usize = 5;
@@ -24,7 +24,7 @@ pub fn format_preview(tool_name: &str, args_json: &str, result: &str, compact: b
     }
 
     match tool_name {
-        "read" | "glob" | "grep" => {
+        "read" | "glob" | "grep" | "ls" => {
             if result.trim().is_empty() {
                 return None;
             }
@@ -37,6 +37,7 @@ pub fn format_preview(tool_name: &str, args_json: &str, result: &str, compact: b
         "read" => Some(format_read_preview(args_json, result)),
         "glob" => Some(format_glob_preview(args_json, result)),
         "grep" => Some(format_grep_preview(args_json, result)),
+        "ls" => Some(format_ls_preview(result)),
         "todo_write" => Some(format_todo_write_preview(args_json)),
         "todo_read" => Some(format_todo_read_preview(result)),
         _ => None,
@@ -66,7 +67,7 @@ fn format_read_preview(args_json: &str, result: &str) -> String {
     let offset = args.get("offset").and_then(|v| v.as_u64());
     let limit = args.get("limit").and_then(|v| v.as_u64());
 
-    let header = match (offset, limit) {
+    let _header = match (offset, limit) {
         (Some(o), Some(l)) => format!("{} [{}:{}]", path, o, o + l),
         (Some(o), None) => format!("{} [{}:]", path, o),
         (None, Some(l)) => format!("{} [:{}]", path, l),
@@ -77,8 +78,7 @@ fn format_read_preview(args_json: &str, result: &str) -> String {
     let total = lines.len();
     let start_line = offset.unwrap_or(1) as usize;
 
-    let mut output = format_panel_line("PREV", &header);
-    output.push('\n');
+    let mut output = String::new();
 
     let show_lines = lines.iter().take(MAX_PREVIEW_LINES);
     let line_num_width = format!("{}", start_line + total.min(MAX_PREVIEW_LINES)).len();
@@ -106,9 +106,8 @@ fn format_glob_preview(args_json: &str, result: &str) -> String {
     let files: Vec<&str> = result.lines().filter(|l| !l.trim().is_empty()).collect();
     let total = files.len();
 
-    let header = format!("{} ({} files)", pattern, total);
-    let mut output = format_panel_line("PREV", &header);
-    output.push('\n');
+    let _header = format!("{} ({} files)", pattern, total);
+    let mut output = String::new();
 
     for file in files.iter().take(MAX_GLOB_FILES) {
         let truncated = truncate_to_width(file, 100);
@@ -139,14 +138,13 @@ fn format_grep_preview(args_json: &str, result: &str) -> String {
         .collect();
     let file_count = files.len();
 
-    let header = if file_count > 1 {
+    let _header = if file_count > 1 {
         format!("{} ({} matches in {} files)", pattern, total, file_count)
     } else {
         format!("{} ({} matches)", pattern, total)
     };
 
-    let mut output = format_panel_line("PREV", &header);
-    output.push('\n');
+    let mut output = String::new();
 
     for m in matches.iter().take(MAX_GREP_MATCHES) {
         let truncated = truncate_to_width(m, 100);
@@ -171,9 +169,8 @@ fn format_todo_write_preview(args_json: &str) -> String {
     };
 
     let _total = todos.len();
-    let header = format!("({} todos)", _total);
-    let mut output = format_panel_line("PREV", &header);
-    output.push('\n');
+    let _header = format!("({} todos)", _total);
+    let mut output = String::new();
 
     for (i, todo) in todos.iter().enumerate() {
         let status = todo.get("status").and_then(|v| v.as_str()).unwrap_or("pending");
@@ -214,7 +211,7 @@ fn format_todo_read_preview(result: &str) -> String {
         if let Ok(v) = serde_json::from_str(result.trim()) {
             v
         } else {
-            return format_panel_line("PREV", result);
+            return String::new();
         }
     };
 
@@ -223,9 +220,8 @@ fn format_todo_read_preview(result: &str) -> String {
     let in_progress = todos.iter().filter(|t| t.get("status").and_then(|v| v.as_str()) == Some("in_progress")).count();
     let completed = todos.iter().filter(|t| t.get("status").and_then(|v| v.as_str()) == Some("completed")).count();
 
-    let header = format!("({} pending, {} in_progress, {} completed)", pending, in_progress, completed);
-    let mut output = format_panel_line("PREV", &header);
-    output.push('\n');
+    let _header = format!("({} pending, {} in_progress, {} completed)", pending, in_progress, completed);
+    let mut output = String::new();
 
     for (i, todo) in todos.iter().enumerate() {
         let status = todo.get("status").and_then(|v| v.as_str()).unwrap_or("pending");
@@ -260,12 +256,11 @@ fn format_todo_read_preview(result: &str) -> String {
 
 fn format_edit_diff(args_json: &str) -> String {
     let args: serde_json::Value = serde_json::from_str(args_json).unwrap_or_default();
-    let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("?");
+    let _path = args.get("path").and_then(|v| v.as_str()).unwrap_or("?");
     let old = args.get("oldString").and_then(|v| v.as_str()).unwrap_or("");
     let new = args.get("newString").and_then(|v| v.as_str()).unwrap_or("");
 
-    let mut output = format_panel_line("DIFF", path);
-    output.push('\n');
+    let mut output = String::new();
 
     // Show context lines from old string
     let old_lines: Vec<&str> = old.lines().collect();
@@ -294,16 +289,15 @@ fn format_edit_diff(args_json: &str) -> String {
 
 fn format_multiedit_diff(args_json: &str) -> String {
     let args: serde_json::Value = serde_json::from_str(args_json).unwrap_or_default();
-    let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("?");
+    let _path = args.get("path").and_then(|v| v.as_str()).unwrap_or("?");
 
     let edits = match args.get("edits").and_then(|v| v.as_array()) {
         Some(e) => e,
-        None => return format_panel_line("DIFF", path),
+        None => return String::new(),
     };
 
-    let header = format!("{} ({} edits)", path, edits.len());
-    let mut output = format_panel_line("DIFF", &header);
-    output.push('\n');
+    let _header = format!("{} ({} edits)", _path, edits.len());
+    let mut output = String::new();
 
     for edit in edits.iter().take(5) {
         let old = edit.get("oldString").and_then(|v| v.as_str()).unwrap_or("");
@@ -312,7 +306,7 @@ fn format_multiedit_diff(args_json: &str) -> String {
         // Show removed → added
         let old_truncated = truncate_to_width(old, 60);
         let new_truncated = truncate_to_width(new, 60);
-        output.push_str(&format!("       "));
+        output.push_str("       ");
         output.push_str(&format_removed_inline(&old_truncated));
         output.push_str(" → ");
         output.push_str(&format_added_inline(&new_truncated));
@@ -391,6 +385,38 @@ fn format_added_inline(content: &str) -> String {
     }
 }
 
+pub fn format_result_preview(_tool_name: &str, result: &str, _elapsed: Option<std::time::Duration>) -> String {
+    let lines: Vec<&str> = result.lines().filter(|l| !l.trim().is_empty()).collect();
+    if lines.is_empty() {
+        return String::new();
+    }
+    let mut output = String::new();
+    for line in &lines {
+        output.push_str(line);
+        output.push('\n');
+    }
+    output
+}
+
+fn format_ls_preview(result: &str) -> String {
+    let mut output = String::new();
+    for line in result.lines() {
+        let trimmed = line.trim_end();
+        if trimmed.ends_with('/') {
+            if color_enabled() {
+                output.push_str(&format!("\x1b[36m{}\x1b[0m\n", line));
+            } else {
+                output.push_str(line);
+                output.push('\n');
+            }
+        } else {
+            output.push_str(line);
+            output.push('\n');
+        }
+    }
+    output
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -400,8 +426,7 @@ mod tests {
         let args = r#"{"path":"src/main.rs","offset":80,"limit":30}"#;
         let result = "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7";
         let output = format_preview("read", args, result, false).unwrap();
-        assert!(output.contains("src/main.rs"));
-        assert!(output.contains("PREV"));
+        assert!(output.contains("line 1"));
         assert!(output.contains("2 more lines"));
     }
 
@@ -417,8 +442,8 @@ mod tests {
         let args = r#"{"pattern":"**/*.rs"}"#;
         let result = "src/main.rs\nsrc/lib.rs\nsrc/utils.rs";
         let output = format_preview("glob", args, result, false).unwrap();
-        assert!(output.contains("3 files"));
         assert!(output.contains("src/main.rs"));
+        assert!(output.contains("src/lib.rs"));
     }
 
     #[test]
@@ -427,7 +452,7 @@ mod tests {
         let files: Vec<String> = (0..20).map(|i| format!("src/file_{}.rs", i)).collect();
         let result = files.join("\n");
         let output = format_preview("glob", args, &result, false).unwrap();
-        assert!(output.contains("20 files"));
+        assert!(output.contains("src/file_0.rs"));
         assert!(output.contains("10 more files"));
     }
 
@@ -436,8 +461,8 @@ mod tests {
         let args = r#"{"pattern":"format_tool","include":"*.rs"}"#;
         let result = "src/a.rs:42:format_tool_call\nsrc/b.rs:10:format_tool_done";
         let output = format_preview("grep", args, result, false).unwrap();
-        assert!(output.contains("2 matches"));
-        assert!(output.contains("format_tool"));
+        assert!(output.contains("format_tool_call"));
+        assert!(output.contains("format_tool_done"));
     }
 
     #[test]
@@ -445,7 +470,6 @@ mod tests {
         // Simulates the actual todo_read output format: "{count} todos\n{json_array}"
         let result = "1 todos\n[\n  {\n    \"id\": \"1\",\n    \"content\": \"Fix bug\",\n    \"status\": \"pending\",\n    \"priority\": \"high\"\n  }\n]";
         let output = format_preview("todo_read", "{}", result, false).unwrap();
-        assert!(output.contains("1 pending"));
         assert!(output.contains("Fix bug"));
         assert!(output.contains("○"));
     }
@@ -453,15 +477,14 @@ mod tests {
     #[test]
     fn preview_todo_read_empty_list() {
         let result = "0 todos\n[]";
-        let output = format_preview("todo_read", "{}", result, false).unwrap();
-        assert!(output.contains("0 pending"));
+        let output = format_preview("todo_read", "{}", result, false);
+        assert!(output.is_some());
     }
 
     #[test]
     fn preview_todo_write() {
         let args = r#"{"todos":[{"id":"1","content":"Fix bug","status":"completed","priority":"high"},{"id":"2","content":"Add tests","status":"pending","priority":"medium"}]}"#;
         let output = format_preview("todo_write", args, "", false).unwrap();
-        assert!(output.contains("2 todos"));
         assert!(output.contains("Fix bug"));
         assert!(output.contains("✓"));
         assert!(output.contains("○"));
@@ -476,8 +499,6 @@ mod tests {
     fn diff_edit_basic() {
         let args = r#"{"path":"panel_format.rs","oldString":"fn main()","newString":"fn hello()"}"#;
         let output = format_diff("edit", args, "", false).unwrap();
-        assert!(output.contains("DIFF"));
-        assert!(output.contains("panel_format.rs"));
         assert!(output.contains("fn main()"));
         assert!(output.contains("fn hello()"));
     }
@@ -486,7 +507,8 @@ mod tests {
     fn diff_multiedit_basic() {
         let args = r#"{"path":"panel_format.rs","edits":[{"oldString":"a","newString":"b"},{"oldString":"c","newString":"d"}]}"#;
         let output = format_diff("multiedit", args, "", false).unwrap();
-        assert!(output.contains("2 edits"));
+        assert!(output.contains("a"));
+        assert!(output.contains("b"));
     }
 
     #[test]

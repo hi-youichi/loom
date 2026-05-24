@@ -69,11 +69,7 @@ impl SkillRegistry {
     }
 
     pub fn default_path() -> PathBuf {
-        let home = std::env::var("LOOM_HOME")
-            .ok()
-            .or_else(|| std::env::var("HOME").ok().map(|h| format!("{}/.loom", h)))
-            .unwrap_or_else(|| "~/.loom".to_string());
-        PathBuf::from(home).join("data").join("skills")
+        config::home::loom_home().join("data").join("skills")
     }
 
     fn skill_dir(&self, source: Source, name: &str) -> PathBuf {
@@ -244,6 +240,76 @@ impl SkillRegistry {
             }
         }
         Err(SkillError::NotFound(name.to_string()))
+    }
+
+    pub fn patch(&self, name: &str, old_string: &str, new_string: &str) -> Result<(), SkillError> {
+        let mut content = self.load(name)?;
+        if !content.raw.contains(old_string) {
+            return Err(SkillError::InvalidFormat(format!(
+                "old_string not found in skill '{}'",
+                name
+            )));
+        }
+        content.raw = content.raw.replacen(old_string, new_string, 1);
+        let (frontmatter, body) = parse_skill_frontmatter(&content.raw)?;
+        let updated = SkillContent {
+            name: content.name.clone(),
+            description: content.description.clone(),
+            triggers: content.triggers.clone(),
+            lifecycle: content.lifecycle,
+            source: content.source,
+            body,
+            raw: content.raw.clone(),
+        };
+        let description = frontmatter
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let triggers: Option<Vec<String>> = frontmatter
+            .get("triggers")
+            .and_then(|v| v.as_sequence())
+            .map(|seq| {
+                seq.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            });
+        let updated = SkillContent {
+            description: description.unwrap_or(updated.description),
+            triggers: triggers.unwrap_or(updated.triggers),
+            ..updated
+        };
+        self.save(name, &updated)
+    }
+
+    pub fn write_file(
+        &self,
+        skill_name: &str,
+        path: &str,
+        content: &str,
+    ) -> Result<(), SkillError> {
+        let skill = self.load(skill_name)?;
+        let dir = self.skill_dir(skill.source, skill_name);
+        let file_path = dir.join(path.trim_start_matches('/'));
+        if let Some(parent) = file_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&file_path, content)?;
+        Ok(())
+    }
+
+    pub fn remove_file(&self, skill_name: &str, path: &str) -> Result<(), SkillError> {
+        let skill = self.load(skill_name)?;
+        let dir = self.skill_dir(skill.source, skill_name);
+        let file_path = dir.join(path.trim_start_matches('/'));
+        if file_path.exists() {
+            fs::remove_file(&file_path)?;
+            Ok(())
+        } else {
+            Err(SkillError::NotFound(format!(
+                "file '{}' in skill '{}'",
+                path, skill_name
+            )))
+        }
     }
 
     pub fn find_matching(&self, query: &str, threshold: f64) -> Result<Vec<SkillContent>, SkillError> {

@@ -18,6 +18,7 @@ mod review_skill_cmd;
 mod run_flow;
 mod session;
 mod subcommands;
+mod task_cmd;
 
 pub(crate) use args::Command;
 
@@ -141,6 +142,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if let Some(Cmd::Review(ra)) = &args.cmd {
         if let Err(err) = review_cmd::handle_review_command(ra, args.json).await {
+            eprintln!("{}", err);
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+    if let Some(Cmd::Task(ta)) = &args.cmd {
+        if let Err(err) = task_cmd::handle_task_command(ta).await {
             eprintln!("{}", err);
             std::process::exit(1);
         }

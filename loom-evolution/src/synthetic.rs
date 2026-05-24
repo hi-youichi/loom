@@ -83,7 +83,7 @@ fn parse_dataset_response(
                 }
             }
             if examples.is_empty() {
-                return Err(format!("Failed to parse any examples from response").into());
+                return Err("Failed to parse any examples from response".to_string().into());
             }
             examples
         }

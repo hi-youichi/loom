@@ -150,7 +150,7 @@ fn handle_messages(s: &mut EventState, chunk: &MessageChunk, output_timestamp: b
         s.reply_started = true;
     }
     if s.in_thinking && chunk.kind != MessageChunkKind::Thinking {
-                eprint!("\n");
+                eprintln!();
                 eprintln!("{}", panel_format::format_thinking_separator());
         s.in_thinking = false;
     }
@@ -203,11 +203,11 @@ pub fn on_event_react(
 ) {
     match ev {
         StreamEvent::TaskStart { node_id, .. } => {
+            if let Some(sp) = s.spinner.take() {
+                sp.finish_box();
+                eprintln!();
+            }
             if node_id == "think" {
-                // Finish previous spinner and create new one
-                if let Some(sp) = s.spinner.take() {
-                    sp.finish_box();
-                }
                 let label = if s.turn == 0 {
                     "Thinking...".to_string()
                 } else {
@@ -246,12 +246,12 @@ pub fn on_event_react(
             } else {
                 // Save tool_calls during think (non-verbose)
                 if node_id == "think" && !state.tool_calls.is_empty() {
+                    if let Some(sp) = s.spinner.take() {
+                        sp.finish_box();
+                    }
                     log_tools_used(&state.tool_calls);
-                    // Update spinner with tool info
-                    if let Some(ref mut sp) = s.spinner {
-                        if let Some(tc) = state.tool_calls.first() {
-                            sp.update(format!("Executing tool: {}", tc.name));
-                        }
+                    if let Some(tc) = state.tool_calls.first() {
+                        s.spinner = Some(s.create_spinner(format!("Executing tool: {}", tc.name)));
                     }
                     s.pending_tool_calls = state.tool_calls.clone();
                     s.pending_tool_start = Some(std::time::Instant::now());
@@ -271,19 +271,29 @@ pub fn on_event_react(
                     &state.tool_results
                 };
                 for tc in s.pending_tool_calls.drain(..) {
-                    // Find matching tool result for PREVIEW/DIFF
                     let result_text = find_tool_result(tool_results, &tc.name, &tc.id);
-                    
-                    // Show PREVIEW for read/glob/grep/todo tools
+                    let is_error = find_tool_result_error(tool_results, &tc.name, &tc.id);
+
+                    if is_error {
+                        let err_msg = match &result_text {
+                            Some(r) => r.lines().next().unwrap_or("error"),
+                            None => "error",
+                        };
+                        eprintln!("{}", panel_format::format_panel_line("ERROR", &format!("{}: {}", tc.name, crate::stream_display::tool_summary::truncate(err_msg, 80))));
+                    }
+
                     if let Some(ref result) = result_text {
                         if let Some(preview) = crate::stream_display::tool_preview::format_preview(
                             &tc.name, &tc.arguments, result, compact,
                         ) {
                             eprintln!("{}", preview);
+                        } else if !is_error && !result.trim().is_empty() && !compact {
+                            eprintln!("{}", crate::stream_display::tool_preview::format_result_preview(
+                                &tc.name, result, elapsed,
+                            ));
                         }
                     }
-                    
-                    // Show DIFF for edit/multiedit tools
+
                     if let Some(ref result) = result_text {
                         if let Some(diff) = crate::stream_display::tool_preview::format_diff(
                             &tc.name, &tc.arguments, result, compact,
@@ -291,16 +301,10 @@ pub fn on_event_react(
                             eprintln!("{}", diff);
                         }
                     }
-                    
-                    // DONE line with smart summary
-                    let done_summary = match result_text {
-                        Some(ref result) => {
-                            let is_error = find_tool_result_error(tool_results, &tc.name, &tc.id);
-                            crate::stream_display::tool_summary::format_done_summary(&tc.name, result, is_error)
-                        }
-                        None => crate::stream_display::tool_summary::format_call_summary(&tc.name, &tc.arguments),
-                    };
-                    eprintln!("{}", panel_format::format_tool_done(&tc.name, &done_summary, elapsed));
+
+                    // Print DONE line for each completed tool
+                    let result_summary = result_text.as_deref().unwrap_or("");
+                    eprintln!("{}", panel_format::format_tool_done(&tc.name, result_summary, elapsed));
                 }
                 s.pending_tool_start = None;
                 s.pending_tool_results.clear();
@@ -359,12 +363,11 @@ pub fn on_event_dup(
             } else if node_id == "plan" {
                 s.turn += 1;
                 if !state.core.tool_calls.is_empty() {
-                    log_tools_used(&state.core.tool_calls);
-                    // Update spinner with tool info
-                    if let Some(ref mut sp) = s.spinner {
-                        if let Some(tc) = state.core.tool_calls.first() {
-                            sp.update(format!("Executing tool: {}", tc.name));
-                        }
+                    if let Some(sp) = s.spinner.take() {
+                        sp.finish_box();
+                    }
+                    if let Some(tc) = state.core.tool_calls.first() {
+                        s.spinner = Some(s.create_spinner(format!("Executing tool: {}", tc.name)));
                     }
                 }
             }
@@ -433,7 +436,6 @@ pub fn on_event_tot(
                 eprintln!("--- {} ---", label);
                 eprintln!("{}", format_tot_state_display(state, display_max_len));
             } else if node_id == "act" && !state.core.tool_calls.is_empty() {
-                log_tools_used(&state.core.tool_calls);
             }
         }
         StreamEvent::Usage {

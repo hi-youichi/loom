@@ -45,6 +45,8 @@ pub enum SkillSource {
     ProfileDir,
     /// Skills bundled inside an agent's own directory (`.loom/agents/<name>/skills/`).
     Agent,
+    /// Skills produced by the evolution system (`~/.loom/data/skills/evolved/`).
+    Evolved,
 }
 
 /// Registry of discovered skills. Built by [`SkillRegistry::discover`].
@@ -181,6 +183,13 @@ impl SkillRegistry {
 
         let user_skills = env_config::home::loom_home().join("skills");
         for entry in scan_skills_dir(&user_skills, SkillSource::User) {
+            if seen.insert(entry.metadata.name.clone()) {
+                skills.push(entry);
+            }
+        }
+
+        let evolved_dir = env_config::home::loom_home().join("data").join("skills").join("evolved");
+        for entry in scan_skills_dir(&evolved_dir, SkillSource::Evolved) {
             if seen.insert(entry.metadata.name.clone()) {
                 skills.push(entry);
             }

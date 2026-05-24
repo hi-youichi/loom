@@ -55,6 +55,7 @@ pub fn run_options_from_issues_event(
         mcp_config_path: None,
         output_timestamp: false,
         dry_run: false,
+        debug_llm: false,
         provider: None,
         base_url: None,
         api_key: None,

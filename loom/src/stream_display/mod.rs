@@ -13,5 +13,5 @@ pub use panel_format::{
     format_tool_call, format_tool_done, format_tools_line, format_usage_line,
 };
 pub use spinner::{NoopSpinner, Spinner, SpinnerTrait};
-pub use tool_preview::{format_diff, format_preview};
-pub use tool_summary::{format_call_summary, format_done_summary, format_elapsed};
+pub use tool_preview::{format_diff, format_preview, format_result_preview};
+pub use tool_summary::{format_call_summary, format_done_summary, format_elapsed, truncate};

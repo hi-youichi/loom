@@ -34,6 +34,7 @@ fn cmd_to_runcmd(cmd: &Command) -> RunCmd {
         Command::Memory(_) => unreachable!("memory handled in main"),
         Command::ReviewSkill(_) => unreachable!("review-skill handled in main"),
         Command::Review(_) => unreachable!("review handled in main"),
+        Command::Task(_) => unreachable!("task handled in main"),
     }
 }
 

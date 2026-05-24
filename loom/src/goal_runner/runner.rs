@@ -131,7 +131,7 @@ impl GoalRunner {
                         if !reasoning.trim().is_empty() {
                             eprintln!("{}",
                                 crate::stream_display::panel_format::format_panel_line(
-                                    "THINKING", &format!("{}", crate::stream_display::render_markdown(reasoning))
+                                    "THINKING", &crate::stream_display::render_markdown(reasoning).to_string()
                                 )
                             );
                         }

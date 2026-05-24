@@ -78,6 +78,10 @@ pub(crate) struct Args {
     #[arg(long)]
     pub(crate) dry: bool,
 
+    /// Debug LLM: print full system prompt and messages to stderr before sending to LLM
+    #[arg(long)]
+    pub(crate) debug_llm: bool,
+
     /// Log level (tracing EnvFilter syntax). Overrides RUST_LOG when set; default RUST_LOG or info.
     #[arg(long, global = true, value_name = "LEVEL")]
     pub(crate) log_level: Option<String>,
@@ -131,6 +135,8 @@ pub(crate) enum Command {
     ReviewSkill(ReviewSkillArgs),
     /// Review sessions to extract skills and memory updates
     Review(ReviewArgs),
+    /// Create and manage company tasks (AI Company mode)
+    Task(TaskArgs),
 }
 
 #[derive(clap::Args, Debug, Clone)]
@@ -504,5 +510,48 @@ pub(crate) enum MemoryCommand {
     /// Search memory for a keyword
     Search {
         query: String,
+    },
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct TaskArgs {
+    #[command(subcommand)]
+    pub(crate) command: TaskCommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub(crate) enum TaskCommand {
+    /// Create a new task and start CEO agent to process it
+    New {
+        /// Task description (what you want done)
+        description: Vec<String>,
+        /// Override agent (default: ceo)
+        #[arg(short, long, value_name = "AGENT", default_value = "ceo")]
+        agent: String,
+        /// Override LLM model
+        #[arg(short('M'), long, value_name = "MODEL")]
+        model: Option<String>,
+    },
+    /// List all tasks
+    List {
+        /// Filter by status
+        #[arg(long, value_name = "STATUS")]
+        status: Option<String>,
+        /// Filter by assignee
+        #[arg(long, value_name = "ASSIGNEE")]
+        assignee: Option<String>,
+    },
+    /// Show task details
+    Show {
+        /// Task ID (or prefix)
+        id: String,
+    },
+    /// Continue a task in interactive mode (resume with CEO agent)
+    Continue {
+        /// Task ID (or prefix)
+        id: String,
+        /// Override agent (default: ceo)
+        #[arg(short, long, value_name = "AGENT", default_value = "ceo")]
+        agent: String,
     },
 }

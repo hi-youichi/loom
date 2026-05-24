@@ -618,7 +618,7 @@ MCP config 配置。
 ### Phase 7 — 持久化与恢复
 
 Ctrl+C → save Paused。
-loom goal --resume --id <id> 恢复。
+loom goal --resume --id `<id>` 恢复。
 原子性并发恢复保护。
 
 ### Phase 8 — 可观测性

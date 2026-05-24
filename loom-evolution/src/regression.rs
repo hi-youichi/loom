@@ -1,5 +1,5 @@
 use crate::dataset::FsDatasetStore;
-use crate::judge::{average_fitness, judge_prompt, parse_judge_response};
+use crate::judge::{judge_prompt, parse_judge_response};
 use crate::optimizer::{EvolutionLlm, retry_llm_call};
 use crate::types::{EvalExample, RubricWeights, Split};
 use serde::{Deserialize, Serialize};

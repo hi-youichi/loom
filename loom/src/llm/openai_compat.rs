@@ -26,7 +26,8 @@ use tracing::{debug, trace};
 
 use crate::error::AgentError;
 use crate::http_retry::{
-    is_retryable_reqwest_error, retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES,
+    is_bigmodel_retryable_status, is_bigmodel_url, is_retryable_reqwest_error,
+    retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES,
 };
 use crate::llm::{LlmClient, LlmResponse, LlmUsage, ToolCallDelta};
 use crate::memory::uuid6;
@@ -55,6 +56,20 @@ const COMPAT_RETRY_MAX_BACKOFF: std::time::Duration = std::time::Duration::from_
 /// Other 5xx (501 Not Implemented, 505 HTTP Version Not Supported, etc.) are not retried.
 fn is_retryable_status(status: reqwest::StatusCode) -> bool {
     matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504 | 524 | 598 | 599)
+}
+
+fn is_retryable_status_for(
+    status: reqwest::StatusCode,
+    base_url: &str,
+    error_body: &str,
+) -> bool {
+    if is_retryable_status(status) {
+        return true;
+    }
+    if is_bigmodel_url(base_url) {
+        return is_bigmodel_retryable_status(status.as_u16(), error_body);
+    }
+    false
 }
 
 fn backoff_for_attempt(attempt: u32) -> std::time::Duration {
@@ -674,7 +689,7 @@ error = ?e,
             if status.is_success() {
                 break 'request (status, body_bytes);
             }
-            if !is_retryable_status(status) {
+            if !is_retryable_status_for(status, &self.base_url, &format_api_error_body(&body_bytes)) {
                 let msg = format_api_error_body(&body_bytes);
                 return Err(AgentError::ExecutionFailed(format!(
                     "OpenAI-compat API error {}: {}",
@@ -728,7 +743,7 @@ error = ?e,
                 if retry_status.is_success() {
                     break 'request (retry_status, retry_bytes);
                 }
-                if !is_retryable_status(retry_status) {
+                if !is_retryable_status_for(retry_status, &self.base_url, &format_api_error_body(&retry_bytes)) {
                     let msg = format_api_error_body(&retry_bytes);
                     return Err(AgentError::ExecutionFailed(format!(
                         "OpenAI-compat API error {}: {}",
@@ -873,14 +888,15 @@ error = ?e,
         let status = response.status();
         let response = if status.is_success() {
             response
-        } else if !is_retryable_status(status) {
+        } else {
             let body_bytes = response.bytes().await.unwrap_or_default();
             let msg = format_api_error_body(&body_bytes);
-            return Err(AgentError::ExecutionFailed(format!(
-                "OpenAI-compat stream error {}: {}",
-                status, msg
-            )));
-        } else {
+            if !is_retryable_status_for(status, &self.base_url, &msg) {
+                return Err(AgentError::ExecutionFailed(format!(
+                    "OpenAI-compat stream error {}: {}",
+                    status, msg
+                )));
+            }
             let mut final_response = None;
             for attempt in 0..COMPAT_RETRY_MAX_RETRIES {
                 let delay = backoff_for_attempt(attempt);
@@ -927,20 +943,18 @@ error = ?e,
                     final_response = Some(retry_res);
                     break;
                 }
-                if !is_retryable_status(retry_status) {
-                    let body_bytes = retry_res.bytes().await.unwrap_or_default();
-                    let msg = format_api_error_body(&body_bytes);
+                let retry_body_bytes = retry_res.bytes().await.unwrap_or_default();
+                let retry_msg = format_api_error_body(&retry_body_bytes);
+                if !is_retryable_status_for(retry_status, &self.base_url, &retry_msg) {
                     return Err(AgentError::ExecutionFailed(format!(
                         "OpenAI-compat stream error {}: {}",
-                        retry_status, msg
+                        retry_status, retry_msg
                     )));
                 }
                 if attempt == COMPAT_RETRY_MAX_RETRIES - 1 {
-                    let body_bytes = retry_res.bytes().await.unwrap_or_default();
-                    let msg = format_api_error_body(&body_bytes);
                     return Err(AgentError::ExecutionFailed(format!(
                         "OpenAI-compat stream error {}: {} (after {} retries)",
-                        retry_status, msg, COMPAT_RETRY_MAX_RETRIES
+                        retry_status, retry_msg, COMPAT_RETRY_MAX_RETRIES
                     )));
                 }
             }
@@ -948,8 +962,6 @@ error = ?e,
             match final_response {
                 Some(resp) => resp,
                 None => {
-                    let body_bytes = response.bytes().await.unwrap_or_default();
-                    let msg = format_api_error_body(&body_bytes);
                     return Err(AgentError::ExecutionFailed(format!(
                         "OpenAI-compat stream error {}: {}",
                         status, msg

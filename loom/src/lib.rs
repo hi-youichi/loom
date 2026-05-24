@@ -329,7 +329,7 @@ mod run_agent_options_tests {
     use crate::{
         run_agent_with_llm_override, run_agent_with_options, AnyStreamEvent, MockLlm,
         RunCancellation, RunCmd, RunCompletion, RunOptions, StreamEvent, UserContent, ReActState,
-        ToolCall
+        ToolCall,
     };
     use crate::memory::{default_memory_db_path, JsonSerializer, SqliteSaver, RunnableConfig, CheckpointListItem, Checkpointer};
 
@@ -357,6 +357,7 @@ mod run_agent_options_tests {
             mcp_config_path: None,
             output_timestamp: false,
             dry_run: false,
+            debug_llm: false,
             provider: None,
             base_url: None,
             api_key: None,
@@ -510,6 +511,7 @@ mod run_agent_options_tests {
                 mcp_config_path: None,
                 output_timestamp: false,
                 dry_run: false,
+                debug_llm: false,
                 provider: None,
                 base_url: None,
                 api_key: None,
@@ -536,6 +538,7 @@ mod run_agent_options_tests {
                 mcp_config_path: None,
                 output_timestamp: false,
                 dry_run: false,
+                debug_llm: false,
                 provider: None,
                 base_url: None,
                 api_key: None,

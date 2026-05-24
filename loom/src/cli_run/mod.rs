@@ -42,6 +42,25 @@ pub const DEFAULT_WORKING_FOLDER: &str = ".";
 const AGENTS_MD_FILE: &str = "AGENTS.md";
 
 /// Reads AGENTS.md from current directory and optionally from working_folder.
+pub fn load_memory_prompt() -> Option<String> {
+    let memory_dir = env_config::home::loom_home().join("data").join("memory");
+    let files = [
+        ("FACTS.md", "## Facts"),
+        ("PROJECT.md", "## Project"),
+        ("USER.md", "## User"),
+    ];
+    let mut parts = Vec::new();
+    for (filename, header) in &files {
+        let path = memory_dir.join(filename);
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            if !content.trim().is_empty() {
+                parts.push(format!("{}\n{}", header, content));
+            }
+        }
+    }
+    if parts.is_empty() { None } else { Some(parts.join("\n\n")) }
+}
+
 pub fn load_agents_md(working_folder: Option<&PathBuf>) -> Option<String> {
     let cwd = std::env::current_dir().ok()?;
     let cwd_canon = cwd.canonicalize().unwrap_or(cwd.clone());
@@ -230,6 +249,7 @@ pub fn build_helve_config(
         agents_md: load_agents_md(Some(&working_folder)),
         system_prompt_override: None,
         skills_prompt,
+        memory_prompt: load_memory_prompt(),
         env_context: Some({
             let mut ctx = EnvContext::detect().with_project(
                 ProjectInfo::detect(&working_folder),
@@ -708,6 +728,7 @@ mod tests {
             mcp_config_path: None,
             output_timestamp: false,
             dry_run: false,
+            debug_llm: false,
             provider: None,
             base_url: None,
             api_key: None,
@@ -1169,6 +1190,7 @@ mod tests {
             mcp_config_path: None,
             output_timestamp: false,
             dry_run: false,
+            debug_llm: false,
             provider: None,
             base_url: None,
             api_key: None,
@@ -1221,6 +1243,7 @@ mod tests {
             mcp_config_path: None,
             output_timestamp: false,
             dry_run: false,
+            debug_llm: false,
             provider: None,
             base_url: None,
             api_key: None,
