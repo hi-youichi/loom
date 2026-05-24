@@ -306,7 +306,9 @@ pub(crate) async fn build_tool_source(
         register_file_tools(aggregate.as_ref(), wf, config.skill_registry.clone())
             .map_err(to_agent_error)?;
 
-        let db_path = wf.join("tasks.db");
+        let db_path = env_config::home::loom_home().join("tasks").join("tasks.db");
+        let db_dir = db_path.parent().unwrap();
+        let _ = std::fs::create_dir_all(db_dir);
         if let Ok(db) = task_core::TaskDb::open(&db_path).await {
             crate::tools::task::register_task_tools(&aggregate, Arc::new(db)).await;
         }
