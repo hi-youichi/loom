@@ -225,7 +225,7 @@ mod tests {
         assert!(scores[1] > scores[0]);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn run_with_empty_candidates_keeps_state() {
         let node = ThinkEvaluateNode::new();
         let state = base_state(vec![]);
@@ -235,7 +235,7 @@ mod tests {
         assert!(out.core.tool_calls.is_empty());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn run_applies_chosen_candidate_to_core() {
         let node = ThinkEvaluateNode::new();
         let state = base_state(vec![
@@ -253,7 +253,7 @@ mod tests {
         assert_eq!(out.core.tool_calls.len(), 1);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn run_with_context_emits_tot_evaluate_event() {
         let node = ThinkEvaluateNode::new();
         let state = base_state(vec![

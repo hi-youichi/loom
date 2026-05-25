@@ -553,7 +553,7 @@ mod tests {
         assert!(db_path.exists());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn put_and_get_roundtrip() {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("rt.db");
@@ -641,7 +641,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn list_returns_checkpoints() {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("list.db");
@@ -693,7 +693,7 @@ mod tests {
         assert_eq!(before.len(), 2);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn get_tuple_missing_thread_id() {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("no_tid.db");
@@ -705,7 +705,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn get_tuple_not_found() {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("empty.db");

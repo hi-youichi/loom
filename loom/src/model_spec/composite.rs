@@ -41,7 +41,7 @@ mod tests {
     use super::*;
     use crate::model_spec::ConfigOverride;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn config_override_takes_priority() {
         let config = Arc::new(ConfigOverride::new(100_000).with_output_limit(8_000));
         let empty = Arc::new(CompositeResolver::new(vec![]));
@@ -52,7 +52,7 @@ mod tests {
         assert_eq!(spec.output_limit, 8_000);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn falls_through_to_next_source() {
         let fallback = Arc::new(ConfigOverride::new(50_000));
         let composite = CompositeResolver::new(vec![fallback]);

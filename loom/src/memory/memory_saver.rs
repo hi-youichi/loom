@@ -154,7 +154,7 @@ mod tests {
         Checkpoint, CheckpointSource, KernelMetadata, CHECKPOINT_VERSION,
     };
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn put_replaces_existing_checkpoint_id_instead_of_appending() {
         let saver = MemorySaver::<serde_json::Value>::new();
         let config = RunnableConfig {

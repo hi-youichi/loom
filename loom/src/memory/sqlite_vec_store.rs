@@ -733,7 +733,7 @@ mod tests {
         ));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn put_get_delete_list_and_get_item_work() {
         let (store, _dir) = temp_store(Arc::new(MockEmbedder::new(4, 0.3)));
         let ns = vec!["u".to_string(), "mem".to_string()];
@@ -760,7 +760,7 @@ mod tests {
         assert!(store.get(&ns, "k1").await.unwrap().is_none());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn search_without_query_and_with_query_and_search_simple_work() {
         let (store, _dir) = temp_store(Arc::new(MockEmbedder::new(4, 0.1)));
         let ns1 = vec!["u1".to_string(), "mem".to_string()];
@@ -803,7 +803,7 @@ mod tests {
         assert!(simple_hits.iter().any(|h| h.key == "alpha"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn list_namespaces_and_batch_paths_work() {
         let (store, _dir) = temp_store(Arc::new(MockEmbedder::new(3, 0.2)));
         store
@@ -856,7 +856,7 @@ mod tests {
         assert!(matches!(out[3], StoreOpResult::Put));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn put_and_search_error_on_embedder_dimension_mismatch() {
         let (store_bad_put, _dir1) =
             temp_store(Arc::new(MockEmbedder::with_override_len(4, 0.1, 2)));

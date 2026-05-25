@@ -200,7 +200,7 @@ mod tests {
     use super::*;
     use tempfile::NamedTempFile;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn sqlite_append_and_list_order() {
         let file = NamedTempFile::new().unwrap();
         let store = SqliteUserMessageStore::new(file.path()).unwrap();
@@ -226,7 +226,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn sqlite_list_before_and_limit() {
         let file = NamedTempFile::new().unwrap();
         let store = SqliteUserMessageStore::new(file.path()).unwrap();
@@ -243,7 +243,7 @@ mod tests {
         assert_eq!(page2.len(), 2);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn sqlite_append_tool_with_empty_call_id_gets_generated_id_on_read() {
         let file = NamedTempFile::new().unwrap();
         let store = SqliteUserMessageStore::new(file.path()).unwrap();

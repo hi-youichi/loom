@@ -290,7 +290,7 @@ mod tests {
         assert_eq!(dup_tools_condition(&with_tools), "act");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn build_dup_initial_state_builds_without_checkpoint() {
         let state = build_dup_initial_state("hello dup", None, None, None)
             .await
@@ -299,7 +299,7 @@ mod tests {
         assert!(state.core.messages.len() >= 2);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn dup_runner_invoke_and_stream_with_mock_llm() {
         let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls("final answer"));
         let runner = DupRunner::new(

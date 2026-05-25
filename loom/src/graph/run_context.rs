@@ -292,7 +292,7 @@ mod tests {
         assert_eq!(ctx.get_managed_value("missing"), None);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn emit_helpers_send_events_when_modes_are_enabled() {
         let (tx, mut rx) = mpsc::channel(8);
         let mut ctx = RunContext::<String>::new(RunnableConfig::default());
@@ -317,7 +317,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_writer_and_emit_helpers_return_false_when_mode_disabled() {
         let (tx, mut rx) = mpsc::channel(4);
         let mut ctx = RunContext::<String>::new(RunnableConfig::default());

@@ -205,7 +205,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_cache_put_and_get() {
         let cache = DiagnosticCache::new();
         let uri = Url::parse("file:///test.rs").unwrap();
@@ -218,7 +218,7 @@ mod tests {
         assert_eq!(cached.unwrap(), diagnostics);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_cache_invalidation() {
         let cache = DiagnosticCache::new();
         let uri = Url::parse("file:///test.rs").unwrap();
@@ -231,7 +231,7 @@ mod tests {
         assert!(cached.is_none());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_cache_version_mismatch() {
         let cache = DiagnosticCache::new();
         let uri = Url::parse("file:///test.rs").unwrap();
@@ -243,7 +243,7 @@ mod tests {
         assert!(cached.is_none());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_cache_clear() {
         let cache = DiagnosticCache::new();
         let uri1 = Url::parse("file:///test1.rs").unwrap();
@@ -258,7 +258,7 @@ mod tests {
         assert!(cache.get(&uri2, 1).await.is_none());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_cache_stats() {
         let cache = DiagnosticCache::new();
         let uri = Url::parse("file:///test.rs").unwrap();

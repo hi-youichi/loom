@@ -971,7 +971,7 @@ mod tests {
         InvokeAgentTool::new(Arc::new(ReactBuildConfig::from_env()), Some(3))
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn depth_exceeded_returns_error() {
         let tool = InvokeAgentTool::new(Arc::new(ReactBuildConfig::from_env()), Some(2));
         let args = serde_json::json!({
@@ -987,7 +987,7 @@ mod tests {
         assert!(err.contains("max sub-agent depth"), "error: {}", err);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn missing_agents_arg_returns_error() {
         let tool = make_tool();
         let args = serde_json::json!({"fail_fast": false});
@@ -997,7 +997,7 @@ mod tests {
         assert!(msg.contains("agents"), "error: {}", msg);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn empty_agents_array_returns_error() {
         let tool = make_tool();
         let args = serde_json::json!({"agents": []});
@@ -1006,7 +1006,7 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("empty"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn missing_task_in_single_item_returns_error() {
         let tool = make_tool();
         let args = serde_json::json!({"agents": [{"agent": "dev"}]});
@@ -1015,7 +1015,7 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("task"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn unknown_agent_returns_error() {
         let tool = make_tool();
         let args = serde_json::json!({
@@ -1026,7 +1026,7 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("nonexistent-xyz"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn batch_call_missing_agent_in_array_returns_error() {
         let tool = make_tool();
         let args = serde_json::json!({
@@ -1039,7 +1039,7 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("agent"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn batch_call_missing_task_in_array_returns_error() {
         let tool = make_tool();
         let args = serde_json::json!({
@@ -1052,7 +1052,7 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("task"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn batch_call_with_invalid_agents_array_returns_error() {
         let tool = make_tool();
         let args = serde_json::json!({
@@ -1094,7 +1094,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn explore_agent_resolves_light_tier_model() {
         let profile = resolve_profile("explore").expect("explore profile should load");
         assert_eq!(
@@ -1147,7 +1147,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn explore_agent_config_inheritance_with_parent_tier() {
         // Test that explore's tier: light overrides parent config
         let profile = resolve_profile("explore").expect("explore profile should load");

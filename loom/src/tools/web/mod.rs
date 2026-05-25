@@ -320,13 +320,13 @@ mod tests {
         server
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn web_fetcher_tool_name_returns_web_fetcher() {
         let tool = WebFetcherTool::with_client(test_client());
         assert_eq!(tool.name(), TOOL_WEB_FETCHER);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn web_fetcher_tool_spec_has_correct_properties() {
         let tool = WebFetcherTool::with_client(test_client());
         let spec = tool.spec();
@@ -337,7 +337,7 @@ mod tests {
         assert!(spec.input_schema.is_object());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn web_fetcher_tool_call_missing_url_returns_error() {
         let tool = WebFetcherTool::with_client(test_client());
         let args = json!({});
@@ -347,7 +347,7 @@ mod tests {
         assert!(err.to_string().contains("missing") || err.to_string().contains("InvalidInput"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn web_fetcher_tool_call_invalid_url_returns_error() {
         let tool = WebFetcherTool::with_client(test_client());
         let args = json!({"url": "not-a-valid-url"});
@@ -355,7 +355,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn web_fetcher_tool_call_404_returns_error() {
         let server = spawn_mock(404, "text/plain", "not found").await;
         let tool = WebFetcherTool::with_client(test_client());
@@ -364,7 +364,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn web_fetcher_tool_fetches_plain_text() {
         let server = spawn_mock(200, "text/plain", "User-agent: *\nDisallow: /").await;
         let tool = WebFetcherTool::with_client(test_client());
@@ -373,20 +373,20 @@ mod tests {
         assert!(result.as_text().unwrap().contains("User-agent"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn web_fetcher_tool_default_construction() {
         let tool = WebFetcherTool::with_client(test_client());
         assert_eq!(tool.name(), TOOL_WEB_FETCHER);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn web_fetcher_tool_with_custom_client() {
         let client = test_client();
         let tool = WebFetcherTool::with_client(client);
         assert_eq!(tool.name(), TOOL_WEB_FETCHER);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn web_fetcher_tool_call_get_with_only_url() {
         let server = spawn_mock(200, "application/json", "{\"host\": \"mock-server\"}").await;
         let tool = WebFetcherTool::with_client(test_client());
@@ -395,7 +395,7 @@ mod tests {
         assert!(result.as_text().unwrap().contains("mock-server"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn web_fetcher_tool_call_post_with_json_body() {
         let body = "{\"hello\": \"world\", \"n\": 42}";
         let server = MockServer::start().await;
@@ -418,7 +418,7 @@ mod tests {
         assert!(text.contains("42"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn web_fetcher_tool_call_post_with_string_body() {
         let server = MockServer::start().await;
         let template = ResponseTemplate::new(200)
@@ -438,7 +438,7 @@ mod tests {
         assert!(result.as_text().unwrap().contains("plain text body"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn web_fetcher_tool_call_unsupported_method_returns_error() {
         let server = MockServer::start().await;
         let template_get = ResponseTemplate::new(200)

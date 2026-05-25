@@ -205,7 +205,7 @@ pub async fn fetch_provider_models(
 mod tests {
     use super::*;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_cache_hit() {
         let cache = ModelCache::new(Duration::from_secs(60));
         let models = vec![ModelInfo {
@@ -223,7 +223,7 @@ mod tests {
         assert_eq!(cache.len().await, 1);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_cache_expiry() {
         let cache = ModelCache::new(Duration::from_millis(10));
         let models = vec![ModelInfo {
@@ -258,7 +258,7 @@ mod tests {
         assert_eq!(call_count.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_cache_invalidate() {
         let cache = ModelCache::new(Duration::from_secs(60));
         let models = vec![ModelInfo {

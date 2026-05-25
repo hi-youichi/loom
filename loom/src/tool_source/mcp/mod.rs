@@ -495,7 +495,7 @@ mod tests {
         ));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn mcp_tool_source_http_list_and_call_success() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -594,7 +594,7 @@ mod tests {
         server.await.unwrap();
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn mcp_tool_source_http_supports_sse_jsonrpc_responses() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -636,7 +636,7 @@ mod tests {
         server.await.unwrap();
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn mcp_tool_source_http_maps_jsonrpc_error_from_tools_call() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -685,7 +685,7 @@ mod tests {
         server.await.unwrap();
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn mcp_tool_source_http_initialize_http_error_surfaces_transport_error() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();

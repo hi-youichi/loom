@@ -372,7 +372,7 @@ mod run_agent_options_tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn run_agent_with_options_invalid_working_folder_returns_err() {
         let opts = opts(PathBuf::from(
             "/definitely/not/exist/loom-run-agent-with-options-test",
@@ -384,7 +384,7 @@ mod run_agent_options_tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn run_agent_with_options_success_path_with_on_event_receives_events() {
         ensure_short_mcp_timeout();
         let dir = tempfile::tempdir().expect("tempdir");
@@ -423,7 +423,7 @@ mod run_agent_options_tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn dry_run_returns_placeholder_for_tool_calls() {
         ensure_short_mcp_timeout();
         let dir = tempfile::tempdir().expect("tempdir");
@@ -470,7 +470,7 @@ mod run_agent_options_tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn run_agent_with_options_with_on_event_invalid_working_folder_returns_err() {
         let opts = opts(PathBuf::from(
             "/definitely/not/exist/loom-run-agent-with-options-test",
@@ -485,7 +485,7 @@ mod run_agent_options_tests {
         assert!(res.is_err());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn session_id_restores_context_from_checkpoint() {
         let _lock = crate::env_test_lock().lock().unwrap();
         let dir = tempfile::tempdir().expect("tempdir");
@@ -599,7 +599,7 @@ mod run_agent_options_tests {
         }).await;
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn run_agent_with_llm_override_returns_cancelled_when_token_is_pre_cancelled() {
         ensure_short_mcp_timeout();
         let dir = tempfile::tempdir().expect("tempdir");
@@ -626,7 +626,7 @@ mod run_agent_options_tests {
         assert!(matches!(result, RunCompletion::Cancelled));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn cancelled_run_does_not_persist_checkpoint() {
         ensure_short_mcp_timeout();
         let dir = tempfile::tempdir().expect("tempdir");
@@ -676,7 +676,7 @@ mod run_agent_options_tests {
         }).await;
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn run_agent_with_llm_override_returns_cancelled_during_streaming() {
         ensure_short_mcp_timeout();
         let dir = tempfile::tempdir().expect("tempdir");
@@ -712,7 +712,7 @@ mod run_agent_options_tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     #[cfg(unix)]
     async fn cancelled_bash_tool_kills_active_child_process() {
         let dir = tempfile::tempdir().expect("tempdir");

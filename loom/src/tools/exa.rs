@@ -536,7 +536,7 @@ mod tests {
         assert!(code_err.to_lowercase().contains("missing query"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn exa_requests_and_tools_use_overridden_url_for_success_and_error_paths() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();

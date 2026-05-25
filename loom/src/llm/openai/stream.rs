@@ -222,7 +222,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn send_thinking_segment_emits_message_chunk() {
         let (tx, mut rx) = mpsc::channel(4);
         StreamAccumulator::send_thinking_segment(&tx, ThinkingSegment::Message("hi".into())).await;
@@ -231,7 +231,7 @@ mod tests {
         assert_eq!(c.kind, MessageChunkKind::Message);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn send_thinking_segment_emits_thinking_chunk() {
         let (tx, mut rx) = mpsc::channel(4);
         StreamAccumulator::send_thinking_segment(&tx, ThinkingSegment::Thinking("r".into())).await;
@@ -240,7 +240,7 @@ mod tests {
         assert_eq!(c.kind, MessageChunkKind::Thinking);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn process_content_delta_plain_accumulates_and_sends_one_chunk() {
         let mut acc = StreamAccumulator::new(false);
         let (tx, mut rx) = mpsc::channel(4);
@@ -252,7 +252,7 @@ mod tests {
         assert_eq!(c.kind, MessageChunkKind::Message);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn process_content_delta_with_thinking_parser_splits_kinds() {
         let mut acc = StreamAccumulator::new(true);
         let (tx, mut rx) = mpsc::channel(16);
@@ -274,7 +274,7 @@ mod tests {
         assert!(saw_thinking);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn process_tool_calls_delta_accumulates_without_tool_channel() {
         let mut acc = StreamAccumulator::new(false);
         let (_tx, _rx) = mpsc::channel::<MessageChunk>(4);
@@ -293,7 +293,7 @@ mod tests {
         assert_eq!(r.tool_calls[0].name, "n");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn process_tool_calls_delta_sends_delta_when_id_present_and_args_empty() {
         let mut acc = StreamAccumulator::new(false);
         let (ttx, mut trx) = mpsc::channel(4);
@@ -313,7 +313,7 @@ mod tests {
         assert!(d.arguments_delta.is_empty());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn process_tool_calls_delta_sends_delta_when_args_non_empty_without_id() {
         let mut acc = StreamAccumulator::new(false);
         let (ttx, mut trx) = mpsc::channel(4);
@@ -332,7 +332,7 @@ mod tests {
         assert_eq!(d.arguments_delta, "{}");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn process_tool_calls_delta_skips_tool_channel_when_no_id_and_empty_args() {
         let mut acc = StreamAccumulator::new(false);
         let (ttx, mut trx) = mpsc::channel(4);
@@ -351,7 +351,7 @@ mod tests {
         assert_eq!(r.tool_calls.len(), 1);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn accumulator_processes_content_chunk() {
         let mut acc = StreamAccumulator::new(false);
         let (tx, mut rx) = mpsc::channel(8);
@@ -372,7 +372,7 @@ mod tests {
         assert_eq!(r.content, "hello");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn accumulator_processes_tool_call_delta() {
         let mut acc = StreamAccumulator::new(false);
         let (tx, _rx) = mpsc::channel(8);
@@ -400,7 +400,7 @@ mod tests {
         assert_eq!(r.tool_calls[0].name, "t");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn accumulator_thinking_mode() {
         let mut acc = StreamAccumulator::new(true);
         let (tx, mut rx) = mpsc::channel(16);

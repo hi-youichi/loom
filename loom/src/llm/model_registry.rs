@@ -780,7 +780,7 @@ pub fn create_llm_provider(
 mod tests {
     use super::*;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_list_all_models_returns_empty_for_no_providers() {
         let registry = ModelRegistry::new();
         let models = registry.list_all_models(&[]).await;

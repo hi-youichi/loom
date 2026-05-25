@@ -110,7 +110,7 @@ fn chat_completions_url_uses_env_variants() {
     std::env::remove_var("OPENAI_API_BASE");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn invoke_with_unreachable_base_returns_error() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -140,7 +140,7 @@ async fn invoke_with_unreachable_base_returns_error() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn invoke_stream_with_unreachable_base_returns_error() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -162,7 +162,7 @@ async fn invoke_stream_with_unreachable_base_returns_error() {
     assert!(err.is_some());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn invoke_does_not_retry_non_retryable_400_errors() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -195,7 +195,7 @@ async fn invoke_does_not_retry_non_retryable_400_errors() {
     assert_eq!(server.await.unwrap(), 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn invoke_retries_retryable_500_errors() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -234,7 +234,7 @@ async fn invoke_retries_retryable_500_errors() {
     assert_eq!(server.await.unwrap(), 2);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn invoke_stream_with_none_channel_delegates_to_invoke() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -265,7 +265,7 @@ async fn invoke_stream_with_none_channel_delegates_to_invoke() {
     assert!(res_stream.is_err());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn invoke_and_invoke_stream_none_channel_succeed_with_mock_server() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -328,7 +328,7 @@ async fn invoke_and_invoke_stream_none_channel_succeed_with_mock_server() {
     assert_eq!(res_stream.tool_calls.len(), 1);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn invoke_returns_error_when_choices_missing() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -358,7 +358,7 @@ async fn invoke_returns_error_when_choices_missing() {
     assert!(err.to_string().contains("no choices"));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn invoke_with_mock_api_returns_ok() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -402,7 +402,7 @@ async fn invoke_with_mock_api_returns_ok() {
 }
 
 #[allow(clippy::useless_vec)]
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn invoke_stream_with_mock_api_returns_ok() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

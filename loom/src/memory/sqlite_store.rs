@@ -513,7 +513,7 @@ mod tests {
         ));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn list_namespaces_applies_conditions_depth_and_pagination() {
         let (store, _dir) = temp_store();
         store
@@ -570,7 +570,7 @@ mod tests {
         assert_eq!(paged.len(), 1);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn search_and_search_simple_apply_query_offset_and_limit() {
         let (store, _dir) = temp_store();
         let ns = vec!["u".to_string(), "mem".to_string()];
@@ -618,7 +618,7 @@ mod tests {
         assert_eq!(simple[0].key, "beta");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn batch_supports_put_get_search_list_and_delete() {
         let (store, _dir) = temp_store();
         let ns = vec!["u".to_string(), "mem".to_string()];
@@ -658,7 +658,7 @@ mod tests {
         assert!(matches!(out[5], StoreOpResult::Get(None)));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn get_item_preserves_created_at_and_updates_updated_at() {
         let (store, _dir) = temp_store();
         let ns = vec!["u".to_string(), "mem".to_string()];

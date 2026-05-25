@@ -145,7 +145,7 @@ mod tests {
         stream.write_all(resp.as_bytes()).await.unwrap();
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn register_mcp_tools_adds_adapters_and_can_call_registered_tool() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();

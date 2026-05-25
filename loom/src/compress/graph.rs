@@ -99,7 +99,7 @@ mod tests {
         let _compiled = build_graph(CompactionConfig::default(), mock_provider(), None).expect("compile");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn build_graph_invoke_preserves_messages_when_no_prune_no_overflow() {
         let compiled = build_graph(CompactionConfig::default(), mock_provider(), None).expect("compile");
         let state = ReActState {
@@ -111,14 +111,14 @@ mod tests {
         assert!(matches!(&out.messages[0], Message::User(UserContent::Text(s)) if s == "hello"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn compression_graph_node_id_is_compress() {
         let inner = build_graph(CompactionConfig::default(), mock_provider(), None).unwrap();
         let node = CompressionGraphNode::new(inner);
         assert_eq!(node.id(), "compress");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn compression_graph_node_run_invokes_inner() {
         let inner = build_graph(CompactionConfig::default(), mock_provider(), None).unwrap();
         let node = CompressionGraphNode::new(inner);

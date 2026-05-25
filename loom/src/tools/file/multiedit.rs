@@ -210,7 +210,7 @@ mod tests {
         assert!(spec.input_schema.get("properties").is_some());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn multiedit_call_missing_path_returns_error() {
         let dir = tempfile::tempdir().unwrap();
         let t = tool(&dir);
@@ -224,7 +224,7 @@ mod tests {
         assert!(matches!(err, ToolSourceError::InvalidInput(_)));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn multiedit_call_path_not_string_returns_error() {
         let dir = tempfile::tempdir().unwrap();
         let t = tool(&dir);
@@ -238,7 +238,7 @@ mod tests {
         assert!(matches!(err, ToolSourceError::InvalidInput(_)));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn multiedit_call_missing_edits_returns_error() {
         let dir = tempfile::tempdir().unwrap();
         let t = tool(&dir);
@@ -246,7 +246,7 @@ mod tests {
         assert!(matches!(err, ToolSourceError::InvalidInput(_)));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn multiedit_call_edits_not_array_returns_error() {
         let dir = tempfile::tempdir().unwrap();
         let t = tool(&dir);
@@ -257,7 +257,7 @@ mod tests {
         assert!(matches!(err, ToolSourceError::InvalidInput(_)));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn multiedit_call_empty_edits_returns_error() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("f.txt"), "x").unwrap();
@@ -269,7 +269,7 @@ mod tests {
         assert!(matches!(err, ToolSourceError::InvalidInput(_)));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn multiedit_call_path_is_directory_returns_error() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join("subdir")).unwrap();
@@ -287,7 +287,7 @@ mod tests {
         assert!(matches!(err, ToolSourceError::InvalidInput(_)));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn multiedit_call_new_file_first_edit_not_object_returns_error() {
         let dir = tempfile::tempdir().unwrap();
         let t = tool(&dir);
@@ -304,7 +304,7 @@ mod tests {
         assert!(matches!(err, ToolSourceError::InvalidInput(_)));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn multiedit_call_new_file_first_edit_non_empty_old_string_returns_error() {
         let dir = tempfile::tempdir().unwrap();
         let t = tool(&dir);
@@ -321,7 +321,7 @@ mod tests {
         assert!(matches!(err, ToolSourceError::InvalidInput(_)));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn multiedit_call_new_file_multiple_edits_old_eq_new_returns_error() {
         let dir = tempfile::tempdir().unwrap();
         let t = tool(&dir);
@@ -341,7 +341,7 @@ mod tests {
         assert!(matches!(err, ToolSourceError::InvalidInput(_)));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn multiedit_call_new_file_single_edit_success() {
         let dir = tempfile::tempdir().unwrap();
         let t = tool(&dir);
@@ -362,7 +362,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn multiedit_call_new_file_in_subdir_creates_parent() {
         let dir = tempfile::tempdir().unwrap();
         let t = tool(&dir);
@@ -383,7 +383,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn multiedit_call_existing_file_edit_not_object_returns_error() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("f.txt"), "x").unwrap();
@@ -401,7 +401,7 @@ mod tests {
         assert!(matches!(err, ToolSourceError::InvalidInput(_)));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn multiedit_call_existing_file_old_eq_new_returns_error() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("f.txt"), "abc").unwrap();
@@ -419,7 +419,7 @@ mod tests {
         assert!(matches!(err, ToolSourceError::InvalidInput(_)));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn multiedit_call_existing_file_old_not_found_returns_error() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("f.txt"), "original").unwrap();
@@ -441,7 +441,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn multiedit_call_existing_file_success() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("f.txt"), "a\nb\nc").unwrap();

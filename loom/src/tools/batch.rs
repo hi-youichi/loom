@@ -214,21 +214,21 @@ mod tests {
         BatchTool::new(source)
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn missing_calls_array() {
         let batch = make_batch(vec![]);
         let err = batch.call(json!({}), None).await.unwrap_err();
         assert!(err.to_string().contains("missing or invalid 'calls' array"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn empty_calls_array() {
         let batch = make_batch(vec![]);
         let err = batch.call(json!({"calls": []}), None).await.unwrap_err();
         assert!(err.to_string().contains("calls must have 1–25 items"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn missing_tool_name_in_call() {
         let batch = make_batch(vec![]);
         let err = batch
@@ -238,7 +238,7 @@ mod tests {
         assert!(err.to_string().contains("missing 'tool'"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn successful_text_results() {
         let batch = make_batch(vec![
             Box::new(TextTool {
@@ -265,7 +265,7 @@ mod tests {
         assert!(text.contains("[2] echo_b: result B"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn non_text_content_returns_fallback() {
         let batch = make_batch(vec![
             Box::new(TextTool {
@@ -300,7 +300,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn error_result_in_batch() {
         let batch = make_batch(vec![
             Box::new(TextTool {
@@ -326,7 +326,7 @@ mod tests {
         assert!(text.contains("[2] fail_tool: error:"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn long_text_is_truncated() {
         let long_content = "x".repeat(600);
         let batch = make_batch(vec![Box::new(TextTool {
@@ -345,7 +345,7 @@ mod tests {
         assert!(!text.contains(&"x".repeat(600)));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn mixed_text_and_non_text_and_error() {
         let batch = make_batch(vec![
             Box::new(TextTool {

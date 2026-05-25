@@ -267,7 +267,7 @@ mod tests {
         assert_eq!(got_execute_condition(&state), "execute_graph");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn build_got_initial_state_without_checkpoint_uses_input_message() {
         let state = build_got_initial_state("hello got", None, None)
             .await
@@ -277,7 +277,7 @@ mod tests {
         assert!(state.node_states.is_empty());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn got_runner_invoke_and_stream_with_mock_llm() {
         let llm_response =
             r#"{"nodes":[{"id":"collect","description":"collect info"}],"edges":[]}"#;

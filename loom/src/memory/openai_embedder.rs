@@ -276,23 +276,24 @@ mod tests {
         assert_eq!(embedder.dimension(), 1536);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_openai_embed_with_mock() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let _server = tokio::spawn(async move {
             let (mut stream, _) = listener.accept().await.unwrap();
             read_http_request(&mut stream).await;
+            // Use minimal 3-dim vectors instead of 1536-dim to avoid slow JSON serialization.
             let response = serde_json::json!({
                 "object": "list",
                 "data": [{
                     "object": "embedding",
                     "index": 0,
-                    "embedding": vec![0.1f32; 1536]
+                    "embedding": [0.1f32, 0.2, 0.3]
                 }, {
                     "object": "embedding",
                     "index": 1,
-                    "embedding": vec![0.2f32; 1536]
+                    "embedding": [0.4f32, 0.5, 0.6]
                 }],
                 "model": "text-embedding-3-small",
                 "usage": {"prompt_tokens": 4, "total_tokens": 4}
@@ -308,23 +309,24 @@ mod tests {
         let texts = vec!["Hello, world!", "The quick brown fox"];
         let vectors = embedder.embed(&texts).await.unwrap();
         assert_eq!(vectors.len(), 2);
-        assert_eq!(vectors[0].len(), 1536);
-        assert_eq!(vectors[1].len(), 1536);
+        assert_eq!(vectors[0].len(), 3);
+        assert_eq!(vectors[1].len(), 3);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_embed_from_within_tokio_runtime_with_mock() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let _server = tokio::spawn(async move {
             let (mut stream, _) = listener.accept().await.unwrap();
             read_http_request(&mut stream).await;
+            // Use minimal 3-dim vector instead of 1536-dim to avoid slow JSON serialization.
             let response = serde_json::json!({
                 "object": "list",
                 "data": [{
                     "object": "embedding",
                     "index": 0,
-                    "embedding": vec![0.3f32; 1536]
+                    "embedding": [0.7f32, 0.8, 0.9]
                 }],
                 "model": "text-embedding-3-small",
                 "usage": {"prompt_tokens": 2, "total_tokens": 2}
@@ -339,10 +341,10 @@ mod tests {
         let embedder = OpenAIEmbedder::with_config(config, "text-embedding-3-small");
         let vectors = embedder.embed(&["hello from tokio"]).await.unwrap();
         assert_eq!(vectors.len(), 1);
-        assert_eq!(vectors[0].len(), 1536);
+        assert_eq!(vectors[0].len(), 3);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn embed_and_embed_one_work_with_local_mock_server() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -387,7 +389,7 @@ mod tests {
         server.await.unwrap();
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn embed_one_returns_error_when_response_has_no_data() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -413,7 +415,7 @@ mod tests {
         server.await.unwrap();
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn embed_returns_error_on_http_failure() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();

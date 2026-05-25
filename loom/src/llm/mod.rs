@@ -436,7 +436,7 @@ mod tests {
         assert!(headers.custom_headers.is_empty());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn default_invoke_stream_sends_single_chunk_when_enabled() {
         let llm = StubLlm {
             content: "hello".to_string(),
@@ -448,7 +448,7 @@ mod tests {
         assert_eq!(chunk.content, "hello");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn default_invoke_stream_skips_chunk_for_empty_content() {
         let llm = StubLlm {
             content: String::new(),

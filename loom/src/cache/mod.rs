@@ -45,7 +45,7 @@ where
 mod tests {
     use super::*;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_cache_trait_object() {
         let cache: Box<dyn Cache<String, String>> = Box::new(InMemoryCache::new());
         cache

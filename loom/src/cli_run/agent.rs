@@ -759,7 +759,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn build_runner_errors_for_invalid_working_folder_for_all_modes() {
         let cfg = minimal_config_with_invalid_working_folder();
         let opts = RunOptions {
@@ -801,7 +801,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn run_agent_errors_for_invalid_working_folder_in_each_mode() {
         for cmd in [
             RunCmd::React,
@@ -856,7 +856,7 @@ mod tests {
         };
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resolve_tier_and_build_config_no_tier_returns_clone() {
         let config = minimal_config_with_invalid_working_folder();
         let resolved = resolve_tier_and_build_config(&config).await;
@@ -864,7 +864,7 @@ mod tests {
         assert!(resolved.model.is_none());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resolve_tier_and_build_config_tier_without_model_uses_llm_provider() {
         let mut config = minimal_config_with_invalid_working_folder();
         config.model_tier = Some(crate::model_spec::ModelTier::Light);
@@ -872,7 +872,7 @@ mod tests {
         assert!(resolved.model_tier.is_none());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resolve_tier_and_build_config_tier_with_model_no_providers() {
         let mut config = minimal_config_with_invalid_working_folder();
         config.model = Some("anthropic/claude-sonnet-4".to_string());
@@ -882,7 +882,7 @@ mod tests {
         assert_eq!(resolved.model.as_deref(), Some("anthropic/claude-sonnet-4"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resolve_tier_and_build_config_clears_model_tier() {
         let mut config = minimal_config_with_invalid_working_folder();
         config.model_tier = Some(crate::model_spec::ModelTier::Light);
@@ -890,7 +890,7 @@ mod tests {
         assert!(resolved.model_tier.is_none());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resolve_tier_and_build_config_sets_provider_name() {
         let mut config = minimal_config_with_invalid_working_folder();
         config.model = Some("zhipuai-coding-plan/glm-5.1".to_string());
@@ -902,7 +902,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resolve_tier_prefers_provider_name_over_llm_provider() {
         let mut config = minimal_config_with_invalid_working_folder();
         config.model = None;

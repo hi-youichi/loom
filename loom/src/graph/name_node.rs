@@ -54,7 +54,7 @@ mod tests {
         assert_eq!(<NameNode as Node<String>>::id(&node), "pass");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn run_passes_state_through() {
         let node = NameNode::new("n1");
         let (state, next) = node.run("state".to_string()).await.unwrap();

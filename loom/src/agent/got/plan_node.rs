@@ -171,7 +171,7 @@ mod tests {
         assert!(graph.edges.is_empty());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn run_with_context_sets_task_graph_and_emits_event() {
         let llm = MockLlm::with_no_tool_calls(
             r#"{

@@ -145,7 +145,7 @@ pub async fn resolve_tier_to_model_id(
 mod tests {
     use super::*;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_resolve_tier_returns_none_for_unknown_provider() {
         let providers = vec![ProviderConfig {
             name: "test_provider".to_string(),

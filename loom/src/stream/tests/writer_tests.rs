@@ -9,7 +9,7 @@ mod tests {
     struct DummyState(i32);
 
     /// **Scenario**: StreamWriter respects stream mode settings when emitting events.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_writer_emit_custom_respects_mode() {
         let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
 
@@ -40,7 +40,7 @@ mod tests {
     }
 
     /// **Scenario**: StreamWriter::emit_message only sends when Messages mode is enabled.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_writer_emit_message_respects_mode() {
         let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
 
@@ -68,7 +68,7 @@ mod tests {
     }
 
     /// **Scenario**: StreamWriter::emit_values only sends when Values mode is enabled.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_writer_emit_values_respects_mode() {
         let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
 
@@ -107,7 +107,7 @@ mod tests {
     }
 
     /// **Scenario**: StreamWriter emits nothing when no sender is available.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_writer_no_sender_returns_false() {
         let modes =
             HashSet::from_iter([StreamMode::Custom, StreamMode::Messages, StreamMode::Values]);
@@ -123,7 +123,7 @@ mod tests {
     }
 
     /// **Scenario**: StreamWriter respects Checkpoints and Debug modes for checkpoint events.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_writer_emit_checkpoint_respects_mode() {
         let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
 
@@ -155,7 +155,7 @@ mod tests {
     }
 
     /// **Scenario**: StreamWriter respects Tasks and Debug modes for task events.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_writer_emit_task_start_respects_mode() {
         let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
 
@@ -196,7 +196,7 @@ mod tests {
     }
 
     /// **Scenario**: StreamWriter::emit_task_end only sends when Tasks or Debug mode is enabled.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_writer_emit_task_end() {
         let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
 
@@ -244,7 +244,7 @@ mod tests {
     }
 
     /// **Scenario**: StreamWriter is Clone and can be used across async tasks.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_writer_is_clone() {
         let modes = HashSet::from_iter([StreamMode::Custom]);
         let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
@@ -295,7 +295,7 @@ mod tests {
     }
 
     /// **Scenario**: ToolStreamWriter respects stream mode when emitting custom events.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_writer_emit_tool_call_respects_mode() {
         let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
 
@@ -340,7 +340,7 @@ mod tests {
     }
 
     /// **Scenario**: ToolStreamWriter emit methods work with Debug mode enabled.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_writer_emit_tool_start_debug_mode() {
         let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
 
@@ -364,7 +364,7 @@ mod tests {
     }
 
     /// **Scenario**: ToolStreamWriter emit methods work correctly for tool lifecycle events.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_writer_emit_tool_end() {
         let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
         let modes = HashSet::from_iter([StreamMode::Tools]);
@@ -430,7 +430,7 @@ mod tests {
     }
 
     /// **Scenario**: ToolStreamWriter emit approval events work correctly.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_writer_emit_tool_approval() {
         let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
         let modes = HashSet::from_iter([StreamMode::Tools]);

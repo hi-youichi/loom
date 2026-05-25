@@ -7,7 +7,7 @@ mod tests {
     struct DummyState(i32);
 
     /// **Scenario**: ToolStreamWriter integration test.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_tool_stream_writer_integration() {
         use serde_json::json;
         use std::sync::{Arc, Mutex};
@@ -35,7 +35,7 @@ mod tests {
         assert_eq!(events.lock().unwrap()[2], json!({"status": "done"}));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_writer_noop_functionality() {
         // Test that no-op writers return false for all operations
         let writer = StreamWriter::<DummyState>::noop();

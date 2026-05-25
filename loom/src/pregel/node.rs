@@ -394,7 +394,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn context_can_emit_custom_and_message_events() {
         let (tx, mut rx) = mpsc::channel::<StreamEvent<ChannelValue>>(8);
         let ctx = PregelNodeContext {
@@ -433,7 +433,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn context_chunk_stream_sender_forwards_chunks() {
         let (tx, mut rx) = mpsc::channel::<StreamEvent<ChannelValue>>(8);
         let ctx = PregelNodeContext {

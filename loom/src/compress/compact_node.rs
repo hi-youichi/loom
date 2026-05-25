@@ -84,7 +84,7 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn compact_node_id_is_compact() {
         let node = CompactNode {
             config: CompactionConfig::default(),
@@ -93,7 +93,7 @@ mod tests {
         assert_eq!(node.id(), "compact");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn compact_node_auto_false_passes_through() {
         let node = CompactNode {
             config: CompactionConfig {
@@ -111,7 +111,7 @@ mod tests {
         assert!(matches!(next, Next::Continue));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn compact_node_auto_true_but_no_overflow_passes_through() {
         let node = CompactNode {
             config: CompactionConfig {

@@ -139,14 +139,14 @@ mod tests {
     use super::{TodoWriteTool, TOOL_TODO_WRITE};
 
     /// TodoWriteTool::name returns "todo_write".
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn todo_write_tool_name_returns_todo_write() {
         let tool = TodoWriteTool::new(Arc::new(std::path::PathBuf::from("/")));
         assert_eq!(tool.name(), TOOL_TODO_WRITE);
     }
 
     /// TodoWriteTool::spec has name, description, and required "todos".
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn todo_write_tool_spec_has_todos_required() {
         let tool = TodoWriteTool::new(Arc::new(std::path::PathBuf::from("/")));
         let spec = tool.spec();
@@ -165,7 +165,7 @@ mod tests {
 
     /// call with valid todos writes file and returns count and list.
     #[allow(clippy::await_holding_lock)]
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn todo_write_call_valid_todos_writes_and_returns() {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
@@ -190,7 +190,7 @@ mod tests {
 
     /// call with missing "todos" returns InvalidInput.
     #[allow(clippy::await_holding_lock)]
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn todo_write_call_missing_todos_returns_invalid_input() {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
@@ -205,7 +205,7 @@ mod tests {
 
     /// call with todos not an array returns InvalidInput.
     #[allow(clippy::await_holding_lock)]
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn todo_write_call_todos_not_array_returns_invalid_input() {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
@@ -221,7 +221,7 @@ mod tests {
 
     /// call with item missing "id" returns InvalidInput.
     #[allow(clippy::await_holding_lock)]
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn todo_write_call_item_missing_id_returns_invalid_input() {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
@@ -241,7 +241,7 @@ mod tests {
 
     /// call with item missing "content" returns InvalidInput.
     #[allow(clippy::await_holding_lock)]
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn todo_write_call_item_missing_content_returns_invalid_input() {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
@@ -261,7 +261,7 @@ mod tests {
 
     /// call with item as non-object returns InvalidInput.
     #[allow(clippy::await_holding_lock)]
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn todo_write_call_item_not_object_returns_invalid_input() {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
@@ -277,7 +277,7 @@ mod tests {
 
     /// call with optional status/priority uses defaults (pending, medium).
     #[allow(clippy::await_holding_lock)]
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn todo_write_call_default_status_and_priority() {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();
@@ -297,7 +297,7 @@ mod tests {
 
     /// call with thread_id writes to thread-specific path.
     #[allow(clippy::await_holding_lock)]
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn todo_write_call_with_thread_id_writes_to_thread_path() {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::tools::todo::XDG_TEST_LOCK.lock().unwrap();

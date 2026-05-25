@@ -60,7 +60,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resolve_combined_splits_provider_and_model() {
         let resolver = MockResolver;
         let spec = resolver.resolve_combined("openai/gpt-4o").await.unwrap();
@@ -68,7 +68,7 @@ mod tests {
         assert_eq!(spec.output_limit, 16_384);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resolve_combined_handles_nested_model_id() {
         let resolver = MockResolver;
         // "zenmux/openai/gpt-5" -> provider="zenmux", model="openai/gpt-5"
@@ -80,7 +80,7 @@ mod tests {
         assert_eq!(spec.output_limit, 64_000);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resolve_combined_returns_none_for_unknown_model() {
         let resolver = MockResolver;
         assert!(resolver.resolve_combined("unknown/model").await.is_none());

@@ -286,7 +286,7 @@ mod tests {
         .to_string()
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resolve_by_provider_and_model_id() {
         let client = Arc::new(MockHttpClient {
             body: fixture_json(),
@@ -305,7 +305,7 @@ mod tests {
         assert!(!spec.supports_audio());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resolve_returns_none_for_unknown_model() {
         let client = Arc::new(MockHttpClient {
             body: fixture_json(),
@@ -320,7 +320,7 @@ mod tests {
             .is_none());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn fetch_all_parses_all_providers() {
         let client = Arc::new(MockHttpClient {
             body: fixture_json(),
@@ -333,7 +333,7 @@ mod tests {
         assert!(all.contains_key("zenmux/openai/gpt-5"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn fetch_provider_with_complete_metadata() {
         let client = Arc::new(MockHttpClient {
             body: fixture_json(),
@@ -354,7 +354,7 @@ mod tests {
         assert!(provider.models.contains_key("claude-3-5-sonnet-20241022"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn fetch_model_with_complete_metadata() {
         let client = Arc::new(MockHttpClient {
             body: fixture_json(),
@@ -395,7 +395,7 @@ mod tests {
         assert_eq!(resolver.base_url, DEFAULT_MODELS_DEV_URL);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resolve_returns_none_when_http_client_fails() {
         struct FailingHttpClient;
         #[async_trait]
@@ -411,7 +411,7 @@ mod tests {
         assert!(resolver.resolve("zenmux", "openai/gpt-5").await.is_none());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resolve_returns_none_when_json_is_invalid() {
         let client = Arc::new(MockHttpClient {
             body: "not valid json {{{".to_string(),
@@ -421,7 +421,7 @@ mod tests {
         assert!(resolver.resolve("zenmux", "openai/gpt-5").await.is_none());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resolve_fallback_when_model_id_has_no_slash() {
         // Provider "zai" has model key "zai
         let json = r#"{"zai":{"models":{"glm-5":{"limit":{"context":204800,"output":131072}}}}}"#;
@@ -435,7 +435,7 @@ mod tests {
         assert_eq!(spec.output_limit, 131_072);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn fetch_all_providers_returns_complete_metadata() {
         let client = Arc::new(MockHttpClient {
             body: fixture_json(),
