@@ -212,7 +212,7 @@ impl<'a> GepaOptimizer<'a> {
             constraints_passed: passed.iter().map(|r| r.name.clone()).collect(),
             constraints_failed: failed.iter().map(|r| r.name.clone()).collect(),
             regression_check: None,
-            accepted: false,
+            accepted: best_score > baseline_score && !best_content.trim().is_empty(),
             evolved_content: best_content.clone(),
         };
 

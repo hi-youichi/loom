@@ -383,21 +383,39 @@ impl InvokeAgentTool {
                 ))
             })?;
 
-        tracing::debug!(agent = %agent_name, "Starting sub-agent execution");
-        let on_event = ctx.and_then(|c| c.any_stream_event_sender.clone()).map(|sender| {
-            move |event: crate::stream::StreamEvent<crate::state::ReActState>| {
+tracing::debug!(agent = %agent_name, "Starting sub-agent execution");
+        let depth = ctx.map_or(1u32, |c| c.depth + 1);
+        let any_sender = ctx.and_then(|c| c.any_stream_event_sender.clone());
+        let agent_name_for_event = agent_name.to_string();
+        let start = std::time::Instant::now();
+        let buffer = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let buffer_clone = buffer.clone();
+
+        let on_event = Some(move |event: crate::stream::StreamEvent<crate::state::ReActState>| {
+            if let Some(formatted) = crate::stream_display::format_subagent_event(
+                &event, &agent_name_for_event, depth, start,
+            ) {
+                buffer_clone.lock().unwrap().push(formatted);
+            }
+            if let Some(sender) = &any_sender {
                 sender(crate::cli_run::AnyStreamEvent::React(event));
             }
         });
-        let any_sender = ctx.and_then(|c| c.any_stream_event_sender.clone());
 
         let outcome = runner
-            .stream_with_config(task, None, on_event, any_sender)
+            .stream_with_config(task, None, on_event, ctx.and_then(|c| c.any_stream_event_sender.clone()))
             .await
             .map_err(|e| {
                 tracing::error!(agent = %agent_name, error = %e, "Sub-agent execution failed");
                 ToolSourceError::Transport(format!("sub-agent '{}' failed: {}", agent_name, e))
             })?;
+
+        {
+            let lines = buffer.lock().unwrap();
+            for line in lines.iter() {
+                eprintln!("{}", line);
+            }
+        }
 
         let reply = match outcome {
             crate::runner_common::StreamRunOutcome::Finished(final_state) => {
@@ -890,21 +908,39 @@ async fn invoke_single_agent(
             ToolSourceError::Transport(format!("failed to build sub-agent '{}': {}", agent_name, e))
         })?;
 
-    tracing::debug!(agent = %agent_name, "Starting sub-agent execution");
-    let on_event = ctx.and_then(|c| c.any_stream_event_sender.clone()).map(|sender| {
-        move |event: crate::stream::StreamEvent<crate::state::ReActState>| {
+tracing::debug!(agent = %agent_name, "Starting sub-agent execution");
+    let depth = ctx.map_or(1u32, |c| c.depth + 1);
+    let any_sender = ctx.and_then(|c| c.any_stream_event_sender.clone());
+    let agent_name_for_event = agent_name.to_string();
+    let start = std::time::Instant::now();
+    let buffer = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let buffer_clone = buffer.clone();
+
+    let on_event = Some(move |event: crate::stream::StreamEvent<crate::state::ReActState>| {
+        if let Some(formatted) = crate::stream_display::format_subagent_event(
+            &event, &agent_name_for_event, depth, start,
+        ) {
+            buffer_clone.lock().unwrap().push(formatted);
+        }
+        if let Some(sender) = &any_sender {
             sender(crate::cli_run::AnyStreamEvent::React(event));
         }
     });
-    let any_sender = ctx.and_then(|c| c.any_stream_event_sender.clone());
 
     let outcome = runner
-        .stream_with_config(task, None, on_event, any_sender)
+        .stream_with_config(task, None, on_event, ctx.and_then(|c| c.any_stream_event_sender.clone()))
         .await
         .map_err(|e| {
             tracing::error!(agent = %agent_name, error = %e, "Sub-agent execution failed");
             ToolSourceError::Transport(format!("sub-agent '{}' failed: {}", agent_name, e))
         })?;
+
+    {
+        let lines = buffer.lock().unwrap();
+        for line in lines.iter() {
+            eprintln!("{}", line);
+        }
+    }
 
     let reply = match outcome {
         crate::runner_common::StreamRunOutcome::Finished(final_state) => {

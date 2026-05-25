@@ -26,8 +26,8 @@ use tracing::{debug, trace};
 
 use crate::error::AgentError;
 use crate::http_retry::{
-    is_bigmodel_retryable_status, is_bigmodel_url, is_retryable_reqwest_error,
-    retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES,
+    is_bigmodel_retryable_status, is_bigmodel_url, is_minimax_retryable_status, is_minimax_url,
+    is_retryable_reqwest_error, retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES,
 };
 use crate::llm::{LlmClient, LlmResponse, LlmUsage, ToolCallDelta};
 use crate::memory::uuid6;
@@ -68,6 +68,9 @@ fn is_retryable_status_for(
     }
     if is_bigmodel_url(base_url) {
         return is_bigmodel_retryable_status(status.as_u16(), error_body);
+    }
+    if is_minimax_url(base_url) {
+        return is_minimax_retryable_status(status.as_u16(), error_body);
     }
     false
 }
@@ -779,6 +782,11 @@ error = ?e,
         let reasoning_content = msg
             .reasoning_content
             .or_else(|| collect_thinking_tags(&content));
+        let content = if self.parse_thinking_tags {
+            strip_thinking_tags(&content)
+        } else {
+            content
+        };
         let tool_calls: Vec<ToolCall> = msg
             .tool_calls
             .unwrap_or_default()

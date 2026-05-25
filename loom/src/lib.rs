@@ -329,8 +329,9 @@ mod run_agent_options_tests {
     use crate::{
         run_agent_with_llm_override, run_agent_with_options, AnyStreamEvent, MockLlm,
         RunCancellation, RunCmd, RunCompletion, RunOptions, StreamEvent, UserContent, ReActState,
-        ToolCall,
     };
+    #[cfg(unix)]
+    use crate::ToolCall;
     use crate::memory::{default_memory_db_path, JsonSerializer, SqliteSaver, RunnableConfig, CheckpointListItem, Checkpointer};
 
     static MCP_SHORT_TIMEOUT: OnceLock<()> = OnceLock::new();
@@ -486,6 +487,7 @@ mod run_agent_options_tests {
 
     #[tokio::test]
     async fn session_id_restores_context_from_checkpoint() {
+        let _lock = crate::env_test_lock().lock().unwrap();
         let dir = tempfile::tempdir().expect("tempdir");
         let working = dir.path().to_path_buf();
         let loom_dir = working.join(".loom");

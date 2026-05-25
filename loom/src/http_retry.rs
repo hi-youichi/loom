@@ -112,6 +112,88 @@ pub(crate) fn classify_openai_error_message(message: &str) -> RetryDecision {
 //   1309  - Subscription plan expired
 //   1311  - Current plan does not have model permission
 
+// ----- MiniMax provider-specific error handling -----
+//
+// MiniMax API returns error codes in base_resp.status_code (or HTTP status).
+// Reference: https://platform.minimaxi.com/docs/api-reference/errorcode
+//
+// Retryable error codes (transient / rate-limit / server-side):
+//   1000  - Unknown/system default error
+//   1001  - Request timeout
+//   1002  - Rate limit exceeded
+//   1024  - Internal error
+//   1033  - System error / downstream service error
+//   1041  - Connection limit
+//   2045  - Request rate growth limit
+//   2056  - Token plan resource limit exceeded
+//
+// Non-retryable error codes (auth / permanent / client errors):
+//   1004  - Unauthorized / Token mismatch / Cookie missing
+//   1008  - Insufficient balance
+//   1026  - Input content sensitive
+//   1027  - Output content sensitive
+//   1039  - Token limit
+//   1042  - Invisible character ratio exceeded
+//   1043  - ASR similarity check failed
+//   1044  - Clone prompt similarity check failed
+//   2013  - Parameter error
+//   20132 - Voice clone sample or voice_id parameter error
+//   2037  - Voice duration not meeting requirements
+//   2038  - User voice cloning disabled
+//   2039  - Voice clone voice_id duplicate
+//   2042  - No access to voice_id
+//   2048  - Voice clone prompt audio too long
+//   2049  - Invalid API Key
+
+pub(crate) fn is_minimax_url(url: &str) -> bool {
+    let url = url.to_ascii_lowercase();
+    url.contains("minimaxi.com") || url.contains("minimax.chat")
+        || url.contains("api.minimax.")
+}
+
+pub(crate) fn classify_minimax_error_code(code: &str) -> RetryDecision {
+    match code {
+        // Retryable: transient / rate-limit / server-side
+        "1000" | "1001" | "1002" | "1024" | "1033" | "1041" | "2045" | "2056" => {
+            RetryDecision::Retryable
+        }
+        // Non-retryable: auth / permanent / client errors
+        _ => RetryDecision::NonRetryable,
+    }
+}
+
+pub(crate) fn classify_minimax_api_error(message: &str) -> RetryDecision {
+    let msg_lower = message.to_ascii_lowercase();
+
+    if let Some(code) = extract_error_code(&msg_lower) {
+        return classify_minimax_error_code(&code);
+    }
+
+    // Fallback: match Chinese error messages from MiniMax
+    if msg_lower.contains("请求超时")
+        || msg_lower.contains("请求频率超限")
+        || msg_lower.contains("内部错误")
+        || msg_lower.contains("系统错误")
+        || msg_lower.contains("连接数限制")
+        || msg_lower.contains("请求频率增长超限")
+        || msg_lower.contains("资源限制")
+    {
+        return RetryDecision::Retryable;
+    }
+
+    RetryDecision::NonRetryable
+}
+
+pub(crate) fn is_minimax_retryable_status(status: u16, error_body: &str) -> bool {
+    if matches!(status, 429 | 500 | 502 | 503 | 504 | 524 | 598 | 599) {
+        return true;
+    }
+    if status == 400 || status == 422 {
+        return classify_minimax_api_error(error_body) == RetryDecision::Retryable;
+    }
+    false
+}
+
 pub(crate) fn is_bigmodel_url(url: &str) -> bool {
     let url = url.to_ascii_lowercase();
     url.contains("bigmodel.cn") || url.contains("bigmodel.com")
@@ -385,5 +467,99 @@ mod tests {
             classify_openai_error_message("messages 参数非法。请检查文档。 (code: 1214)"),
             RetryDecision::NonRetryable
         );
+    }
+
+    // --- MiniMax-specific tests ---
+
+    #[test]
+    fn minimax_url_detection() {
+        assert!(is_minimax_url("https://api.minimax.chat/v1/text/chatcompletion_v2"));
+        assert!(is_minimax_url("https://API.MINIMAX.CHAT/v1"));
+        assert!(is_minimax_url("https://api.minimaxi.com/v1/text/chatcompletion_v2"));
+        assert!(is_minimax_url("https://api.minimax.test/v1"));
+        assert!(!is_minimax_url("https://api.openai.com/v1/chat/completions"));
+        assert!(!is_minimax_url("https://open.bigmodel.cn/api/paas/v4"));
+    }
+
+    #[test]
+    fn minimax_retryable_error_codes() {
+        assert_eq!(classify_minimax_error_code("1000"), RetryDecision::Retryable); // Unknown/system error
+        assert_eq!(classify_minimax_error_code("1001"), RetryDecision::Retryable); // Timeout
+        assert_eq!(classify_minimax_error_code("1002"), RetryDecision::Retryable); // Rate limit
+        assert_eq!(classify_minimax_error_code("1024"), RetryDecision::Retryable); // Internal error
+        assert_eq!(classify_minimax_error_code("1033"), RetryDecision::Retryable); // System/downstream error
+        assert_eq!(classify_minimax_error_code("1041"), RetryDecision::Retryable); // Connection limit
+        assert_eq!(classify_minimax_error_code("2045"), RetryDecision::Retryable); // Rate growth limit
+        assert_eq!(classify_minimax_error_code("2056"), RetryDecision::Retryable); // Token plan limit
+    }
+
+    #[test]
+    fn minimax_non_retryable_error_codes() {
+        assert_eq!(classify_minimax_error_code("1004"), RetryDecision::NonRetryable); // Unauthorized
+        assert_eq!(classify_minimax_error_code("1008"), RetryDecision::NonRetryable); // Insufficient balance
+        assert_eq!(classify_minimax_error_code("1026"), RetryDecision::NonRetryable); // Input sensitive
+        assert_eq!(classify_minimax_error_code("1027"), RetryDecision::NonRetryable); // Output sensitive
+        assert_eq!(classify_minimax_error_code("2013"), RetryDecision::NonRetryable); // Parameter error
+        assert_eq!(classify_minimax_error_code("2049"), RetryDecision::NonRetryable); // Invalid API Key
+    }
+
+    #[test]
+    fn minimax_classifies_code_1002_as_retryable() {
+        assert_eq!(
+            classify_minimax_api_error("请求频率超限 (code: 1002)"),
+            RetryDecision::Retryable
+        );
+    }
+
+    #[test]
+    fn minimax_classifies_rate_limit_as_retryable() {
+        assert_eq!(
+            classify_minimax_api_error("请求频率超限，请稍后再试"),
+            RetryDecision::Retryable
+        );
+    }
+
+    #[test]
+    fn minimax_classifies_timeout_as_retryable() {
+        assert_eq!(
+            classify_minimax_api_error("请求超时"),
+            RetryDecision::Retryable
+        );
+    }
+
+    #[test]
+    fn minimax_classifies_unauthorized_as_non_retryable() {
+        assert_eq!(
+            classify_minimax_api_error("未授权 (code: 1004)"),
+            RetryDecision::NonRetryable
+        );
+    }
+
+    #[test]
+    fn minimax_classifies_sensitive_content_as_non_retryable() {
+        assert_eq!(
+            classify_minimax_api_error("输入内容涉敏 (code: 1026)"),
+            RetryDecision::NonRetryable
+        );
+    }
+
+    #[test]
+    fn minimax_classifies_balance_insufficient_as_non_retryable() {
+        assert_eq!(
+            classify_minimax_api_error("余额不足 (code: 1008)"),
+            RetryDecision::NonRetryable
+        );
+    }
+
+    #[test]
+    fn minimax_retryable_status_with_body() {
+        assert!(is_minimax_retryable_status(429, ""));
+        assert!(is_minimax_retryable_status(500, ""));
+        assert!(is_minimax_retryable_status(503, ""));
+        assert!(is_minimax_retryable_status(400, "请求频率超限 (code: 1002)"));
+        assert!(is_minimax_retryable_status(400, "内部错误 (code: 1024)"));
+        assert!(!is_minimax_retryable_status(400, "未授权 (code: 1004)"));
+        assert!(!is_minimax_retryable_status(401, ""));
+        assert!(!is_minimax_retryable_status(400, "输入内容涉敏 (code: 1026)"));
     }
 }

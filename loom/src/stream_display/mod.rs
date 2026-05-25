@@ -1,5 +1,6 @@
 pub mod event_handler;
 pub mod format;
+pub mod format_subagent;
 pub mod markdown;
 pub mod panel_format;
 pub mod spinner;
@@ -15,3 +16,4 @@ pub use panel_format::{
 pub use spinner::{NoopSpinner, Spinner, SpinnerTrait};
 pub use tool_preview::{format_diff, format_preview, format_result_preview};
 pub use tool_summary::{format_call_summary, format_done_summary, format_elapsed, truncate};
+pub use format_subagent::{format_subagent_event, SubagentDisplay};

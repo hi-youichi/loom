@@ -415,10 +415,15 @@ mod tests {
 
     #[tokio::test]
     async fn embed_returns_error_on_http_failure() {
+        // Use a short timeout to prevent async-openai internal retries from making this slow
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let server = tokio::spawn(async move {
-            let (mut stream, _) = listener.accept().await.unwrap();
+            // Accept only one connection and immediately return 500
+            let (mut stream, _) = tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                listener.accept()
+            ).await.unwrap().unwrap();
             read_http_request(&mut stream).await;
             write_http_response(
                 &mut stream,
@@ -434,6 +439,6 @@ mod tests {
         let embedder = OpenAIEmbedder::with_config(config, "text-embedding-3-small");
         let err = embedder.embed(&["hello"]).await.unwrap_err();
         assert!(err.to_string().contains("OpenAI API error"));
-        server.await.unwrap();
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(1), server).await;
     }
 }

@@ -99,8 +99,24 @@ impl MemoryStore {
     }
 
     pub fn replace(&self, file: MemoryFile, content: &str) -> Result<(), MemoryError> {
+        let trimmed = content.trim();
+        if trimmed.is_empty() {
+            return Err(MemoryError::EmptyContent);
+        }
         fs::create_dir_all(&self.base_dir)?;
         let path = self.file_path(file);
+        // Backup existing content before overwriting
+        if path.exists() {
+            if let Ok(existing) = fs::read_to_string(&path) {
+                if !existing.trim().is_empty() {
+                    let backup_dir = self.base_dir.join("backups");
+                    let _ = fs::create_dir_all(&backup_dir);
+                    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+                    let backup_path = backup_dir.join(format!("{}_{}.md", file.filename().trim_end_matches(".md"), timestamp));
+                    let _ = fs::write(&backup_path, &existing);
+                }
+            }
+        }
         fs::write(&path, content)?;
         Ok(())
     }
@@ -196,6 +212,8 @@ impl MemoryStore {
 pub enum MemoryError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("content cannot be empty")]
+    EmptyContent,
 }
 
 #[cfg(test)]
@@ -244,6 +262,40 @@ mod tests {
         store.truncate_to_limit(MemoryFile::User, 100).unwrap();
         let result = store.load(MemoryFile::User).unwrap();
         assert!(result.len() <= 100);
+    }
+
+    #[test]
+    fn replace_rejects_empty_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = MemoryStore::new(dir.path());
+        store.append(MemoryFile::User, "important data").unwrap();
+        let result = store.replace(MemoryFile::User, "");
+        assert!(result.is_err());
+        // Original content should be preserved
+        assert_eq!(store.load(MemoryFile::User).unwrap(), "important data");
+    }
+
+    #[test]
+    fn replace_rejects_whitespace_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = MemoryStore::new(dir.path());
+        store.append(MemoryFile::User, "important data").unwrap();
+        let result = store.replace(MemoryFile::User, "   \n\t  ");
+        assert!(result.is_err());
+        assert_eq!(store.load(MemoryFile::User).unwrap(), "important data");
+    }
+
+    #[test]
+    fn replace_creates_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = MemoryStore::new(dir.path());
+        store.replace(MemoryFile::User, "old content").unwrap();
+        store.replace(MemoryFile::User, "new content").unwrap();
+        assert_eq!(store.load(MemoryFile::User).unwrap(), "new content");
+        let backup_dir = dir.path().join("backups");
+        assert!(backup_dir.exists());
+        let backups: Vec<_> = std::fs::read_dir(&backup_dir).unwrap().collect();
+        assert_eq!(backups.len(), 1);
     }
 
     #[test]

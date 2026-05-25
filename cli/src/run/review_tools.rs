@@ -184,6 +184,10 @@ impl<'a> ReviewToolExecutor<'a> {
         let name = args["name"].as_str().unwrap_or("");
         let content = args["content"].as_str().unwrap_or("");
 
+        if content.trim().is_empty() {
+            return json!({"success": false, "error": "content cannot be empty — refusing to clear skill body"});
+        }
+
         match self.skills.load(name) {
             Ok(mut skill) => {
                 skill.body = content.to_string();

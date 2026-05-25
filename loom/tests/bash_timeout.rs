@@ -1,4 +1,9 @@
 //! Integration tests for BashTool timeout detach behavior.
+//!
+//! These tests use Unix-specific features (sleep, $$, libc::kill) and
+//! only run on Unix platforms.
+
+#![cfg(unix)]
 
 mod init_logging;
 

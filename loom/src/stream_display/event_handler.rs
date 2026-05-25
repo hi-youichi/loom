@@ -38,6 +38,8 @@ pub struct EventState {
     pub use_spinner: bool,
     /// Whether to use compact mode (hide PREVIEW/DIFF).
     pub compact: bool,
+    /// When the overall session started, for "共 Ns" elapsed display.
+    pub session_start: Option<std::time::Instant>,
 }
 
 impl EventState {
@@ -58,6 +60,7 @@ impl EventState {
             spinner: None,
             use_spinner,
             compact: false,
+            session_start: None,
         }
     }
 
@@ -208,12 +211,20 @@ pub fn on_event_react(
                 eprintln!();
             }
             if node_id == "think" {
-                let label = if s.turn == 0 {
-                    "Thinking...".to_string()
+                // Initialize session_start on first think
+                if s.session_start.is_none() {
+                    s.session_start = Some(std::time::Instant::now());
+                }
+                let turn = s.turn + 1;
+                let session_start = s.session_start.unwrap();
+                let sp: Box<dyn SpinnerTrait> = if s.use_spinner {
+                    let sp = Spinner::new("思考中...".to_string());
+                    sp.set_context(turn, session_start);
+                    Box::new(sp)
                 } else {
-                    format!("Thinking... (turn {})", s.turn + 1)
+                    Box::new(NoopSpinner::new("思考中...".to_string()))
                 };
-                s.spinner = Some(s.create_spinner(label));
+                s.spinner = Some(sp);
             }
             log_node_enter(s.last_node.as_deref(), node_id, verbose);
             s.last_node = Some(node_id.clone());
@@ -251,7 +262,7 @@ pub fn on_event_react(
                     }
                     log_tools_used(&state.tool_calls);
                     if let Some(tc) = state.tool_calls.first() {
-                        s.spinner = Some(s.create_spinner(format!("Executing tool: {}", tc.name)));
+                        s.spinner = Some(s.create_spinner(format!("执行工具: {}", tc.name)));
                     }
                     s.pending_tool_calls = state.tool_calls.clone();
                     s.pending_tool_start = Some(std::time::Instant::now());

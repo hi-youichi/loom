@@ -275,7 +275,8 @@ mod tests {
     async fn test_retry_llm_client_retries_on_empty_response() {
         // Mock that returns empty first time, then success
         let mock = MockLlm::new("", vec![]).with_content("");
-        let retry = RetryLlmClient::new(Arc::new(mock));
+        let retry = RetryLlmClient::new(Arc::new(mock))
+            .with_base_delay(Duration::from_millis(0));
 
         // This test would need a custom mock, so let's simplify it
         let result = retry.invoke(&[]).await;
@@ -289,7 +290,8 @@ mod tests {
     #[tokio::test]
     async fn test_retry_llm_client_fails_after_max_retries() {
         let mock = MockLlm::new("", vec![]);
-        let retry = RetryLlmClient::new(Arc::new(mock));
+        let retry = RetryLlmClient::new(Arc::new(mock))
+            .with_base_delay(Duration::from_millis(0));
 
         let result = retry.invoke(&[]).await;
         assert!(result.is_err());
@@ -302,7 +304,9 @@ mod tests {
     #[tokio::test]
     async fn test_retry_llm_client_with_custom_retries() {
         let mock = MockLlm::new("", vec![]);
-        let retry = RetryLlmClient::new(Arc::new(mock)).with_max_retries(1);
+        let retry = RetryLlmClient::new(Arc::new(mock))
+            .with_max_retries(1)
+            .with_base_delay(Duration::from_millis(0));
 
         let result = retry.invoke(&[]).await;
         assert!(result.is_err());

@@ -4,7 +4,7 @@ use loom::message::Message;
 use loom::message::UserContent;
 use loom_evolution::{EvolutionConfig, EvolutionLlm, GepaOptimizer};
 use std::path::Path;
-use tracing::info;
+use tracing::{info, warn};
 
 struct LlmClientAdapter<'a> {
     client: &'a dyn LlmClient,
@@ -96,15 +96,23 @@ impl<'a> EvolutionTrigger<'a> {
             .map_err(|e| format!("GEPA optimization failed: {}", e))?;
 
         if result.accepted {
-            let mut updated = skill;
-            updated.body = result.evolved_content.clone();
-            self.skills.save(skill_name, &updated)
-                .map_err(|e| format!("Failed to save evolved skill: {}", e))?;
+            // Safety: refuse to save if evolved content is empty or would destroy the skill
+            if result.evolved_content.trim().is_empty() {
+                warn!(
+                    "Evolved content for '{}' is empty — refusing to overwrite skill body",
+                    skill_name
+                );
+            } else {
+                let mut updated = skill;
+                updated.body = result.evolved_content.clone();
+                self.skills.save(skill_name, &updated)
+                    .map_err(|e| format!("Failed to save evolved skill: {}", e))?;
 
-            info!(
-                "Evolved skill '{}': score {:.3} -> {:.3}",
-                skill_name, result.baseline_score, result.evolved_score
-            );
+                info!(
+                    "Evolved skill '{}': score {:.3} -> {:.3}",
+                    skill_name, result.baseline_score, result.evolved_score
+                );
+            }
         } else {
             info!(
                 "No improvement for skill '{}' (baseline: {:.3}, evolved: {:.3})",
