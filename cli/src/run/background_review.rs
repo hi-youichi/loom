@@ -8,7 +8,18 @@ use crate::run::review_agent_loop::{
 use crate::review_history::{ReviewHistory, ReviewRecord};
 use crate::run::skill_registry::SkillRegistry;
 use chrono::Utc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use tracing::{error, info, warn};
+
+/// Handle for the result of a background review.
+pub struct BackgroundReviewHandle {
+    pub summary: String,
+    pub action_count: usize,
+    pub memory_count: usize,
+    pub skill_count: usize,
+}
 
 pub struct BackgroundReviewConfig {
     pub enabled: bool,
@@ -48,77 +59,83 @@ impl Default for BackgroundReviewConfig {
     }
 }
 
-pub async fn spawn_background_review(
+/// Global registry to track pending background review tasks.
+/// This allows the main function to wait for all reviews to complete before exiting.
+static PENDING_REVIEWS: std::sync::OnceLock<Arc<PendingReviewRegistry>> = std::sync::OnceLock::new();
+
+fn pending_reviews() -> &'static Arc<PendingReviewRegistry> {
+    PENDING_REVIEWS.get_or_init(|| Arc::new(PendingReviewRegistry::new()))
+}
+
+
+/// Registry of pending background review handles.
+/// Used to ensure reviews complete before process exit.
+pub struct PendingReviewRegistry {
+    counter: AtomicUsize,
+    handles: Mutex<Vec<tokio::task::JoinHandle<()>>>,
+}
+
+impl PendingReviewRegistry {
+    fn new() -> Self {
+        Self {
+            counter: AtomicUsize::new(0),
+            handles: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Register a new review task handle.
+    pub fn push(&self, handle: tokio::task::JoinHandle<()>) {
+        let _id = self.counter.fetch_add(1, Ordering::Relaxed);
+        let mut handles = self.handles.blocking_lock();
+        handles.push(handle);
+    }
+
+    /// Wait for all pending reviews to complete and clear the registry.
+    /// Returns the number of reviews that were waited on.
+    pub async fn wait_all(&self) -> usize {
+        let mut handles = self.handles.lock().await;
+        let count = handles.len();
+        if count == 0 {
+            return 0;
+        }
+
+        info!("Waiting for {} background review(s) to complete...", count);
+
+        for handle in handles.drain(..) {
+            let _ = handle.await;
+        }
+
+        info!("All {} background review(s) completed.", count);
+        count
+    }
+}
+
+/// Spawn a background review task using the current Tokio runtime.
+/// The task is tracked globally and will be waited on at process exit.
+pub fn spawn_background_review(
     config: BackgroundReviewConfig,
     session_content: String,
     session_id: String,
-) -> Result<(), String> {
-    if !config.enabled {
-        return Ok(());
-    }
-
-    if !config.review_memory && !config.review_skills {
-        return Ok(());
-    }
-
-    if session_content.len() < config.min_session_chars {
-        info!(
-            "Skipping background review: session too short ({} chars)",
-            session_content.len()
-        );
-        return Ok(());
-    }
-
-    let max_iterations = config.max_iterations;
-    let max_session_chars = config.max_session_chars;
-    let review_memory = config.review_memory;
-    let review_skills = config.review_skills;
-    let curator_config = config.curator_config;
-    let curator_run_interval_secs = config.curator_run_interval_secs;
-    let evolution_enabled = config.evolution_enabled;
-    let evolution_config = config.evolution_config;
-    let observability_enabled = config.observability_enabled;
-
-    let llm = build_review_agent_client(&config.base_url, &config.api_key, &config.model);
-
-    tokio::spawn(async move {
+) {
+    let registry = pending_reviews();
+    let handle = tokio::spawn(async move {
         let start = std::time::Instant::now();
-        match run_background_review_inner(&*llm, &session_content, max_iterations, max_session_chars, review_memory, review_skills).await {
-            Ok(result) => {
-                let duration_ms = start.elapsed().as_millis() as u64;
-                info!("Background review completed: {} ({} actions, {}ms)", result.summary, result.action_count, duration_ms);
+        let result = run_background_review_workflow(&config, &session_content, &session_id).await;
+        match result {
+            Ok((summary, action_count, _memory_count, _skill_count, duration_ms)) => {
+                info!("Background review completed: {} ({} actions, {}ms)", summary, action_count, duration_ms);
 
-                let history = ReviewHistory::new(&config::home::loom_home());
-                let record = ReviewRecord {
-                    session_id: session_id.clone(),
-                    reviewed_at: Utc::now(),
-                    trigger: "auto".to_string(),
-                    model: String::new(),
-                    memory_update_count: result.memory_count,
-                    skill_update_count: result.skill_count,
-                    skipped: false,
-                    skip_reason: None,
-                    duration_ms,
-                };
-                if let Err(e) = history.append(&record) {
-                    warn!("Failed to record background review: {}", e);
+                if action_count > 0 {
+                    eprintln!("\n📚 Background review: {}", summary);
                 }
 
-                if result.action_count > 0 {
-                    eprintln!("\n📚 Background review: {}", result.summary);
-                }
-
-                if observability_enabled {
-                    let obs = ObservabilityStore::new(&ObservabilityStore::default_path());
-                    obs.record_review(&session_id, result.memory_count, result.skill_count, duration_ms);
-                }
-
-                if let Err(e) = run_curator_if_needed(&SkillRegistry::default_path(), &curator_config, curator_run_interval_secs) {
+                if let Err(e) = run_curator_if_needed(&SkillRegistry::default_path(), &config.curator_config, config.curator_run_interval_secs) {
                     warn!("Curator auto-run failed: {}", e);
                 }
 
-                if evolution_enabled {
-                    if let Err(e) = run_evolution_if_eligible(&*llm, &evolution_config).await {
+                if config.evolution_enabled {
+                    let llm = build_review_agent_client(&config.base_url, &config.api_key, &config.model);
+                    if let Err(e) = run_evolution_if_eligible(&*llm, &config.evolution_config).await {
                         warn!("Evolution auto-run failed: {}", e);
                     }
                 }
@@ -126,36 +143,81 @@ pub async fn spawn_background_review(
             Err(e) => {
                 let duration_ms = start.elapsed().as_millis() as u64;
                 error!("Background review failed: {} ({}ms)", e, duration_ms);
-
-                let history = ReviewHistory::new(&config::home::loom_home());
-                let record = ReviewRecord {
-                    session_id: session_id.clone(),
-                    reviewed_at: Utc::now(),
-                    trigger: "auto".to_string(),
-                    model: String::new(),
-                    memory_update_count: 0,
-                    skill_update_count: 0,
-                    skipped: true,
-                    skip_reason: Some(format!("llm_error: {}", e)),
-                    duration_ms,
-                };
-                if let Err(he) = history.append(&record) {
-                    warn!("Failed to record background review error: {}", he);
-                }
-
                 eprintln!("\n⚠️ Background review failed: {}", e);
             }
         }
     });
 
-    Ok(())
+    // Register the handle so it can be awaited at process exit
+    registry.push(handle);
 }
 
-struct BackgroundReviewHandle {
-    pub summary: String,
-    pub action_count: usize,
-    pub memory_count: usize,
-    pub skill_count: usize,
+/// Internal function that runs the background review workflow.
+/// Returns (summary, action_count, memory_count, skill_count, duration_ms) or error.
+async fn run_background_review_workflow(
+    config: &BackgroundReviewConfig,
+    session_content: &str,
+    session_id: &str,
+) -> Result<(String, usize, usize, usize, u64), String> {
+    if !config.enabled {
+        return Ok(("disabled".to_string(), 0, 0, 0, 0));
+    }
+
+
+    if !config.review_memory && !config.review_skills {
+        return Ok(("no review mode enabled".to_string(), 0, 0, 0, 0));
+    }
+
+    if session_content.len() < config.min_session_chars {
+        info!(
+            "Skipping background review: session too short ({} chars)",
+            session_content.len()
+        );
+        return Ok(("session too short".to_string(), 0, 0, 0, 0));
+    }
+
+    let start = std::time::Instant::now();
+    let llm = build_review_agent_client(&config.base_url, &config.api_key, &config.model);
+
+    let result = run_background_review_inner(
+        &*llm,
+        session_content,
+        config.max_iterations,
+        config.max_session_chars,
+        config.review_memory,
+        config.review_skills,
+    )
+    .await?;
+
+    let duration_ms = start.elapsed().as_millis() as u64;
+    let memory_count = result.memory_count;
+    let skill_count = result.skill_count;
+
+
+    // Record to history
+    let history = ReviewHistory::new(&config::home::loom_home());
+    let record = ReviewRecord {
+        session_id: session_id.to_string(),
+        reviewed_at: Utc::now(),
+        trigger: "auto".to_string(),
+        model: String::new(),
+        memory_update_count: memory_count,
+        skill_update_count: skill_count,
+        skipped: false,
+        skip_reason: None,
+        duration_ms,
+    };
+    if let Err(e) = history.append(&record) {
+        warn!("Failed to record background review: {}", e);
+    }
+
+    // Record observability
+    if config.observability_enabled {
+        let obs = ObservabilityStore::new(&ObservabilityStore::default_path());
+        obs.record_review(session_id, memory_count, skill_count, duration_ms);
+    }
+
+    Ok((result.summary, result.action_count, memory_count, skill_count, duration_ms))
 }
 
 async fn run_background_review_inner(
@@ -207,34 +269,10 @@ pub fn build_background_config_from_opts(opts: &loom::RunOptions) -> BackgroundR
     }
 }
 
-pub fn trigger_post_turn_review(opts: &loom::RunOptions, reply: &str) -> Result<(), String> {
-    let config = build_background_config_from_opts(opts);
-    let session_id = opts
-        .thread_id
-        .clone()
-        .or_else(|| opts.session_id.clone())
-        .unwrap_or_else(|| format!("auto-{}", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()));
-
-    let user_msg = match &opts.message {
-        loom::UserContent::Text(t) => t.clone(),
-        _ => String::new(),
-    };
-
-    let session_content = format!("User: {}\n\nAssistant: {}", user_msg, reply);
-
-    let _ = std::thread::spawn(move || {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("Failed to create tokio runtime for background review");
-        rt.block_on(spawn_background_review(config, session_content, session_id))
-    }).join()
-    .map_err(|_| "Background review thread panicked".to_string())?;
-
-    Ok(())
+/// Wait for all pending background reviews to complete.
+/// Call this at process exit to ensure all reviews finish before the process terminates.
+pub async fn wait_for_pending_reviews() -> usize {
+    pending_reviews().wait_all().await
 }
 
 fn run_curator_if_needed(

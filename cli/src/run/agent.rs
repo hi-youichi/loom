@@ -334,8 +334,7 @@ pub async fn run_agent_wrapper(
     let (reply, reasoning_content, stop_reason) = completion_reply(result);
 
     if matches!(stop_reason, RunStopReason::EndTurn) && !reply.is_empty() {
-        let _ = super::background_review::trigger_post_turn_review(opts, &reply);
-
+        let config = super::background_review::build_background_config_from_opts(opts);
         let session_id = opts
             .thread_id.clone()
             .or_else(|| opts.session_id.clone())
@@ -347,6 +346,10 @@ pub async fn run_agent_wrapper(
             loom::UserContent::Text(t) => t.clone(),
             _ => String::new(),
         };
+        let session_content = format!("User: {}\n\nAssistant: {}", user_msg, reply);
+
+        // Spawn background review - tracked globally and waited on at process exit
+        let _ = super::background_review::spawn_background_review(config, session_content, session_id.clone());
         let store = super::session_store::FileSessionStore::new(
             &super::session_store::FileSessionStore::default_path(),
         );
