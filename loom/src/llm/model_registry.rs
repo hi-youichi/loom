@@ -163,6 +163,12 @@ pub struct ModelEntry {
     pub max_tokens: Option<u32>,
     /// Tool choice mode (auto, none, required).
     pub tool_choice: Option<crate::llm::ToolChoiceMode>,
+
+    // === Model Selection ===
+    /// Model family (e.g., "glm", "gpt-5.5").
+    pub family: Option<String>,
+    /// Model version/generation (e.g., "5", "latest").
+    pub version: Option<String>,
 }
 
 impl ModelEntry {
@@ -199,6 +205,18 @@ impl ModelEntry {
     /// Set the temperature.
     pub fn with_temperature(mut self, temperature: f32) -> Self {
         self.temperature = Some(temperature);
+        self
+    }
+
+    /// Set the model family.
+    pub fn with_family(mut self, family: impl Into<String>) -> Self {
+        self.family = Some(family.into());
+        self
+    }
+
+    /// Set the model version.
+    pub fn with_version(mut self, version: impl Into<String>) -> Self {
+        self.version = Some(version.into());
         self
     }
 

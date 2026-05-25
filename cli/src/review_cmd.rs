@@ -52,7 +52,7 @@ async fn do_review_single(
             println!("[DRY RUN] Would review session: {}", session_id);
             println!("  Text length: {} chars", text.len());
             if args.verbose && !text.is_empty() {
-                let preview = if text.len() > 2000 { &text[..2000] } else { &text };
+                let preview: String = text.chars().take(2000).collect();
                 println!("\n--- Session Content (first 2000 chars) ---\n");
                 println!("{}", preview);
             }

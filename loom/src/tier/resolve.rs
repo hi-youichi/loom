@@ -72,7 +72,10 @@ pub fn resolve_from_plan(
     let plan = plans.get(provider)?;
     let model_id = plan.tiers.get(&tier)?;
     let provider_cfg = providers.iter().find(|p| p.name == provider)?;
-    Some(ModelEntry::from_provider_config(provider_cfg, model_id))
+    let mut entry = ModelEntry::from_provider_config(provider_cfg, model_id);
+    entry.family = plan.family.clone();
+    entry.version = plan.version.clone();
+    Some(entry)
 }
 
 pub async fn resolve_tier_intelligent(

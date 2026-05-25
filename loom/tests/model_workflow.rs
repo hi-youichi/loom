@@ -19,6 +19,8 @@ mod tests {
             temperature: Some(0.7),
             max_tokens: Some(1000),
             tool_choice: None,
+            family: None,
+            version: None,
         };
 
         let result = create_llm_client(&entry, None);
@@ -38,6 +40,8 @@ mod tests {
             temperature: Some(0.7),
             max_tokens: Some(1000),
             tool_choice: None,
+            family: None,
+            version: None,
         };
 
         let result = create_llm_client(&entry, None);
@@ -64,6 +68,8 @@ mod tests {
             temperature: None,
             max_tokens: None,
             tool_choice: None,
+            family: None,
+            version: None,
         };
 
         let result = create_llm_client(&entry, None);
@@ -103,6 +109,8 @@ mod tests {
             temperature: None,
             max_tokens: None,
             tool_choice: None,
+            family: None,
+            version: None,
         };
 
         let result = create_llm_client(&entry, None);

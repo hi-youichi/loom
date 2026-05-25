@@ -121,7 +121,8 @@ fn print_review_results(output: &ReviewOutput) {
             if update.content.len() <= 200 {
                 eprintln!("      {}", update.content);
             } else {
-                eprintln!("      {}...", &update.content[..200]);
+                let truncated: String = update.content.chars().take(200).collect();
+                eprintln!("      {}...", truncated);
             }
         }
     }
@@ -136,7 +137,8 @@ fn print_review_results(output: &ReviewOutput) {
             if skill.body.len() <= 200 {
                 eprintln!("      Body: {}", skill.body);
             } else {
-                eprintln!("      Body: {}...", &skill.body[..200]);
+                let truncated: String = skill.body.chars().take(200).collect();
+                eprintln!("      Body: {}...", truncated);
             }
         }
     }

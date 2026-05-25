@@ -42,6 +42,8 @@ pub(crate) async fn resolve_title_llm(
         temperature: None,
         max_tokens: None,
         tool_choice: None,
+        family: None,
+        version: None,
     };
     create_llm_client(&entry, None).ok().map(Arc::from)
 }
@@ -125,6 +127,8 @@ pub(crate) fn model_entry_from_config(
         temperature,
         max_tokens: None,
         tool_choice: None,
+        family: None,
+        version: None,
     })
 }
 
@@ -244,6 +248,8 @@ pub(crate) async fn resolve_title_provider(
         temperature: None,
         max_tokens: None,
         tool_choice: None,
+        family: None,
+        version: None,
     };
     let thread_id = config
         .trace_thread_id

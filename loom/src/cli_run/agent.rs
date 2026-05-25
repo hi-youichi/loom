@@ -893,12 +893,12 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn resolve_tier_and_build_config_sets_provider_name() {
         let mut config = minimal_config_with_invalid_working_folder();
-        config.model = Some("zhipuai-coding-plan/glm-5.1".to_string());
+        config.model = Some("zhipuai/glm-5.1".to_string());
         config.model_tier = Some(crate::model_spec::ModelTier::Light);
         let resolved = resolve_tier_and_build_config(&config).await;
         assert!(resolved.model_tier.is_none());
         if let Some(ref name) = resolved.llm_provider_name {
-            assert_eq!(name, "zhipuai-coding-plan");
+            assert_eq!(name, "zhipuai");
         }
     }
 
@@ -907,12 +907,12 @@ mod tests {
         let mut config = minimal_config_with_invalid_working_folder();
         config.model = None;
         config.llm_provider = Some("openai_compat".to_string());
-        config.llm_provider_name = Some("zhipuai-coding-plan".to_string());
+        config.llm_provider_name = Some("zhipuai".to_string());
         config.model_tier = Some(crate::model_spec::ModelTier::Light);
         let resolved = resolve_tier_and_build_config(&config).await;
         assert!(resolved.model_tier.is_none());
         if resolved.model.is_some() {
-            assert_eq!(resolved.llm_provider_name.as_deref(), Some("zhipuai-coding-plan"));
+            assert_eq!(resolved.llm_provider_name.as_deref(), Some("zhipuai"));
         }
     }
 }

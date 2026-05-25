@@ -94,6 +94,30 @@ impl ProviderDef {
     }
 }
 
+#[derive(serde::Deserialize, Clone, Debug, Default)]
+pub struct LlmAuditConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub path: Option<PathBuf>,
+}
+
+#[derive(serde::Deserialize, Clone, Debug, Default)]
+pub struct LlmSection {
+    #[serde(default)]
+    pub audit: LlmAuditConfig,
+}
+
+impl LlmSection {
+    pub fn audit_path(&self) -> PathBuf {
+        self.audit.path.clone().unwrap_or_else(|| {
+            crate::home::loom_home()
+                .join("data")
+                .join("llm_logs")
+        })
+    }
+}
+
 #[derive(serde::Deserialize, Default)]
 struct DefaultSection {
     provider: Option<String>,
@@ -107,6 +131,8 @@ struct ConfigFile {
     default: DefaultSection,
     #[serde(default)]
     providers: Vec<ProviderDef>,
+    #[serde(default)]
+    llm: Option<LlmSection>,
 }
 
 /// Parsed content of `config.toml`: env map, default provider name, and provider definitions.
@@ -114,6 +140,7 @@ pub struct FullConfig {
     pub env: HashMap<String, String>,
     pub default_provider: Option<String>,
     pub providers: Vec<ProviderDef>,
+    pub llm: LlmSection,
 }
 
 /// Returns env key-value pairs from `[env]` section. Missing file or empty section returns empty map.
@@ -132,6 +159,7 @@ pub fn load_full_config(app_name: &str) -> Result<FullConfig, LoadError> {
                 env: HashMap::new(),
                 default_provider: None,
                 providers: vec![],
+                llm: LlmSection::default(),
             })
         }
     };
@@ -141,6 +169,7 @@ pub fn load_full_config(app_name: &str) -> Result<FullConfig, LoadError> {
         env: config.env,
         default_provider: config.default.provider,
         providers: config.providers,
+        llm: config.llm.unwrap_or_default(),
     })
 }
 

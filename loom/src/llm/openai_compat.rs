@@ -19,6 +19,7 @@
 //! Depends on `reqwest` (no async_openai).
 
 use std::borrow::Cow;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use tokio::sync::mpsc;
@@ -41,6 +42,10 @@ use super::thinking::{
 };
 use super::tool_call_accumulator::{RawToolCallDelta, ToolCallAccumulator};
 use super::ToolChoiceMode;
+use super::audit::{
+    build_audit_entry, LlmAuditLog, LlmAuditRequest, LlmAuditRequestParams,
+    LlmAuditResponse, LlmAuditToolCall, LlmAuditUsage,
+};
 
 /// Example default base URL (Zhipu BigModel OpenAI-compatible API).
 const DEFAULT_BASE_URL: &str = "https://open.bigmodel.cn/api/paas/v4";
@@ -279,6 +284,7 @@ pub struct ChatOpenAICompat {
     tool_choice: Option<ToolChoiceMode>,
     parse_thinking_tags: bool,
     headers: Option<crate::llm::LlmHeaders>,
+    audit_log: Option<Arc<dyn LlmAuditLog>>,
 }
 
 impl ChatOpenAICompat {
@@ -314,6 +320,7 @@ impl ChatOpenAICompat {
             tool_choice: None,
             parse_thinking_tags: true,
             headers: None,
+            audit_log: None,
         }
     }
 
@@ -334,6 +341,7 @@ impl ChatOpenAICompat {
             tool_choice: None,
             parse_thinking_tags: false,
             headers: None,
+            audit_log: None,
         }
     }
 
@@ -386,10 +394,14 @@ impl ChatOpenAICompat {
         self
     }
 
+    /// Sets the audit log recorder.
+    pub fn with_audit_log(mut self, audit: Arc<dyn LlmAuditLog>) -> Self {
+        self.audit_log = Some(audit);
+        self
+    }
+
     /// Sets HTTP headers for LLM requests.
     ///
-    /// This allows adding custom headers like X-App-Id, X-Thread-Id, X-Trace-Id
-    /// for request tracking and observability.
     pub fn with_headers(mut self, headers: crate::llm::LlmHeaders) -> Self {
         self.headers = Some(headers);
         self
@@ -586,6 +598,75 @@ impl ChatOpenAICompat {
         }
         req
     }
+
+    // ---- Audit helpers ----
+
+    fn thread_id(&self) -> String {
+        self.headers
+            .as_ref()
+            .and_then(|h| h.thread_id.as_ref())
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    fn build_audit_request(&self, body: &ChatCompletionRequest) -> LlmAuditRequest {
+        LlmAuditRequest {
+            messages: serde_json::to_value(&body.messages).unwrap_or_default(),
+            tools: body.tools.as_ref().map(|t| serde_json::to_value(t).unwrap_or_default()),
+            parameters: LlmAuditRequestParams {
+                temperature: body.temperature,
+                stream: body.stream,
+                tool_choice: body.tool_choice.clone(),
+            },
+        }
+    }
+
+    fn build_audit_response(response: &LlmResponse) -> LlmAuditResponse {
+        LlmAuditResponse {
+            content: response.content.clone(),
+            reasoning_content: response.reasoning_content.clone(),
+            usage: response.usage.as_ref().map(|u| LlmAuditUsage {
+                prompt_tokens: u.prompt_tokens,
+                completion_tokens: u.completion_tokens,
+                total_tokens: u.total_tokens,
+            }),
+            tool_calls: response
+                .tool_calls
+                .iter()
+                .map(|tc| LlmAuditToolCall {
+                    id: tc.id.clone(),
+                    name: tc.name.clone(),
+                    arguments: tc.arguments.clone(),
+                })
+                .collect(),
+        }
+    }
+
+    fn record_audit(
+        &self,
+        entry_type: &str,
+        url: &str,
+        duration_ms: u64,
+        status: u16,
+        request: LlmAuditRequest,
+        response: Option<LlmAuditResponse>,
+        error: Option<String>,
+    ) {
+        if let Some(ref log) = self.audit_log {
+            let entry = build_audit_entry(
+                self.thread_id(),
+                entry_type,
+                self.model.clone(),
+                url,
+                duration_ms,
+                status,
+                request,
+                response,
+                error,
+            );
+            log.log(entry);
+        }
+    }
 }
 
 #[async_trait]
@@ -596,6 +677,8 @@ impl LlmClient for ChatOpenAICompat {
         let url = self.chat_completions_url();
         let body = self.build_request(messages, false);
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
+        let audit_start = std::time::Instant::now();
+        let audit_request = self.build_audit_request(&body);
         debug!(
             trace_id = %trace_id,
             request_id = %request_id,
@@ -796,12 +879,16 @@ error = ?e,
             completion_tokens_details: u.completion_tokens_details,
         });
 
-        Ok(LlmResponse {
+        let llm_response = LlmResponse {
             content,
             reasoning_content,
             tool_calls,
             usage,
-        })
+        };
+        let duration_ms = audit_start.elapsed().as_millis() as u64;
+        let audit_response = Self::build_audit_response(&llm_response);
+        self.record_audit("chat", &url, duration_ms, 200, audit_request, Some(audit_response), None);
+        Ok(llm_response)
     }
 
     async fn invoke_stream(
@@ -829,6 +916,8 @@ error = ?e,
         let url = self.chat_completions_url();
         let body = self.build_request(messages, true);
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
+        let audit_start = std::time::Instant::now();
+        let audit_request = self.build_audit_request(&body);
         debug!(
             trace_id = %trace_id,
             request_id = %request_id,
@@ -1186,7 +1275,7 @@ error = ?e,
             Some(full_reasoning_content)
         };
 
-        Ok(LlmResponse {
+        let response = LlmResponse {
             content: if self.parse_thinking_tags {
                 strip_thinking_tags(&full_content)
             } else {
@@ -1195,7 +1284,11 @@ error = ?e,
             reasoning_content,
             tool_calls,
             usage: stream_usage,
-        })
+        };
+        let duration_ms = audit_start.elapsed().as_millis() as u64;
+        let audit_response = Self::build_audit_response(&response);
+        self.record_audit("chat_stream", &url, duration_ms, 200, audit_request, Some(audit_response), None);
+        Ok(response)
     }
 
     async fn list_models(&self) -> Result<Vec<crate::llm::ModelInfo>, AgentError> {

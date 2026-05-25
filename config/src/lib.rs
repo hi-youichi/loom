@@ -22,7 +22,7 @@ pub use mcp_config::{
     save_mcp_config, upsert_mcp_server, McpConfigError, McpConfigFile, McpServerDef,
     McpServerEntry,
 };
-pub use xdg_toml::{load_full_config, FullConfig, ProviderDef};
+pub use xdg_toml::{load_full_config, FullConfig, ProviderDef, LlmAuditConfig, LlmSection};
 
 // Re-export model resolution helpers
 pub use model::{default_model, default_provider_name};

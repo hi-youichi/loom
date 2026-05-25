@@ -17,11 +17,13 @@
 //! incremental tool-call arguments while still returning a fully assembled
 //! [`LlmResponse`] at the end of the turn.
 
+mod factory;
 mod mock;
 mod model_cache;
 mod model_registry;
 mod retry;
 mod error_classifier;
+pub mod audit;
 
 use tokio::sync::mpsc;
 
@@ -118,10 +120,16 @@ pub use fixed_provider::FixedLlmProvider;
 pub type ChatBigModel = ChatOpenAICompat;
 
 pub use mock::MockLlm;
+pub use factory::LlmFactory;
 pub use model_cache::{fetch_provider_models, ModelCache, ProviderModels};
 pub use model_registry::{create_llm_provider, create_llm_client, ModelEntry, ModelRegistry, ProviderConfig};
 pub use openai::ChatOpenAI;
 pub use retry::RetryLlmClient;
+pub use audit::{
+    build_audit_entry, FileLlmAuditLog, LlmAuditConfig, LlmAuditEntry, LlmAuditLog, LlmAuditRequest,
+    LlmAuditRequestParams, LlmAuditResponse, LlmAuditToolCall, LlmAuditUsage,
+    NoOpLlmAuditLog,
+};
 
 pub use error_classifier::{
     HttpRetryPolicy, ApiErrorParser, LlmErrorClassifierConfig, ProviderType, RetryDecision,

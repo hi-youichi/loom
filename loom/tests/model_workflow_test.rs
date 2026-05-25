@@ -35,6 +35,8 @@ mod tests {
             temperature: Some(0.7),
             max_tokens: Some(1000),
             tool_choice: Some(ToolChoiceMode::Auto),
+            family: None,
+            version: None,
         };
 
         assert_eq!(entry.id, "openai/gpt-4o");
