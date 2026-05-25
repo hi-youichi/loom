@@ -32,3 +32,18 @@ dotenv = "0.15"
 futures = "0.3"
 clap = { version = "4", features = ["derive", "env"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
+
+# Test profile optimizations: build tests with optimizations for faster execution
+# while keeping debug assertions for safety checks.
+[profile.test]
+opt-level = 2          # Optimize for speed (default is 0)
+debug = 1              # Minimal debug info (faster compilation)
+debug-assertions = true
+overflow-checks = true
+lto = false            # Skip LTO for faster compilation
+codegen-units = 16     # Max parallelism during compilation
+incremental = true
+
+[profile.dev]
+opt-level = 0
+debug = 2

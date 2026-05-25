@@ -7,6 +7,10 @@ slow-timeout = { period = "10s", terminate-after = 3, grace-period = "5s" }
 failure-output = "immediate-final"
 success-output = "never"
 status-level = "pass"
+# Maximum parallelism: run tests for all crates simultaneously
+test-threads = "num-cpus"
+# Share compiled artifacts between test runs
+panic-abort = false
 
 [profile.default.junit]
 path = "target/nextest/junit.xml"
@@ -16,10 +20,13 @@ retries = 0
 slow-timeout = { period = "2s" }
 failure-output = "immediate"
 success-output = "never"
-status-level = "pass"
-
-[profile.fast.junit]
-path = "target/nextest/fast-junit.xml"
+status-level = "fail"
+test-threads = "num-cpus"
 
 [profile.ci]
-failure-output = "immediate"
+retries = 2
+slow-timeout = { period = "30s", terminate-after = 3, grace-period = "10s" }
+failure-output = "immediate-final"
+success-output = "never"
+status-level = "all"
+test-threads = "num-cpus"
