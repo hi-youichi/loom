@@ -390,7 +390,7 @@ mod tests {
         assert!(r.is_none());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn expand_node_via_llm_parses_and_prefixes() {
         use crate::llm::MockLlm;
         let json = r#"{"nodes":[{"id":"step1","description":"First step"},{"id":"step2","description":"Second step"}],"edges":[["analyze","step1"],["step1","step2"]]}"#;

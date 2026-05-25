@@ -396,7 +396,7 @@ mod tests {
     use std::collections::HashMap;
 
     /// **Scenario**: Put and get a value returns the stored value.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn put_and_get_returns_value() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["users".into()];
@@ -409,7 +409,7 @@ mod tests {
     }
 
     /// **Scenario**: Get a non-existent key returns None.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn get_nonexistent_returns_none() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["users".into()];
@@ -420,7 +420,7 @@ mod tests {
     }
 
     /// **Scenario**: get_item returns full Item with metadata.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn get_item_returns_full_item() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["docs".into(), "user1".into()];
@@ -436,7 +436,7 @@ mod tests {
     }
 
     /// **Scenario**: Delete removes an item.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn delete_removes_item() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["test".into()];
@@ -449,7 +449,7 @@ mod tests {
     }
 
     /// **Scenario**: Delete non-existent key is idempotent (no error).
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn delete_nonexistent_is_idempotent() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["test".into()];
@@ -459,7 +459,7 @@ mod tests {
     }
 
     /// **Scenario**: List returns all keys in namespace.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn list_returns_all_keys() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["items".into()];
@@ -473,7 +473,7 @@ mod tests {
     }
 
     /// **Scenario**: Search with query filters results.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn search_with_query_filters() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["docs".into()];
@@ -501,7 +501,7 @@ mod tests {
     }
 
     /// **Scenario**: Search with limit truncates results.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn search_with_limit() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["items".into()];
@@ -520,7 +520,7 @@ mod tests {
     }
 
     /// **Scenario**: Search with offset skips results.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn search_with_offset() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["items".into()];
@@ -536,7 +536,7 @@ mod tests {
     }
 
     /// **Scenario**: list_namespaces returns unique namespaces.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn list_namespaces_returns_unique() {
         let store = InMemoryStore::new();
 
@@ -567,7 +567,7 @@ mod tests {
     }
 
     /// **Scenario**: list_namespaces with prefix filter.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn list_namespaces_with_prefix() {
         let store = InMemoryStore::new();
 
@@ -594,7 +594,7 @@ mod tests {
     }
 
     /// **Scenario**: list_namespaces with max_depth truncates.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn list_namespaces_with_max_depth() {
         let store = InMemoryStore::new();
 
@@ -620,7 +620,7 @@ mod tests {
     }
 
     /// **Scenario**: batch executes multiple operations.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn batch_executes_multiple_ops() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["test".into()];
@@ -668,7 +668,7 @@ mod tests {
     }
 
     /// **Scenario**: batch with delete (value=None) removes item.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn batch_delete_removes_item() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["test".into()];
@@ -696,7 +696,7 @@ mod tests {
     }
 
     /// **Scenario**: Update existing item updates timestamp.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn update_updates_timestamp() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["test".into()];
@@ -716,7 +716,7 @@ mod tests {
     }
 
     /// **Scenario**: List empty namespace returns empty vec.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn list_empty_namespace() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["empty".into()];
@@ -726,7 +726,7 @@ mod tests {
     }
 
     /// **Scenario**: List with empty namespace prefix returns all top-level keys.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn list_empty_namespace_prefix() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec![];
@@ -741,7 +741,7 @@ mod tests {
     }
 
     /// **Scenario**: Search with offset >= hits.len() returns empty.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn search_offset_exceeds_hits() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["items".into()];
@@ -755,7 +755,7 @@ mod tests {
     }
 
     /// **Scenario**: Search with empty query returns all items (no filtering).
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn search_empty_query_returns_all() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["docs".into()];
@@ -775,7 +775,7 @@ mod tests {
     }
 
     /// **Scenario**: Search with filter Eq matches items.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn search_with_filter_eq() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["items".into()];
@@ -809,7 +809,7 @@ mod tests {
     }
 
     /// **Scenario**: Search with filter Ne excludes items.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn search_with_filter_ne() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["items".into()];
@@ -831,7 +831,7 @@ mod tests {
     }
 
     /// **Scenario**: Search with filter Gt, Gte, Lt, Lte.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn search_with_filter_comparisons() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["nums".into()];
@@ -909,7 +909,7 @@ mod tests {
     }
 
     /// **Scenario**: Search with filter on missing field excludes item.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn search_filter_missing_field_excludes() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["items".into()];
@@ -929,7 +929,7 @@ mod tests {
     }
 
     /// **Scenario**: list_namespaces with suffix filter.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn list_namespaces_with_suffix() {
         let store = InMemoryStore::new();
 
@@ -967,7 +967,7 @@ mod tests {
     }
 
     /// **Scenario**: list_namespaces with offset and limit.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn list_namespaces_with_offset_limit() {
         let store = InMemoryStore::new();
 
@@ -989,7 +989,7 @@ mod tests {
     }
 
     /// **Scenario**: list_namespaces with offset >= result.len() returns empty.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn list_namespaces_offset_exceeds_result() {
         let store = InMemoryStore::new();
         store.put(&vec!["a".into()], "k1", &json!(1)).await.unwrap();
@@ -1012,7 +1012,7 @@ mod tests {
     }
 
     /// **Scenario**: search_simple returns StoreSearchHit with key, value, score.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn search_simple_returns_hits() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["test".into()];
@@ -1042,7 +1042,7 @@ mod tests {
     }
 
     /// **Scenario**: batch with ListNamespaces op.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn batch_list_namespaces() {
         let store = InMemoryStore::new();
         store
@@ -1061,7 +1061,7 @@ mod tests {
     }
 
     /// **Scenario**: get_item for non-existent key returns None.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn get_item_nonexistent_returns_none() {
         let store = InMemoryStore::new();
         let ns: Namespace = vec!["test".into()];

@@ -217,13 +217,13 @@ mod tests {
     use serde_json::json;
     use crate::test_util::shared_client::test_client;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn twitter_search_tool_name_returns_twitter_search() {
         let tool = TwitterSearchTool::with_client("test_key", test_client());
         assert_eq!(tool.name(), TOOL_TWITTER_SEARCH);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn twitter_search_tool_spec_has_correct_properties() {
         let tool = TwitterSearchTool::with_client("test_key", test_client());
         let spec = tool.spec();
@@ -243,7 +243,7 @@ mod tests {
             .contains(&json!("query")));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn twitter_search_tool_call_missing_query_returns_error() {
         let tool = TwitterSearchTool::with_client("test_key", test_client());
         let args = json!({});
@@ -253,7 +253,7 @@ mod tests {
         assert!(err.to_string().contains("query") || err.to_string().contains("InvalidInput"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn twitter_search_tool_call_empty_query_returns_error() {
         let tool = TwitterSearchTool::with_client("test_key", test_client());
         let args = json!({"query": "   "});
@@ -263,7 +263,7 @@ mod tests {
         assert!(err.to_string().contains("empty") || err.to_string().contains("InvalidInput"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn twitter_search_tool_call_invalid_query_type_returns_error() {
         let tool = TwitterSearchTool::with_client("test_key", test_client());
         let args = json!({"query": "AI", "query_type": "Invalid"});

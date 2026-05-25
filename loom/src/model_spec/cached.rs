@@ -88,7 +88,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn cache_hits_avoid_inner_calls() {
         let body = r#"{"zai":{"models":{"glm-5":{"limit":{"context":204800,"output":131072}}}}}"#
             .to_string();
@@ -109,7 +109,7 @@ mod tests {
         assert_eq!(client.call_count.load(Ordering::SeqCst), 1);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resolve_combined_uses_cache() {
         let body =
             r#"{"openai":{"models":{"gpt-4o":{"limit":{"context":128000,"output":16384}}}}}"#

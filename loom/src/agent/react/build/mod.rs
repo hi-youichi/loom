@@ -408,7 +408,7 @@ mod tests {
         assert!(cp.is_some());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn build_react_run_context_builds_default_tool_source() {
         let ctx = build_react_run_context(&base_config()).await.unwrap();
         assert!(ctx.checkpointer.is_none());
@@ -418,7 +418,7 @@ mod tests {
         assert!(!tools.is_empty());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn exa_codesearch_off_by_default_when_exa_key_set() {
         let mut cfg = base_config();
         cfg.exa_api_key = Some("k".to_string());
@@ -430,7 +430,7 @@ mod tests {
         assert!(!names.contains(&"codesearch"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn exa_codesearch_registered_when_flag_enabled() {
         let mut cfg = base_config();
         cfg.exa_api_key = Some("k".to_string());
@@ -442,7 +442,7 @@ mod tests {
         assert!(names.contains(&"codesearch"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn build_react_runner_with_mock_llm_and_system_prompt_invokes() {
         let mut cfg = base_config();
         cfg.system_prompt = Some("test system prompt".to_string());
@@ -460,7 +460,7 @@ mod tests {
         assert!(out.last_assistant_reply().is_some());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn build_dup_tot_got_runners_with_mock_llm_invoke() {
         let cfg = base_config();
 

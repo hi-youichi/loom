@@ -1332,7 +1332,7 @@ mod tests {
             .to_string()
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_chat_openai_compat_sends_request_id() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
@@ -1346,7 +1346,7 @@ mod tests {
         assert!(received[0].headers.contains_key("x-request-id"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_chat_openai_compat_generates_unique_request_ids() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
@@ -1366,7 +1366,7 @@ mod tests {
         assert_ne!(id1, id2);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_chat_openai_compat_request_id_with_other_headers() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
@@ -1393,7 +1393,7 @@ mod tests {
         req.headers.get(name).and_then(|v| v.to_str().ok()).map(|s| s.to_string())
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn root_and_sub_agent_send_same_x_thread_id() {
         let server = MockServer::start().await;
         let shared_trace_id = "shared-trace-id-xyz";
@@ -1426,7 +1426,7 @@ mod tests {
         assert_eq!(id1, shared_trace_id);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn trace_thread_id_appears_as_x_thread_id_header() {
         let server = MockServer::start().await;
         let trace_id = "root-trace-from-config";
@@ -1448,7 +1448,7 @@ mod tests {
         assert_eq!(extract_header(&received[0], "x-thread-id"), Some(trace_id.to_string()));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn x_thread_id_and_x_app_id_both_present() {
         let server = MockServer::start().await;
         let trace_id = "trace-with-app-id";

@@ -549,7 +549,7 @@ mod tests {
     use crate::stream::{StreamEvent, StreamMode};
 
     /// **Scenario**: When edge_order is empty, invoke returns ExecutionFailed("empty graph").
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_empty_graph_returns_execution_failed() {
         let graph = CompiledStateGraph::<crate::state::ReActState> {
             nodes: HashMap::new(),
@@ -736,7 +736,7 @@ mod tests {
     /// **Scenario**: Graph A runs node a1, then a2, then executes Graph B as a single node.
     /// Graph A's next node (after a2) is connected to Graph B via SubgraphNode.
     /// State flow: 0 → a1(+1)=1 → a2(+2)=3 → graph_b(*10)=30.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_graph_a_then_subgraph_b_as_node_produces_expected_state() {
         let compiled_b = build_subgraph_b().expect("graph B compiles");
 
@@ -765,7 +765,7 @@ mod tests {
     }
 
     /// **Scenario**: Graph with conditional edges routes to the correct node based on state.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_conditional_edges_routes_by_state() {
         let mut graph = StateGraph::<i32>::new();
         graph.add_node(
@@ -817,7 +817,7 @@ mod tests {
     }
 
     /// **Scenario**: Conditional edges with no path_map use router return value as node id.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_conditional_edges_no_path_map_uses_key_as_node_id() {
         let mut graph = StateGraph::<i32>::new();
         graph.add_node(
@@ -863,7 +863,7 @@ mod tests {
     }
 
     /// **Scenario**: invoke with checkpointer and config.thread_id saves checkpoint at end of run.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_with_checkpointer_and_thread_id_saves_checkpoint() {
         let mut graph = StateGraph::<i32>::new();
         graph.add_node(
@@ -902,7 +902,7 @@ mod tests {
     }
 
     /// **Scenario**: Node returning Next::End triggers checkpoint save when checkpointer and thread_id set.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_next_end_with_checkpointer_saves_checkpoint() {
         let mut graph = StateGraph::<i32>::new();
         graph.add_node(
@@ -935,7 +935,7 @@ mod tests {
     }
 
     /// **Scenario**: Node returning Next::Node(id) jumps to that node (covers run_loop Next::Node branch).
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_next_node_jumps_to_specified_node() {
         let mut graph = StateGraph::<i32>::new();
         graph.add_node(
@@ -970,7 +970,7 @@ mod tests {
     }
 
     /// **Scenario**: stream(values) emits state snapshots per node and ends with final state.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_values_emits_states() {
         let graph = build_two_step_graph();
         let stream = graph.stream(
@@ -990,7 +990,7 @@ mod tests {
     }
 
     /// **Scenario**: stream(updates) emits Updates with node ids in order.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_updates_emit_node_ids_in_order() {
         let graph = build_two_step_graph();
         let stream = graph.stream(
@@ -1020,7 +1020,7 @@ mod tests {
     }
 
     /// **Scenario**: Empty graph stream() does not panic and yields zero events.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_empty_graph_no_panic_zero_events() {
         let graph = CompiledStateGraph::<i32> {
             nodes: HashMap::new(),
@@ -1066,7 +1066,7 @@ mod tests {
     }
 
     /// **Scenario**: Single-node graph stream(Values+Updates) emits exactly one Values and one Updates.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_single_node_emits_one_values_one_updates() {
         let graph = build_single_node_graph();
         let stream = graph.stream(
@@ -1093,7 +1093,7 @@ mod tests {
     }
 
     /// **Scenario**: stream(Values+Updates) emits both variants; per node order is Values then Updates.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_values_and_updates_both_enabled() {
         let graph = build_two_step_graph();
         let stream = graph.stream(
@@ -1125,7 +1125,7 @@ mod tests {
     }
 
     /// **Scenario**: stream with Some(config) completes without panic and yields same events as None.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_with_some_config_no_panic() {
         let graph = build_two_step_graph();
         let config = RunnableConfig {
@@ -1147,7 +1147,7 @@ mod tests {
     }
 
     /// **Scenario**: stream_mode containing Messages and Custom still collects without panic; run_loop only sends Values/Updates.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_mode_includes_messages_custom_collect_no_panic() {
         let graph = build_two_step_graph();
         let stream = graph.stream(
@@ -1201,7 +1201,7 @@ mod tests {
     // === Runtime Integration Tests ===
 
     /// **Scenario**: invoke_with_context executes graph with RunContext and produces correct result.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_with_context_basic() {
         let graph = build_two_step_graph();
         let config = RunnableConfig::default();
@@ -1214,7 +1214,7 @@ mod tests {
     }
 
     /// **Scenario**: invoke_with_context with store passes store to RunContext.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_with_context_with_store() {
         use crate::memory::InMemoryStore;
 
@@ -1229,7 +1229,7 @@ mod tests {
     }
 
     /// **Scenario**: invoke_with_context with runtime_context passes custom context data.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_with_context_with_runtime_context() {
         let graph = build_two_step_graph();
         let config = RunnableConfig::default();
@@ -1249,7 +1249,7 @@ mod tests {
     }
 
     /// **Scenario**: invoke_with_context with previous state sets previous correctly.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_with_context_with_previous() {
         let graph = build_two_step_graph();
         let config = RunnableConfig::default();
@@ -1294,7 +1294,7 @@ mod tests {
     }
 
     /// **Scenario**: Custom StateUpdater appends messages instead of replacing.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_with_custom_state_updater_appends_messages() {
         use crate::channels::FieldBasedUpdater;
 
@@ -1348,7 +1348,7 @@ mod tests {
     }
 
     /// **Scenario**: Default behavior (ReplaceUpdater) replaces entire state.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_default_replaces_state() {
         let mut graph = StateGraph::<MessageState>::new();
 
@@ -1421,7 +1421,7 @@ mod tests {
     }
 
     /// **Scenario**: Node with retry policy succeeds after transient failures.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_with_retry_succeeds_after_failures() {
         let fail_count = Arc::new(AtomicUsize::new(0));
 
@@ -1448,7 +1448,7 @@ mod tests {
     }
 
     /// **Scenario**: Node without retry fails immediately.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_without_retry_fails_immediately() {
         let fail_count = Arc::new(AtomicUsize::new(0));
 
@@ -1474,7 +1474,7 @@ mod tests {
     }
 
     /// **Scenario**: Node exhausts retry attempts and fails.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_with_retry_exhausted_fails() {
         let fail_count = Arc::new(AtomicUsize::new(0));
 
@@ -1503,7 +1503,7 @@ mod tests {
     // === Checkpoints Streaming Tests ===
 
     /// **Scenario**: stream() emits checkpoint events when Checkpoints mode is enabled and checkpointer is present.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_checkpoints_emits_checkpoint_events_with_checkpointer() {
         use crate::memory::MemorySaver;
 
@@ -1578,7 +1578,7 @@ mod tests {
     }
 
     /// **Scenario**: stream() does not emit checkpoint events when Checkpoints mode is disabled.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_no_checkpoint_events_without_checkpoints_mode() {
         use crate::memory::MemorySaver;
 
@@ -1627,7 +1627,7 @@ mod tests {
     }
 
     /// **Scenario**: stream() does not emit checkpoint events without checkpointer.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_no_checkpoint_events_without_checkpointer() {
         let mut graph = StateGraph::<i32>::new();
         graph.add_node(
@@ -1678,7 +1678,7 @@ mod tests {
     // === Tasks Streaming Tests ===
 
     /// **Scenario**: stream() emits TaskStart and TaskEnd events when Tasks mode is enabled.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_tasks_emits_task_events() {
         let mut graph = StateGraph::<i32>::new();
         graph.add_node(
@@ -1758,7 +1758,7 @@ mod tests {
     }
 
     /// **Scenario**: stream() does not emit task events when Tasks mode is disabled.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_no_task_events_without_tasks_mode() {
         let mut graph = StateGraph::<i32>::new();
         graph.add_node(
@@ -1802,7 +1802,7 @@ mod tests {
     }
 
     /// **Scenario**: Debug mode emits both checkpoints and task events.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_debug_mode_emits_checkpoints_and_tasks() {
         use crate::memory::MemorySaver;
 
@@ -1888,7 +1888,7 @@ mod tests {
     }
 
     /// **Scenario**: Node that raises an interrupt returns Interrupted error.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_with_interrupting_node_returns_interrupted_error() {
         let mut graph = StateGraph::<i32>::new();
         graph.add_node(
@@ -1913,7 +1913,7 @@ mod tests {
     }
 
     /// **Scenario**: Interrupt with checkpointer saves checkpoint before returning error.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_with_interrupt_saves_checkpoint_when_checkpointer_present() {
         use crate::memory::MemorySaver;
 
@@ -1960,7 +1960,7 @@ mod tests {
     }
 
     /// **Scenario**: Cancellation during node execution returns Cancelled and does not save checkpoint.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_with_cancellation_does_not_save_checkpoint() {
         use crate::memory::MemorySaver;
 
@@ -1994,7 +1994,7 @@ mod tests {
     }
 
     /// **Scenario**: Stream with interrupting node emits TaskEnd with error.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_with_interrupt_emits_task_end_with_error() {
         let mut graph = StateGraph::<i32>::new();
         graph.add_node(
@@ -2062,7 +2062,7 @@ mod tests {
     }
 
     /// **Scenario**: Interrupt handler is called when interrupt occurs.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_with_interrupt_handler_calls_handler() {
         let handler = Arc::new(RecordingInterruptHandler::new());
 

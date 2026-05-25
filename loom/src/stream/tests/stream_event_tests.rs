@@ -7,7 +7,7 @@ mod tests {
     struct DummyState(i32);
 
     /// **Scenario**: Each StreamEvent variant can hold the appropriate data.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_event_variants_hold_data() {
         // Test Values variant
         let event: StreamEvent<DummyState> = StreamEvent::Values(DummyState(42));

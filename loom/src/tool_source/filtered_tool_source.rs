@@ -101,7 +101,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn enabled_whitelist_filters() {
         let filter = BuiltinToolFilter {
             enabled: Some(vec!["read".into(), "bash".into()]),
@@ -113,7 +113,7 @@ mod tests {
         assert_eq!(names, &["read", "bash"]);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn disabled_blacklist_filters() {
         let filter = BuiltinToolFilter {
             enabled: None,
@@ -125,7 +125,7 @@ mod tests {
         assert_eq!(names, &["read", "bash"]);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn combined_enabled_and_disabled() {
         let filter = BuiltinToolFilter {
             enabled: Some(vec!["read".into(), "write_file".into(), "bash".into()]),
@@ -137,7 +137,7 @@ mod tests {
         assert_eq!(names, &["read", "bash"]);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn call_tool_blocked() {
         let filter = BuiltinToolFilter {
             enabled: None,
@@ -152,7 +152,7 @@ mod tests {
         assert!(err.contains("disabled"), "unexpected error: {}", err);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn call_tool_allowed() {
         let filter = BuiltinToolFilter {
             enabled: None,

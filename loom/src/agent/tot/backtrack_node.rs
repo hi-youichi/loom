@@ -132,7 +132,7 @@ mod tests {
         assert!(matches!(messages.first(), Some(Message::User(UserContent::Text(s))) if s == "u1"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn run_selects_next_candidate_and_resets_core() {
         let node = BacktrackNode::new();
         let state = TotState {
@@ -188,7 +188,7 @@ mod tests {
         ));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn run_with_context_emits_tot_backtrack_event() {
         let node = BacktrackNode::new();
         let state = TotState {

@@ -59,7 +59,7 @@ where
 mod tests {
     use super::*;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn around_run_returns_inner_success_result() {
         let middleware = LoggingNodeMiddleware::<i32>::default();
         let out = middleware
@@ -74,7 +74,7 @@ mod tests {
         assert_eq!(out.1, Next::Continue);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn around_run_propagates_inner_error() {
         let middleware = LoggingNodeMiddleware::<i32>::default();
         let err = middleware

@@ -2203,7 +2203,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_runs_minimal_single_step_graph() {
         let mut graph = PregelGraph::new();
         graph
@@ -2222,7 +2222,7 @@ mod tests {
         assert_eq!(output["out"], json!("hello"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_emits_task_value_and_update_events() {
         let mut graph = PregelGraph::new();
         graph
@@ -2282,7 +2282,7 @@ mod tests {
         assert!(saw_updates);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_emits_custom_and_message_events_from_pregel_nodes() {
         let mut graph = PregelGraph::new();
         graph
@@ -2339,7 +2339,7 @@ mod tests {
         assert!(saw_message);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn parent_node_can_inline_child_subgraph_execution() {
         let checkpointer = Arc::new(MemorySaver::new());
 
@@ -2440,7 +2440,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn parent_run_can_resume_child_subgraph_by_namespace() {
         let checkpointer = Arc::new(MemorySaver::new());
 
@@ -2554,7 +2554,7 @@ mod tests {
         assert_eq!(actual_child_ids, expected_child_ids);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_persists_checkpoint_and_exposes_state_history() {
         let mut graph = PregelGraph::new();
         graph
@@ -2598,7 +2598,7 @@ mod tests {
         assert_eq!(history[0].metadata.step, 1);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn stream_emits_checkpoint_events_when_enabled() {
         let mut graph = PregelGraph::new();
         graph
@@ -2641,7 +2641,7 @@ mod tests {
         assert!(saw_checkpoint);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn exit_durability_flushes_only_final_checkpoint() {
         let mut graph = PregelGraph::new();
         graph
@@ -2697,7 +2697,7 @@ mod tests {
         assert_eq!(state.channels["out"], json!("hello"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn async_durability_persists_each_completed_step() {
         let mut graph = PregelGraph::new();
         graph
@@ -2753,7 +2753,7 @@ mod tests {
         assert_eq!(state.channels["out"], json!("hello"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_interrupt_before_persists_checkpoint() {
         let mut graph = PregelGraph::new();
         graph
@@ -2801,7 +2801,7 @@ mod tests {
         assert_eq!(history[0].metadata.step, 0);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_interrupt_after_persists_last_committed_checkpoint() {
         let mut graph = PregelGraph::new();
         graph
@@ -2849,7 +2849,7 @@ mod tests {
         assert_eq!(history[0].metadata.step, 0);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn node_interrupt_persists_checkpoint_and_propagates_error() {
         let mut graph = PregelGraph::new();
         graph
@@ -2886,7 +2886,7 @@ mod tests {
         assert_eq!(history.len(), 1);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn update_state_persists_synthetic_channel_write() {
         let mut graph = PregelGraph::new();
         graph
@@ -2922,7 +2922,7 @@ mod tests {
         assert_eq!(persisted.step, 1);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn bulk_update_state_commits_multiple_updates_in_one_barrier() {
         let mut graph = PregelGraph::new();
         graph
@@ -2975,7 +2975,7 @@ mod tests {
         assert_eq!(persisted.channels["right"], json!("b"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn bulk_update_state_preserves_existing_pending_frontier_records() {
         let mut graph = PregelGraph::new();
         graph
@@ -3046,7 +3046,7 @@ mod tests {
         assert_eq!(persisted.pending_writes.len(), 1);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn successful_commit_preserves_unconsumed_pending_sends() {
         let mut graph = PregelGraph::new();
         graph
@@ -3113,7 +3113,7 @@ mod tests {
         assert_eq!(final_state.pending_sends[0].0, "task-invalid");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn successful_commit_preserves_unconsumed_pending_writes() {
         let runs = Arc::new(AtomicUsize::new(0));
         let mut graph = PregelGraph::new();
@@ -3169,7 +3169,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn task_cache_reuses_cached_writes_for_identical_invoke() {
         let runs = Arc::new(AtomicUsize::new(0));
         let mut graph = PregelGraph::new();
@@ -3196,7 +3196,7 @@ mod tests {
         assert_eq!(runs.load(Ordering::SeqCst), 1);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn duplicate_pending_writes_from_checkpoint_are_normalized_before_replay() {
         let runs = Arc::new(AtomicUsize::new(0));
         let mut graph = PregelGraph::new();
@@ -3251,7 +3251,7 @@ mod tests {
         assert_eq!(final_state.channels["out"], json!(["hello"]));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn replay_can_inspect_and_fork_checkpoint() {
         let mut graph = PregelGraph::new();
         graph
@@ -3352,7 +3352,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn failed_step_with_successful_sibling_persists_recoverable_writes() {
         let mut graph = PregelGraph::new();
         graph
@@ -3395,7 +3395,7 @@ mod tests {
         assert_eq!(state.pending_writes[0].2, json!("hello"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn cancelled_step_with_successful_sibling_persists_recoverable_writes() {
         let cancellation = RunCancellation::new(3);
         let mut graph = PregelGraph::new();
@@ -3445,7 +3445,7 @@ mod tests {
         assert_eq!(state.pending_writes[0].2, json!("hello"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_with_cancellation_returns_cancelled_without_checkpoint() {
         let mut graph = PregelGraph::new();
         graph
@@ -3486,7 +3486,7 @@ mod tests {
         assert!(runtime.get_state(config).await.unwrap().is_none());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_subgraph_propagates_cancellation_to_child_runtime() {
         let cancellation = RunCancellation::new(2);
         let checkpointer = Arc::new(MemorySaver::new());
@@ -3543,7 +3543,7 @@ mod tests {
         assert!(matches!(result, SubgraphResult::Cancelled));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn multiple_interrupts_from_same_step_are_all_persisted() {
         let mut graph = PregelGraph::new();
         graph
@@ -3591,7 +3591,7 @@ mod tests {
         assert!(interrupt_ids.contains("interrupt-b"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn batch_resume_consumes_multiple_interrupts_in_one_invoke() {
         let mut graph = PregelGraph::new();
         graph
@@ -3658,7 +3658,7 @@ mod tests {
         assert!(outputs.iter().any(|value| value == &json!("interrupt-b")));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resume_runs_interrupting_task_alongside_other_pending_frontier() {
         let worker_runs = Arc::new(AtomicUsize::new(0));
         let mut graph = PregelGraph::new();
@@ -3751,7 +3751,7 @@ mod tests {
         assert_eq!(final_state.channels["gate"], json!("approved"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn replay_resume_continues_from_checkpoint() {
         let mut graph = PregelGraph::new();
         graph
@@ -3802,7 +3802,7 @@ mod tests {
         assert!(resumed.snapshot.pending_interrupts.is_empty());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn replay_resume_continues_from_sqlite_checkpoint() {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("pregel-replay-resume.db");
@@ -3858,7 +3858,7 @@ mod tests {
         assert!(resumed.snapshot.pending_interrupts.is_empty());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn replay_resume_restores_pull_frontier_from_intermediate_checkpoint() {
         let mut graph = PregelGraph::new();
         graph
@@ -3936,7 +3936,7 @@ mod tests {
         assert_eq!(resumed.snapshot.channels["out"], json!("hello"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn replay_resume_restores_pull_frontier_from_sqlite_intermediate_checkpoint() {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("pregel-replay-pull-frontier.db");
@@ -4019,7 +4019,7 @@ mod tests {
         assert_eq!(resumed.snapshot.channels["out"], json!("hello"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn replay_resume_restores_pending_sends_from_intermediate_checkpoint() {
         let mut graph = PregelGraph::new();
         graph
@@ -4099,7 +4099,7 @@ mod tests {
         assert!(resumed.snapshot.pending_sends.is_empty());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn reserved_writes_are_persisted_in_state_snapshot() {
         let mut graph = PregelGraph::new();
         graph
@@ -4132,7 +4132,7 @@ mod tests {
         assert_eq!(state.pending_writes[0].2, json!("hello"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn reserved_interrupt_writes_raise_resumable_interrupt() {
         let mut graph = PregelGraph::new();
         graph
@@ -4183,7 +4183,7 @@ mod tests {
         assert_eq!(resumed["out"], json!("approved"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn reserved_error_writes_raise_execution_failed() {
         let mut graph = PregelGraph::new();
         graph
@@ -4207,7 +4207,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn reserved_return_writes_override_final_invoke_output() {
         let mut graph = PregelGraph::new();
         graph
@@ -4243,7 +4243,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn checkpoint_resume_writes_can_resume_next_invoke() {
         let mut graph = PregelGraph::new();
         graph
@@ -4300,7 +4300,7 @@ mod tests {
         assert_eq!(final_state.channels["out"], json!("approved"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn interrupted_step_replays_successful_task_writes_without_rerun() {
         let runs = Arc::new(AtomicUsize::new(0));
         let mut graph = PregelGraph::new();
@@ -4363,7 +4363,7 @@ mod tests {
         assert_eq!(final_state.channels["gate"], json!("approved"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn later_step_interrupt_replays_successful_pull_task_without_rerun() {
         let runs = Arc::new(AtomicUsize::new(0));
         let mut graph = PregelGraph::new();
@@ -4443,7 +4443,7 @@ mod tests {
         assert_eq!(final_state.channels["gate"], json!("approved"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn interrupted_step_replays_successful_push_task_without_rerun() {
         let worker_runs = Arc::new(AtomicUsize::new(0));
         let mut graph = PregelGraph::new();
@@ -4531,7 +4531,7 @@ mod tests {
         assert_eq!(final_state.channels["gate"], json!("approved"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn interrupted_step_preserves_all_successful_scheduled_writes_for_replay() {
         let sender_runs = Arc::new(AtomicUsize::new(0));
         let worker_a_runs = Arc::new(AtomicUsize::new(0));
@@ -4639,7 +4639,7 @@ mod tests {
         assert_eq!(final_state.channels["gate"], json!("approved"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resume_by_interrupt_id_preserves_unmatched_pending_interrupts() {
         let checkpointer = Arc::new(MemorySaver::new());
 
@@ -4707,7 +4707,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resume_by_namespace_only_consumes_matching_namespace() {
         let checkpointer = Arc::new(MemorySaver::new());
 
@@ -4768,7 +4768,7 @@ mod tests {
         assert_eq!(final_state.pending_interrupts[0].namespace, "other");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn generic_resume_value_does_not_ambiguously_consume_multiple_interrupts() {
         let mut graph = PregelGraph::new();
         graph
@@ -4823,7 +4823,7 @@ mod tests {
         assert!(final_state.channels["out_b"].is_null());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn generic_resume_write_does_not_ambiguously_consume_multiple_interrupts() {
         let mut graph = PregelGraph::new();
         graph
@@ -4888,7 +4888,7 @@ mod tests {
         assert!(final_state.channels["out_b"].is_null());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn reserved_scheduled_writes_enqueue_followup_tasks() {
         let mut graph = PregelGraph::new();
         graph
@@ -4918,7 +4918,7 @@ mod tests {
         assert_eq!(output["out"], json!("hello"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn no_writes_marker_is_successful_without_pending_write_pollution() {
         let mut graph = PregelGraph::new();
         graph
@@ -4947,7 +4947,7 @@ mod tests {
         assert!(state.pending_writes.is_empty());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn managed_values_are_injected_into_node_input() {
         let mut graph = PregelGraph::new();
         graph
@@ -4966,7 +4966,7 @@ mod tests {
         assert_eq!(output["out"], json!("acme"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resume_map_rehydrates_interrupting_task() {
         let mut graph = PregelGraph::new();
         graph
@@ -5017,7 +5017,7 @@ mod tests {
         assert_eq!(final_state.channels["out"], json!("approved"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_subgraph_uses_isolated_checkpoint_namespace() {
         let checkpointer = Arc::new(MemorySaver::new());
 
@@ -5100,7 +5100,7 @@ mod tests {
         assert_eq!(child_history.len(), 1);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_subgraph_can_resume_interrupting_child_namespace() {
         let checkpointer = Arc::new(MemorySaver::new());
 
@@ -5189,7 +5189,7 @@ mod tests {
         assert_eq!(child_history.len(), 2);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn invoke_subgraph_supports_nested_checkpoint_namespaces() {
         let checkpointer = Arc::new(MemorySaver::new());
 
@@ -5347,7 +5347,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn retry_policy_retries_before_failing() {
         let attempts = Arc::new(AtomicUsize::new(0));
         let mut graph = PregelGraph::new();
@@ -5373,7 +5373,7 @@ mod tests {
         assert_eq!(attempts.load(Ordering::SeqCst), 3);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn retry_policy_exhaustion_propagates_error() {
         let attempts = Arc::new(AtomicUsize::new(0));
         let mut graph = PregelGraph::new();
@@ -5440,7 +5440,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn multi_step_pipeline_with_versions_seen() {
         let mut graph = PregelGraph::new();
         graph
@@ -5487,7 +5487,7 @@ mod tests {
         assert_eq!(state.channels["out"], json!("x+A+B"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn topic_channel_consume_clears_between_steps() {
         use crate::pregel::channel::{Channel, TopicChannel};
 
@@ -5502,7 +5502,7 @@ mod tests {
         assert_eq!(ch.snapshot(), json!(["c"]));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn task_cache_does_not_store_reserved_control_writes() {
         let mut graph = PregelGraph::new();
         graph
@@ -5532,7 +5532,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn task_cache_is_isolated_by_thread_id() {
         let runs = Arc::new(AtomicUsize::new(0));
         let mut graph = PregelGraph::new();
@@ -5587,7 +5587,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn ephemeral_channel_clears_between_steps() {
         let mut graph = PregelGraph::new();
         graph
@@ -5620,7 +5620,7 @@ mod tests {
         assert_eq!(result["out"], json!("ephemeral"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn named_barrier_channel_gates_downstream_until_all_names_written() {
         use crate::pregel::channel::{Channel as _, NamedBarrierChannel};
 
@@ -5638,7 +5638,7 @@ mod tests {
         assert_eq!(ch.snapshot(), serde_json::Value::Null);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn versions_seen_scoped_to_node_channels() {
         let mut graph = PregelGraph::new();
         graph
@@ -5690,7 +5690,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn get_graph_returns_static_graph_view() {
         let mut graph = PregelGraph::new();
         graph
@@ -5717,7 +5717,7 @@ mod tests {
         assert!(view.to_mermaid().contains("flowchart TD"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn get_subgraphs_discovers_inline_child_runtime() {
         let mut child_graph = PregelGraph::new();
         child_graph
@@ -5766,7 +5766,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn clear_cache_forces_task_recomputation() {
         let runs = Arc::new(AtomicUsize::new(0));
         let mut graph = PregelGraph::new();
@@ -5816,7 +5816,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn clear_cache_for_nodes_keeps_other_cached_nodes() {
         let node_a_runs = Arc::new(AtomicUsize::new(0));
         let node_b_runs = Arc::new(AtomicUsize::new(0));

@@ -69,7 +69,7 @@ impl UserMessageStore for NoOpUserMessageStore {
 mod tests {
     use super::*;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn noop_append_does_not_error() {
         let store = NoOpUserMessageStore;
         store
@@ -78,7 +78,7 @@ mod tests {
             .expect("append should succeed");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn noop_list_returns_empty() {
         let store = NoOpUserMessageStore;
         let msgs = store

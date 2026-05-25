@@ -378,7 +378,7 @@ CANDIDATE 2: THOUGHT: summarize findings | TOOL_CALLS: []"#;
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn run_uses_response_tool_calls_as_fallback() {
         let node = ThinkExpandNode::new(Box::new(MockLlm::with_get_time_call()));
         let (out, next) = node.run(make_state()).await.unwrap();
@@ -388,7 +388,7 @@ CANDIDATE 2: THOUGHT: summarize findings | TOOL_CALLS: []"#;
         assert_eq!(out.tot.candidates[0].tool_calls[0].name, "get_time");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn run_with_context_emits_tot_expand_event() {
         let node = ThinkExpandNode::new(Box::new(MockLlm::with_no_tool_calls(
             "CANDIDATE 1: THOUGHT: alpha | TOOL_CALLS: []\nCANDIDATE 2: THOUGHT: beta | TOOL_CALLS: []",

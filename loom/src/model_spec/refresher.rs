@@ -63,7 +63,7 @@ mod tests {
         r#"{"zai":{"models":{"glm-5":{"limit":{"context":204800,"output":131072}}}}}"#.to_string()
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn spawn_refreshes_periodically_and_can_be_aborted() {
         let client = Arc::new(CountingHttpClient {
             body: fixture_json(),

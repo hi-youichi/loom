@@ -115,7 +115,7 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_in_memory_cache_basic() {
         let cache = InMemoryCache::new();
         assert_eq!(cache.get(&"key".to_string()).await, None);
@@ -130,7 +130,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_in_memory_cache_ttl() {
         let cache = InMemoryCache::new();
         cache
@@ -151,7 +151,7 @@ mod tests {
         assert_eq!(cache.get(&"key".to_string()).await, None);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_in_memory_cache_delete() {
         let cache = InMemoryCache::new();
         cache
@@ -162,7 +162,7 @@ mod tests {
         assert_eq!(cache.get(&"key".to_string()).await, None);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_in_memory_cache_clear() {
         let cache = InMemoryCache::new();
         cache

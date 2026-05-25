@@ -203,7 +203,7 @@ mod tests {
     use super::*;
     use crate::llm::mock::MockLlm;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_is_empty_response_all_empty() {
         let resp = LlmResponse {
             content: String::new(),
@@ -214,7 +214,7 @@ mod tests {
         assert!(is_empty_response(&resp));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_is_empty_response_with_content() {
         let resp = LlmResponse {
             content: "hello".to_string(),
@@ -225,7 +225,7 @@ mod tests {
         assert!(!is_empty_response(&resp));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_is_empty_response_with_reasoning() {
         let resp = LlmResponse {
             content: String::new(),
@@ -236,7 +236,7 @@ mod tests {
         assert!(!is_empty_response(&resp));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_is_empty_response_with_tool_calls() {
         let resp = LlmResponse {
             content: String::new(),
@@ -251,7 +251,7 @@ mod tests {
         assert!(!is_empty_response(&resp));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_is_empty_response_with_whitespace_only() {
         let resp = LlmResponse {
             content: "   ".to_string(),
@@ -262,7 +262,7 @@ mod tests {
         assert!(is_empty_response(&resp));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_retry_llm_client_success_on_first_attempt() {
         let mock = MockLlm::with_no_tool_calls("success");
         let retry = RetryLlmClient::new(Arc::new(mock));
@@ -271,7 +271,7 @@ mod tests {
         assert_eq!(result.content, "success");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_retry_llm_client_retries_on_empty_response() {
         // Mock that returns empty first time, then success
         let mock = MockLlm::new("", vec![]).with_content("");
@@ -287,7 +287,7 @@ mod tests {
         ));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_retry_llm_client_fails_after_max_retries() {
         let mock = MockLlm::new("", vec![]);
         let retry = RetryLlmClient::new(Arc::new(mock))
@@ -301,7 +301,7 @@ mod tests {
         ));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_retry_llm_client_with_custom_retries() {
         let mock = MockLlm::new("", vec![]);
         let retry = RetryLlmClient::new(Arc::new(mock))

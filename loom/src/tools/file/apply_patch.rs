@@ -453,7 +453,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn tool_call_missing_patch_text() {
         let dir = tempfile::tempdir().unwrap();
         let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
@@ -461,7 +461,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn tool_call_empty_patch() {
         let dir = tempfile::tempdir().unwrap();
         let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
@@ -471,7 +471,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn tool_call_add_file() {
         let dir = tempfile::tempdir().unwrap();
         let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
@@ -484,7 +484,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn tool_call_delete_file() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("to_delete.txt"), "content").unwrap();
@@ -495,7 +495,7 @@ mod tests {
         assert!(!dir.path().join("to_delete.txt").exists());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn tool_call_delete_directory() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("subdir")).unwrap();
@@ -507,7 +507,7 @@ mod tests {
         assert!(!dir.path().join("subdir").exists());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn tool_call_update_file() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("main.rs"), "fn main() {\n    old();\n}\n").unwrap();
@@ -528,7 +528,7 @@ mod tests {
         assert!(!content.contains("old()"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn tool_call_update_with_move() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("a.txt"), "old line").unwrap();
@@ -551,7 +551,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn tool_call_update_nonexistent_file() {
         let dir = tempfile::tempdir().unwrap();
         let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
@@ -566,7 +566,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn tool_call_add_creates_subdirs() {
         let dir = tempfile::tempdir().unwrap();
         let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
@@ -591,7 +591,7 @@ mod tests {
             .any(|v| v == "patchText"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn tool_call_update_append_when_old_empty() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("f.txt"), "existing").unwrap();

@@ -83,7 +83,7 @@ mod tests {
     use super::*;
     use tempfile::NamedTempFile;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resolve_from_local_file() {
         let json = r#"{"zai":{"models":{"glm-5":{"limit":{"context":204800,"output":131072}}}}}"#;
         let file = NamedTempFile::new().unwrap();
@@ -95,7 +95,7 @@ mod tests {
         assert_eq!(spec.output_limit, 131_072);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn resolve_returns_none_for_missing_file() {
         let resolver = LocalFileResolver::new("/nonexistent/path/models.json");
         assert!(resolver.resolve("zai", "glm-5").await.is_none());

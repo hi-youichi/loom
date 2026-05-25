@@ -46,7 +46,7 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn prune_node_id_is_prune() {
         let node = PruneNode {
             config: CompactionConfig::default(),
@@ -54,7 +54,7 @@ mod tests {
         assert_eq!(node.id(), "prune");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn prune_node_with_prune_false_passes_through() {
         let node = PruneNode {
             config: CompactionConfig {
@@ -74,7 +74,7 @@ mod tests {
         assert!(matches!(next, Next::Continue));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn prune_node_with_prune_true_applies_prune() {
         let node = PruneNode {
             config: CompactionConfig {

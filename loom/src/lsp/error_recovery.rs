@@ -302,7 +302,7 @@ impl ErrorRecoveryManager {
 mod tests {
     use super::*;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_circuit_breaker_transitions() {
         let config = CircuitBreakerConfig {
             failure_threshold: 2,

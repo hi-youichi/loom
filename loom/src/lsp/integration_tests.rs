@@ -34,7 +34,7 @@ mod tests {
         Arc::new(RwLock::new(manager))
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     #[ignore = "requires rust-analyzer to be installed and available; run with --ignored"]
     async fn test_rust_analyzer_completion() {
         let manager = create_test_manager().await;
@@ -54,7 +54,7 @@ fn main() {
         assert!(result.is_ok());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     #[ignore = "requires rust-analyzer to be installed and available; run with --ignored"]
     async fn test_rust_analyzer_diagnostics() {
         let manager = create_test_manager().await;
@@ -72,7 +72,7 @@ fn main() {
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     #[ignore = "requires rust-analyzer to be installed and available; run with --ignored"]
     async fn test_rust_analyzer_goto_definition() {
         let manager = create_test_manager().await;
@@ -96,7 +96,7 @@ fn main() {
         assert!(result.is_ok());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     #[ignore = "requires rust-analyzer to be installed and available; run with --ignored"]
     async fn test_rust_analyzer_hover() {
         let manager = create_test_manager().await;
@@ -116,7 +116,7 @@ fn main() {
         assert!(result.is_ok());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_manager_creation() {
         let config = create_test_config();
         let manager = LspManager::from_configs(vec![config.clone()]);

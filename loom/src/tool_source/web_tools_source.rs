@@ -212,14 +212,14 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn new_registers_web_fetcher_tool() {
         let source = WebToolsSource::new().await;
         let tools = source.list_tools().await.unwrap();
         assert!(tools.iter().any(|s| s.name == TOOL_WEB_FETCHER));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn with_client_registers_web_fetcher_tool() {
         let client = reqwest::Client::new();
         let source = WebToolsSource::with_client(client).await;
@@ -227,7 +227,7 @@ mod tests {
         assert!(tools.iter().any(|s| s.name == TOOL_WEB_FETCHER));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn web_tools_source_trait_methods_delegate_to_aggregate_source() {
         let aggregate = AggregateToolSource::new();
         aggregate.register_async(Box::new(DummyTool)).await;

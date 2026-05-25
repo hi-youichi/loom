@@ -19,7 +19,7 @@ mod tests {
         (db, f)
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_save_iteration_state_history_limit() {
         let (db, _f) = test_db().await;
         let db = Arc::new(db);
@@ -53,7 +53,7 @@ mod tests {
         assert_eq!(meta.history[19].iteration, 25);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_resume_rejects_non_paused_task() {
         let (db, _f) = test_db().await;
         let db = Arc::new(db);
@@ -80,7 +80,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_atomic_update_status_concurrent_rejection() {
         let (db, _f) = test_db().await;
         let db = Arc::new(db);
@@ -97,7 +97,7 @@ mod tests {
         assert!(!ok2);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_goal_runner_creates_task() {
         let (db, _f) = test_db().await;
         let db = Arc::new(db);
@@ -122,7 +122,7 @@ mod tests {
         assert_eq!(task.status, TaskStatus::InProgress);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_consecutive_failures_error() {
         let (db, _f) = test_db().await;
         let db = Arc::new(db);

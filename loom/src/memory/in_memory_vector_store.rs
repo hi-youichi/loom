@@ -430,7 +430,7 @@ mod tests {
     }
 
     /// **Scenario**: Store can put and search entries with semantic similarity.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_put_search() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);
@@ -460,7 +460,7 @@ mod tests {
     }
 
     /// **Scenario**: Store can get values by key.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_get() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);
@@ -486,7 +486,7 @@ mod tests {
     }
 
     /// **Scenario**: get_item returns full Item with metadata.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_get_item() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);
@@ -504,7 +504,7 @@ mod tests {
     }
 
     /// **Scenario**: delete removes an item.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_delete() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);
@@ -522,7 +522,7 @@ mod tests {
     }
 
     /// **Scenario**: Store can list all keys in a namespace.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_list() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);
@@ -544,7 +544,7 @@ mod tests {
     }
 
     /// **Scenario**: Different namespaces are isolated.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_namespace_isolation() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);
@@ -587,7 +587,7 @@ mod tests {
     }
 
     /// **Scenario**: Search without query returns entries up to limit.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_search_no_query() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);
@@ -611,7 +611,7 @@ mod tests {
     }
 
     /// **Scenario**: Search with empty query returns entries up to limit.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_search_empty_query() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);
@@ -628,7 +628,7 @@ mod tests {
     }
 
     /// **Scenario**: list_namespaces returns unique namespaces.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_list_namespaces() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);
@@ -661,7 +661,7 @@ mod tests {
     }
 
     /// **Scenario**: batch executes multiple operations.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_batch() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);
@@ -691,7 +691,7 @@ mod tests {
     }
 
     /// **Scenario**: batch with ListNamespaces op.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_batch_list_namespaces() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);
@@ -713,7 +713,7 @@ mod tests {
     }
 
     /// **Scenario**: batch with Search op.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_batch_search() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);
@@ -736,7 +736,7 @@ mod tests {
     }
 
     /// **Scenario**: batch with Put value=None deletes item.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_batch_delete() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);
@@ -766,7 +766,7 @@ mod tests {
     }
 
     /// **Scenario**: list_namespaces with suffix filter.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_list_namespaces_with_suffix() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);
@@ -802,7 +802,7 @@ mod tests {
     }
 
     /// **Scenario**: list_namespaces with max_depth truncates.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_list_namespaces_with_max_depth() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);
@@ -823,7 +823,7 @@ mod tests {
     }
 
     /// **Scenario**: list_namespaces with offset and limit.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_list_namespaces_offset_limit() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);
@@ -850,7 +850,7 @@ mod tests {
     }
 
     /// **Scenario**: list_namespaces with offset >= result.len() returns empty.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_list_namespaces_offset_exceeds() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);
@@ -871,7 +871,7 @@ mod tests {
     }
 
     /// **Scenario**: Search with offset skips results.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_search_with_offset() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);
@@ -896,7 +896,7 @@ mod tests {
     }
 
     /// **Scenario**: search_simple returns StoreSearchHit.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_search_simple() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);
@@ -919,7 +919,7 @@ mod tests {
     }
 
     /// **Scenario**: put with value without "text" uses to_string for embedding.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_put_value_without_text_field() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);
@@ -935,7 +935,7 @@ mod tests {
     }
 
     /// **Scenario**: get_item for non-existent key returns None.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_get_item_nonexistent() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);
@@ -946,7 +946,7 @@ mod tests {
     }
 
     /// **Scenario**: list empty namespace returns empty.
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_list_empty_namespace() {
         let embedder = Arc::new(MockEmbedder::new(1536));
         let store = InMemoryVectorStore::new(embedder);

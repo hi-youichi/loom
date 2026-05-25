@@ -339,7 +339,7 @@ mod tests {
         assert_eq!(tot_observe_condition(&s), "think_expand");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn build_tot_initial_state_builds_without_checkpoint() {
         let state = build_tot_initial_state("hello tot", None, None, None)
             .await
@@ -348,7 +348,7 @@ mod tests {
         assert!(state.tot.candidates.is_empty());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn tot_runner_invoke_and_stream_with_mock_llm() {
         let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(
             "CANDIDATE 1: THOUGHT: answer directly | TOOL_CALLS: []",

@@ -55,7 +55,7 @@ mod tests {
     use super::{DryRunToolSource, ToolCallContent, ToolSource};
     use crate::tool_source::MockToolSource;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn dry_run_delegates_list_tools_returns_placeholder_for_call() {
         let inner = Box::new(MockToolSource::get_time_example());
         let dry = DryRunToolSource::new(inner);
