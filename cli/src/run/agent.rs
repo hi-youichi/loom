@@ -18,7 +18,7 @@ use super::display::{
     format_tot_state_display, truncate_display,
 };
 use super::panel_format;
-use crate::envelope::EnvelopeState;
+use loom::protocol::EnvelopeState;
 use loom::{RunCmd, RunOptions, StreamEvent};
 
 use super::RunError;
@@ -349,7 +349,7 @@ pub async fn run_agent_wrapper(
         let session_content = format!("User: {}\n\nAssistant: {}", user_msg, reply);
 
         // Spawn background review - tracked globally and waited on at process exit
-        let _ = super::background_review::spawn_background_review(config, session_content, session_id.clone());
+        super::background_review::spawn_background_review(config, session_content, session_id.clone());
         let store = super::session_store::FileSessionStore::new(
             &super::session_store::FileSessionStore::default_path(),
         );

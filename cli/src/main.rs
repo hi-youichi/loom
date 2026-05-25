@@ -32,7 +32,7 @@ use run_flow::{
     build_run_options, output_config, resolve_user_message, run_interactive_mode,
     run_single_turn_mode,
 };
-use self::run::background_review::wait_for_pending_reviews;
+use cli::run::background_review::wait_for_pending_reviews;
 use subcommands::{
     handle_agent_command, handle_curator_command, handle_evolve_command, handle_mcp_command,
     handle_memory_command, handle_models_command, handle_session_command, handle_skills_command,
