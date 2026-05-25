@@ -42,7 +42,7 @@ pub(crate) async fn handle_goal_command(ga: &GoalArgs) -> Result<(), Box<dyn std
         return Ok(());
     }
 
-    let description = match &ga.description {
+let description = match &ga.description {
         Some(d) => d.clone(),
         None => {
             eprintln!("loom goal: provide a goal description or use --resume <ID>");
@@ -50,11 +50,24 @@ pub(crate) async fn handle_goal_command(ga: &GoalArgs) -> Result<(), Box<dyn std
         }
     };
 
+    // Create task first to get task_id for session_id
+    let task = db
+        .create_task(&task_core::CreateParams {
+            name: description.clone(),
+            description: description.clone(),
+            status: task_core::TaskStatus::InProgress,
+            ..Default::default()
+        })
+        .await
+        .map_err(|e| format!("failed to create task: {}", e))?;
+
+    let session_id = format!("goal-{}", &task.id[..8]);
+
     let tool: Box<dyn loom::goal_runner::CodingTool> = match ga.tool.as_str() {
         "loom" => {
             let mcp_config_path = write_mcp_config(&db_path, &working_dir)?;
             let mut loom_tool = LoomTool::new(
-                "goal-session".to_string(),
+                session_id,
                 working_dir.clone(),
                 mcp_config_path,
             )

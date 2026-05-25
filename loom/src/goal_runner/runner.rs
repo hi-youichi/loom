@@ -314,7 +314,7 @@ pub async fn resume_with_event_sender(
         None => GoalMeta::default(),
     };
 
-    let tool: Box<dyn CodingTool> = resolve_tool(&meta.tool, db.path(), &working_dir, &run_cancellation, &event_sender, &cancel)?;
+    let tool: Box<dyn CodingTool> = resolve_tool(&meta.tool, id, db.path(), &working_dir, &run_cancellation, &event_sender, &cancel)?;
     let mcp_server = spawn_mcp_server(&db).ok();
 
     Ok(GoalRunner {
@@ -335,6 +335,7 @@ pub async fn resume_with_event_sender(
 
 fn resolve_tool(
     tool_name: &str,
+    id: &str,
     db_path: &std::path::Path,
     working_dir: &std::path::Path,
     run_cancellation: &Option<crate::cli_run::RunCancellation>,
@@ -342,10 +343,11 @@ fn resolve_tool(
     cancel: &CancellationToken,
 ) -> Result<Box<dyn CodingTool>, GoalError> {
     match tool_name {
-        "loom" => {
+"loom" => {
             let mcp_config_path = write_mcp_config(db_path, working_dir)?;
+            let session_id = format!("goal-{}", &id[..8]);
             let mut tool = super::tool::LoomTool::new(
-                "goal-session".to_string(),
+                session_id,
                 working_dir.to_path_buf(),
                 mcp_config_path,
             );
