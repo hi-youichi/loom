@@ -240,6 +240,27 @@ impl Node<ReActState> for ActNode {
                 }
             }
 
+            if tc.name.trim().is_empty() {
+                let hint = "你提交了一个空的工具名，请从可用工具列表中选择一个有效工具。";
+                warn!(call_id = ?tc.id, "ToolCall with empty name received; skipping and hinting LLM to retry");
+                let normalized = normalize_tool_output(
+                    &tc.name,
+                    &args,
+                    hint,
+                    false,
+                    tool_output_hints.get(&tc.name),
+                    NormalizationConfig::runtime_default()
+                        .with_used_observation_chars(used_observation_chars),
+                );
+                used_observation_chars += normalized.observation_chars;
+                tool_results.push(
+                    ToolResult::from(normalized)
+                        .with_call_id(tc.id.clone())
+                        .with_name(Some(tc.name.clone())),
+                );
+                continue;
+            }
+
             debug!(tool = %tc.name, args = ?args, "Calling tool");
 
             let result = self
@@ -426,6 +447,49 @@ impl Node<ReActState> for ActNode {
                         approval_result_consumed = true;
                     }
                 }
+            }
+
+            if tc.name.trim().is_empty() {
+                let hint = "你提交了一个空的工具名，请从可用工具列表中选择一个有效工具。";
+                warn!(call_id = ?tc.id, "ToolCall with empty name received; skipping and hinting LLM to retry");
+                let normalized = normalize_tool_output(
+                    &tc.name,
+                    &args,
+                    hint,
+                    false,
+                    tool_output_hints.get(&tc.name),
+                    NormalizationConfig::runtime_default()
+                        .with_used_observation_chars(used_observation_chars),
+                );
+                let summary = truncate_for_log(&normalized.display_text, 200);
+                let display_text = normalized.display_text.clone();
+                used_observation_chars += normalized.observation_chars;
+                tool_results.push(
+                    ToolResult::from(normalized)
+                        .with_call_id(tc.id.clone())
+                        .with_name(Some(tc.name.clone())),
+                );
+                if tools_mode {
+                    if let Some(tx) = &run_ctx.stream_tx {
+                        let _ = tx
+                            .send(StreamEvent::ToolEnd {
+                                call_id: tc.id.clone(),
+                                name: tc.name.clone(),
+                                result: display_text,
+                                is_error: false,
+                                raw_result: None,
+                            })
+                            .await;
+                    }
+                } else {
+                    let payload = step_progress_payload(
+                        &tc.name,
+                        tc.id.as_deref().unwrap_or(""),
+                        &summary,
+                    );
+                    let _ = run_ctx.emit_custom(payload).await;
+                }
+                continue;
             }
 
             let per_tool_writer = if tools_mode {

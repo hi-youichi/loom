@@ -26,9 +26,9 @@ use tracing::{debug, trace};
 
 use crate::error::AgentError;
 use crate::http_retry::{
-    is_bigmodel_retryable_status, is_bigmodel_url, is_minimax_retryable_status, is_minimax_url,
     is_retryable_reqwest_error, retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES,
 };
+use crate::llm::error_classifier::LlmErrorClassifierConfig;
 use crate::llm::{LlmClient, LlmResponse, LlmUsage, ToolCallDelta};
 use crate::memory::uuid6;
 use crate::message::{assistant_content_for_chat_api, ContentPart, Message, UserContent};
@@ -52,27 +52,15 @@ const COMPAT_RETRY_INITIAL_BACKOFF: std::time::Duration = std::time::Duration::f
 /// Max backoff cap.
 const COMPAT_RETRY_MAX_BACKOFF: std::time::Duration = std::time::Duration::from_secs(16);
 
-/// Returns true for transient 5xx where retry is reasonable: 500, 502, 503, 504.
-/// Other 5xx (501 Not Implemented, 505 HTTP Version Not Supported, etc.) are not retried.
-fn is_retryable_status(status: reqwest::StatusCode) -> bool {
-    matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504 | 524 | 598 | 599)
-}
+
 
 fn is_retryable_status_for(
     status: reqwest::StatusCode,
     base_url: &str,
     error_body: &str,
 ) -> bool {
-    if is_retryable_status(status) {
-        return true;
-    }
-    if is_bigmodel_url(base_url) {
-        return is_bigmodel_retryable_status(status.as_u16(), error_body);
-    }
-    if is_minimax_url(base_url) {
-        return is_minimax_retryable_status(status.as_u16(), error_body);
-    }
-    false
+    let classifier = LlmErrorClassifierConfig::from_url(base_url);
+    classifier.classify_http_error(status.as_u16(), error_body).is_retryable()
 }
 
 fn backoff_for_attempt(attempt: u32) -> std::time::Duration {

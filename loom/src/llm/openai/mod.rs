@@ -19,10 +19,8 @@ use tokio_stream::StreamExt;
 use tracing::{debug, trace};
 
 use crate::error::AgentError;
-use crate::http_retry::{
-    classify_openai_error_message, retry_backoff_for_attempt, RetryDecision,
-    TRANSIENT_HTTP_MAX_RETRIES,
-};
+use crate::http_retry::{retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES};
+use crate::llm::error_classifier::LlmErrorClassifierConfig;
 use crate::llm::thinking::collect_thinking_tags;
 use crate::llm::{LlmClient, LlmResponse, LlmUsage, ToolCallDelta};
 use crate::memory::uuid6;
@@ -246,9 +244,9 @@ impl LlmClient for ChatOpenAI {
                 Ok(response) => break response,
                 Err(e) => {
                     let error_message = e.to_string();
-                    let retry_decision = classify_openai_error_message(&error_message);
-                    if matches!(retry_decision, RetryDecision::Retryable)
-                        && attempt < TRANSIENT_HTTP_MAX_RETRIES
+                    let classifier = LlmErrorClassifierConfig::openai();
+                    let retryable = classifier.classify_network_error(&error_message).is_retryable();
+                    if retryable && attempt < TRANSIENT_HTTP_MAX_RETRIES
                     {
                         let delay = retry_backoff_for_attempt(attempt);
                         tracing::warn!(
@@ -256,7 +254,6 @@ impl LlmClient for ChatOpenAI {
                             attempt = attempt + 1,
                             max_retries = TRANSIENT_HTTP_MAX_RETRIES,
                             delay_secs = delay.as_secs_f64(),
-                            retry_decision = ?retry_decision,
                             error = %error_message,
                             "OpenAI API request failed, retrying"
                         );
@@ -268,7 +265,7 @@ impl LlmClient for ChatOpenAI {
                     tracing::warn!(
                         url = %url,
                         attempt = attempt + 1,
-                        retry_decision = ?retry_decision,
+                        retryable = retryable,
                         error = %error_message,
                         "OpenAI API request failed without retry"
                     );
@@ -358,9 +355,9 @@ impl LlmClient for ChatOpenAI {
                 Ok(stream) => break stream,
                 Err(e) => {
                     let error_message = e.to_string();
-                    let retry_decision = classify_openai_error_message(&error_message);
-                    if matches!(retry_decision, RetryDecision::Retryable)
-                        && attempt < TRANSIENT_HTTP_MAX_RETRIES
+                    let classifier = LlmErrorClassifierConfig::openai();
+                    let retryable = classifier.classify_network_error(&error_message).is_retryable();
+                    if retryable && attempt < TRANSIENT_HTTP_MAX_RETRIES
                     {
                         let delay = retry_backoff_for_attempt(attempt);
                         tracing::warn!(
@@ -368,7 +365,6 @@ impl LlmClient for ChatOpenAI {
                             attempt = attempt + 1,
                             max_retries = TRANSIENT_HTTP_MAX_RETRIES,
                             delay_secs = delay.as_secs_f64(),
-                            retry_decision = ?retry_decision,
                             error = %error_message,
                             "OpenAI stream request failed, retrying"
                         );
@@ -380,7 +376,7 @@ impl LlmClient for ChatOpenAI {
                     tracing::warn!(
                         url = %url,
                         attempt = attempt + 1,
-                        retry_decision = ?retry_decision,
+                        retryable = retryable,
                         error = %error_message,
                         "OpenAI stream request failed without retry"
                     );
