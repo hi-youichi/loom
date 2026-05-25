@@ -45,8 +45,8 @@ pub enum SkillSource {
     ProfileDir,
     /// Skills bundled inside an agent's own directory (`.loom/agents/<name>/skills/`).
     Agent,
-    /// Skills produced by the evolution system (`~/.loom/data/skills/evolved/`).
-    Evolved,
+    /// Skills stored in `~/.loom/data/skills/` (includes auto-generated and evolved).
+    Data,
 }
 
 /// Registry of discovered skills. Built by [`SkillRegistry::discover`].
@@ -159,8 +159,34 @@ fn scan_skills_dir(dir: &Path, source: SkillSource) -> Vec<SkillEntry> {
     entries
 }
 
+fn scan_skills_dir_recursive(
+    dir: &Path,
+    source: SkillSource,
+    seen: &mut HashSet<String>,
+    skills: &mut Vec<SkillEntry>,
+) {
+    // First, scan direct entries at this level.
+    for entry in scan_skills_dir(dir, source) {
+        if seen.insert(entry.metadata.name.clone()) {
+            skills.push(entry);
+        }
+    }
+    // Then recurse into sub-directories that are not skill directories themselves.
+    let read_dir = match std::fs::read_dir(dir) {
+        Ok(d) => d,
+        Err(_) => return,
+    };
+    for e in read_dir.flatten() {
+        let path = e.path();
+        if path.is_dir() && !path.join(SKILL_MD).exists() {
+            scan_skills_dir_recursive(&path, source, seen, skills);
+        }
+    }
+}
+
 impl SkillRegistry {
-    /// Discovers skills: project `.loom/skills`, then profile extra dirs, then user `~/.loom/skills`.
+    /// Discovers skills: project `.loom/skills`, then profile extra dirs, then user `~/.loom/skills`,
+    /// then `~/.loom/data/skills/` (recursive, includes auto-generated and evolved).
     /// Later sources do not override same name (first wins).
     pub fn discover(working_folder: &Path, extra_dirs: &[PathBuf]) -> Self {
         let mut seen = HashSet::new();
@@ -188,18 +214,14 @@ impl SkillRegistry {
             }
         }
 
-        let evolved_dir = env_config::home::loom_home().join("data").join("skills").join("evolved");
-        for entry in scan_skills_dir(&evolved_dir, SkillSource::Evolved) {
-            if seen.insert(entry.metadata.name.clone()) {
-                skills.push(entry);
-            }
-        }
+        // Scan ~/.loom/data/skills/ recursively (auto, evolved, and future sub-dirs).
+        let data_skills_dir = env_config::home::loom_home().join("data").join("skills");
+        scan_skills_dir_recursive(&data_skills_dir, SkillSource::Data, &mut seen, &mut skills);
 
         Self { skills }
     }
 
-    /// Adds agent-scoped skills from the given directory. These are private to the agent
-    /// whose profile directory contains them. Same-name dedup still applies (first wins).
+    /// Recursively scans a directory tree for skills, respecting the first-wins dedup.
     pub fn add_agent_skills(&mut self, dir: &Path) {
         let mut seen: HashSet<String> = self
             .skills
