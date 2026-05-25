@@ -1,3 +1,4 @@
+use loom::llm::{LlmFactory, ModelEntry};
 use crate::run::curator::{Curator, CuratorConfig};
 use crate::run::evolution_trigger::{EvolutionTrigger, EvolutionTriggerConfig};
 use crate::run::memory::MemoryStore;
@@ -9,8 +10,7 @@ use crate::review_history::{ReviewHistory, ReviewRecord};
 use crate::run::skill_registry::SkillRegistry;
 use chrono::Utc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::{Arc, Mutex as StdMutex};
 use tracing::{error, info, warn};
 
 /// Handle for the result of a background review.
@@ -29,6 +29,7 @@ pub struct BackgroundReviewConfig {
     pub base_url: String,
     pub api_key: String,
     pub model: String,
+    pub session_model: Option<ModelEntry>,
     pub review_memory: bool,
     pub review_skills: bool,
     pub curator_config: CuratorConfig,
@@ -48,6 +49,7 @@ impl Default for BackgroundReviewConfig {
             base_url: String::new(),
             api_key: String::new(),
             model: "gpt-4o-mini".to_string(),
+            session_model: None,
             review_memory: true,
             review_skills: true,
             curator_config: CuratorConfig::default(),
@@ -72,28 +74,28 @@ fn pending_reviews() -> &'static Arc<PendingReviewRegistry> {
 /// Used to ensure reviews complete before process exit.
 pub struct PendingReviewRegistry {
     counter: AtomicUsize,
-    handles: Mutex<Vec<tokio::task::JoinHandle<()>>>,
+    handles: StdMutex<Vec<tokio::task::JoinHandle<()>>>,
 }
 
 impl PendingReviewRegistry {
     fn new() -> Self {
         Self {
             counter: AtomicUsize::new(0),
-            handles: Mutex::new(Vec::new()),
+            handles: StdMutex::new(Vec::new()),
         }
     }
 
     /// Register a new review task handle.
     pub fn push(&self, handle: tokio::task::JoinHandle<()>) {
         let _id = self.counter.fetch_add(1, Ordering::Relaxed);
-        let mut handles = self.handles.blocking_lock();
+        let mut handles = self.handles.lock().unwrap();
         handles.push(handle);
     }
 
     /// Wait for all pending reviews to complete and clear the registry.
     /// Returns the number of reviews that were waited on.
     pub async fn wait_all(&self) -> usize {
-        let mut handles = self.handles.lock().await;
+        let mut handles = self.handles.lock().unwrap();
         let count = handles.len();
         if count == 0 {
             return 0;
@@ -176,8 +178,20 @@ async fn run_background_review_workflow(
         return Ok(("session too short".to_string(), 0, 0, 0, 0));
     }
 
+    if config.base_url.is_empty() || config.api_key.is_empty() {
+        info!("Skipping background review: no API credentials configured");
+        return Ok(("no credentials".to_string(), 0, 0, 0, 0));
+    }
+
     let start = std::time::Instant::now();
-    let llm = build_review_agent_client(&config.base_url, &config.api_key, &config.model);
+
+    // Resolve Strong tier from session model, fallback to config values
+    let (review_base_url, review_api_key, review_model) = resolve_review_model(config).await;
+    if review_base_url.is_empty() || review_api_key.is_empty() {
+        info!("Skipping background review: resolved credentials are empty");
+        return Ok(("no credentials".to_string(), 0, 0, 0, 0));
+    }
+    let llm = build_review_agent_client(&review_base_url, &review_api_key, &review_model);
 
     let result = run_background_review_inner(
         &*llm,
@@ -259,14 +273,69 @@ async fn run_background_review_inner(
     })
 }
 
+/// Resolve a Strong tier model for review from the session model entry.
+/// Falls back to the config's plain base_url/api_key/model if resolution fails.
+async fn resolve_review_model(config: &BackgroundReviewConfig) -> (String, String, String) {
+    if let Some(ref session_entry) = config.session_model {
+        if let Some(factory) = LlmFactory::load() {
+            if let Some(strong_entry) = factory
+                .resolve_tier_from_entry(session_entry, loom::model_spec::ModelTier::Strong)
+                .await
+            {
+                return (
+                    strong_entry.base_url.unwrap_or_else(|| config.base_url.clone()),
+                    strong_entry.api_key.unwrap_or_else(|| config.api_key.clone()),
+                    strong_entry.name.clone(),
+                );
+            }
+        }
+    }
+    (config.base_url.clone(), config.api_key.clone(), config.model.clone())
+}
+
 pub fn build_background_config_from_opts(opts: &loom::RunOptions) -> BackgroundReviewConfig {
+    let session_model = resolve_session_model(opts);
+
+    // Resolve credentials: opts → env vars → empty
+    let base_url = opts.base_url.clone()
+        .or_else(|| std::env::var("OPENAI_BASE_URL").ok())
+        .unwrap_or_default();
+    let api_key = opts.api_key.clone()
+        .or_else(|| std::env::var("OPENAI_API_KEY").ok())
+        .unwrap_or_default();
+
+    // Resolve model: opts → MODEL env → gpt-4o-mini default
+    let model = opts.model.clone()
+        .or_else(|| std::env::var("MODEL").ok())
+        .unwrap_or_else(|| "gpt-4o-mini".to_string());
+
     BackgroundReviewConfig {
         enabled: true,
-        base_url: opts.base_url.clone().unwrap_or_default(),
-        api_key: opts.api_key.clone().unwrap_or_default(),
-        model: opts.model.clone().unwrap_or_else(|| "gpt-4o-mini".to_string()),
+        base_url,
+        api_key,
+        model,
+        session_model,
         ..Default::default()
     }
+}
+
+/// Try to resolve the session's model entry from opts for tier-based resolution.
+fn resolve_session_model(opts: &loom::RunOptions) -> Option<ModelEntry> {
+    let model = opts.model.as_deref()?;
+    let (provider, _) = loom::llm::ModelEntry::parse_id(model)?;
+    let providers = loom::provider::load_provider_configs()?;
+    // Resolve the Standard tier (the session's active tier) to get a ModelEntry
+    // with family/version filled in from the plan
+    let entry = loom::tier::resolve::resolve_from_plan(
+        provider,
+        loom::model_spec::ModelTier::Standard,
+        &providers,
+    )?;
+    // Override base_url/api_key from opts (which may include user overrides)
+    let mut entry = entry;
+    entry.base_url = entry.base_url.or_else(|| opts.base_url.clone());
+    entry.api_key = entry.api_key.or_else(|| opts.api_key.clone());
+    Some(entry)
 }
 
 /// Wait for all pending background reviews to complete.
