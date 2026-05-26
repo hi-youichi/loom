@@ -739,6 +739,7 @@ mod tests {
             acp_session_id: None,
             force_compact: false,
             chat_id: None,
+            worktree: false,
         }
     }
 
@@ -1201,6 +1202,7 @@ mod tests {
             acp_session_id: None,
             force_compact: false,
             chat_id: None,
+            worktree: false,
         };
         let (_helve, config, _resolved) = build_helve_config(&opts);
         assert_eq!(config.model_tier, Some(crate::model_spec::ModelTier::Light));
@@ -1254,6 +1256,7 @@ mod tests {
             acp_session_id: None,
             force_compact: false,
             chat_id: None,
+            worktree: false,
         };
         let (_helve, config, _resolved) = build_helve_config(&opts);
         assert_eq!(config.model.as_deref(), Some("anthropic/claude-sonnet-4"));

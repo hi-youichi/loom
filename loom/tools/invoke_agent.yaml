@@ -32,6 +32,15 @@ input_schema:
           working_folder:
             type: string
             description: "Optional: override working folder for this sub-agent."
+          isolation:
+            type: string
+            description: "Optional: create an isolated git worktree for this sub-agent. Values: 'worktree'. If omitted, uses shared working directory."
+            enum: ["worktree"]
+          estimated_paths:
+            type: array
+            description: "Optional: list of file/dir paths the task is expected to modify. Used for pre-merge conflict detection when multiple agents run in parallel."
+            items:
+              type: string
         required: [agent, task]
     fail_fast:
       type: boolean

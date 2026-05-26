@@ -809,6 +809,7 @@ impl LoomAcpAgent {
             },
             force_compact: false,
             chat_id: None,
+            worktree: false,
         };
 
         let session_id = args.session_id.clone();

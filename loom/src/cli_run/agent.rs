@@ -201,6 +201,8 @@ pub struct RunOptions {
     pub force_compact: bool,
     /// Telegram chat ID for the current conversation. Injected into system prompt ENVIRONMENT section.
     pub chat_id: Option<i64>,
+    /// When true, run the session in an isolated git worktree (CLI --worktree / -w).
+    pub worktree: bool,
 }
 
 impl std::fmt::Debug for RunOptions {
@@ -358,6 +360,41 @@ pub async fn run_agent(
         eprintln!("thread_id: {:?}", config.thread_id);
         eprintln!("================================================");
     }
+
+    // If --worktree flag is set, create an isolated git worktree and override working folder
+    let _top_level_worktree = if opts.worktree {
+        let current_dir = config
+            .working_folder
+            .as_deref()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let wt_config = crate::worktree::WorktreeConfig::default();
+        match crate::worktree::WorktreeManager::from_working_dir(current_dir, wt_config) {
+            Ok(manager) => {
+                match manager.create_for_agent("top-level", None, None).await {
+                    Ok(handle) => {
+                        tracing::info!(
+                            worktree_path = %handle.path.display(),
+                            branch = ?handle.branch,
+                            "Created worktree for top-level session"
+                        );
+                        config.working_folder = Some(handle.path.clone());
+                        Some(handle)
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Failed to create worktree, using shared directory");
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Cannot init worktree manager, using shared directory");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     if let Some(ref executor) = opts.bash_executor {
         config.bash_executor = Some(executor.clone());
     }
@@ -637,6 +674,7 @@ pub async fn run_agent_with_provider(
             acp_session_id: None,
             force_compact: false,
             chat_id: None,
+            worktree: false,
         };
 
     // Run with LLM override
@@ -678,6 +716,7 @@ mod tests {
             acp_session_id: None,
             force_compact: false,
             chat_id: None,
+            worktree: false,
         }
     }
 
@@ -788,6 +827,7 @@ mod tests {
             acp_session_id: None,
             force_compact: false,
             chat_id: None,
+            worktree: false,
         };
         assert!(build_runner(&cfg, &opts, &RunCmd::React, None)
             .await

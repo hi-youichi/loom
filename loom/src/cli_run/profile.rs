@@ -43,6 +43,12 @@ pub struct AgentProfile {
     pub extends: Option<String>,
     #[serde(default)]
     pub skills: Option<SkillsConfig>,
+    /// Isolation mode for sub-agents: "worktree" or none.
+    #[serde(default)]
+    pub isolation: Option<String>,
+    /// Worktree configuration for this agent profile.
+    #[serde(default)]
+    pub worktree: Option<crate::worktree::WorktreeProfileConfig>,
     /// Directory containing this agent's profile (set at load time, not from YAML).
     #[serde(skip)]
     pub source_dir: Option<PathBuf>,
@@ -591,6 +597,7 @@ mod tests {
             acp_session_id: None,
             force_compact: false,
             chat_id: None,
+            worktree: false,
         };
         let (profile, source) = load_profile_from_options(&opts).expect("built-in dev profile");
         assert_eq!(profile.name, "dev");
@@ -632,6 +639,7 @@ mod tests {
             acp_session_id: None,
             force_compact: false,
             chat_id: None,
+            worktree: false,
         };
         let (profile, source) =
             load_profile_from_options(&opts).expect("built-in agent-builder profile");
@@ -948,6 +956,7 @@ tools:
             acp_session_id: None,
             force_compact: false,
             chat_id: None,
+            worktree: false,
         };
         let result = load_profile_from_options(&opts);
 
@@ -995,6 +1004,7 @@ tools:
             acp_session_id: None,
             force_compact: false,
             chat_id: None,
+            worktree: false,
         };
         let result = load_profile_from_options(&opts);
         match prev_loom {

@@ -78,6 +78,11 @@ pub(crate) struct Args {
     #[arg(long)]
     pub(crate) dry: bool,
 
+    /// Run in an isolated git worktree. Creates a temporary worktree, executes there, and
+    /// cleans up if no changes were made. Preserves the worktree branch if changes exist.
+    #[arg(long = "worktree")]
+    pub(crate) worktree: bool,
+
     /// Debug LLM: print full system prompt and messages to stderr before sending to LLM
     #[arg(long)]
     pub(crate) debug_llm: bool,
@@ -423,6 +428,14 @@ pub(crate) struct GoalArgs {
     /// Override LLM model for goal turns (e.g. "gpt-4o", "zhipuai-coding-plan/glm-5.1")
     #[arg(short('M'), long, value_name = "MODEL")]
     pub(crate) model: Option<String>,
+
+    /// Hard cap on total tokens consumed across all iterations
+    #[arg(long, value_name = "TOKENS")]
+    pub(crate) token_budget: Option<u32>,
+
+    /// Shell command to verify objective after each iteration (e.g. "cargo test")
+    #[arg(long, value_name = "CMD")]
+    pub(crate) verify: Option<String>,
 }
 
 #[derive(clap::Args, Debug, Clone)]
