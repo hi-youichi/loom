@@ -38,6 +38,61 @@ mod tests {
     fn test_escape_already_escaped() {
         assert_eq!(escape_xml_text("&amp;"), "&amp;amp;");
     }
+
+    #[test]
+    fn test_build_continuation_prompt_basic() {
+        let prompt = build_continuation_prompt(
+            "test-id-1234",
+            "fix the bug",
+            0,
+            0,
+            None,
+            &None,
+            &None,
+            None,
+        );
+        assert!(prompt.contains("test-id-1234"));
+        assert!(prompt.contains("fix the bug"));
+        assert!(prompt.contains("RESEARCH & VERIFY"));
+        assert!(prompt.contains("PROGRESS LOG"));
+        assert!(prompt.contains("COMPLETION AUDIT"));
+        assert!(prompt.contains("websearch"));
+        assert!(!prompt.contains("VERIFICATION =="));
+    }
+
+    #[test]
+    fn test_build_continuation_prompt_with_verify() {
+        let prompt = build_continuation_prompt(
+            "test-id-5678",
+            "make tests pass",
+            10,
+            0,
+            None,
+            &None,
+            &None,
+            Some("cargo test"),
+        );
+        assert!(prompt.contains("VERIFICATION =="));
+        assert!(prompt.contains("cargo test"));
+        assert!(prompt.contains("Run this command yourself first"));
+    }
+
+    #[test]
+    fn test_build_continuation_prompt_with_history() {
+        let history = Some("Previous iterations:\n  iter 1: fixed import".to_string());
+        let prompt = build_continuation_prompt(
+            "test-id-abcd",
+            "refactor module",
+            5,
+            100,
+            Some(500),
+            &history,
+            &None,
+            None,
+        );
+        assert!(prompt.contains("Previous iterations"));
+        assert!(prompt.contains("Token budget: 100/500"));
+    }
 }
 
 pub fn build_continuation_prompt(
@@ -70,13 +125,19 @@ pub fn build_continuation_prompt(
         extra.push_str(&format!("\n\n{}\n", summary));
     }
 
-    if let Some(cmd) = verify_command {
-        extra.push_str(&format!(
-            "\n\nNote: A verify command (`{}`) will run after your turn. \
-             If it passes, the goal is automatically marked complete.\n",
+    let verify_section = if let Some(cmd) = verify_command {
+        format!(
+            "\n\n\
+             == VERIFICATION ==\n\
+             A verify command (`{}`) will run after your turn.\n\
+             If it passes (exit code 0), the goal is automatically marked complete.\n\
+             Run this command yourself first to check before declaring done.\n\
+             If the verify command fails, analyze the failure output and fix the issue.",
             cmd
-        ));
-    }
+        )
+    } else {
+        String::new()
+    };
 
     format!(
         "Continue working toward the active thread goal.\n\n\
@@ -90,6 +151,18 @@ pub fn build_continuation_prompt(
          {}\n\
          Avoid repeating work that is already done. Choose the next concrete\
          action toward the objective.{}\n\n\
+         == RESEARCH & VERIFY ==\n\
+         Before implementing changes, use web search tools (websearch, web_fetcher)\n\
+         to find current best practices, API documentation, and solutions.\n\
+         When uncertain about any detail, search online first rather than guessing.\n\
+         After each change, verify it works by running the relevant commands.\n\
+         Never assume a change is correct — always test it.\n\n\
+         == PROGRESS LOG ==\n\
+         Keep a brief mental log of what was attempted and what worked/didn't work.\n\
+         If something failed, try a different approach rather than repeating the\n\
+         same failing strategy.{}\
+         \n\n\
+         == COMPLETION AUDIT ==\n\
          Before deciding that the goal is achieved, perform a completion audit\
          against the actual current state:\n\
          - Restate the objective as concrete deliverables or success criteria.\n\
@@ -100,21 +173,21 @@ pub fn build_continuation_prompt(
          - Verify that any manifest, verifier, test suite, or specification\
            the objective requires is actually satisfied.\n\
          - Do not accept proxy signals as completion by themselves.\n\
-         - Identify any missing, incomplete, or weakly verified items and\
-           address them.\n\
+         - If any item is uncertain, address it before marking complete.\n\
          - Treat uncertainty as not achieved; keep working until you can\
-         verify the objective concretely.\n\n\
+           verify the objective concretely.\n\n\
          Do not rely on intent, partial progress, elapsed effort, memory of\
          earlier work, or a plausible final answer as proof of completion. Only\
          mark the goal achieved when the audit shows that the objective has\
          actually been achieved and no required work remains.\n\n\
          When the goal is achieved, call task_update with id='{}' and\
-         status='completed' to mark it done. Otherwise, keep working.\n\
+         status='completed' to mark it done. Otherwise, keep working.\
          Use task_show with id='{}' to review the current goal status.",
         task_id,
         escape_xml_text(objective),
         budget_info,
         extra,
+        verify_section,
         task_id,
         task_id,
     )
