@@ -1,5 +1,15 @@
 # 好文档的标准
 
+> 本文档融合了 OpenAI Cookbook "[What makes documentation good](https://github.com/openai/openai-cookbook/blob/main/articles/what_makes_documentation_good.md)" 的核心原则与 Loom 项目实践经验。
+
+## 0. 易于扫读（OpenAI 原则）
+
+- **标题用完整句子而非抽象名词**。用 "Streaming 将首 token 延迟降低了 50%" 而非 "结果"
+- **提供目录**，让读者像用哈希表一样快速定位
+- **拆分长段落**，用标题把内容分成可独立跳读的区块
+- **避免左分支句子**。中文同理：先说主干，再补修饰
+- **保持一致性**。术语、格式、命名规范全文档统一
+
 ## 1. 准确性
 
 - 代码示例必须可直接运行，版本号、参数名、返回值与实际一致

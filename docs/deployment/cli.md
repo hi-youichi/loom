@@ -140,6 +140,15 @@ LOOM_COMPRESSION_MAX_TOKENS=128000
 | `session` | 会话管理 | `loom session list` |
 | `models` | 模型列表 | `loom models list` |
 | `mcp` | MCP 服务器管理 | `loom mcp list` |
+| `agent` | Agent 配置管理 | `loom agent list` |
+| `goal` | 自治目标循环 | `loom goal "实现功能"` |
+| `skills` | 技能管理 | `loom skills list` |
+| `evolve` | 技能进化管理 | `loom evolve run` |
+| `curator` | 技能生命周期 | `loom curator` |
+| `memory` | 记忆查看/编辑 | `loom memory show` |
+| `review` | 会话审查 | `loom review session <id>` |
+| `review-skill` | 技能审查 | `loom review-skill --input file` |
+| `task` | 公司任务管理 | `loom task new "任务描述"` |
 | `serve` | WebSocket 服务器 | `loom serve --addr 0.0.0.0:9000` |
 
 ### 工具管理命令
@@ -274,6 +283,9 @@ loom -i --working-folder ./research
 # 详细输出
 loom -v -m "调试信息"
 
+# 调试 LLM 调用（打印完整 prompt）
+loom --debug-llm -m "查看发送给 LLM 的 prompt"
+
 # 指定日志级别
 loom --log-level debug -m "详细日志"
 
@@ -288,7 +300,10 @@ loom --log-rotate daily -m "每日轮转日志"
 
 ```bash
 # 模拟运行（LLM 执行但不调用工具）
-loom --dry-run -m "测试工具调用逻辑"
+loom --dry -m "测试工具调用逻辑"
+
+# 隔离 git worktree 运行
+loom --worktree -m "安全修改代码"
 ```
 
 ## REPL 交互模式

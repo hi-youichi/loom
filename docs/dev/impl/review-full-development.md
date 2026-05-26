@@ -640,7 +640,7 @@ pub fn spawn_background_review(
 ```yaml
 review:
   enabled: true
-  max_session_chars: 12000
+  max_session_chars: 24000
   max_iterations: 16
   model: null
 
@@ -650,7 +650,6 @@ memory:
 
 skills:
   auto_create: true
-  guard_agent_created: false
 ```
 
 **验收**：

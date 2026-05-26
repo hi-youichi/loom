@@ -1,4 +1,7 @@
-# 文档整理方案
+# 文档整理方案 **[已执行]**
+
+> **状态**: ✅ 已执行。核心重组项（designs/ 合并、rfc 文件合并、README 更新）已完成。本文档保留作为历程记录。
+> 注: `rfcs/` → `rfc/` 重命名未执行（保持 rfcs/ 目录名），`evolution/` 整体迁移未执行（路径稳定）。
 
 > 状态: Draft
 > 日期: 2025-08-19
@@ -55,7 +58,7 @@ docs/
 
 | 源 | 目标 |
 |----|------|
-| `docs/hide-executing-tool-guide.md` | `docs/guide/hide-executing-tool.md` |
+| ~~`docs/hide-executing-tool-guide.md`~~ | ~~`docs/guide/hide-executing-tool.md`~~ | ✅ 已完成 |
 | `docs/chatgpt-prompt-engineering.md` | `docs/guide/prompt-engineering.md` |
 | `docs/tools/telegram.md` | `docs/guide/telegram.md` |
 | `docs/tools/codex-shell-execution.md` | `docs/guide/codex-shell-execution.md` |
@@ -97,9 +100,9 @@ docs/
 | 源 | 目标 |
 |----|------|
 | `docs/llm-tool-dev-plan.md` | `docs/dev/impl/llm-tool.md` |
-| `docs/cli-ux-improvement-plan.md` | `docs/dev/impl/cli-ux-improvement.md` |
-| `docs/cli-ux-improvement-plan.zh.md` | `docs/dev/impl/cli-ux-improvement.zh.md` |
-| `dev-plan-goal-runner-event-output.md` | `docs/dev/impl/goal-runner-event-output.md` |
+| ~~`docs/cli-ux-improvement-plan.md`~~ | ~~`docs/dev/impl/cli-ux-improvement.md`~~ | ✅ 已完成 |
+| ~~`docs/cli-ux-improvement-plan.zh.md`~~ | ~~`docs/dev/impl/cli-ux-improvement.zh.md`~~ | ✅ 已完成 |
+| ~~`dev-plan-goal-runner-event-output.md`~~ | ~~`docs/dev/impl/goal-runner-event-output.md`~~ | ✅ 已完成 |
 | `docs/dev-plan/file-change-tracking.md` | `docs/dev/impl/file-change-tracking.md` |
 | `docs/design/goal-external-loop-dev-plan.md` | `docs/dev/impl/goal-external-loop.md` |
 | `docs/design/goal-external-loop-task-list.md` | `docs/dev/impl/goal-external-loop-task-list.md` |

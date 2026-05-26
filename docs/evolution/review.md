@@ -1,6 +1,6 @@
 # 后台审查 (Review Agent)
 
-> 基于 Hermes Agent 源码 `agent/background_review.py` 的实际实现。
+> Hermes `agent/background_review.py` 的 Rust 重写，核心实现在 `loom/src/background_review/`。
 
 ## 流程
 
@@ -8,38 +8,74 @@
 每轮对话结束
     │
     ▼
-spawn_background_review()
+spawn_background_review()  [loom/src/background_review/workflow.rs]
     │
     ▼
-创建 daemon 线程，fork 一个独立 AIAgent 实例
+tokio::task::spawn 异步任务（不阻塞主对话）
     │
     ▼
-回放对话快照（messages）+ 构建 Review Prompt
+截断会话内容（默认 24000 字符）+ 构建 Review Prompt
     │
     ▼
-Fork Agent 调用 LLM 分析（白名单工具：memory + skill_manage）
+独立 LLM Client（ChatOpenAICompat, 默认 gpt-4o-mini）分析对话
+白名单工具（ReviewToolExecutor 实现）：
+  memory_get, memory_set,
+  skills_list, skill_view, skill_create, skill_edit,
+  skill_patch, skill_delete, skill_write_file, skill_remove_file
     │
-    ├── memory 更新 → 写入 USER.md / PROJECT.md / FACTS.md
-    └── skill 操作 → 按优先级链执行
+    ├── memory 更新 → 写入 MemoryStore
+    └── skill 操作 → 按优先级链执行（Prompt 中定义）
 ```
 
-## Hermes 实际实现细节
+## 核心实现
+
+### 架构
+
+```
+loom/src/background_review/       ← 核心库实现
+  ├── workflow.rs                 — 异步调度, BackgroundReviewConfig, spawn
+  ├── agent_loop.rs               — AgentReviewRunner, 对话循环
+  ├── prompts.rs                  — 三套 Review Prompt (MEMORY/SKILL/COMBINED)
+  ├── tools.rs                    — ReviewToolExecutor, 工具白名单
+  ├── memory.rs                   — MemoryStore
+  ├── skill_registry.rs           — SkillRegistry
+  ├── security.rs                 — validate_skill_create/path (始终启用)
+  ├── curator.rs                  — Curator 定期维护
+  ├── evolution.rs                — EvolutionTrigger 触发进化
+  ├── history.rs                  — 审查历史
+  └── observability.rs            — 可观测性
+
+cli/src/run/background_review.rs  ← 薄 wrapper (22行), 仅添加 CLI eprintln 输出
+```
 
 ### 触发时机
-- 每轮对话结束后，`AIAgent.run_conversation` 调用 `_spawn_background_review`
-- fork 的 agent 继承父 agent 的 provider/model/credentials/base_url（命中同一 prefix cache）
-- 运行在独立 daemon 线程，不阻塞主对话
+- 每轮对话结束后，通过 `trigger_post_turn_review` 异步触发
+- 创建独立 `ChatOpenAICompat` LLM client（独立 model/base_url/api_key）
+- 运行在 `tokio::task::spawn` 异步任务，不阻塞主对话
 
 ### 工具白名单
-- fork 的 agent 只能使用 `memory` 和 `skill_manage` 工具
-- 其他工具在运行时被拒绝
+Review agent 只能使用 `ReviewToolExecutor` 处理的工具，其他调用返回错误：
+
+| 工具 | 用途 |
+|------|------|
+| `memory_get` | 读取记忆文件 |
+| `memory_set` | 写入记忆文件 |
+| `skills_list` | 列出已有技能 |
+| `skill_view` | 查看技能内容 |
+| `skill_create` | 创建新技能 |
+| `skill_edit` | 编辑技能（全量） |
+| `skill_patch` | 修补技能（增量） |
+| `skill_delete` | 删除技能 |
+| `skill_write_file` | 写入技能 support file |
+| `skill_remove_file` | 删除技能 support file |
 
 ### Review Prompt 类型
-1. `_MEMORY_REVIEW_PROMPT`: 仅审查记忆——用户偏好、个人信息、行为期望
-2. `_SKILL_REVIEW_PROMPT`: 仅审查技能——更新/创建/修补技能文档
-3. `_COMBINED_REVIEW_PROMPT`: 同时处理记忆和技能（实际默认使用的版本）
+1. `MEMORY_REVIEW_PROMPT`: 仅审查记忆——用户偏好、个人信息、行为期望
+2. `SKILL_REVIEW_PROMPT`: 仅审查技能——更新/创建/修补技能文档
+3. `COMBINED_REVIEW_PROMPT`: 同时处理记忆和技能（默认）
 
 ### 技能 Review 优先级链
+(在 Prompt 中定义，LLM 自行按优先级执行)
 
 ```
 1. PATCH 当前会话已加载的技能（通过 /skill-name 或 skill_view 加载的）
@@ -67,49 +103,39 @@ Fork Agent 调用 LLM 分析（白名单工具：memory + skill_manage）
 - 已解决的瞬时错误（retry 成功 → 教训是 retry 模式，不是原始故障）
 - 一次性任务叙事（"总结今天市场"、"分析这个 PR"）
 
-### agent-created 标记
-- 后台 review fork 通过 `skill_manage(action=create)` 创建的技能，由 `mark_agent_created()` 标记
-- 判断方式：`is_background_review()` 检查当前是否在 review fork 线程中（`skill_manager_tool.py:773-782`）
-- 标记为 agent-created 的技能可被 Curator 操作（patch/archive/consolidate）
-
 ### 安全扫描
-- `skills.guard_agent_created` 配置项（默认 `false`）
-- 开启后，agent-created 技能创建时经过 `skills_guard.py` 安全扫描
-- "ask" 判定对 agent-created 技能视为危险（默认拒绝）
+- `security.rs` 中的 `validate_skill_create` 和 `validate_skill_path` **始终启用**
+- 检测危险模式（`rm -rf`, `exec(`, `eval(`, 等）
+- 检测注入模式（"ignore previous instructions", "jailbreak" 等）
+- 与 Hermes 的 `guard_agent_created` 不同：没有开关，始终扫描
 
-## Loom 适配方案
+### 与 Hermes 的主要差异
 
-用 Loom 的 `invoke_agent` 实现类似机制：
-
-```yaml
-# .loom/agents/reviewer/profile.yaml
-name: background-reviewer
-tools: [read, write_file, edit, glob, grep]
-system_prompt: |
-  Review the conversation and update memory + skills...
-  Follow the priority chain: patch loaded → patch umbrella → add support file → create umbrella
-```
-
-触发方式：主对话结束后，异步 `invoke_agent(agent="reviewer", task="<对话快照>", async=true)`
-
-## 错误处理
-
-- LLM 调用失败：3 次重试，指数退避（2s / 4s / 8s）
-- Review 结果通过 `summarize_background_review_actions()` 汇总
-- 失败通过 `agent.background_review_callback` 回调通知
-- Memory 写入失败：记录错误日志，不阻塞主对话
+| 维度 | Hermes (Python) | Loom (Rust) |
+|------|-----------------|-------------|
+| 调度 | `threading.Thread(daemon=True)` | `tokio::task::spawn` |
+| LLM Client | Fork 父 agent 的 client | 独立 `ChatOpenAICompat` |
+| 工具 | `memory`, `skill_manage` (抽象) | 10 个具体工具函数 |
+| 安全 | `guard_agent_created` 可配置 | `security.rs` 始终启用扫描 |
+| agent-created | `mark_agent_created()` 标记 | 未实现 |
+| 错误重试 | 3次指数退避 | 直接 fail，无重试 |
 
 ## 配置
 
 ```yaml
 review:
   enabled: true
-  max_session_chars: 12000
-  guard_agent_created: false    # 是否对 agent-created 技能做安全扫描
+  max_session_chars: 24000        # ⚠️ 默认 24000，非 12000
+  max_iterations: 16
+  model: gpt-4o-mini              # 独立 Review 使用的模型
+  review_memory: true
+  review_skills: true
 ```
+
+`BackgroundReviewConfig` 定义在 `loom/src/background_review/workflow.rs:24-40`。
 
 ## 相关文档
 
-- [记忆系统](memory.md) — memory 文件格式
+- [记忆系统](memory.md) — 记忆文件格式
 - [技能系统](skills.md) — 技能结构与 Curator
 - [配置参考](config.md) — review 配置项

@@ -6,6 +6,8 @@ description: "使用 --json 标志获取机器可读的 JSONL 事件流，用于
 
 # CLI JSON 流式输出
 
+> **⚠️ 注意**：本文档描述的 Codex CLI 的 `--json` 事件协议 (`thread.started` / `turn.started` / `item.started` 等)。Loom 的 `--json` 输出使用不同的 `ProtocolEvent` 格式（`node_enter` / `message_chunk` / `tool_call` 等），文档正在更新中。
+
 Codex CLI 的 `--json` 标志启用机器可读的 JSONL（每行一个 JSON 对象）流式输出，适用于自动化脚本和 CI/CD 集成。
 
 **关键特性：**

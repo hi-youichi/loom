@@ -12,7 +12,7 @@
 | **8** | GEPA 进化 Tier 3：系统 prompt 优化 | 2 周 | Phase 7 | 行为测试评分提升，基准不退化 |
 | **9** | 持续监控 + 自动分诊 | 1-2 周 | Phase 6 | 自动识别弱技能并触发进化 |
 
-> Phase 0-1 属于 Levol 核心开发，详见 [dev/roadmap.md](../dev/roadmap.md)。
+> Phase 0-1 属于 Loom 核心开发，详见 [dev/roadmap.md](../dev/roadmap.md)。
 
 ---
 
@@ -97,7 +97,7 @@
 
 ## 与 Hermes 对比
 
-| 维度 | Hermes | Levol |
+| 维度 | Hermes | Loom |
 |------|--------|-------|
 | 语言 | Python (DSPy native) | Rust (trait 抽象 + LLM API) |
 | 评估框架 | batch_runner + TBLite/YC-Bench | LLM-judge + golden tasks |

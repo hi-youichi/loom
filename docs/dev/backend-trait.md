@@ -2,7 +2,7 @@
 
 ## 概述
 
-Backend trait 是 Levol 适配不同底层 CLI 的核心抽象。想支持新 CLI，只需实现这个 trait。
+Backend trait 是 Loom 适配不同底层 CLI 的核心抽象。想支持新 CLI，只需实现这个 trait。
 
 ## Backend Trait
 

@@ -1,6 +1,6 @@
 # GEPA 技能进化 — 完善方案
 
-> 本文档补充 [gepa.md](gepa.md) 中缺失的细节，基于 [Hermes PLAN](../../hermes-agent-self-evolution/PLAN.md) 的最佳实践，适配 Levol 的纯 Rust + LLM API 架构。
+> 本文档补充 [gepa.md](gepa.md) 中缺失的细节，基于 [Hermes PLAN](../../hermes-agent-self-evolution/PLAN.md) 的最佳实践，适配 Loom 的纯 Rust + LLM API 架构。
 
 ## 一、评估数据集构建
 
@@ -166,7 +166,7 @@ trait ConstraintChecker {
 
 ## 三、进化层级（Tier System）
 
-基于 Hermes PLAN，Levol 的进化目标分为 4 个层级：
+基于 Hermes PLAN，Loom 的进化目标分为 4 个层级：
 
 | 层级 | 目标 | 价值 | 风险 | 优先级 |
 |------|------|------|------|--------|
@@ -227,7 +227,7 @@ Top-3 变体
 
 ### 4.2 回归检查
 
-Levol 没有 Hermes 那样的 TBLite benchmark，但可以用以下方式替代：
+Loom 没有 Hermes 那样的 TBLite benchmark，但可以用以下方式替代：
 
 1. **技能级回归**：进化技能 A 时，在 holdout 集上同时测试技能 B、C，确保无退化
 2. **对话级回归**：用一组标准任务（golden tasks）测试 agent 整体表现
@@ -421,7 +421,7 @@ Round 3: 重复...
 ### 9.1 进化循环完整流程
 
 ```
-用户使用 Levol
+用户使用 Loom
     │
     ▼
 会话录制 (sessions/*.jsonl)

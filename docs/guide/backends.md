@@ -1,21 +1,21 @@
 # Backend 切换指南
 
-Levol 通过 Backend Adapter 支持多个底层 AI Coding CLI。当前支持 Loom 和 Codex。
+Loom 通过 Backend Adapter 支持多个底层 AI Coding CLI。当前支持 Loom 和 Codex。
 
 ## 快速切换
 
 ```bash
 # 查看当前 backend
-$ levol config show cli.backend
+$ loom config show cli.backend
 loom
 
 # 切换到 Codex
-$ levol config set cli.backend codex
-[levol] Backend switched to codex (context file: AGENTS.md)
+$ loom config set cli.backend codex
+[loom] Backend switched to codex (context file: AGENTS.md)
 
 # 切换回 Loom
-$ levol config set cli.backend loom
-[levol] Backend switched to loom (context file: CLAUDE.md)
+$ loom config set cli.backend loom
+[loom] Backend switched to loom (context file: CLAUDE.md)
 ```
 
 ## Loom vs Codex 对比
@@ -54,4 +54,4 @@ cli:
 
 ## 支持新的 Backend
 
-如果你想让 Levol 支持其他 CLI（如 Claude Code、Aider 等），参考 [backend-trait.md](../dev/backend-trait.md)。
+如果你想让 Loom 支持其他 CLI（如 Claude Code、Aider 等），参考 [backend-trait.md](../dev/backend-trait.md)。

@@ -22,8 +22,11 @@ curator:
 
 review:
   enabled: true                  # 会话结束后是否自动审查
-  max_session_chars: 12000       # 审查时截断会话长度
-  auto_create_threshold: 5       # 自动创建技能阈值
+  max_session_chars: 24000       # 审查时截断会话长度 (默认)
+  max_iterations: 16             # Review Agent 最大迭代轮数
+  model: "gpt-4o-mini"          # 独立 Review 使用的模型
+  review_memory: true            # 是否审查记忆
+  review_skills: true            # 是否审查技能
 
 evolution:
   enabled: true
@@ -78,8 +81,11 @@ evolution:
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `enabled` | bool | true | 是否在会话结束后自动运行 Review Agent |
-| `max_session_chars` | int | 12000 | 截断会话内容长度 |
-| `auto_create_threshold` | int | 5 | 自动创建技能阈值 |
+| `max_session_chars` | int | 24000 | 截断会话内容长度 |
+| `max_iterations` | int | 16 | Review Agent 最大迭代轮数 |
+| `model` | string | "gpt-4o-mini" | 独立 Review LLM 模型 |
+| `review_memory` | bool | true | 是否更新记忆 |
+| `review_skills` | bool | true | 是否更新技能 |
 
 ### evolution
 

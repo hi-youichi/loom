@@ -12,7 +12,7 @@
 ├── evolution/                       → [evolution/gepa.md](../evolution/gepa.md)
 ├── curator/
 │   └── state.json                   → [evolution/curator.md](../evolution/curator.md)
-└── levol.yaml                       → [guide/config.md](../guide/config.md)
+└── config.yaml                       → [guide/config.md](../guide/config.md)
 ```
 
 ## 会话记录 (JSONL)
@@ -38,7 +38,7 @@
 
 ## SQLite FTS5 索引
 
-用于 `levol sessions search <query>` 全文搜索：
+用于 `loom sessions search <query>` 全文搜索：
 
 ```sql
 CREATE VIRTUAL TABLE sessions_fts USING fts5(

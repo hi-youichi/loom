@@ -6,7 +6,7 @@
 
 ## 概述
 
-GEPA (Gradient-free Evolutionary Prompt Optimization with Aggregations) 是一种无需梯度的 prompt 优化方法。Levol 用它来优化 SKILL.md 的正文部分，使技能在实际使用中效果更好。
+GEPA (Gradient-free Evolutionary Prompt Optimization with Aggregations) 是一种无需梯度的 prompt 优化方法。Loom 用它来优化 SKILL.md 的正文部分，使技能在实际使用中效果更好。
 
 ```
 原始技能 ──→ 构建评估数据集 ──→ GEPA 多轮优化 ──→ 约束验证 ──→ 用户确认 ──→ 替换

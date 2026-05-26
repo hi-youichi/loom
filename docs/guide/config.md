@@ -1,6 +1,6 @@
-# 配置参考 (levol.yaml)
+# 配置参考 (config.yaml)
 
-配置文件位于 `~/.loom/data/levol.yaml`，可用 `levol config set` 修改。
+配置文件位于 `~/.loom/config.yaml`，可用 `loom config set` 修改。
 
 ## 完整配置
 

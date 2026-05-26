@@ -90,7 +90,7 @@ impl SessionManager {
 **Review Prompt 核心结构**:
 
 ```
-你是 Levol 的审查 Agent。分析以下对话，提取：
+你是 Loom 的审查 Agent。分析以下对话，提取：
 
 1. 用户偏好（语言、工具、风格）
 2. 项目事实（技术栈、架构决策）
@@ -554,7 +554,7 @@ Phase E（集成，依赖全部）
 | GEPA 优化成本超预期 | 中 | `max_cost_per_run_usd` 硬上限 + 每轮检查 |
 | 会话 jsonl 文件过大 | 低 | 定期压缩归档，只保留最近 N 天 |
 | 并发写入冲突 | 低 | 文件锁或 single-writer 模式 |
-| LLM 调用失败（Review / 数据集生成 / 评估） | 中 | 通用降级：重试 3 次指数退避 → 降级为规则提取 / 跳过本轮 → 记录 failure 到 RunStore |
+| LLM 调用失败（Review / 数据集生成 / 评估） | 中 | 计划：重试 3 次指数退避 → 降级为规则提取 / 跳过本轮 → 记录 failure 到 RunStore。当前实现直接 `?` fail |
 | 调度器生命周期 | 中 | CLI 工具非长驻进程，cron 后台线程随进程退出消失。建议改为 `levol evolve run --auto` 非守护模式，或依赖系统级 cron/launchd 触发 CLI 命令 |
 
 ---
@@ -563,7 +563,7 @@ Phase E（集成，依赖全部）
 
 所有涉及 LLM 调用的模块（M2 Review Agent、M6 合成数据集、M7 会话挖掘、M8 回归门控、M11 Optimizer）遵循统一模式：
 
-1. **重试**: LLM 调用失败时，指数退避重试最多 3 次（间隔 2s / 4s / 8s）
+1. **重试**（计划中）: LLM 调用失败时，指数退避重试最多 3 次（间隔 2s / 4s / 8s）。当前实现直接 `?` 传播错误。
 2. **降级**: 重试耗尽后，根据模块选择降级行为：
    - M2 Review Agent → 跳过本次会话审查，记录 `review_skipped` 到日志
    - M6 合成数据集 → 返回已成功生成的部分样本 + 警告

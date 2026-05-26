@@ -1,11 +1,11 @@
 # 会话生命周期
 
-一次 `levol chat` 的完整流程。
+一次 `loom chat` 的完整流程。
 
 ## 总览
 
 ```
-levol chat
+loom chat
   │
   ├─ Phase 1: 组装上下文 (Pre-Session Assembly)
   │
@@ -22,7 +22,7 @@ levol chat
 
 ### 步骤
 
-1. 读取 `levol.yaml` 获取配置
+1. 读取 `config.yaml` 获取配置
 2. 读取 `memory/USER.md` — 用户偏好
 3. 读取 `memory/PROJECT.md` — 项目上下文
 4. 扫描 `skills/auto/` 中 `lifecycle: active` 的技能，提取摘要
@@ -32,7 +32,7 @@ levol chat
 ### 注入格式
 
 ```markdown
-<!-- levol-context-start -->
+<!-- loom-context-start -->
 ## User Memory
 - 用户偏好 GitHub Actions CI
 - 使用 rust-toolchain.toml 管理 Rust 版本
@@ -40,7 +40,7 @@ levol chat
 ## Active Skills
 ### rust-ci-setup
 系统性排查 Rust 编译错误...
-<!-- levol-context-end -->
+<!-- loom-context-end -->
 ```
 
 ### 为什么用追加-还原？

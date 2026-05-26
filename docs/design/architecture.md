@@ -2,7 +2,7 @@
 
 ## 设计目标
 
-Levol 是一个**编排层**，不替代底层 AI Coding CLI，而是给它加上自进化能力。核心设计目标：
+Loom 是一个**编排层**，不替代底层 AI Coding CLI，而是给它加上自进化能力。核心设计目标：
 
 1. **底层 CLI 零修改** — 所有进化逻辑在 Wrapper 层实现
 2. **多 CLI 支持** — 通过 Backend Adapter 插拔 Loom、Codex 等
@@ -72,7 +72,7 @@ trait Backend {
 ```
                   ┌─── memory/USER.md ───┐
                   │                       │
-levol chat ────→ Assembler ──→ 注入 context ──→ 启动底层 CLI
+loom chat ────→ Assembler ──→ 注入 context ──→ 启动底层 CLI
                                                        │
                                                    录制对话
                                                        │
@@ -85,7 +85,7 @@ levol chat ────→ Assembler ──→ 注入 context ──→ 启动�
 
 ## 与 Hermes 的对比
 
-| | Hermes | Levol |
+| | Hermes | Loom |
 |---|--------|-------|
 | 语言 | Python | Rust + 可选 Python |
 | 记忆 | MemoryManager + 7 Provider | 文件系统 (USER.md) |
@@ -94,4 +94,4 @@ levol chat ────→ Assembler ──→ 注入 context ──→ 启动�
 | 依赖 | Python 全栈 | 单二进制 |
 | 多 CLI | 无 | Backend Adapter |
 
-**核心差异**：Levol 复用底层 CLI 的 Agent 能力，只做编排层，代码量 ~4000 行。
+**核心差异**：Loom 复用底层 CLI 的 Agent 能力，只做编排层，代码量 ~4000 行。

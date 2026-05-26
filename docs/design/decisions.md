@@ -6,11 +6,11 @@
 
 ## D1: 追加-还原模式注入 Context
 
-**决策**：在 CLAUDE.md / AGENTS.md 末尾追加 Levol 上下文，会话结束后还原。
+**决策**：在 CLAUDE.md / AGENTS.md 末尾追加 Loom 上下文，会话结束后还原。
 
 **备选方案**：
 1. ✅ 追加-还原（选择）
-2. ❌ 单独 `.levol-context.md` 文件
+2. ❌ 单独 `.loom-context.md` 文件
 3. ❌ 环境变量注入
 
 **理由**：
@@ -18,7 +18,7 @@
 - 单独文件需要底层 CLI 支持 `--context-file` flag，Loom 和 Codex 都不支持
 - 环境变量需要底层 CLI 的 Agent 能读取，不可靠
 
-**风险**：用户可能在会话中手动编辑 context 文件。缓解：用 `<!-- levol-context-start/end -->` 标记，还原时精确删除。
+**风险**：用户可能在会话中手动编辑 context 文件。缓解：用 `<!-- loom-context-start/end -->` 标记，还原时精确删除。
 
 ## D2: Stdout Pipe 而非 PTY
 
@@ -42,7 +42,7 @@
 
 ## D5: Rust 而非 Python/TypeScript
 
-**决策**：用 Rust 实现 Levol 核心。
+**决策**：用 Rust 实现 Loom 核心。
 
 **备选方案**：
 1. ✅ Rust（选择）
@@ -55,4 +55,4 @@
 - Python 已经用于进化模块（DSPy），核心用 Rust 可以隔离
 - TypeScript 需要安装 Node.js
 
-**代价**：Rust 编译慢，开发效率低于 Python/TS。但 Levol 代码量不大（~4000 行），可接受。
+**代价**：Rust 编译慢，开发效率低于 Python/TS。但 Loom 代码量不大（~4000 行），可接受。

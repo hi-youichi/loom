@@ -87,7 +87,7 @@ loom review session <session_id>
 SessionManager::cat_session(id) → Vec<ReActState>
     │
     ▼
-提取 messages，截断至 max_session_chars（默认 12000）
+提取 messages，截断至 max_session_chars（默认 24000）
     │
     ▼
 构建 Review Prompt（COMBINED_REVIEW_PROMPT）
@@ -197,7 +197,7 @@ pub async fn run_review(
 ```yaml
 review:
   enabled: true
-  max_session_chars: 12000
+  max_session_chars: 24000
   auto_create_threshold: 5
   # --- 新增 ---
   model: null                       # 手动审查使用的模型（null 则使用全局默认）
