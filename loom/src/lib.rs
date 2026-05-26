@@ -159,6 +159,7 @@ pub mod traits;
 pub mod user_message;
 pub mod title_generator;
 pub mod background_review;
+pub mod worktree;
 
 pub use agent::react::{
     build_dup_runner, build_got_runner, build_react_initial_state, build_react_run_context,
@@ -370,6 +371,7 @@ mod run_agent_options_tests {
             acp_session_id: None,
             force_compact: false,
             chat_id: None,
+            worktree: false,
         }
     }
 
@@ -525,6 +527,7 @@ mod run_agent_options_tests {
                 acp_session_id: None,
                 force_compact: false,
                 chat_id: None,
+                worktree: false,
             };
             let opts2 = RunOptions {
                 message: UserContent::Text("Second message".to_string()),
@@ -552,6 +555,7 @@ mod run_agent_options_tests {
                 acp_session_id: None,
                 force_compact: false,
                 chat_id: None,
+                worktree: false,
             };
 
             let result1 = run_agent_with_llm_override(
