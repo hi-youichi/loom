@@ -2,6 +2,7 @@ pub mod aggregate_source;
 pub mod bash;
 mod batch;
 mod conversation;
+mod date;
 pub mod exa;
 pub mod file;
 mod help;
@@ -25,6 +26,7 @@ pub use aggregate_source::AggregateToolSource;
 pub use bash::{BashTool, CommandExecutor, LocalCommandExecutor, TOOL_BASH};
 pub use batch::{BatchTool, TOOL_BATCH};
 pub use conversation::{GetRecentMessagesTool, TOOL_GET_RECENT_MESSAGES};
+pub use date::{DateTool, TOOL_DATE};
 pub use exa::{ExaCodesearchTool, ExaWebsearchTool};
 pub use file::{
     ApplyPatchTool, CreateDirTool, DeleteFileTool, EditFileTool, GlobTool, GrepTool, LsTool,

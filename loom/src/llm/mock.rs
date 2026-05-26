@@ -229,3 +229,46 @@ impl LlmClient for MockLlm {
         }])
     }
 }
+
+/// Multi-round mock LLM that returns a pre-recorded sequence of responses.
+///
+/// Each element in `rounds` is `(content, tool_calls)`. After all rounds are
+/// consumed, returns the last entry repeatedly. When a round has empty
+/// `tool_calls`, the review agent loop exits.
+pub struct MultiRoundMockLlm {
+    rounds: Vec<(String, Vec<ToolCall>)>,
+    current: AtomicUsize,
+}
+
+impl MultiRoundMockLlm {
+    pub fn new(rounds: Vec<(String, Vec<ToolCall>)>) -> Self {
+        assert!(!rounds.is_empty(), "MultiRoundMockLlm needs at least one round");
+        Self {
+            rounds,
+            current: AtomicUsize::new(0),
+        }
+    }
+}
+
+#[async_trait]
+impl LlmClient for MultiRoundMockLlm {
+    async fn invoke(&self, _messages: &[Message]) -> Result<LlmResponse, AgentError> {
+        let idx = self.current.fetch_add(1, Ordering::SeqCst);
+        let idx = idx.min(self.rounds.len() - 1);
+        let (content, tool_calls) = self.rounds[idx].clone();
+        Ok(LlmResponse {
+            content,
+            reasoning_content: None,
+            tool_calls,
+            usage: None,
+        })
+    }
+
+    async fn list_models(&self) -> Result<Vec<crate::llm::ModelInfo>, AgentError> {
+        Ok(vec![crate::llm::ModelInfo {
+            id: "mock-model".to_string(),
+            created: None,
+            owned_by: Some("mock".to_string()),
+        }])
+    }
+}

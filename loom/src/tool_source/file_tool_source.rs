@@ -15,6 +15,7 @@ use crate::tools::file::{
     ApplyPatchTool, CreateDirTool, DeleteFileTool, EditFileTool, GlobTool, GrepTool, LsTool,
     MoveFileTool, MultieditTool, ReadFileTool, WriteFileTool,
 };
+use crate::tools::DateTool;
 use crate::tools::HelpTool;
 use crate::tools::skill::SkillTool;
 use crate::tools::todo::{TodoReadTool, TodoWriteTool};
@@ -74,6 +75,7 @@ pub fn register_file_tools(
         aggregate.register_sync(Box::new(SkillTool::new(working_folder)));
     }
     aggregate.register_sync(Box::new(HelpTool::new()));
+    aggregate.register_sync(Box::new(DateTool::new()));
     Ok(())
 }
 

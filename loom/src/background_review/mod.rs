@@ -31,3 +31,6 @@ pub use workflow::{
     ReviewOutputFn, spawn_background_review, wait_for_pending_reviews,
     build_background_config_from_opts,
 };
+
+#[cfg(feature = "testing")]
+pub use workflow::{run_background_review_workflow, run_background_review_inner};

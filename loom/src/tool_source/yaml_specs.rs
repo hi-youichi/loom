@@ -34,6 +34,7 @@ const TOOL_YAML_FILES: &[&str] = embed_tool_yaml!(
     "../../tools/multiedit.yaml",
     "../../tools/move_file.yaml",
     "../../tools/apply_patch.yaml",
+    "../../tools/date.yaml",
     "../../tools/delete_file.yaml",
     "../../tools/create_dir.yaml",
     "../../tools/remember.yaml",

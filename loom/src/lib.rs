@@ -207,7 +207,7 @@ pub use helve::{
 pub use llm::{ChatOpenAI, ChatOpenAICompat};
 pub use llm::{
     CompletionTokensDetails, FixedLlmProvider, LlmClient, LlmProvider, LlmResponse, LlmUsage,
-    MockLlm, OpenAICompatProvider, OpenAIProvider, PromptTokensDetails, ToolCallDelta,
+    MockLlm, MultiRoundMockLlm, OpenAICompatProvider, OpenAIProvider, PromptTokensDetails, ToolCallDelta,
     ToolChoiceMode,
 };
 pub use managed::{IsLastStep, ManagedValue};

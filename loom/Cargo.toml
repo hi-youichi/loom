@@ -10,8 +10,8 @@ authors.workspace = true
 path = "src/lib.rs"
 
 [features]
-# Persistent store with vector search via LanceDB (16-memory-design §5.2.1, long-term-memory-store P4)
 lance = ["dep:lancedb", "dep:arrow-array", "dep:arrow-schema"]
+testing = []
 
 [dependencies]
 stream-event = { path = "../stream-event" }

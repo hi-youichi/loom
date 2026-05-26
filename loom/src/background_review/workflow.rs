@@ -145,7 +145,7 @@ pub fn spawn_background_review(
 }
 
 /// Internal function that runs the background review workflow.
-async fn run_background_review_workflow(
+pub async fn run_background_review_workflow(
     config: &BackgroundReviewConfig,
     session_content: &str,
     session_id: &str,
@@ -218,7 +218,7 @@ async fn run_background_review_workflow(
     Ok((result.summary, result.action_count, memory_count, skill_count, duration_ms))
 }
 
-async fn run_background_review_inner(
+pub async fn run_background_review_inner(
     llm: &dyn crate::llm::LlmClient,
     session_content: &str,
     max_iterations: u32,

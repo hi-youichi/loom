@@ -119,7 +119,7 @@ pub use fixed_provider::FixedLlmProvider;
 #[deprecated(note = "renamed to ChatOpenAICompat")]
 pub type ChatBigModel = ChatOpenAICompat;
 
-pub use mock::MockLlm;
+pub use mock::{MockLlm, MultiRoundMockLlm};
 pub use factory::LlmFactory;
 pub use model_cache::{fetch_provider_models, ModelCache, ProviderModels};
 pub use model_registry::{create_llm_provider, create_llm_client, ModelEntry, ModelRegistry, ProviderConfig};
