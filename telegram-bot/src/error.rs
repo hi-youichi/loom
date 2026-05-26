@@ -66,6 +66,30 @@ mod tests {
             _ => panic!("expected Io variant"),
         }
     }
+
+    #[test]
+    fn bot_error_config_source_chain() {
+        let e = BotError::Config("missing token".into());
+        assert!(e.to_string().contains("missing token"));
+    }
+
+    #[test]
+    fn bot_error_network_from() {
+        let teloxide_err = teloxide::RequestError::Io(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"));
+        let e = BotError::from(teloxide_err);
+        match e {
+            BotError::Network(_) => {}
+            _ => panic!("expected Network variant"),
+        }
+    }
+
+    #[test]
+    fn result_type_alias() {
+        fn returns_ok() -> Result<String> {
+            Ok("hello".to_string())
+        }
+        assert!(returns_ok().is_ok());
+    }
 }
 
 pub type Result<T> = std::result::Result<T, BotError>;

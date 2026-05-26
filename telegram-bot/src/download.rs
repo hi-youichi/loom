@@ -565,4 +565,58 @@ mod tests {
         let result = ensure_within_base(Path::new("downloads/photo.jpg"), Path::new("downloads"));
         assert!(result.is_ok());
     }
+
+    // --- FileType ---
+    #[test]
+    fn file_type_equality() {
+        assert_eq!(FileType::Photo, FileType::Photo);
+        assert_ne!(FileType::Photo, FileType::Document);
+        assert_ne!(FileType::Video, FileType::Audio);
+        assert_ne!(FileType::Audio, FileType::Other);
+    }
+
+    #[test]
+    fn file_type_serde_roundtrip() {
+        let ft = FileType::Document;
+        let json = serde_json::to_string(&ft).unwrap();
+        let parsed: FileType = serde_json::from_str(&json).unwrap();
+        assert_eq!(ft, parsed);
+    }
+
+    // --- FileMetadata ---
+    #[test]
+    fn file_metadata_serde_roundtrip() {
+        let meta = FileMetadata {
+            chat_id: 123,
+            message_id: 456,
+            file_id: "abc".into(),
+            file_unique_id: "xyz".into(),
+            file_type: FileType::Photo,
+            original_name: Some("pic.jpg".into()),
+            mime_type: Some("image/jpeg".into()),
+            file_size: Some(1024),
+            user_id: Some(789),
+            downloaded_at: "2024-01-01T00:00:00Z".into(),
+        };
+        let json = serde_json::to_string(&meta).unwrap();
+        let parsed: FileMetadata = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.chat_id, 123);
+        assert_eq!(parsed.file_type, FileType::Photo);
+        assert_eq!(parsed.original_name.unwrap(), "pic.jpg");
+    }
+
+    // --- DownloadConfig validate_path ---
+    #[test]
+    fn download_config_validate_path_ok() {
+        let config = DownloadConfig::new("downloads");
+        let path = Path::new("downloads/123/photo.jpg");
+        assert!(config.validate_path(path).is_ok());
+    }
+
+    #[test]
+    fn download_config_validate_path_traversal() {
+        let config = DownloadConfig::new("downloads");
+        let path = Path::new("downloads/../../../etc/passwd");
+        assert!(config.validate_path(path).is_err());
+    }
 }

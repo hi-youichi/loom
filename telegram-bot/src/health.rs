@@ -132,4 +132,47 @@ mod tests {
         // Uptime should be a small number (test runs fast)
         assert!(state.uptime_secs() < 10);
     }
+
+    // Test the handler functions directly via axum::extract::State
+    #[tokio::test]
+    async fn health_check_returns_ok() {
+        let metrics = Arc::new(BotMetrics::new());
+        let state = Arc::new(HealthState::new(metrics));
+        let Json(body) = health_check(State(state)).await;
+        assert_eq!(body["status"], "ok");
+    }
+
+    #[tokio::test]
+    async fn readiness_check_not_ready() {
+        let metrics = Arc::new(BotMetrics::new());
+        let state = Arc::new(HealthState::new(metrics));
+        let result = readiness_check(State(state)).await;
+        assert!(result.is_err());
+        let (status, _) = result.unwrap_err();
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn readiness_check_ready() {
+        let metrics = Arc::new(BotMetrics::new());
+        let state = Arc::new(HealthState::new(metrics));
+        state.set_ready(true);
+        let result = readiness_check(State(state)).await;
+        assert!(result.is_ok());
+        let Json(body) = result.unwrap();
+        assert_eq!(body["ready"], true);
+    }
+
+    #[tokio::test]
+    async fn readiness_check_not_healthy() {
+        let metrics = Arc::new(BotMetrics::new());
+        let state = Arc::new(HealthState::new(metrics));
+        state.set_ready(true);
+        state.set_healthy(false);
+        let result = readiness_check(State(state)).await;
+        assert!(result.is_err());
+        let (status, Json(body)) = result.unwrap_err();
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(body["healthy"], false);
+    }
 }

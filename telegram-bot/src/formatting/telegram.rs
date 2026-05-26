@@ -536,4 +536,94 @@ mod tests {
         assert!(result.contains("*hello*"));
         assert!(!result.contains("```markdown"));
     }
+
+    // --- FormattedMessage constructors ---
+    #[test]
+    fn formatted_message_plain() {
+        let msg = FormattedMessage::plain("hello");
+        assert_eq!(msg.text, "hello");
+        assert_eq!(msg.plain_text_fallback, "hello");
+        assert!(msg.parse_mode.is_none());
+    }
+
+    #[test]
+    fn formatted_message_html() {
+        let msg = FormattedMessage::html("<b>bold</b>", "bold");
+        assert_eq!(msg.text, "<b>bold</b>");
+        assert_eq!(msg.plain_text_fallback, "bold");
+        assert_eq!(msg.parse_mode, Some(ParseMode::Html));
+    }
+
+    #[test]
+    fn formatted_message_markdown_v2_rendered() {
+        let msg = FormattedMessage::markdown_v2_rendered("*Title*", "Title");
+        assert_eq!(msg.text, "*Title*");
+        assert_eq!(msg.plain_text_fallback, "Title");
+        assert_eq!(msg.parse_mode, Some(ParseMode::MarkdownV2));
+    }
+
+    // --- markdown_notice ---
+    #[test]
+    fn markdown_notice_builds_correct_structure() {
+        let msg = markdown_notice("Title", "Body text");
+        assert_eq!(msg.parse_mode, Some(ParseMode::MarkdownV2));
+        assert!(msg.text.contains("Title"));
+        assert!(msg.text.contains("Body text"));
+        assert_eq!(msg.plain_text_fallback, "Title\n\nBody text");
+    }
+
+    #[test]
+    fn markdown_notice_escapes_special_chars() {
+        let msg = markdown_notice("Hello!", "Price is $10.");
+        // ! and . should be escaped in MarkdownV2
+        assert!(msg.text.contains("\\!"));
+        assert!(msg.text.contains("\\."));
+    }
+
+    // --- TelegramMessageFormat ---
+    #[test]
+    fn telegram_message_format_equality() {
+        assert_eq!(TelegramMessageFormat::PlainText, TelegramMessageFormat::PlainText);
+        assert_ne!(TelegramMessageFormat::PlainText, TelegramMessageFormat::MarkdownV2);
+        assert_ne!(TelegramMessageFormat::MarkdownV2, TelegramMessageFormat::Html);
+    }
+
+    // --- escape functions edge cases ---
+    #[test]
+    fn escape_markdown_v2_empty() {
+        assert_eq!(escape_markdown_v2(""), "");
+    }
+
+    #[test]
+    fn escape_markdown_v2_no_special() {
+        assert_eq!(escape_markdown_v2("hello world"), "hello world");
+    }
+
+    #[test]
+    fn escape_html_empty() {
+        assert_eq!(escape_html(""), "");
+    }
+
+    #[test]
+    fn escape_html_no_special() {
+        assert_eq!(escape_html("hello"), "hello");
+    }
+
+    #[test]
+    fn escape_html_ampersand() {
+        assert_eq!(escape_html("a&b"), "a&amp;b");
+    }
+
+    // --- unclosed link ---
+    #[test]
+    fn unclosed_link_bracket() {
+        let result = markdown_to_telegram_v2("[no closing link");
+        assert!(result.starts_with("\\["));
+    }
+
+    #[test]
+    fn link_with_no_url() {
+        let result = markdown_to_telegram_v2("[text]no_paren");
+        assert!(result.starts_with("\\["));
+    }
 }

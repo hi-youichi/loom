@@ -107,4 +107,72 @@ mod tests {
         assert_eq!(snapshot.messages_sent, 1);
         assert_eq!(snapshot.messages_edited, 1);
     }
+
+    #[test]
+    fn test_metrics_default_is_zero() {
+        let metrics = BotMetrics::new();
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot.messages_total, 0);
+        assert_eq!(snapshot.messages_failed, 0);
+        assert_eq!(snapshot.files_downloaded, 0);
+        assert_eq!(snapshot.agent_calls, 0);
+        assert_eq!(snapshot.agent_failures, 0);
+        assert_eq!(snapshot.messages_sent, 0);
+        assert_eq!(snapshot.messages_edited, 0);
+    }
+
+    #[test]
+    fn test_snapshot_serialization() {
+        let snapshot = MetricsSnapshot {
+            messages_total: 10,
+            messages_failed: 2,
+            files_downloaded: 5,
+            agent_calls: 8,
+            agent_failures: 1,
+            messages_sent: 15,
+            messages_edited: 7,
+        };
+        let json = serde_json::to_string(&snapshot).unwrap();
+        assert!(json.contains("\"messages_total\":10"));
+        assert!(json.contains("\"messages_failed\":2"));
+        assert!(json.contains("\"files_downloaded\":5"));
+        assert!(json.contains("\"agent_calls\":8"));
+    }
+
+    #[test]
+    fn test_snapshot_clone() {
+        let snapshot = MetricsSnapshot {
+            messages_total: 42,
+            messages_failed: 0,
+            files_downloaded: 0,
+            agent_calls: 0,
+            agent_failures: 0,
+            messages_sent: 0,
+            messages_edited: 0,
+        };
+        let cloned = snapshot.clone();
+        assert_eq!(cloned.messages_total, 42);
+    }
+
+    #[test]
+    fn test_concurrent_increment() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let metrics = Arc::new(BotMetrics::new());
+        let mut handles = vec![];
+
+        for _ in 0..10 {
+            let m = metrics.clone();
+            handles.push(thread::spawn(move || {
+                m.increment_messages();
+            }));
+        }
+
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        assert_eq!(metrics.snapshot().messages_total, 10);
+    }
 }

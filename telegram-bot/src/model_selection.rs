@@ -556,4 +556,52 @@ mod tests {
         service.clear_search_session(1);
         assert!(service.next_page(1).is_none());
     }
+
+    #[test]
+    fn catalog_search_page_overflow() {
+        let catalog = StaticModelCatalog::new("default", vec![ModelChoice::new("m1")]);
+        let result = catalog.search("", 999);
+        assert_eq!(result.page, 1); // bounded to page_count
+    }
+
+    #[test]
+    fn model_search_result_equality() {
+        let a = ModelSearchResult {
+            query: "gpt".into(),
+            page: 1,
+            page_count: 1,
+            items: vec![ModelChoice::new("gpt-4o")],
+        };
+        let b = ModelSearchResult {
+            query: "gpt".into(),
+            page: 1,
+            page_count: 1,
+            items: vec![ModelChoice::new("gpt-4o")],
+        };
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn search_session_equality() {
+        let a = SearchSession { query: "test".into(), page: 1 };
+        let b = SearchSession { query: "test".into(), page: 1 };
+        let c = SearchSession { query: "test".into(), page: 2 };
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+    }
+
+    #[test]
+    fn previous_page_at_page_one_stays_at_one() {
+        let service = ModelSelectionService::new(
+            Arc::new(StaticModelCatalog::new(
+                "default",
+                vec![ModelChoice::new("default")],
+            )),
+            Arc::new(InMemoryModelSelectionStore::new()),
+            Arc::new(InMemorySearchSessionStore::new()),
+        );
+        service.search_models(1, "default", 1);
+        let prev = service.previous_page(1).unwrap();
+        assert_eq!(prev.page, 1);
+    }
 }

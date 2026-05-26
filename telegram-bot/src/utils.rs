@@ -209,4 +209,112 @@ mod tests {
         assert!(chunks[0].contains("first line"));
         assert!(chunks.iter().all(|chunk| chunk.chars().count() <= 15));
     }
+
+    #[test]
+    fn split_text_for_telegram_empty_input() {
+        let chunks = split_text_for_telegram("", 10);
+        assert_eq!(chunks, vec!["".to_string()]);
+    }
+
+    #[test]
+    fn split_text_for_telegram_max_chars_zero() {
+        let chunks = split_text_for_telegram("hello", 0);
+        assert_eq!(chunks, vec!["hello".to_string()]);
+    }
+
+    #[test]
+    fn split_text_for_telegram_exact_boundary() {
+        let text = "1234567890";
+        let chunks = split_text_for_telegram(&text, 10);
+        assert_eq!(chunks, vec!["1234567890".to_string()]);
+    }
+
+    #[test]
+    fn split_text_for_telegram_splits_at_whitespace() {
+        let text = "aaa bbb ccc ddd";
+        let chunks = split_text_for_telegram(&text, 8);
+        assert!(chunks.len() >= 2);
+        assert_eq!(chunks.concat().replace(' ', ""), text.replace(' ', ""));
+    }
+
+    #[test]
+    fn split_text_for_telegram_unicode_handling() {
+        let text = "你好世界测试数据分割";
+        let chunks = split_text_for_telegram(&text, 4);
+        assert!(chunks.len() >= 2);
+        assert_eq!(chunks.concat(), text);
+    }
+
+    #[test]
+    fn test_should_update_elapsed() {
+        let past = Instant::now() - Duration::from_millis(200);
+        assert!(should_update(past, 100));
+    }
+
+    #[test]
+    fn test_should_update_not_elapsed() {
+        let recent = Instant::now();
+        assert!(!should_update(recent, 5000));
+    }
+
+    #[test]
+    fn test_should_update_exact_threshold() {
+        let past = Instant::now() - Duration::from_millis(100);
+        assert!(should_update(past, 100));
+    }
+
+    #[test]
+    fn test_current_timestamp_format() {
+        let ts = current_timestamp();
+        assert!(ts.contains('T'));
+        assert!(ts.contains('-'));
+        assert!(ts.contains(':'));
+    }
+
+    #[test]
+    fn test_sanitize_for_display_no_limit() {
+        assert_eq!(sanitize_for_display("hello", 0), "hello");
+    }
+
+    #[test]
+    fn test_sanitize_for_display_with_carriage_return() {
+        assert_eq!(sanitize_for_display("line1\rline2", 0), "line1\\rline2");
+    }
+
+    #[test]
+    fn test_sanitize_for_display_truncation() {
+        let result = sanitize_for_display("abcdefghij", 5);
+        assert_eq!(result, "ab...");
+    }
+
+    #[test]
+    fn test_get_file_extension_long_ext() {
+        // Extension longer than 5 chars and not all alphanumeric
+        assert_eq!(get_file_extension(Some("file.toolongext"), None), "bin");
+    }
+
+    #[test]
+    fn test_get_file_extension_short_ext() {
+        assert_eq!(get_file_extension(Some("file.rs"), None), "rs");
+    }
+
+    #[test]
+    fn test_get_file_extension_no_filename() {
+        assert_eq!(get_file_extension(None, Some("application/pdf")), "pdf");
+    }
+
+    #[test]
+    fn test_get_file_extension_unknown_mime() {
+        assert_eq!(get_file_extension(None, Some("application/x-foo")), "bin");
+    }
+
+    #[test]
+    fn test_truncate_text_exact_length() {
+        assert_eq!(truncate_text("Hello", 5), "Hello");
+    }
+
+    #[test]
+    fn test_truncate_text_one_over() {
+        assert_eq!(truncate_text("Hello!", 5), "He...");
+    }
 }
