@@ -35,7 +35,10 @@ pub(crate) async fn handle_goal_command(ga: &GoalArgs) -> Result<(), Box<dyn std
         let mut runner = resume(id, working_dir, db, cancel, Some(run_cancellation)).await?;
         print_task_id(runner.task_id());
         let outcome = runner.run().await;
+        let session_content = runner.into_session_content();
+        let session_id = format!("goal-{}", &id[..8.min(id.len())]);
         print_outcome(&outcome);
+        spawn_goal_background_review(&ga.model, session_content, session_id);
         if let GoalOutcome::Error(_) = outcome {
             std::process::exit(1);
         }
@@ -61,13 +64,14 @@ let description = match &ga.description {
         .await
         .map_err(|e| format!("failed to create task: {}", e))?;
 
-    let session_id = format!("goal-{}", &task.id[..8]);
+    let task_id_short = task.id[..8.min(task.id.len())].to_string();
+    let session_id = format!("goal-{}", &task_id_short);
 
     let tool: Box<dyn loom::goal_runner::CodingTool> = match ga.tool.as_str() {
         "loom" => {
             let mcp_config_path = write_mcp_config(&db_path, &working_dir)?;
             let mut loom_tool = LoomTool::new(
-                session_id,
+                session_id.clone(),
                 working_dir.clone(),
                 mcp_config_path,
             )
@@ -97,7 +101,9 @@ let description = match &ga.description {
     }
     print_task_id(runner.task_id());
     let outcome = runner.run().await;
+    let session_content = runner.into_session_content();
     print_outcome(&outcome);
+    spawn_goal_background_review(&ga.model, session_content, session_id);
     if let GoalOutcome::Error(_) = outcome {
         std::process::exit(1);
     }
@@ -132,4 +138,33 @@ fn ensure_task_db() -> Result<PathBuf, Box<dyn std::error::Error>> {
     let db_dir = loom_home.join("tasks");
     std::fs::create_dir_all(&db_dir)?;
     Ok(db_dir.join("tasks.db"))
+}
+
+/// Build a background review config from env vars and optional model override,
+/// then spawn the review as a background task.
+fn spawn_goal_background_review(
+    model_override: &Option<String>,
+    session_content: String,
+    session_id: String,
+) {
+    if session_content.trim().is_empty() {
+        return;
+    }
+    let base_url = std::env::var("OPENAI_BASE_URL").unwrap_or_default();
+    let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_default();
+    if base_url.is_empty() || api_key.is_empty() {
+        return;
+    }
+    let model = model_override
+        .clone()
+        .or_else(|| std::env::var("MODEL").ok())
+        .unwrap_or_else(|| "gpt-4o-mini".to_string());
+    let config = loom::background_review::BackgroundReviewConfig {
+        enabled: true,
+        base_url,
+        api_key,
+        model,
+        ..Default::default()
+    };
+    loom::background_review::spawn_background_review(config, session_content, session_id, None);
 }

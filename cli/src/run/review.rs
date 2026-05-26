@@ -301,12 +301,22 @@ mod tests {
 
     struct ReviewMockLlm {
         response: String,
+        with_tool_calls: std::sync::atomic::AtomicBool,
     }
 
     impl ReviewMockLlm {
         fn new(response: &str) -> Self {
             Self {
                 response: response.to_string(),
+                with_tool_calls: std::sync::atomic::AtomicBool::new(false),
+            }
+        }
+
+        /// Create a mock that returns tool calls on first invoke, then empty (terminates loop).
+        fn with_agent_tool_calls() -> Self {
+            Self {
+                response: String::new(),
+                with_tool_calls: std::sync::atomic::AtomicBool::new(true),
             }
         }
     }
@@ -314,12 +324,50 @@ mod tests {
     #[async_trait]
     impl LlmClient for ReviewMockLlm {
         async fn invoke(&self, _messages: &[Message]) -> Result<LlmResponse, loom::AgentError> {
-            Ok(LlmResponse {
-                content: self.response.clone(),
-                tool_calls: vec![],
-                reasoning_content: None,
-                usage: None,
-            })
+            if self.with_tool_calls.load(std::sync::atomic::Ordering::SeqCst) {
+                self.with_tool_calls.store(false, std::sync::atomic::Ordering::SeqCst);
+                Ok(LlmResponse {
+                    content: String::new(),
+                    tool_calls: vec![
+                        loom::ToolCall {
+                            id: Some("tc-1".to_string()),
+                            name: "memory_set".to_string(),
+                            arguments: serde_json::json!({
+                                "file": "USER",
+                                "action": "append",
+                                "content": "prefers Rust"
+                            }).to_string(),
+                        },
+                        loom::ToolCall {
+                            id: Some("tc-2".to_string()),
+                            name: "memory_set".to_string(),
+                            arguments: serde_json::json!({
+                                "file": "FACTS",
+                                "action": "append",
+                                "content": "uses tokio runtime"
+                            }).to_string(),
+                        },
+                        loom::ToolCall {
+                            id: Some("tc-3".to_string()),
+                            name: "skill_create".to_string(),
+                            arguments: serde_json::json!({
+                                "name": "debug-rust-errors",
+                                "description": "Debug Rust compiler errors",
+                                "body": "1. Read error\n2. Fix\n"
+                            }).to_string(),
+                        },
+                    ],
+                    reasoning_content: None,
+                    usage: None,
+                })
+            } else {
+                Ok(LlmResponse {
+                    content: self.response.clone(),
+                    tool_calls: vec![],
+                    reasoning_content: None,
+                    usage: None,
+                })
+            }
         }
     }
 
@@ -371,7 +419,7 @@ mod tests {
         let skills_dir = dir.path().join("skills");
         let skills = SkillRegistry::new(&skills_dir);
 
-        let llm = ReviewMockLlm::new(&make_valid_response());
+        let llm = ReviewMockLlm::with_agent_tool_calls();
         let agent = ReviewAgent::new(Box::new(llm), memory, skills);
 
         let session = "User asked to fix a Rust compiler error in main.rs";

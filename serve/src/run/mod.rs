@@ -357,6 +357,7 @@ mod tests {
             acp_session_id: None,
             force_compact: false,
             chat_id: None,
+            worktree: false,
             debug_llm: false,
         };
         let (result, state, _dropped_events, _dropped_appends) = run_agent_task(AgentTaskParams {
@@ -406,6 +407,7 @@ mod tests {
             acp_session_id: None,
             force_compact: false,
             chat_id: None,
+            worktree: false,
             debug_llm: false,
         };
         let (result, state, _dropped_events, _dropped_appends) = run_agent_task(AgentTaskParams {
