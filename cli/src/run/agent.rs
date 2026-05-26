@@ -456,6 +456,14 @@ fn on_event_react(
                         sp.finish_box();
                     }
                     log_tools_used(&react_state.tool_calls);
+                    // Show DIFF immediately for edit/multiedit (doesn't need result)
+                    for tc in &react_state.tool_calls {
+                        if let Some(diff) = loom::stream_display::format_diff(
+                            &tc.name, &tc.arguments, "", false,
+                        ) {
+                            eprintln!("{}", diff);
+                        }
+                    }
                     if let Some(tc) = react_state.tool_calls.first() {
                         let desc = serde_json::from_str::<Value>(&tc.arguments)
                             .ok()
@@ -491,6 +499,7 @@ fn on_event_react(
                     let is_error = loom::stream_display::find_tool_result_error(
                         tool_results, &tc.name, &tc.id,
                     );
+                    let is_edit_like = tc.name == "edit" || tc.name == "multiedit";
 
                     if is_error {
                         let err_msg = match &result_text {
@@ -500,41 +509,49 @@ fn on_event_react(
                         eprintln!("{}", panel_format::format_panel_line("ERROR", &format!("{}: {}", tc.name, loom::stream_display::tool_summary::truncate(err_msg, 80))));
                     }
 
-                    if let Some(ref result) = result_text {
-                        if let Some(preview) = loom::stream_display::format_preview(
-                            &tc.name, &tc.arguments, result, false,
-                        ) {
-                            eprintln!("{}", preview);
-                        } else if !is_error && !result.trim().is_empty() {
-                            eprintln!("{}", loom::stream_display::tool_preview::format_result_preview(
-                                &tc.name, result, elapsed,
-                            ));
+                    // PREVIEW and result fallback: skip for edit/multiedit (diff already shown)
+                    if !is_edit_like {
+                        if let Some(ref result) = result_text {
+                            if let Some(preview) = loom::stream_display::format_preview(
+                                &tc.name, &tc.arguments, result, false,
+                            ) {
+                                eprintln!("{}", preview);
+                            } else if !is_error && !result.trim().is_empty() {
+                                eprintln!("{}", loom::stream_display::tool_preview::format_result_preview(
+                                    &tc.name, result, elapsed,
+                                ));
+                            }
                         }
                     }
 
-                    if let Some(ref result) = result_text {
-                        if let Some(diff) = loom::stream_display::format_diff(
-                            &tc.name, &tc.arguments, result, false,
-                        ) {
-                            eprintln!("{}", diff);
+                    // DIFF for edit/multiedit already shown during think; skip here
+                    if !is_edit_like {
+                        if let Some(ref result) = result_text {
+                            if let Some(diff) = loom::stream_display::format_diff(
+                                &tc.name, &tc.arguments, result, false,
+                            ) {
+                                eprintln!("{}", diff);
+                            }
                         }
                     }
 
-                    // Print DONE line for each completed tool
-                    if tc.name == "ls" {
-                        let path = serde_json::from_str::<serde_json::Value>(&tc.arguments)
-                            .ok()
-                            .and_then(|v| v.get("path").and_then(|p| p.as_str()).map(|s| s.trim().to_string()))
-                            .filter(|s| !s.is_empty())
-                            .unwrap_or_else(|| ".".to_string());
-                        let timing = match elapsed {
-                            Some(d) => format!(" {:.1}s", d.as_secs_f64()),
-                            None => String::new(),
-                        };
-                        eprintln!("ls {}{}", path, timing);
-                    } else {
-                        let result_summary = result_text.as_deref().unwrap_or("");
-                        eprintln!("{}", panel_format::format_tool_done(&tc.name, result_summary, elapsed));
+                    // Print DONE line for non-edit tools
+                    if !is_edit_like {
+                        if tc.name == "ls" {
+                            let path = serde_json::from_str::<serde_json::Value>(&tc.arguments)
+                                .ok()
+                                .and_then(|v| v.get("path").and_then(|p| p.as_str()).map(|s| s.trim().to_string()))
+                                .filter(|s| !s.is_empty())
+                                .unwrap_or_else(|| ".".to_string());
+                            let timing = match elapsed {
+                                Some(d) => format!(" {:.1}s", d.as_secs_f64()),
+                                None => String::new(),
+                            };
+                            eprintln!("ls {}{}", path, timing);
+                        } else {
+                            let result_summary = result_text.as_deref().unwrap_or("");
+                            eprintln!("{}", panel_format::format_tool_done(&tc.name, result_summary, elapsed));
+                        }
                     }
                 }
                 s.pending_tool_start = None;

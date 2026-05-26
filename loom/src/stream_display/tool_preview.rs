@@ -254,33 +254,108 @@ fn format_todo_read_preview(result: &str) -> String {
 
 // ── DIFF formatters ──────────────────────────────────────────────
 
+/// Compute a lightweight git-style diff from old/new strings.
+///
+/// Produces context lines (unchanged) + `-` removed + `+` added lines,
+/// similar to `git diff` but without line numbers.
+fn compute_light_diff<'a>(old: &'a str, new: &'a str) -> Vec<DiffLine<'a>> {
+    let old_lines: Vec<&str> = old.lines().collect();
+    let new_lines: Vec<&str> = new.lines().collect();
+
+    // Compute LCS-based diff to identify context lines
+    let mut diff = Vec::new();
+    let mut oi = 0usize;
+    let mut ni = 0usize;
+
+    while oi < old_lines.len() || ni < new_lines.len() {
+        if oi < old_lines.len() && ni < new_lines.len() && old_lines[oi] == new_lines[ni] {
+            // Context line (unchanged)
+            diff.push(DiffLine::Context(old_lines[oi]));
+            oi += 1;
+            ni += 1;
+        } else {
+            // Emit remaining old lines as removed
+            // Find the next matching point
+            let next_match = find_next_match(&old_lines, &new_lines, oi, ni);
+            match next_match {
+                Some((om, nm)) => {
+                    // Remove old[oi..om]
+                    for line in old_lines.iter().take(om).skip(oi) {
+                        diff.push(DiffLine::Removed(line));
+                    }
+                    // Add new[ni..nm]
+                    for line in new_lines.iter().take(nm).skip(ni) {
+                        diff.push(DiffLine::Added(line));
+                    }
+                    oi = om;
+                    ni = nm;
+                }
+                None => {
+                    // No more matches, emit remaining as removed/added
+                    while oi < old_lines.len() {
+                        diff.push(DiffLine::Removed(old_lines[oi]));
+                        oi += 1;
+                    }
+                    while ni < new_lines.len() {
+                        diff.push(DiffLine::Added(new_lines[ni]));
+                        ni += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    diff
+}
+
+/// Diff line kind.
+enum DiffLine<'a> {
+    Context(&'a str),
+    Removed(&'a str),
+    Added(&'a str),
+}
+
+/// Find the next pair of matching lines starting from (oi, ni).
+fn find_next_match<'a>(old: &[&'a str], new: &[&'a str], oi: usize, ni: usize) -> Option<(usize, usize)> {
+    // Look ahead up to 20 lines in both directions
+    let lookahead = 20;
+    for delta_o in 0..=lookahead.min(old.len() - oi) {
+        for delta_n in 0..=lookahead.min(new.len() - ni) {
+            if delta_o == 0 && delta_n == 0 {
+                continue;
+            }
+            let co = oi + delta_o;
+            let cn = ni + delta_n;
+            if co < old.len() && cn < new.len() && old[co] == new[cn] {
+                return Some((co, cn));
+            }
+        }
+    }
+    None
+}
+
 fn format_edit_diff(args_json: &str) -> String {
     let args: serde_json::Value = serde_json::from_str(args_json).unwrap_or_default();
     let _path = args.get("path").and_then(|v| v.as_str()).unwrap_or("?");
     let old = args.get("oldString").and_then(|v| v.as_str()).unwrap_or("");
     let new = args.get("newString").and_then(|v| v.as_str()).unwrap_or("");
 
+    let diff = compute_light_diff(old, new);
     let mut output = String::new();
 
-    // Show context lines from old string
-    let old_lines: Vec<&str> = old.lines().collect();
-    let new_lines: Vec<&str> = new.lines().collect();
-
-    // Show up to 3 context lines before change
-    for line in old_lines.iter().take(1) {
-        output.push_str(&format_context_line(line));
-        output.push('\n');
-    }
-
-    // Show removed lines
-    for line in old_lines.iter() {
-        output.push_str(&format_removed_line(line));
-        output.push('\n');
-    }
-
-    // Show added lines
-    for line in new_lines.iter() {
-        output.push_str(&format_added_line(line));
+    for line in &diff {
+        match line {
+            DiffLine::Context(s) => {
+                output.push(' ');
+                output.push_str(s);
+            }
+            DiffLine::Removed(s) => {
+                output.push_str(&format_removed_line(s));
+            }
+            DiffLine::Added(s) => {
+                output.push_str(&format_added_line(s));
+            }
+        }
         output.push('\n');
     }
 
@@ -296,27 +371,36 @@ fn format_multiedit_diff(args_json: &str) -> String {
         None => return String::new(),
     };
 
-    let _header = format!("{} ({} edits)", _path, edits.len());
     let mut output = String::new();
+    let mut first = true;
 
-    for edit in edits.iter().take(5) {
+    for edit in edits {
+        if first {
+            first = false;
+        } else {
+            // Blank line separator between edits
+            output.push('\n');
+        }
+
         let old = edit.get("oldString").and_then(|v| v.as_str()).unwrap_or("");
         let new = edit.get("newString").and_then(|v| v.as_str()).unwrap_or("");
 
-        // Show removed → added
-        let old_truncated = truncate_to_width(old, 60);
-        let new_truncated = truncate_to_width(new, 60);
-        output.push_str("       ");
-        output.push_str(&format_removed_inline(&old_truncated));
-        output.push_str(" → ");
-        output.push_str(&format_added_inline(&new_truncated));
-        output.push('\n');
-    }
-
-    if edits.len() > 5 {
-        let remaining = edits.len() - 5;
-        output.push_str(&format_collapse_line(&format!("{} more edits", remaining)));
-        output.push('\n');
+        let diff = compute_light_diff(old, new);
+        for line in &diff {
+            match line {
+                DiffLine::Context(s) => {
+                    output.push(' ');
+                    output.push_str(s);
+                }
+                DiffLine::Removed(s) => {
+                    output.push_str(&format_removed_line(s));
+                }
+                DiffLine::Added(s) => {
+                    output.push_str(&format_added_line(s));
+                }
+            }
+            output.push('\n');
+        }
     }
 
     output
@@ -349,37 +433,17 @@ fn format_collapse_line(msg: &str) -> String {
     }
 }
 
-fn format_context_line(content: &str) -> String {
-    format!("       {}", content)
-}
-
 fn format_removed_line(content: &str) -> String {
     if color_enabled() {
-        format!("\x1b[31m-      {}\x1b[0m", content)
-    } else {
-        format!("-      {}", content)
-    }
-}
-
-fn format_added_line(content: &str) -> String {
-    if color_enabled() {
-        format!("\x1b[32m+      {}\x1b[0m", content)
-    } else {
-        format!("+      {}", content)
-    }
-}
-
-fn format_removed_inline(content: &str) -> String {
-    if color_enabled() {
-        format!("\x1b[31m{}\x1b[0m", content)
+        format!("\x1b[31m-{}\x1b[0m", content)
     } else {
         format!("-{}", content)
     }
 }
 
-fn format_added_inline(content: &str) -> String {
+fn format_added_line(content: &str) -> String {
     if color_enabled() {
-        format!("\x1b[32m{}\x1b[0m", content)
+        format!("\x1b[32m+{}\x1b[0m", content)
     } else {
         format!("+{}", content)
     }
@@ -499,16 +563,20 @@ mod tests {
     fn diff_edit_basic() {
         let args = r#"{"path":"panel_format.rs","oldString":"fn main()","newString":"fn hello()"}"#;
         let output = format_diff("edit", args, "", false).unwrap();
-        assert!(output.contains("fn main()"));
-        assert!(output.contains("fn hello()"));
+        assert!(output.contains("-fn main()"));
+        assert!(output.contains("+fn hello()"));
     }
 
     #[test]
     fn diff_multiedit_basic() {
         let args = r#"{"path":"panel_format.rs","edits":[{"oldString":"a","newString":"b"},{"oldString":"c","newString":"d"}]}"#;
         let output = format_diff("multiedit", args, "", false).unwrap();
-        assert!(output.contains("a"));
-        assert!(output.contains("b"));
+        assert!(output.contains("-a"));
+        assert!(output.contains("+b"));
+        assert!(output.contains("-c"));
+        assert!(output.contains("+d"));
+        // Should have blank line separator between edits
+        assert!(output.contains("\n\n"));
     }
 
     #[test]
@@ -532,4 +600,30 @@ mod tests {
         let result = truncate_to_width("abcdefghij", 5);
         assert_eq!(result, "abcde…");
     }
+
+    // ── Light diff tests ──
+
+    #[test]
+    fn diff_edit_with_context_lines() {
+        // Old has context + changed line; new has context + new line
+        let args = r#"{"path":"test.rs","oldString":"fn foo() {\n    let x = 1;\n}\nfn bar() {","newString":"fn foo() {\n    let x = 2;\n}\nfn bar() {"}"#;
+        let output = format_diff("edit", args, "", false).unwrap();
+        // Context line "fn foo() {" should appear with space prefix
+        assert!(output.contains(" fn foo()"));
+        assert!(output.contains("-    let x = 1;"));
+        assert!(output.contains("+    let x = 2;"));
+        // Context line "fn bar()" should also appear
+        assert!(output.contains(" fn bar()"));
+    }
+
+    #[test]
+    fn diff_edit_replaced_multiline() {
+        let args = r#"{"path":"test.rs","oldString":"line1\nline2\nline3","newString":"line1\nline2_new\nline3"}"#;
+        let output = format_diff("edit", args, "", false).unwrap();
+        assert!(output.contains(" line1"));
+        assert!(output.contains("-line2"));
+        assert!(output.contains("+line2_new"));
+        assert!(output.contains(" line3"));
+    }
 }
+

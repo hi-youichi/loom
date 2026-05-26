@@ -261,6 +261,14 @@ pub fn on_event_react(
                         sp.finish_box();
                     }
                     log_tools_used(&state.tool_calls);
+                    // Show DIFF immediately for edit/multiedit (doesn't need result)
+                    for tc in &state.tool_calls {
+                        if let Some(diff) = crate::stream_display::tool_preview::format_diff(
+                            &tc.name, &tc.arguments, "", s.compact,
+                        ) {
+                            eprintln!("{}", diff);
+                        }
+                    }
                     if let Some(tc) = state.tool_calls.first() {
                         s.spinner = Some(s.create_spinner(format!("执行工具: {}", tc.name)));
                     }
@@ -284,6 +292,7 @@ pub fn on_event_react(
                 for tc in s.pending_tool_calls.drain(..) {
                     let result_text = find_tool_result(tool_results, &tc.name, &tc.id);
                     let is_error = find_tool_result_error(tool_results, &tc.name, &tc.id);
+                    let is_edit_like = tc.name == "edit" || tc.name == "multiedit";
 
                     if is_error {
                         let err_msg = match &result_text {
@@ -293,29 +302,37 @@ pub fn on_event_react(
                         eprintln!("{}", panel_format::format_panel_line("ERROR", &format!("{}: {}", tc.name, crate::stream_display::tool_summary::truncate(err_msg, 80))));
                     }
 
-                    if let Some(ref result) = result_text {
-                        if let Some(preview) = crate::stream_display::tool_preview::format_preview(
-                            &tc.name, &tc.arguments, result, compact,
-                        ) {
-                            eprintln!("{}", preview);
-                        } else if !is_error && !result.trim().is_empty() && !compact {
-                            eprintln!("{}", crate::stream_display::tool_preview::format_result_preview(
-                                &tc.name, result, elapsed,
-                            ));
+                    // PREVIEW and result fallback: skip for edit/multiedit (diff already shown)
+                    if !is_edit_like {
+                        if let Some(ref result) = result_text {
+                            if let Some(preview) = crate::stream_display::tool_preview::format_preview(
+                                &tc.name, &tc.arguments, result, compact,
+                            ) {
+                                eprintln!("{}", preview);
+                            } else if !is_error && !result.trim().is_empty() && !compact {
+                                eprintln!("{}", crate::stream_display::tool_preview::format_result_preview(
+                                    &tc.name, result, elapsed,
+                                ));
+                            }
                         }
                     }
 
-                    if let Some(ref result) = result_text {
-                        if let Some(diff) = crate::stream_display::tool_preview::format_diff(
-                            &tc.name, &tc.arguments, result, compact,
-                        ) {
-                            eprintln!("{}", diff);
+                    // DIFF for edit/multiedit already shown during think; skip here
+                    if !is_edit_like {
+                        if let Some(ref result) = result_text {
+                            if let Some(diff) = crate::stream_display::tool_preview::format_diff(
+                                &tc.name, &tc.arguments, result, compact,
+                            ) {
+                                eprintln!("{}", diff);
+                            }
                         }
                     }
 
-                    // Print DONE line for each completed tool
-                    let result_summary = result_text.as_deref().unwrap_or("");
-                    eprintln!("{}", panel_format::format_tool_done(&tc.name, result_summary, elapsed));
+                    // Print DONE line for non-edit tools
+                    if !is_edit_like {
+                        let result_summary = result_text.as_deref().unwrap_or("");
+                        eprintln!("{}", panel_format::format_tool_done(&tc.name, result_summary, elapsed));
+                    }
                 }
                 s.pending_tool_start = None;
                 s.pending_tool_results.clear();

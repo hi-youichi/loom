@@ -89,18 +89,26 @@ pub fn format_call_summary(tool_name: &str, args_json: &str) -> String {
             let path = json_str(&args, "path").unwrap_or("?");
             let old = json_str(&args, "oldString").unwrap_or("");
             let new = json_str(&args, "newString").unwrap_or("");
-            format!(
-                "{}: {} → {}",
-                path,
-                truncate(old, 30),
-                truncate(new, 30)
-            )
+            let old_lines = old.lines().count().max(1);
+            let new_lines = new.lines().count().max(1);
+            format!("{} (+{}/-{})", path, new_lines, old_lines)
         }
 
         "multiedit" => {
             let path = json_str(&args, "path").unwrap_or("?");
-            let edits = args.get("edits").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(1);
-            format!("{}: {} edits", path, edits)
+            let edits_arr = args.get("edits").and_then(|v| v.as_array());
+            let edit_count = edits_arr.map(|a| a.len()).unwrap_or(1);
+            let mut total_old = 0usize;
+            let mut total_new = 0usize;
+            if let Some(edits) = edits_arr {
+                for e in edits {
+                    let old = e.get("oldString").and_then(|v| v.as_str()).unwrap_or("");
+                    let new = e.get("newString").and_then(|v| v.as_str()).unwrap_or("");
+                    total_old += old.lines().count().max(1);
+                    total_new += new.lines().count().max(1);
+                }
+            }
+            format!("{} (+{}/-{}, {} edits)", path, total_new, total_old, edit_count)
         }
 
         "write_file" => {
@@ -508,8 +516,7 @@ mod tests {
     fn call_edit() {
         let result = format_call_summary("edit", r#"{"path":"panel_format.rs","oldString":"fn main()","newString":"fn hello()"}"#);
         assert!(result.contains("panel_format.rs"));
-        assert!(result.contains("fn main()"));
-        assert!(result.contains("fn hello()"));
+        assert!(result.contains("+1/-1"));
     }
 
     #[test]
@@ -593,9 +600,10 @@ mod tests {
 
     #[test]
     fn call_multiedit() {
-        let result = format_call_summary("multiedit", r#"{"path":"panel_format.rs","edits":[{"old":"a","new":"b"},{"old":"c","new":"d"},{"old":"e","new":"f"}]}"#);
+        let result = format_call_summary("multiedit", r#"{"path":"panel_format.rs","edits":[{"oldString":"a","newString":"b"},{"oldString":"c","newString":"d"},{"oldString":"e","newString":"f"}]}"#);
         assert!(result.contains("panel_format.rs"));
         assert!(result.contains("3 edits"));
+        assert!(result.contains("+3/-3"));
     }
 
     #[test]
