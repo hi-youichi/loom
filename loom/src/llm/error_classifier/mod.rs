@@ -11,7 +11,7 @@
 //! # Usage
 //!
 //! ```rust
-//! use loom::llm::error_classifier::{ProviderType, LlmErrorClassifierConfig};
+//! use loom::llm::{ProviderType, LlmErrorClassifierConfig};
 //!
 //! let config = ProviderType::BigModel.default_config();
 //! let decision = config.classify_http_error(400, "messages 参数非法 (code: 1214)");

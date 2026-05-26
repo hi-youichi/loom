@@ -95,3 +95,173 @@ fn deserialize_status<'de, D: Deserializer<'de>>(d: D) -> Result<TaskStatus, D::
     TaskStatus::parse_status(&s)
         .ok_or_else(|| serde::de::Error::custom(format!("invalid status: {}", s)))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── TaskStatus::as_str ──
+
+    #[test]
+    fn task_status_as_str() {
+        assert_eq!(TaskStatus::Pending.as_str(), "pending");
+        assert_eq!(TaskStatus::InProgress.as_str(), "in_progress");
+        assert_eq!(TaskStatus::Completed.as_str(), "completed");
+        assert_eq!(TaskStatus::Cancelled.as_str(), "cancelled");
+    }
+
+    // ── TaskStatus::parse_status ──
+
+    #[test]
+    fn parse_status_valid() {
+        assert_eq!(TaskStatus::parse_status("pending"), Some(TaskStatus::Pending));
+        assert_eq!(TaskStatus::parse_status("in_progress"), Some(TaskStatus::InProgress));
+        assert_eq!(TaskStatus::parse_status("completed"), Some(TaskStatus::Completed));
+        assert_eq!(TaskStatus::parse_status("cancelled"), Some(TaskStatus::Cancelled));
+    }
+
+    #[test]
+    fn parse_status_invalid() {
+        assert_eq!(TaskStatus::parse_status("unknown"), None);
+        assert_eq!(TaskStatus::parse_status(""), None);
+        assert_eq!(TaskStatus::parse_status("PENDING"), None);
+    }
+
+    // ── TaskStatus::all_values ──
+
+    #[test]
+    fn all_values_contains_all() {
+        let vals = TaskStatus::all_values();
+        assert_eq!(vals, &["pending", "in_progress", "completed", "cancelled"]);
+    }
+
+    // ── TaskStatus::Display ──
+
+    #[test]
+    fn display() {
+        assert_eq!(format!("{}", TaskStatus::Pending), "pending");
+        assert_eq!(format!("{}", TaskStatus::InProgress), "in_progress");
+    }
+
+    // ── TaskStatus equality ──
+
+    #[test]
+    fn equality() {
+        assert_eq!(TaskStatus::Pending, TaskStatus::Pending);
+        assert_ne!(TaskStatus::Pending, TaskStatus::Completed);
+    }
+
+    // ── Serialization ──
+
+    #[test]
+    fn serialize_status_via_task() {
+        // TaskStatus doesn't derive Serialize directly; test via Task serialization
+        let task = Task {
+            id: "1".into(),
+            name: "n".into(),
+            description: String::new(),
+            assignee: String::new(),
+            start_time: String::new(),
+            created_at: String::new(),
+            status: TaskStatus::InProgress,
+            metadata: String::new(),
+        };
+        let json = serde_json::to_string(&task).unwrap();
+        assert!(json.contains("\"status\":\"in_progress\""));
+    }
+
+    #[test]
+    fn deserialize_status_via_task() {
+        let json = r#"{"id":"1","name":"n","description":"d","assignee":"a","start_time":"s","created_at":"c","status":"completed","metadata":""}"#;
+        let task: Task = serde_json::from_str(json).unwrap();
+        assert_eq!(task.status, TaskStatus::Completed);
+    }
+
+    #[test]
+    fn deserialize_status_invalid_via_task() {
+        let json = r#"{"id":"1","name":"n","description":"d","assignee":"a","start_time":"s","created_at":"c","status":"bogus","metadata":""}"#;
+        let result = serde_json::from_str::<Task>(json);
+        assert!(result.is_err());
+    }
+
+    // ── Task struct serialization ──
+
+    #[test]
+    fn task_serialization_roundtrip() {
+        let task = Task {
+            id: "t-1".to_string(),
+            name: "test task".to_string(),
+            description: "desc".to_string(),
+            assignee: "alice".to_string(),
+            start_time: "2025-01-01T00:00:00Z".to_string(),
+            created_at: "2025-01-01T00:00:00Z".to_string(),
+            status: TaskStatus::InProgress,
+            metadata: "{\"key\":123}".to_string(),
+        };
+        let json = serde_json::to_string(&task).unwrap();
+        let parsed: Task = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.id, "t-1");
+        assert_eq!(parsed.name, "test task");
+        assert_eq!(parsed.status, TaskStatus::InProgress);
+        assert_eq!(parsed.metadata, "{\"key\":123}");
+    }
+
+    #[test]
+    fn task_default_metadata() {
+        let json = r#"{"id":"1","name":"n","description":"d","assignee":"a","start_time":"s","created_at":"c","status":"pending"}"#;
+        let task: Task = serde_json::from_str(json).unwrap();
+        assert_eq!(task.metadata, "");
+    }
+
+    // ── Task::metadata_value ──
+
+    #[test]
+    fn metadata_value_valid_json() {
+        let task = Task {
+            id: "1".into(),
+            name: "n".into(),
+            description: String::new(),
+            assignee: String::new(),
+            start_time: String::new(),
+            created_at: String::new(),
+            status: TaskStatus::Pending,
+            metadata: r#"{"x":42}"#.to_string(),
+        };
+        let val = task.metadata_value();
+        assert_eq!(val["x"], 42);
+    }
+
+    #[test]
+    fn metadata_value_invalid_json_returns_empty_object() {
+        let task = Task {
+            id: "1".into(),
+            name: "n".into(),
+            description: String::new(),
+            assignee: String::new(),
+            start_time: String::new(),
+            created_at: String::new(),
+            status: TaskStatus::Pending,
+            metadata: "not json".to_string(),
+        };
+        let val = task.metadata_value();
+        assert_eq!(val, serde_json::json!({}));
+    }
+
+    // ── Task::set_metadata_value ──
+
+    #[test]
+    fn set_metadata_value() {
+        let mut task = Task {
+            id: "1".into(),
+            name: "n".into(),
+            description: String::new(),
+            assignee: String::new(),
+            start_time: String::new(),
+            created_at: String::new(),
+            status: TaskStatus::Pending,
+            metadata: "{}".to_string(),
+        };
+        task.set_metadata_value(&serde_json::json!({"updated": true}));
+        assert_eq!(task.metadata, "{\"updated\":true}");
+    }
+}

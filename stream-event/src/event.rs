@@ -379,4 +379,205 @@ mod tests {
         assert_eq!(v["name"], "delete_file");
         assert_eq!(v["arguments"]["path"], "./important.txt");
     }
+
+    // ── Previously untested variants ──
+
+    #[test]
+    fn node_enter_serializes() {
+        let event = ProtocolEvent::NodeEnter {
+            id: "think".to_string(),
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "node_enter");
+        assert_eq!(v["id"], "think");
+    }
+
+    #[test]
+    fn node_exit_ok() {
+        let event = ProtocolEvent::NodeExit {
+            id: "act".to_string(),
+            result: json!("Ok"),
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "node_exit");
+        assert_eq!(v["id"], "act");
+        assert_eq!(v["result"], "Ok");
+    }
+
+    #[test]
+    fn node_exit_err() {
+        let event = ProtocolEvent::NodeExit {
+            id: "think".to_string(),
+            result: json!({"Err": "timeout"}),
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["result"]["Err"], "timeout");
+    }
+
+    #[test]
+    fn usage_serializes() {
+        let event = ProtocolEvent::Usage {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "usage");
+        assert_eq!(v["prompt_tokens"], 100);
+        assert_eq!(v["completion_tokens"], 50);
+        assert_eq!(v["total_tokens"], 150);
+    }
+
+    #[test]
+    fn values_serializes() {
+        let event = ProtocolEvent::Values {
+            state: json!({"step": 3, "done": false}),
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "values");
+        assert_eq!(v["state"]["step"], 3);
+    }
+
+    #[test]
+    fn custom_serializes() {
+        let event = ProtocolEvent::Custom {
+            value: json!({"debug": true}),
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "custom");
+        assert_eq!(v["value"]["debug"], true);
+    }
+
+    #[test]
+    fn checkpoint_serializes() {
+        let event = ProtocolEvent::Checkpoint {
+            checkpoint_id: "cp-1".to_string(),
+            timestamp: "2025-01-01T00:00:00Z".to_string(),
+            step: 5,
+            state: json!({"x": 1}),
+            thread_id: Some("t-1".to_string()),
+            checkpoint_ns: None,
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "checkpoint");
+        assert_eq!(v["checkpoint_id"], "cp-1");
+        assert_eq!(v["step"], 5);
+        assert_eq!(v["thread_id"], "t-1");
+        assert!(v["checkpoint_ns"].is_null());
+    }
+
+    #[test]
+    fn tot_expand_serializes() {
+        let event = ProtocolEvent::TotExpand {
+            candidates: vec!["a".to_string(), "b".to_string(), "c".to_string()],
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "tot_expand");
+        assert_eq!(v["candidates"].as_array().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn tot_evaluate_serializes() {
+        let event = ProtocolEvent::TotEvaluate {
+            chosen: 1,
+            scores: vec![0.5, 0.9, 0.3],
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "tot_evaluate");
+        assert_eq!(v["chosen"], 1);
+    }
+
+    #[test]
+    fn tot_backtrack_serializes() {
+        let event = ProtocolEvent::TotBacktrack {
+            reason: "dead end".to_string(),
+            to_depth: 2,
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "tot_backtrack");
+        assert_eq!(v["to_depth"], 2);
+    }
+
+    #[test]
+    fn got_plan_serializes() {
+        let event = ProtocolEvent::GotPlan {
+            node_count: 3,
+            edge_count: 2,
+            node_ids: vec!["n1".to_string(), "n2".to_string(), "n3".to_string()],
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "got_plan");
+        assert_eq!(v["node_count"], 3);
+        assert_eq!(v["edge_count"], 2);
+    }
+
+    #[test]
+    fn got_node_start_serializes() {
+        let event = ProtocolEvent::GotNodeStart {
+            id: "n-1".to_string(),
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "got_node_start");
+        assert_eq!(v["id"], "n-1");
+    }
+
+    #[test]
+    fn got_node_complete_serializes() {
+        let event = ProtocolEvent::GotNodeComplete {
+            id: "n-1".to_string(),
+            result_summary: "done".to_string(),
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "got_node_complete");
+        assert_eq!(v["result_summary"], "done");
+    }
+
+    #[test]
+    fn got_node_failed_serializes() {
+        let event = ProtocolEvent::GotNodeFailed {
+            id: "n-2".to_string(),
+            error: "crashed".to_string(),
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["type"], "got_node_failed");
+        assert_eq!(v["error"], "crashed");
+    }
+
+    #[test]
+    fn tool_end_with_raw_result() {
+        let event = ProtocolEvent::ToolEnd {
+            call_id: Some("c-1".to_string()),
+            name: "read".to_string(),
+            result: "file contents...".to_string(),
+            is_error: false,
+            raw_result: Some("full file contents here".to_string()),
+        };
+        let v = event.to_value().unwrap();
+        assert_eq!(v["raw_result"], "full file contents here");
+    }
+
+    #[test]
+    fn tool_end_without_raw_result_skips_field() {
+        let event = ProtocolEvent::ToolEnd {
+            call_id: Some("c-1".to_string()),
+            name: "read".to_string(),
+            result: "ok".to_string(),
+            is_error: false,
+            raw_result: None,
+        };
+        let v = event.to_value().unwrap();
+        assert!(v.get("raw_result").is_none());
+    }
+
+    #[test]
+    fn protocol_event_roundtrip_serde() {
+        let event = ProtocolEvent::MessageChunk {
+            content: "test".to_string(),
+            id: "node".to_string(),
+        };
+        let json_str = serde_json::to_string(&event).unwrap();
+        let parsed: ProtocolEvent = serde_json::from_str(&json_str).unwrap();
+        let v = parsed.to_value().unwrap();
+        assert_eq!(v["content"], "test");
+    }
 }

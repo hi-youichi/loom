@@ -550,4 +550,324 @@ mod tests {
         let task = db.show_task("old-id").await.unwrap();
         assert_eq!(task.name, "old-task");
     }
+
+    // ── Additional edge-case tests ──
+
+    #[test]
+    fn test_show_error_display_not_found() {
+        let err = ShowError::NotFound("abc".to_string());
+        assert_eq!(format!("{}", err), "task not found: abc");
+    }
+
+    #[test]
+    fn test_show_error_display_db_error() {
+        let err = ShowError::DbError("connection failed".to_string());
+        assert_eq!(format!("{}", err), "database error: connection failed");
+    }
+
+    #[test]
+    fn test_show_error_display_ambiguous() {
+        let err = ShowError::Ambiguous {
+            prefix: "ab".to_string(),
+            matches: vec![
+                ("abcdef01-1234".to_string(), "Task A".to_string()),
+                ("abcd5678-9012".to_string(), "Task B".to_string()),
+            ],
+        };
+        let s = format!("{}", err);
+        assert!(s.contains("ambiguous id 'ab'"));
+        assert!(s.contains("matched 2 tasks"));
+        assert!(s.contains("Task A"));
+        assert!(s.contains("Task B"));
+    }
+
+    #[test]
+    fn test_parse_time_input_rfc3339() {
+        let result = parse_time_input("2025-08-20T10:00:00Z").unwrap();
+        assert!(result.starts_with("2025-08-20"));
+    }
+
+    #[test]
+    fn test_parse_time_input_date_only() {
+        let result = parse_time_input("2025-08-20").unwrap();
+        assert!(result.starts_with("2025-08-20"));
+    }
+
+    #[test]
+    fn test_parse_time_input_datetime_space() {
+        let result = parse_time_input("2025-08-20 10:30:00").unwrap();
+        assert!(result.starts_with("2025-08-20"));
+    }
+
+    #[test]
+    fn test_parse_time_input_datetime_t_separator() {
+        let result = parse_time_input("2025-08-20T10:30:00").unwrap();
+        assert!(result.starts_with("2025-08-20"));
+    }
+
+    #[test]
+    fn test_parse_time_input_hm_space() {
+        let result = parse_time_input("2025-08-20 10:30").unwrap();
+        assert!(result.starts_with("2025-08-20"));
+    }
+
+    #[test]
+    fn test_parse_time_input_hm_t() {
+        let result = parse_time_input("2025-08-20T10:30").unwrap();
+        assert!(result.starts_with("2025-08-20"));
+    }
+
+    #[test]
+    fn test_parse_time_input_invalid() {
+        let err = parse_time_input("not-a-date").unwrap_err();
+        assert!(err.contains("invalid time format"));
+        assert!(err.contains("not-a-date"));
+    }
+
+    #[tokio::test]
+    async fn test_show_task_not_found() {
+        let db = test_db().await;
+        let result = db.show_task("nonexistent").await;
+        assert!(matches!(result, Err(ShowError::NotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn test_show_task_ambiguous_prefix() {
+        let db = test_db().await;
+        // Create two tasks with known IDs
+        let t1 = db.create_task(&CreateParams {
+            name: "Task 1".into(),
+            description: String::new(),
+            assignee: String::new(),
+            start_time: None,
+            status: TaskStatus::Pending,
+        }).await.unwrap();
+        let t2 = db.create_task(&CreateParams {
+            name: "Task 2".into(),
+            description: String::new(),
+            assignee: String::new(),
+            start_time: None,
+            status: TaskStatus::Pending,
+        }).await.unwrap();
+
+        // Use empty prefix which matches both
+        let result = db.show_task("").await;
+        assert!(matches!(result, Err(ShowError::Ambiguous { .. })));
+    }
+
+    #[tokio::test]
+    async fn test_list_tasks_with_status_filter() {
+        let db = test_db().await;
+        db.create_task(&CreateParams {
+            name: "pending-task".into(),
+            description: String::new(),
+            assignee: String::new(),
+            start_time: None,
+            status: TaskStatus::Pending,
+        }).await.unwrap();
+        db.create_task(&CreateParams {
+            name: "done-task".into(),
+            description: String::new(),
+            assignee: String::new(),
+            start_time: None,
+            status: TaskStatus::Completed,
+        }).await.unwrap();
+
+        let list = db.list_tasks(&ListParams {
+            status: Some(TaskStatus::Completed),
+            ..Default::default()
+        }).await.unwrap();
+        assert_eq!(list.total, 1);
+        assert_eq!(list.tasks[0].name, "done-task");
+    }
+
+    #[tokio::test]
+    async fn test_list_tasks_with_assignee_filter() {
+        let db = test_db().await;
+        db.create_task(&CreateParams {
+            name: "alice-task".into(),
+            description: String::new(),
+            assignee: "alice".into(),
+            start_time: None,
+            status: TaskStatus::Pending,
+        }).await.unwrap();
+        db.create_task(&CreateParams {
+            name: "bob-task".into(),
+            description: String::new(),
+            assignee: "bob".into(),
+            start_time: None,
+            status: TaskStatus::Pending,
+        }).await.unwrap();
+
+        let list = db.list_tasks(&ListParams {
+            assignee: Some("alice".into()),
+            ..Default::default()
+        }).await.unwrap();
+        assert_eq!(list.total, 1);
+        assert_eq!(list.tasks[0].name, "alice-task");
+    }
+
+    #[tokio::test]
+    async fn test_list_tasks_with_name_filter() {
+        let db = test_db().await;
+        db.create_task(&CreateParams {
+            name: "alpha-task".into(),
+            description: String::new(),
+            assignee: String::new(),
+            start_time: None,
+            status: TaskStatus::Pending,
+        }).await.unwrap();
+        db.create_task(&CreateParams {
+            name: "beta-task".into(),
+            description: String::new(),
+            assignee: String::new(),
+            start_time: None,
+            status: TaskStatus::Pending,
+        }).await.unwrap();
+
+        let list = db.list_tasks(&ListParams {
+            name: Some("alpha".into()),
+            ..Default::default()
+        }).await.unwrap();
+        assert_eq!(list.total, 1);
+        assert_eq!(list.tasks[0].name, "alpha-task");
+    }
+
+    #[tokio::test]
+    async fn test_list_tasks_pagination() {
+        let db = test_db().await;
+        for i in 0..5 {
+            db.create_task(&CreateParams {
+                name: format!("task-{}", i),
+                description: String::new(),
+                assignee: String::new(),
+                start_time: None,
+                status: TaskStatus::Pending,
+            }).await.unwrap();
+        }
+
+        // Page 1, limit 2
+        let page1 = db.list_tasks(&ListParams {
+            limit: 2,
+            page: 1,
+            ..Default::default()
+        }).await.unwrap();
+        assert_eq!(page1.tasks.len(), 2);
+        assert_eq!(page1.total, 5);
+        assert!(page1.has_more);
+
+        // Page 3, limit 2
+        let page3 = db.list_tasks(&ListParams {
+            limit: 2,
+            page: 3,
+            ..Default::default()
+        }).await.unwrap();
+        assert_eq!(page3.tasks.len(), 1);
+        assert!(!page3.has_more);
+    }
+
+    #[tokio::test]
+    async fn test_list_tasks_sort_by_name_asc() {
+        let db = test_db().await;
+        db.create_task(&CreateParams {
+            name: "charlie".into(),
+            description: String::new(),
+            assignee: String::new(),
+            start_time: None,
+            status: TaskStatus::Pending,
+        }).await.unwrap();
+        db.create_task(&CreateParams {
+            name: "alpha".into(),
+            description: String::new(),
+            assignee: String::new(),
+            start_time: None,
+            status: TaskStatus::Pending,
+        }).await.unwrap();
+
+        let list = db.list_tasks(&ListParams {
+            sort_by: "name".into(),
+            sort_order: "asc".into(),
+            ..Default::default()
+        }).await.unwrap();
+        assert_eq!(list.tasks[0].name, "alpha");
+        assert_eq!(list.tasks[1].name, "charlie");
+    }
+
+    #[tokio::test]
+    async fn test_update_task_no_changes_returns_existing() {
+        let db = test_db().await;
+        let task = db.create_task(&CreateParams {
+            name: "unchanged".into(),
+            description: "original".into(),
+            assignee: String::new(),
+            start_time: None,
+            status: TaskStatus::Pending,
+        }).await.unwrap();
+
+        let updated = db.update_task(&UpdateParams {
+            id: task.id.clone(),
+            name: None,
+            description: None,
+            assignee: None,
+            start_time: None,
+            status: None,
+        }).await.unwrap();
+
+        assert_eq!(updated.name, "unchanged");
+        assert_eq!(updated.description, "original");
+    }
+
+    #[tokio::test]
+    async fn test_delete_nonexistent_task() {
+        let db = test_db().await;
+        let result = db.delete_task("nonexistent-id").await;
+        assert!(matches!(result, Err(ShowError::NotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn test_get_meta_nonexistent_key() {
+        let db = test_db().await;
+        let task = db.create_task(&CreateParams {
+            name: "meta".into(),
+            description: String::new(),
+            assignee: String::new(),
+            start_time: None,
+            status: TaskStatus::Pending,
+        }).await.unwrap();
+
+        let result = db.get_meta(&task.id, "nonexistent").await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_db_path() {
+        let db = test_db().await;
+        assert!(db.path().exists());
+    }
+
+    #[tokio::test]
+    async fn test_create_task_with_start_time() {
+        let db = test_db().await;
+        let task = db.create_task(&CreateParams {
+            name: "scheduled".into(),
+            description: String::new(),
+            assignee: String::new(),
+            start_time: Some("2025-08-20T10:00:00Z".to_string()),
+            status: TaskStatus::Pending,
+        }).await.unwrap();
+        assert!(task.start_time.contains("2025-08-20"));
+    }
+
+    #[tokio::test]
+    async fn test_create_task_with_invalid_start_time() {
+        let db = test_db().await;
+        let result = db.create_task(&CreateParams {
+            name: "bad-time".into(),
+            description: String::new(),
+            assignee: String::new(),
+            start_time: Some("not-a-valid-time".to_string()),
+            status: TaskStatus::Pending,
+        }).await;
+        assert!(result.is_err());
+    }
 }

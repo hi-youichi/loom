@@ -29,3 +29,41 @@ pub struct EvolutionOutcome {
     pub baseline_score: f64,
     pub best_score: f64,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn evolution_trigger_config_default() {
+        let config = EvolutionTriggerConfig::default();
+        assert_eq!(config.dataset_path, std::path::PathBuf::from(".loom/evolution/datasets"));
+        assert_eq!(config.min_examples, 5);
+        assert_eq!(config.max_iterations, 3);
+    }
+
+    #[test]
+    fn evolution_trigger_config_serialization() {
+        let config = EvolutionTriggerConfig::default();
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: EvolutionTriggerConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.min_examples, 5);
+        assert_eq!(parsed.max_iterations, 3);
+    }
+
+    #[test]
+    fn evolution_outcome_serialization() {
+        let outcome = EvolutionOutcome {
+            skill_name: "debug-spinner".to_string(),
+            improved: true,
+            baseline_score: 0.5,
+            best_score: 0.9,
+        };
+        let json = serde_json::to_string(&outcome).unwrap();
+        let parsed: EvolutionOutcome = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.skill_name, "debug-spinner");
+        assert!(parsed.improved);
+        assert!((parsed.baseline_score - 0.5).abs() < f64::EPSILON);
+        assert!((parsed.best_score - 0.9).abs() < f64::EPSILON);
+    }
+}

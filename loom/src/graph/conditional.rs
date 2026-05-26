@@ -72,3 +72,64 @@ pub enum NextEntry<S> {
     /// Next node is decided by the router from state; the node's `Next` is ignored.
     Conditional(ConditionalRouter<S>),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn resolve_without_path_map_uses_key_directly() {
+        let router: ConditionalRouter<String> = ConditionalRouter::new(
+            Arc::new(|s: &String| s.clone()),
+            None,
+        );
+        assert_eq!(router.resolve_next(&"think".to_string()), "think");
+        assert_eq!(router.resolve_next(&"act".to_string()), "act");
+    }
+
+    #[test]
+    fn resolve_with_path_map_translates_key() {
+        let mut map = HashMap::new();
+        map.insert("yes".to_string(), "act".to_string());
+        map.insert("no".to_string(), "think".to_string());
+        let router: ConditionalRouter<String> = ConditionalRouter::new(
+            Arc::new(|s: &String| s.clone()),
+            Some(map),
+        );
+        assert_eq!(router.resolve_next(&"yes".to_string()), "act");
+        assert_eq!(router.resolve_next(&"no".to_string()), "think");
+    }
+
+    #[test]
+    fn resolve_with_path_map_unknown_key_passes_through() {
+        let mut map = HashMap::new();
+        map.insert("yes".to_string(), "act".to_string());
+        let router: ConditionalRouter<String> = ConditionalRouter::new(
+            Arc::new(|s: &String| s.clone()),
+            Some(map),
+        );
+        // "maybe" is not in the map, so it's used directly
+        assert_eq!(router.resolve_next(&"maybe".to_string()), "maybe");
+    }
+
+    #[test]
+    fn resolve_with_empty_path_map_passes_through() {
+        let router: ConditionalRouter<String> = ConditionalRouter::new(
+            Arc::new(|s: &String| s.clone()),
+            Some(HashMap::new()),
+        );
+        assert_eq!(router.resolve_next(&"anything".to_string()), "anything");
+    }
+
+    #[test]
+    fn router_with_custom_routing_function() {
+        let router: ConditionalRouter<i32> = ConditionalRouter::new(
+            Arc::new(|n: &i32| if *n > 0 { "positive".to_string() } else { "negative".to_string() }),
+            None,
+        );
+        assert_eq!(router.resolve_next(&5), "positive");
+        assert_eq!(router.resolve_next(&-3), "negative");
+        assert_eq!(router.resolve_next(&0), "negative");
+    }
+}

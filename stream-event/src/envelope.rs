@@ -218,4 +218,159 @@ mod tests {
         assert_eq!(first_reply.event_id, Some(2));
         assert_eq!(second_reply.event_id, Some(2));
     }
+
+    // ── Additional envelope coverage ──
+
+    #[test]
+    fn envelope_default_is_empty() {
+        let env = Envelope::default();
+        assert!(env.session_id.is_none());
+        assert!(env.node_id.is_none());
+        assert!(env.event_id.is_none());
+    }
+
+    #[test]
+    fn envelope_new_is_default() {
+        let env = Envelope::new();
+        assert!(env.session_id.is_none());
+        assert!(env.node_id.is_none());
+        assert!(env.event_id.is_none());
+    }
+
+    #[test]
+    fn envelope_builder_pattern() {
+        let env = Envelope::new()
+            .with_session_id("s-1")
+            .with_node_id("n-1")
+            .with_event_id(42);
+        assert_eq!(env.session_id.as_deref(), Some("s-1"));
+        assert_eq!(env.node_id.as_deref(), Some("n-1"));
+        assert_eq!(env.event_id, Some(42));
+    }
+
+    #[test]
+    fn envelope_inject_does_not_overwrite_existing_keys() {
+        let mut obj = json!({"type":"node_enter","id":"think","session_id":"existing"});
+        let env = Envelope::new()
+            .with_session_id("new-session")
+            .with_node_id("n-1")
+            .with_event_id(1);
+        env.inject_into(&mut obj);
+        // session_id already present, should not be overwritten
+        assert_eq!(obj["session_id"], "existing");
+        assert_eq!(obj["node_id"], "n-1");
+        assert_eq!(obj["event_id"], 1);
+    }
+
+    #[test]
+    fn envelope_inject_into_non_object_is_noop() {
+        let mut val = json!("not an object");
+        let env = Envelope::new().with_session_id("s-1");
+        env.inject_into(&mut val);
+        // Still a string, not an object
+        assert!(val.is_string());
+    }
+
+    #[test]
+    fn envelope_inject_partial_fields() {
+        let mut obj = json!({"type":"node_enter","id":"think"});
+        let env = Envelope::new().with_session_id("s-1");
+        // No node_id, no event_id
+        env.inject_into(&mut obj);
+        assert_eq!(obj["session_id"], "s-1");
+        assert!(obj.get("node_id").is_none());
+        assert!(obj.get("event_id").is_none());
+    }
+
+    #[test]
+    fn envelope_state_active_node_id_default_is_run_0() {
+        let state = EnvelopeState::new("s-1".to_string());
+        let reply = state.reply_envelope();
+        assert_eq!(reply.node_id.as_deref(), Some("run-0"));
+    }
+
+    #[test]
+    fn envelope_state_event_ids_monotonically_increase() {
+        let mut state = EnvelopeState::new("s-1".to_string());
+        let mut ev1 = json!({"type":"usage"});
+        let mut ev2 = json!({"type":"usage"});
+        let mut ev3 = json!({"type":"usage"});
+        state.inject_into(&mut ev1);
+        state.inject_into(&mut ev2);
+        state.inject_into(&mut ev3);
+        assert_eq!(ev1["event_id"], 1);
+        assert_eq!(ev2["event_id"], 2);
+        assert_eq!(ev3["event_id"], 3);
+    }
+
+    #[test]
+    fn envelope_state_node_enter_updates_current_node() {
+        let mut state = EnvelopeState::new("s-1".to_string());
+
+        // First node enter
+        let mut enter_think = json!({"type":"node_enter","id":"think"});
+        state.inject_into(&mut enter_think);
+        assert_eq!(enter_think["node_id"], "run-think-0");
+        assert_eq!(enter_think["session_id"], "s-1");
+
+        // Message within that node
+        let mut msg = json!({"type":"message_chunk","id":"think","content":"hi"});
+        state.inject_into(&mut msg);
+        assert_eq!(msg["node_id"], "run-think-0");
+
+        // Second node enter
+        let mut enter_act = json!({"type":"node_enter","id":"act"});
+        state.inject_into(&mut enter_act);
+        assert_eq!(enter_act["node_id"], "run-act-1");
+
+        // Message within second node
+        let mut msg2 = json!({"type":"message_chunk","id":"act","content":"done"});
+        state.inject_into(&mut msg2);
+        assert_eq!(msg2["node_id"], "run-act-1");
+    }
+
+    #[test]
+    fn envelope_state_node_enter_with_empty_id() {
+        let mut state = EnvelopeState::new("s-1".to_string());
+        let mut enter = json!({"type":"node_enter","id":""});
+        state.inject_into(&mut enter);
+        // Empty id results in "run--0"
+        assert_eq!(enter["node_id"], "run--0");
+    }
+
+    #[test]
+    fn envelope_state_node_enter_without_id_field() {
+        let mut state = EnvelopeState::new("s-1".to_string());
+        let mut enter = json!({"type":"node_enter"});
+        state.inject_into(&mut enter);
+        // Missing id field defaults to empty, so "run--0"
+        assert_eq!(enter["node_id"], "run--0");
+    }
+
+    #[test]
+    fn to_json_with_non_node_enter_event() {
+        let ev = ProtocolEvent::MessageChunk {
+            content: "hello".to_string(),
+            id: "think".to_string(),
+        };
+        let mut state = EnvelopeState::new("s-1".to_string());
+        // Before any node_enter, active_node_id is "run-0"
+        let val = to_json(&ev, &mut state).unwrap();
+        assert_eq!(val["session_id"], "s-1");
+        assert_eq!(val["node_id"], "run-0");
+        assert_eq!(val["event_id"], 1);
+    }
+
+    #[test]
+    fn envelope_state_reply_envelope_is_consistent() {
+        let mut state = EnvelopeState::new("s-1".to_string());
+        let mut ev = json!({"type":"node_enter","id":"think"});
+        state.inject_into(&mut ev);
+
+        let reply = state.reply_envelope();
+        assert_eq!(reply.session_id.as_deref(), Some("s-1"));
+        assert_eq!(reply.node_id.as_deref(), Some("run-think-0"));
+        // reply_envelope returns next_event_id which is 2 after one inject
+        assert_eq!(reply.event_id, Some(2));
+    }
 }

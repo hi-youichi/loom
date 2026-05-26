@@ -92,12 +92,13 @@ mod windows_tests {
     #[tokio::test]
     async fn call_with_workdir_changes_directory() {
         let tool = PowerShellTool::new();
+        let tmp = std::env::temp_dir();
         let args = json!({
             "command": "Get-Location",
-            "workdir": "C:\\Windows"
+            "workdir": tmp.to_str().unwrap()
         });
         let result = tool.call(args, None).await.unwrap();
-        assert!(result.as_text().unwrap().contains("Windows"));
+        assert!(result.as_text().unwrap().contains(tmp.file_name().unwrap().to_str().unwrap()));
     }
 
     #[tokio::test]
@@ -223,15 +224,26 @@ mod windows_tests {
         });
         let result = tool.call(args, None).await;
 
-        // Should timeout and return error
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        let msg = err.to_string().to_lowercase();
-        assert!(
-            msg.contains("timeout") || msg.contains("timed out") || msg.contains("cancel"),
-            "Should timeout: {}",
-            err
-        );
+        // Should either return an error or a timed-out result
+        match result {
+            Ok(output) => {
+                // On timeout, executor returns Ok with output containing timeout indicator
+                let text = output.as_text().unwrap();
+                assert!(
+                    text.contains("timed out") || text.contains("timeout") || text.contains("detached"),
+                    "Should indicate timeout in output: {}",
+                    text
+                );
+            }
+            Err(err) => {
+                let msg = err.to_string().to_lowercase();
+                assert!(
+                    msg.contains("timeout") || msg.contains("timed out") || msg.contains("cancel"),
+                    "Should timeout: {}",
+                    err
+                );
+            }
+        }
     }
 
     #[tokio::test]

@@ -299,6 +299,7 @@ fn parse_review_response(response: &str) -> Result<ReviewOutput, String> {
 mod tests {
     use super::*;
 
+    #[allow(dead_code)]
     struct ReviewMockLlm {
         response: String,
         with_tool_calls: std::sync::atomic::AtomicBool,
