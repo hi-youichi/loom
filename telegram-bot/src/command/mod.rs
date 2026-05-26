@@ -239,10 +239,6 @@ async fn send_model_search_result(
 mod tests {
     use super::*;
 
-    struct ResetCmd;
-    struct StatusCmd;
-    struct ModelCmd;
-
     #[test]
     fn reset_command_matches() {
         let cmd = ResetCommand;

@@ -225,14 +225,14 @@ mod tests {
     #[test]
     fn split_text_for_telegram_exact_boundary() {
         let text = "1234567890";
-        let chunks = split_text_for_telegram(&text, 10);
+        let chunks = split_text_for_telegram(text, 10);
         assert_eq!(chunks, vec!["1234567890".to_string()]);
     }
 
     #[test]
     fn split_text_for_telegram_splits_at_whitespace() {
         let text = "aaa bbb ccc ddd";
-        let chunks = split_text_for_telegram(&text, 8);
+        let chunks = split_text_for_telegram(text, 8);
         assert!(chunks.len() >= 2);
         assert_eq!(chunks.concat().replace(' ', ""), text.replace(' ', ""));
     }
@@ -240,7 +240,7 @@ mod tests {
     #[test]
     fn split_text_for_telegram_unicode_handling() {
         let text = "你好世界测试数据分割";
-        let chunks = split_text_for_telegram(&text, 4);
+        let chunks = split_text_for_telegram(text, 4);
         assert!(chunks.len() >= 2);
         assert_eq!(chunks.concat(), text);
     }

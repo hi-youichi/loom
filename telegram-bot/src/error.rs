@@ -27,6 +27,8 @@ pub enum BotError {
     Unknown(String),
 }
 
+pub type Result<T> = std::result::Result<T, BotError>;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,4 +94,3 @@ mod tests {
     }
 }
 
-pub type Result<T> = std::result::Result<T, BotError>;
