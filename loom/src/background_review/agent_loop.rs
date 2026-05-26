@@ -115,14 +115,13 @@ impl AgentReviewRunner {
                 break;
             }
 
-            let mut tool_call_messages: Vec<AssistantToolCall> = Vec::new();
-            for tc in &response.tool_calls {
-                tool_call_messages.push(AssistantToolCall {
+            let tool_call_messages: Vec<AssistantToolCall> = response.tool_calls.iter().map(|tc| {
+                AssistantToolCall {
                     name: tc.name.clone(),
                     arguments: tc.arguments.clone(),
                     id: tc.id.clone().unwrap_or_default(),
-                });
-            }
+                }
+            }).collect();
 
             messages.push(Message::assistant_with_tool_calls(
                 response.content.clone(),

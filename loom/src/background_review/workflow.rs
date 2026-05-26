@@ -9,7 +9,6 @@ use super::history::{ReviewHistory, ReviewRecord};
 use super::skill_registry::SkillRegistry;
 use crate::llm::{LlmFactory, ModelEntry};
 use chrono::Utc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use tracing::{error, info, warn};
 
@@ -70,20 +69,17 @@ fn pending_reviews() -> &'static Arc<PendingReviewRegistry> {
 
 /// Registry of pending background review handles.
 pub struct PendingReviewRegistry {
-    counter: AtomicUsize,
     handles: StdMutex<Vec<tokio::task::JoinHandle<()>>>,
 }
 
 impl PendingReviewRegistry {
     fn new() -> Self {
         Self {
-            counter: AtomicUsize::new(0),
             handles: StdMutex::new(Vec::new()),
         }
     }
 
     pub fn push(&self, handle: tokio::task::JoinHandle<()>) {
-        let _id = self.counter.fetch_add(1, Ordering::Relaxed);
         let mut handles = self.handles.lock().unwrap();
         handles.push(handle);
     }

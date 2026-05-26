@@ -580,7 +580,7 @@ fn resolve_tool(
     cancel: &CancellationToken,
 ) -> Result<Box<dyn CodingTool>, GoalError> {
     match tool_name {
-"loom" => {
+        "loom" => {
             let mcp_config_path = write_mcp_config(db_path, working_dir)?;
             let session_id = format!("goal-{}", &id[..8]);
             let mut tool = super::tool::LoomTool::new(

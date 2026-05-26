@@ -56,13 +56,23 @@ impl<'a> ReviewToolExecutor<'a> {
         }
     }
 
+    /// Parse a memory file identifier string into a [`MemoryFile`].
+    ///
+    /// Accepts case-insensitive names with or without `.md` extension.
+    fn parse_memory_file(file_str: &str) -> Result<MemoryFile, Value> {
+        match file_str.to_lowercase().as_str() {
+            "user" | "user.md" => Ok(MemoryFile::User),
+            "project" | "project.md" => Ok(MemoryFile::Project),
+            "facts" | "facts.md" => Ok(MemoryFile::Facts),
+            _ => Err(json!({"success": false, "error": format!("Unknown memory file: {}", file_str)})),
+        }
+    }
+
     fn memory_get(&self, args: &Value) -> Value {
         let file_str = args["file"].as_str().unwrap_or("user");
-        let file = match file_str.to_lowercase().as_str() {
-            "user" | "user.md" => MemoryFile::User,
-            "project" | "project.md" => MemoryFile::Project,
-            "facts" | "facts.md" => MemoryFile::Facts,
-            _ => return json!({"success": false, "error": format!("Unknown memory file: {}", file_str)}),
+        let file = match Self::parse_memory_file(file_str) {
+            Ok(f) => f,
+            Err(e) => return e,
         };
         match self.memory.load(file) {
             Ok(content) => json!({"success": true, "content": content}),
@@ -75,11 +85,9 @@ impl<'a> ReviewToolExecutor<'a> {
         let action = args["action"].as_str().unwrap_or("append");
         let content = args["content"].as_str().unwrap_or("");
 
-        let file = match file_str.to_lowercase().as_str() {
-            "user" | "user.md" => MemoryFile::User,
-            "project" | "project.md" => MemoryFile::Project,
-            "facts" | "facts.md" => MemoryFile::Facts,
-            _ => return json!({"success": false, "error": format!("Unknown memory file: {}", file_str)}),
+        let file = match Self::parse_memory_file(file_str) {
+            Ok(f) => f,
+            Err(e) => return e,
         };
 
         if action == "append" {
@@ -355,142 +363,131 @@ impl<'a> ReviewToolExecutor<'a> {
 }
 
 pub fn review_tool_specs() -> Vec<ToolSpec> {
-    let mut specs = Vec::new();
-
-    specs.push(ToolSpec {
-        name: "memory_get".into(),
-        description: Some("Read a memory file (USER, PROJECT, or FACTS).".into()),
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "file": {"type": "string", "enum": ["USER", "PROJECT", "FACTS"], "description": "Memory file to read"}
-            },
-            "required": ["file"]
-        }),
-        output_hint: None,
-    });
-
-    specs.push(ToolSpec {
-        name: "memory_set".into(),
-        description: Some("Write to a memory file. Action can be 'append' or 'replace'.".into()),
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "file": {"type": "string", "enum": ["USER", "PROJECT", "FACTS"], "description": "Memory file to write"},
-                "action": {"type": "string", "enum": ["append", "replace"], "description": "'append' to add content, 'replace' to overwrite"},
-                "content": {"type": "string", "description": "Content to write"}
-            },
-            "required": ["file", "action", "content"]
-        }),
-        output_hint: None,
-    });
-
-    specs.push(ToolSpec {
-        name: "skills_list".into(),
-        description: Some("List all skills in the skill library.".into()),
-        input_schema: json!({"type": "object", "properties": {}}),
-        output_hint: None,
-    });
-
-    specs.push(ToolSpec {
-        name: "skill_view".into(),
-        description: Some("View details of a specific skill including its body.".into()),
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Skill name"}
-            },
-            "required": ["name"]
-        }),
-        output_hint: None,
-    });
-
-    specs.push(ToolSpec {
-        name: "skill_create".into(),
-        description: Some("Create a new skill.".into()),
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Skill name (class-level, kebab-case)"},
-                "description": {"type": "string", "description": "Short description"},
-                "triggers": {"type": "array", "items": {"type": "string"}, "description": "Trigger keywords"},
-                "body": {"type": "string", "description": "Skill body (markdown)"}
-            },
-            "required": ["name", "description", "body"]
-        }),
-        output_hint: None,
-    });
-
-    specs.push(ToolSpec {
-        name: "skill_edit".into(),
-        description: Some("Replace the entire body of a skill.".into()),
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Skill name"},
-                "content": {"type": "string", "description": "New full body content"}
-            },
-            "required": ["name", "content"]
-        }),
-        output_hint: None,
-    });
-
-    specs.push(ToolSpec {
-        name: "skill_patch".into(),
-        description: Some("Apply a precise find-and-replace patch to a skill's SKILL.md.".into()),
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Skill name"},
-                "old_string": {"type": "string", "description": "Exact text to find"},
-                "new_string": {"type": "string", "description": "Replacement text"}
-            },
-            "required": ["name", "old_string", "new_string"]
-        }),
-        output_hint: None,
-    });
-
-    specs.push(ToolSpec {
-        name: "skill_delete".into(),
-        description: Some("Delete a skill entirely.".into()),
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Skill name"}
-            },
-            "required": ["name"]
-        }),
-        output_hint: None,
-    });
-
-    specs.push(ToolSpec {
-        name: "skill_write_file".into(),
-        description: Some("Add or overwrite a support file under a skill (e.g. references/, templates/, scripts/).".into()),
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Skill name"},
-                "path": {"type": "string", "description": "Relative path within skill dir (e.g. references/topic.md)"},
-                "content": {"type": "string", "description": "File content"}
-            },
-            "required": ["name", "path", "content"]
-        }),
-        output_hint: None,
-    });
-
-    specs.push(ToolSpec {
-        name: "skill_remove_file".into(),
-        description: Some("Remove a support file from a skill.".into()),
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Skill name"},
-                "path": {"type": "string", "description": "Relative path within skill dir"}
-            },
-            "required": ["name", "path"]
-        }),
-        output_hint: None,
-    });
-
-    specs
+    vec![
+        ToolSpec {
+            name: "memory_get".into(),
+            description: Some("Read a memory file (USER, PROJECT, or FACTS).".into()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string", "enum": ["USER", "PROJECT", "FACTS"], "description": "Memory file to read"}
+                },
+                "required": ["file"]
+            }),
+            output_hint: None,
+        },
+        ToolSpec {
+            name: "memory_set".into(),
+            description: Some("Write to a memory file. Action can be 'append' or 'replace'.".into()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string", "enum": ["USER", "PROJECT", "FACTS"], "description": "Memory file to write"},
+                    "action": {"type": "string", "enum": ["append", "replace"], "description": "'append' to add content, 'replace' to overwrite"},
+                    "content": {"type": "string", "description": "Content to write"}
+                },
+                "required": ["file", "action", "content"]
+            }),
+            output_hint: None,
+        },
+        ToolSpec {
+            name: "skills_list".into(),
+            description: Some("List all skills in the skill library.".into()),
+            input_schema: json!({"type": "object", "properties": {}}),
+            output_hint: None,
+        },
+        ToolSpec {
+            name: "skill_view".into(),
+            description: Some("View details of a specific skill including its body.".into()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Skill name"}
+                },
+                "required": ["name"]
+            }),
+            output_hint: None,
+        },
+        ToolSpec {
+            name: "skill_create".into(),
+            description: Some("Create a new skill.".into()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Skill name (class-level, kebab-case)"},
+                    "description": {"type": "string", "description": "Short description"},
+                    "triggers": {"type": "array", "items": {"type": "string"}, "description": "Trigger keywords"},
+                    "body": {"type": "string", "description": "Skill body (markdown)"}
+                },
+                "required": ["name", "description", "body"]
+            }),
+            output_hint: None,
+        },
+        ToolSpec {
+            name: "skill_edit".into(),
+            description: Some("Replace the entire body of a skill.".into()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Skill name"},
+                    "content": {"type": "string", "description": "New full body content"}
+                },
+                "required": ["name", "content"]
+            }),
+            output_hint: None,
+        },
+        ToolSpec {
+            name: "skill_patch".into(),
+            description: Some("Apply a precise find-and-replace patch to a skill's SKILL.md.".into()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Skill name"},
+                    "old_string": {"type": "string", "description": "Exact text to find"},
+                    "new_string": {"type": "string", "description": "Replacement text"}
+                },
+                "required": ["name", "old_string", "new_string"]
+            }),
+            output_hint: None,
+        },
+        ToolSpec {
+            name: "skill_delete".into(),
+            description: Some("Delete a skill entirely.".into()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Skill name"}
+                },
+                "required": ["name"]
+            }),
+            output_hint: None,
+        },
+        ToolSpec {
+            name: "skill_write_file".into(),
+            description: Some("Add or overwrite a support file under a skill (e.g. references/, templates/, scripts/).".into()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Skill name"},
+                    "path": {"type": "string", "description": "Relative path within skill dir (e.g. references/topic.md)"},
+                    "content": {"type": "string", "description": "File content"}
+                },
+                "required": ["name", "path", "content"]
+            }),
+            output_hint: None,
+        },
+        ToolSpec {
+            name: "skill_remove_file".into(),
+            description: Some("Remove a support file from a skill.".into()),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Skill name"},
+                    "path": {"type": "string", "description": "Relative path within skill dir"}
+                },
+                "required": ["name", "path"]
+            }),
+            output_hint: None,
+        },
+    ]
 }
