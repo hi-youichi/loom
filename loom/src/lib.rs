@@ -158,6 +158,7 @@ pub mod tools;
 pub mod traits;
 pub mod user_message;
 pub mod title_generator;
+pub mod background_review;
 
 pub use agent::react::{
     build_dup_runner, build_got_runner, build_react_initial_state, build_react_run_context,

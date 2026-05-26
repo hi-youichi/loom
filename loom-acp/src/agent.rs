@@ -824,6 +824,25 @@ impl LoomAcpAgent {
         let result = run_agent_with_options(&opts, &RunCmd::React, on_event).await;
         self.sessions.finish_prompt(&key, cancellation.generation());
 
+        // Trigger background review after successful completion
+        if let Ok(RunCompletion::Finished(ref run_result)) = &result {
+            if !run_result.reply.is_empty() {
+                let review_config = loom::background_review::build_background_config_from_opts(&opts);
+                if review_config.enabled {
+                    let session_id = opts.thread_id.clone()
+                        .unwrap_or_else(|| format!("acp-{}", args.session_id));
+                    let user_msg = match &opts.message {
+                        loom::message::UserContent::Text(t) => t.clone(),
+                        _ => String::new(),
+                    };
+                    let session_content = format!("User: {}\n\nAssistant: {}", user_msg, run_result.reply);
+                    loom::background_review::spawn_background_review(
+                        review_config, session_content, session_id, None,
+                    );
+                }
+            }
+        }
+
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         match result {
