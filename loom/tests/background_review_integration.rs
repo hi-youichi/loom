@@ -86,12 +86,28 @@ async fn review_respects_max_iterations() {
     let memory = MemoryStore::new(dir.path());
     let skills = SkillRegistry::new(&dir.path().join("skills"));
 
+    // Provide 3 identical rounds with tool_calls; the mock repeats the last round
+    // when exhausted, so the loop will keep calling until max_iterations.
     let llm = MultiRoundMockLlm::new(vec![
         (
-            "Looping...".into(),
+            "Looping 1...".into(),
             vec![tool_call(
                 "memory_set",
-                r#"{"file":"facts","action":"append","content":"iteration"}"#,
+                r#"{"file":"facts","action":"append","content":"iter-1"}"#,
+            )],
+        ),
+        (
+            "Looping 2...".into(),
+            vec![tool_call(
+                "memory_set",
+                r#"{"file":"facts","action":"append","content":"iter-2"}"#,
+            )],
+        ),
+        (
+            "Looping 3...".into(),
+            vec![tool_call(
+                "memory_set",
+                r#"{"file":"facts","action":"append","content":"iter-3"}"#,
             )],
         ),
     ]);

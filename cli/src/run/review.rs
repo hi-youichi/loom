@@ -44,15 +44,17 @@ impl Default for ReviewConfig {
     fn default() -> Self {
         Self {
             auto_create_threshold: 5,
-            max_session_chars: 12000,
-            max_iterations: 10,
-            mode: ReviewMode::Json,
+            max_session_chars: 24000,
+            max_iterations: 16,
+            mode: ReviewMode::Agent,
         }
     }
 }
 
 use crate::run::memory::MemoryStore;
 
+/// Legacy ReviewAgent for explicit `levol review` / `levol review-skill` CLI commands.
+/// For automatic post-turn review, see `background_review.rs`.
 pub struct ReviewAgent {
     llm: Box<dyn LlmClient>,
     memory: MemoryStore,

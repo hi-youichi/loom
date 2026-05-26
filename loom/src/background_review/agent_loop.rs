@@ -83,7 +83,25 @@ impl AgentReviewRunner {
 
         loop {
             if iterations >= config.max_iterations {
-                info!("Review agent reached max iterations ({})", config.max_iterations);
+                info!(
+                    iterations,
+                    max_iterations = config.max_iterations,
+                    actions_so_far = executor.actions.len(),
+                    "review agent reached max iterations, requesting summary"
+                );
+
+                messages.push(Message::user(
+                    "You have reached the maximum number of iterations. Summarize what you have done so far in one sentence. Do not call any more tools."
+                ));
+                if let Ok(final_resp) = llm.invoke(&messages).await {
+                    if !final_resp.content.trim().is_empty() {
+                        session_messages.push(serde_json::json!({
+                            "role": "assistant",
+                            "content": final_resp.content,
+                            "forced_summary": true,
+                        }));
+                    }
+                }
                 break;
             }
             iterations += 1;
@@ -125,7 +143,12 @@ impl AgentReviewRunner {
                 let result = executor.execute(&tc.name, &args);
                 let result_str = serde_json::to_string(&result).unwrap_or_else(|_| "{}".to_string());
 
-                info!("Review tool call: {} -> {}", tc.name, if result["success"].as_bool().unwrap_or(false) { "ok" } else { "err" });
+                info!(
+                    tool = %tc.name,
+                    success = result["success"].as_bool().unwrap_or(false),
+                    iteration = iterations,
+                    "review tool executed"
+                );
 
                 messages.push(Message::Tool {
                     tool_call_id: tc.id.clone().unwrap_or_default(),
@@ -169,20 +192,9 @@ impl AgentReviewRunner {
     }
 
     pub fn summarize_actions(actions: &[ReviewAction]) -> String {
-        if actions.is_empty() {
-            return "No updates.".to_string();
-        }
         let filtered: Vec<_> = actions
             .iter()
-            .filter(|a| {
-                a.summary.contains("created")
-                    || a.summary.contains("updated")
-                    || a.summary.contains("appended")
-                    || a.summary.contains("patched")
-                    || a.summary.contains("replaced")
-                    || a.summary.contains("added")
-                    || a.summary.contains("removed")
-            })
+            .filter(|a| a.has_modification)
             .collect();
         if filtered.is_empty() {
             return "No updates.".to_string();

@@ -6,6 +6,9 @@ use crate::tool_source::ToolSpec;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+const MAX_MEMORY_FILE_SIZE: usize = 64 * 1024;
+const REPLACE_SHRINK_RATIO: f64 = 0.3;
+
 pub struct ReviewToolExecutor<'a> {
     pub memory: &'a MemoryStore,
     pub skills: &'a SkillRegistry,
@@ -18,6 +21,8 @@ pub struct ReviewAction {
     pub kind: String,
     pub target: String,
     pub summary: String,
+    #[serde(default)]
+    pub has_modification: bool,
 }
 
 impl<'a> ReviewToolExecutor<'a> {
@@ -77,6 +82,39 @@ impl<'a> ReviewToolExecutor<'a> {
             _ => return json!({"success": false, "error": format!("Unknown memory file: {}", file_str)}),
         };
 
+        if action == "append" {
+            if let Ok(existing) = self.memory.load(file) {
+                if existing.contains(content) {
+                    return json!({"success": true, "warning": "Content already exists in memory, skipping duplicate"});
+                }
+                if existing.len() + content.len() > MAX_MEMORY_FILE_SIZE {
+                    return json!({"success": false, "error": format!(
+                        "Memory file would exceed {} bytes (current: {}, new: {})",
+                        MAX_MEMORY_FILE_SIZE, existing.len(), content.len()
+                    )});
+                }
+            }
+        }
+
+        if action == "replace" {
+            if let Ok(existing) = self.memory.load(file) {
+                if !existing.is_empty() && !content.is_empty() {
+                    let ratio = content.len() as f64 / existing.len() as f64;
+                    if ratio < REPLACE_SHRINK_RATIO {
+                        return json!({"success": false, "error": format!(
+                            "Replace would shrink file too much ({} -> {} chars, ratio {:.0}%). Use skill_patch for targeted edits.",
+                            existing.len(), content.len(), ratio * 100.0
+                        )});
+                    }
+                }
+                if content.len() > MAX_MEMORY_FILE_SIZE {
+                    return json!({"success": false, "error": format!(
+                        "New content exceeds {} bytes", MAX_MEMORY_FILE_SIZE
+                    )});
+                }
+            }
+        }
+
         let result = match action {
             "append" => self.memory.append(file, content),
             "replace" => self.memory.replace(file, content),
@@ -89,6 +127,7 @@ impl<'a> ReviewToolExecutor<'a> {
                     kind: "memory".to_string(),
                     target: file_str.to_string(),
                     summary: format!("Memory {} {}", action, file_str),
+                    has_modification: true,
                 });
                 json!({"success": true})
             }
@@ -174,6 +213,7 @@ impl<'a> ReviewToolExecutor<'a> {
                     kind: "skill".to_string(),
                     target: name.to_string(),
                     summary: format!("Skill '{}' created", name),
+                    has_modification: true,
                 });
                 json!({"success": true})
             }
@@ -191,13 +231,25 @@ impl<'a> ReviewToolExecutor<'a> {
 
         match self.skills.load(name) {
             Ok(mut skill) => {
+                let original_body = skill.body.clone();
                 skill.body = content.to_string();
+
+                let validation = validate_skill_create(&skill);
+                if !validation.valid {
+                    let errors: Vec<String> = validation.warnings.iter()
+                        .filter(|w| w.severity == Severity::Critical)
+                        .map(|w| w.message.clone())
+                        .collect();
+                    return json!({"success": false, "error": format!("Validation failed: {}", errors.join("; "))});
+                }
+
                 match self.skills.save(name, &skill) {
                     Ok(()) => {
                         self.actions.push(ReviewAction {
                             kind: "skill".to_string(),
                             target: name.to_string(),
-                            summary: format!("Skill '{}' updated", name),
+                            summary: format!("Skill '{}' updated ({} -> {} chars)", name, original_body.len(), content.len()),
+                            has_modification: true,
                         });
                         json!({"success": true})
                     }
@@ -215,10 +267,23 @@ impl<'a> ReviewToolExecutor<'a> {
 
         match self.skills.patch(name, old_string, new_string) {
             Ok(()) => {
+                if let Ok(skill) = self.skills.load(name) {
+                    let validation = validate_skill_create(&skill);
+                    if !validation.valid {
+                        let _ = self.skills.patch(name, new_string, old_string);
+                        let errors: Vec<String> = validation.warnings.iter()
+                            .filter(|w| w.severity == Severity::Critical)
+                            .map(|w| w.message.clone())
+                            .collect();
+                        return json!({"success": false, "error": format!("Validation failed, patch reverted: {}", errors.join("; "))});
+                    }
+                }
+
                 self.actions.push(ReviewAction {
                     kind: "skill".to_string(),
                     target: name.to_string(),
                     summary: format!("Skill '{}' patched", name),
+                    has_modification: true,
                 });
                 json!({"success": true})
             }
@@ -234,6 +299,7 @@ impl<'a> ReviewToolExecutor<'a> {
                     kind: "skill".to_string(),
                     target: name.to_string(),
                     summary: format!("Skill '{}' removed", name),
+                    has_modification: true,
                 });
                 json!({"success": true})
             }
@@ -261,6 +327,7 @@ impl<'a> ReviewToolExecutor<'a> {
                     kind: "skill_file".to_string(),
                     target: name.to_string(),
                     summary: format!("File added to skill '{}': {}", name, path),
+                    has_modification: true,
                 });
                 json!({"success": true})
             }
@@ -278,6 +345,7 @@ impl<'a> ReviewToolExecutor<'a> {
                     kind: "skill_file".to_string(),
                     target: name.to_string(),
                     summary: format!("File removed from skill '{}': {}", name, path),
+                    has_modification: true,
                 });
                 json!({"success": true})
             }

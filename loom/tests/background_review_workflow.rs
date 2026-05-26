@@ -1,3 +1,7 @@
+// Tests for background_review_workflow require the `testing` feature
+// to access run_background_review_workflow.
+#![cfg(feature = "testing")]
+
 use loom::background_review::{
     run_background_review_workflow, BackgroundReviewConfig,
 };
