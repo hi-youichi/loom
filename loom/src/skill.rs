@@ -22,9 +22,12 @@ pub enum SkillError {
 }
 
 /// Skill metadata parsed from SKILL.md front matter.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct SkillMetadata {
     pub name: String,
+    /// Semantic version of the skill.
+    #[serde(default)]
+    pub version: Option<String>,
     #[serde(default)]
     pub description: String,
 }
@@ -114,6 +117,7 @@ fn scan_skills_dir(dir: &Path, source: SkillSource) -> Vec<SkillEntry> {
                         .file_stem()
                         .map(|s| s.to_string_lossy().to_string())
                         .unwrap_or_else(|| "unknown".to_string()),
+                    version: None,
                     description: String::new(),
                 });
                 entries.push(SkillEntry {
@@ -146,6 +150,7 @@ fn scan_skills_dir(dir: &Path, source: SkillSource) -> Vec<SkillEntry> {
                 .unwrap_or_else(|| "unknown".to_string());
             let metadata = meta_opt.unwrap_or_else(|| SkillMetadata {
                 name: name.clone(),
+                version: None,
                 description: String::new(),
             });
             entries.push(SkillEntry {
@@ -661,6 +666,7 @@ mod tests {
             skills: vec![
                 SkillEntry {
                     metadata: SkillMetadata {
+                        version: None,
                         name: "code-review".to_string(),
                         description: "Review code quality".to_string(),
                     },
@@ -670,6 +676,7 @@ mod tests {
                 },
                 SkillEntry {
                     metadata: SkillMetadata {
+                        version: None,
                         name: "no-desc".to_string(),
                         description: String::new(),
                     },
@@ -706,6 +713,7 @@ mod tests {
         let registry = SkillRegistry {
             skills: vec![SkillEntry {
                 metadata: SkillMetadata {
+                    version: None,
                     name: "my-skill".to_string(),
                     description: "test".to_string(),
                 },
@@ -734,6 +742,7 @@ mod tests {
         let registry = SkillRegistry {
             skills: vec![SkillEntry {
                 metadata: SkillMetadata {
+                    version: None,
                     name: "my-skill".to_string(),
                     description: "t".to_string(),
                 },
@@ -760,6 +769,7 @@ mod tests {
         let registry = SkillRegistry {
             skills: vec![SkillEntry {
                 metadata: SkillMetadata {
+                    version: None,
                     name: "standalone".to_string(),
                     description: "t".to_string(),
                 },
