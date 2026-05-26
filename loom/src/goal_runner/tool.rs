@@ -121,6 +121,7 @@ impl CodingTool for ShellTool {
             reasoning_content: None,
             tool_calls_summary: Vec::new(),
             usage: None,
+            work_summary: None,
         })
     }
 
@@ -255,11 +256,19 @@ impl CodingTool for LoomTool {
             acp_session_id: None,
             force_compact: false,
             chat_id: None,
+            worktree: false,
         };
 
         let result = crate::cli_run::run_agent_with_options(&opts, &RunCmd::React, on_event)
             .await
-            .map_err(|e| ToolError::ExecutionFailed(format!("loom agent error: {}", e)))?;
+            .map_err(|e| {
+                let msg = format!("loom agent error: {}", e);
+                if ToolError::is_transient_api_error(&msg) {
+                    ToolError::RateLimited(msg)
+                } else {
+                    ToolError::ExecutionFailed(msg)
+                }
+            })?;
 
         let tool_calls_summary = tool_summaries.lock().unwrap().drain(..).collect();
 
@@ -269,6 +278,7 @@ impl CodingTool for LoomTool {
                 reasoning_content: agent_result.reasoning_content,
                 tool_calls_summary,
                 usage: None,
+                work_summary: None,
             }),
             RunCompletion::Cancelled => Err(ToolError::Aborted),
         }

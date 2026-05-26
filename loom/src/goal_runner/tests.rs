@@ -37,6 +37,7 @@ mod tests {
             meta.history.push(HistoryEntry {
                 iteration: i + 1,
                 timestamp: format!("2025-01-01T00:{:02}:00Z", i),
+                summary: None,
             });
             if meta.history.len() > MAX_HISTORY_ENTRIES {
                 let start = meta.history.len() - MAX_HISTORY_ENTRIES;
