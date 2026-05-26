@@ -20,7 +20,7 @@
 mod git_ops;
 mod manager;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub use git_ops::GitWorktreeError;
 pub use manager::WorktreeManager;
@@ -193,7 +193,7 @@ pub fn sanitize_slug(name: &str) -> String {
 }
 
 /// Detect if the current working directory is already inside a Loom-managed worktree.
-pub fn detect_worktree_nesting(working_dir: &PathBuf) -> bool {
+pub fn detect_worktree_nesting(working_dir: &Path) -> bool {
     let git_path = working_dir.join(".git");
     if git_path.exists() && git_path.is_file() {
         if let Ok(gitdir) = std::fs::read_to_string(&git_path) {

@@ -58,6 +58,7 @@ pub(crate) fn run_git(workdir: &Path, args: &[&str]) -> Result<std::process::Out
 }
 
 /// Check if an error is caused by an index lock.
+#[allow(dead_code)]
 fn is_index_lock_error(err: &GitWorktreeError) -> bool {
     match err {
         GitWorktreeError::CommandFailed { stderr, .. } => {
@@ -68,6 +69,7 @@ fn is_index_lock_error(err: &GitWorktreeError) -> bool {
 }
 
 /// Run a git command with index-lock retry (exponential backoff: 100ms, 200ms, 400ms).
+#[allow(dead_code)]
 pub async fn run_git_with_retry(workdir: &Path, args: &[&str]) -> Result<std::process::Output> {
     let mut delay = Duration::from_millis(100);
     for attempt in 0..3 {
@@ -102,6 +104,7 @@ pub fn resolve_repo_root(workdir: &Path) -> Result<PathBuf> {
 }
 
 /// Check if a directory is inside a git repository.
+#[allow(dead_code)]
 pub fn is_git_repo(path: &Path) -> bool {
     resolve_repo_root(path).is_ok()
 }
@@ -154,6 +157,7 @@ pub fn worktree_remove(path: &Path, force: bool) -> Result<()> {
 }
 
 /// List all worktree paths for a repository.
+#[allow(dead_code)]
 pub fn worktree_list(repo_root: &Path) -> Result<Vec<PathBuf>> {
     let output = run_git(repo_root, &["worktree", "list", "--porcelain"])?;
     let text = String::from_utf8_lossy(&output.stdout);
@@ -192,6 +196,7 @@ pub fn current_branch(path: &Path) -> Result<String> {
 }
 
 /// Resolve the default ref (HEAD commit hash).
+#[allow(dead_code)]
 pub fn resolve_default_ref(repo_root: &Path) -> Result<String> {
     let output = run_git(repo_root, &["rev-parse", "HEAD"])?;
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())

@@ -89,7 +89,10 @@ impl PendingReviewRegistry {
     }
 
     pub async fn wait_all(&self) -> usize {
-        let mut handles = self.handles.lock().unwrap();
+        let handles: Vec<_> = {
+            let mut handles = self.handles.lock().unwrap();
+            handles.drain(..).collect()
+        };
         let count = handles.len();
         if count == 0 {
             return 0;
@@ -97,7 +100,7 @@ impl PendingReviewRegistry {
 
         info!("Waiting for {} background review(s) to complete...", count);
 
-        for handle in handles.drain(..) {
+        for handle in handles {
             let _ = handle.await;
         }
 

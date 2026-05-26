@@ -288,7 +288,7 @@ impl ProjectInfo {
             .filter(|(_, count)| *count >= MIN_FILE_THRESHOLD)
             .map(|(lang, count)| (lang.to_string(), count))
             .collect();
-        languages.sort_by(|a, b| b.1.cmp(&a.1));
+        languages.sort_by_key(|a| std::cmp::Reverse(a.1));
         let languages: Vec<String> = languages.into_iter().map(|(l, _)| l).collect();
 
         let has_git = working_dir.join(".git").exists();

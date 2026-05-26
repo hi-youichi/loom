@@ -95,6 +95,7 @@ mod tests {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn build_continuation_prompt(
     task_id: &str,
     objective: &str,

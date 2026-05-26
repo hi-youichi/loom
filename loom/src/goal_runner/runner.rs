@@ -39,6 +39,8 @@ pub struct GoalRunner {
     verify_command: Option<String>,
     /// Number of consecutive rate-limit retries in the current streak.
     rate_limit_retries: u32,
+    /// Accumulated session log for background review.
+    session_log: Vec<String>,
 }
 
 impl GoalRunner {
@@ -78,6 +80,7 @@ impl GoalRunner {
             tokens_used: 0,
             verify_command: None,
             rate_limit_retries: 0,
+            session_log: Vec::new(),
         })
     }
 
@@ -101,6 +104,13 @@ impl GoalRunner {
     pub fn with_verify_command(mut self, cmd: String) -> Self {
         self.verify_command = Some(cmd);
         self
+    }
+
+    /// Consume the runner and return the accumulated session log as a single string
+    /// suitable for background review.
+    pub fn into_session_content(self) -> String {
+        let header = format!("Goal: {}\n", self.objective);
+        header + &self.session_log.join("\n\n")
     }
 
     pub async fn run(&mut self) -> GoalOutcome {
@@ -158,7 +168,7 @@ impl GoalRunner {
                 )
             );
 
-            let mut work_summary: Option<String> = None;
+            let work_summary: Option<String>;
 
             match self.tool.execute(&prompt, &self.working_dir).await {
                 Ok(turn_result) => {
@@ -173,6 +183,19 @@ impl GoalRunner {
 
                     // Store work summary for history injection.
                     work_summary = turn_result.work_summary.clone();
+
+                    // Accumulate session log for background review.
+                    let mut log_entry = format!("--- Iteration {} ---", self.iteration);
+                    if let Some(ref summary) = work_summary {
+                        log_entry.push_str(&format!("\nSummary: {}", summary));
+                    }
+                    if !turn_result.reply.trim().is_empty() {
+                        log_entry.push_str(&format!("\nReply: {}", turn_result.reply.trim()));
+                    }
+                    for tc in &turn_result.tool_calls_summary {
+                        log_entry.push_str(&format!("\nTool: {} → {}", tc.tool_name, tc.result_preview));
+                    }
+                    self.session_log.push(log_entry);
                     if let Some(ref reasoning) = turn_result.reasoning_content {
                         if !reasoning.trim().is_empty() {
                             eprintln!("{}",
@@ -543,6 +566,7 @@ pub async fn resume_with_event_sender(
         tokens_used: meta.tokens_used,
         verify_command: meta.verify_command,
         rate_limit_retries: 0,
+        session_log: Vec::new(),
     })
 }
 

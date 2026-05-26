@@ -642,6 +642,7 @@ impl ChatOpenAICompat {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn record_audit(
         &self,
         entry_type: &str,

@@ -183,7 +183,7 @@ impl FileLlmAuditLog {
             .open(path)?;
         let mut line =
             serde_json::to_string(entry)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                .map_err(std::io::Error::other)?;
         line.push('\n');
         file.write_all(line.as_bytes())
     }
@@ -245,6 +245,7 @@ impl LlmAuditConfig {
 // ---------------------------------------------------------------------------
 
 /// Create a standard audit entry with the given fields.
+#[allow(clippy::too_many_arguments)]
 pub fn build_audit_entry(
     thread_id: String,
     entry_type: &str,

@@ -190,7 +190,7 @@ pub(crate) async fn build_tool_source(
                 let mcp_verbose = config.mcp_verbose;
                 let create_result = tokio::task::spawn_blocking(move || {
                     let mcp =
-                        McpToolSource::new_with_env(cmd, args, env_github.into_iter(), mcp_verbose)
+                        McpToolSource::new_with_env(cmd, args, env_github, mcp_verbose)
                             .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
                     let specs = mcp.list_tools_sync()?;
                     Ok::<_, ToolSourceError>((mcp, specs))
@@ -335,7 +335,7 @@ pub(crate) async fn build_tool_source(
                         let mcp = McpToolSource::new_with_env(
                             command,
                             args,
-                            env_vec.into_iter(),
+                            env_vec,
                             mcp_verbose,
                         )
                         .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
@@ -421,7 +421,7 @@ pub(crate) async fn build_tool_source(
             let mcp_verbose = config.mcp_verbose;
             let create_result = tokio::task::spawn_blocking(move || {
                 let mcp =
-                    McpToolSource::new_with_env(cmd, args, env_github.into_iter(), mcp_verbose)
+                    McpToolSource::new_with_env(cmd, args, env_github, mcp_verbose)
                         .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
                 let specs = mcp.list_tools_sync()?;
                 Ok::<_, ToolSourceError>((mcp, specs))
