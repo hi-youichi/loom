@@ -44,6 +44,7 @@ fn opts(working_folder: PathBuf) -> RunOptions {
             acp_session_id: None,
             force_compact: false,
             chat_id: None,
+            worktree: false,
         }
 }
 
