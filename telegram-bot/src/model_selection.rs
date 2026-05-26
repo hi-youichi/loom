@@ -363,4 +363,197 @@ mod tests {
 
         assert_eq!(service.current_model(1).unwrap(), "gpt-5.4");
     }
+
+    // --- ModelChoice ---
+    #[test]
+    fn model_choice_new() {
+        let choice = ModelChoice::new("gpt-4o");
+        assert_eq!(choice.model_id, "gpt-4o");
+        assert_eq!(choice.display_name, "gpt-4o");
+    }
+
+    #[test]
+    fn model_choice_equality() {
+        let a = ModelChoice::new("gpt-4o");
+        let b = ModelChoice::new("gpt-4o");
+        let c = ModelChoice::new("gpt-4.1");
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+    }
+
+    // --- StaticModelCatalog ---
+    #[test]
+    fn catalog_deduplicates_and_sorts() {
+        let catalog = StaticModelCatalog::new(
+            "default",
+            vec![
+                ModelChoice::new("zeta"),
+                ModelChoice::new("alpha"),
+                ModelChoice::new("alpha"), // duplicate
+            ],
+        );
+        assert_eq!(catalog.default_model(), "default");
+        assert!(catalog.has_model("alpha"));
+        assert!(catalog.has_model("zeta"));
+        assert!(catalog.has_model("default"));
+        assert!(!catalog.has_model("nonexistent"));
+
+        let all = catalog.search("", 1);
+        assert!(all.items.len() >= 3);
+        // Should be sorted: alpha, default, zeta
+        assert_eq!(all.items[0].model_id, "alpha");
+    }
+
+    #[test]
+    fn catalog_search_empty_query_returns_all() {
+        let catalog = StaticModelCatalog::new("default", vec![ModelChoice::new("m1")]);
+        let result = catalog.search("", 1);
+        assert!(!result.items.is_empty());
+    }
+
+    #[test]
+    fn catalog_search_no_match() {
+        let catalog = StaticModelCatalog::new("default", vec![ModelChoice::new("m1")]);
+        let result = catalog.search("nonexistent", 1);
+        assert!(result.items.is_empty());
+        assert_eq!(result.page_count, 1);
+    }
+
+    #[test]
+    fn catalog_search_page_zero_becomes_one() {
+        let catalog = StaticModelCatalog::new("default", vec![ModelChoice::new("m1")]);
+        let result = catalog.search("", 0);
+        assert_eq!(result.page, 1);
+    }
+
+    // --- InMemorySearchSessionStore ---
+    #[test]
+    fn search_session_save_and_get() {
+        let store = InMemorySearchSessionStore::new();
+        assert!(store.get_session(1).is_none());
+        store.save_session(1, SearchSession { query: "gpt".into(), page: 2 });
+        let session = store.get_session(1).unwrap();
+        assert_eq!(session.query, "gpt");
+        assert_eq!(session.page, 2);
+    }
+
+    #[test]
+    fn search_session_clear() {
+        let store = InMemorySearchSessionStore::new();
+        store.save_session(1, SearchSession { query: "gpt".into(), page: 1 });
+        store.clear_session(1);
+        assert!(store.get_session(1).is_none());
+    }
+
+    // --- InMemoryModelSelectionStore ---
+    #[test]
+    fn in_memory_store_save_get_clear() {
+        let store = InMemoryModelSelectionStore::new();
+        assert!(store.get_selected_model(1).unwrap().is_none());
+        store.save_selected_model(1, "gpt-4o").unwrap();
+        assert_eq!(store.get_selected_model(1).unwrap().unwrap(), "gpt-4o");
+        store.clear_selected_model(1).unwrap();
+        assert!(store.get_selected_model(1).unwrap().is_none());
+    }
+
+    // --- ModelSelectionService ---
+    #[test]
+    fn service_select_and_current_model() {
+        let service = ModelSelectionService::new(
+            Arc::new(StaticModelCatalog::new(
+                "default",
+                vec![ModelChoice::new("default"), ModelChoice::new("gpt-4o")],
+            )),
+            Arc::new(InMemoryModelSelectionStore::new()),
+            Arc::new(InMemorySearchSessionStore::new()),
+        );
+        assert_eq!(service.current_model(1).unwrap(), "default");
+        service.select_model(1, "gpt-4o").unwrap();
+        assert_eq!(service.current_model(1).unwrap(), "gpt-4o");
+    }
+
+    #[test]
+    fn service_select_unknown_model_errors() {
+        let service = ModelSelectionService::new(
+            Arc::new(StaticModelCatalog::new("default", vec![ModelChoice::new("default")])),
+            Arc::new(InMemoryModelSelectionStore::new()),
+            Arc::new(InMemorySearchSessionStore::new()),
+        );
+        let result = service.select_model(1, "nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn service_clear_selection() {
+        let service = ModelSelectionService::new(
+            Arc::new(StaticModelCatalog::new(
+                "default",
+                vec![ModelChoice::new("default")],
+            )),
+            Arc::new(InMemoryModelSelectionStore::new()),
+            Arc::new(InMemorySearchSessionStore::new()),
+        );
+        service.select_model(1, "default").unwrap();
+        service.clear_selection(1).unwrap();
+        assert_eq!(service.current_model(1).unwrap(), "default");
+    }
+
+    #[test]
+    fn service_search_and_pagination() {
+        let service = ModelSelectionService::new(
+            Arc::new(StaticModelCatalog::new(
+                "default",
+                vec![
+                    ModelChoice::new("default"),
+                    ModelChoice::new("gpt-4o"),
+                    ModelChoice::new("gpt-4.1"),
+                ],
+            )),
+            Arc::new(InMemoryModelSelectionStore::new()),
+            Arc::new(InMemorySearchSessionStore::new()),
+        );
+
+        let result = service.search_models(1, "gpt", 1);
+        assert!(!result.items.is_empty());
+
+        // next_page should work after search
+        let next = service.next_page(1);
+        assert!(next.is_some());
+
+        // previous_page should work
+        let prev = service.previous_page(1);
+        assert!(prev.is_some());
+    }
+
+    #[test]
+    fn service_next_page_without_search_returns_none() {
+        let service = ModelSelectionService::new(
+            Arc::new(StaticModelCatalog::new("default", vec![ModelChoice::new("default")])),
+            Arc::new(InMemoryModelSelectionStore::new()),
+            Arc::new(InMemorySearchSessionStore::new()),
+        );
+        assert!(service.next_page(1).is_none());
+    }
+
+    #[test]
+    fn service_previous_page_without_search_returns_none() {
+        let service = ModelSelectionService::new(
+            Arc::new(StaticModelCatalog::new("default", vec![ModelChoice::new("default")])),
+            Arc::new(InMemoryModelSelectionStore::new()),
+            Arc::new(InMemorySearchSessionStore::new()),
+        );
+        assert!(service.previous_page(1).is_none());
+    }
+
+    #[test]
+    fn service_clear_search_session() {
+        let service = ModelSelectionService::new(
+            Arc::new(StaticModelCatalog::new("default", vec![ModelChoice::new("default")])),
+            Arc::new(InMemoryModelSelectionStore::new()),
+            Arc::new(InMemorySearchSessionStore::new()),
+        );
+        service.search_models(1, "test", 1);
+        service.clear_search_session(1);
+        assert!(service.next_page(1).is_none());
+    }
 }

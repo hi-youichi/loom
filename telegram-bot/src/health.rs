@@ -92,3 +92,44 @@ pub async fn start_health_server(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn health_state_new_defaults() {
+        let metrics = Arc::new(BotMetrics::new());
+        let state = HealthState::new(metrics);
+        assert!(state.is_healthy.load(Ordering::SeqCst));
+        assert!(!state.is_ready.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn health_state_set_healthy() {
+        let metrics = Arc::new(BotMetrics::new());
+        let state = HealthState::new(metrics);
+        state.set_healthy(false);
+        assert!(!state.is_healthy.load(Ordering::SeqCst));
+        state.set_healthy(true);
+        assert!(state.is_healthy.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn health_state_set_ready() {
+        let metrics = Arc::new(BotMetrics::new());
+        let state = HealthState::new(metrics);
+        state.set_ready(true);
+        assert!(state.is_ready.load(Ordering::SeqCst));
+        state.set_ready(false);
+        assert!(!state.is_ready.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn health_state_uptime() {
+        let metrics = Arc::new(BotMetrics::new());
+        let state = HealthState::new(metrics);
+        // Uptime should be a small number (test runs fast)
+        assert!(state.uptime_secs() < 10);
+    }
+}

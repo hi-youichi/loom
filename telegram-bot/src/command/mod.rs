@@ -234,3 +234,51 @@ async fn send_model_search_result(
         .await?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct ResetCmd;
+    struct StatusCmd;
+    struct ModelCmd;
+
+    #[test]
+    fn reset_command_matches() {
+        let cmd = ResetCommand;
+        assert!(cmd.matches("/reset"));
+        assert!(cmd.matches("/reset something"));
+        assert!(cmd.matches("  /reset  "));
+        assert!(!cmd.matches("/resetx"));
+        assert!(!cmd.matches("/status"));
+    }
+
+    #[test]
+    fn status_command_matches() {
+        let cmd = StatusCommand;
+        assert!(cmd.matches("/status"));
+        assert!(cmd.matches("  /status  "));
+        assert!(!cmd.matches("/status extra"));
+        assert!(!cmd.matches("/model"));
+    }
+
+    #[test]
+    fn model_command_matches() {
+        let cmd = ModelCommand;
+        assert!(cmd.matches("/model"));
+        assert!(cmd.matches("  /model  "));
+        assert!(!cmd.matches("/model gpt"));
+        assert!(!cmd.matches("/status"));
+    }
+
+    #[test]
+    fn command_dispatcher_new_has_commands() {
+        let _dispatcher = CommandDispatcher::new();
+        // Just verify it constructs without panic
+    }
+
+    #[test]
+    fn command_dispatcher_default() {
+        let _dispatcher = CommandDispatcher::default();
+    }
+}

@@ -419,3 +419,150 @@ impl FileDownloader for TeloxideDownloader {
         download_video(&self.bot, video, &self.config, chat_id, message_id).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- sanitize_filename ---
+    #[test]
+    fn sanitize_filename_keeps_alphanumeric() {
+        assert_eq!(sanitize_filename("hello.txt"), "hello.txt");
+    }
+
+    #[test]
+    fn sanitize_filename_replaces_special_chars() {
+        assert_eq!(sanitize_filename("file name (1).pdf"), "file_name__1_.pdf");
+    }
+
+    #[test]
+    fn sanitize_filename_empty_input() {
+        assert_eq!(sanitize_filename(""), "unknown");
+    }
+
+    #[test]
+    fn sanitize_filename_all_special() {
+        assert_eq!(sanitize_filename("!@#$"), "____");
+    }
+
+    #[test]
+    fn sanitize_filename_keeps_hyphen_underscore() {
+        assert_eq!(sanitize_filename("my-file_v2.zip"), "my-file_v2.zip");
+    }
+
+    // --- get_file_extension ---
+    #[test]
+    fn file_extension_from_filename() {
+        assert_eq!(get_file_extension(Some("photo.jpg"), None), "jpg");
+    }
+
+    #[test]
+    fn file_extension_from_filename_case_insensitive() {
+        assert_eq!(get_file_extension(Some("doc.PDF"), None), "pdf");
+    }
+
+    #[test]
+    fn file_extension_long_ext_ignored() {
+        // ext longer than MAX_EXT_LEN (10) falls through
+        assert_eq!(get_file_extension(Some("file.verylongextension"), None), "bin");
+    }
+
+    #[test]
+    fn file_extension_no_dot() {
+        assert_eq!(get_file_extension(Some("noext"), None), "bin");
+    }
+
+    #[test]
+    fn file_extension_dot_at_end() {
+        assert_eq!(get_file_extension(Some("file."), None), "bin");
+    }
+
+    #[test]
+    fn file_extension_from_mime() {
+        assert_eq!(get_file_extension(None, Some("image/png")), "png");
+    }
+
+    #[test]
+    fn file_extension_from_mime_unknown() {
+        assert_eq!(get_file_extension(None, Some("application/x-unknown")), "bin");
+    }
+
+    #[test]
+    fn file_extension_none_both() {
+        assert_eq!(get_file_extension(None, None), "bin");
+    }
+
+    #[test]
+    fn file_extension_prefers_filename_over_mime() {
+        assert_eq!(get_file_extension(Some("photo.jpg"), Some("image/png")), "jpg");
+    }
+
+    #[test]
+    fn file_extension_all_mime_types() {
+        assert_eq!(get_file_extension(None, Some("image/jpeg")), "jpg");
+        assert_eq!(get_file_extension(None, Some("image/jpg")), "jpg");
+        assert_eq!(get_file_extension(None, Some("image/gif")), "gif");
+        assert_eq!(get_file_extension(None, Some("image/webp")), "webp");
+        assert_eq!(get_file_extension(None, Some("video/mp4")), "mp4");
+        assert_eq!(get_file_extension(None, Some("video/webm")), "webm");
+        assert_eq!(get_file_extension(None, Some("audio/mpeg")), "mp3");
+        assert_eq!(get_file_extension(None, Some("audio/mp3")), "mp3");
+        assert_eq!(get_file_extension(None, Some("audio/ogg")), "ogg");
+        assert_eq!(get_file_extension(None, Some("application/pdf")), "pdf");
+        assert_eq!(get_file_extension(None, Some("application/zip")), "zip");
+    }
+
+    // --- DownloadConfig ---
+    #[test]
+    fn download_config_default() {
+        let config = DownloadConfig::default();
+        assert_eq!(config.dir, PathBuf::from("downloads"));
+        assert!(!config.save_metadata);
+    }
+
+    #[test]
+    fn download_config_new() {
+        let config = DownloadConfig::new("/tmp/dl");
+        assert_eq!(config.dir, PathBuf::from("/tmp/dl"));
+        assert!(!config.save_metadata);
+    }
+
+    #[test]
+    fn download_config_get_file_path_basic() {
+        let config = DownloadConfig::new("downloads");
+        let path = config.get_file_path(123, 456, "abc123", "jpg");
+        assert!(path.to_string_lossy().contains("123"));
+        assert!(path.to_string_lossy().contains("456_abc123.jpg"));
+    }
+
+    #[test]
+    fn download_config_get_file_path_truncates_long_file_id() {
+        let long_id = "a".repeat(50);
+        let config = DownloadConfig::new("downloads");
+        let path = config.get_file_path(1, 1, &long_id, "bin");
+        let filename = path.file_name().unwrap().to_string_lossy().to_string();
+        // Should be truncated: message_id (1) + underscore + max 24 chars + .bin
+        assert!(filename.starts_with("1_"));
+        assert!(filename.ends_with(".bin"));
+    }
+
+    #[test]
+    fn download_config_get_metadata_path() {
+        let config = DownloadConfig::new("downloads");
+        let path = config.get_metadata_path(Path::new("downloads/123/photo.jpg"));
+        assert_eq!(path, PathBuf::from("downloads/123/photo.json"));
+    }
+
+    // --- ensure_within_base ---
+    #[test]
+    fn ensure_within_base_rejects_traversal() {
+        let result = ensure_within_base(Path::new("../../../etc/passwd"), Path::new("downloads"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn ensure_within_base_allows_simple_path() {
+        let result = ensure_within_base(Path::new("downloads/photo.jpg"), Path::new("downloads"));
+        assert!(result.is_ok());
+    }
+}

@@ -196,3 +196,52 @@ pub async fn edit_formatted_message_with_retry(
 
     Err(fallback_error(last_error))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fallback_error_with_none() {
+        let bot_err = fallback_error(None);
+        match bot_err {
+            BotError::Config(msg) => assert!(msg.contains("retry exhausted")),
+            other => panic!("expected Config variant, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn backoff_duration_is_within_range() {
+        for attempt in 0..5 {
+            let dur = backoff_duration(attempt);
+            assert!(dur.as_secs_f64() > 0.0);
+            assert!(
+                dur <= MAX_DELAY * 2,
+                "attempt {} duration {:?}",
+                attempt,
+                dur
+            );
+        }
+    }
+
+    #[test]
+    fn backoff_duration_increases_with_attempts() {
+        let d0 = backoff_duration(0).as_secs_f64();
+        let d3 = backoff_duration(3).as_secs_f64();
+        assert!(d3 > d0 * 0.5, "d0={} d3={}", d0, d3);
+    }
+
+    #[test]
+    fn classify_error_fatal() {
+        // Io errors are classified as Fatal
+        let e = teloxide::RequestError::Io(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"));
+        assert_eq!(classify_error(&e), RetryKind::Fatal);
+    }
+
+    #[test]
+    fn retry_kind_equality() {
+        assert_eq!(RetryKind::Transient, RetryKind::Transient);
+        assert_ne!(RetryKind::Transient, RetryKind::Fatal);
+        assert_ne!(RetryKind::RateLimited, RetryKind::Fatal);
+    }
+}

@@ -8,6 +8,9 @@ pub enum BotError {
     #[error("Network error: {0}")]
     Network(#[from] teloxide::RequestError),
 
+    #[error("Download error: {0}")]
+    Download(#[from] teloxide::DownloadError),
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
@@ -17,17 +20,52 @@ pub enum BotError {
     #[error("Agent run error: {0}")]
     AgentRun(#[from] loom::cli_run::RunError),
 
-    #[error("Database error: {0}")]
-    Database(#[from] rusqlite::Error),
+    #[error("SQLite error: {0}")]
+    Sqlite(#[from] rusqlite::Error),
 
-    #[error("Serialization error: {0}")]
-    Serialization(#[from] serde_json::Error),
-
-    #[error("Download error: {0}")]
-    Download(#[from] teloxide::DownloadError),
-
-    #[error("Unknown error: {0}")]
+    #[error("{0}")]
     Unknown(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bot_error_config_display() {
+        let e = BotError::Config("bad config".into());
+        assert_eq!(e.to_string(), "Configuration error: bad config");
+    }
+
+    #[test]
+    fn bot_error_agent_display() {
+        let e = BotError::Agent("timeout".into());
+        assert_eq!(e.to_string(), "Agent error: timeout");
+    }
+
+    #[test]
+    fn bot_error_unknown_display() {
+        let e = BotError::Unknown("something went wrong".into());
+        assert_eq!(e.to_string(), "something went wrong");
+    }
+
+    #[test]
+    fn bot_error_sqlite_from() {
+        let e = BotError::from(rusqlite::Error::InvalidColumnIndex(999));
+        match e {
+            BotError::Sqlite(_) => {}
+            _ => panic!("expected Sqlite variant"),
+        }
+    }
+
+    #[test]
+    fn bot_error_io_from() {
+        let e = BotError::from(std::io::Error::new(std::io::ErrorKind::NotFound, "file missing"));
+        match e {
+            BotError::Io(_) => {}
+            _ => panic!("expected Io variant"),
+        }
+    }
 }
 
 pub type Result<T> = std::result::Result<T, BotError>;

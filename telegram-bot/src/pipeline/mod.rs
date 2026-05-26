@@ -310,3 +310,49 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
     handle_media_attachments(ctx).await?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strip_bot_mention_removes_mention() {
+        assert_eq!(
+            strip_bot_mention("Hello @MyBot how are you?", "MyBot"),
+            "Hello how are you?"
+        );
+    }
+
+    #[test]
+    fn strip_bot_mention_removes_mention_without_trailing_space() {
+        assert_eq!(
+            strip_bot_mention("Hello @MyBot", "MyBot"),
+            "Hello "
+        );
+    }
+
+    #[test]
+    fn strip_bot_mention_with_trailing_space() {
+        // "@MyBot " is replaced first (includes trailing space), leaving "Hello "
+        assert_eq!(
+            strip_bot_mention("Hello @MyBot world", "MyBot"),
+            "Hello world"
+        );
+    }
+
+    #[test]
+    fn strip_bot_mention_empty_username() {
+        assert_eq!(
+            strip_bot_mention("Hello @MyBot", ""),
+            "Hello @MyBot"
+        );
+    }
+
+    #[test]
+    fn strip_bot_mention_no_mention_present() {
+        assert_eq!(
+            strip_bot_mention("Hello world", "MyBot"),
+            "Hello world"
+        );
+    }
+}

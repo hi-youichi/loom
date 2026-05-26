@@ -71,6 +71,7 @@ pub async fn run_loom_agent_streaming(
             acp_session_id: None,
             force_compact,
             chat_id: Some(chat_id),
+            worktree: false,
         };
 
 

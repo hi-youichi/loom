@@ -116,4 +116,93 @@ mod tests {
         assert!(result.contains("123:ABC"));
         assert!(result.contains("/tmp/downloads"));
     }
+
+    #[test]
+    fn interpolate_env_vars_missing_var() {
+        let input = "token = \"$NONEXISTENT_VAR_XYZ_123\"";
+        let result = interpolate_env_vars(input);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn interpolate_env_vars_unclosed_brace() {
+        let input = "token = \"${UNCLOSED";
+        let result = interpolate_env_vars(input);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn interpolate_env_vars_comment_line_unchanged() {
+        let input = "# $HOME should not be replaced";
+        let result = interpolate_env_vars(input).unwrap();
+        assert_eq!(result, "# $HOME should not be replaced");
+    }
+
+    #[test]
+    fn interpolate_env_vars_brace_syntax() {
+        std::env::set_var("TEST_BRACE_VAR", "hello");
+        let input = "value = \"${TEST_BRACE_VAR}\"";
+        let result = interpolate_env_vars(input).unwrap();
+        assert!(result.contains("hello"));
+    }
+
+    #[test]
+    fn get_enabled_bots_filters_disabled() {
+        let mut config = TelegramBotConfig::default();
+        config.bots.insert(
+            "active".into(),
+            BotConfig {
+                token: "t1".into(),
+                enabled: true,
+                description: None,
+                handler: None,
+            },
+        );
+        config.bots.insert(
+            "inactive".into(),
+            BotConfig {
+                token: "t2".into(),
+                enabled: false,
+                description: None,
+                handler: None,
+            },
+        );
+
+        let enabled = config.get_enabled_bots();
+        assert_eq!(enabled.len(), 1);
+        assert_eq!(enabled[0].0, "active");
+    }
+
+    #[test]
+    fn load_from_path_rejects_empty_token() {
+        let dir = std::env::temp_dir().join("telegram_bot_test_empty_token");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test.toml");
+        std::fs::write(&path, r#"
+[bots.mybot]
+token = ""
+"#).unwrap();
+
+        let result = load_from_path(&path);
+        match result {
+            Err(ConfigError::MissingToken(name)) => assert_eq!(name, "mybot"),
+            other => panic!("expected MissingToken, got {:?}", other),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn load_from_path_rejects_no_bots() {
+        let dir = std::env::temp_dir().join("telegram_bot_test_no_bots");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test.toml");
+        std::fs::write(&path, "[settings]\nlog_level = \"debug\"\n").unwrap();
+
+        let result = load_from_path(&path);
+        match result {
+            Err(ConfigError::NoBots) => {}
+            other => panic!("expected NoBots, got {:?}", other),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

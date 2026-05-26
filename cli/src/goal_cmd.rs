@@ -89,6 +89,12 @@ let description = match &ga.description {
     };
 
     let mut runner = GoalRunner::new(description, working_dir, db, tool, cancel).await?;
+    if let Some(budget) = ga.token_budget {
+        runner = runner.with_token_budget(budget);
+    }
+    if let Some(ref verify) = ga.verify {
+        runner = runner.with_verify_command(verify.clone());
+    }
     print_task_id(runner.task_id());
     let outcome = runner.run().await;
     print_outcome(&outcome);
@@ -103,10 +109,12 @@ fn print_task_id(task_id: &str) {
 }
 
 fn print_outcome(outcome: &GoalOutcome) {
-    if let GoalOutcome::Error(e) = outcome {
-        eprintln!("goal failed: {}", e);
-    } else {
-        eprintln!("goal achieved");
+    match outcome {
+        GoalOutcome::Error(e) => eprintln!("goal failed: {}", e),
+        GoalOutcome::UsageLimited { tokens_used, token_budget } => {
+            eprintln!("goal stopped: token budget exhausted ({}/{})", tokens_used, token_budget);
+        }
+        GoalOutcome::Achieved => eprintln!("goal achieved"),
     }
 }
 
