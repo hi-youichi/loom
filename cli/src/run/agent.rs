@@ -434,6 +434,14 @@ fn on_event_react(
                     eprintln!("Session title: {}", title);
                 }
             }
+            // When thinking content ended without a trailing newline and the next
+            // event is Updates (not Messages), ensure we close the thinking block
+            // before printing state / tool call info.
+            if s.in_thinking {
+                eprintln!();
+                eprintln!("{}", panel_format::format_thinking_separator());
+                s.in_thinking = false;
+            }
             if verbose {
                 let label = match node_id.as_str() {
                     "think" => {
