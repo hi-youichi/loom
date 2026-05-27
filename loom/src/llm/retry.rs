@@ -76,20 +76,6 @@ impl RetryLlmClient {
         })
     }
 
-    async fn send_chunks_to(chunk_tx: &Option<mpsc::Sender<MessageChunk>>, resp: &LlmResponse) {
-        if let Some(tx) = chunk_tx {
-            if let Some(ref reasoning_content) = resp.reasoning_content {
-                if !reasoning_content.is_empty() {
-                    let _ = tx
-                        .send(MessageChunk::thinking(reasoning_content.clone()))
-                        .await;
-                }
-            }
-            if !resp.content.is_empty() {
-                let _ = tx.send(MessageChunk::message(resp.content.clone())).await;
-            }
-        }
-    }
 }
 
 trait IsEmptyResponse {
@@ -121,12 +107,11 @@ impl LlmClient for RetryLlmClient {
 
         for attempt in 0..=self.max_retries {
             let resp = inner
-                .invoke_stream(&messages, None)
+                .invoke_stream(&messages, chunk_tx.clone())
                 .await
                 .map_err(|e| AgentError::ExecutionFailed(e.to_string()))?;
 
             if !resp.is_empty() {
-                Self::send_chunks_to(&chunk_tx, &resp).await;
                 return Ok(resp);
             }
 
@@ -160,25 +145,11 @@ impl LlmClient for RetryLlmClient {
 
         for attempt in 0..=self.max_retries {
             let resp = inner
-                .invoke_stream_with_tool_delta(&messages, None, None)
+                .invoke_stream_with_tool_delta(&messages, chunk_tx.clone(), tool_delta_tx.clone())
                 .await
                 .map_err(|e| AgentError::ExecutionFailed(e.to_string()))?;
 
             if !resp.is_empty() {
-                Self::send_chunks_to(&chunk_tx, &resp).await;
-
-                if let Some(tx) = &tool_delta_tx {
-                    for tool_call in &resp.tool_calls {
-                        let _ = tx
-                            .send(ToolCallDelta {
-                                call_id: tool_call.id.clone(),
-                                name: Some(tool_call.name.clone()),
-                                arguments_delta: tool_call.arguments.clone(),
-                            })
-                            .await;
-                    }
-                }
-
                 return Ok(resp);
             }
 
