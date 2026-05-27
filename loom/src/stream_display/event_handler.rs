@@ -7,6 +7,7 @@ use crate::{DupState, GotState, ReActState, ToolCall, ToolResult, TotState};
 use crate::stream_display::format::*;
 use crate::stream_display::panel_format;
 use crate::stream_display::spinner::{NoopSpinner, Spinner, SpinnerTrait};
+use crate::stream_display::StreamingMarkdownRenderer;
 
 pub struct StreamDisplayConfig {
     pub verbose: bool,
@@ -40,6 +41,8 @@ pub struct EventState {
     pub compact: bool,
     /// When the overall session started, for "共 Ns" elapsed display.
     pub session_start: Option<std::time::Instant>,
+    /// Streaming markdown renderer for terminal output.
+    pub markdown_renderer: StreamingMarkdownRenderer,
 }
 
 impl EventState {
@@ -61,6 +64,7 @@ impl EventState {
             use_spinner,
             compact: false,
             session_start: None,
+            markdown_renderer: StreamingMarkdownRenderer::new(),
         }
     }
 
@@ -116,14 +120,8 @@ pub fn log_node_enter(from: Option<&str>, node_id: &str, verbose: bool) {
     eprintln!("Entering: {} (from {})", node_id, from);
 }
 
-pub fn print_stream_chunk(chunk: &MessageChunk) {
-    if chunk.kind == MessageChunkKind::Thinking {
-        eprint!("{}", panel_format::dim(&chunk.content));
-        let _ = std::io::Write::flush(&mut std::io::stderr());
-    } else {
-        print!("{}", chunk.content);
-        let _ = std::io::Write::flush(&mut std::io::stdout());
-    }
+pub fn print_stream_chunk(chunk: &MessageChunk, renderer: &mut StreamingMarkdownRenderer) {
+    renderer.push_chunk(chunk);
 }
 
 fn handle_messages(s: &mut EventState, chunk: &MessageChunk, output_timestamp: bool) {
@@ -147,7 +145,7 @@ fn handle_messages(s: &mut EventState, chunk: &MessageChunk, output_timestamp: b
                 eprintln!("{}", panel_format::format_thinking_separator());
         s.in_thinking = false;
     }
-    print_stream_chunk(chunk);
+    print_stream_chunk(chunk, &mut s.markdown_renderer);
 }
 
 fn handle_usage(

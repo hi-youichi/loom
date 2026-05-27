@@ -245,6 +245,7 @@ pub async fn run_agent_wrapper(
         .map(|ra| format!("{} ({})", ra.name, ra.source));
     let state = Arc::new(Mutex::new(EventState {
         agent_display,
+        markdown_renderer: StreamingMarkdownRenderer::new(),
         ..EventState::default()
     }));
 
@@ -272,6 +273,11 @@ pub async fn run_agent_wrapper(
     let start = Instant::now();
     let result = run_agent_with_options(opts, cmd, Some(on_event)).await?;
     let duration = start.elapsed();
+
+    // Flush the streaming markdown renderer's remaining buffer
+    if let Ok(mut s) = state.lock() {
+        s.markdown_renderer.finish();
+    }
 
     if verbose {
         if let Some(ref from) = state.lock().unwrap().last_node {
@@ -334,15 +340,10 @@ pub async fn run_agent_wrapper(
     })
 }
 
-fn print_stream_chunk(chunk: &loom::MessageChunk) {
-    if chunk.kind == MessageChunkKind::Thinking {
-        // Thinking content: dimmed on TTY, prefixed on pipe
-        eprint!("{}", panel_format::dim(&chunk.content));
-        let _ = std::io::Write::flush(&mut std::io::stderr());
-    } else {
-        print!("{}", chunk.content);
-        let _ = std::io::Write::flush(&mut std::io::stdout());
-    }
+use loom::stream_display::StreamingMarkdownRenderer;
+
+fn print_stream_chunk(chunk: &loom::MessageChunk, renderer: &mut StreamingMarkdownRenderer) {
+    renderer.push_chunk(chunk);
 }
 
 fn on_event_react(
@@ -392,7 +393,7 @@ fn on_event_react(
                 eprintln!("{}", panel_format::format_thinking_separator());
                 s.in_thinking = false;
             }
-            print_stream_chunk(chunk);
+            print_stream_chunk(chunk, &mut s.markdown_renderer);
         }
         StreamEvent::Updates { node_id, state: react_state, .. } => {
             // Always show title generation result (non-verbose too)
@@ -564,7 +565,7 @@ fn on_event_dup(
                 }
                 s.reply_started = true;
             }
-            print_stream_chunk(chunk);
+            print_stream_chunk(chunk, &mut s.markdown_renderer);
         }
         StreamEvent::Updates { node_id, state, .. } => {
             if verbose {
@@ -669,7 +670,7 @@ fn on_event_tot(
                 }
                 s.reply_started = true;
             }
-            print_stream_chunk(chunk);
+            print_stream_chunk(chunk, &mut s.markdown_renderer);
         }
         StreamEvent::Updates { node_id, state, .. } => {
             if verbose {
@@ -724,6 +725,8 @@ struct EventState {
     pending_tool_results: Vec<ToolResult>,
     /// Time when pending_tool_calls were received (for elapsed timing).
     pending_tool_start: Option<std::time::Instant>,
+    /// Streaming markdown renderer for terminal output.
+    markdown_renderer: StreamingMarkdownRenderer,
 }
 
 impl EventState {
@@ -834,7 +837,7 @@ fn on_event_got(
                 }
                 s.reply_started = true;
             }
-            print_stream_chunk(chunk);
+            print_stream_chunk(chunk, &mut s.markdown_renderer);
         }
         StreamEvent::Updates { node_id, state, .. } => {
             if verbose {
@@ -953,6 +956,7 @@ mod tests {
             pending_tool_calls: Vec::new(),
             pending_tool_results: Vec::new(),
             pending_tool_start: None,
+            ..EventState::default()
         };
         on_event_react(
             &StreamEvent::TaskStart {
@@ -996,6 +1000,7 @@ mod tests {
             pending_tool_calls: Vec::new(),
             pending_tool_results: Vec::new(),
             pending_tool_start: None,
+            ..EventState::default()
         };
 
         let dup_state = DupState {
@@ -1136,6 +1141,7 @@ mod tests {
             pending_tool_calls: Vec::new(),
             pending_tool_results: Vec::new(),
             pending_tool_start: None,
+            ..EventState::default()
         };
         let react_with_tool = ReActState {
             tool_calls: vec![ToolCall {
@@ -1203,6 +1209,7 @@ mod tests {
             pending_tool_calls: Vec::new(),
             pending_tool_results: Vec::new(),
             pending_tool_start: None,
+            ..EventState::default()
         };
 
         on_event_tot(

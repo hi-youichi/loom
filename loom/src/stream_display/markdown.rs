@@ -174,7 +174,7 @@ pub fn render_inline(input: &str) -> String {
 
 // ── Parsing helpers ──────────────────────────────────────────────
 
-fn parse_heading(line: &str) -> Option<(u8, &str)> {
+pub(crate) fn parse_heading(line: &str) -> Option<(u8, &str)> {
     let trimmed = line.trim_start();
     let level = trimmed.bytes().take_while(|&b| b == b'#').count() as u8;
     if level > 0 && level <= 6 {
@@ -186,7 +186,7 @@ fn parse_heading(line: &str) -> Option<(u8, &str)> {
     None
 }
 
-fn parse_unordered_list_item(line: &str) -> Option<&str> {
+pub(crate) fn parse_unordered_list_item(line: &str) -> Option<&str> {
     let trimmed = line.trim_start();
     if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
         // Make sure it's not a horizontal rule
@@ -200,7 +200,7 @@ fn parse_unordered_list_item(line: &str) -> Option<&str> {
     None
 }
 
-fn parse_ordered_list_item(line: &str) -> Option<(u32, &str)> {
+pub(crate) fn parse_ordered_list_item(line: &str) -> Option<(u32, &str)> {
     let trimmed = line.trim_start();
     let dot_pos = trimmed.find(". ")?;
     let num_str = &trimmed[..dot_pos];
@@ -209,7 +209,7 @@ fn parse_ordered_list_item(line: &str) -> Option<(u32, &str)> {
     Some((num, content))
 }
 
-fn is_horizontal_rule(s: &str) -> bool {
+pub(crate) fn is_horizontal_rule(s: &str) -> bool {
     if s.is_empty() {
         return false;
     }
@@ -278,7 +278,7 @@ fn find_link_end(chars: &[char], start: usize) -> Option<(usize, usize)> {
 
 // ── Formatting helpers ───────────────────────────────────────────
 
-fn format_heading(level: u8, content: &str) -> String {
+pub(crate) fn format_heading(level: u8, content: &str) -> String {
     let rendered = render_inline(content);
     if color_enabled() {
         match level {
@@ -293,7 +293,7 @@ fn format_heading(level: u8, content: &str) -> String {
     }
 }
 
-fn format_code_block_start(lang: &str) -> String {
+pub(crate) fn format_code_block_start(lang: &str) -> String {
     if color_enabled() {
         if lang.is_empty() {
             "\x1b[2m────────────────────\x1b[0m".to_string()
@@ -305,7 +305,7 @@ fn format_code_block_start(lang: &str) -> String {
     }
 }
 
-fn format_code_block_end() -> String {
+pub(crate) fn format_code_block_end() -> String {
     if color_enabled() {
         "\x1b[2m────────────────────\x1b[0m".to_string()
     } else {
@@ -313,7 +313,7 @@ fn format_code_block_end() -> String {
     }
 }
 
-fn format_code_line(line: &str) -> String {
+pub(crate) fn format_code_line(line: &str) -> String {
     if color_enabled() {
         format!("\x1b[2m  {}\x1b[0m", line)
     } else {
@@ -321,7 +321,7 @@ fn format_code_line(line: &str) -> String {
     }
 }
 
-fn format_inline_code(code: &str) -> String {
+pub(crate) fn format_inline_code(code: &str) -> String {
     if color_enabled() {
         format!("\x1b[33m{}\x1b[0m", code)
     } else {
@@ -329,7 +329,7 @@ fn format_inline_code(code: &str) -> String {
     }
 }
 
-fn format_italic(text: &str) -> String {
+pub(crate) fn format_italic(text: &str) -> String {
     if color_enabled() {
         format!("\x1b[3m{}\x1b[0m", text)
     } else {
@@ -337,7 +337,7 @@ fn format_italic(text: &str) -> String {
     }
 }
 
-fn format_link(text: &str, url: &str) -> String {
+pub(crate) fn format_link(text: &str, url: &str) -> String {
     if color_enabled() {
         format!("\x1b[4m{}\x1b[0m ({})", text, dim(url))
     } else {
@@ -345,7 +345,7 @@ fn format_link(text: &str, url: &str) -> String {
     }
 }
 
-fn format_blockquote(content: &str) -> String {
+pub(crate) fn format_blockquote(content: &str) -> String {
     if color_enabled() {
         format!("\x1b[2m│\x1b[0m {}", render_inline(content))
     } else {
@@ -353,7 +353,7 @@ fn format_blockquote(content: &str) -> String {
     }
 }
 
-fn format_list_item(bullet: &str, content: &str) -> String {
+pub(crate) fn format_list_item(bullet: &str, content: &str) -> String {
     let rendered = render_inline(content);
     if color_enabled() {
         format!("  {} {}", yellow(bullet), rendered)
@@ -362,7 +362,7 @@ fn format_list_item(bullet: &str, content: &str) -> String {
     }
 }
 
-fn format_horizontal_rule() -> String {
+pub(crate) fn format_horizontal_rule() -> String {
     if color_enabled() {
         "\x1b[2m────────────────────\x1b[0m".to_string()
     } else {
