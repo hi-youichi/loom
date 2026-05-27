@@ -30,6 +30,8 @@ Cargo.lock
 # Persisted data (e.g. sample-generated DB)
 *.db
 *.db-journal
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
 loom/data/
