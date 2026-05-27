@@ -3,7 +3,7 @@
 //! Shared by both CLI and goal runner for unified UX.
 //! Provides unified formatting for:
 //! - Panel lines: `_CATEGORY  message` (with ANSI color)
-//! - Tool call status: `_CALL tool: args` / `_DONE tool: args ✓`
+//! - Tool call status: `tool_name: args` / `tool_name: args ✓ result (X.Xs)`
 //! - LLM usage: `_USAGE  2.35s | 1.2K↑ 800↓ = 2.0K @ 850 t/s`
 //! - Thinking separator
 
@@ -80,21 +80,21 @@ fn truncate_to_char_boundary(s: &str, max_bytes: usize) -> &str {
     &s[..boundary]
 }
 
-/// Formats a tool call line: `_CALL  tool_name: args_summary`
+/// Formats a tool call line: `tool_name: args_summary`
+///
+/// Shows yellow tool name + truncated args summary, no prefix.
 pub fn format_tool_call(tool_name: &str, args_summary: &str) -> String {
     let args = if args_summary.len() > 80 {
         format!("{}…", truncate_to_char_boundary(args_summary, 77))
     } else {
         args_summary.to_string()
     };
-    let msg = format!("{}: {}", yellow(tool_name), args);
-    format_panel_line("CALL", &msg)
+    format!("{}: {}", yellow(tool_name), args)
 }
 
-/// Formats a tool completion line: `_DONE  tool_name  result_summary (X.Xs) ✓`
+/// Formats a tool completion line: `tool_name: args ✓ result (X.Xs)`
 ///
-/// In the new lean UX, DONE shows the tool name + result summary + timing.
-/// If timing is None, just shows tool name + result summary.
+/// No prefix. Shows tool name (yellow) + result summary + timing + green ✓.
 pub fn format_tool_done(tool_name: &str, result_summary: &str, elapsed: Option<Duration>) -> String {
     let timing = match elapsed {
         Some(d) => format!(" {}", crate::stream_display::tool_summary::format_elapsed(d)),
@@ -103,12 +103,11 @@ pub fn format_tool_done(tool_name: &str, result_summary: &str, elapsed: Option<D
     let summary = if result_summary.is_empty() {
         String::new()
     } else if result_summary.len() > 60 {
-        format!(" {}", &truncate_to_char_boundary(result_summary, 57))
+        format!(" — {}", &truncate_to_char_boundary(result_summary, 57))
     } else {
-        format!(" {}", result_summary)
+        format!(" — {}", result_summary)
     };
-    let msg = format!("{}{}{} {}", tool_name, summary, timing, green("✓"));
-    format_panel_line("DONE", &msg)
+    format!("{}{}{} {}", yellow(tool_name), summary, timing, green("✓"))
 }
 
 // ── LLM Usage formatting (unified) ─────────────────────────────────
@@ -240,12 +239,16 @@ mod tests {
         let line = format_tool_call("bash", "echo hello");
         assert!(line.contains("bash"));
         assert!(line.contains("echo hello"));
+        // No prefix — should NOT contain "CALL"
+        assert!(!line.contains("CALL"));
     }
 
     #[test]
     fn format_tool_done_contains_checkmark() {
         let line = format_tool_done("read", "3 lines", None);
         assert!(line.contains("✓"));
+        // No prefix — should NOT contain "DONE"
+        assert!(!line.contains("DONE"));
     }
 
     #[test]

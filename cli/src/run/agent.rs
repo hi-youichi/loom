@@ -430,8 +430,11 @@ fn on_event_react(
                     if let Some(sp) = s.spinner.take() {
                         sp.finish_box();
                     }
-                    // Show DIFF immediately for edit/multiedit (doesn't need result)
+                    // Show tool call lines (name + args summary)
                     for tc in &react_state.tool_calls {
+                        let summary = loom::stream_display::tool_summary::format_call_summary(&tc.name, &tc.arguments);
+                        eprintln!("{}", panel_format::panel_format::format_tool_call(&tc.name, &summary));
+                        // Show DIFF immediately for edit/multiedit (doesn't need result)
                         if let Some(diff) = loom::stream_display::format_diff(
                             &tc.name, &tc.arguments, "", false,
                         ) {
@@ -509,7 +512,15 @@ fn on_event_react(
                         }
                     }
 
-                    // DONE lines removed — no _DONE output
+                    // Show DONE line for non-edit tools
+                    if !is_edit_like {
+                        let done_summary = loom::stream_display::tool_summary::format_done_summary(
+                            &tc.name,
+                            result_text.as_deref().unwrap_or(""),
+                            is_error,
+                        );
+                        eprintln!("{}", panel_format::panel_format::format_tool_done(&tc.name, &done_summary, elapsed));
+                    }
                 }
                 s.pending_tool_start = None;
                 s.pending_tool_results.clear();
