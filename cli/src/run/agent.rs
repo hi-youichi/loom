@@ -17,7 +17,7 @@ use super::display::{
     format_dup_state_display, format_got_state_display, format_react_state_display,
     format_tot_state_display, truncate_display,
 };
-use super::panel_format;
+use loom::stream_display as panel_format;
 use loom::protocol::EnvelopeState;
 use loom::{RunCmd, RunOptions, StreamEvent};
 
@@ -84,28 +84,6 @@ fn log_node_enter(from: Option<&str>, node_id: &str, verbose: bool) {
     eprintln!("Entering: {} (from {})", node_id, from);
 }
 
-/// Single line listing tool names (normal mode only; verbose shows full state).
-fn log_tools_used(tool_calls: &[ToolCall]) {
-    if tool_calls.is_empty() {
-        return;
-    }
-    for tc in tool_calls {
-        let summary = loom::stream_display::format_call_summary(&tc.name, &tc.arguments);
-        eprintln!("{}", panel_format::format_tool_call(&tc.name, &summary));
-    }
-}
-
-/// Formats context limit for display (e.g., "128K" or "1.5M").
-fn format_context_limit(limit: u32) -> String {
-    if limit >= 1_000_000 {
-        format!("{:.1}M", limit as f64 / 1_000_000.0)
-    } else if limit >= 1000 {
-        format!("{}K", limit / 1000)
-    } else {
-        limit.to_string()
-    }
-}
-
 /// Prints current model name and context info to stderr at startup (structured panel format).
 async fn print_model_info(model: Option<&String>) {
     let model_name = match model {
@@ -128,7 +106,7 @@ async fn print_model_info(model: Option<&String>) {
                 "{}",
                 panel_format::format_model_line(
                     model_name,
-                    &format!("{} context", format_context_limit(spec.context_limit)),
+                    &format!("{} context", panel_format::format_context_limit(spec.context_limit)),
                 )
             );
         }
@@ -266,19 +244,8 @@ pub async fn run_agent_wrapper(
         .as_ref()
         .map(|ra| format!("{} ({})", ra.name, ra.source));
     let state = Arc::new(Mutex::new(EventState {
-        turn: 0,
-        last_node: None,
-        reply_started: false,
         agent_display,
-        total_prompt_tokens: 0,
-        total_completion_tokens: 0,
-        in_thinking: false,
-        last_prefill_duration: None,
-        last_decode_duration: None,
-        spinner: None,
-            pending_tool_calls: Vec::new(),
-            pending_tool_results: Vec::new(),
-            pending_tool_start: None,
+        ..EventState::default()
     }));
 
     let state_clone = state.clone();
@@ -320,7 +287,7 @@ pub async fn run_agent_wrapper(
             0.0
         };
         eprintln!(
-            "{}",
+            "\n{}",
             panel_format::format_usage_line(
                 duration,
                 s.total_prompt_tokens,
@@ -463,7 +430,6 @@ fn on_event_react(
                     if let Some(sp) = s.spinner.take() {
                         sp.finish_box();
                     }
-                    log_tools_used(&react_state.tool_calls);
                     // Show DIFF immediately for edit/multiedit (doesn't need result)
                     for tc in &react_state.tool_calls {
                         if let Some(diff) = loom::stream_display::format_diff(
@@ -543,36 +509,7 @@ fn on_event_react(
                         }
                     }
 
-                    // Print DONE line for non-edit tools
-                    if !is_edit_like {
-                        if tc.name == "ls" {
-                            let path = serde_json::from_str::<serde_json::Value>(&tc.arguments)
-                                .ok()
-                                .and_then(|v| v.get("path").and_then(|p| p.as_str()).map(|s| s.trim().to_string()))
-                                .filter(|s| !s.is_empty())
-                                .unwrap_or_else(|| ".".to_string());
-                            let timing = match elapsed {
-                                Some(d) => format!(" {:.1}s", d.as_secs_f64()),
-                                None => String::new(),
-                            };
-                            eprintln!("ls {}{}", path, timing);
-                        } else if tc.name == "read" {
-                            // read DONE: show path + line count + timing
-                            let path = serde_json::from_str::<serde_json::Value>(&tc.arguments)
-                                .ok()
-                                .and_then(|v| v.get("path").and_then(|p| p.as_str()).map(String::from))
-                                .unwrap_or_default();
-                            let line_count = result_text.as_deref().map(|r| r.lines().count()).unwrap_or(0);
-                            let timing = match elapsed {
-                                Some(d) => format!(" {:.1}s", d.as_secs_f64()),
-                                None => String::new(),
-                            };
-                            eprintln!("read {} {} lines{}", path, line_count, timing);
-                        } else {
-                            let result_summary = result_text.as_deref().unwrap_or("");
-                            eprintln!("{}", panel_format::format_tool_done(&tc.name, result_summary, elapsed));
-                        }
-                    }
+                    // DONE lines removed — no _DONE output
                 }
                 s.pending_tool_start = None;
                 s.pending_tool_results.clear();
@@ -585,18 +522,7 @@ fn on_event_react(
             decode_duration,
             ..
         } => {
-            s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
-            s.total_completion_tokens =
-                s.total_completion_tokens.saturating_add(*completion_tokens);
-            s.last_prefill_duration = *prefill_duration;
-            s.last_decode_duration = *decode_duration;
-
-            tracing::info!(
-                prompt_tokens,
-                completion_tokens,
-                total_tokens = *prompt_tokens + *completion_tokens,
-                "LLM usage"
-            );
+            s.accumulate_usage(*prompt_tokens, *completion_tokens, *prefill_duration, *decode_duration);
         }
         _ => {}
     }
@@ -677,18 +603,7 @@ fn on_event_dup(
             decode_duration,
             ..
         } => {
-            s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
-            s.total_completion_tokens =
-                s.total_completion_tokens.saturating_add(*completion_tokens);
-            s.last_prefill_duration = *prefill_duration;
-            s.last_decode_duration = *decode_duration;
-
-            tracing::info!(
-                prompt_tokens,
-                completion_tokens,
-                total_tokens = *prompt_tokens + *completion_tokens,
-                "LLM usage"
-            );
+            s.accumulate_usage(*prompt_tokens, *completion_tokens, *prefill_duration, *decode_duration);
         }
         _ => {}
     }
@@ -766,23 +681,13 @@ fn on_event_tot(
             decode_duration,
             ..
         } => {
-            s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
-            s.total_completion_tokens =
-                s.total_completion_tokens.saturating_add(*completion_tokens);
-            s.last_prefill_duration = *prefill_duration;
-            s.last_decode_duration = *decode_duration;
-
-            tracing::info!(
-                prompt_tokens,
-                completion_tokens,
-                total_tokens = *prompt_tokens + *completion_tokens,
-                "LLM usage"
-            );
+            s.accumulate_usage(*prompt_tokens, *completion_tokens, *prefill_duration, *decode_duration);
         }
         _ => {}
     }
 }
 
+#[derive(Default)]
 struct EventState {
     turn: u32,
     last_node: Option<String>,
@@ -808,6 +713,27 @@ struct EventState {
     pending_tool_results: Vec<ToolResult>,
     /// Time when pending_tool_calls were received (for elapsed timing).
     pending_tool_start: Option<std::time::Instant>,
+}
+
+impl EventState {
+    fn accumulate_usage(
+        &mut self,
+        prompt_tokens: u32,
+        completion_tokens: u32,
+        prefill_duration: Option<std::time::Duration>,
+        decode_duration: Option<std::time::Duration>,
+    ) {
+        self.total_prompt_tokens = self.total_prompt_tokens.saturating_add(prompt_tokens);
+        self.total_completion_tokens = self.total_completion_tokens.saturating_add(completion_tokens);
+        self.last_prefill_duration = prefill_duration;
+        self.last_decode_duration = decode_duration;
+        tracing::info!(
+            prompt_tokens,
+            completion_tokens,
+            total_tokens = prompt_tokens + completion_tokens,
+            "LLM usage"
+        );
+    }
 }
 
 /// Prints loaded tools info to stderr at startup (structured panel format).
@@ -912,18 +838,7 @@ fn on_event_got(
             decode_duration,
             ..
         } => {
-            s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
-            s.total_completion_tokens =
-                s.total_completion_tokens.saturating_add(*completion_tokens);
-            s.last_prefill_duration = *prefill_duration;
-            s.last_decode_duration = *decode_duration;
-
-            tracing::info!(
-                prompt_tokens,
-                completion_tokens,
-                total_tokens = *prompt_tokens + *completion_tokens,
-                "LLM usage"
-            );
+            s.accumulate_usage(*prompt_tokens, *completion_tokens, *prefill_duration, *decode_duration);
         }
         _ => {}
     }
@@ -1192,16 +1107,6 @@ mod tests {
             false,
         );
         assert_eq!(s.last_node.as_deref(), Some("plan_graph"));
-    }
-
-    #[test]
-    fn log_tools_used_handles_empty_and_non_empty() {
-        log_tools_used(&[]);
-        log_tools_used(&[ToolCall {
-            name: "search".to_string(),
-            arguments: "{}".to_string(),
-            id: None,
-        }]);
     }
 
     #[test]

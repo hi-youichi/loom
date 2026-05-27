@@ -19,6 +19,7 @@ mod run_flow;
 mod session;
 mod subcommands;
 mod task_cmd;
+mod task_db;
 
 pub(crate) use args::Command;
 

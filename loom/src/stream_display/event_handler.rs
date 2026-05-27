@@ -116,16 +116,6 @@ pub fn log_node_enter(from: Option<&str>, node_id: &str, verbose: bool) {
     eprintln!("Entering: {} (from {})", node_id, from);
 }
 
-pub fn log_tools_used(tool_calls: &[ToolCall]) {
-    if tool_calls.is_empty() {
-        return;
-    }
-    for tc in tool_calls {
-        let summary = crate::stream_display::tool_summary::format_call_summary(&tc.name, &tc.arguments);
-        eprintln!("{}", panel_format::format_tool_call(&tc.name, &summary));
-    }
-}
-
 pub fn print_stream_chunk(chunk: &MessageChunk) {
     if chunk.kind == MessageChunkKind::Thinking {
         eprint!("{}", panel_format::dim(&chunk.content));
@@ -260,7 +250,6 @@ pub fn on_event_react(
                     if let Some(sp) = s.spinner.take() {
                         sp.finish_box();
                     }
-                    log_tools_used(&state.tool_calls);
                     // Show DIFF immediately for edit/multiedit (doesn't need result)
                     for tc in &state.tool_calls {
                         if let Some(diff) = crate::stream_display::tool_preview::format_diff(
@@ -328,11 +317,7 @@ pub fn on_event_react(
                         }
                     }
 
-                    // Print DONE line for non-edit tools
-                    if !is_edit_like {
-                        let result_summary = result_text.as_deref().unwrap_or("");
-                        eprintln!("{}", panel_format::format_tool_done(&tc.name, result_summary, elapsed));
-                    }
+                    // DONE lines removed — no _DONE output
                 }
                 s.pending_tool_start = None;
                 s.pending_tool_results.clear();

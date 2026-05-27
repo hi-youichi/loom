@@ -1,9 +1,8 @@
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::args::GoalArgs;
 use loom::goal_runner::{
-    GoalOutcome, GoalRunner, LoomTool, ShellTool, generate_mcp_config, resume,
+    GoalOutcome, GoalRunner, LoomTool, ShellTool, resume, write_mcp_config,
 };
 use loom::cli_run::RunCancellation;
 use task_core::TaskDb;
@@ -18,7 +17,7 @@ pub(crate) async fn handle_goal_command(ga: &GoalArgs) -> Result<(), Box<dyn std
     }
 
     let working_dir = std::env::current_dir()?;
-    let db_path = ensure_task_db()?;
+    let db_path = crate::task_db::ensure_task_db()?;
     let db = Arc::new(TaskDb::open(&db_path).await?);
     let cancel = CancellationToken::new();
     let run_cancellation = RunCancellation::new(0);
@@ -82,12 +81,7 @@ let description = match &ga.description {
             Box::new(loom_tool)
         }
         name => {
-            let args = match name {
-                "codex" => vec!["--goal-prompt".to_string()],
-                "claude" => vec!["--goal-prompt".to_string()],
-                "cursor" => vec!["--goal-prompt".to_string()],
-                _ => vec![],
-            };
+            let args = loom::goal_runner::shell_tool_args(name);
             Box::new(ShellTool::new(name.to_string(), args).with_cancel(cancel.clone()))
         }
     };
@@ -124,21 +118,9 @@ fn print_outcome(outcome: &GoalOutcome) {
     }
 }
 
-fn write_mcp_config(db_path: &Path, working_dir: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let config_content = generate_mcp_config("task", db_path);
-    let config_dir = working_dir.join(".loom");
-    std::fs::create_dir_all(&config_dir)?;
-    let config_path = config_dir.join("goal-mcp.json");
-    std::fs::write(&config_path, config_content)?;
-    Ok(config_path)
-}
 
-fn ensure_task_db() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let loom_home = config::home::loom_home();
-    let db_dir = loom_home.join("tasks");
-    std::fs::create_dir_all(&db_dir)?;
-    Ok(db_dir.join("tasks.db"))
-}
+
+
 
 /// Build a background review config from env vars and optional model override,
 /// then spawn the review as a background task.

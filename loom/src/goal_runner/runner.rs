@@ -597,12 +597,7 @@ fn resolve_tool(
             Ok(Box::new(tool))
         }
         name => {
-            let args = match name {
-                "codex" => vec!["--goal-prompt".to_string()],
-                "claude" => vec!["--goal-prompt".to_string()],
-                "cursor" => vec!["--goal-prompt".to_string()],
-                _ => vec![],
-            };
+            let args = super::tool::shell_tool_args(name);
             Ok(Box::new(super::tool::ShellTool::new(
                 name.to_string(),
                 args,
@@ -611,7 +606,7 @@ fn resolve_tool(
     }
 }
 
-fn write_mcp_config(db_path: &std::path::Path, working_dir: &std::path::Path) -> Result<std::path::PathBuf, GoalError> {
+pub fn write_mcp_config(db_path: &std::path::Path, working_dir: &std::path::Path) -> Result<std::path::PathBuf, GoalError> {
     let config_content = super::tool::generate_mcp_config("task", db_path);
     let config_path = working_dir.join(".loom").join("goal-mcp.json");
     std::fs::create_dir_all(config_path.parent().unwrap())?;

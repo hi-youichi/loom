@@ -4,7 +4,7 @@
 //! Provides unified formatting for:
 //! - Panel lines: `_CATEGORY  message` (with ANSI color)
 //! - Tool call status: `_CALL tool: args` / `_DONE tool: args ✓`
-//! - LLM usage: `_USAGE  2.35s | 1.2K↓ 800↑ = 2.0K @ 850 t/s`
+//! - LLM usage: `_USAGE  2.35s | 1.2K↑ 800↓ = 2.0K @ 850 t/s`
 //! - Thinking separator
 
 use std::time::Duration;
@@ -128,7 +128,7 @@ pub fn format_tokens(t: u32) -> String {
 ///
 /// Normal mode:
 /// ```text
-/// _USAGE  2.35s | 1.2K↓ 800↑ = 2.0K @ 850 t/s
+/// _USAGE  2.35s | 1.2K↑ 800↓ = 2.0K @ 850 t/s
 /// ```
 ///
 /// Verbose mode (with prefill/decode details):
@@ -172,7 +172,7 @@ pub fn format_usage_line(
             format_panel_line(
                 "USAGE",
                 &format!(
-                    "{:.2}s | {}↓ {}↑ = {} @ {:.0} t/s",
+                    "{:.2}s | {}↑ {}↓ = {} @ {:.0} t/s",
                     secs,
                     format_tokens(prompt_tokens),
                     format_tokens(completion_tokens),
@@ -185,7 +185,7 @@ pub fn format_usage_line(
         format_panel_line(
             "USAGE",
             &format!(
-                "{:.2}s | {}↓ {}↑ @ {:.0} t/s",
+                "{:.2}s | {}↑ {}↓ @ {:.0} t/s",
                 secs,
                 format_tokens(prompt_tokens),
                 format_tokens(completion_tokens),

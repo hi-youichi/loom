@@ -297,6 +297,14 @@ pub fn generate_mcp_config(_tool_name: &str, db_path: &Path) -> String {
     )
 }
 
+/// Returns default CLI arguments for known shell-based coding tools.
+pub fn shell_tool_args(tool_name: &str) -> Vec<String> {
+    match tool_name {
+        "codex" | "claude" | "cursor" => vec!["--goal-prompt".to_string()],
+        _ => vec![],
+    }
+}
+
 /// Extract tool name + result preview from `StreamEvent::ToolEnd` events
 /// into a shared summary list for the goal runner to display after each turn.
 fn collect_tool_summary(

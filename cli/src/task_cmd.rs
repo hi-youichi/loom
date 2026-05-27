@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use task_core::{CreateParams, ListParams, TaskDb, TaskStatus};
@@ -13,7 +12,7 @@ use loom::UserContent;
 use crate::args::Command;
 
 pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std::error::Error>> {
-    let db_path = ensure_task_db()?;
+    let db_path = crate::task_db::ensure_task_db()?;
     let db = Arc::new(TaskDb::open(&db_path).await?);
 
     match &ta.command {
@@ -225,12 +224,7 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
     Ok(())
 }
 
-fn ensure_task_db() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let loom_home = config::home::loom_home();
-    let db_dir = loom_home.join("tasks");
-    std::fs::create_dir_all(&db_dir)?;
-    Ok(db_dir.join("tasks.db"))
-}
+
 
 fn truncate_name(desc: &str) -> String {
     let line = desc.lines().next().unwrap_or(desc);

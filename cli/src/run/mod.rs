@@ -6,7 +6,7 @@ pub mod evolution_trigger;
 pub mod memory;
 pub mod memory_provider;
 pub mod observability;
-pub mod panel_format;
+
 pub mod review;
 pub mod review_agent_loop;
 pub mod review_prompts;
