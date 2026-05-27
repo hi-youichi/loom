@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use crate::error::AgentError;
-use crate::llm::{create_llm_client, ChatOpenAI, ChatOpenAICompat, FixedLlmProvider, LlmProvider, ModelEntry};
+use crate::llm::{create_llm_client, ChatOpenAI, ChatOpenAICompat, FixedLlmProvider, LlmProvider, ModelEntry, RetryLlmClient};
 use crate::model_spec::ModelTier;
 use crate::tool_source::ToolSource;
 use crate::LlmClient;
@@ -180,7 +180,9 @@ pub(crate) async fn build_default_llm_with_tool_source(
             if let Some(t) = entry.temperature {
                 client = client.with_temperature(t);
             }
-            Ok(Box::new(client) as Box<dyn LlmClient>)
+            let client: Box<dyn LlmClient> = Box::new(client);
+            let retry_client = RetryLlmClient::new(Arc::from(client));
+            Ok(Box::new(retry_client) as Box<dyn LlmClient>)
         }
         _ => {
             let base_url = entry
@@ -216,7 +218,9 @@ pub(crate) async fn build_default_llm_with_tool_source(
             if let Some(t) = entry.temperature {
                 client = client.with_temperature(t);
             }
-            Ok(Box::new(client) as Box<dyn LlmClient>)
+            let client: Box<dyn LlmClient> = Box::new(client);
+            let retry_client = RetryLlmClient::new(Arc::from(client));
+            Ok(Box::new(retry_client) as Box<dyn LlmClient>)
         }
     }
 }
