@@ -93,13 +93,21 @@ fn format_read_preview(args_json: &str, result: &str) -> String {
     output.push_str(&format_file_header(&header));
     output.push('\n');
 
-    let show_lines = stripped.iter().take(MAX_PREVIEW_LINES);
+    // Check if this is a markdown file — if so, render each line with markdown formatting
+    let is_md = path.to_lowercase().ends_with(".md");
     let line_num_width = format!("{}", start_line + total.min(MAX_PREVIEW_LINES)).len();
 
-    for (i, line) in show_lines.enumerate() {
+    for (i, line) in stripped.iter().take(MAX_PREVIEW_LINES).enumerate() {
         let line_num = start_line + i;
-        let truncated = truncate_to_width(line, 100);
-        output.push_str(&format_line_numbered(line_num, line_num_width, &truncated));
+        if is_md {
+            // Render each line through markdown line-level rendering
+            let rendered = render_markdown_line(line);
+            let truncated = truncate_to_width(&rendered, 120);
+            output.push_str(&format_line_numbered(line_num, line_num_width, &truncated));
+        } else {
+            let truncated = truncate_to_width(line, 100);
+            output.push_str(&format_line_numbered(line_num, line_num_width, &truncated));
+        }
         output.push('\n');
     }
 
@@ -527,6 +535,32 @@ fn format_ls_preview(result: &str) -> String {
     output
 }
 
+/// Render a single line of markdown content for preview display.
+///
+/// Applies both line-level formatting (headings, lists, blockquotes) and
+/// inline formatting (bold, italic, code, links) to a single line of text.
+fn render_markdown_line(line: &str) -> String {
+    use crate::stream_display::markdown::*;
+
+    if let Some((level, content)) = parse_heading(line) {
+        return format_heading(level, content);
+    }
+    if let Some(content) = parse_unordered_list_item(line) {
+        return format_list_item("•", content);
+    }
+    if let Some((num, content)) = parse_ordered_list_item(line) {
+        return format_list_item(&format!("{}.", num), content);
+    }
+    if let Some(content) = line.strip_prefix('>') {
+        return format_blockquote(content.trim_start());
+    }
+    if is_horizontal_rule(line.trim()) {
+        return format_horizontal_rule();
+    }
+    // Default: inline rendering (bold, italic, code, links)
+    render_inline(line)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -537,7 +571,8 @@ mod tests {
         let result = "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7";
         let output = format_preview("read", args, result, false).unwrap();
         assert!(output.contains("line 1"));
-        assert!(output.contains("2 more lines"));
+        // Only 7 lines, MAX_PREVIEW_LINES=10, so no collapse line
+        assert!(!output.contains("more lines"));
     }
 
     #[test]
@@ -691,10 +726,75 @@ mod tests {
         let result = "  1\t# Loom\n  2\t\n  3\tA graph-based agent";
         let output = format_preview("read", args, result, false).unwrap();
         // Should show content without double line numbers
-        assert!(output.contains("# Loom"));
+        assert!(output.contains("Loom"));
         assert!(output.contains("A graph-based agent"));
         // Should NOT contain the raw "1\t" prefix in the displayed content
         assert!(!output.contains("1\t# Loom"));
+    }
+
+    #[test]
+    fn preview_read_md_renders_heading() {
+        let args = r#"{"path":"README.md"}"#;
+        let result = "# Project Title\n\nA **bold** description with `code`.";
+        let output = format_preview("read", args, result, false).unwrap();
+        // Should contain rendered heading (not raw #)
+        assert!(output.contains("Project Title"));
+        assert!(output.contains("bold"));
+        assert!(output.contains("code"));
+    }
+
+    #[test]
+    fn preview_read_md_renders_list_items() {
+        let args = r#"{"path":"docs/guide.md"}"#;
+        let result = "- Feature one\n- Feature two\n1. First\n2. Second";
+        let output = format_preview("read", args, result, false).unwrap();
+        assert!(output.contains("Feature one"));
+        assert!(output.contains("Feature two"));
+        assert!(output.contains("First"));
+    }
+
+    #[test]
+    fn preview_read_md_renders_blockquote() {
+        let args = r#"{"path":"notes.md"}"#;
+        let result = "> This is a quote\nNormal text";
+        let output = format_preview("read", args, result, false).unwrap();
+        assert!(output.contains("This is a quote"));
+        assert!(output.contains("Normal text"));
+    }
+
+    #[test]
+    fn preview_read_non_md_no_rendering() {
+        let args = r#"{"path":"src/main.rs"}"#;
+        let result = "# This is not a heading but a comment\nfn main() {}";
+        let output = format_preview("read", args, result, false).unwrap();
+        // For .rs files, raw content should be shown as-is
+        assert!(output.contains("# This is not a heading but a comment"));
+    }
+
+    #[test]
+    fn preview_read_md_renders_inline_code() {
+        let args = r#"{"path":"api.md"}"#;
+        let result = "Use `cargo build` to compile.";
+        let output = format_preview("read", args, result, false).unwrap();
+        assert!(output.contains("cargo build"));
+    }
+
+    #[test]
+    fn render_markdown_line_heading() {
+        let result = render_markdown_line("## Section Title");
+        assert!(result.contains("Section Title"));
+    }
+
+    #[test]
+    fn render_markdown_line_list() {
+        let result = render_markdown_line("- item text");
+        assert!(result.contains("item text"));
+    }
+
+    #[test]
+    fn render_markdown_line_plain() {
+        let result = render_markdown_line("just plain text");
+        assert_eq!(result, "just plain text");
     }
 }
 
