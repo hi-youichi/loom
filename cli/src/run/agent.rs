@@ -556,6 +556,18 @@ fn on_event_react(
                                 None => String::new(),
                             };
                             eprintln!("ls {}{}", path, timing);
+                        } else if tc.name == "read" {
+                            // read DONE: show path + line count + timing
+                            let path = serde_json::from_str::<serde_json::Value>(&tc.arguments)
+                                .ok()
+                                .and_then(|v| v.get("path").and_then(|p| p.as_str()).map(String::from))
+                                .unwrap_or_default();
+                            let line_count = result_text.as_deref().map(|r| r.lines().count()).unwrap_or(0);
+                            let timing = match elapsed {
+                                Some(d) => format!(" {:.1}s", d.as_secs_f64()),
+                                None => String::new(),
+                            };
+                            eprintln!("read {} {} lines{}", path, line_count, timing);
                         } else {
                             let result_summary = result_text.as_deref().unwrap_or("");
                             eprintln!("{}", panel_format::format_tool_done(&tc.name, result_summary, elapsed));

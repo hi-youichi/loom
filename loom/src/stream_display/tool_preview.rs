@@ -9,7 +9,7 @@
 use crate::stream_display::panel_format::color_enabled;
 
 /// Maximum number of preview lines before collapsing.
-const MAX_PREVIEW_LINES: usize = 5;
+const MAX_PREVIEW_LINES: usize = 10;
 /// Maximum number of glob files to show in preview.
 const MAX_GLOB_FILES: usize = 10;
 /// Maximum number of grep matches to show.
@@ -67,20 +67,33 @@ fn format_read_preview(args_json: &str, result: &str) -> String {
     let offset = args.get("offset").and_then(|v| v.as_u64());
     let limit = args.get("limit").and_then(|v| v.as_u64());
 
-    let _header = match (offset, limit) {
-        (Some(o), Some(l)) => format!("{} [{}:{}]", path, o, o + l),
-        (Some(o), None) => format!("{} [{}:]", path, o),
-        (None, Some(l)) => format!("{} [:{}]", path, l),
-        _ => path.to_string(),
-    };
-
     let lines: Vec<&str> = result.lines().collect();
     let total = lines.len();
-    let start_line = offset.unwrap_or(1) as usize;
+
+    // Strip cat -n line number prefix ("  1\t...") from each line
+    let stripped: Vec<&str> = lines.iter().map(|l| strip_cat_line_number(l)).collect();
+
+    // Derive start_line: from offset arg, or from first line's embedded number
+    let start_line = if let Some(o) = offset {
+        o as usize
+    } else {
+        extract_cat_line_number(stripped.first().copied().unwrap_or("1"), lines.first().copied().unwrap_or("1"))
+            .unwrap_or(1)
+    };
+
+    // Header: shows path + line range context
+    let header = match (offset, limit) {
+        (Some(o), Some(l)) => format!("{} [{}:{} of {}]", path, o, o + l, total),
+        (Some(o), None) => format!("{} [{}: of {}]", path, o, total),
+        (None, Some(_)) => format!("{} ({} lines)", path, total),
+        _ => format!("{} ({} lines)", path, total),
+    };
 
     let mut output = String::new();
+    output.push_str(&format_file_header(&header));
+    output.push('\n');
 
-    let show_lines = lines.iter().take(MAX_PREVIEW_LINES);
+    let show_lines = stripped.iter().take(MAX_PREVIEW_LINES);
     let line_num_width = format!("{}", start_line + total.min(MAX_PREVIEW_LINES)).len();
 
     for (i, line) in show_lines.enumerate() {
@@ -417,11 +430,44 @@ fn truncate_to_width(s: &str, max_width: usize) -> String {
     }
 }
 
+/// Strip `cat -n` line number prefix (e.g. "  42\tcontent" → "content").
+fn strip_cat_line_number(line: &str) -> &str {
+    // Pattern: optional leading spaces, digits, then a tab
+    let trimmed = line.trim_start();
+    if let Some(tab_pos) = trimmed.find('\t') {
+        let maybe_num = &trimmed[..tab_pos];
+        if maybe_num.chars().all(|c| c.is_ascii_digit()) && !maybe_num.is_empty() {
+            return &trimmed[tab_pos + 1..];
+        }
+    }
+    line
+}
+
+/// Extract line number from a `cat -n` formatted line (e.g. "  42\t...").
+fn extract_cat_line_number(_stripped: &str, original: &str) -> Option<usize> {
+    let trimmed = original.trim_start();
+    if let Some(tab_pos) = trimmed.find('\t') {
+        let maybe_num = &trimmed[..tab_pos];
+        if maybe_num.chars().all(|c| c.is_ascii_digit()) && !maybe_num.is_empty() {
+            return maybe_num.parse().ok();
+        }
+    }
+    None
+}
+
 fn format_line_numbered(num: usize, width: usize, content: &str) -> String {
     if color_enabled() {
         format!("\x1b[36m{:>width$}\x1b[0m │ {}", num, content, width = width)
     } else {
         format!("{:>width$} │ {}", num, content, width = width)
+    }
+}
+
+fn format_file_header(header: &str) -> String {
+    if color_enabled() {
+        format!("\x1b[2m       ── {} ──\x1b[0m", header)
+    } else {
+        format!("       ── {} ──", header)
     }
 }
 
@@ -624,6 +670,31 @@ mod tests {
         assert!(output.contains("-line2"));
         assert!(output.contains("+line2_new"));
         assert!(output.contains(" line3"));
+    }
+
+    #[test]
+    fn strip_cat_line_number_basic() {
+        assert_eq!(strip_cat_line_number("  1\tfn main() {"), "fn main() {");
+        assert_eq!(strip_cat_line_number(" 42\thello"), "hello");
+        assert_eq!(strip_cat_line_number("1\t# Title"), "# Title");
+    }
+
+    #[test]
+    fn strip_cat_line_number_no_prefix() {
+        assert_eq!(strip_cat_line_number("no line number"), "no line number");
+        assert_eq!(strip_cat_line_number(""), "");
+    }
+
+    #[test]
+    fn preview_read_strips_cat_line_numbers() {
+        let args = r#"{"path":"README.md"}"#;
+        let result = "  1\t# Loom\n  2\t\n  3\tA graph-based agent";
+        let output = format_preview("read", args, result, false).unwrap();
+        // Should show content without double line numbers
+        assert!(output.contains("# Loom"));
+        assert!(output.contains("A graph-based agent"));
+        // Should NOT contain the raw "1\t" prefix in the displayed content
+        assert!(!output.contains("1\t# Loom"));
     }
 }
 

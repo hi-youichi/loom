@@ -30,7 +30,7 @@ use crate::state::tool_output_normalizer::{
 };
 use crate::state::{ReActState, ToolCall, ToolResult};
 use crate::stream::{StreamEvent, StreamMode, ToolStreamWriter};
-use crate::tool_source::{ToolCallContext, ToolSource};
+use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSource};
 
 /// Event type for Custom stream events emitted after each tool call (step progress).
 /// Server or clients can use this to show progress (e.g. "Calling list_dir", "Done: 12 entries").
@@ -569,8 +569,13 @@ impl Node<ReActState> for ActNode {
 
             match result {
                 Ok(content) => {
-                    // Serialize ToolCallContent to JSON for normalization (handles Diff/Terminal/Text)
-                    let raw_text = serde_json::to_string(&content).unwrap_or_else(|_| content.clone().into_text());
+                    // Extract raw text from ToolCallContent.
+                    // For Text variant, use into_text() to preserve actual newlines/tabs.
+                    // For Diff/Terminal, serialize to JSON (structured data).
+                    let raw_text = match &content {
+                        ToolCallContent::Text(_) => content.clone().into_text(),
+                        _ => serde_json::to_string(&content).unwrap_or_else(|_| content.clone().into_text()),
+                    };
                     trace!(
                         tool = %tc.name,
                         result_len = raw_text.len(),
