@@ -251,6 +251,26 @@ pub fn format_call_summary(tool_name: &str, args_json: &str) -> String {
 
         "todo_read" => "todo_read".to_string(),
 
+        "batch" => {
+            let calls = args.get("calls").and_then(|v| v.as_array());
+            match calls {
+                Some(arr) => {
+                    let count = arr.len();
+                    let names: Vec<&str> = arr.iter()
+                        .filter_map(|c| c.get("tool").and_then(|v| v.as_str()))
+                        .collect();
+                    let display: Vec<&str> = names.iter().take(5).copied().collect();
+                    let label = display.join(", ");
+                    if names.len() > 5 {
+                        format!("{} calls ({} +{} more)", count, label, names.len() - 5)
+                    } else {
+                        format!("{} calls ({})", count, label)
+                    }
+                }
+                None => "batch".to_string(),
+            }
+        }
+
         // Unknown tools: show truncated raw args
         _ => truncate(args_json, 60).to_string(),
     }
@@ -433,6 +453,21 @@ pub fn format_done_summary(tool_name: &str, result: &str, is_error: bool) -> Str
         "help" => "ok".to_string(),
         "todo_write" => "saved".to_string(),
         "todo_read" => "ok".to_string(),
+
+        "batch" => {
+            let sub_count = result.lines()
+                .filter(|l| l.starts_with("---BATCH["))
+                .count();
+            let errors = result.lines()
+                .filter(|l| l.trim().starts_with("error:"))
+                .count();
+            let ok = sub_count.saturating_sub(errors);
+            if errors > 0 {
+                format!("{} ok, {} error", ok, errors)
+            } else {
+                format!("{} ok", ok)
+            }
+        }
 
         "ls" => {
             let file_count = result.lines().filter(|l| !l.trim().is_empty()).count();
@@ -674,6 +709,40 @@ mod tests {
         let result = format_done_summary("write_file", "ok", false);
         // Should show bytes or "created"
         assert!(!result.is_empty());
+    }
+
+    // ── batch summaries ──
+
+    #[test]
+    fn call_batch_basic() {
+        let result = format_call_summary("batch", r#"{"calls":[{"tool":"read","parameters":{"path":"a.rs"}},{"tool":"grep","parameters":{"pattern":"TODO"}},{"tool":"bash","parameters":{"command":"echo"}}]}"#);
+        assert!(result.contains("3 calls"));
+        assert!(result.contains("read, grep, bash"));
+    }
+
+    #[test]
+    fn call_batch_many_calls() {
+        let calls_json = (0..12)
+            .map(|i| format!(r#"{{"tool":"tool_{}","parameters":{{}}}}"#, i))
+            .collect::<Vec<_>>()
+            .join(",");
+        let result = format_call_summary("batch", &format!(r#"{{"calls":[{}]}}"#, calls_json));
+        assert!(result.contains("12 calls"));
+        assert!(result.contains("+7 more"));
+    }
+
+    #[test]
+    fn done_batch_all_ok() {
+        let result_text = "---BATCH[1] read {}---\nhello\n---BATCH[2] grep {}---\nmatch1\n---BATCH_END---\n";
+        let result = format_done_summary("batch", result_text, false);
+        assert_eq!(result, "2 ok");
+    }
+
+    #[test]
+    fn done_batch_with_errors() {
+        let result_text = "---BATCH[1] read {}---\nhello\n---BATCH[2] fail {}---\nerror: not found\n---BATCH_END---\n";
+        let result = format_done_summary("batch", result_text, false);
+        assert_eq!(result, "1 ok, 1 error");
     }
 
     // ── truncate ──

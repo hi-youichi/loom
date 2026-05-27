@@ -95,6 +95,7 @@ impl Tool for BatchTool {
                 .get("parameters")
                 .cloned()
                 .unwrap_or(serde_json::json!({}));
+            let params_json = serde_json::to_string(&params).unwrap_or_default();
             let source = Arc::clone(&self.source);
             let ctx_clone = ctx.cloned();
             handles.push(tokio::spawn(async move {
@@ -102,7 +103,7 @@ impl Tool for BatchTool {
                 let out = source
                     .call_tool_with_context(&tool_name, params, ctx_ref)
                     .await;
-                (i, tool_name, out)
+                (i, tool_name, params_json, out)
             }));
         }
 
@@ -114,20 +115,25 @@ impl Tool for BatchTool {
             results.push(r);
         }
 
+        results.sort_by_key(|r| r.0);
+
         let mut text = String::new();
-        for (i, name, result) in results {
-            text.push_str(&format!("[{}] {}: ", i + 1, name));
+        for (i, name, params_json, result) in results {
+            text.push_str(&format!("---BATCH[{}] {} {}---\n", i + 1, name, params_json));
             match result {
                 Ok(c) => {
-                    let t = c.as_text().unwrap_or("(no text content)").trim();
-                    if t.len() > 500 {
-                        let mut end = 500;
+                    let t = c.as_text().unwrap_or("(no text content)");
+                    if t.len() > 2000 {
+                        let mut end = 2000;
                         while end > 0 && !t.is_char_boundary(end) {
                             end -= 1;
                         }
                         text.push_str(&format!("{}... (truncated)\n", &t[..end]));
                     } else {
-                        text.push_str(&format!("{}\n", t));
+                        text.push_str(t);
+                        if !t.ends_with('\n') {
+                            text.push('\n');
+                        }
                     }
                 }
                 Err(e) => {
@@ -135,6 +141,7 @@ impl Tool for BatchTool {
                 }
             }
         }
+        text.push_str("---BATCH_END---\n");
 
         Ok(ToolCallContent::text(text))
     }
@@ -261,8 +268,11 @@ mod tests {
             .await
             .unwrap();
         let text = result.as_text().unwrap();
-        assert!(text.contains("[1] echo_a: result A"));
-        assert!(text.contains("[2] echo_b: result B"));
+        assert!(text.contains("---BATCH[1] echo_a"));
+        assert!(text.contains("result A"));
+        assert!(text.contains("---BATCH[2] echo_b"));
+        assert!(text.contains("result B"));
+        assert!(text.contains("---BATCH_END---"));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -289,13 +299,18 @@ mod tests {
             .unwrap();
         let text = result.as_text().unwrap();
         assert!(
-            text.contains("[1] diff_tool: (no text content)"),
-            "expected fallback for Diff variant, got: {}",
+            text.contains("---BATCH[1] diff_tool"),
+            "expected structured separator for Diff variant, got: {}",
             text
         );
         assert!(
-            text.contains("[2] terminal_tool: (no text content)"),
-            "expected fallback for Terminal variant, got: {}",
+            text.contains("(no text content)"),
+            "expected fallback text for Diff variant, got: {}",
+            text
+        );
+        assert!(
+            text.contains("---BATCH[2] terminal_tool"),
+            "expected structured separator for Terminal variant, got: {}",
             text
         );
     }
@@ -322,13 +337,15 @@ mod tests {
             .await
             .unwrap();
         let text = result.as_text().unwrap();
-        assert!(text.contains("[1] ok_tool: ok"));
-        assert!(text.contains("[2] fail_tool: error:"));
+        assert!(text.contains("---BATCH[1] ok_tool"));
+        assert!(text.contains("ok"));
+        assert!(text.contains("---BATCH[2] fail_tool"));
+        assert!(text.contains("error:"));
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn long_text_is_truncated() {
-        let long_content = "x".repeat(600);
+        let long_content = "x".repeat(2100);
         let batch = make_batch(vec![Box::new(TextTool {
             name: "long_tool".into(),
             content: ToolCallContent::text(long_content),
@@ -342,7 +359,9 @@ mod tests {
             .unwrap();
         let text = result.as_text().unwrap();
         assert!(text.contains("... (truncated)"));
-        assert!(!text.contains(&"x".repeat(600)));
+        assert!(text.contains("---BATCH_END---"));
+        // Should not contain the full 2100 chars
+        assert!(!text.contains(&"x".repeat(2100)));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -372,8 +391,11 @@ mod tests {
             .await
             .unwrap();
         let text = result.as_text().unwrap();
-        assert!(text.contains("[1] text_tool: hello"));
-        assert!(text.contains("[2] diff_tool: (no text content)"));
-        assert!(text.contains("[3] err_tool: error:"));
+        assert!(text.contains("---BATCH[1] text_tool"));
+        assert!(text.contains("hello"));
+        assert!(text.contains("---BATCH[2] diff_tool"));
+        assert!(text.contains("(no text content)"));
+        assert!(text.contains("---BATCH[3] err_tool"));
+        assert!(text.contains("error:"));
     }
 }

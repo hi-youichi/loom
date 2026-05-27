@@ -43,7 +43,7 @@ async fn batch_tool_single_call() {
         .await
         .unwrap();
     assert!(result.as_text().unwrap().contains("hello"));
-    assert!(result.as_text().unwrap().contains("read"));
+    assert!(result.as_text().unwrap().contains("---BATCH[1] read"));
 }
 
 #[tokio::test]
@@ -66,8 +66,8 @@ async fn batch_tool_two_calls_parallel() {
         .unwrap();
     assert!(result.as_text().unwrap().contains("content_a"));
     assert!(result.as_text().unwrap().contains("content_b"));
-    assert!(result.as_text().unwrap().contains("[1] read"));
-    assert!(result.as_text().unwrap().contains("[2] read"));
+    assert!(result.as_text().unwrap().contains("---BATCH[1] read"));
+    assert!(result.as_text().unwrap().contains("---BATCH[2] read"));
 }
 
 #[tokio::test]

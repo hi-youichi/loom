@@ -30,6 +30,11 @@ pub fn format_preview(tool_name: &str, args_json: &str, result: &str, compact: b
             }
         }
         "todo_write" | "todo_read" => {} // These don't need result text
+        "batch" => {
+            if result.trim().is_empty() {
+                return None;
+            }
+        }
         _ => return None,
     }
 
@@ -40,6 +45,7 @@ pub fn format_preview(tool_name: &str, args_json: &str, result: &str, compact: b
         "ls" => Some(format_ls_preview(result)),
         "todo_write" => Some(format_todo_write_preview(args_json)),
         "todo_read" => Some(format_todo_read_preview(result)),
+        "batch" => Some(format_batch_preview(result)),
         _ => None,
     }
 }
@@ -269,6 +275,83 @@ fn format_todo_read_preview(result: &str) -> String {
         output.push_str(&format_collapse_line(&format!("{} completed hidden", completed)));
         output.push('\n');
     }
+
+    output
+}
+
+// ── Batch preview ────────────────────────────────────────────────
+
+/// Parse batch result text and render sub-call previews.
+///
+/// The batch result uses `---BATCH[N] tool_name params_json---` as section
+/// separators. Each section's body is the sub-call result text.
+fn format_batch_preview(result: &str) -> String {
+    let mut output = String::new();
+    let mut current_tool = "";
+    let mut current_args = "";
+    let mut body_lines: Vec<&str> = Vec::new();
+
+    let flush = |tool: &str, args: &str, body: &[&str], out: &mut String| {
+        if tool.is_empty() {
+            return;
+        }
+        let body_text = body.join("\n");
+        let trimmed = body_text.trim();
+        if trimmed.starts_with("error:") {
+            out.push_str(&format!("       ✗ {}: {}\n", tool, trimmed));
+        } else if let Some(preview) = format_preview(tool, args, trimmed, false) {
+            out.push_str(&preview);
+        } else {
+            // Generic: first 3 lines
+            let lines: Vec<&str> = trimmed.lines().take(3).collect();
+            for line in lines {
+                let truncated = truncate_to_width(line, 80);
+                out.push_str(&format!("       {}\n", truncated));
+            }
+            let total = trimmed.lines().count();
+            if total > 3 {
+                out.push_str(&format_collapse_line(&format!("{} more lines", total - 3)));
+                out.push('\n');
+            }
+        }
+    };
+
+    for line in result.lines() {
+        if let Some(rest) = line.strip_prefix("---BATCH[") {
+            // Flush previous section
+            flush(current_tool, current_args, &body_lines, &mut output);
+
+            // Parse: rest is "N] tool_name params_json---"
+            body_lines.clear();
+            if let Some(end_idx) = rest.find("---") {
+                let header = &rest[..end_idx];
+                // header: "N] tool_name params_json"
+                let after_bracket = header.find(']').map(|i| i + 1).unwrap_or(0);
+                let header_rest = header[after_bracket..].trim_start();
+                // Split into tool_name and params_json
+                if let Some(space) = header_rest.find(' ') {
+                    current_tool = &header_rest[..space];
+                    current_args = &header_rest[space + 1..];
+                } else {
+                    current_tool = header_rest;
+                    current_args = "{}";
+                }
+            } else {
+                current_tool = "";
+                current_args = "{}";
+            }
+        } else if line == "---BATCH_END---" {
+            flush(current_tool, current_args, &body_lines, &mut output);
+            current_tool = "";
+            current_args = "{}";
+            body_lines.clear();
+        } else {
+            body_lines.push(line);
+        }
+    }
+
+    // Flush any remaining section
+    flush(current_tool, current_args, &body_lines, &mut output);
 
     output
 }
@@ -795,6 +878,40 @@ mod tests {
     fn render_markdown_line_plain() {
         let result = render_markdown_line("just plain text");
         assert_eq!(result, "just plain text");
+    }
+
+    // ── Batch preview tests ──
+
+    #[test]
+    fn preview_batch_with_read_subcall() {
+        let batch_result = "---BATCH[1] read {\"path\":\"src/main.rs\"}---\nfn main() {\n    println!(\"hello\");\n}\n---BATCH_END---\n";
+        let output = format_preview("batch", "{}", batch_result, false).unwrap();
+        assert!(output.contains("main.rs"));
+        assert!(output.contains("fn main()"));
+    }
+
+    #[test]
+    fn preview_batch_with_error() {
+        let batch_result = "---BATCH[1] fail_tool {}---\nerror: tool not found\n---BATCH_END---\n";
+        let output = format_preview("batch", "{}", batch_result, false).unwrap();
+        assert!(output.contains("✗"));
+        assert!(output.contains("error:"));
+    }
+
+    #[test]
+    fn preview_batch_generic_tool() {
+        let batch_result = "---BATCH[1] bash {\"command\":\"echo hello\"}---\nhello\n---BATCH_END---\n";
+        let output = format_preview("batch", "{}", batch_result, false).unwrap();
+        // bash has no specific preview, so generic rendering
+        assert!(output.contains("hello"));
+    }
+
+    #[test]
+    fn preview_batch_multiple_subcalls() {
+        let batch_result = "---BATCH[1] read {\"path\":\"a.rs\"}---\nfn a() {}\n---BATCH[2] grep {\"pattern\":\"TODO\"}---\na.rs:1:TODO fix\n---BATCH_END---\n";
+        let output = format_preview("batch", "{}", batch_result, false).unwrap();
+        assert!(output.contains("a.rs"));
+        assert!(output.contains("TODO"));
     }
 }
 
