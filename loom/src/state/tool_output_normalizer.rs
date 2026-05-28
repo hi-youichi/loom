@@ -346,7 +346,7 @@ fn build_file_ref_output(
 }
 
 /// Tools whose output may be truncated/normalized. All others are always Inline.
-const TRUNCATABLE_TOOLS: &[&str] = &["bash", "powershell", "web_fetcher", "web_search"];
+const TRUNCATABLE_TOOLS: &[&str] = &["web_fetcher", "web_search"];
 
 /// Determine the appropriate normalization strategy.
 fn determine_strategy(
@@ -755,8 +755,8 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_bash_head_tail() {
-        // Need > inline_limit (4000) to get HeadTail; 700 * 6 = 4200
+    fn test_normalize_bash_always_inline() {
+        // bash is no longer truncatable, always Inline regardless of size
         let text = "line1\n".repeat(700);
         let result = normalize_tool_output(
             "bash",
@@ -767,9 +767,9 @@ mod tests {
             NormalizationConfig::default(),
         );
 
-        assert_eq!(result.strategy, ToolOutputStrategy::HeadTail);
-        assert!(result.truncated);
-        assert!(result.observation_text.contains("Head:"));
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
+        assert_eq!(result.observation_text, text);
     }
 
     #[test]
@@ -823,15 +823,14 @@ mod tests {
     }
 
     #[test]
-    fn test_budget_degrades_large_output() {
+    fn test_budget_ignored_for_bash() {
         let text = "x".repeat(4_500);
         let config = NormalizationConfig::default().with_used_observation_chars(7_900);
         let result = normalize_tool_output("bash", &json!({}), &text, false, None, config);
-        assert!(result.observation_chars <= 100);
-        assert!(matches!(
-            result.strategy,
-            ToolOutputStrategy::SummaryOnly | ToolOutputStrategy::FileRefWithExcerpt
-        ));
+        // bash is no longer whitelisted, budget doesn't apply
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
+        assert_eq!(result.observation_text, text);
     }
 
     #[test]
@@ -876,7 +875,7 @@ mod tests {
     }
 
     #[test]
-    fn a2_bash_medium_output_head_tail() {
+    fn a2_bash_medium_output_inline() {
         let text = "x".repeat(5_000);
         let result = normalize_tool_output(
             "bash",
@@ -886,13 +885,13 @@ mod tests {
             None,
             NormalizationConfig::default(),
         );
-        assert_eq!(result.strategy, ToolOutputStrategy::HeadTail);
-        assert!(result.truncated);
-        assert!(result.observation_text.contains("Head:"));
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
+        assert_eq!(result.observation_text, text);
     }
 
     #[test]
-    fn a3_bash_large_output_head_tail_when_no_persistence() {
+    fn a3_bash_large_output_inline() {
         let text = "x".repeat(20_000);
         let result = normalize_tool_output(
             "bash",
@@ -902,12 +901,13 @@ mod tests {
             None,
             NormalizationConfig::default(),
         );
-        assert_eq!(result.strategy, ToolOutputStrategy::HeadTail);
-        assert!(result.truncated);
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
+        assert_eq!(result.observation_text, text);
     }
 
     #[test]
-    fn a4_powershell_medium_output_head_tail() {
+    fn a4_powershell_medium_output_inline() {
         let text = "x".repeat(5_000);
         let result = normalize_tool_output(
             "powershell",
@@ -917,8 +917,9 @@ mod tests {
             None,
             NormalizationConfig::default(),
         );
-        assert_eq!(result.strategy, ToolOutputStrategy::HeadTail);
-        assert!(result.truncated);
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
+        assert_eq!(result.observation_text, text);
     }
 
     #[test]
@@ -1151,7 +1152,7 @@ mod tests {
     // --- Whitelisted tools respect ToolOutputHint ---
 
     #[test]
-    fn d1_bash_respects_safe_inline_chars_hint() {
+    fn d1_bash_ignores_hint() {
         let text = "x".repeat(500);
         let hint = ToolOutputHint {
             preferred_strategy: None,
@@ -1166,8 +1167,10 @@ mod tests {
             Some(&hint),
             NormalizationConfig::default(),
         );
-        assert_ne!(result.strategy, ToolOutputStrategy::Inline);
-        assert!(result.truncated);
+        // bash is no longer whitelisted, hints are ignored
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
+        assert_eq!(result.observation_text, text);
     }
 
     #[test]
@@ -1192,7 +1195,7 @@ mod tests {
     // --- Budget mechanism ---
 
     #[test]
-    fn e1_bash_budget_exhausted_degrades() {
+    fn e1_bash_budget_exhausted_still_inline() {
         let text = "x".repeat(5_000);
         let result = normalize_tool_output(
             "bash",
@@ -1202,10 +1205,10 @@ mod tests {
             None,
             NormalizationConfig::default().with_used_observation_chars(7_900),
         );
-        assert!(matches!(
-            result.strategy,
-            ToolOutputStrategy::SummaryOnly | ToolOutputStrategy::FileRefWithExcerpt
-        ));
+        // bash is no longer whitelisted, budget doesn't apply
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
+        assert_eq!(result.observation_text, text);
     }
 
     #[test]
@@ -1242,7 +1245,7 @@ mod tests {
     }
 
     #[test]
-    fn f2_bash_inline_limit_plus_one_head_tail() {
+    fn f2_bash_inline_limit_plus_one_still_inline() {
         let text = "x".repeat(4_001);
         let result = normalize_tool_output(
             "bash",
@@ -1252,8 +1255,10 @@ mod tests {
             None,
             NormalizationConfig::default(),
         );
-        assert_eq!(result.strategy, ToolOutputStrategy::HeadTail);
-        assert!(result.truncated);
+        // bash is no longer whitelisted, no limit applies
+        assert_eq!(result.strategy, ToolOutputStrategy::Inline);
+        assert!(!result.truncated);
+        assert_eq!(result.observation_text, text);
     }
 
     #[test]
