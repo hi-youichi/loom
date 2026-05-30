@@ -16,7 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 loom = { path = "../loom" }
-loom-evolution = { path = "../loom-evolution" }
+
 serve = { path = "../serve" }
 stream-event = { path = "../stream-event" }
 config = { path = "../config", features = ["tracing-init"] }

@@ -91,28 +91,6 @@ impl FileSessionStore {
     }
 }
 
-impl loom_evolution::SessionStore for FileSessionStore {
-    fn search_sessions(
-        &self,
-        query: &str,
-        limit: usize,
-    ) -> Result<Vec<loom_evolution::SessionInfo>, String> {
-        let results = self.search(query, limit)?;
-        Ok(results
-            .into_iter()
-            .map(|s| loom_evolution::SessionInfo {
-                id: s.id,
-                title: s.title,
-            })
-            .collect())
-    }
-
-    fn get_session_content(&self, session_id: &str) -> Result<String, String> {
-        let session = self.load(session_id)?;
-        Ok(session.content)
-    }
-}
-
 pub fn store_session_from_conversation(
     store: &FileSessionStore,
     session_id: &str,

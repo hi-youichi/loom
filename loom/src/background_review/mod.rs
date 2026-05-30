@@ -13,7 +13,7 @@ pub mod curator_backup;
 pub mod skill_usage;
 pub mod tools;
 pub mod agent_loop;
-pub mod evolution;
+
 pub mod workflow;
 
 // Re-export key types for convenience
@@ -34,7 +34,7 @@ pub use curator_backup::{CuratorBackup, BackupError, SnapshotMeta};
 pub use tools::{ReviewToolExecutor, ReviewAction, review_tool_specs};
 pub use history::{ReviewHistory, ReviewRecord};
 pub use observability::ObservabilityStore;
-pub use evolution::{EvolutionTriggerConfig, EvolutionOutcome};
+
 pub use workflow::{
     BackgroundReviewConfig, BackgroundReviewHandle, PendingReviewRegistry,
     ReviewOutputFn, spawn_background_review, wait_for_pending_reviews,

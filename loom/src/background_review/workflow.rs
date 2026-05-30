@@ -1,5 +1,5 @@
 use super::curator::{Curator, CuratorConfig};
-use super::evolution::EvolutionTriggerConfig;
+
 use super::memory::MemoryStore;
 use super::observability::ObservabilityStore;
 use super::agent_loop::{
@@ -32,8 +32,6 @@ pub struct BackgroundReviewConfig {
     pub review_memory: bool,
     pub review_skills: bool,
     pub curator_config: CuratorConfig,
-    pub evolution_enabled: bool,
-    pub evolution_config: EvolutionTriggerConfig,
     pub observability_enabled: bool,
 }
 
@@ -51,8 +49,6 @@ impl Default for BackgroundReviewConfig {
             review_memory: true,
             review_skills: true,
             curator_config: CuratorConfig::default(),
-            evolution_enabled: true,
-            evolution_config: EvolutionTriggerConfig::default(),
             observability_enabled: true,
         }
     }

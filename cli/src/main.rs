@@ -35,7 +35,7 @@ use run_flow::{
 };
 use cli::run::background_review::wait_for_pending_reviews;
 use subcommands::{
-    handle_agent_command, handle_curator_command, handle_evolve_command, handle_mcp_command,
+    handle_agent_command, handle_curator_command, handle_mcp_command,
     handle_memory_command, handle_models_command, handle_session_command, handle_skills_command,
     handle_tool_command,
 };
@@ -109,13 +109,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if let Some(Cmd::Skills(sa)) = &args.cmd {
         if let Err(err) = handle_skills_command(sa, args.json) {
-            eprintln!("{}", err);
-            std::process::exit(1);
-        }
-        return Ok(());
-    }
-    if let Some(Cmd::Evolve(ea)) = &args.cmd {
-        if let Err(err) = handle_evolve_command(ea, args.json) {
             eprintln!("{}", err);
             std::process::exit(1);
         }

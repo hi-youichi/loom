@@ -3,7 +3,7 @@
 use cli::{cli_list_models, cli_list_tools, cli_show_tool, ToolShowFormat};
 
 use crate::args::{
-    AgentArgs, AgentCommand, Args, CuratorCmdArgs, EvolveArgs, EvolveCommand, ExportArgs, McpArgs,
+    AgentArgs, AgentCommand, Args, CuratorCmdArgs, ExportArgs, McpArgs,
     McpCommand, MemoryCmdArgs, MemoryCommand, ModelsArgs, ModelsCommand, SkillsArgs,
     SkillsCommand, ToolArgs, ToolCommand,
 };
@@ -373,88 +373,6 @@ pub(crate) fn handle_skills_command(
         SkillsCommand::Delete { name } => {
             registry.delete(name)?;
             println!("Deleted skill: {}", name);
-        }
-        SkillsCommand::Evolve { name, source, iterations, samples } => {
-            println!("Evolution of '{}' requires LLM connection.", name);
-            println!("Source: {}, Iterations: {}, Samples: {:?}", source, iterations, samples);
-            println!("Use 'loom evolve run' with proper LLM configuration.");
-        }
-    }
-    Ok(())
-}
-
-pub(crate) fn handle_evolve_command(
-    evolve_args: &EvolveArgs,
-    json: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let _registry = cli::run::skill_registry::SkillRegistry::new(
-        &cli::run::skill_registry::SkillRegistry::default_path()
-    );
-    let run_store_path = loom_evolution::RunStore::default_path();
-
-    match &evolve_args.command {
-        EvolveCommand::Run => {
-            println!("Running evolution for all eligible skills...");
-            println!("RunStore: {}", run_store_path.display());
-        }
-        EvolveCommand::Status => {
-            let store = loom_evolution::RunStore::new(&run_store_path);
-            let runs = store.list_recent(20)?;
-            if json {
-                println!("{}", serde_json::to_string_pretty(&runs)?);
-            } else if runs.is_empty() {
-                println!("No evolution runs found.");
-            } else {
-                println!("Recent evolution runs:");
-                for run in &runs {
-                    println!("  {} | {} | score: {:.3} -> {:.3} | {}",
-                        run.skill_name, run.timestamp, run.baseline_score, run.evolved_score,
-                        if run.accepted { "accepted" } else { "pending" }
-                    );
-                }
-            }
-        }
-        EvolveCommand::Compare { name } => {
-            let store = loom_evolution::RunStore::new(&run_store_path);
-            match store.load_latest(name)? {
-                Some(result) => {
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&result)?);
-                    } else {
-                        println!("Evolved content for '{}':", name);
-                        println!("{}", "─".repeat(60));
-                        println!("{}", result.evolved_content);
-                    }
-                }
-                None => println!("No evolution result found for '{}'.", name),
-            }
-        }
-        EvolveCommand::Accept { name } => {
-            let store = loom_evolution::RunStore::new(&run_store_path);
-            store.accept(name)?;
-            println!("Accepted evolved result for '{}'.", name);
-        }
-        EvolveCommand::Reject { name } => {
-            let store = loom_evolution::RunStore::new(&run_store_path);
-            store.reject(name)?;
-            println!("Rejected evolved result for '{}'.", name);
-        }
-        EvolveCommand::Backups { name } => {
-            let store = loom_evolution::RunStore::new(&run_store_path);
-            let backups = store.list_backups(name)?;
-            if json {
-                println!("{}", serde_json::to_string_pretty(&backups)?);
-            } else if backups.is_empty() {
-                println!("No backups found for '{}'.", name);
-            } else {
-                println!("Backups for '{}':", name);
-                for b in &backups {
-                    println!("  {}", b);
-                }
-            }
-        }
-        EvolveCommand::Rollback { name, version } => {
-            println!("Rollback '{}' to version {:?}...", name, version);
         }
     }
     Ok(())

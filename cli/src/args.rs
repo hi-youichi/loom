@@ -128,11 +128,9 @@ pub(crate) enum Command {
     Agent(AgentArgs),
     /// Run autonomous goal loop with an external coding tool
     Goal(GoalArgs),
-    /// Manage skills (list, show, create, edit, delete, evolve)
+    /// Manage skills (list, show, create, edit, delete)
     Skills(SkillsArgs),
     /// Run and manage skill evolution
-    Evolve(EvolveArgs),
-    /// Manage skill lifecycle (stale detection, archiving)
     Curator(CuratorCmdArgs),
     /// View and edit agent memory (user preferences, project facts)
     Memory(MemoryCmdArgs),
@@ -462,40 +460,6 @@ pub(crate) enum SkillsCommand {
     Edit { name: String },
     /// Delete a skill
     Delete { name: String },
-    /// Evolve a skill using GEPA optimizer
-    Evolve {
-        name: String,
-        #[arg(long, default_value = "synthetic")]
-        source: String,
-        #[arg(long, default_value = "5")]
-        iterations: u32,
-        #[arg(long, value_name = "COUNT")]
-        samples: Option<usize>,
-    },
-}
-
-#[derive(clap::Args, Debug, Clone)]
-pub(crate) struct EvolveArgs {
-    #[command(subcommand)]
-    pub(crate) command: EvolveCommand,
-}
-
-#[derive(Subcommand, Debug, Clone)]
-pub(crate) enum EvolveCommand {
-    /// Run evolution for all eligible skills
-    Run,
-    /// Show evolution history
-    Status,
-    /// Compare baseline vs evolved skill
-    Compare { name: String },
-    /// Accept evolved result
-    Accept { name: String },
-    /// Reject evolved result
-    Reject { name: String },
-    /// List backup versions
-    Backups { name: String },
-    /// Rollback to a specific version
-    Rollback { name: String, #[arg(long, value_name = "VER")] version: Option<String> },
 }
 
 #[derive(clap::Args, Debug, Clone)]

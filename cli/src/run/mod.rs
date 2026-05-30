@@ -2,7 +2,7 @@ mod agent;
 mod contract;
 pub mod curator;
 mod display;
-pub mod evolution_trigger;
+
 pub mod memory;
 pub mod memory_provider;
 pub mod observability;
