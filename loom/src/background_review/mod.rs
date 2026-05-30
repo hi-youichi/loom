@@ -9,6 +9,8 @@ pub mod prompts;
 pub mod history;
 pub mod observability;
 pub mod curator;
+pub mod curator_backup;
+pub mod skill_usage;
 pub mod tools;
 pub mod agent_loop;
 pub mod evolution;
@@ -21,7 +23,14 @@ pub use agent_loop::{
 };
 pub use memory::{MemoryStore, MemoryFile, MemoryConfig, MemoryError};
 pub use skill_registry::{SkillRegistry, SkillContent, SkillMeta, SkillError, Lifecycle, Source};
-pub use curator::{Curator, CuratorConfig, CuratorReport};
+pub use curator::{
+    Curator, CuratorConfig, CuratorReport,
+    CuratorState,          // +new: Hermes alignment + state fields
+    CuratorStateStore,    // +new: storage abstraction
+    FileStateStore,        // +new: production store
+    MemoryStateStore,      // +new: test store
+};
+pub use curator_backup::{CuratorBackup, BackupError, SnapshotMeta};
 pub use tools::{ReviewToolExecutor, ReviewAction, review_tool_specs};
 pub use history::{ReviewHistory, ReviewRecord};
 pub use observability::ObservabilityStore;

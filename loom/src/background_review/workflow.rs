@@ -32,7 +32,6 @@ pub struct BackgroundReviewConfig {
     pub review_memory: bool,
     pub review_skills: bool,
     pub curator_config: CuratorConfig,
-    pub curator_run_interval_secs: u64,
     pub evolution_enabled: bool,
     pub evolution_config: EvolutionTriggerConfig,
     pub observability_enabled: bool,
@@ -52,7 +51,6 @@ impl Default for BackgroundReviewConfig {
             review_memory: true,
             review_skills: true,
             curator_config: CuratorConfig::default(),
-            curator_run_interval_secs: 86400,
             evolution_enabled: true,
             evolution_config: EvolutionTriggerConfig::default(),
             observability_enabled: true,
@@ -129,7 +127,7 @@ pub fn spawn_background_review(
                     }
                 }
 
-                if let Err(e) = run_curator_if_needed(&SkillRegistry::default_path(), &config.curator_config, config.curator_run_interval_secs) {
+                if let Err(e) = run_curator_if_needed(&SkillRegistry::default_path(), &config.curator_config) {
                     warn!("Curator auto-run failed: {}", e);
                 }
             }
@@ -320,26 +318,16 @@ pub async fn wait_for_pending_reviews() -> usize {
 fn run_curator_if_needed(
     skills_path: &std::path::Path,
     curator_config: &CuratorConfig,
-    interval_secs: u64,
 ) -> Result<(), String> {
-    let state_path = skills_path.join("curator").join("state.json");
-    let last_run = state_path.metadata().ok().and_then(|m| m.modified().ok())
-        .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs());
-
-    let now_secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-
-    if let Some(last) = last_run {
-        if now_secs.saturating_sub(last) < interval_secs {
-            return Ok(());
-        }
-    }
-
     let skills = SkillRegistry::new(skills_path);
-    let curator = Curator::new(skills, curator_config.clone())
-        .with_state_path(state_path);
+    let state_path = skills_path.join("curator").join("state.json");
+    let curator = Curator::new(skills, curator_config.clone()).with_state_path(state_path);
+
+
+    // Phase 2.2: 使用 Curator 四门控
+    if !curator.should_run(None) {
+        return Ok(());
+    }
 
     let report = curator.run(false).map_err(|e| format!("{:?}", e))?;
 

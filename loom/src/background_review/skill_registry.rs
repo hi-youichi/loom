@@ -28,6 +28,8 @@ pub struct SkillMeta {
     pub triggers: Vec<String>,
     pub created_at: Option<String>,
     pub last_used: Option<String>,
+    #[serde(default)]
+    pub pinned: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -111,6 +113,7 @@ impl SkillRegistry {
                                 triggers: content.triggers,
                                 created_at: None,
                                 last_used: None,
+                                pinned: false,
                             });
                         }
                     }
