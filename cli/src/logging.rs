@@ -5,8 +5,11 @@
 //! - `--log-file` overrides `LOG_FILE`; when neither is set, logs are dropped (stdout stays clean)
 //! - `--log-format`: `text` (default) or `json`
 //! - `--log-rotate`: Rotation strategy when writing to a file (none, daily, hourly, minutely)
+//!
+//! Default log location: `~/.loom/logs/cli/loom-cli.log`
 
-use std::path::Path;
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use config::tracing_init;
@@ -14,6 +17,7 @@ pub use config::tracing_init::LogRotate;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use config::log_format::{JsonWithSpanIds, TextWithSpanIds};
+use config::LoggingSection;
 
 /// Log output format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -35,7 +39,7 @@ impl FromStr for LogFormat {
     }
 }
 
-/// Log configuration from CLI args.
+/// Log configuration from CLI args and config.toml.
 #[derive(Debug, Clone)]
 pub struct LogArgs {
     /// Log level filter (e.g., "info", "debug", "loom=debug")
@@ -81,6 +85,44 @@ pub struct LogGuard {
     _guard: Option<tracing_appender::non_blocking::WorkerGuard>,
 }
 
+/// Resolves the effective log file path from CLI args, environment, or defaults.
+///
+/// Priority:
+/// 1. `--log-file` CLI argument
+/// 2. `LOG_FILE` environment variable (only from shell, not from config.toml [env])
+/// 3. `config.toml` [logging.cli].path
+/// 4. `~/.loom/logs/cli/loom-cli.log`
+pub fn resolve_cli_log_path(
+    cli_file: Option<&Path>,
+    working_folder: Option<&Path>,
+    logging_config: Option<&LoggingSection>,
+    log_file_from_env: Option<&OsString>,
+) -> Option<PathBuf> {
+    // 1. CLI argument
+    if let Some(path) = cli_file {
+        return Some(tracing_init::resolve_log_path(path, working_folder));
+    }
+
+    // 2. Environment variable (only from shell env, not from config.toml [env])
+    // We check if LOG_FILE was set in the shell before config.toml was loaded.
+    // If the logging_config has cli.path set, that takes precedence over [env] LOG_FILE.
+    if let Some(path) = log_file_from_env {
+        if logging_config.as_ref().and_then(|c| c.cli.path.as_ref()).is_none() {
+            return Some(PathBuf::from(path));
+        }
+    }
+
+    // 3. config.toml [logging.cli].path
+    if let Some(config) = logging_config {
+        if let Some(path) = &config.cli.path {
+            return Some(path.clone());
+        }
+    }
+
+    // 4. Default: ~/.loom/logs/cli/loom-cli.log
+    Some(config::home::cli_logs_dir().join("loom-cli.log"))
+}
+
 /// Initializes tracing with optional file logging and rotation.
 ///
 /// - With a resolved log file path (`--log-file` or `LOG_FILE`): logs go to file (with rotation) only
@@ -100,8 +142,46 @@ pub fn init(args: &LogArgs) -> LogGuard {
     }
 }
 
+/// Initializes tracing with logging config from config.toml.
+///
+/// Takes the `logging` section from FullConfig and uses it for default values.
+/// Priority: CLI args > shell env vars > config.toml > defaults.
+pub fn init_with_config(
+    args: &LogArgs,
+    logging_config: Option<&LoggingSection>,
+    log_file_from_shell: Option<&OsString>,
+) -> LogGuard {
+    let filter = tracing_init::build_env_filter(&args.level, &["hyper_util=off"]);
+
+    let log_file = if let Some(path) = args.resolve_log_file() {
+        Some(path)
+    } else {
+        resolve_cli_log_path(None, args.working_folder.as_deref(), logging_config, log_file_from_shell)
+    };
+
+    // Resolve rotate from config if not set by CLI
+    let rotate = if args.rotate != LogRotate::None {
+        args.rotate
+    } else if let Some(config) = logging_config {
+        config.cli.rotate()
+    } else {
+        LogRotate::None
+    };
+
+    if let Some(ref path) = log_file {
+        init_file_logging(path, rotate, args.format, filter)
+    } else {
+        init_sink_logging(filter)
+    }
+}
+
 fn init_file_logging(path: &Path, rotate: LogRotate, format: LogFormat, filter: EnvFilter) -> LogGuard {
-    let (writer, guard) = tracing_init::file_non_blocking_writer(path, rotate, "loom")
+    // Auto-create parent directories
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    let (writer, guard) = tracing_init::file_non_blocking_writer(path, rotate, "loom-cli")
         .unwrap_or_else(|e| panic!("failed to open log file {}: {}", path.display(), e));
 
     match format {

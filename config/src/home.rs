@@ -17,15 +17,31 @@ pub fn acp_data_dir() -> PathBuf {
     loom_home().join("acp")
 }
 
-/// Default ACP log file path: `{cwd}/.loom/logs/loom-acp.log`.
+/// `{loom_home}/logs/` — Unified logs directory (does not create).
+pub fn logs_dir() -> PathBuf {
+    loom_home().join("logs")
+}
+
+/// `{loom_home}/logs/cli/` — CLI log directory.
+pub fn cli_logs_dir() -> PathBuf {
+    logs_dir().join("cli")
+}
+
+/// `{loom_home}/logs/acp/` — ACP log directory.
+pub fn acp_logs_dir() -> PathBuf {
+    logs_dir().join("acp")
+}
+
+/// `{loom_home}/logs/llm/` — LLM audit log directory.
+pub fn llm_logs_dir() -> PathBuf {
+    logs_dir().join("llm")
+}
+
+/// Default ACP log file path: `{logs_dir()}/acp/loom-acp.log`.
 ///
-/// Falls back to `{loom_home}/acp/loom-acp.log` if current dir is unavailable.
+/// Falls back to `~/.loom/logs/acp/loom-acp.log`.
 pub fn default_acp_log_file() -> PathBuf {
-    if let Ok(cwd) = std::env::current_dir() {
-        cwd.join(".loom").join("logs").join("loom-acp.log")
-    } else {
-        acp_data_dir().join("loom-acp.log")
-    }
+    acp_logs_dir().join("loom-acp.log")
 }
 
 /// Returns the Loom home directory.
@@ -135,19 +151,31 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
-    fn default_acp_log_file_under_cwd() {
+    fn default_acp_log_file_uses_loom_home() {
         let _lock = CONFIG_TEST_LOCK.lock().unwrap();
-        let cwd = std::env::current_dir().unwrap();
-        let expected = cwd.join(".loom").join("logs").join("loom-acp.log");
+        let prev = std::env::var("LOOM_HOME").ok();
+        let test_home = PathBuf::from("/tmp/test-loom-home");
+        std::env::set_var("LOOM_HOME", &test_home);
+        let expected = test_home.join("logs").join("acp").join("loom-acp.log");
         assert_eq!(default_acp_log_file(), expected);
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
     }
 
     #[test]
     #[cfg(windows)]
-    fn default_acp_log_file_under_cwd() {
+    fn default_acp_log_file_uses_loom_home() {
         let _lock = CONFIG_TEST_LOCK.lock().unwrap();
-        let cwd = std::env::current_dir().unwrap();
-        let expected = cwd.join(".loom").join("logs").join("loom-acp.log");
+        let prev = std::env::var("LOOM_HOME").ok();
+        let test_home = PathBuf::from("C:/tmp/test-loom-home");
+        std::env::set_var("LOOM_HOME", &test_home);
+        let expected = test_home.join("logs").join("acp").join("loom-acp.log");
         assert_eq!(default_acp_log_file(), expected);
+        match prev {
+            Some(v) => std::env::set_var("LOOM_HOME", v),
+            None => std::env::remove_var("LOOM_HOME"),
+        }
     }
 }
