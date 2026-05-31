@@ -20,8 +20,6 @@ fn base_config() -> BackgroundReviewConfig {
         review_skills: true,
         curator_config: Default::default(),
         curator_run_interval_secs: 86400,
-        evolution_enabled: false,
-        evolution_config: Default::default(),
         observability_enabled: false,
     }
 }

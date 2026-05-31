@@ -2,6 +2,7 @@ use super::curator::Curator;
 use super::memory::{MemoryFile, MemoryStore};
 use super::security::{validate_skill_create, validate_skill_path, Severity};
 use super::skill_registry::{Lifecycle, SkillContent, SkillRegistry, Source};
+use super::skill_usage::SkillUsageStore;
 use crate::tool_source::ToolSpec;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -13,6 +14,7 @@ pub struct ReviewToolExecutor<'a> {
     pub memory: &'a MemoryStore,
     pub skills: &'a SkillRegistry,
     pub curator: Option<&'a Curator>,
+    pub skill_usage: Option<&'a SkillUsageStore>,
     pub actions: Vec<ReviewAction>,
 }
 
@@ -31,12 +33,18 @@ impl<'a> ReviewToolExecutor<'a> {
             memory,
             skills,
             curator: None,
+            skill_usage: None,
             actions: Vec::new(),
         }
     }
 
     pub fn with_curator(mut self, curator: &'a Curator) -> Self {
         self.curator = Some(curator);
+        self
+    }
+
+    pub fn with_skill_usage(mut self, skill_usage: &'a SkillUsageStore) -> Self {
+        self.skill_usage = Some(skill_usage);
         self
     }
 
@@ -171,6 +179,9 @@ impl<'a> ReviewToolExecutor<'a> {
                 if let Some(curator) = self.curator {
                     let _ = curator.touch_skill(name);
                 }
+                if let Some(su) = self.skill_usage {
+                    su.bump_view(name);
+                }
                 json!({
                     "success": true,
                     "skill": {
@@ -217,6 +228,9 @@ impl<'a> ReviewToolExecutor<'a> {
 
         match self.skills.save(name, &skill) {
             Ok(()) => {
+                if let Some(su) = self.skill_usage {
+                    su.mark_agent_created(name);
+                }
                 self.actions.push(ReviewAction {
                     kind: "skill".to_string(),
                     target: name.to_string(),
@@ -253,6 +267,9 @@ impl<'a> ReviewToolExecutor<'a> {
 
                 match self.skills.save(name, &skill) {
                     Ok(()) => {
+                        if let Some(su) = self.skill_usage {
+                            su.bump_patch(name);
+                        }
                         self.actions.push(ReviewAction {
                             kind: "skill".to_string(),
                             target: name.to_string(),
@@ -293,6 +310,9 @@ impl<'a> ReviewToolExecutor<'a> {
                     summary: format!("Skill '{}' patched", name),
                     has_modification: true,
                 });
+                if let Some(su) = self.skill_usage {
+                    su.bump_patch(name);
+                }
                 json!({"success": true})
             }
             Err(e) => json!({"success": false, "error": e.to_string()}),

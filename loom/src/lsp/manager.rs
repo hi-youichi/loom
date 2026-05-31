@@ -10,7 +10,7 @@ use crate::lsp::cache::DiagnosticCache;
 use crate::lsp::client::LspClient;
 use dashmap::DashMap;
 use env_config::LspServerConfig;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::RwLock;
@@ -48,6 +48,8 @@ pub struct LspManager {
     diagnostic_cache: DiagnosticCache,
     /// Extension to language mapping
     extension_map: DashMap<String, String>,
+    /// Working directory for resolving relative paths
+    working_dir: PathBuf,
 }
 
 impl LspManager {
@@ -74,6 +76,7 @@ impl LspManager {
             configs,
             diagnostic_cache: DiagnosticCache::new(),
             extension_map,
+            working_dir: std::env::current_dir().unwrap_or_default(),
         }
     }
 
@@ -157,7 +160,7 @@ impl LspManager {
         let client = self.get_client(&language).await?;
         let mut client = client.write().await;
 
-        let uri = path_to_uri(file_path)?;
+        let uri = path_to_uri(file_path, &self.working_dir)?;
         client
             .open_document(&uri, &language, content)
             .await
@@ -174,7 +177,7 @@ impl LspManager {
         let client = self.get_client_for_file(file_path).await?;
         let mut client = client.write().await;
 
-        let uri = path_to_uri(file_path)?;
+        let uri = path_to_uri(file_path, &self.working_dir)?;
         client
             .completion(&uri, line, character)
             .await
@@ -189,7 +192,7 @@ impl LspManager {
         let client = self.get_client_for_file(file_path).await?;
         let client = client.read().await;
 
-        let uri = path_to_uri(file_path)?;
+        let uri = path_to_uri(file_path, &self.working_dir)?;
         client.diagnostics(&uri).await.map_err(Into::into)
     }
 
@@ -203,7 +206,7 @@ impl LspManager {
         let client = self.get_client_for_file(file_path).await?;
         let mut client = client.write().await;
 
-        let uri = path_to_uri(file_path)?;
+        let uri = path_to_uri(file_path, &self.working_dir)?;
         client
             .goto_definition(&uri, line, character)
             .await
@@ -220,7 +223,7 @@ impl LspManager {
         let client = self.get_client_for_file(file_path).await?;
         let mut client = client.write().await;
 
-        let uri = path_to_uri(file_path)?;
+        let uri = path_to_uri(file_path, &self.working_dir)?;
         client
             .find_references(&uri, line, character)
             .await
@@ -237,7 +240,7 @@ impl LspManager {
         let client = self.get_client_for_file(file_path).await?;
         let mut client = client.write().await;
 
-        let uri = path_to_uri(file_path)?;
+        let uri = path_to_uri(file_path, &self.working_dir)?;
         client
             .hover(&uri, line, character)
             .await
@@ -252,7 +255,7 @@ impl LspManager {
         let client = self.get_client_for_file(file_path).await?;
         let mut client = client.write().await;
 
-        let uri = path_to_uri(file_path)?;
+        let uri = path_to_uri(file_path, &self.working_dir)?;
         client.document_symbols(&uri).await.map_err(Into::into)
     }
 
@@ -289,10 +292,17 @@ impl Default for LspManager {
     }
 }
 
-/// Convert file path to URI.
-fn path_to_uri(path: &Path) -> Result<lsp_types::Url, LspManagerError> {
-    lsp_types::Url::from_file_path(path)
-        .map_err(|_| LspManagerError::InvalidPath(path.display().to_string()))
+/// Convert file path to absolute URI.
+fn path_to_uri(path: &Path, base: &Path) -> Result<lsp_types::Url, LspManagerError> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        base.join(path)
+            .canonicalize()
+            .map_err(|e| LspManagerError::InvalidPath(format!("{}: {}", path.display(), e)))?
+    };
+    lsp_types::Url::from_file_path(&absolute)
+        .map_err(|_| LspManagerError::InvalidPath(absolute.display().to_string()))
 }
 
 impl Drop for LspManager {

@@ -153,6 +153,66 @@ Act on whichever of the two dimensions has real signal. If genuinely \
 nothing stands out on either, say 'Nothing to save.' and stop — but don't \
 reach for that conclusion as a default.";
 
+/// Curator LLM review prompt for skill consolidation.
+///
+/// Used by the curator's LLM pass to analyze skills and decide:
+/// - Which skills should be consolidated into umbrella skills
+/// - Which skills should be pruned (archived with no absorption)
+/// - What new umbrella skills should be created
+pub const CURATOR_REVIEW_PROMPT: &str = r#"You are running as Loom's background skill CURATOR. This is an
+UMBRELLA-BUILDING consolidation pass, not a passive audit and not a
+duplicate-finder.
+
+The goal of the skill collection is a LIBRARY OF CLASS-LEVEL
+INSTRUCTIONS AND EXPERIENTIAL KNOWLEDGE. A collection of hundreds of
+narrow skills where each one captures one session's specific bug is
+a FAILURE of the library - not a feature. An agent searching skills
+matches on descriptions, not on exact names; one broad umbrella
+skill with labeled subsections beats twenty one-off entries every time.
+
+Your job:
+1. Identify clusters of related/narrow skills that should be umbrella-ified
+2. Decide: for each cluster, which skill should become the umbrella?
+3. For skills that are truly stale, irrelevant, or obsolete: mark for pruning
+4. Output a structured summary of your decisions
+
+Output format (use this exact YAML structure):
+
+```yaml
+summary: |
+  Brief human-readable summary of clusters processed, patches made,
+  and decisions left alone. 2-5 sentences max.
+
+clusters:
+  - name: "cluster-name"  # descriptive name for this cluster
+    members: ["skill-a", "skill-b", "skill-c"]
+    umbrella: "new-umbrella-skill"  # the skill that absorbs others
+    action: "merge"  # or "rename" if just one skill is renamed
+
+prunings:
+  - name: "skill-to-prune"
+    reason: "truly stale / irrelevant / obsolete - brief reason"
+
+consolidations:
+  - source: "narrow-skill"
+    into: "umbrella-skill"
+    method: "patched"  # or "references", "absorbed"
+```
+
+Rules:
+- Every skill you want to archive MUST appear in either `consolidations` or `prunings`
+- If consolidated X into umbrella Y (patched Y, wrote a references file to Y,
+  or created Y with X's content absorbed), X goes under `consolidations` with
+  `into: Y`
+- If archived X with no absorption - truly stale, irrelevant, or obsolete -
+  X goes under `prunings`
+- Leave a list empty (`consolidations: []`) if none. Do not omit the block.
+- The block comes AFTER your human-readable summary of clusters processed,
+  patches made, and decisions left alone.
+
+If there are few or no skills needing attention, say so briefly and return
+empty lists. Better a quiet curator than a destructive one."#;
+
 /// Selects the appropriate review prompt based on trigger flags.
 pub fn select_review_prompt(review_memory: bool, review_skills: bool) -> Option<&'static str> {
     match (review_memory, review_skills) {
@@ -213,5 +273,19 @@ mod tests {
         assert!(COMBINED_REVIEW_PROMPT.contains("Skills"));
         assert!(COMBINED_REVIEW_PROMPT.contains("memory tool"));
         assert!(COMBINED_REVIEW_PROMPT.contains("skill library"));
+    }
+
+    #[test]
+    fn test_curator_prompt_non_empty() {
+        assert!(!CURATOR_REVIEW_PROMPT.is_empty());
+    }
+
+    #[test]
+    fn test_curator_prompt_contains_key_phrases() {
+        assert!(CURATOR_REVIEW_PROMPT.contains("UMBRELLA-BUILDING"));
+        assert!(CURATOR_REVIEW_PROMPT.contains("consolidation pass"));
+        assert!(CURATOR_REVIEW_PROMPT.contains("skill collection"));
+        assert!(CURATOR_REVIEW_PROMPT.contains("prunings"));
+        assert!(CURATOR_REVIEW_PROMPT.contains("consolidations"));
     }
 }
