@@ -418,7 +418,11 @@ impl LspClient {
                 .await
             {
                 Ok(result) => {
-                    let locations: Vec<lsp_types::Location> = serde_json::from_value(result)?;
+                    let locations: Vec<lsp_types::Location> = if result.is_null() {
+                        Vec::new()
+                    } else {
+                        serde_json::from_value(result)?
+                    };
                     return Ok(locations);
                 }
                 Err(LspClientError::Protocol(msg))
