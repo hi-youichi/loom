@@ -101,8 +101,23 @@ impl Tool for LspTool {
         crate::tool_source::ToolSpec {
             name: TOOL_LSP.to_string(),
             description: Some(
-                "LSP-based code completions and diagnostics. Provides intelligent code completion, \
-                 diagnostics, go-to-definition, find references, hover information, and document symbols."
+                "Code intelligence powered by Language Server Protocol. Understands code structure, \
+                 types, and symbols — not just text patterns.\n\n\
+                 When to use each action:\n\
+                 - `gotoDefinition`: Navigate to where a function/variable/type is defined.\n    \
+                   Use INSTEAD of grep when you need a symbol's definition.\n\
+                 - `findReferences`: Find all semantic usages of a symbol across the codebase.\n    \
+                   Unlike grep, respects language semantics (won't match comments or strings).\n\
+                 - `hover`: Get type information, documentation, and signature for a symbol.\n    \
+                   Use to understand a function's interface without reading its body.\n\
+                 - `documentSymbols`: List all top-level symbols in a file.\n    \
+                   Use to understand file structure before reading it.\n\
+                 - `diagnostics`: Get compiler/linter errors and warnings for a file.\n\
+                 - `completion`: Get code completion suggestions at a cursor position.\n\n\
+                 Tips:\n\
+                 - Explore an unfamiliar file with `documentSymbols` + `read` instead of `grep`.\n\
+                 - Start bug investigation with `diagnostics` to check for errors.\n\
+                 - Combine multiple LSP calls in a single batch for efficiency."
                     .to_string(),
             ),
             input_schema: json!({
@@ -111,11 +126,11 @@ impl Tool for LspTool {
                     "action": {
                         "type": "string",
                         "enum": ["completion", "diagnostics", "gotoDefinition", "findReferences", "hover", "documentSymbols"],
-                        "description": "LSP action to perform"
+                        "description": "Which LSP action to perform. Choose based on your goal:\n- completion: autocomplete at cursor\n- diagnostics: get errors/warnings for a file\n- gotoDefinition: navigate to a symbol's definition\n- findReferences: find all semantic usages of a symbol\n- hover: get type info and docs for a symbol\n- documentSymbols: list all symbols in a file"
                     },
-                    "file_path": { "type": "string", "description": "Path to the file" },
-                    "line": { "type": "integer", "description": "Line number (0-based)" },
-                    "character": { "type": "integer", "description": "Character position (0-based)" }
+                    "file_path": { "type": "string", "description": "Path to the target file (relative to working folder or absolute)." },
+                    "line": { "type": "integer", "description": "Line number (0-based). Required for: completion, gotoDefinition, findReferences, hover." },
+                    "character": { "type": "integer", "description": "Character position (0-based). Required for: completion, gotoDefinition, findReferences, hover." }
                 },
                 "required": ["action", "file_path"]
             }),
