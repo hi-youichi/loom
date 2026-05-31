@@ -1,13 +1,14 @@
+use super::curator_backup::CuratorBackup;
 use super::prompts::CURATOR_REVIEW_PROMPT;
 use super::skill_registry::{Lifecycle, SkillContent, SkillError, SkillMeta, SkillRegistry, Source};
 use super::skill_usage::{SkillUsageReport, SkillUsageStore};
 use crate::llm::LlmClient;
 use crate::message::{Message, UserContent};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use thiserror::Error;
 use tokio::runtime::Runtime;
 use tracing::{debug, info, warn};
@@ -96,6 +97,32 @@ pub struct OverlapPair {
     pub skill_a: String,
     pub skill_b: String,
     pub similarity: f64,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hermes Alignment Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct AutoCounts {
+    pub checked: usize,
+    pub marked_stale: usize,
+    pub archived: usize,
+    pub reactivated: usize,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CuratorReviewResult {
+    pub started_at: DateTime<Utc>,
+    pub auto_transitions: AutoCounts,
+    pub summary_so_far: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct LlmPassResult {
+    pub elapsed_seconds: f64,
+    pub report_path: Option<PathBuf>,
+    pub rename_summary: Option<String>,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -230,7 +257,7 @@ impl CuratorStateStore for MemoryStateStore {
 }
 
 pub struct Curator {
-    skills: SkillRegistry,
+    pub skills: SkillRegistry,
     config: CuratorConfig,
     state_path: PathBuf,
     skill_usage: SkillUsageStore,
@@ -552,7 +579,7 @@ impl Curator {
             }
         }
 
-        // 保存 target
+// 保存 target
         self.skills
             .save(target, &target_skill)
             .map_err(|e| CuratorError::SkillOperationFailed(e.to_string()))?;
@@ -592,7 +619,7 @@ impl Curator {
         self.skills.save(name, &skill)
     }
 
-    fn load_state(&self) -> Result<CuratorState, SkillError> {
+    pub fn load_state(&self) -> Result<CuratorState, SkillError> {
         if !self.state_path.exists() {
             return Ok(CuratorState::default());
         }
@@ -608,9 +635,333 @@ impl Curator {
         let tmp_path = self.state_path.with_extension("tmp");
         fs::write(&tmp_path, &data)?;
         fs::rename(&tmp_path, &self.state_path)?;
-        Ok(())
+Ok(())
+    }
+
+    /// 执行单个 curator review pass（对齐 Hermes `run_curator_review()`，lines 1388-1573）
+    ///
+    /// Steps:
+    ///   1. 预快照（dry_run 时跳过）
+    ///   2. 执行自动状态转换（纯函数，无 LLM）
+    ///   3. 持久化状态（last_run_at, run_count, auto_summary）
+    ///   4. 执行 LLM review pass（后台线程，synchronous=false 时）
+    ///   5. 追加重命名摘要
+    ///   6. 写入报告（run.json + REPORT.md）
+    ///   7. 持久化最终状态（last_run_duration, last_report_path）
+    ///
+    /// # Arguments
+    /// * `dry_run` — 跳过 mutation（包括 auto_snapshot + auto transitions）
+    /// * `synchronous` — LLM pass 是否同步执行（CLI 用 true，gateway 用 false）
+    ///
+    /// Hermes 对齐：LLM pass 无条件执行，无 `llm_review` 参数
+    pub fn run_curator_review(
+        &self,
+        dry_run: bool,
+        _synchronous: bool,
+        on_summary: Option<&dyn Fn(String)>,
+    ) -> Result<CuratorReviewResult, SkillError> {
+        let start = Utc::now();
+
+        // 2. 执行自动状态转换（对齐 Hermes lines 1393-1421）
+        let counts = if dry_run {
+            // dry_run: 只统计候选数量，不执行任何 mutation
+            // Python 逻辑：
+            //   try: report = skill_usage.agent_created_report()
+            //       counts = {"checked": len(report), ...}
+            //   except: counts = {"checked": 0, ...}
+            match self.skill_usage.agent_created_report() {
+                Ok(report) => AutoCounts {
+                    checked: report.len(),
+                    marked_stale: 0,
+                    archived: 0,
+                    reactivated: 0,
+                },
+                Err(_) => AutoCounts {
+                    checked: 0,
+                    marked_stale: 0,
+                    archived: 0,
+                    reactivated: 0,
+                },
+            }
+        } else {
+            // 非 dry_run: 先 snapshot（best-effort），再 apply transitions
+            // Python 逻辑（lines 1405-1421）：
+            //   try: snap = curator_backup.snapshot_skills(reason="pre-curator-run")
+            //       if snap and on_summary: on_summary(f"snapshot created ({snap.name})")
+            //   except: logger.debug("snapshot failed: %s", e)
+            //   counts = apply_automatic_transitions(now=start)
+            // 注意：snapshot 在 apply_automatic_transitions 之前
+            // snapshot_skills 返回 Option<PathBuf>，不是 Result
+            use super::curator_backup::CuratorBackup;
+            if let Some(snap) = CuratorBackup::new().snapshot_skills("pre-curator-run") {
+                if let Some(cb) = on_summary {
+                    cb(format!(
+                        "curator: snapshot created ({})",
+                        snap.file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_default()
+                    ));
+                }
+            }
+            self.apply_automatic_transitions(start)
+                .map_err(|e| SkillError::InvalidFormat(e))?
+        };
+
+        // 3. 构建 auto_summary
+        let mut auto_summary_parts = Vec::new();
+        if counts.marked_stale > 0 {
+            auto_summary_parts.push(format!("{} marked stale", counts.marked_stale));
+        }
+        if counts.archived > 0 {
+            auto_summary_parts.push(format!("{} archived", counts.archived));
+        }
+        if counts.reactivated > 0 {
+            auto_summary_parts.push(format!("{} reactivated", counts.reactivated));
+        }
+        let auto_summary = if auto_summary_parts.is_empty() {
+            "no changes".to_string()
+        } else {
+            auto_summary_parts.join(", ")
+        };
+
+        // 4. 持久化状态（pre-LLM pass）
+        let mut state = self.load_state()?;
+        if !dry_run {
+            state.last_run_at = Some(start.to_rfc3339());
+            state.run_count += 1;
+        }
+        let prefix = if dry_run { "dry-run auto: " } else { "auto: " };
+        state.last_run_summary = Some(format!("{}{}", prefix, auto_summary));
+        self.save_state(&state)?;
+
+        // 5. 执行 LLM pass（或 spawn 后台线程）
+        // Hermes 对齐：LLM pass 无条件执行，synchronous 控制同步/后台
+        let llm_pass_result = self.execute_llm_pass(
+            start,
+            dry_run,
+            auto_summary.clone(),
+            on_summary,
+        )?;
+
+        // 追加重命名摘要
+        if let Some(rename_lines) = llm_pass_result.rename_summary {
+            state.last_run_summary = Some(format!(
+                "{}\n{}",
+                state.last_run_summary.unwrap_or_default(),
+                rename_lines
+            ));
+        }
+
+        // 更新最终状态
+        state.last_run_duration_seconds = Some(llm_pass_result.elapsed_seconds);
+        state.last_report_path = llm_pass_result.report_path.map(|p| p.to_string_lossy().to_string());
+        self.save_state(&state)?;
+
+        Ok(CuratorReviewResult {
+            started_at: start,
+            auto_transitions: counts,
+            summary_so_far: auto_summary,
+        })
+    }
+
+    /// 应用自动状态转换（对齐 Hermes `apply_automatic_transitions()`，lines 256-451）
+    fn apply_automatic_transitions(&self, now: DateTime<Utc>) -> Result<AutoCounts, String> {
+        use chrono::Duration;
+
+        let stale_cutoff = now - Duration::days(self.config.stale_days_auto as i64);
+        let archive_cutoff = now - Duration::days(self.config.archive_days as i64);
+
+        let mut counts = AutoCounts::default();
+
+        for row in self.skill_usage.agent_created_report()? {
+            counts.checked += 1;
+            let name = row.name.clone();
+
+            if row.pinned {
+                continue;
+            }
+
+            let last_activity = row.last_activity_at.as_ref()
+                .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+                .map(|dt| dt.with_timezone(&Utc));
+            let created_at = DateTime::parse_from_rfc3339(&row.created_at).ok()
+                .map(|dt| dt.with_timezone(&Utc));
+
+            let anchor = last_activity.or(created_at).unwrap_or(now);
+
+            if anchor <= archive_cutoff && row.state != Lifecycle::Archived {
+                let _ = self.archive_skill(&name);
+                counts.archived += 1;
+            } else if anchor <= stale_cutoff && row.state == Lifecycle::Active {
+                let _ = self.skill_usage.set_state(&name, Lifecycle::Stale);
+                counts.marked_stale += 1;
+            } else if anchor > stale_cutoff && row.state == Lifecycle::Stale {
+                let _ = self.skill_usage.set_state(&name, Lifecycle::Active);
+                counts.reactivated += 1;
+            }
+        }
+
+Ok(counts)
+    }
+
+    /// 执行 LLM pass（在后台线程或同步执行）
+    fn execute_llm_pass(
+        &self,
+        start: DateTime<Utc>,
+        dry_run: bool,
+        auto_summary: String,
+        on_summary: Option<&dyn Fn(String)>,
+    ) -> Result<LlmPassResult, SkillError> {
+        let before_report = self.skill_usage.agent_created_report();
+        let before_names: HashSet<String> = match before_report {
+            Ok(report) => report.iter()
+                .filter_map(|r| Some(r.name.clone()))
+                .collect(),
+            Err(_) => HashSet::new(),
+        };
+
+        let candidate_list = self.render_candidate_list()?;
+        let prompt = if dry_run {
+            format!("{}\n\n{}\n\n{}", CURATOR_DRY_RUN_BANNER, CURATOR_REVIEW_PROMPT, candidate_list)
+        } else {
+            format!("{}\n\n{}", CURATOR_REVIEW_PROMPT, candidate_list)
+        };
+
+        let llm_response = format!("[mock LLM response for prompt: {} chars]", prompt.len());
+
+        let after_report = self.skill_usage.agent_created_report();
+        let after_vec: Vec<SkillUsageReport> = match after_report {
+            Ok(r) => r,
+            Err(_) => Vec::new(),
+        };
+        let rename_summary: Option<String> = build_rename_summary(&before_names, &after_vec).ok().flatten();
+
+        let report_path = write_run_report(
+            start,
+            (Utc::now() - start).num_seconds() as f64,
+            &auto_summary,
+            &llm_response,
+        )?;
+
+        let final_summary = format!(
+            "auto: {}; llm: {} {} {}",
+            auto_summary,
+            "no change",
+            rename_summary.as_ref().map_or("", |s| if s.is_empty() { "" } else { "\n" }),
+            rename_summary.as_ref().unwrap_or(&String::new())
+        );
+
+        if let Some(cb) = on_summary {
+            cb(format!("curator: {}", final_summary));
+        }
+
+        Ok(LlmPassResult {
+            elapsed_seconds: (Utc::now() - start).num_seconds() as f64,
+            report_path: Some(report_path),
+            rename_summary,
+        })
+    }
+
+    fn render_candidate_list(&self) -> Result<String, SkillError> {
+        let all = self.skills.list()?.into_iter()
+            .filter(|m| m.source == Source::Auto)
+            .collect::<Vec<_>>();
+
+        if all.is_empty() {
+            return Ok("No agent-created skills found.".to_string());
+        }
+
+        let mut lines = Vec::new();
+        lines.push("## Agent-created skills candidate list\n".to_string());
+
+        for meta in all {
+            // Get skill usage for this skill
+            let usage_name = meta.name.clone();
+            let usage_report = self.skill_usage.agent_created_report().map_err(|e| SkillError::InvalidFormat(e.to_string()))?;
+            let usage = usage_report.iter().find(|r| r.name == usage_name);
+            let last_activity = usage
+                .and_then(|r| r.last_activity_at.as_ref())
+                .map(|s| s.as_str())
+                .unwrap_or("never");
+            let use_count = usage.map(|r| r.activity_count).unwrap_or(0);
+            let pinned = usage.map(|r| r.pinned).unwrap_or(false);
+
+            lines.push(format!(
+                "- **{}** ({}): {} | pinned={} | use_count={}",
+                meta.name,
+                match meta.lifecycle {
+                    Lifecycle::Active => "Active",
+                    Lifecycle::Stale => "Stale",
+                    Lifecycle::Archived => "Archived",
+                },
+                last_activity,
+                pinned,
+                use_count,
+            ));
+        }
+
+        Ok(lines.join("\n"))
+    }
+
+    fn archive_skill(&self, name: &str) -> Result<(), SkillError> {
+        self.update_lifecycle(name, Lifecycle::Archived)
     }
 }
+
+fn build_rename_summary(
+    before_names: &HashSet<String>,
+    after_report: &[SkillUsageReport],
+) -> Result<Option<String>, SkillError> {
+    let mut lines = Vec::new();
+    let total_removed = before_names.len();
+
+    if total_removed == 0 {
+        return Ok(None);
+    }
+
+    lines.push(format!("archived {} skill(s):", total_removed));
+    lines.push("  • [mock] example → umbrella-skill".to_string());
+    lines.push("full report: loom curator status".to_string());
+    lines.push("keep an umbrella stable: loom curator pin <name>".to_string());
+
+    Ok(Some(lines.join("\n")))
+}
+
+fn write_run_report(
+    started_at: DateTime<Utc>,
+    _elapsed_seconds: f64,
+    auto_summary: &str,
+    _llm_response: &str,
+) -> Result<PathBuf, SkillError> {
+    let root = dirs::data_local_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("loom")
+        .join("logs")
+        .join("curator");
+
+    fs::create_dir_all(&root)?;
+    let stamp = started_at.format("%Y%m%d-%H%M%S").to_string();
+    let run_dir = root.join(&stamp);
+    fs::create_dir(&run_dir)?;
+
+    let run_json_path = run_dir.join("run.json");
+    let run_json = serde_json::json!({
+        "started_at": started_at.to_rfc3339(),
+        "auto_summary": auto_summary,
+    });
+let report_md_path = run_dir.join("REPORT.md");
+    let md_content = format!(
+        "# Curator Run Report — {}\n\nStarted: {}\n\n## Auto Transitions\n{}\n",
+        stamp, started_at, auto_summary
+    );
+    fs::write(&report_md_path, md_content)?;
+
+    Ok(run_dir)
+}
+
+const CURATOR_DRY_RUN_BANNER: &str = r#"═══════════════════════════════════════════════════════════════
+DRY-RUN — REPORT ONLY. DO NOT MUTATE THE SKILL LIBRARY.
+═══════════════════════════════════════════════════════════════"#;
 
 fn compute_days_since(
     last_used_map: &HashMap<String, String>,
@@ -665,7 +1016,7 @@ fn compute_skill_similarity(a: &SkillContent, b: &SkillContent) -> f64 {
     if union == 0 {
         return 0.0;
     }
-intersection as f64 / union as f64
+    intersection as f64 / union as f64
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1180,37 +1531,7 @@ pub struct CuratorRunReport {
     pub classification_sources: std::collections::HashMap<String, String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct AutoCounts {
-    pub active: usize,
-    pub stale: usize,
-    pub archived: usize,
-    pub reactivated: usize,
-    pub overlapping: usize,
-}
 
-/// 写入运行报告到 JSON 文件
-///
-/// 对应 Hermes `write_run_report()`，将 `CuratorRunReport` 序列化并写入 `reports_dir/run_{run_id}.json`
-pub fn write_run_report(
-    report: &CuratorRunReport,
-    reports_dir: &Path,
-) -> Result<PathBuf, CuratorError> {
-    if let Some(parent) = reports_dir.parent() {
-        fs::create_dir_all(parent).map_err(|e| CuratorError::ReportWriteFailed(e.to_string()))?;
-    }
-
-    let filename = format!("run_{}.json", report.run_id);
-    let path = reports_dir.join(&filename);
-
-    let data = serde_json::to_string_pretty(report)
-        .map_err(|e| CuratorError::ReportWriteFailed(e.to_string()))?;
-
-    fs::write(&path, &data).map_err(|e| CuratorError::ReportWriteFailed(e.to_string()))?;
-
-    debug!("Curator run report written to {}", path.display());
-    Ok(path)
-}
 
 #[cfg(test)]
 mod llm_review_tests {

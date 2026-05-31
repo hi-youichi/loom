@@ -3,7 +3,7 @@
 use cli::{cli_list_models, cli_list_tools, cli_show_tool, ToolShowFormat};
 
 use crate::args::{
-    AgentArgs, AgentCommand, Args, CuratorCmdArgs, ExportArgs, McpArgs,
+    AgentArgs, AgentCommand, Args, CuratorCmdArgs, CuratorCommand, ExportArgs, McpArgs,
     McpCommand, MemoryCmdArgs, MemoryCommand, ModelsArgs, ModelsCommand, SkillsArgs,
     SkillsCommand, ToolArgs, ToolCommand,
 };
@@ -382,28 +382,96 @@ pub(crate) fn handle_curator_command(
     curator_args: &CuratorCmdArgs,
     json: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use cli::run::curator::{Curator, CuratorConfig, CuratorReport};
+    use cli::run::curator::{
+        Curator, CuratorConfig, CuratorReport,
+        CuratorReviewResult, CuratorState,
+    };
     use cli::run::skill_registry::SkillRegistry;
 
     let skills = SkillRegistry::new(&SkillRegistry::default_path());
     let curator = Curator::new(skills, CuratorConfig::default());
-    let report: CuratorReport = curator.run(curator_args.dry_run)?;
 
-    if json {
-        println!("{}", serde_json::to_string_pretty(&report)?);
-    } else {
-        println!("Curator Report:");
-        println!("{}", "═".repeat(60));
-        println!("Active: {}", report.active);
-        println!("Stale: {}", report.stale.len());
-        for s in &report.stale { println!("  • {}", s); }
-        println!("Archived: {}", report.archived.len());
-        for s in &report.archived { println!("  • {}", s); }
-        if !report.overlapping.is_empty() {
-            println!("Overlapping:");
-            for o in &report.overlapping {
-                println!("  • {} <-> {} (similarity: {:.2})", o.skill_a, o.skill_b, o.similarity);
+    match &curator_args.command {
+        CuratorCommand::Run => {
+            // Hermes 对齐：调用 run_curator_review(dry_run, synchronous=true)
+            let result: CuratorReviewResult = curator.run_curator_review(
+                curator_args.dry_run,
+                true, // synchronous: CLI 用同步模式
+                Some(&|msg| eprintln!("{}", msg)),
+            )?;
+
+            if json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                println!("Curator Review Result:");
+                println!("{}", "═".repeat(60));
+                println!("Checked: {}", result.auto_transitions.checked);
+                println!("Marked Stale: {}", result.auto_transitions.marked_stale);
+                println!("Archived: {}", result.auto_transitions.archived);
+                println!("Reactivated: {}", result.auto_transitions.reactivated);
+                println!("Summary: {}", result.summary_so_far);
             }
+        }
+        CuratorCommand::Status => {
+            let state: CuratorState = curator.load_state().unwrap_or_default();
+            let all = curator.skills.list().unwrap_or_default();
+
+            let active = all.iter().filter(|m| m.lifecycle == cli::run::skill_registry::Lifecycle::Active && !m.pinned).count();
+            let stale = all.iter().filter(|m| m.lifecycle == cli::run::skill_registry::Lifecycle::Stale).count();
+            let archived = all.iter().filter(|m| m.lifecycle == cli::run::skill_registry::Lifecycle::Archived).count();
+            let pinned = all.iter().filter(|m| m.pinned).count();
+
+            if json {
+                println!("{}", serde_json::to_string_pretty(&serde_json::json!({
+                    "enabled": true,
+                    "paused": state.paused,
+                    "run_count": state.run_count,
+                    "last_run_at": state.last_run_at,
+                    "last_run_summary": state.last_run_summary,
+                    "last_report_path": state.last_report_path,
+                    "active": active,
+                    "stale": stale,
+                    "archived": archived,
+                    "pinned": pinned,
+                }))?);
+            } else {
+                println!("Curator Status:");
+                println!("{}", "═".repeat(60));
+                println!("Enabled: true");
+                println!("Paused: {}", state.paused);
+                println!("Run Count: {}", state.run_count);
+                println!("Last Run: {}", state.last_run_at.as_deref().unwrap_or("never"));
+                if let Some(summary) = &state.last_run_summary {
+                    println!("Last Summary:\n{}", summary);
+                }
+                println!("\nSkill Counts:");
+                println!("  Active: {}", active);
+                println!("  Stale: {}", stale);
+                println!("  Archived: {}", archived);
+                println!("  Pinned: {}", pinned);
+            }
+        }
+        CuratorCommand::Prune { days } => {
+            // Hermes 对齐：bulk archive old skills
+            let report = curator.run(curator_args.dry_run)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!("Curator Prune (days={}, dry_run={}):", days, curator_args.dry_run);
+                println!("{}", "═".repeat(60));
+                println!("Archived: {}", report.archived.len());
+                for s in &report.archived {
+                    println!("  • {}", s);
+                }
+            }
+        }
+        CuratorCommand::Pause => {
+            curator.set_paused(true)?;
+            println!("Curator paused.");
+        }
+        CuratorCommand::Resume => {
+            curator.set_paused(false)?;
+            println!("Curator resumed.");
         }
     }
     Ok(())

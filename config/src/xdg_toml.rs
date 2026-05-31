@@ -119,6 +119,7 @@ pub struct LogsModuleConfig {
 fn default_true() -> bool { true }
 
 
+#[cfg(feature = "tracing-init")]
 impl LogsModuleConfig {
     /// Returns the resolved rotation strategy.
     pub fn rotate(&self) -> crate::tracing_init::LogRotate {

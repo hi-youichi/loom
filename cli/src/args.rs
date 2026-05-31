@@ -462,8 +462,28 @@ pub(crate) enum SkillsCommand {
     Delete { name: String },
 }
 
+#[derive(clap::Subcommand, Debug, Clone)]
+pub(crate) enum CuratorCommand {
+    /// Run curator review (automatic state transitions + LLM pass)
+    Run,
+    /// Show curator status and statistics
+    Status,
+    /// Bulk archive old skills
+    Prune {
+        /// Archive skills idle for at least N days
+        #[arg(long, default_value = "90")]
+        days: u32,
+    },
+    /// Pause curator (skip next scheduled runs)
+    Pause,
+    /// Resume curator (enable scheduled runs)
+    Resume,
+}
+
 #[derive(clap::Args, Debug, Clone)]
 pub(crate) struct CuratorCmdArgs {
+    #[command(subcommand)]
+    pub(crate) command: CuratorCommand,
     /// Dry run: report but don't modify
     #[arg(long)]
     pub(crate) dry_run: bool,

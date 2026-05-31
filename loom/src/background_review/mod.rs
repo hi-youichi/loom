@@ -29,6 +29,15 @@ pub use curator::{
     CuratorStateStore,    // +new: storage abstraction
     FileStateStore,        // +new: production store
     MemoryStateStore,      // +new: test store
+    AutoCounts,            // +new: Hermes alignment
+    CuratorReviewResult,   // +new: Hermes alignment
+    LlmPassResult,         // +new: Hermes alignment
+    // LLM review types
+    LlMReviewResult, SkillCluster, PruningDecision, ConsolidationDecision,
+    ToolCall, AbsorbedIntoDeclaration, ClassificationResult, SkillSnapshot,
+    CuratorRunReport,
+    // Public functions
+    parse_llm_review_response, build_llm_prompt, reconcile_classification,
 };
 pub use curator_backup::{CuratorBackup, BackupError, SnapshotMeta};
 pub use tools::{ReviewToolExecutor, ReviewAction, review_tool_specs};

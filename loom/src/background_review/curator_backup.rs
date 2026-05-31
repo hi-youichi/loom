@@ -300,6 +300,67 @@ impl CuratorBackup {
         self.prune_old_snapshots(5, false)?;
         Ok(Some(filename))
     }
+
+    /// 包装 snapshot() + 自动 prune（对齐 Hermes `snapshot_skills(reason)`）
+    ///
+    /// 与 `auto_snapshot` 的区别：
+    /// - 检查 curator enabled 配置（Hermes `_snapshot_skills` 逻辑）
+    /// - 检查 skills_dir 是否存在（Hermes 逻辑）
+    /// - 调用 `snapshot()` 执行备份
+    /// - 调用 `prune_old_snapshots()` 清理旧快照
+    ///
+    /// # Arguments
+    /// * `reason` — 快照原因描述，如 "pre-curator-run"
+    ///
+    /// # Returns
+    /// * `Some(PathBuf)` — 快照目录路径
+    /// * `None` — 跳过快照（禁用/目录不存在/错误）
+    pub fn snapshot_skills(&self, reason: &str) -> Option<PathBuf> {
+        let skills_dir = dirs::data_local_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("loom")
+            .join("skills");
+
+        // 1. 检查 enabled（Hermes 逻辑）
+        // TODO: 从 config.toml 读取 curator.enabled
+        let enabled = std::env::var("CURATION_ENABLED")
+            .map(|v| v != "false")
+            .unwrap_or(true);
+        if !enabled {
+            tracing::debug!("curator backup disabled — skipping snapshot");
+            return None;
+        }
+
+        // 2. 检查 skills_dir 存在（Hermes 逻辑）
+        if !skills_dir.exists() {
+            tracing::debug!("skills dir does not exist — nothing to back up");
+            return None;
+        }
+
+        // 3. 创建备份目录（Hermes 逻辑：mkdir parents=True）
+        if fs::create_dir_all(&self.backup_dir).is_err() {
+            tracing::debug!("failed to create backup dir {:?}", self.backup_dir);
+            return None;
+        }
+
+        // 4. 执行快照
+        let filename = match self.snapshot(&skills_dir, Some(reason)) {
+            Ok(name) => name,
+            Err(e) => {
+                tracing::debug!("snapshot failed: {}", e);
+                return None;
+            }
+        };
+
+        // 5. Prune 旧快照（Hermes 逻辑：_prune_old(keep=get_keep())）
+        if self.prune_old_snapshots(5, false).is_err() {
+            tracing::debug!("prune_old_snapshots failed");
+        }
+
+        tracing::info!("curator snapshot created: {} ({})", filename, reason);
+
+        Some(self.backup_dir.join(filename))
+    }
 }
 
 impl Default for CuratorBackup {
