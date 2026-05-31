@@ -295,25 +295,26 @@ pub fn on_event_react(
                     // PREVIEW and result fallback: skip for edit/multiedit (diff already shown)
                     if !is_edit_like {
                         if let Some(ref result) = result_text {
+                            let has_diff = crate::stream_display::tool_preview::format_diff(
+                                &tc.name, &tc.arguments, result, compact,
+                            ).is_some();
+
                             if let Some(preview) = crate::stream_display::tool_preview::format_preview(
                                 &tc.name, &tc.arguments, result, compact,
                             ) {
                                 eprintln!("{}", preview);
-                            } else if !is_error && !result.trim().is_empty() && !compact {
+                            } else if !is_error && !result.trim().is_empty() && !compact && !has_diff {
                                 eprintln!("{}", crate::stream_display::tool_preview::format_result_preview(
                                     &tc.name, result, elapsed,
                                 ));
                             }
-                        }
-                    }
 
-                    // DIFF for edit/multiedit already shown during think; skip here
-                    if !is_edit_like {
-                        if let Some(ref result) = result_text {
-                            if let Some(diff) = crate::stream_display::tool_preview::format_diff(
-                                &tc.name, &tc.arguments, result, compact,
-                            ) {
-                                eprintln!("{}", diff);
+                            if has_diff {
+                                if let Some(diff) = crate::stream_display::tool_preview::format_diff(
+                                    &tc.name, &tc.arguments, result, compact,
+                                ) {
+                                    eprintln!("{}", diff);
+                                }
                             }
                         }
                     }

@@ -18,7 +18,12 @@ const MAX_GREP_MATCHES: usize = 5;
 /// Generate a PREVIEW block for a tool, given its name, args JSON, and result text.
 ///
 /// Returns None if the tool doesn't support preview or if in compact mode.
-pub fn format_preview(tool_name: &str, args_json: &str, result: &str, compact: bool) -> Option<String> {
+pub fn format_preview(
+    tool_name: &str,
+    args_json: &str,
+    result: &str,
+    compact: bool,
+) -> Option<String> {
     if compact {
         return None;
     }
@@ -35,6 +40,7 @@ pub fn format_preview(tool_name: &str, args_json: &str, result: &str, compact: b
                 return None;
             }
         }
+        "write_file" => return None, // Diff is handled separately, skip preview
         _ => return None,
     }
 
@@ -50,10 +56,15 @@ pub fn format_preview(tool_name: &str, args_json: &str, result: &str, compact: b
     }
 }
 
-/// Generate a DIFF block for edit/multiedit tools.
+/// Generate a DIFF block for edit/multiedit/write_file tools.
 ///
 /// Returns None if the tool doesn't support diff.
-pub fn format_diff(tool_name: &str, args_json: &str, _result: &str, compact: bool) -> Option<String> {
+pub fn format_diff(
+    tool_name: &str,
+    args_json: &str,
+    result: &str,
+    compact: bool,
+) -> Option<String> {
     if compact {
         return None;
     }
@@ -61,6 +72,7 @@ pub fn format_diff(tool_name: &str, args_json: &str, _result: &str, compact: boo
     match tool_name {
         "edit" => Some(format_edit_diff(args_json)),
         "multiedit" => Some(format_multiedit_diff(args_json)),
+        "write_file" => format_write_file_diff(args_json, result),
         _ => None,
     }
 }
@@ -83,8 +95,11 @@ fn format_read_preview(args_json: &str, result: &str) -> String {
     let start_line = if let Some(o) = offset {
         o as usize
     } else {
-        extract_cat_line_number(stripped.first().copied().unwrap_or("1"), lines.first().copied().unwrap_or("1"))
-            .unwrap_or(1)
+        extract_cat_line_number(
+            stripped.first().copied().unwrap_or("1"),
+            lines.first().copied().unwrap_or("1"),
+        )
+        .unwrap_or(1)
     };
 
     // Header: shows path + line range context
@@ -159,10 +174,8 @@ fn format_grep_preview(args_json: &str, result: &str) -> String {
     let total = matches.len();
 
     // Count unique files
-    let files: std::collections::HashSet<&str> = matches
-        .iter()
-        .filter_map(|l| l.split(':').next())
-        .collect();
+    let files: std::collections::HashSet<&str> =
+        matches.iter().filter_map(|l| l.split(':').next()).collect();
     let file_count = files.len();
 
     let _header = if file_count > 1 {
@@ -181,7 +194,10 @@ fn format_grep_preview(args_json: &str, result: &str) -> String {
 
     if total > MAX_GREP_MATCHES {
         let remaining = total - MAX_GREP_MATCHES;
-        output.push_str(&format_collapse_line(&format!("{} more matches", remaining)));
+        output.push_str(&format_collapse_line(&format!(
+            "{} more matches",
+            remaining
+        )));
         output.push('\n');
     }
 
@@ -200,7 +216,10 @@ fn format_todo_write_preview(args_json: &str) -> String {
     let mut output = String::new();
 
     for (i, todo) in todos.iter().enumerate() {
-        let status = todo.get("status").and_then(|v| v.as_str()).unwrap_or("pending");
+        let status = todo
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("pending");
         let content = todo.get("content").and_then(|v| v.as_str()).unwrap_or("?");
         let icon = match status {
             "completed" => "✓",
@@ -243,15 +262,30 @@ fn format_todo_read_preview(result: &str) -> String {
     };
 
     let _total = todos.len();
-    let pending = todos.iter().filter(|t| t.get("status").and_then(|v| v.as_str()) == Some("pending")).count();
-    let in_progress = todos.iter().filter(|t| t.get("status").and_then(|v| v.as_str()) == Some("in_progress")).count();
-    let completed = todos.iter().filter(|t| t.get("status").and_then(|v| v.as_str()) == Some("completed")).count();
+    let pending = todos
+        .iter()
+        .filter(|t| t.get("status").and_then(|v| v.as_str()) == Some("pending"))
+        .count();
+    let in_progress = todos
+        .iter()
+        .filter(|t| t.get("status").and_then(|v| v.as_str()) == Some("in_progress"))
+        .count();
+    let completed = todos
+        .iter()
+        .filter(|t| t.get("status").and_then(|v| v.as_str()) == Some("completed"))
+        .count();
 
-    let _header = format!("({} pending, {} in_progress, {} completed)", pending, in_progress, completed);
+    let _header = format!(
+        "({} pending, {} in_progress, {} completed)",
+        pending, in_progress, completed
+    );
     let mut output = String::new();
 
     for (i, todo) in todos.iter().enumerate() {
-        let status = todo.get("status").and_then(|v| v.as_str()).unwrap_or("pending");
+        let status = todo
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("pending");
         if status == "completed" || status == "cancelled" {
             continue;
         }
@@ -272,7 +306,10 @@ fn format_todo_read_preview(result: &str) -> String {
     }
 
     if completed > 0 {
-        output.push_str(&format_collapse_line(&format!("{} completed hidden", completed)));
+        output.push_str(&format_collapse_line(&format!(
+            "{} completed hidden",
+            completed
+        )));
         output.push('\n');
     }
 
@@ -420,7 +457,12 @@ enum DiffLine<'a> {
 }
 
 /// Find the next pair of matching lines starting from (oi, ni).
-fn find_next_match<'a>(old: &[&'a str], new: &[&'a str], oi: usize, ni: usize) -> Option<(usize, usize)> {
+fn find_next_match<'a>(
+    old: &[&'a str],
+    new: &[&'a str],
+    oi: usize,
+    ni: usize,
+) -> Option<(usize, usize)> {
     // Look ahead up to 20 lines in both directions
     let lookahead = 20;
     for delta_o in 0..=lookahead.min(old.len() - oi) {
@@ -510,6 +552,79 @@ fn format_multiedit_diff(args_json: &str) -> String {
     output
 }
 
+/// Format diff for write_file tool.
+///
+/// The result is a ToolCallContent::Diff serialized as JSON:
+/// `{"type":"diff","path":"...","old_text":"...","new_text":"..."}`
+///
+/// For new files (old_text is null), shows all new content as + lines.
+fn format_write_file_diff(args_json: &str, result: &str) -> Option<String> {
+    // Try to parse result as ToolCallContent::Diff JSON
+    #[derive(serde::Deserialize)]
+    struct DiffContent {
+        #[serde(rename = "type")]
+        _type: Option<String>,
+        path: Option<String>,
+        #[serde(rename = "old_text")]
+        old_text: Option<String>,
+        #[serde(rename = "new_text")]
+        new_text: Option<String>,
+    }
+
+    let diff_content: DiffContent = serde_json::from_str(result).ok()?;
+
+    let old_text = diff_content.old_text.as_deref().unwrap_or("");
+    let new_text = diff_content.new_text.as_deref().unwrap_or("");
+
+    // Extract path from args_json as fallback (result may not have path)
+    let args: serde_json::Value = serde_json::from_str(args_json).unwrap_or_default();
+    let path = diff_content
+        .path
+        .or_else(|| args.get("path").and_then(|v| v.as_str()).map(String::from))
+        .unwrap_or_else(|| "?".to_string());
+
+    let diff = compute_light_diff(old_text, new_text);
+
+    let mut output = String::new();
+
+    // If old_text is empty, it's a new file — show friendly creation message
+    if old_text.is_empty() {
+        // Show file creation with content preview (no diff markers)
+        output.push_str(&format_file_header(&format!("{} (new)", path)));
+        output.push('\n');
+        for line in new_text.lines() {
+            let truncated = truncate_to_width(line, 100);
+            output.push_str("  ");
+            output.push_str(&truncated);
+            output.push('\n');
+        }
+    } else {
+        // Show diff for existing file modifications
+        output.push_str(&format_file_header(&path));
+        output.push('\n');
+        for line in &diff {
+            match line {
+                DiffLine::Context(s) => {
+                    let truncated = truncate_to_width(s, 100);
+                    output.push(' ');
+                    output.push_str(&truncated);
+                }
+                DiffLine::Removed(s) => {
+                    let truncated = truncate_to_width(s, 100);
+                    output.push_str(&format_removed_line(&truncated));
+                }
+                DiffLine::Added(s) => {
+                    let truncated = truncate_to_width(s, 100);
+                    output.push_str(&format_added_line(&truncated));
+                }
+            }
+            output.push('\n');
+        }
+    }
+
+    Some(output)
+}
+
 // ── Helper functions ─────────────────────────────────────────────
 
 fn truncate_to_width(s: &str, max_width: usize) -> String {
@@ -548,7 +663,12 @@ fn extract_cat_line_number(_stripped: &str, original: &str) -> Option<usize> {
 
 fn format_line_numbered(num: usize, width: usize, content: &str) -> String {
     if color_enabled() {
-        format!("\x1b[36m{:>width$}\x1b[0m │ {}", num, content, width = width)
+        format!(
+            "\x1b[36m{:>width$}\x1b[0m │ {}",
+            num,
+            content,
+            width = width
+        )
     } else {
         format!("{:>width$} │ {}", num, content, width = width)
     }
@@ -572,21 +692,25 @@ fn format_collapse_line(msg: &str) -> String {
 
 fn format_removed_line(content: &str) -> String {
     if color_enabled() {
-        format!("\x1b[31m-{}\x1b[0m", content)
+        format!("\x1b[31m- {}\x1b[0m", content)
     } else {
-        format!("-{}", content)
+        format!("- {}", content)
     }
 }
 
 fn format_added_line(content: &str) -> String {
     if color_enabled() {
-        format!("\x1b[32m+{}\x1b[0m", content)
+        format!("\x1b[32m+ {}\x1b[0m", content)
     } else {
-        format!("+{}", content)
+        format!("+ {}", content)
     }
 }
 
-pub fn format_result_preview(_tool_name: &str, result: &str, _elapsed: Option<std::time::Duration>) -> String {
+pub fn format_result_preview(
+    _tool_name: &str,
+    result: &str,
+    _elapsed: Option<std::time::Duration>,
+) -> String {
     let lines: Vec<&str> = result.lines().filter(|l| !l.trim().is_empty()).collect();
     if lines.is_empty() {
         return String::new();
@@ -900,7 +1024,8 @@ mod tests {
 
     #[test]
     fn preview_batch_generic_tool() {
-        let batch_result = "---BATCH[1] bash {\"command\":\"echo hello\"}---\nhello\n---BATCH_END---\n";
+        let batch_result =
+            "---BATCH[1] bash {\"command\":\"echo hello\"}---\nhello\n---BATCH_END---\n";
         let output = format_preview("batch", "{}", batch_result, false).unwrap();
         // bash has no specific preview, so generic rendering
         assert!(output.contains("hello"));
@@ -913,5 +1038,43 @@ mod tests {
         assert!(output.contains("a.rs"));
         assert!(output.contains("TODO"));
     }
-}
 
+    // ── write_file diff tests ──
+
+    #[test]
+    fn diff_write_file_new_file() {
+        // New file: old_text is empty, shows creation message with "(new)" suffix
+        let args = r#"{"path":"new.rs","content":"fn main() {\n    println!(\"hello\");\n}"}"#;
+        let result = r#"{"type":"diff","path":"new.rs","old_text":null,"new_text":"fn main() {\n    println!(\"hello\");\n}"}"#;
+        let output = format_diff("write_file", args, result, false).unwrap();
+        // Should show file path with "(new)" suffix in header
+        assert!(output.contains("new.rs"));
+        assert!(output.contains("(new)"));
+        // Should show content WITHOUT + prefix (just "  " indentation)
+        assert!(output.contains("  fn main()"));
+        assert!(output.contains("  println!(\"hello\");"));
+        assert!(output.contains("  }"));
+        // Should NOT contain + prefix for new files
+        assert!(!output.contains("+fn main()"));
+    }
+
+    #[test]
+    fn diff_write_file_existing_file() {
+        // Existing file: shows context, removed, and added lines
+        let args = r#"{"path":"existing.rs"}"#;
+        let result = r#"{"type":"diff","path":"existing.rs","old_text":"fn old() {\n    println!(\"old\");\n}","new_text":"fn new() {\n    println!(\"new\");\n}"}"#;
+        let output = format_diff("write_file", args, result, false).unwrap();
+        assert!(output.contains("existing.rs"));
+        // Should show removed and added lines
+        assert!(output.contains("-fn old()"));
+        assert!(output.contains("+fn new()"));
+    }
+
+    #[test]
+    fn diff_write_file_invali_result_returns_none() {
+        // Invalid result JSON should return None gracefully
+        let args = r#"{"path":"test.rs"}"#;
+        let output = format_diff("write_file", args, "not json", false);
+        assert!(output.is_none());
+    }
+}
