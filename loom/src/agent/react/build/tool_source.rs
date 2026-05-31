@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use crate::background_review::skill_usage::SkillUsageStore;
 use crate::error::AgentError;
 use crate::tool_source::{
     register_file_tools, McpToolSource, MemoryToolsSource, ToolSource, ToolSourceError,
@@ -303,7 +304,7 @@ pub(crate) async fn build_tool_source(
         }
     }
     if let Some(ref wf) = config.working_folder {
-        register_file_tools(aggregate.as_ref(), wf, config.skill_registry.clone())
+        register_file_tools(aggregate.as_ref(), wf, config.skill_registry.clone(), Some(SkillUsageStore::new(&wf.join(".loom/skills"))))
             .map_err(to_agent_error)?;
 
         let db_path = env_config::home::loom_home().join("tasks").join("tasks.db");

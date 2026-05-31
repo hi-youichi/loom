@@ -87,7 +87,7 @@ async fn list_default_builtin_tools_merged_yaml(
             .register_async(Box::new(loom::tools::PowerShellTool::new()))
             .await;
     }
-    register_file_tools(aggregate.as_ref(), working_folder, None)
+    register_file_tools(aggregate.as_ref(), working_folder, None, None)
         .unwrap_or_else(|e| panic!("register_file_tools: {e}"));
     aggregate.register_sync(Box::new(BatchTool::new(Arc::clone(&aggregate))));
     aggregate.register_sync(Box::new(LspTool::placeholder()));

@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
+use crate::background_review::skill_usage::SkillUsageStore;
 use crate::skill::SkillRegistry;
 use crate::tool_source::{ToolSource, ToolSourceError};
 use crate::tools::file::{
@@ -42,6 +43,7 @@ pub fn register_file_tools(
     aggregate: &AggregateToolSource,
     working_folder: impl AsRef<Path>,
     skill_registry: Option<Arc<SkillRegistry>>,
+    skill_usage: Option<SkillUsageStore>,
 ) -> Result<(), ToolSourceError> {
     let path = working_folder.as_ref();
     let canonical = path.canonicalize().map_err(|e| {
@@ -70,7 +72,11 @@ pub fn register_file_tools(
     aggregate.register_sync(Box::new(TodoWriteTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(TodoReadTool::new(working_folder.clone())));
     if let Some(registry) = skill_registry {
-        aggregate.register_sync(Box::new(SkillTool::new_with_registry(registry)));
+        let tool = SkillTool::new_with_registry(registry)
+            .with_store(skill_usage.unwrap_or(SkillUsageStore::new(&working_folder.join(".loom/skills"))));
+        aggregate.register_sync(Box::new(tool));
+    } else if let Some(_store) = skill_usage {
+        aggregate.register_sync(Box::new(SkillTool::new_with_store(working_folder.clone())));
     } else {
         aggregate.register_sync(Box::new(SkillTool::new(working_folder)));
     }

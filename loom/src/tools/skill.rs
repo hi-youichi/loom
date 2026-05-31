@@ -1,10 +1,11 @@
-//! Skill tool: load a skill by name from a skill registry or from .loom/skills directory.
+﻿//! Skill tool: load a skill by name from a skill registry or from .loom/skills directory.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::json;
 
+use crate::background_review::skill_usage::SkillUsageStore;
 use crate::skill::SkillRegistry;
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError};
 use crate::tools::Tool;
@@ -19,6 +20,7 @@ const SKILLS_SUBDIR: &str = ".loom/skills";
 pub struct SkillTool {
     registry: Option<Arc<SkillRegistry>>,
     working_folder: Option<Arc<std::path::PathBuf>>,
+    usage_store: Option<SkillUsageStore>,
 }
 
 impl SkillTool {
@@ -27,6 +29,7 @@ impl SkillTool {
         Self {
             registry: Some(registry),
             working_folder: None,
+            usage_store: None,
         }
     }
 
@@ -35,6 +38,20 @@ impl SkillTool {
         Self {
             registry: None,
             working_folder: Some(working_folder),
+            usage_store: None,
+        }
+    }
+
+    /// Creates a skill tool that tracks usage stats via `.usage.json`.
+    pub fn new_with_store(working_folder: Arc<std::path::PathBuf>) -> Self {
+        let store = {
+            let skills_dir = working_folder.join(SKILLS_SUBDIR);
+            SkillUsageStore::new(&skills_dir)
+        };
+        Self {
+            registry: None,
+            working_folder: Some(working_folder),
+            usage_store: Some(store),
         }
     }
 
@@ -42,6 +59,12 @@ impl SkillTool {
         self.working_folder
             .as_ref()
             .map(|wf| wf.join(SKILLS_SUBDIR))
+    }
+
+    /// Attaches a usage store for tracking skill usage.
+    pub fn with_store(mut self, store: SkillUsageStore) -> Self {
+        self.usage_store = Some(store);
+        self
     }
 }
 
@@ -102,6 +125,9 @@ impl Tool for SkillTool {
             let content = registry
                 .load_skill(name)
                 .map_err(|e| ToolSourceError::InvalidInput(e.to_string()))?;
+            if let Some(ref store) = self.usage_store {
+                store.bump_use(name);
+            }
             return Ok(ToolCallContent::text(format!(
                 "<skill_content name=\"{}\">\n{}\n</skill_content>",
                 name, content
@@ -124,6 +150,9 @@ impl Tool for SkillTool {
             if p.is_file() {
                 let content = std::fs::read_to_string(&p)
                     .map_err(|e| ToolSourceError::Transport(format!("read skill: {}", e)))?;
+                if let Some(ref store) = self.usage_store {
+                    store.bump_use(name);
+                }
                 return Ok(ToolCallContent::text(format!(
                     "<skill_content name=\"{}\">\n{}\n</skill_content>",
                     name, content
@@ -157,6 +186,9 @@ impl Tool for SkillTool {
         let content = std::fs::read_to_string(&path)
             .map_err(|e| ToolSourceError::Transport(format!("read skill: {}", e)))?;
 
+        if let Some(ref store) = self.usage_store {
+            store.bump_use(name);
+        }
         Ok(ToolCallContent::text(format!(
             "<skill_content name=\"{}\">\n{}\n</skill_content>",
             name, content
