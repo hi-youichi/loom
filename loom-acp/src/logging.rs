@@ -11,6 +11,7 @@ use config::tracing_init;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use config::log_format::{JsonWithSpanIds, TextWithSpanIds};
+use config::LoggingSection;
 
 pub use config::tracing_init::LogRotate;
 
@@ -52,6 +53,38 @@ pub struct LogConfig {
     pub format: LogFormat,
 }
 
+/// Resolves the effective ACP log file path.
+///
+/// Priority:
+/// 1. CLI `file` argument
+/// 2. `LOGS_ACP` environment variable
+/// 3. `config.toml` [logging.acp].path
+/// 4. `~/.loom/logs/acp/loom-acp.log`
+pub fn resolve_acp_log_path(
+    cli_file: Option<&Path>,
+    logging_config: Option<&LoggingSection>,
+) -> Option<PathBuf> {
+    // 1. CLI argument
+    if let Some(path) = cli_file {
+        return Some(path.to_path_buf());
+    }
+
+    // 2. Environment variable
+    if let Some(env_val) = std::env::var_os("LOGS_ACP") {
+        return Some(PathBuf::from(env_val));
+    }
+
+    // 3. config.toml [logging.acp].path
+    if let Some(config) = logging_config {
+        if let Some(path) = &config.acp.path {
+            return Some(path.clone());
+        }
+    }
+
+    // 4. Default: ~/.loom/logs/acp/loom-acp.log
+    Some(config::home::default_acp_log_file())
+}
+
 /// Initialize logging at application startup.
 /// - If no working_folder is provided, relative paths are resolved relative to the current process working directory.
 /// - If working_folder is provided, relative paths are resolved relative to that folder.
@@ -67,11 +100,16 @@ pub fn init_logging(working_folder: Option<&Path>) {
         None => return,
     };
 
-    let Some(log_file) = config
-        .file
-        .clone()
-        .or_else(|| Some(config::home::default_acp_log_file()))
-    else {
+    // Load logging config from config.toml
+    let logging_config = config::load_full_config("loom")
+        .ok()
+        .map(|c| c.logging);
+    let log_file = resolve_acp_log_path(
+        config.file.as_deref(),
+        logging_config.as_ref(),
+    );
+
+    let Some(log_file) = log_file else {
         return;
     };
 
@@ -81,9 +119,18 @@ pub fn init_logging(working_folder: Option<&Path>) {
         let _ = std::fs::create_dir_all(parent);
     }
 
+    // Resolve rotate from config if not set by CLI
+    let rotate = if config.rotate != LogRotate::None {
+        config.rotate
+    } else if let Some(ref cfg) = logging_config {
+        cfg.acp.rotate()
+    } else {
+        LogRotate::None
+    };
+
     let filter = tracing_init::build_env_filter(&config.level, &[]);
 
-    let guard = match tracing_init::file_non_blocking_writer(&log_path, config.rotate, "loom-acp") {
+    let guard = match tracing_init::file_non_blocking_writer(&log_path, rotate, "loom-acp") {
         Ok((writer, guard)) => {
             match config.format {
                 LogFormat::Text => {

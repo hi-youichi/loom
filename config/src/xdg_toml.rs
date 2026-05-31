@@ -102,6 +102,61 @@ pub struct LlmAuditConfig {
     pub path: Option<PathBuf>,
 }
 
+/// Log rotation setting for a logging module.
+#[derive(serde::Deserialize, Clone, Debug, Default)]
+pub struct LogsModuleConfig {
+    /// Whether to enable logging for this module. Default: `true`.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Rotation strategy: `"none"` (default), `"daily"`, `"hourly"`.
+    #[serde(default)]
+    pub rotate: Option<String>,
+    /// Custom log directory for this module (overrides global `dir`).
+    #[serde(default)]
+    pub path: Option<PathBuf>,
+}
+
+fn default_true() -> bool { true }
+
+
+impl LogsModuleConfig {
+    /// Returns the resolved rotation strategy.
+    pub fn rotate(&self) -> crate::tracing_init::LogRotate {
+        self.rotate
+            .as_deref()
+            .and_then(|s| crate::tracing_init::LogRotate::parse(s))
+            .unwrap_or(crate::tracing_init::LogRotate::None)
+    }
+}
+
+/// `[logging]` section in config.toml.
+#[derive(serde::Deserialize, Clone, Debug, Default)]
+pub struct LoggingSection {
+    /// Global log directory. Default: `~/.loom/logs`.
+    #[serde(default)]
+    pub dir: Option<PathBuf>,
+    /// CLI-specific logging settings.
+    #[serde(default)]
+    pub cli: LogsModuleConfig,
+    /// ACP-specific logging settings.
+    #[serde(default)]
+    pub acp: LogsModuleConfig,
+    /// LLM audit logging settings.
+    #[serde(default)]
+    pub llm: LogsModuleConfig,
+}
+
+impl LoggingSection {
+    /// Returns the effective log directory, checking environment variable first.
+    pub fn dir(&self) -> PathBuf {
+        std::env::var("LOG_DIR")
+            .map(PathBuf::from)
+            .ok()
+            .or_else(|| self.dir.clone())
+            .unwrap_or_else(|| crate::home::loom_home().join("logs"))
+    }
+}
+
 #[derive(serde::Deserialize, Clone, Debug, Default)]
 pub struct LlmSection {
     #[serde(default)]
@@ -110,11 +165,7 @@ pub struct LlmSection {
 
 impl LlmSection {
     pub fn audit_path(&self) -> PathBuf {
-        self.audit.path.clone().unwrap_or_else(|| {
-            crate::home::loom_home()
-                .join("data")
-                .join("llm_logs")
-        })
+        self.audit.path.clone().unwrap_or_else(crate::home::llm_logs_dir)
     }
 }
 
@@ -133,6 +184,8 @@ struct ConfigFile {
     providers: Vec<ProviderDef>,
     #[serde(default)]
     llm: Option<LlmSection>,
+    #[serde(default)]
+    logging: Option<LoggingSection>,
 }
 
 /// Parsed content of `config.toml`: env map, default provider name, and provider definitions.
@@ -141,6 +194,7 @@ pub struct FullConfig {
     pub default_provider: Option<String>,
     pub providers: Vec<ProviderDef>,
     pub llm: LlmSection,
+    pub logging: LoggingSection,
 }
 
 /// Returns env key-value pairs from `[env]` section. Missing file or empty section returns empty map.
@@ -160,6 +214,7 @@ pub fn load_full_config(app_name: &str) -> Result<FullConfig, LoadError> {
                 default_provider: None,
                 providers: vec![],
                 llm: LlmSection::default(),
+                logging: LoggingSection::default(),
             })
         }
     };
@@ -170,6 +225,7 @@ pub fn load_full_config(app_name: &str) -> Result<FullConfig, LoadError> {
         default_provider: config.default.provider,
         providers: config.providers,
         llm: config.llm.unwrap_or_default(),
+        logging: config.logging.unwrap_or_default(),
     })
 }
 

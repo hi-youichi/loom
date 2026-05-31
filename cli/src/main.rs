@@ -26,7 +26,7 @@ pub(crate) use args::Command;
 use clap::Parser;
 
 use args::{Args, Command as Cmd, GotArgs};
-use bootstrap::{init_logging, print_config_report};
+use bootstrap::{init_logging, preserve_shell_env, print_config_report};
 use display_limits::max_reply_len;
 use loom::cli_run::RunCancellation;
 use run_flow::{
@@ -43,19 +43,25 @@ use subcommands::{
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = Args::parse();
+
+    // Preserve shell environment variables BEFORE config.toml is loaded.
+    // This allows us to distinguish between shell-set and config.toml-set LOG_FILE.
+    let shell_env = preserve_shell_env();
+
     print_config_report();
 
     if let Some(Cmd::Serve(_)) = &args.cmd {
         if args.log_file.is_none() && std::env::var_os("LOG_FILE").is_none() {
-            let log_dir = config::home::loom_home().join("logs");
+            // Use the same default as CLI logging
+            let log_dir = config::home::cli_logs_dir();
             let _ = std::fs::create_dir_all(&log_dir);
-            let log_path = log_dir.join("serve.log");
+            let log_path = log_dir.join("loom-serve.log");
             eprintln!("config: log_file={}", log_path.display());
             args.log_file = Some(log_path);
         }
     }
 
-    let _log_guard = init_logging(&args);
+    let _log_guard = init_logging(&args, shell_env);
 
     if let Some(Cmd::Serve(sa)) = &args.cmd {
         if let Err(e) = serve::run_serve(sa.addr.as_deref(), false).await {

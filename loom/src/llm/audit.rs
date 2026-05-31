@@ -209,23 +209,38 @@ pub struct LlmAuditConfig {
 }
 
 impl LlmAuditConfig {
-    /// Load from environment variables.
+    /// Load from environment variables and config.toml.
     ///
-    /// - `LLM_AUDIT_ENABLED` (default: `false`)
-    /// - `LLM_AUDIT_PATH` (default: `~/.loom/data/llm_logs`)
+    /// Priority:
+    /// 1. `LLM_AUDIT_ENABLED` / `LLM_AUDIT_PATH` environment variables (backward compatibility)
+    /// 2. config.toml [logging.llm] settings
+    /// 3. Default: `~/.loom/logs/llm`, enabled=false
     pub fn from_env() -> Self {
+        // Load config.toml logging settings
+        let logging_config = env_config::load_full_config("loom")
+            .ok()
+            .map(|c| c.logging);
+
+        // Resolve enabled: env var > config.toml > default false
         let enabled = std::env::var("LLM_AUDIT_ENABLED")
             .ok()
             .map(|v| v == "1" || v.to_lowercase() == "true")
-            .unwrap_or(false);
+            .unwrap_or_else(|| {
+                logging_config
+                    .as_ref()
+                    .map(|c| c.llm.enabled)
+                    .unwrap_or(false)
+            });
 
+        // Resolve path: env var > config.toml > default ~/.loom/logs/llm
         let path = std::env::var("LLM_AUDIT_PATH")
             .ok()
             .map(PathBuf::from)
             .unwrap_or_else(|| {
-                env_config::home::loom_home()
-                    .join("data")
-                    .join("llm_logs")
+                logging_config
+                    .as_ref()
+                    .and_then(|c| c.llm.path.clone())
+                    .unwrap_or_else(env_config::home::llm_logs_dir)
             });
 
         Self { enabled, path }
