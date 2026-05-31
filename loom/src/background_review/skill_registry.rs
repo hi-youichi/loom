@@ -470,4 +470,81 @@ mod tests {
         let registry = SkillRegistry::new(dir.path());
         assert!(registry.load("nope").is_err());
     }
+
+    #[test]
+    fn write_and_read_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = SkillRegistry::new(dir.path());
+        let skill = SkillContent {
+            name: "test-write".to_string(),
+            description: "Test write".to_string(),
+            triggers: vec![],
+            lifecycle: Lifecycle::Active,
+            source: Source::Manual,
+            body: "...".to_string(),
+            raw: String::new(),
+        };
+        registry.save("test-write", &skill).unwrap();
+
+        // Write a file inside the skill directory
+        registry
+            .write_file("test-write", "src/helper.rs", "fn helper() {}\n")
+            .unwrap();
+
+        // Read it back
+        let file_path = dir
+            .path()
+            .join("skills")
+            .join("manual")
+            .join("test-write")
+            .join("src")
+            .join("helper.rs");
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "fn helper() {}\n");
+
+        // Write with absolute path stripping
+        registry
+            .write_file("test-write", "/README.md", "# Test\n")
+            .unwrap();
+        let readme = dir
+            .path()
+            .join("skills")
+            .join("manual")
+            .join("test-write")
+            .join("README.md");
+        assert_eq!(fs::read_to_string(&readme).unwrap(), "# Test\n");
+    }
+
+    #[test]
+    fn write_file_creates_parent_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = SkillRegistry::new(dir.path());
+        let skill = SkillContent {
+            name: "nested".to_string(),
+            description: "Nested".to_string(),
+            triggers: vec![],
+            lifecycle: Lifecycle::Active,
+            source: Source::Manual,
+            body: "...".to_string(),
+            raw: String::new(),
+        };
+        registry.save("nested", &skill).unwrap();
+
+        // Write to a deeply nested path - parent dirs should be created
+        registry
+            .write_file("nested", "a/b/c/deep.rs", "struct Deep;\n")
+            .unwrap();
+
+        let deep_path = dir
+            .path()
+            .join("skills")
+            .join("manual")
+            .join("nested")
+            .join("a")
+            .join("b")
+            .join("c")
+            .join("deep.rs");
+        assert!(deep_path.exists());
+        assert_eq!(fs::read_to_string(&deep_path).unwrap(), "struct Deep;\n");
+    }
 }
