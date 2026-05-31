@@ -1,7 +1,24 @@
 name: lsp
 description: |
-  LSP-based code completions and diagnostics. Provides intelligent code completion,
-  diagnostics, go-to-definition, find references, hover information, and document symbols.
+  Code intelligence powered by Language Server Protocol. Understands code structure,
+  types, and symbols — not just text patterns.
+
+  When to use each action:
+  - `gotoDefinition`: Navigate to where a function/variable/type is defined.
+    Use INSTEAD of grep when you need a symbol's definition.
+  - `findReferences`: Find all semantic usages of a symbol across the codebase.
+    Unlike grep, respects language semantics (won't match comments or strings).
+  - `hover`: Get type information, documentation, and signature for a symbol.
+    Use to understand a function's interface without reading its body.
+  - `documentSymbols`: List all top-level symbols (functions, structs, classes) in a file.
+    Use to understand file structure before reading it.
+  - `diagnostics`: Get compiler/linter errors and warnings for a file.
+  - `completion`: Get code completion suggestions at a cursor position.
+
+  Tips:
+  - Explore an unfamiliar file with `documentSymbols` + `read` instead of `grep`.
+  - Start bug investigation with `diagnostics` to check for errors.
+  - Combine multiple LSP calls in a single batch for efficiency.
 input_schema:
   type: object
   properties:
@@ -14,16 +31,23 @@ input_schema:
         - findReferences
         - hover
         - documentSymbols
-      description: "LSP action to perform"
+      description: >
+        Which LSP action to perform. Choose based on your goal:
+        - completion: autocomplete at cursor
+        - diagnostics: get errors/warnings for a file
+        - gotoDefinition: navigate to a symbol's definition
+        - findReferences: find all semantic usages of a symbol
+        - hover: get type info and docs for a symbol
+        - documentSymbols: list all symbols in a file
     file_path:
       type: string
-      description: "Path to the file"
+      description: "Path to the target file (relative to working folder or absolute)."
     line:
       type: integer
-      description: "Line number (0-based). Required for completion, gotoDefinition, findReferences, hover."
+      description: "Line number (0-based). Required for: completion, gotoDefinition, findReferences, hover."
     character:
       type: integer
-      description: "Character position (0-based). Required for completion, gotoDefinition, findReferences, hover."
+      description: "Character position (0-based). Required for: completion, gotoDefinition, findReferences, hover."
   required:
     - action
     - file_path
