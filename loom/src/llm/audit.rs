@@ -3,7 +3,7 @@
 //!
 //! # Design
 //!
-//! - Each session writes to a separate JSONL file (`{thread_id}.jsonl`).
+//! - Each entry is written as a single JSON file at `{base_path}/{thread_id}/{trace_id}.json`.
 //! - A tokio background task writes entries asynchronously via an mpsc channel.
 //! - Sanitization: API keys and Authorization headers are stripped.
 
@@ -26,6 +26,8 @@ pub struct LlmAuditEntry {
     pub timestamp: String,
     /// Session identifier (from LlmHeaders.thread_id).
     pub thread_id: String,
+    /// Per-request trace identifier (UUID v6).
+    pub trace_id: String,
     /// Call type: "chat" or "chat_stream".
     #[serde(rename = "type")]
     pub entry_type: String,
@@ -140,7 +142,10 @@ pub struct FileLlmAuditLog {
 impl FileLlmAuditLog {
     /// Create a new file audit log.
     ///
-    /// - `base_path`: log directory, e.g. `~/.loom/data/llm_logs/`
+    /// - `base_path`: log directory, e.g. `~/.loom/logs/llm/`
+    ///
+    /// Each audit entry is written as a single JSON file at
+    /// `{base_path}/{thread_id}/{trace_id}.json`.
     ///
     /// Spawns a background tokio task for writing. When `FileLlmAuditLog` is
     /// dropped (the sender is dropped), the task exits automatically.
@@ -158,8 +163,9 @@ impl FileLlmAuditLog {
             match msg {
                 AuditMsg::Write(entry) => {
                     let thread_id = entry.thread_id.clone();
-                    let file_path = base_path.join(format!("{}.jsonl", thread_id));
-                    if let Err(e) = Self::append_entry(&file_path, &entry) {
+                    let trace_id = entry.trace_id.clone();
+                    let file_path = base_path.join(&thread_id).join(format!("{}.json", trace_id));
+                    if let Err(e) = Self::write_entry(&file_path, &entry) {
                         warn!(
                             path = %file_path.display(),
                             error = %e,
@@ -171,21 +177,15 @@ impl FileLlmAuditLog {
         }
     }
 
-    /// Append one record to a JSONL file.
-    fn append_entry(path: &PathBuf, entry: &LlmAuditEntry) -> std::io::Result<()> {
-        use std::io::Write;
+    /// Write one record as a JSON file.
+    fn write_entry(path: &PathBuf, entry: &LlmAuditEntry) -> std::io::Result<()> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)?;
-        let mut line =
+        let json =
             serde_json::to_string(entry)
                 .map_err(std::io::Error::other)?;
-        line.push('\n');
-        file.write_all(line.as_bytes())
+        std::fs::write(path, json)
     }
 }
 
@@ -300,6 +300,7 @@ fn expand_tilde(path: &std::path::Path) -> PathBuf {
 #[allow(clippy::too_many_arguments)]
 pub fn build_audit_entry(
     thread_id: String,
+    trace_id: String,
     entry_type: &str,
     model: String,
     url: &str,
@@ -313,6 +314,7 @@ pub fn build_audit_entry(
         id: uuid6().to_string(),
         timestamp: chrono::Utc::now().to_rfc3339(),
         thread_id,
+        trace_id,
         entry_type: entry_type.to_string(),
         model,
         url: url.to_string(),
@@ -339,6 +341,7 @@ mod tests {
             id: "test".into(),
             timestamp: "2025-01-01T00:00:00Z".into(),
             thread_id: "test-thread".into(),
+            trace_id: "test-trace".into(),
             entry_type: "chat".into(),
             model: "gpt-4".into(),
             url: "https://api.openai.com/v1/chat/completions".into(),
@@ -368,6 +371,7 @@ mod tests {
             id: "entry-1".into(),
             timestamp: "2025-01-01T00:00:00Z".into(),
             thread_id: "test-thread".into(),
+            trace_id: "trace-1".into(),
             entry_type: "chat".into(),
             model: "gpt-4".into(),
             url: "https://api.openai.com/v1/chat/completions".into(),
@@ -399,9 +403,9 @@ mod tests {
         // Give the background task time to write
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-        let file_path = dir.path().join("test-thread.jsonl");
+        let file_path = dir.path().join("test-thread").join("trace-1.json");
         let content = std::fs::read_to_string(&file_path).unwrap();
-        let parsed: LlmAuditEntry = serde_json::from_str(content.trim()).unwrap();
+        let parsed: LlmAuditEntry = serde_json::from_str(&content).unwrap();
         assert_eq!(parsed.id, "entry-1");
         assert_eq!(parsed.thread_id, "test-thread");
     }
@@ -416,6 +420,7 @@ mod tests {
                 id: format!("entry-{}", i),
                 timestamp: "2025-01-01T00:00:00Z".into(),
                 thread_id: "append-test".into(),
+                trace_id: format!("trace-{}", i),
                 entry_type: "chat".into(),
                 model: "gpt-4".into(),
                 url: "url".into(),
@@ -438,10 +443,11 @@ mod tests {
 
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-        let file_path = dir.path().join("append-test.jsonl");
-        let content = std::fs::read_to_string(&file_path).unwrap();
-        let lines: Vec<&str> = content.trim().lines().collect();
-        assert_eq!(lines.len(), 3);
+        // Each entry now writes to its own file: {thread_id}/{trace_id}.json
+        for i in 0..3 {
+            let file_path = dir.path().join("append-test").join(format!("trace-{}.json", i));
+            assert!(file_path.exists());
+        }
     }
 
     #[tokio::test]
@@ -454,6 +460,7 @@ mod tests {
             id: "dir-test".into(),
             timestamp: "2025-01-01T00:00:00Z".into(),
             thread_id: "dir-test".into(),
+            trace_id: "trace-dir".into(),
             entry_type: "chat".into(),
             model: "gpt-4".into(),
             url: "url".into(),
@@ -474,7 +481,7 @@ mod tests {
         log.log(entry);
 
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-        assert!(nested.join("dir-test.jsonl").exists());
+        assert!(nested.join("dir-test").join("trace-dir.json").exists());
     }
 
     #[test]
@@ -483,6 +490,7 @@ mod tests {
             id: "roundtrip".into(),
             timestamp: "2025-06-01T12:00:00Z".into(),
             thread_id: "rt".into(),
+            trace_id: "rt-trace".into(),
             entry_type: "chat".into(),
             model: "gpt-4".into(),
             url: "url".into(),
@@ -522,6 +530,7 @@ mod tests {
             id: "skip-none".into(),
             timestamp: "2025-01-01T00:00:00Z".into(),
             thread_id: "skip".into(),
+            trace_id: "skip-trace".into(),
             entry_type: "chat".into(),
             model: "gpt-4".into(),
             url: "url".into(),
@@ -560,6 +569,7 @@ mod tests {
         };
         let entry = build_audit_entry(
             "helper-test".into(),
+            "helper-trace".into(),
             "chat",
             "gpt-4".into(),
             "https://api.openai.com/v1/chat/completions",

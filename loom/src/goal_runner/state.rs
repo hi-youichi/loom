@@ -14,12 +14,53 @@ pub struct ToolCallSummary {
     pub result_preview: String,
 }
 
+/// Tool execution error.
+///
+/// Used by ActNode to communicate errors back to the LLM for self-correction.
+#[derive(Debug, Clone)]
 pub enum ToolError {
+    /// Generic execution failure (tool not found, runtime error, etc.).
     ExecutionFailed(String),
     Timeout,
     Aborted,
     /// Transient API error (rate-limit, overload) — retryable with backoff.
     RateLimited(String),
+    /// Arguments failed JSON validation — LLM should self-correct and retry.
+    ///
+    /// **Example**: MiniMax-M3 outputs `arguments: "pattern"` instead of
+    /// `arguments: "{\"pattern\": \"...\"}"`. We return this error so the LLM
+    /// sees the issue and regenerates properly formatted arguments.
+    InvalidJsonArguments {
+        tool_name: String,
+        raw_args: String,
+        parse_error: String,
+    },
+}
+
+impl std::fmt::Display for ToolError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ExecutionFailed(msg) => write!(f, "execution failed: {msg}"),
+            Self::Timeout => write!(f, "tool execution timed out"),
+            Self::Aborted => write!(f, "tool execution aborted"),
+            Self::RateLimited(msg) => write!(f, "rate limited: {msg}"),
+            Self::InvalidJsonArguments {
+                tool_name,
+                raw_args,
+                parse_error,
+            } => {
+                // Short preview of raw_args (first 100 chars).
+                let preview = raw_args
+                    .chars()
+                    .take(100)
+                    .collect::<String>();
+                write!(f,
+                    "[{tool_name}] invalid arguments: expected valid JSON object string. \
+                     Parse error: {parse_error}. Raw input: {preview}",
+                )
+            }
+        }
+    }
 }
 
 impl ToolError {
@@ -41,6 +82,34 @@ impl ToolError {
             || lower.contains("503")
             || lower.contains("service unavailable")
             || lower.contains("please try again")
+    }
+
+    /// Returns true if this error indicates the LLM should self-correct.
+    ///
+    /// When `true`, the agent returns the error to the LLM (instead of silently
+    /// falling back) so the model learns to generate valid arguments.
+    pub fn is_self_correctable(&self) -> bool {
+        matches!(self, Self::InvalidJsonArguments { .. })
+    }
+
+    /// Generates an LLM-facing hint for self-correction.
+    ///
+    /// Returns a message that tells the model what went wrong and how to fix it.
+    pub fn self_correct_hint(&self) -> String {
+        match self {
+            Self::InvalidJsonArguments { tool_name, raw_args, .. } => {
+                let preview = raw_args
+                    .chars()
+                    .take(150)
+                    .collect::<String>();
+                format!(
+                    "[{tool_name}] invalid arguments: expected a JSON object string, \
+                     but received: \"{preview}\". \
+                     Please provide valid JSON, e.g. {{\"pattern\": \"*.rs\", \"path\": \"src\"}}."
+                )
+            }
+            _ => self.to_string(),
+        }
     }
 }
 

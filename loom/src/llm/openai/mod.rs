@@ -212,6 +212,7 @@ impl ChatOpenAI {
 
     fn record_audit(
         &self,
+        trace_id: &str,
         entry_type: &str,
         url: &str,
         duration_ms: u64,
@@ -223,6 +224,7 @@ impl ChatOpenAI {
         if let Some(ref log) = self.audit_log {
             let entry = build_audit_entry(
                 self.thread_id(),
+                trace_id.to_string(),
                 entry_type,
                 self.model.clone(),
                 url,
@@ -285,6 +287,19 @@ impl LlmClient for ChatOpenAI {
             "OpenAI chat create"
         );
 
+        let tools_json = self.tools.as_ref().map(|t| {
+            serde_json::to_value(t).unwrap_or_default()
+        });
+        let audit_request = LlmAuditRequest {
+            messages: serde_json::json!(messages),
+            tools: tools_json,
+            parameters: LlmAuditRequestParams {
+                temperature: self.temperature,
+                stream: false,
+                tool_choice: self.tool_choice.map(|m| format!("{:?}", m)),
+            },
+        };
+
         let mut attempt = 0;
         let response = loop {
             let request = self.build_request(messages, false)?;
@@ -317,9 +332,20 @@ impl LlmClient for ChatOpenAI {
                         error = %error_message,
                         "OpenAI API request failed without retry"
                     );
+                    let duration_ms = audit_start.elapsed().as_millis() as u64;
+                    self.record_audit(
+                        &trace_id,
+                        "chat",
+                        &url,
+                        duration_ms,
+                        0,
+                        audit_request.clone(),
+                        None,
+                        Some(error_message.clone()),
+                    );
                     return Err(AgentError::ExecutionFailed(format!(
-                        "OpenAI API error: {}",
-                        error_message
+                        "OpenAI API error: {} (trace_id: {})",
+                        error_message, trace_id
                     )));
                 }
             }
@@ -384,7 +410,7 @@ impl LlmClient for ChatOpenAI {
                     total_tokens: u.total_tokens,
                 }),
             };
-            self.record_audit("chat", &url, duration_ms, 200, audit_request, Some(audit_response), None);
+            self.record_audit(&trace_id, "chat", &url, duration_ms, 200, audit_request, Some(audit_response), None);
         }
 
         Ok(LlmResponse {
@@ -433,6 +459,19 @@ impl LlmClient for ChatOpenAI {
             "OpenAI chat create_stream"
         );
 
+        let tools_json = self.tools.as_ref().map(|t| {
+            serde_json::to_value(t).unwrap_or_default()
+        });
+        let audit_request = LlmAuditRequest {
+            messages: serde_json::json!(messages),
+            tools: tools_json,
+            parameters: LlmAuditRequestParams {
+                temperature: self.temperature,
+                stream: true,
+                tool_choice: self.tool_choice.map(|m| format!("{:?}", m)),
+            },
+        };
+
         let mut attempt = 0;
         let mut stream = loop {
             let request = self.build_request(messages, true)?;
@@ -465,9 +504,20 @@ impl LlmClient for ChatOpenAI {
                         error = %error_message,
                         "OpenAI stream request failed without retry"
                     );
+                    let duration_ms = audit_start.elapsed().as_millis() as u64;
+                    self.record_audit(
+                        &trace_id,
+                        "chat_stream",
+                        &url,
+                        duration_ms,
+                        0,
+                        audit_request.clone(),
+                        None,
+                        Some(error_message.clone()),
+                    );
                     return Err(AgentError::ExecutionFailed(format!(
-                        "OpenAI stream error: {}",
-                        error_message
+                        "OpenAI stream error: {} (trace_id: {})",
+                        error_message, trace_id
                     )));
                 }
             }
@@ -476,7 +526,7 @@ impl LlmClient for ChatOpenAI {
         let mut acc = stream::StreamAccumulator::new(self.parse_thinking_tags);
         while let Some(result) = stream.next().await {
             let response = result
-                .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI stream error: {}", e)))?;
+                .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI stream error: {} (trace_id: {})", e, trace_id)))?;
             acc.process_chunk(response, &chunk_tx, tool_delta_tx.as_ref())
                 .await;
         }
@@ -529,6 +579,7 @@ impl LlmClient for ChatOpenAI {
                 }),
             };
             self.record_audit(
+                &trace_id,
                 "chat_stream",
                 &url,
                 duration_ms,

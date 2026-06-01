@@ -136,6 +136,8 @@ pub struct NormalizedToolOutput {
     pub observation_chars: usize,
     /// Whether the output was truncated.
     pub truncated: bool,
+    /// Whether this result represents an error.
+    pub is_error: bool,
 }
 
 impl Default for NormalizedToolOutput {
@@ -149,6 +151,7 @@ impl Default for NormalizedToolOutput {
             raw_chars: 0,
             observation_chars: 0,
             truncated: false,
+            is_error: false,
         }
     }
 }
@@ -209,6 +212,7 @@ pub fn normalize_tool_output(
     };
 
     apply_observation_budget(&mut output, remaining_budget, tool_name);
+    output.is_error = is_error;
     output
 }
 
@@ -226,6 +230,7 @@ fn build_inline_output(
         raw_chars,
         observation_chars: raw_chars,
         truncated: false,
+        is_error: false,
     }
 }
 
@@ -263,6 +268,7 @@ fn build_head_tail_output(
         raw_chars,
         observation_chars: observation_text.chars().count(),
         truncated: true,
+        is_error: false,
     }
 }
 
@@ -287,6 +293,7 @@ fn build_summary_output(
         raw_chars,
         observation_chars: summary.chars().count(),
         truncated: true,
+        is_error: false,
     }
 }
 
@@ -342,6 +349,7 @@ fn build_file_ref_output(
         raw_chars,
         observation_chars: observation_text.chars().count(),
         truncated: true,
+        is_error: false,
     }
 }
 

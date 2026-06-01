@@ -288,6 +288,27 @@ impl GoalRunner {
                     self.save_iteration_state().await;
                     continue;
                 }
+                Err(ToolError::InvalidJsonArguments {
+                    tool_name,
+                    raw_args,
+                    parse_error,
+                }) => {
+                    // InvalidJsonArguments is returned when the LLM generates malformed
+                    // tool_call.arguments (e.g. MiniMax-M3 outputs "pattern" instead of
+                    // '{"pattern": "..."}'). We treat this as a non-fatal error so the
+                    // LLM receives the error feedback in the next turn and can self-correct.
+                    tracing::warn!(
+                        session_id = %self.task_id,
+                        tool_name = %tool_name,
+                        raw_args_preview = %raw_args.chars().take(100).collect::<String>(),
+                        parse_error = %parse_error,
+                        "tool arguments JSON parse failed; returning error to LLM for self-correction"
+                    );
+                    // Don't count as consecutive failure — this is a recoverable LLM error.
+                    // Let the iteration complete normally; LLM will see the error in tool_result.
+                    self.save_iteration_state().await;
+                    continue;
+                }
             }
 
             self.time_used_seconds = start.elapsed().as_secs() as i64;

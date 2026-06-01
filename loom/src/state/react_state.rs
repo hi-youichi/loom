@@ -197,7 +197,7 @@ impl From<crate::state::tool_output_normalizer::NormalizedToolOutput> for ToolRe
             call_id: None,
             name: None,
             content: normalized.observation_text.clone(),
-            is_error: false,
+            is_error: normalized.is_error,
             raw_content: normalized.raw_content,
             observation_text: Some(normalized.observation_text),
             display_text: Some(normalized.display_text),

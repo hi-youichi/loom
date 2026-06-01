@@ -508,12 +508,16 @@ impl ChatOpenAICompat {
                     }
                 }
                 Message::Assistant(payload) => {
-                    let tool_calls = if payload.tool_calls.is_empty() {
+                    let valid_tool_calls: Vec<_> = payload
+                        .tool_calls
+                        .iter()
+                        .filter(|tc| !tc.name.is_empty())
+                        .collect();
+                    let tool_calls = if valid_tool_calls.is_empty() {
                         None
                     } else {
                         Some(
-                            payload
-                                .tool_calls
+                            valid_tool_calls
                                 .iter()
                                 .map(|tc| BigModelToolCall {
                                     id: tc.id.clone(),
@@ -526,7 +530,7 @@ impl ChatOpenAICompat {
                                 .collect(),
                         )
                     };
-                    let content = if payload.tool_calls.is_empty() {
+                    let content = if valid_tool_calls.is_empty() {
                         let c = assistant_content_for_chat_api(payload.content.as_str());
                         let c = if use_space_for_empty_assistant && c.trim().is_empty() {
                             Cow::Borrowed(" ")
@@ -645,6 +649,7 @@ impl ChatOpenAICompat {
     #[allow(clippy::too_many_arguments)]
     fn record_audit(
         &self,
+        trace_id: &str,
         entry_type: &str,
         url: &str,
         duration_ms: u64,
@@ -656,6 +661,7 @@ impl ChatOpenAICompat {
         if let Some(ref log) = self.audit_log {
             let entry = build_audit_entry(
                 self.thread_id(),
+                trace_id.to_string(),
                 entry_type,
                 self.model.clone(),
                 url,
@@ -724,10 +730,10 @@ impl LlmClient for ChatOpenAICompat {
                             tokio::time::sleep(delay).await;
                         }
                         Err(e) => {
-                            return Err(AgentError::ExecutionFailed(format!(
-                                "OpenAI-compat request failed: {}",
-                                e
-                            )));
+                            let err_msg = format!("OpenAI-compat request failed: {} (trace_id: {})", e, trace_id);
+                            let duration = audit_start.elapsed().as_millis() as u64;
+                            self.record_audit(&trace_id, "chat", &url, duration, 0, audit_request.clone(), None, Some(err_msg.clone()));
+                            return Err(AgentError::ExecutionFailed(err_msg));
                         }
                     }
                 }
@@ -754,10 +760,10 @@ error = ?e,
                     continue 'request;
                 }
                 Err(e) => {
-                    return Err(AgentError::ExecutionFailed(format!(
-                        "OpenAI-compat response read: {}",
-                        e
-                    )));
+                    let err_msg = format!("OpenAI-compat response read: {} (trace_id: {})", e, trace_id);
+                    let duration = audit_start.elapsed().as_millis() as u64;
+                    self.record_audit(&trace_id, "chat", &url, duration, 0, audit_request.clone(), None, Some(err_msg.clone()));
+                    return Err(AgentError::ExecutionFailed(err_msg));
                 }
             };
 
@@ -766,10 +772,10 @@ error = ?e,
             }
             if !is_retryable_status_for(status, &self.base_url, &format_api_error_body(&body_bytes)) {
                 let msg = format_api_error_body(&body_bytes);
-                return Err(AgentError::ExecutionFailed(format!(
-                    "OpenAI-compat API error {}: {}",
-                    status, msg
-                )));
+                let err_msg = format!("OpenAI-compat API error {}: {} (trace_id: {})", status, msg, trace_id);
+                let duration = audit_start.elapsed().as_millis() as u64;
+                self.record_audit(&trace_id, "chat", &url, duration, status.as_u16(), audit_request.clone(), None, Some(err_msg.clone()));
+                return Err(AgentError::ExecutionFailed(err_msg));
             }
             for attempt in 0..COMPAT_RETRY_MAX_RETRIES {
                 let delay = backoff_for_attempt(attempt);
@@ -805,48 +811,48 @@ error = ?e,
                             );
                             continue;
                         }
-                        return Err(AgentError::ExecutionFailed(format!(
-                            "OpenAI-compat request failed: {}",
-                            e
-                        )));
+                        let err_msg = format!("OpenAI-compat request failed: {} (trace_id: {})", e, trace_id);
+                        let duration = audit_start.elapsed().as_millis() as u64;
+                        self.record_audit(&trace_id, "chat", &url, duration, 0, audit_request.clone(), None, Some(err_msg.clone()));
+                        return Err(AgentError::ExecutionFailed(err_msg));
                     }
                 };
                 let retry_status = retry_res.status();
                 let retry_bytes = retry_res.bytes().await.map_err(|e| {
-                    AgentError::ExecutionFailed(format!("OpenAI-compat response read: {}", e))
+                    AgentError::ExecutionFailed(format!("OpenAI-compat response read: {} (trace_id: {})", e, trace_id))
                 })?;
                 if retry_status.is_success() {
                     break 'request (retry_status, retry_bytes);
                 }
                 if !is_retryable_status_for(retry_status, &self.base_url, &format_api_error_body(&retry_bytes)) {
                     let msg = format_api_error_body(&retry_bytes);
-                    return Err(AgentError::ExecutionFailed(format!(
-                        "OpenAI-compat API error {}: {}",
-                        retry_status, msg
-                    )));
+                    let err_msg = format!("OpenAI-compat API error {}: {} (trace_id: {})", retry_status, msg, trace_id);
+                    let duration = audit_start.elapsed().as_millis() as u64;
+                    self.record_audit(&trace_id, "chat", &url, duration, retry_status.as_u16(), audit_request.clone(), None, Some(err_msg.clone()));
+                    return Err(AgentError::ExecutionFailed(err_msg));
                 }
                 if attempt == COMPAT_RETRY_MAX_RETRIES - 1 {
                     let msg = format_api_error_body(&retry_bytes);
-                    return Err(AgentError::ExecutionFailed(format!(
-                        "OpenAI-compat API error {}: {} (after {} retries)",
-                        retry_status, msg, COMPAT_RETRY_MAX_RETRIES
-                    )));
+                    let err_msg = format!("OpenAI-compat API error {}: {} (trace_id: {}) (after {} retries)", retry_status, msg, trace_id, COMPAT_RETRY_MAX_RETRIES);
+                    let duration = audit_start.elapsed().as_millis() as u64;
+                    self.record_audit(&trace_id, "chat", &url, duration, retry_status.as_u16(), audit_request.clone(), None, Some(err_msg.clone()));
+                    return Err(AgentError::ExecutionFailed(err_msg));
                 }
             }
             let msg = format_api_error_body(&body_bytes);
-            return Err(AgentError::ExecutionFailed(format!(
-                "OpenAI-compat API error {}: {}",
-                status, msg
-            )));
+            let err_msg = format!("OpenAI-compat API error {}: {} (trace_id: {})", status, msg, trace_id);
+            let duration = audit_start.elapsed().as_millis() as u64;
+            self.record_audit(&trace_id, "chat", &url, duration, status.as_u16(), audit_request.clone(), None, Some(err_msg.clone()));
+            return Err(AgentError::ExecutionFailed(err_msg));
         };
 
         let response: ChatCompletionResponse =
             serde_json::from_slice(&body_bytes).map_err(|e| {
-                AgentError::ExecutionFailed(format!("OpenAI-compat response parse: {}", e))
+                AgentError::ExecutionFailed(format!("OpenAI-compat response parse: {} (trace_id: {})", e, trace_id))
             })?;
 
         let choice = response.choices.into_iter().next().ok_or_else(|| {
-            AgentError::ExecutionFailed("OpenAI-compat returned no choices".to_string())
+            AgentError::ExecutionFailed(format!("OpenAI-compat returned no choices (trace_id: {})", trace_id))
         })?;
 
         let msg = choice.message;
@@ -888,7 +894,7 @@ error = ?e,
         };
         let duration_ms = audit_start.elapsed().as_millis() as u64;
         let audit_response = Self::build_audit_response(&llm_response);
-        self.record_audit("chat", &url, duration_ms, 200, audit_request, Some(audit_response), None);
+        self.record_audit(&trace_id, "chat", &url, duration_ms, 200, audit_request, Some(audit_response), None);
         Ok(llm_response)
     }
 
@@ -962,10 +968,10 @@ error = ?e,
                         tokio::time::sleep(delay).await;
                     }
                     Err(e) => {
-                        return Err(AgentError::ExecutionFailed(format!(
-                            "OpenAI-compat stream request: {}",
-                            e
-                        )));
+                        let err_msg = format!("OpenAI-compat stream request: {} (trace_id: {})", e, trace_id);
+                        let duration = audit_start.elapsed().as_millis() as u64;
+                        self.record_audit(&trace_id, "chat_stream", &url, duration, 0, audit_request.clone(), None, Some(err_msg.clone()));
+                        return Err(AgentError::ExecutionFailed(err_msg));
                     }
                 }
             }
@@ -978,10 +984,10 @@ error = ?e,
             let body_bytes = response.bytes().await.unwrap_or_default();
             let msg = format_api_error_body(&body_bytes);
             if !is_retryable_status_for(status, &self.base_url, &msg) {
-                return Err(AgentError::ExecutionFailed(format!(
-                    "OpenAI-compat stream error {}: {}",
-                    status, msg
-                )));
+                let err_msg = format!("OpenAI-compat stream error {}: {} (trace_id: {})", status, msg, trace_id);
+                let duration = audit_start.elapsed().as_millis() as u64;
+                self.record_audit(&trace_id, "chat_stream", &url, duration, status.as_u16(), audit_request.clone(), None, Some(err_msg.clone()));
+                return Err(AgentError::ExecutionFailed(err_msg));
             }
             let mut final_response = None;
             for attempt in 0..COMPAT_RETRY_MAX_RETRIES {
@@ -1018,10 +1024,10 @@ error = ?e,
                             );
                             continue;
                         }
-                        return Err(AgentError::ExecutionFailed(format!(
-                            "OpenAI-compat stream request: {}",
-                            e
-                        )));
+                        let err_msg = format!("OpenAI-compat stream request: {} (trace_id: {})", e, trace_id);
+                        let duration = audit_start.elapsed().as_millis() as u64;
+                        self.record_audit(&trace_id, "chat_stream", &url, duration, 0, audit_request.clone(), None, Some(err_msg.clone()));
+                        return Err(AgentError::ExecutionFailed(err_msg));
                     }
                 };
                 let retry_status = retry_res.status();
@@ -1032,26 +1038,26 @@ error = ?e,
                 let retry_body_bytes = retry_res.bytes().await.unwrap_or_default();
                 let retry_msg = format_api_error_body(&retry_body_bytes);
                 if !is_retryable_status_for(retry_status, &self.base_url, &retry_msg) {
-                    return Err(AgentError::ExecutionFailed(format!(
-                        "OpenAI-compat stream error {}: {}",
-                        retry_status, retry_msg
-                    )));
+                    let err_msg = format!("OpenAI-compat stream error {}: {} (trace_id: {})", retry_status, retry_msg, trace_id);
+                    let duration = audit_start.elapsed().as_millis() as u64;
+                    self.record_audit(&trace_id, "chat_stream", &url, duration, retry_status.as_u16(), audit_request.clone(), None, Some(err_msg.clone()));
+                    return Err(AgentError::ExecutionFailed(err_msg));
                 }
                 if attempt == COMPAT_RETRY_MAX_RETRIES - 1 {
-                    return Err(AgentError::ExecutionFailed(format!(
-                        "OpenAI-compat stream error {}: {} (after {} retries)",
-                        retry_status, retry_msg, COMPAT_RETRY_MAX_RETRIES
-                    )));
+                    let err_msg = format!("OpenAI-compat stream error {}: {} (trace_id: {}) (after {} retries)", retry_status, retry_msg, trace_id, COMPAT_RETRY_MAX_RETRIES);
+                    let duration = audit_start.elapsed().as_millis() as u64;
+                    self.record_audit(&trace_id, "chat_stream", &url, duration, retry_status.as_u16(), audit_request.clone(), None, Some(err_msg.clone()));
+                    return Err(AgentError::ExecutionFailed(err_msg));
                 }
             }
 
             match final_response {
                 Some(resp) => resp,
                 None => {
-                    return Err(AgentError::ExecutionFailed(format!(
-                        "OpenAI-compat stream error {}: {}",
-                        status, msg
-                    )));
+                    let err_msg = format!("OpenAI-compat stream error {}: {} (trace_id: {})", status, msg, trace_id);
+                    let duration = audit_start.elapsed().as_millis() as u64;
+                    self.record_audit(&trace_id, "chat_stream", &url, duration, status.as_u16(), audit_request.clone(), None, Some(err_msg.clone()));
+                    return Err(AgentError::ExecutionFailed(err_msg));
                 }
             }
         };
@@ -1090,10 +1096,10 @@ error = ?e,
                     continue;
                 }
                 Err(e) => {
-                    return Err(AgentError::ExecutionFailed(format!(
-                        "OpenAI-compat stream body: {}",
-                        e
-                    )));
+                    let err_msg = format!("OpenAI-compat stream body: {}", e);
+                    let duration = audit_start.elapsed().as_millis() as u64;
+                    self.record_audit(&trace_id, "chat_stream", &url, duration, 0, audit_request.clone(), None, Some(err_msg.clone()));
+                    return Err(AgentError::ExecutionFailed(err_msg));
                 }
             };
             let Some(bytes) = chunk else { break };
@@ -1288,7 +1294,7 @@ error = ?e,
         };
         let duration_ms = audit_start.elapsed().as_millis() as u64;
         let audit_response = Self::build_audit_response(&response);
-        self.record_audit("chat_stream", &url, duration_ms, 200, audit_request, Some(audit_response), None);
+        self.record_audit(&trace_id, "chat_stream", &url, duration_ms, 200, audit_request, Some(audit_response), None);
         Ok(response)
     }
 

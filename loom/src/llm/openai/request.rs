@@ -19,7 +19,6 @@ use async_openai::types::chat::{
 
 use crate::error::AgentError;
 use crate::llm::ToolChoiceMode;
-use crate::llm::tool_call_accumulator::sanitize_arguments;
 use crate::message::{assistant_content_for_chat_api, Message};
 use crate::tool_source::ToolSpec;
 use tracing::debug;
@@ -107,24 +106,25 @@ pub(super) fn messages_to_openai(messages: &[Message]) -> Vec<ChatCompletionRequ
                 ChatCompletionRequestMessage::User(msg)
             }
             Message::Assistant(payload) => {
+                let valid_tool_calls: Vec<_> = payload
+                    .tool_calls
+                    .iter()
+                    .filter(|tc| !tc.name.is_empty())
+                    .collect();
                 let tool_calls: Option<Vec<ChatCompletionMessageToolCalls>> =
-                    if payload.tool_calls.is_empty() {
+                    if valid_tool_calls.is_empty() {
                         None
                     } else {
                         Some(
-                            payload
-                                .tool_calls
+                            valid_tool_calls
                                 .iter()
                                 .map(|tc| {
-                                    // Sanitize arguments to handle MiniMax-M3 and similar models
-                                    // that occasionally emit non-JSON content in function.arguments.
-                                    let args = sanitize_arguments(Some(tc.id.as_str()), &tc.name, &tc.arguments);
                                     ChatCompletionMessageToolCalls::Function(
                                         ChatCompletionMessageToolCall {
                                             id: tc.id.clone(),
                                             function: FunctionCall {
                                                 name: tc.name.clone(),
-                                                arguments: args,
+                                                arguments: tc.arguments.clone(),
                                             },
                                         },
                                     )
@@ -132,7 +132,7 @@ pub(super) fn messages_to_openai(messages: &[Message]) -> Vec<ChatCompletionRequ
                                 .collect(),
                         )
                     };
-                let content = if payload.tool_calls.is_empty() {
+                let content = if valid_tool_calls.is_empty() {
                     let c = assistant_content_for_chat_api(payload.content.as_str());
                     Some(ChatCompletionRequestAssistantMessageContent::Text(
                         c.into_owned(),

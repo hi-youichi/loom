@@ -22,6 +22,7 @@ use tracing::{debug, trace, warn};
 
 use crate::cli_run::ActiveOperationKind;
 use crate::error::AgentError;
+use crate::goal_runner::state::ToolError;
 use crate::graph::{run_cancellable, GraphInterrupt, Interrupt, Next, Node, RunContext};
 use crate::helve::{tools_requiring_approval, ApprovalPolicy, APPROVAL_REQUIRED_EVENT_TYPE};
 use crate::memory::uuid6;
@@ -57,27 +58,54 @@ fn truncate_for_display(s: &str, max_chars: usize) -> String {
     }
 }
 
-/// Parses ToolCall.arguments string to JSON Value. Logs a warning on parse failure.
-fn parse_tool_arguments(arguments: &str) -> Value {
-    let raw = if arguments.trim().is_empty() {
-        serde_json::json!({})
-    } else {
-        match serde_json::from_str(arguments) {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::warn!(error = %e, arguments = %arguments, "tool arguments JSON parse failed, using empty object");
-                serde_json::json!({})
-            }
+/// Validates tool arguments before parsing.
+/// Returns Ok if arguments are empty or valid JSON, Err with hint otherwise.
+fn validate_tool_arguments(tool_name: &str, arguments: &str) -> Result<(), ToolError> {
+    let trimmed = arguments.trim();
+    if trimmed.is_empty() {
+        return Ok(());
+    }
+    if serde_json::from_str::<serde_json::Value>(trimmed).is_ok() {
+        return Ok(());
+    }
+    let preview = trimmed.chars().take(100).collect::<String>();
+    Err(ToolError::InvalidJsonArguments {
+        tool_name: tool_name.to_string(),
+        raw_args: arguments.to_string(),
+        parse_error: format!("Invalid JSON: '{}'...", preview),
+    })
+}
+
+/// Parses ToolCall.arguments string to JSON Value.
+///
+/// Returns `Err(ToolError::InvalidJsonArguments)` for malformed input so the
+/// LLM receives actionable feedback instead of a silently-fallbacked `{}`.
+fn parse_tool_arguments(tool_name: &str, arguments: &str) -> Result<Value, ToolError> {
+    let trimmed = arguments.trim();
+
+    if trimmed.is_empty() {
+        return Ok(serde_json::json!({}));
+    }
+
+    let raw = match serde_json::from_str::<serde_json::Value>(trimmed) {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(ToolError::InvalidJsonArguments {
+                tool_name: tool_name.to_string(),
+                raw_args: arguments.to_string(),
+                parse_error: e.to_string(),
+            });
         }
     };
+
+    // Handle double-wrapped JSON: "{\"key\": \"val\"}" → {"key": "val"}
     if let Some(s) = raw.as_str() {
-        serde_json::from_str(s).unwrap_or_else(|e| {
-            tracing::warn!(error = %e, "nested tool arguments JSON parse failed");
-            raw
-        })
-    } else {
-        raw
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s) {
+            return Ok(parsed);
+        }
     }
+
+    Ok(raw)
 }
 
 /// Builds a step_progress Custom event payload for streaming.
@@ -203,7 +231,63 @@ impl Node<ReActState> for ActNode {
         let mut used_observation_chars = 0usize;
 
         for tc in &state.tool_calls {
-            let args: Value = parse_tool_arguments(&tc.arguments);
+            // Validate arguments before parsing
+            if let Err(e) = validate_tool_arguments(&tc.name, &tc.arguments) {
+                warn!(
+                    tool_name = %tc.name,
+                    call_id = ?tc.id,
+                    error = %e,
+                    "invalid tool arguments; returning error to LLM for self-correction"
+                );
+                let error_text = e.self_correct_hint();
+                let normalized = normalize_tool_output(
+                    &tc.name,
+                    &serde_json::json!({}),
+                    &error_text,
+                    true,
+                    tool_output_hints.get(&tc.name),
+                    NormalizationConfig::runtime_default()
+                        .with_used_observation_chars(used_observation_chars),
+                );
+                used_observation_chars += normalized.observation_chars;
+                tool_results.push(
+                    ToolResult::from(normalized)
+                        .with_call_id(tc.id.clone())
+                        .with_name(Some(tc.name.clone()))
+                        .with_is_error(true),
+                );
+                continue;
+            }
+
+            let args = match parse_tool_arguments(&tc.name, &tc.arguments) {
+                Ok(v) => v,
+                Err(e) => {
+                    warn!(
+                        tool_name = %tc.name,
+                        call_id = ?tc.id,
+                        error = %e,
+                        "invalid tool arguments; returning error to LLM for self-correction"
+                    );
+                    let error_text = e.self_correct_hint();
+                    let normalized = normalize_tool_output(
+                        &tc.name,
+                        &serde_json::json!({}),
+                        &error_text,
+                        true,
+                        tool_output_hints.get(&tc.name),
+                        NormalizationConfig::runtime_default()
+                            .with_used_observation_chars(used_observation_chars),
+                    );
+                    used_observation_chars += normalized.observation_chars;
+                    tool_results.push(
+                        ToolResult::from(normalized)
+                            .with_call_id(tc.id.clone())
+                            .with_name(Some(tc.name.clone()))
+                            .with_is_error(true),
+                    );
+                    continue;
+                }
+            };
 
             if self.needs_approval(&tc.name) {
                 match state.approval_result {
@@ -376,7 +460,49 @@ impl Node<ReActState> for ActNode {
                 self.tools.set_call_context(None);
                 return Err(AgentError::Cancelled);
             }
-            let args: Value = parse_tool_arguments(&tc.arguments);
+            let args = match parse_tool_arguments(&tc.name, &tc.arguments) {
+                Ok(v) => v,
+                Err(e) => {
+                    warn!(
+                        tool_name = %tc.name,
+                        call_id = ?tc.id,
+                        error = %e,
+                        "invalid tool arguments; returning error to LLM for self-correction"
+                    );
+                    let error_text = e.self_correct_hint();
+                    let normalized = normalize_tool_output(
+                        &tc.name,
+                        &serde_json::json!({}),
+                        &error_text,
+                        true,
+                        tool_output_hints.get(&tc.name),
+                        NormalizationConfig::runtime_default()
+                            .with_used_observation_chars(used_observation_chars),
+                    );
+                    let display_text = normalized.display_text.clone();
+                    used_observation_chars += normalized.observation_chars;
+                    tool_results.push(
+                        ToolResult::from(normalized)
+                            .with_call_id(tc.id.clone())
+                            .with_name(Some(tc.name.clone()))
+                            .with_is_error(true),
+                    );
+                    if tools_mode {
+                        if let Some(tx) = &run_ctx.stream_tx {
+                            let _ = tx
+                                .send(StreamEvent::ToolEnd {
+                                    call_id: tc.id.clone(),
+                                    name: tc.name.clone(),
+                                    result: display_text,
+                                    is_error: true,
+                                    raw_result: None,
+                                })
+                                .await;
+                        }
+                    }
+                    continue;
+                }
+            };
 
             if self.needs_approval(&tc.name) {
                 match state.approval_result {
@@ -693,6 +819,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn validate_tool_arguments_empty_string() {
+        assert!(validate_tool_arguments("grep", "").is_ok());
+    }
+
+    #[test]
+    fn validate_tool_arguments_valid_json() {
+        assert!(validate_tool_arguments("grep", r#"{"path": "/tmp"}"#).is_ok());
+    }
+
+    #[test]
+    fn validate_tool_arguments_invalid_json() {
+        assert!(validate_tool_arguments("grep", "not json {").is_err());
+    }
+
+    #[test]
     fn truncate_short_string_unchanged() {
         assert_eq!(truncate_for_log("hello", 10), "hello");
     }
@@ -707,31 +848,31 @@ mod tests {
 
     #[test]
     fn parse_tool_arguments_valid_json() {
-        let v = parse_tool_arguments(r#"{"path": "/tmp"}"#);
+        let v = parse_tool_arguments("grep", r#"{"path": "/tmp"}"#).unwrap();
         assert_eq!(v["path"], "/tmp");
     }
 
     #[test]
     fn parse_tool_arguments_empty_string() {
-        let v = parse_tool_arguments("");
+        let v = parse_tool_arguments("grep", "").unwrap();
         assert!(v.is_object());
     }
 
     #[test]
     fn parse_tool_arguments_whitespace_only() {
-        let v = parse_tool_arguments("   ");
+        let v = parse_tool_arguments("grep", "   ").unwrap();
         assert!(v.is_object());
     }
 
     #[test]
-    fn parse_tool_arguments_invalid_json() {
-        let v = parse_tool_arguments("not json {");
-        assert!(v.is_object());
+    fn parse_tool_arguments_invalid_json_returns_error() {
+        let result = parse_tool_arguments("grep", "not json {");
+        assert!(result.is_err());
     }
 
     #[test]
     fn parse_tool_arguments_nested_string_json() {
-        let v = parse_tool_arguments(r#""{\"key\": \"val\"}""#);
+        let v = parse_tool_arguments("grep", r#""{\"key\": \"val\"}""#).unwrap();
         assert_eq!(v["key"], "val");
     }
 
