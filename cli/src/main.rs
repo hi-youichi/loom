@@ -17,6 +17,7 @@ mod review_cmd;
 mod review_skill_cmd;
 mod run_flow;
 mod session;
+mod skill_usage_cmd;
 mod subcommands;
 mod task_cmd;
 mod task_db;
@@ -39,6 +40,7 @@ use subcommands::{
     handle_memory_command, handle_models_command, handle_session_command, handle_skills_command,
     handle_tool_command,
 };
+use skill_usage_cmd::handle_skill_usage_command;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -119,6 +121,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::exit(1);
         }
         return Ok(());
+    }
+    if let Some(Cmd::SkillUsage(sa)) = &args.cmd {
+        if let Err(err) = handle_skill_usage_command(&sa).await {
+            eprintln!("{}", err);
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+    if let Some(Cmd::Evolve) = &args.cmd {
+        eprintln!("evolve: not yet implemented (loom-evolution crate removed)");
+        std::process::exit(1);
     }
     if let Some(Cmd::Curator(ca)) = &args.cmd {
         if let Err(err) = handle_curator_command(ca, args.json) {

@@ -182,7 +182,8 @@ impl SkillUsageStore {
         }
     }
 
-    fn load(&self) -> Result<HashMap<String, SkillUsage>, std::io::Error> {
+    /// Load all usage data from the store.
+    pub fn load(&self) -> Result<HashMap<String, SkillUsage>, std::io::Error> {
         if !self.path.exists() {
             return Ok(HashMap::new());
         }
@@ -195,7 +196,8 @@ impl SkillUsageStore {
         })
     }
 
-    fn save(&self, data: &HashMap<String, SkillUsage>) -> Result<(), std::io::Error> {
+    /// Save all usage data to the store.
+    pub fn save(&self, data: &HashMap<String, SkillUsage>) -> Result<(), std::io::Error> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -206,6 +208,13 @@ impl SkillUsageStore {
         fs::write(&tmp, &json)?;
         fs::rename(&tmp, &self.path)?;
         Ok(())
+    }
+
+    /// Save a single entry (load existing, update, save).
+    pub fn save_entry(&self, name: &str, entry: &SkillUsage) -> Result<(), std::io::Error> {
+        let mut data = self.load().unwrap_or_default();
+        data.insert(name.to_string(), entry.clone());
+        self.save(&data)
     }
 }
 

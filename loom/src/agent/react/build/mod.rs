@@ -105,11 +105,18 @@ pub async fn build_react_run_context(
     }
     tracing::debug!("build_react_run_context: tool_source ready");
 
+    // Initialize audit log if enabled
+    let audit_log: Option<Arc<dyn crate::llm::audit::LlmAuditLog>> =
+        crate::llm::audit::LlmAuditConfig::from_env()
+            .build()
+            .map(|log| Arc::new(log) as Arc<dyn crate::llm::audit::LlmAuditLog>);
+
     Ok(ReactRunContext {
         checkpointer,
         store,
         runnable_config,
         tool_source,
+        audit_log,
     })
 }
 
@@ -160,7 +167,7 @@ pub async fn build_react_runner(
     let provider_override = provider.is_some();
     let provider = match provider {
         Some(p) => p,
-        None => build_default_provider(config, ctx.tool_source.as_ref()).await?,
+        None => build_default_provider(config, ctx.tool_source.as_ref(), ctx.audit_log.clone()).await?,
     };
     let system_prompt = config
         .system_prompt
@@ -222,7 +229,7 @@ pub async fn build_dup_runner(
     let ctx = build_react_run_context(config).await?;
     let llm = match llm {
         Some(l) => l,
-        None => build_default_llm_with_tool_source(config, ctx.tool_source.as_ref()).await?,
+        None => build_default_llm_with_tool_source(config, ctx.tool_source.as_ref(), ctx.audit_log.clone()).await?,
     };
     let llm_arc: Arc<dyn LlmClient> = Arc::new(BoxedLlmClient(llm));
 
@@ -252,7 +259,7 @@ pub async fn build_tot_runner(
     let ctx = build_react_run_context(config).await?;
     let llm = match llm {
         Some(l) => l,
-        None => build_default_llm_with_tool_source(config, ctx.tool_source.as_ref()).await?,
+        None => build_default_llm_with_tool_source(config, ctx.tool_source.as_ref(), ctx.audit_log.clone()).await?,
     };
     let llm_arc: Arc<dyn LlmClient> = Arc::new(BoxedLlmClient(llm));
 
@@ -286,7 +293,7 @@ pub async fn build_got_runner(
     let ctx = build_react_run_context(config).await?;
     let llm = match llm {
         Some(l) => l,
-        None => build_default_llm_with_tool_source(config, ctx.tool_source.as_ref()).await?,
+        None => build_default_llm_with_tool_source(config, ctx.tool_source.as_ref(), ctx.audit_log.clone()).await?,
     };
     let llm_arc: Arc<dyn LlmClient> = Arc::new(BoxedLlmClient(llm));
 

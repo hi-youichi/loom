@@ -692,7 +692,8 @@ Ok(())
             //   counts = apply_automatic_transitions(now=start)
             // 注意：snapshot 在 apply_automatic_transitions 之前
             // snapshot_skills 返回 Option<PathBuf>，不是 Result
-            use super::curator_backup::CuratorBackup;
+#[allow(unused_imports)]
+use super::curator_backup::CuratorBackup;
             if let Some(snap) = CuratorBackup::new().snapshot_skills("pre-curator-run") {
                 if let Some(cb) = on_summary {
                     cb(format!(

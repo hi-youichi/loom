@@ -383,7 +383,7 @@ pub(crate) fn handle_curator_command(
     json: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use cli::run::curator::{
-        Curator, CuratorConfig, CuratorReport,
+        Curator, CuratorConfig,
         CuratorReviewResult, CuratorState,
     };
     use cli::run::skill_registry::SkillRegistry;

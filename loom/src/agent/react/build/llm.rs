@@ -6,10 +6,10 @@
 use std::sync::Arc;
 
 use crate::error::AgentError;
-use crate::llm::{create_llm_client, ChatOpenAI, ChatOpenAICompat, FixedLlmProvider, LlmProvider, ModelEntry, RetryLlmClient};
+use crate::llm::audit::LlmAuditLog;
+use crate::llm::{ChatOpenAI, ChatOpenAICompat, FixedLlmProvider, LlmClient, LlmProvider, ModelEntry, RetryLlmClient, create_llm_client};
 use crate::model_spec::ModelTier;
 use crate::tool_source::ToolSource;
-use crate::LlmClient;
 
 use super::super::config::ReactBuildConfig;
 use super::error::BuildRunnerError;
@@ -137,6 +137,7 @@ pub(crate) fn model_entry_from_config(
 pub(crate) async fn build_default_llm_with_tool_source(
     config: &ReactBuildConfig,
     tool_source: &dyn ToolSource,
+    audit_log: Option<Arc<dyn LlmAuditLog>>,
 ) -> Result<Box<dyn LlmClient>, BuildRunnerError> {
     let entry = model_entry_from_config(config)?;
     let provider_type = entry.provider_type.as_deref().unwrap_or_else(|| {
@@ -180,6 +181,9 @@ pub(crate) async fn build_default_llm_with_tool_source(
             if let Some(t) = entry.temperature {
                 client = client.with_temperature(t);
             }
+            if let Some(ref audit_log) = audit_log {
+                client = client.with_audit_log(audit_log.clone());
+            }
             let client: Box<dyn LlmClient> = Box::new(client);
             let retry_client = RetryLlmClient::new(Arc::from(client));
             Ok(Box::new(retry_client) as Box<dyn LlmClient>)
@@ -203,7 +207,13 @@ pub(crate) async fn build_default_llm_with_tool_source(
             })?;
             tracing::debug!(provider_type = %provider_type, "build_default_llm: OpenAI-compat with tools");
             let mut client =
-                ChatOpenAICompat::with_config(base_url, api_key, entry.name).with_tools(tools);
+                ChatOpenAICompat::with_config(base_url, api_key, entry.name)
+                    .with_tools(tools);
+            
+            // Attach audit log if enabled
+            if let Some(ref audit) = audit_log {
+                client = client.with_audit_log(Arc::clone(audit));
+            }
             
             let trace_id = config.trace_thread_id.as_ref().or(config.thread_id.as_ref());
             if let Some(thread_id) = trace_id {
@@ -228,8 +238,9 @@ pub(crate) async fn build_default_llm_with_tool_source(
 pub(crate) async fn build_default_provider(
     config: &ReactBuildConfig,
     tool_source: &dyn ToolSource,
+    audit_log: Option<Arc<dyn LlmAuditLog>>,
 ) -> Result<Arc<dyn LlmProvider>, BuildRunnerError> {
-    let llm = build_default_llm_with_tool_source(config, tool_source).await?;
+    let llm = build_default_llm_with_tool_source(config, tool_source, audit_log).await?;
     let entry = model_entry_from_config(config)?;
     Ok(Arc::new(FixedLlmProvider {
         client: Arc::from(llm),

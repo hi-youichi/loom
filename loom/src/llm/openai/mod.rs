@@ -14,6 +14,7 @@ use async_openai::{
     Client,
 };
 use async_trait::async_trait;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 use tracing::{debug, trace};
@@ -22,11 +23,14 @@ use crate::error::AgentError;
 use crate::http_retry::{retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES};
 use crate::llm::error_classifier::LlmErrorClassifierConfig;
 use crate::llm::thinking::collect_thinking_tags;
-use crate::llm::{LlmClient, LlmResponse, LlmUsage, ToolCallDelta};
+use crate::llm::audit::{
+    build_audit_entry, LlmAuditLog, LlmAuditRequest, LlmAuditRequestParams, LlmAuditResponse,
+    LlmAuditToolCall, LlmAuditUsage,
+};
+use crate::llm::{LlmClient, LlmResponse, LlmUsage, MessageChunk, ToolCallDelta};
 use crate::memory::uuid6;
 use crate::message::Message;
 use crate::state::ToolCall;
-use crate::stream::MessageChunk;
 use crate::tool_source::{ToolSource, ToolSourceError, ToolSpec};
 
 use super::ToolChoiceMode;
@@ -71,6 +75,7 @@ pub struct ChatOpenAI {
     /// When true, parse content for thinking tags and emit as MessageChunk::thinking / message.
     parse_thinking_tags: bool,
     headers: Option<crate::llm::LlmHeaders>,
+    audit_log: Option<Arc<dyn LlmAuditLog>>,
 }
 
 impl ChatOpenAI {
@@ -87,6 +92,7 @@ impl ChatOpenAI {
             tool_choice: None,
             parse_thinking_tags: true,
             headers: None,
+            audit_log: None,
         }
     }
 
@@ -103,6 +109,7 @@ impl ChatOpenAI {
             tool_choice: None,
             parse_thinking_tags: true,
             headers: None,
+            audit_log: None,
         }
     }
 
@@ -166,6 +173,12 @@ impl ChatOpenAI {
         self
     }
 
+    /// Sets the audit log recorder.
+    pub fn with_audit_log(mut self, audit: Arc<dyn LlmAuditLog>) -> Self {
+        self.audit_log = Some(audit);
+        self
+    }
+
     #[allow(dead_code)]
     fn get_headers_map(&self) -> std::collections::HashMap<String, String> {
         let mut headers = std::collections::HashMap::new();
@@ -187,6 +200,40 @@ impl ChatOpenAI {
         }
 
         headers
+    }
+
+    fn thread_id(&self) -> String {
+        self.headers
+            .as_ref()
+            .and_then(|h| h.thread_id.as_ref())
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    fn record_audit(
+        &self,
+        entry_type: &str,
+        url: &str,
+        duration_ms: u64,
+        status: u16,
+        request: LlmAuditRequest,
+        response: Option<LlmAuditResponse>,
+        error: Option<String>,
+    ) {
+        if let Some(ref log) = self.audit_log {
+            let entry = build_audit_entry(
+                self.thread_id(),
+                entry_type,
+                self.model.clone(),
+                url,
+                duration_ms,
+                status,
+                request,
+                response,
+                error,
+            );
+            log.log(entry);
+        }
     }
 
     /// Chat completions URL for logging (`OPENAI_BASE_URL` / `OPENAI_API_BASE` or default).
@@ -225,6 +272,7 @@ impl LlmClient for ChatOpenAI {
         let request_id = uuid6().to_string();
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         let url = Self::chat_completions_url();
+        let audit_start = std::time::Instant::now();
         debug!(
             trace_id = %trace_id,
             request_id = %request_id,
@@ -303,6 +351,42 @@ impl LlmClient for ChatOpenAI {
             .collect();
 
         let usage = response.usage.as_ref().map(completion_usage_to_llm);
+
+        // Record audit entry
+        if self.audit_log.is_some() {
+            let duration_ms = audit_start.elapsed().as_millis() as u64;
+            let tools_json = self.tools.as_ref().map(|t| {
+                serde_json::to_value(t).unwrap_or_default()
+            });
+            let audit_request = LlmAuditRequest {
+                messages: serde_json::json!(messages),
+                tools: tools_json,
+                parameters: LlmAuditRequestParams {
+                    temperature: self.temperature,
+                    stream: false,
+                    tool_choice: self.tool_choice.map(|m| format!("{:?}", m)),
+                },
+            };
+            let audit_response = LlmAuditResponse {
+                content: content.clone(),
+                reasoning_content: reasoning_content.clone(),
+                tool_calls: tool_calls
+                    .iter()
+                    .map(|tc| LlmAuditToolCall {
+                        id: tc.id.clone(),
+                        name: tc.name.clone(),
+                        arguments: tc.arguments.clone(),
+                    })
+                    .collect(),
+                usage: usage.as_ref().map(|u| LlmAuditUsage {
+                    prompt_tokens: u.prompt_tokens,
+                    completion_tokens: u.completion_tokens,
+                    total_tokens: u.total_tokens,
+                }),
+            };
+            self.record_audit("chat", &url, duration_ms, 200, audit_request, Some(audit_response), None);
+        }
+
         Ok(LlmResponse {
             content,
             reasoning_content,
@@ -335,6 +419,7 @@ impl LlmClient for ChatOpenAI {
         let chunk_tx = chunk_tx.expect("chunk_tx must be Some when streaming");
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         let url = Self::chat_completions_url();
+        let audit_start = std::time::Instant::now();
         debug!(
             trace_id = %trace_id,
             request_id = %request_id,
@@ -409,6 +494,50 @@ impl LlmClient for ChatOpenAI {
             usage = ?result.usage,
             "OpenAI stream response"
         );
+
+        // Record audit entry
+        if self.audit_log.is_some() {
+            let duration_ms = audit_start.elapsed().as_millis() as u64;
+            let tools_json = self.tools.as_ref().map(|t| {
+                serde_json::to_value(t).unwrap_or_default()
+            });
+            let audit_request = LlmAuditRequest {
+                messages: serde_json::json!(messages),
+                tools: tools_json,
+                parameters: LlmAuditRequestParams {
+                    temperature: self.temperature,
+                    stream: true,
+                    tool_choice: self.tool_choice.map(|m| format!("{:?}", m)),
+                },
+            };
+            let audit_response = LlmAuditResponse {
+                content: result.content.clone(),
+                reasoning_content: result.reasoning_content.clone(),
+                tool_calls: result
+                    .tool_calls
+                    .iter()
+                    .map(|tc| LlmAuditToolCall {
+                        id: tc.id.clone(),
+                        name: tc.name.clone(),
+                        arguments: tc.arguments.clone(),
+                    })
+                    .collect(),
+                usage: result.usage.as_ref().map(|u| LlmAuditUsage {
+                    prompt_tokens: u.prompt_tokens,
+                    completion_tokens: u.completion_tokens,
+                    total_tokens: u.total_tokens,
+                }),
+            };
+            self.record_audit(
+                "chat_stream",
+                &url,
+                duration_ms,
+                200,
+                audit_request,
+                Some(audit_response),
+                None,
+            );
+        }
 
         Ok(LlmResponse {
             content: result.content,

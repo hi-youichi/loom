@@ -129,8 +129,12 @@ pub(crate) enum Command {
     /// Run autonomous goal loop with an external coding tool
     Goal(GoalArgs),
     /// Manage skills (list, show, create, edit, delete)
-    Skills(SkillsArgs),
+Skills(SkillsArgs),
+    /// Sync, show, and repair skill usage tracking (.usage.json)
+    SkillUsage(SkillUsageArgs),
     /// Run and manage skill evolution
+    Evolve,
+    /// Manage skill lifecycle (stale detection, archiving)
     Curator(CuratorCmdArgs),
     /// View and edit agent memory (user preferences, project facts)
     Memory(MemoryCmdArgs),
@@ -460,6 +464,46 @@ pub(crate) enum SkillsCommand {
     Edit { name: String },
     /// Delete a skill
     Delete { name: String },
+}
+
+/// Arguments for the `skill-usage` subcommand.
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct SkillUsageArgs {
+    #[command(subcommand)]
+    pub sub: SkillUsageCommand,
+}
+
+#[derive(clap::Subcommand, Debug, Clone)]
+pub enum SkillUsageCommand {
+    /// Scan skills directory and sync .usage.json
+    Sync {
+        /// Skills root directory (default: ~/.loom/data/skills)
+        #[arg(long, value_name = "PATH")]
+        path: Option<PathBuf>,
+        /// Preview changes without writing files
+        #[arg(long)]
+        dry_run: bool,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+        /// Filter by source: auto, curated, evolved, or all (default)
+        #[arg(long, value_name = "SOURCE", default_value = "all")]
+        source: String,
+    },
+    /// Show current .usage.json content
+    Show {
+        /// Skill name to show (omit to show all)
+        name: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Repair a corrupted .usage.json
+    Repair {
+        /// Skills root directory (default: ~/.loom/data/skills)
+        #[arg(long, value_name = "PATH")]
+        path: Option<PathBuf>,
+    },
 }
 
 #[derive(clap::Subcommand, Debug, Clone)]

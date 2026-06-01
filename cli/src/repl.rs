@@ -29,6 +29,8 @@ fn cmd_to_runcmd(cmd: &Command) -> RunCmd {
         Command::Agent(_) => unreachable!("agent handled in main"),
         Command::Goal(_) => unreachable!("goal handled in main"),
         Command::Skills(_) => unreachable!("skills handled in main"),
+        Command::SkillUsage(_) => unreachable!("skill-usage handled in main"),
+        Command::Evolve => unreachable!("evolve handled in main"),
 
         Command::Curator(_) => unreachable!("curator handled in main"),
         Command::Memory(_) => unreachable!("memory handled in main"),

@@ -216,31 +216,50 @@ impl LlmAuditConfig {
     /// 2. config.toml [logging.llm] settings
     /// 3. Default: `~/.loom/logs/llm`, enabled=false
     pub fn from_env() -> Self {
-        // Load config.toml logging settings
-        let logging_config = env_config::load_full_config("loom")
-            .ok()
-            .map(|c| c.logging);
+        // Load config.toml settings: prefer [llm.audit], fall back to [logging.llm]
+        let full_config = env_config::load_full_config("loom").ok();
+        let llm_audit_config = full_config.as_ref().and_then(|c| {
+            // [llm.audit] section takes priority
+            let audit = &c.llm.audit;
+            if audit.enabled || audit.path.is_some() {
+                return Some(audit.clone());
+            }
+            // Fall back to [logging.llm] section
+            None
+        });
 
-        // Resolve enabled: env var > config.toml > default false
+        // Resolve enabled: env var > [llm.audit] > [logging.llm] > default false
         let enabled = std::env::var("LLM_AUDIT_ENABLED")
             .ok()
             .map(|v| v == "1" || v.to_lowercase() == "true")
             .unwrap_or_else(|| {
-                logging_config
+                llm_audit_config
                     .as_ref()
-                    .map(|c| c.llm.enabled)
-                    .unwrap_or(false)
+                    .map(|c| c.enabled)
+                    .unwrap_or_else(|| {
+                        full_config
+                            .as_ref()
+                            .map(|c| c.logging.llm.enabled)
+                            .unwrap_or(false)
+                    })
             });
 
-        // Resolve path: env var > config.toml > default ~/.loom/logs/llm
+        // Resolve path: env var > [llm.audit] > [logging.llm] > default ~/.loom/logs/llm
         let path = std::env::var("LLM_AUDIT_PATH")
             .ok()
-            .map(PathBuf::from)
+            .map(|p| expand_tilde(PathBuf::from(&p).as_path()))
             .unwrap_or_else(|| {
-                logging_config
+                llm_audit_config
                     .as_ref()
-                    .and_then(|c| c.llm.path.clone())
-                    .unwrap_or_else(env_config::home::llm_logs_dir)
+                    .and_then(|c| c.path.clone())
+                    .map(|p| expand_tilde(p.as_path()))
+                    .unwrap_or_else(|| {
+                        full_config
+                            .as_ref()
+                            .and_then(|c| c.logging.llm.path.clone())
+                            .map(|p| expand_tilde(p.as_path()))
+                            .unwrap_or_else(env_config::home::llm_logs_dir)
+                    })
             });
 
         Self { enabled, path }
@@ -249,8 +268,16 @@ impl LlmAuditConfig {
     /// Create a `FileLlmAuditLog` if enabled, otherwise return `None`.
     pub fn build(self) -> Option<FileLlmAuditLog> {
         if !self.enabled {
+            tracing::debug!(
+                path = %self.path.display(),
+                "LLM audit disabled, skipping"
+            );
             return None;
         }
+        tracing::info!(
+            path = %self.path.display(),
+            "LLM audit enabled, creating FileLlmAuditLog"
+        );
         Some(FileLlmAuditLog::new(self.path))
     }
 }
@@ -258,6 +285,16 @@ impl LlmAuditConfig {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Expand `~` at the start of a path to the user's home directory.
+fn expand_tilde(path: &std::path::Path) -> PathBuf {
+    if let Ok(rest) = path.strip_prefix("~") {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home).join(rest);
+        }
+    }
+    path.to_path_buf()
+}
 
 /// Create a standard audit entry with the given fields.
 #[allow(clippy::too_many_arguments)]
@@ -537,5 +574,25 @@ mod tests {
         assert!(entry.response.is_none());
         assert!(entry.error.is_none());
         assert!(!entry.id.is_empty());
+    }
+
+    #[test]
+    fn test_expand_tilde_with_home() {
+        let expanded = expand_tilde(PathBuf::from("~/.loom/logs/llm").as_path());
+        let home = std::env::var("HOME").unwrap();
+        assert_eq!(expanded, PathBuf::from(home).join(".loom/logs/llm"));
+    }
+
+    #[test]
+    fn test_expand_tilde_without_tilde() {
+        let expanded = expand_tilde(PathBuf::from("/absolute/path").as_path());
+        assert_eq!(expanded, PathBuf::from("/absolute/path"));
+    }
+
+    #[test]
+    fn test_expand_tilde_just_tilde() {
+        let expanded = expand_tilde(PathBuf::from("~").as_path());
+        let home = std::env::var("HOME").unwrap();
+        assert_eq!(expanded, PathBuf::from(home));
     }
 }
