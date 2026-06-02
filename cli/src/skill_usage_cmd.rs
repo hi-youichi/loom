@@ -54,7 +54,7 @@ async fn sync(
     let existing_data = store.load().unwrap_or_default();
 
     let mut created = Vec::new();
-    let mut updated: Vec<String> = Vec::new();
+    let updated: Vec<String> = Vec::new();
     let mut unchanged_count = 0;
 
     // Merge skills with existing data

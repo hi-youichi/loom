@@ -7,9 +7,34 @@
 //! or `loom models show <PROVIDER>`.
 
 use config::{load_full_config, ProviderDef};
-use loom::llm::{ModelInfo, ModelRegistry, ProviderConfig, ProviderModels};
+use loom::llm::{ModelInfo, ModelRegistry, ProviderConfig};
 use loom::RunError;
 use std::collections::HashMap;
+
+/// Result of querying models from a single provider.
+struct ProviderModels {
+    provider: String,
+    models: Vec<ModelInfo>,
+    error: Option<String>,
+}
+
+impl ProviderModels {
+    fn ok(provider: String, models: Vec<ModelInfo>) -> Self {
+        Self {
+            provider,
+            models,
+            error: None,
+        }
+    }
+
+    fn err(provider: String, error: String) -> Self {
+        Self {
+            provider,
+            models: Vec::new(),
+            error: Some(error),
+        }
+    }
+}
 
 /// Maximum number of models to display per provider before truncating.
 #[allow(dead_code)]

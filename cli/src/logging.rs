@@ -123,25 +123,6 @@ pub fn resolve_cli_log_path(
     Some(config::home::cli_logs_dir().join("loom-cli.log"))
 }
 
-/// Initializes tracing with optional file logging and rotation.
-///
-/// - With a resolved log file path (`--log-file` or `LOG_FILE`): logs go to file (with rotation) only
-/// - Without: logs are dropped (sink)
-///
-/// Returns `LogGuard` that must be kept alive for file logging to work.
-/// Panics if file logging fails to initialize.
-pub fn init(args: &LogArgs) -> LogGuard {
-    let filter = tracing_init::build_env_filter(&args.level, &["hyper_util=off"]);
-
-    let log_file = args.resolve_log_file();
-
-    if let Some(ref path) = log_file {
-        init_file_logging(path, args.rotate, args.format, filter)
-    } else {
-        init_sink_logging(filter)
-    }
-}
-
 /// Initializes tracing with logging config from config.toml.
 ///
 /// Takes the `logging` section from FullConfig and uses it for default values.
