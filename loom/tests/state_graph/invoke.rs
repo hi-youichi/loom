@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use loom::{Message, StateGraph, END, START};
+use loom::{AgentNode, Message, StateGraph, END, START};
 
 use crate::common::{AgentState, EchoAgent};
 
@@ -10,7 +10,7 @@ use crate::common::{AgentState, EchoAgent};
 async fn invoke_single_node_chain() {
     let mut graph = StateGraph::<AgentState>::new();
     graph
-        .add_node("echo", Arc::new(EchoAgent::new()))
+        .add_node("echo", Arc::new(AgentNode::new(EchoAgent::new())))
         .add_edge(START, "echo")
         .add_edge("echo", END);
 

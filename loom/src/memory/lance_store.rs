@@ -16,7 +16,7 @@ use lancedb::query::ExecutableQuery;
 use lancedb::query::QueryBase;
 
 use crate::memory::embedder::Embedder;
-use crate::memory::store::{Namespace, Store, StoreError, StoreSearchHit};
+use crate::memory::{Namespace, Store, StoreError, StoreSearchHit};
 
 const TABLE_NAME: &str = "store";
 

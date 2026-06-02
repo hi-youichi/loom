@@ -20,10 +20,10 @@ use serde_json::Value;
 use std::collections::HashMap;
 use tracing::{debug, trace, warn};
 
-use crate::cli_run::ActiveOperationKind;
+use crate::cli_run::{AnyStreamEvent, RunCancellation};
 use crate::error::AgentError;
 use crate::goal_runner::state::ToolError;
-use crate::graph::{run_cancellable, GraphInterrupt, Interrupt, Next, Node, RunContext};
+use crate::graph::{run_cancellable, Interrupt, Next, Node, RunContext};
 use crate::helve::{tools_requiring_approval, ApprovalPolicy, APPROVAL_REQUIRED_EVENT_TYPE};
 use crate::memory::uuid6;
 use crate::state::tool_output_normalizer::{
@@ -142,6 +142,11 @@ fn approval_required_payload(tc: &ToolCall, args: &Value) -> Value {
 pub struct ActNode {
     tools: Box<dyn ToolSource>,
     approval_policy: Option<ApprovalPolicy>,
+    /// Shared cancellation handle with active-operation tracking (loom-level, not in loom-graph RunContext).
+    run_cancellation: Option<RunCancellation>,
+    /// Optional sender for forwarding AnyStreamEvent to external consumer (loom-level).
+    /// Wrapped in Mutex so it can be updated per-run even though ActNode is behind Arc.
+    any_stream_event_sender: std::sync::Mutex<Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>>,
 }
 
 impl ActNode {
@@ -149,12 +154,25 @@ impl ActNode {
         Self {
             tools,
             approval_policy: None,
+            run_cancellation: None,
+            any_stream_event_sender: std::sync::Mutex::new(None),
         }
     }
 
     pub fn with_approval_policy(mut self, policy: Option<ApprovalPolicy>) -> Self {
         self.approval_policy = policy;
         self
+    }
+
+    pub fn with_run_cancellation(mut self, rc: Option<RunCancellation>) -> Self {
+        self.run_cancellation = rc;
+        self
+    }
+
+    /// Set the AnyStreamEvent sender for the current run.
+    /// Called before each run since ActNode is behind Arc.
+    pub fn set_any_stream_event_sender(&self, sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>) {
+        *self.any_stream_event_sender.lock().unwrap() = sender;
     }
 
     fn needs_approval(&self, tool_name: &str) -> bool {
@@ -294,10 +312,9 @@ impl Node<ReActState> for ActNode {
                     None => {
                         let payload = approval_required_payload(tc, &args);
                         self.tools.set_call_context(None);
-                        return Err(AgentError::Interrupted(GraphInterrupt(Interrupt::new(
+                        return Err(AgentError::Interrupted(Interrupt::new(
                             payload,
-                        ))));
-                    }
+                        )));                    }
                     Some(false) => {
                         let normalized = normalize_tool_output(
                             &tc.name,
@@ -523,10 +540,9 @@ impl Node<ReActState> for ActNode {
                         }
                         let payload = approval_required_payload(tc, &args);
                         self.tools.set_call_context(None);
-                        return Err(AgentError::Interrupted(GraphInterrupt(Interrupt::new(
+                        return Err(AgentError::Interrupted(Interrupt::new(
                             payload,
-                        ))));
-                    }
+                        )));                    }
                     Some(false) => {
                         let normalized = normalize_tool_output(
                             &tc.name,
@@ -651,8 +667,8 @@ impl Node<ReActState> for ActNode {
                 thread_id: run_ctx.config.thread_id.clone(),
                 user_id: run_ctx.config.user_id.clone(),
                 depth: run_ctx.config.depth.unwrap_or(0),
-                run_cancellation: run_ctx.run_cancellation.clone(),
-                any_stream_event_sender: run_ctx.any_stream_event_sender.clone(),
+                run_cancellation: self.run_cancellation.clone(),
+                any_stream_event_sender: self.any_stream_event_sender.lock().unwrap().clone(),
                 acp_session_id: run_ctx.config.acp_session_id.clone(),
             };
             self.tools.set_call_context(Some(tool_ctx.clone()));
@@ -676,8 +692,6 @@ impl Node<ReActState> for ActNode {
             let result = match run_cancellable(
                 tool_call,
                 run_ctx.cancellation.as_ref(),
-                run_ctx.run_cancellation.as_ref(),
-                ActiveOperationKind::ToolTask,
             )
             .await
             {

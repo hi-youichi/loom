@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use rusqlite::params;
 
 use crate::memory::embedder::Embedder;
-use crate::memory::store::{
+use crate::memory::{
     Item, ListNamespacesOptions, MatchCondition, Namespace, NamespaceMatchType, SearchItem,
     SearchOptions, Store, StoreError, StoreOp, StoreOpResult, StoreSearchHit,
 };

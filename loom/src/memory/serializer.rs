@@ -15,7 +15,7 @@
 //! - `"bytes"` - Raw bytes (no transformation)
 //! - `"json"` - JSON-encoded data
 
-use crate::memory::checkpointer::CheckpointError;
+use crate::memory::CheckpointError;
 
 /// Type tag for null/empty values.
 pub const TYPE_NULL: &str = "null";

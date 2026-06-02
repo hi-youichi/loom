@@ -6,14 +6,18 @@
 
 use crate::memory::uuid6;
 use crate::memory::CheckpointUserMeta;
-use crate::message::{AssistantToolCall, Message};
 use crate::llm::ToolChoiceMode;
 use crate::model_spec::ModelTier;
-use crate::LlmUsage;
+use crate::llm::LlmUsage;
+use crate::message::{AssistantToolCall, Message};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use crate::state::tool_output_normalizer::{ToolOutputStrategy, ToolStorageRef};
+
+/// Alias for LLM tool call (from loom-llm crate).
+/// See [`loom_llm::ToolCall`] for the full definition.
+pub type ToolCall = loom_llm::ToolCall;
 
 /// Model configuration carried in [`ReActState`].
 ///
@@ -49,23 +53,6 @@ impl Default for ModelConfig {
             tool_choice: None,
         }
     }
-}
-
-/// A single tool invocation produced by the LLM (Think node) and consumed by Act.
-///
-/// Aligns with MCP `tools/call`: `name` and `arguments` (JSON string or object).
-/// Optional `id` can be used to correlate with `ToolResult::call_id` in Observe.
-///
-/// **Interaction**: Written by ThinkNode from LLM output; read by ActNode to call
-/// `ToolSource::call_tool(name, arguments)`.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-pub struct ToolCall {
-    /// Tool name as registered in ToolSource (e.g. MCP tools/list).
-    pub name: String,
-    /// Arguments as JSON string; parse in Act when calling the tool.
-    pub arguments: String,
-    /// Optional id to match with ToolResult; useful when merging results in Observe.
-    pub id: Option<String>,
 }
 
 /// Result of executing one tool call (Act node output, Observe node input).

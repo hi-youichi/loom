@@ -34,7 +34,7 @@ pub use curator::{
     LlmPassResult,         // +new: Hermes alignment
     // LLM review types
     LlMReviewResult, SkillCluster, PruningDecision, ConsolidationDecision,
-    ToolCall, AbsorbedIntoDeclaration, ClassificationResult, SkillSnapshot,
+    CuratorToolCall, AbsorbedIntoDeclaration, ClassificationResult, SkillSnapshot,
     CuratorRunReport,
     // Public functions
     parse_llm_review_response, build_llm_prompt, reconcile_classification,

@@ -60,7 +60,7 @@ impl RunRequest {
         &self,
         model: &model_spec_core::spec::Model,
     ) -> Result<(), crate::AgentError> {
-        use crate::message::UserContent;
+        use crate::message::{content_part_modality, UserContent};
 
         let UserContent::Multimodal(parts) = &self.message else {
             return Ok(());
@@ -72,7 +72,7 @@ impl RunRequest {
         }
 
         for part in parts {
-            let required = part.modality();
+            let required = content_part_modality(part);
             if required != model_spec_core::spec::ModalityType::Text
                 && !modalities.input.contains(&required)
             {

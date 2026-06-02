@@ -9,7 +9,6 @@ use serde_json::Value;
 use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, trace};
 
-use crate::cli_run::ActiveOperationKind;
 use crate::error::AgentError;
 use crate::graph::{run_cancellable, Next, RunContext};
 use crate::llm::{LlmClient, LlmProvider, LlmResponse, ToolCallDelta};
@@ -281,8 +280,6 @@ impl Node<ReActState> for ThinkNode {
         let (response, streamed_chunks, first_token_at) = match run_cancellable(
             llm_call,
             ctx.cancellation.as_ref(),
-            ctx.run_cancellation.as_ref(),
-            ActiveOperationKind::Llm,
         )
         .await
         {

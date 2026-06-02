@@ -4,7 +4,7 @@
 
 use async_trait::async_trait;
 
-use crate::memory::store::StoreError;
+use crate::memory::StoreError;
 
 /// Produces fixed-size float vectors from text. Used by [`crate::memory::LanceStore`]
 /// for embedding value text on put and query text on search.

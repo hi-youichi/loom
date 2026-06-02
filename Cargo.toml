@@ -2,6 +2,11 @@
 resolver = "2"
 members = [
     "loom",
+    "loom-llm",
+    "loom-curator",
+    "loom-skill",
+    "loom-graph",
+    "loom-pregel",
     "config",
     "model-spec-core",
     "loom-examples",

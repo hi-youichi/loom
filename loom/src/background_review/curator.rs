@@ -1,4 +1,7 @@
-use super::curator_backup::CuratorBackup;
+// Re-export state::ToolCall as CuratorToolCall for classification functions
+// that need structured args (HashMap) instead of JSON string.
+pub use crate::state::react_state::ToolCall as CuratorToolCall;
+
 use super::prompts::CURATOR_REVIEW_PROMPT;
 use super::skill_registry::{Lifecycle, SkillContent, SkillError, SkillMeta, SkillRegistry, Source};
 use super::skill_usage::{SkillUsageReport, SkillUsageStore};
@@ -10,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use thiserror::Error;
-use tokio::runtime::Runtime;
+
 use tracing::{debug, info, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -470,7 +473,7 @@ impl Curator {
         Ok(())
     }
 
-    /// 运行 LLM 审查 pass（Phase 5 核心实现）
+/// 运行 LLM 审查 pass（Phase 5 核心实现）
     ///
     /// 对应 Hermes `Curator._run_llm_review()`:
     /// 1. 收集所有 Active 技能内容
@@ -480,19 +483,21 @@ impl Curator {
     ///
     /// 注意：不执行实际操作（合并/归档），仅返回 LLM 分析结果。
     /// 调用方负责后续的三层分类仲裁和实际执行。
-    pub fn run_llm_review(
+    pub async fn run_llm_review(
         &self,
-        llm: &impl LlmClient,
+        llm: &dyn LlmClient,
     ) -> Result<LlMReviewResult, CuratorError> {
         // 预加载所有技能元数据
         let all_skills = self.skills.list().map_err(|e| CuratorError::SkillOperationFailed(e.to_string()))?;
-
-        // 仅审查 Active 技能
-        let active_skills: Vec<SkillContent> = all_skills
+        let active_skills: Vec<_> = all_skills
             .iter()
-            .filter(|m| m.lifecycle == Lifecycle::Active && !m.pinned)
+            .filter(|m| m.lifecycle == Lifecycle::Active)
             .filter_map(|m| self.skills.load(&m.name).ok())
             .collect();
+
+        if active_skills.is_empty() {
+            return Ok(LlMReviewResult::default());
+        }
 
         let usage_reports = self
             .skill_usage
@@ -501,15 +506,11 @@ impl Curator {
         let prompt = build_llm_prompt(&active_skills, &usage_reports);
         info!("Curator LLM review: {} active skills", active_skills.len());
 
-        // 同步包装异步 LLM 调用
-        let rt = Runtime::new().map_err(|e| CuratorError::LlmError(format!("failed to create runtime: {}", e)))?;
-        let raw = rt.block_on(async {
-            let messages = vec![Message::user(UserContent::Text(prompt.clone()))];
-            let resp = llm.invoke(&messages).await.map_err(|e| CuratorError::LlmError(e.to_string()))?;
-            Ok::<_, CuratorError>(resp.content)
-        })?;
+        // 直接使用异步 LLM 调用（由外层运行时驱动）
+        let messages = vec![Message::user(UserContent::Text(prompt.clone()))];
+        let resp = llm.invoke(&messages).await.map_err(|e| CuratorError::LlmError(e.to_string()))?;
 
-        let result = parse_llm_review_response(&raw);
+        let result = parse_llm_review_response(&resp.content);
         debug!(
             "LLM review parsed: {} clusters, {} prunings, {} consolidations",
             result.clusters.len(),
@@ -911,7 +912,7 @@ Ok(counts)
 
 fn build_rename_summary(
     before_names: &HashSet<String>,
-    after_report: &[SkillUsageReport],
+    _after_report: &[SkillUsageReport],
 ) -> Result<Option<String>, SkillError> {
     let mut lines = Vec::new();
     let total_removed = before_names.len();
@@ -945,8 +946,8 @@ fn write_run_report(
     let run_dir = root.join(&stamp);
     fs::create_dir(&run_dir)?;
 
-    let run_json_path = run_dir.join("run.json");
-    let run_json = serde_json::json!({
+    let _run_json_path = run_dir.join("run.json");
+    let _run_json = serde_json::json!({
         "started_at": started_at.to_rfc3339(),
         "auto_summary": auto_summary,
     });
@@ -1348,12 +1349,7 @@ pub struct SkillSnapshot {
     pub body_len: usize,
 }
 
-/// tool_call 工具调用记录（来自 Herme's `ToolCall`）
-#[derive(Debug, Clone)]
-pub struct ToolCall {
-    pub name: String,
-    pub args: std::collections::HashMap<String, serde_json::Value>,
-}
+
 
 /// absorbed_into 声明（Layer 1）
 #[derive(Debug, Clone)]
@@ -1379,11 +1375,16 @@ pub fn reconcile_classification(
     removed: &[String],
     _added: &[String],
     after_names: &std::collections::HashSet<String>,
-    tool_calls: &[ToolCall],
+    tool_calls: &[CuratorToolCall],
     llm_result: &LlMReviewResult,
 ) -> ClassificationResult {
+    // Extract args as HashMap from CuratorToolCall
+    let extract_args = |call: &CuratorToolCall| -> std::collections::HashMap<String, serde_json::Value> {
+        serde_json::from_str(call.arguments.as_str()).unwrap_or_default()
+    };
+
     // Layer 1: 解析 absorbed_into 声明
-    let declarations = extract_absorbed_into_declarations(tool_calls);
+    let declarations = extract_absorbed_into_declarations(tool_calls, &extract_args);
 
     // Layer 2: 从 LLM 结果提取
     let model_cons: std::collections::HashMap<_, _> = llm_result
@@ -1398,7 +1399,7 @@ pub fn reconcile_classification(
         .collect();
 
     // Layer 3: 启发式搜索
-    let heuristic = classify_removed_skills(removed, after_names, tool_calls);
+    let heuristic = classify_removed_skills(removed, after_names, tool_calls, &extract_args);
     let heur_cons: std::collections::HashMap<_, _> = heuristic
         .consolidated
         .iter()
@@ -1439,8 +1440,12 @@ pub fn reconcile_classification(
 }
 
 /// Layer 1: 从 tool_calls 解析 absorbed_into 声明
+///
+/// 使用 CuratorToolCall（即 state::ToolCall）的 arguments JSON 字段，
+/// 通过闭包 `extract_args` 解析为 HashMap 以提取 absorbed_into 声明。
 fn extract_absorbed_into_declarations(
-    tool_calls: &[ToolCall],
+    tool_calls: &[CuratorToolCall],
+    extract_args: &impl Fn(&CuratorToolCall) -> std::collections::HashMap<String, serde_json::Value>,
 ) -> std::collections::HashMap<String, AbsorbedIntoDeclaration> {
     let mut declarations = std::collections::HashMap::new();
 
@@ -1448,7 +1453,7 @@ fn extract_absorbed_into_declarations(
         if call.name != "skill_manage" {
             continue;
         }
-        let args = &call.args;
+        let args = extract_args(call);
         if !args.contains_key("absorbed_into") {
             continue;
         }
@@ -1466,10 +1471,14 @@ fn extract_absorbed_into_declarations(
 }
 
 /// Layer 3: 启发式搜索
+///
+/// 使用 CuratorToolCall（即 state::ToolCall）的 arguments JSON 字段，
+/// 通过闭包 `extract_args` 解析为 HashMap 以搜索吸收目标。
 fn classify_removed_skills(
     removed: &[String],
     after_names: &std::collections::HashSet<String>,
-    tool_calls: &[ToolCall],
+    tool_calls: &[CuratorToolCall],
+    extract_args: &impl Fn(&CuratorToolCall) -> std::collections::HashMap<String, serde_json::Value>,
 ) -> ClassificationResult {
     let destinations: std::collections::HashSet<String> = after_names.iter().cloned().collect();
     let mut consolidated = Vec::new();
@@ -1478,7 +1487,7 @@ fn classify_removed_skills(
     for name in removed {
         let mut found_into: Option<String> = None;
         'search: for call in tool_calls {
-            let args = &call.args;
+            let args = extract_args(call);
             let target = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
 
             if target.is_empty() || target == name {

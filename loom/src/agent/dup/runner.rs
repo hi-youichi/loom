@@ -243,14 +243,19 @@ impl DupRunner {
             self.system_prompt.as_deref(),
         )
         .await?;
+        let event_forwarder: Option<std::sync::Arc<dyn Fn(StreamEvent<DupState>) + Send + Sync>> =
+            any_stream_event_sender.map(|sender| {
+                std::sync::Arc::new(move |ev: StreamEvent<DupState>| {
+                    sender(AnyStreamEvent::Dup(ev));
+                }) as std::sync::Arc<dyn Fn(StreamEvent<DupState>) + Send + Sync>
+            });
         runner_common::run_stream_with_config(
             &self.compiled,
             state,
             run_config,
             on_event,
             self.cancellation.clone(),
-            None,
-            any_stream_event_sender,
+            event_forwarder,
         )
         .await
         .map_err(|e| match e {

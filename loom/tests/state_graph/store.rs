@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use loom::{InMemoryStore, StateGraph, Store, END, START};
+use loom::{AgentNode, InMemoryStore, StateGraph, Store, END, START};
 
 use crate::common::{AgentState, EchoAgent};
 
@@ -11,7 +11,7 @@ use crate::common::{AgentState, EchoAgent};
 async fn compile_without_store_has_no_store() {
     let mut graph = StateGraph::<AgentState>::new();
     graph
-        .add_node("echo", Arc::new(EchoAgent::new()))
+        .add_node("echo", Arc::new(AgentNode::new(EchoAgent::new())))
         .add_edge(START, "echo")
         .add_edge("echo", END);
 
@@ -25,7 +25,7 @@ async fn compile_with_store_holds_store() {
     let store: Arc<dyn Store> = Arc::new(InMemoryStore::new());
     let mut graph = StateGraph::<AgentState>::new();
     graph
-        .add_node("echo", Arc::new(EchoAgent::new()))
+        .add_node("echo", Arc::new(AgentNode::new(EchoAgent::new())))
         .add_edge(START, "echo")
         .add_edge("echo", END);
 

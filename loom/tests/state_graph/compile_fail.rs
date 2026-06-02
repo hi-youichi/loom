@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use loom::{CompilationError, StateGraph, END, START};
+use loom::{AgentNode, CompilationError, StateGraph, END, START};
 
 use crate::common::{AgentState, EchoAgent};
 
@@ -10,7 +10,7 @@ use crate::common::{AgentState, EchoAgent};
 #[tokio::test]
 async fn compile_fails_when_edge_refers_to_unknown_node() {
     let mut graph = StateGraph::<AgentState>::new();
-    graph.add_node("echo", Arc::new(EchoAgent::new()));
+    graph.add_node("echo", Arc::new(AgentNode::new(EchoAgent::new())));
     graph.add_edge(START, "echo");
     graph.add_edge("echo", "missing");
 
@@ -24,7 +24,7 @@ async fn compile_fails_when_edge_refers_to_unknown_node() {
 #[tokio::test]
 async fn compile_fails_when_no_edge_from_start() {
     let mut graph = StateGraph::<AgentState>::new();
-    graph.add_node("echo", Arc::new(EchoAgent::new()));
+    graph.add_node("echo", Arc::new(AgentNode::new(EchoAgent::new())));
     graph.add_edge("echo", END);
 
     match graph.compile() {
@@ -38,7 +38,7 @@ async fn compile_fails_when_no_edge_from_start() {
 #[tokio::test]
 async fn compile_fails_when_no_edge_to_end() {
     let mut graph = StateGraph::<AgentState>::new();
-    graph.add_node("echo", Arc::new(EchoAgent::new()));
+    graph.add_node("echo", Arc::new(AgentNode::new(EchoAgent::new())));
     graph.add_edge(START, "echo");
 
     match graph.compile() {
@@ -52,8 +52,8 @@ async fn compile_fails_when_no_edge_to_end() {
 #[tokio::test]
 async fn compile_fails_when_branch_from_start() {
     let mut graph = StateGraph::<AgentState>::new();
-    graph.add_node("a", Arc::new(EchoAgent::new()));
-    graph.add_node("b", Arc::new(EchoAgent::new()));
+    graph.add_node("a", Arc::new(AgentNode::new(EchoAgent::new())));
+    graph.add_node("b", Arc::new(AgentNode::new(EchoAgent::new())));
     graph.add_edge(START, "a");
     graph.add_edge(START, "b");
     graph.add_edge("a", END);

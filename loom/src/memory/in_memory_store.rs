@@ -10,7 +10,7 @@ use std::time::SystemTime;
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 
-use crate::memory::store::{
+use crate::memory::{
     Item, ListNamespacesOptions, MatchCondition, Namespace, NamespaceMatchType, SearchItem,
     SearchOptions, Store, StoreError, StoreOp, StoreOpResult, StoreSearchHit,
 };
@@ -216,21 +216,21 @@ impl Store for InMemoryStore {
                 hits.retain(|h| {
                     let field_value = h.item.value.get(field);
                     match (field_value, op) {
-                        (Some(v), crate::memory::store::FilterOp::Eq(expected)) => v == expected,
-                        (Some(v), crate::memory::store::FilterOp::Ne(expected)) => v != expected,
-                        (Some(v), crate::memory::store::FilterOp::Gt(expected)) => {
+                        (Some(v), crate::memory::FilterOp::Eq(expected)) => v == expected,
+                        (Some(v), crate::memory::FilterOp::Ne(expected)) => v != expected,
+                        (Some(v), crate::memory::FilterOp::Gt(expected)) => {
                             compare_json(v, expected) == Some(std::cmp::Ordering::Greater)
                         }
-                        (Some(v), crate::memory::store::FilterOp::Gte(expected)) => {
+                        (Some(v), crate::memory::FilterOp::Gte(expected)) => {
                             matches!(
                                 compare_json(v, expected),
                                 Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal)
                             )
                         }
-                        (Some(v), crate::memory::store::FilterOp::Lt(expected)) => {
+                        (Some(v), crate::memory::FilterOp::Lt(expected)) => {
                             compare_json(v, expected) == Some(std::cmp::Ordering::Less)
                         }
-                        (Some(v), crate::memory::store::FilterOp::Lte(expected)) => {
+                        (Some(v), crate::memory::FilterOp::Lte(expected)) => {
                             matches!(
                                 compare_json(v, expected),
                                 Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
@@ -391,7 +391,7 @@ fn compare_json(a: &serde_json::Value, b: &serde_json::Value) -> Option<std::cmp
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::store::FilterOp;
+    use crate::memory::FilterOp;
     use serde_json::json;
     use std::collections::HashMap;
 

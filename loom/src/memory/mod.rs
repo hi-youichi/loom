@@ -48,18 +48,25 @@
 //! `SqliteVecStore`, `LanceStore`, and `InMemoryVectorStore` require an
 //! [`Embedder`] for vector indexing; search with `query` uses semantic similarity.
 
-mod checkpoint;
-mod checkpointer;
-mod config;
+// Re-export core types from loom-graph crate
+pub use loom_graph::memory::{
+    Checkpoint, CheckpointError, CheckpointListItem, CheckpointMetadata, CheckpointSource,
+    CheckpointTuple, CheckpointUserMeta, Checkpointer, ChannelVersions, KernelMetadata,
+    PendingWrite, RunnableConfig, Store, StoreError, StoreOp,
+    Item, SearchItem, Namespace,
+    FilterOp, ListNamespacesOptions, MatchCondition, NamespaceMatchType,
+    SearchOptions, StoreOpResult, StoreSearchHit,
+    writes_idx_map, uuid6, uuid6_with_params, Uuid6,
+    CHECKPOINT_VERSION, ERROR, INTERRUPT, RESUME, SCHEDULED,
+};
+
+// Concrete implementations (stay in loom)
 mod embedder;
 mod in_memory_store;
 mod in_memory_vector_store;
 mod memory_saver;
 mod openai_embedder;
 mod serializer;
-mod store;
-mod uuid6;
-
 #[cfg(feature = "lance")]
 mod lance_store;
 mod sqlite_saver;
@@ -67,24 +74,11 @@ mod sqlite_store;
 pub(crate) mod sqlite_util;
 mod sqlite_vec_store;
 
-pub use checkpoint::{
-    writes_idx_map, ChannelVersions, Checkpoint, CheckpointListItem, CheckpointSource,
-    CheckpointTuple, CheckpointUserMeta, KernelMetadata, PendingWrite, CHECKPOINT_VERSION, ERROR,
-    INTERRUPT, RESUME, SCHEDULED,
-};
-pub use checkpoint::CheckpointMetadata;
-pub use checkpointer::{CheckpointError, Checkpointer};
-pub use config::RunnableConfig;
 pub use in_memory_store::InMemoryStore;
 pub use memory_saver::MemorySaver;
 pub use serializer::{
     JsonSerializer, Serializer, TypedData, TypedSerializer, TYPE_BYTES, TYPE_JSON, TYPE_NULL,
 };
-pub use store::{
-    FilterOp, Item, ListNamespacesOptions, MatchCondition, Namespace, NamespaceMatchType,
-    SearchItem, SearchOptions, Store, StoreError, StoreOp, StoreOpResult, StoreSearchHit,
-};
-pub use uuid6::{uuid6, uuid6_with_params, Uuid6};
 
 pub use embedder::Embedder;
 pub use in_memory_vector_store::InMemoryVectorStore;

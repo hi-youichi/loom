@@ -120,28 +120,27 @@
 
 pub mod agent;
 pub mod cache;
-pub mod channels;
+pub use loom_graph::channels;
 pub mod cli_run;
 pub mod command;
 pub mod compress;
 pub mod config;
 pub mod error;
 pub mod export;
-pub mod graph;
+pub use loom_graph as graph;
 pub mod goal_runner;
 pub mod stream_display;
 pub mod helve;
 mod http_retry;
 #[cfg(test)]
 mod test_util;
-pub mod llm;
 pub mod lsp;
-pub mod managed;
+pub use loom_graph::managed;
 pub mod memory;
 pub mod message;
 pub mod model_spec;
 pub mod openai_sse;
-pub mod pregel;
+pub use loom_pregel as pregel;
 pub mod prompts;
 pub mod protocol;
 pub mod profile_convert;
@@ -158,8 +157,9 @@ pub mod tools;
 pub mod traits;
 pub mod user_message;
 pub mod title_generator;
-pub mod background_review;
 pub mod worktree;
+pub mod llm;
+pub mod background_review;
 
 pub use agent::react::{
     build_dup_runner, build_got_runner, build_react_initial_state, build_react_run_context,
@@ -196,7 +196,7 @@ pub use export::stream_event_to_format_a;
 pub use graph::{
     generate_dot, generate_text, log_graph_complete, log_graph_error, log_graph_start,
     log_node_complete, log_node_start, log_state_update, CompilationError, CompiledStateGraph,
-    DefaultInterruptHandler, GraphInterrupt, Interrupt, InterruptHandler, LoggingNodeMiddleware,
+    DefaultInterruptHandler, Interrupt, InterruptHandler, LoggingNodeMiddleware,
     NameNode, Next, Node, NodeMiddleware, RetryPolicy, RunContext, Runtime, StateGraph, END, START,
 };
 pub use helve::{
@@ -205,11 +205,11 @@ pub use helve::{
     ReactPromptInputs, APPROVAL_REQUIRED_EVENT_TYPE,
     EnvContext, OsInfo, LocaleInfo, ShellInfo, ProjectInfo, RuntimeInfo,
 };
-pub use llm::{ChatOpenAI, ChatOpenAICompat};
+
 pub use llm::{
-    CompletionTokensDetails, FixedLlmProvider, LlmClient, LlmProvider, LlmResponse, LlmUsage,
-    MockLlm, MultiRoundMockLlm, OpenAICompatProvider, OpenAIProvider, PromptTokensDetails, ToolCallDelta,
-    ToolChoiceMode,
+    ChatOpenAI, ChatOpenAICompat, CompletionTokensDetails, FixedLlmProvider, LlmClient,
+    LlmProvider, LlmResponse, LlmUsage, MockLlm, MultiRoundMockLlm, OpenAICompatProvider,
+    OpenAIProvider, PromptTokensDetails, ToolCallDelta, ToolChoiceMode,
 };
 pub use managed::{IsLastStep, ManagedValue};
 pub use memory::Embedder;
@@ -276,7 +276,7 @@ pub use tool_source::{
 pub use tools::shared::shell_output::{ShellOutput, format_shell_output, format_timed_out_output, format_terminal_timed_out_output, format_size, shell_output_dir, create_output_file, generate_run_id, make_relative};
 pub use tools::shared::canceller::{ChildProcessCanceller, setup_cancellation};
 pub use tools::{register_mcp_tools, BashTool, CommandExecutor, LocalCommandExecutor, McpToolAdapter};
-pub use traits::Agent;
+pub use traits::{Agent, AgentNode};
 pub use user_message::{
     NoOpUserMessageStore, SqliteUserMessageStore, UserMessageStore, UserMessageStoreError,
 };

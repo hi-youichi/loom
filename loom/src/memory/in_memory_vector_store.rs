@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use crate::memory::embedder::Embedder;
-use crate::memory::store::{
+use crate::memory::{
     Item, ListNamespacesOptions, MatchCondition, Namespace, NamespaceMatchType, SearchItem,
     SearchOptions, Store, StoreError, StoreOp, StoreOpResult, StoreSearchHit,
 };

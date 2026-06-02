@@ -32,6 +32,7 @@ use crate::agent::react::with_node_logging::WithNodeLogging;
 
 pub struct ReactRunner {
     compiled: CompiledStateGraph<ReActState>,
+    act_node: std::sync::Arc<ActNode>,
     checkpointer: Option<Arc<dyn Checkpointer<ReActState>>>,
     runnable_config: Option<RunnableConfig>,
     system_prompt: String,
@@ -62,7 +63,8 @@ impl ReactRunner {
     ) -> Result<Self, CompilationError> {
         let think = ThinkNode::new(Arc::clone(&provider));
         let act = ActNode::new(tool_source)
-            .with_approval_policy(approval_policy);
+            .with_approval_policy(approval_policy)
+            .with_run_cancellation(cancellation.clone());
         let observe = ObserveNode::with_loop();
 
         let compaction_cfg = compaction_config.unwrap_or_default();
@@ -92,10 +94,12 @@ impl ReactRunner {
                 .into_iter()
                 .collect();
 
+        let act = Arc::new(act);
+
         graph
             .add_node("think", Arc::new(think))
             .add_node("title", Arc::new(title_node))
-            .add_node("act", Arc::new(act))
+            .add_node("act", Arc::clone(&act) as Arc<dyn crate::graph::Node<ReActState>>)
             .add_node("observe", Arc::new(observe))
             .add_node("compress", compress_node)
             .add_edge(START, "think")
@@ -139,6 +143,7 @@ impl ReactRunner {
 
         Ok(Self {
             compiled,
+            act_node: act,
             checkpointer,
             runnable_config,
             system_prompt,
@@ -188,6 +193,19 @@ impl ReactRunner {
     where
         F: FnMut(StreamEvent<ReActState>),
     {
+        // Set the AnyStreamEvent sender on ActNode before the run.
+        // ActNode is behind Arc in the graph, so we use the Mutex-based setter.
+        self.act_node.set_any_stream_event_sender(any_stream_event_sender.clone());
+
+        // Bridge: wrap AnyStreamEvent sender into the StreamEvent-based forwarder
+        // expected by loom-graph's CompiledStateGraph::stream().
+        let event_forwarder: Option<std::sync::Arc<dyn Fn(StreamEvent<ReActState>) + Send + Sync>> =
+            any_stream_event_sender.map(|sender| {
+                std::sync::Arc::new(move |ev: StreamEvent<ReActState>| {
+                    sender(AnyStreamEvent::React(ev));
+                }) as std::sync::Arc<dyn Fn(StreamEvent<ReActState>) + Send + Sync>
+            });
+
         let run_config = config.or_else(|| self.runnable_config.clone());
         let state = build_react_initial_state(
             user_message,
@@ -202,8 +220,7 @@ impl ReactRunner {
             run_config,
             on_event,
             self.cancellation.as_ref().map(RunCancellation::token),
-            self.cancellation.clone(),
-            any_stream_event_sender,
+            event_forwarder,
         )
         .await
         .map_err(|e| match e {

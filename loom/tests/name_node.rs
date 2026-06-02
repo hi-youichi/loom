@@ -8,7 +8,7 @@ mod init_logging;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use loom::{Agent, AgentError, Message, NameNode, StateGraph, END, START};
+use loom::{Agent, AgentError, AgentNode, Message, NameNode, StateGraph, END, START};
 
 #[derive(Debug, Clone, Default)]
 struct AgentState {
@@ -46,7 +46,7 @@ async fn name_node_passes_through_state_and_continues() {
     let mut graph = StateGraph::<AgentState>::new();
     graph
         .add_node("placeholder", Arc::new(NameNode::new("placeholder")))
-        .add_node("echo", Arc::new(EchoAgent::new()))
+        .add_node("echo", Arc::new(AgentNode::new(EchoAgent::new())))
         .add_edge(START, "placeholder")
         .add_edge("placeholder", "echo")
         .add_edge("echo", END);

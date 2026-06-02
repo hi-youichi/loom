@@ -13,7 +13,7 @@ use async_openai::{
     Client,
 };
 
-use crate::memory::store::StoreError;
+use crate::memory::StoreError;
 
 /// OpenAI Embeddings client implementing [`Embedder`].
 ///

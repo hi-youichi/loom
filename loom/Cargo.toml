@@ -26,7 +26,19 @@ futures-util = "0.3"
 futures = "0.3"
 once_cell = "1.19"
 
+# LLM client (loom-llm crate)
+loom-llm = { path = "../loom-llm" }
+
+# Graph primitives (loom-graph crate)
+loom-graph = { path = "../loom-graph" }
+
+# Pregel runtime (loom-pregel crate)
+loom-pregel = { path = "../loom-pregel" }
+
+# The following are handled by loom-llm but kept for compatibility:
 async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
+reqwest = { version = "0.12", features = ["json"] }
+
 dotenv = { workspace = true }
 crossbeam-channel = "0.5"
 mcp_client = { git = "https://github.com/graphweave/mcm-rust", package = "mcp_client" }
@@ -43,9 +55,6 @@ arrow-schema = { version = "56.2", optional = true }
 
 # SQLite vector store (SqliteVecStore) for long-term memory with semantic search.
 sqlite-vec = "0.1"
-
-# HTTP client for web fetcher tool
-reqwest = { version = "0.12", features = ["json"] }
 
 # YAML tool definitions (embedded at compile time, parsed at runtime)
 serde_yaml = "0.9"

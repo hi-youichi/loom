@@ -6,8 +6,8 @@
 
 use async_trait::async_trait;
 
-use crate::memory::checkpoint::{Checkpoint, CheckpointListItem, CheckpointMetadata};
-use crate::memory::config::RunnableConfig;
+use crate::memory::{Checkpoint, CheckpointListItem, CheckpointMetadata};
+use crate::memory::RunnableConfig;
 
 /// Error type for checkpoint operations.
 #[derive(Debug, thiserror::Error)]

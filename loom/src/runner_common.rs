@@ -10,7 +10,6 @@ use std::sync::Arc;
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 
-use crate::cli_run::{AnyStreamEvent, RunCancellation};
 use crate::error::AgentError;
 use crate::graph::CompiledStateGraph;
 use crate::memory::{CheckpointError, Checkpointer, RunnableConfig};
@@ -86,8 +85,7 @@ pub async fn run_stream_with_config<S, F>(
     run_config: Option<RunnableConfig>,
     mut on_event: Option<F>,
     cancellation: Option<CancellationToken>,
-    run_cancellation: Option<RunCancellation>,
-    any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
+    event_forwarder: Option<Arc<dyn Fn(StreamEvent<S>) + Send + Sync>>,
 ) -> Result<StreamRunOutcome<S>, StreamRunError>
 where
     S: Clone + Send + Sync + std::fmt::Debug + 'static,
@@ -102,13 +100,13 @@ where
         StreamMode::Custom,
         StreamMode::Checkpoints,
     ]);
+
     let graph_stream = compiled.stream(
         initial_state,
         run_config,
         modes,
         cancellation,
-        run_cancellation,
-        any_stream_event_sender,
+        event_forwarder,
     );
     let mut stream = graph_stream.events;
     let mut final_state: Option<S> = None;

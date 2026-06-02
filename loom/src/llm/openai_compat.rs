@@ -484,7 +484,7 @@ impl ChatOpenAICompat {
                                         })
                                     }
                                     _ => {
-                                        let modality = p.modality();
+                                        let modality = crate::message::content_part_modality(p);
                                         tracing::warn!(
                                             modality = ?modality,
                                             "Modality not supported by OpenAI-compatible API, converting to placeholder. \

@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use loom::{AgentError, Message, Next, NodeMiddleware, StateGraph, END, START};
+use loom::{AgentNode, AgentError, Message, Next, NodeMiddleware, StateGraph, END, START};
 
 use crate::common::{AgentState, EchoAgent};
 
@@ -48,7 +48,7 @@ async fn compile_with_middleware_wraps_node_run() {
     let middleware = Arc::new(LoggingMiddleware::new());
     let mut graph = StateGraph::<AgentState>::new();
     graph
-        .add_node("echo", Arc::new(EchoAgent::new()))
+        .add_node("echo", Arc::new(AgentNode::new(EchoAgent::new())))
         .add_edge(START, "echo")
         .add_edge("echo", END);
 
@@ -69,7 +69,7 @@ async fn with_middleware_compile_wraps_node_run() {
     let middleware = Arc::new(LoggingMiddleware::new());
     let mut graph = StateGraph::<AgentState>::new();
     graph
-        .add_node("echo", Arc::new(EchoAgent::new()))
+        .add_node("echo", Arc::new(AgentNode::new(EchoAgent::new())))
         .add_edge(START, "echo")
         .add_edge("echo", END);
 

@@ -82,7 +82,7 @@ pub(super) fn messages_to_openai(messages: &[Message]) -> Vec<ChatCompletionRequ
                                 | ContentPart::PdfUrl { .. }
                                 | ContentPart::PdfBase64 { .. }
                                 | ContentPart::File { .. } => {
-                                    let modality = p.modality();
+                                    let modality = crate::message::content_part_modality(p);
                                     tracing::warn!(
                                         modality = ?modality,
                                         "Modality not supported by OpenAI Chat API, converting to placeholder. \

@@ -8,12 +8,12 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use rusqlite::params;
 
-use crate::memory::checkpoint::{
+use crate::memory::{
     ChannelVersions, Checkpoint, CheckpointListItem, CheckpointMetadata, CheckpointSource,
     KernelMetadata, CHECKPOINT_VERSION,
 };
-use crate::memory::checkpointer::{CheckpointError, Checkpointer};
-use crate::memory::config::RunnableConfig;
+use crate::memory::{CheckpointError, Checkpointer};
+use crate::memory::RunnableConfig;
 use crate::memory::serializer::Serializer;
 use std::collections::HashMap;
 

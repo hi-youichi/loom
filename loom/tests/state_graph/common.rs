@@ -3,7 +3,7 @@
 //! Used by compile_fail, invoke, store, and middleware test modules.
 
 use async_trait::async_trait;
-use loom::{Agent, AgentError, Message};
+use loom::{Agent, AgentError, AgentNode, Message};
 
 #[derive(Debug, Clone, Default)]
 pub struct AgentState {

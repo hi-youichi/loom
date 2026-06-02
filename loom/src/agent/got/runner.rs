@@ -202,14 +202,19 @@ impl GotRunner {
             run_config.as_ref(),
         )
         .await?;
+        let event_forwarder: Option<std::sync::Arc<dyn Fn(StreamEvent<GotState>) + Send + Sync>> =
+            any_stream_event_sender.map(|sender| {
+                std::sync::Arc::new(move |ev: StreamEvent<GotState>| {
+                    sender(AnyStreamEvent::Got(ev));
+                }) as std::sync::Arc<dyn Fn(StreamEvent<GotState>) + Send + Sync>
+            });
         runner_common::run_stream_with_config(
             &self.compiled,
             state,
             run_config,
             on_event,
             self.cancellation.clone(),
-            None,
-            any_stream_event_sender,
+            event_forwarder,
         )
         .await
         .map_err(|e| match e {

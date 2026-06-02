@@ -8,9 +8,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 
-use crate::memory::checkpoint::{Checkpoint, CheckpointListItem, CheckpointMetadata};
-use crate::memory::checkpointer::{CheckpointError, Checkpointer};
-use crate::memory::config::RunnableConfig;
+use crate::memory::{Checkpoint, CheckpointListItem, CheckpointMetadata};
+use crate::memory::{CheckpointError, Checkpointer};
+use crate::memory::RunnableConfig;
 
 /// In-memory checkpointer. Key: (thread_id, checkpoint_ns); each thread has a list of checkpoints.
 ///
@@ -150,7 +150,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::checkpoint::{
+    use crate::memory::{
         Checkpoint, CheckpointSource, KernelMetadata, CHECKPOINT_VERSION,
     };
 

@@ -4,8 +4,8 @@
 //! state, along with the frontier metadata needed to resume execution or inspect
 //! history.
 
-use super::config::RunnableConfig;
-use super::uuid6::uuid6;
+use crate::memory::RunnableConfig;
+use crate::memory::uuid6;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::SystemTime;
