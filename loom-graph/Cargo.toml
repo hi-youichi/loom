@@ -1,0 +1,29 @@
+[package]
+name = "loom-graph"
+version.workspace = true
+edition.workspace = true
+description = "StateGraph, channels, and graph execution primitives for Loom"
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Core dependencies
+loom-llm = { path = "../loom-llm" }
+stream-event = { path = "../stream-event" }
+
+# Async runtime
+tokio = { workspace = true, features = ["full"] }
+async-trait = { workspace = true }
+futures-util = "0.3"
+tokio-stream = "0.1"
+tokio-util = { version = "0.7", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = { workspace = true }
+
+# Logging
+tracing = "0.1"
