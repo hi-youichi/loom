@@ -205,7 +205,7 @@ async fn aggregate_tool_source_passes_context_to_tools() {
 
     // Call through AggregateToolSource with context
     let result = source
-        .call_tool_with_context("streaming_tool", json!({}), Some(&ctx))
+        .call_tool("streaming_tool", json!({}), Some(&ctx))
         .await;
     assert!(result.is_ok());
 

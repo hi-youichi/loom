@@ -218,11 +218,6 @@ impl ToolSource for AggregateToolSource {
             self.registry.call(name, arguments, effective_ctx_ref).await
         }
     }
-
-    fn set_call_context(&self, ctx: Option<ToolCallContext>) {
-        if let Ok(mut g) = self.context.write() {
-            *g = ctx;
-        }
     }
 }
 
@@ -237,21 +232,6 @@ impl ToolSource for std::sync::Arc<AggregateToolSource> {
         name: &str,
         arguments: serde_json::Value,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        self.as_ref().call_tool(name, arguments).await
-    }
-
-    async fn call_tool_with_context(
-        &self,
-        name: &str,
-        arguments: serde_json::Value,
-        ctx: Option<&ToolCallContext>,
-    ) -> Result<ToolCallContent, ToolSourceError> {
-        self.as_ref()
-            .call_tool_with_context(name, arguments, ctx)
-            .await
-    }
-
-    fn set_call_context(&self, ctx: Option<ToolCallContext>) {
-        self.as_ref().set_call_context(ctx);
+        self.as_ref().call_tool(name, arguments, None).await
     }
 }

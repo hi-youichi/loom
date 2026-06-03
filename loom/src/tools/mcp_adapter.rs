@@ -51,7 +51,7 @@ impl Tool for McpToolAdapter {
         args: serde_json::Value,
         _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        self.source.call_tool(self.name.as_str(), args).await
+        self.source.call_tool(self.name.as_str(), args, _ctx).await
     }
 }
 
@@ -212,7 +212,7 @@ mod tests {
         assert!(tools.iter().any(|t| t.name == "demo_mcp"));
 
         let out = aggregate
-            .call_tool("demo_mcp", serde_json::json!({"x":1}))
+            .call_tool("demo_mcp", serde_json::json!({"x":1}), None)
             .await
             .unwrap();
         assert_eq!(out.as_text().unwrap(), "adapter-ok");

@@ -38,8 +38,7 @@ async fn batch_tool_single_call() {
             TOOL_BATCH,
             json!({
                 "calls": [{ "tool": "read", "parameters": { "path": "f.txt" } }]
-            }),
-        )
+            }), None)
         .await
         .unwrap();
     assert!(result.as_text().unwrap().contains("hello"));
@@ -60,8 +59,7 @@ async fn batch_tool_two_calls_parallel() {
                     { "tool": "read", "parameters": { "path": "a.txt" } },
                     { "tool": "read", "parameters": { "path": "b.txt" } }
                 ]
-            }),
-        )
+            }), None)
         .await
         .unwrap();
     assert!(result.as_text().unwrap().contains("content_a"));
@@ -74,7 +72,7 @@ async fn batch_tool_two_calls_parallel() {
 async fn batch_tool_missing_calls_returns_error() {
     let agg = Arc::new(AggregateToolSource::new());
     agg.register_sync(Box::new(BatchTool::new(Arc::clone(&agg))));
-    let result = agg.call_tool(TOOL_BATCH, json!({})).await;
+    let result = agg.call_tool(TOOL_BATCH, json!({}), None).await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));
     assert!(err.to_string().to_lowercase().contains("calls"));
@@ -84,7 +82,7 @@ async fn batch_tool_missing_calls_returns_error() {
 async fn batch_tool_empty_calls_returns_error() {
     let agg = Arc::new(AggregateToolSource::new());
     agg.register_sync(Box::new(BatchTool::new(Arc::clone(&agg))));
-    let result = agg.call_tool(TOOL_BATCH, json!({ "calls": [] })).await;
+    let result = agg.call_tool(TOOL_BATCH, json!({ "calls": [] }), None).await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));
 }
@@ -94,7 +92,7 @@ async fn batch_tool_call_missing_tool_name_returns_error() {
     let dir = tempfile::tempdir().unwrap();
     let agg = aggregate_with_read_and_batch(&dir);
     let result = agg
-        .call_tool(TOOL_BATCH, json!({ "calls": [{ "parameters": {} }] }))
+        .call_tool(TOOL_BATCH, json!({ "calls": [{ "parameters": {} }] }), None)
         .await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));
@@ -109,8 +107,7 @@ async fn batch_tool_unknown_tool_returns_error_in_result() {
             TOOL_BATCH,
             json!({
                 "calls": [{ "tool": "nonexistent_tool", "parameters": {} }]
-            }),
-        )
+            }), None)
         .await
         .unwrap();
     assert!(result.as_text().unwrap().to_lowercase().contains("error"));

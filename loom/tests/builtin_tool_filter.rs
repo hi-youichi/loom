@@ -169,7 +169,7 @@ async fn calling_disabled_tool_returns_error() {
     let ctx = build_react_run_context(&config).await.unwrap();
     let result = ctx
         .tool_source
-        .call_tool("write_file", serde_json::json!({}))
+        .call_tool("write_file", serde_json::json!({}), None)
         .await;
     assert!(result.is_err(), "expected error for disabled tool");
     let err = result.unwrap_err().to_string();

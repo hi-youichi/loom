@@ -263,32 +263,6 @@ impl ToolSource for McpToolSource {
         &self,
         name: &str,
         arguments: Value,
-    ) -> Result<ToolCallContent, ToolSourceError> {
-        let (arc, params) = {
-            let guard = self
-                .session
-                .lock()
-                .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
-            match &*guard {
-                McpSessionKind::Stdio(_) => {
-                    drop(guard);
-                    return task::block_in_place(|| self.call_tool_sync(name, arguments));
-                }
-                McpSessionKind::Http(h) => {
-                    let params = serde_json::json!({ "name": name, "arguments": arguments });
-                    (Arc::clone(h), params)
-                }
-            }
-        };
-        let id = format!("loom-call-{}", name);
-        let result = arc.request(&id, "tools/call", params).await?;
-        parse_call_tool_result(result)
-    }
-
-    async fn call_tool_with_context(
-        &self,
-        name: &str,
-        arguments: Value,
         ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
         let session = {
@@ -302,7 +276,7 @@ impl ToolSource for McpToolSource {
             }
         };
         let Some(arc) = session else {
-            return self.call_tool(name, arguments).await;
+            return task::block_in_place(|| self.call_tool_sync(name, arguments));
         };
         let params = serde_json::json!({ "name": name, "arguments": arguments });
         let id = format!("loom-call-{}", name);
@@ -577,7 +551,7 @@ mod tests {
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].name, "http_tool");
         let out = source
-            .call_tool("http_tool", serde_json::json!({"q":"x"}))
+            .call_tool("http_tool", serde_json::json!({"q":"x"}), None)
             .await
             .unwrap();
         assert_eq!(out.as_text().unwrap(), "ok-from-http");
@@ -678,7 +652,7 @@ mod tests {
         .await
         .unwrap();
         let err = source
-            .call_tool("bad_tool", serde_json::json!({}))
+            .call_tool("bad_tool", serde_json::json!({}), None)
             .await
             .unwrap_err();
         assert!(matches!(err, ToolSourceError::JsonRpc(msg) if msg == "call failed"));

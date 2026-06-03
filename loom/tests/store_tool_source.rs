@@ -62,14 +62,13 @@ async fn store_tool_source_remember_recall_consistent() {
     let r = source
         .call_tool(
             TOOL_REMEMBER,
-            json!({ "key": "pref", "value": "dark mode" }),
-        )
+            json!({ "key": "pref", "value": "dark mode" }), None)
         .await
         .unwrap();
     assert_eq!(r.as_text().unwrap(), "ok");
 
     let r = source
-        .call_tool(TOOL_RECALL, json!({ "key": "pref" }))
+        .call_tool(TOOL_RECALL, json!({ "key": "pref" }), None)
         .await
         .unwrap();
     assert_eq!(r.as_text().unwrap(), "\"dark mode\"");
@@ -82,7 +81,7 @@ async fn store_tool_source_recall_missing_key_returns_not_found() {
     let source = StoreToolSource::new(store, ns).await;
 
     let err = source
-        .call_tool(TOOL_RECALL, json!({ "key": "nonexistent" }))
+        .call_tool(TOOL_RECALL, json!({ "key": "nonexistent" }), None)
         .await
         .unwrap_err();
     let msg = err.to_string();
@@ -96,16 +95,16 @@ async fn store_tool_source_list_memories_returns_keys() {
     let source = StoreToolSource::new(store, ns).await;
 
     source
-        .call_tool(TOOL_REMEMBER, json!({ "key": "a", "value": 1 }))
+        .call_tool(TOOL_REMEMBER, json!({ "key": "a", "value": 1 }), None)
         .await
         .unwrap();
     source
-        .call_tool(TOOL_REMEMBER, json!({ "key": "b", "value": 2 }))
+        .call_tool(TOOL_REMEMBER, json!({ "key": "b", "value": 2 }), None)
         .await
         .unwrap();
 
     let r = source
-        .call_tool(TOOL_LIST_MEMORIES, json!({}))
+        .call_tool(TOOL_LIST_MEMORIES, json!({}), None)
         .await
         .unwrap();
     let keys: Vec<String> = serde_json::from_str(r.as_text().unwrap()).unwrap();
@@ -120,19 +119,18 @@ async fn store_tool_source_search_memories_returns_hits() {
     let source = StoreToolSource::new(store, ns).await;
 
     source
-        .call_tool(TOOL_REMEMBER, json!({ "key": "apple", "value": "fruit" }))
+        .call_tool(TOOL_REMEMBER, json!({ "key": "apple", "value": "fruit" }), None)
         .await
         .unwrap();
     source
-        .call_tool(TOOL_REMEMBER, json!({ "key": "car", "value": "vehicle" }))
+        .call_tool(TOOL_REMEMBER, json!({ "key": "car", "value": "vehicle" }), None)
         .await
         .unwrap();
 
     let r = source
         .call_tool(
             TOOL_SEARCH_MEMORIES,
-            json!({ "query": "fruit", "limit": 5 }),
-        )
+            json!({ "query": "fruit", "limit": 5 }), None)
         .await
         .unwrap();
     let hits: Vec<serde_json::Value> = serde_json::from_str(r.as_text().unwrap()).unwrap();
@@ -152,23 +150,20 @@ async fn store_tool_source_remember_search_with_vector_store() {
     source
         .call_tool(
             TOOL_REMEMBER,
-            json!({ "key": "rust", "value": "programming language" }),
-        )
+            json!({ "key": "rust", "value": "programming language" }), None)
         .await
         .unwrap();
     source
         .call_tool(
             TOOL_REMEMBER,
-            json!({ "key": "python", "value": "scripting language" }),
-        )
+            json!({ "key": "python", "value": "scripting language" }), None)
         .await
         .unwrap();
 
     let r = source
         .call_tool(
             TOOL_SEARCH_MEMORIES,
-            json!({ "query": "programming", "limit": 5 }),
-        )
+            json!({ "query": "programming", "limit": 5 }), None)
         .await
         .unwrap();
     let hits: Vec<serde_json::Value> = serde_json::from_str(r.as_text().unwrap()).unwrap();

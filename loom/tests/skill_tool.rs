@@ -22,7 +22,7 @@ async fn skill_load_by_name_with_md_extension() {
 
     let agg = aggregate_with_file_tools(&dir);
     let result = agg
-        .call_tool(TOOL_SKILL, json!({ "name": "foo" }))
+        .call_tool(TOOL_SKILL, json!({ "name": "foo" }), None)
         .await
         .unwrap();
     assert!(result.as_text().unwrap().contains("<skill_content"));
@@ -40,7 +40,7 @@ async fn skill_load_by_name_with_txt_extension() {
 
     let agg = aggregate_with_file_tools(&dir);
     let result = agg
-        .call_tool(TOOL_SKILL, json!({ "name": "bar" }))
+        .call_tool(TOOL_SKILL, json!({ "name": "bar" }), None)
         .await
         .unwrap();
     assert!(result.as_text().unwrap().contains("Bar instructions"));
@@ -59,7 +59,7 @@ async fn skill_subdir_with_extension() {
 
     let agg = aggregate_with_file_tools(&dir);
     let result = agg
-        .call_tool(TOOL_SKILL, json!({ "name": "nested/deep" }))
+        .call_tool(TOOL_SKILL, json!({ "name": "nested/deep" }), None)
         .await
         .unwrap();
     assert!(result.as_text().unwrap().contains("Nested skill content"));
@@ -70,7 +70,7 @@ async fn skill_missing_name_returns_error() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join(".loom").join("skills")).unwrap();
     let agg = aggregate_with_file_tools(&dir);
-    let result = agg.call_tool(TOOL_SKILL, json!({})).await;
+    let result = agg.call_tool(TOOL_SKILL, json!({}), None).await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));
 }
@@ -79,7 +79,7 @@ async fn skill_missing_name_returns_error() {
 async fn skill_no_skills_dir_returns_error() {
     let dir = tempfile::tempdir().unwrap();
     let agg = aggregate_with_file_tools(&dir);
-    let result = agg.call_tool(TOOL_SKILL, json!({ "name": "any" })).await;
+    let result = agg.call_tool(TOOL_SKILL, json!({ "name": "any" }), None).await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));
     assert!(err.to_string().to_lowercase().contains("not found"));
@@ -94,7 +94,7 @@ async fn skill_unknown_name_returns_error_with_available_list() {
 
     let agg = aggregate_with_file_tools(&dir);
     let result = agg
-        .call_tool(TOOL_SKILL, json!({ "name": "unknown_skill" }))
+        .call_tool(TOOL_SKILL, json!({ "name": "unknown_skill" }), None)
         .await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));

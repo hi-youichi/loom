@@ -12,9 +12,6 @@ use thiserror::Error;
 
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec};
 
-/// Builds a static list of embedded YAML file contents. One entry per tool; paths relative to
-/// this source file (loom/src/tool_source/). Add a new line when you add a tool under
-/// loom/tools/<name>.yaml.
 macro_rules! embed_tool_yaml {
     ($($path:literal),+ $(,)?) => {
         &[ $( include_str!($path) ),+ ]
@@ -59,7 +56,6 @@ const TOOL_YAML_FILES: &[&str] = embed_tool_yaml!(
     "../../tools/task_delete.yaml",
 );
 
-/// Errors from loading or using YAML tool specs.
 #[derive(Debug, Error)]
 pub enum YamlSpecError {
     #[error("failed to parse tool YAML ({name}): {message}")]
@@ -129,23 +125,9 @@ impl ToolSource for YamlSpecToolSource {
         &self,
         name: &str,
         arguments: serde_json::Value,
-    ) -> Result<ToolCallContent, ToolSourceError> {
-        self.inner.call_tool(name, arguments).await
-    }
-
-    async fn call_tool_with_context(
-        &self,
-        name: &str,
-        arguments: serde_json::Value,
         ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        self.inner
-            .call_tool_with_context(name, arguments, ctx)
-            .await
-    }
-
-    fn set_call_context(&self, ctx: Option<ToolCallContext>) {
-        self.inner.set_call_context(ctx);
+        self.inner.call_tool(name, arguments, ctx).await
     }
 }
 
@@ -153,7 +135,6 @@ impl ToolSource for YamlSpecToolSource {
 mod tests {
     use super::*;
 
-    /// **Scenario**: Embedded YAML files parse and contain expected built-in tools.
     #[test]
     fn load_tool_specs_returns_builtin_tools() {
         let specs = load_tool_specs().expect("tools/*.yaml must parse");

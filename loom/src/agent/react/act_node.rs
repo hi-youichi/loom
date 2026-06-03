@@ -242,7 +242,6 @@ impl Node<ReActState> for ActNode {
 
     async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
         let ctx = ToolCallContext::new(state.messages.clone());
-        self.tools.set_call_context(Some(ctx.clone()));
         let tool_output_hints = self.load_tool_output_hints().await;
         let mut tool_results = Vec::with_capacity(state.tool_calls.len());
         let mut approval_result_consumed = false;
@@ -311,7 +310,6 @@ impl Node<ReActState> for ActNode {
                 match state.approval_result {
                     None => {
                         let payload = approval_required_payload(tc, &args);
-                        self.tools.set_call_context(None);
                         return Err(AgentError::Interrupted(Interrupt::new(
                             payload,
                         )));                    }
@@ -366,7 +364,7 @@ impl Node<ReActState> for ActNode {
 
             let result = self
                 .tools
-                .call_tool_with_context(&tc.name, args.clone(), Some(&ctx))
+                .call_tool(&tc.name, args.clone(), Some(&ctx))
                 .await;
 
             match result {
@@ -423,7 +421,6 @@ impl Node<ReActState> for ActNode {
         }
 
         backfill_tool_result_call_ids(&state.tool_calls, &mut tool_results);
-        self.tools.set_call_context(None);
 
         let new_state = ReActState {
             tool_results,
@@ -474,7 +471,6 @@ impl Node<ReActState> for ActNode {
 
         for tc in &state.tool_calls {
             if is_cancelled() {
-                self.tools.set_call_context(None);
                 return Err(AgentError::Cancelled);
             }
             let args = match parse_tool_arguments(&tc.name, &tc.arguments) {
@@ -539,7 +535,6 @@ impl Node<ReActState> for ActNode {
                             let _ = run_ctx.emit_custom(payload.clone()).await;
                         }
                         let payload = approval_required_payload(tc, &args);
-                        self.tools.set_call_context(None);
                         return Err(AgentError::Interrupted(Interrupt::new(
                             payload,
                         )));                    }
@@ -671,7 +666,6 @@ impl Node<ReActState> for ActNode {
                 any_stream_event_sender: self.any_stream_event_sender.lock().unwrap().clone(),
                 acp_session_id: run_ctx.config.acp_session_id.clone(),
             };
-            self.tools.set_call_context(Some(tool_ctx.clone()));
 
             if tools_mode {
                 if let Some(tx) = &run_ctx.stream_tx {
@@ -688,7 +682,7 @@ impl Node<ReActState> for ActNode {
 
             let tool_call =
                 self.tools
-                    .call_tool_with_context(&tc.name, args.clone(), Some(&tool_ctx));
+                    .call_tool(&tc.name, args.clone(), Some(&tool_ctx));
             let result = match run_cancellable(
                 tool_call,
                 run_ctx.cancellation.as_ref(),
@@ -697,13 +691,11 @@ impl Node<ReActState> for ActNode {
             {
                 Ok(inner) => inner,
                 Err(e) => {
-                    self.tools.set_call_context(None);
                     return Err(e);
                 }
             };
 
             if is_cancelled() {
-                self.tools.set_call_context(None);
                 return Err(AgentError::Cancelled);
             }
 
@@ -813,7 +805,6 @@ impl Node<ReActState> for ActNode {
         }
 
         backfill_tool_result_call_ids(&state.tool_calls, &mut tool_results);
-        self.tools.set_call_context(None);
 
         let new_state = ReActState {
             tool_results,

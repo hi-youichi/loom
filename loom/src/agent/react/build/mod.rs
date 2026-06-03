@@ -99,10 +99,7 @@ pub async fn build_react_run_context(
     let store = build_store(config, db_path)?;
     let runnable_config = build_runnable_config(config);
     tracing::debug!("build_react_run_context: building tool_source");
-    let mut tool_source = build_tool_source(config, &store).await?;
-    if config.dry_run {
-        tool_source = Box::new(crate::tool_source::DryRunToolSource::new(tool_source));
-    }
+    let tool_source = build_tool_source(config, &store).await?;
     tracing::debug!("build_react_run_context: tool_source ready");
 
     // Initialize audit log if enabled

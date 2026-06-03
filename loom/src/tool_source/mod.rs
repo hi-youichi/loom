@@ -4,22 +4,6 @@
 //! registry. This keeps the ReAct runtime provider-agnostic: the think step only
 //! needs a list of tool specs, and the act step only needs a way to call one by
 //! name.
-//!
-//! ## Memory tools
-//!
-//! - **StoreToolSource**: long-term memory as tools (`remember`, `recall`, `search_memories`, `list_memories`).
-//!   Use with `Arc<dyn Store>` and a fixed namespace; pass to `ActNode::new(Box::new(store_tools))`.
-//! - **ShortTermMemoryToolSource**: one optional tool `get_recent_messages` (current conversation).
-//!   Use only when you need to explicitly re-read or summarize last N messages; most flows can omit it.
-//!   ActNode passes `ToolCallContext` via `call_tool_with_context` so this tool receives `state.messages`.
-//! - **MemoryToolsSource**: composite of both. Use `MemoryToolsSource::new(store, namespace)` and pass to `ActNode::new(Box::new(memory_tools))` for one-line setup.
-//!
-//! ## Web tools
-//!
-//! - **WebToolsSource**: web fetching as tool (`web_fetcher`).
-//!   Use `WebToolsSource::new()` to enable HTTP GET/POST capabilities; pass to `ActNode::new(Box::new(web_tools))`.
-//! - **BashToolsSource**: shell command execution as tool (`bash`).
-//!   Use `BashToolsSource::new()` to enable running shell commands; pass to `ActNode::new(Box::new(bash_tools))`.
 
 mod bash_tools_source;
 mod context;
@@ -69,40 +53,17 @@ use serde_json::Value;
 ///
 /// [`crate::agent::react::ThinkNode`] consumes [`Self::list_tools`] to advertise
 /// available tools to the model. [`crate::agent::react::ActNode`] uses
-/// [`Self::call_tool`] or [`Self::call_tool_with_context`] to execute the model's
-/// requested tool calls.
+/// [`Self::call_tool`] to execute the model's requested tool calls.
 #[async_trait]
 pub trait ToolSource: Send + Sync {
-    /// Lists the tools available to the current runtime.
     async fn list_tools(&self) -> Result<Vec<ToolSpec>, ToolSourceError>;
 
-    /// Calls a tool by name with JSON arguments.
     async fn call_tool(
         &self,
         name: &str,
         arguments: Value,
-    ) -> Result<ToolCallContent, ToolSourceError>;
-
-    /// Calls a tool with optional per-step context.
-    ///
-    /// The default implementation ignores `ctx` and delegates to
-    /// [`Self::call_tool`]. Tool sources that need access to ephemeral
-    /// per-turn state, such as recent messages, can override this method.
-    async fn call_tool_with_context(
-        &self,
-        name: &str,
-        arguments: Value,
         ctx: Option<&ToolCallContext>,
-    ) -> Result<ToolCallContent, ToolSourceError> {
-        let _ = ctx;
-        self.call_tool(name, arguments).await
-    }
-
-    /// Injects per-step context before tool execution.
-    ///
-    /// This hook exists for implementations that prefer explicit stateful setup
-    /// before one round of tool calls. The default implementation is a no-op.
-    fn set_call_context(&self, _ctx: Option<ToolCallContext>) {}
+    ) -> Result<ToolCallContent, ToolSourceError>;
 }
 
 #[cfg(test)]

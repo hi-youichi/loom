@@ -155,22 +155,8 @@ impl ToolSource for FileToolSource {
         &self,
         name: &str,
         arguments: serde_json::Value,
+        _ctx: Option<&crate::tool_source::ToolCallContext>,
     ) -> Result<crate::tool_source::ToolCallContent, ToolSourceError> {
-        self._source.call_tool(name, arguments).await
-    }
-
-    async fn call_tool_with_context(
-        &self,
-        name: &str,
-        arguments: serde_json::Value,
-        ctx: Option<&crate::tool_source::ToolCallContext>,
-    ) -> Result<crate::tool_source::ToolCallContent, ToolSourceError> {
-        self._source
-            .call_tool_with_context(name, arguments, ctx)
-            .await
-    }
-
-    fn set_call_context(&self, ctx: Option<crate::tool_source::ToolCallContext>) {
-        self._source.set_call_context(ctx)
+        self._source.call_tool(name, arguments, _ctx).await
     }
 }

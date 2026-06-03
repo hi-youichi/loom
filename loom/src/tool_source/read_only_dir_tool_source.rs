@@ -15,9 +15,7 @@ use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError};
 use crate::tools::file::resolve_path_under;
 use crate::tools::{AggregateToolSource, Tool};
 
-/// Tool name for read-only list_dir (connector).
 pub const TOOL_READ_ONLY_LIST_DIR: &str = "read_only_list_dir";
-/// Tool name for read-only read (connector).
 pub const TOOL_READ_ONLY_READ_FILE: &str = "read_only_read_file";
 
 /// Registers read-only directory tools on an existing [`AggregateToolSource`].
@@ -197,18 +195,8 @@ impl crate::tool_source::ToolSource for ReadOnlyDirToolSource {
         &self,
         name: &str,
         arguments: serde_json::Value,
+        _ctx: Option<&crate::tool_source::ToolCallContext>,
     ) -> Result<crate::tool_source::ToolCallContent, ToolSourceError> {
-        self._source.call_tool(name, arguments).await
-    }
-
-    async fn call_tool_with_context(
-        &self,
-        name: &str,
-        arguments: serde_json::Value,
-        ctx: Option<&ToolCallContext>,
-    ) -> Result<crate::tool_source::ToolCallContent, ToolSourceError> {
-        self._source
-            .call_tool_with_context(name, arguments, ctx)
-            .await
+        self._source.call_tool(name, arguments, _ctx).await
     }
 }

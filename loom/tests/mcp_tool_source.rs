@@ -35,7 +35,7 @@ async fn mcp_tool_source_list_and_call() {
         .map(|p| format!("file://{}", p.display()))
         .unwrap_or_else(|_| "file:///tmp".to_string());
     let content = source
-        .call_tool("list_directory", serde_json::json!({ "path": path }))
+        .call_tool("list_directory", serde_json::json!({ "path": path }), None)
         .await
         .expect("call_tool");
     assert!(!content.as_text().unwrap().is_empty());

@@ -40,20 +40,6 @@ impl ToolSource for FilteredToolSource {
         &self,
         name: &str,
         arguments: Value,
-    ) -> Result<ToolCallContent, ToolSourceError> {
-        if !self.filter.is_allowed(name) {
-            return Err(ToolSourceError::NotFound(format!(
-                "tool '{}' is disabled for this agent",
-                name
-            )));
-        }
-        self.inner.call_tool(name, arguments).await
-    }
-
-    async fn call_tool_with_context(
-        &self,
-        name: &str,
-        arguments: Value,
         ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
         if !self.filter.is_allowed(name) {
@@ -62,11 +48,7 @@ impl ToolSource for FilteredToolSource {
                 name
             )));
         }
-        self.inner.call_tool_with_context(name, arguments, ctx).await
-    }
-
-    fn set_call_context(&self, ctx: Option<ToolCallContext>) {
-        self.inner.set_call_context(ctx);
+        self.inner.call_tool(name, arguments, ctx).await
     }
 }
 
@@ -96,6 +78,7 @@ mod tests {
             &self,
             name: &str,
             _arguments: Value,
+            _ctx: Option<&ToolCallContext>,
         ) -> Result<ToolCallContent, ToolSourceError> {
             Ok(ToolCallContent::text(format!("called {}", name)))
         }
@@ -145,7 +128,7 @@ mod tests {
         };
         let filtered = FilteredToolSource::new(Box::new(MockSource), filter);
         let result = filtered
-            .call_tool("write_file", serde_json::json!({}))
+            .call_tool("write_file", serde_json::json!({}), None)
             .await;
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
@@ -160,7 +143,7 @@ mod tests {
         };
         let filtered = FilteredToolSource::new(Box::new(MockSource), filter);
         let result = filtered
-            .call_tool("read", serde_json::json!({}))
+            .call_tool("read", serde_json::json!({}), None)
             .await
             .unwrap();
         assert_eq!(result.as_text(), Some("called read"));

@@ -18,7 +18,7 @@ async fn bash_tools_source_lists_bash_tool() {
 async fn bash_tools_source_call_bash_success() {
     let source = BashToolsSource::new().await;
     let args = json!({ "command": "echo ok" });
-    let result = source.call_tool("bash", args).await.unwrap();
+    let result = source.call_tool("bash", args, None).await.unwrap();
     assert!(!result.as_text().unwrap().is_empty());
     assert!(result.as_text().unwrap().trim().contains("ok"));
 }
@@ -27,7 +27,7 @@ async fn bash_tools_source_call_bash_success() {
 async fn bash_tools_source_call_bash_missing_command() {
     let source = BashToolsSource::new().await;
     let args = json!({});
-    let result = source.call_tool("bash", args).await;
+    let result = source.call_tool("bash", args, None).await;
     assert!(result.is_err());
 }
 
@@ -35,7 +35,7 @@ async fn bash_tools_source_call_bash_missing_command() {
 async fn bash_tools_source_call_nonexistent_tool() {
     let source = BashToolsSource::new().await;
     let args = json!({ "command": "echo x" });
-    let result = source.call_tool("nonexistent", args).await;
+    let result = source.call_tool("nonexistent", args, None).await;
     assert!(result.is_err());
     assert!(result
         .unwrap_err()

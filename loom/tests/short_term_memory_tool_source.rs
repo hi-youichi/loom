@@ -23,7 +23,7 @@ async fn short_term_memory_list_tools_returns_get_recent_messages() {
 async fn short_term_memory_without_context_returns_empty_array() {
     let source = ShortTermMemoryToolSource::new().await;
     let r = source
-        .call_tool(TOOL_GET_RECENT_MESSAGES, json!({}))
+        .call_tool(TOOL_GET_RECENT_MESSAGES, json!({}), None)
         .await
         .unwrap();
     assert_eq!(r.as_text().unwrap(), "[]");
@@ -33,10 +33,9 @@ async fn short_term_memory_without_context_returns_empty_array() {
 async fn short_term_memory_with_context_returns_messages() {
     let source = ShortTermMemoryToolSource::new().await;
     let messages = vec![Message::user("hello"), Message::assistant("hi")];
-    source.set_call_context(Some(ToolCallContext::new(messages)));
 
     let r = source
-        .call_tool(TOOL_GET_RECENT_MESSAGES, json!({}))
+        .call_tool(TOOL_GET_RECENT_MESSAGES, json!({}), None)
         .await
         .unwrap();
     let arr: Vec<serde_json::Value> = serde_json::from_str(r.as_text().unwrap()).unwrap();
@@ -61,10 +60,9 @@ async fn short_term_memory_with_limit_returns_last_n() {
         Message::assistant("2"),
         Message::user("3"),
     ];
-    source.set_call_context(Some(ToolCallContext::new(messages)));
 
     let r = source
-        .call_tool(TOOL_GET_RECENT_MESSAGES, json!({ "limit": 2 }))
+        .call_tool(TOOL_GET_RECENT_MESSAGES, json!({ "limit": 2 }), None)
         .await
         .unwrap();
     let arr: Vec<serde_json::Value> = serde_json::from_str(r.as_text().unwrap()).unwrap();
@@ -79,7 +77,7 @@ async fn short_term_memory_call_tool_with_context_uses_explicit_ctx() {
     let source = ShortTermMemoryToolSource::new().await;
     let ctx = ToolCallContext::new(vec![Message::user("a"), Message::assistant("b")]);
     let r = source
-        .call_tool_with_context(TOOL_GET_RECENT_MESSAGES, json!({}), Some(&ctx))
+        .call_tool(TOOL_GET_RECENT_MESSAGES, json!({}), Some(&ctx))
         .await
         .unwrap();
     let arr: Vec<serde_json::Value> = serde_json::from_str(r.as_text().unwrap()).unwrap();

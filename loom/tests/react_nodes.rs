@@ -48,14 +48,6 @@ impl ToolSource for RecordingToolSource {
         &self,
         _name: &str,
         _arguments: Value,
-    ) -> Result<ToolCallContent, ToolSourceError> {
-        Ok(ToolCallContent::text("ok".to_string()))
-    }
-
-    async fn call_tool_with_context(
-        &self,
-        _name: &str,
-        _arguments: Value,
         ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
         if let Some(ctx) = ctx {
@@ -564,6 +556,7 @@ impl ToolSource for HintingToolSource {
         &self,
         _name: &str,
         _arguments: Value,
+        _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
         Ok(ToolCallContent::text(self.result.clone()))
     }
@@ -703,6 +696,7 @@ impl ToolSource for LargeOutputToolSource {
         &self,
         _name: &str,
         _arguments: Value,
+        _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
         Ok(ToolCallContent::text(self.result.clone()))
     }
@@ -809,6 +803,7 @@ impl ToolSource for MultiOutputToolSource {
         &self,
         name: &str,
         _arguments: Value,
+        _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
         match name {
             "bash" => Ok(ToolCallContent::text(self.bash_result.clone())),

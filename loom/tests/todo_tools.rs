@@ -44,11 +44,11 @@ async fn todo_write_then_todo_read_roundtrip() {
         { "id": "2", "content": "Second task", "status": "completed", "priority": "medium" }
     ]);
     let write_result = source
-        .call_tool(TOOL_TODO_WRITE, json!({ "todos": todos }))
+        .call_tool(TOOL_TODO_WRITE, json!({ "todos": todos }), None)
         .await
         .unwrap();
     assert!(write_result.as_text().unwrap().contains("1 todos"));
-    let read_result = source.call_tool(TOOL_TODO_READ, json!({})).await.unwrap();
+    let read_result = source.call_tool(TOOL_TODO_READ, json!({}), None).await.unwrap();
     assert!(read_result.as_text().unwrap().contains("1 todos"));
     assert!(read_result.as_text().unwrap().contains("First task"));
     assert!(read_result.as_text().unwrap().contains("Second task"));
@@ -65,7 +65,7 @@ async fn todo_read_when_file_missing_returns_empty() {
     std::env::set_var("LOOM_HOME", dir.path());
 
     let source = FileToolSource::new(dir.path()).unwrap();
-    let result = source.call_tool(TOOL_TODO_READ, json!({})).await.unwrap();
+    let result = source.call_tool(TOOL_TODO_READ, json!({}), None).await.unwrap();
     assert!(result.as_text().unwrap().starts_with("0 todos"));
     assert!(result.as_text().unwrap().contains("[]"));
 }
@@ -80,7 +80,7 @@ async fn todo_write_missing_todos_returns_invalid_input() {
     std::env::set_var("LOOM_HOME", dir.path());
 
     let source = FileToolSource::new(dir.path()).unwrap();
-    let result = source.call_tool(TOOL_TODO_WRITE, json!({})).await;
+    let result = source.call_tool(TOOL_TODO_WRITE, json!({}), None).await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));
 }

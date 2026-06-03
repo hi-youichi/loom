@@ -1,13 +1,8 @@
-//! Builds tool source from ReactBuildConfig.
-
 use std::sync::Arc;
 
 use crate::background_review::skill_usage::SkillUsageStore;
 use crate::error::AgentError;
-use crate::tool_source::{
-    register_file_tools, McpToolSource, MemoryToolsSource, ToolSource, ToolSourceError,
-    YamlSpecToolSource,
-};
+use crate::tool_source::{register_file_tools, McpToolSource, ToolSource, ToolSourceError};
 #[cfg(windows)]
 use crate::tools::powershell::PowerShellTool;
 #[cfg(not(windows))]
@@ -224,11 +219,8 @@ pub(crate) async fn build_tool_source(
         )))
         .await;
     aggregate.register_sync(Box::new(ListAgentsTool::new()));
-        let inner: Box<dyn ToolSource> = Box::new(aggregate);
-        let wrapped = YamlSpecToolSource::wrap(inner)
-            .await
-            .map_err(to_agent_error)?;
-        return Ok(Box::new(wrapped));
+        apply_registry_config(&aggregate, config).await.map_err(to_agent_error)?;
+        return Ok(Box::new(aggregate));
     }
 
     let base = if has_memory {
@@ -243,11 +235,14 @@ pub(crate) async fn build_tool_source(
                     .map(|s| (*s).to_string())
                     .collect()
             });
-        MemoryToolsSource::new(s.clone(), namespace).await
+
+        let aggregate = Arc::new(AggregateToolSource::new());
+        crate::tools::register_memory_tools(&aggregate, s.clone(), namespace).await;
+        aggregate
     } else {
-        AggregateToolSource::new()
+        Arc::new(AggregateToolSource::new())
     };
-    let aggregate = Arc::new(base);
+    let aggregate = base;
 
     aggregate
         .register_async(Box::new(WebFetcherTool::new()))
@@ -457,26 +452,28 @@ pub(crate) async fn build_tool_source(
         .await;
     aggregate.register_sync(Box::new(ListAgentsTool::new()));
 
-    let inner: Box<dyn ToolSource> = Box::new(aggregate);
-    let wrapped = YamlSpecToolSource::wrap(inner)
-        .await
-        .map_err(to_agent_error)?;
+    apply_registry_config(&aggregate, config).await.map_err(to_agent_error)?;
 
-    // Apply builtin tool filter (enabled whitelist / disabled blacklist from agent profile).
-    let filtered: Box<dyn ToolSource> = match &config.builtin_tool_filter {
-        Some(filter) if !filter.is_noop() => {
+    Ok(Box::new(aggregate))
+}
+
+async fn apply_registry_config(
+    aggregate: &Arc<AggregateToolSource>,
+    config: &ReactBuildConfig,
+) -> Result<(), crate::tool_source::YamlSpecError> {
+    aggregate.load_yaml_specs().await?;
+    if let Some(ref filter) = config.builtin_tool_filter {
+        if !filter.is_noop() {
             tracing::info!(
                 enabled = ?filter.enabled,
                 disabled = ?filter.disabled,
                 "applying builtin tool filter"
             );
-            Box::new(crate::tool_source::FilteredToolSource::new(
-                Box::new(wrapped),
-                filter.clone(),
-            ))
+            aggregate.set_filter(Some(filter.clone())).await;
         }
-        _ => Box::new(wrapped),
-    };
-
-    Ok(filtered)
+    }
+    if config.dry_run {
+        aggregate.set_dry_run(true).await;
+    }
+    Ok(())
 }

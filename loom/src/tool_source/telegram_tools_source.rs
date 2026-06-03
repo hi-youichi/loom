@@ -20,20 +20,6 @@ pub struct TelegramToolsSource {
 }
 
 impl TelegramToolsSource {
-    /// Creates a Telegram tools source.
-    ///
-    /// Returns an [`AggregateToolSource`] that you can use with [`ActNode`](crate::agent::react::ActNode).
-    /// This function is async and must be awaited.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use loom::tool_source::TelegramToolsSource;
-    /// # #[tokio::main]
-    /// # async fn main() {
-    /// let source = TelegramToolsSource::new().await;
-    /// # }
-    /// ```
     #[allow(clippy::new_ret_no_self)]
     pub async fn new() -> AggregateToolSource {
         let source = AggregateToolSource::new();
@@ -64,28 +50,9 @@ impl ToolSource for TelegramToolsSource {
         &self,
         name: &str,
         arguments: serde_json::Value,
+        _ctx: Option<&crate::tool_source::ToolCallContext>,
     ) -> Result<crate::tool_source::ToolCallContent, ToolSourceError> {
-        self._source.call_tool(name, arguments).await
+        self._source.call_tool(name, arguments, _ctx).await
     }
 
-    /// Calls a tool by name with given arguments and optional context.
-    ///
-    /// Delegates to [`AggregateToolSource::call_tool_with_context`].
-    async fn call_tool_with_context(
-        &self,
-        name: &str,
-        arguments: serde_json::Value,
-        ctx: Option<&crate::tool_source::ToolCallContext>,
-    ) -> Result<crate::tool_source::ToolCallContent, ToolSourceError> {
-        self._source
-            .call_tool_with_context(name, arguments, ctx)
-            .await
-    }
-
-    /// Sets the call context for this source.
-    ///
-    /// Forwards to [`AggregateToolSource`].
-    fn set_call_context(&self, ctx: Option<crate::tool_source::ToolCallContext>) {
-        self._source.set_call_context(ctx)
-    }
 }

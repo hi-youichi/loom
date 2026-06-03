@@ -64,7 +64,7 @@ async fn exa_http_call_web_search() {
 
     let args = serde_json::json!({ "query": "Rust programming language" });
     let content = source
-        .call_tool("web_search_exa", args)
+        .call_tool("web_search_exa", args, None)
         .await
         .expect("call_tool web_search_exa");
     assert!(

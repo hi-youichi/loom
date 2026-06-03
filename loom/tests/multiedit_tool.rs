@@ -23,8 +23,7 @@ async fn multiedit_new_file_with_single_edit() {
             json!({
                 "path": "new.txt",
                 "edits": [{ "oldString": "", "newString": "first line" }]
-            }),
-        )
+            }), None)
         .await
         .unwrap();
     assert!(result.as_text().unwrap().contains("Created"));
@@ -48,8 +47,7 @@ async fn multiedit_existing_file_multiple_edits() {
                     { "oldString": "a", "newString": "A" },
                     { "oldString": "c", "newString": "C" }
                 ]
-            }),
-        )
+            }), None)
         .await
         .unwrap();
     assert!(result.as_text().unwrap().contains("Applied"));
@@ -66,8 +64,7 @@ async fn multiedit_missing_path_returns_error() {
     let result = agg
         .call_tool(
             TOOL_MULTIEDIT,
-            json!({ "edits": [{ "oldString": "", "newString": "x" }] }),
-        )
+            json!({ "edits": [{ "oldString": "", "newString": "x" }] }), None)
         .await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));
@@ -79,7 +76,7 @@ async fn multiedit_empty_edits_returns_error() {
     std::fs::write(dir.path().join("f.txt"), "x").unwrap();
     let agg = aggregate_with_file_tools(&dir);
     let result = agg
-        .call_tool(TOOL_MULTIEDIT, json!({ "path": "f.txt", "edits": [] }))
+        .call_tool(TOOL_MULTIEDIT, json!({ "path": "f.txt", "edits": [] }), None)
         .await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));
@@ -95,8 +92,7 @@ async fn multiedit_path_outside_working_folder_returns_error() {
             json!({
                 "path": "../outside.txt",
                 "edits": [{ "oldString": "", "newString": "x" }]
-            }),
-        )
+            }), None)
         .await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));
@@ -113,8 +109,7 @@ async fn multiedit_old_string_not_found_returns_error_no_write() {
             json!({
                 "path": "f.txt",
                 "edits": [{ "oldString": "not_in_file", "newString": "y" }]
-            }),
-        )
+            }), None)
         .await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));

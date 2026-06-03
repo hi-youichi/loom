@@ -24,16 +24,16 @@ async fn mock_tool_source_list_tools_returns_get_time_example() {
 #[tokio::test]
 async fn mock_tool_source_call_tool_returns_fixed_text() {
     let source = MockToolSource::get_time_example();
-    let result = source.call_tool("get_time", json!({})).await.unwrap();
+    let result = source.call_tool("get_time", json!({}), None).await.unwrap();
     assert_eq!(result.as_text().unwrap(), "2025-01-29 12:00:00");
 }
 
 #[tokio::test]
 async fn mock_tool_source_call_tool_any_name_returns_same_result() {
     let source = MockToolSource::get_time_example();
-    let r1 = source.call_tool("get_time", json!({})).await.unwrap();
+    let r1 = source.call_tool("get_time", json!({}), None).await.unwrap();
     let r2 = source
-        .call_tool("other_tool", json!({"x":1}))
+        .call_tool("other_tool", json!({"x":1}), None)
         .await
         .unwrap();
     assert_eq!(r1.as_text().unwrap(), r2.as_text().unwrap());
@@ -43,7 +43,7 @@ async fn mock_tool_source_call_tool_any_name_returns_same_result() {
 #[tokio::test]
 async fn mock_tool_source_custom_call_result() {
     let source = MockToolSource::get_time_example().with_call_result("custom result".to_string());
-    let result = source.call_tool("get_time", json!({})).await.unwrap();
+    let result = source.call_tool("get_time", json!({}), None).await.unwrap();
     assert_eq!(result.as_text().unwrap(), "custom result");
 }
 
@@ -62,7 +62,7 @@ async fn mock_tool_source_new_custom_tools_and_result() {
     assert_eq!(tools.len(), 1);
     assert_eq!(tools[0].name, "search");
     let result = source
-        .call_tool("search", json!({"q":"rust"}))
+        .call_tool("search", json!({"q":"rust"}), None)
         .await
         .unwrap();
     assert_eq!(result.as_text().unwrap(), "[]");

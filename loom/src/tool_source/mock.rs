@@ -5,7 +5,7 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use super::{ToolCallContent, ToolSource, ToolSourceError, ToolSpec};
+use super::{ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec};
 
 /// Mock tool source: fixed tool list and fixed call result.
 ///
@@ -15,9 +15,7 @@ use super::{ToolCallContent, ToolSource, ToolSourceError, ToolSpec};
 ///
 /// **Interaction**: Implements `ToolSource`; used by ActNode in tests and examples.
 pub struct MockToolSource {
-    /// Tools returned by list_tools().
     tools: Vec<ToolSpec>,
-    /// Text returned by call_tool for any name (or use per-name map later).
     call_result: String,
 }
 
@@ -65,6 +63,7 @@ impl ToolSource for MockToolSource {
         &self,
         _name: &str,
         _arguments: Value,
+        _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
         Ok(ToolCallContent::text(self.call_result.clone()))
     }

@@ -26,27 +26,12 @@ impl ToolSource for DryRunToolSource {
         &self,
         name: &str,
         _arguments: Value,
-    ) -> Result<ToolCallContent, ToolSourceError> {
-        Ok(ToolCallContent::text(format!(
-            "(dry run: {} was not executed)",
-            name
-        )))
-    }
-
-    async fn call_tool_with_context(
-        &self,
-        name: &str,
-        _arguments: Value,
         _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
         Ok(ToolCallContent::text(format!(
             "(dry run: {} was not executed)",
             name
         )))
-    }
-
-    fn set_call_context(&self, ctx: Option<ToolCallContext>) {
-        self.inner.set_call_context(ctx);
     }
 }
 
@@ -65,7 +50,7 @@ mod tests {
         assert_eq!(tools[0].name, "get_time");
 
         let out: ToolCallContent = dry
-            .call_tool("get_time", serde_json::json!({}))
+            .call_tool("get_time", serde_json::json!({}), None)
             .await
             .unwrap();
         assert!(out.as_text().unwrap().contains("dry run"));

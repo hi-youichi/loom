@@ -61,13 +61,13 @@ async fn memory_tools_source_call_tool_dispatches_to_store() {
     let source = MemoryToolsSource::new(store, ns).await;
 
     let r = source
-        .call_tool(TOOL_REMEMBER, json!({ "key": "k", "value": "v" }))
+        .call_tool(TOOL_REMEMBER, json!({ "key": "k", "value": "v" }), None)
         .await
         .unwrap();
     assert_eq!(r.as_text().unwrap(), "ok");
 
     let r = source
-        .call_tool(TOOL_RECALL, json!({ "key": "k" }))
+        .call_tool(TOOL_RECALL, json!({ "key": "k" }), None)
         .await
         .unwrap();
     assert_eq!(r.as_text().unwrap(), "\"v\"");
@@ -79,13 +79,13 @@ async fn memory_tools_source_set_call_context_forwarded_get_recent_messages() {
     let ns = vec!["memories".to_string()];
     let source = MemoryToolsSource::new(store, ns).await;
 
-    source.set_call_context(Some(ToolCallContext::new(vec![
+    let ctx = ToolCallContext::new(vec![
         Message::user("hi"),
         Message::assistant("hello"),
-    ])));
+    ]);
 
     let r = source
-        .call_tool(TOOL_GET_RECENT_MESSAGES, json!({}))
+        .call_tool(TOOL_GET_RECENT_MESSAGES, json!({}), Some(&ctx))
         .await
         .unwrap();
     let arr: Vec<serde_json::Value> = serde_json::from_str(r.as_text().unwrap()).unwrap();
@@ -109,20 +109,18 @@ async fn memory_tools_source_with_vector_store() {
     source
         .call_tool(
             TOOL_REMEMBER,
-            json!({ "key": "lang", "value": "rust programming" }),
-        )
+            json!({ "key": "lang", "value": "rust programming" }), None)
         .await
         .unwrap();
     source
-        .call_tool(TOOL_REMEMBER, json!({ "key": "food", "value": "pizza" }))
+        .call_tool(TOOL_REMEMBER, json!({ "key": "food", "value": "pizza" }), None)
         .await
         .unwrap();
 
     let r = source
         .call_tool(
             TOOL_SEARCH_MEMORIES,
-            json!({ "query": "programming", "limit": 5 }),
-        )
+            json!({ "query": "programming", "limit": 5 }), None)
         .await
         .unwrap();
     let hits: Vec<serde_json::Value> = serde_json::from_str(r.as_text().unwrap()).unwrap();

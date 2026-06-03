@@ -23,7 +23,7 @@ async fn apply_patch_add_file() {
 +line two
 *** End Patch"#;
     let result = agg
-        .call_tool(TOOL_APPLY_PATCH, json!({ "patchText": patch }))
+        .call_tool(TOOL_APPLY_PATCH, json!({ "patchText": patch }), None)
         .await
         .unwrap();
     assert!(result.as_text().unwrap().contains("Applied"));
@@ -46,7 +46,7 @@ async fn apply_patch_update_file() {
 *** End of File
 *** End Patch"#;
     let result = agg
-        .call_tool(TOOL_APPLY_PATCH, json!({ "patchText": patch }))
+        .call_tool(TOOL_APPLY_PATCH, json!({ "patchText": patch }), None)
         .await
         .unwrap();
     assert!(result.as_text().unwrap().contains("Applied"));
@@ -65,7 +65,7 @@ async fn apply_patch_delete_file() {
 *** Delete File: gone.txt
 *** End Patch"#;
     let result = agg
-        .call_tool(TOOL_APPLY_PATCH, json!({ "patchText": patch }))
+        .call_tool(TOOL_APPLY_PATCH, json!({ "patchText": patch }), None)
         .await
         .unwrap();
     assert!(result.as_text().unwrap().contains("Applied"));
@@ -76,7 +76,7 @@ async fn apply_patch_delete_file() {
 async fn apply_patch_missing_patch_text_returns_error() {
     let dir = tempfile::tempdir().unwrap();
     let agg = aggregate_with_file_tools(&dir);
-    let result = agg.call_tool(TOOL_APPLY_PATCH, json!({})).await;
+    let result = agg.call_tool(TOOL_APPLY_PATCH, json!({}), None).await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));
 }
@@ -88,8 +88,7 @@ async fn apply_patch_missing_begin_end_returns_error() {
     let result = agg
         .call_tool(
             TOOL_APPLY_PATCH,
-            json!({ "patchText": "*** Add File: x.txt\n+content" }),
-        )
+            json!({ "patchText": "*** Add File: x.txt\n+content" }), None)
         .await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));
@@ -104,7 +103,7 @@ async fn apply_patch_path_outside_working_folder_returns_error() {
 +content
 *** End Patch"#;
     let result = agg
-        .call_tool(TOOL_APPLY_PATCH, json!({ "patchText": patch }))
+        .call_tool(TOOL_APPLY_PATCH, json!({ "patchText": patch }), None)
         .await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));

@@ -21,7 +21,7 @@ async fn grep(
 ) -> loom::tool_source::ToolCallContent {
     FileToolSource::new(dir.path())
         .unwrap()
-        .call_tool(TOOL_GREP, args)
+        .call_tool(TOOL_GREP, args, None)
         .await
         .unwrap()
 }
@@ -29,7 +29,7 @@ async fn grep(
 async fn grep_err(dir: &tempfile::TempDir, args: serde_json::Value) -> ToolSourceError {
     FileToolSource::new(dir.path())
         .unwrap()
-        .call_tool(TOOL_GREP, args)
+        .call_tool(TOOL_GREP, args, None)
         .await
         .unwrap_err()
 }

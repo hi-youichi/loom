@@ -1,4 +1,3 @@
-pub mod aggregate_source;
 pub mod bash;
 mod batch;
 mod conversation;
@@ -22,7 +21,8 @@ mod r#trait;
 pub mod twitter;
 pub mod web;
 
-pub use aggregate_source::AggregateToolSource;
+pub type AggregateToolSource = ToolRegistryLocked;
+
 pub use bash::{BashTool, CommandExecutor, LocalCommandExecutor, TOOL_BASH};
 pub use batch::{BatchTool, TOOL_BATCH};
 pub use conversation::{GetRecentMessagesTool, TOOL_GET_RECENT_MESSAGES};
@@ -57,3 +57,27 @@ pub use telegram::{
 pub use todo::{TodoReadTool, TodoWriteTool, TOOL_TODO_READ, TOOL_TODO_WRITE};
 pub use twitter::{TwitterSearchTool, TOOL_TWITTER_SEARCH};
 pub use web::{WebFetcherTool, TOOL_WEB_FETCHER};
+
+use std::sync::Arc;
+
+pub async fn register_memory_tools(
+    registry: &ToolRegistryLocked,
+    store: Arc<dyn crate::memory::Store>,
+    namespace: crate::memory::Namespace,
+) {
+    registry
+        .register_async(Box::new(RememberTool::new(store.clone(), namespace.clone())))
+        .await;
+    registry
+        .register_async(Box::new(RecallTool::new(store.clone(), namespace.clone())))
+        .await;
+    registry
+        .register_async(Box::new(SearchMemoriesTool::new(store.clone(), namespace.clone())))
+        .await;
+    registry
+        .register_async(Box::new(ListMemoriesTool::new(store, namespace)))
+        .await;
+    registry
+        .register_async(Box::new(GetRecentMessagesTool::new()))
+        .await;
+}

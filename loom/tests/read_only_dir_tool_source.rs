@@ -34,14 +34,14 @@ async fn read_only_dir_tool_source_list_and_read() {
     let source = loom::tool_source::ReadOnlyDirToolSource::new(dir.path()).unwrap();
 
     let list = source
-        .call_tool(TOOL_READ_ONLY_LIST_DIR, json!({ "path": "." }))
+        .call_tool(TOOL_READ_ONLY_LIST_DIR, json!({ "path": "." }), None)
         .await
         .unwrap();
     assert!(list.as_text().unwrap().contains("ref.txt"));
     assert!(list.as_text().unwrap().contains("docs"));
 
     let read = source
-        .call_tool(TOOL_READ_ONLY_READ_FILE, json!({ "path": "ref.txt" }))
+        .call_tool(TOOL_READ_ONLY_READ_FILE, json!({ "path": "ref.txt" }), None)
         .await
         .unwrap();
     assert_eq!(read.as_text().unwrap(), "reference content");
@@ -90,12 +90,11 @@ async fn aggregate_file_tools_and_read_only_dir_tools() {
     aggregate
         .call_tool(
             TOOL_WRITE_FILE,
-            json!({ "path": "writable.txt", "content": "written" }),
-        )
+            json!({ "path": "writable.txt", "content": "written" }), None)
         .await
         .unwrap();
     let w = aggregate
-        .call_tool(TOOL_READ_FILE, json!({ "path": "writable.txt" }))
+        .call_tool(TOOL_READ_FILE, json!({ "path": "writable.txt" }), None)
         .await
         .unwrap();
     // read_file outputs cat -n style: "  {line_num}\t{content}\n"
@@ -103,7 +102,7 @@ async fn aggregate_file_tools_and_read_only_dir_tools() {
 
     // Read-only connector: read from read_only_root
     let ro = aggregate
-        .call_tool(TOOL_READ_ONLY_READ_FILE, json!({ "path": "readme.txt" }))
+        .call_tool(TOOL_READ_ONLY_READ_FILE, json!({ "path": "readme.txt" }), None)
         .await
         .unwrap();
     assert_eq!(ro.as_text().unwrap(), "read-only content");

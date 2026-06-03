@@ -101,7 +101,7 @@ impl Tool for BatchTool {
             handles.push(tokio::spawn(async move {
                 let ctx_ref = ctx_clone.as_ref();
                 let out = source
-                    .call_tool_with_context(&tool_name, params, ctx_ref)
+                    .call_tool(&tool_name, params, ctx_ref)
                     .await;
                 (i, tool_name, params_json, out)
             }));

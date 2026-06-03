@@ -44,7 +44,7 @@ async fn file_tool_source_ls_root() {
     std::fs::File::create(dir.path().join("sub").join("c.txt")).unwrap();
     let source = FileToolSource::new(dir.path()).unwrap();
     let result = source
-        .call_tool(TOOL_LS, json!({ "path": "." }))
+        .call_tool(TOOL_LS, json!({ "path": "." }), None)
         .await
         .unwrap();
     assert!(result.as_text().unwrap().contains("a.txt"));
@@ -61,12 +61,11 @@ async fn file_tool_source_write_file_then_read_file_roundtrip() {
     source
         .call_tool(
             TOOL_WRITE_FILE,
-            json!({ "path": "f.txt", "content": "hello world" }),
-        )
+            json!({ "path": "f.txt", "content": "hello world" }), None)
         .await
         .unwrap();
     let out = source
-        .call_tool(TOOL_READ_FILE, json!({ "path": "f.txt" }))
+        .call_tool(TOOL_READ_FILE, json!({ "path": "f.txt" }), None)
         .await
         .unwrap();
     // read returns cat -n style: "  {line_num}\t{content}\n"
@@ -92,8 +91,7 @@ async fn file_tool_source_read_with_offset_and_limit() {
     let out = source
         .call_tool(
             TOOL_READ_FILE,
-            json!({ "path": "f.txt", "offset": 1, "limit": 2 }),
-        )
+            json!({ "path": "f.txt", "offset": 1, "limit": 2 }), None)
         .await
         .unwrap();
     // Lines 2 and 3 (1-based); output format "  {num}\t{content}\n"
@@ -109,7 +107,7 @@ async fn file_tool_source_path_outside_working_folder_returns_invalid_input() {
     let dir = tempfile::tempdir().unwrap();
     let source = FileToolSource::new(dir.path()).unwrap();
     let result = source
-        .call_tool(TOOL_READ_FILE, json!({ "path": "../outside" }))
+        .call_tool(TOOL_READ_FILE, json!({ "path": "../outside" }), None)
         .await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));
@@ -122,12 +120,12 @@ async fn file_tool_source_create_dir_and_delete_file() {
     let dir = tempfile::tempdir().unwrap();
     let source = FileToolSource::new(dir.path()).unwrap();
     source
-        .call_tool(TOOL_CREATE_DIR, json!({ "path": "subdir" }))
+        .call_tool(TOOL_CREATE_DIR, json!({ "path": "subdir" }), None)
         .await
         .unwrap();
     assert!(dir.path().join("subdir").is_dir());
     source
-        .call_tool(TOOL_DELETE_FILE, json!({ "path": "subdir" }))
+        .call_tool(TOOL_DELETE_FILE, json!({ "path": "subdir" }), None)
         .await
         .unwrap();
     assert!(!dir.path().join("subdir").exists());
@@ -142,8 +140,7 @@ async fn file_tool_source_move_file() {
     source
         .call_tool(
             TOOL_MOVE_FILE,
-            json!({ "source": "old.txt", "target": "new.txt" }),
-        )
+            json!({ "source": "old.txt", "target": "new.txt" }), None)
         .await
         .unwrap();
     assert!(!dir.path().join("old.txt").exists());
@@ -172,7 +169,7 @@ async fn glob_pattern_only_returns_matching_files() {
     let _ = std::fs::File::create(dir.path().join("c.txt")).unwrap();
     let source = FileToolSource::new(dir.path()).unwrap();
     let result = source
-        .call_tool(TOOL_GLOB, json!({ "pattern": "*.rs" }))
+        .call_tool(TOOL_GLOB, json!({ "pattern": "*.rs" }), None)
         .await
         .unwrap();
     let lines: Vec<&str> = result.as_text().unwrap().lines().collect();
@@ -191,7 +188,7 @@ async fn glob_with_path_searches_under_subdir() {
     let _ = std::fs::File::create(dir.path().join("root.rs")).unwrap();
     let source = FileToolSource::new(dir.path()).unwrap();
     let result = source
-        .call_tool(TOOL_GLOB, json!({ "pattern": "*.rs", "path": "src" }))
+        .call_tool(TOOL_GLOB, json!({ "pattern": "*.rs", "path": "src" }), None)
         .await
         .unwrap();
     assert_eq!(result.as_text().unwrap().trim(), "src/lib.rs");
@@ -209,8 +206,7 @@ async fn glob_with_include_filters_by_include_patterns() {
     let result = source
         .call_tool(
             TOOL_GLOB,
-            json!({ "pattern": "**/*", "include": ["*.rs", "*.toml"] }),
-        )
+            json!({ "pattern": "**/*", "include": ["*.rs", "*.toml"] }), None)
         .await
         .unwrap();
     let lines: Vec<&str> = result.as_text().unwrap().lines().collect();
@@ -226,7 +222,7 @@ async fn glob_path_escape_returns_invalid_input() {
     let dir = tempfile::tempdir().unwrap();
     let source = FileToolSource::new(dir.path()).unwrap();
     let result = source
-        .call_tool(TOOL_GLOB, json!({ "pattern": "*.rs", "path": ".." }))
+        .call_tool(TOOL_GLOB, json!({ "pattern": "*.rs", "path": ".." }), None)
         .await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));
@@ -238,7 +234,7 @@ async fn glob_pattern_with_dot_dot_returns_invalid_input() {
     let dir = tempfile::tempdir().unwrap();
     let source = FileToolSource::new(dir.path()).unwrap();
     let result = source
-        .call_tool(TOOL_GLOB, json!({ "pattern": "../*.rs" }))
+        .call_tool(TOOL_GLOB, json!({ "pattern": "../*.rs" }), None)
         .await;
     let err = result.unwrap_err();
     assert!(matches!(err, ToolSourceError::InvalidInput(_)));
@@ -252,7 +248,7 @@ async fn glob_no_match_returns_empty() {
     let _ = std::fs::File::create(dir.path().join("a.txt")).unwrap();
     let source = FileToolSource::new(dir.path()).unwrap();
     let result = source
-        .call_tool(TOOL_GLOB, json!({ "pattern": "*.rs" }))
+        .call_tool(TOOL_GLOB, json!({ "pattern": "*.rs" }), None)
         .await
         .unwrap();
     assert!(result.as_text().unwrap().trim().is_empty());
