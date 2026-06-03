@@ -5,6 +5,7 @@ members = [
     "loom-llm",
     "loom-lsp",
     "loom-model-spec",
+    "loom-cache",
     "loom-curator",
     "loom-skill",
     "loom-graph",
