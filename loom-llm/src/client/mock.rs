@@ -16,10 +16,10 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 
 use crate::error::AgentError;
-use crate::llm::{LlmClient, LlmResponse, LlmUsage};
+use crate::traits::{LlmClient, LlmResponse, LlmUsage};
 use crate::message::Message;
-use crate::state::ToolCall;
-use crate::stream::MessageChunk;
+use crate::tool::ToolCall;
+use crate::traits::MessageChunk;
 
 /// Mock LLM: fixed assistant text and optional tool_calls.
 ///
@@ -220,9 +220,9 @@ impl LlmClient for MockLlm {
         Ok(response)
     }
 
-    async fn list_models(&self) -> Result<Vec<crate::llm::ModelInfo>, AgentError> {
+    async fn list_models(&self) -> Result<Vec<crate::traits::ModelInfo>, AgentError> {
         // Return a mock model for testing
-        Ok(vec![crate::llm::ModelInfo {
+        Ok(vec![crate::traits::ModelInfo {
             id: "mock-model".to_string(),
             created: None,
             owned_by: Some("mock".to_string()),
@@ -264,8 +264,8 @@ impl LlmClient for MultiRoundMockLlm {
         })
     }
 
-    async fn list_models(&self) -> Result<Vec<crate::llm::ModelInfo>, AgentError> {
-        Ok(vec![crate::llm::ModelInfo {
+    async fn list_models(&self) -> Result<Vec<crate::traits::ModelInfo>, AgentError> {
+        Ok(vec![crate::traits::ModelInfo {
             id: "mock-model".to_string(),
             created: None,
             owned_by: Some("mock".to_string()),

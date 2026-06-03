@@ -3,12 +3,12 @@
 //! Used by both `ChatOpenAI` and `ChatOpenAICompat` to separate reasoning
 //! content from final assistant replies during streaming.
 
-pub(crate) const THINKING_START: &str = "\u{3c}think\u{3e}";
-pub(crate) const THINKING_END: &str = "\u{3c}/think\u{3e}";
+pub const THINKING_START: &str = "\u{3c}think\u{3e}";
+pub const THINKING_END: &str = "\u{3c}/think\u{3e}";
 
 /// Segment produced by the incremental parser.
 #[derive(Debug)]
-pub(crate) enum ThinkingSegment {
+pub enum ThinkingSegment {
     /// Normal assistant message content.
     Message(String),
     /// Reasoning/thinking content (inside thinking tags).
@@ -18,7 +18,7 @@ pub(crate) enum ThinkingSegment {
 /// Removes thinking-tag blocks from a complete string.
 ///
 /// Used to produce the final stored `content` after streaming completes.
-pub(crate) fn strip_thinking_tags(s: &str) -> String {
+pub fn strip_thinking_tags(s: &str) -> String {
     let mut out = String::new();
     let mut rest = s;
     while let Some(start) = rest.find(THINKING_START) {
@@ -37,7 +37,7 @@ pub(crate) fn strip_thinking_tags(s: &str) -> String {
 /// Extracts text inside thinking tags from a complete string.
 ///
 /// Returns `None` if no thinking blocks found.
-pub(crate) fn collect_thinking_tags(s: &str) -> Option<String> {
+pub fn collect_thinking_tags(s: &str) -> Option<String> {
     let mut out = String::new();
     let mut rest = s;
     while let Some(start) = rest.find(THINKING_START) {
@@ -66,7 +66,7 @@ enum ThinkingParseState {
 ///
 /// Feed each content delta via [`Self::feed`], which returns parsed segments.
 /// Call [`Self::flush`] at end-of-stream to drain any remaining buffer.
-pub(crate) struct ThinkingTagParser {
+pub struct ThinkingTagParser {
     buf: String,
     state: ThinkingParseState,
 }

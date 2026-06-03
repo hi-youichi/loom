@@ -7,20 +7,20 @@ use std::collections::HashMap;
 
 use tracing::warn;
 
-use crate::state::ToolCall;
+use crate::tool::ToolCall;
 
 /// Accumulates tool call deltas by index during streaming.
 ///
 /// Each streamed chunk may contain partial tool call data (id, function name
 /// fragment, argument fragment). This struct merges them by index and produces
 /// the final list when streaming completes.
-pub(crate) struct ToolCallAccumulator {
+pub struct ToolCallAccumulator {
     /// index → (id, name, arguments)
     map: HashMap<u32, (String, String, String)>,
 }
 
 /// One delta from the LLM stream, provider-agnostic.
-pub(crate) struct RawToolCallDelta {
+pub struct RawToolCallDelta {
     pub index: u32,
     pub id: Option<String>,
     pub name: Option<String>,

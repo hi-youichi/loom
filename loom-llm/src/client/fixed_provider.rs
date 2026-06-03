@@ -3,30 +3,30 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::error::AgentError;
-use crate::llm::{LlmClient, LlmHeaders, LlmProvider};
+use crate::traits::{LlmClient, LlmHeaders, LlmProvider};
 
 pub struct CloneableLlmClient(pub Arc<dyn LlmClient>);
 
 #[async_trait]
 impl LlmClient for CloneableLlmClient {
-    async fn invoke(&self, messages: &[crate::message::Message]) -> Result<crate::llm::LlmResponse, AgentError> {
+    async fn invoke(&self, messages: &[crate::message::Message]) -> Result<crate::traits::LlmResponse, AgentError> {
         self.0.invoke(messages).await
     }
 
     async fn invoke_stream(
         &self,
         messages: &[crate::message::Message],
-        chunk_tx: Option<tokio::sync::mpsc::Sender<crate::stream::MessageChunk>>,
-    ) -> Result<crate::llm::LlmResponse, AgentError> {
+        chunk_tx: Option<tokio::sync::mpsc::Sender<crate::traits::MessageChunk>>,
+    ) -> Result<crate::traits::LlmResponse, AgentError> {
         self.0.invoke_stream(messages, chunk_tx).await
     }
 
     async fn invoke_stream_with_tool_delta(
         &self,
         messages: &[crate::message::Message],
-        chunk_tx: Option<tokio::sync::mpsc::Sender<crate::stream::MessageChunk>>,
-        tool_delta_tx: Option<tokio::sync::mpsc::Sender<crate::llm::ToolCallDelta>>,
-    ) -> Result<crate::llm::LlmResponse, AgentError> {
+        chunk_tx: Option<tokio::sync::mpsc::Sender<crate::traits::MessageChunk>>,
+        tool_delta_tx: Option<tokio::sync::mpsc::Sender<crate::traits::ToolCallDelta>>,
+    ) -> Result<crate::traits::LlmResponse, AgentError> {
         self.0.invoke_stream_with_tool_delta(messages, chunk_tx, tool_delta_tx).await
     }
 }

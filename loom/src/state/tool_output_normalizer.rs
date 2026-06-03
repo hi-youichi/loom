@@ -9,52 +9,8 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Strategy for normalizing tool output.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[derive(Default)]
-pub enum ToolOutputStrategy {
-    /// Small result, keep inline in full.
-    #[default]
-    Inline,
-    /// Only keep a summary, no inline content.
-    SummaryOnly,
-    /// Keep head and tail excerpts, suitable for logs/commands.
-    HeadTail,
-    /// Persist to file, return only file reference.
-    FileRef,
-    /// Persist to file with a small excerpt.
-    FileRefWithExcerpt,
-}
-
-/// Optional metadata supplied by a tool to influence output normalization.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ToolOutputHint {
-    /// Strong preference for a specific normalization strategy.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub preferred_strategy: Option<ToolOutputStrategy>,
-    /// Safe inline budget for this tool when the default inline limit is too high.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub safe_inline_chars: Option<usize>,
-    /// Whether this tool generally benefits more from head/tail excerpts than summaries.
-    #[serde(default)]
-    pub prefer_head_tail: bool,
-}
-
-/// Reference to persisted tool output storage.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolStorageRef {
-    /// File path where the output is stored.
-    pub path: PathBuf,
-    /// Size in bytes.
-    pub size: usize,
-    /// Content type (e.g., "text/plain", "application/json").
-    pub content_type: String,
-    /// Encoding (e.g., "utf-8").
-    pub encoding: String,
-    /// Tool name that produced this output.
-    pub tool_name: String,
-}
+// Re-export types now defined in loom-llm
+pub use loom_llm::tool::{ToolOutputHint, ToolOutputStrategy};
 
 /// Configuration for tool output normalization.
 #[derive(Debug, Clone)]
@@ -115,6 +71,21 @@ impl NormalizationConfig {
         self.observation_budget
             .saturating_sub(self.used_observation_chars)
     }
+}
+
+/// Reference to a persisted tool output file.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ToolStorageRef {
+    /// Path to the persisted output file.
+    pub path: PathBuf,
+    /// Size of the persisted output in bytes.
+    pub size: usize,
+    /// MIME content type of the output.
+    pub content_type: String,
+    /// Encoding of the output (e.g. "utf-8").
+    pub encoding: String,
+    /// Name of the tool that produced this output.
+    pub tool_name: String,
 }
 
 /// Normalized tool output result.

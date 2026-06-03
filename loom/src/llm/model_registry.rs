@@ -3,26 +3,16 @@
 //! Provides a single source of truth for all available models across providers.
 //! Combines provider configuration with model lists to return fully resolved model entries.
 //!
-//! # Example
-//!
-//! ```ignore
-//! use loom::llm::{ModelRegistry, ProviderConfig};
-//!
-//! let registry = ModelRegistry::global();
-//!
-//! // List all models from all providers
-//! let providers = vec![ProviderConfig {
-//!     name: "openai".to_string(),
-//!     base_url: Some("https://api.openai.com/v1".to_string()),
-//!     api_key: Some("sk-...".to_string()),
-//!     provider_type: None,
-//!     fetch_models: false,
-//! }];
-//! let models = registry.list_all_models(&providers).await;
-//!
-//! // Get specific model with full config
-//! let model = registry.get_model("openai/gpt-4o", &providers).await;
-//! ```
+//! **Data types** (`ProviderConfig`, `ModelEntry`, `CachedModelList`, `CombinedModelList`)
+//! are defined in `loom-llm::registry`. This module re-exports them and adds the
+//! `ModelRegistry` runtime implementation and `create_llm_client` / `create_llm_provider`
+//! factory functions.
+
+// Re-export data types from loom-llm
+pub use loom_llm::registry::{
+    CachedModelList, CombinedModelList, ModelEntry, ProviderConfig,
+    DEFAULT_CACHE_TTL, DEFAULT_PROVIDER_CACHE_TTL,
+};
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -34,232 +24,6 @@ use crate::error::AgentError;
 use crate::llm::{ChatOpenAI, ChatOpenAICompat, LlmClient, LlmProvider};
 use crate::model_spec::Provider as SpecProvider;
 use async_openai::config::OpenAIConfig;
-
-/// Default TTL for cached model lists (5 minutes).
-const DEFAULT_CACHE_TTL: Duration = Duration::from_secs(300);
-
-/// Default TTL for provider API cache (5 minutes).
-const DEFAULT_PROVIDER_CACHE_TTL: Duration = Duration::from_secs(300);
-
-/// Cached model list from provider API or local storage.
-#[derive(Clone, Debug)]
-pub struct CachedModelList {
-    /// List of cached model entries.
-    pub models: Vec<ModelEntry>,
-    /// When the cache was created.
-    pub fetched_at: Instant,
-    /// Time-to-live for this cache entry.
-    pub ttl: Duration,
-}
-
-impl CachedModelList {
-    /// Create a new cached model list.
-    pub fn new(models: Vec<ModelEntry>, ttl: Duration) -> Self {
-        Self {
-            models,
-            fetched_at: Instant::now(),
-            ttl,
-        }
-    }
-    
-    /// Check if the cache has expired.
-    pub fn is_expired(&self) -> bool {
-        self.fetched_at.elapsed() > self.ttl
-    }
-}
-
-/// Combined model list from multiple sources.
-#[derive(Clone, Debug, Default)]
-#[allow(dead_code)]
-pub struct CombinedModelList {
-    /// Models from models.dev registry.
-    pub models_dev: Vec<ModelEntry>,
-    /// Models from provider APIs.
-    pub provider_models: Vec<ModelEntry>,
-    /// Models from local storage.
-    pub local_models: Vec<ModelEntry>,
-}
-
-impl CombinedModelList {
-    /// Merge all model lists, removing duplicates.
-    #[allow(dead_code)]
-    pub fn merge_all(self) -> Vec<ModelEntry> {
-        let mut seen = std::collections::HashSet::new();
-        let mut result = Vec::new();
-        
-        for model in self.models_dev.into_iter()
-            .chain(self.provider_models)
-            .chain(self.local_models)
-        {
-            if seen.insert(model.id.clone()) {
-                result.push(model);
-            }
-        }
-        
-        result
-    }
-}
-
-/// Provider configuration for model registry.
-/// This is a simplified version that can be converted from config::ProviderDef.
-#[derive(Clone, Debug)]
-pub struct ProviderConfig {
-    /// Unique provider name.
-    pub name: String,
-    /// Base URL of the API endpoint.
-    pub base_url: Option<String>,
-    /// API key for authentication.
-    pub api_key: Option<String>,
-    /// Provider type: "openai" (default), "openai_compat", or "bigmodel" (alias).
-    pub provider_type: Option<String>,
-    /// When `true`, fetch model list from `{base_url}/models` instead of models.dev.
-    pub fetch_models: bool,
-    /// Cache TTL for provider API models (in seconds). Default: 300 seconds (5 minutes).
-    pub cache_ttl: Option<u64>,
-    /// When `true`, enable tier resolution for this provider. Default: `true`.
-    pub enable_tier_resolution: bool,
-}
-
-impl Default for ProviderConfig {
-    fn default() -> Self {
-        Self {
-            name: String::new(),
-            base_url: None,
-            api_key: None,
-            provider_type: None,
-            fetch_models: false,
-            cache_ttl: None,
-            enable_tier_resolution: true,
-        }
-    }
-}
-
-/// A fully resolved model entry with provider configuration.
-///
-/// This is the single source of truth for model configuration in the system.
-/// It contains all information needed to create an LLM client and run the agent.
-#[derive(Clone, Debug, Default)]
-pub struct ModelEntry {
-    // === Identity ===
-    /// Unique identifier in format "{provider}/{model_id}" (e.g., "openai/gpt-4o").
-    pub id: String,
-    /// Display name (just the model id, e.g., "gpt-4o").
-    pub name: String,
-    /// Provider name.
-    pub provider: String,
-
-    // === Provider Configuration ===
-    /// Base URL from provider config.
-    pub base_url: Option<String>,
-    /// API key from provider config.
-    pub api_key: Option<String>,
-    /// Provider type from provider config (e.g., "openai", "openai_compat", "bigmodel").
-    pub provider_type: Option<String>,
-
-    // === Runtime Configuration ===
-    /// Sampling temperature (0.0 - 2.0).
-    pub temperature: Option<f32>,
-    /// Maximum tokens to generate.
-    pub max_tokens: Option<u32>,
-    /// Tool choice mode (auto, none, required).
-    pub tool_choice: Option<crate::llm::ToolChoiceMode>,
-
-    // === Model Selection ===
-    /// Model family (e.g., "glm", "gpt-5.5").
-    pub family: Option<String>,
-    /// Model version/generation (e.g., "5", "latest").
-    pub version: Option<String>,
-}
-
-impl ModelEntry {
-    /// Create a new ModelEntry with minimal required fields.
-    pub fn new(provider: impl Into<String>, model: impl Into<String>) -> Self {
-        let provider = provider.into();
-        let model = model.into();
-        Self {
-            id: format!("{}/{}", provider, model),
-            name: model,
-            provider,
-            ..Default::default()
-        }
-    }
-
-    /// Set the base URL.
-    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
-        self.base_url = Some(base_url.into());
-        self
-    }
-
-    /// Set the API key.
-    pub fn with_api_key(mut self, api_key: impl Into<String>) -> Self {
-        self.api_key = Some(api_key.into());
-        self
-    }
-
-    /// Set the provider type.
-    pub fn with_provider_type(mut self, provider_type: impl Into<String>) -> Self {
-        self.provider_type = Some(provider_type.into());
-        self
-    }
-
-    /// Set the temperature.
-    pub fn with_temperature(mut self, temperature: f32) -> Self {
-        self.temperature = Some(temperature);
-        self
-    }
-
-    /// Set the model family.
-    pub fn with_family(mut self, family: impl Into<String>) -> Self {
-        self.family = Some(family.into());
-        self
-    }
-
-    /// Set the model version.
-    pub fn with_version(mut self, version: impl Into<String>) -> Self {
-        self.version = Some(version.into());
-        self
-    }
-
-    /// Set the max tokens.
-    pub fn with_max_tokens(mut self, max_tokens: u32) -> Self {
-        self.max_tokens = Some(max_tokens);
-        self
-    }
-
-    /// Set the tool choice mode.
-    pub fn with_tool_choice(mut self, tool_choice: crate::llm::ToolChoiceMode) -> Self {
-        self.tool_choice = Some(tool_choice);
-        self
-    }
-
-    /// Parse a model ID in format "provider/model" and return (provider, model).
-    pub fn parse_id(id: &str) -> Option<(&str, &str)> {
-        id.split_once('/')
-    }
-
-    /// Check if this entry has all required configuration to create an LLM client.
-    pub fn is_complete(&self) -> bool {
-        !self.name.is_empty() && self.api_key.is_some()
-    }
-
-    /// Create an LLM client from this entry.
-    pub fn create_client(&self) -> Result<Box<dyn LlmClient>, AgentError> {
-        create_llm_client(self, None)
-    }
-
-    /// Create a ModelEntry from a ProviderConfig and model name.
-    pub fn from_provider_config(provider: &ProviderConfig, model: &str) -> Self {
-        Self {
-            id: format!("{}/{}", provider.name, model),
-            name: model.to_string(),
-            provider: provider.name.clone(),
-            base_url: provider.base_url.clone(),
-            api_key: provider.api_key.clone(),
-            provider_type: provider.provider_type.clone(),
-            ..Default::default()
-        }
-    }
-}
 
 /// Cached model catalog fetched from models.dev.
 #[derive(Clone, Debug)]
@@ -430,7 +194,6 @@ impl ModelRegistry {
     }
 
     /// Get a specific model by its combined ID ("{provider}/{model_id}").
-    /// Returns None if the model is not found or the provider doesn't exist.
     pub async fn get_model(
         &self,
         combined_id: &str,
@@ -668,29 +431,6 @@ async fn fetch_models_from_api(
 }
 
 /// Creates an LLM client from a ModelEntry with provider configuration.
-///
-/// This is a convenience function that creates the appropriate LLM client
-/// ([`ChatOpenAI`] or [`ChatOpenAICompat`]) based on the provider type in the ModelEntry.
-/// It also applies runtime configuration like temperature and tool_choice.
-///
-/// # Example
-///
-/// ```ignore
-/// use loom::llm::{create_llm_client, ModelEntry};
-///
-/// let entry = ModelEntry {
-///     id: "openai/gpt-4o".to_string(),
-///     name: "gpt-4o".to_string(),
-///     provider: "openai".to_string(),
-///     base_url: Some("https://api.openai.com/v1".to_string()),
-///     api_key: Some("sk-test".to_string()),
-///     provider_type: None,
-///     temperature: Some(0.7),
-///     max_tokens: None,
-///     tool_choice: None,
-/// };
-/// let client = create_llm_client(&entry, None)?;
-/// ```
 pub fn create_llm_client(
     entry: &ModelEntry,
     headers: Option<crate::llm::LlmHeaders>,
@@ -761,9 +501,6 @@ pub fn create_llm_client(
 }
 
 /// Create an [`LlmProvider`] from a [`ModelEntry`].
-///
-/// Returns an `Arc<dyn LlmProvider>` that can dynamically create [`LlmClient`] instances
-/// for any model name, and resolve [`ModelTier`] abstractions to concrete model IDs.
 pub fn create_llm_provider(
     entry: &ModelEntry,
     providers: Vec<ProviderConfig>,
@@ -834,61 +571,4 @@ mod tests {
         assert_eq!(entry.id, "openai/gpt-4o");
         assert_eq!(entry.name, "gpt-4o");
     }
-
-    #[test]
-    fn test_model_entry_new() {
-        let entry = ModelEntry::new("openai", "gpt-4o");
-        assert_eq!(entry.id, "openai/gpt-4o");
-        assert_eq!(entry.name, "gpt-4o");
-        assert_eq!(entry.provider, "openai");
-    }
-
-    #[test]
-    fn test_model_entry_with_provider_config() {
-        let entry = ModelEntry::new("openai", "gpt-4o")
-            .with_base_url("https://api.openai.com/v1")
-            .with_api_key("sk-test");
-
-        assert_eq!(entry.id, "openai/gpt-4o");
-        assert_eq!(
-            entry.base_url,
-            Some("https://api.openai.com/v1".to_string())
-        );
-        assert_eq!(entry.api_key, Some("sk-test".to_string()));
-    }
-
-    #[test]
-    fn test_model_entry_with_runtime_config() {
-        let entry = ModelEntry::new("openai", "gpt-4o")
-            .with_temperature(0.7)
-            .with_max_tokens(1000);
-
-        assert_eq!(entry.id, "openai/gpt-4o");
-        assert_eq!(entry.temperature, Some(0.7));
-        assert_eq!(entry.max_tokens, Some(1000));
-    }
-
-    #[test]
-    fn test_model_entry_from_provider_config() {
-        let provider = ProviderConfig {
-            name: "openai".to_string(),
-            base_url: Some("https://api.openai.com/v1".to_string()),
-            api_key: Some("sk-test".to_string()),
-            provider_type: None,
-            fetch_models: false,
-            cache_ttl: None,
-            enable_tier_resolution: true,
-        };
-
-        let entry = ModelEntry::from_provider_config(&provider, "gpt-4o");
-        assert_eq!(entry.id, "openai/gpt-4o");
-        assert_eq!(entry.name, "gpt-4o");
-        assert_eq!(entry.provider, "openai");
-        assert_eq!(
-            entry.base_url,
-            Some("https://api.openai.com/v1".to_string())
-        );
-        assert_eq!(entry.api_key, Some("sk-test".to_string()));
-    }
-
 }

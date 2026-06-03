@@ -58,80 +58,12 @@ pub use yaml_specs::{load_tool_specs, YamlSpecError, YamlSpecToolSource};
 
 pub use mcp::{McpSession, McpSessionError, McpToolSource};
 
-use async_trait::async_trait;
-use serde_json::Value;
-use thiserror::Error;
-
-use crate::state::tool_output_normalizer::{ToolOutputHint, ToolOutputStrategy};
-
-/// Tool specification aligned with an MCP `tools/list` item.
-///
-/// This is the schema-facing description shown to the model during tool-aware
-/// thinking. It can also be deserialized from YAML-backed tool definitions.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ToolSpec {
-    /// Tool name (e.g. used in MCP tools/call).
-    pub name: String,
-    /// Human-readable description for the LLM.
-    pub description: Option<String>,
-    /// JSON Schema for arguments (MCP inputSchema).
-    pub input_schema: Value,
-    /// Optional output normalization hint used by the unified tool output controller.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub output_hint: Option<ToolOutputHint>,
-}
-
-impl ToolSpec {
-    /// Attaches a tool-output normalization hint.
-    pub fn with_output_hint(mut self, output_hint: ToolOutputHint) -> Self {
-        self.output_hint = Some(output_hint);
-        self
-    }
-}
-
-impl ToolOutputHint {
-    /// Creates a hint with a preferred output strategy.
-    pub fn preferred(preferred_strategy: ToolOutputStrategy) -> Self {
-        Self {
-            preferred_strategy: Some(preferred_strategy),
-            safe_inline_chars: None,
-            prefer_head_tail: false,
-        }
-    }
-
-    /// Sets the maximum size that is considered safe to inline directly.
-    pub fn safe_inline_chars(mut self, safe_inline_chars: usize) -> Self {
-        self.safe_inline_chars = Some(safe_inline_chars);
-        self
-    }
-
-    /// Prefers head/tail summarization when truncation is needed.
-    pub fn prefer_head_tail(mut self) -> Self {
-        self.prefer_head_tail = true;
-        self
-    }
-}
-
-/// Result of a single tool call — re-exported from `loom_llm`.
-///
-/// This represents the structured output returned to the ReAct runtime after a
-/// tool invocation. Tools can return text or structured content like file diffs.
+// Re-export types that are now defined in loom-llm
+pub use loom_llm::tool::{ToolSpec, ToolOutputHint, ToolOutputStrategy, ToolSourceError};
 pub use loom_llm::message::ToolCallContent;
 
-/// Errors from listing or calling tools.
-#[derive(Debug, Error)]
-pub enum ToolSourceError {
-    #[error("tool not found: {0}")]
-    NotFound(String),
-    #[error("invalid arguments: {0}")]
-    InvalidInput(String),
-    #[error("MCP/transport error: {0}")]
-    Transport(String),
-    #[error("JSON-RPC error: {0}")]
-    JsonRpc(String),
-    #[error("tool execution error: {0}")]
-    ToolError(String),
-}
+use async_trait::async_trait;
+use serde_json::Value;
 
 /// Tool source contract used by ReAct runners.
 ///

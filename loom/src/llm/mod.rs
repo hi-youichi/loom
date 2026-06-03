@@ -8,7 +8,7 @@ pub use loom_llm::message::{
     assistant_content_for_chat_api,
 };
 
-pub use loom_llm::tool::{ToolCall, ToolSpec};
+pub use loom_llm::tool::{ToolCall, ToolSpec, ToolOutputHint, ToolOutputStrategy, ToolSourceError};
 
 pub use loom_llm::traits::{
     LlmClient, LlmProvider, LlmResponse, LlmUsage, LlmHeaders,
@@ -19,33 +19,34 @@ pub use loom_llm::traits::{
 
 // Loom-specific LLM submodules (these have their own ModelEntry, ProviderConfig)
 pub mod audit;
-pub mod error_classifier;
+
+// Re-export support modules from loom-llm
+pub use loom_llm::support::thinking;
+pub use loom_llm::support::tool_call_accumulator;
+pub use loom_llm::support::error_classifier;
+
 pub mod model_registry;
-pub mod thinking;
-pub mod tool_call_accumulator;
 
 mod factory;
 
-// Loom-specific LLM implementations
+// Loom-specific LLM implementations (still in loom, depend on ToolSource/ModelRegistry)
 mod openai;
 mod openai_provider;
 mod openai_compat;
 mod openai_compat_provider;
-mod fixed_provider;
-mod mock;
-mod retry;
 
+// Re-export client implementations from loom-llm
+pub use loom_llm::client::{RetryLlmClient, MockLlm, MultiRoundMockLlm, FixedLlmProvider};
 pub use openai::ChatOpenAI;
 pub use openai_provider::OpenAIProvider;
 pub use openai_compat::ChatOpenAICompat;
 pub use openai_compat_provider::OpenAICompatProvider;
-pub use fixed_provider::FixedLlmProvider;
-pub use mock::{MockLlm, MultiRoundMockLlm};
-pub use retry::RetryLlmClient;
 
 // Re-export factory and registry types from local modules
 pub use factory::LlmFactory;
-pub use model_registry::{ModelEntry, ProviderConfig, ModelRegistry, create_llm_client};
+
+// Re-export registry types from model_registry (types come from loom-llm, runtime stays here)
+pub use model_registry::{ModelEntry, ProviderConfig, ModelRegistry, create_llm_client, create_llm_provider};
 
 #[deprecated(note = "renamed to ChatOpenAICompat")]
 pub type ChatBigModel = ChatOpenAICompat;
