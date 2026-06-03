@@ -1,7 +1,10 @@
 //! LLM client module for Loom.
 //!
-//! This module contains Loom's LLM client abstractions.
+//! This module re-exports all LLM types and implementations from `loom-llm`.
+//! Only `model_registry` (runtime) and `factory` stay here because they depend
+//! on `crate::model_spec::ModelsDevResolver` and `crate::provider`/`crate::tier`.
 
+// Re-export core types from loom-llm
 pub use loom_llm::message::{
     Message, UserContent, ContentPart, ContentError,
     AssistantToolCall, AssistantPayload, ToolCallContent,
@@ -17,35 +20,27 @@ pub use loom_llm::traits::{
     MessageChunk,
 };
 
-// Loom-specific LLM submodules (these have their own ModelEntry, ProviderConfig)
-pub mod audit;
-
 // Re-export support modules from loom-llm
 pub use loom_llm::support::thinking;
 pub use loom_llm::support::tool_call_accumulator;
 pub use loom_llm::support::error_classifier;
+pub use loom_llm::support::audit;
 
+// Re-export client implementations from loom-llm (all implementations now live there)
+pub use loom_llm::client::{
+    ChatOpenAI, ChatOpenAICompat,
+    OpenAIProvider, OpenAICompatProvider,
+    RetryLlmClient, MockLlm, MultiRoundMockLlm, FixedLlmProvider,
+};
+
+// Local modules that depend on loom crate internals
 pub mod model_registry;
-
 mod factory;
 
-// Loom-specific LLM implementations (still in loom, depend on ToolSource/ModelRegistry)
-mod openai;
-mod openai_provider;
-mod openai_compat;
-mod openai_compat_provider;
-
-// Re-export client implementations from loom-llm
-pub use loom_llm::client::{RetryLlmClient, MockLlm, MultiRoundMockLlm, FixedLlmProvider};
-pub use openai::ChatOpenAI;
-pub use openai_provider::OpenAIProvider;
-pub use openai_compat::ChatOpenAICompat;
-pub use openai_compat_provider::OpenAICompatProvider;
-
-// Re-export factory and registry types from local modules
+// Re-export factory
 pub use factory::LlmFactory;
 
-// Re-export registry types from model_registry (types come from loom-llm, runtime stays here)
+// Re-export registry types from model_registry (data types come from loom-llm, runtime stays here)
 pub use model_registry::{ModelEntry, ProviderConfig, ModelRegistry, create_llm_client, create_llm_provider};
 
 #[deprecated(note = "renamed to ChatOpenAICompat")]

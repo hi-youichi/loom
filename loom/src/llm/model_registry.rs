@@ -515,14 +515,14 @@ pub fn create_llm_provider(
 
     match provider_type {
         "openai" => {
-            let provider = crate::llm::openai_provider::OpenAIProvider::from_entry(
+            let provider = crate::llm::OpenAIProvider::from_entry(
                 entry,
                 providers,
             );
             Ok(Arc::new(provider))
         }
         _ => {
-            let provider = crate::llm::openai_compat_provider::OpenAICompatProvider::from_entry(
+            let provider = crate::llm::OpenAICompatProvider::from_entry(
                 entry,
                 providers,
             );

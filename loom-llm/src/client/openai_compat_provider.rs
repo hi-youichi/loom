@@ -1,8 +1,11 @@
+//! OpenAI-compatible LlmProvider implementation.
+
 use async_trait::async_trait;
 
 use crate::error::AgentError;
-use crate::llm::{ChatOpenAICompat, LlmClient, LlmProvider};
-use crate::llm::model_registry::{ModelEntry, ProviderConfig};
+use crate::client::ChatOpenAICompat;
+use crate::traits::{LlmClient, LlmProvider, LlmHeaders};
+use crate::registry::{ModelEntry, ProviderConfig};
 
 pub struct OpenAICompatProvider {
     base_url: String,
@@ -41,7 +44,7 @@ impl LlmProvider for OpenAICompatProvider {
     fn create_client_with_headers(
         &self,
         model: &str,
-        headers: Option<crate::llm::LlmHeaders>,
+        headers: Option<LlmHeaders>,
     ) -> Result<Box<dyn LlmClient>, AgentError> {
         let mut client =
             ChatOpenAICompat::with_config(self.base_url.clone(), self.api_key.clone(), model);

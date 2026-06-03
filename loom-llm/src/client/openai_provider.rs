@@ -1,9 +1,12 @@
+//! OpenAI LlmProvider implementation.
+
 use async_trait::async_trait;
 use async_openai::config::OpenAIConfig;
 
 use crate::error::AgentError;
-use crate::llm::{ChatOpenAI, LlmClient, LlmProvider};
-use crate::llm::model_registry::{ModelEntry, ProviderConfig};
+use crate::client::ChatOpenAI;
+use crate::traits::{LlmClient, LlmProvider, LlmHeaders};
+use crate::registry::{ModelEntry, ProviderConfig};
 
 pub struct OpenAIProvider {
     config: OpenAIConfig,
@@ -42,7 +45,7 @@ impl LlmProvider for OpenAIProvider {
     fn create_client_with_headers(
         &self,
         model: &str,
-        headers: Option<crate::llm::LlmHeaders>,
+        headers: Option<LlmHeaders>,
     ) -> Result<Box<dyn LlmClient>, AgentError> {
         let mut client = ChatOpenAI::with_config(self.config.clone(), model);
         if let Some(h) = headers {
