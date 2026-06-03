@@ -283,9 +283,9 @@ workspace members = [
 | # | 任务 | 新 Crate | 来源模块 | 行数 | 状态 | 备注 |
 |---|---|---|---|---|---|---|
 | 1 | 提取 LSP 客户端 | `loom-lsp` | `lsp/` | 3,914 | `[x]` | ✅ 完成，46 个测试通过 |
-| 2 | 提取模型规格 | `loom-model-spec` | `model_spec/`, `tier/`, `provider/`, `services/` | 1,943 | `[ ]` | 低风险，逻辑独立 |
-| 3 | 提取缓存层 | `loom-cache` | `cache/` | 251 | `[ ]` | 低风险，最小模块 |
-| 4 | 提取 Slash 命令 | `loom-commands` | `command/` | 319 | `[ ]` | 低风险，仅依赖 stream-event |
+| 2 | 提取模型规格 | `loom-model-spec` | `model_spec/` | 1,264 | `[x]` | ✅ 完成，28 个测试通过 (tier/provider/services 因耦合保留在 loom) |
+| 3 | 提取缓存层 | `loom-cache` | `cache/` | 251 | `[x]` | ✅ 完成，5 个测试通过 |
+| 4 | 提取 Slash 命令 | `loom-commands` | `command/` | 319 | `[-]` | ⏸ 推迟到 Phase 2+，依赖 compress/llm/error/message |
 
 ### Phase 2: 中风险提取
 
@@ -317,11 +317,11 @@ workspace members = [
 | Phase | 任务数 | 行数 | 已完成 | 进行中 | 未开始 |
 |---|---|---|---|---|---|
 | Phase 0 | 1 | 8,463 | 1 | 0 | 0 |
-| Phase 1 | 4 | 6,427 | 1 | 0 | 3 |
+| Phase 1 | 4 | 6,427 | 3 | 0 | 1 |
 | Phase 2 | 6 | 17,965 | 0 | 0 | 6 |
 | Phase 3 | 2 | 23,032 | 0 | 0 | 2 |
 | Phase 4 | 2 | 5,696+ | 0 | 0 | 2 |
-| **总计** | **15** | **61,583+** | **2** | **0** | **13** |
+| **总计** | **15** | **61,583+** | **4** | **0** | **11** |
 
 ## 9. 风险与注意事项
 
