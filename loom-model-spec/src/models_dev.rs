@@ -9,7 +9,7 @@ use model_spec_core::parser::{
 };
 use serde_json::Value;
 
-use crate::http_retry::{
+use loom_llm::support::http_retry::{
     is_retryable_reqwest_error, retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES,
 };
 

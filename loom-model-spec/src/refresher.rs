@@ -43,8 +43,8 @@ mod tests {
 
     use async_trait::async_trait;
 
-    use crate::model_spec::models_dev::HttpClient;
-    use crate::model_spec::resolver::ModelLimitResolver;
+    use crate::models_dev::HttpClient;
+    use crate::resolver::ModelLimitResolver;
 
     struct CountingHttpClient {
         body: String,

@@ -39,7 +39,7 @@ impl ModelLimitResolver for CompositeResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model_spec::ConfigOverride;
+    use crate::ConfigOverride;
 
     #[tokio::test(flavor = "current_thread")]
     async fn config_override_takes_priority() {

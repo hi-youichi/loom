@@ -32,6 +32,9 @@ loom-llm = { path = "../loom-llm" }
 # LSP client (loom-lsp crate)
 loom-lsp = { path = "../loom-lsp" }
 
+# Model specification (loom-model-spec crate)
+loom-model-spec = { path = "../loom-model-spec" }
+
 # Graph primitives (loom-graph crate)
 loom-graph = { path = "../loom-graph" }
 
