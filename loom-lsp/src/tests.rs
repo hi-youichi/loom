@@ -3,12 +3,12 @@
 #[cfg(test)]
 #[allow(clippy::module_inception)]
 mod tests {
-    use crate::lsp::LspManager;
+    use crate::LspManager;
     use std::path::Path;
     
     // 修复clone问题 - 创建配置的副本
-    fn get_configs() -> Vec<env_config::LspServerConfig> {
-        env_config::get_default_lsp_servers()
+    fn get_configs() -> Vec<config::LspServerConfig> {
+        config::get_default_lsp_servers()
     }
 
     #[test]

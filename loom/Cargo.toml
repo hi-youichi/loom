@@ -29,6 +29,9 @@ once_cell = "1.19"
 # LLM client (loom-llm crate)
 loom-llm = { path = "../loom-llm" }
 
+# LSP client (loom-lsp crate)
+loom-lsp = { path = "../loom-lsp" }
+
 # Graph primitives (loom-graph crate)
 loom-graph = { path = "../loom-graph" }
 

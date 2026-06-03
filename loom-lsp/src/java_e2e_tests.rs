@@ -6,10 +6,10 @@
 #[cfg(test)]
 #[allow(clippy::module_inception)]
 mod java_e2e_tests {
-    use crate::lsp::LspManager;
-    use crate::lsp::installer::LspInstaller;
+    use crate::LspManager;
+    use crate::installer::LspInstaller;
     use std::path::Path;
-    use env_config::{LspConfig, get_default_lsp_servers, load_default_lsp_config};
+    use config::{LspConfig, get_default_lsp_servers, load_default_lsp_config};
 
     #[test]
     fn test_java_e2e_file_to_config_flow() {

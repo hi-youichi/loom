@@ -6,10 +6,10 @@
 //! - Cache server capabilities and diagnostics
 //! - Handle server lifecycle and error recovery
 
-use crate::lsp::cache::DiagnosticCache;
-use crate::lsp::client::LspClient;
+use crate::cache::DiagnosticCache;
+use crate::client::LspClient;
 use dashmap::DashMap;
-use env_config::LspServerConfig;
+use config::LspServerConfig;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use thiserror::Error;
@@ -25,13 +25,13 @@ pub enum LspManagerError {
     NoServerForFile(String),
 
     #[error("Failed to start language server: {0}")]
-    StartFailed(#[source] crate::lsp::client::LspClientError),
+    StartFailed(#[source] crate::client::LspClientError),
 
     #[error("Language server not initialized: {0}")]
     NotInitialized(String),
 
     #[error("Client error: {0}")]
-    ClientError(#[from] crate::lsp::client::LspClientError),
+    ClientError(#[from] crate::client::LspClientError),
 
     #[error("Invalid file path: {0}")]
     InvalidPath(String),
@@ -55,7 +55,7 @@ pub struct LspManager {
 impl LspManager {
     /// Create a new LSP manager with default configuration.
     pub async fn new() -> Result<Self, LspManagerError> {
-        let configs = env_config::get_default_lsp_servers();
+        let configs = config::get_default_lsp_servers();
         Self::with_configs(configs).await
     }
 
@@ -288,7 +288,7 @@ impl LspManager {
 
 impl Default for LspManager {
     fn default() -> Self {
-        Self::from_configs(env_config::get_default_lsp_servers())
+        Self::from_configs(config::get_default_lsp_servers())
     }
 }
 

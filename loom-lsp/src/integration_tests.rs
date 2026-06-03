@@ -4,8 +4,8 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::lsp::LspManager;
-    use env_config::LspServerConfig;
+    use crate::LspManager;
+    use config::LspServerConfig;
     use std::path::PathBuf;
     use std::sync::Arc;
     use tokio::sync::RwLock;

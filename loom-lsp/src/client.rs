@@ -28,7 +28,7 @@ use tokio::{
 };
 use tracing::{debug, error, info, warn};
 
-use crate::lsp::cache::DiagnosticCache;
+use crate::cache::DiagnosticCache;
 
 /// LSP result type
 pub type LspResult<T> = Result<T, LspClientError>;
