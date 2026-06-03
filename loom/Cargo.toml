@@ -10,7 +10,7 @@ authors.workspace = true
 path = "src/lib.rs"
 
 [features]
-lance = ["dep:lancedb", "dep:arrow-array", "dep:arrow-schema"]
+lance = ["dep:lancedb", "dep:arrow-array", "dep:arrow-schema", "loom-memory/lance"]
 testing = []
 
 [dependencies]
@@ -35,6 +35,9 @@ loom-lsp = { path = "../loom-lsp" }
 # Model specification (loom-model-spec crate)
 loom-cache = { path = "../loom-cache" }
 loom-model-spec = { path = "../loom-model-spec" }
+
+# Memory implementations (loom-memory crate)
+loom-memory = { path = "../loom-memory" }
 
 # Graph primitives (loom-graph crate)
 loom-graph = { path = "../loom-graph" }

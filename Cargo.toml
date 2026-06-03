@@ -4,6 +4,7 @@ members = [
     "loom",
     "loom-llm",
     "loom-lsp",
+    "loom-memory",
     "loom-model-spec",
     "loom-cache",
     "loom-worktree",

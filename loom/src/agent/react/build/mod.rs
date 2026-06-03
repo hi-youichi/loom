@@ -40,7 +40,7 @@ fn to_agent_error(e: impl std::fmt::Display) -> AgentError {
 /// Resolves memory DB path: config value if set, otherwise XDG data home (e.g. ~/.local/share/loom/memory.db).
 fn resolve_memory_db_path(config: &ReactBuildConfig) -> String {
     config.db_path.clone().unwrap_or_else(|| {
-        crate::memory::sqlite_util::default_memory_db_path()
+        crate::memory::default_memory_db_path()
             .to_string_lossy()
             .into_owned()
     })
