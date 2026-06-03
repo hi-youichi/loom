@@ -11,11 +11,14 @@ pub mod client;
 pub mod registry;
 pub mod support;
 
+#[cfg(test)]
+mod test_util;
+
 // Re-exports — Message types
 pub use message::{
     Message, UserContent, ContentPart, ContentError,
     AssistantToolCall, AssistantPayload, ToolCallContent,
-    assistant_content_for_chat_api,
+    assistant_content_for_chat_api, content_part_modality,
 };
 
 // Re-exports — Tool types (MCP-format ToolSpec, ToolCall, ToolSourceError, etc.)
@@ -36,7 +39,7 @@ pub use traits::{
 };
 
 // Re-exports — Client implementations
-pub use client::ChatOpenAICompat;
+pub use client::{ChatOpenAICompat, ChatOpenAI, OpenAIProvider, OpenAICompatProvider};
 
 // Re-exports — Registry types (ProviderConfig, ModelEntry, etc.)
 pub use registry::{ProviderConfig, ModelEntry, CachedModelList, CombinedModelList};

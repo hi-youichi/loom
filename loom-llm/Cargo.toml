@@ -35,6 +35,13 @@ async-openai = { version = "0.32", features = ["chat-completion", "model"] }
 # Utilities
 uuid = { version = "1", features = ["v4"] }
 dirs = "5"
+chrono = { version = "0.4", features = ["serde"] }
+
+# Config loading (for audit.rs LlmAuditConfig)
+env_config = { path = "../config", package = "config" }
+
+# Model spec (for content_part_modality)
+model-spec-core = { path = "../model-spec-core" }
 
 # Optional: LanceDB for model cache
 lancedb = { version = "0.23", optional = true }

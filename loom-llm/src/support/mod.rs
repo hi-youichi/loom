@@ -7,3 +7,4 @@ pub mod uuid6;
 pub mod error_classifier;
 pub mod thinking;
 pub mod tool_call_accumulator;
+pub mod audit;

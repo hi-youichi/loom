@@ -157,6 +157,17 @@ impl ContentPart {
     }
 }
 
+/// Convert a `ContentPart` to a `ModalityType` for model validation.
+pub fn content_part_modality(part: &ContentPart) -> model_spec_core::spec::ModalityType {
+    match part {
+        ContentPart::Text { .. } | ContentPart::File { .. } => model_spec_core::spec::ModalityType::Text,
+        ContentPart::ImageUrl { .. } | ContentPart::ImageBase64 { .. } => model_spec_core::spec::ModalityType::Image,
+        ContentPart::AudioBase64 { .. } => model_spec_core::spec::ModalityType::Audio,
+        ContentPart::VideoUrl { .. } | ContentPart::VideoBase64 { .. } => model_spec_core::spec::ModalityType::Video,
+        ContentPart::PdfUrl { .. } | ContentPart::PdfBase64 { .. } => model_spec_core::spec::ModalityType::Pdf,
+    }
+}
+
 /// One function tool call the model requested (aligned with OpenAI `tool_calls[]`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AssistantToolCall {
