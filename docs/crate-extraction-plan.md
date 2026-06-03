@@ -295,7 +295,7 @@ workspace members = [
 | 6 | 提取 Prompt 模板 | `loom-prompts` | `prompts/`, `helve/` | 1,499 | `[ ]` | 中风险 |
 | 7 | 提取通信协议 | `loom-protocol` | `protocol/`, `stream_display/` | 6,227 | `[ ]` | 中风险 |
 | 8 | 提取上下文压缩 | `loom-compress` | `compress/` | 1,007 | `[ ]` | 中风险，依赖 graph |
-| 9 | 提取 Git Worktree | `loom-worktree` | `worktree/` | 1,169 | `[ ]` | 中风险 |
+| 9 | 提取 Git Worktree | `loom-worktree` | `worktree/` | 1,169 | `[x]` | ✅ 完成，17/18 测试通过 |
 | 9b | 提取流式处理 | `loom-stream` | `stream/`, `openai_sse/` | 1,878 | `[ ]` | 中风险，依赖 stream-event |
 
 ### Phase 3: 核心提取
@@ -318,10 +318,10 @@ workspace members = [
 |---|---|---|---|---|---|
 | Phase 0 | 1 | 8,463 | 1 | 0 | 0 |
 | Phase 1 | 4 | 6,427 | 3 | 0 | 1 |
-| Phase 2 | 6 | 17,965 | 0 | 0 | 6 |
+| Phase 2 | 6 | 17,965 | 1 | 0 | 5 |
 | Phase 3 | 2 | 23,032 | 0 | 0 | 2 |
 | Phase 4 | 2 | 5,696+ | 0 | 0 | 2 |
-| **总计** | **15** | **61,583+** | **4** | **0** | **11** |
+| **总计** | **15** | **61,583+** | **5** | **0** | **10** |
 
 ## 9. 风险与注意事项
 
