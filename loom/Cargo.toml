@@ -99,6 +99,8 @@ jsonrpc-core = "18.0"
 url = "2.5"
 
 
+
+loom-worktree = { path = "../loom-worktree" }
 [dev-dependencies]
 tempfile = "3"
 libc = "0.2"

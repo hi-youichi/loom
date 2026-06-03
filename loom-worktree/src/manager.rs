@@ -2,8 +2,8 @@
 
 use std::path::{Path, PathBuf};
 
-use super::git_ops;
-use super::{
+use crate::git_ops;
+use crate::{
     sanitize_slug, BaseRef, CleanupStrategy, ConflictDetection, ConflictInfo, ConflictSeverity,
     WorktreeConfig, WorktreeHandle, WorktreeState,
 };
