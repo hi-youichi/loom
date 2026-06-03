@@ -1,22 +1,23 @@
 # Loom Crate 拆分方案
 
-> 版本: 0.2.1 | 日期: 2025-08-19 | 最后更新: 2025-06-03
+> 版本: 0.2.1 | 日期: 2025-08-19 | 最后更新: 2026-06-03 (Phase 2 Task 5 loom-memory)
 
 ## 1. 背景
 
-当前 workspace 有 19 个 crate，但核心 `loom` crate 承载了 268 个文件、65,315 行代码（agent 模式、工具系统、LSP、memory、压缩等），是一个典型的 "god crate"。本文档描述将其拆分为职责清晰的独立 crate 的方案。
+当前 workspace 有 23 个 crate，核心 `loom` crate 已从 268 文件/65,315 行精简至 227 文件/51,558 行（含 6 个已提取的 re-export 薄壳）。本文档描述将其继续拆分为职责清晰的独立 crate 的方案。
 
-**注**: `loom-llm` 的拆分已先于本计划完成（8,463 行，29 文件已迁移），`loom/src/llm/` 现为 ~76 行 re-export 薄壳。
+**注**: `loom-llm` 的拆分已先于本计划完成（8,463 行，29 文件已迁移），`loom/src/llm/` 现为 ~719 行 re-export 薄壳（含 574 行 `model_registry.rs` 运行时逻辑）。`loom-memory` 已于 Phase 2 提取完成（5,746 行，11 文件），`loom/src/memory/` 现为 7 行 re-export 薄壳。
 
 ## 2. 现有 Workspace 结构
 
 ```
 loom_main/
-├── loom/              # 核心框架 (268 文件，待拆分)
+├── loom/              # 核心框架 (227 文件, 51,558 行 — 持续拆分中)
 ├── loom-llm/          # LLM 客户端抽象
 ├── loom-graph/        # 图执行原语
 ├── loom-pregel/       # Pregel BSP 运行时
 ├── loom-curator/      # 后台审查系统
+├── loom-memory/       # 持久化 & 向量存储实现
 ├── loom-skill/        # Skill 发现/追踪
 ├── config/            # 配置管理 (env_config)
 ├── stream-event/      # 事件协议
@@ -35,7 +36,7 @@ loom_main/
 ## 3. `loom` Crate 内部模块分析
 
 ```
-loom/src/                               # 268 文件, 65,315 行
+loom/src/                               # 243 文件, 58,736 行
 ├── agent/             # 42 文件,  8,638 行 — Agent 模式 (ReAct, DUP, GoT, ToT)
 │   ├── react/         # ReAct 模式 (Think → Act → Observe)
 │   ├── dup/           # Depth-Up 推理
@@ -52,46 +53,54 @@ loom/src/                               # 268 文件, 65,315 行
 │   ├── twitter/       # Twitter 集成
 │   └── ...
 ├── tool_source/       # 17 文件,  2,983 行 — 工具抽象层 & MCP 集成
-├── memory/            # 17 文件,  7,185 行 — 持久化 & 向量存储
+├── memory/            #  1 文件,      7 行 — ✅ re-export 薄壳 → loom-memory
 ├── background_review/ # 13 文件,  5,696 行 — 后执行分析
 ├── stream_display/    # 10 文件,  4,367 行 — 流式展示
-├── lsp/               # 14 文件,  3,914 行 — LSP 客户端集成
 ├── cli_run/           #  3 文件,  3,628 行 — CLI 编排
-├── model_spec/        #  9 文件,  1,264 行 — 模型规格解析
-├── openai_sse/        #  4 文件,    900 行 — SSE 处理
-├── compress/          #  7 文件,  1,007 行 — 上下文压缩
-├── stream/            #  9 文件,    978 行 — 流类型
-├── helve/             #  4 文件,  1,091 行 — 产品语义配置
-├── worktree/          #  3 文件,  1,169 行 — Git worktree 隔离
 ├── protocol/          #  6 文件,  1,860 行 — 通信协议
-├── state/             #  3 文件,  1,853 行 — State 类型
 ├── goal_runner/       #  6 文件,  1,527 行 — Goal 运行器
+├── compress/          #  7 文件,  1,007 行 — 上下文压缩
+├── helve/             #  4 文件,  1,091 行 — 产品语义配置
+├── stream/            #  9 文件,    978 行 — 流类型
+├── openai_sse/        #  4 文件,    900 行 — SSE 处理
 ├── tier/              #  5 文件,    479 行 — Tier 分辨
-├── prompts/           #  3 文件,    408 行 — Prompt 模板
+├── state/             #  3 文件,  1,853 行 — State 类型
 ├── export/            #  1 文件,    427 行 — 导出功能
+├── prompts/           #  3 文件,    408 行 — Prompt 模板
 ├── config/            #  6 文件,    388 行 — 配置摘要
+├── profile_convert/   #  5 文件,    386 行 — 配置文件转换
 ├── user_message/      #  2 文件,    362 行 — 用户消息存储
 ├── command/           #  4 文件,    319 行 — Slash 命令
-├── profile_convert/   #  5 文件,    386 行 — 配置文件转换
 ├── services/          #  2 文件,    177 行 — 模型服务
-├── cache/             #  3 文件,    251 行 — 缓存层
 ├── provider/          #  2 文件,     23 行 — Provider 配置
-├── llm/               #  3 文件,    719 行 — LLM 集成封装 (re-export 薄壳)
-└── 根文件             #  8 文件,  1,903 行 — lib.rs, traits.rs, skill.rs 等
+├── lsp/               #  1 文件,      7 行 — ✅ re-export 薄壳 → loom-lsp
+├── cache/             #  1 文件,      3 行 — ✅ re-export 薄壳 → loom-cache
+├── model_spec/        #  1 文件,      6 行 — ✅ re-export 薄壳 → loom-model-spec
+├── worktree/          #  1 文件,      3 行 — ✅ re-export 薄壳 → loom-worktree
+├── llm/               #  3 文件,    719 行 — ✅ re-export + model_registry (574行)
+└── 根文件             #  8 文件,  1,905 行 — lib.rs, traits.rs, skill.rs 等
 ```
 
 ## 4. 模块耦合度分析
+
+### 已提取模块 (re-export 薄壳，保留在 loom/src 中仅做重新导出)
+
+| 模块 | 当前文件数 | 当前行数 | 目标 Crate | 原始行数 |
+|---|---|---|---|---|
+| `lsp/` | 1 | 7 | `loom-lsp` | 3,914 |
+| `cache/` | 1 | 3 | `loom-cache` | 251 |
+| `model_spec/` | 1 | 6 | `loom-model-spec` | 1,264 |
+| `worktree/` | 1 | 3 | `loom-worktree` | 1,169 |
+| `llm/` | 3 | 719 | `loom-llm` (+ model_registry) | 8,463 |
+| `memory/` | 1 | 7 | `loom-memory` | 5,746 |
 
 ### 自包含模块 (低耦合，易提取)
 
 | 模块 | 文件数 | 行数 | 外部依赖 |
 |---|---|---|---|
-| `lsp/` | 14 | 3,914 | state, tools (最少) |
-| `cache/` | 3 | 251 | llm, state |
 | `command/` | 4 | 319 | state, message |
-| `model_spec/` + `tier/` + `provider/` + `services/` | 18 | 1,943 | model-spec-core, loom-llm |
+| `tier/` + `provider/` + `services/` | 5 + 2 + 2 = 9 | 479 + 23 + 177 = 679 | model-spec-core, loom-llm |
 | `prompts/` + `helve/` | 7 | 1,499 | config, model-spec |
-| `worktree/` | 3 | 1,169 | file tools |
 | `profile_convert/` | 5 | 386 | config |
 
 ### 中等耦合模块 (需定义 trait 接口)
@@ -282,8 +291,8 @@ workspace members = [
 
 | # | 任务 | 新 Crate | 来源模块 | 行数 | 状态 | 备注 |
 |---|---|---|---|---|---|---|
-| 1 | 提取 LSP 客户端 | `loom-lsp` | `lsp/` | 3,914 | `[x]` | ✅ 完成，46 个测试通过 |
-| 2 | 提取模型规格 | `loom-model-spec` | `model_spec/` | 1,264 | `[x]` | ✅ 完成，28 个测试通过 (tier/provider/services 因耦合保留在 loom) |
+| 1 | 提取 LSP 客户端 | `loom-lsp` | `lsp/` | 3,912 | `[x]` | ✅ 完成，46 个测试通过 |
+| 2 | 提取模型规格 | `loom-model-spec` | `model_spec/` | 1,263 | `[x]` | ✅ 完成，28 个测试通过 (tier/provider/services 因耦合保留在 loom) |
 | 3 | 提取缓存层 | `loom-cache` | `cache/` | 251 | `[x]` | ✅ 完成，5 个测试通过 |
 | 4 | 提取 Slash 命令 | `loom-commands` | `command/` | 319 | `[-]` | ⏸ 推迟到 Phase 2+，依赖 compress/llm/error/message |
 
@@ -291,37 +300,63 @@ workspace members = [
 
 | # | 任务 | 新 Crate | 来源模块 | 行数 | 状态 | 备注 |
 |---|---|---|---|---|---|---|
-| 5 | 提取持久化层 | `loom-memory` | `memory/` | 7,185 | `[ ]` | 中风险，需定义存储 trait |
+| 5 | 提取持久化层 | `loom-memory` | `memory/` | 5,746 | `[x]` | ✅ 完成，104 个测试通过 (11 实现文件 + 5 死代码已删除) |
 | 6 | 提取 Prompt 模板 | `loom-prompts` | `prompts/`, `helve/` | 1,499 | `[ ]` | 中风险 |
 | 7 | 提取通信协议 | `loom-protocol` | `protocol/`, `stream_display/` | 6,227 | `[ ]` | 中风险 |
 | 8 | 提取上下文压缩 | `loom-compress` | `compress/` | 1,007 | `[ ]` | 中风险，依赖 graph |
 | 9 | 提取 Git Worktree | `loom-worktree` | `worktree/` | 1,169 | `[x]` | ✅ 完成，17/18 测试通过 |
 | 9b | 提取流式处理 | `loom-stream` | `stream/`, `openai_sse/` | 1,878 | `[ ]` | 中风险，依赖 stream-event |
 
-### Phase 3: 核心提取
-
-| # | 任务 | 新 Crate | 来源模块 | 行数 | 状态 | 备注 |
-|---|---|---|---|---|---|---|
-| 10 | 提取工具系统 | `loom-tools` | `tools/`, `tool_source/` | 14,394 | `[ ]` | 高风险，需定义 Tool trait |
-| 11 | 提取 Agent 模式 | `loom-agent-patterns` | `agent/` | 8,638 | `[ ]` | 高风险，核心逻辑 |
-
-### Phase 4: 应用层清理
-
-| # | 任务 | 新 Crate | 来源模块 | 行数 | 状态 | 备注 |
-|---|---|---|---|---|---|---|
-| 12 | 提取后台审查 | `loom-background-review` | `background_review/` | 5,696 | `[ ]` | 高风险，依赖所有核心 crate |
-| 13 | 精简 loom 为 facade | `loom` (瘦身) | 删除已提取代码 | — | `[ ]` | 保留 re-export + 核心类型 |
-
 ### 汇总
 
-| Phase | 任务数 | 行数 | 已完成 | 进行中 | 未开始 |
+| Phase | 任务数 | 行数 | 已完成 | 推迟 | 未开始 |
 |---|---|---|---|---|---|
 | Phase 0 | 1 | 8,463 | 1 | 0 | 0 |
-| Phase 1 | 4 | 6,427 | 3 | 0 | 1 |
-| Phase 2 | 6 | 17,965 | 1 | 0 | 5 |
+| Phase 1 | 4 | 6,427 | 3 | 1 | 0 |
+| Phase 2 | 7 | 19,843 | 2 | 0 | 5 |
 | Phase 3 | 2 | 23,032 | 0 | 0 | 2 |
 | Phase 4 | 2 | 5,696+ | 0 | 0 | 2 |
-| **总计** | **15** | **61,583+** | **5** | **0** | **10** |
+| **总计** | **16** | **63,461+** | **6** | **1** | **9** |
+
+### 当前 loom/src 实际状态 (2026-06-03)
+
+| 类别 | 模块 | 文件数 | 行数 | 备注 |
+|---|---|---|---|---|
+| **re-export 薄壳** | `lsp/` | 1 | 7 | → loom-lsp |
+| | `cache/` | 1 | 3 | → loom-cache |
+| | `model_spec/` | 1 | 6 | → loom-model-spec |
+| | `worktree/` | 1 | 3 | → loom-worktree |
+| | `memory/` | 1 | 7 | → loom-memory |
+| **薄壳小计** | | **8** | **745** | |
+| **待提取** | `agent/` | 42 | 8,638 | Phase 3 |
+| | `tools/` + `tool_source/` | 73 | 14,394 | Phase 3 |
+| | `background_review/` | 13 | 5,696 | Phase 4 |
+| | `stream_display/` | 10 | 4,367 | Phase 2 |
+| | `cli_run/` | 3 | 3,628 | 保留在 loom |
+| | `protocol/` | 6 | 1,860 | Phase 2 |
+| | `goal_runner/` | 6 | 1,527 | 保留在 loom |
+| | `compress/` | 7 | 1,007 | Phase 2 |
+| | `helve/` | 4 | 1,091 | Phase 2 |
+| | `state/` | 3 | 1,853 | 保留在 loom (核心类型) |
+| | `stream/` + `openai_sse/` | 13 | 1,878 | Phase 2 |
+| | 其他小模块 | 56 | ~3,441 | command/config/export/etc. |
+| **待提取小计** | | **236** | **57,998** | |
+| **总计** | | **243** | **58,736** | |
+
+### 已完成提取的独立 Crate 状态
+
+| Crate | 文件数 | 行数 | 来源 | 测试 |
+|---|---|---|---|---|
+| `loom-llm` | 29 | 8,463 | 原 `llm/` 完整实现 | ✅ |
+| `loom-lsp` | 14 | 3,912 | 原 `lsp/` | 46 通过 |
+| `loom-model-spec` | 9 | 1,263 | 原 `model_spec/` | 28 通过 |
+| `loom-cache` | 3 | 251 | 原 `cache/` | 5 通过 |
+| `loom-worktree` | 3 | 1,169 | 原 `worktree/` | 17/18 通过 |
+| `loom-memory` | 12 | 5,823 | 原 `memory/` 实现 | 104 通过 |
+| `loom-graph` | 32 | 5,493 | 早期提取 | ✅ |
+| `loom-pregel` | 16 | 4,852 | 早期提取 | ✅ |
+| `loom-curator` | 14 | 5,706 | 早期提取 | ✅ |
+| `loom-skill` | 5 | 1,591 | 独立开发 | ✅ |
 
 ## 9. 风险与注意事项
 
