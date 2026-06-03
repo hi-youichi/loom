@@ -10,20 +10,8 @@ use crate::error::AgentError;
 use crate::llm::LlmClient;
 use crate::message::{Message, UserContent};
 
-pub trait ResetState {
-    fn reset_context(&mut self);
-}
-
-pub trait CompactState {
-    fn messages(&self) -> &[Message];
-    fn set_messages(&mut self, messages: Vec<Message>);
-    fn set_summary(&mut self, summary: String);
-}
-
-pub trait SummarizeState {
-    fn messages(&self) -> &[Message];
-    fn set_summary(&mut self, summary: String);
-}
+// Re-exported from loom-types
+pub use loom_types::command::{ResetState, CompactState, SummarizeState};
 
 pub fn execute(cmd: Command, state: &mut dyn ResetState) -> CommandResult {
     match cmd {

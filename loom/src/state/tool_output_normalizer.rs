@@ -5,7 +5,6 @@
 //! tool outputs from exploding the LLM context in subsequent turns.
 
 use chrono::Utc;
-use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -73,59 +72,12 @@ impl NormalizationConfig {
     }
 }
 
-/// Reference to a persisted tool output file.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ToolStorageRef {
-    /// Path to the persisted output file.
-    pub path: PathBuf,
-    /// Size of the persisted output in bytes.
-    pub size: usize,
-    /// MIME content type of the output.
-    pub content_type: String,
-    /// Encoding of the output (e.g. "utf-8").
-    pub encoding: String,
-    /// Name of the tool that produced this output.
-    pub tool_name: String,
-}
+// Re-exported from loom-types
+pub use loom_types::state::ToolStorageRef;
 
-/// Normalized tool output result.
-#[derive(Debug, Clone)]
-pub struct NormalizedToolOutput {
-    /// Original raw content (may be None for large results).
-    pub raw_content: Option<String>,
-    /// Text to inject into next LLM turn (ObserveNode uses this).
-    pub observation_text: String,
-    /// Text to show in stream/UI events.
-    pub display_text: String,
-    /// Reference to persisted storage (if applicable).
-    pub storage_ref: Option<ToolStorageRef>,
-    /// Strategy applied to this output.
-    pub strategy: ToolOutputStrategy,
-    /// Character count of original raw output.
-    pub raw_chars: usize,
-    /// Character count of observation text.
-    pub observation_chars: usize,
-    /// Whether the output was truncated.
-    pub truncated: bool,
-    /// Whether this result represents an error.
-    pub is_error: bool,
-}
+// Re-exported from loom-types
+pub use loom_types::state::NormalizedToolOutput;
 
-impl Default for NormalizedToolOutput {
-    fn default() -> Self {
-        Self {
-            raw_content: None,
-            observation_text: String::new(),
-            display_text: String::new(),
-            storage_ref: None,
-            strategy: ToolOutputStrategy::Inline,
-            raw_chars: 0,
-            observation_chars: 0,
-            truncated: false,
-            is_error: false,
-        }
-    }
-}
 
 static TOOL_OUTPUT_FILE_COUNTER: AtomicU64 = AtomicU64::new(1);
 

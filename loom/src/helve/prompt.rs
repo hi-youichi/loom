@@ -9,23 +9,8 @@ use std::path::{Path, PathBuf};
 use crate::agent::react::REACT_SYSTEM_PROMPT;
 use super::env_context::EnvContext;
 
-/// Approval policy for destructive or high-risk file operations.
-///
-/// When not `None`, the assembled prompt instructs the agent to output a plan
-/// and wait for user confirmation before executing certain operations (e.g. delete, bulk write).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ApprovalPolicy {
-    /// No approval; agent may execute all file operations.
-    None,
-    /// Require approval only for destructive operations (e.g. delete_file).
-    DestructiveOnly,
-    /// Require approval for destructive and bulk write operations before executing.
-    Always,
-}
-
-/// Event type for Custom stream events and Interrupt value when approval is required.
-/// Server or clients can show an approval UI and resume with `{ "approved": true }` or `{ "approved": false }`.
-pub const APPROVAL_REQUIRED_EVENT_TYPE: &str = "approval_required";
+// Re-exported from loom-types
+pub use loom_types::approval::{ApprovalPolicy, APPROVAL_REQUIRED_EVENT_TYPE, tools_requiring_approval};
 
 /// Raw materials used to assemble the final ReAct system prompt.
 ///
@@ -55,20 +40,6 @@ pub struct ReactPromptInputs {
     pub approval_policy: Option<ApprovalPolicy>,
 }
 
-/// Returns the list of tool names that require user approval for the given policy.
-///
-/// - `DestructiveOnly`: delete_file (and remove_dir if present).
-/// - `Always`: delete_file, write_file (and remove_dir if present).
-/// - `None`: empty (no tools require approval).
-///
-/// Used by ActNode to decide whether to interrupt before executing a tool.
-pub fn tools_requiring_approval(policy: ApprovalPolicy) -> &'static [&'static str] {
-    match policy {
-        ApprovalPolicy::None => &[],
-        ApprovalPolicy::DestructiveOnly => &["delete_file"],
-        ApprovalPolicy::Always => &["delete_file", "write_file"],
-    }
-}
 
 fn canonical_display(path: &Path) -> String {
     path.canonicalize()

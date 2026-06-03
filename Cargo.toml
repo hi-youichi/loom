@@ -24,7 +24,7 @@ members = [
     "telegram-bot",
     "task-core",
     "task-cli",
-    "task-mcp-server",
+    "task-mcp-server", "loom-types",
 ]
 
 [workspace.package]

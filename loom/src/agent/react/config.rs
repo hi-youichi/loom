@@ -6,68 +6,8 @@ use std::sync::Arc;
 
 use crate::skill::SkillRegistry;
 
-/// Filter for builtin tools: whitelist (enabled) and blacklist (disabled).
-///
-/// When `enabled` is `Some` and non-empty, only tools whose names appear in the set are kept.
-/// Then, any tools whose names appear in `disabled` are removed.
-#[derive(Clone, Debug, Default)]
-pub struct BuiltinToolFilter {
-    pub enabled: Option<Vec<String>>,
-    pub disabled: Option<Vec<String>>,
-}
-
-impl BuiltinToolFilter {
-    /// Returns true when the filter is a no-op (both lists empty or None).
-    pub fn is_noop(&self) -> bool {
-        self.enabled.as_ref().is_none_or(|v| v.is_empty())
-            && self.disabled.as_ref().is_none_or(|v| v.is_empty())
-    }
-
-    /// Returns true if the given tool name is allowed by this filter.
-    pub fn is_allowed(&self, name: &str) -> bool {
-        if let Some(ref en) = self.enabled {
-            if !en.is_empty() && !en.iter().any(|e| e == name) {
-                return false;
-            }
-        }
-        if let Some(ref dis) = self.disabled {
-            if dis.iter().any(|d| d == name) {
-                return false;
-            }
-        }
-        true
-    }
-
-    /// Filters a list of tool names in place, returning the allowed subset.
-    pub fn filter_names<'a>(&self, names: &'a [String]) -> Vec<&'a String> {
-        names.iter().filter(|n| self.is_allowed(n.as_str())).collect()
-    }
-}
-
-/// ToT-specific runner config (max depth, candidates per step, etc.).
-#[derive(Clone, Debug)]
-pub struct TotRunnerConfig {
-    pub max_depth: u32,
-    pub candidates_per_step: u32,
-    pub research_quality_addon: bool,
-}
-
-impl Default for TotRunnerConfig {
-    fn default() -> Self {
-        Self {
-            max_depth: 5,
-            candidates_per_step: 3,
-            research_quality_addon: false,
-        }
-    }
-}
-
-/// GoT-specific runner config (adaptive mode, AGoT LLM complexity).
-#[derive(Clone, Debug, Default)]
-pub struct GotRunnerConfig {
-    pub adaptive: bool,
-    pub agot_llm_complexity: bool,
-}
+// Re-exported from loom-types
+pub use loom_types::config::{BuiltinToolFilter, TotRunnerConfig, GotRunnerConfig};
 
 /// Configuration for building ReAct run context.
 #[derive(Clone)]

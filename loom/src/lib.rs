@@ -165,10 +165,10 @@ pub use agent::react::{
     build_dup_runner, build_got_runner, build_react_initial_state, build_react_run_context,
     build_react_runner, build_react_runner_with_openai, build_tot_runner, run_agent,
     run_react_graph_stream, tools_condition, ActNode, AgentOptions, BuildRunnerError,
-    BuiltinToolFilter, DefaultTierResolver, GotRunnerConfig, ObserveNode,
+    DefaultTierResolver, ObserveNode,
     ReactBuildConfig, ReactRunContext, ReactRunner, ResolvedTierModel, RunError as ReactRunError,
     ThinkNode, TierResolver, ToolsConditionResult,
-    TotRunnerConfig, WithNodeLogging, DEFAULT_EXECUTION_ERROR_TEMPLATE,
+    WithNodeLogging, DEFAULT_EXECUTION_ERROR_TEMPLATE,
     DEFAULT_TOOL_ERROR_TEMPLATE, REACT_SYSTEM_PROMPT, STEP_PROGRESS_EVENT_TYPE,
 };
 pub use cache::{Cache, CacheError, InMemoryCache};
@@ -186,7 +186,13 @@ pub use cli_run::{
     ResolvedModelConfig, RunCancellation, RunCmd, RunCompletion, RunError, RunOptions,
     DEFAULT_WORKING_FOLDER,
 };
-pub use compress::CompactionConfig;
+// Re-export shared types from loom-types crate
+pub use loom_types::{
+    approval::{ApprovalPolicy, APPROVAL_REQUIRED_EVENT_TYPE, tools_requiring_approval},
+    command::{ResetState, CompactState, SummarizeState},
+    config::{BuiltinToolFilter, CompactionConfig, TotRunnerConfig, GotRunnerConfig},
+    state::{ModelConfig, ReActState, ToolResult, ToolStorageRef, ReActCheckpointMeta, NormalizedToolOutput},
+};
 pub use config::{
     build_config_summary, ConfigSection, EmbeddingConfigSummary, LlmConfigSummary,
     MemoryConfigSummary, RunConfigSummary, RunConfigSummarySource, ToolConfigSummary,
@@ -201,8 +207,8 @@ pub use graph::{
 };
 pub use helve::{
     assemble_react_system_prompt, assemble_system_prompt,
-    to_react_build_config, tools_requiring_approval, ApprovalPolicy, HelveConfig,
-    ReactPromptInputs, APPROVAL_REQUIRED_EVENT_TYPE,
+    to_react_build_config, HelveConfig,
+    ReactPromptInputs,
     EnvContext, OsInfo, LocaleInfo, ShellInfo, ProjectInfo, RuntimeInfo,
 };
 
@@ -258,10 +264,10 @@ pub use protocol::{
     WorkspaceFileChangedResponse, FileChange,
 };
 pub use state::{
-    normalize_tool_output, NormalizationConfig, NormalizedToolOutput, ToolOutputHint,
-    ToolOutputStrategy, ToolStorageRef,
+    normalize_tool_output, NormalizationConfig, ToolOutputHint,
+    ToolOutputStrategy,
 };
-pub use state::{ModelConfig, ReActState, ToolCall, ToolResult};
+pub use state::ToolCall;
 pub use stream::{
     CheckpointEvent, MessageChunk, MessageChunkKind, StreamEvent, StreamMetadata, StreamMode,
     StreamWriter, ToolStreamWriter,

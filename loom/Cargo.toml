@@ -29,6 +29,9 @@ once_cell = "1.19"
 # LLM client (loom-llm crate)
 loom-llm = { path = "../loom-llm" }
 
+# Shared types (loom-types crate)
+loom-types = { path = "../loom-types" }
+
 # LSP client (loom-lsp crate)
 loom-lsp = { path = "../loom-lsp" }
 
