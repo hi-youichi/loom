@@ -6,10 +6,9 @@ use async_trait::async_trait;
 use rusqlite::params;
 use tracing::{debug, warn};
 
-use crate::memory::uuid6;
-use crate::message::{AssistantPayload, Message, UserContent};
-use crate::tool_source::ToolCallContent;
-use crate::user_message::{UserMessageStore, UserMessageStoreError};
+use crate::uuid6;
+use loom_llm::message::{AssistantPayload, Message, UserContent, ToolCallContent};
+use super::{UserMessageStore, UserMessageStoreError};
 
 /// SQLite-backed store: one table `user_messages (id, thread_id, role, content)`.
 /// `id` is auto-increment and used as the pagination cursor (`before`).
@@ -75,7 +74,7 @@ impl SqliteUserMessageStore {
     /// Creates the store and ensures the table exists. `path` is the SQLite file path.
     pub fn new(path: impl AsRef<Path>) -> Result<Self, UserMessageStoreError> {
         let db_path = path.as_ref().to_path_buf();
-        let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
+        let conn = crate::sqlite_util::open_sqlite_with_wal(&db_path)
             .map_err(UserMessageStoreError::Other)?;
         conn.execute(
             r#"
@@ -109,7 +108,7 @@ impl UserMessageStore for SqliteUserMessageStore {
         let thread_id = thread_id.to_string();
         let db_path = self.db_path.clone();
         tokio::task::spawn_blocking(move || {
-            let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
+            let conn = crate::sqlite_util::open_sqlite_with_wal(&db_path)
                 .map_err(UserMessageStoreError::Other)?;
             conn.execute(
                 "INSERT INTO user_messages (thread_id, role, content) VALUES (?1, ?2, ?3)",
@@ -134,7 +133,7 @@ impl UserMessageStore for SqliteUserMessageStore {
         let thread_id_for_query = thread_id.clone();
         let rows: Vec<(String, String)> = tokio::task::spawn_blocking(move || {
 
-            let conn = crate::memory::sqlite_util::open_sqlite_with_wal(&db_path)
+            let conn = crate::sqlite_util::open_sqlite_with_wal(&db_path)
                 .map_err(UserMessageStoreError::Other)?;
             let sql = match before {
                 Some(_) => "SELECT role, content FROM user_messages WHERE thread_id = ?1 AND id < ?2 ORDER BY id ASC LIMIT ?3",

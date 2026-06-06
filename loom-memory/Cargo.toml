@@ -11,7 +11,9 @@ lance = ["dep:lancedb", "dep:arrow-array", "dep:arrow-schema"]
 
 [dependencies]
 loom-graph = { path = "../loom-graph" }
+loom-llm = { path = "../loom-llm" }
 async-trait = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = "0.1"
 serde = { version = "1.0", features = ["derive"] }

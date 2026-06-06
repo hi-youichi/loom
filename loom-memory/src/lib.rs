@@ -45,6 +45,7 @@ mod sqlite_saver;
 mod sqlite_store;
 pub mod sqlite_util;
 mod sqlite_vec_store;
+pub mod user_message;
 
 pub use in_memory_store::InMemoryStore;
 pub use memory_saver::MemorySaver;
