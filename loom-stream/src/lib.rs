@@ -3,6 +3,7 @@
 //! Core types are defined in the `stream-event` crate.
 //! This module re-exports them and adds Loom-specific utilities.
 
+pub mod openai_sse;
 pub mod sender;
 pub mod writers;
 

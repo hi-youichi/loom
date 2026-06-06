@@ -9,7 +9,7 @@ use loom_types::prompts::REACT_SYSTEM_PROMPT;
 use crate::helve::{ApprovalPolicy, HelveConfig};
 use crate::memory::RunnableConfig;
 
-use super::request::ChatCompletionRequest;
+use super::ChatCompletionRequest;
 use thiserror::Error;
 
 /// Result of parsing a chat completion request for the ReAct runner.
