@@ -11,7 +11,7 @@ use crate::session_config_store::SessionConfigStore;
 use crate::stream_bridge::SessionNotifier;
 use crate::terminal::TerminalManager;
 use crate::tools::create_acp_tools;
-use loom::tools::bash::LocalCommandExecutor;
+use loom::LocalCommandExecutor;
 use agent_client_protocol::schema::{
     AuthenticateRequest, AuthenticateResponse, CancelNotification, ForkSessionRequest,
     ForkSessionResponse, InitializeRequest, InitializeResponse, ListSessionsRequest,

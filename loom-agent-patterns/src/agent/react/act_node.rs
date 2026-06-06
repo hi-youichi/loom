@@ -18,7 +18,6 @@
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::Arc;
 use tracing::{debug, trace, warn};
 
 use loom_types::cli_run::{AnyStreamEvent, RunCancellation};
@@ -667,7 +666,7 @@ impl Node<ReActState> for ActNode {
                 run_cancellation: self.run_cancellation.clone(),
                 any_stream_event_sender: {
                     // TODO: Fix stream event forwarding - type mismatch between loom::cli_run::AnyStreamEvent and loom_types::cli_run::AnyStreamEvent
-                    let sender = self.any_stream_event_sender.lock().unwrap().clone();
+                    let _sender = self.any_stream_event_sender.lock().unwrap().clone();
                     None // Disabled for now due to type incompatibility
                     /*
                     sender.map(|s| {

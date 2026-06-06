@@ -384,7 +384,7 @@ pub(crate) fn handle_curator_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use cli::run::curator::{
         Curator, CuratorConfig,
-        CuratorReviewResult, CuratorState,
+        CuratorReport, CuratorState,
     };
     use cli::run::skill_registry::SkillRegistry;
 
@@ -393,23 +393,19 @@ pub(crate) fn handle_curator_command(
 
     match &curator_args.command {
         CuratorCommand::Run => {
-            // Hermes 对齐：调用 run_curator_review(dry_run, synchronous=true)
-            let result: CuratorReviewResult = curator.run_curator_review(
-                curator_args.dry_run,
-                true, // synchronous: CLI 用同步模式
-                Some(&|msg| eprintln!("{}", msg)),
-            )?;
+            // Run auto-transitions (stale/archive/reactivate)
+            let report: CuratorReport = curator.run(curator_args.dry_run)?;
 
             if json {
-                println!("{}", serde_json::to_string_pretty(&result)?);
+                println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
                 println!("Curator Review Result:");
                 println!("{}", "═".repeat(60));
-                println!("Checked: {}", result.auto_transitions.checked);
-                println!("Marked Stale: {}", result.auto_transitions.marked_stale);
-                println!("Archived: {}", result.auto_transitions.archived);
-                println!("Reactivated: {}", result.auto_transitions.reactivated);
-                println!("Summary: {}", result.summary_so_far);
+                println!("Active: {}", report.active);
+                println!("Marked Stale: {} {:?}", report.stale.len(), report.stale);
+                println!("Archived: {} {:?}", report.archived.len(), report.archived);
+                println!("Reactivated: {} {:?}", report.reactivated.len(), report.reactivated);
+                println!("Overlapping: {} pairs", report.overlapping.len());
             }
         }
         CuratorCommand::Status => {

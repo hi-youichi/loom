@@ -73,7 +73,7 @@ struct RunCancellationInner {
 }
 
 impl RunCancellation {
-    pub fn new(depth: u32) -> Self {
+    pub fn new(_depth: u32) -> Self {
         Self {
             inner: Arc::new(std::sync::Mutex::new(RunCancellationInner {
                 cancelled: false,
@@ -98,7 +98,7 @@ impl RunCancellation {
         self.inner.lock().unwrap().cancelled
     }
 
-    pub fn set_abortable_operation(&self, kind: ActiveOperationKind, handle: futures_util::future::AbortHandle) {
+    pub fn set_abortable_operation(&self, _kind: ActiveOperationKind, handle: futures_util::future::AbortHandle) {
         let mut inner = self.inner.lock().unwrap();
         inner.abort_handle = Some(handle);
     }

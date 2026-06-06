@@ -257,13 +257,13 @@ pub async fn run_agent(
     let on_event: Option<Arc<Mutex<Box<dyn FnMut(AnyStreamEvent) + Send>>>> =
         on_event.map(|b| Arc::new(Mutex::new(b)));
 
-    // Bridge: local_sender accepts loom::cli_run::AnyStreamEvent (via crate re-export).
-    // We pass loom::cli_run::AnyStreamEvent directly since loom_sender wraps loom events.
+    // Bridge: local_sender accepts cli_run_agent::AnyStreamEvent (the real type with full state).
+    // We convert loom::cli_run::AnyStreamEvent (stub) via AnyStreamEvent::from_loom().
     let local_sender = opts.any_stream_event_sender.clone();
     let loom_sender: Option<Arc<dyn Fn(loom::cli_run::AnyStreamEvent) + Send + Sync>> =
         local_sender.clone().map(|ls| {
             Arc::new(move |ev: loom::cli_run::AnyStreamEvent| {
-                ls(ev);
+                ls(AnyStreamEvent::from_loom(ev));
             }) as Arc<dyn Fn(loom::cli_run::AnyStreamEvent) + Send + Sync>
         });
 

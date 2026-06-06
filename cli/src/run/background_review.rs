@@ -2,7 +2,7 @@
 
 pub use loom::background_review::workflow::{
     BackgroundReviewConfig, BackgroundReviewHandle,
-    build_background_config_from_opts,
+    build_background_config_from_opts_ext,
     wait_for_pending_reviews, PendingReviewRegistry,
     ReviewOutputFn,
 };

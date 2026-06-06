@@ -314,7 +314,12 @@ pub async fn run_agent_wrapper(
     let (reply, reasoning_content, stop_reason) = completion_reply(result);
 
     if matches!(stop_reason, RunStopReason::EndTurn) && !reply.is_empty() {
-        let config = super::background_review::build_background_config_from_opts(&loom_opts);
+        let config = super::background_review::build_background_config_from_opts_ext(
+            loom_opts.base_url.clone().unwrap_or_default(),
+            loom_opts.api_key.clone().unwrap_or_default(),
+            loom_opts.model.clone().unwrap_or_default(),
+            true,
+        );
         let session_id = opts
             .thread_id.clone()
             .or_else(|| opts.session_id.clone())

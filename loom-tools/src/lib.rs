@@ -33,6 +33,7 @@ pub use tools::{AggregateToolSource, Tool, ArcTool};
 // Re-export commonly used tools at the root for convenience
 pub use tools::bash::{BashTool, CommandExecutor, LocalCommandExecutor};
 pub use tools::mcp_adapter::{register_mcp_tools, register_mcp_tools_with_specs, McpToolAdapter};
+pub use tools::telegram::{set_current_chat_id, set_telegram_api, TelegramApi};
 
 // Re-export shared utilities
 pub use tools::shared::canceller::{ChildProcessCanceller, setup_cancellation};

@@ -21,16 +21,13 @@ pub use loom_agent_patterns::runner_common::{
     load_from_checkpoint_or_build, StreamRunOutcome, StreamRunError, run_stream_with_config,
 };
 
-// Re-export from cli_run_agent (without AnyStreamEvent - use loom::cli_run::AnyStreamEvent)
+// Re-export from cli_run_agent
 pub use cli_run_agent::{
-    AnyRunner, RunCmd, RunCompletion, RunError, RunOptions,
+    AnyRunner, AnyStreamEvent, RunCmd, RunCompletion, RunError, RunOptions,
     run_agent, run_agent_with_options, run_agent_with_llm_override,
     build_runner, resolve_tier_and_build_config, resolve_tier_and_build_config_with_resolver,
     to_loom_any_stream_event,
 };
-
-// Re-export AnyStreamEvent from loom
-pub use loom::cli_run::AnyStreamEvent;
 
 // Re-export from loom for RunCancellation
 pub use loom::active_operation::RunCancellation;
