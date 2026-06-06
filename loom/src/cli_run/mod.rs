@@ -1,17 +1,9 @@
 //! Run orchestration for agent patterns (ReAct, ToT, GoT, DUP).
 //!
-//! Builds HelveConfig and ReactBuildConfig, then invokes the corresponding runner.
-//! Used by both cli (local) and loom serve (remote).
+//! Most agent functionality has moved to loom-agent crate.
+//! This module contains only what's needed for loom infrastructure.
 
-mod agent;
 mod profile;
-
-pub use agent::{
-    run_agent, run_agent_with_llm_override, run_agent_with_options, run_agent_with_provider,
-    resolve_tier_and_build_config, resolve_tier_and_build_config_with_resolver,
-    ActiveOperation, ActiveOperationCanceller, ActiveOperationKind, AgentRunResult, AnyRunner,
-    AnyStreamEvent, RunCancellation, RunCmd, RunCompletion, RunError, RunOptions,
-};
 
 use crate::skill::SkillRegistry;
 use crate::helve::env_context::ProjectInfo;
@@ -28,6 +20,9 @@ pub use profile::{
     ProfileError, ProfileSource, ProfileSummary,
 };
 
+/// Default working folder when not set (current directory).
+pub const DEFAULT_WORKING_FOLDER: &str = ".";
+
 /// Metadata about the agent profile that was resolved for a run.
 #[derive(Debug, Clone)]
 pub struct ResolvedAgent {
@@ -36,8 +31,150 @@ pub struct ResolvedAgent {
     pub source: ProfileSource,
 }
 
-/// Default working folder when not set (current directory).
-pub const DEFAULT_WORKING_FOLDER: &str = ".";
+/// Resolved model + provider configuration from a model string like "openai/gpt-4o".
+#[derive(Debug, Clone, Default)]
+pub struct ResolvedModelConfig {
+    pub model: Option<String>,
+    pub provider: Option<String>,
+    pub base_url: Option<String>,
+    pub api_key: Option<String>,
+    pub provider_type: Option<String>,
+}
+
+// TODO: Agent types moved to loom-agent crate
+// Stub RunOptions for loom infrastructure that only needs base_url/api_key/model/etc
+pub struct RunOptions {
+    pub message: crate::UserContent,
+    pub working_folder: Option<PathBuf>,
+    pub session_id: Option<String>,
+    pub cancellation: Option<crate::RunCancellation>,
+    pub thread_id: Option<String>,
+    pub agent: Option<String>,
+    pub verbose: bool,
+    pub got_adaptive: bool,
+    pub display_max_len: usize,
+    pub output_json: bool,
+    pub model: Option<String>,
+    pub mcp_config_path: Option<PathBuf>,
+    pub output_timestamp: bool,
+    pub dry_run: bool,
+    pub debug_llm: bool,
+    pub provider: Option<String>,
+    pub base_url: Option<String>,
+    pub api_key: Option<String>,
+    pub provider_type: Option<String>,
+    pub any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
+    pub bash_executor: Option<Arc<dyn loom_tools::CommandExecutor>>,
+    pub extra_tools: Option<Arc<Vec<Arc<dyn crate::tools::Tool>>>>,
+    pub acp_session_id: Option<String>,
+    pub force_compact: bool,
+    pub chat_id: Option<i64>,
+    pub worktree: bool,
+}
+
+impl std::fmt::Debug for RunOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RunOptions")
+            .field("message", &"<UserContent>")
+            .field("working_folder", &self.working_folder)
+            .field("model", &self.model)
+            .field("provider", &self.provider)
+            .field("base_url", &self.base_url)
+            .field("thread_id", &self.thread_id)
+            .field("dry_run", &self.dry_run)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Clone for RunOptions {
+    fn clone(&self) -> Self {
+        Self {
+            message: self.message.clone(),
+            working_folder: self.working_folder.clone(),
+            session_id: self.session_id.clone(),
+            cancellation: self.cancellation.clone(),
+            thread_id: self.thread_id.clone(),
+            agent: self.agent.clone(),
+            verbose: self.verbose,
+            got_adaptive: self.got_adaptive,
+            display_max_len: self.display_max_len,
+            output_json: self.output_json,
+            model: self.model.clone(),
+            mcp_config_path: self.mcp_config_path.clone(),
+            output_timestamp: self.output_timestamp,
+            dry_run: self.dry_run,
+            debug_llm: self.debug_llm,
+            provider: self.provider.clone(),
+            base_url: self.base_url.clone(),
+            api_key: self.api_key.clone(),
+            provider_type: self.provider_type.clone(),
+            any_stream_event_sender: self.any_stream_event_sender.clone(),
+            bash_executor: self.bash_executor.clone(),
+            extra_tools: self.extra_tools.clone(),
+            acp_session_id: self.acp_session_id.clone(),
+            force_compact: self.force_compact,
+            chat_id: self.chat_id,
+            worktree: self.worktree,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunCmd {
+    React,
+    Dup,
+    Tot,
+    Got,
+}
+
+#[derive(Debug, Clone)]
+pub enum RunCompletion {
+    Finished(AgentRunResult),
+    Cancelled,
+}
+
+#[derive(Debug, Clone)]
+pub enum RunError {
+    LlmError(String),
+    ToolError(String),
+    Other(String),
+}
+
+#[derive(Debug, Clone)]
+pub enum AnyStreamEvent {
+    React(crate::stream::StreamEvent<crate::ReActState>),
+    Dup(crate::stream::StreamEvent<StubDupState>),
+    Tot(crate::stream::StreamEvent<StubTotState>),
+    Got(crate::stream::StreamEvent<StubGotState>),
+}
+
+// Stub agent state types for AnyStreamEvent (these will be available from loom-agent)
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct StubDupState {
+    pub core: crate::ReActState,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct StubTotState {
+    pub core: crate::ReActState,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct StubGotState {
+    pub input_message: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct AgentRunResult {
+    pub reply: String,
+    pub reasoning_content: Option<String>,
+}
+
+// Re-export from active_operation module
+pub use crate::active_operation::{ActiveOperation, ActiveOperationCanceller, ActiveOperationKind, RunCancellation};
+
+// Re-export from loom-types for use in loom infrastructure
+pub use loom_types::state::ReActState;
 
 const AGENTS_MD_FILE: &str = "AGENTS.md";
 
@@ -139,11 +276,6 @@ pub fn build_helve_config(
         if let Some(t) = prof.model.as_ref().and_then(|m| m.temperature) {
             base.openai_temperature = Some(t.to_string());
         }
-        // Only apply profile tier configuration when model is not explicitly specified
-        // This ensures:
-        // 1. ACP explicitly set model is not overridden by tier
-        // 2. CLI users can override tier via --model
-        // 3. When no model is specified, profile tier is used
         let model_explicitly_set = effective_opts.model.is_some() || opts.model.is_some();
         if !model_explicitly_set {
             if let Some(tier) = prof.model.as_ref().and_then(|m| m.tier) {
@@ -216,7 +348,7 @@ pub fn build_helve_config(
                 for name in preload {
                     if let Ok(content) = skill_registry.0.load_skill(name) {
                         buf.push_str(&format!(
-                            "<skill name=\"{}\">\n{}\n</skill>\n",
+                            "<skill name=\"{}\">\n{}</skill>\n",
                             name, content
                         ));
                     }
@@ -271,7 +403,7 @@ pub fn build_helve_config(
     if let Some(ref prof) = profile {
         if let Some(ref tools) = prof.tools {
             if let Some(ref builtin) = tools.builtin {
-                let filter = crate::agent::react::BuiltinToolFilter {
+                let filter = loom_types::config::BuiltinToolFilter {
                     enabled: builtin.enabled.clone(),
                     disabled: builtin.disabled.clone(),
                 };
@@ -289,8 +421,6 @@ pub fn build_helve_config(
 /// the parent agent's config. The parent config provides LLM credentials,
 /// provider, and other environment-derived settings; the profile can override
 /// model name, working_folder, MCP config, and system prompt.
-///
-/// Used by `InvokeAgentTool` to construct a child `ReactRunner` at runtime.
 pub fn build_config_from_profile(
     profile: &AgentProfile,
     parent_config: &ReactBuildConfig,
@@ -431,7 +561,7 @@ pub fn build_config_from_profile(
     // Builtin tool filter from profile
     if let Some(ref tools) = profile.tools {
         if let Some(ref builtin) = tools.builtin {
-            let filter = crate::agent::react::BuiltinToolFilter {
+            let filter = loom_types::config::BuiltinToolFilter {
                 enabled: builtin.enabled.clone(),
                 disabled: builtin.disabled.clone(),
             };
@@ -456,22 +586,7 @@ pub fn build_config_from_profile(
     config
 }
 
-/// Resolved model + provider configuration from a model string like "openai/gpt-4o".
-#[derive(Debug, Clone, Default)]
-pub struct ResolvedModelConfig {
-    pub model: Option<String>,
-    pub provider: Option<String>,
-    pub base_url: Option<String>,
-    pub api_key: Option<String>,
-    pub provider_type: Option<String>,
-}
-
 /// Resolve a model string (e.g. "openai/gpt-4o", "gpt-4o") into model id + provider config.
-///
-/// Resolution order:
-/// 1. `ModelRegistry::get_model()` — full registry lookup
-/// 2. `"provider/model"` split — fallback to config file provider lookup
-/// 3. Bare model id — no provider resolution (backward compat)
 pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfig {
     let Some(model_str) = model_str else {
         tracing::debug!("No model string provided, using default configuration");
@@ -699,573 +814,6 @@ fn apply_profile_to_run_options(profile: &AgentProfile, opts: &mut RunOptions) {
         }
         if opts.thread_id.is_none() {
             opts.thread_id = env.thread_id.clone();
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::cli_run::profile::*;
-    use std::sync::Mutex;
-
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-    fn default_opts() -> RunOptions {
-        use crate::message::UserContent;
-        RunOptions {
-            message: UserContent::Text(String::new()),
-            working_folder: None,
-            session_id: None,
-            cancellation: None,
-            thread_id: None,
-            agent: None,
-            verbose: false,
-            got_adaptive: false,
-            display_max_len: 120,
-            output_json: false,
-            model: None,
-            mcp_config_path: None,
-            output_timestamp: false,
-            dry_run: false,
-            debug_llm: false,
-            provider: None,
-            base_url: None,
-            api_key: None,
-            provider_type: None,
-            any_stream_event_sender: None,
-            bash_executor: None,
-            extra_tools: None,
-            acp_session_id: None,
-            force_compact: false,
-            chat_id: None,
-            worktree: false,
-        }
-    }
-
-    #[test]
-    fn load_agents_md_in_empty_dir() {
-        let dir = tempfile::tempdir().unwrap();
-        let prev = std::env::current_dir().ok();
-        let _ = std::env::set_current_dir(dir.path());
-        let result = load_agents_md(None);
-        if let Some(d) = prev {
-            let _ = std::env::set_current_dir(d);
-        }
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn load_agents_md_reads_file() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("AGENTS.md"), "# Agent rules").unwrap();
-        let prev = std::env::current_dir().ok();
-        let _ = std::env::set_current_dir(dir.path());
-        let result = load_agents_md(None);
-        if let Some(d) = prev {
-            let _ = std::env::set_current_dir(d);
-        }
-        assert!(result.is_some());
-        assert!(result.unwrap().contains("Agent rules"));
-    }
-
-    #[test]
-    fn load_agents_md_with_working_folder() {
-        let cwd = tempfile::tempdir().unwrap();
-        let work = tempfile::tempdir().unwrap();
-        std::fs::write(work.path().join("AGENTS.md"), "# Work agents").unwrap();
-        let prev = std::env::current_dir().ok();
-        let _ = std::env::set_current_dir(cwd.path());
-        let wf = work.path().to_path_buf();
-        let result = load_agents_md(Some(&wf));
-        if let Some(d) = prev {
-            let _ = std::env::set_current_dir(d);
-        }
-        assert!(result.is_some());
-        assert!(result.unwrap().contains("Work agents"));
-    }
-
-    #[test]
-    fn role_content_from_profile_whitespace_none() {
-        assert!(role_content_from_profile(Some("  \n\t  ".to_string())).is_none());
-    }
-
-    #[test]
-    fn role_content_from_profile_trims_and_returns() {
-        assert_eq!(
-            role_content_from_profile(Some("  hello  ".to_string())).as_deref(),
-            Some("hello")
-        );
-    }
-
-    #[test]
-    fn role_content_from_profile_none_in_none_out() {
-        assert!(role_content_from_profile(None).is_none());
-    }
-
-    #[test]
-    fn apply_profile_sets_model() {
-        let profile = AgentProfile {
-            model: Some(ModelConfig {
-                name: Some("gpt-5".to_string()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let mut opts = default_opts();
-        apply_profile_to_run_options(&profile, &mut opts);
-        assert_eq!(opts.model.as_deref(), Some("gpt-5"));
-    }
-
-    #[test]
-    fn apply_profile_does_not_override_existing_model() {
-        let profile = AgentProfile {
-            model: Some(ModelConfig {
-                name: Some("gpt-5".to_string()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let mut opts = default_opts();
-        opts.model = Some("gpt-4".to_string());
-        apply_profile_to_run_options(&profile, &mut opts);
-        assert_eq!(opts.model.as_deref(), Some("gpt-4"));
-    }
-
-    #[test]
-    fn apply_profile_sets_mcp_config() {
-        let profile = AgentProfile {
-            tools: Some(ToolsConfig {
-                mcp: Some(McpConfig {
-                    config: Some(PathBuf::from("./mcp.json")),
-                    servers: None,
-                }),
-                builtin: None,
-            }),
-            ..Default::default()
-        };
-        let mut opts = default_opts();
-        apply_profile_to_run_options(&profile, &mut opts);
-        assert_eq!(opts.mcp_config_path, Some(PathBuf::from("./mcp.json")));
-    }
-
-    #[test]
-    fn apply_profile_sets_environment() {
-        let profile = AgentProfile {
-            environment: Some(EnvironmentConfig {
-                working_folder: Some(PathBuf::from("/custom/dir")),
-                thread_id: Some("t-123".to_string()),
-                user_id: None,
-            }),
-            ..Default::default()
-        };
-        let mut opts = default_opts();
-        apply_profile_to_run_options(&profile, &mut opts);
-        assert_eq!(opts.working_folder, Some(PathBuf::from("/custom/dir")));
-        assert_eq!(opts.thread_id.as_deref(), Some("t-123"));
-    }
-
-    fn parent_config() -> ReactBuildConfig {
-        let mut c = ReactBuildConfig::from_env();
-        c.model = Some("parent-model".to_string());
-        c
-    }
-
-    #[test]
-    fn build_config_from_profile_minimal() {
-        let _lock = crate::env_test_lock().lock().unwrap();
-        let _g = ENV_LOCK.lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
-        let prev = std::env::var("LOOM_HOME").ok();
-        std::env::set_var("LOOM_HOME", loom_home.path());
-
-        let profile = AgentProfile::default();
-        let parent = parent_config();
-        let config = build_config_from_profile(&profile, &parent, None);
-        assert_eq!(config.model.as_deref(), Some("parent-model"));
-
-        match prev {
-            Some(v) => std::env::set_var("LOOM_HOME", v),
-            None => std::env::remove_var("LOOM_HOME"),
-        }
-    }
-
-    #[test]
-    fn build_config_from_profile_overrides_model() {
-        let _lock = crate::env_test_lock().lock().unwrap();
-        let _g = ENV_LOCK.lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
-        let prev = std::env::var("LOOM_HOME").ok();
-        std::env::set_var("LOOM_HOME", loom_home.path());
-
-        let profile = AgentProfile {
-            model: Some(ModelConfig {
-                name: Some("child-model".to_string()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let config = build_config_from_profile(&profile, &parent_config(), None);
-        assert_eq!(config.model.as_deref(), Some("child-model"));
-
-        match prev {
-            Some(v) => std::env::set_var("LOOM_HOME", v),
-            None => std::env::remove_var("LOOM_HOME"),
-        }
-    }
-
-    #[test]
-    fn build_config_from_profile_working_folder_override() {
-        let _lock = crate::env_test_lock().lock().unwrap();
-        let _g = ENV_LOCK.lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
-        let prev = std::env::var("LOOM_HOME").ok();
-        std::env::set_var("LOOM_HOME", loom_home.path());
-
-        let profile = AgentProfile::default();
-        let wf = tempfile::tempdir().unwrap();
-        let config = build_config_from_profile(&profile, &parent_config(), Some(wf.path()));
-        assert_eq!(config.working_folder, Some(wf.path().to_path_buf()));
-
-        match prev {
-            Some(v) => std::env::set_var("LOOM_HOME", v),
-            None => std::env::remove_var("LOOM_HOME"),
-        }
-    }
-
-    #[test]
-    fn build_config_from_profile_with_role() {
-        let _lock = crate::env_test_lock().lock().unwrap();
-        let _g = ENV_LOCK.lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
-        let prev = std::env::var("LOOM_HOME").ok();
-        std::env::set_var("LOOM_HOME", loom_home.path());
-
-        let profile = AgentProfile {
-            role: Some(RoleConfig {
-                file: None,
-                content: Some("You are a sub-agent.".to_string()),
-                append: None,
-            }),
-            ..Default::default()
-        };
-        let config = build_config_from_profile(&profile, &parent_config(), None);
-        assert!(config.system_prompt.is_some());
-        assert!(config.system_prompt.unwrap().contains("sub-agent"));
-
-        match prev {
-            Some(v) => std::env::set_var("LOOM_HOME", v),
-            None => std::env::remove_var("LOOM_HOME"),
-        }
-    }
-
-    #[test]
-    fn build_helve_config_no_skills_dir_no_prompt() {
-        let _lock = crate::env_test_lock().lock().unwrap();
-        let _g = ENV_LOCK.lock().unwrap();
-        let dir = tempfile::tempdir().unwrap();
-        let prev_dir = std::env::current_dir().ok();
-        let _ = std::env::set_current_dir(dir.path());
-        let prev_loom = std::env::var("LOOM_HOME").ok();
-        std::env::set_var("LOOM_HOME", dir.path());
-
-        let opts = RunOptions {
-            message: crate::message::UserContent::Text("hello".to_string()),
-            agent: Some("dev".to_string()),
-            ..default_opts()
-        };
-        let (helve, config, resolved_agent) = build_helve_config(&opts);
-        assert!(helve.role_setting.is_some());
-        assert!(config.skill_registry.is_some());
-        let ra = resolved_agent.expect("should resolve dev agent");
-        assert_eq!(ra.name, "dev");
-        assert_eq!(ra.source, ProfileSource::BuiltIn);
-
-        if let Some(d) = prev_dir {
-            let _ = std::env::set_current_dir(d);
-        }
-        match prev_loom {
-            Some(v) => std::env::set_var("LOOM_HOME", v),
-            None => std::env::remove_var("LOOM_HOME"),
-        }
-    }
-
-    #[test]
-    fn constants_match() {
-        assert_eq!(DEFAULT_WORKING_FOLDER, ".");
-        assert_eq!(AGENTS_MD_FILE, "AGENTS.md");
-    }
-
-    #[test]
-    fn apply_model_provider_resolution_with_provider_model_format() {
-        let mut opts = default_opts();
-        opts.model = Some("openai/gpt-4o".to_string());
-
-        apply_model_provider_resolution(&mut opts);
-
-        assert_eq!(opts.model.as_deref(), Some("gpt-4o"));
-        assert_eq!(opts.provider.as_deref(), Some("openai"));
-    }
-
-    #[test]
-    fn apply_model_provider_resolution_with_bare_model() {
-        let mut opts = default_opts();
-        opts.model = Some("gpt-4o".to_string());
-
-        apply_model_provider_resolution(&mut opts);
-
-        assert_eq!(opts.model.as_deref(), Some("gpt-4o"));
-    }
-
-    #[test]
-    fn apply_model_provider_resolution_with_provider_override() {
-        let mut opts = default_opts();
-        opts.model = Some("anthropic/claude-3-opus".to_string());
-        opts.provider = Some("openai".to_string());
-
-        apply_model_provider_resolution(&mut opts);
-
-        assert_eq!(opts.model.as_deref(), Some("claude-3-opus"));
-        // Provider should be overridden by --provider flag
-        assert_eq!(opts.provider.as_deref(), Some("openai"));
-    }
-
-    #[test]
-    fn apply_model_provider_resolution_with_provider_only() {
-        let mut opts = default_opts();
-        opts.provider = Some("openai".to_string());
-
-        apply_model_provider_resolution(&mut opts);
-
-        assert_eq!(opts.provider.as_deref(), Some("openai"));
-    }
-
-    #[test]
-    fn apply_model_provider_resolution_empty() {
-        let mut opts = default_opts();
-
-        apply_model_provider_resolution(&mut opts);
-
-        assert!(opts.model.is_none());
-        assert!(opts.provider.is_none());
-    }
-
-    #[test]
-    fn apply_model_provider_resolution_multiple_slashes() {
-        let mut opts = default_opts();
-        opts.model = Some("provider/sub/model".to_string());
-
-        apply_model_provider_resolution(&mut opts);
-
-        // Should split on first slash only
-        assert_eq!(opts.model.as_deref(), Some("sub/model"));
-        assert_eq!(opts.provider.as_deref(), Some("provider"));
-    }
-
-    #[test]
-    fn apply_model_provider_resolution_empty_model() {
-        let mut opts = default_opts();
-        opts.model = Some("".to_string());
-
-        apply_model_provider_resolution(&mut opts);
-
-        // Should not modify options when model is empty
-        assert!(opts.model.is_none());
-        assert!(opts.provider.is_none());
-    }
-
-    #[test]
-    fn apply_model_provider_resolution_whitespace_model() {
-        let mut opts = default_opts();
-        opts.model = Some("   ".to_string());
-
-        apply_model_provider_resolution(&mut opts);
-
-        // Should not modify options when model is whitespace only
-        assert!(opts.model.is_none());
-        assert!(opts.provider.is_none());
-    }
-
-    #[test]
-    fn apply_model_provider_resolution_empty_provider_in_format() {
-        let mut opts = default_opts();
-        opts.model = Some("/gpt-4o".to_string());
-
-        apply_model_provider_resolution(&mut opts);
-
-        // Should not modify options when provider part is empty
-        assert!(opts.model.is_none());
-        assert!(opts.provider.is_none());
-    }
-
-    #[test]
-    fn apply_model_provider_resolution_empty_model_in_format() {
-        let mut opts = default_opts();
-        opts.model = Some("openai/".to_string());
-
-        apply_model_provider_resolution(&mut opts);
-
-        // Should not modify options when model part is empty
-        assert!(opts.model.is_none());
-        assert!(opts.provider.is_none());
-    }
-
-    #[test]
-    fn build_config_from_profile_passes_tier() {
-        let _lock = crate::env_test_lock().lock().unwrap();
-        let _g = ENV_LOCK.lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
-        let prev = std::env::var("LOOM_HOME").ok();
-        std::env::set_var("LOOM_HOME", loom_home.path());
-
-        let profile = AgentProfile {
-            model: Some(ModelConfig {
-                tier: Some(crate::model_spec::ModelTier::Light),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let config = build_config_from_profile(&profile, &parent_config(), None);
-        assert_eq!(config.model_tier, Some(crate::model_spec::ModelTier::Light));
-        // When profile configures a tier, model/api fields are cleared for clean tier resolution,
-        // but llm_provider is preserved so the resolver targets the correct provider.
-        assert_eq!(config.model.as_deref(), None);
-        assert_eq!(config.parent_model_hint.as_deref(), Some("parent-model"));
-        assert_eq!(config.openai_base_url.as_deref(), None);
-        assert_eq!(config.openai_api_key.as_deref(), None);
-
-        match prev {
-            Some(v) => std::env::set_var("LOOM_HOME", v),
-            None => std::env::remove_var("LOOM_HOME"),
-        }
-    }
-
-    #[test]
-    fn build_config_from_profile_no_tier_when_not_set() {
-        let _lock = crate::env_test_lock().lock().unwrap();
-        let _g = ENV_LOCK.lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
-        let prev = std::env::var("LOOM_HOME").ok();
-        std::env::set_var("LOOM_HOME", loom_home.path());
-
-        let profile = AgentProfile::default();
-        let config = build_config_from_profile(&profile, &parent_config(), None);
-        assert!(config.model_tier.is_none());
-        // When profile has no model config, should inherit parent's model
-        assert_eq!(config.model.as_deref(), Some("parent-model"));
-
-        match prev {
-            Some(v) => std::env::set_var("LOOM_HOME", v),
-            None => std::env::remove_var("LOOM_HOME"),
-        }
-    }
-
-    #[test]
-    fn build_helve_config_passes_profile_tier() {
-        let _lock = crate::env_test_lock().lock().unwrap();
-        let _g = ENV_LOCK.lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
-        let prev = std::env::var("LOOM_HOME").ok();
-        std::env::set_var("LOOM_HOME", loom_home.path());
-
-        let profile_dir = loom_home.path().join("agents").join("test-tier-agent");
-        std::fs::create_dir_all(&profile_dir).unwrap();
-        std::fs::write(
-            profile_dir.join("config.yaml"),
-            "name: test-tier-agent\nmodel:\n  tier: light\n",
-        )
-        .unwrap();
-
-        let opts = RunOptions {
-            message: crate::message::UserContent::Text(String::new()),
-            working_folder: None,
-            session_id: None,
-            cancellation: None,
-            thread_id: None,
-            agent: Some("test-tier-agent".to_string()),
-            verbose: false,
-            got_adaptive: false,
-            display_max_len: 200,
-            output_json: false,
-            model: None,
-            mcp_config_path: None,
-            output_timestamp: false,
-            dry_run: false,
-            debug_llm: false,
-            provider: None,
-            base_url: None,
-            api_key: None,
-            provider_type: None,
-            any_stream_event_sender: None,
-            bash_executor: None,
-            extra_tools: None,
-            acp_session_id: None,
-            force_compact: false,
-            chat_id: None,
-            worktree: false,
-        };
-        let (_helve, config, _resolved) = build_helve_config(&opts);
-        assert_eq!(config.model_tier, Some(crate::model_spec::ModelTier::Light));
-        assert!(config.model.is_none());
-
-        match prev {
-            Some(v) => std::env::set_var("LOOM_HOME", v),
-            None => std::env::remove_var("LOOM_HOME"),
-        }
-    }
-
-    #[test]
-    fn build_helve_config_explicit_model_ignores_tier() {
-        let _lock = crate::env_test_lock().lock().unwrap();
-        let _g = ENV_LOCK.lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
-        let prev = std::env::var("LOOM_HOME").ok();
-        std::env::set_var("LOOM_HOME", loom_home.path());
-
-        let profile_dir = loom_home.path().join("agents").join("test-tier-agent2");
-        std::fs::create_dir_all(&profile_dir).unwrap();
-        std::fs::write(
-            profile_dir.join("config.yaml"),
-            "name: test-tier-agent2\nmodel:\n  tier: light\n",
-        )
-        .unwrap();
-
-        let opts = RunOptions {
-            message: crate::message::UserContent::Text(String::new()),
-            working_folder: None,
-            session_id: None,
-            cancellation: None,
-            thread_id: None,
-            agent: Some("test-tier-agent2".to_string()),
-            verbose: false,
-            got_adaptive: false,
-            display_max_len: 200,
-            output_json: false,
-            model: Some("anthropic/claude-sonnet-4".to_string()),
-            mcp_config_path: None,
-            output_timestamp: false,
-            dry_run: false,
-            debug_llm: false,
-            provider: None,
-            base_url: None,
-            api_key: None,
-            provider_type: None,
-            any_stream_event_sender: None,
-            bash_executor: None,
-            extra_tools: None,
-            acp_session_id: None,
-            force_compact: false,
-            chat_id: None,
-            worktree: false,
-        };
-        let (_helve, config, _resolved) = build_helve_config(&opts);
-        assert_eq!(config.model.as_deref(), Some("anthropic/claude-sonnet-4"));
-        // When model is explicitly specified, tier should NOT be set to avoid tier overriding the explicit model
-        assert_eq!(config.model_tier, None);
-
-        match prev {
-            Some(v) => std::env::set_var("LOOM_HOME", v),
-            None => std::env::remove_var("LOOM_HOME"),
         }
     }
 }

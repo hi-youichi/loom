@@ -1,6 +1,7 @@
 //! Request preparation: register thread in workspace, append initial user message, build RunOptions and RunCmd.
 
-use loom::{cli_run::RunCancellation, protocol::AgentIdentifier, AgentType, Message, RunCmd, RunOptions};
+use loom::{cli_run::RunCancellation, protocol::AgentIdentifier, AgentType, Message};
+use loom_agent::{RunCmd, RunOptions};
 use std::path::PathBuf;
 use std::sync::Arc;
 

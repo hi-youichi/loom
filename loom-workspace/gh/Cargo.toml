@@ -29,6 +29,7 @@ tracing-appender = "0.2"
 axum = { version = "0.7", features = ["json", "macros"] }
 tower-http = { version = "0.5", features = ["util"] }
 loom = { path = "../../loom" }
+loom-agent = { path = "../../loom-agent" }
 clap = { workspace = true }
 
 [dev-dependencies]

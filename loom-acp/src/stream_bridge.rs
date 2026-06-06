@@ -37,7 +37,8 @@ use agent_client_protocol::schema::{
     ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind, ToolCallContent,
 };
 use loom::message::Message;
-use loom::{AnyStreamEvent, MessageChunkKind, StreamEvent};
+use loom::{MessageChunkKind, StreamEvent};
+use loom_agent::AnyStreamEvent;
 use serde_json::Value;
 use std::sync::Mutex;
 use std::collections::HashMap;

@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
 use crate::args::GoalArgs;
-use loom::goal_runner::{
-    GoalOutcome, GoalRunner, LoomTool, ShellTool, resume, write_mcp_config,
+use crate::goal_runner::{
+    GoalRunner, LoomTool, ShellTool, resume, write_mcp_config,
 };
+use loom::goal_runner::GoalOutcome;
 use loom::cli_run::RunCancellation;
 use task_core::TaskDb;
 use tokio_util::sync::CancellationToken;
@@ -66,7 +67,7 @@ let description = match &ga.description {
     let task_id_short = task.id[..8.min(task.id.len())].to_string();
     let session_id = format!("goal-{}", &task_id_short);
 
-    let tool: Box<dyn loom::goal_runner::CodingTool> = match ga.tool.as_str() {
+    let tool: Box<dyn crate::goal_runner::CodingTool> = match ga.tool.as_str() {
         "loom" => {
             let mcp_config_path = write_mcp_config(&db_path, &working_dir)?;
             let mut loom_tool = LoomTool::new(
@@ -81,7 +82,7 @@ let description = match &ga.description {
             Box::new(loom_tool)
         }
         name => {
-            let args = loom::goal_runner::shell_tool_args(name);
+            let args = crate::goal_runner::shell_tool_args(name);
             Box::new(ShellTool::new(name.to_string(), args).with_cancel(cancel.clone()))
         }
     };

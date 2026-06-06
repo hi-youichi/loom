@@ -1,9 +1,11 @@
 //! Agent run task: stream events to protocol envelopes and optional message store append.
 
-use loom::{
-    run_agent_with_options, AnyStreamEvent, EnvelopeState, Message, ProtocolEventEnvelope, RunCmd,
-    RunCompletion, RunError, RunOptions, StreamEvent,
+use loom_agent::{
+    run_agent_with_options, run_agent_with_llm_override,
+    AnyStreamEvent, RunCmd,
+    RunCompletion, RunError, RunOptions,
 };
+use loom::{EnvelopeState, Message, ProtocolEventEnvelope, StreamEvent};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
@@ -236,7 +238,7 @@ pub(super) async fn run_agent_task(
         process_run_stream_event(ev, &event_ctx, &append_ctx);
     });
     let result = if let Some(llm) = llm_override {
-        loom::run_agent_with_llm_override(&opts, &cmd, Some(on_event), Some(llm)).await
+        run_agent_with_llm_override(&opts, &cmd, Some(on_event), Some(llm)).await
     } else {
         run_agent_with_options(&opts, &cmd, Some(on_event)).await
     };

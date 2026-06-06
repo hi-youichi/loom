@@ -706,7 +706,7 @@ use super::curator_backup::CuratorBackup;
                 }
             }
             self.apply_automatic_transitions(start)
-                .map_err(|e| SkillError::InvalidFormat(e))?
+                .map_err(SkillError::InvalidFormat)?
         };
 
         // 3. 构建 auto_summary
@@ -795,10 +795,10 @@ use super::curator_backup::CuratorBackup;
                 let _ = self.archive_skill(&name);
                 counts.archived += 1;
             } else if anchor <= stale_cutoff && row.state == Lifecycle::Active {
-                let _ = self.skill_usage.set_state(&name, Lifecycle::Stale);
+                self.skill_usage.set_state(&name, Lifecycle::Stale);
                 counts.marked_stale += 1;
             } else if anchor > stale_cutoff && row.state == Lifecycle::Stale {
-                let _ = self.skill_usage.set_state(&name, Lifecycle::Active);
+                self.skill_usage.set_state(&name, Lifecycle::Active);
                 counts.reactivated += 1;
             }
         }
@@ -817,7 +817,7 @@ Ok(counts)
         let before_report = self.skill_usage.agent_created_report();
         let before_names: HashSet<String> = match before_report {
             Ok(report) => report.iter()
-                .filter_map(|r| Some(r.name.clone()))
+                .map(|r| r.name.clone())
                 .collect(),
             Err(_) => HashSet::new(),
         };
@@ -832,10 +832,7 @@ Ok(counts)
         let llm_response = format!("[mock LLM response for prompt: {} chars]", prompt.len());
 
         let after_report = self.skill_usage.agent_created_report();
-        let after_vec: Vec<SkillUsageReport> = match after_report {
-            Ok(r) => r,
-            Err(_) => Vec::new(),
-        };
+        let after_vec: Vec<SkillUsageReport> = after_report.unwrap_or_default();
         let rename_summary: Option<String> = build_rename_summary(&before_names, &after_vec).ok().flatten();
 
         let report_path = write_run_report(

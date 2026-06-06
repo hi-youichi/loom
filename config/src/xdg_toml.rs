@@ -125,7 +125,7 @@ impl LogsModuleConfig {
     pub fn rotate(&self) -> crate::tracing_init::LogRotate {
         self.rotate
             .as_deref()
-            .and_then(|s| crate::tracing_init::LogRotate::parse(s))
+            .and_then(crate::tracing_init::LogRotate::parse)
             .unwrap_or(crate::tracing_init::LogRotate::None)
     }
 }

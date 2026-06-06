@@ -39,6 +39,12 @@ loom-lsp = { path = "../loom-lsp" }
 loom-cache = { path = "../loom-cache" }
 loom-model-spec = { path = "../loom-model-spec" }
 
+# Context compression (loom-compress crate)
+loom-compress = { path = "../loom-compress" }
+
+# Commands (loom-commands crate)
+loom-commands = { path = "../loom-commands" }
+
 # Memory implementations (loom-memory crate)
 loom-memory = { path = "../loom-memory" }
 
@@ -47,6 +53,15 @@ loom-graph = { path = "../loom-graph" }
 
 # Pregel runtime (loom-pregel crate)
 loom-pregel = { path = "../loom-pregel" }
+
+# Streaming types (loom-stream crate)
+loom-stream = { path = "../loom-stream" }
+
+# Tools (loom-tools crate)
+loom-tools = { path = "../loom-tools" }
+
+# Background review system (loom-background-review crate)
+loom-background-review = { path = "../loom-background-review" }
 
 # The following are handled by loom-llm but kept for compatibility:
 async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
@@ -114,4 +129,5 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ctor = "0.2"
 wiremock = "0.6"
 temp-env = { version = "0.3", features = ["async_closure"] }
+loom-agent = { path = "../loom-agent" }
 

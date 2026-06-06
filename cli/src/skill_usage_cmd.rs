@@ -42,7 +42,7 @@ async fn sync(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let base_dir = path
         .clone()
-        .unwrap_or_else(|| SkillRegistry::default_path());
+        .unwrap_or_else(SkillRegistry::default_path);
     let base_dir_str = base_dir.display().to_string();
 
     // Scan skills directory
@@ -142,12 +142,10 @@ async fn show(
                 std::process::exit(1);
             }
         }
+    } else if json {
+        println!("{}", serde_json::to_string_pretty(&data)?);
     } else {
-        if json {
-            println!("{}", serde_json::to_string_pretty(&data)?);
-        } else {
-            print_usage_list(&data);
-        }
+        print_usage_list(&data);
     }
 
     Ok(())
@@ -158,7 +156,7 @@ async fn repair(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let base_dir = path
         .clone()
-        .unwrap_or_else(|| SkillRegistry::default_path());
+        .unwrap_or_else(SkillRegistry::default_path);
     let usage_path = base_dir.join(".usage.json");
 
     if !usage_path.exists() {

@@ -30,7 +30,7 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use loom_llm::error::AgentError;
+
 use stream_event::{StreamEvent, StreamMode, StreamWriter};
 use crate::managed::ManagedValue;
 use crate::memory::{RunnableConfig, Store};

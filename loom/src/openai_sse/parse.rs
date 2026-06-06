@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use crate::agent::react::REACT_SYSTEM_PROMPT;
+use loom_types::prompts::REACT_SYSTEM_PROMPT;
 use crate::helve::{ApprovalPolicy, HelveConfig};
 use crate::memory::RunnableConfig;
 

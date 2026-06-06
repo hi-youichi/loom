@@ -103,7 +103,7 @@ pub trait Tool: Send + Sync {
     }
 }
 
-pub(crate) struct ArcTool(pub(crate) Arc<dyn Tool>);
+pub struct ArcTool(pub Arc<dyn Tool>);
 
 #[async_trait]
 impl Tool for ArcTool {

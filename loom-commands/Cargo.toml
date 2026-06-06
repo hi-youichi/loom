@@ -1,0 +1,18 @@
+[package]
+name = "loom-commands"
+version.workspace = true
+edition.workspace = true
+description = "Slash command system for Loom agents"
+license.workspace = true
+authors.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+loom-types = { path = "../loom-types" }
+loom-llm = { path = "../loom-llm" }
+loom-compress = { path = "../loom-compress" }
+
+[dev-dependencies]
+tokio = { workspace = true }

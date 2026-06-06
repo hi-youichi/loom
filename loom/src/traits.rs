@@ -13,7 +13,7 @@ use std::sync::Arc;
 /// No separate Input/Output; invoke(state) returns updated state.
 /// Used by all agents (e.g. EchoAgent) and by callers that run one step per `run(state)`.
 /// When `Agent::State == S`, an agent can be used as a graph `Node<S>` (see blanket impl below).
-
+///
 /// Minimal agent: state in, state out (no Input/Output).
 ///
 /// One step: receive state, return updated state. Equivalent to a single node

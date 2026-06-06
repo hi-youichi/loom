@@ -8,7 +8,7 @@
 
 use config::{load_full_config, ProviderDef};
 use loom::llm::{ModelInfo, ModelRegistry, ProviderConfig};
-use loom::RunError;
+use loom_agent::RunError;
 use std::collections::HashMap;
 
 /// Result of querying models from a single provider.

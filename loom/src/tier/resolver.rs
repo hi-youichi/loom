@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::agent::react::ReactBuildConfig;
+use crate::react_config::ReactBuildConfig;
 use crate::llm::ModelEntry;
 use crate::model_spec::ModelTier;
 use crate::provider::load_provider_configs;
@@ -102,7 +102,7 @@ impl TierResolver for DefaultTierResolver {
     }
 }
 
-pub(crate) async fn resolve_tier_for_config(
+pub async fn resolve_tier_for_config(
     config: &ReactBuildConfig,
     tier: ModelTier,
 ) -> Option<ResolvedTierModel> {

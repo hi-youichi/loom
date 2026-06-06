@@ -28,7 +28,7 @@ pub use tool::{
 };
 
 // Re-exports — Error types
-pub use error::{AgentError, Interrupt, GraphInterrupt};
+pub use error::{AgentError, Interrupt};
 
 // Re-exports — LLM traits and response types
 pub use traits::{

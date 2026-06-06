@@ -15,7 +15,8 @@ fn ensure_short_mcp_timeout() {
     });
 }
 
-use loom::{build_helve_config, run_agent_with_llm_override, MockLlm, RunCmd, RunOptions};
+use loom::{build_helve_config, MockLlm, RunCmd, RunOptions};
+use loom_agent::run_agent_with_llm_override;
 use std::path::PathBuf;
 
 fn opts(working_folder: PathBuf) -> RunOptions {

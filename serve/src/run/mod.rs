@@ -114,9 +114,10 @@ pub(crate) async fn handle_run(
 mod tests {
     use async_trait::async_trait;
     use loom::{
-        AgentRunResult, EnvelopeState, MockLlm, ProtocolEvent, ProtocolEventEnvelope,
-        RunCmd, RunCompletion, RunError, RunOptions, ServerResponse,
+        EnvelopeState, MockLlm, ProtocolEvent, ProtocolEventEnvelope,
+        ServerResponse,
     };
+    use loom_agent::{RunCmd, RunCompletion, RunError, RunOptions, AgentRunResult};
     use std::sync::atomic::AtomicUsize;
     use std::sync::{Arc, Mutex};
     use tokio::sync::mpsc;
@@ -234,7 +235,7 @@ mod tests {
         let state = Arc::new(Mutex::new(EnvelopeState::new("run-1".into())));
         let run_handle = tokio::spawn(async move {
             (
-                Err(RunError::Build(loom::BuildRunnerError::NoLlm)),
+                Err(RunError::Build(loom_agent::BuildRunnerError::NoLlm)),
                 state,
                 Arc::new(AtomicUsize::new(0)),
                 Arc::new(AtomicUsize::new(0)),

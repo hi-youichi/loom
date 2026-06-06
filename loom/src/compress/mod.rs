@@ -1,13 +1,6 @@
-//! Context compression: prune tool results and compact conversation history.
-//!
-//! Used by the ReAct graph to stay within context limits via pruning and LLM summarization.
+//! Re-export of loom-compress
 
-pub mod compact_node;
-pub mod compaction;
-pub mod config;
-pub mod context_window;
-pub mod graph;
-pub mod prune_node;
-
-pub use config::CompactionConfig;
-pub use graph::{build_graph, CompressionGraphNode};
+pub use loom_compress::{
+    build_graph, compaction, compact_node, config, context_window, graph, prune_node,
+    CompactionConfig, CompressionGraphNode,
+};

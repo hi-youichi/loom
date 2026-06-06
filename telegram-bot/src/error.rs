@@ -18,7 +18,7 @@ pub enum BotError {
     Agent(String),
 
     #[error("Agent run error: {0}")]
-    AgentRun(#[from] loom::cli_run::RunError),
+    AgentRun(#[from] loom_agent::RunError),
 
     #[error("SQLite error: {0}")]
     Sqlite(#[from] rusqlite::Error),

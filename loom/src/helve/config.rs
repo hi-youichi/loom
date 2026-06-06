@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use super::env_context::EnvContext;
 use super::prompt::{assemble_react_system_prompt, ApprovalPolicy, ReactPromptInputs};
-use crate::agent::react::ReactBuildConfig;
+use crate::react_config::ReactBuildConfig;
 
 /// Product-semantic configuration for a Helve-style run.
 ///

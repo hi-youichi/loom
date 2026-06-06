@@ -9,7 +9,8 @@
 //! or `loom tool show <NAME>`. Uses [`RunOptions`](crate::run::RunOptions) with a
 //! placeholder message (not used for execution).
 
-use loom::{build_react_run_context, tool_source::ToolSpec, AgentError, BuildRunnerError};
+use loom::{tool_source::ToolSpec, AgentError};
+use loom_agent::{build_react_run_context, BuildRunnerError};
 use serde::Serialize;
 
 use crate::run::{build_helve_config, RunError, RunOptions};
@@ -32,7 +33,8 @@ pub enum ToolShowFormat {
 /// Interacts with [`build_helve_config`](crate::run::build_helve_config) and
 /// [`build_react_run_context`](loom::build_react_run_context).
 pub async fn list_tools(opts: &RunOptions) -> Result<(), RunError> {
-    let (_helve, config, _resolved_agent) = build_helve_config(opts);
+    let loom_opts = opts.to_loom();
+    let (_helve, config, _resolved_agent) = build_helve_config(&loom_opts);
     let ctx = build_react_run_context(&config)
         .await
         .map_err(|e| RunError::Build(BuildRunnerError::Context(e)))?;
@@ -160,7 +162,8 @@ pub async fn show_tool(
     name: &str,
     format: ToolShowFormat,
 ) -> Result<(), RunError> {
-    let (_helve, config, _resolved_agent) = build_helve_config(opts);
+    let loom_opts = opts.to_loom();
+    let (_helve, config, _resolved_agent) = build_helve_config(&loom_opts);
     let ctx = build_react_run_context(&config)
         .await
         .map_err(|e| RunError::Build(BuildRunnerError::Context(e)))?;

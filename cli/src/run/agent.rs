@@ -3,9 +3,14 @@
 
 use chrono::Local;
 use loom::{
-    build_helve_config, build_react_run_context, list_available_profiles, run_agent_with_options,
-    AnyStreamEvent, DupState, Envelope, GotState, MessageChunkKind, ModelLimitResolver,
-    ModelsDevResolver, ReActState, ResolvedAgent, ToolCall, ToolResult, TotState,
+    build_helve_config, list_available_profiles,
+    Envelope, MessageChunkKind, ModelLimitResolver,
+    ModelsDevResolver, ReActState, ResolvedAgent, ToolCall, ToolResult,
+};
+use loom_agent::{
+    build_react_run_context, run_agent_with_options,
+    AnyStreamEvent,
+    agent::{DupState, GotState, TotState},
 };
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
@@ -19,7 +24,8 @@ use super::display::{
 };
 use loom::stream_display as panel_format;
 use loom::protocol::EnvelopeState;
-use loom::{RunCmd, RunOptions, StreamEvent};
+use loom_agent::{RunCmd, RunOptions};
+use loom::StreamEvent;
 
 use super::RunError;
 
@@ -29,14 +35,14 @@ pub enum RunStopReason {
     Cancelled,
 }
 
-fn completion_reply(result: loom::RunCompletion) -> (String, Option<String>, RunStopReason) {
+fn completion_reply(result: loom_agent::RunCompletion) -> (String, Option<String>, RunStopReason) {
     match result {
-        loom::RunCompletion::Finished(result) => (
+        loom_agent::RunCompletion::Finished(result) => (
             result.reply,
             result.reasoning_content,
             RunStopReason::EndTurn,
         ),
-        loom::RunCompletion::Cancelled => (String::new(), None, RunStopReason::Cancelled),
+        loom_agent::RunCompletion::Cancelled => (String::new(), None, RunStopReason::Cancelled),
     }
 }
 
@@ -141,7 +147,8 @@ pub async fn run_agent_wrapper(
     cmd: &RunCmd,
     stream_out: Option<StreamCallback>,
 ) -> RunAgentResult {
-    let (helve, config, resolved_agent) = build_helve_config(opts);
+    let loom_opts = opts.to_loom();
+    let (helve, config, resolved_agent) = build_helve_config(&loom_opts);
 
 
     print_loaded_tools(&config).await?;
@@ -307,7 +314,7 @@ pub async fn run_agent_wrapper(
     let (reply, reasoning_content, stop_reason) = completion_reply(result);
 
     if matches!(stop_reason, RunStopReason::EndTurn) && !reply.is_empty() {
-        let config = super::background_review::build_background_config_from_opts(opts);
+        let config = super::background_review::build_background_config_from_opts(&loom_opts);
         let session_id = opts
             .thread_id.clone()
             .or_else(|| opts.session_id.clone())
@@ -754,9 +761,9 @@ impl EventState {
 async fn print_loaded_tools(config: &loom::ReactBuildConfig) -> Result<(), RunError> {
     let ctx = build_react_run_context(config)
         .await
-        .map_err(|e| RunError::Build(loom::BuildRunnerError::Context(e)))?;
+        .map_err(|e| RunError::Build(loom_agent::BuildRunnerError::Context(e)))?;
     let tools = ctx.tool_source.list_tools().await.map_err(|e| {
-        RunError::Build(loom::BuildRunnerError::Context(
+        RunError::Build(loom_agent::BuildRunnerError::Context(
             loom::AgentError::ExecutionFailed(e.to_string()),
         ))
     })?;

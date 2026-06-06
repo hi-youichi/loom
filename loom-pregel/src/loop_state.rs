@@ -194,10 +194,10 @@ impl PregelLoop {
             .filter_map(|outcome| match outcome {
                 TaskOutcome::Interrupted { task, interrupt } => {
                     let namespace =
-                        interrupt_namespace(&interrupt, self.checkpoint_namespace.as_str());
+                        interrupt_namespace(interrupt, self.checkpoint_namespace.as_str());
                     Some((
                         interrupt.clone(),
-                        interrupt_record_from_task(&task.prepared, &interrupt, namespace),
+                        interrupt_record_from_task(&task.prepared, interrupt, namespace),
                     ))
                 }
                 _ => None,

@@ -1,0 +1,278 @@
+//! ThinkEvaluate node: score candidates and choose the best; apply to core.
+//!
+//! Reads `state.tot.candidates`, assigns scores (rule-based: thought length,
+//! tool_calls validity), sets `chosen_index` and writes the chosen candidate's
+//! thought and tool_calls into `state.core`. Emits `StreamEvent::TotEvaluate`.
+
+use async_trait::async_trait;
+
+use loom_llm::error::AgentError;
+use loom_graph::{Next, RunContext};
+use loom::Message;
+use loom_stream::StreamEvent;
+use loom_graph::Node;
+
+use super::state::{TotCandidate, TotState};
+
+/// ThinkEvaluate node: scores candidates and applies the best to core.
+///
+/// Rule-based scoring: thought length, tool_calls, B1 (search-keyword penalty,
+/// topic-overlap bonus). Sets `state.tot.chosen_index` and writes
+/// `state.core.messages` and `state.core.tool_calls`. Interacts with `TotState`, `StreamEvent::TotEvaluate`.
+pub struct ThinkEvaluateNode;
+
+/// Keywords suggesting search/research; candidates without tool_calls get a penalty.
+const SEARCH_RESEARCH_KEYWORDS: &[&str] = &[
+    "search",
+    "find",
+    "look up",
+    "how to",
+    "how do",
+    "research",
+    "what is",
+    "what's",
+    "why",
+    "why does",
+    "latest",
+    "recent",
+    "recommend",
+];
+
+impl ThinkEvaluateNode {
+    /// Creates a ThinkEvaluate node.
+    pub fn new() -> Self {
+        Self
+    }
+
+    fn last_user_message(messages: &[Message]) -> Option<String> {
+        messages.iter().rev().find_map(|m| {
+            if let Message::User(c) = m {
+                Some(c.as_text().to_string())
+            } else {
+                None
+            }
+        })
+    }
+
+    fn has_search_research_intent(text: &str) -> bool {
+        let lower = text.to_lowercase();
+        SEARCH_RESEARCH_KEYWORDS.iter().any(|k| lower.contains(*k))
+    }
+
+    fn topic_overlap_bonus(user: &str, thought: &str) -> f32 {
+        let user_words: std::collections::HashSet<_> = user
+            .split_whitespace()
+            .filter(|w| w.len() > 1)
+            .map(|s| s.to_lowercase())
+            .collect();
+        if user_words.is_empty() {
+            return 0.0;
+        }
+        let thought_lower = thought.to_lowercase();
+        let hit = user_words
+            .iter()
+            .filter(|w| thought_lower.contains(w.as_str()))
+            .count();
+        if hit == 0 {
+            0.0
+        } else {
+            (hit as f32 / user_words.len() as f32).min(1.0) * 0.2
+        }
+    }
+
+    /// Scores one candidate (higher is better). Rule-based + B1: search penalty, topic bonus.
+    fn score_candidate(c: &TotCandidate, last_user: Option<&str>) -> f32 {
+        let thought_len = c.thought.trim().len();
+        let thought_ok = (10..=2000).contains(&thought_len);
+        let thought_score = if thought_ok { 0.5 } else { 0.2 };
+        let tool_score = if c.tool_calls.is_empty() { 0.3 } else { 0.5 };
+        let mut score = thought_score + tool_score;
+        if let Some(user) = last_user {
+            if Self::has_search_research_intent(user) && c.tool_calls.is_empty() {
+                score -= 0.25;
+            }
+            score += Self::topic_overlap_bonus(user, &c.thought);
+        }
+        score
+    }
+
+    /// Picks the best candidate index and returns (index, scores).
+    fn choose_best(candidates: &[TotCandidate], last_user: Option<&str>) -> (usize, Vec<f32>) {
+        let scores: Vec<f32> = candidates
+            .iter()
+            .map(|c| Self::score_candidate(c, last_user))
+            .collect();
+        let chosen = scores
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(i, _)| i)
+            .unwrap_or(0);
+        (chosen, scores)
+    }
+}
+
+impl Default for ThinkEvaluateNode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl Node<TotState> for ThinkEvaluateNode {
+    fn id(&self) -> &str {
+        "think_evaluate"
+    }
+
+    async fn run(&self, state: TotState) -> Result<(TotState, Next), AgentError> {
+        let mut tot = state.tot;
+        if tot.candidates.is_empty() {
+            tot.chosen_index = None;
+            return Ok((
+                TotState {
+                    core: state.core,
+                    tot,
+                },
+                Next::Continue,
+            ));
+        }
+        let last_user = Self::last_user_message(&state.core.messages);
+        let (chosen_index, scores) = Self::choose_best(&tot.candidates, last_user.as_deref());
+        for (c, s) in tot.candidates.iter_mut().zip(scores.iter()) {
+            c.score = Some(*s);
+        }
+        tot.chosen_index = Some(chosen_index);
+        tot.tried_indices = vec![chosen_index];
+
+        let mut core = state.core;
+        let chosen = tot.candidates.get(chosen_index).unwrap();
+        core.messages
+            .push(Message::assistant(chosen.thought.clone()));
+        core.tool_calls = chosen.tool_calls.clone();
+
+        let out = TotState { core, tot };
+        Ok((out, Next::Continue))
+    }
+
+    async fn run_with_context(
+        &self,
+        state: TotState,
+        ctx: &RunContext<TotState>,
+    ) -> Result<(TotState, Next), AgentError> {
+        let (out, next) = self.run(state).await?;
+        if let (Some(tx), Some(chosen)) = (ctx.stream_tx.as_ref(), out.tot.chosen_index) {
+            let scores: Vec<f32> = out.tot.candidates.iter().filter_map(|c| c.score).collect();
+            let _ = tx.send(StreamEvent::TotEvaluate { chosen, scores }).await;
+        }
+        Ok((out, next))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use loom_memory::RunnableConfig;
+    use loom_types::state::{ReActState, ToolCall};
+    use tokio::sync::mpsc;
+
+    fn candidate(thought: &str, with_tool: bool) -> TotCandidate {
+        TotCandidate {
+            thought: thought.to_string(),
+            tool_calls: if with_tool {
+                vec![ToolCall {
+                    name: "search".to_string(),
+                    arguments: r#"{"q":"rust"}"#.to_string(),
+                    id: None,
+                }]
+            } else {
+                vec![]
+            },
+            score: None,
+        }
+    }
+
+    fn base_state(candidates: Vec<TotCandidate>) -> TotState {
+        TotState {
+            core: ReActState {
+                messages: vec![Message::user("How to research Rust async runtime?")],
+                ..ReActState::default()
+            },
+            tot: super::super::state::TotExtension {
+                candidates,
+                ..Default::default()
+            },
+        }
+    }
+
+    #[test]
+    fn topic_overlap_bonus_is_positive_for_overlap() {
+        let bonus = ThinkEvaluateNode::topic_overlap_bonus(
+            "build rust async runtime benchmark",
+            "research rust async runtime tradeoffs",
+        );
+        assert!(bonus > 0.0);
+    }
+
+    #[test]
+    fn choose_best_prefers_tool_call_for_search_intent() {
+        let candidates = vec![
+            candidate("research without tools", false),
+            candidate("research using web search tool", true),
+        ];
+        let (chosen, scores) =
+            ThinkEvaluateNode::choose_best(&candidates, Some("search latest rust async runtime"));
+        assert_eq!(chosen, 1);
+        assert!(scores[1] > scores[0]);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn run_with_empty_candidates_keeps_state() {
+        let node = ThinkEvaluateNode::new();
+        let state = base_state(vec![]);
+        let (out, next) = node.run(state).await.unwrap();
+        assert!(matches!(next, Next::Continue));
+        assert!(out.tot.chosen_index.is_none());
+        assert!(out.core.tool_calls.is_empty());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn run_applies_chosen_candidate_to_core() {
+        let node = ThinkEvaluateNode::new();
+        let state = base_state(vec![
+            candidate("short", false),
+            candidate("use search and summarize", true),
+        ]);
+        let (out, next) = node.run(state).await.unwrap();
+        assert!(matches!(next, Next::Continue));
+        assert_eq!(out.tot.chosen_index, Some(1));
+        assert_eq!(out.tot.tried_indices, vec![1]);
+        assert!(matches!(
+            out.core.messages.last(),
+            Some(Message::Assistant(p)) if p.content == "use search and summarize"
+        ));
+        assert_eq!(out.core.tool_calls.len(), 1);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn run_with_context_emits_tot_evaluate_event() {
+        let node = ThinkEvaluateNode::new();
+        let state = base_state(vec![
+            candidate("plain answer", false),
+            candidate("search then answer", true),
+        ]);
+
+        let (tx, mut rx) = mpsc::channel(8);
+        let mut ctx = RunContext::<TotState>::new(RunnableConfig::default());
+        ctx.stream_tx = Some(tx);
+
+        let (_out, _next) = node.run_with_context(state, &ctx).await.unwrap();
+        match rx.recv().await {
+            Some(StreamEvent::TotEvaluate { chosen, scores }) => {
+                assert_eq!(chosen, 1);
+                assert_eq!(scores.len(), 2);
+            }
+            other => panic!("expected TotEvaluate event, got {:?}", other),
+        }
+    }
+}
+

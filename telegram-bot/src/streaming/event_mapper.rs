@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use loom::AnyStreamEvent;
+use loom_agent::AnyStreamEvent;
 use tokio::sync::mpsc;
 
 use crate::streaming::message_handler::StreamCommand;

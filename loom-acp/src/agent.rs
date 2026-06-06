@@ -26,7 +26,7 @@ use loom::state::ReActState;
 
 use chrono::DateTime;
 use config::load_full_config;
-use loom::{run_agent_with_options, AnyStreamEvent, RunCmd, RunCompletion, RunError, RunOptions};
+use loom_agent::{run_agent_with_options, AnyStreamEvent, RunCmd, RunCompletion, RunError, RunOptions};
 use rusqlite::Connection;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -663,13 +663,13 @@ impl LoomAcpAgent {
                             .clone()
                             .unwrap_or_else(|| PathBuf::from(loom::DEFAULT_WORKING_FOLDER));
 
-                        let event_sender: Option<std::sync::Arc<dyn Fn(loom::AnyStreamEvent) + Send + Sync>> =
+let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
                             self.session_update_tx.clone().map(|sender| {
                                 let session_id = args.session_id.clone();
-                                std::sync::Arc::new(move |ev: loom::AnyStreamEvent| {
+                                std::sync::Arc::new(move |ev: AnyStreamEvent| {
                                     let notifier = SessionNotifier::new(sender.clone(), session_id.clone());
                                     notifier.try_send_event(&ev);
-                                }) as std::sync::Arc<dyn Fn(loom::AnyStreamEvent) + Send + Sync>
+                                }) as std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>
                             });
 
                         let cancel = tokio_util::sync::CancellationToken::new();
@@ -828,7 +828,21 @@ impl LoomAcpAgent {
         // Trigger background review after successful completion
         if let Ok(RunCompletion::Finished(ref run_result)) = &result {
             if !run_result.reply.is_empty() {
-                let review_config = loom::background_review::build_background_config_from_opts(&opts);
+                let base_url = opts.base_url.clone()
+                    .or_else(|| std::env::var("OPENAI_BASE_URL").ok())
+                    .unwrap_or_default();
+                let api_key = opts.api_key.clone()
+                    .or_else(|| std::env::var("OPENAI_API_KEY").ok())
+                    .unwrap_or_default();
+                let model = opts.model.clone()
+                    .or_else(|| std::env::var("MODEL").ok())
+                    .unwrap_or_else(|| "gpt-4o-mini".to_string());
+                let review_config = loom::background_review::BackgroundReviewConfig {
+                    base_url,
+                    api_key,
+                    model,
+                    ..Default::default()
+                };
                 if review_config.enabled {
                     let session_id = opts.thread_id.clone()
                         .unwrap_or_else(|| format!("acp-{}", args.session_id));

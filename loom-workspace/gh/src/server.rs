@@ -16,7 +16,7 @@ use axum::{
     routing::post,
     Router,
 };
-use loom::RunOptions;
+use loom_agent::RunOptions;
 
 /// Optional run entry: when set, called with RunOptions instead of spawning the real agent.
 pub type RunAgentCallback = Arc<dyn Fn(RunOptions) + Send + Sync>;

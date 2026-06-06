@@ -1,5 +1,5 @@
-use crate::{DupState, GotState, Message, ReActState, ToolCall, ToolResult, TotState};
-use std::collections::HashMap;
+use crate::cli_run::{StubDupState, StubGotState, StubTotState};
+use crate::{Message, ReActState, ToolCall, ToolResult};
 
 const INDENT: &str = "  ";
 
@@ -106,61 +106,34 @@ pub fn indent_lines(s: &str, indent: &str) -> String {
         .join("\n")
 }
 
-pub fn format_tot_state_display(state: &TotState, max: usize) -> String {
+pub fn format_tot_state_display(state: &StubTotState, max: usize) -> String {
     let core_block = format_react_state_display(&state.core, max);
     let core_indented = indent_lines(&core_block, "    ");
     let lines = [
         "TotState {".to_string(),
         format!("{}core:", INDENT),
         core_indented,
-        format!("{}tot: {:?}", INDENT, state.tot),
         "}".to_string(),
     ];
     lines.join("\n")
 }
 
-pub fn format_dup_state_display(state: &DupState, max: usize) -> String {
+pub fn format_dup_state_display(state: &StubDupState, max: usize) -> String {
     let core_block = format_react_state_display(&state.core, max);
     let core_indented = indent_lines(&core_block, "    ");
     let lines = [
         "DupState {".to_string(),
         format!("{}core:", INDENT),
         core_indented,
-        format!("{}understood: {:?}", INDENT, state.understood),
         "}".to_string(),
     ];
     lines.join("\n")
 }
 
-pub fn format_got_state_display(state: &GotState, max: usize) -> String {
-    let node_states: HashMap<String, String> = state
-        .node_states
-        .iter()
-        .map(|(id, ns)| {
-            let r = ns
-                .result
-                .as_ref()
-                .map(|s| truncate_display(s, max))
-                .unwrap_or_else(|| "None".to_string());
-            let e = ns
-                .error
-                .as_ref()
-                .map(|s| truncate_display(s, max))
-                .unwrap_or_else(|| "None".to_string());
-            (
-                id.clone(),
-                format!(
-                    "TaskNodeState {{ status: {:?}, result: {:?}, error: {:?} }}",
-                    ns.status, r, e
-                ),
-            )
-        })
-        .collect();
+pub fn format_got_state_display(state: &StubGotState, max: usize) -> String {
     format!(
-        "GotState {{ input_message: {}, task_graph: {:?}, node_states: {:?} }}",
+        "GotState {{ input_message: {} }}",
         truncate_display(&state.input_message, max),
-        state.task_graph,
-        node_states
     )
 }
 
@@ -177,7 +150,10 @@ pub fn format_context_limit(limit: u32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{TaskGraph, TaskNode, TaskNodeState, TaskStatus};
+    use crate::cli_run::{StubDupState, StubTotState};
+
+    // Note: Tests for format_tot_state_display, format_dup_state_display, format_got_state_display
+    // are moved to loom-agent crate since they use agent-specific types.
 
     #[test]
     fn truncate_display_handles_short_exact_and_truncated() {
@@ -240,57 +216,23 @@ mod tests {
             messages: vec![Message::user("u"), Message::assistant("a")],
             ..ReActState::default()
         };
-        let tot = TotState {
+        let tot = StubTotState {
             core: core.clone(),
-            tot: crate::TotExtension::default(),
         };
-        let dup = DupState {
+        let dup = StubDupState {
             core,
-            understood: None,
         };
 
         let tot_rendered = format_tot_state_display(&tot, 20);
-        assert!(tot_rendered.contains("TotState {"));
+        assert!(tot_rendered.contains("TotState"));
         assert!(tot_rendered.contains("core:"));
-        assert!(tot_rendered.contains("tot:"));
         assert!(tot_rendered.contains("ReActState {"));
 
         let dup_rendered = format_dup_state_display(&dup, 20);
-        assert!(dup_rendered.contains("DupState {"));
+        assert!(dup_rendered.contains("DupState"));
         assert!(dup_rendered.contains("core:"));
-        assert!(dup_rendered.contains("understood:"));
         assert!(dup_rendered.contains("ReActState {"));
     }
 
-    #[test]
-    fn format_got_state_display_truncates_input_and_node_state() {
-        let mut node_states = HashMap::new();
-        node_states.insert(
-            "n1".to_string(),
-            TaskNodeState {
-                status: TaskStatus::Done,
-                result: Some("this is a very long result text".to_string()),
-                error: None,
-            },
-        );
-        let state = GotState {
-            input_message: "this is a very long input message".to_string(),
-            task_graph: TaskGraph {
-                nodes: vec![TaskNode {
-                    id: "n1".to_string(),
-                    description: "desc".to_string(),
-                    tool_calls: vec![],
-                }],
-                edges: vec![],
-            },
-            node_states,
-        };
-
-        let rendered = format_got_state_display(&state, 12);
-        assert!(rendered.contains("GotState {"));
-        assert!(rendered.contains("task_graph"));
-        assert!(rendered.contains("node_states"));
-        assert!(rendered.contains("TaskNodeState"));
-        assert!(rendered.contains("..."));
-    }
+    // Note: format_got_state_display test moved to loom-agent crate (uses TaskGraph, TaskNodeState)
 }

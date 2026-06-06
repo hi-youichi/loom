@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::agent::react::REACT_SYSTEM_PROMPT;
+use loom_types::prompts::REACT_SYSTEM_PROMPT;
 use super::env_context::EnvContext;
 
 // Re-exported from loom-types

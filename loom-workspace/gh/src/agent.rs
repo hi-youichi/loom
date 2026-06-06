@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use crate::webhook::IssuesEvent;
 use loom::UserContent;
 
-/// Builds `loom::RunOptions` from a webhook IssuesEvent so the agent can be run with
-/// `loom::run_agent_with_options(opts, RunCmd::React, on_event)`.
+/// Builds `loom_agent::RunOptions` from a webhook IssuesEvent so the agent can be run with
+/// `loom_agent::run_agent_with_options(opts, RunCmd::React, on_event)`.
 ///
 /// - `message`: action, repo, issue number, title, body as natural language.
 /// - `thread_id`: `delivery_id` if provided, else `issue-{owner/repo}-{number}` for idempotency.
@@ -15,7 +15,7 @@ use loom::UserContent;
 pub fn run_options_from_issues_event(
     ev: &IssuesEvent,
     delivery_id: Option<&str>,
-) -> loom::RunOptions {
+) -> loom_agent::RunOptions {
     let body = ev.issue.body.as_deref().unwrap_or("").trim();
     let message = if body.is_empty() {
         format!(
@@ -40,7 +40,7 @@ pub fn run_options_from_issues_event(
 
     let model = std::env::var("MODEL").ok();
 
-    loom::RunOptions {
+    loom_agent::RunOptions {
         message: UserContent::Text(message),
         working_folder,
         session_id: None,

@@ -118,13 +118,15 @@
 //! See the `loom-examples` crate: `echo`, `react_linear`, `react_mcp`, `react_exa`, `react_memory`,
 //! `memory_checkpoint`, `memory_persistence`, `openai_embedding`, `state_graph_echo`.
 
-pub mod agent;
+pub mod active_operation;
 pub mod cache;
 pub use loom_graph::channels;
 pub mod cli_run;
 pub mod command;
 pub mod compress;
+pub mod react_config;
 pub mod config;
+pub use react_config::ReactBuildConfig;
 pub mod error;
 pub mod export;
 pub use loom_graph as graph;
@@ -150,10 +152,12 @@ pub mod skill;
 pub mod state;
 pub mod stream;
 pub mod tier;
+pub use tier::{resolve_tier_and_build_config, resolve_tier_and_build_config_with_resolver};
 
 pub mod services;
-pub mod tool_source;
-pub mod tools;
+// Re-export from loom-tools crate
+pub use loom_tools as tool_source;
+pub use loom_tools as tools;
 pub mod traits;
 pub mod user_message;
 pub mod title_generator;
@@ -161,30 +165,24 @@ pub mod worktree;
 pub mod llm;
 pub mod background_review;
 
-pub use agent::react::{
-    build_dup_runner, build_got_runner, build_react_initial_state, build_react_run_context,
-    build_react_runner, build_react_runner_with_openai, build_tot_runner, run_agent,
-    run_react_graph_stream, tools_condition, ActNode, AgentOptions, BuildRunnerError,
-    DefaultTierResolver, ObserveNode,
-    ReactBuildConfig, ReactRunContext, ReactRunner, ResolvedTierModel, RunError as ReactRunError,
-    ThinkNode, TierResolver, ToolsConditionResult,
-    WithNodeLogging, DEFAULT_EXECUTION_ERROR_TEMPLATE,
-    DEFAULT_TOOL_ERROR_TEMPLATE, REACT_SYSTEM_PROMPT, STEP_PROGRESS_EVENT_TYPE,
-};
+
 pub use cache::{Cache, CacheError, InMemoryCache};
 pub use channels::{
     BinaryOperatorAggregate, Channel, ChannelError, EphemeralValue, FieldBasedUpdater, LastValue,
     NamedBarrierValue, StateUpdater, Topic,
 };
+
+pub use active_operation::{
+    ActiveOperation, ActiveOperationCanceller, ActiveOperationKind, RunCancellation,
+};
 pub use cli_run::{
     build_config_from_profile, build_helve_config, list_available_profiles, load_agents_md,
-    resolve_model_config, resolve_profile, resolve_tier_and_build_config,
-    resolve_tier_and_build_config_with_resolver,
-    run_agent_with_llm_override, run_agent_with_options,
-    ActiveOperation, ActiveOperationCanceller, ActiveOperationKind, AgentProfile, AgentRunResult,
-    AnyRunner, AnyStreamEvent, ProfileError, ProfileSource, ProfileSummary, ResolvedAgent,
-    ResolvedModelConfig, RunCancellation, RunCmd, RunCompletion, RunError, RunOptions,
-    DEFAULT_WORKING_FOLDER,
+    resolve_model_config, resolve_profile,
+    AgentProfile, ProfileError, ProfileSource, ProfileSummary,
+    ResolvedAgent, ResolvedModelConfig, DEFAULT_WORKING_FOLDER,
+    // Re-export agent run types (stubs for types moved to loom-agent)
+    RunOptions, RunCmd, RunCompletion, RunError, AnyStreamEvent,
+    AgentRunResult,
 };
 // Re-export shared types from loom-types crate
 pub use loom_types::{
@@ -279,21 +277,21 @@ pub use tool_source::{
     TOOL_BASH, TOOL_GET_RECENT_MESSAGES, TOOL_LIST_MEMORIES, TOOL_RECALL, TOOL_REMEMBER,
     TOOL_SEARCH_MEMORIES, TOOL_WEB_FETCHER,
 };
-pub use tools::shared::shell_output::{ShellOutput, format_shell_output, format_timed_out_output, format_terminal_timed_out_output, format_size, shell_output_dir, create_output_file, generate_run_id, make_relative};
-pub use tools::shared::canceller::{ChildProcessCanceller, setup_cancellation};
-pub use tools::{register_mcp_tools, BashTool, CommandExecutor, LocalCommandExecutor, McpToolAdapter};
+pub use loom_tools::tools::shared::shell_output::{ShellOutput, format_shell_output, format_timed_out_output, format_terminal_timed_out_output, format_size, shell_output_dir, create_output_file, generate_run_id, make_relative};
+pub use loom_tools::tools::shared::canceller::{ChildProcessCanceller, setup_cancellation};
+pub use loom_tools::{register_mcp_tools, BashTool, CommandExecutor, LocalCommandExecutor, McpToolAdapter};
 pub use traits::{Agent, AgentNode};
 pub use user_message::{
     NoOpUserMessageStore, SqliteUserMessageStore, UserMessageStore, UserMessageStoreError,
 };
 pub use title_generator::generate_title;
 
-// Re-export DUP, GoT, ToT from agent for backward compatibility.
-pub use agent::{
-    build_dup_initial_state, build_got_initial_state, build_tot_initial_state, DupRunError,
-    DupRunner, DupState, GotRunError, GotRunner, GotState, TaskGraph, TaskNode, TaskNodeState,
-    TaskStatus, TotCandidate, TotExtension, TotRunError, TotRunner, TotState, UnderstandOutput,
-};
+// Agent types (DUP, GoT, ToT) moved to loom-agent crate
+// pub use agent::{
+//     build_dup_initial_state, build_got_initial_state, build_tot_initial_state, DupRunError,
+//     DupRunner, DupState, GotRunError, GotRunner, GotState, TaskGraph, TaskNode, TaskNodeState,
+//     TaskStatus, TotCandidate, TotExtension, TotRunError, TotRunner, TotState, UnderstandOutput,
+// };
 
 /// Global lock for tests that modify `LOOM_HOME` or `OPENAI_BASE_URL` env vars.
 /// Use in any test that sets/removes these env vars to prevent data races.
@@ -335,9 +333,10 @@ mod run_agent_options_tests {
     use std::time::Instant;
 
     use crate::{
-        run_agent_with_llm_override, run_agent_with_options, AnyStreamEvent, MockLlm,
+        AnyStreamEvent, MockLlm,
         RunCancellation, RunCmd, RunCompletion, RunOptions, StreamEvent, UserContent, ReActState,
     };
+    use loom_agent::{run_agent_with_llm_override, run_agent_with_options};
     #[cfg(unix)]
     use crate::ToolCall;
     use crate::memory::{default_memory_db_path, JsonSerializer, SqliteSaver, RunnableConfig, CheckpointListItem, Checkpointer};

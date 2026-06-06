@@ -268,7 +268,7 @@ async fn resolve_review_model(config: &BackgroundReviewConfig) -> (String, Strin
     (config.base_url.clone(), config.api_key.clone(), config.model.clone())
 }
 
-pub fn build_background_config_from_opts(opts: &crate::RunOptions) -> BackgroundReviewConfig {
+pub fn build_background_config_from_opts(opts: &crate::cli_run::RunOptions) -> BackgroundReviewConfig {
     let session_model = resolve_session_model(opts);
 
     let base_url = opts.base_url.clone()
@@ -292,7 +292,7 @@ pub fn build_background_config_from_opts(opts: &crate::RunOptions) -> Background
     }
 }
 
-fn resolve_session_model(opts: &crate::RunOptions) -> Option<ModelEntry> {
+fn resolve_session_model(opts: &crate::cli_run::RunOptions) -> Option<ModelEntry> {
     let model = opts.model.as_deref()?;
     let (provider, _) = crate::llm::ModelEntry::parse_id(model)?;
     let providers = crate::provider::load_provider_configs()?;

@@ -1,0 +1,26 @@
+[package]
+name = "loom-agent"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+loom = { path = "../loom" }
+loom-agent-patterns = { path = "../loom-agent-patterns" }
+loom-types = { path = "../loom-types" }
+loom-graph = { path = "../loom-graph" }
+loom-pregel = { path = "../loom-pregel" }
+
+async-trait = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+tokio = { version = "1.0", features = ["full"] }
+tokio-stream = "0.1"
+tokio-util = { version = "0.7", features = ["rt"] }
+tracing = "0.1"
+futures = "0.3"
+futures-util = "0.3"
+env-config = { path = "../config", package = "config" }
+model-spec-core = { path = "../model-spec-core" }
+async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
+task-core = { path = "../task-core" }

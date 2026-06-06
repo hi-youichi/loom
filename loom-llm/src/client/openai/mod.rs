@@ -194,6 +194,7 @@ impl ChatOpenAI {
             .unwrap_or_default()
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn record_audit(
         &self,
         trace_id: &str,

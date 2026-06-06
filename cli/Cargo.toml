@@ -16,6 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 loom = { path = "../loom" }
+loom-agent = { path = "../loom-agent" }
 
 serve = { path = "../serve" }
 stream-event = { path = "../stream-event" }

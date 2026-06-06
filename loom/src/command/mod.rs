@@ -2,12 +2,15 @@
 //!
 //! Provides [`parse`] to detect slash commands in user input, and [`Command`]/[`CommandResult`]
 //! types for cross-platform command handling.
+//!
+//! This module re-exports from the `loom-commands` crate.
 
-pub mod builtins;
-#[allow(clippy::module_inception)]
-pub mod command;
-pub mod parser;
+// Re-export everything from loom-commands
+pub use loom_commands::*;
 
-pub use builtins::{execute, execute_async, CompactState, ResetState, SummarizeState};
-pub use command::{Command, CommandResult};
-pub use parser::parse;
+// Re-export specific items for backward compatibility
+pub use loom_commands::{
+    builtins::{execute, execute_async, CompactState, ResetState, SummarizeState},
+    command::{Command, CommandResult},
+    parser::parse,
+};

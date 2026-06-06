@@ -8,6 +8,7 @@ mod bootstrap;
 mod codex_event_builder;
 mod display_limits;
 mod goal_cmd;
+mod goal_runner;
 mod logging;
 mod mcp_manager;
 mod output;
@@ -123,7 +124,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     if let Some(Cmd::SkillUsage(sa)) = &args.cmd {
-        if let Err(err) = handle_skill_usage_command(&sa).await {
+        if let Err(err) = handle_skill_usage_command(sa).await {
             eprintln!("{}", err);
             std::process::exit(1);
         }

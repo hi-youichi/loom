@@ -3,7 +3,7 @@ use std::sync::Mutex;
 
 use crate::cli_run::AnyStreamEvent;
 use crate::stream::{MessageChunk, MessageChunkKind, StreamEvent};
-use crate::{DupState, GotState, ReActState, ToolCall, ToolResult, TotState};
+use crate::{ReActState, ToolCall, ToolResult};
 use crate::stream_display::format::*;
 use crate::stream_display::panel_format;
 use crate::stream_display::spinner::{NoopSpinner, Spinner, SpinnerTrait};
@@ -347,7 +347,7 @@ pub fn on_event_react(
 }
 
 pub fn on_event_dup(
-    ev: &StreamEvent<DupState>,
+    ev: &StreamEvent<crate::cli_run::StubDupState>,
     s: &mut EventState,
     display_max_len: usize,
     verbose: bool,
@@ -363,24 +363,6 @@ pub fn on_event_dup(
         }
         StreamEvent::Updates { node_id, state, .. } => {
             if verbose {
-                match node_id.as_str() {
-                    "understand" => {
-                        if let Some(ref u) = state.understood {
-                            eprintln!("--- Understanding ---");
-                            eprintln!(
-                                "  Core goal: {}",
-                                truncate_display(&u.core_goal, display_max_len)
-                            );
-                            eprintln!("  Constraints: {:?}", u.key_constraints);
-                            eprintln!(
-                                "  Context: {}",
-                                truncate_display(&u.relevant_context, display_max_len)
-                            );
-                        }
-                    }
-                    "plan" => s.turn += 1,
-                    _ => {}
-                }
                 eprintln!("--- state after {} ---", node_id);
                 eprintln!("{}", format_dup_state_display(state, display_max_len));
             } else if node_id == "plan" {
@@ -409,7 +391,7 @@ pub fn on_event_dup(
 }
 
 pub fn on_event_tot(
-    ev: &StreamEvent<TotState>,
+    ev: &StreamEvent<crate::cli_run::StubTotState>,
     s: &mut EventState,
     display_max_len: usize,
     verbose: bool,
@@ -469,7 +451,7 @@ pub fn on_event_tot(
 }
 
 pub fn on_event_got(
-    ev: &StreamEvent<GotState>,
+    ev: &StreamEvent<crate::cli_run::StubGotState>,
     s: &mut EventState,
     display_max_len: usize,
     verbose: bool,

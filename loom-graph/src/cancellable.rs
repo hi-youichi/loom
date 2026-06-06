@@ -2,7 +2,7 @@
 //!
 //! Provides functionality for running futures with cancellation support.
 
-use futures_util::future::{abortable, Aborted};
+use futures_util::future::abortable;
 use tokio_util::sync::CancellationToken;
 use loom_llm::error::AgentError;
 

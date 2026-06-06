@@ -210,7 +210,7 @@ impl SkillUsageStore {
 
     /// Get usage data for a specific skill.
     pub fn get(&self, name: &str) -> Option<SkillUsage> {
-        self.load().ok()?.remove(name).into()
+        self.load().ok()?.remove(name)
     }
 
     /// Load all usage data from the store.

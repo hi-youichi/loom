@@ -25,6 +25,13 @@ members = [
     "task-core",
     "task-cli",
     "task-mcp-server", "loom-types",
+    "loom-agent",
+    "loom-agent-patterns",
+    "loom-compress",
+    "loom-commands",
+    "loom-stream",
+    "loom-tools",
+    "loom-background-review",
 ]
 
 [workspace.package]
@@ -41,6 +48,9 @@ dotenv = "0.15"
 futures = "0.3"
 clap = { version = "4", features = ["derive", "env"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
 
 # Test profile optimizations: build tests with optimizations for faster execution
 # while keeping debug assertions for safety checks.

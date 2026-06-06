@@ -19,10 +19,10 @@ use loom_graph::memory::{
 };
 use crate::algo::{
     normalize_pending_sends, normalize_pending_writes, restore_channels_from_checkpoint,
-    task_cache_key, apply_writes, finish_channels, ExecutableTask, PreparedTask, TaskOutcome,
+    task_cache_key,
 };
 use crate::cache::{CachedTaskWrites, PregelTaskCache};
-use crate::config::{PregelConfig, PregelDurability};
+use crate::config::PregelConfig;
 use crate::graph_view::PregelGraphView;
 use crate::loop_state::PregelLoop;
 use crate::node::{PregelGraph, PregelNodeContext};
@@ -30,8 +30,8 @@ use crate::replay::{ReplayMode, ReplayRequest, ReplayResult};
 use crate::runner::PregelRunner;
 use crate::state::{BulkStateUpdateRequest, PregelStateSnapshot, StateUpdateRequest};
 use crate::subgraph::{PregelSubgraphEntry, SubgraphInvocation, SubgraphResult};
-use crate::types::{ChannelValue, InterruptRecord, ManagedValues, PregelScratchpad, ReservedWrite, ResumeMap, TaskKind, TASKS_CHANNEL};
-use stream_event::{CheckpointEvent, StreamEvent, StreamMode};
+use crate::types::{ChannelValue, ManagedValues, ReservedWrite, ResumeMap};
+use stream_event::{StreamEvent, StreamMode};
 
 /// Stream handle for a Pregel run.
 pub struct PregelStream {

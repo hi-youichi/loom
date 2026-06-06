@@ -5,7 +5,7 @@ mod date;
 pub mod exa;
 pub mod file;
 mod help;
-mod invoke_agent;
+// mod invoke_agent; // moved to loom-agent
 mod list_agents;
 mod lsp;
 mod mcp_adapter;
@@ -35,7 +35,7 @@ pub use file::{
     TOOL_MULTIEDIT, TOOL_READ_FILE, TOOL_WRITE_FILE,
 };
 pub use help::{HelpTool, TOOL_HELP};
-pub use invoke_agent::{InvokeAgentTool, TOOL_INVOKE_AGENT};
+// pub use invoke_agent::{InvokeAgentTool, TOOL_INVOKE_AGENT}; // moved to loom-agent
 pub use list_agents::{ListAgentsTool, TOOL_LIST_AGENTS};
 pub use lsp::{LspTool, TOOL_LSP};
 pub use mcp_adapter::{register_mcp_tools, register_mcp_tools_with_specs, McpToolAdapter};
@@ -45,7 +45,7 @@ pub use memory::{
 };
 pub use powershell::{LocalPowerShellExecutor, PowerShellExecutor, PowerShellTool, TOOL_POWERSHELL};
 pub use r#trait::Tool;
-pub(crate) use r#trait::ArcTool;
+pub use r#trait::ArcTool;
 pub use registry::{ToolRegistry, ToolRegistryLocked};
 pub use shared::shell_output::format_terminal_timed_out_output;
 pub use skill::{SkillTool, TOOL_SKILL};

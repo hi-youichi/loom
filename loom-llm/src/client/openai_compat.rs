@@ -32,10 +32,10 @@ use crate::support::http_retry::{
 use crate::support::error_classifier::LlmErrorClassifierConfig;
 use crate::traits::{LlmClient, LlmResponse, LlmUsage, ToolCallDelta};
 use crate::support::uuid6::uuid6;
-use crate::message::{assistant_content_for_chat_api, ContentPart, Message, UserContent, content_part_modality};
+use crate::message::{assistant_content_for_chat_api, ContentPart, Message, UserContent};
 use crate::tool::ToolCall;
 use crate::traits::MessageChunk;
-use crate::tool::{ToolSpec, ToolSourceError};
+use crate::tool::ToolSpec;
 
 use crate::support::thinking::{
     collect_thinking_tags, strip_thinking_tags, ThinkingSegment, ThinkingTagParser,

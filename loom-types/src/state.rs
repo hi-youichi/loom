@@ -1,13 +1,13 @@
 //! ReAct state and tool types.
 
 use serde::{Deserialize, Serialize};
-use loom_llm::ToolCall;
 use loom_llm::ToolChoiceMode;
 use loom_llm::LlmUsage;
 use loom_llm::message::{AssistantToolCall, Message};
 use model_spec_core::spec::ModelTier;
 
-// Re-export ToolOutputStrategy and ToolStorageRef from loom-llm
+// Re-export ToolCall and ToolOutputStrategy from loom-llm
+pub use loom_llm::ToolCall;
 pub use loom_llm::tool::ToolOutputStrategy;
 
 /// Reference to a persisted tool output file.

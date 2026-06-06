@@ -1,6 +1,7 @@
 //! Spawns a loom agent run (used by webhook handler when no test callback is set).
 
-use loom::{run_agent_with_options, RunCmd, RunOptions};
+use loom_agent::{RunCmd, RunOptions};
+use loom_agent::run_agent_with_options;
 
 /// Spawns an async task that runs the loom agent with the given options.
 /// Returns immediately; the task runs in the background. Logs thread_id for

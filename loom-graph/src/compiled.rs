@@ -232,7 +232,7 @@ where
 
                     // Call interrupt handler if configured
                     if let Some(handler) = &self.interrupt_handler {
-                        let _ = handler.handle_interrupt(&interrupt);
+                        let _ = handler.handle_interrupt(interrupt);
                     }
 
                     // Emit TaskEnd with interrupt info

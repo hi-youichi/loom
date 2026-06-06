@@ -1,0 +1,68 @@
+[package]
+name = "loom-tools"
+version.workspace = true
+edition.workspace = true
+description = "Tool implementations and sources for Loom agents"
+license.workspace = true
+authors.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Core async and serialization
+tokio = { workspace = true }
+async-trait = { workspace = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+futures-util = "0.3"
+
+# Loom ecosystem crates
+loom-llm = { path = "../loom-llm" }
+loom-types = { path = "../loom-types" }
+loom-memory = { path = "../loom-memory" }
+loom-lsp = { path = "../loom-lsp" }
+lsp-types = "0.95"
+loom-stream = { path = "../loom-stream" }
+loom-skill = { path = "../loom-skill" }
+loom-background-review = { path = "../loom-background-review" }
+loom-commands = { path = "../loom-commands" }
+
+# MCP client
+mcp_client = { git = "https://github.com/graphweave/mcm-rust", package = "mcp_client" }
+mcp_core = { git = "https://github.com/graphweave/mcm-rust", package = "mcp_core" }
+
+# File system and tools
+walkdir = "2"
+glob = "0.3"
+which = "6.0"
+grep-regex = "0.1"
+grep-searcher = "0.1"
+ignore = "0.4"
+regex = "1"
+
+# HTTP client for web tools
+reqwest = { version = "0.12", features = ["json"] }
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+thiserror = { workspace = true }
+tokio-stream = { workspace = true }
+dashmap = "6.0"
+crossbeam-channel = "0.5"
+
+# YAML for tool specs
+serde_yaml = "0.9"
+
+# Optional dependencies
+dirs = "5"
+env_config = { path = "../config", package = "config" }
+task-core = { path = "../task-core" }
+
+[dev-dependencies]
+tempfile = "3"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ctor = "0.2"
+wiremock = "0.6"
+temp-env = { version = "0.3", features = ["async_closure"] }

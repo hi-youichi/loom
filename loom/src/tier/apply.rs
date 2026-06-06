@@ -1,4 +1,4 @@
-use crate::agent::react::ReactBuildConfig;
+use crate::react_config::ReactBuildConfig;
 use super::resolver::{DefaultTierResolver, TierResolver};
 
 pub async fn resolve_tier_and_build_config(config: &ReactBuildConfig) -> ReactBuildConfig {
