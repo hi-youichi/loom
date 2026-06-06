@@ -60,6 +60,9 @@ loom-stream = { path = "../loom-stream" }
 # Tools (loom-tools crate)
 loom-tools = { path = "../loom-tools" }
 
+# Protocol types (loom-protocol crate)
+loom-protocol = { path = "../loom-protocol" }
+
 # Background review system (loom-background-review crate)
 loom-background-review = { path = "../loom-background-review" }
 

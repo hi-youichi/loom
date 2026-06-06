@@ -1,0 +1,20 @@
+[package]
+name = "loom-protocol"
+version.workspace = true
+edition.workspace = true
+description = "Protocol types for Loom (WebSocket, streaming, envelope)"
+license.workspace = true
+authors.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+stream-event = { path = "../stream-event" }
+loom-llm = { path = "../loom-llm" }
+loom-tools = { path = "../loom-tools" }
+model-spec-core = { path = "../model-spec-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+futures = { workspace = true }

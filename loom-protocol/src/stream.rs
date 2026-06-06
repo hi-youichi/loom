@@ -8,8 +8,8 @@
 
 pub use stream_event::{to_json as stream_event_to_json, Envelope, ProtocolEvent};
 
-use super::ProtocolEventEnvelope;
-use crate::stream::{MessageChunkKind, StreamEvent, StreamMetadata};
+use crate::responses::ProtocolEventEnvelope;
+use stream_event::{MessageChunkKind, StreamEvent, StreamMetadata};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::fmt::Debug;
@@ -220,7 +220,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::stream::{MessageChunk, StreamMetadata};
+    use stream_event::{MessageChunk, StreamMetadata};
 
     #[derive(Clone, Debug, serde::Serialize)]
     struct DummyState(i32);
@@ -339,7 +339,7 @@ mod tests {
 
     #[test]
     fn stream_event_to_protocol_value_injects_envelope() {
-        let mut state = crate::protocol::EnvelopeState::new("sess-1".to_string());
+        let mut state = crate::envelope_state::EnvelopeState::new("sess-1".to_string());
         let enter: StreamEvent<DummyState> = StreamEvent::TaskStart {
             node_id: "think".to_string(),
             namespace: None,
@@ -368,7 +368,7 @@ mod tests {
 
     #[test]
     fn stream_event_to_protocol_value_thought_chunk_injects_envelope() {
-        let mut state = crate::protocol::EnvelopeState::new("sess-1".to_string());
+        let mut state = crate::envelope_state::EnvelopeState::new("sess-1".to_string());
         let enter: StreamEvent<DummyState> = StreamEvent::TaskStart {
             node_id: "think".to_string(),
             namespace: None,
@@ -394,7 +394,7 @@ mod tests {
 
     #[test]
     fn stream_event_to_protocol_value_message_chunk_injects_envelope() {
-        let mut state = crate::protocol::EnvelopeState::new("sess-1".to_string());
+        let mut state = crate::envelope_state::EnvelopeState::new("sess-1".to_string());
         let enter: StreamEvent<DummyState> = StreamEvent::TaskStart {
             node_id: "think".to_string(),
             namespace: None,
@@ -419,7 +419,7 @@ mod tests {
 
     #[test]
     fn stream_event_to_protocol_envelope_is_typed() {
-        let mut state = crate::protocol::EnvelopeState::new("sess-1".to_string());
+        let mut state = crate::envelope_state::EnvelopeState::new("sess-1".to_string());
         let enter: StreamEvent<DummyState> = StreamEvent::TaskStart {
             node_id: "think".to_string(),
             namespace: None,
@@ -560,7 +560,7 @@ mod tests {
 
     #[test]
     fn checkpoint_format() {
-        let ev: StreamEvent<DummyState> = StreamEvent::Checkpoint(crate::stream::CheckpointEvent {
+        let ev: StreamEvent<DummyState> = StreamEvent::Checkpoint(stream_event::CheckpointEvent {
             checkpoint_id: "cp-1".to_string(),
             timestamp: "2024-01-01T00:00:00Z".to_string(),
             step: 5,

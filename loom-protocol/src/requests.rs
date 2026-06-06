@@ -1,7 +1,18 @@
 //! WebSocket request types (client → server).
 
-use crate::message::UserContent;
+use loom_llm::message::UserContent;
 use serde::{Deserialize, Serialize};
+
+/// Convert a `ContentPart` to a `ModalityType` for model validation.
+fn content_part_modality(part: &loom_llm::message::ContentPart) -> model_spec_core::spec::ModalityType {
+    match part {
+        loom_llm::message::ContentPart::Text { .. } | loom_llm::message::ContentPart::File { .. } => model_spec_core::spec::ModalityType::Text,
+        loom_llm::message::ContentPart::ImageUrl { .. } | loom_llm::message::ContentPart::ImageBase64 { .. } => model_spec_core::spec::ModalityType::Image,
+        loom_llm::message::ContentPart::AudioBase64 { .. } => model_spec_core::spec::ModalityType::Audio,
+        loom_llm::message::ContentPart::VideoUrl { .. } | loom_llm::message::ContentPart::VideoBase64 { .. } => model_spec_core::spec::ModalityType::Video,
+        loom_llm::message::ContentPart::PdfUrl { .. } | loom_llm::message::ContentPart::PdfBase64 { .. } => model_spec_core::spec::ModalityType::Pdf,
+    }
+}
 
 /// Agent type for run requests.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,9 +70,7 @@ impl RunRequest {
     pub fn validate_modalities(
         &self,
         model: &model_spec_core::spec::Model,
-    ) -> Result<(), crate::AgentError> {
-        use crate::message::{content_part_modality, UserContent};
-
+    ) -> Result<(), String> {
         let UserContent::Multimodal(parts) = &self.message else {
             return Ok(());
         };
@@ -76,10 +85,10 @@ impl RunRequest {
             if required != model_spec_core::spec::ModalityType::Text
                 && !modalities.input.contains(&required)
             {
-                return Err(crate::AgentError::ExecutionFailed(format!(
+                return Err(format!(
                     "model does not support {:?} input",
                     required
-                )));
+                ));
             }
         }
         Ok(())
@@ -277,7 +286,7 @@ mod tests {
     fn request_run_roundtrip() {
         let req = ClientRequest::Run(RunRequest {
             id: Some("abc-123".to_string()),
-            message: crate::message::UserContent::Text("hello".to_string()),
+            message: loom_llm::message::UserContent::Text("hello".to_string()),
             agent: AgentIdentifier::Type(AgentType::React),
             thread_id: Some("t1".to_string()),
             workspace_id: None,

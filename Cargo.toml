@@ -30,9 +30,10 @@ members = [
     "loom-compress",
     "loom-commands",
     "loom-stream",
-    "loom-tools",
-    "loom-background-review",
-]
+	    "loom-tools",
+	    "loom-background-review",
+	    "loom-protocol",
+	]
 
 [workspace.package]
 version = "0.2.1"

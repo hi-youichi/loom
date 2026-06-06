@@ -2,8 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::llm::LlmUsage;
-use crate::tool_source::ToolSpec;
+use loom_llm::LlmUsage;
+use loom_tools::ToolSpec;
 use stream_event::ProtocolEvent;
 
 /// Typed protocol stream event payload with optional envelope fields.
@@ -339,8 +339,8 @@ pub struct SetModelResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tool_source::ToolSpec;
-    use crate::LlmUsage;
+    use loom_tools::ToolSpec;
+    use loom_llm::LlmUsage;
 
     #[test]
     fn response_run_end_roundtrip() {
