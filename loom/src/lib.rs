@@ -133,7 +133,7 @@ pub use loom_graph as graph;
 pub mod goal_runner;
 pub mod stream_display;
 pub mod helve;
-mod http_retry;
+
 #[cfg(test)]
 mod test_util;
 pub mod lsp;
