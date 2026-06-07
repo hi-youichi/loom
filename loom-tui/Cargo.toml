@@ -1,0 +1,72 @@
+[package]
+name = "loom-tui"
+version.workspace = true
+edition.workspace = true
+description = "Enhanced CLI for Loom with TUI interface - bottom input bar and status display"
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "loom-tui"
+path = "src/main.rs"
+
+[lib]
+name = "loom_tui"
+path = "src/lib.rs"
+
+[dependencies]
+# TUI Framework
+ratatui = { version = "0.26", features = ["crossterm"] }
+crossterm = { version = "0.27", features = ["event-stream"] }
+
+# Async Runtime
+tokio = { version = "1.0", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# Agent Integration - reuse existing modules
+loom = { path = "../loom" }
+loom-agent = { path = "../loom-agent" }
+cli = { path = "../cli" }
+config = { path = "../config", features = ["tracing-init"] }
+stream-event = { path = "../stream-event" }
+task-core = { path = "../task-core" }
+
+# Configuration
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Error Handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Terminal I/O
+eventsource-client = "0.13"
+reqwest = { version = "0.12", features = ["json", "stream"] }
+
+# Utilities
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+chrono = "0.4"
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# CLI Arguments
+clap = { version = "4", features = ["derive", "env"] }
+
+# Development dependencies
+[dev-dependencies]
+tempfile = "3"
+dotenv = { workspace = true }
+
+# Profile optimization for faster development builds
+[profile.dev]
+opt-level = 0
+debug = 2
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"

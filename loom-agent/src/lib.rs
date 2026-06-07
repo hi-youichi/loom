@@ -30,7 +30,7 @@ pub use cli_run_agent::{
 };
 
 // Re-export from loom for RunCancellation
-pub use loom::active_operation::RunCancellation;
+pub use loom_types::active_operation::RunCancellation;
 
 // Re-export from agent::react::build (via loom-agent-patterns)
 pub use loom_agent_patterns::{build_react_run_context, BuildRunnerError};

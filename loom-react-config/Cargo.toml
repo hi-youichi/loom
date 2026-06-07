@@ -1,0 +1,35 @@
+[package]
+name = "loom-react-config"
+version.workspace = true
+edition.workspace = true
+description = "ReactBuildConfig and Agent Profile — shared configuration types for Loom agent runners"
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Skill registry (Arc<SkillRegistry> field)
+loom-skill = { path = "../loom-skill" }
+
+# Tool traits (Arc<dyn CommandExecutor>, Arc<dyn Tool>)
+loom-tools = { path = "../loom-tools" }
+
+# Model tier
+loom-model-spec = { path = "../loom-model-spec" }
+
+# Shared types (BuiltinToolFilter, TotRunnerConfig, GotRunnerConfig)
+loom-types = { path = "../loom-types" }
+
+# Worktree profile config
+loom-worktree = { path = "../loom-worktree" }
+
+# Env config (McpServerDef, home::loom_home)
+env_config = { path = "../config", package = "config" }
+
+# YAML profile parsing
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+thiserror = "2"
+tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3"

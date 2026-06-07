@@ -2,7 +2,7 @@
 //! Full e2e suite lives in serve crate: `cargo test -p serve -- --nocapture`
 
 use futures_util::{SinkExt, StreamExt};
-use loom::{ClientRequest, PingRequest, ServerResponse};
+use loom_protocol::{ClientRequest, PingRequest, ServerResponse};
 use serve::run_serve_on_listener;
 use std::time::Duration;
 use tokio::net::TcpListener;

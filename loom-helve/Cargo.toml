@@ -1,0 +1,15 @@
+[package]
+name = "loom-helve"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Helve: product-semantic configuration and system prompt assembly"
+
+[dependencies]
+which = "4.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+thiserror = "1.0"
+loom-types = { path = "../loom-types" }
+loom-react-config = { path = "../loom-react-config" }

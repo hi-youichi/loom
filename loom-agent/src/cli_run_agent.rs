@@ -4,7 +4,7 @@
 //! It uses types from loom for config/display and agent runners from loom-agent.
 
 use loom::cli_run::build_helve_config;
-use loom::llm::LlmClient;
+use loom_llm::LlmClient;
 use crate::agent::react::build::{
     build_dup_runner, build_got_runner, build_react_runner, build_tot_runner,
     BuildRunnerError,
@@ -13,11 +13,12 @@ use crate::agent::dup::{DupRunner, DupState, DupRunError};
 use crate::agent::got::{GotRunner, GotState, GotRunError};
 use crate::agent::tot::{TotRunner, TotState, TotRunError};
 use crate::agent::react::ReactRunner;
-use loom::export::stream_event_to_format_a;
-use loom::protocol::stream::stream_event_to_protocol_envelope;
-use loom::protocol::EnvelopeState;
-use loom::protocol::ProtocolEventEnvelope;
-use loom::{ReactBuildConfig, StreamEvent, ReActState};
+use loom_protocol::export::stream_event_to_format_a;
+use loom_protocol::stream::stream_event_to_protocol_envelope;
+use loom_protocol::{EnvelopeState, ProtocolEventEnvelope};
+use loom_react_config::ReactBuildConfig;
+use loom_stream::StreamEvent;
+use loom_types::state::ReActState;
 use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -25,12 +26,12 @@ use std::sync::Mutex;
 use thiserror::Error;
 
 // Re-export cancellation types from loom
-pub use loom::active_operation::{ActiveOperationCanceller, ActiveOperationKind, ActiveOperation, RunCancellation};
+pub use loom_types::active_operation::{ActiveOperationCanceller, ActiveOperationKind, ActiveOperation, RunCancellation};
 
 /// Options for running the Helve agent.
 #[derive(Clone)]
 pub struct RunOptions {
-    pub message: loom::message::UserContent,
+    pub message: loom_llm::message::UserContent,
     pub working_folder: Option<PathBuf>,
     pub session_id: Option<String>,
     pub agent: Option<String>,
@@ -50,8 +51,8 @@ pub struct RunOptions {
     pub dry_run: bool,
     pub debug_llm: bool,
     pub any_stream_event_sender: Option<Arc<dyn Fn(crate::AnyStreamEvent) + Send + Sync>>,
-    pub bash_executor: Option<Arc<dyn loom::tools::CommandExecutor>>,
-    pub extra_tools: Option<Arc<Vec<Arc<dyn loom::tools::Tool>>>>,
+    pub bash_executor: Option<Arc<dyn loom_tools::tools::CommandExecutor>>,
+    pub extra_tools: Option<Arc<Vec<Arc<dyn loom_tools::tools::Tool>>>>,
     pub acp_session_id: Option<String>,
     pub force_compact: bool,
     pub chat_id: Option<i64>,
@@ -73,8 +74,11 @@ impl std::fmt::Debug for RunOptions {
 impl RunOptions {
     /// Convert to loom::RunOptions for use with build_helve_config and other loom functions.
     /// Note: any_stream_event_sender is dropped since loom uses a different AnyStreamEvent type.
-    pub fn to_loom(&self) -> loom::RunOptions {
-        loom::RunOptions {
+    /// Since loom::RunOptions no longer exists, this method is no longer used.
+    /// The build_helve_config function is called directly with the local RunOptions.
+    /// Convert to loom_cli_types::RunOptions for use with build_helve_config.
+    pub fn to_cli_run_options(&self) -> loom_cli_types::RunOptions {
+        loom_cli_types::RunOptions {
             message: self.message.clone(),
             working_folder: self.working_folder.clone(),
             session_id: self.session_id.clone(),
@@ -94,7 +98,7 @@ impl RunOptions {
             output_timestamp: self.output_timestamp,
             dry_run: self.dry_run,
             debug_llm: self.debug_llm,
-            any_stream_event_sender: None, // Cannot convert between AnyStreamEvent types
+            any_stream_event_sender: None,
             bash_executor: self.bash_executor.clone(),
             extra_tools: self.extra_tools.clone(),
             acp_session_id: self.acp_session_id.clone(),
@@ -198,9 +202,9 @@ impl AnyStreamEvent {
 
     /// Convert from loom's stub AnyStreamEvent to local AnyStreamEvent.
     /// Only React events can be converted; DUP/TOT/GOT stubs are ignored.
-    pub fn from_loom(ev: loom::cli_run::AnyStreamEvent) -> Self {
+    pub fn from_loom(ev: loom_cli_types::AnyStreamEvent) -> Self {
         match ev {
-            loom::cli_run::AnyStreamEvent::React(e) => AnyStreamEvent::React(e),
+            loom_cli_types::AnyStreamEvent::React(e) => AnyStreamEvent::React(e),
             // For stub variants (Dup/Tot/Got), we can't convert; use a no-op React event
             _ => AnyStreamEvent::React(StreamEvent::Custom(serde_json::json!({"type": "noop"}))),
         }
@@ -208,9 +212,9 @@ impl AnyStreamEvent {
 }
 
 /// Convert loom-agent AnyStreamEvent to loom's stub AnyStreamEvent.
-pub fn to_loom_any_stream_event(ev: &AnyStreamEvent) -> Option<loom::cli_run::AnyStreamEvent> {
+pub fn to_loom_any_stream_event(ev: &AnyStreamEvent) -> Option<loom_cli_types::AnyStreamEvent> {
     match ev {
-        AnyStreamEvent::React(e) => Some(loom::cli_run::AnyStreamEvent::React(e.clone())),
+        AnyStreamEvent::React(e) => Some(loom_cli_types::AnyStreamEvent::React(e.clone())),
         // DUP/TOT/GOT use real state types that differ from stubs; skip conversion
         _ => None,
     }
@@ -224,7 +228,7 @@ pub async fn run_agent(
     on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>>,
     llm_override: Option<Box<dyn LlmClient>>,
 ) -> Result<RunCompletion, RunError> {
-    let loom_opts = opts.to_loom();
+    let loom_opts = opts.to_cli_run_options();
     let (_helve, mut config, _resolved_agent) = build_helve_config(&loom_opts);
     if opts.debug_llm {
         eprintln!("========== [DEBUG-LLM] System Prompt ==========");
@@ -238,8 +242,8 @@ pub async fn run_agent(
 
     if opts.worktree {
         let current_dir = config.working_folder.as_deref().unwrap_or_else(|| std::path::Path::new("."));
-        let wt_config = loom::worktree::WorktreeConfig::default();
-        if let Ok(manager) = loom::worktree::WorktreeManager::from_working_dir(current_dir, wt_config) {
+        let wt_config = loom_worktree::WorktreeConfig::default();
+        if let Ok(manager) = loom_worktree::WorktreeManager::from_working_dir(current_dir, wt_config) {
             if let Ok(handle) = manager.create_for_agent("top-level", None, None).await {
                 config.working_folder = Some(handle.path.clone());
             }
@@ -260,11 +264,11 @@ pub async fn run_agent(
     // Bridge: local_sender accepts cli_run_agent::AnyStreamEvent (the real type with full state).
     // We convert loom::cli_run::AnyStreamEvent (stub) via AnyStreamEvent::from_loom().
     let local_sender = opts.any_stream_event_sender.clone();
-    let loom_sender: Option<Arc<dyn Fn(loom::cli_run::AnyStreamEvent) + Send + Sync>> =
+    let loom_sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>> =
         local_sender.clone().map(|ls| {
-            Arc::new(move |ev: loom::cli_run::AnyStreamEvent| {
+            Arc::new(move |ev: loom_cli_types::AnyStreamEvent| {
                 ls(AnyStreamEvent::from_loom(ev));
-            }) as Arc<dyn Fn(loom::cli_run::AnyStreamEvent) + Send + Sync>
+            }) as Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>
         });
 
     // any_stream_event_sender is disabled in loom-agent-patterns ActNode (hardcoded to None).
@@ -282,7 +286,7 @@ pub async fn run_agent(
                         f(AnyStreamEvent::React(ev.clone()));
                     }
                     if let Some(ref sender) = loom_sender_clone {
-                        sender(loom::cli_run::AnyStreamEvent::React(ev));
+                        sender(loom_cli_types::AnyStreamEvent::React(ev));
                     }
                 }
             });
@@ -390,13 +394,13 @@ pub async fn build_runner(
     cmd: &RunCmd,
     llm_override: Option<Box<dyn LlmClient>>,
 ) -> Result<AnyRunner, RunError> {
-    let config = loom::tier::resolve_tier_and_build_config(config).await;
+    let config = loom_tier::resolve_tier_and_build_config(config).await;
     let cancellation = opts.cancellation.as_ref().map(RunCancellation::token);
-    let llm_override_provider: Option<Arc<dyn loom::llm::LlmProvider>> = llm_override.map(|llm| {
-        Arc::new(loom::llm::FixedLlmProvider {
+    let llm_override_provider: Option<Arc<dyn loom_llm::LlmProvider>> = llm_override.map(|llm| {
+        Arc::new(loom_llm::client::FixedLlmProvider {
             client: Arc::from(llm),
             model_id: "override".to_string(),
-        }) as Arc<dyn loom::llm::LlmProvider>
+        }) as Arc<dyn loom_llm::LlmProvider>
     });
     match cmd {
         RunCmd::React => {
@@ -424,4 +428,4 @@ pub async fn build_runner(
     }
 }
 
-pub use loom::tier::{resolve_tier_and_build_config, resolve_tier_and_build_config_with_resolver};
+pub use loom_tier::{resolve_tier_and_build_config, resolve_tier_and_build_config_with_resolver};

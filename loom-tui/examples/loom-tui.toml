@@ -1,0 +1,55 @@
+# Loom TUI Configuration File
+
+[ui]
+enable_tui = true
+tui_height = 3
+enable_status_bar = true
+theme = "dark"
+animations = true
+show_borders = true
+
+[layout]
+main_output_height_ratio = 0.85
+tui_section_height = 3
+status_bar_height = 1
+padding = 1
+margin = 0
+
+[colors]
+background = "#1a1a1a"
+primary = "#3498db"
+secondary = "#2ecc71"
+accent = "#e74c3c"
+text = "#ecf0f1"
+input_text = "#ffffff"
+status_text = "#bdc3c7"
+border = "#34495e"
+success = "#2ecc71"
+warning = "#f39c12"
+error = "#e74c3c"
+
+[input]
+history_size = 1000
+completion_enabled = true
+syntax_highlighting = false
+auto_suggest = true
+multiline_support = false
+
+[status]
+show_agent_status = true
+show_session_info = true
+show_system_metrics = true
+update_interval_ms = 1000
+compact_mode = false
+
+# Agent configuration (flattened from CLI args)
+[agent_config]
+model = "gpt-4"
+provider = "openai"
+interactive = true
+verbose = false
+json = false
+timestamp = false
+
+[logging]
+log_level = "info"

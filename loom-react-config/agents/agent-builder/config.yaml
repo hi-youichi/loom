@@ -1,0 +1,2 @@
+name: agent-builder
+description: "Meta-agent that creates new Loom agent profiles from natural language descriptions. Generates config.yaml + instructions.md."

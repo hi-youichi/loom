@@ -1,0 +1,18 @@
+[package]
+name = "loom-stream-display"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Stream display and terminal formatting for Loom agent runs"
+
+[dependencies]
+chrono = "0.4"
+serde = "1"
+serde_json = "1"
+termsize = "0.1"
+tracing = "0.1"
+loom-stream = { path = "../loom-stream" }
+loom-types = { path = "../loom-types" }
+loom-llm = { path = "../loom-llm" }
+loom-cli-types = { path = "../loom-cli-types" }

@@ -1,0 +1,16 @@
+[package]
+name = "loom-cli-types"
+version.workspace = true
+edition.workspace = true
+description = "CLI run types for Loom agent patterns"
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+loom-types = { path = "../loom-types" }
+loom-stream = { path = "../loom-stream" }
+loom-tools = { path = "../loom-tools" }
+loom-llm = { path = "../loom-llm" }
+loom-react-config = { path = "../loom-react-config" }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }

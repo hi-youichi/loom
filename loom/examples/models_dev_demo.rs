@@ -2,7 +2,7 @@
 //!
 //! Run with: cargo run --example models_dev_demo
 
-use loom::model_spec::{ModelLimitResolver, ModelsDevResolver};
+use loom_model_spec::{ModelLimitResolver, ModelsDevResolver};
 
 #[tokio::main]
 async fn main() {
