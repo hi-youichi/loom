@@ -108,6 +108,32 @@ where
     None
 }
 
+/// Visitor that looks for a `thread_id` field on an event.
+struct ThreadIdVisitor {
+    thread_id: Option<String>,
+}
+
+impl tracing_core::field::Visit for ThreadIdVisitor {
+    fn record_debug(&mut self, field: &tracing_core::Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "thread_id" {
+            self.thread_id = Some(format!("{:?}", value));
+        }
+    }
+
+    fn record_str(&mut self, field: &tracing_core::Field, value: &str) {
+        if field.name() == "thread_id" {
+            self.thread_id = Some(value.to_string());
+        }
+    }
+}
+
+/// Extract thread_id from an event's own fields (fallback when no span carries it).
+fn extract_thread_id_from_event(event: &tracing_core::Event<'_>) -> Option<String> {
+    let mut visitor = ThreadIdVisitor { thread_id: None };
+    event.record(&mut visitor);
+    visitor.thread_id
+}
+
 impl<S, N> FormatEvent<S, N> for TextWithSpanIds
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
@@ -123,6 +149,8 @@ where
 
         if let Some(app_tid) = extract_app_thread_id(ctx) {
             write!(writer, " thread_id={}", app_tid)?;
+        } else if let Some(event_tid) = extract_thread_id_from_event(event) {
+            write!(writer, " thread_id={}", event_tid)?;
         } else {
             let tid = thread::current().id();
             write!(writer, " thread_id={:?}", tid)?;
@@ -276,6 +304,7 @@ where
         }
 
         let tid = extract_app_thread_id(ctx)
+            .or_else(|| extract_thread_id_from_event(event))
             .unwrap_or_else(|| format!("{:?}", thread::current().id()));
         let level = event.metadata().level().to_string();
         let target = event.metadata().target().to_string();
