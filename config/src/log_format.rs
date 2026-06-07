@@ -379,6 +379,105 @@ mod tests {
     }
 
     #[test]
+    fn root_span_thread_id_field_is_picked_up_by_formatter() {
+        // Regression test: when a parent span declares a `thread_id` field with
+        // a business identifier (e.g. `session-1717...`), the formatter must
+        // surface that exact value in the `thread_id=` prefix — NOT fall back
+        // to the OS `ThreadId(N)` Debug format.
+        let sink = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let writer = {
+            let sink = Arc::clone(&sink);
+            move || VecWriter(Arc::clone(&sink))
+        };
+
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_subscriber::fmt::layer()
+                .event_format(TextWithSpanIds::default())
+                .with_writer(writer)
+                .with_ansi(false),
+        );
+
+        tracing::subscriber::with_default(subscriber, || {
+            let span = tracing::info_span!("root", thread_id = "session-1717-test");
+            let _guard = span.enter();
+            tracing::info!("hello");
+        });
+
+        let output = String::from_utf8(sink.lock().unwrap().clone()).unwrap();
+        assert!(
+            output.contains("thread_id=session-1717-test"),
+            "expected business thread_id in output, got: {output}"
+        );
+        assert!(
+            !output.contains("ThreadId("),
+            "formatter fell back to OS ThreadId instead of using span field, output: {output}"
+        );
+    }
+
+    #[test]
+    fn event_thread_id_field_overrides_span_thread_id() {
+        // Mirror the previous commit's `extract_thread_id_from_event` fallback:
+        // when the event itself carries a `thread_id` field, that value should
+        // win over the parent span's field.
+        let sink = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let writer = {
+            let sink = Arc::clone(&sink);
+            move || VecWriter(Arc::clone(&sink))
+        };
+
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_subscriber::fmt::layer()
+                .event_format(TextWithSpanIds::default())
+                .with_writer(writer)
+                .with_ansi(false),
+        );
+
+        tracing::subscriber::with_default(subscriber, || {
+            let span = tracing::info_span!("root", thread_id = "session-span");
+            let _guard = span.enter();
+            tracing::info!(thread_id = "event-direct", "override");
+        });
+
+        let output = String::from_utf8(sink.lock().unwrap().clone()).unwrap();
+        assert!(
+            output.contains("thread_id=event-direct"),
+            "event thread_id field should win over span field, got: {output}"
+        );
+    }
+
+    #[test]
+    fn json_format_propagates_span_thread_id() {
+        // JSON path parity: the same span-field lookup must feed the JSON
+        // `thread_id` key, not the OS ThreadId Debug value.
+        let sink = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let writer = {
+            let sink = Arc::clone(&sink);
+            move || VecWriter(Arc::clone(&sink))
+        };
+
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_subscriber::fmt::layer()
+                .event_format(JsonWithSpanIds::default())
+                .with_writer(writer)
+                .with_ansi(false),
+        );
+
+        tracing::subscriber::with_default(subscriber, || {
+            let span = tracing::info_span!("root", thread_id = "session-json-test");
+            let _guard = span.enter();
+            tracing::info!("json hello");
+        });
+
+        let output = String::from_utf8(sink.lock().unwrap().clone()).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(output.trim())
+            .unwrap_or_else(|e| panic!("not valid JSON: {output}: {e}"));
+        assert_eq!(
+            parsed["thread_id"], "session-json-test",
+            "JSON thread_id should equal span field value, parsed: {parsed}"
+        );
+    }
+
+    #[test]
     fn format_event_includes_thread_trace_span_and_fields() {
         let sink = Arc::new(Mutex::new(Vec::<u8>::new()));
         let writer = {
@@ -487,5 +586,82 @@ mod tests {
         assert!(output.contains("thread_id="), "missing thread_id in: {output}");
         assert!(!output.contains("trace_id="), "unexpected trace_id in: {output}");
         assert!(!output.contains("span_id="), "unexpected span_id in: {output}");
+    }
+
+    /// Regression test for thread_id inheritance from a parent span's fields.
+    ///
+    /// Mirrors the production pattern used in `cli/src/run/agent.rs::run_agent_wrapper`
+    /// and `loom-acp/src/agent.rs::prompt`, where the root span carries the business
+    /// `thread_id` (e.g. `session-1717...`) so every nested event inherits it via
+    /// the parent-scope fallback in `extract_app_thread_id`. Without this, events
+    /// that don't explicitly inject `thread_id` would fall back to `ThreadId(N)`.
+    #[test]
+    fn format_event_inherits_thread_id_from_parent_span_field() {
+        let sink = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let writer = {
+            let sink = Arc::clone(&sink);
+            move || VecWriter(Arc::clone(&sink))
+        };
+
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_subscriber::fmt::layer()
+                .event_format(TextWithSpanIds::default())
+                .with_writer(writer)
+                .with_ansi(false),
+        );
+
+        tracing::subscriber::with_default(subscriber, || {
+            // Parent span carries the business thread_id (root-span pattern).
+            let parent = tracing::info_span!("cli_run", thread_id = "session-abc-123");
+            let _guard = parent.enter();
+            // Child event does NOT specify thread_id.
+            tracing::info!("no explicit thread_id");
+        });
+
+        let output = String::from_utf8(sink.lock().unwrap().clone()).unwrap();
+        assert!(
+            output.contains("thread_id=session-abc-123"),
+            "expected inherited thread_id, got: {output}"
+        );
+        assert!(
+            !output.contains("ThreadId("),
+            "should not fall back to ThreadId when parent has thread_id, got: {output}"
+        );
+    }
+
+    /// Regression test for the event-field fallback in `extract_thread_id_from_event`.
+    ///
+    /// Validates the second level of the three-level fallback chain: when neither
+    /// the parent scope nor the OS thread id is appropriate, an explicit
+    /// `thread_id` field on the event itself is used.
+    #[test]
+    fn format_event_thread_id_from_event_field_when_no_parent_span() {
+        let sink = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let writer = {
+            let sink = Arc::clone(&sink);
+            move || VecWriter(Arc::clone(&sink))
+        };
+
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_subscriber::fmt::layer()
+                .event_format(TextWithSpanIds::default())
+                .with_writer(writer)
+                .with_ansi(false),
+        );
+
+        tracing::subscriber::with_default(subscriber, || {
+            // No parent span; thread_id comes from the event itself.
+            tracing::info!(thread_id = "worker-event-id-456", "event with thread_id field");
+        });
+
+        let output = String::from_utf8(sink.lock().unwrap().clone()).unwrap();
+        assert!(
+            output.contains("thread_id=worker-event-id-456"),
+            "expected event thread_id, got: {output}"
+        );
+        assert!(
+            !output.contains("ThreadId("),
+            "should not fall back to ThreadId when event has thread_id, got: {output}"
+        );
     }
 }
