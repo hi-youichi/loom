@@ -153,10 +153,13 @@ async fn resolve_compaction_config(config: &ReactBuildConfig) -> CompactionConfi
     CompactionConfig::default()
 }
 
+use loom_types::active_operation::RunCancellation;
+
 pub async fn build_react_runner(
     config: &ReactBuildConfig,
     provider: Option<Arc<dyn LlmProvider>>,
     verbose: bool,
+    cancellation: Option<RunCancellation>,
 ) -> Result<ReactRunner, BuildRunnerError> {
     let ctx = build_react_run_context(config).await?;
     let provider_override = provider.is_some();
@@ -189,7 +192,7 @@ pub async fn build_react_runner(
         config.approval_policy,
         Some(compaction_config),
         None,
-        None,
+        cancellation,
         verbose,
         title_provider,
         title_headers,
@@ -319,10 +322,10 @@ pub async fn build_react_runner_with_openai(
 ) -> Result<ReactRunner, BuildRunnerError> {
     use loom_llm::ChatOpenAI;
     let client = ChatOpenAI::with_config(openai_config, model);
-    build_react_runner(config, Some(Arc::new(FixedLlmProvider {
+build_react_runner(config, Some(Arc::new(FixedLlmProvider {
         client: Arc::from(Box::new(client) as Box<dyn LlmClient>),
         model_id: "openai".to_string(),
-    })), verbose).await
+    })), verbose, None).await
 }
 
 #[cfg(test)]
@@ -448,13 +451,14 @@ mod tests {
     async fn build_react_runner_with_mock_llm_and_system_prompt_invokes() {
         let mut cfg = base_config();
         cfg.system_prompt = Some("test system prompt".to_string());
-        let runner = build_react_runner(
+let runner = build_react_runner(
             &cfg,
             Some(Arc::new(FixedLlmProvider {
                 client: Arc::new(MockLlm::with_no_tool_calls("react final")),
                 model_id: "mock".to_string(),
             })),
             false,
+            None,
         )
         .await
         .unwrap();

@@ -1,6 +1,8 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use task_core::{CreateParams, ListParams, TaskDb, TaskStatus};
+use tokio::sync::Notify;
 
 use crate::args::{TaskArgs, TaskCommand};
 use crate::display_limits::{generate_session_id, max_message_len};
@@ -52,8 +54,22 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
 
             let run_cancellation = loom_cli_types::RunCancellation::new(0);
             let rc_clone = run_cancellation.clone();
+            let was_cancelled = Arc::new(AtomicBool::new(false));
+            let wc_clone = was_cancelled.clone();
+            let force_quit = Arc::new(Notify::new());
+            let fq_clone = force_quit.clone();
             ctrlc::set_handler(move || {
                 rc_clone.cancel();
+                if wc_clone.swap(true, Ordering::SeqCst) {
+                    fq_clone.notify_one();
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    std::process::exit(130);
+                }
+                let wc_reset = wc_clone.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    wc_reset.store(false, Ordering::SeqCst);
+                });
             })?;
 
             let mut opts = RunOptions {
@@ -101,6 +117,7 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
                 reply_len,
                 &output,
                 stream_out,
+                force_quit,
             )
             .await?;
         }
@@ -167,8 +184,22 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
 
             let run_cancellation = loom_cli_types::RunCancellation::new(0);
             let rc_clone = run_cancellation.clone();
+            let was_cancelled = Arc::new(AtomicBool::new(false));
+            let wc_clone = was_cancelled.clone();
+            let force_quit = Arc::new(Notify::new());
+            let fq_clone = force_quit.clone();
             ctrlc::set_handler(move || {
                 rc_clone.cancel();
+                if wc_clone.swap(true, Ordering::SeqCst) {
+                    fq_clone.notify_one();
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    std::process::exit(130);
+                }
+                let wc_reset = wc_clone.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    wc_reset.store(false, Ordering::SeqCst);
+                });
             })?;
 
             let mut opts = RunOptions {
@@ -216,6 +247,7 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
                 reply_len,
                 &output,
                 stream_out,
+                force_quit,
             )
             .await?;
         }
@@ -242,6 +274,7 @@ async fn run_interactive_mode(
     reply_len: usize,
     output: &OutputConfig,
     stream_out: cli::StreamOut,
+    force_quit: Arc<Notify>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(session_id) = opts.thread_id.as_deref() {
         eprintln!("Session: {}", session_id);
@@ -268,7 +301,7 @@ async fn run_interactive_mode(
     }
 
     opts.message = message;
-    run_repl_loop(opts, cmd, reply_len, output.clone(), stream_clone).await?;
+    run_repl_loop(opts, cmd, reply_len, output.clone(), stream_clone, force_quit).await?;
     println!("Bye.");
     Ok(())
 }

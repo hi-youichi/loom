@@ -1292,7 +1292,7 @@ mod tests {
         let profile = resolve_profile("explore").expect("explore profile should load");
         
         let mut parent_config = ReactBuildConfig::from_env();
-        parent_config.model_tier = Some(loom::model_spec::ModelTier::Strong); // Parent has Strong tier
+        parent_config.model_tier = Some(loom_model_spec::ModelTier::Strong); // Parent has Strong tier
         
         let sub_config = build_config_from_profile(&profile, &parent_config, None);
         

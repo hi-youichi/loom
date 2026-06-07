@@ -20,7 +20,8 @@ use serde_json::Value;
 use std::collections::HashMap;
 use tracing::{debug, trace, warn};
 
-use loom_types::cli_run::{AnyStreamEvent, RunCancellation};
+use loom_types::active_operation::RunCancellation;
+use loom_types::cli_run::AnyStreamEvent;
 use loom_llm::error::AgentError;
 use loom_cli_types::goal_runner::state::ToolError;
 use loom_graph::{run_cancellable, Interrupt, Next, Node, RunContext};

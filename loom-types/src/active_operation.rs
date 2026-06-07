@@ -162,4 +162,12 @@ impl RunCancellation {
             self.clear_active_operation();
         }
     }
+
+    /// Returns true if this run has been cancelled.
+    ///
+    /// Tools can check this during long-running operations to bail out early
+    /// when the user presses Ctrl+C.
+    pub fn is_cancelled(&self) -> bool {
+        self.token.is_cancelled()
+    }
 }

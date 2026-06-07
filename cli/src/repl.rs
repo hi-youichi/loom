@@ -3,8 +3,10 @@
 //! Used when `-i/--interactive` is passed. Ensures a stable `session_id` for multi-turn history.
 
 use std::io::Write;
+use std::sync::Arc;
 
 use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::sync::Notify;
 
 use cli::{run_cli_turn, RunCmd, RunError, RunOptions, RunOutput, StreamOut};
 use loom_commands::{self as loom_command};
@@ -47,6 +49,7 @@ pub async fn run_repl_loop(
     max_reply_len: usize,
     output: OutputConfig,
     stream_out: StreamOut,
+    force_quit: Arc<Notify>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut reader = BufReader::new(tokio::io::stdin()).lines();
 
@@ -54,7 +57,16 @@ pub async fn run_repl_loop(
         print!("> ");
         std::io::stdout().flush()?;
 
-        let line = reader.next_line().await?;
+        // Use select! so Ctrl+C can interrupt the stdin wait.
+        // Without this, the REPL blocks on next_line() forever even after
+        // the ctrlc handler calls CancellationToken::cancel().
+        let line = tokio::select! {
+            result = reader.next_line() => result?,
+            _ = force_quit.notified() => {
+                eprintln!();
+                break;
+            }
+        };
 
         let line = match line {
             None => break,

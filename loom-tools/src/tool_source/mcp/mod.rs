@@ -16,7 +16,7 @@ use tokio::task;
 
 use mcp_core::ResultMessage;
 
-use loom_types::cli_run::ActiveOperationKind;
+use loom_types::active_operation::ActiveOperationKind;
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec};
 use crate::{ToolOutputHint, ToolOutputStrategy};
 

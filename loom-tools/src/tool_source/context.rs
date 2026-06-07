@@ -27,7 +27,8 @@
 
 use std::sync::Arc;
 
-use loom_types::cli_run::{AnyStreamEvent, RunCancellation};
+use loom_types::active_operation::RunCancellation;
+use loom_types::cli_run::AnyStreamEvent;
 use loom_llm::Message;
 use loom_stream::ToolStreamWriter;
 
@@ -176,6 +177,16 @@ impl ToolCallContext {
         if let Some(sender) = &self.any_stream_event_sender {
             sender(event);
         }
+    }
+
+    /// Returns true if the current run has been cancelled (e.g., by Ctrl+C).
+    ///
+    /// Tools performing long-running or blocking operations should call this
+    /// periodically and return early when true.
+    pub fn is_cancelled(&self) -> bool {
+        self.run_cancellation
+            .as_ref()
+            .is_some_and(|rc| rc.is_cancelled())
     }
 }
 

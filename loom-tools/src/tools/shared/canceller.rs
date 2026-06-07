@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tokio::sync::watch;
 
-use loom_types::cli_run::{ActiveOperationCanceller, ActiveOperationKind, ActiveOperation};
+use loom_types::active_operation::{ActiveOperationCanceller, ActiveOperationKind, ActiveOperation};
 
 #[derive(Debug)]
 pub struct ChildProcessCanceller {

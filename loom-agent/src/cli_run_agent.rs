@@ -405,10 +405,7 @@ pub async fn build_runner(
     match cmd {
         RunCmd::React => {
             let r = build_react_runner(&config, llm_override_provider, opts.verbose).await?;
-            // Skip with_cancellation: loom-agent-patterns ReactRunner expects
-            // loom_types::cli_run::RunCancellation but we have loom::active_operation::RunCancellation.
-            // Cancellation forwarding is disabled in loom-agent-patterns runner anyway (hardcoded None).
-            Ok(AnyRunner::React(r))
+            Ok(AnyRunner::React(r.with_cancellation(opts.cancellation.clone())))
         }
         RunCmd::Dup => {
             let llm_boxed = llm_override_provider.map(|p| p.create_client(p.default_model()).unwrap());

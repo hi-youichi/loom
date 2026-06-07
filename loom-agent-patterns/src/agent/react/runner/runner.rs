@@ -16,7 +16,8 @@ use loom_types::state::ReActState;
 use loom_stream::StreamEvent;
 use loom_tools::tool_source::ToolSource;
 use loom_memory::user_message::UserMessageStore;
-use loom_types::cli_run::{AnyStreamEvent, RunCancellation};
+use loom_types::active_operation::RunCancellation;
+use loom_types::cli_run::AnyStreamEvent;
 
 use super::error::RunError;
 use super::initial_state::build_react_initial_state;
