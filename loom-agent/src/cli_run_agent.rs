@@ -5,6 +5,7 @@
 
 use loom::cli_run::build_helve_config;
 use loom_llm::LlmClient;
+use loom_llm::support::uuid6::uuid6;
 use crate::agent::react::build::{
     build_dup_runner, build_got_runner, build_react_runner, build_tot_runner,
     BuildRunnerError,
@@ -24,6 +25,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use thiserror::Error;
+use tracing::Instrument;
 
 // Re-export cancellation types from loom
 pub use loom_types::active_operation::{ActiveOperationCanceller, ActiveOperationKind, ActiveOperation, RunCancellation};
@@ -371,12 +373,42 @@ pub async fn run_agent(
     Ok(result)
 }
 
+/// Common execution path shared by both CLI and ACP entry points. Wraps the
+/// inner `run_agent` future with a root span carrying the business `thread_id`
+/// so every nested event/span inherits it via the parent-scope fallback in
+/// `log_format::extract_app_thread_id`. Without this, events that don't
+/// explicitly inject `thread_id` fall back to `thread::current().id()`
+/// (formatted as `ThreadId(N)`).
+///
+/// Using `.instrument(span).await` (rather than `span.entered()`) keeps the
+/// returned future `Send` — required because callers such as ACP spawn the
+/// future through `ConnectionTo::spawn` which has a `Send + 'static` bound.
 pub async fn run_agent_with_options(
     opts: &RunOptions,
     cmd: &RunCmd,
     on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>>,
 ) -> Result<RunCompletion, RunError> {
-    run_agent(opts, cmd, on_event, None).await
+    let thread_id = opts.thread_id.clone();
+    let root_span = match thread_id.as_deref() {
+        // Production case: caller (CLI/ACP) provides a business session id.
+        // It propagates to every nested event via the parent-scope fallback
+        // in `log_format::extract_app_thread_id`.
+        Some(tid) => tracing::info_span!("agent_run", thread_id = tid),
+        // Defensive fallback: if no business thread_id was supplied, generate
+        // a fresh uuid6 so log lines still carry a stable business identifier
+        // rather than the OS `ThreadId(N)` Debug fallback. This is rare in
+        // practice (CLI/ACP both ensure a thread_id), but prevents a silent
+        // thread-id downgrade when called from new entry points (tests,
+        // internal tools, etc.).
+        None => {
+            let id = uuid6().to_string();
+            tracing::info_span!("agent_run", thread_id = %id)
+        }
+    };
+
+    run_agent(opts, cmd, on_event, None)
+        .instrument(root_span)
+        .await
 }
 
 pub async fn run_agent_with_llm_override(

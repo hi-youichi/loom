@@ -151,9 +151,14 @@ pub async fn run_agent_wrapper(
     cmd: &RunCmd,
     stream_out: Option<StreamCallback>,
 ) -> RunAgentResult {
+    // Root span carrying the business `thread_id` lives in `run_agent_with_options`
+    // (loom-agent), which is the common execution path for both CLI and ACP
+    // entry points. This keeps a single point of truth and avoids the `!Send`
+    // future issue that arises from holding a span guard across awaits in
+    // caller-side async functions.
+
     let loom_opts = opts.to_cli_run_options();
     let (helve, config, resolved_agent) = build_helve_config(&loom_opts);
-
 
     print_loaded_tools(&config).await?;
     if !opts.output_json {
