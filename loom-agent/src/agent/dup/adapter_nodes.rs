@@ -8,11 +8,12 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::agent::react::{ActNode, ObserveNode, ThinkNode};
-use loom::error::AgentError;
-use loom::graph::Next;
-use loom::llm::LlmProvider;
-use loom::Node;
-use loom::{helve::ApprovalPolicy, tool_source::ToolSource};
+use loom_llm::error::AgentError;
+use loom_graph::Next;
+use loom_llm::LlmProvider;
+use loom_graph::Node;
+use loom_helve::ApprovalPolicy;
+use loom_tools::tool_source::ToolSource;
 
 use super::state::DupState;
 

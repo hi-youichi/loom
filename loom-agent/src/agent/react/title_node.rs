@@ -12,12 +12,12 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use loom::error::AgentError;
-use loom::graph::Next;
-use loom::llm::{LlmHeaders, LlmProvider};
-use loom::message::Message;
-use loom::state::ReActState;
-use loom::Node;
+use loom_llm::error::AgentError;
+use loom_graph::Next;
+use loom_llm::{LlmHeaders, LlmProvider};
+use loom_llm::message::Message;
+use loom_types::state::ReActState;
+use loom_graph::Node;
 
 /// Max characters for stored session summary (matches prompt "不超过50字"; total includes "..." when truncated).
 const MAX_SUMMARY_CHARS: usize = 50;

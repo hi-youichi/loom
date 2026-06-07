@@ -1,5 +1,5 @@
 use futures_util::{SinkExt, StreamExt};
-use loom::ServerResponse;
+use loom_protocol::ServerResponse;
 use std::time::Duration;
 use tokio::time::timeout;
 use tokio_tungstenite::{connect_async, tungstenite::Message};

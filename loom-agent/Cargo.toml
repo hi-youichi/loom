@@ -9,6 +9,20 @@ loom-agent-patterns = { path = "../loom-agent-patterns" }
 loom-types = { path = "../loom-types" }
 loom-graph = { path = "../loom-graph" }
 loom-pregel = { path = "../loom-pregel" }
+loom-llm = { path = "../loom-llm" }
+loom-stream = { path = "../loom-stream" }
+loom-protocol = { path = "../loom-protocol" }
+loom-helve = { path = "../loom-helve" }
+loom-memory = { path = "../loom-memory" }
+loom-tools = { path = "../loom-tools" }
+loom-compress = { path = "../loom-compress" }
+loom-cli-types = { path = "../loom-cli-types" }
+loom-background-review = { path = "../loom-background-review" }
+loom-tier = { path = "../loom-tier" }
+loom-react-config = { path = "../loom-react-config" }
+loom-worktree = { path = "../loom-worktree" }
+loom-model-spec = { path = "../loom-model-spec" }
+loom-stream-display = { path = "../loom-stream-display" }
 
 async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }

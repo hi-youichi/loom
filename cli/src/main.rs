@@ -22,6 +22,8 @@ mod skill_usage_cmd;
 mod subcommands;
 mod task_cmd;
 mod task_db;
+mod tui;
+mod tui_cmd;
 
 pub(crate) use args::Command;
 
@@ -30,7 +32,7 @@ use clap::Parser;
 use args::{Args, Command as Cmd, GotArgs};
 use bootstrap::{init_logging, preserve_shell_env, print_config_report};
 use display_limits::max_reply_len;
-use loom::cli_run::RunCancellation;
+use loom_cli_types::RunCancellation;
 use run_flow::{
     build_run_options, output_config, resolve_user_message, run_interactive_mode,
     run_single_turn_mode,
@@ -164,6 +166,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if let Some(Cmd::Task(ta)) = &args.cmd {
         if let Err(err) = task_cmd::handle_task_command(ta).await {
+            eprintln!("{}", err);
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+    if let Some(Cmd::Tui(ta)) = &args.cmd {
+        if let Err(err) = tui_cmd::handle_tui_command(ta) {
             eprintln!("{}", err);
             std::process::exit(1);
         }

@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
-use loom::background_review::skill_usage::SkillUsageStore;
-use loom::error::AgentError;
-use loom::tool_source::{register_file_tools, McpToolSource, ToolSource, ToolSourceError};
+use loom_background_review::skill_usage::SkillUsageStore;
+use loom_llm::error::AgentError;
+use loom_tools::{register_file_tools, McpToolSource, ToolSource, ToolSourceError};
 #[cfg(windows)]
-use loom::tools::powershell::PowerShellTool;
+use loom_tools::powershell::PowerShellTool;
 #[cfg(not(windows))]
-use loom::tools::BashTool;
+use loom_tools::BashTool;
 #[cfg(windows)]
-use loom::tools::BashTool;
-use loom::tools::{
+use loom_tools::BashTool;
+use loom_tools::{
     register_mcp_tools, register_mcp_tools_with_specs, AggregateToolSource, BatchTool,
     ExaCodesearchTool, ExaWebsearchTool, ListAgentsTool, LspTool,
     TwitterSearchTool, WebFetcherTool,
@@ -28,7 +28,7 @@ const DEFAULT_MEMORY_NAMESPACE: &[&str] = &["default", "memories"];
 
 pub(crate) async fn build_tool_source(
     config: &ReactBuildConfig,
-    store: &Option<Arc<dyn loom::memory::Store>>,
+    store: &Option<Arc<dyn loom_memory::Store>>,
 ) -> Result<Box<dyn ToolSource>, AgentError> {
     let has_memory = store.is_some();
     let has_exa = config.exa_api_key.is_some();
@@ -209,7 +209,7 @@ pub(crate) async fn build_tool_source(
         }
     if let Some(ref tools) = config.extra_tools {
         for tool in tools.iter() {
-            use loom::tools::ArcTool;
+            use loom_tools::ArcTool;
             aggregate.register_async(Box::new(ArcTool(tool.clone()))).await;
         }
     }
@@ -238,7 +238,7 @@ pub(crate) async fn build_tool_source(
             });
 
         let aggregate = Arc::new(AggregateToolSource::new());
-        loom::tools::register_memory_tools(&aggregate, s.clone(), namespace).await;
+        loom_tools::register_memory_tools(&aggregate, s.clone(), namespace).await;
         aggregate
     } else {
         Arc::new(AggregateToolSource::new())
@@ -307,7 +307,7 @@ pub(crate) async fn build_tool_source(
         let db_dir = db_path.parent().unwrap();
         let _ = std::fs::create_dir_all(db_dir);
         if let Ok(db) = task_core::TaskDb::open(&db_path).await {
-            loom::tools::task::register_task_tools(&aggregate, Arc::new(db)).await;
+            loom_tools::task::register_task_tools(&aggregate, Arc::new(db)).await;
         }
     }
     aggregate.register_sync(Box::new(BatchTool::new(Arc::clone(&aggregate))));
@@ -440,7 +440,7 @@ pub(crate) async fn build_tool_source(
 
     if let Some(ref tools) = config.extra_tools {
         for tool in tools.iter() {
-            use loom::tools::ArcTool;
+            use loom_tools::ArcTool;
             aggregate.register_async(Box::new(ArcTool(tool.clone()))).await;
         }
     }
@@ -461,7 +461,7 @@ pub(crate) async fn build_tool_source(
 async fn apply_registry_config(
     aggregate: &Arc<AggregateToolSource>,
     config: &ReactBuildConfig,
-) -> Result<(), loom::tool_source::YamlSpecError> {
+) -> Result<(), loom_tools::YamlSpecError> {
     aggregate.load_yaml_specs().await?;
     if let Some(ref filter) = config.builtin_tool_filter {
         if !filter.is_noop() {

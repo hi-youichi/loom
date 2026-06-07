@@ -7,9 +7,9 @@ use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 
 use loom_agent::{AnyStreamEvent, run_agent_with_options};
-use loom::stream::StreamEvent;
+use loom_stream::StreamEvent;
 
-use loom::goal_runner::state::{ToolCallSummary, ToolError, TurnResult};
+use loom_cli_types::goal_runner::state::{ToolCallSummary, ToolError, TurnResult};
 
 const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 300;
 
@@ -135,7 +135,7 @@ pub struct LoomTool {
     session_id: String,
     _working_dir: PathBuf,
     mcp_config_path: PathBuf,
-    cancellation: Option<loom::cli_run::RunCancellation>,
+    cancellation: Option<loom_cli_types::RunCancellation>,
     verbose: bool,
     model: Option<String>,
     provider: Option<String>,
@@ -168,7 +168,7 @@ impl LoomTool {
         }
     }
 
-    pub fn with_cancellation(mut self, c: loom::cli_run::RunCancellation) -> Self {
+    pub fn with_cancellation(mut self, c: loom_cli_types::RunCancellation) -> Self {
         self.cancellation = Some(c);
         self
     }
@@ -203,7 +203,7 @@ impl LoomTool {
 impl CodingTool for LoomTool {
     async fn execute(&self, prompt: &str, working_dir: &Path) -> Result<TurnResult, ToolError> {
         use loom_agent::{RunCmd, RunCompletion, RunOptions};
-        use loom::message::UserContent;
+        use loom_llm::message::UserContent;
 
         let tool_summaries: Arc<Mutex<Vec<ToolCallSummary>>> =
             Arc::new(Mutex::new(Vec::new()));
@@ -217,8 +217,8 @@ impl CodingTool for LoomTool {
                     sender(ev);
                 }))
             } else {
-                let mut original = loom::stream_display::create_stdio_event_callback(
-                    loom::stream_display::StreamDisplayConfig {
+                let mut original = loom_stream_display::create_stdio_event_callback(
+                    loom_stream_display::StreamDisplayConfig {
                         verbose: self.verbose,
                         display_max_len: 10000,
                         output_timestamp: false,
@@ -317,7 +317,7 @@ fn collect_tool_summary(
     summaries: &Arc<Mutex<Vec<ToolCallSummary>>>,
 ) {
     if let AnyStreamEvent::React(StreamEvent::ToolEnd { name, result, .. }) = ev {
-        let preview = loom::stream_display::tool_summary::truncate(
+        let preview = loom_stream_display::tool_summary::truncate(
             result.lines().next().unwrap_or(result),
             80,
         );

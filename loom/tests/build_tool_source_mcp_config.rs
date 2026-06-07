@@ -14,12 +14,14 @@ fn ensure_short_mcp_timeout() {
     });
 }
 
-use loom::{build_helve_config, build_react_run_context, RunOptions};
+use loom::cli_run::build_helve_config;
+use loom_agent::agent::react::build::build_react_run_context;
+use loom_cli_types::RunOptions;
 use std::path::PathBuf;
 
 fn opts(working_folder: PathBuf) -> RunOptions {
     RunOptions {
-        message: loom::UserContent::text(String::new()),
+        message: loom_llm::message::UserContent::text(String::new()),
         working_folder: Some(working_folder),
         session_id: None,
         thread_id: None,

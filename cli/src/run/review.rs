@@ -3,10 +3,10 @@ use crate::run::review_agent_loop::{AgentReviewConfig, ReviewMode};
 use crate::run::skill_registry::{Lifecycle, SkillContent, SkillRegistry, Source};
 #[cfg(test)]
 use async_trait::async_trait;
-use loom::llm::LlmClient;
-use loom::message::Message;
+use loom_llm::LlmClient;
+use loom_llm::message::Message;
 #[cfg(test)]
-use loom::llm::LlmResponse;
+use loom_llm::{LlmResponse, AgentError};
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
@@ -324,13 +324,13 @@ mod tests {
 
     #[async_trait]
     impl LlmClient for ReviewMockLlm {
-        async fn invoke(&self, _messages: &[Message]) -> Result<LlmResponse, loom::AgentError> {
+        async fn invoke(&self, _messages: &[Message]) -> Result<LlmResponse, AgentError> {
             if self.with_tool_calls.load(std::sync::atomic::Ordering::SeqCst) {
                 self.with_tool_calls.store(false, std::sync::atomic::Ordering::SeqCst);
                 Ok(LlmResponse {
                     content: String::new(),
                     tool_calls: vec![
-                        loom::ToolCall {
+                        loom_llm::ToolCall {
                             id: Some("tc-1".to_string()),
                             name: "memory_set".to_string(),
                             arguments: serde_json::json!({
@@ -339,7 +339,7 @@ mod tests {
                                 "content": "prefers Rust"
                             }).to_string(),
                         },
-                        loom::ToolCall {
+                        loom_llm::ToolCall {
                             id: Some("tc-2".to_string()),
                             name: "memory_set".to_string(),
                             arguments: serde_json::json!({
@@ -348,7 +348,7 @@ mod tests {
                                 "content": "uses tokio runtime"
                             }).to_string(),
                         },
-                        loom::ToolCall {
+                        loom_llm::ToolCall {
                             id: Some("tc-3".to_string()),
                             name: "skill_create".to_string(),
                             arguments: serde_json::json!({

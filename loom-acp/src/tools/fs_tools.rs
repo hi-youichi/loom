@@ -4,8 +4,8 @@
 //! allowing access to unsaved buffer contents and IDE workspace files.
 
 use async_trait::async_trait;
-use loom::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
-use loom::tools::Tool;
+use loom_tools::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
+use loom_tools::Tool;
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;

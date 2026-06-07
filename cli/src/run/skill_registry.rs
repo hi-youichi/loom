@@ -1,2 +1,2 @@
 //! Re-export from loom crate.
-pub use loom::background_review::skill_registry::*;
+pub use loom_background_review::skill_registry::*;

@@ -3,13 +3,13 @@
 use async_trait::async_trait;
 use tracing::{info, warn};
 
-use loom::error::AgentError;
-use loom::graph::Next;
-use loom::memory::uuid6;
-use loom::message::Message;
-use loom::state::ReActState;
-use loom::tool_source::ToolCallContent;
-use loom::Node;
+use loom_llm::error::AgentError;
+use loom_graph::Next;
+use loom_memory::uuid6;
+use loom_llm::message::Message;
+use loom_cli_types::ReActState;
+use loom_tools::tool_source::ToolCallContent;
+use loom_graph::Node;
 
 pub struct ObserveNode {
     enable_loop: bool,

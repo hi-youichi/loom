@@ -6,8 +6,8 @@
 mod init_logging;
 
 use async_trait::async_trait;
-use loom::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
-use loom::tools::{Tool, ToolRegistryLocked};
+use loom_tools::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
+use loom_tools::{Tool, ToolRegistryLocked};
 use serde_json::json;
 
 /// Mock tool for testing registry.

@@ -1,6 +1,6 @@
 //! Integration tests for LLM HTTP headers functionality
 
-use loom::llm::{ChatOpenAICompat, LlmHeaders};
+use loom_llm::{ChatOpenAICompat, LlmHeaders};
 
 #[test]
 fn test_chat_openai_compat_with_headers() {

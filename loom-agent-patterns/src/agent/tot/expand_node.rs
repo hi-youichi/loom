@@ -7,7 +7,7 @@ use async_trait::async_trait;
 
 use loom_llm::error::AgentError;
 use loom_graph::{Next, RunContext};
-use loom::Message;
+use loom_llm::message::Message;
 use loom_types::state::ToolCall;
 use loom_stream::StreamEvent;
 use loom_graph::Node;
@@ -23,7 +23,7 @@ use super::state::{TotCandidate, TotState};
 /// and `StreamEvent::TotExpand`.
 pub struct ThinkExpandNode {
     /// LLM client used to generate candidate thoughts and tool_calls.
-    llm: Box<dyn loom::LlmClient>,
+    llm: Box<dyn loom_llm::LlmClient>,
     /// Number of candidates to request (2 or 3).
     candidates_per_step: usize,
     /// When true, append research-quality addon (multiple tool calls, step-by-step, cite sources).
@@ -32,7 +32,7 @@ pub struct ThinkExpandNode {
 
 impl ThinkExpandNode {
     /// Creates a ThinkExpand node with the given LLM client.
-    pub fn new(llm: Box<dyn loom::LlmClient>) -> Self {
+    pub fn new(llm: Box<dyn loom_llm::LlmClient>) -> Self {
         Self {
             llm,
             candidates_per_step: 3,

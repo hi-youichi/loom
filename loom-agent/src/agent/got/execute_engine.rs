@@ -8,14 +8,14 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::agent::react::{ActNode, ObserveNode, ThinkNode};
-use loom::error::AgentError;
-use loom::graph::{Next, RunContext};
-use loom::message::Message;
-use loom::llm::LlmProvider;
-use loom::state::ReActState;
-use loom::stream::{StreamEvent, StreamMode};
-use loom::tool_source::ToolSource;
-use loom::Node;
+use loom_llm::error::AgentError;
+use loom_graph::{Next, RunContext};
+use loom_llm::message::Message;
+use loom_llm::LlmProvider;
+use loom_types::state::ReActState;
+use loom_stream::{StreamEvent, StreamMode};
+use loom_tools::tool_source::ToolSource;
+use loom_graph::Node;
 
 use super::adaptive::{
     complexity_score, complexity_score_via_llm, expand_node_via_llm, maybe_expand, ExpandContext,

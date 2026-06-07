@@ -9,14 +9,16 @@ use serde_json::Value;
 use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, trace};
 
-use loom::error::AgentError;
-use loom::graph::{run_cancellable, Next, RunContext};
-use loom::llm::{LlmClient, LlmProvider, LlmResponse, ToolCallDelta};
-use loom::message::Message;
-use loom::model_spec::ModelTier;
-use loom::state::{ModelConfig, ReActState, ToolCall};
-use loom::stream::{ChunkToStreamSender, MessageChunk, StreamEvent, StreamMetadata, StreamMode};
-use loom::Node;
+use loom_llm::error::AgentError;
+use loom_graph::{run_cancellable, Next, RunContext};
+use loom_llm::{LlmClient, LlmProvider, LlmResponse, ToolCallDelta};
+use loom_llm::message::Message;
+use loom_model_spec::ModelTier;
+use loom_types::state::ModelConfig;
+use loom_cli_types::ReActState;
+use loom_llm::ToolCall;
+use loom_stream::{ChunkToStreamSender, MessageChunk, StreamEvent, StreamMetadata, StreamMode};
+use loom_graph::Node;
 
 pub struct ThinkNode {
     provider: Arc<dyn LlmProvider>,

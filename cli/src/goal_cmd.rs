@@ -4,8 +4,8 @@ use crate::args::GoalArgs;
 use crate::goal_runner::{
     GoalRunner, LoomTool, ShellTool, resume, write_mcp_config,
 };
-use loom::goal_runner::GoalOutcome;
-use loom::cli_run::RunCancellation;
+use loom_cli_types::goal_runner::GoalOutcome;
+use loom_cli_types::RunCancellation;
 use task_core::TaskDb;
 use tokio_util::sync::CancellationToken;
 
@@ -142,12 +142,12 @@ fn spawn_goal_background_review(
         .clone()
         .or_else(|| std::env::var("MODEL").ok())
         .unwrap_or_else(|| "gpt-4o-mini".to_string());
-    let config = loom::background_review::BackgroundReviewConfig {
+    let config = loom_background_review::BackgroundReviewConfig {
         enabled: true,
         base_url,
         api_key,
         model,
         ..Default::default()
     };
-    loom::background_review::spawn_background_review(config, session_content, session_id, None);
+    loom_background_review::spawn_background_review(config, session_content, session_id, None);
 }

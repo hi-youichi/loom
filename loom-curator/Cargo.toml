@@ -15,6 +15,12 @@ testing = []
 [dependencies]
 loom = { path = "../loom" }
 loom-agent = { path = "../loom-agent" }
+loom-llm = { path = "../loom-llm" }
+loom-tools = { path = "../loom-tools" }
+loom-types = { path = "../loom-types" }
+loom-model-spec = { path = "../loom-model-spec" }
+loom-tier = { path = "../loom-tier" }
+loom-cli-types = { path = "../loom-cli-types" }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }

@@ -7,7 +7,9 @@
 //! or `loom models show <PROVIDER>`.
 
 use config::{load_full_config, ProviderDef};
-use loom::llm::{ModelInfo, ModelRegistry, ProviderConfig};
+use loom_llm::ModelInfo;
+use loom_llm::ProviderConfig;
+use loom_tier::ModelRegistry;
 use loom_agent::RunError;
 use std::collections::HashMap;
 

@@ -12,7 +12,7 @@ use loom_llm::error::AgentError;
 use loom_graph::Next;
 use loom_llm::LlmProvider;
 use loom_graph::Node;
-use loom::{helve::ApprovalPolicy, tool_source::ToolSource};
+use loom_types::approval::ApprovalPolicy; use loom_tools::ToolSource;
 
 use super::state::DupState;
 

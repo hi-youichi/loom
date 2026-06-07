@@ -2,11 +2,15 @@
 //! Uses protocol format (type + payload) and optional envelope per protocol_spec.
 
 use chrono::Local;
-use loom::{
-    build_helve_config, list_available_profiles,
-    Envelope, MessageChunkKind, ModelLimitResolver,
-    ModelsDevResolver, ReActState, ResolvedAgent, ToolCall, ToolResult,
-};
+use loom::cli_run::build_helve_config;
+use loom_react_config::profile::list_available_profiles;
+use loom_model_spec::{ModelLimitResolver, ModelsDevResolver};
+use loom_stream::MessageChunkKind;
+use loom_cli_types::ResolvedAgent;
+use loom_types::state::ToolResult;
+use loom_protocol::Envelope;
+use loom_types::state::ReActState;
+use loom_llm::ToolCall;
 use loom_agent::{
     build_react_run_context, run_agent_with_options,
     AnyStreamEvent,
@@ -22,10 +26,10 @@ use super::display::{
     format_dup_state_display, format_got_state_display, format_react_state_display,
     format_tot_state_display, truncate_display,
 };
-use loom::stream_display as panel_format;
-use loom::protocol::EnvelopeState;
+use loom_stream_display as panel_format;
+use loom_protocol::EnvelopeState;
 use loom_agent::{RunCmd, RunOptions};
-use loom::StreamEvent;
+use loom_stream::StreamEvent;
 
 use super::RunError;
 
@@ -147,7 +151,7 @@ pub async fn run_agent_wrapper(
     cmd: &RunCmd,
     stream_out: Option<StreamCallback>,
 ) -> RunAgentResult {
-    let loom_opts = opts.to_loom();
+    let loom_opts = opts.to_cli_run_options();
     let (helve, config, resolved_agent) = build_helve_config(&loom_opts);
 
 
@@ -328,7 +332,7 @@ pub async fn run_agent_wrapper(
                 .unwrap()
                 .as_nanos()));
         let user_msg = match &opts.message {
-            loom::UserContent::Text(t) => t.clone(),
+            loom_llm::message::UserContent::Text(t) => t.clone(),
             _ => String::new(),
         };
         let session_content = format!("User: {}\n\nAssistant: {}", user_msg, reply);
@@ -352,9 +356,9 @@ pub async fn run_agent_wrapper(
     })
 }
 
-use loom::stream_display::StreamingMarkdownRenderer;
+use loom_stream_display::StreamingMarkdownRenderer;
 
-fn print_stream_chunk(chunk: &loom::MessageChunk, renderer: &mut StreamingMarkdownRenderer) {
+fn print_stream_chunk(chunk: &loom_stream::MessageChunk, renderer: &mut StreamingMarkdownRenderer) {
     renderer.push_chunk(chunk);
 }
 
@@ -445,10 +449,10 @@ fn on_event_react(
                     }
                     // Show tool call lines (name + args summary)
                     for tc in &react_state.tool_calls {
-                        let summary = loom::stream_display::tool_summary::format_call_summary(&tc.name, &tc.arguments);
+                        let summary = loom_stream_display::tool_summary::format_call_summary(&tc.name, &tc.arguments);
                         eprintln!("{}", panel_format::panel_format::format_tool_call(&tc.name, &summary));
                         // Show DIFF immediately for edit/multiedit (doesn't need result)
-                        if let Some(diff) = loom::stream_display::format_diff(
+                        if let Some(diff) = loom_stream_display::format_diff(
                             &tc.name, &tc.arguments, "", false,
                         ) {
                             eprintln!("{}", diff);
@@ -483,10 +487,10 @@ fn on_event_react(
                     &react_state.tool_results
                 };
                 for tc in s.pending_tool_calls.drain(..) {
-                    let result_text = loom::stream_display::find_tool_result(
+                    let result_text = loom_stream_display::find_tool_result(
                         tool_results, &tc.name, &tc.id,
                     );
-                    let is_error = loom::stream_display::find_tool_result_error(
+                    let is_error = loom_stream_display::find_tool_result_error(
                         tool_results, &tc.name, &tc.id,
                     );
                     let is_edit_like = tc.name == "edit" || tc.name == "multiedit";
@@ -496,18 +500,18 @@ fn on_event_react(
                             Some(r) => r.lines().next().unwrap_or("error"),
                             None => "error",
                         };
-                        eprintln!("{}", panel_format::format_panel_line("ERROR", &format!("{}: {}", tc.name, loom::stream_display::tool_summary::truncate(err_msg, 80))));
+                        eprintln!("{}", panel_format::format_panel_line("ERROR", &format!("{}: {}", tc.name, loom_stream_display::tool_summary::truncate(err_msg, 80))));
                     }
 
                     // PREVIEW and result fallback: skip for edit/multiedit (diff already shown)
                     if !is_edit_like {
                         if let Some(ref result) = result_text {
-                            if let Some(preview) = loom::stream_display::format_preview(
+                            if let Some(preview) = loom_stream_display::format_preview(
                                 &tc.name, &tc.arguments, result, false,
                             ) {
                                 eprintln!("{}", preview);
                             } else if !is_error && !result.trim().is_empty() {
-                                eprintln!("{}", loom::stream_display::tool_preview::format_result_preview(
+                                eprintln!("{}", loom_stream_display::tool_preview::format_result_preview(
                                     &tc.name, result, elapsed,
                                 ));
                             }
@@ -517,7 +521,7 @@ fn on_event_react(
                     // DIFF for edit/multiedit already shown during think; skip here
                     if !is_edit_like {
                         if let Some(ref result) = result_text {
-                            if let Some(diff) = loom::stream_display::format_diff(
+                            if let Some(diff) = loom_stream_display::format_diff(
                                 &tc.name, &tc.arguments, result, false,
                             ) {
                                 eprintln!("{}", diff);
@@ -527,7 +531,7 @@ fn on_event_react(
 
                     // Show DONE line for non-edit tools
                     if !is_edit_like {
-                        let done_summary = loom::stream_display::tool_summary::format_done_summary(
+                        let done_summary = loom_stream_display::tool_summary::format_done_summary(
                             &tc.name,
                             result_text.as_deref().unwrap_or(""),
                             is_error,
@@ -763,13 +767,13 @@ impl EventState {
 }
 
 /// Prints loaded tools info to stderr at startup (structured panel format).
-async fn print_loaded_tools(config: &loom::ReactBuildConfig) -> Result<(), RunError> {
+async fn print_loaded_tools(config: &loom_react_config::ReactBuildConfig) -> Result<(), RunError> {
     let ctx = build_react_run_context(config)
         .await
         .map_err(|e| RunError::Build(loom_agent::BuildRunnerError::Context(e)))?;
     let tools = ctx.tool_source.list_tools().await.map_err(|e| {
         RunError::Build(loom_agent::BuildRunnerError::Context(
-            loom::AgentError::ExecutionFailed(e.to_string()),
+            loom_llm::AgentError::ExecutionFailed(e.to_string()),
         ))
     })?;
     let names: Vec<&str> = tools.iter().map(|s| s.name.as_str()).collect();
@@ -873,10 +877,10 @@ fn on_event_got(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom::{
-        GotRunnerConfig, Message, TaskGraph, TaskNode, TaskNodeState, TaskStatus, ToolCall,
-        TotExtension, TotRunnerConfig, UnderstandOutput,
+    use loom_agent::{
+        agent::{GotRunnerConfig, TaskGraph, TaskNode, TaskNodeState, TaskStatus, TotExtension, TotRunnerConfig, UnderstandOutput}
     };
+    use loom_llm::{message::Message, ToolCall};
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
 
@@ -887,8 +891,8 @@ mod tests {
         }
     }
 
-    fn minimal_build_config() -> loom::ReactBuildConfig {
-        loom::ReactBuildConfig {
+    fn minimal_build_config() -> loom_react_config::ReactBuildConfig {
+        loom_react_config::ReactBuildConfig {
             db_path: None,
             thread_id: None,
             trace_thread_id: None,
@@ -1246,8 +1250,8 @@ mod tests {
         );
         on_event_tot(
             &StreamEvent::Messages {
-                chunk: loom::MessageChunk::message("tok"),
-                metadata: loom::StreamMetadata {
+                chunk: loom_stream::MessageChunk::message("tok"),
+                metadata: loom_stream::StreamMetadata {
                     loom_node: "think_expand".to_string(),
                     namespace: None,
                 },
@@ -1298,10 +1302,10 @@ mod tests {
             true,
             false,
         );
-        on_event_got(
+        on_event_tot(
             &StreamEvent::Messages {
-                chunk: loom::MessageChunk::message("chunk"),
-                metadata: loom::StreamMetadata {
+                chunk: loom_stream::MessageChunk::message("chunk"),
+                metadata: loom_stream::StreamMetadata {
                     loom_node: "execute_graph".to_string(),
                     namespace: None,
                 },
@@ -1322,7 +1326,7 @@ mod tests {
 
     fn invalid_opts(output_json: bool) -> RunOptions {
         RunOptions {
-            message: loom::UserContent::text("hello".to_string()),
+            message: loom_llm::message::UserContent::text("hello".to_string()),
             // Deterministic failure path in build context (invalid file-tool root).
             working_folder: Some(PathBuf::from(
                 "/definitely/not/exist/loom-cli-run-agent-tests",

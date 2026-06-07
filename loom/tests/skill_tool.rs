@@ -2,9 +2,8 @@
 
 mod init_logging;
 
-use loom::tool_source::register_file_tools;
-use loom::tool_source::{ToolSource, ToolSourceError};
-use loom::tools::{AggregateToolSource, TOOL_SKILL};
+use loom_tools::tool_source::{register_file_tools, ToolSource, ToolSourceError};
+use loom_tools::{AggregateToolSource, TOOL_SKILL};
 use serde_json::json;
 
 fn aggregate_with_file_tools(dir: &tempfile::TempDir) -> AggregateToolSource {

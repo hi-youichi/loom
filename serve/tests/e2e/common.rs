@@ -2,7 +2,7 @@
 //! Run tests with `--nocapture` to see them.
 
 use futures_util::{SinkExt, StreamExt};
-use loom::{ClientRequest, ServerResponse};
+use loom_protocol::{ClientRequest, ServerResponse};
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::time::timeout;

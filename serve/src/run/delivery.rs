@@ -3,10 +3,7 @@
 use async_trait::async_trait;
 use axum::extract::ws::Message;
 use futures::SinkExt;
-use loom::{
-    EnvelopeState, ErrorResponse, ProtocolEventEnvelope, RunEndResponse,
-    RunStreamEventResponse, ServerResponse,
-};
+use loom_protocol::{EnvelopeState, ErrorResponse, ProtocolEventEnvelope, RunEndResponse, RunStreamEventResponse, ServerResponse};
 use loom_agent::{RunCompletion, RunError};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};

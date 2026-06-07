@@ -1,7 +1,7 @@
 //! Error type when building a ReactRunner from config.
 
-use loom::error::AgentError;
-use loom::graph::CompilationError;
+use loom_llm::error::AgentError;
+use loom_graph::CompilationError;
 
 /// Error when building a ReactRunner from config.
 #[derive(Debug, thiserror::Error)]

@@ -7,7 +7,8 @@ use std::env;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use loom::{Agent, AgentError, CompiledStateGraph, Message, StateGraph, END, START};
+use loom_graph::{Agent, AgentError, CompiledStateGraph, StateGraph, END, START};
+use loom_llm::message::Message;
 
 /// Example state: message list only (same as echo example).
 #[derive(Debug, Clone, Default)]

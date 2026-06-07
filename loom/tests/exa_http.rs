@@ -9,7 +9,7 @@
 
 mod init_logging;
 
-use loom::tool_source::{McpToolSource, ToolSource};
+use loom_tools::tool_source::{McpToolSource, ToolSource};
 
 const DEFAULT_EXA_URL: &str = "https://mcp.exa.ai/mcp";
 

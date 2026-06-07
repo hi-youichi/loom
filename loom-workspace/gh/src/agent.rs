@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use crate::webhook::IssuesEvent;
-use loom::UserContent;
+use loom_llm::message::UserContent;
 
 /// Builds `loom_agent::RunOptions` from a webhook IssuesEvent so the agent can be run with
 /// `loom_agent::run_agent_with_options(opts, RunCmd::React, on_event)`.

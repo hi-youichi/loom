@@ -8,7 +8,7 @@ mod thread_list;
 mod thread_remove;
 pub mod watcher;
 
-use loom::{ErrorResponse, ServerResponse};
+use loom_protocol::{ErrorResponse, ServerResponse};
 
 pub(crate) use create::handle_workspace_create;
 pub(crate) use file_list::handle_workspace_file_list;

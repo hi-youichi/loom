@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use loom_llm::error::AgentError;
 use loom_graph::{Next, RunContext};
 use loom_llm::LlmClient;
-use loom::Message;
+use loom_llm::message::Message;
 use loom_stream::{StreamEvent, StreamMode};
 use loom_graph::Node;
 
@@ -93,7 +93,7 @@ impl Node<GotState> for PlanGraphNode {
     }
 
     async fn run(&self, state: GotState) -> Result<(GotState, Next), AgentError> {
-        let ctx = loom::graph::RunContext::new(loom::memory::RunnableConfig::default());
+        let ctx = loom_graph::RunContext::new(loom_memory::RunnableConfig::default());
         self.run_with_context(state, &ctx).await
     }
 

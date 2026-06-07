@@ -13,7 +13,7 @@ use loom_stream::StreamEvent;
 use loom_tools::tool_source::ToolSource;
 use loom_llm::LlmClient;
 use loom_types::cli_run::AnyStreamEvent;
-use loom::{StateGraph, END, START};
+use loom_graph::{StateGraph, END, START};
 
 use super::dag::ready_nodes;
 use super::execute_engine::ExecuteGraphNode;
@@ -98,7 +98,7 @@ impl GotRunner {
         agot_llm_complexity: bool,
     ) -> Result<Self, CompilationError> {
         let plan = PlanGraphNode::new(Box::new(SharedLlm(Arc::clone(&llm))));
-        let provider: Arc<dyn loom::llm::LlmProvider> = Arc::new(loom::llm::FixedLlmProvider {
+        let provider: Arc<dyn loom_llm::LlmProvider> = Arc::new(loom_llm::client::FixedLlmProvider {
             client: Arc::clone(&llm),
             model_id: "got".to_string(),
         });
@@ -232,15 +232,15 @@ pub(super) struct SharedLlm(Arc<dyn LlmClient>);
 impl LlmClient for SharedLlm {
     async fn invoke(
         &self,
-        messages: &[loom::message::Message],
-    ) -> Result<loom::llm::LlmResponse, AgentError> {
+        messages: &[loom_llm::message::Message],
+    ) -> Result<loom_llm::LlmResponse, AgentError> {
         self.0.invoke(messages).await
     }
     async fn invoke_stream(
         &self,
-        messages: &[loom::message::Message],
-        tx: Option<tokio::sync::mpsc::Sender<loom::stream::MessageChunk>>,
-    ) -> Result<loom::llm::LlmResponse, AgentError> {
+        messages: &[loom_llm::message::Message],
+        tx: Option<tokio::sync::mpsc::Sender<loom_stream::MessageChunk>>,
+    ) -> Result<loom_llm::LlmResponse, AgentError> {
         self.0.invoke_stream(messages, tx).await
     }
 }

@@ -1,7 +1,7 @@
 //! Handle `workspace_file_list` requests — list directory entries within a workspace.
 
-use loom::protocol::requests::WorkspaceFileListRequest;
-use loom::protocol::responses::{FileEntry, ServerResponse, WorkspaceFileListResponse};
+    use loom_protocol::requests::WorkspaceFileListRequest;
+    use loom_protocol::responses::{FileEntry, ServerResponse, WorkspaceFileListResponse};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -21,7 +21,7 @@ pub(crate) async fn handle_workspace_file_list(
     let target_dir = match target_dir {
         Ok(d) => d,
         Err(e) => {
-            return ServerResponse::Error(loom::ErrorResponse {
+            return ServerResponse::Error(loom_protocol::ErrorResponse {
                 id: Some(req.id),
                 error: e,
             })
@@ -31,7 +31,7 @@ pub(crate) async fn handle_workspace_file_list(
     let entries = match list_dir_entries(&target_dir, &root_dir) {
         Ok(e) => e,
         Err(e) => {
-            return ServerResponse::Error(loom::ErrorResponse {
+            return ServerResponse::Error(loom_protocol::ErrorResponse {
                 id: Some(req.id),
                 error: e.to_string(),
             })

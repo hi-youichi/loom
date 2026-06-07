@@ -8,8 +8,8 @@ use tokio::process::Child;
 use tokio_util::sync::CancellationToken;
 use tracing;
 
-use loom::goal_runner::message;
-use loom::goal_runner::state::{
+use loom_cli_types::goal_runner::message;
+use loom_cli_types::goal_runner::state::{
     GoalError, GoalMeta, GoalOutcome, HistoryEntry, ToolError,
     DEFAULT_MAX_ITERATIONS, MAX_CONSECUTIVE_FAILURES, MAX_HISTORY_ENTRIES,
 };
@@ -162,7 +162,7 @@ impl GoalRunner {
             );
 
             eprintln!("\n{}",
-                loom::stream_display::panel_format::format_panel_line(
+                loom_stream_display::panel_format::format_panel_line(
                     "GOAL",
                     &format!("iteration {} | tool: {} | time: {}s",
                         self.iteration, self.tool.name(), self.time_used_seconds),
@@ -200,18 +200,18 @@ impl GoalRunner {
                     if let Some(ref reasoning) = turn_result.reasoning_content {
                         if !reasoning.trim().is_empty() {
                             eprintln!("{}",
-                                loom::stream_display::panel_format::format_panel_line(
-                                    "THINKING", &loom::stream_display::render_markdown(reasoning).to_string()
+                                loom_stream_display::panel_format::format_panel_line(
+                                    "THINKING", &loom_stream_display::render_markdown(reasoning).to_string()
                                 )
                             );
                         }
                     }
                     if !turn_result.reply.trim().is_empty() {
-                        eprintln!("{}", loom::stream_display::render_markdown(&turn_result.reply));
+                        eprintln!("{}", loom_stream_display::render_markdown(&turn_result.reply));
                     }
                     for tc in &turn_result.tool_calls_summary {
                         eprintln!("{}",
-                            loom::stream_display::panel_format::format_panel_line(
+                            loom_stream_display::panel_format::format_panel_line(
                                 "TOOL", &format!("{} → {}", tc.tool_name, tc.result_preview)
                             )
                         );
@@ -443,7 +443,7 @@ impl GoalRunner {
     async fn run_verify_command(&self, cmd: &str) -> bool {
         tracing::info!(session_id = %self.task_id, cmd = cmd, "running verify command");
         eprintln!("{}",
-            loom::stream_display::panel_format::format_panel_line(
+            loom_stream_display::panel_format::format_panel_line(
                 "VERIFY", cmd,
             )
         );
@@ -465,7 +465,7 @@ impl GoalRunner {
             Ok(output) => {
                 if output.status.success() {
                     eprintln!("{}",
-                        loom::stream_display::panel_format::format_panel_line(
+                        loom_stream_display::panel_format::format_panel_line(
                             "VERIFY", "passed",
                         )
                     );
@@ -473,7 +473,7 @@ impl GoalRunner {
                 } else {
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     eprintln!("{}",
-                        loom::stream_display::panel_format::format_panel_line(
+                        loom_stream_display::panel_format::format_panel_line(
                             "VERIFY", &format!("failed: {}", stderr.trim()),
                         )
                     );
@@ -483,7 +483,7 @@ impl GoalRunner {
             Err(e) => {
                 tracing::error!(session_id = %self.task_id, error = %e, "verify command failed to execute");
                 eprintln!("{}",
-                    loom::stream_display::panel_format::format_panel_line(
+                    loom_stream_display::panel_format::format_panel_line(
                         "VERIFY", &format!("error: {}", e),
                     )
                 );
@@ -533,7 +533,7 @@ pub async fn resume(
     working_dir: PathBuf,
     db: Arc<TaskDb>,
     cancel: CancellationToken,
-    run_cancellation: Option<loom::cli_run::RunCancellation>,
+    run_cancellation: Option<loom_cli_types::RunCancellation>,
 ) -> Result<GoalRunner, GoalError> {
     resume_with_event_sender(id, working_dir, db, cancel, run_cancellation, None).await
 }
@@ -543,7 +543,7 @@ pub async fn resume_with_event_sender(
     working_dir: PathBuf,
     db: Arc<TaskDb>,
     cancel: CancellationToken,
-    run_cancellation: Option<loom::cli_run::RunCancellation>,
+    run_cancellation: Option<loom_cli_types::RunCancellation>,
     event_sender: Option<Arc<dyn Fn(loom_agent::AnyStreamEvent) + Send + Sync>>,
 ) -> Result<GoalRunner, GoalError> {
     let updated = db
@@ -597,7 +597,7 @@ fn resolve_tool(
     id: &str,
     db_path: &std::path::Path,
     working_dir: &std::path::Path,
-    run_cancellation: &Option<loom::cli_run::RunCancellation>,
+    run_cancellation: &Option<loom_cli_types::RunCancellation>,
     event_sender: &Option<Arc<dyn Fn(loom_agent::AnyStreamEvent) + Send + Sync>>,
     cancel: &CancellationToken,
 ) -> Result<Box<dyn CodingTool>, GoalError> {

@@ -12,8 +12,8 @@ use std::sync::Arc;
 
 use tokio_util::sync::CancellationToken;
 
-use loom::cli_run::RunCancellation;
-use loom::goal_runner::GoalOutcome;
+use loom_cli_types::RunCancellation;
+use loom_cli_types::goal_runner::GoalOutcome;
 
 /// Result of a goal run.
 #[derive(Debug)]

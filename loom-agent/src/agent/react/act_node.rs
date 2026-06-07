@@ -21,19 +21,20 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{debug, trace, warn};
 
-use loom::cli_run::RunCancellation;
+use loom_cli_types::RunCancellation;
 use crate::AnyStreamEvent;
-use loom::error::AgentError;
-use loom::goal_runner::state::ToolError;
-use loom::graph::{run_cancellable, Interrupt, Next, Node, RunContext};
-use loom::helve::{tools_requiring_approval, ApprovalPolicy, APPROVAL_REQUIRED_EVENT_TYPE};
-use loom::memory::uuid6;
-use loom::state::tool_output_normalizer::{
+use loom_llm::error::AgentError;
+use loom_cli_types::goal_runner::state::ToolError;
+use loom_graph::{run_cancellable, Interrupt, Next, Node, RunContext};
+use loom_helve::{tools_requiring_approval, ApprovalPolicy, APPROVAL_REQUIRED_EVENT_TYPE};
+use loom_memory::uuid6;
+use loom_types::tool_output_normalizer::{
     normalize_tool_output, NormalizationConfig, ToolOutputHint,
 };
-use loom::state::{ReActState, ToolCall, ToolResult};
-use loom::stream::{StreamEvent, StreamMode, ToolStreamWriter};
-use loom::tool_source::{ToolCallContent, ToolCallContext, ToolSource};
+use loom_types::state::{ReActState, ToolResult};
+use loom_llm::ToolCall;
+use loom_stream::{StreamEvent, StreamMode, ToolStreamWriter};
+use loom_tools::{ToolCallContent, ToolCallContext, ToolSource};
 
 /// Event type for Custom stream events emitted after each tool call (step progress).
 /// Server or clients can use this to show progress (e.g. "Calling list_dir", "Done: 12 entries").
@@ -669,11 +670,11 @@ impl Node<ReActState> for ActNode {
                 any_stream_event_sender: {
                     let sender = self.any_stream_event_sender.lock().unwrap().clone();
                     sender.map(|s| {
-                        Arc::new(move |ev: loom::cli_run::AnyStreamEvent| {
+                        Arc::new(move |ev: loom_cli_types::AnyStreamEvent| {
                             // We can only forward React events from loom's AnyStreamEvent
                             // since DUP/TOT/GOT use different state types
                             s(AnyStreamEvent::from_loom(ev));
-                        }) as Arc<dyn Fn(loom::cli_run::AnyStreamEvent) + Send + Sync>
+                        }) as Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>
                     })
                 },
                 acp_session_id: run_ctx.config.acp_session_id.clone(),
@@ -918,7 +919,7 @@ mod tests {
 
     #[test]
     fn act_node_id() {
-        use loom::tool_source::MockToolSource;
+        use loom_tools::tool_source::MockToolSource;
         let node = ActNode::new(Box::new(MockToolSource::default()));
         assert_eq!(Node::<ReActState>::id(&node), "act");
     }

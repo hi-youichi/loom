@@ -6,11 +6,11 @@
 
 use async_trait::async_trait;
 
-use loom::error::AgentError;
-use loom::graph::{Next, RunContext};
-use loom::message::Message;
-use loom::stream::StreamEvent;
-use loom::Node;
+use loom_llm::error::AgentError;
+use loom_graph::{Next, RunContext};
+use loom_llm::message::Message;
+use loom_stream::StreamEvent;
+use loom_graph::Node;
 
 use super::state::TotState;
 
@@ -102,9 +102,11 @@ impl Node<TotState> for BacktrackNode {
 mod tests {
     use super::super::state::{TotCandidate, TotExtension};
     use super::*;
-    use loom::memory::RunnableConfig;
-    use loom::message::UserContent;
-    use loom::state::{ReActState, ToolCall, ToolResult};
+    use loom_memory::RunnableConfig;
+    use loom_llm::message::UserContent;
+    use loom_cli_types::ReActState;
+    use loom_llm::ToolCall;
+    use loom_cli_types::ToolResult;
     use tokio::sync::mpsc;
 
     fn candidate(thought: &str, tool_name: &str) -> TotCandidate {

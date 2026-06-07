@@ -5,11 +5,13 @@
 
 use std::sync::Arc;
 
-use loom::error::AgentError;
-use loom::llm::audit::LlmAuditLog;
-use loom::llm::{ChatOpenAI, ChatOpenAICompat, FixedLlmProvider, LlmClient, LlmProvider, ModelEntry, RetryLlmClient, create_llm_client};
-use loom::model_spec::ModelTier;
-use loom::tool_source::ToolSource;
+use loom_llm::error::AgentError;
+use loom_llm::support::audit::LlmAuditLog;
+use loom_llm::{ChatOpenAI, ChatOpenAICompat, LlmClient, LlmProvider, ModelEntry};
+use loom_llm::client::{FixedLlmProvider, RetryLlmClient};
+use loom_tier::create_llm_client;
+use loom_model_spec::ModelTier;
+use loom_tools::tool_source::ToolSource;
 
 use super::super::config::ReactBuildConfig;
 use super::error::BuildRunnerError;
@@ -24,8 +26,8 @@ fn parse_provider_model(model: &str) -> Option<(&str, &str)> {
     Some((provider, model_id))
 }
 
-pub use loom::tier::{DefaultTierResolver, ResolvedTierModel, TierResolver};
-pub(crate) use loom::tier::resolver::resolve_tier_for_config;
+pub use loom_tier::{DefaultTierResolver, ResolvedTierModel, TierResolver};
+pub(crate) use loom_tier::resolve_tier_for_config;
 
 #[allow(dead_code)]
 pub(crate) async fn resolve_title_llm(

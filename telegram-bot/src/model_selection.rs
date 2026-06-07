@@ -44,7 +44,7 @@ pub struct SqliteModelSelectionStore {
 impl SqliteModelSelectionStore {
     pub fn new() -> Self {
         Self {
-            database_path: loom::memory::default_memory_db_path(),
+            database_path: loom_memory::default_memory_db_path(),
         }
     }
 

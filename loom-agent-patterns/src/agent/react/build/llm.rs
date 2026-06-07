@@ -7,10 +7,9 @@ use std::sync::Arc;
 
 use loom_llm::error::AgentError;
 use loom_llm::support::audit::LlmAuditLog;
-use loom_llm::{ChatOpenAI, ChatOpenAICompat, LlmClient, LlmProvider, ModelEntry};
-use loom::FixedLlmProvider;
-use loom::llm::RetryLlmClient;
-use loom::llm::create_llm_client;
+use loom_llm::{ChatOpenAI, ChatOpenAICompat, LlmClient, LlmHeaders, LlmProvider, ModelEntry};
+use loom_llm::client::{FixedLlmProvider, RetryLlmClient};
+use loom_tier::create_llm_client;
 use loom_model_spec::ModelTier;
 use loom_tools::tool_source::ToolSource;
 
@@ -27,8 +26,8 @@ fn parse_provider_model(model: &str) -> Option<(&str, &str)> {
     Some((provider, model_id))
 }
 
-pub use loom::tier::{DefaultTierResolver, ResolvedTierModel, TierResolver};
-use loom::tier::resolver::resolve_tier_for_config;
+pub use loom_tier::{DefaultTierResolver, ResolvedTierModel, TierResolver};
+use loom_tier::resolve_tier_for_config;
 
 #[allow(dead_code)]
 pub(crate) async fn resolve_title_llm(
@@ -173,7 +172,7 @@ pub(crate) async fn build_default_llm_with_tool_source(
             
             let trace_id = config.trace_thread_id.as_ref().or(config.thread_id.as_ref());
             if let Some(thread_id) = trace_id {
-                let headers = loom::llm::LlmHeaders::default().with_thread_id(thread_id);
+                let headers = loom_llm::LlmHeaders::default().with_thread_id(thread_id);
                 client = client.with_headers(headers);
                 tracing::debug!("Set X-Thread-Id header: {}", thread_id);
             }
@@ -220,7 +219,7 @@ pub(crate) async fn build_default_llm_with_tool_source(
             
             let trace_id = config.trace_thread_id.as_ref().or(config.thread_id.as_ref());
             if let Some(thread_id) = trace_id {
-                let headers = loom::llm::LlmHeaders::default().with_thread_id(thread_id);
+                let headers = loom_llm::LlmHeaders::default().with_thread_id(thread_id);
                 client = client.with_headers(headers);
                 tracing::debug!("Set X-Thread-Id header: {}", thread_id);
             }
@@ -273,7 +272,7 @@ pub(crate) async fn resolve_title_provider(
         .trace_thread_id
         .as_ref()
         .or(config.thread_id.as_ref());
-    let headers = thread_id.map(|tid| loom::llm::LlmHeaders::default().with_thread_id(tid));
+    let headers = thread_id.map(|tid| LlmHeaders::default().with_thread_id(tid));
     let client = create_llm_client(&entry, headers).ok()?;
     Some(Arc::new(FixedLlmProvider {
         client: Arc::from(client),

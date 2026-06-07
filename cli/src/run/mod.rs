@@ -24,5 +24,5 @@ pub use agent::{
 pub use contract::{
     cli_list_models, cli_list_tools, cli_show_tool, run_cli_turn, RunOutput, StreamOut,
 };
-pub use loom::build_helve_config;
+pub use loom::cli_run::build_helve_config;
 pub use loom_agent::{RunCmd, RunError, RunOptions};

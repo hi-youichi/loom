@@ -8,7 +8,7 @@ use async_trait::async_trait;
 
 use loom_llm::error::AgentError;
 use loom_graph::{Next, RunContext};
-use loom::Message;
+use loom_llm::message::Message;
 use loom_stream::StreamEvent;
 use loom_graph::Node;
 

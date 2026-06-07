@@ -5,8 +5,7 @@ use notify::{RecommendedWatcher, RecursiveMode, Watcher, Event, EventKind, Confi
 use tokio::sync::broadcast;
 use tracing::{info, warn};
 
-use loom::WorkspaceFileChangedResponse;
-use loom::FileChange;
+use loom_protocol::responses::{WorkspaceFileChangedResponse, FileChange};
 
 const DEBOUNCE_MS: u64 = 100;
 

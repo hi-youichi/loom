@@ -16,8 +16,21 @@ path = "src/lib.rs"
 [dependencies]
 loom = { path = "../loom" }
 loom-agent = { path = "../loom-agent" }
-task-core = { path = "../task-core" }
+loom-cli-types = { path = "../loom-cli-types" }
+loom-protocol = { path = "../loom-protocol" }
+loom-graph = { path = "../loom-graph" }
+loom-llm = { path = "../loom-llm" }
+loom-memory = { path = "../loom-memory" }
+loom-tools = { path = "../loom-tools" }
+loom-types = { path = "../loom-types" }
+loom-tier = { path = "../loom-tier" }
+loom-react-config = { path = "../loom-react-config" }
+loom-stream = { path = "../loom-stream" }
+loom-background-review = { path = "../loom-background-review" }
+loom-commands = { path = "../loom-commands" }
 config = { path = "../config", features = ["tracing-init"] }
+task-core = { path = "../task-core" }
+loom-helve = { path = "../loom-helve" }
 agent-client-protocol = { version = "0.11.1", features = ["unstable_boolean_config", "unstable_session_model", "unstable_session_fork", "unstable_message_id"] }
 async-trait = { workspace = true }
 tokio = { workspace = true }

@@ -90,7 +90,7 @@ impl SessionManager {
 
     /// Creates a session manager with the default path (~/.loom/memory.db).
     pub fn with_default_path() -> Self {
-        let db_path = loom::memory::default_memory_db_path();
+        let db_path = loom_memory::default_memory_db_path();
         Self::new(db_path)
     }
 
@@ -228,10 +228,10 @@ impl SessionManager {
         let (message_count, first_user_message, last_assistant_reply) = if let Some(data) = payload
         {
             // Try to deserialize as ReActState
-            match serde_json::from_slice::<loom::state::ReActState>(&data) {
+            match serde_json::from_slice::<loom_types::state::ReActState>(&data) {
                 Ok(state) => {
                     let first_user = state.messages.iter().find_map(|m| match m {
-                        loom::message::Message::User(s) => Some(s.as_text().to_string()),
+                        loom_llm::message::Message::User(s) => Some(s.as_text().to_string()),
                         _ => None,
                     });
                     let last_assistant = state.last_assistant_reply();
@@ -348,13 +348,13 @@ impl SessionManager {
                 .unwrap_or_default();
 
             let found = payloads.iter().any(|data| {
-                serde_json::from_slice::<loom::state::ReActState>(data)
+                serde_json::from_slice::<loom_types::state::ReActState>(data)
                     .map(|state| {
                         state.messages.iter().any(|m| match m {
-                            loom::message::Message::System(s) => s.to_lowercase().contains(&query_lower),
-                            loom::message::Message::User(uc) => uc.as_text().to_lowercase().contains(&query_lower),
-                            loom::message::Message::Assistant(a) => a.content.to_lowercase().contains(&query_lower),
-                            loom::message::Message::Tool { content, .. } => {
+                            loom_llm::message::Message::System(s) => s.to_lowercase().contains(&query_lower),
+                            loom_llm::message::Message::User(uc) => uc.as_text().to_lowercase().contains(&query_lower),
+                            loom_llm::message::Message::Assistant(a) => a.content.to_lowercase().contains(&query_lower),
+                            loom_llm::message::Message::Tool { content, .. } => {
                                 content.as_text().map(|t| t.to_lowercase().contains(&query_lower)).unwrap_or(false)
                             }
                         })
@@ -392,7 +392,7 @@ impl SessionManager {
             return Err(format!("Session not found: {}", session_id));
         }
 
-        let states: Vec<loom::state::ReActState> = payloads
+        let states: Vec<loom_types::state::ReActState> = payloads
             .iter()
             .filter_map(|data| serde_json::from_slice(data).ok())
             .collect();
@@ -523,18 +523,18 @@ impl SessionManager {
 
         let mut parts: Vec<String> = Vec::new();
         for data in &payloads {
-            if let Ok(state) = serde_json::from_slice::<loom::state::ReActState>(data) {
+            if let Ok(state) = serde_json::from_slice::<loom_types::state::ReActState>(data) {
                 for msg in &state.messages {
                     match msg {
-                        loom::message::Message::User(u) => {
+                        loom_llm::message::Message::User(u) => {
                             parts.push(format!("User: {}", u.as_text()));
                         }
-                        loom::message::Message::Assistant(a) => {
+                        loom_llm::message::Message::Assistant(a) => {
                             if !a.content.is_empty() {
                                 parts.push(format!("Assistant: {}", a.content));
                             }
                         }
-                        loom::message::Message::Tool { content, .. } => {
+                        loom_llm::message::Message::Tool { content, .. } => {
                             if let Some(text) = content.as_text() {
                                 if !text.is_empty() {
                                     parts.push(format!("Tool: {}", text));

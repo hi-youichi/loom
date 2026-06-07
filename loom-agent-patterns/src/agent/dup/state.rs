@@ -52,7 +52,7 @@ impl DupState {
 mod tests {
     use super::*;
     use loom_types::state::ReActState;
-    use loom::Message;
+    use loom_llm::message::Message;
 
     #[test]
     fn last_assistant_reply_delegates_to_core() {
@@ -64,7 +64,7 @@ mod tests {
         state
             .core
             .messages
-            .push(Message::Assistant(loom::message::AssistantPayload {
+            .push(Message::Assistant(loom_llm::message::Message::AssistantPayload {
                 content: "hello".to_string(),
                 tool_calls: vec![],
                 reasoning_content: None,

@@ -2,14 +2,14 @@
 
 use std::sync::Arc;
 
-use loom::error::AgentError;
+use loom_llm::error::AgentError;
 
 use super::super::config::ReactBuildConfig;
 
 pub(crate) fn build_store(
     config: &ReactBuildConfig,
     _db_path: &str,
-) -> Result<Option<Arc<dyn loom::memory::Store>>, AgentError> {
+) -> Result<Option<Arc<dyn loom_memory::Store>>, AgentError> {
     match build_vector_store(config) {
         Ok(store) => Ok(Some(store)),
         Err(_) => Ok(None),
@@ -18,8 +18,8 @@ pub(crate) fn build_store(
 
 fn build_vector_store(
     config: &ReactBuildConfig,
-) -> Result<Arc<dyn loom::memory::Store>, AgentError> {
-    use loom::memory::{InMemoryVectorStore, OpenAIEmbedder};
+) -> Result<Arc<dyn loom_memory::Store>, AgentError> {
+    use loom_memory::{InMemoryVectorStore, OpenAIEmbedder};
     use async_openai::config::OpenAIConfig;
 
     let api_key = config
@@ -49,6 +49,6 @@ fn build_vector_store(
     }
     let embedder = OpenAIEmbedder::with_config(openai_config, model);
     let store = InMemoryVectorStore::new(Arc::new(embedder));
-    Ok(Arc::new(store) as Arc<dyn loom::memory::Store>)
+    Ok(Arc::new(store) as Arc<dyn loom_memory::Store>)
 }
 

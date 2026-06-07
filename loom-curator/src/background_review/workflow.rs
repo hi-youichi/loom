@@ -7,7 +7,8 @@ use super::agent_loop::{
 };
 use super::history::{ReviewHistory, ReviewRecord};
 use super::skill_registry::SkillRegistry;
-use loom::llm::{LlmFactory, ModelEntry};
+use loom_llm::ModelEntry;
+use loom_tier::factory::LlmFactory;
 use chrono::Utc;
 use std::sync::{Arc, Mutex as StdMutex};
 use tracing::{error, info, warn};
@@ -212,7 +213,7 @@ pub async fn run_background_review_workflow(
 }
 
 pub async fn run_background_review_inner(
-    llm: &dyn loom::llm::LlmClient,
+    llm: &dyn loom_llm::LlmClient,
     session_content: &str,
     max_iterations: u32,
     max_session_chars: usize,
@@ -254,7 +255,7 @@ async fn resolve_review_model(config: &BackgroundReviewConfig) -> (String, Strin
     if let Some(ref session_entry) = config.session_model {
         if let Some(factory) = LlmFactory::load() {
             if let Some(strong_entry) = factory
-                .resolve_tier_from_entry(session_entry, loom::model_spec::ModelTier::Strong)
+                .resolve_tier_from_entry(session_entry, loom_model_spec::ModelTier::Strong)
                 .await
             {
                 return (
@@ -268,7 +269,7 @@ async fn resolve_review_model(config: &BackgroundReviewConfig) -> (String, Strin
     (config.base_url.clone(), config.api_key.clone(), config.model.clone())
 }
 
-pub fn build_background_config_from_opts(opts: &loom::RunOptions) -> BackgroundReviewConfig {
+pub fn build_background_config_from_opts(opts: &loom_cli_types::RunOptions) -> BackgroundReviewConfig {
     let session_model = resolve_session_model(opts);
 
     let base_url = opts.base_url.clone()
@@ -292,13 +293,13 @@ pub fn build_background_config_from_opts(opts: &loom::RunOptions) -> BackgroundR
     }
 }
 
-fn resolve_session_model(opts: &loom::RunOptions) -> Option<ModelEntry> {
+fn resolve_session_model(opts: &loom_cli_types::RunOptions) -> Option<ModelEntry> {
     let model = opts.model.as_deref()?;
-    let (provider, _) = loom::llm::ModelEntry::parse_id(model)?;
-    let providers = loom::provider::load_provider_configs()?;
-    let entry = loom::tier::resolve::resolve_from_plan(
+    let (provider, _) = loom_llm::ModelEntry::parse_id(model)?;
+    let providers = loom_tier::provider::load_provider_configs()?;
+    let entry = loom_tier::resolve::resolve_from_plan(
         provider,
-        loom::model_spec::ModelTier::Standard,
+        loom_model_spec::ModelTier::Standard,
         &providers,
     )?;
     let mut entry = entry;

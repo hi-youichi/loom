@@ -4,7 +4,9 @@ use cli::run::review::{ReviewAgent, ReviewConfig, ReviewOutput};
 use cli::run::review_agent_loop::ReviewMode;
 use cli::run::skill_registry::SkillRegistry;
 use config::load_full_config;
-use loom::llm::{create_llm_client, LlmClient, ModelEntry, ProviderConfig, RetryLlmClient};
+use loom_llm::{LlmClient, ModelEntry, ProviderConfig};
+use loom_llm::client::RetryLlmClient;
+use loom_tier::create_llm_client;
 use std::io::{self, Read};
 use std::sync::Arc;
 

@@ -9,12 +9,15 @@ mod init_logging;
 use std::sync::Arc;
 
 use async_openai::config::OpenAIConfig;
-use loom::llm::{ChatOpenAI, LlmClient, ToolCallDelta, ToolChoiceMode};
-use loom::tool_source::{register_file_tools, ToolSource, YamlSpecToolSource};
+use loom_llm::{ChatOpenAI, LlmClient, ToolCallDelta, ToolChoiceMode, Message, MessageChunk};
+use loom_tools::tool_source::{register_file_tools, ToolSource, YamlSpecToolSource, ToolSpec};
 #[cfg(not(windows))]
-use loom::tools::BashTool;
-use loom::tools::{AggregateToolSource, BatchTool, LspTool, WebFetcherTool, TOOL_READ_FILE};
-use loom::{Message, MessageChunk};
+use loom_tools::BashTool;
+use loom_tools::{BatchTool, LspTool, WebFetcherTool};
+use loom_tools::tool_source::{ToolSpec, register_file_tools};
+use loom_tools::{TOOL_READ_FILE};
+use loom_tools::tools::powershell::PowerShellTool;
+use loom_tools::tools::powershell::TOOL_POWERSHELL;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
@@ -75,7 +78,7 @@ async fn write_http_stream_response(stream: &mut tokio::net::TcpStream, body: &s
 
 async fn list_default_builtin_tools_merged_yaml(
     working_folder: &std::path::Path,
-) -> Vec<loom::tool_source::ToolSpec> {
+) -> Vec<loom_tools::tool_source::ToolSpec> {
     let aggregate = Arc::new(AggregateToolSource::new());
     aggregate
         .register_async(Box::new(WebFetcherTool::new()))
@@ -85,7 +88,7 @@ async fn list_default_builtin_tools_merged_yaml(
     #[cfg(windows)]
     {
         aggregate
-            .register_async(Box::new(loom::tools::PowerShellTool::new()))
+            .register_async(Box::new(PowerShellTool::new()))
             .await;
     }
     register_file_tools(aggregate.as_ref(), working_folder, None, None)

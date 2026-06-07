@@ -39,7 +39,7 @@ async fn spawn_webhook_server_with_mock(
 ) -> (
     String,
     tokio::task::JoinHandle<()>,
-    mpsc::Receiver<loom::RunOptions>,
+    mpsc::Receiver<loom_agent::RunOptions>,
 ) {
     let (tx, rx) = mpsc::channel(2);
     let run_agent: RunAgentCallback = Arc::new(move |opts| {

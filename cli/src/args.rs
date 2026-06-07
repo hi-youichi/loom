@@ -144,6 +144,8 @@ Skills(SkillsArgs),
     Review(ReviewArgs),
     /// Create and manage company tasks (AI Company mode)
     Task(TaskArgs),
+    /// Run interactive TUI with persistent input bar and status bar
+    Tui(TuiArgs),
 }
 
 #[derive(clap::Args, Debug, Clone)]
@@ -595,4 +597,31 @@ pub(crate) enum TaskCommand {
         #[arg(short, long, value_name = "AGENT", default_value = "ceo")]
         agent: String,
     },
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct TuiArgs {
+    /// Override LLM model for TUI sessions
+    #[arg(short('M'), long, value_name = "MODEL")]
+    pub(crate) model: Option<String>,
+
+    /// Override LLM provider name
+    #[arg(long, value_name = "PROVIDER")]
+    pub(crate) provider: Option<String>,
+
+    /// Named agent profile
+    #[arg(short('P'), long, value_name = "NAME")]
+    pub(crate) agent: Option<String>,
+
+    /// Session ID for conversation continuity
+    #[arg(long, value_name = "ID")]
+    pub(crate) session_id: Option<String>,
+
+    /// Working folder
+    #[arg(short, long, value_name = "DIR")]
+    pub(crate) working_folder: Option<PathBuf>,
+
+    /// Path to MCP config JSON
+    #[arg(long, value_name = "PATH")]
+    pub(crate) mcp_config: Option<PathBuf>,
 }

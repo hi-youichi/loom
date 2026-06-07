@@ -10,7 +10,7 @@ pub mod review_history;
 pub mod run;
 pub mod tool_cmd;
 
-pub use loom::Envelope;
+pub use loom_protocol::Envelope;
 pub use model_cmd::{list_all_models, list_provider_models};
 pub use run::{
     cli_list_models, cli_list_tools, cli_show_tool, print_reply_timestamp,

@@ -7,7 +7,7 @@ use crate::args::{
     McpCommand, MemoryCmdArgs, MemoryCommand, ModelsArgs, ModelsCommand, SkillsArgs,
     SkillsCommand, ToolArgs, ToolCommand,
 };
-use loom::profile_convert::ExportFormat;
+use loom_react_config::profile_convert::ExportFormat;
 use crate::mcp_manager::{AddMcpArgs, EditMcpArgs, McpManager, ServerDetail, ServerInfo};
 use crate::run_flow::build_run_options;
 use crate::session::{SessionArgs, SessionCommand, SessionManager};
@@ -241,7 +241,7 @@ pub(crate) fn handle_agent_command(
 }
 
 fn handle_agent_list() -> Result<(), Box<dyn std::error::Error>> {
-    let profiles = loom::list_available_profiles();
+    let profiles = loom_react_config::profile::list_available_profiles();
     if profiles.is_empty() {
         println!("No agent profiles found.");
         return Ok(());
@@ -258,13 +258,13 @@ fn handle_agent_list() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn handle_agent_export(export_args: &ExportArgs) -> Result<(), Box<dyn std::error::Error>> {
-    use loom::profile_convert::export;
+    use loom_react_config::profile_convert::export;
 
     let format: ExportFormat = export_args.format.parse()?;
 
     let agent_names: Vec<String> = match &export_args.agent {
         Some(name) => vec![name.clone()],
-        None => loom::list_available_profiles()
+        None => loom_react_config::profile::list_available_profiles()
             .into_iter()
             .map(|p| p.name)
             .collect(),

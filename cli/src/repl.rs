@@ -7,8 +7,8 @@ use std::io::Write;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 use cli::{run_cli_turn, RunCmd, RunError, RunOptions, RunOutput, StreamOut};
-use loom::command::{self as loom_command};
-use loom::UserContent;
+use loom_commands::{self as loom_command};
+use loom_llm::message::UserContent;
 
 use crate::output::{emit_run_output, OutputConfig};
 use crate::Command;
@@ -37,6 +37,7 @@ fn cmd_to_runcmd(cmd: &Command) -> RunCmd {
         Command::ReviewSkill(_) => unreachable!("review-skill handled in main"),
         Command::Review(_) => unreachable!("review handled in main"),
         Command::Task(_) => unreachable!("task handled in main"),
+        Command::Tui(_) => unreachable!("tui handled in main"),
     }
 }
 

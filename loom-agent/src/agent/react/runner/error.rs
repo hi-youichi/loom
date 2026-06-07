@@ -1,8 +1,8 @@
 //! Error type for ReAct runner (run_agent, run_react_graph_stream).
 
-use loom::error::AgentError;
-use loom::graph::CompilationError;
-use loom::memory::CheckpointError;
+use loom_llm::error::AgentError;
+use loom_graph::CompilationError;
+use loom_memory::CheckpointError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunError {

@@ -4,19 +4,19 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::agent::react::REACT_SYSTEM_PROMPT;
-use loom::compress::{build_graph, CompactionConfig, CompressionGraphNode};
-use loom::graph::{
+use loom_compress::{build_graph, CompactionConfig, CompressionGraphNode};
+use loom_graph::{
     CompilationError, CompiledStateGraph, LoggingNodeMiddleware, StateGraph, END, START,
 };
-use loom::helve::ApprovalPolicy;
-use loom::llm::LlmProvider;
-use loom::memory::{Checkpointer, RunnableConfig, Store};
+use loom_helve::ApprovalPolicy;
+use loom_llm::LlmProvider;
+use loom_memory::{Checkpointer, RunnableConfig, Store};
 use crate::runner_common;
-use loom::state::ReActState;
-use loom::stream::StreamEvent;
-use loom::tool_source::ToolSource;
-use loom::user_message::UserMessageStore;
-use loom::active_operation::RunCancellation;
+use loom_types::state::ReActState;
+use loom_stream::StreamEvent;
+use loom_tools::ToolSource;
+use loom_memory::user_message::UserMessageStore;
+use loom_types::active_operation::RunCancellation;
 use crate::AnyStreamEvent;
 
 use super::error::RunError;

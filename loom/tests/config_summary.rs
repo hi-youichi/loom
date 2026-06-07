@@ -5,7 +5,7 @@
 
 mod init_logging;
 
-use loom::{
+use loom_helve::config_summary::{
     ConfigSection, EmbeddingConfigSummary, LlmConfigSummary, MemoryConfigSummary, RunConfigSummary,
     ToolConfigSummary,
 };

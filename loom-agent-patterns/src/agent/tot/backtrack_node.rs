@@ -8,7 +8,7 @@ use async_trait::async_trait;
 
 use loom_llm::error::AgentError;
 use loom_graph::{Next, RunContext};
-use loom::Message;
+use loom_llm::message::Message;
 use loom_stream::StreamEvent;
 use loom_graph::Node;
 
@@ -103,7 +103,7 @@ mod tests {
     use super::super::state::{TotCandidate, TotExtension};
     use super::*;
     use loom_memory::RunnableConfig;
-    use loom::UserContent;
+    use loom_llm::message::UserContent;
     use loom_types::state::{ReActState, ToolCall, ToolResult};
     use tokio::sync::mpsc;
 

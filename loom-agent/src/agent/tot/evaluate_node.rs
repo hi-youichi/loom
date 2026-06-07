@@ -6,11 +6,11 @@
 
 use async_trait::async_trait;
 
-use loom::error::AgentError;
-use loom::graph::{Next, RunContext};
-use loom::message::Message;
-use loom::stream::StreamEvent;
-use loom::Node;
+use loom_llm::error::AgentError;
+use loom_graph::{Next, RunContext};
+use loom_llm::message::Message;
+use loom_stream::StreamEvent;
+use loom_graph::Node;
 
 use super::state::{TotCandidate, TotState};
 
@@ -171,8 +171,9 @@ impl Node<TotState> for ThinkEvaluateNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom::memory::RunnableConfig;
-    use loom::state::{ReActState, ToolCall};
+    use loom_memory::RunnableConfig;
+    use loom_cli_types::ReActState;
+    use loom_llm::ToolCall;
     use tokio::sync::mpsc;
 
     fn candidate(thought: &str, with_tool: bool) -> TotCandidate {

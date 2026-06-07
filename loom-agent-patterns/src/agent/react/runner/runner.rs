@@ -8,14 +8,14 @@ use loom_compress::{build_graph, CompactionConfig, CompressionGraphNode};
 use loom_graph::{
     CompilationError, CompiledStateGraph, LoggingNodeMiddleware, StateGraph, END, START,
 };
-use loom::ApprovalPolicy;
+use loom_types::approval::ApprovalPolicy;
 use loom_llm::LlmProvider;
 use loom_memory::{Checkpointer, RunnableConfig, Store};
 use crate::runner_common;
 use loom_types::state::ReActState;
 use loom_stream::StreamEvent;
 use loom_tools::tool_source::ToolSource;
-use loom::user_message::UserMessageStore;
+use loom_memory::user_message::UserMessageStore;
 use loom_types::cli_run::{AnyStreamEvent, RunCancellation};
 
 use super::error::RunError;
@@ -58,7 +58,7 @@ impl ReactRunner {
         cancellation: Option<RunCancellation>,
         verbose: bool,
         title_provider: Option<Arc<dyn LlmProvider>>,
-        title_headers: Option<loom::llm::LlmHeaders>,
+        title_headers: Option<loom_llm::LlmHeaders>,
     ) -> Result<Self, CompilationError> {
         let think = ThinkNode::new(Arc::clone(&provider));
         let act = ActNode::new(tool_source)
@@ -98,7 +98,7 @@ impl ReactRunner {
         graph
             .add_node("think", Arc::new(think))
             .add_node("title", Arc::new(title_node))
-            .add_node("act", Arc::clone(&act) as Arc<dyn loom::graph::Node<ReActState>>)
+            .add_node("act", Arc::clone(&act) as Arc<dyn loom_graph::Node<ReActState>>)
             .add_node("observe", Arc::new(observe))
             .add_node("compress", compress_node)
             .add_edge(START, "think")

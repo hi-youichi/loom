@@ -2,8 +2,7 @@
 
 use super::common;
 use futures_util::{SinkExt, StreamExt};
-use loom::protocol::AgentIdentifier;
-use loom::{AgentType, ClientRequest, ProtocolEvent, RunRequest, ServerResponse};
+use loom_protocol::{AgentIdentifier, AgentType, ClientRequest, ProtocolEvent, RunRequest, ServerResponse};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::timeout;
@@ -130,7 +129,7 @@ async fn e2e_run_then_disconnect() {
 
     let req = ClientRequest::Run(RunRequest {
         id: None,
-        message: loom::UserContent::text("hi".to_string()),
+        message: loom_llm::message::UserContent::text("hi".to_string()),
         agent: AgentIdentifier::Type(AgentType::React),
         thread_id: None,
         workspace_id: None,
@@ -208,7 +207,7 @@ async fn e2e_run_react() {
 
     let req = ClientRequest::Run(RunRequest {
         id: None,
-        message: loom::UserContent::text("Say hello".to_string()),
+        message: loom_llm::message::UserContent::text("Say hello".to_string()),
         agent: AgentIdentifier::Type(AgentType::React),
         thread_id: None,
         workspace_id: None,

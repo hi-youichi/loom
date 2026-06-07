@@ -1,6 +1,6 @@
 use super::super::common;
 use futures_util::StreamExt;
-use loom::{
+use loom_protocol::{
     ClientRequest, ServerResponse, WorkspaceCreateRequest, WorkspaceThreadAddRequest,
     WorkspaceThreadListRequest, WorkspaceThreadRemoveRequest,
 };

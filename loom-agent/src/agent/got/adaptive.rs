@@ -6,9 +6,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use loom::error::AgentError;
-use loom::message::Message;
-use loom::LlmClient;
+use loom_llm::error::AgentError;
+use loom_llm::message::Message;
+use loom_llm::LlmClient;
 
 use super::dag::{append_subgraph, AppendSubgraphError};
 use super::prompt::AGOT_EXPAND_SYSTEM;

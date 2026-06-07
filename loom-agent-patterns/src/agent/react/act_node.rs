@@ -21,14 +21,12 @@ use std::collections::HashMap;
 use tracing::{debug, trace, warn};
 
 use loom_types::cli_run::{AnyStreamEvent, RunCancellation};
-use loom::AgentError;
-use loom::goal_runner::state::ToolError;
+use loom_llm::error::AgentError;
+use loom_cli_types::goal_runner::state::ToolError;
 use loom_graph::{run_cancellable, Interrupt, Next, Node, RunContext};
-use loom::{tools_requiring_approval, ApprovalPolicy, APPROVAL_REQUIRED_EVENT_TYPE};
+use loom_types::approval::{tools_requiring_approval, ApprovalPolicy, APPROVAL_REQUIRED_EVENT_TYPE};
 use loom_memory::uuid6;
-use loom::{
-    normalize_tool_output, NormalizationConfig, ToolOutputHint,
-};
+use loom_types::tool_output_normalizer::{normalize_tool_output, NormalizationConfig, ToolOutputHint};
 use loom_types::state::{ReActState, ToolCall, ToolResult};
 use loom_stream::{StreamEvent, StreamMode, ToolStreamWriter};
 use loom_tools::tool_source::{ToolCallContent, ToolCallContext, ToolSource};
@@ -665,7 +663,7 @@ impl Node<ReActState> for ActNode {
                 depth: run_ctx.config.depth.unwrap_or(0),
                 run_cancellation: self.run_cancellation.clone(),
                 any_stream_event_sender: {
-                    // TODO: Fix stream event forwarding - type mismatch between loom::cli_run::AnyStreamEvent and loom_types::cli_run::AnyStreamEvent
+                    // TODO: Fix stream event forwarding - type mismatch between loom_agent::AnyStreamEvent and loom_types::cli_run::AnyStreamEvent
                     let _sender = self.any_stream_event_sender.lock().unwrap().clone();
                     None // Disabled for now due to type incompatibility
                     /*

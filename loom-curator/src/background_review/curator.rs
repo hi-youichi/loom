@@ -1,12 +1,12 @@
 // Re-export state::ToolCall as CuratorToolCall for classification functions
 // that need structured args (HashMap) instead of JSON string.
-pub use loom::state::react_state::ToolCall as CuratorToolCall;
+pub use loom_types::state::ToolCall as CuratorToolCall;
 
 use super::prompts::CURATOR_REVIEW_PROMPT;
 use super::skill_registry::{Lifecycle, SkillContent, SkillError, SkillMeta, SkillRegistry, Source};
 use super::skill_usage::{SkillUsageReport, SkillUsageStore};
-use loom::llm::LlmClient;
-use loom::message::{Message, UserContent};
+use loom_llm::LlmClient;
+use loom_llm::message::{Message, UserContent};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};

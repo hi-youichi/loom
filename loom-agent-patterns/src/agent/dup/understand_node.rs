@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use loom_llm::error::AgentError;
 use loom_graph::Next;
 use loom_llm::LlmClient;
-use loom::Message;
+use loom_llm::message::Message;
 use loom_graph::Node;
 
 use super::prompt::DUP_UNDERSTAND_PROMPT;

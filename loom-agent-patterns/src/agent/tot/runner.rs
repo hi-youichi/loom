@@ -10,15 +10,15 @@ use tokio_util::sync::CancellationToken;
 use crate::agent::react::{build_react_initial_state, REACT_SYSTEM_PROMPT};
 use loom_llm::error::AgentError;
 use loom_graph::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
-use loom::ApprovalPolicy;
+use loom_types::approval::ApprovalPolicy;
 use loom_memory::{CheckpointError, Checkpointer, RunnableConfig, Store};
-use loom::Message;
+use loom_llm::message::Message;
 use crate::runner_common::{self, load_from_checkpoint_or_build};
 use loom_stream::StreamEvent;
 use loom_tools::tool_source::ToolSource;
 use loom_llm::LlmClient;
 use loom_types::cli_run::AnyStreamEvent;
-use loom::{StateGraph, END, START};
+use loom_graph::{StateGraph, END, START};
 
 use super::adapter_nodes::{TotActNode, TotObserveNode};
 use super::backtrack_node::BacktrackNode;
@@ -109,15 +109,15 @@ struct SharedLlm(Arc<dyn LlmClient>);
 impl LlmClient for SharedLlm {
     async fn invoke(
         &self,
-        messages: &[loom::message::Message],
-    ) -> Result<loom::llm::LlmResponse, AgentError> {
+        messages: &[loom_llm::message::Message],
+    ) -> Result<loom_llm::LlmResponse, AgentError> {
         self.0.invoke(messages).await
     }
     async fn invoke_stream(
         &self,
-        messages: &[loom::message::Message],
-        tx: Option<tokio::sync::mpsc::Sender<loom::stream::MessageChunk>>,
-    ) -> Result<loom::llm::LlmResponse, AgentError> {
+        messages: &[loom_llm::message::Message],
+        tx: Option<tokio::sync::mpsc::Sender<loom_stream::MessageChunk>>,
+    ) -> Result<loom_llm::LlmResponse, AgentError> {
         self.0.invoke_stream(messages, tx).await
     }
 }

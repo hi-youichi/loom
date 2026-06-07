@@ -21,7 +21,7 @@ use tokio::sync::oneshot;
 use tracing::{error, info, warn};
 
 use app::{router, run_config_from_env, AppState, RunConfig};
-use loom::llm::{ModelRegistry, ProviderConfig};
+use loom_tier::{ModelRegistry, ProviderConfig};
 
 const DEFAULT_WS_ADDR: &str = "127.0.0.1:8080";
 
@@ -56,7 +56,7 @@ pub async fn run_serve_on_listener(
     // Load provider configs from config file
     info!("📡 Loading providers from config file...");
     let providers: Vec<ProviderConfig> =
-        loom::provider::load_provider_configs().unwrap_or_default();
+        loom_tier::provider::load_provider_configs().unwrap_or_default();
     info!("📡 Found {} provider config(s)", providers.len());
     for (i, p) in providers.iter().enumerate() {
         info!("  Provider {}: name={}, base_url={}", i + 1, p.name, p.base_url.as_deref().unwrap_or("none"));
@@ -163,15 +163,15 @@ fn setup_workspace_store() -> Option<Arc<loom_workspace::Store>> {
 }
 
 /// Setup user message store from environment
-fn setup_user_message_store() -> Option<std::sync::Arc<dyn loom::UserMessageStore>> {
+fn setup_user_message_store() -> Option<std::sync::Arc<dyn loom_memory::user_message::UserMessageStore>> {
     let db_path = std::env::var("USER_MESSAGE_DB")
         .ok()
         .unwrap_or_else(|| "serve.db".to_string());
 
-    match loom::SqliteUserMessageStore::new(&db_path) {
+    match loom_memory::user_message::SqliteUserMessageStore::new(&db_path) {
         Ok(store) => {
             info!("✓ User message store initialized (db: {})", db_path);
-            Some(Arc::new(store) as Arc<dyn loom::UserMessageStore>)
+            Some(Arc::new(store) as Arc<dyn loom_memory::user_message::UserMessageStore>)
         }
         Err(e) => {
             warn!("⚠️  Failed to init user message store: {}", e);

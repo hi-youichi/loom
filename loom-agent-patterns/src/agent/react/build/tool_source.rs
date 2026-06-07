@@ -31,7 +31,7 @@ const DEFAULT_MEMORY_NAMESPACE: &[&str] = &["default", "memories"];
 
 pub(crate) async fn build_tool_source(
     config: &ReactBuildConfig,
-    store: &Option<Arc<dyn loom::memory::Store>>,
+    store: &Option<Arc<dyn loom_memory::Store>>,
 ) -> Result<Box<dyn ToolSource>, AgentError> {
     let has_memory = store.is_some();
     let has_exa = config.exa_api_key.is_some();
@@ -465,7 +465,7 @@ pub(crate) async fn build_tool_source(
 async fn apply_registry_config(
     aggregate: &Arc<AggregateToolSource>,
     config: &ReactBuildConfig,
-) -> Result<(), loom::tool_source::YamlSpecError> {
+) -> Result<(), loom_tools::YamlSpecError> {
     aggregate.load_yaml_specs().await?;
     if let Some(ref filter) = config.builtin_tool_filter {
         if !filter.is_noop() {

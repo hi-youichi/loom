@@ -5,7 +5,9 @@
 
 mod init_logging;
 
-use loom::{LlmClient, Message, MockLlm};
+use loom_llm::LlmClient;
+use loom_llm::message::Message;
+use loom_llm::client::MockLlm;
 
 #[tokio::test]
 async fn mock_llm_with_get_time_returns_content_and_one_tool_call() {
@@ -32,7 +34,7 @@ async fn mock_llm_with_no_tool_calls_returns_content_and_empty_tool_calls() {
 async fn mock_llm_new_custom_content_and_tool_calls() {
     let llm = MockLlm::new(
         "Custom reply",
-        vec![loom::ToolCall {
+        vec![loom_llm::ToolCall {
             name: "search".into(),
             arguments: r#"{"q":"x"}"#.into(),
             id: Some("id-1".into()),

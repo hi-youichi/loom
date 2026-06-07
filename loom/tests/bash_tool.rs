@@ -2,7 +2,9 @@
 
 mod init_logging;
 
-use loom::tools::{BashTool, Tool, TOOL_BASH};
+use loom_tools::tools::bash::BashTool;
+use loom_tools::tools::bash::TOOL_BASH;
+use loom_tools::Tool;
 use serde_json::json;
 
 #[tokio::test]

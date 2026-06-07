@@ -1,7 +1,7 @@
 //! Handle `workspace_file_read` requests — read file content within a workspace.
 
-use loom::protocol::requests::WorkspaceFileReadRequest;
-use loom::protocol::responses::ServerResponse;
+    use loom_protocol::requests::WorkspaceFileReadRequest;
+    use loom_protocol::responses::ServerResponse;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -20,7 +20,7 @@ pub(crate) async fn handle_workspace_file_read(
     let target = match target {
         Ok(t) => t,
         Err(e) => {
-            return ServerResponse::Error(loom::ErrorResponse {
+            return ServerResponse::Error(loom_protocol::ErrorResponse {
                 id: Some(req.id),
                 error: e,
             })
@@ -30,14 +30,14 @@ pub(crate) async fn handle_workspace_file_read(
     let content = match std::fs::read_to_string(&target) {
         Ok(c) => c,
         Err(e) => {
-            return ServerResponse::Error(loom::ErrorResponse {
+            return ServerResponse::Error(loom_protocol::ErrorResponse {
                 id: Some(req.id),
                 error: format!("failed to read file: {}", e),
             })
         }
     };
 
-    ServerResponse::WorkspaceFileRead(loom::protocol::responses::WorkspaceFileReadResponse {
+    ServerResponse::WorkspaceFileRead(loom_protocol::responses::WorkspaceFileReadResponse {
         id: req.id,
         workspace_id: req.workspace_id,
         path: req.path,

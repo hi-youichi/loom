@@ -5,7 +5,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use loom::state::{ReActState, ToolCall};
+use loom_types::state::ReActState;
+use loom_llm::ToolCall;
 
 /// One candidate produced by ThinkExpand: a thought and optional tool calls.
 ///
@@ -84,8 +85,8 @@ impl TotState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom::state::ReActState;
-    use loom::Message;
+    use loom_types::state::ReActState;
+    use loom_llm::message::Message;
 
     #[test]
     fn last_assistant_reply_delegates_to_core() {

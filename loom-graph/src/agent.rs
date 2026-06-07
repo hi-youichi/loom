@@ -4,9 +4,11 @@
 //! Used by all agents (e.g. EchoAgent) and by callers that run one step per `run(state)`.
 //! When `Agent::State == S`, an agent can be used as a graph `Node<S>` (see blanket impl below).
 
-use crate::error::AgentError;
-use crate::graph::{Next, Node};
 use std::sync::Arc;
+
+use loom_llm::error::AgentError;
+
+use crate::{Next, Node};
 
 /// Minimal agent trait: state in, state out.
 ///

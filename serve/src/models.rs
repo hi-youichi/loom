@@ -1,14 +1,12 @@
 //! Model request handlers.
 
-use loom::{
-    llm::{ModelRegistry, ProviderConfig},
-    protocol::responses::ModelInfo,
-    ServerResponse,
-};
+use loom_tier::{ModelRegistry, ProviderConfig};
+use loom_protocol::responses::ModelInfo;
+use loom_protocol::ServerResponse;
 
 /// Handle list_models request
 pub(crate) async fn handle_list_models(
-    request: loom::ListModelsRequest,
+    request: loom_protocol::requests::ListModelsRequest,
     providers: &[ProviderConfig],
 ) -> ServerResponse {
     let registry = ModelRegistry::global();
@@ -38,7 +36,7 @@ pub(crate) async fn handle_list_models(
         })
         .collect();
 
-    ServerResponse::ListModels(loom::ListModelsResponse {
+    ServerResponse::ListModels(loom_protocol::responses::ListModelsResponse {
         id: request.id,
         models,
     })
@@ -46,12 +44,12 @@ pub(crate) async fn handle_list_models(
 
 /// Handle set_model request  
 pub(crate) async fn handle_set_model(
-    request: loom::SetModelRequest,
+    request: loom_protocol::requests::SetModelRequest,
     _providers: &[ProviderConfig],
 ) -> ServerResponse {
     // For now, session model setting is not implemented in the backend
     // Return success but indicate the limitation
-    ServerResponse::SetModel(loom::SetModelResponse {
+    ServerResponse::SetModel(loom_protocol::responses::SetModelResponse {
         id: request.id,
         success: false,
         error: Some("Session model setting not yet implemented".to_string()),

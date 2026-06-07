@@ -2,6 +2,7 @@
 //!
 //! Core graph structures and types for the Loom agent framework.
 
+pub mod agent;
 pub mod cancellable;
 pub mod channels;
 pub mod compile_error;
@@ -53,3 +54,6 @@ pub use run_context::RunContext;
 pub use runtime::Runtime;
 pub use state_graph::{StateGraph, START, END, MetadataExtractorFn};
 pub use visualization::{generate_dot, generate_text};
+
+// Re-export Agent trait and AgentNode
+pub use agent::{Agent, AgentNode};

@@ -4,7 +4,7 @@
 
 mod init_logging;
 
-use loom::tool_source::{McpToolSource, ToolSource};
+use loom_tools::tool_source::{McpToolSource, ToolSource};
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "spawns mcp-filesystem-server; run with --ignored"]

@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use loom::{
-    ServerResponse, WorkspaceCreateRequest, WorkspaceCreateResponse,
-};
+    use loom_protocol::{ServerResponse, WorkspaceCreateRequest, WorkspaceCreateResponse};
 
 use super::no_store_error;
 
@@ -18,7 +16,7 @@ pub(crate) async fn handle_workspace_create(
         Ok(workspace_id) => {
             ServerResponse::WorkspaceCreate(WorkspaceCreateResponse { id, workspace_id })
         }
-        Err(e) => ServerResponse::Error(loom::ErrorResponse {
+        Err(e) => ServerResponse::Error(loom_protocol::ErrorResponse {
             id: Some(id),
             error: e.to_string(),
         }),

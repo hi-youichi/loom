@@ -1,9 +1,11 @@
 //! Handle `AgentList` requests.
 
-use loom::{
-    list_available_profiles, AgentListRequest, AgentListResponse, AgentSource, AgentSourceFilter,
-    AgentSummary, ProfileSource, ServerResponse,
-};
+    use loom_protocol::{
+        AgentListRequest, AgentListResponse, AgentSource, AgentSourceFilter,
+        AgentSummary, ServerResponse,
+    };
+    use loom_react_config::profile::list_available_profiles;
+    use loom_react_config::profile::ProfileSource;
 
 pub(crate) async fn handle_agent_list(r: AgentListRequest) -> ServerResponse {
     let id = r.id.clone();

@@ -5,7 +5,9 @@ use loom_agent::{
     AnyStreamEvent, RunCmd,
     RunCompletion, RunError, RunOptions,
 };
-use loom::{EnvelopeState, Message, ProtocolEventEnvelope, StreamEvent};
+use loom_protocol::{EnvelopeState, ProtocolEventEnvelope};
+use loom_stream::StreamEvent;
+use loom_llm::message::Message;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
@@ -137,10 +139,10 @@ pub(super) struct AgentTaskParams {
     pub(super) opts: RunOptions,
     pub(super) cmd: RunCmd,
     pub(super) initial_user_appended: bool,
-    pub(super) user_message_store: Option<Arc<dyn loom::UserMessageStore>>,
+    pub(super) user_message_store: Option<Arc<dyn loom_memory::user_message::UserMessageStore>>,
     pub(super) thread_id: Option<String>,
     pub(super) append_queue_capacity: usize,
-    pub(super) llm_override: Option<Box<dyn loom::LlmClient>>,
+    pub(super) llm_override: Option<Box<dyn loom_llm::LlmClient>>,
     pub(super) on_title: Option<OnTitleFn>,
 }
 

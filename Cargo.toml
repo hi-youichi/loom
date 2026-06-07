@@ -24,16 +24,22 @@ members = [
     "telegram-bot",
     "task-core",
     "task-cli",
-    "task-mcp-server", "loom-types",
+    "task-mcp-server",
+    "loom-types",
     "loom-agent",
     "loom-agent-patterns",
     "loom-compress",
     "loom-commands",
     "loom-stream",
-	    "loom-tools",
-	    "loom-background-review",
-	    "loom-protocol",
-	]
+    "loom-tools",
+    "loom-background-review",
+    "loom-protocol",
+    "loom-stream-display",
+    "loom-helve",
+    "loom-tier",
+    "loom-react-config",
+    "loom-cli-types",
+]
 
 [workspace.package]
 version = "0.2.1"

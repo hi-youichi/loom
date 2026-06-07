@@ -5,7 +5,8 @@
 //! Run: `cargo run -p loom-examples --example echo -- "Hello"`
 
 use async_trait::async_trait;
-use loom::{Agent, AgentError, Message};
+use loom_graph::{Agent, AgentError};
+use loom_llm::message::Message;
 use std::env;
 
 /// Example state: message list only (defined in example, not in framework).

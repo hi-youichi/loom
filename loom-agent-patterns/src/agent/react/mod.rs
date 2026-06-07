@@ -101,7 +101,7 @@ pub const REACT_SYSTEM_PROMPT: &str = "";
 mod tests {
     use super::*;
     use loom_types::state::ToolCall;
-    use loom::Message;
+    use loom_llm::message::Message;
 
     #[test]
     fn tools_condition_returns_end_when_no_tool_calls() {

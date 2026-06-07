@@ -1,184 +1,33 @@
 //! Run orchestration for agent patterns (ReAct, ToT, GoT, DUP).
 //!
-//! Most agent functionality has moved to loom-agent crate.
-//! This module contains only what's needed for loom infrastructure.
+//! This module retains orchestration functions that depend on loom internals.
+//! All types live in their own crates — consumers should import directly:
+//! - Profile types → `loom_react_config::profile::*`
+//! - `load_agents_md` → `loom_react_config::load_agents_md`
+//! - `build_config_from_profile` → `loom_react_config::build_config_from_profile`
 
 mod profile;
 
-use crate::skill::SkillRegistry;
-use crate::helve::env_context::ProjectInfo;
-use crate::helve::EnvContext;
-use crate::{
-    assemble_react_system_prompt, to_react_build_config, HelveConfig, ReactBuildConfig,
-    ReactPromptInputs,
-};
+use loom_react_config::ReactBuildConfig;
+use loom_skill::discovery::SkillRegistry;
+use loom_helve::env_context::{EnvContext, ProjectInfo};
+use loom_helve::config::{HelveConfig, to_react_build_config};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-pub use profile::{
-    list_available_profiles, load_profile_from_options, resolve_profile, AgentProfile,
-    ProfileError, ProfileSource, ProfileSummary,
+use loom_cli_types::{
+    RunOptions,
+    ResolvedAgent, ResolvedModelConfig,
+    DEFAULT_WORKING_FOLDER,
 };
 
-/// Default working folder when not set (current directory).
-pub const DEFAULT_WORKING_FOLDER: &str = ".";
+use loom_react_config::load_agents_md;
 
-/// Metadata about the agent profile that was resolved for a run.
-#[derive(Debug, Clone)]
-pub struct ResolvedAgent {
-    pub name: String,
-    pub description: Option<String>,
-    pub source: ProfileSource,
-}
+// Internal profile helper — not re-exported.
+use profile::load_profile_from_options;
+use loom_react_config::profile::AgentProfile;
 
-/// Resolved model + provider configuration from a model string like "openai/gpt-4o".
-#[derive(Debug, Clone, Default)]
-pub struct ResolvedModelConfig {
-    pub model: Option<String>,
-    pub provider: Option<String>,
-    pub base_url: Option<String>,
-    pub api_key: Option<String>,
-    pub provider_type: Option<String>,
-}
-
-// TODO: Agent types moved to loom-agent crate
-// Stub RunOptions for loom infrastructure that only needs base_url/api_key/model/etc
-pub struct RunOptions {
-    pub message: crate::UserContent,
-    pub working_folder: Option<PathBuf>,
-    pub session_id: Option<String>,
-    pub cancellation: Option<crate::RunCancellation>,
-    pub thread_id: Option<String>,
-    pub agent: Option<String>,
-    pub verbose: bool,
-    pub got_adaptive: bool,
-    pub display_max_len: usize,
-    pub output_json: bool,
-    pub model: Option<String>,
-    pub mcp_config_path: Option<PathBuf>,
-    pub output_timestamp: bool,
-    pub dry_run: bool,
-    pub debug_llm: bool,
-    pub provider: Option<String>,
-    pub base_url: Option<String>,
-    pub api_key: Option<String>,
-    pub provider_type: Option<String>,
-    pub any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
-    pub bash_executor: Option<Arc<dyn loom_tools::CommandExecutor>>,
-    pub extra_tools: Option<Arc<Vec<Arc<dyn crate::tools::Tool>>>>,
-    pub acp_session_id: Option<String>,
-    pub force_compact: bool,
-    pub chat_id: Option<i64>,
-    pub worktree: bool,
-}
-
-impl std::fmt::Debug for RunOptions {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RunOptions")
-            .field("message", &"<UserContent>")
-            .field("working_folder", &self.working_folder)
-            .field("model", &self.model)
-            .field("provider", &self.provider)
-            .field("base_url", &self.base_url)
-            .field("thread_id", &self.thread_id)
-            .field("dry_run", &self.dry_run)
-            .finish_non_exhaustive()
-    }
-}
-
-impl Clone for RunOptions {
-    fn clone(&self) -> Self {
-        Self {
-            message: self.message.clone(),
-            working_folder: self.working_folder.clone(),
-            session_id: self.session_id.clone(),
-            cancellation: self.cancellation.clone(),
-            thread_id: self.thread_id.clone(),
-            agent: self.agent.clone(),
-            verbose: self.verbose,
-            got_adaptive: self.got_adaptive,
-            display_max_len: self.display_max_len,
-            output_json: self.output_json,
-            model: self.model.clone(),
-            mcp_config_path: self.mcp_config_path.clone(),
-            output_timestamp: self.output_timestamp,
-            dry_run: self.dry_run,
-            debug_llm: self.debug_llm,
-            provider: self.provider.clone(),
-            base_url: self.base_url.clone(),
-            api_key: self.api_key.clone(),
-            provider_type: self.provider_type.clone(),
-            any_stream_event_sender: self.any_stream_event_sender.clone(),
-            bash_executor: self.bash_executor.clone(),
-            extra_tools: self.extra_tools.clone(),
-            acp_session_id: self.acp_session_id.clone(),
-            force_compact: self.force_compact,
-            chat_id: self.chat_id,
-            worktree: self.worktree,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RunCmd {
-    React,
-    Dup,
-    Tot,
-    Got,
-}
-
-#[derive(Debug, Clone)]
-pub enum RunCompletion {
-    Finished(AgentRunResult),
-    Cancelled,
-}
-
-#[derive(Debug, Clone)]
-pub enum RunError {
-    LlmError(String),
-    ToolError(String),
-    Other(String),
-}
-
-#[derive(Debug, Clone)]
-pub enum AnyStreamEvent {
-    React(crate::stream::StreamEvent<crate::ReActState>),
-    Dup(crate::stream::StreamEvent<StubDupState>),
-    Tot(crate::stream::StreamEvent<StubTotState>),
-    Got(crate::stream::StreamEvent<StubGotState>),
-}
-
-// Stub agent state types for AnyStreamEvent (these will be available from loom-agent)
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct StubDupState {
-    pub core: crate::ReActState,
-}
-
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct StubTotState {
-    pub core: crate::ReActState,
-}
-
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct StubGotState {
-    pub input_message: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct AgentRunResult {
-    pub reply: String,
-    pub reasoning_content: Option<String>,
-}
-
-// Re-export from active_operation module
-pub use crate::active_operation::{ActiveOperation, ActiveOperationCanceller, ActiveOperationKind, RunCancellation};
-
-// Re-export from loom-types for use in loom infrastructure
-pub use loom_types::state::ReActState;
-
-const AGENTS_MD_FILE: &str = "AGENTS.md";
-
-/// Reads AGENTS.md from current directory and optionally from working_folder.
+/// Reads memory prompt from LOOM_HOME/data/memory/.
 pub fn load_memory_prompt() -> Option<String> {
     let memory_dir = env_config::home::loom_home().join("data").join("memory");
     let files = [
@@ -196,26 +45,6 @@ pub fn load_memory_prompt() -> Option<String> {
         }
     }
     if parts.is_empty() { None } else { Some(parts.join("\n\n")) }
-}
-
-pub fn load_agents_md(working_folder: Option<&PathBuf>) -> Option<String> {
-    let cwd = std::env::current_dir().ok()?;
-    let cwd_canon = cwd.canonicalize().unwrap_or(cwd.clone());
-    let cwd_agents = std::fs::read_to_string(cwd.join(AGENTS_MD_FILE))
-        .ok()
-        .filter(|s| !s.trim().is_empty())
-        .map(|s| s.trim().to_string());
-    let work_agents = working_folder
-        .filter(|p| p.canonicalize().unwrap_or_else(|_| p.to_path_buf()) != cwd_canon)
-        .and_then(|p| std::fs::read_to_string(p.join(AGENTS_MD_FILE)).ok())
-        .filter(|s| !s.trim().is_empty())
-        .map(|s| s.trim().to_string());
-    match (cwd_agents, work_agents) {
-        (Some(c), Some(w)) => Some(format!("{}\n\n{}", c, w)),
-        (Some(c), None) => Some(c),
-        (None, Some(w)) => Some(w),
-        (None, None) => None,
-    }
 }
 
 /// `role_setting` from the resolved agent profile only (trimmed non-empty content).
@@ -324,10 +153,16 @@ pub fn build_helve_config(
             .and_then(|s| s.dirs.as_ref())
             .map(|dirs| dirs.iter().map(PathBuf::from).collect())
             .unwrap_or_default();
-        let mut registry = SkillRegistry::discover(&working_folder, &extra_dirs);
+        let mut registry = SkillRegistry::discover(&working_folder, &extra_dirs)
+            .unwrap_or_else(|e| {
+                tracing::warn!("skill discovery failed: {e}");
+                SkillRegistry::empty()
+            });
         if let Some(ref p) = profile {
             if let Some(ref src) = p.source_dir {
-                registry.add_agent_skills(&src.join("skills"));
+                if let Err(e) = registry.add_agent_skills(&src.join("skills")) {
+                    tracing::warn!("agent skills scan failed: {e}");
+                }
             }
             if let Some(ref sc) = p.skills {
                 registry.apply_filters(sc.enabled.as_deref(), sc.disabled.as_deref());
@@ -417,174 +252,7 @@ pub fn build_helve_config(
     (helve, config, resolved_agent)
 }
 
-/// Builds a `ReactBuildConfig` for a sub-agent from a resolved profile and
-/// the parent agent's config. The parent config provides LLM credentials,
-/// provider, and other environment-derived settings; the profile can override
-/// model name, working_folder, MCP config, and system prompt.
-pub fn build_config_from_profile(
-    profile: &AgentProfile,
-    parent_config: &ReactBuildConfig,
-    working_folder_override: Option<&std::path::Path>,
-) -> ReactBuildConfig {
-    let mut config = parent_config.clone();
 
-    tracing::debug!(
-        profile_name = %profile.name,
-        parent_model = ?parent_config.model,
-        parent_model_tier = ?parent_config.model_tier,
-        parent_provider = ?parent_config.llm_provider,
-        "Building config from profile with parent model configuration"
-    );
-
-    if let Some(ref model) = profile.model {
-        tracing::debug!(
-            profile_name = %profile.name,
-            profile_model_name = ?model.name,
-            profile_model_tier = ?model.tier,
-            profile_model_temperature = ?model.temperature,
-            "Profile contains model configuration"
-        );
-
-        if let Some(ref name) = model.name {
-            tracing::info!(
-                profile_name = %profile.name,
-                old_model = ?config.model,
-                new_model = %name,
-                "Overriding model from profile"
-            );
-            config.model = Some(name.clone());
-        }
-        if let Some(tier) = model.tier {
-            tracing::info!(
-                profile_name = %profile.name,
-                old_tier = ?config.model_tier,
-                new_tier = ?tier,
-                "Overriding model_tier from profile"
-            );
-            config.model_tier = Some(tier);
-
-            tracing::debug!(
-                profile_name = %profile.name,
-                tier = ?tier,
-                preserved_provider = ?config.llm_provider,
-                "Clearing inherited model/api fields for clean tier resolution (preserving llm_provider)"
-            );
-            config.parent_model_hint = config.model.take();
-            config.openai_base_url = None;
-            config.openai_api_key = None;
-        }
-        if let Some(t) = model.temperature {
-            tracing::debug!(
-                profile_name = %profile.name,
-                old_temperature = ?config.openai_temperature,
-                new_temperature = t,
-                "Setting temperature from profile"
-            );
-            config.openai_temperature = Some(t.to_string());
-        }
-    } else {
-        tracing::debug!(
-            profile_name = %profile.name,
-            "Profile has no model configuration, inheriting from parent"
-        );
-    }
-
-    if let Some(wf) = working_folder_override {
-        config.working_folder = Some(wf.to_path_buf());
-    } else if let Some(ref env) = profile.environment {
-        if let Some(ref wf) = env.working_folder {
-            config.working_folder = Some(wf.clone());
-        }
-    }
-
-    let working_folder = config
-        .working_folder
-        .clone()
-        .unwrap_or_else(|| PathBuf::from(DEFAULT_WORKING_FOLDER));
-
-    // MCP config from profile
-    if let Some(ref tools) = profile.tools {
-        if let Some(ref mcp) = tools.mcp {
-            if let Some(ref mcp_path) = mcp.config {
-                if let Some(path) = env_config::discover_mcp_config_path(
-                    Some(mcp_path.as_path()),
-                    Some(&working_folder),
-                ) {
-                    match env_config::load_mcp_config_from_path(&path) {
-                        Ok(servers) => config.mcp_servers = Some(servers),
-                        Err(e) => tracing::warn!(
-                            path = %path.display(),
-                            "sub-agent: failed to load mcp config: {}", e
-                        ),
-                    }
-                }
-            }
-        }
-    }
-
-    // System prompt from profile role / AGENTS.md uses the same assembler as top-level runs.
-    let role_setting =
-        role_content_from_profile(profile.role.as_ref().and_then(|r| r.content.clone()));
-    let agents_md = load_agents_md(Some(&working_folder));
-    if role_setting.is_some() || agents_md.is_some() {
-        let prompt_inputs = ReactPromptInputs {
-            base_prompt_override: config.system_prompt.take(),
-            role_setting,
-            agents_md,
-            ..Default::default()
-        };
-        config.system_prompt = Some(assemble_react_system_prompt(&prompt_inputs));
-    }
-
-    // Skill registry for sub-agent
-    let extra_dirs: Vec<PathBuf> = profile
-        .skills
-        .as_ref()
-        .and_then(|s| s.dirs.as_ref())
-        .map(|dirs| dirs.iter().map(PathBuf::from).collect())
-        .unwrap_or_default();
-    let mut registry = SkillRegistry::discover(&working_folder, &extra_dirs);
-    if let Some(ref src) = profile.source_dir {
-        registry.add_agent_skills(&src.join("skills"));
-    }
-    if let Some(ref sc) = profile.skills {
-        registry.apply_filters(sc.enabled.as_deref(), sc.disabled.as_deref());
-    }
-    config.skill_registry = Some(Arc::new(registry));
-
-    config.max_sub_agent_depth = profile
-        .behavior
-        .as_ref()
-        .and_then(|b| b.max_sub_agent_depth)
-        .or(parent_config.max_sub_agent_depth);
-
-    // Builtin tool filter from profile
-    if let Some(ref tools) = profile.tools {
-        if let Some(ref builtin) = tools.builtin {
-            let filter = loom_types::config::BuiltinToolFilter {
-                enabled: builtin.enabled.clone(),
-                disabled: builtin.disabled.clone(),
-            };
-            if !filter.is_noop() {
-                config.builtin_tool_filter = Some(filter);
-            }
-        }
-    }
-
-    tracing::debug!(
-        profile_name = %profile.name,
-        final_model = ?config.model,
-        final_model_tier = ?config.model_tier,
-        final_provider = ?config.llm_provider,
-        final_temperature = ?config.openai_temperature,
-        parent_model = ?parent_config.model,
-        parent_model_tier = ?parent_config.model_tier,
-        parent_provider = ?parent_config.llm_provider,
-        "Final configuration built from profile with model inheritance details"
-    );
-
-    config
-}
 
 /// Resolve a model string (e.g. "openai/gpt-4o", "gpt-4o") into model id + provider config.
 pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfig {
@@ -599,12 +267,12 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
 
     tracing::info!("🔍 Resolving model configuration for: {}", model_str);
 
-    let providers: Vec<crate::llm::ProviderConfig> =
-        crate::provider::load_provider_configs().unwrap_or_default();
+    let providers: Vec<loom_tier::model_registry::ProviderConfig> =
+        loom_tier::provider::load_provider_configs().unwrap_or_default();
 
     // 1. Try ModelRegistry first
     tracing::debug!("🔎 Searching ModelRegistry for: {}", model_str);
-    if let Some(entry) = crate::llm::ModelRegistry::global()
+    if let Some(entry) = loom_tier::model_registry::ModelRegistry::global()
         .get_model(model_str, &providers)
         .await
     {

@@ -12,7 +12,7 @@ use tracing::{debug, trace};
 use loom_llm::error::AgentError;
 use loom_graph::{run_cancellable, Next, RunContext};
 use loom_llm::{LlmClient, LlmProvider, LlmResponse, ToolCallDelta};
-use loom::Message;
+use loom_llm::message::Message;
 use loom_model_spec::ModelTier;
 use loom_types::state::{ModelConfig, ReActState, ToolCall};
 use loom_stream::{ChunkToStreamSender, MessageChunk, StreamEvent, StreamMetadata, StreamMode};
@@ -35,10 +35,10 @@ impl ThinkNode {
         let model = if !model_config.model_id.is_empty() {
             model_config.model_id.clone()
         } else if model_config.tier != ModelTier::None {
-            let providers = loom::provider::load_provider_configs().ok_or_else(|| {
+            let providers = loom_tier::provider::load_provider_configs().ok_or_else(|| {
                 AgentError::ExecutionFailed("no provider configs for tier resolution".into())
             })?;
-            let entry = loom::tier::resolve::resolve_tier_intelligent(
+            let entry = loom_tier::resolve::resolve_tier_intelligent(
                 self.provider.provider_name(),
                 model_config.tier,
                 &providers,
@@ -126,7 +126,7 @@ impl ThinkNode {
         ctx: &RunContext<ReActState>,
         call_start: Instant,
         first_token_at: Option<Instant>,
-        usage: &loom::llm::LlmUsage,
+        usage: &loom_llm::LlmUsage,
     ) {
         let Some(stream_tx) = ctx.stream_tx.as_ref() else {
             return;
@@ -292,7 +292,7 @@ impl Node<ReActState> for ThinkNode {
             return Err(AgentError::Cancelled);
         }
 
-        let loom::llm::LlmResponse {
+        let loom_llm::LlmResponse {
             content: resp_content,
             reasoning_content,
             tool_calls,

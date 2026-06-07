@@ -5,8 +5,8 @@
 
 mod init_logging;
 
-use loom::message::Message;
-use loom::tool_source::{
+use loom_llm::message::Message;
+use loom_tools::tool_source::{
     ShortTermMemoryToolSource, ToolCallContext, ToolSource, TOOL_GET_RECENT_MESSAGES,
 };
 use serde_json::json;

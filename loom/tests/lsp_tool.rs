@@ -1,6 +1,7 @@
 //! Unit tests for LspTool: name, spec, and call behavior.
 
-use loom::tools::{LspTool, Tool, TOOL_LSP};
+use loom_tools::{LspTool, Tool};
+use loom_tools::TOOL_LSP;
 use serde_json::json;
 
 /// **Scenario**: Tool name is "lsp".

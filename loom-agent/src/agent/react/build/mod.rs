@@ -11,14 +11,12 @@ use std::sync::Arc;
 use crate::agent::dup::{DupRunner, DupState};
 use crate::agent::got::{GotRunner, GotState};
 use crate::agent::tot::{TotRunner, TotState};
-use loom::compress::CompactionConfig;
-use loom::error::AgentError;
-use loom::memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
-use loom::model_spec::{ModelLimitResolver, ModelsDevResolver};
-use loom::state::ReActState;
-use loom::llm::LlmProvider;
-use loom::llm::FixedLlmProvider;
-use loom::llm::LlmClient;
+use loom_compress::CompactionConfig;
+use loom_llm::error::AgentError;
+use loom_memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
+use model_spec::{ModelLimitResolver, ModelsDevResolver};
+use loom_types::state::ReActState;
+use loom_llm::{LlmProvider, FixedLlmProvider, LlmClient};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
@@ -40,7 +38,7 @@ fn to_agent_error(e: impl std::fmt::Display) -> AgentError {
 /// Resolves memory DB path: config value if set, otherwise XDG data home (e.g. ~/.local/share/loom/memory.db).
 fn resolve_memory_db_path(config: &ReactBuildConfig) -> String {
     config.db_path.clone().unwrap_or_else(|| {
-        loom::memory::default_memory_db_path()
+        loom_memory::default_memory_db_path()
             .to_string_lossy()
             .into_owned()
     })
@@ -103,10 +101,10 @@ pub async fn build_react_run_context(
     tracing::debug!("build_react_run_context: tool_source ready");
 
     // Initialize audit log if enabled
-    let audit_log: Option<Arc<dyn loom::llm::audit::LlmAuditLog>> =
+    let audit_log: Option<Arc<dyn loom_llm::audit::LlmAuditLog>> =
         loom::llm::audit::LlmAuditConfig::from_env()
             .build()
-            .map(|log| Arc::new(log) as Arc<dyn loom::llm::audit::LlmAuditLog>);
+            .map(|log| Arc::new(log) as Arc<dyn loom_llm::audit::LlmAuditLog>);
 
     Ok(ReactRunContext {
         checkpointer,
@@ -319,7 +317,7 @@ pub async fn build_react_runner_with_openai(
     model: impl Into<String>,
     verbose: bool,
 ) -> Result<ReactRunner, BuildRunnerError> {
-    use loom::llm::ChatOpenAI;
+    use loom_llm::ChatOpenAI;
     let client = ChatOpenAI::with_config(openai_config, model);
     build_react_runner(config, Some(Arc::new(FixedLlmProvider {
         client: Arc::from(Box::new(client) as Box<dyn LlmClient>),
@@ -331,7 +329,7 @@ pub async fn build_react_runner_with_openai(
 mod tests {
     use super::*;
     use crate::agent::react::{GotRunnerConfig, TotRunnerConfig};
-    use loom::MockLlm;
+    use loom_llm::client::MockLlm;
 
     fn base_config() -> ReactBuildConfig {
         ReactBuildConfig {

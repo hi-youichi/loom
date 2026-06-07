@@ -10,3 +10,5 @@ pub mod config;
 pub mod state;
 pub mod command;
 pub mod prompts;
+pub mod tool_output_normalizer;
+pub mod active_operation;

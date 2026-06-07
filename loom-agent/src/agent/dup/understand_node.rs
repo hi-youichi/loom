@@ -5,11 +5,11 @@
 
 use async_trait::async_trait;
 
-use loom::error::AgentError;
-use loom::graph::Next;
-use loom::llm::LlmClient;
-use loom::message::Message;
-use loom::Node;
+use loom_llm::error::AgentError;
+use loom_graph::Next;
+use loom_llm::LlmClient;
+use loom_llm::message::Message;
+use loom_graph::Node;
 
 use super::prompt::DUP_UNDERSTAND_PROMPT;
 use super::state::{DupState, UnderstandOutput};

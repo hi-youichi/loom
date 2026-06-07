@@ -3,12 +3,12 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use loom::SqliteSaver;
-use loom::{
-    Checkpointer, Embedder, JsonSerializer, LanceStore, LlmClient, LlmResponse, Message, Namespace,
-    Next, Node, RunnableConfig, StateGraph, Store, StoreError, ToolCall as ReActToolCall,
-    ToolCallContent, ToolResult, ToolSource, ToolSpec, END, START,
-};
+use loom_memory::{SqliteSaver, Checkpointer, JsonSerializer, LanceStore, Namespace, RunnableConfig, Store, StoreError};
+use loom_llm::{Embedder, LlmClient, LlmResponse};
+use loom_llm::message::Message;
+use loom_graph::{Next, Node, StateGraph, END, START};
+use loom_tools::tool_source::{ToolSource, ToolSpec, ToolCallContent, ToolResult};
+use loom_types::state::ToolCall as ReActToolCall;
 
 #[derive(Clone)]
 struct MockEmbedder;

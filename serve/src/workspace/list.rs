@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use loom::{
-    ServerResponse, WorkspaceListRequest, WorkspaceListResponse, WorkspaceMeta,
-};
+    use loom_protocol::{ServerResponse, WorkspaceListRequest, WorkspaceListResponse};
 
 use super::no_store_error;
 
@@ -18,7 +16,7 @@ pub(crate) async fn handle_workspace_list(
         Ok(workspaces) => {
             let workspaces = workspaces
                 .into_iter()
-                .map(|w| WorkspaceMeta {
+                .map(|w| loom_protocol::WorkspaceMeta {
                     id: w.id,
                     name: w.name,
                     created_at_ms: w.created_at_ms,
@@ -26,7 +24,7 @@ pub(crate) async fn handle_workspace_list(
                 .collect();
             ServerResponse::WorkspaceList(WorkspaceListResponse { id, workspaces })
         }
-        Err(e) => ServerResponse::Error(loom::ErrorResponse {
+        Err(e) => ServerResponse::Error(loom_protocol::ErrorResponse {
             id: Some(id),
             error: e.to_string(),
         }),

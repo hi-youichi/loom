@@ -16,7 +16,7 @@
 //!
 //! When integrated with ACP, session_id can use `agent_client_protocol::SessionId`; this module's [`SessionId`] is a placeholder type for unit tests without the ACP dependency.
 
-use loom::RunCancellation;
+use loom_cli_types::RunCancellation;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

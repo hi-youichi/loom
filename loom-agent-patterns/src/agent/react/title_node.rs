@@ -15,7 +15,7 @@ use async_trait::async_trait;
 use loom_llm::error::AgentError;
 use loom_graph::Next;
 use loom_llm::{LlmHeaders, LlmProvider};
-use loom::Message;
+use loom_llm::message::Message;
 use loom_types::state::ReActState;
 use loom_graph::Node;
 

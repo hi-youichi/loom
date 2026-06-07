@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use crate::agent::react::{ActNode, ObserveNode, ThinkNode};
 use loom_llm::error::AgentError;
 use loom_graph::{Next, RunContext};
-use loom::Message;
+use loom_llm::message::Message;
 use loom_llm::LlmProvider;
 use loom_types::state::ReActState;
 use loom_stream::{StreamEvent, StreamMode};
@@ -171,7 +171,7 @@ impl Node<GotState> for ExecuteGraphNode {
     }
 
     async fn run(&self, state: GotState) -> Result<(GotState, Next), AgentError> {
-        let ctx = RunContext::new(loom::memory::RunnableConfig::default());
+        let ctx = RunContext::new(loom_memory::RunnableConfig::default());
         self.run_with_context(state, &ctx).await
     }
 

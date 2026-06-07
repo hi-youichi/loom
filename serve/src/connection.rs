@@ -1,9 +1,9 @@
 use axum::extract::ws::{Message, WebSocket};
 use futures::{SinkExt, StreamExt};
-use loom::cli_run::RunCancellation;
-use loom::llm::ProviderConfig;
-use loom::protocol::responses::CancelRunResponse;
-use loom::{ClientRequest, ErrorResponse, ServerResponse};
+use loom_cli_types::RunCancellation;
+use loom_llm::ProviderConfig;
+use loom_protocol::responses::CancelRunResponse;
+use loom_protocol::{ClientRequest, ErrorResponse, ServerResponse};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{oneshot, Mutex};
@@ -14,7 +14,7 @@ use super::models::{handle_list_models, handle_set_model};
 use super::run::handle_run;
 use super::tools::{handle_tool_show, handle_tools_list};
 use super::workspace::watcher::{WorkspaceWatcher, workspace_dir};
-use loom::WorkspaceFileChangedResponse;
+use loom_protocol::WorkspaceFileChangedResponse;
 
 pub(crate) type SharedSink = Arc<Mutex<futures::stream::SplitSink<WebSocket, Message>>>;
 
@@ -47,7 +47,7 @@ pub(crate) async fn handle_socket(
     socket: WebSocket,
     shutdown_tx: Option<oneshot::Sender<()>>,
     workspace_store: Option<Arc<loom_workspace::Store>>,
-    user_message_store: Option<std::sync::Arc<dyn loom::UserMessageStore>>,
+    user_message_store: Option<std::sync::Arc<dyn loom_memory::user_message::UserMessageStore>>,
     run_config: RunConfig,
     providers: Arc<Vec<ProviderConfig>>,
 ) {
@@ -160,7 +160,7 @@ async fn handle_request_and_send(
     text: &str,
     sink: &SharedSink,
     workspace_store: Option<Arc<loom_workspace::Store>>,
-    user_message_store: Option<std::sync::Arc<dyn loom::UserMessageStore>>,
+    user_message_store: Option<std::sync::Arc<dyn loom_memory::user_message::UserMessageStore>>,
     run_config: &RunConfig,
     providers: Arc<Vec<ProviderConfig>>,
     active_run_registry: &mut ActiveRunRegistry,
@@ -237,7 +237,7 @@ async fn handle_request_and_send(
             tracing::debug!("🏓 Ping received");
             send_response_to_sink(
                 sink,
-                &ServerResponse::Pong(loom::PongResponse { id: r.id }),
+                &ServerResponse::Pong(loom_protocol::PongResponse { id: r.id }),
             )
             .await?;
             return Ok(());

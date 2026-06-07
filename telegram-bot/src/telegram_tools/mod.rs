@@ -3,7 +3,7 @@
 //! Implements the `TelegramApi` trait from loom and registers it globally.
 
 use async_trait::async_trait;
-use loom::tools::TelegramApi;
+use loom_tools::TelegramApi;
 use teloxide::prelude::*;
 use teloxide::types::{InputFile, ParseMode};
 
@@ -86,5 +86,5 @@ impl TelegramApi for TeloxideTelegramApi {
 /// Initialize the Telegram API for loom tools.
 pub fn init_telegram_api(bot: Bot) {
     let api = std::sync::Arc::new(TeloxideTelegramApi::new(bot));
-    loom::tools::set_telegram_api(api);
+    loom_tools::tools::set_telegram_api(api);
 }

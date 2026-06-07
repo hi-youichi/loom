@@ -1,9 +1,6 @@
 use std::sync::Arc;
 
-use loom::{
-    ServerResponse, ThreadInWorkspace, WorkspaceThreadListRequest,
-    WorkspaceThreadListResponse,
-};
+    use loom_protocol::{ServerResponse, WorkspaceThreadListRequest, WorkspaceThreadListResponse};
 
 use super::no_store_error;
 
@@ -18,21 +15,21 @@ pub(crate) async fn handle_workspace_thread_list(
     };
     match store.list_threads(&r.workspace_id).await {
         Ok(threads) => {
-            let threads = threads
-                .into_iter()
-                .map(|t| ThreadInWorkspace {
-                    thread_id: t.thread_id,
-                    name: t.name,
-                    created_at_ms: t.created_at_ms,
-                })
-                .collect();
+	            let threads = threads
+	                .into_iter()
+	                .map(|t| loom_protocol::ThreadInWorkspace {
+	                    thread_id: t.thread_id,
+	                    name: t.name,
+	                    created_at_ms: t.created_at_ms,
+	                })
+	                .collect();
             ServerResponse::WorkspaceThreadList(WorkspaceThreadListResponse {
                 id,
                 workspace_id,
                 threads,
             })
         }
-        Err(e) => ServerResponse::Error(loom::ErrorResponse {
+        Err(e) => ServerResponse::Error(loom_protocol::ErrorResponse {
             id: Some(id),
             error: e.to_string(),
         }),

@@ -17,8 +17,8 @@ use loom_memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
 use loom_model_spec::{ModelLimitResolver, ModelsDevResolver};
 use loom_types::state::ReActState;
 use loom_llm::LlmProvider;
-use loom::FixedLlmProvider;
 use loom_llm::LlmClient;
+use loom_llm::client::FixedLlmProvider;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
@@ -40,7 +40,7 @@ fn to_agent_error(e: impl std::fmt::Display) -> AgentError {
 /// Resolves memory DB path: config value if set, otherwise XDG data home (e.g. ~/.local/share/loom/memory.db).
 fn resolve_memory_db_path(config: &ReactBuildConfig) -> String {
     config.db_path.clone().unwrap_or_else(|| {
-        loom::memory::default_memory_db_path()
+        loom_memory::default_memory_db_path()
             .to_string_lossy()
             .into_owned()
     })
@@ -103,10 +103,10 @@ pub async fn build_react_run_context(
     tracing::debug!("build_react_run_context: tool_source ready");
 
     // Initialize audit log if enabled
-    let audit_log: Option<Arc<dyn loom::llm::audit::LlmAuditLog>> =
-        loom::llm::audit::LlmAuditConfig::from_env()
+    let audit_log: Option<Arc<dyn loom_llm::support::audit::LlmAuditLog>> =
+        loom_llm::support::audit::LlmAuditConfig::from_env()
             .build()
-            .map(|log| Arc::new(log) as Arc<dyn loom::llm::audit::LlmAuditLog>);
+            .map(|log| Arc::new(log) as Arc<dyn loom_llm::support::audit::LlmAuditLog>);
 
     Ok(ReactRunContext {
         checkpointer,
@@ -180,7 +180,7 @@ pub async fn build_react_runner(
         .trace_thread_id
         .as_ref()
         .or(config.thread_id.as_ref())
-        .map(|tid| loom::llm::LlmHeaders::default().with_thread_id(tid));
+        .map(|tid| loom_llm::LlmHeaders::default().with_thread_id(tid));
     let runner = ReactRunner::new(
         provider,
         ctx.tool_source,
@@ -205,15 +205,15 @@ struct BoxedLlmClient(Box<dyn LlmClient>);
 impl LlmClient for BoxedLlmClient {
     async fn invoke(
         &self,
-        messages: &[loom::message::Message],
-    ) -> Result<loom::llm::LlmResponse, AgentError> {
+        messages: &[loom_llm::message::Message],
+    ) -> Result<loom_llm::LlmResponse, AgentError> {
         self.0.invoke(messages).await
     }
     async fn invoke_stream(
         &self,
-        messages: &[loom::message::Message],
-        tx: Option<tokio::sync::mpsc::Sender<loom::stream::MessageChunk>>,
-    ) -> Result<loom::llm::LlmResponse, AgentError> {
+        messages: &[loom_llm::message::Message],
+        tx: Option<tokio::sync::mpsc::Sender<loom_stream::MessageChunk>>,
+    ) -> Result<loom_llm::LlmResponse, AgentError> {
         self.0.invoke_stream(messages, tx).await
     }
 }

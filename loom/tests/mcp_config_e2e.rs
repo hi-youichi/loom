@@ -15,13 +15,16 @@ fn ensure_short_mcp_timeout() {
     });
 }
 
-use loom::{build_helve_config, MockLlm, RunCmd, RunOptions};
+use loom::cli_run::build_helve_config;
+use loom_llm::client::MockLlm;
+use loom_agent::RunCmd;
+use loom_cli_types::RunOptions;
 use loom_agent::run_agent_with_llm_override;
 use std::path::PathBuf;
 
 fn opts(working_folder: PathBuf) -> RunOptions {
     RunOptions {
-        message: loom::UserContent::text("Hi"),
+        message: loom_llm::message::UserContent::text("Hi"),
         working_folder: Some(working_folder),
         session_id: None,
         thread_id: None,
@@ -86,7 +89,7 @@ async fn mcp_config_discovered_and_run_with_mock_llm_returns_reply() {
     .expect("run_agent");
 
     match &result {
-        loom::RunCompletion::Finished(r) => assert_eq!(r.reply.trim(), "Done"),
-        loom::RunCompletion::Cancelled => panic!("expected finished run"),
+        loom_cli_types::RunCompletion::Finished(r) => assert_eq!(r.reply.trim(), "Done"),
+        loom_cli_types::RunCompletion::Cancelled => panic!("expected finished run"),
     }
 }

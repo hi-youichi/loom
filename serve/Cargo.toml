@@ -11,10 +11,19 @@ name = "serve"
 path = "src/lib.rs"
 
 [dependencies]
-loom = { path = "../loom" }
 loom-agent = { path = "../loom-agent" }
-config = { path = "../config" }
+loom-cli-types = { path = "../loom-cli-types" }
+loom-protocol = { path = "../loom-protocol" }
+loom-graph = { path = "../loom-graph" }
+loom-llm = { path = "../loom-llm" }
+loom-memory = { path = "../loom-memory" }
+loom-helve = { path = "../loom-helve" }
 loom-workspace = { path = "../loom-workspace" }
+loom-tier = { path = "../loom-tier" }
+loom-stream = { path = "../loom-stream" }
+loom-react-config = { path = "../loom-react-config" }
+loom = { path = "../loom" }
+config = { path = "../config" }
 axum = { version = "0.7", features = ["ws", "json"] }
 async-trait = "0.1"
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "net"] }

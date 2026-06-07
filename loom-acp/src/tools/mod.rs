@@ -18,15 +18,15 @@ pub use fs_tools::{ReadTextFileTool, WriteTextFileTool};
 pub use terminal_executor::{AcpBridgeCommandExecutor, TerminalCommandExecutor};
 
 use crate::client_capabilities::ClientCapabilitiesInfo;
-use loom::tools::Tool;
+use loom_tools::Tool;
 
 /// Helper function to create a tool spec with common fields.
 pub(crate) fn create_tool_spec(
     name: &str,
     description: &str,
     input_schema: serde_json::Value,
-) -> loom::tool_source::ToolSpec {
-    loom::tool_source::ToolSpec {
+    ) -> loom_tools::tool_source::ToolSpec {
+    loom_tools::tool_source::ToolSpec {
         name: name.to_string(),
         description: Some(description.to_string()),
         input_schema,

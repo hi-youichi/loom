@@ -1,2 +1,2 @@
 //! Re-export from loom crate.
-pub use loom::background_review::tools::*;
+pub use loom_background_review::tools::*;

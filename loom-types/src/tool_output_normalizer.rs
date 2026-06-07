@@ -72,11 +72,11 @@ impl NormalizationConfig {
     }
 }
 
-// Re-exported from loom-types
-pub use loom_types::state::ToolStorageRef;
+// Defined in this module
+pub use crate::state::ToolStorageRef;
 
-// Re-exported from loom-types
-pub use loom_types::state::NormalizedToolOutput;
+// Defined in this module
+pub use crate::state::NormalizedToolOutput;
 
 
 static TOOL_OUTPUT_FILE_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -542,7 +542,7 @@ fn persist_output(
 }
 
 fn default_tool_output_dir() -> PathBuf {
-    env_config::home::thread_session_dir("default").join("tool-output")
+    config::home::thread_session_dir("default").join("tool-output")
 }
 
 fn build_storage_file_name(tool_name: &str, extension: &str) -> String {
@@ -717,6 +717,7 @@ mod tests {
 
         assert_eq!(result.strategy, ToolOutputStrategy::Inline);
         assert!(!result.truncated);
+        assert_eq!(result.observation_text, text);
     }
 
     #[test]

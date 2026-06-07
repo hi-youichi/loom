@@ -3,7 +3,7 @@
 
 mod init_logging;
 
-use loom::memory::{InMemoryStore, SearchOptions, Store};
+use loom_memory::{InMemoryStore, SearchOptions, Store};
 use serde_json::json;
 
 #[tokio::test]

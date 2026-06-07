@@ -9,7 +9,8 @@
 //! or `loom tool show <NAME>`. Uses [`RunOptions`](crate::run::RunOptions) with a
 //! placeholder message (not used for execution).
 
-use loom::{tool_source::ToolSpec, AgentError};
+use loom_tools::ToolSpec;
+use loom_llm::AgentError;
 use loom_agent::{build_react_run_context, BuildRunnerError};
 use serde::Serialize;
 
@@ -33,7 +34,7 @@ pub enum ToolShowFormat {
 /// Interacts with [`build_helve_config`](crate::run::build_helve_config) and
 /// [`build_react_run_context`](loom::build_react_run_context).
 pub async fn list_tools(opts: &RunOptions) -> Result<(), RunError> {
-    let loom_opts = opts.to_loom();
+    let loom_opts = opts.to_cli_run_options();
     let (_helve, config, _resolved_agent) = build_helve_config(&loom_opts);
     let ctx = build_react_run_context(&config)
         .await
@@ -94,7 +95,7 @@ pub fn format_tools_list(tools: &[ToolSpec], output_json: bool) -> Result<(), Ru
 
 /// Formats tool show output from ToolShowResponse.
 pub fn format_tool_show_output(
-    r: &loom::ToolShowResponse,
+    r: &loom_protocol::ToolShowResponse,
     format: ToolShowFormat,
 ) -> Result<(), RunError> {
     match format {
@@ -162,7 +163,7 @@ pub async fn show_tool(
     name: &str,
     format: ToolShowFormat,
 ) -> Result<(), RunError> {
-    let loom_opts = opts.to_loom();
+    let loom_opts = opts.to_cli_run_options();
     let (_helve, config, _resolved_agent) = build_helve_config(&loom_opts);
     let ctx = build_react_run_context(&config)
         .await
@@ -208,7 +209,8 @@ pub async fn show_tool(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom::{ToolShowResponse, ToolSpec};
+    use loom_protocol::ToolShowResponse;
+    use loom_tools::ToolSpec;
     use std::path::PathBuf;
 
     #[test]
@@ -257,7 +259,7 @@ mod tests {
 
     fn invalid_opts() -> RunOptions {
         RunOptions {
-            message: loom::UserContent::text(String::new()),
+            message: loom_llm::message::UserContent::text(String::new()),
             working_folder: Some(PathBuf::from(
                 "/definitely/not/exist/loom-cli-tool-cmd-tests",
             )),

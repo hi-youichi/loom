@@ -5,6 +5,8 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use crate::state::ReActState;
+
 /// Active operation kind for cancellation tracking.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ActiveOperationKind {
@@ -122,4 +124,27 @@ pub enum AnyStreamEvent {
     Dup(serde_json::Value),
     Tot(serde_json::Value),
     Got(serde_json::Value),
+}
+
+// ── Stub agent state types for multi-pattern event dispatching ──────
+// These are simple wrappers that allow AnyStreamEvent to carry state for
+// different agent patterns (DUP, ToT, GoT) while keeping the core
+// ReAct state accessible via a `.core` field.
+
+/// Stub state for the DUP (Duplicate/Refine) agent pattern.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct StubDupState {
+    pub core: ReActState,
+}
+
+/// Stub state for the ToT (Tree of Thought) agent pattern.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct StubTotState {
+    pub core: ReActState,
+}
+
+/// Stub state for the GoT (Graph of Thought) agent pattern.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct StubGotState {
+    pub input_message: String,
 }

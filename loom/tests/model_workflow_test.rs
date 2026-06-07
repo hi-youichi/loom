@@ -5,7 +5,9 @@
 
 #[cfg(test)]
 mod tests {
-    use loom::llm::{create_llm_client, ModelEntry, ModelRegistry, ProviderConfig, ToolChoiceMode};
+    use loom_tier::create_llm_client;
+    use loom_llm::{ModelEntry, ProviderConfig, ToolChoiceMode};
+    use loom_tier::ModelRegistry;
 
     /// Test ModelEntry default values
     #[test]

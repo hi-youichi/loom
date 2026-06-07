@@ -5,12 +5,12 @@
 
 use async_trait::async_trait;
 
-use loom::error::AgentError;
-use loom::graph::{Next, RunContext};
-use loom::message::Message;
-use loom::state::ToolCall;
-use loom::stream::StreamEvent;
-use loom::Node;
+use loom_llm::error::AgentError;
+use loom_graph::{Next, RunContext};
+use loom_llm::message::Message;
+use loom_llm::ToolCall;
+use loom_stream::StreamEvent;
+use loom_graph::Node;
 
 use super::prompt::{TOT_EXPAND_SYSTEM_ADDON, TOT_RESEARCH_QUALITY_ADDON};
 use super::state::{TotCandidate, TotState};
@@ -280,16 +280,16 @@ impl Node<TotState> for ThinkExpandNode {
 mod tests {
     use super::super::state::TotExtension;
     use super::*;
-    use loom::graph::RunContext;
-    use loom::llm::MockLlm;
-    use loom::memory::RunnableConfig;
-    use loom::state::ReActState;
+    use loom_graph::RunContext;
+    use loom_llm::client::MockLlm;
+    use loom_memory::RunnableConfig;
+    use loom_types::state::ReActState;
     use tokio::sync::mpsc;
 
     fn make_state() -> TotState {
         TotState {
             core: ReActState {
-                messages: vec![Message::user("Search best rust formatter")],
+                messages: vec![loom_llm::message::Message::user("Search best rust formatter")],
                 ..ReActState::default()
             },
             tot: TotExtension::default(),

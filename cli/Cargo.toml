@@ -17,6 +17,19 @@ path = "src/main.rs"
 [dependencies]
 loom = { path = "../loom" }
 loom-agent = { path = "../loom-agent" }
+loom-llm = { path = "../loom-llm" }
+loom-protocol = { path = "../loom-protocol" }
+loom-types = { path = "../loom-types" }
+loom-tools = { path = "../loom-tools" }
+loom-stream = { path = "../loom-stream" }
+loom-stream-display = { path = "../loom-stream-display" }
+loom-background-review = { path = "../loom-background-review" }
+loom-commands = { path = "../loom-commands" }
+loom-cli-types = { path = "../loom-cli-types" }
+loom-react-config = { path = "../loom-react-config" }
+loom-model-spec = { path = "../loom-model-spec" }
+loom-memory = { path = "../loom-memory" }
+loom-tier = { path = "../loom-tier" }
 
 serve = { path = "../serve" }
 stream-event = { path = "../stream-event" }
@@ -41,6 +54,8 @@ tokio-util = { version = "0.7", features = ["rt"] }
 async-trait = { workspace = true }
 ctrlc = "3"
 termsize = "0.1"
+ratatui = "0.29"
+crossterm = "0.28"
 
 [dev-dependencies]
 dotenv = { workspace = true }

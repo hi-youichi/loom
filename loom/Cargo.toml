@@ -21,7 +21,6 @@ thiserror = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio-stream = { workspace = true }
-dashmap = "6.0"
 futures-util = "0.3"
 futures = "0.3"
 once_cell = "1.19"
@@ -57,20 +56,30 @@ loom-pregel = { path = "../loom-pregel" }
 # Streaming types (loom-stream crate)
 loom-stream = { path = "../loom-stream" }
 
+# Stream display (loom-stream-display crate)
+loom-stream-display = { path = "../loom-stream-display" }
+
+# Helve configuration and prompts (loom-helve crate)
+loom-helve = { path = "../loom-helve" }
+
 # Tools (loom-tools crate)
 loom-tools = { path = "../loom-tools" }
 
 # Protocol types (loom-protocol crate)
 loom-protocol = { path = "../loom-protocol" }
 
+# Tier resolution, model registry, LLM factory (loom-tier crate)
+loom-tier = { path = "../loom-tier" }
+
+# React build configuration (loom-react-config crate)
+loom-react-config = { path = "../loom-react-config" }
+
+# CLI run types (loom-cli-types crate)
+loom-cli-types = { path = "../loom-cli-types" }
+
 # Background review system (loom-background-review crate)
 loom-background-review = { path = "../loom-background-review" }
 
-# The following are handled by loom-llm but kept for compatibility:
-async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
-reqwest = { version = "0.12", features = ["json"] }
-
-dotenv = { workspace = true }
 crossbeam-channel = "0.5"
 mcp_client = { git = "https://github.com/graphweave/mcm-rust", package = "mcp_client" }
 mcp_core = { git = "https://github.com/graphweave/mcm-rust", package = "mcp_core" }
@@ -108,7 +117,6 @@ regex = "1"
 
 # Env + config (load_and_apply, mcp.json discover/parse); local name avoids clash with loom's internal config module
 env_config = { path = "../config", package = "config" }
-model-spec-core = { path = "../model-spec-core" }
 
 # ISO timestamps (e.g. tool_output_normalizer)
 chrono = { version = "0.4", features = ["serde"] }
@@ -125,6 +133,7 @@ url = "2.5"
 
 
 loom-worktree = { path = "../loom-worktree" }
+loom-skill = { path = "../loom-skill" }
 [dev-dependencies]
 tempfile = "3"
 libc = "0.2"
@@ -133,4 +142,13 @@ ctor = "0.2"
 wiremock = "0.6"
 temp-env = { version = "0.3", features = ["async_closure"] }
 loom-agent = { path = "../loom-agent" }
+loom-tools = { path = "../loom-tools" }
+loom-model-spec = { path = "../loom-model-spec" }
+loom-stream = { path = "../loom-stream" }
+loom-llm = { path = "../loom-llm" }
+loom-types = { path = "../loom-types" }
+loom-react-config = { path = "../loom-react-config" }
+loom-tier = { path = "../loom-tier" }
+async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
+dotenv = { workspace = true }
 

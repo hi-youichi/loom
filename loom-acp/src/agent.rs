@@ -11,7 +11,7 @@ use crate::session_config_store::SessionConfigStore;
 use crate::stream_bridge::SessionNotifier;
 use crate::terminal::TerminalManager;
 use crate::tools::create_acp_tools;
-use loom::LocalCommandExecutor;
+use loom_tools::LocalCommandExecutor;
 use agent_client_protocol::schema::{
     AuthenticateRequest, AuthenticateResponse, CancelNotification, ForkSessionRequest,
     ForkSessionResponse, InitializeRequest, InitializeResponse, ListSessionsRequest,
@@ -21,12 +21,12 @@ use agent_client_protocol::schema::{
     SetSessionModeRequest, SetSessionModeResponse, SetSessionModelRequest, SetSessionModelResponse,
     StopReason, SessionId, SessionNotification,
 };
-use loom::memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
-use loom::state::ReActState;
+use loom_memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
+use loom_types::state::ReActState;
 
 use chrono::DateTime;
 use config::load_full_config;
-use loom_agent::{run_agent_with_options, AnyStreamEvent, RunCmd, RunCompletion, RunError, RunOptions};
+use loom_agent::{AnyStreamEvent, RunCmd, RunCompletion, RunOptions, RunError, run_agent_with_options};
 use rusqlite::Connection;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -47,13 +47,13 @@ impl ModelProvider for RealModelProvider {
 }
 
 async fn fetch_available_models() -> Vec<ModelOption> {
-    let registry = loom::llm::ModelRegistry::global();
+    let registry = loom_tier::ModelRegistry::global();
 
-    let providers: Vec<loom::llm::ProviderConfig> = match load_full_config("loom") {
+    let providers: Vec<loom_tier::ProviderConfig> = match load_full_config("loom") {
         Ok(config) => config
             .providers
             .into_iter()
-            .map(|p| loom::llm::ProviderConfig {
+            .map(|p| loom_tier::ProviderConfig {
                 name: p.name,
                 base_url: p.base_url,
                 api_key: p.api_key,
@@ -118,7 +118,7 @@ impl std::fmt::Debug for LoomAcpAgent {
 impl LoomAcpAgent {
     /// Construct a new Agent instance (no session/update sending).
     pub fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let db_path = loom::memory::default_memory_db_path();
+        let db_path = loom_memory::default_memory_db_path();
         let config_store = SessionConfigStore::new(db_path.to_str().unwrap_or_default())
             .map_err(|e| format!("session config store init failed: {e}"))?;
 
@@ -134,7 +134,7 @@ impl LoomAcpAgent {
     }
 
     pub fn with_session_update_tx(tx: mpsc::Sender<SessionNotification>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let db_path = loom::memory::default_memory_db_path();
+        let db_path = loom_memory::default_memory_db_path();
         let config_store = SessionConfigStore::new(db_path.to_str().unwrap_or_default())
             .map_err(|e| format!("session config store init failed: {e}"))?;
 
@@ -172,11 +172,11 @@ impl LoomAcpAgent {
     async fn resolve_model_with_tier_awareness(
         &self,
         session_config: &crate::session::SessionConfig,
-    ) -> loom::ResolvedModelConfig {
+    ) -> loom_cli_types::ResolvedModelConfig {
         let start_time = std::time::Instant::now();
 
         if let Some(ref acp_model) = session_config.model {
-            let resolved = loom::resolve_model_config(Some(acp_model)).await;
+            let resolved = loom::cli_run::resolve_model_config(Some(acp_model)).await;
             tracing::info!(
                 acp_model = %acp_model,
                 agent = %session_config.current_agent,
@@ -194,7 +194,7 @@ impl LoomAcpAgent {
         {
             if let Some(model_config) = profile.model {
                 if let Some(ref model_name) = model_config.name {
-                    let resolved = loom::resolve_model_config(Some(model_name)).await;
+                    let resolved = loom::cli_run::resolve_model_config(Some(model_name)).await;
                     tracing::info!(
                         model = %model_name,
                         agent = %session_config.current_agent,
@@ -212,12 +212,12 @@ impl LoomAcpAgent {
                         "Starting tier-based model resolution"
                     );
 
-                    let mut config = loom::ReactBuildConfig::from_env();
+                    let mut config = loom_react_config::ReactBuildConfig::from_env();
                     config.model_tier = Some(tier);
-                    let resolved_config = loom::resolve_tier_and_build_config(&config).await;
+                    let resolved_config = loom_tier::resolve_tier_and_build_config(&config).await;
 
                     if resolved_config.model.is_some() {
-                        let resolved = loom::ResolvedModelConfig {
+                        let resolved = loom_cli_types::ResolvedModelConfig {
                             model: resolved_config.model.clone(),
                             provider: resolved_config.llm_provider.clone(),
                             base_url: resolved_config.openai_base_url.clone(),
@@ -254,7 +254,7 @@ impl LoomAcpAgent {
             if let Some(ref pname) = full_config.default_provider {
                 if let Some(p) = full_config.providers.iter().find(|p| p.name == *pname) {
                     if let Some(ref model_name) = p.model {
-                        let mut resolved = loom::resolve_model_config(Some(model_name)).await;
+                        let mut resolved = loom::cli_run::resolve_model_config(Some(model_name)).await;
                         if resolved.model.is_some() {
                             if resolved.api_key.is_none() {
                                 resolved.api_key = p.api_key.clone();
@@ -271,7 +271,7 @@ impl LoomAcpAgent {
                             return resolved;
                         }
                     }
-                    return loom::ResolvedModelConfig {
+                    return loom_cli_types::ResolvedModelConfig {
                         model: p.model.clone(),
                         provider: Some(p.name.clone()),
                         base_url: p.base_url.clone(),
@@ -283,7 +283,7 @@ impl LoomAcpAgent {
         }
 
         let default_model = config::default_model();
-        loom::resolve_model_config(Some(&default_model)).await
+        loom::cli_run::resolve_model_config(Some(&default_model)).await
     }
 
     fn apply_session_mode(
@@ -644,15 +644,15 @@ impl LoomAcpAgent {
                 agent_client_protocol::Error::new(-32602, "content_blocks parse failed")
             })?;
 
-        if let loom::message::UserContent::Text(ref text) = user_content {
-            if let Some(cmd) = loom::command::parse(text) {
+        if let loom_llm::message::UserContent::Text(ref text) = user_content {
+            if let Some(cmd) = loom_commands::parse(text) {
                 match cmd {
-                    loom::command::Command::ResetContext => {
+                    loom_commands::Command::ResetContext => {
                         self.sessions.cancel_current_generation(&key);
                         tracing::info!(session_id = %args.session_id, "Context cleared via /reset command");
                         return Ok(PromptResponse::new(StopReason::EndTurn));
                     }
-                    loom::command::Command::Goal { description } => {
+                    loom_commands::Command::Goal { description } => {
                         tracing::info!(
                             session_id = %args.session_id,
                             goal = %description,
@@ -661,7 +661,7 @@ impl LoomAcpAgent {
                         let working_folder = entry
                             .working_directory
                             .clone()
-                            .unwrap_or_else(|| PathBuf::from(loom::DEFAULT_WORKING_FOLDER));
+                            .unwrap_or_else(|| PathBuf::from(loom_cli_types::DEFAULT_WORKING_FOLDER));
 
 let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
                             self.session_update_tx.clone().map(|sender| {
@@ -702,7 +702,7 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
                             }
                         }
                     }
-                    loom::command::Command::ReviewSkill { scope } => {
+                    loom_commands::Command::ReviewSkill { scope } => {
                         tracing::info!(
                             session_id = %args.session_id,
                             scope = ?scope,
@@ -711,8 +711,8 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
                         tracing::warn!("review-skill is not yet supported in ACP mode");
                         return Ok(PromptResponse::new(StopReason::EndTurn));
                     }
-                    loom::command::Command::Models { .. }
-                    | loom::command::Command::ModelsUse { .. } => {
+                    loom_commands::Command::Models { .. }
+                    | loom_commands::Command::ModelsUse { .. } => {
                         // ACP handles models via SetSessionConfigOption, not here
                     }
                     _ => {
@@ -723,14 +723,14 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
         }
 
         let content_type = match &user_content {
-            loom::message::UserContent::Text(_) => "text",
-            loom::message::UserContent::Multimodal(parts) => {
+            loom_llm::message::UserContent::Text(_) => "text",
+            loom_llm::message::UserContent::Multimodal(parts) => {
                 let has_image = parts
                     .iter()
-                    .any(|p| matches!(p, loom::message::ContentPart::ImageBase64 { .. }));
+                    .any(|p| matches!(p, loom_llm::message::ContentPart::ImageBase64 { .. }));
                 let has_audio = parts
                     .iter()
-                    .any(|p| matches!(p, loom::message::ContentPart::AudioBase64 { .. }));
+                    .any(|p| matches!(p, loom_llm::message::ContentPart::AudioBase64 { .. }));
                 if has_image && has_audio {
                     "multimodal(image+audio)"
                 } else if has_image {
@@ -752,7 +752,7 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
         let working_folder = entry
             .working_directory
             .clone()
-            .unwrap_or_else(|| PathBuf::from(loom::DEFAULT_WORKING_FOLDER));
+            .unwrap_or_else(|| PathBuf::from(loom_cli_types::DEFAULT_WORKING_FOLDER));
 
         let resolved = self
             .resolve_model_with_tier_awareness(&entry.session_config)
@@ -795,7 +795,7 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
             acp_session_id: Some(args.session_id.to_string()),
             bash_executor: {
                 tracing::info!("Using local bash executor (ACP terminal disabled)");
-                Some(Arc::new(LocalCommandExecutor) as Arc<dyn loom::tools::CommandExecutor>)
+                Some(Arc::new(LocalCommandExecutor) as Arc<dyn loom_tools::CommandExecutor>)
             },
             extra_tools: {
                 let caps = self.client_capabilities.read().unwrap_or_else(|e| e.into_inner());
@@ -804,7 +804,7 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
                     None
                 } else {
                     tracing::info!(count = tools.len(), "Registering ACP tools");
-                    Some(Arc::new(tools.into_iter().map(|t| Arc::from(t) as Arc<dyn loom::tools::Tool>).collect()))
+                    Some(Arc::new(tools.into_iter().map(|t| Arc::from(t) as Arc<dyn loom_tools::Tool>).collect()))
                 }
             },
             force_compact: false,
@@ -837,7 +837,7 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
                 let model = opts.model.clone()
                     .or_else(|| std::env::var("MODEL").ok())
                     .unwrap_or_else(|| "gpt-4o-mini".to_string());
-                let review_config = loom::background_review::BackgroundReviewConfig {
+                let review_config = loom_background_review::BackgroundReviewConfig {
                     base_url,
                     api_key,
                     model,
@@ -847,11 +847,11 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
                     let session_id = opts.thread_id.clone()
                         .unwrap_or_else(|| format!("acp-{}", args.session_id));
                     let user_msg = match &opts.message {
-                        loom::message::UserContent::Text(t) => t.clone(),
+                        loom_llm::message::UserContent::Text(t) => t.clone(),
                         _ => String::new(),
                     };
                     let session_content = format!("User: {}\n\nAssistant: {}", user_msg, run_result.reply);
-                    loom::background_review::spawn_background_review(
+                    loom_background_review::spawn_background_review(
                         review_config, session_content, session_id, None,
                     );
                 }
@@ -914,7 +914,7 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
                 })?
             };
 
-        let db_path = loom::memory::default_memory_db_path();
+        let db_path = loom_memory::default_memory_db_path();
         tracing::debug!(
             session_id = %session_id,
             thread_id = %entry.thread_id,
@@ -945,10 +945,10 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
         match checkpointer.get_tuple(&config).await {
             Ok(Some((checkpoint, _metadata))) => {
                 let state: ReActState = checkpoint.channel_values;
-                let user_count = state.messages.iter().filter(|m| matches!(m, loom::Message::User(_))).count();
-                let assistant_count = state.messages.iter().filter(|m| matches!(m, loom::Message::Assistant(_))).count();
-                let tool_count = state.messages.iter().filter(|m| matches!(m, loom::Message::Tool { .. })).count();
-                let system_count = state.messages.iter().filter(|m| matches!(m, loom::Message::System(_))).count();
+                let user_count = state.messages.iter().filter(|m| matches!(m, loom_llm::message::Message::User(_))).count();
+                let assistant_count = state.messages.iter().filter(|m| matches!(m, loom_llm::message::Message::Assistant(_))).count();
+                let tool_count = state.messages.iter().filter(|m| matches!(m, loom_llm::message::Message::Tool { .. })).count();
+                let system_count = state.messages.iter().filter(|m| matches!(m, loom_llm::message::Message::System(_))).count();
 
                 tracing::info!(
                     session_id = %session_id,
@@ -1074,7 +1074,7 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
                 // Convert cwd: Option<String> to PathBuf string (use default if None)
                 let cwd_str = s
                     .cwd
-                    .unwrap_or_else(|| loom::DEFAULT_WORKING_FOLDER.to_string());
+                    .unwrap_or_else(|| loom_cli_types::DEFAULT_WORKING_FOLDER.to_string());
                 let cwd_path = std::path::PathBuf::from(&cwd_str);
 
                 let mut session_json = serde_json::json!({
@@ -1183,7 +1183,7 @@ impl LoomAcpAgent {
         cwd_filter: Option<&str>,
         _cursor: Option<&str>,
     ) -> Result<Vec<crate::agent::SessionInfo>, agent_client_protocol::Error> {
-        let db_path = loom::memory::default_memory_db_path();
+        let db_path = loom_memory::default_memory_db_path();
         let cwd_filter = cwd_filter.map(String::from);
 
         // Use spawn_blocking for SQLite operations

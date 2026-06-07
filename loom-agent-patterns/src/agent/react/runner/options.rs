@@ -6,7 +6,7 @@ use loom_llm::LlmProvider;
 use loom_memory::{Checkpointer, RunnableConfig, Store};
 use loom_types::state::ReActState;
 use loom_tools::tool_source::ToolSource;
-use loom::user_message::UserMessageStore;
+use loom_memory::user_message::UserMessageStore;
 
 /// Optional configuration for [`super::run_agent`] and [`super::run_react_graph_stream`].
 ///
@@ -44,15 +44,15 @@ pub(super) fn resolve_run_agent_options(opts: AgentOptions) -> ResolvedRunAgentO
     let provider = opts
         .provider
         .unwrap_or_else(|| {
-            let llm = loom::MockLlm::first_tools_then_end();
-            Arc::new(loom::llm::FixedLlmProvider {
-                client: Arc::from(Box::new(llm) as Box<dyn loom::llm::LlmClient>),
+            let llm = loom_llm::client::MockLlm::first_tools_then_end();
+            Arc::new(loom_llm::client::FixedLlmProvider {
+                client: Arc::from(Box::new(llm) as Box<dyn loom_llm::LlmClient>),
                 model_id: "mock/default".to_string(),
             })
         });
     let tool_source = opts
         .tool_source
-        .unwrap_or_else(|| Box::new(loom::MockToolSource::get_time_example()));
+        .unwrap_or_else(|| Box::new(loom_tools::MockToolSource::get_time_example()));
     ResolvedRunAgentOptions {
         provider,
         tool_source,

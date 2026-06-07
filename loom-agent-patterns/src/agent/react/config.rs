@@ -2,4 +2,4 @@
 //!
 //! Re-exported from `loom` to avoid duplication.
 
-pub use loom::react_config::{ReactBuildConfig, BuiltinToolFilter, TotRunnerConfig, GotRunnerConfig};
+pub use loom_react_config::{ReactBuildConfig, BuiltinToolFilter, TotRunnerConfig, GotRunnerConfig};

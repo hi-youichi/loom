@@ -53,7 +53,7 @@ pub use title_node::{is_first_think, TitleNode};
 pub use think_node::ThinkNode;
 pub use with_node_logging::WithNodeLogging;
 
-use loom::state::ReActState;
+use loom_types::state::ReActState;
 
 /// Output of the tools_condition function.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,8 +100,8 @@ pub const REACT_SYSTEM_PROMPT: &str = "";
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom::state::ToolCall;
-    use loom::Message;
+use loom_llm::ToolCall;
+use loom_llm::message::Message;
 
     #[test]
     fn tools_condition_returns_end_when_no_tool_calls() {

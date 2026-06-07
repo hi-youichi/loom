@@ -8,8 +8,8 @@
 
 mod init_logging;
 
-use loom::tool_source::{FileToolSource, ToolSource, ToolSourceError};
-use loom::tools::{TOOL_TODO_READ, TOOL_TODO_WRITE};
+use loom_tools::tool_source::{FileToolSource, ToolSource, ToolSourceError};
+use loom_tools::{AggregateToolSource, TOOL_TODO_READ, TOOL_TODO_WRITE};
 use serde_json::json;
 use std::sync::Mutex;
 

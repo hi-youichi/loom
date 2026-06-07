@@ -1,297 +1,34 @@
 //! # Loom
 //!
-//! A minimal, graph-based agent framework in Rust. Build stateful agents and graphs
-//! with a simple **state-in, state-out** design: one shared state type flows through nodes,
-//! with no separate Input/Output types.
+//! Run orchestration and shared types for building stateful AI agents.
 //!
-//! ## Design principles
+//! This crate provides the `cli_run` module which contains profile loading,
+//! helve config building, and model resolution logic.
 //!
-//! - **Single state type**: Each graph uses one state struct (e.g. [`ReActState`]) that all
-//!   nodes read from and write to.
-//! - **One step per run**: Each agent implements a single step—receive state, return updated state.
-//! - **State graphs**: Compose agents into [`StateGraph`] with conditional edges for complex workflows.
-//! - **Minimal core API with optional streaming**: [`CompiledStateGraph::invoke`] stays state-in/state-out;
-//!   use [`CompiledStateGraph::stream`] for incremental output when you need it.
+//! All core types are now in their own crates — import them directly:
 //!
-//! ## Features
-//!
-//! - **State Graphs**: Build and run stateful agent graphs with conditional routing.
-//! - **ReAct Pattern**: Built-in reasoning + acting loops (Think → Act → Observe); [`ReactRunner`]
-//!   and [`build_react_runner`] for config-driven ReAct (optional persistence, MCP, memory tools).
-//! - **LLM Integration**: Flexible [`LlmClient`] trait with [`MockLlm`] and OpenAI-compatible [`ChatOpenAI`].
-//! - **Memory & Checkpointing**: In-memory and persistent storage for agent state ([`Checkpointer`], [`Store`]).
-//! - **Tool Integration**: Extensible tool system with MCP support ([`ToolSource`], [`McpToolSource`]).
-//! - **Persistence**: Optional SQLite and LanceDB backends for long-term memory.
-//! - **Middleware**: Wrap node execution with custom async logic ([`NodeMiddleware`]).
-//! - **Streaming**: Stream per-step states or node updates via [`CompiledStateGraph::stream`] with [`StreamMode`].
-//! - **Channels**: State update strategies ([`LastValue`], [`EphemeralValue`], [`Topic`], [`BinaryOperatorAggregate`],
-//!   [`NamedBarrierValue`]); custom merge via [`StateUpdater`] and [`FieldBasedUpdater`].
-//! - **Runtime Context**: Custom runtime context, store access, and managed values ([`RunContext`], [`ManagedValue`]).
-//! - **Cache, Retry, Interrupts**: In-memory caching ([`InMemoryCache`]), retry policies ([`RetryPolicy`]),
-//!   human-in-the-loop ([`InterruptHandler`]).
-//! - **Graph Visualization**: [`generate_dot`], [`generate_text`].
-//! - **Helve**: Product-semantic config ([`HelveConfig`]), system prompt assembly ([`assemble_system_prompt`]),
-//!   conversion to ReAct config ([`to_react_build_config`]), approval policy ([`ApprovalPolicy`],
-//!   [`tools_requiring_approval`], [`APPROVAL_REQUIRED_EVENT_TYPE`]).
-//!
-//! Feature flag: `lance` — LanceDB vector store for long-term memory (optional; heavy dependency).
-//!
-//! ## Main modules
-//!
-//! - [`graph`]: [`StateGraph`], [`CompiledStateGraph`], [`Node`], [`Next`], [`RunContext`] — build and run state graphs.
-//! - [`agent`]: [`agent::react`] — ReAct nodes ([`ThinkNode`], [`ActNode`], [`ObserveNode`]), [`run_agent`],
-//!   [`tools_condition`], [`ReactRunner`], [`ReactBuildConfig`], [`build_react_runner`], [`build_react_run_context`].
-//! - [`state`]: [`ReActState`], [`ToolCall`], [`ToolResult`] — state and tool types for ReAct.
-//! - [`llm`]: [`LlmClient`] trait, [`MockLlm`], [`ChatOpenAI`].
-//! - [`memory`]: Checkpointing ([`Checkpointer`], [`MemorySaver`], [`SqliteSaver`]), [`Store`]; optional LanceDB.
-//! - [`tool_source`]: [`ToolSource`], [`ToolSpec`]; MCP ([`McpToolSource`]); [`WebToolsSource`], [`BashToolsSource`].
-//! - [`traits`]: Core [`Agent`] trait — implement for custom agents.
-//! - [`message`]: [`Message`] (System / User / Assistant / Tool).
-//! - [`stream`]: [`StreamWriter`], [`StreamEvent`], [`StreamMode`] for graph runs.
-//! - [`config`]: Config summaries ([`RunConfigSummary`], [`build_config_summary`]).
-//! - [`cache`]: [`Cache`], [`InMemoryCache`].
-//! - [`channels`]: [`Channel`], [`LastValue`], [`Topic`], etc.; [`StateUpdater`], [`FieldBasedUpdater`].
-//! - [`managed`]: [`ManagedValue`], [`IsLastStep`].
-//! - [`tools`]: [`register_mcp_tools`], [`McpToolAdapter`].
-//! - [`openai_sse`]: OpenAI-compatible SSE ([`StreamToSse`], [`ChatCompletionChunk`], [`parse_chat_request`]).
-//! - [`helve`]: Product config ([`HelveConfig`]), [`to_react_build_config`], [`assemble_system_prompt`],
-//!   [`ApprovalPolicy`], [`tools_requiring_approval`], [`APPROVAL_REQUIRED_EVENT_TYPE`].
-//! - [`protocol`]: WebSocket message types for CLI remote mode ([`ClientRequest`], [`ServerResponse`]);
-//!   streaming output protocol in [`protocol::stream`] ([`stream_event_to_protocol_format`], [`Envelope`]).
-//! - [`user_message`]: [`UserMessageStore`] trait for per-thread message append/list ([`NoOpUserMessageStore`]).
-//! - [`pregel`]: Low-level Pregel graph runtime with channels, checkpointing, task cache, and subgraph support.
-//! - [`runner_common`]: Shared helpers for stream-based graph runs ([`StreamRunOutcome`], [`run_stream_with_config`]).
-//!
-//! Key types are re-exported at crate root: `use loom::{Agent, StateGraph, Message, ReActState};`.
-//!
-//! ## Quick start
-//!
-//! ```rust,no_run
-//! use async_trait::async_trait;
-//! use loom::{Agent, AgentError, Message};
-//!
-//! #[derive(Clone, Debug, Default)]
-//! struct MyState {
-//!     messages: Vec<Message>,
-//! }
-//!
-//! struct EchoAgent;
-//!
-//! #[async_trait]
-//! impl Agent for EchoAgent {
-//!     fn name(&self) -> &str {
-//!         "echo"
-//!     }
-//!
-//!     type State = MyState;
-//!
-//!     async fn run(&self, state: Self::State) -> Result<Self::State, AgentError> {
-//!         let mut messages = state.messages;
-//!         if let Some(Message::User(s)) = messages.last() {
-//!             messages.push(Message::assistant(s.clone()));
-//!         }
-//!         Ok(MyState { messages })
-//!     }
-//! }
-//!
-//! # #[tokio::main]
-//! # async fn main() {
-//! let mut state = MyState::default();
-//! state.messages.push(Message::User(loom::UserContent::Text("hello, world!".to_string())));
-//!
-//! let agent = EchoAgent;
-//! match agent.run(state).await {
-//!     Ok(s) => {
-//!         if let Some(Message::Assistant(p)) = s.messages.last() {
-//!             println!("{}", p.content);
-//!         }
-//!     }
-//!     Err(e) => eprintln!("error: {}", e),
-//! }
-//! # }
-//! ```
-//!
-//! Run the echo example: `cargo run -p loom-examples --example echo -- "hello, world!"`
-//!
-//! ## Examples
-//!
-//! See the `loom-examples` crate: `echo`, `react_linear`, `react_mcp`, `react_exa`, `react_memory`,
-//! `memory_checkpoint`, `memory_persistence`, `openai_embedding`, `state_graph_echo`.
+//! - `loom_graph` — `StateGraph`, `CompiledStateGraph`, `Node`, `Next`, `Agent`, `channels`, `managed`
+//! - `loom_llm` — `LlmClient`, `ChatOpenAI`, `MockLlm`, `Message`, `ToolCall`, etc.
+//! - `loom_types` — `ReActState`, `ToolResult`, `ToolCall`, `ModelConfig`, approval types
+//! - `loom_tools` — `ToolSource`, `ToolSpec`, `McpToolSource`, `BashTool`, etc.
+//! - `loom_memory` — `Checkpointer`, `Store`, `MemorySaver`, `SqliteSaver`
+//! - `loom_stream` — `StreamEvent`, `StreamMode`, `StreamWriter`
+//! - `loom_helve` — `HelveConfig`, `assemble_system_prompt`, approval policy
+//! - `loom_tier` — tier resolution, model registry, LLM factory
+//! - `loom_cache` — `Cache`, `InMemoryCache`
+//! - `loom_compress` — context compression / compaction
+//! - `loom_protocol` — WebSocket message types, streaming protocol
+//! - `loom_pregel` — low-level Pregel graph runtime
+//! - `loom_commands` — slash command parsing and execution
+//! - `loom_model_spec` — `ModelSpec`, resolvers
+//! - `loom_background_review` — background review system
+//! - `loom_stream_display` — stream event display/rendering
+//! - `loom_worktree` — git worktree isolation
+//! - `loom_lsp` — LSP integration
+//! - `loom_cli_types` — `RunOptions`, `RunCmd`, `RunCompletion`, `AnyStreamEvent`
+//! - `loom_react_config` — `ReactBuildConfig`, profile types
 
-pub mod active_operation;
-pub mod cache;
-pub use loom_graph::channels;
 pub mod cli_run;
-pub mod command;
-pub mod compress;
-pub mod react_config;
-pub mod config;
-pub use react_config::ReactBuildConfig;
-pub mod error;
-pub mod export;
-pub use loom_graph as graph;
-pub mod goal_runner;
-pub mod stream_display;
-pub mod helve;
-
-#[cfg(test)]
-mod test_util;
-pub mod lsp;
-pub use loom_graph::managed;
-pub mod memory;
-pub mod message;
-pub mod model_spec;
-pub mod openai_sse;
-pub use loom_pregel as pregel;
-pub mod prompts;
-pub mod protocol;
-pub mod profile_convert;
-pub mod provider;
-pub mod runner_common;
-pub mod skill;
-pub mod state;
-pub mod stream;
-pub mod tier;
-pub use tier::{resolve_tier_and_build_config, resolve_tier_and_build_config_with_resolver};
-
-pub mod services;
-// Re-export from loom-tools crate
-pub use loom_tools as tool_source;
-pub use loom_tools as tools;
-pub mod traits;
-pub mod user_message;
-pub mod title_generator;
-pub mod worktree;
-pub mod llm;
-pub mod background_review;
-
-
-pub use cache::{Cache, CacheError, InMemoryCache};
-pub use channels::{
-    BinaryOperatorAggregate, Channel, ChannelError, EphemeralValue, FieldBasedUpdater, LastValue,
-    NamedBarrierValue, StateUpdater, Topic,
-};
-
-pub use active_operation::{
-    ActiveOperation, ActiveOperationCanceller, ActiveOperationKind, RunCancellation,
-};
-pub use cli_run::{
-    build_config_from_profile, build_helve_config, list_available_profiles, load_agents_md,
-    resolve_model_config, resolve_profile,
-    AgentProfile, ProfileError, ProfileSource, ProfileSummary,
-    ResolvedAgent, ResolvedModelConfig, DEFAULT_WORKING_FOLDER,
-    // Re-export agent run types (stubs for types moved to loom-agent)
-    RunOptions, RunCmd, RunCompletion, RunError, AnyStreamEvent,
-    AgentRunResult,
-};
-// Re-export shared types from loom-types crate
-pub use loom_types::{
-    approval::{ApprovalPolicy, APPROVAL_REQUIRED_EVENT_TYPE, tools_requiring_approval},
-    command::{ResetState, CompactState, SummarizeState},
-    config::{BuiltinToolFilter, CompactionConfig, TotRunnerConfig, GotRunnerConfig},
-    state::{ModelConfig, ReActState, ToolResult, ToolStorageRef, ReActCheckpointMeta, NormalizedToolOutput},
-};
-pub use config::{
-    build_config_summary, ConfigSection, EmbeddingConfigSummary, LlmConfigSummary,
-    MemoryConfigSummary, RunConfigSummary, RunConfigSummarySource, ToolConfigSummary,
-};
-pub use error::AgentError;
-pub use export::stream_event_to_format_a;
-pub use graph::{
-    generate_dot, generate_text, log_graph_complete, log_graph_error, log_graph_start,
-    log_node_complete, log_node_start, log_state_update, CompilationError, CompiledStateGraph,
-    DefaultInterruptHandler, Interrupt, InterruptHandler, LoggingNodeMiddleware,
-    NameNode, Next, Node, NodeMiddleware, RetryPolicy, RunContext, Runtime, StateGraph, END, START,
-};
-pub use helve::{
-    assemble_react_system_prompt, assemble_system_prompt,
-    to_react_build_config, HelveConfig,
-    ReactPromptInputs,
-    EnvContext, OsInfo, LocaleInfo, ShellInfo, ProjectInfo, RuntimeInfo,
-};
-
-pub use llm::{
-    ChatOpenAI, ChatOpenAICompat, CompletionTokensDetails, FixedLlmProvider, LlmClient,
-    LlmProvider, LlmResponse, LlmUsage, MockLlm, MultiRoundMockLlm, OpenAICompatProvider,
-    OpenAIProvider, PromptTokensDetails, ToolCallDelta, ToolChoiceMode,
-};
-pub use managed::{IsLastStep, ManagedValue};
-pub use memory::Embedder;
-#[cfg(feature = "lance")]
-pub use memory::LanceStore;
-pub use memory::OpenAIEmbedder;
-pub use memory::{
-    Checkpoint, CheckpointError, CheckpointListItem, CheckpointMetadata, CheckpointSource,
-    CheckpointUserMeta, Checkpointer, InMemoryStore, JsonSerializer, KernelMetadata, MemorySaver, Namespace, RunnableConfig, Store,
-    StoreError, StoreSearchHit,
-};
-pub use memory::{SqliteSaver, SqliteStore};
-pub use message::{
-    AssistantPayload, AssistantToolCall, ContentError, ContentPart, Message, UserContent,
-};
-pub use model_spec::{
-    CachedResolver, CompositeResolver, ConfigOverride, LocalFileResolver, ModelLimitResolver,
-    ModelSpec, ModelTier, ModelsDevResolver, ResolverRefresher,
-};
-pub use openai_sse::{
-    parse_chat_request, write_sse_line, ChatCompletionChunk, ChatCompletionRequest, ChatMessage,
-    ChunkMeta, ChunkUsage, DeltaToolCall, MessageContent, ParseError, ParsedChatRequest,
-    StreamOptions, StreamToSse,
-};
-pub use prompts::{
-    default_from_embedded as default_agent_prompts_from_yaml, load as load_agent_prompts,
-    load_or_default as load_agent_prompts_or_default, AgentPrompts, LoadError as PromptsLoadError,
-};
-pub use protocol::stream::{
-    stream_event_to_protocol_envelope, stream_event_to_protocol_format,
-    stream_event_to_protocol_value, Envelope,
-};
-pub use protocol::{
-    AgentListRequest, AgentListResponse, AgentSource, AgentSourceFilter, AgentSummary, AgentType,
-    ClientRequest, EnvelopeState, ErrorResponse, ListModelsRequest, ListModelsResponse,
-    PingRequest, PongResponse, ProtocolEvent, ProtocolEventEnvelope, RunEndResponse, RunRequest,
-    RunStreamEventResponse, ServerResponse, SessionUpdatedResponse, SetModelRequest, SetModelResponse, ThreadInWorkspace,
-    ToolShowOutput, ToolShowRequest, ToolShowResponse, ToolsListRequest, ToolsListResponse,
-    UserMessageItem, UserMessagesRequest, UserMessagesResponse, WorkspaceCreateRequest,
-    WorkspaceCreateResponse, WorkspaceListRequest, WorkspaceListResponse, WorkspaceMeta,
-    WorkspaceRenameRequest, WorkspaceRenameResponse, WorkspaceThreadAddRequest,
-    WorkspaceThreadAddResponse, WorkspaceThreadListRequest,
-    WorkspaceThreadListResponse, WorkspaceThreadRemoveRequest, WorkspaceThreadRemoveResponse,
-    WorkspaceFileListRequest, WorkspaceFileListResponse, FileEntry,
-    WorkspaceFileReadRequest, WorkspaceFileReadResponse,
-    WorkspaceFileChangedResponse, FileChange,
-};
-pub use state::{
-    normalize_tool_output, NormalizationConfig, ToolOutputHint,
-    ToolOutputStrategy,
-};
-pub use state::ToolCall;
-pub use stream::{
-    CheckpointEvent, MessageChunk, MessageChunkKind, StreamEvent, StreamMetadata, StreamMode,
-    StreamWriter, ToolStreamWriter,
-};
-pub use tool_source::McpToolSource;
-pub use tool_source::{
-    BashToolsSource, MemoryToolsSource, MockToolSource, ShortTermMemoryToolSource, StoreToolSource,
-    ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec, WebToolsSource,
-    TOOL_BASH, TOOL_GET_RECENT_MESSAGES, TOOL_LIST_MEMORIES, TOOL_RECALL, TOOL_REMEMBER,
-    TOOL_SEARCH_MEMORIES, TOOL_WEB_FETCHER,
-};
-pub use loom_tools::tools::shared::shell_output::{ShellOutput, format_shell_output, format_timed_out_output, format_terminal_timed_out_output, format_size, shell_output_dir, create_output_file, generate_run_id, make_relative};
-pub use loom_tools::tools::shared::canceller::{ChildProcessCanceller, setup_cancellation};
-pub use loom_tools::{register_mcp_tools, BashTool, CommandExecutor, LocalCommandExecutor, McpToolAdapter};
-pub use traits::{Agent, AgentNode};
-pub use user_message::{
-    NoOpUserMessageStore, SqliteUserMessageStore, UserMessageStore, UserMessageStoreError,
-};
-pub use title_generator::generate_title;
-
-// Agent types (DUP, GoT, ToT) moved to loom-agent crate
-// pub use agent::{
-//     build_dup_initial_state, build_got_initial_state, build_tot_initial_state, DupRunError,
-//     DupRunner, DupState, GotRunError, GotRunner, GotState, TaskGraph, TaskNode, TaskNodeState,
-//     TaskStatus, TotCandidate, TotExtension, TotRunError, TotRunner, TotState, UnderstandOutput,
-// };
 
 /// Global lock for tests that modify `LOOM_HOME` or `OPENAI_BASE_URL` env vars.
 /// Use in any test that sets/removes these env vars to prevent data races.
@@ -332,14 +69,15 @@ mod run_agent_options_tests {
     #[cfg(unix)]
     use std::time::Instant;
 
-    use crate::{
-        AnyStreamEvent, MockLlm,
-        RunCancellation, RunCmd, RunCompletion, RunOptions, StreamEvent, UserContent, ReActState,
-    };
-    use loom_agent::{run_agent_with_llm_override, run_agent_with_options};
+    use loom_llm::client::MockLlm;
+    use loom_cli_types::{RunCancellation, RunCmd, RunCompletion, RunOptions, AnyStreamEvent};
+    use loom_types::state::ReActState;
+    use loom_llm::message::UserContent;
     #[cfg(unix)]
-    use crate::ToolCall;
-    use crate::memory::{default_memory_db_path, JsonSerializer, SqliteSaver, RunnableConfig, CheckpointListItem, Checkpointer};
+    use loom_llm::ToolCall;
+    use loom_memory::{default_memory_db_path, JsonSerializer, SqliteSaver, RunnableConfig, CheckpointListItem, Checkpointer};
+
+    use loom_agent::{run_agent_with_llm_override, run_agent_with_options};
 
     static MCP_SHORT_TIMEOUT: OnceLock<()> = OnceLock::new();
 
@@ -448,7 +186,7 @@ mod run_agent_options_tests {
         let saw = std::sync::Arc::clone(&saw_dry_placeholder);
         let on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>> =
             Some(Box::new(move |ev| {
-                if let AnyStreamEvent::React(StreamEvent::Updates { state, .. }) = &ev {
+                if let AnyStreamEvent::React(loom_stream::StreamEvent::Updates { state, .. }) = &ev {
                     if state.tool_results.iter().any(|tr| {
                         tr.content.contains("dry run") && tr.content.contains("was not executed")
                     }) {

@@ -3,6 +3,7 @@
 //! Core types are defined in the `stream-event` crate.
 //! This module re-exports them and adds Loom-specific utilities.
 
+pub mod any_event;
 pub mod openai_sse;
 pub mod sender;
 pub mod writers;
@@ -14,6 +15,7 @@ pub use stream_event::{
 };
 
 // Loom-specific types
+pub use any_event::TypedAnyStreamEvent;
 pub use sender::ChunkToStreamSender;
 pub use writers::tool_stream_writer::ToolStreamWriter;
 

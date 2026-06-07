@@ -7,7 +7,7 @@ mod delivery;
 mod request;
 mod stream;
 
-use loom::{ProtocolEventEnvelope, ServerResponse, SessionUpdatedResponse};
+use loom_protocol::{ProtocolEventEnvelope, ServerResponse, SessionUpdatedResponse};
 use request::{PrepareRunInput, PrepareRunResult};
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -23,12 +23,12 @@ use stream::OnTitleFn;
 /// over the WebSocket. Returns `Ok((run_id, cancellation, None))` in the normal streaming case (response already
 /// sent); returns `Err` if streaming or sending the final response fails.
 pub(crate) async fn handle_run(
-    r: loom::RunRequest,
+    r: loom_protocol::requests::RunRequest,
     sink: &SharedSink,
     workspace_store: Option<Arc<loom_workspace::Store>>,
-    user_message_store: Option<Arc<dyn loom::UserMessageStore>>,
+    user_message_store: Option<Arc<dyn loom_memory::user_message::UserMessageStore>>,
     run_config: &RunConfig,
-) -> Result<(String, loom::cli_run::RunCancellation, Option<ServerResponse>), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(String, loom_cli_types::RunCancellation, Option<ServerResponse>), Box<dyn std::error::Error + Send + Sync>> {
     let request_id = r.id.clone();
     let workspace_id_for_title = r.workspace_id.clone();
     let PrepareRunResult {
@@ -113,10 +113,8 @@ pub(crate) async fn handle_run(
 #[cfg(test)]
 mod tests {
     use async_trait::async_trait;
-    use loom::{
-        EnvelopeState, MockLlm, ProtocolEvent, ProtocolEventEnvelope,
-        ServerResponse,
-    };
+    use loom_protocol::{EnvelopeState, ProtocolEvent, ProtocolEventEnvelope, ServerResponse};
+    use loom_llm::client::MockLlm;
     use loom_agent::{RunCmd, RunCompletion, RunError, RunOptions, AgentRunResult};
     use std::sync::atomic::AtomicUsize;
     use std::sync::{Arc, Mutex};
@@ -318,14 +316,14 @@ mod tests {
 
     #[tokio::test]
     async fn try_append_initial_user_message_thread_id_none_returns_false() {
-        let store: Arc<dyn loom::UserMessageStore> = Arc::new(loom::NoOpUserMessageStore);
+        let store: Arc<dyn loom_memory::user_message::UserMessageStore> = Arc::new(loom::NoOpUserMessageStore);
         let got = try_append_initial_user_message(Some(&store), None, "hi").await;
         assert!(!got);
     }
 
     #[tokio::test]
     async fn try_append_initial_user_message_both_some_returns_true() {
-        let store: Arc<dyn loom::UserMessageStore> = Arc::new(loom::NoOpUserMessageStore);
+        let store: Arc<dyn loom_memory::user_message::UserMessageStore> = Arc::new(loom::NoOpUserMessageStore);
         let got = try_append_initial_user_message(Some(&store), Some("t1"), "hello").await;
         assert!(got);
     }
@@ -382,7 +380,7 @@ mod tests {
     #[tokio::test]
     async fn run_agent_task_with_user_message_store_uses_append_channel() {
         let (tx, _rx) = mpsc::channel::<ProtocolEventEnvelope>(EVENT_QUEUE_CAPACITY);
-        let store: Arc<dyn loom::UserMessageStore> = Arc::new(loom::NoOpUserMessageStore);
+        let store: Arc<dyn loom_memory::user_message::UserMessageStore> = Arc::new(loom::NoOpUserMessageStore);
         let opts = RunOptions {
             message: loom::UserContent::text("hi".to_string()),
             working_folder: None,

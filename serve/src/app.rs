@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::oneshot;
 
 use super::connection::handle_socket;
-use loom::llm::ProviderConfig;
+use loom_llm::ProviderConfig;
 
 /// Run-related server configuration (queue capacities and display limits).
 #[derive(Clone)]
@@ -70,7 +70,7 @@ pub(crate) struct AppState {
     /// When set, Run requests with workspace_id + thread_id register the thread in this workspace.
     pub(crate) workspace_store: Option<Arc<loom_workspace::Store>>,
     /// When set, user and assistant messages are appended per thread (Phase 2: stream-event driven).
-    pub(crate) user_message_store: Option<std::sync::Arc<dyn loom::UserMessageStore>>,
+    pub(crate) user_message_store: Option<std::sync::Arc<dyn loom_memory::user_message::UserMessageStore>>,
     /// Run and tools configuration (queue capacities, display_max_len).
     pub(crate) run_config: RunConfig,
     /// Provider configurations for model access.

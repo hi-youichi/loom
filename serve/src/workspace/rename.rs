@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use loom::{
-    ServerResponse, WorkspaceRenameRequest, WorkspaceRenameResponse,
-};
+    use loom_protocol::{ServerResponse, WorkspaceRenameRequest, WorkspaceRenameResponse};
 
 use super::no_store_error;
 
@@ -22,7 +20,7 @@ pub(crate) async fn handle_workspace_rename(
             workspace_id,
             name,
         }),
-        Err(e) => ServerResponse::Error(loom::ErrorResponse {
+        Err(e) => ServerResponse::Error(loom_protocol::ErrorResponse {
             id: Some(id),
             error: e.to_string(),
         }),

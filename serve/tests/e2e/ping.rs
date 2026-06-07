@@ -1,6 +1,6 @@
 use super::common;
 use futures_util::StreamExt;
-use loom::{ClientRequest, PingRequest, ServerResponse};
+use loom_protocol::{ClientRequest, PingRequest, ServerResponse};
 use std::time::Duration;
 use tokio::time::timeout;
 use tokio_tungstenite::connect_async;

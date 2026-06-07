@@ -24,7 +24,7 @@
 use serde::{Deserialize, Serialize};
 
 // Re-export from loom for compatibility
-pub use loom::message::{ContentPart, UserContent};
+pub use loom_llm::message::{ContentPart, UserContent};
 
 /// Parse a slice of content blocks into a single user message string.
 ///

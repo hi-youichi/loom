@@ -8,7 +8,9 @@ mod init_logging;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use loom::{Agent, AgentError, AgentNode, Message, NameNode, StateGraph, END, START};
+use loom_llm::{AgentError, message::Message};
+use loom_agent::agent::react::agent::{Agent, AgentNode};
+use loom_graph::{NameNode, StateGraph, END, START};
 
 #[derive(Debug, Clone, Default)]
 struct AgentState {

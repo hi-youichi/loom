@@ -15,7 +15,9 @@ fn ensure_short_mcp_timeout() {
     });
 }
 
-use loom::{build_react_run_context, ReactBuildConfig};
+use loom_agent::agent::react::build::build_react_run_context;
+use loom_react_config::ReactBuildConfig;
+use loom_types::config::{GotRunnerConfig, TotRunnerConfig};
 
 fn base_config(working_folder: std::path::PathBuf) -> ReactBuildConfig {
     ReactBuildConfig {
@@ -52,8 +54,8 @@ fn base_config(working_folder: std::path::PathBuf) -> ReactBuildConfig {
         working_folder: Some(working_folder),
         approval_policy: None,
         compaction_config: None,
-        tot_config: loom::TotRunnerConfig::default(),
-        got_config: loom::GotRunnerConfig::default(),
+        tot_config: loom_types::config::TotRunnerConfig::default(),
+        got_config: loom_types::config::GotRunnerConfig::default(),
         mcp_servers: None,
         skill_registry: None,
         max_sub_agent_depth: None,

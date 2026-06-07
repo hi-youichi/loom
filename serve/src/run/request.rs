@@ -1,6 +1,8 @@
 //! Request preparation: register thread in workspace, append initial user message, build RunOptions and RunCmd.
 
-use loom::{cli_run::RunCancellation, protocol::AgentIdentifier, AgentType, Message};
+use loom_cli_types::RunCancellation;
+use loom_llm::message::Message;
+use loom_protocol::{AgentIdentifier, AgentType};
 use loom_agent::{RunCmd, RunOptions};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -27,7 +29,7 @@ pub(super) async fn try_register_thread_in_workspace(
 /// this to set initial message count for the run). Returns `false` if store or thread_id
 /// is missing, or append I/O failed (only a warning is logged; run is not failed).
 pub(super) async fn try_append_initial_user_message(
-    user_message_store: Option<&Arc<dyn loom::UserMessageStore>>,
+    user_message_store: Option<&Arc<dyn loom_memory::user_message::UserMessageStore>>,
     thread_id: Option<&str>,
     message: &str,
 ) -> bool {
@@ -63,9 +65,9 @@ pub(super) struct PrepareRunResult {
 /// Registers thread in workspace, appends initial user message when configured, and builds
 /// RunOptions and RunCmd from the request. Used by [`crate::run::handle_run`].
 pub(super) async fn prepare_run(
-    r: loom::RunRequest,
+    r: loom_protocol::requests::RunRequest,
     workspace_store: Option<&Arc<loom_workspace::Store>>,
-    user_message_store: Option<&Arc<dyn loom::UserMessageStore>>,
+    user_message_store: Option<&Arc<dyn loom_memory::user_message::UserMessageStore>>,
     input: PrepareRunInput,
 ) -> PrepareRunResult {
     try_register_thread_in_workspace(
@@ -82,7 +84,7 @@ pub(super) async fn prepare_run(
     )
     .await;
 
-    let resolved = loom::resolve_model_config(r.model.as_deref()).await;
+    let resolved = loom::cli_run::resolve_model_config(r.model.as_deref()).await;
 
     // Log the model resolution
     match &r.model {

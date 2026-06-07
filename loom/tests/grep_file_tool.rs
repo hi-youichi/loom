@@ -7,8 +7,8 @@
 
 mod init_logging;
 
-use loom::tool_source::{FileToolSource, ToolSource, ToolSourceError};
-use loom::tools::TOOL_GREP;
+use loom_tools::tool_source::{FileToolSource, ToolSource, ToolSourceError, ToolCallContent};
+use loom_tools::TOOL_GREP;
 use serde_json::json;
 
 // ---------------------------------------------------------------------------
@@ -18,7 +18,7 @@ use serde_json::json;
 async fn grep(
     dir: &tempfile::TempDir,
     args: serde_json::Value,
-) -> loom::tool_source::ToolCallContent {
+) -> loom_tools::tool_source::ToolCallContent {
     FileToolSource::new(dir.path())
         .unwrap()
         .call_tool(TOOL_GREP, args, None)

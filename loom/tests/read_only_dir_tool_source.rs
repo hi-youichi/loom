@@ -6,18 +6,18 @@
 
 mod init_logging;
 
-use loom::tool_source::{
+use loom_tools::tool_source::{
     register_file_tools, register_read_only_dir_tools, ToolSource, ToolSourceError,
     TOOL_READ_ONLY_LIST_DIR, TOOL_READ_ONLY_READ_FILE,
 };
-use loom::tools::{AggregateToolSource, TOOL_LS, TOOL_READ_FILE, TOOL_WRITE_FILE};
+use loom_tools::{AggregateToolSource, TOOL_GREP, TOOL_LS, TOOL_READ_FILE, TOOL_WRITE_FILE};
 use serde_json::json;
 
 /// Scenario: ReadOnlyDirToolSource::new with a valid directory lists read_only_list_dir and read_only_read.
 #[tokio::test]
 async fn read_only_dir_tool_source_list_tools() {
     let dir = tempfile::tempdir().unwrap();
-    let source = loom::tool_source::ReadOnlyDirToolSource::new(dir.path()).unwrap();
+    let source = loom_tools::tool_source::ReadOnlyDirToolSource::new(dir.path()).unwrap();
     let tools = source.list_tools().await.unwrap();
     assert_eq!(tools.len(), 2);
     let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
@@ -31,7 +31,7 @@ async fn read_only_dir_tool_source_list_and_read() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("ref.txt"), "reference content").unwrap();
     std::fs::create_dir(dir.path().join("docs")).unwrap();
-    let source = loom::tool_source::ReadOnlyDirToolSource::new(dir.path()).unwrap();
+    let source = loom_tools::tool_source::ReadOnlyDirToolSource::new(dir.path()).unwrap();
 
     let list = source
         .call_tool(TOOL_READ_ONLY_LIST_DIR, json!({ "path": "." }), None)

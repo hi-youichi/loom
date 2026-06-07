@@ -43,12 +43,12 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use loom::cli_run::{build_config_from_profile, list_available_profiles, resolve_profile};
-use loom::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
-use loom::tools::Tool;
-use loom::react_config::ReactBuildConfig;
-use loom::state::{ToolOutputHint, ToolOutputStrategy};
-use loom::tier::resolve_tier_and_build_config;
+use loom_react_config::build_config_from_profile;
+use loom_react_config::profile::{list_available_profiles, resolve_profile};
+use loom_tools::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec, Tool};
+use loom_react_config::ReactBuildConfig;
+use loom_types::tool_output_normalizer::{ToolOutputHint, ToolOutputStrategy};
+use loom_tier::resolve_tier_and_build_config;
 use crate::agent::react::build::build_react_runner;
 
 pub const TOOL_INVOKE_AGENT: &str = "invoke_agent";
@@ -320,7 +320,7 @@ impl InvokeAgentTool {
                 "Processing model_tier override request"
             );
             
-            match serde_json::from_str::<loom::model_spec::ModelTier>(tier_str) {
+            match serde_json::from_str::<loom_model_spec::ModelTier>(tier_str) {
                 Ok(tier) => {
                     tracing::info!(
                         agent = %agent_name,
@@ -401,14 +401,14 @@ tracing::debug!(agent = %agent_name, "Starting sub-agent execution");
         let loom_sender = ctx.and_then(|c| c.any_stream_event_sender.clone());
         // any_stream_event_sender disabled: loom-agent-patterns ActNode ignores it (hardcoded None)
         // and loom_types::cli_run::AnyStreamEvent differs from loom::cli_run::AnyStreamEvent.
-        let _unused_any_sender: Option<std::sync::Arc<dyn Fn(loom::cli_run::AnyStreamEvent) + Send + Sync>> = None;
+        let _unused_any_sender: Option<std::sync::Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>> = None;
         let agent_name_for_event = agent_name.to_string();
         let start = std::time::Instant::now();
         let buffer = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
         let buffer_clone = buffer.clone();
 
-        let on_event = Some(move |event: loom::stream::StreamEvent<loom::state::ReActState>| {
-            if let Some(formatted) = loom::stream_display::format_subagent_event(
+        let on_event = Some(move |event: loom_stream::StreamEvent<loom_cli_types::ReActState>| {
+            if let Some(formatted) = loom_stream_display::format_subagent_event(
                 &event, &agent_name_for_event, depth, start,
             ) {
                 buffer_clone.lock().unwrap().push(formatted);
@@ -860,7 +860,7 @@ async fn invoke_single_agent(
             .as_deref()
             .unwrap_or_else(|| std::path::Path::new("."));
 
-        match loom::worktree::WorktreeManager::from_working_dir(current_dir, worktree_config) {
+        match loom_worktree::WorktreeManager::from_working_dir(current_dir, worktree_config) {
             Ok(manager) => {
                 match manager
                     .create_for_agent(
@@ -941,7 +941,7 @@ async fn invoke_single_agent(
             "Processing model_tier override request"
         );
         
-        match serde_json::from_str::<loom::model_spec::ModelTier>(tier_str) {
+        match serde_json::from_str::<loom_model_spec::ModelTier>(tier_str) {
             Ok(tier) => {
                 tracing::info!(
                     agent = %agent_name,
@@ -1019,14 +1019,14 @@ tracing::debug!(agent = %agent_name, "Starting sub-agent execution");
     let loom_sender = ctx.and_then(|c| c.any_stream_event_sender.clone());
     // any_stream_event_sender disabled: loom-agent-patterns ActNode ignores it (hardcoded None)
     // and loom_types::cli_run::AnyStreamEvent differs from loom::cli_run::AnyStreamEvent.
-    let _unused_any_sender: Option<std::sync::Arc<dyn Fn(loom::cli_run::AnyStreamEvent) + Send + Sync>> = None;
+    let _unused_any_sender: Option<std::sync::Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>> = None;
     let agent_name_for_event = agent_name.to_string();
     let start = std::time::Instant::now();
     let buffer = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
     let buffer_clone = buffer.clone();
 
-    let on_event = Some(move |event: loom::stream::StreamEvent<loom::state::ReActState>| {
-        if let Some(formatted) = loom::stream_display::format_subagent_event(
+    let on_event = Some(move |event: loom_stream::StreamEvent<loom_cli_types::ReActState>| {
+        if let Some(formatted) = loom_stream_display::format_subagent_event(
             &event, &agent_name_for_event, depth, start,
         ) {
             buffer_clone.lock().unwrap().push(formatted);
@@ -1077,7 +1077,7 @@ tracing::debug!(agent = %agent_name, "Starting sub-agent execution");
             .as_ref()
             .map(|wc| wc.to_worktree_config())
             .unwrap_or_default();
-        let manager = loom::worktree::WorktreeManager::new(handle.repo_root.clone(), wt_config.clone());
+        let manager = loom_worktree::WorktreeManager::new(handle.repo_root.clone(), wt_config.clone());
         let has_changes = manager.check_changes(&handle).await.unwrap_or(false);
 
         if !has_changes && wt_config.auto_cleanup {
@@ -1212,18 +1212,18 @@ mod tests {
     }
 
     #[async_trait::async_trait]
-    impl loom::tier::TierResolver for MockTierResolver {
+    impl loom_tier::TierResolver for MockTierResolver {
         async fn resolve_tier(
             &self,
             _config: &ReactBuildConfig,
-            tier: loom::model_spec::ModelTier,
-        ) -> Option<loom::tier::ResolvedTierModel> {
+            tier: loom_model_spec::ModelTier,
+        ) -> Option<loom_tier::ResolvedTierModel> {
             assert_eq!(
                 tier,
-                loom::model_spec::ModelTier::Light,
+                loom_model_spec::ModelTier::Light,
                 "explore agent should request Light tier"
             );
-            Some(loom::tier::ResolvedTierModel {
+            Some(loom_tier::ResolvedTierModel {
                 model_id: self.light_model_id.clone(),
                 base_url: Some("https://mock.test/v1".into()),
                 api_key: Some("sk-mock".into()),
@@ -1238,7 +1238,7 @@ mod tests {
         let profile = resolve_profile("explore").expect("explore profile should load");
         assert_eq!(
             profile.model.as_ref().and_then(|m| m.tier),
-            Some(loom::model_spec::ModelTier::Light),
+            Some(loom_model_spec::ModelTier::Light),
             "explore agent config.yaml should declare tier: light"
         );
 
@@ -1250,7 +1250,7 @@ mod tests {
         let sub_config = build_config_from_profile(&profile, &parent_config, None);
         assert_eq!(
             sub_config.model_tier,
-            Some(loom::model_spec::ModelTier::Light),
+            Some(loom_model_spec::ModelTier::Light),
             "build_config_from_profile should propagate explore's light tier"
         );
 
@@ -1258,7 +1258,7 @@ mod tests {
             light_model_id: "anthropic/claude-haiku-4".to_string(),
         };
         let resolved =
-            loom::tier::resolve_tier_and_build_config_with_resolver(&sub_config, &resolver).await;
+            loom_tier::resolve_tier_and_build_config_with_resolver(&sub_config, &resolver).await;
 
         assert_eq!(
             resolved.model.as_deref(),
@@ -1299,7 +1299,7 @@ mod tests {
         // Explore's light tier should override parent's strong tier
         assert_eq!(
             sub_config.model_tier,
-            Some(loom::model_spec::ModelTier::Light),
+            Some(loom_model_spec::ModelTier::Light),
             "explore's tier: light should override parent's tier"
         );
     }

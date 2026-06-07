@@ -1,17 +1,14 @@
-//! Unit tests for OpenAI SSE adapter: StreamEvent → SSE lines and request parsing.
+//! Unit tests for OpenAI SSE adapter: StreamEvent → SSE lines.
 //!
 //! **Scenario**: Given a fixed sequence of StreamEvent (TaskStart think → Messages → TaskEnd → Values),
 //! the adapter emits SSE lines that match OpenAI chat.completion.chunk format: first line with
 //! role+content, content deltas, then finish() yields final chunk with finish_reason "stop".
-//! **Scenario**: parse_chat_request extracts user_message, system_prompt, runnable_config from request.
 
 mod init_logging;
 
-use loom::{
-    parse_chat_request,
-    stream::{MessageChunk, StreamMetadata},
-    ChatCompletionRequest, ChatMessage, ChunkMeta, ModelConfig, ReActState, StreamEvent, StreamToSse,
-};
+use loom_stream::{MessageChunk, StreamMetadata};
+use loom_types::state::ReActState;
+use loom::{ChunkMeta, ModelConfig, StreamEvent, StreamToSse};
 
 fn empty_state() -> ReActState {
     ReActState {
@@ -192,7 +189,7 @@ async fn adapter_with_sink_sends_lines_to_channel() {
 /// **Scenario**: Updates with non-empty tool_calls emits a chunk with delta.tool_calls and finish_reason "tool_calls".
 #[test]
 fn adapter_emits_tool_calls_chunk_on_updates_with_tool_calls() {
-    use loom::ToolCall;
+    use loom_llm::ToolCall;
 
     let meta = ChunkMeta {
         id: "chatcmpl-tc".to_string(),
@@ -268,142 +265,4 @@ fn adapter_values_does_not_emit_finish_chunk() {
     adapter.finish();
     let lines2 = adapter.take_lines();
     assert_eq!(lines2.len(), 1, "finish adds one final chunk");
-}
-
-// --- parse_chat_request ---
-
-/// **Scenario**: parse_chat_request returns last user message and system prompt or default.
-#[test]
-fn parse_request_extracts_user_message_and_system_prompt() {
-    let req = ChatCompletionRequest {
-        messages: vec![
-            ChatMessage {
-                role: "system".to_string(),
-                content: Some("You are helpful.".to_string().into()),
-            },
-            ChatMessage {
-                role: "user".to_string(),
-                content: Some("Hello".to_string().into()),
-            },
-        ],
-        model: "gpt-4o".to_string(),
-        stream: true,
-        stream_options: None,
-        thread_id: None,
-        working_folder: None,
-        approval_policy: None,
-    };
-    let parsed = parse_chat_request(&req).unwrap();
-    assert_eq!(parsed.user_message, "Hello");
-    assert_eq!(parsed.system_prompt, "You are helpful.");
-    assert!(parsed.runnable_config.thread_id.is_none());
-}
-
-/// **Scenario**: When no system message, system_prompt is REACT_SYSTEM_PROMPT (code default).
-#[test]
-fn parse_request_uses_default_system_prompt_when_no_system_message() {
-    let req = ChatCompletionRequest {
-        messages: vec![ChatMessage {
-            role: "user".to_string(),
-            content: Some("Hi".to_string().into()),
-        }],
-        model: "gpt-4o".to_string(),
-        stream: true,
-        stream_options: None,
-        thread_id: None,
-        working_folder: None,
-        approval_policy: None,
-    };
-    let parsed = parse_chat_request(&req).unwrap();
-    assert_eq!(parsed.user_message, "Hi");
-    assert_eq!(
-        parsed.system_prompt,
-        loom::agent::react::REACT_SYSTEM_PROMPT
-    );
-}
-
-/// **Scenario**: thread_id in request is reflected in runnable_config.
-#[test]
-fn parse_request_passes_thread_id_to_runnable_config() {
-    let req = ChatCompletionRequest {
-        messages: vec![ChatMessage {
-            role: "user".to_string(),
-            content: Some("Hi".to_string().into()),
-        }],
-        model: "gpt-4o".to_string(),
-        stream: true,
-        stream_options: None,
-        thread_id: Some("thread-123".to_string()),
-        working_folder: None,
-        approval_policy: None,
-    };
-    let parsed = parse_chat_request(&req).unwrap();
-    assert_eq!(
-        parsed.runnable_config.thread_id.as_deref(),
-        Some("thread-123")
-    );
-}
-
-/// **Scenario**: No user message returns ParseError::NoUserMessage.
-#[test]
-fn parse_request_errors_when_no_user_message() {
-    let req = ChatCompletionRequest {
-        messages: vec![ChatMessage {
-            role: "system".to_string(),
-            content: Some("Only system.".to_string().into()),
-        }],
-        model: "gpt-4o".to_string(),
-        stream: true,
-        stream_options: None,
-        thread_id: None,
-        working_folder: None,
-        approval_policy: None,
-    };
-    let err = parse_chat_request(&req).unwrap_err();
-    assert!(matches!(err, loom::ParseError::NoUserMessage));
-}
-
-/// **Scenario**: working_folder and approval_policy in request yield helve_config.
-#[test]
-fn parse_request_with_working_folder_and_approval_policy_sets_helve_config() {
-    let dir = tempfile::tempdir().unwrap();
-    let req = ChatCompletionRequest {
-        messages: vec![ChatMessage {
-            role: "user".to_string(),
-            content: Some("List files.".to_string().into()),
-        }],
-        model: "gpt-4o".to_string(),
-        stream: true,
-        stream_options: None,
-        thread_id: Some("t1".to_string()),
-        working_folder: Some(dir.path().to_string_lossy().into_owned()),
-        approval_policy: Some("destructive_only".to_string()),
-    };
-    let parsed = parse_chat_request(&req).unwrap();
-    let helve = parsed.helve_config.as_ref().unwrap();
-    assert!(helve.working_folder.as_ref().unwrap().exists());
-    assert_eq!(
-        helve.approval_policy,
-        Some(loom::ApprovalPolicy::DestructiveOnly)
-    );
-    assert_eq!(helve.thread_id.as_deref(), Some("t1"));
-}
-
-/// **Scenario**: Invalid approval_policy returns ParseError::InvalidApprovalPolicy.
-#[test]
-fn parse_request_invalid_approval_policy_errors() {
-    let req = ChatCompletionRequest {
-        messages: vec![ChatMessage {
-            role: "user".to_string(),
-            content: Some("Hi".to_string().into()),
-        }],
-        model: "gpt-4o".to_string(),
-        stream: true,
-        stream_options: None,
-        thread_id: None,
-        working_folder: None,
-        approval_policy: Some("invalid".to_string()),
-    };
-    let err = parse_chat_request(&req).unwrap_err();
-    assert!(matches!(err, loom::ParseError::InvalidApprovalPolicy(_)));
 }

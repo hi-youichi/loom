@@ -1,6 +1,6 @@
 use super::common;
 use futures_util::StreamExt;
-use loom::{AgentListRequest, AgentSourceFilter, ClientRequest, ServerResponse};
+use loom_protocol::{AgentListRequest, AgentSourceFilter, ClientRequest, ServerResponse};
 use std::time::Duration;
 use tokio::time::timeout;
 use tokio_tungstenite::connect_async;
@@ -81,7 +81,7 @@ async fn e2e_agent_list_with_filter() {
             for agent in &r.agents {
                 assert_eq!(
                     agent.source,
-                    loom::AgentSource::BuiltIn,
+                    loom_protocol::AgentSource::BuiltIn,
                     "expected all agents to be built-in when filtered"
                 );
             }

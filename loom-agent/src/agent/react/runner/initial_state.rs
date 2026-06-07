@@ -1,9 +1,9 @@
 //! Build initial ReAct state from user message, optionally loading from checkpoint.
 
-use loom::memory::{CheckpointError, Checkpointer, RunnableConfig};
-use loom::message::Message;
+use loom_memory::{CheckpointError, Checkpointer, RunnableConfig};
+use loom_llm::message::Message;
 use crate::runner_common::load_from_checkpoint_or_build;
-use loom::state::ReActState;
+use loom_types::state::ReActState;
 
 /// Builds initial [`ReActState`] for a user message, loading from checkpoint when available.
 pub async fn build_react_initial_state(

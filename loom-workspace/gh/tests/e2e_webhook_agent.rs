@@ -1,11 +1,13 @@
 //! L4 E2E: Webhook → 200 → loom run started (and completes with MockLlm).
 //!
-//! Uses injectable run_agent that actually invokes loom::run_agent_with_llm_override
+//! Uses injectable run_agent that actually invokes loom_agent::run_agent_with_llm_override
 //! with MockLlm so the run completes without real API. Asserts 200, run started
 //! (opts received), and optionally run finished.
 
 use gh::{webhook_router, RunAgentCallback};
 use hmac::Mac;
+use loom_agent::{RunCmd, RunOptions, run_agent_with_llm_override};
+use loom_llm::client::MockLlm;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
@@ -40,16 +42,16 @@ fn sign(secret: &[u8], body: &[u8]) -> String {
 /// E2E: Webhook returns 200, run is triggered and executes (with MockLlm) to completion.
 #[tokio::test]
 async fn e2e_webhook_triggers_agent() {
-    let (tx, mut rx) = mpsc::channel::<loom::RunOptions>(2);
+    let (tx, mut rx) = mpsc::channel::<RunOptions>(2);
     let run_agent: RunAgentCallback = Arc::new(move |opts| {
         let _ = tx.try_send(opts.clone());
         let opts = opts.clone();
         tokio::spawn(async move {
-            let _ = loom::run_agent_with_llm_override(
+            let _ = run_agent_with_llm_override(
                 &opts,
-                &loom::RunCmd::React,
+                &RunCmd::React,
                 None,
-                Some(Box::new(loom::MockLlm::with_no_tool_calls("e2e done"))),
+                Some(Box::new(MockLlm::with_no_tool_calls("e2e done"))),
             )
             .await;
         });
@@ -91,7 +93,7 @@ async fn e2e_webhook_triggers_agent() {
 async fn e2e_run_uses_working_folder_for_repo() {
     let dir = tempfile::tempdir().unwrap();
     let work_dir = dir.path().to_path_buf();
-    let (tx, mut rx) = mpsc::channel::<loom::RunOptions>(2);
+    let (tx, mut rx) = mpsc::channel::<RunOptions>(2);
     let run_agent: RunAgentCallback = Arc::new(move |opts| {
         let _ = tx.try_send(opts);
         // Do not spawn real run for this test; we only assert opts.working_folder

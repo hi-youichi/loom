@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 # Core loom crates
-loom = { path = "../loom" }
 loom-types = { path = "../loom-types" }
 loom-graph = { path = "../loom-graph" }
 loom-pregel = { path = "../loom-pregel" }
@@ -20,6 +19,13 @@ loom-worktree = { path = "../loom-worktree" }
 loom-commands = { path = "../loom-commands" }
 loom-cache = { path = "../loom-cache" }
 loom-lsp = { path = "../loom-lsp" }
+loom-cli-types = { path = "../loom-cli-types" }
+loom-react-config = { path = "../loom-react-config" }
+loom-tier = { path = "../loom-tier" }
+loom-helve = { path = "../loom-helve" }
+loom-stream-display = { path = "../loom-stream-display" }
+loom-protocol = { path = "../loom-protocol" }
+loom-skill = { path = "../loom-skill" }
 
 # Config
 env_config = { path = "../config", package = "config" }

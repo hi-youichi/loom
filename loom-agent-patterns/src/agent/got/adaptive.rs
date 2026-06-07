@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use loom_llm::error::AgentError;
-use loom::Message;
+use loom_llm::message::Message;
 use loom_llm::LlmClient;
 
 use super::dag::{append_subgraph, AppendSubgraphError};

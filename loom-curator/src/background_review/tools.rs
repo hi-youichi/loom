@@ -3,7 +3,7 @@ use super::memory::{MemoryFile, MemoryStore};
 use super::security::{validate_skill_create, validate_skill_path, Severity};
 use super::skill_registry::{Lifecycle, SkillContent, SkillRegistry, Source};
 use super::skill_usage::SkillUsageStore;
-use loom::tool_source::ToolSpec;
+use loom_tools::tool_source::ToolSpec;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
