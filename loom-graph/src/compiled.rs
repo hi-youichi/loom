@@ -151,7 +151,7 @@ where
 
         loop {
             if Self::is_cancelled(run_ctx) {
-                log_graph_error(&AgentError::Cancelled);
+                log_graph_error(&AgentError::Cancelled, config.as_ref().and_then(|c| c.thread_id.as_deref()));
                 return Err(AgentError::Cancelled);
             }
             let node = self
@@ -256,7 +256,7 @@ where
                     }
 
                     // Log and return the interrupt error
-                    log_graph_error(&AgentError::Interrupted(interrupt.clone()));
+                    log_graph_error(&AgentError::Interrupted(interrupt.clone()), config.as_ref().and_then(|c| c.thread_id.as_deref()));
                     return Err(AgentError::Interrupted(interrupt.clone()));
                 }
                 Err(e) => {
@@ -276,7 +276,7 @@ where
                             }
                         }
                     }
-                    log_graph_error(&e);
+                    log_graph_error(&e, config.as_ref().and_then(|c| c.thread_id.as_deref()));
                     return Err(e);
                 }
             };
@@ -308,7 +308,7 @@ where
             log_state_update(current_id);
 
             if Self::is_cancelled(run_ctx) {
-                log_graph_error(&AgentError::Cancelled);
+                log_graph_error(&AgentError::Cancelled, config.as_ref().and_then(|c| c.thread_id.as_deref()));
                 return Err(AgentError::Cancelled);
             }
 

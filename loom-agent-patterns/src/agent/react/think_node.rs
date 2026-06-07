@@ -213,15 +213,63 @@ async fn invoke_think_llm(
     Ok((result?, forwarded_chunks as u64, first_token_at))
 }
 
+/// Max retries when MiniMax returns 2013 (tool session lost).
+const MAX_SESSION_LOST_RETRIES: u32 = 3;
+
+fn is_minimax_session_lost(err: &AgentError) -> bool {
+    match err {
+        AgentError::ExecutionFailed(msg) => msg.to_lowercase().contains("(code: 2013)"),
+        _ => false,
+    }
+}
+
+fn find_last_assistant_with_tool_calls(messages: &[Message]) -> Option<usize> {
+    messages.iter().rposition(|m| {
+        matches!(m, Message::Assistant(p) if !p.tool_calls.is_empty())
+    })
+}
+
+fn rollback_last_tool_round(state: &mut ReActState) -> bool {
+    if let Some(pos) = find_last_assistant_with_tool_calls(&state.messages) {
+        state.messages.truncate(pos);
+        state.tool_calls.clear();
+        state.tool_results.clear();
+        state.message_count_after_last_think = Some(state.messages.len());
+        true
+    } else {
+        false
+    }
+}
+
 #[async_trait]
 impl Node<ReActState> for ThinkNode {
     fn id(&self) -> &str {
         "think"
     }
 
-    async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
+    async fn run(&self, mut state: ReActState) -> Result<(ReActState, Next), AgentError> {
         let llm = self.resolve_client(&state.model_config).await?;
-        let response = llm.invoke(&state.messages).await?;
+        let mut session_retries = 0;
+        let response = loop {
+            match llm.invoke(&state.messages).await {
+                Ok(resp) => break resp,
+                Err(ref e)
+                    if is_minimax_session_lost(e)
+                        && session_retries < MAX_SESSION_LOST_RETRIES =>
+                {
+                    session_retries += 1;
+                    if !rollback_last_tool_round(&mut state) {
+                        return Err(e.clone());
+                    }
+                    tracing::warn!(
+                        attempt = session_retries,
+                        max_retries = MAX_SESSION_LOST_RETRIES,
+                        "MiniMax session lost (2013), rolled back tool round, retrying Think"
+                    );
+                }
+                Err(e) => return Err(e),
+            }
+        };
         let new_state = state.apply_think(
             response.content,
             response.reasoning_content,
@@ -233,7 +281,7 @@ impl Node<ReActState> for ThinkNode {
 
     async fn run_with_context(
         &self,
-        state: ReActState,
+        mut state: ReActState,
         ctx: &RunContext<ReActState>,
     ) -> Result<(ReActState, Next), AgentError> {
         let is_cancelled = || {
@@ -257,35 +305,48 @@ impl Node<ReActState> for ThinkNode {
 
         let call_start = Instant::now();
         let llm = self.resolve_client(&state.model_config).await?;
-        let llm_call = async {
-            if should_stream || should_stream_tools {
-                invoke_think_llm(
-                    &llm,
-                    &state.messages,
-                    should_stream,
-                    should_stream_tools,
-                    ctx.stream_tx.as_ref().unwrap().clone(),
-                    self.id(),
-                )
-                .await
-            } else {
-                Ok((
-                    llm.invoke(&state.messages).await?,
-                    0u64,
-                    None::<Instant>,
-                ))
-            }
-        };
 
-        let (response, streamed_chunks, first_token_at) = match run_cancellable(
-            llm_call,
-            ctx.cancellation.as_ref(),
-        )
-        .await
-        {
-            Ok(Ok(triple)) => triple,
-            Ok(Err(e)) => return Err(e),
-            Err(e) => return Err(e),
+        let mut session_retries = 0;
+        let (response, streamed_chunks, first_token_at) = loop {
+            let llm_call = async {
+                if should_stream || should_stream_tools {
+                    invoke_think_llm(
+                        &llm,
+                        &state.messages,
+                        should_stream,
+                        should_stream_tools,
+                        ctx.stream_tx.as_ref().unwrap().clone(),
+                        self.id(),
+                    )
+                    .await
+                } else {
+                    Ok((
+                        llm.invoke(&state.messages).await?,
+                        0u64,
+                        None::<Instant>,
+                    ))
+                }
+            };
+
+            match run_cancellable(llm_call, ctx.cancellation.as_ref()).await {
+                Ok(Ok(triple)) => break triple,
+                Ok(Err(ref e))
+                    if is_minimax_session_lost(e)
+                        && session_retries < MAX_SESSION_LOST_RETRIES =>
+                {
+                    session_retries += 1;
+                    if !rollback_last_tool_round(&mut state) {
+                        return Err(e.clone());
+                    }
+                    tracing::warn!(
+                        attempt = session_retries,
+                        max_retries = MAX_SESSION_LOST_RETRIES,
+                        "MiniMax session lost (2013), rolled back tool round, retrying Think"
+                    );
+                }
+                Ok(Err(e)) => return Err(e),
+                Err(e) => return Err(e),
+            }
         };
 
         if is_cancelled() {
@@ -335,3 +396,131 @@ impl Node<ReActState> for ThinkNode {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use loom_llm::message::{AssistantPayload, AssistantToolCall, ToolCallContent};
+
+    #[test]
+    fn minimax_session_lost_detects_2013() {
+        let err = AgentError::ExecutionFailed(
+            "OpenAI-compat stream error 400 Bad Request: invalid params, tool result's tool id(call_xxx) not found (code: 2013) (type: bad_request_error)".to_string(),
+        );
+        assert!(is_minimax_session_lost(&err));
+    }
+
+    #[test]
+    fn minimax_session_lost_ignores_other_execution_failed() {
+        let err = AgentError::ExecutionFailed("rate limit exceeded (code: 429)".to_string());
+        assert!(!is_minimax_session_lost(&err));
+    }
+
+    #[test]
+    fn minimax_session_lost_ignores_cancelled() {
+        assert!(!is_minimax_session_lost(&AgentError::Cancelled));
+    }
+
+    #[test]
+    fn find_last_assistant_with_tool_calls_returns_correct_index() {
+        let messages = vec![
+            Message::user("hello"),
+            Message::Assistant(AssistantPayload {
+                content: String::new(),
+                tool_calls: vec![AssistantToolCall {
+                    id: "call_123".to_string(),
+                    name: "read_file".to_string(),
+                    arguments: "{}".to_string(),
+                }],
+                reasoning_content: None,
+            }),
+            Message::Tool {
+                tool_call_id: "call_123".to_string(),
+                content: ToolCallContent::Text("result".to_string()),
+            },
+        ];
+        assert_eq!(find_last_assistant_with_tool_calls(&messages), Some(1));
+    }
+
+    #[test]
+    fn find_last_assistant_with_tool_calls_finds_latest() {
+        let messages = vec![
+            Message::user("hello"),
+            Message::Assistant(AssistantPayload {
+                content: String::new(),
+                tool_calls: vec![AssistantToolCall {
+                    id: "call_1".to_string(),
+                    name: "tool1".to_string(),
+                    arguments: "{}".to_string(),
+                }],
+                reasoning_content: None,
+            }),
+            Message::Tool {
+                tool_call_id: "call_1".to_string(),
+                content: ToolCallContent::Text("result1".to_string()),
+            },
+            Message::Assistant(AssistantPayload {
+                content: String::new(),
+                tool_calls: vec![AssistantToolCall {
+                    id: "call_2".to_string(),
+                    name: "tool2".to_string(),
+                    arguments: "{}".to_string(),
+                }],
+                reasoning_content: None,
+            }),
+            Message::Tool {
+                tool_call_id: "call_2".to_string(),
+                content: ToolCallContent::Text("result2".to_string()),
+            },
+        ];
+        assert_eq!(find_last_assistant_with_tool_calls(&messages), Some(3));
+    }
+
+    #[test]
+    fn find_last_assistant_without_tool_calls_returns_none() {
+        let messages = vec![
+            Message::user("hello"),
+            Message::assistant("just text"),
+        ];
+        assert_eq!(find_last_assistant_with_tool_calls(&messages), None);
+    }
+
+    #[test]
+    fn rollback_last_tool_round_truncates_messages() {
+        let mut state = ReActState {
+            messages: vec![
+                Message::user("hello"),
+                Message::Assistant(AssistantPayload {
+                    content: String::new(),
+                    tool_calls: vec![AssistantToolCall {
+                        id: "call_abc".to_string(),
+                        name: "read_file".to_string(),
+                        arguments: "{}".to_string(),
+                    }],
+                    reasoning_content: None,
+                }),
+                Message::Tool {
+                    tool_call_id: "call_abc".to_string(),
+                    content: ToolCallContent::Text("file contents".to_string()),
+                },
+            ],
+            message_count_after_last_think: Some(3),
+            ..Default::default()
+        };
+        assert!(rollback_last_tool_round(&mut state));
+        assert_eq!(state.messages.len(), 1);
+        assert!(matches!(&state.messages[0], Message::User(_)));
+        assert_eq!(state.message_count_after_last_think, Some(1));
+        assert!(state.tool_calls.is_empty());
+        assert!(state.tool_results.is_empty());
+    }
+
+    #[test]
+    fn rollback_last_tool_round_returns_false_when_no_tool_round() {
+        let mut state = ReActState {
+            messages: vec![Message::user("hello")],
+            ..Default::default()
+        };
+        assert!(!rollback_last_tool_round(&mut state));
+        assert_eq!(state.messages.len(), 1);
+    }
+}

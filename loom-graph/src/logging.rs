@@ -45,8 +45,8 @@ pub fn log_graph_complete() {
 }
 
 /// Log graph execution error.
-pub fn log_graph_error(error: &loom_llm::error::AgentError) {
-    tracing::error!(?error, "Graph execution error");
+pub fn log_graph_error(error: &loom_llm::error::AgentError, thread_id: Option<&str>) {
+    tracing::error!(?error, ?thread_id, "Graph execution error");
 }
 
 #[cfg(test)]

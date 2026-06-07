@@ -7,7 +7,7 @@ use std::time::Instant;
 use async_trait::async_trait;
 use serde_json::Value;
 use tokio::sync::{mpsc, RwLock};
-use tracing::{debug, trace};
+use tracing::{debug, trace, warn};
 
 use loom_llm::error::AgentError;
 use loom_graph::{run_cancellable, Next, RunContext};
@@ -161,6 +161,47 @@ impl ThinkNode {
     }
 }
 
+/// Max retries when the LLM provider reports a session-lost error (e.g. MiniMax 2013:
+/// "tool result's tool id not found"). Each retry rolls back the last assistant+tool
+/// message pair, forcing the LLM to regenerate tool calls with fresh call_ids.
+const MAX_SESSION_LOST_RETRIES: u32 = 3;
+
+/// Returns true when the LLM provider lost track of the tool session — the tool_call_id
+/// in a tool result doesn't match any pending tool call on the provider side.
+fn is_provider_session_lost(err: &AgentError) -> bool {
+    match err {
+        AgentError::ExecutionFailed(msg) => {
+            let lower = msg.to_lowercase();
+            lower.contains("(code: 2013)")
+                || (lower.contains("tool result")
+                    && lower.contains("tool id")
+                    && lower.contains("not found"))
+        }
+        _ => false,
+    }
+}
+
+/// Find the index of the last assistant message that carries tool_calls.
+fn find_last_assistant_with_tool_calls(messages: &[Message]) -> Option<usize> {
+    messages.iter().rposition(|m| {
+        matches!(m, Message::Assistant(p) if !p.tool_calls.is_empty())
+    })
+}
+
+/// Remove the last assistant-with-tool_calls message and all subsequent messages
+/// (tool results) from the state. Returns false when there is no tool round to roll back.
+fn rollback_last_tool_round(state: &mut ReActState) -> bool {
+    if let Some(pos) = find_last_assistant_with_tool_calls(&state.messages) {
+        state.messages.truncate(pos);
+        state.tool_calls.clear();
+        state.tool_results.clear();
+        state.message_count_after_last_think = Some(state.messages.len());
+        true
+    } else {
+        false
+    }
+}
+
 async fn invoke_think_llm(
     llm: &Arc<dyn LlmClient>,
     messages: &[Message],
@@ -221,9 +262,29 @@ impl Node<ReActState> for ThinkNode {
         "think"
     }
 
-    async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
+    async fn run(&self, mut state: ReActState) -> Result<(ReActState, Next), AgentError> {
         let llm = self.resolve_client(&state.model_config).await?;
-        let response = llm.invoke(&state.messages).await?;
+        let mut session_retries = 0;
+        let response = loop {
+            match llm.invoke(&state.messages).await {
+                Ok(resp) => break resp,
+                Err(ref e)
+                    if is_provider_session_lost(e)
+                        && session_retries < MAX_SESSION_LOST_RETRIES =>
+                {
+                    session_retries += 1;
+                    if !rollback_last_tool_round(&mut state) {
+                        return Err(e);
+                    }
+                    warn!(
+                        attempt = session_retries,
+                        max_retries = MAX_SESSION_LOST_RETRIES,
+                        "Provider session lost, rolled back tool round and retrying Think"
+                    );
+                }
+                Err(e) => return Err(e),
+            }
+        };
         let new_state = state.apply_think(
             response.content,
             response.reasoning_content,
@@ -235,7 +296,7 @@ impl Node<ReActState> for ThinkNode {
 
     async fn run_with_context(
         &self,
-        state: ReActState,
+        mut state: ReActState,
         ctx: &RunContext<ReActState>,
     ) -> Result<(ReActState, Next), AgentError> {
         let is_cancelled = || {
@@ -259,35 +320,50 @@ impl Node<ReActState> for ThinkNode {
 
         let call_start = Instant::now();
         let llm = self.resolve_client(&state.model_config).await?;
-        let llm_call = async {
-            if should_stream || should_stream_tools {
-                invoke_think_llm(
-                    &llm,
-                    &state.messages,
-                    should_stream,
-                    should_stream_tools,
-                    ctx.stream_tx.as_ref().unwrap().clone(),
-                    self.id(),
-                )
-                .await
-            } else {
-                Ok((
-                    llm.invoke(&state.messages).await?,
-                    0u64,
-                    None::<Instant>,
-                ))
-            }
-        };
 
-        let (response, streamed_chunks, first_token_at) = match run_cancellable(
-            llm_call,
-            ctx.cancellation.as_ref(),
-        )
-        .await
-        {
-            Ok(Ok(triple)) => triple,
-            Ok(Err(e)) => return Err(e),
-            Err(e) => return Err(e),
+        let mut session_retries = 0;
+        let (response, streamed_chunks, first_token_at) = loop {
+            let llm_call = async {
+                if should_stream || should_stream_tools {
+                    invoke_think_llm(
+                        &llm,
+                        &state.messages,
+                        should_stream,
+                        should_stream_tools,
+                        ctx.stream_tx.as_ref().unwrap().clone(),
+                        self.id(),
+                    )
+                    .await
+                } else {
+                    Ok((
+                        llm.invoke(&state.messages).await?,
+                        0u64,
+                        None::<Instant>,
+                    ))
+                }
+            };
+
+            match run_cancellable(llm_call, ctx.cancellation.as_ref())
+                .await
+            {
+                Ok(Ok(triple)) => break triple,
+                Ok(Err(ref e))
+                    if is_provider_session_lost(e)
+                        && session_retries < MAX_SESSION_LOST_RETRIES =>
+                {
+                    session_retries += 1;
+                    if !rollback_last_tool_round(&mut state) {
+                        return Err(e);
+                    }
+                    warn!(
+                        attempt = session_retries,
+                        max_retries = MAX_SESSION_LOST_RETRIES,
+                        "Provider session lost, rolled back tool round and retrying Think"
+                    );
+                }
+                Ok(Err(e)) => return Err(e),
+                Err(e) => return Err(e),
+            }
         };
 
         if is_cancelled() {
