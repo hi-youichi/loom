@@ -1,1 +1,0 @@
-// Tests moved to src/llm/openai_compat.rs
