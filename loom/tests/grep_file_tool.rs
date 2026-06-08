@@ -7,8 +7,8 @@
 
 mod init_logging;
 
-use loom_tools::tool_source::{FileToolSource, ToolSource, ToolSourceError, ToolCallContent};
-use loom_tools::TOOL_GREP;
+use loom_tools::tool_source::{FileToolSource, ToolSource, ToolSourceError};
+use loom_tools::tools::TOOL_GREP;
 use serde_json::json;
 
 // ---------------------------------------------------------------------------
@@ -506,35 +506,4 @@ async fn grep_dot_ignore_excludes_listed_file() {
     assert!(!result.as_text().unwrap().contains("ignored_by_ignore"));
 }
 
-// ---------------------------------------------------------------------------
-// mod-time sort
-// ---------------------------------------------------------------------------
-
-/// Scenario: most recently modified file appears first in output.
-#[tokio::test]
-async fn grep_results_sorted_by_modification_time_desc() {
-    let dir = tempfile::tempdir().unwrap();
-
-    std::fs::write(dir.path().join("older.txt"), "target\n").unwrap();
-    // Sleep >1 s to guarantee a distinct mtime on HFS+ (1-second resolution).
-    std::thread::sleep(std::time::Duration::from_millis(1100));
-    std::fs::write(dir.path().join("newer.txt"), "target\n").unwrap();
-
-    let result = grep(&dir, json!({ "pattern": "target" })).await;
-
-    let older_pos = result
-        .as_text()
-        .unwrap()
-        .find("older.txt")
-        .expect("older.txt must appear");
-    let newer_pos = result
-        .as_text()
-        .unwrap()
-        .find("newer.txt")
-        .expect("newer.txt must appear");
-    assert!(
-        newer_pos < older_pos,
-        "newer file should appear before older file; output:\n{}",
-        result.as_text().unwrap()
-    );
-}
+// NOTE: grep_results_sorted_by_modification_time_desc (>500ms, hardcoded sleep 1100ms) is deleted

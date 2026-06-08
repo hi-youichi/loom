@@ -331,7 +331,7 @@ pub async fn build_react_runner_with_openai(
 mod tests {
     use super::*;
     use crate::agent::react::{GotRunnerConfig, TotRunnerConfig};
-    use loom_llm::MockLlm;
+    use loom_llm::client::MockLlm;
 
     fn base_config() -> ReactBuildConfig {
         ReactBuildConfig {

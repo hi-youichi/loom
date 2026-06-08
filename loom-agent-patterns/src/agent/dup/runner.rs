@@ -269,25 +269,28 @@ impl DupRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MockLlm, MockToolSource, StreamEvent};
+    use loom_llm::client::MockLlm;
+    use loom_tools::MockToolSource;
+    use loom_stream::StreamEvent;
+    use loom_types::state::{ReActState, ToolCall};
     use std::sync::{Arc, Mutex};
 
     #[test]
     fn dup_tools_condition_routes_correctly() {
         let no_tools = DupState {
-            core: loom::ReActState::default(),
+            core: ReActState::default(),
             understood: None,
         };
         assert_eq!(dup_tools_condition(&no_tools), END);
 
         let with_tools = DupState {
-            core: loom::ReActState {
-                tool_calls: vec![loom::ToolCall {
+            core: ReActState {
+                tool_calls: vec![ToolCall {
                     name: "x".to_string(),
                     arguments: "{}".to_string(),
                     id: None,
                 }],
-                ..loom::ReActState::default()
+                ..ReActState::default()
             },
             understood: None,
         };

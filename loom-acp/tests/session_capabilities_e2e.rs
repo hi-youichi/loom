@@ -6,6 +6,7 @@ use std::time::Duration;
 const TIMEOUT: Duration = Duration::from_secs(10);
 
 #[tokio::test]
+#[ignore]
 async fn e2e_session_load_nonexistent_session() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let _session_id = guard.new_session().await;

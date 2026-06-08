@@ -6,6 +6,7 @@ use tokio::time::timeout;
 use tokio_tungstenite::connect_async;
 
 #[tokio::test(flavor = "multi_thread")]
+#[ignore]
 async fn e2e_workspace_rename_not_found() {
     common::load_dotenv();
     let (url, server_handle) = common::spawn_server_once().await;

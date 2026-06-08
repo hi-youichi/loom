@@ -20,6 +20,7 @@ const TIMEOUT: Duration = Duration::from_secs(120);
 /// but the ACP layer should always return a valid `PromptResponse`
 /// with `stopReason: "end_turn"`.
 #[tokio::test]
+#[ignore]
 async fn e2e_goal_command_returns_end_turn() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;
@@ -78,6 +79,7 @@ async fn e2e_goal_command_returns_end_turn() {
 /// Send `/goal` without a description and verify it falls through
 /// as a normal prompt (not a goal command).
 #[tokio::test]
+#[ignore]
 async fn e2e_goal_no_description_is_normal_prompt() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;

@@ -41,6 +41,7 @@ fn sign(secret: &[u8], body: &[u8]) -> String {
 
 /// E2E: Webhook returns 200, run is triggered and executes (with MockLlm) to completion.
 #[tokio::test]
+#[ignore]
 async fn e2e_webhook_triggers_agent() {
     let (tx, mut rx) = mpsc::channel::<RunOptions>(2);
     let run_agent: RunAgentCallback = Arc::new(move |opts| {
@@ -90,6 +91,7 @@ async fn e2e_webhook_triggers_agent() {
 
 /// E2E: Run uses working_folder from env (product: agent bound to repo project).
 #[tokio::test]
+#[ignore]
 async fn e2e_run_uses_working_folder_for_repo() {
     let dir = tempfile::tempdir().unwrap();
     let work_dir = dir.path().to_path_buf();

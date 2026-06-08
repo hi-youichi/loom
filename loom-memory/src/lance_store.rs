@@ -16,7 +16,8 @@ use lancedb::query::ExecutableQuery;
 use lancedb::query::QueryBase;
 
 use crate::embedder::Embedder;
-use crate::{Namespace, Store, StoreError, StoreSearchHit};
+use crate::{Namespace, Store, StoreError};
+use loom_graph::memory::{Item, ListNamespacesOptions, SearchItem, SearchOptions, StoreOp, StoreOpResult};
 
 const TABLE_NAME: &str = "store";
 
@@ -249,17 +250,16 @@ impl Store for LanceStore {
 
     async fn search(
         &self,
-        namespace: &Namespace,
-        query: Option<&str>,
-        limit: Option<usize>,
-    ) -> Result<Vec<StoreSearchHit>, StoreError> {
-        let ns = ns_to_key(namespace);
+        namespace_prefix: &Namespace,
+        options: SearchOptions,
+    ) -> Result<Vec<SearchItem>, StoreError> {
+        let ns = ns_to_key(namespace_prefix);
         let pred_ns = escape_sql(&ns);
         let predicate = format!("ns = '{}'", pred_ns);
-        let limit = limit.unwrap_or(100).min(1000);
+        let limit = options.limit.min(1000);
         let table = self.open_table().await?;
 
-        if let Some(q) = query {
+        if let Some(ref q) = options.query {
             if !q.is_empty() {
                 let vectors = self.embedder.embed(&[q]).await?;
                 let query_vec = vectors
@@ -286,7 +286,7 @@ impl Store for LanceStore {
                     .try_collect()
                     .await
                     .map_err(|e| StoreError::Storage(e.to_string()))?;
-                let mut hits = Vec::new();
+                let mut items = Vec::new();
                 for batch in batches {
                     let key_col = batch
                         .column_by_name("key")
@@ -312,10 +312,14 @@ impl Store for LanceStore {
                                 .downcast_ref::<Float32Array>()
                                 .map(|arr| arr.value(i) as f64)
                         });
-                        hits.push(StoreSearchHit { key, value, score });
+                        let item = Item::new(namespace_prefix.clone(), key, value);
+                        items.push(SearchItem {
+                            item,
+                            score,
+                        });
                     }
                 }
-                return Ok(hits);
+                return Ok(items);
             }
         }
 
@@ -330,7 +334,7 @@ impl Store for LanceStore {
             .try_collect()
             .await
             .map_err(|e| StoreError::Storage(e.to_string()))?;
-        let mut hits = Vec::new();
+        let mut items = Vec::new();
         for batch in batches {
             let key_col = batch
                 .column_by_name("key")
@@ -349,13 +353,101 @@ impl Store for LanceStore {
             for i in 0..batch.num_rows() {
                 let key = key_arr.value(i).to_string();
                 let value = serde_json::from_str(value_arr.value(i)).map_err(StoreError::from)?;
-                hits.push(StoreSearchHit {
-                    key,
-                    value,
+                let item = Item::new(namespace_prefix.clone(), key, value);
+                items.push(SearchItem {
+                    item,
                     score: None,
                 });
             }
         }
-        Ok(hits)
+        Ok(items)
+    }
+
+    async fn get_item(
+        &self,
+        namespace: &Namespace,
+        key: &str,
+    ) -> Result<Option<Item>, StoreError> {
+        let ns = ns_to_key(namespace);
+        let pred_ns = escape_sql(&ns);
+        let pred_key = escape_sql(key);
+        let predicate = format!("ns = '{}' AND key = '{}'", pred_ns, pred_key);
+        let table = self.open_table().await?;
+        let stream = table
+            .query()
+            .only_if(predicate)
+            .limit(1)
+            .execute()
+            .await
+            .map_err(|e| StoreError::Storage(e.to_string()))?;
+        let batches: Vec<RecordBatch> = stream
+            .try_collect()
+            .await
+            .map_err(|e| StoreError::Storage(e.to_string()))?;
+        let batch = match batches.first() {
+            Some(b) if b.num_rows() > 0 => b,
+            _ => return Ok(None),
+        };
+        let value_col = batch
+            .column_by_name("value")
+            .ok_or_else(|| StoreError::Storage("missing value column".into()))?;
+        let arr = value_col
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .ok_or_else(|| StoreError::Storage("value column not string".into()))?;
+        let s = arr.value(0);
+        let value = serde_json::from_str(s).map_err(StoreError::from)?;
+        Ok(Some(Item::new(namespace.clone(), key.to_string(), value)))
+    }
+
+    async fn delete(&self, namespace: &Namespace, key: &str) -> Result<(), StoreError> {
+        let ns = ns_to_key(namespace);
+        let pred_ns = escape_sql(&ns);
+        let pred_key = escape_sql(key);
+        let predicate = format!("ns = '{}' AND key = '{}'", pred_ns, pred_key);
+        let table = self.open_table().await?;
+        table
+            .delete(&predicate)
+            .await
+            .map_err(|e| StoreError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn list_namespaces(
+        &self,
+        options: ListNamespacesOptions,
+    ) -> Result<Vec<Namespace>, StoreError> {
+        // LanceDB doesn't support listing namespaces efficiently; return empty for now
+        let _ = options;
+        Ok(Vec::new())
+    }
+
+    async fn batch(&self, ops: Vec<StoreOp>) -> Result<Vec<StoreOpResult>, StoreError> {
+        let mut results = Vec::with_capacity(ops.len());
+        for op in ops {
+            match op {
+                StoreOp::Get { namespace, key } => {
+                    let item = self.get_item(&namespace, &key).await?;
+                    results.push(StoreOpResult::Get(item));
+                }
+                StoreOp::Put { namespace, key, value } => {
+                    if let Some(v) = value {
+                        self.put(&namespace, &key, &v).await?;
+                    } else {
+                        self.delete(&namespace, &key).await?;
+                    }
+                    results.push(StoreOpResult::Put);
+                }
+                StoreOp::Search { namespace_prefix, options } => {
+                    let items = self.search(&namespace_prefix, options).await?;
+                    results.push(StoreOpResult::Search(items));
+                }
+                StoreOp::ListNamespaces { options } => {
+                    let namespaces = self.list_namespaces(options).await?;
+                    results.push(StoreOpResult::ListNamespaces(namespaces));
+                }
+            }
+        }
+        Ok(results)
     }
 }

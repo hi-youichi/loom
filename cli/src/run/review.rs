@@ -306,13 +306,6 @@ mod tests {
     }
 
     impl ReviewMockLlm {
-        fn new(response: &str) -> Self {
-            Self {
-                response: response.to_string(),
-                with_tool_calls: std::sync::atomic::AtomicBool::new(false),
-            }
-        }
-
         /// Create a mock that returns tool calls on first invoke, then empty (terminates loop).
         fn with_agent_tool_calls() -> Self {
             Self {

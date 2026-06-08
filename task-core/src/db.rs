@@ -635,14 +635,14 @@ mod tests {
     async fn test_show_task_ambiguous_prefix() {
         let db = test_db().await;
         // Create two tasks with known IDs
-        let t1 = db.create_task(&CreateParams {
+        let _t1 = db.create_task(&CreateParams {
             name: "Task 1".into(),
             description: String::new(),
             assignee: String::new(),
             start_time: None,
             status: TaskStatus::Pending,
         }).await.unwrap();
-        let t2 = db.create_task(&CreateParams {
+        let _t2 = db.create_task(&CreateParams {
             name: "Task 2".into(),
             description: String::new(),
             assignee: String::new(),

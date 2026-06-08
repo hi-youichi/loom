@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use loom_memory::{SqliteSaver, Checkpointer, JsonSerializer, LanceStore, Namespace, RunnableConfig, Store, StoreError};
 use loom_llm::{Embedder, LlmClient, LlmResponse};
 use loom_llm::message::Message;
-use loom_graph::{Next, Node, StateGraph, END, START};
+use loom_graph::{Next, Node, SearchOptions, StateGraph, END, START};
 use loom_tools::tool_source::{ToolSource, ToolSpec, ToolCallContent, ToolResult};
 use loom_types::state::ToolCall as ReActToolCall;
 
@@ -218,25 +218,25 @@ impl ToolSource for MemoryToolSource {
                     .put(&self.namespace, &key, &value)
                     .await
                     .map_err(|e| loom::tool_source::ToolSourceError::Transport(e.to_string()))?;
-                Ok(ToolCallContent::text(format!("Saved to memory: {)", info),
+                Ok(ToolCallContent::text(format!("Saved to memory: {}", info))),
                 })
             }
             "retrieve_memory" => {
                 let key = arguments["key"].as_str().unwrap_or("");
                 let hits = self
                     .store
-                    .search(&self.namespace, Some(key), Some(5))
+                    .search(&self.namespace, SearchOptions { query: Some(key), limit: 5 })
                     .await
                     .map_err(|e| loom::tool_source::ToolSourceError::Transport(e.to_string()))?;
                 if hits.is_empty() {
-                    Ok(ToolCallContent::text(format!("No memories found for '{)'", key),
+                    Ok(ToolCallContent::text(format!("No memories found for '{}'", key))),
                     })
                 } else {
                     let memories: Vec<String> = hits
                         .iter()
-                        .map(|h| h.value["info"].as_str().unwrap_or("").to_string())
+                        .map(|h| h.item.value["info"].as_str().unwrap_or("").to_string())
                         .collect();
-                    Ok(ToolCallContent::text(format!("Found memories: {)", memories.join(", ")),
+                    Ok(ToolCallContent::text(format!("Found memories: {}", memories.join(", "))),
                     })
                 }
             }

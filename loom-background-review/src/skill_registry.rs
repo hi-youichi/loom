@@ -77,7 +77,7 @@ impl SkillRegistry {
     fn skill_dir(&self, source: Source, name: &str) -> PathBuf {
         let subdir = match source {
             Source::Auto => "auto",
-            Source::Manual => "curated",
+            Source::Manual => "manual",
             Source::Evolved => "evolved",
         };
         self.base_dir.join(subdir).join(name)
@@ -92,7 +92,7 @@ impl SkillRegistry {
         for source in [Source::Auto, Source::Manual, Source::Evolved] {
             let subdir = match source {
                 Source::Auto => "auto",
-                Source::Manual => "curated",
+                Source::Manual => "manual",
                 Source::Evolved => "evolved",
             };
             let dir = self.base_dir.join(subdir);
@@ -497,7 +497,6 @@ mod tests {
         // Read it back
         let file_path = dir
             .path()
-            .join("skills")
             .join("manual")
             .join("test-write")
             .join("src")
@@ -511,7 +510,6 @@ mod tests {
             .unwrap();
         let readme = dir
             .path()
-            .join("skills")
             .join("manual")
             .join("test-write")
             .join("README.md");
@@ -540,7 +538,6 @@ mod tests {
 
         let deep_path = dir
             .path()
-            .join("skills")
             .join("manual")
             .join("nested")
             .join("a")

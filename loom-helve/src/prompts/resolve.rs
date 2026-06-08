@@ -137,7 +137,6 @@ mod tests {
         let prompts = AgentPrompts {
             dup: DupPromptsFile {
                 understand_prompt: Some("custom understand".to_string()),
-                ..Default::default()
             },
             ..Default::default()
         };
@@ -152,7 +151,6 @@ mod tests {
         let prompts = AgentPrompts {
             helve: HelvePromptsFile {
                 helve_system_addon: Some("helve addon".to_string()),
-                ..Default::default()
             },
             ..Default::default()
         };

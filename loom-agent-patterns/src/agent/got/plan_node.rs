@@ -144,7 +144,7 @@ impl Node<GotState> for PlanGraphNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_llm::MockLlm;
+    use loom_llm::client::MockLlm;
     use loom_memory::RunnableConfig;
     use tokio::sync::mpsc;
 

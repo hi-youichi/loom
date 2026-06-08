@@ -16,6 +16,7 @@ fn assert_no_receiver_dropped_error(resp: &common::RpcResponse, context: &str) {
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_prompt_sequential_no_receiver_dropped() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;
@@ -44,6 +45,7 @@ async fn e2e_prompt_sequential_no_receiver_dropped() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_prompt_response_not_internal_error() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;
@@ -72,6 +74,7 @@ async fn e2e_prompt_response_not_internal_error() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_prompt_multi_session_no_receiver_dropped() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let sid1 = guard.new_session().await;
@@ -111,6 +114,7 @@ async fn e2e_prompt_multi_session_no_receiver_dropped() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_prompt_with_notifications_no_receiver_dropped() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;

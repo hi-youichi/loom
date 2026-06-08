@@ -64,7 +64,7 @@ mod tests {
         state
             .core
             .messages
-            .push(Message::Assistant(loom_llm::message::Message::AssistantPayload {
+            .push(Message::Assistant(loom_llm::message::AssistantPayload {
                 content: "hello".to_string(),
                 tool_calls: vec![],
                 reasoning_content: None,

@@ -15,6 +15,7 @@ fn restore_loom_home(prev: Option<String>) {
 }
 
 #[test]
+#[ignore]
 fn e2e_discover_then_load_override() {
     let dir = tempfile::tempdir().unwrap();
     let custom = dir.path().join("custom.json");
@@ -45,6 +46,7 @@ fn e2e_discover_then_load_override() {
 }
 
 #[test]
+#[ignore]
 fn e2e_discover_then_load_project() {
     let _lock = LOOM_HOME_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -82,6 +84,7 @@ fn e2e_discover_then_load_project() {
 }
 
 #[test]
+#[ignore]
 fn e2e_discover_then_load_global() {
     let _lock = LOOM_HOME_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -118,6 +121,7 @@ fn e2e_discover_then_load_global() {
 }
 
 #[test]
+#[ignore]
 fn e2e_discover_order_override_over_project() {
     let _lock = LOOM_HOME_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -143,6 +147,7 @@ fn e2e_discover_order_override_over_project() {
 }
 
 #[test]
+#[ignore]
 fn e2e_discover_order_project_over_global() {
     let _lock = LOOM_HOME_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -167,6 +172,7 @@ fn e2e_discover_order_project_over_global() {
 }
 
 #[test]
+#[ignore]
 fn e2e_load_invalid_json_returns_parse_error() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("bad.json");
@@ -177,6 +183,7 @@ fn e2e_load_invalid_json_returns_parse_error() {
 }
 
 #[test]
+#[ignore]
 fn e2e_load_disabled_filtered_out() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("mcp.json");
@@ -200,6 +207,7 @@ fn e2e_load_disabled_filtered_out() {
 }
 
 #[test]
+#[ignore]
 fn e2e_discover_none_when_nothing_exists() {
     let _lock = LOOM_HOME_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();

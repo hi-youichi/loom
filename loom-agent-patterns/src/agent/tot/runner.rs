@@ -297,12 +297,15 @@ impl TotRunner {
 mod tests {
     use super::super::state::TotCandidate;
     use super::*;
-    use crate::{MockLlm, MockToolSource, StreamEvent, ToolCall};
+    use loom_llm::client::MockLlm;
+    use loom_tools::MockToolSource;
+    use loom_stream::StreamEvent;
+    use loom_types::state::{ReActState, ToolCall};
     use std::sync::{Arc, Mutex};
 
     fn state_with_tools(has_tools: bool) -> TotState {
         TotState {
-            core: loom::ReActState {
+            core: ReActState {
                 tool_calls: if has_tools {
                     vec![ToolCall {
                         name: "search".to_string(),
@@ -312,7 +315,7 @@ mod tests {
                 } else {
                     vec![]
                 },
-                ..loom::ReActState::default()
+                ..ReActState::default()
             },
             tot: TotExtension::default(),
         }

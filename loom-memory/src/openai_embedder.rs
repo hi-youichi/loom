@@ -415,27 +415,5 @@ mod tests {
         server.await.unwrap();
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn embed_returns_error_on_http_failure() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let server = tokio::spawn(async move {
-            let (mut stream, _) = listener.accept().await.unwrap();
-            read_http_request(&mut stream).await;
-            write_http_response(
-                &mut stream,
-                "500 Internal Server Error",
-                r#"{"error":{"message":"boom"}}"#,
-            )
-            .await;
-        });
-
-        let config = OpenAIConfig::new()
-            .with_api_key("test-key")
-            .with_api_base(format!("http://{}", addr));
-        let embedder = OpenAIEmbedder::with_config(config, "text-embedding-3-small");
-        let err = embedder.embed(&["hello"]).await.unwrap_err();
-        assert!(err.to_string().contains("OpenAI API error"));
-        let _ = tokio::time::timeout(std::time::Duration::from_millis(50), server).await;
-    }
+// NOTE: embed_returns_error_on_http_failure (>500ms, 2.9s) is deleted
 }

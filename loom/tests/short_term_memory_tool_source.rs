@@ -32,10 +32,10 @@ async fn short_term_memory_without_context_returns_empty_array() {
 #[tokio::test]
 async fn short_term_memory_with_context_returns_messages() {
     let source = ShortTermMemoryToolSource::new().await;
-    let messages = vec![Message::user("hello"), Message::assistant("hi")];
+    let ctx = ToolCallContext::new(vec![Message::user("hello"), Message::assistant("hi")]);
 
     let r = source
-        .call_tool(TOOL_GET_RECENT_MESSAGES, json!({}), None)
+        .call_tool(TOOL_GET_RECENT_MESSAGES, json!({}), Some(&ctx))
         .await
         .unwrap();
     let arr: Vec<serde_json::Value> = serde_json::from_str(r.as_text().unwrap()).unwrap();
@@ -55,14 +55,14 @@ async fn short_term_memory_with_context_returns_messages() {
 #[tokio::test]
 async fn short_term_memory_with_limit_returns_last_n() {
     let source = ShortTermMemoryToolSource::new().await;
-    let messages = vec![
+    let ctx = ToolCallContext::new(vec![
         Message::user("1"),
         Message::assistant("2"),
         Message::user("3"),
-    ];
+    ]);
 
     let r = source
-        .call_tool(TOOL_GET_RECENT_MESSAGES, json!({ "limit": 2 }), None)
+        .call_tool(TOOL_GET_RECENT_MESSAGES, json!({ "limit": 2 }), Some(&ctx))
         .await
         .unwrap();
     let arr: Vec<serde_json::Value> = serde_json::from_str(r.as_text().unwrap()).unwrap();

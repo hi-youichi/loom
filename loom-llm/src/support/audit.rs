@@ -287,9 +287,17 @@ impl LlmAuditConfig {
 // ---------------------------------------------------------------------------
 
 /// Expand `~` at the start of a path to the user's home directory.
+/// Works on both Unix (HOME) and Windows (USERPROFILE/HOMEPATH).
 fn expand_tilde(path: &std::path::Path) -> PathBuf {
     if let Ok(rest) = path.strip_prefix("~") {
+        // Try Unix HOME first, then Windows USERPROFILE/HOMEPATH
         if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home).join(rest);
+        }
+        if let Ok(home) = std::env::var("USERPROFILE") {
+            return PathBuf::from(home).join(rest);
+        }
+        if let Ok(home) = std::env::var("HOMEPATH") {
             return PathBuf::from(home).join(rest);
         }
     }
@@ -589,7 +597,10 @@ mod tests {
     #[test]
     fn test_expand_tilde_with_home() {
         let expanded = expand_tilde(PathBuf::from("~/.loom/logs/llm").as_path());
-        let home = std::env::var("HOME").unwrap();
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .or_else(|_| std::env::var("HOMEPATH"))
+            .expect("HOME, USERPROFILE, or HOMEPATH must be set");
         assert_eq!(expanded, PathBuf::from(home).join(".loom/logs/llm"));
     }
 
@@ -602,7 +613,10 @@ mod tests {
     #[test]
     fn test_expand_tilde_just_tilde() {
         let expanded = expand_tilde(PathBuf::from("~").as_path());
-        let home = std::env::var("HOME").unwrap();
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .or_else(|_| std::env::var("HOMEPATH"))
+            .expect("HOME, USERPROFILE, or HOMEPATH must be set");
         assert_eq!(expanded, PathBuf::from(home));
     }
 }

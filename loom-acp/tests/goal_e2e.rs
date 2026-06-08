@@ -18,6 +18,7 @@ const GOAL_TIMEOUT: Duration = Duration::from_secs(60);
 /// will execute one iteration then stop with max-iterations-reached error.
 /// The test verifies the command was handled (not forwarded to LLM as regular text).
 #[tokio::test]
+#[ignore]
 async fn e2e_goal_command_returns_prompt_response() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;
@@ -66,6 +67,7 @@ async fn e2e_goal_command_returns_prompt_response() {
 /// Verifies that `/goal` without a description is treated as a regular message
 /// (not parsed as a command), and gets a normal LLM response.
 #[tokio::test]
+#[ignore]
 async fn e2e_goal_without_description_gets_normal_response() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;

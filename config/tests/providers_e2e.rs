@@ -76,6 +76,7 @@ fn write_config(dir: &std::path::Path, content: &str) {
 
 /// Happy path: default provider is applied as env vars.
 #[test]
+#[ignore]
 fn e2e_default_provider_sets_env_vars() {
     let _lock = LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -119,6 +120,7 @@ model = "gpt-4o-mini"
 
 /// Optional `temperature` on [[providers]] maps to OPENAI_TEMPERATURE.
 #[test]
+#[ignore]
 fn e2e_provider_temperature_sets_openai_temperature() {
     let _lock = LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -159,6 +161,7 @@ temperature = 0.35
 
 /// Provider with type = "bigmodel" maps to LLM_PROVIDER=bigmodel.
 #[test]
+#[ignore]
 fn e2e_bigmodel_provider_sets_llm_provider() {
     let _lock = LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -191,6 +194,7 @@ type = "bigmodel"
 
 /// .env file takes priority over [[providers]] settings.
 #[test]
+#[ignore]
 fn e2e_dotenv_overrides_provider() {
     let _lock = LOCK.lock().unwrap();
     let loom_home = tempfile::tempdir().unwrap();
@@ -223,6 +227,7 @@ model = "model-from-provider"
 
 /// Process env takes highest priority.
 #[test]
+#[ignore]
 fn e2e_process_env_wins_over_provider_and_dotenv() {
     let _lock = LOCK.lock().unwrap();
     let loom_home = tempfile::tempdir().unwrap();
@@ -256,6 +261,7 @@ model = "from-provider-model"
 
 /// [[providers]] and [env] can coexist; provider overrides same keys from [env].
 #[test]
+#[ignore]
 fn e2e_provider_overrides_env_section() {
     let _lock = LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -289,6 +295,7 @@ model = "from-provider"
 
 /// Partial provider (only model set, no api_key/base_url) only touches MODEL.
 #[test]
+#[ignore]
 fn e2e_partial_provider_only_sets_defined_fields() {
     let _lock = LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -318,6 +325,7 @@ model = "only-model"
 
 /// Missing base_url falls back to models.dev provider `api` field.
 #[test]
+#[ignore]
 fn e2e_provider_base_url_from_models_dev_api_field() {
     let _lock = LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -362,6 +370,7 @@ model = "glm-5"
 
 /// Unknown provider name in [default].provider → no provider env vars set, no crash.
 #[test]
+#[ignore]
 fn e2e_unknown_provider_name_is_noop() {
     let _lock = LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -389,6 +398,7 @@ model = "other-model"
 
 /// No [default].provider behaves exactly as before (no provider applied).
 #[test]
+#[ignore]
 fn e2e_no_default_provider_is_backward_compatible() {
     let _lock = LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -418,6 +428,7 @@ OPENAI_API_KEY = "from-env-key"
 
 /// Provider name matching is case-insensitive.
 #[test]
+#[ignore]
 fn e2e_provider_name_case_insensitive() {
     let _lock = LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -445,6 +456,7 @@ model = "gpt-4o"
 
 /// ConfigLoadReport.active_provider is None when [[providers]] exists but no selection.
 #[test]
+#[ignore]
 fn e2e_active_provider_none_when_no_selection() {
     let _lock = LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();

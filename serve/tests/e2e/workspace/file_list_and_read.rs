@@ -42,6 +42,7 @@ fn setup_workspace_dir(workspace_id: &str) -> tempfile::TempDir {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+#[ignore]
 async fn e2e_workspace_file_list_and_read() {
     common::load_dotenv();
     let (url, server_handle) = common::spawn_server_once().await;

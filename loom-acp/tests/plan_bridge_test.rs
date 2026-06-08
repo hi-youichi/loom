@@ -1,7 +1,7 @@
 use agent_client_protocol::schema::{PlanEntry, PlanEntryPriority, PlanEntryStatus};
 
 use loom_acp::stream_bridge::{loom_event_to_updates, StreamUpdate};
-use loom_cli_types::AnyStreamEvent;
+use loom_agent::AnyStreamEvent;
 use loom_stream::StreamEvent;
 use loom_types::state::ReActState;
 
@@ -233,7 +233,7 @@ fn sub_agent_plan_deduplicates_with_parent_plan() {
 }
 
 mod session_notifier_tests {
-    use loom_cli_types::AnyStreamEvent;
+    use loom_agent::AnyStreamEvent;
     use loom_stream::StreamEvent;
     use loom_types::state::ReActState;
     use loom_acp::stream_bridge::SessionNotifier;

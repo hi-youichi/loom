@@ -1781,8 +1781,7 @@ mod tests {
     fn should_run_disabled() {
         let dir = tempfile::tempdir().unwrap();
         let skills = SkillRegistry::new(dir.path());
-        let mut config = CuratorConfig::default();
-        config.enabled = false;
+        let config = CuratorConfig { enabled: false, ..Default::default() };
 
         let state_dir = tempfile::tempdir().unwrap();
         let curator = Curator::new(skills, config)

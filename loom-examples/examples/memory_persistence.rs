@@ -1,17 +1,12 @@
-//! Example: StateGraph with SQLite-persistent checkpointer (SqliteSaver).
+//! Example: StateGraph with SQLite checkpointer (persistent checkpointing).
 //!
-//! Same flow as memory_checkpoint but state is stored in a SQLite file and survives process restarts.
-//! Run twice with the same thread_id to see persistence: first run saves; second run can load via get_tuple.
-//! Design: 16-memory-design.md §3.6.
-//!
+//! Uses SqliteSaver for persistent checkpoint storage across process restarts.
 //! Run: `cargo run -p loom-examples --example memory_persistence -- "hello"`
-//! Or:  `mkdir -p data && cargo run -p loom-examples --example memory_persistence -- "hi"`
 
 use async_trait::async_trait;
-use loom::{
-    Agent, AgentError, Checkpointer, JsonSerializer, Message, RunnableConfig, SqliteSaver,
-    StateGraph, END, START,
-};
+use loom_graph::{Agent, AgentNode, StateGraph, END, START};
+use loom_llm::{AgentError, message::Message};
+use loom_memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::Path;
@@ -46,22 +41,16 @@ impl Agent for EchoAgent {
     }
 }
 
-fn db_path() -> std::path::PathBuf {
-    let p = Path::new("data").join("memory_persistence.db");
-    if let Some(parent) = p.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    p
-}
-
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = env::args().nth(1).unwrap_or_else(|| "hello".to_string());
-    let path = db_path();
+
+    let path = env::var("LOOM_CHECKPOINT_DB")
+        .unwrap_or_else(|_| "echo_checkpoints.db".to_string());
 
     let serializer = Arc::new(JsonSerializer);
     let checkpointer: Arc<dyn Checkpointer<AgentState>> =
-        Arc::new(SqliteSaver::new(&path, serializer).expect("SqliteSaver::new"));
+        Arc::new(SqliteSaver::new(&path, serializer)?);
 
     let config = RunnableConfig {
         thread_id: Some("session-persist".into()),
@@ -70,31 +59,27 @@ async fn main() {
 
     let mut graph = StateGraph::<AgentState>::new();
     graph
-        .add_node("echo", Arc::new(EchoAgent))
+        .add_node("echo", Arc::new(AgentNode::new(EchoAgent)))
         .add_edge(START, "echo")
         .add_edge("echo", END);
 
-    let compiled = graph
-        .compile_with_checkpointer(checkpointer.clone())
-        .expect("compile");
+    let compiled = graph.compile_with_checkpointer(checkpointer.clone())?;
 
     let mut state = AgentState::default();
     state.messages.push(Message::user(input.clone()));
 
-    let state = compiled
-        .invoke(state, Some(config.clone()))
-        .await
-        .expect("invoke");
+    let state = compiled.invoke(state, Some(config.clone())).await?;
 
     if let Some(Message::Assistant(payload)) = state.messages.last() {
-        let content = &payload.content;
-        println!("{content}");
+        println!("{}", payload.content);
     }
 
-    let tuple = checkpointer.get_tuple(&config).await.expect("get_tuple");
+    let tuple = checkpointer.get_tuple(&config).await?;
     if let Some((cp, _)) = tuple {
         println!("checkpoint id: {}", cp.id);
-        println!("persisted to: {}", path.display());
+        println!("persisted to: {}", Path::new(&path).display());
         assert_eq!(cp.channel_values.messages.len(), state.messages.len());
     }
+
+    Ok(())
 }

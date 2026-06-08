@@ -17,7 +17,6 @@ fn ensure_short_mcp_timeout() {
 
 use loom_agent::agent::react::build::build_react_run_context;
 use loom_react_config::ReactBuildConfig;
-use loom_types::config::{GotRunnerConfig, TotRunnerConfig};
 
 fn base_config(working_folder: std::path::PathBuf) -> ReactBuildConfig {
     ReactBuildConfig {

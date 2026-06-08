@@ -248,7 +248,9 @@ impl LlmClient for SharedLlm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MockLlm, MockToolSource, StreamEvent};
+    use loom_llm::client::MockLlm;
+    use loom_tools::MockToolSource;
+    use loom_stream::StreamEvent;
     use std::sync::{Arc, Mutex};
 
     #[test]

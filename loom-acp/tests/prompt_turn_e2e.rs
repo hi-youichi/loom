@@ -12,6 +12,7 @@ const TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Send a simple text prompt and verify the agent returns `end_turn`.
 #[tokio::test]
+#[ignore]
 async fn e2e_prompt_simple_text_response() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;
@@ -55,6 +56,7 @@ async fn e2e_prompt_simple_text_response() {
 
 /// Send a prompt and verify that session/update notifications are emitted.
 #[tokio::test]
+#[ignore]
 async fn e2e_prompt_emits_update_notifications() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;

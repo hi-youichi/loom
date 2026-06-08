@@ -1425,7 +1425,7 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_string(CHAT_COMPLETION_RESPONSE))
             .mount(&server)
             .await;
-        let client = ChatOpenAICompat::with_test_client(&server.uri(), "test-key", "gpt-4", test_client());
+        let client = ChatOpenAICompat::with_test_client(server.uri(), "test-key", "gpt-4", test_client());
         let messages = vec![Message::user("Hello!".to_string())];
         let _result = client.invoke(&messages).await.unwrap();
         let received = server.received_requests().await.unwrap();
@@ -1440,7 +1440,7 @@ mod tests {
             .expect(2)
             .mount(&server)
             .await;
-        let client = ChatOpenAICompat::with_test_client(&server.uri(), "test-key", "gpt-4", test_client());
+        let client = ChatOpenAICompat::with_test_client(server.uri(), "test-key", "gpt-4", test_client());
         let messages = vec![Message::user("First request".to_string())];
         let _result1 = client.invoke(&messages).await.unwrap();
         let messages = vec![Message::user("Second request".to_string())];
@@ -1464,7 +1464,7 @@ mod tests {
             .with_thread_id("test-thread-123")
             .with_trace_id("test-trace-456");
 
-        let client = ChatOpenAICompat::with_test_client(&server.uri(), "test-key", "gpt-4", test_client()).with_headers(headers);
+        let client = ChatOpenAICompat::with_test_client(server.uri(), "test-key", "gpt-4", test_client()).with_headers(headers);
         let messages = vec![Message::user("Hello!".to_string())];
         let _result = client.invoke(&messages).await.unwrap();
         let received = server.received_requests().await.unwrap();
@@ -1492,10 +1492,10 @@ mod tests {
 
         let headers = LlmHeaders::default().with_thread_id(shared_trace_id);
 
-        let root_client = ChatOpenAICompat::with_test_client(&server.uri(), "test-key", "gpt-4", test_client())
+        let root_client = ChatOpenAICompat::with_test_client(server.uri(), "test-key", "gpt-4", test_client())
             .with_headers(headers.clone());
         let sub_client =
-            ChatOpenAICompat::with_test_client(&server.uri(), "test-key", "gpt-4", test_client()).with_headers(headers);
+            ChatOpenAICompat::with_test_client(server.uri(), "test-key", "gpt-4", test_client()).with_headers(headers);
 
         let messages = vec![Message::user("hello")];
         let r1 = root_client.invoke(&messages).await;
@@ -1523,7 +1523,7 @@ mod tests {
             .await;
 
         let headers = LlmHeaders::default().with_thread_id(trace_id);
-        let client = ChatOpenAICompat::with_test_client(&server.uri(), "test-key", "gpt-4", test_client())
+        let client = ChatOpenAICompat::with_test_client(server.uri(), "test-key", "gpt-4", test_client())
             .with_headers(headers);
 
         let messages = vec![Message::user("test")];
@@ -1545,7 +1545,7 @@ mod tests {
             .await;
 
         let headers = LlmHeaders::default().with_thread_id(trace_id);
-        let client = ChatOpenAICompat::with_test_client(&server.uri(), "test-key", "gpt-4", test_client())
+        let client = ChatOpenAICompat::with_test_client(server.uri(), "test-key", "gpt-4", test_client())
             .with_headers(headers);
 
         let messages = vec![Message::user("test")];

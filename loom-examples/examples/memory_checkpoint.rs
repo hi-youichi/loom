@@ -1,14 +1,14 @@
 //! Example: StateGraph with checkpointer (MemorySaver).
 //!
 //! Builds a linear graph, compiles with MemorySaver, invokes with thread_id in config.
-//! Final state is saved after invoke; get_tuple can load the last checkpoint. Design: 16-memory-design.md.
+//! Final state is saved after invoke; get_tuple can load the last checkpoint.
 //!
 //! Run: `cargo run -p loom-examples --example memory_checkpoint -- "hello"`
 
 use async_trait::async_trait;
-use loom::{
-    Agent, AgentError, Checkpointer, MemorySaver, Message, RunnableConfig, StateGraph, END, START,
-};
+use loom_graph::{Agent, AgentNode, StateGraph, END, START};
+use loom_llm::{AgentError, message::Message};
+use loom_memory::{Checkpointer, MemorySaver, RunnableConfig};
 use std::env;
 use std::sync::Arc;
 
@@ -42,7 +42,7 @@ impl Agent for EchoAgent {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = env::args().nth(1).unwrap_or_else(|| "hello".to_string());
 
     let checkpointer: Arc<MemorySaver<AgentState>> = Arc::new(MemorySaver::new());
@@ -53,30 +53,26 @@ async fn main() {
 
     let mut graph = StateGraph::<AgentState>::new();
     graph
-        .add_node("echo", Arc::new(EchoAgent))
+        .add_node("echo", Arc::new(AgentNode::new(EchoAgent)))
         .add_edge(START, "echo")
         .add_edge("echo", END);
 
-    let compiled = graph
-        .compile_with_checkpointer(checkpointer.clone())
-        .expect("valid graph");
+    let compiled = graph.compile_with_checkpointer(checkpointer.clone())?;
 
     let mut state = AgentState::default();
     state.messages.push(Message::user(input.clone()));
 
-    let state = compiled
-        .invoke(state, Some(config.clone()))
-        .await
-        .expect("invoke");
+    let state = compiled.invoke(state, Some(config.clone())).await?;
 
     if let Some(Message::Assistant(payload)) = state.messages.last() {
-        let content = &payload.content;
-        println!("{content}");
+        println!("{}", payload.content);
     }
 
-    let tuple = checkpointer.get_tuple(&config).await.expect("get_tuple");
+    let tuple = checkpointer.get_tuple(&config).await?;
     if let Some((cp, _)) = tuple {
         println!("checkpoint id: {}", cp.id);
         assert_eq!(cp.channel_values.messages.len(), state.messages.len());
     }
+
+    Ok(())
 }

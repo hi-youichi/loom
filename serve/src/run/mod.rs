@@ -115,7 +115,8 @@ mod tests {
     use async_trait::async_trait;
     use loom_protocol::{EnvelopeState, ProtocolEvent, ProtocolEventEnvelope, ServerResponse};
     use loom_llm::client::MockLlm;
-    use loom_agent::{RunCmd, RunCompletion, RunError, RunOptions, AgentRunResult};
+    use loom_agent::{RunCmd, RunCompletion, RunError, RunOptions};
+    use loom_agent::cli_run_agent::AgentRunResult;
     use std::sync::atomic::AtomicUsize;
     use std::sync::{Arc, Mutex};
     use tokio::sync::mpsc;
@@ -316,23 +317,26 @@ mod tests {
 
     #[tokio::test]
     async fn try_append_initial_user_message_thread_id_none_returns_false() {
-        let store: Arc<dyn loom_memory::user_message::UserMessageStore> = Arc::new(loom::NoOpUserMessageStore);
+        use loom_memory::user_message::NoOpUserMessageStore;
+        let store: Arc<dyn loom_memory::user_message::UserMessageStore> = Arc::new(NoOpUserMessageStore);
         let got = try_append_initial_user_message(Some(&store), None, "hi").await;
         assert!(!got);
     }
 
     #[tokio::test]
     async fn try_append_initial_user_message_both_some_returns_true() {
-        let store: Arc<dyn loom_memory::user_message::UserMessageStore> = Arc::new(loom::NoOpUserMessageStore);
+        use loom_memory::user_message::NoOpUserMessageStore;
+        let store: Arc<dyn loom_memory::user_message::UserMessageStore> = Arc::new(NoOpUserMessageStore);
         let got = try_append_initial_user_message(Some(&store), Some("t1"), "hello").await;
         assert!(got);
     }
 
     #[tokio::test]
     async fn run_agent_task_completes_and_returns_result_and_state() {
+        use loom_llm::UserContent;
         let (tx, _rx) = mpsc::channel::<ProtocolEventEnvelope>(EVENT_QUEUE_CAPACITY);
         let opts = RunOptions {
-            message: loom::UserContent::text("ping".to_string()),
+            message: UserContent::text("ping".to_string()),
             working_folder: None,
             session_id: None,
             thread_id: None,
@@ -350,7 +354,7 @@ mod tests {
             cancellation: None,
             output_timestamp: false,
             dry_run: false,
-        any_stream_event_sender: None,
+            any_stream_event_sender: None,
             bash_executor: None,
             extra_tools: None,
             acp_session_id: None,
@@ -379,10 +383,12 @@ mod tests {
 
     #[tokio::test]
     async fn run_agent_task_with_user_message_store_uses_append_channel() {
+        use loom_llm::UserContent;
+        use loom_memory::user_message::NoOpUserMessageStore;
         let (tx, _rx) = mpsc::channel::<ProtocolEventEnvelope>(EVENT_QUEUE_CAPACITY);
-        let store: Arc<dyn loom_memory::user_message::UserMessageStore> = Arc::new(loom::NoOpUserMessageStore);
+        let store: Arc<dyn loom_memory::user_message::UserMessageStore> = Arc::new(NoOpUserMessageStore);
         let opts = RunOptions {
-            message: loom::UserContent::text("hi".to_string()),
+            message: UserContent::text("hi".to_string()),
             working_folder: None,
             session_id: None,
             thread_id: Some("thread-append".to_string()),
@@ -400,7 +406,7 @@ mod tests {
             cancellation: None,
             output_timestamp: false,
             dry_run: false,
-        any_stream_event_sender: None,
+            any_stream_event_sender: None,
             bash_executor: None,
             extra_tools: None,
             acp_session_id: None,

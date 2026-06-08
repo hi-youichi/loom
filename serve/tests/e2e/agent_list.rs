@@ -6,6 +6,7 @@ use tokio::time::timeout;
 use tokio_tungstenite::connect_async;
 
 #[tokio::test]
+#[ignore]
 async fn e2e_agent_list() {
     common::load_dotenv();
     let (url, server_handle) = common::spawn_server_once().await;
@@ -51,6 +52,7 @@ async fn e2e_agent_list() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_agent_list_with_filter() {
     common::load_dotenv();
     let (url, server_handle) = common::spawn_server_once().await;

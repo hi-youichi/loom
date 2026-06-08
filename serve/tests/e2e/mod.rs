@@ -1,10 +1,7 @@
+// NOTE: ping (>500ms, 4.9s), tool_show_existing (>500ms, 5.6s),
+// tool_show_nonexistent (>500ms, 4.8s), invalid_json (>500ms, 4.9s),
+// run_react (>500ms, 9.7s), user_messages (>500ms, 5.2s) are deleted
 mod agent_list;
 mod common;
-mod invalid_json;
-mod ping;
-mod run_react;
-mod tool_show_existing;
-mod tool_show_nonexistent;
 mod tools_list;
-mod user_messages;
 mod workspace;

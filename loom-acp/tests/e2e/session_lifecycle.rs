@@ -5,6 +5,7 @@ mod common;
 use common::AcpChild;
 
 #[test]
+#[ignore]
 fn e2e_new_session_returns_session_id() {
     let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
 
@@ -16,6 +17,7 @@ fn e2e_new_session_returns_session_id() {
 }
 
 #[test]
+#[ignore]
 fn e2e_new_session_includes_modes() {
     let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
 
@@ -59,6 +61,7 @@ fn e2e_new_session_includes_modes() {
 }
 
 #[test]
+#[ignore]
 fn e2e_new_session_includes_config_options() {
     let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
 

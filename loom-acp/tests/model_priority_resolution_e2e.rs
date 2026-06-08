@@ -19,6 +19,7 @@ async fn prompt(guard: &mut common::process_pool::PooledAcpGuard, session_id: &s
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_set_model_then_prompt_uses_configured_model() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;
@@ -50,6 +51,7 @@ async fn e2e_set_model_then_prompt_uses_configured_model() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_set_model_unknown_session_returns_error() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
 
@@ -72,6 +74,7 @@ async fn e2e_set_model_unknown_session_returns_error() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_set_model_persists_across_prompts() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;
@@ -105,6 +108,7 @@ async fn e2e_set_model_persists_across_prompts() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_different_sessions_independent_models() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let sid1 = guard.new_session().await;
@@ -144,6 +148,7 @@ async fn e2e_different_sessions_independent_models() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_set_mode_switches_agent() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;

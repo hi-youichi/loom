@@ -1,27 +1,24 @@
-//! StateGraph example: linear chain with EchoAgent.
+//! StateGraph with an echo Agent node.
 //!
-//! Single-node chain START → echo → END. Same behavior as the echo example
-//! but via StateGraph. Run: `cargo run -p loom-examples --example state_graph_echo -- "Hello"`
+//! Run: `cargo run -p loom-examples --example state_graph_echo`
 
-use std::env;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use loom_graph::{Agent, AgentError, CompiledStateGraph, StateGraph, END, START};
-use loom_llm::message::Message;
+use loom_graph::{Agent, AgentNode, CompiledStateGraph, StateGraph, END, START};
+use loom_llm::{AgentError, message::Message};
+use serde::{Deserialize, Serialize};
 
-/// Example state: message list only (same as echo example).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct AgentState {
     pub messages: Vec<Message>,
 }
 
-/// Example agent: if the last message is User(s), appends Assistant(s).
 struct EchoAgent;
 
 impl EchoAgent {
     fn new() -> Self {
-        Self
+        EchoAgent
     }
 }
 
@@ -30,9 +27,7 @@ impl Agent for EchoAgent {
     fn name(&self) -> &str {
         "echo"
     }
-
     type State = AgentState;
-
     async fn run(&self, state: Self::State) -> Result<Self::State, AgentError> {
         let mut messages = state.messages;
         let last = messages.last().and_then(|m| {
@@ -50,35 +45,28 @@ impl Agent for EchoAgent {
 }
 
 #[tokio::main]
-async fn main() {
-    let input = env::args()
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let input = std::env::args()
         .nth(1)
-        .unwrap_or_else(|| "hello world".to_string());
+        .unwrap_or_else(|| "Hello, world!".to_string());
 
     let mut graph = StateGraph::<AgentState>::new();
     graph
-        .add_node("echo", Arc::new(EchoAgent::new()))
+        .add_node("echo", Arc::new(AgentNode::new(EchoAgent::new())))
         .add_edge(START, "echo")
         .add_edge("echo", END);
 
-    let compiled: CompiledStateGraph<AgentState> = graph.compile().expect("valid graph");
+    let compiled: CompiledStateGraph<AgentState> = graph.compile()?;
 
-    let mut state = AgentState::default();
-    state.messages.push(Message::user(input));
+    let state = AgentState {
+        messages: vec![Message::user(input)],
+    };
 
-    match compiled.invoke(state, None).await {
-        Ok(s) => {
-            if let Some(Message::Assistant(payload)) = s.messages.last() {
-                let content = &payload.content;
-                println!("{content}");
-            } else {
-                eprintln!("no assistant reply");
-                std::process::exit(1);
-            }
-        }
-        Err(e) => {
-            eprintln!("error: {e}");
-            std::process::exit(1);
-        }
+    let result = compiled.invoke(state, None).await?;
+
+    if let Some(Message::Assistant(payload)) = result.messages.last() {
+        println!("{}", payload.content);
     }
+
+    Ok(())
 }

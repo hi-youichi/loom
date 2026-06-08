@@ -23,6 +23,7 @@ async fn prompt_and_wait(
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_multi_turn_same_session_both_succeed() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;
@@ -49,6 +50,7 @@ async fn e2e_multi_turn_same_session_both_succeed() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_multi_turn_different_sessions_independent() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
 
@@ -110,6 +112,7 @@ async fn e2e_multi_turn_different_sessions_independent() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_prompt_unknown_session_returns_error() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
 

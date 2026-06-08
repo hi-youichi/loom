@@ -1,7 +1,7 @@
-use loom::{
-    memory::{LanceStore, Store},
-    Embedder, Namespace, OpenAIEmbedder,
+use loom_memory::{
+    LanceStore, Namespace, OpenAIEmbedder, SearchOptions, Store,
 };
+use loom_memory::Embedder;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -19,8 +19,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Hello, world!",
         "The quick brown fox jumps over the lazy dog",
     ];
-    let texts_refs: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
-    let vectors = embedder.embed(&texts_refs).await?;
+    let texts_refs: Vec<&str> = texts.iter().map(|s| s.as_ref()).collect();
+    let vectors: Vec<Vec<f32>> = embedder.embed(&texts_refs).await?;
 
     for (i, (text, vector)) in texts.iter().zip(vectors.iter()).enumerate() {
         let vector_len = vector.len();
@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\nStep 3: Create LanceStore with embeddings");
     let db_path = "data/embeddings.lance";
-    let store = LanceStore::new(db_path, embedder).await?;
+    let store: Arc<LanceStore> = Arc::new(LanceStore::new(db_path, embedder).await?);
     println!("LanceStore created at: {}", db_path);
 
     println!("\nStep 4: Store some memories with embeddings");
@@ -65,13 +65,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let query = "programming languages";
     println!("  Query: '{}", query);
 
-    let results = store.search(&ns, Some(query), Some(3)).await?;
+    let results: Vec<_> = store.search(&ns, SearchOptions { query: Some(query), limit: 3 }).await?;
 
     println!("  Found {} results:", results.len());
     for (i, hit) in results.iter().enumerate() {
-        println!("\n  [{}] Key: {}", i + 1, hit.key);
+        println!("\n  [{}] Key: {}", i + 1, hit.item.key);
         println!("      Score: {:.4}", hit.score.unwrap_or(0.0));
-        println!("      Value: {}", hit.value);
+        println!("      Value: {}", hit.item.value);
     }
 
     println!("\nExample completed successfully!");

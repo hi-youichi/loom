@@ -15,28 +15,12 @@ name = "state_graph_echo"
 path = "examples/state_graph_echo.rs"
 
 [[example]]
-name = "react_linear"
-path = "examples/react_linear.rs"
-
-[[example]]
 name = "memory_checkpoint"
 path = "examples/memory_checkpoint.rs"
 
 [[example]]
 name = "memory_persistence"
 path = "examples/memory_persistence.rs"
-
-[[example]]
-name = "react_exa"
-path = "examples/react_exa.rs"
-
-[[example]]
-name = "react_mcp"
-path = "examples/react_mcp.rs"
-
-[[example]]
-name = "react_mcp_gitlab"
-path = "examples/react_mcp_gitlab.rs"
 
 [[example]]
 name = "react_memory"

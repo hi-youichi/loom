@@ -281,7 +281,7 @@ mod tests {
     use super::super::state::TotExtension;
     use super::*;
     use loom_graph::RunContext;
-    use loom_llm::MockLlm;
+    use loom_llm::client::MockLlm;
     use loom_memory::RunnableConfig;
     use loom_types::state::ReActState;
     use tokio::sync::mpsc;

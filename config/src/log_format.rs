@@ -147,10 +147,10 @@ where
     ) -> fmt::Result {
         self.timer.format_time(&mut writer)?;
 
-        if let Some(app_tid) = extract_app_thread_id(ctx) {
-            write!(writer, " thread_id={}", app_tid)?;
-        } else if let Some(event_tid) = extract_thread_id_from_event(event) {
+        if let Some(event_tid) = extract_thread_id_from_event(event) {
             write!(writer, " thread_id={}", event_tid)?;
+        } else if let Some(app_tid) = extract_app_thread_id(ctx) {
+            write!(writer, " thread_id={}", app_tid)?;
         } else {
             let tid = thread::current().id();
             write!(writer, " thread_id={:?}", tid)?;

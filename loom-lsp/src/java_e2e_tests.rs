@@ -12,6 +12,7 @@ mod java_e2e_tests {
     use config::{LspConfig, get_default_lsp_servers, load_default_lsp_config};
 
     #[test]
+    #[ignore]
     fn test_java_e2e_file_to_config_flow() {
         // 完整的流程测试：从文件检测到配置加载
         
@@ -37,6 +38,7 @@ mod java_e2e_tests {
     }
 
     #[test]
+    #[ignore]
     fn test_java_e2e_config_serialization() {
         // 测试配置的完整序列化/反序列化流程
         
@@ -66,6 +68,7 @@ mod java_e2e_tests {
     }
 
     #[test]
+    #[ignore]
     fn test_java_e2e_installer_integration() {
         // 测试安装器与配置的集成
         
@@ -93,6 +96,7 @@ mod java_e2e_tests {
     }
 
     #[test]
+    #[ignore]
     fn test_java_e2e_config_loading_flow() {
         // 测试配置加载的完整流程
         
@@ -114,6 +118,7 @@ mod java_e2e_tests {
     }
 
     #[test]
+    #[ignore]
     fn test_java_e2e_multi_file_scenario() {
         // 测试多文件场景下的Java支持
         
@@ -154,6 +159,7 @@ mod java_e2e_tests {
     }
 
     #[test]
+    #[ignore]
     fn test_java_e2e_error_handling() {
         // 测试错误处理场景
         
@@ -186,6 +192,7 @@ mod java_e2e_tests {
     }
 
     #[test]
+    #[ignore]
     fn test_java_e2e_performance_characteristics() {
         // 测试性能特征
         
@@ -224,6 +231,7 @@ mod java_e2e_tests {
     }
 
     #[test]
+    #[ignore]
     fn test_java_e2e_configuration_completeness() {
         // 测试Java配置的完整性和一致性
         

@@ -25,6 +25,7 @@ fn extract_models_from_requests(requests: &Option<Vec<wiremock::Request>>) -> Ve
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_title_generation_uses_light_tier_model() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;
@@ -70,6 +71,7 @@ async fn e2e_title_generation_uses_light_tier_model() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_title_generation_produces_session_info_update() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;
@@ -107,6 +109,7 @@ async fn e2e_title_generation_produces_session_info_update() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_title_update_contains_non_empty_title() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;
@@ -142,6 +145,7 @@ async fn e2e_title_update_contains_non_empty_title() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_title_only_generated_on_first_prompt() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;

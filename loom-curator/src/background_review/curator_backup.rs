@@ -377,15 +377,6 @@ impl Default for CuratorBackup {
 mod tests {
     use super::*;
 
-    fn make_test_skill(name: &str) -> PathBuf {
-        let dir = tempfile::tempdir().unwrap();
-        let skill_dir = dir.path().join(name);
-        fs::create_dir_all(&skill_dir).unwrap();
-        fs::write(skill_dir.join("instructions.md"), format!("# {}", name)).unwrap();
-        fs::write(skill_dir.join("config.yaml"), "name: test").unwrap();
-        dir.into_path().join(name)
-    }
-
     #[test]
     fn snapshot_and_list() {
         let backup_dir = tempfile::tempdir().unwrap();

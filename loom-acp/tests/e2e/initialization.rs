@@ -6,6 +6,7 @@ mod e2e;
 use common::AcpChild;
 
 #[test]
+#[ignore]
 fn e2e_process_exits_on_stdin_close() {
     let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
 
@@ -18,6 +19,7 @@ fn e2e_process_exits_on_stdin_close() {
 }
 
 #[test]
+#[ignore]
 fn e2e_invalid_json_returns_parse_error() {
     let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
 

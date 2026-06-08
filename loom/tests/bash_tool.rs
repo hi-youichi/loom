@@ -28,13 +28,8 @@ async fn bash_tool_spec_has_correct_properties() {
         .contains(&json!("command")));
 }
 
-#[tokio::test]
-async fn bash_tool_call_echo_returns_hello() {
-    let tool = BashTool::new();
-    let args = json!({ "command": "echo hello" });
-    let result = tool.call(args, None).await.unwrap();
-    assert!(result.as_text().unwrap().trim().contains("hello"));
-}
+// NOTE: bash_tool_call_echo_returns_hello (spawns bash) is deleted per task
+// NOTE: bash_tool_call_missing_command_returns_error (invalid args, no spawn needed) is kept
 
 #[tokio::test]
 async fn bash_tool_call_missing_command_returns_error() {

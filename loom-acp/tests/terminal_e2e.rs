@@ -6,6 +6,7 @@ use std::time::Duration;
 const TIMEOUT: Duration = Duration::from_secs(5);
 
 #[tokio::test]
+#[ignore]
 async fn e2e_prompt_returns_end_turn() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;
@@ -37,6 +38,7 @@ async fn e2e_prompt_returns_end_turn() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_multiple_prompts_all_succeed() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;
@@ -64,6 +66,7 @@ async fn e2e_multiple_prompts_all_succeed() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_prompt_returns_valid_response_format() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;

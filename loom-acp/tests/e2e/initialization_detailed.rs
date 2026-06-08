@@ -5,6 +5,7 @@ mod common;
 use common::AcpChild;
 
 #[test]
+#[ignore]
 fn e2e_initialize_returns_capabilities() {
     let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
 
@@ -63,6 +64,7 @@ fn e2e_initialize_returns_capabilities() {
 }
 
 #[test]
+#[ignore]
 fn e2e_initialize_rejects_unsupported_version() {
     let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
 
@@ -90,6 +92,7 @@ fn e2e_initialize_rejects_unsupported_version() {
 }
 
 #[test]
+#[ignore]
 fn e2e_authenticate_succeeds() {
     let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
 

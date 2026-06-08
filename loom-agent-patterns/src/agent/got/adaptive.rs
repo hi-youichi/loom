@@ -392,7 +392,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn expand_node_via_llm_parses_and_prefixes() {
-        use loom_llm::MockLlm;
+        use loom_llm::client::MockLlm;
         let json = r#"{"nodes":[{"id":"step1","description":"First step"},{"id":"step2","description":"Second step"}],"edges":[["analyze","step1"],["step1","step2"]]}"#;
         let mock = MockLlm::with_no_tool_calls(json);
         let llm = Arc::new(mock);

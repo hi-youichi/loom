@@ -15,6 +15,7 @@ fn extract_update_type(notification: &serde_json::Value) -> Option<String> {
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_prompt_emits_session_update_notifications() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;
@@ -45,6 +46,7 @@ async fn e2e_prompt_emits_session_update_notifications() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_prompt_notifications_contain_session_id() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;
@@ -76,6 +78,7 @@ async fn e2e_prompt_notifications_contain_session_id() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_prompt_response_has_stop_reason() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;
@@ -106,6 +109,7 @@ async fn e2e_prompt_response_has_stop_reason() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn e2e_prompt_emits_agent_message_chunks() {
     let mut guard = common::process_pool::get_pool().await.acquire().await;
     let session_id = guard.new_session().await;

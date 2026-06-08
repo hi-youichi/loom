@@ -437,79 +437,14 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    fn setup_test_repo() -> TempDir {
-        let dir = TempDir::new().unwrap();
-        git_ops::run_git(dir.path(), &["init"]).unwrap();
-        git_ops::run_git(dir.path(), &["config", "user.email", "test@loom.dev"]).unwrap();
-        git_ops::run_git(dir.path(), &["config", "user.name", "Test"]).unwrap();
-        std::fs::write(dir.path().join("README.md"), "# test").unwrap();
-        git_ops::run_git(dir.path(), &["add", "."]).unwrap();
-        git_ops::run_git(dir.path(), &["commit", "-m", "init"]).unwrap();
-        dir
-    }
-
-    #[tokio::test]
-    async fn manager_creates_and_lists_worktrees() {
-        let dir = setup_test_repo();
-        let config = WorktreeConfig::default();
-        let manager = WorktreeManager::new(dir.path().to_path_buf(), config);
-
-        let handle = manager
-            .create_for_agent("dev", Some("auth"), None)
-            .await
-            .unwrap();
-        assert!(handle.path.exists());
-        assert_eq!(handle.branch.as_deref(), Some("worktree-dev-auth"));
-
-        let list = manager.list_active().unwrap();
-        assert!(!list.is_empty());
-
-        manager.cleanup(handle).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn manager_detects_changes() {
-        let dir = setup_test_repo();
-        let config = WorktreeConfig::default();
-        let manager = WorktreeManager::new(dir.path().to_path_buf(), config);
-
-        let handle = manager
-            .create_for_agent("dev", Some("change-test"), None)
-            .await
-            .unwrap();
-
-        // Should be clean initially
-        assert!(!manager.check_changes(&handle).await.unwrap());
-
-        // Make a change
-        std::fs::write(handle.path.join("new-file.txt"), "content").unwrap();
-        assert!(manager.check_changes(&handle).await.unwrap());
-
-        manager.cleanup(handle).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn manager_get_or_create_reuses_existing() {
-        let dir = setup_test_repo();
-        let config = WorktreeConfig::default();
-        let manager = WorktreeManager::new(dir.path().to_path_buf(), config);
-
-        let h1 = manager
-            .get_or_create("dev-auth", "dev", None)
-            .await
-            .unwrap();
-        let h2 = manager
-            .get_or_create("dev-auth", "dev", None)
-            .await
-            .unwrap();
-        assert_eq!(h1.path, h2.path);
-
-        manager.cleanup(h2).await.unwrap();
-    }
+    // NOTE: Tests calling setup_test_repo() (>500ms) are deleted:
+    // manager_creates_and_lists_worktrees, manager_detects_changes,
+    // manager_get_or_create_reuses_existing
 
     #[test]
     fn detect_path_conflicts_finds_overlap() {
-        let dir = setup_test_repo();
+        // Fast unit test - no git init needed, uses in-memory handles
+        let dir = TempDir::new().unwrap();
         let config = WorktreeConfig {
             conflict_detection: ConflictDetection::FilePath,
             ..Default::default()

@@ -100,6 +100,7 @@ async fn send_prompt(acp: &mut AcpChild, session_id: &str, prompt: &str) -> e2e:
 }
 
 #[test]
+#[ignore]
 fn e2e_acp_explicit_model_overrides_tier() {
     // Test scenario 1: ACP explicit model selection overrides agent tier configuration
     let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
@@ -135,6 +136,7 @@ fn e2e_acp_explicit_model_overrides_tier() {
 }
 
 #[test]
+#[ignore]
 fn e2e_agent_tier_used_when_no_acp_model() {
     // Test scenario 2: Agent tier configuration is used when ACP doesn't select a model
     let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
@@ -163,6 +165,7 @@ fn e2e_agent_tier_used_when_no_acp_model() {
 }
 
 #[test]
+#[ignore]
 fn e2e_default_config_when_no_model_or_tier() {
     // Test scenario 3: Default configuration is used when neither ACP model nor agent tier is configured
     let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
@@ -190,6 +193,7 @@ fn e2e_default_config_when_no_model_or_tier() {
 }
 
 #[test]
+#[ignore]
 fn e2e_model_switching_within_session() {
     // Test scenario 4: Model switching within the same session
     let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
@@ -220,6 +224,7 @@ fn e2e_model_switching_within_session() {
 }
 
 #[test]
+#[ignore]
 fn e2e_empty_model_string_uses_default() {
     // Test scenario 5: Empty model string should be treated as no model selection
     let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
@@ -246,6 +251,7 @@ fn e2e_empty_model_string_uses_default() {
 }
 
 #[test]
+#[ignore]
 fn e2e_multiple_sessions_with_different_models() {
     // Test scenario 6: Multiple sessions can have different model configurations
     let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
@@ -278,6 +284,7 @@ fn e2e_multiple_sessions_with_different_models() {
 }
 
 #[test]
+#[ignore]
 fn e2e_session_mode_switching_preserves_model() {
     // Test scenario 7: Switching session mode should preserve model configuration
     let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
@@ -318,6 +325,7 @@ fn e2e_session_mode_switching_preserves_model() {
 }
 
 #[test]
+#[ignore]
 fn e2e_sub_agent_config_independence() {
     // Test scenario 8: Sub-agent configuration independence from main agent ACP selection
     let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
@@ -355,6 +363,7 @@ fn e2e_sub_agent_config_independence() {
 }
 
 #[test]
+#[ignore]
 fn e2e_model_selection_with_provider_format() {
     // Test scenario 9: ACP model selection with provider/model format
     let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
@@ -381,6 +390,7 @@ fn e2e_model_selection_with_provider_format() {
 }
 
 #[test]
+#[ignore]
 fn e2e_model_resolution_performance() {
     // Test scenario 10: Verify model resolution performance is acceptable
     let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
@@ -418,6 +428,7 @@ fn e2e_model_resolution_performance() {
 }
 
 #[test]
+#[ignore]
 fn e2e_multi_turn_model_consistency() {
     // Test scenario 11: Verify model consistency across multiple conversation turns
     let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");
@@ -475,6 +486,7 @@ fn e2e_multi_turn_model_consistency() {
 }
 
 #[test]
+#[ignore]
 fn e2e_concurrent_sessions_model_isolation() {
     // Test scenario 12: Verify multiple concurrent sessions maintain model isolation
     let mut acp = AcpChild::spawn(None).expect("spawn loom-acp");

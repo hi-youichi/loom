@@ -292,7 +292,8 @@ impl SkillRegistry {
     ) -> Result<(), SkillError> {
         let skill = self.load(skill_name)?;
         let dir = self.skill_dir(skill.source, skill_name);
-        let file_path = dir.join(path.trim_start_matches('/'));
+        let normalized = path.trim_start_matches('/').replace('/', std::path::MAIN_SEPARATOR_STR);
+        let file_path = dir.join(&normalized);
         if let Some(parent) = file_path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -303,7 +304,8 @@ impl SkillRegistry {
     pub fn remove_file(&self, skill_name: &str, path: &str) -> Result<(), SkillError> {
         let skill = self.load(skill_name)?;
         let dir = self.skill_dir(skill.source, skill_name);
-        let file_path = dir.join(path.trim_start_matches('/'));
+        let normalized = path.trim_start_matches('/').replace('/', std::path::MAIN_SEPARATOR_STR);
+        let file_path = dir.join(&normalized);
         if file_path.exists() {
             fs::remove_file(&file_path)?;
             Ok(())
@@ -497,8 +499,7 @@ mod tests {
         // Read it back
         let file_path = dir
             .path()
-            .join("skills")
-            .join("manual")
+            .join("curated")
             .join("test-write")
             .join("src")
             .join("helper.rs");
@@ -511,8 +512,7 @@ mod tests {
             .unwrap();
         let readme = dir
             .path()
-            .join("skills")
-            .join("manual")
+            .join("curated")
             .join("test-write")
             .join("README.md");
         assert_eq!(fs::read_to_string(&readme).unwrap(), "# Test\n");
@@ -540,8 +540,7 @@ mod tests {
 
         let deep_path = dir
             .path()
-            .join("skills")
-            .join("manual")
+            .join("curated")
             .join("nested")
             .join("a")
             .join("b")

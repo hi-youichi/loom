@@ -849,20 +849,22 @@ mod tests {
 
     #[test]
     fn diff_edit_basic() {
-        let args = r#"{"path":"panel_format.rs","oldString":"fn main()","newString":"fn hello()"}"#;
+        let args = r##"{"path":"panel_format.rs","oldString":"fn main()","newString":"fn hello()"}"##;
         let output = format_diff("edit", args, "", false).unwrap();
-        assert!(output.contains("-fn main()"));
-        assert!(output.contains("+fn hello()"));
+        // Note: format_removed_line/add_line uses "- " prefix (with space)
+        assert!(output.contains("- fn main()"));
+        assert!(output.contains("+ fn hello()"));
     }
 
     #[test]
     fn diff_multiedit_basic() {
-        let args = r#"{"path":"panel_format.rs","edits":[{"oldString":"a","newString":"b"},{"oldString":"c","newString":"d"}]}"#;
+        let args = r##"{"path":"panel_format.rs","edits":[{"oldString":"a","newString":"b"},{"oldString":"c","newString":"d"}]}"##;
         let output = format_diff("multiedit", args, "", false).unwrap();
-        assert!(output.contains("-a"));
-        assert!(output.contains("+b"));
-        assert!(output.contains("-c"));
-        assert!(output.contains("+d"));
+        // Note: format_removed_line/add_line uses "- " prefix (with space)
+        assert!(output.contains("- a"));
+        assert!(output.contains("+ b"));
+        assert!(output.contains("- c"));
+        assert!(output.contains("+ d"));
         // Should have blank line separator between edits
         assert!(output.contains("\n\n"));
     }
@@ -894,23 +896,25 @@ mod tests {
     #[test]
     fn diff_edit_with_context_lines() {
         // Old has context + changed line; new has context + new line
-        let args = r#"{"path":"test.rs","oldString":"fn foo() {\n    let x = 1;\n}\nfn bar() {","newString":"fn foo() {\n    let x = 2;\n}\nfn bar() {"}"#;
+        let args = r##"{"path":"test.rs","oldString":"fn foo() {\n    let x = 1;\n}\nfn bar() {","newString":"fn foo() {\n    let x = 2;\n}\nfn bar() {"}"##;
         let output = format_diff("edit", args, "", false).unwrap();
         // Context line "fn foo() {" should appear with space prefix
         assert!(output.contains(" fn foo()"));
-        assert!(output.contains("-    let x = 1;"));
-        assert!(output.contains("+    let x = 2;"));
+        // Note: format_removed_line/add_line uses "- " prefix (with space)
+        assert!(output.contains("-     let x = 1;"));
+        assert!(output.contains("+     let x = 2;"));
         // Context line "fn bar()" should also appear
         assert!(output.contains(" fn bar()"));
     }
 
     #[test]
     fn diff_edit_replaced_multiline() {
-        let args = r#"{"path":"test.rs","oldString":"line1\nline2\nline3","newString":"line1\nline2_new\nline3"}"#;
+        let args = r##"{"path":"test.rs","oldString":"line1\nline2\nline3","newString":"line1\nline2_new\nline3"}"##;
         let output = format_diff("edit", args, "", false).unwrap();
         assert!(output.contains(" line1"));
-        assert!(output.contains("-line2"));
-        assert!(output.contains("+line2_new"));
+        // Note: format_removed_line/add_line uses "- " prefix (with space)
+        assert!(output.contains("- line2"));
+        assert!(output.contains("+ line2_new"));
         assert!(output.contains(" line3"));
     }
 
@@ -1061,13 +1065,13 @@ mod tests {
     #[test]
     fn diff_write_file_existing_file() {
         // Existing file: shows context, removed, and added lines
-        let args = r#"{"path":"existing.rs"}"#;
-        let result = r#"{"type":"diff","path":"existing.rs","old_text":"fn old() {\n    println!(\"old\");\n}","new_text":"fn new() {\n    println!(\"new\");\n}"}"#;
+        let args = r##"{"path":"existing.rs"}"##;
+        let result = r##"{"type":"diff","path":"existing.rs","old_text":"fn old() {\n    println!(\"old\");\n}","new_text":"fn new() {\n    println!(\"new\");\n}"}"##;
         let output = format_diff("write_file", args, result, false).unwrap();
         assert!(output.contains("existing.rs"));
-        // Should show removed and added lines
-        assert!(output.contains("-fn old()"));
-        assert!(output.contains("+fn new()"));
+        // Note: format_removed_line/add_line uses "- " prefix (with space)
+        assert!(output.contains("- fn old()"));
+        assert!(output.contains("+ fn new()"));
     }
 
     #[test]
