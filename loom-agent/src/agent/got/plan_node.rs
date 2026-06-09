@@ -93,7 +93,7 @@ impl Node<GotState> for PlanGraphNode {
     }
 
     async fn run(&self, state: GotState) -> Result<(GotState, Next), AgentError> {
-        let ctx = loom::graph::RunContext::new(loom::memory::RunnableConfig::default());
+        let ctx = loom_graph::RunContext::new(loom_memory::RunnableConfig::default());
         self.run_with_context(state, &ctx).await
     }
 
@@ -144,8 +144,8 @@ impl Node<GotState> for PlanGraphNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom::llm::MockLlm;
-    use loom::memory::RunnableConfig;
+    use loom_llm::client::MockLlm;
+    use loom_memory::RunnableConfig;
     use tokio::sync::mpsc;
 
     #[test]

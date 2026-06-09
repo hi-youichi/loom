@@ -2,8 +2,9 @@
 
 use loom_memory::{CheckpointError, Checkpointer, RunnableConfig};
 use loom_llm::message::Message;
-use crate::runner_common::load_from_checkpoint_or_build;
 use loom_types::state::ReActState;
+
+use crate::runner_common::load_from_checkpoint_or_build;
 
 /// Builds initial [`ReActState`] for a user message, loading from checkpoint when available.
 pub async fn build_react_initial_state(
@@ -47,5 +48,3 @@ Ok(ReActState {
     )
     .await
 }
-
-

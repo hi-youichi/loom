@@ -8,7 +8,7 @@ use loom_compress::{build_graph, CompactionConfig, CompressionGraphNode};
 use loom_graph::{
     CompilationError, CompiledStateGraph, LoggingNodeMiddleware, StateGraph, END, START,
 };
-use loom_helve::ApprovalPolicy;
+use loom_types::approval::ApprovalPolicy;
 use loom_llm::LlmProvider;
 use loom_memory::{Checkpointer, RunnableConfig, Store};
 use crate::runner_common;
@@ -25,7 +25,7 @@ use super::options::{resolve_run_agent_options, AgentOptions};
 use crate::agent::react::act_node::ActNode;
 
 use crate::agent::react::observe_node::ObserveNode;
-use crate::agent::react::title_node::{is_first_think, TitleNode};
+use crate::agent::react::title_node::TitleNode;
 use crate::agent::react::think_node::ThinkNode;
 use crate::agent::react::tools_condition;
 use crate::agent::react::with_node_logging::WithNodeLogging;
@@ -59,7 +59,7 @@ impl ReactRunner {
         cancellation: Option<RunCancellation>,
         verbose: bool,
         title_provider: Option<Arc<dyn LlmProvider>>,
-        title_headers: Option<loom::llm::LlmHeaders>,
+        title_headers: Option<loom_llm::LlmHeaders>,
     ) -> Result<Self, CompilationError> {
         let think = ThinkNode::new(Arc::clone(&provider));
         let act = ActNode::new(tool_source)
@@ -82,41 +82,26 @@ impl ReactRunner {
         );
 
         let think_condition_path_map: HashMap<String, String> = [
-            ("title".into(), "title".into()),
             ("tools".into(), "act".into()),
             (END.into(), END.into()),
         ]
         .into_iter()
         .collect();
 
-        let summarize_condition_path_map: HashMap<String, String> =
-            [("tools".into(), "act".into()), (END.into(), END.into())]
-                .into_iter()
-                .collect();
-
         let act = Arc::new(act);
 
         graph
             .add_node("think", Arc::new(think))
             .add_node("title", Arc::new(title_node))
-            .add_node("act", Arc::clone(&act) as Arc<dyn loom::graph::Node<ReActState>>)
+            .add_node("act", Arc::clone(&act) as Arc<dyn loom_graph::Node<ReActState>>)
             .add_node("observe", Arc::new(observe))
             .add_node("compress", compress_node)
-            .add_edge(START, "think")
+            .add_edge(START, "title")
+            .add_edge("title", "think")
             .add_conditional_edges(
                 "think",
-                Arc::new(|state: &ReActState| {
-                    if is_first_think(state) {
-                        return "title".to_string();
-                    }
-                    tools_condition(state).as_str().to_string()
-                }),
-                Some(think_condition_path_map),
-            )
-            .add_conditional_edges(
-                "title",
                 Arc::new(|state: &ReActState| tools_condition(state).as_str().to_string()),
-                Some(summarize_condition_path_map),
+                Some(think_condition_path_map),
             )
             .add_edge("act", "observe")
             .add_edge("observe", "compress")
@@ -176,9 +161,9 @@ impl ReactRunner {
         &self,
         user_message: &str,
         on_event: Option<F>,
-    ) -> Result<runner_common::StreamRunOutcome<ReActState>, RunError>
+    ) -> Result<runner_common::StreamRunOutcome<ReActState, runner_common::StreamRunError>, RunError>
     where
-        F: FnMut(StreamEvent<ReActState>),
+        F: FnMut(StreamEvent<ReActState>) + Send + 'static,
     {
         self.stream_with_config(user_message, None, on_event, None).await
     }
@@ -189,9 +174,9 @@ impl ReactRunner {
         config: Option<RunnableConfig>,
         on_event: Option<F>,
         any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
-    ) -> Result<runner_common::StreamRunOutcome<ReActState>, RunError>
+    ) -> Result<runner_common::StreamRunOutcome<ReActState, runner_common::StreamRunError>, RunError>
     where
-        F: FnMut(StreamEvent<ReActState>),
+        F: FnMut(StreamEvent<ReActState>) + Send + 'static,
     {
         // Set the AnyStreamEvent sender on ActNode before the run.
         // ActNode is behind Arc in the graph, so we use the Mutex-based setter.
@@ -214,21 +199,24 @@ impl ReactRunner {
             &self.system_prompt,
         )
         .await?;
-        runner_common::run_stream_with_config(
-            &self.compiled,
+        let result = runner_common::run_stream_with_config(
+            self.compiled.clone(),
             state,
             run_config,
             on_event,
             self.cancellation.as_ref().map(RunCancellation::token),
             event_forwarder,
         )
-        .await
-        .map_err(|e| match e {
-            runner_common::StreamRunError::Execution(err) => RunError::Execution(err),
-            runner_common::StreamRunError::StreamEndedWithoutState(_) => {
-                RunError::StreamEndedWithoutState
-            }
-        })
+        .await;
+        match result {
+            Ok(outcome) => match outcome {
+                runner_common::StreamRunOutcome::Completed(s) => Ok(runner_common::StreamRunOutcome::Completed(s)),
+                runner_common::StreamRunOutcome::Cancelled => Ok(runner_common::StreamRunOutcome::Cancelled),
+                runner_common::StreamRunOutcome::Error(runner_common::StreamRunError::Execution(err)) => Err(RunError::Execution(err)),
+                runner_common::StreamRunOutcome::Empty => Ok(runner_common::StreamRunOutcome::Empty),
+            },
+            Err(runner_common::StreamRunError::Execution(err)) => Err(RunError::Execution(err)),
+        }
     }
 }
 
@@ -259,9 +247,9 @@ pub async fn run_react_graph_stream<F>(
     user_message: &str,
     options: Option<AgentOptions>,
     on_event: Option<F>,
-) -> Result<runner_common::StreamRunOutcome<ReActState>, RunError>
+) -> Result<runner_common::StreamRunOutcome<ReActState, runner_common::StreamRunError>, RunError>
 where
-    F: FnMut(StreamEvent<ReActState>),
+    F: FnMut(StreamEvent<ReActState>) + Send + 'static,
 {
     let opts = resolve_run_agent_options(options.unwrap_or_default());
     let runner = ReactRunner::new(

@@ -106,7 +106,7 @@ mod tests {
     use loom_llm::message::UserContent;
     use loom_cli_types::ReActState;
     use loom_llm::ToolCall;
-    use loom_cli_types::ToolResult;
+    use loom_types::state::ToolResult;
     use tokio::sync::mpsc;
 
     fn candidate(thought: &str, tool_name: &str) -> TotCandidate {

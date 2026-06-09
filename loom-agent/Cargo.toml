@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 loom = { path = "../loom" }
-loom-agent-patterns = { path = "../loom-agent-patterns" }
 loom-types = { path = "../loom-types" }
 loom-graph = { path = "../loom-graph" }
 loom-pregel = { path = "../loom-pregel" }
@@ -23,6 +22,10 @@ loom-react-config = { path = "../loom-react-config" }
 loom-worktree = { path = "../loom-worktree" }
 loom-model-spec = { path = "../loom-model-spec" }
 loom-stream-display = { path = "../loom-stream-display" }
+loom-commands = { path = "../loom-commands" }
+loom-cache = { path = "../loom-cache" }
+loom-lsp = { path = "../loom-lsp" }
+loom-skill = { path = "../loom-skill" }
 
 async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }
@@ -38,3 +41,6 @@ env-config = { path = "../config", package = "config" }
 model-spec-core = { path = "../model-spec-core" }
 async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
 task-core = { path = "../task-core" }
+
+[dev-dependencies]
+tempfile = "3"

@@ -12,7 +12,7 @@ use tracing::{debug, trace, warn};
 use loom_llm::error::AgentError;
 use loom_graph::{run_cancellable, Next, RunContext};
 use loom_llm::{LlmClient, LlmProvider, LlmResponse, ToolCallDelta};
-use loom_llm::message::Message;
+use loom_llm::message::{check_orphan_tool_calls, message_summary, Message};
 use loom_model_spec::ModelTier;
 use loom_types::state::ModelConfig;
 use loom_cli_types::ReActState;
@@ -37,10 +37,10 @@ impl ThinkNode {
         let model = if !model_config.model_id.is_empty() {
             model_config.model_id.clone()
         } else if model_config.tier != ModelTier::None {
-            let providers = loom::provider::load_provider_configs().ok_or_else(|| {
+            let providers = loom_tier::provider::load_provider_configs().ok_or_else(|| {
                 AgentError::ExecutionFailed("no provider configs for tier resolution".into())
             })?;
-            let entry = loom::tier::resolve::resolve_tier_intelligent(
+            let entry = loom_tier::resolve::resolve_tier_intelligent(
                 self.provider.provider_name(),
                 model_config.tier,
                 &providers,
@@ -128,7 +128,7 @@ impl ThinkNode {
         ctx: &RunContext<ReActState>,
         call_start: Instant,
         first_token_at: Option<Instant>,
-        usage: &loom::llm::LlmUsage,
+        usage: &loom_llm::LlmUsage,
     ) {
         let Some(stream_tx) = ctx.stream_tx.as_ref() else {
             return;
@@ -263,6 +263,20 @@ impl Node<ReActState> for ThinkNode {
     }
 
     async fn run(&self, mut state: ReActState) -> Result<(ReActState, Next), AgentError> {
+        debug!(
+            messages = state.messages.len(),
+            tool_calls_in_state = state.tool_calls.len(),
+            tool_results_in_state = state.tool_results.len(),
+            think_count = state.think_count,
+            "think:input"
+        );
+        for (i, msg) in state.messages.iter().enumerate() {
+            debug!("{}", message_summary(i, msg));
+        }
+        for w in check_orphan_tool_calls(&state.messages) {
+            warn!("think:input {}", w);
+        }
+
         let llm = self.resolve_client(&state.model_config).await?;
         let mut session_retries = 0;
         let response = loop {
@@ -274,7 +288,7 @@ impl Node<ReActState> for ThinkNode {
                 {
                     session_retries += 1;
                     if !rollback_last_tool_round(&mut state) {
-                        return Err(e);
+                        return Err(e.clone());
                     }
                     warn!(
                         attempt = session_retries,
@@ -285,12 +299,22 @@ impl Node<ReActState> for ThinkNode {
                 Err(e) => return Err(e),
             }
         };
+        debug!(
+            content_len = response.content.len(),
+            reasoning_len = response.reasoning_content.as_ref().map(|s| s.len()).unwrap_or(0),
+            tool_calls = response.tool_calls.len(),
+            "think:output"
+        );
+        for (i, tc) in response.tool_calls.iter().enumerate() {
+            debug!("  tool_call[{}] id={:?} name={} args_len={}", i, tc.id, tc.name, tc.arguments.len());
+        }
         let new_state = state.apply_think(
             response.content,
             response.reasoning_content,
             response.tool_calls,
             response.usage,
         );
+        debug!(messages_after = new_state.messages.len(), "think:apply_think done");
         Ok((new_state, Next::Continue))
     }
 
@@ -315,8 +339,19 @@ impl Node<ReActState> for ThinkNode {
 
         debug!(
             messages = state.messages.len(),
-            should_stream, should_stream_tools, "think: invoking LLM"
+            tool_calls_in_state = state.tool_calls.len(),
+            tool_results_in_state = state.tool_results.len(),
+            think_count = state.think_count,
+            should_stream,
+            should_stream_tools,
+            "think:input (with_context)"
         );
+        for (i, msg) in state.messages.iter().enumerate() {
+            debug!("{}", message_summary(i, msg));
+        }
+        for w in check_orphan_tool_calls(&state.messages) {
+            warn!("think:input_ctx {}", w);
+        }
 
         let call_start = Instant::now();
         let llm = self.resolve_client(&state.model_config).await?;
@@ -353,7 +388,7 @@ impl Node<ReActState> for ThinkNode {
                 {
                     session_retries += 1;
                     if !rollback_last_tool_round(&mut state) {
-                        return Err(e);
+                        return Err(e.clone());
                     }
                     warn!(
                         attempt = session_retries,
@@ -370,12 +405,22 @@ impl Node<ReActState> for ThinkNode {
             return Err(AgentError::Cancelled);
         }
 
-        let loom::llm::LlmResponse {
+        let loom_llm::LlmResponse {
             content: resp_content,
             reasoning_content,
             tool_calls,
             usage,
         } = response;
+
+        debug!(
+            content_len = resp_content.len(),
+            reasoning_len = reasoning_content.as_ref().map(|s| s.len()).unwrap_or(0),
+            tool_calls = tool_calls.len(),
+            "think:output (with_context)"
+        );
+        for (i, tc) in tool_calls.iter().enumerate() {
+            debug!("  tool_call[{}] id={:?} name={} args_len={}", i, tc.id, tc.name, tc.arguments.len());
+        }
 
         let content = if !resp_content.is_empty() {
             resp_content
@@ -403,6 +448,7 @@ impl Node<ReActState> for ThinkNode {
         .await?;
 
         let new_state = state.apply_think(content, reasoning_content, tool_calls, usage);
+        debug!(messages_after = new_state.messages.len(), "think:apply_think done (with_context)");
 
         if let Some(ref u) = new_state.usage {
             self.emit_usage_event(ctx, call_start, first_token_at, u)

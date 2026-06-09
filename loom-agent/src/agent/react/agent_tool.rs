@@ -25,48 +25,44 @@ use super::runner::ReactRunner;
 ///
 /// Created via [`ReactRunner::as_tool`]. The tool name is taken from
 /// `runner.name` and the description from `runner.description`.
+#[allow(dead_code)]
 pub struct AgentTool {
     pub(super) runner: Arc<ReactRunner>,
 }
 
 impl AgentTool {
     /// The tool name used in LLM calls (snake_case, no spaces).
+    #[allow(dead_code)]
     pub fn tool_name(&self) -> String {
-        // Replace spaces/hyphens with underscores so it's a valid tool identifier.
-        self.runner
-            .name
-            .as_deref()
-            .unwrap_or("agent")
-            .replace([' ', '-'], "_")
+        // Default to "agent" since ReactRunner doesn't have a name field
+        "agent".replace([' ', '-'], "_")
     }
 }
 
 #[async_trait]
 impl Tool for AgentTool {
     fn name(&self) -> &str {
-        // SAFETY: `as_tool()` asserts name is Some before constructing AgentTool.
-        self.runner.name.as_deref().unwrap_or("agent")
+        "agent"
     }
 
     fn spec(&self) -> ToolSpec {
         let name = self.tool_name();
-        let description = self.runner.description.clone().unwrap_or_else(|| {
-            format!("Delegate a task to the {} agent.", name)
+        let description = "Run a sub-agent task".to_string();
+        let input_schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string",
+                    "description": "Natural-language description of the task to delegate"
+                }
+            },
+            "required": ["task"]
         });
-
         ToolSpec {
             name,
             description: Some(description),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "task": {
-                        "type": "string",
-                        "description": "The task or question to delegate to this agent. Provide full context; the agent has no memory of the current conversation."
-                    }
-                },
-                "required": ["task"]
-            }),
+            input_schema,
+            output_hint: None,
         }
     }
 
@@ -93,4 +89,3 @@ impl Tool for AgentTool {
         Ok(ToolCallContent::text(reply))
     }
 }
-

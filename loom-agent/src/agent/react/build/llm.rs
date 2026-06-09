@@ -172,7 +172,7 @@ pub(crate) async fn build_default_llm_with_tool_source(
             
             let trace_id = config.trace_thread_id.as_ref().or(config.thread_id.as_ref());
             if let Some(thread_id) = trace_id {
-                let headers = loom::llm::LlmHeaders::default().with_thread_id(thread_id);
+                let headers = loom_llm::LlmHeaders::default().with_thread_id(thread_id);
                 client = client.with_headers(headers);
                 tracing::debug!("Set X-Thread-Id header: {}", thread_id);
             }
@@ -219,7 +219,7 @@ pub(crate) async fn build_default_llm_with_tool_source(
             
             let trace_id = config.trace_thread_id.as_ref().or(config.thread_id.as_ref());
             if let Some(thread_id) = trace_id {
-                let headers = loom::llm::LlmHeaders::default().with_thread_id(thread_id);
+                let headers = loom_llm::LlmHeaders::default().with_thread_id(thread_id);
                 client = client.with_headers(headers);
                 tracing::debug!("Set X-Thread-Id header: {}", thread_id);
             }
@@ -272,7 +272,7 @@ pub(crate) async fn resolve_title_provider(
         .trace_thread_id
         .as_ref()
         .or(config.thread_id.as_ref());
-    let headers = thread_id.map(|tid| loom::llm::LlmHeaders::default().with_thread_id(tid));
+    let headers = thread_id.map(|tid| loom_llm::LlmHeaders::default().with_thread_id(tid));
     let client = create_llm_client(&entry, headers).ok()?;
     Some(Arc::new(FixedLlmProvider {
         client: Arc::from(client),

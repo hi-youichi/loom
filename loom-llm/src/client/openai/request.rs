@@ -19,9 +19,9 @@ use async_openai::types::chat::{
 
 use crate::error::AgentError;
 use crate::traits::ToolChoiceMode;
-use crate::message::{assistant_content_for_chat_api, Message};
+use crate::message::{assistant_content_for_chat_api, check_orphan_tool_calls, message_summary, Message};
 use crate::tool::ToolSpec;
-use tracing::debug;
+use tracing::{debug, warn};
 
 /// Convert internal `Message` list to OpenAI request messages.
 pub(super) fn messages_to_openai(messages: &[Message]) -> Vec<ChatCompletionRequestMessage> {
@@ -178,31 +178,15 @@ pub(super) fn build_chat_request(
         stream,
         tools_count = tools.map_or(0, |t| t.len()),
         input_message_count = messages.len(),
-        input_message_summary = ?messages
-            .iter()
-            .enumerate()
-            .map(|(idx, msg)| match msg {
-                Message::System(content) => {
-                    format!("idx={idx} role=system content_len={}", content.len())
-                }
-                Message::User(content) => {
-                    format!("idx={idx} role=user content_len={}", content.as_text().len())
-                }
-                Message::Assistant(payload) => format!(
-                    "idx={idx} role=assistant tool_calls={} content_len={} reasoning_len={}",
-                    payload.tool_calls.len(),
-                    payload.content.len(),
-                    payload.reasoning_content.as_ref().map(|s| s.len()).unwrap_or(0)
-                ),
-                Message::Tool { tool_call_id, content } => format!(
-                    "idx={idx} role=tool tool_call_id={} content_len={}",
-                    tool_call_id,
-                    content.len()
-                ),
-            })
-            .collect::<Vec<_>>(),
-        "building OpenAI chat request from internal messages"
+        "api:request building OpenAI chat request"
     );
+    for (i, msg) in messages.iter().enumerate() {
+        debug!("  {}", message_summary(i, msg));
+    }
+    for w in check_orphan_tool_calls(messages) {
+        warn!("api:request {}", w);
+    }
+
     let openai_messages = messages_to_openai(messages);
     let mut args = CreateChatCompletionRequestArgs::default();
 

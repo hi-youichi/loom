@@ -171,7 +171,7 @@ impl Node<GotState> for ExecuteGraphNode {
     }
 
     async fn run(&self, state: GotState) -> Result<(GotState, Next), AgentError> {
-        let ctx = RunContext::new(loom::memory::RunnableConfig::default());
+        let ctx = RunContext::new(loom_memory::RunnableConfig::default());
         self.run_with_context(state, &ctx).await
     }
 

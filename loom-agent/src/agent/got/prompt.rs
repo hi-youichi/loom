@@ -27,8 +27,6 @@ Rules:
 - Output ONLY valid JSON, no markdown or explanation.
 - Format: {"nodes": [{"id": "step1", "description": "..."}, ...], "edges": [["parent_id", "step1"], ["step1", "step2"], ...]}
 - Use short node ids: step1, step2, sub_a, sub_b, etc. (the parent_id will be prefixed automatically).
-- Edges: at least one edge must go FROM the parent node (given in the user message) TO a new node.
-- Edges between new nodes are allowed. The graph must be a DAG (no cycles).
-- Descriptions should be concrete and actionable.
-- Build on the parent's result when relevant.
+- Edges: at least one edge must go FROM the parent node (given in context).
+- Keep 2-6 nodes. The result of the parent task is provided so you understand what was already done.
 "#;

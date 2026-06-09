@@ -165,11 +165,22 @@ pub struct AgentRunResult {
     pub reasoning_content: Option<String>,
 }
 
+/// Error type for agent run result.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentRunError(pub String);
+
+impl std::fmt::Display for AgentRunError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// Final completion state of a run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunCompletion {
     Finished(AgentRunResult),
     Cancelled,
+    Error(AgentRunError),
 }
 
 impl AnyStreamEvent {
@@ -299,13 +310,19 @@ pub async fn run_agent(
                 .stream_with_config(opts.message.as_text().as_ref(), None, on_ev, None)
                 .await?;
             match outcome {
-                loom_agent_patterns::StreamRunOutcome::Finished(state) => {
+                crate::runner_common::StreamRunOutcome::Completed(state) => {
                     RunCompletion::Finished(AgentRunResult {
                         reply: state.last_assistant_reply().unwrap_or_default(),
                         reasoning_content: state.last_reasoning_content(),
                     })
                 }
-                loom_agent_patterns::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
+                crate::runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
+                crate::runner_common::StreamRunOutcome::Error(e) => {
+                    RunCompletion::Error(AgentRunError(e.to_string()))
+                }
+                crate::runner_common::StreamRunOutcome::Empty => {
+                    RunCompletion::Error(AgentRunError("stream ended with empty state".to_string()))
+                }
             }
         }
         AnyRunner::Dup(r) => {
@@ -319,13 +336,19 @@ pub async fn run_agent(
             });
             let outcome = r.stream_with_config(opts.message.as_text().as_ref(), None, on_ev, None).await?;
             match outcome {
-                loom_agent_patterns::StreamRunOutcome::Finished(state) => {
+                crate::runner_common::StreamRunOutcome::Completed(state) => {
                     RunCompletion::Finished(AgentRunResult {
                         reply: state.last_assistant_reply().unwrap_or_default(),
                         reasoning_content: state.last_reasoning_content(),
                     })
                 }
-                loom_agent_patterns::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
+                crate::runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
+                crate::runner_common::StreamRunOutcome::Error(e) => {
+                    RunCompletion::Error(AgentRunError(e.to_string()))
+                }
+                crate::runner_common::StreamRunOutcome::Empty => {
+                    RunCompletion::Error(AgentRunError("stream ended with empty state".to_string()))
+                }
             }
         }
         AnyRunner::Tot(r) => {
@@ -339,13 +362,19 @@ pub async fn run_agent(
             });
             let outcome = r.stream_with_config(opts.message.as_text().as_ref(), None, on_ev, None).await?;
             match outcome {
-                loom_agent_patterns::StreamRunOutcome::Finished(state) => {
+                crate::runner_common::StreamRunOutcome::Completed(state) => {
                     RunCompletion::Finished(AgentRunResult {
                         reply: state.last_assistant_reply().unwrap_or_default(),
                         reasoning_content: state.last_reasoning_content(),
                     })
                 }
-                loom_agent_patterns::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
+                crate::runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
+                crate::runner_common::StreamRunOutcome::Error(e) => {
+                    RunCompletion::Error(AgentRunError(e.to_string()))
+                }
+                crate::runner_common::StreamRunOutcome::Empty => {
+                    RunCompletion::Error(AgentRunError("stream ended with empty state".to_string()))
+                }
             }
         }
         AnyRunner::Got(r) => {
@@ -359,13 +388,19 @@ pub async fn run_agent(
             });
             let outcome = r.stream_with_config(opts.message.as_text().as_ref(), None, on_ev, None).await?;
             match outcome {
-                loom_agent_patterns::StreamRunOutcome::Finished(state) => {
+                crate::runner_common::StreamRunOutcome::Completed(state) => {
                     RunCompletion::Finished(AgentRunResult {
                         reply: state.summary_result(),
                         reasoning_content: None,
                     })
                 }
-                loom_agent_patterns::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
+                crate::runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
+                crate::runner_common::StreamRunOutcome::Error(e) => {
+                    RunCompletion::Error(AgentRunError(e.to_string()))
+                }
+                crate::runner_common::StreamRunOutcome::Empty => {
+                    RunCompletion::Error(AgentRunError("stream ended with empty state".to_string()))
+                }
             }
         }
     };
@@ -436,7 +471,7 @@ pub async fn build_runner(
     });
     match cmd {
         RunCmd::React => {
-            let r = build_react_runner(&config, llm_override_provider, opts.verbose).await?;
+            let r = build_react_runner(&config, llm_override_provider, opts.verbose, None).await?;
             Ok(AnyRunner::React(r.with_cancellation(opts.cancellation.clone())))
         }
         RunCmd::Dup => {

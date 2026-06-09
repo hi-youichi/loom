@@ -2,10 +2,7 @@
 //!
 //! Adds multi-candidate expansion and evaluation before Act.
 //!
-//! Identical submodules are re-exported from loom_agent_patterns.
 //! Custom files (adapter_nodes, backtrack_node, evaluate_node, expand_node, runner, state) remain local.
-
-pub use loom_agent_patterns::agent::tot::prompt;
 
 mod adapter_nodes;
 mod backtrack_node;
@@ -13,6 +10,8 @@ mod evaluate_node;
 mod expand_node;
 mod runner;
 mod state;
+
+mod prompt;
 
 pub use backtrack_node::BacktrackNode;
 pub use evaluate_node::ThinkEvaluateNode;

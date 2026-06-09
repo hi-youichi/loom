@@ -552,6 +552,19 @@ impl ChatOpenAICompat {
     }
 
     fn build_request(&self, messages: &[Message], stream: bool) -> ChatCompletionRequest {
+        use crate::message::{check_orphan_tool_calls, message_summary};
+        tracing::debug!(
+            model = %self.model,
+            stream,
+            message_count = messages.len(),
+            "compat:build_request"
+        );
+        for (i, msg) in messages.iter().enumerate() {
+            tracing::debug!("  {}", message_summary(i, msg));
+        }
+        for w in check_orphan_tool_calls(messages) {
+            tracing::warn!("compat:build_request {}", w);
+        }
         let messages = Self::messages_to_request(messages, &self.model);
         let mut req = ChatCompletionRequest {
             model: self.model.clone(),

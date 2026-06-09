@@ -7,6 +7,70 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
+/// One-line diagnostic summary of a message for structured logging.
+pub fn message_summary(idx: usize, msg: &Message) -> String {
+    match msg {
+        Message::System(s) => format!("[{idx}] role=system content_len={}", s.len()),
+        Message::User(c) => format!("[{idx}] role=user content_len={}", c.as_text().len()),
+        Message::Assistant(p) => {
+            let tc_ids: Vec<&str> = p.tool_calls.iter().map(|tc| tc.id.as_str()).collect();
+            if tc_ids.is_empty() {
+                format!(
+                    "[{idx}] role=assistant content_len={} reasoning_len={}",
+                    p.content.len(),
+                    p.reasoning_content.as_ref().map(|s| s.len()).unwrap_or(0)
+                )
+            } else {
+                format!(
+                    "[{idx}] role=assistant tool_calls=[{}] content_len={} reasoning_len={}",
+                    tc_ids.join(","),
+                    p.content.len(),
+                    p.reasoning_content.as_ref().map(|s| s.len()).unwrap_or(0)
+                )
+            }
+        }
+        Message::Tool { tool_call_id, content } => {
+            format!(
+                "[{idx}] role=tool tool_call_id={} content_len={}",
+                tool_call_id,
+                content.to_display_string().len()
+            )
+        }
+    }
+}
+
+/// Check messages for orphan assistant+tool_calls without following tool messages.
+/// Returns a list of warnings (empty if all OK).
+pub fn check_orphan_tool_calls(messages: &[Message]) -> Vec<String> {
+    let mut warnings = Vec::new();
+    for (i, msg) in messages.iter().enumerate() {
+        if let Message::Assistant(p) = msg {
+            if p.tool_calls.is_empty() {
+                continue;
+            }
+            let expected_ids: Vec<&str> =
+                p.tool_calls.iter().map(|tc| tc.id.as_str()).collect();
+            let following_tool_ids: Vec<&str> = messages[i + 1..]
+                .iter()
+                .take_while(|m| matches!(m, Message::Tool { .. }))
+                .filter_map(|m| match m {
+                    Message::Tool { tool_call_id, .. } => Some(tool_call_id.as_str()),
+                    _ => None,
+                })
+                .collect();
+            if expected_ids.len() != following_tool_ids.len() {
+                warnings.push(format!(
+                    "orphan_tool_calls idx={i} tc_ids=[{}] following_tool_msgs={} following_ids=[{}]",
+                    expected_ids.join(","),
+                    following_tool_ids.len(),
+                    following_tool_ids.join(","),
+                ));
+            }
+        }
+    }
+    warnings
+}
+
 /// User message content: plain text or multimodal part array.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]

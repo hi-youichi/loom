@@ -8,7 +8,7 @@ use crate::agent::react::{ActNode, ObserveNode};
 use loom_llm::error::AgentError;
 use loom_graph::Next;
 use loom_graph::Node;
-use loom_helve::ApprovalPolicy;
+use loom_types::approval::ApprovalPolicy;
 use loom_tools::tool_source::ToolSource;
 
 use super::state::TotState;

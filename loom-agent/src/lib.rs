@@ -7,17 +7,22 @@
 //! - GoT (Graph of Thoughts) agent
 //!
 //! Agent orchestration and run orchestration functions are also included.
-//!
-//! The agent pattern implementations are now provided by loom-agent-patterns.
 
+pub mod agent;
 pub mod cli_run_agent;
+pub mod runner_common;
 pub mod tools;
 
-// Re-export agent patterns from loom-agent-patterns
-pub use loom_agent_patterns::agent;
+// Re-export agent types at crate root
+pub use agent::{
+    build_dup_initial_state, build_got_initial_state, build_tot_initial_state, build_react_initial_state,
+    DupRunError, DupRunner, DupState, GotRunError, GotRunner, GotState,
+    ReactBuildConfig, BuildRunnerError, ReactRunContext, build_react_run_context,
+    TotRunError, TotRunner, TotState, UnderstandOutput,
+};
 
-// Re-export from runner_common (use loom-agent-patterns version)
-pub use loom_agent_patterns::runner_common::{
+// Re-export runner_common
+pub use runner_common::{
     load_from_checkpoint_or_build, StreamRunOutcome, StreamRunError, run_stream_with_config,
 };
 
@@ -31,7 +36,3 @@ pub use cli_run_agent::{
 
 // Re-export from loom for RunCancellation
 pub use loom_types::active_operation::RunCancellation;
-
-// Re-export from agent::react::build (via loom-agent-patterns)
-pub use loom_agent_patterns::{build_react_run_context, BuildRunnerError};
-// goal_runner types remain in the loom crate; loom-agent does not re-export them.

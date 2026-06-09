@@ -1,10 +1,9 @@
 //! ReAct graph runner: encapsulates graph build, initial state, invoke and stream.
 //!
-//! Identical submodules (error, initial_state) are re-exported from loom_agent_patterns.
-//! Custom files (options, runner) remain local.
+//! Custom files (error, initial_state, options, runner) remain local.
 
-pub use loom_agent_patterns::agent::react::runner::error;
-pub use loom_agent_patterns::agent::react::runner::initial_state;
+mod error;
+mod initial_state;
 
 mod options;
 #[allow(clippy::module_inception)]

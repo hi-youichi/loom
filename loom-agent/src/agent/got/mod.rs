@@ -3,17 +3,16 @@
 //! User task → PlanGraph (LLM produces DAG) → ExecuteGraph (run nodes in order).
 //! Each task node runs as a ReAct sub-task. Optional AGoT: adaptive expansion.
 //!
-//! Identical submodules are re-exported from loom_agent_patterns.
-//! Custom files (adaptive, execute_engine, plan_node, runner, state) remain local.
-
-pub use loom_agent_patterns::agent::got::dag;
-pub use loom_agent_patterns::agent::got::prompt;
+//! Custom files (adaptive, execute_engine, plan_node, runner, state, dag, prompt) remain local.
 
 mod adaptive;
 mod execute_engine;
 mod plan_node;
 mod runner;
 mod state;
+
+mod dag;
+mod prompt;
 
 pub use dag::{append_subgraph, AppendSubgraphError};
 pub use prompt::{AGOT_EXPAND_SYSTEM, GOT_PLAN_SYSTEM};

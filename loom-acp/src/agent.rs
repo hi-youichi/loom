@@ -863,6 +863,10 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
         match result {
             Ok(RunCompletion::Finished(_reply)) => Ok(PromptResponse::new(StopReason::EndTurn)),
             Ok(RunCompletion::Cancelled) => Ok(PromptResponse::new(StopReason::Cancelled)),
+            Ok(RunCompletion::Error(e)) => {
+                tracing::error!(session_id = %args.session_id, error = %e, "run_agent errored");
+                Ok(PromptResponse::new(StopReason::EndTurn))
+            }
             Err(e) => {
                 tracing::error!(session_id = %args.session_id, error = %e, "run_agent failed");
                 Err(map_run_error(e))

@@ -156,6 +156,15 @@ where
                 }))
                 .await?;
         }
+        Ok(RunCompletion::Error(e)) => {
+            tracing::error!("❌ Run {} errored: {}", run_id, e.0);
+            sender
+                .send_response(&ServerResponse::Error(ErrorResponse {
+                    id: Some(run_id.clone()),
+                    error: e.0,
+                }))
+                .await?;
+        }
         Err(e) => {
             tracing::error!("❌ Run {} failed with error: {}", run_id, e);
             sender

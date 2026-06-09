@@ -25,17 +25,16 @@
 //! - [`ReactBuildConfig`]: configuration for building runners from env or files.
 //! - [`ReactRunContext`]: resolved checkpointer, store, tool source, and run config.
 //!
-//! Identical submodules are re-exported from loom_agent_patterns.
-//! Custom files (act_node, observe_node, think_node, with_node_logging, runner, build) remain local.
-
-pub use loom_agent_patterns::agent::react::config;
-pub use loom_agent_patterns::agent::react::title_node;
+//! Custom files (act_node, agent_tool, config, observe_node, think_node, title_node, with_node_logging, build, runner) remain local.
 
 mod act_node;
 pub mod build;
+mod agent_tool;
+mod config;
 mod observe_node;
 mod runner;
 mod think_node;
+mod title_node;
 mod with_node_logging;
 
 pub use act_node::{
@@ -53,7 +52,7 @@ pub use runner::{
     build_react_initial_state, run_agent, run_react_graph_stream, AgentOptions, ReactRunner,
     RunError,
 };
-pub use title_node::{is_first_think, TitleNode};
+pub use title_node::TitleNode;
 pub use think_node::ThinkNode;
 pub use with_node_logging::WithNodeLogging;
 

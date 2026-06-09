@@ -386,7 +386,7 @@ impl InvokeAgentTool {
         );
 
         tracing::debug!(agent = %agent_name, "Building React runner");
-        let runner = build_react_runner(&sub_config, None, false)
+        let runner = build_react_runner(&sub_config, None, false, None)
             .await
             .map_err(|e| {
                 tracing::error!(agent = %agent_name, error = %e, "Failed to build sub-agent runner");
@@ -435,7 +435,7 @@ tracing::debug!(agent = %agent_name, "Starting sub-agent execution");
         }
 
         let reply = match outcome {
-            loom_agent_patterns::StreamRunOutcome::Finished(final_state) => {
+            crate::runner_common::StreamRunOutcome::Completed(final_state) => {
                 let reply = final_state
                     .last_assistant_reply()
                     .unwrap_or_else(|| "(no reply from sub-agent)".to_string());
@@ -446,9 +446,17 @@ tracing::debug!(agent = %agent_name, "Starting sub-agent execution");
                 );
                 reply
             }
-            loom_agent_patterns::StreamRunOutcome::Cancelled => {
+            crate::runner_common::StreamRunOutcome::Cancelled => {
                 tracing::warn!(agent = %agent_name, "Sub-agent was cancelled");
                 "(sub-agent cancelled)".to_string()
+            }
+            crate::runner_common::StreamRunOutcome::Error(e) => {
+                tracing::error!(agent = %agent_name, error = %e, "Sub-agent hit a fatal error");
+                format!("(sub-agent error: {})", e)
+            }
+            crate::runner_common::StreamRunOutcome::Empty => {
+                tracing::warn!(agent = %agent_name, "Sub-agent stream ended with empty state");
+                "(sub-agent ended with empty state)".to_string()
             }
         };
 
@@ -1007,7 +1015,7 @@ async fn invoke_single_agent(
     );
 
     tracing::debug!(agent = %agent_name, "Building React runner");
-    let runner = build_react_runner(&sub_config, None, false)
+    let runner = build_react_runner(&sub_config, None, false, None)
         .await
         .map_err(|e| {
             tracing::error!(agent = %agent_name, error = %e, "Failed to build sub-agent runner");
@@ -1053,7 +1061,7 @@ tracing::debug!(agent = %agent_name, "Starting sub-agent execution");
     }
 
     let reply = match outcome {
-        loom_agent_patterns::StreamRunOutcome::Finished(final_state) => {
+        crate::runner_common::StreamRunOutcome::Completed(final_state) => {
             let reply = final_state
                 .last_assistant_reply()
                 .unwrap_or_else(|| "(no reply from sub-agent)".to_string());
@@ -1064,9 +1072,17 @@ tracing::debug!(agent = %agent_name, "Starting sub-agent execution");
             );
             reply
         }
-        loom_agent_patterns::StreamRunOutcome::Cancelled => {
+        crate::runner_common::StreamRunOutcome::Cancelled => {
             tracing::warn!(agent = %agent_name, "Sub-agent was cancelled");
             "(sub-agent cancelled)".to_string()
+        }
+        crate::runner_common::StreamRunOutcome::Error(e) => {
+            tracing::error!(agent = %agent_name, error = %e, "Sub-agent hit a fatal error");
+            format!("(sub-agent error: {})", e)
+        }
+        crate::runner_common::StreamRunOutcome::Empty => {
+            tracing::warn!(agent = %agent_name, "Sub-agent stream ended with empty state");
+            "(sub-agent ended with empty state)".to_string()
         }
     };
 

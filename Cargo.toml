@@ -27,7 +27,6 @@ members = [
     "task-mcp-server",
     "loom-types",
     "loom-agent",
-    "loom-agent-patterns",
     "loom-compress",
     "loom-commands",
     "loom-stream",

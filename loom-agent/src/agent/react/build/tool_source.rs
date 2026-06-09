@@ -2,18 +2,20 @@ use std::sync::Arc;
 
 use loom_background_review::skill_usage::SkillUsageStore;
 use loom_llm::error::AgentError;
-use loom_tools::{register_file_tools, McpToolSource, ToolSource, ToolSourceError};
+use loom_tools::tool_source::{register_file_tools, McpToolSource, ToolSource, ToolSourceError};
 #[cfg(windows)]
-use loom_tools::powershell::PowerShellTool;
+use loom_tools::tools::powershell::PowerShellTool;
 #[cfg(not(windows))]
-use loom_tools::BashTool;
+use loom_tools::tools::BashTool;
 #[cfg(windows)]
-use loom_tools::BashTool;
-use loom_tools::{
+use loom_tools::tools::BashTool;
+use loom_tools::tools::{
     register_mcp_tools, register_mcp_tools_with_specs, AggregateToolSource, BatchTool,
-    ExaCodesearchTool, ExaWebsearchTool, ListAgentsTool, LspTool,
+    ExaCodesearchTool, ExaWebsearchTool, LspTool,
     TwitterSearchTool, WebFetcherTool,
 };
+use loom_tools::tools::register_memory_tools;
+// use loom_tools::tools::task;
 use crate::tools::InvokeAgentTool;
 
 use env_config::McpServerDef;
@@ -219,7 +221,7 @@ pub(crate) async fn build_tool_source(
             config.max_sub_agent_depth,
         )))
         .await;
-    aggregate.register_sync(Box::new(ListAgentsTool::new()));
+        // ListAgentsTool is not available in this build (depends on loom's profile system)
         apply_registry_config(&aggregate, config).await.map_err(to_agent_error)?;
         return Ok(Box::new(aggregate));
     }
@@ -238,7 +240,7 @@ pub(crate) async fn build_tool_source(
             });
 
         let aggregate = Arc::new(AggregateToolSource::new());
-        loom_tools::register_memory_tools(&aggregate, s.clone(), namespace).await;
+        register_memory_tools(&aggregate, s.clone(), namespace).await;
         aggregate
     } else {
         Arc::new(AggregateToolSource::new())
@@ -307,7 +309,7 @@ pub(crate) async fn build_tool_source(
         let db_dir = db_path.parent().unwrap();
         let _ = std::fs::create_dir_all(db_dir);
         if let Ok(db) = task_core::TaskDb::open(&db_path).await {
-            loom_tools::task::register_task_tools(&aggregate, Arc::new(db)).await;
+            loom_tools::tools::task::register_task_tools(&aggregate, Arc::new(db)).await;
         }
     }
     aggregate.register_sync(Box::new(BatchTool::new(Arc::clone(&aggregate))));
@@ -451,7 +453,7 @@ pub(crate) async fn build_tool_source(
             config.max_sub_agent_depth,
         )))
         .await;
-    aggregate.register_sync(Box::new(ListAgentsTool::new()));
+    // ListAgentsTool is not available in this build (depends on loom's profile system)
 
     apply_registry_config(&aggregate, config).await.map_err(to_agent_error)?;
 

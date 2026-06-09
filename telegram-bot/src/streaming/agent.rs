@@ -101,5 +101,6 @@ pub async fn run_loom_agent_streaming(
             Ok(text)
         }
         RunCompletion::Cancelled => Err(BotError::Agent("Agent run was cancelled".to_string())),
+        RunCompletion::Error(e) => Err(BotError::Agent(format!("Agent run error: {}", e.0))),
     }
 }

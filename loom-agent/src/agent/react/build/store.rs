@@ -51,4 +51,3 @@ fn build_vector_store(
     let store = InMemoryVectorStore::new(Arc::new(embedder));
     Ok(Arc::new(store) as Arc<dyn loom_memory::Store>)
 }
-

@@ -98,7 +98,7 @@ impl GotRunner {
         agot_llm_complexity: bool,
     ) -> Result<Self, CompilationError> {
         let plan = PlanGraphNode::new(Box::new(SharedLlm(Arc::clone(&llm))));
-        let provider: Arc<dyn loom::llm::LlmProvider> = Arc::new(loom::llm::FixedLlmProvider {
+        let provider: Arc<dyn loom_llm::LlmProvider> = Arc::new(loom_llm::client::FixedLlmProvider {
             client: Arc::clone(&llm),
             model_id: "got".to_string(),
         });
@@ -177,9 +177,9 @@ impl GotRunner {
         &self,
         user_message: &str,
         on_event: Option<F>,
-    ) -> Result<runner_common::StreamRunOutcome<GotState>, GotRunError>
+    ) -> Result<runner_common::StreamRunOutcome<GotState, runner_common::StreamRunError>, GotRunError>
     where
-        F: FnMut(StreamEvent<GotState>),
+        F: FnMut(StreamEvent<GotState>) + Send + 'static,
     {
         self.stream_with_config(user_message, None, on_event, None).await
     }
@@ -191,9 +191,9 @@ impl GotRunner {
         config: Option<RunnableConfig>,
         on_event: Option<F>,
         any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
-    ) -> Result<runner_common::StreamRunOutcome<GotState>, GotRunError>
+    ) -> Result<runner_common::StreamRunOutcome<GotState, runner_common::StreamRunError>, GotRunError>
     where
-        F: FnMut(StreamEvent<GotState>),
+        F: FnMut(StreamEvent<GotState>) + Send + 'static,
     {
         let run_config = config.or_else(|| self.runnable_config.clone());
         let state = build_got_initial_state(
@@ -207,21 +207,24 @@ impl GotRunner {
         let _ = any_stream_event_sender;
         let event_forwarder: Option<std::sync::Arc<dyn Fn(StreamEvent<GotState>) + Send + Sync>> =
             None;
-        runner_common::run_stream_with_config(
-            &self.compiled,
+        let result = runner_common::run_stream_with_config(
+            self.compiled.clone(),
             state,
             run_config,
             on_event,
             self.cancellation.clone(),
             event_forwarder,
         )
-        .await
-        .map_err(|e| match e {
-            runner_common::StreamRunError::Execution(err) => GotRunError::Execution(err),
-            runner_common::StreamRunError::StreamEndedWithoutState(_) => {
-                GotRunError::StreamEndedWithoutState
-            }
-        })
+        .await;
+        match result {
+            Ok(outcome) => match outcome {
+                runner_common::StreamRunOutcome::Completed(s) => Ok(runner_common::StreamRunOutcome::Completed(s)),
+                runner_common::StreamRunOutcome::Cancelled => Ok(runner_common::StreamRunOutcome::Cancelled),
+                runner_common::StreamRunOutcome::Error(runner_common::StreamRunError::Execution(err)) => Err(GotRunError::Execution(err)),
+                runner_common::StreamRunOutcome::Empty => Ok(runner_common::StreamRunOutcome::Empty),
+            },
+            Err(runner_common::StreamRunError::Execution(err)) => Err(GotRunError::Execution(err)),
+        }
     }
 }
 
@@ -232,15 +235,15 @@ pub(super) struct SharedLlm(Arc<dyn LlmClient>);
 impl LlmClient for SharedLlm {
     async fn invoke(
         &self,
-        messages: &[loom::message::Message],
-    ) -> Result<loom::llm::LlmResponse, AgentError> {
+        messages: &[loom_llm::message::Message],
+    ) -> Result<loom_llm::LlmResponse, loom_llm::error::AgentError> {
         self.0.invoke(messages).await
     }
     async fn invoke_stream(
         &self,
-        messages: &[loom::message::Message],
-        tx: Option<tokio::sync::mpsc::Sender<loom::stream::MessageChunk>>,
-    ) -> Result<loom::llm::LlmResponse, AgentError> {
+        messages: &[loom_llm::message::Message],
+        tx: Option<tokio::sync::mpsc::Sender<loom_stream::MessageChunk>>,
+    ) -> Result<loom_llm::LlmResponse, loom_llm::error::AgentError> {
         self.0.invoke_stream(messages, tx).await
     }
 }
@@ -248,7 +251,9 @@ impl LlmClient for SharedLlm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MockLlm, MockToolSource, StreamEvent};
+    use loom_llm::client::MockLlm;
+    use loom_tools::tool_source::MockToolSource;
+    use loom_stream::StreamEvent;
     use std::sync::{Arc, Mutex};
 
     #[test]
@@ -266,7 +271,12 @@ mod tests {
                 }],
                 edges: vec![],
             },
-            node_states: std::collections::HashMap::new(),
+            node_states: [(
+                "n1".into(),
+                super::super::state::TaskNodeState::default(),
+            )]
+            .into_iter()
+            .collect(),
         };
         assert_eq!(got_execute_condition(&state), "execute_graph");
     }
@@ -316,7 +326,7 @@ mod tests {
             .unwrap();
         assert!(matches!(
             &streamed,
-            crate::runner_common::StreamRunOutcome::Finished(s) if !s.task_graph.nodes.is_empty()
+            crate::runner_common::StreamRunOutcome::Completed(s) if !s.task_graph.nodes.is_empty()
         ));
         assert!(!events.lock().unwrap().is_empty());
     }

@@ -286,6 +286,7 @@ impl CodingTool for LoomTool {
                 work_summary: None,
             }),
             RunCompletion::Cancelled => Err(ToolError::Aborted),
+            RunCompletion::Error(e) => Err(ToolError::ExecutionFailed(format!("agent error: {}", e.0))),
         }
     }
 

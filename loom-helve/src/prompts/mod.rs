@@ -1,7 +1,7 @@
 //! Agent prompts loaded from YAML files by directory (optional override for in-code defaults).
 //!
 //! See [`AgentPrompts`] and [`load`].
-//! Interacts with [`ReactBuildConfig`](loom_agent_patterns::ReactBuildConfig), [`assemble_system_prompt`](crate::prompt::assemble_system_prompt),
+//! Interacts with [`ReactBuildConfig`](loom_agent::ReactBuildConfig), [`assemble_system_prompt`](crate::prompt::assemble_system_prompt),
 //! and runners that use system/prompt strings (ReAct, ToT, GoT, DUP, Helve).
 
 mod load;

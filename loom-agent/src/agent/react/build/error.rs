@@ -13,4 +13,3 @@ pub enum BuildRunnerError {
     #[error("no LLM provided and config has no openai_api_key/model; pass Some(llm) or set OPENAI_API_KEY and OPENAI_MODEL")]
     NoLlm,
 }
-

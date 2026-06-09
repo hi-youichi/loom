@@ -47,6 +47,7 @@ fn completion_reply(result: loom_agent::RunCompletion) -> (String, Option<String
             RunStopReason::EndTurn,
         ),
         loom_agent::RunCompletion::Cancelled => (String::new(), None, RunStopReason::Cancelled),
+        loom_agent::RunCompletion::Error(e) => (e.0, None, RunStopReason::Cancelled),
     }
 }
 

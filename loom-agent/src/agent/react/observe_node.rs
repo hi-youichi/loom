@@ -1,12 +1,12 @@
 //! Observe node: read tool_results, merge into state (e.g. messages), clear tool_calls and tool_results.
 
 use async_trait::async_trait;
-use tracing::{info, warn};
+use tracing::{debug, warn};
 
 use loom_llm::error::AgentError;
 use loom_graph::Next;
 use loom_memory::uuid6;
-use loom_llm::message::Message;
+use loom_llm::message::{message_summary, Message};
 use loom_cli_types::ReActState;
 use loom_tools::tool_source::ToolCallContent;
 use loom_graph::Node;
@@ -56,6 +56,13 @@ impl Node<ReActState> for ObserveNode {
 
     async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
         let had_tool_calls = !state.tool_calls.is_empty();
+        let messages_before = state.messages.len();
+        debug!(
+            had_tool_calls,
+            tool_results = state.tool_results.len(),
+            messages_before,
+            "observe:input"
+        );
         let mut messages = state.messages;
         for tr in &state.tool_results {
             let name = tr
@@ -85,10 +92,18 @@ impl Node<ReActState> for ObserveNode {
                 .unwrap_or_else(|| {
                     warn!(
                         tool_name = %name,
-                        "ToolResult missing call_id in observe; generating synthetic id"
+                        "observe:missing_call_id generating synthetic id"
                     );
                     format!("call_{}", uuid6())
                 });
+
+            debug!(
+                call_id = %tool_call_id,
+                name = %name,
+                is_error = tr.is_error,
+                content_len = body.len(),
+                "observe:convert → Message::Tool"
+            );
 
             messages.push(Message::Tool {
                 tool_call_id,
@@ -113,13 +128,18 @@ impl Node<ReActState> for ObserveNode {
         } else {
             (Next::Continue, "linear_next")
         };
-        info!(
-            observe_exit = exit_reason,
-            next = ?next,
+        debug!(
+            messages_before,
+            messages_after = new_state.messages.len(),
+            had_tool_calls,
+            tool_results_consumed = state.tool_results.len(),
             turn = next_turn,
-            had_tool_calls = had_tool_calls,
-            "observe exit"
+            exit_reason,
+            "observe:exit"
         );
+        for (i, msg) in new_state.messages.iter().enumerate().skip(messages_before.saturating_sub(2)) {
+            debug!("  {}", message_summary(i, msg));
+        }
         Ok((new_state, next))
     }
 }

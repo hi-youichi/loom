@@ -1,13 +1,11 @@
 //! Builds checkpointer, store, runnable_config and tool_source from ReactBuildConfig.
 //!
-//! Identical submodules are re-exported from loom_agent_patterns.
-//! Custom files (context, llm, tool_source) remain local.
-
-pub use loom_agent_patterns::agent::react::build::error;
-pub use loom_agent_patterns::agent::react::build::store;
+//! All submodules (context, error, llm, store, tool_source) remain local.
 
 mod context;
+pub(crate) mod error;
 pub(crate) mod llm;
+mod store;
 mod tool_source;
 
 use std::sync::Arc;
@@ -18,9 +16,10 @@ use crate::agent::tot::{TotRunner, TotState};
 use loom_compress::CompactionConfig;
 use loom_llm::error::AgentError;
 use loom_memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
-use model_spec::{ModelLimitResolver, ModelsDevResolver};
+use loom_model_spec::{ModelLimitResolver, ModelsDevResolver};
 use loom_types::state::ReActState;
-use loom_llm::{LlmProvider, FixedLlmProvider, LlmClient};
+use loom_llm::{LlmProvider, LlmClient};
+use loom_llm::client::FixedLlmProvider;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
@@ -105,10 +104,10 @@ pub async fn build_react_run_context(
     tracing::debug!("build_react_run_context: tool_source ready");
 
     // Initialize audit log if enabled
-    let audit_log: Option<Arc<dyn loom_llm::audit::LlmAuditLog>> =
-        loom::llm::audit::LlmAuditConfig::from_env()
+    let audit_log: Option<Arc<dyn loom_llm::support::audit::LlmAuditLog>> =
+        loom_llm::support::audit::LlmAuditConfig::from_env()
             .build()
-            .map(|log| Arc::new(log) as Arc<dyn loom_llm::audit::LlmAuditLog>);
+            .map(|log| Arc::new(log) as Arc<dyn loom_llm::support::audit::LlmAuditLog>);
 
     Ok(ReactRunContext {
         checkpointer,
@@ -185,7 +184,7 @@ pub async fn build_react_runner(
         .trace_thread_id
         .as_ref()
         .or(config.thread_id.as_ref())
-        .map(|tid| loom::llm::LlmHeaders::default().with_thread_id(tid));
+        .map(|tid| loom_llm::LlmHeaders::default().with_thread_id(tid));
     let runner = ReactRunner::new(
         provider,
         ctx.tool_source,
@@ -210,15 +209,15 @@ struct BoxedLlmClient(Box<dyn LlmClient>);
 impl LlmClient for BoxedLlmClient {
     async fn invoke(
         &self,
-        messages: &[loom::message::Message],
-    ) -> Result<loom::llm::LlmResponse, AgentError> {
+        messages: &[loom_llm::message::Message],
+    ) -> Result<loom_llm::LlmResponse, loom_llm::error::AgentError> {
         self.0.invoke(messages).await
     }
     async fn invoke_stream(
         &self,
-        messages: &[loom::message::Message],
-        tx: Option<tokio::sync::mpsc::Sender<loom::stream::MessageChunk>>,
-    ) -> Result<loom::llm::LlmResponse, AgentError> {
+        messages: &[loom_llm::message::Message],
+        tx: Option<tokio::sync::mpsc::Sender<loom_stream::MessageChunk>>,
+    ) -> Result<loom_llm::LlmResponse, loom_llm::error::AgentError> {
         self.0.invoke_stream(messages, tx).await
     }
 }

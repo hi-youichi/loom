@@ -18,7 +18,6 @@
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::Arc;
 use tracing::{debug, trace, warn};
 
 use loom_cli_types::RunCancellation;
@@ -26,7 +25,7 @@ use crate::AnyStreamEvent;
 use loom_llm::error::AgentError;
 use loom_cli_types::goal_runner::state::ToolError;
 use loom_graph::{run_cancellable, Interrupt, Next, Node, RunContext};
-use loom_helve::{tools_requiring_approval, ApprovalPolicy, APPROVAL_REQUIRED_EVENT_TYPE};
+use loom_types::approval::{tools_requiring_approval, ApprovalPolicy, APPROVAL_REQUIRED_EVENT_TYPE};
 use loom_memory::uuid6;
 use loom_types::tool_output_normalizer::{
     normalize_tool_output, NormalizationConfig, ToolOutputHint,
@@ -245,6 +244,13 @@ impl Node<ReActState> for ActNode {
     }
 
     async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
+        debug!(
+            tool_calls = state.tool_calls.len(),
+            "act:input"
+        );
+        for (i, tc) in state.tool_calls.iter().enumerate() {
+            debug!("  tool_call[{}] id={:?} name={} args_len={}", i, tc.id, tc.name, tc.arguments.len());
+        }
         let ctx = ToolCallContext::new(state.messages.clone());
         let tool_output_hints = self.load_tool_output_hints().await;
         let mut tool_results = Vec::with_capacity(state.tool_calls.len());
@@ -426,6 +432,35 @@ impl Node<ReActState> for ActNode {
 
         backfill_tool_result_call_ids(&state.tool_calls, &mut tool_results);
 
+        let mut summary_items = Vec::new();
+        for tr in &tool_results {
+            let label = if tr.is_error { "error" } else { "ok" };
+            let obs_len = tr.observation().len();
+            summary_items.push(format!(
+                "{} id={:?} name={:?} → {} len={}",
+                label,
+                tr.call_id,
+                tr.name,
+                label,
+                obs_len
+            ));
+        }
+        debug!(
+            tool_calls = state.tool_calls.len(),
+            tool_results = tool_results.len(),
+            "act:summary"
+        );
+        for item in &summary_items {
+            debug!("  {}", item);
+        }
+        if tool_results.len() != state.tool_calls.len() {
+            warn!(
+                tool_calls = state.tool_calls.len(),
+                tool_results = tool_results.len(),
+                "act:mismatch tool_calls vs tool_results count"
+            );
+        }
+
         let new_state = ReActState {
             tool_results,
             approval_result: if approval_result_consumed {
@@ -469,6 +504,15 @@ impl Node<ReActState> for ActNode {
             ToolStreamWriter::noop()
         };
 
+        debug!(
+            tool_calls = state.tool_calls.len(),
+            tools_mode,
+            "act:input (with_context)"
+        );
+        for (i, tc) in state.tool_calls.iter().enumerate() {
+            debug!("  tool_call[{}] id={:?} name={} args_len={}", i, tc.id, tc.name, tc.arguments.len());
+        }
+
         let mut tool_results = Vec::with_capacity(state.tool_calls.len());
         let mut approval_result_consumed = false;
         let mut used_observation_chars = 0usize;
@@ -477,6 +521,12 @@ impl Node<ReActState> for ActNode {
             if is_cancelled() {
                 return Err(AgentError::Cancelled);
             }
+            debug!(
+                call_id = ?tc.id,
+                tool_name = %tc.name,
+                args_len = tc.arguments.len(),
+                "act:call"
+            );
             let args = match parse_tool_arguments(&tc.name, &tc.arguments) {
                 Ok(v) => v,
                 Err(e) => {
@@ -667,16 +717,7 @@ impl Node<ReActState> for ActNode {
                 user_id: run_ctx.config.user_id.clone(),
                 depth: run_ctx.config.depth.unwrap_or(0),
                 run_cancellation: self.run_cancellation.clone(),
-                any_stream_event_sender: {
-                    let sender = self.any_stream_event_sender.lock().unwrap().clone();
-                    sender.map(|s| {
-                        Arc::new(move |ev: loom_cli_types::AnyStreamEvent| {
-                            // We can only forward React events from loom's AnyStreamEvent
-                            // since DUP/TOT/GOT use different state types
-                            s(AnyStreamEvent::from_loom(ev));
-                        }) as Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>
-                    })
-                },
+                any_stream_event_sender: None, // TODO: type mismatch between cli_run_agent::AnyStreamEvent and loom_types::cli_run::AnyStreamEvent
                 acp_session_id: run_ctx.config.acp_session_id.clone(),
             };
 
@@ -818,6 +859,35 @@ impl Node<ReActState> for ActNode {
         }
 
         backfill_tool_result_call_ids(&state.tool_calls, &mut tool_results);
+
+        let mut summary_items = Vec::new();
+        for tr in &tool_results {
+            let label = if tr.is_error { "error" } else { "ok" };
+            let obs_len = tr.observation().len();
+            summary_items.push(format!(
+                "{} id={:?} name={:?} → {} len={}",
+                label,
+                tr.call_id,
+                tr.name,
+                label,
+                obs_len
+            ));
+        }
+        debug!(
+            tool_calls = state.tool_calls.len(),
+            tool_results = tool_results.len(),
+            "act:summary (with_context)"
+        );
+        for item in &summary_items {
+            debug!("  {}", item);
+        }
+        if tool_results.len() != state.tool_calls.len() {
+            warn!(
+                tool_calls = state.tool_calls.len(),
+                tool_results = tool_results.len(),
+                "act:mismatch tool_calls vs tool_results count (with_context)"
+            );
+        }
 
         let new_state = ReActState {
             tool_results,

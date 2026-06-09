@@ -9,7 +9,7 @@ use tokio_util::sync::CancellationToken;
 use crate::agent::react::{build_react_initial_state, REACT_SYSTEM_PROMPT};
 use loom_llm::error::AgentError;
 use loom_graph::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
-use loom_helve::ApprovalPolicy;
+use loom_types::approval::ApprovalPolicy;
 use loom_memory::{CheckpointError, Checkpointer, RunnableConfig, Store};
 use loom_llm::message::Message;
 use crate::runner_common::{self, load_from_checkpoint_or_build};
@@ -99,15 +99,15 @@ struct SharedLlm(Arc<dyn LlmClient>);
 impl LlmClient for SharedLlm {
     async fn invoke(
         &self,
-        messages: &[loom::message::Message],
-    ) -> Result<loom::llm::LlmResponse, loom::error::AgentError> {
+        messages: &[loom_llm::message::Message],
+    ) -> Result<loom_llm::LlmResponse, loom_llm::error::AgentError> {
         self.0.invoke(messages).await
     }
     async fn invoke_stream(
         &self,
-        messages: &[loom::message::Message],
-        tx: Option<tokio::sync::mpsc::Sender<loom::stream::MessageChunk>>,
-    ) -> Result<loom::llm::LlmResponse, loom::error::AgentError> {
+        messages: &[loom_llm::message::Message],
+        tx: Option<tokio::sync::mpsc::Sender<loom_stream::MessageChunk>>,
+    ) -> Result<loom_llm::LlmResponse, loom_llm::error::AgentError> {
         self.0.invoke_stream(messages, tx).await
     }
 }
@@ -132,7 +132,7 @@ impl DupRunner {
         verbose: bool,
     ) -> Result<Self, CompilationError> {
         let understand = UnderstandNode::new(Box::new(SharedLlm(Arc::clone(&llm))));
-        let plan_provider: Arc<dyn loom::llm::LlmProvider> = Arc::new(loom::llm::FixedLlmProvider {
+        let plan_provider: Arc<dyn loom_llm::LlmProvider> = Arc::new(loom_llm::client::FixedLlmProvider {
             client: Arc::clone(&llm),
             model_id: "dup".to_string(),
         });
@@ -217,9 +217,9 @@ impl DupRunner {
         &self,
         user_message: &str,
         on_event: Option<F>,
-    ) -> Result<runner_common::StreamRunOutcome<DupState>, DupRunError>
+    ) -> Result<runner_common::StreamRunOutcome<DupState, runner_common::StreamRunError>, DupRunError>
     where
-        F: FnMut(StreamEvent<DupState>),
+        F: FnMut(StreamEvent<DupState>) + Send + 'static,
     {
         self.stream_with_config(user_message, None, on_event, None).await
     }
@@ -231,9 +231,9 @@ impl DupRunner {
         config: Option<RunnableConfig>,
         on_event: Option<F>,
         any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
-    ) -> Result<runner_common::StreamRunOutcome<DupState>, DupRunError>
+    ) -> Result<runner_common::StreamRunOutcome<DupState, runner_common::StreamRunError>, DupRunError>
     where
-        F: FnMut(StreamEvent<DupState>),
+        F: FnMut(StreamEvent<DupState>) + Send + 'static,
     {
         let run_config = config.or_else(|| self.runnable_config.clone());
         let state = build_dup_initial_state(
@@ -248,46 +248,51 @@ impl DupRunner {
         let _ = any_stream_event_sender;
         let event_forwarder: Option<std::sync::Arc<dyn Fn(StreamEvent<DupState>) + Send + Sync>> =
             None;
-        runner_common::run_stream_with_config(
-            &self.compiled,
+        let result = runner_common::run_stream_with_config(
+            self.compiled.clone(),
             state,
             run_config,
             on_event,
             self.cancellation.clone(),
             event_forwarder,
         )
-        .await
-        .map_err(|e| match e {
-            runner_common::StreamRunError::Execution(err) => DupRunError::Execution(err),
-            runner_common::StreamRunError::StreamEndedWithoutState(_) => {
-                DupRunError::StreamEndedWithoutState
-            }
-        })
+        .await;
+        match result {
+            Ok(outcome) => match outcome {
+                runner_common::StreamRunOutcome::Completed(s) => Ok(runner_common::StreamRunOutcome::Completed(s)),
+                runner_common::StreamRunOutcome::Cancelled => Ok(runner_common::StreamRunOutcome::Cancelled),
+                runner_common::StreamRunOutcome::Error(runner_common::StreamRunError::Execution(err)) => Err(DupRunError::Execution(err)),
+                runner_common::StreamRunOutcome::Empty => Ok(runner_common::StreamRunOutcome::Empty),
+            },
+            Err(runner_common::StreamRunError::Execution(err)) => Err(DupRunError::Execution(err)),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MockLlm, MockToolSource, StreamEvent};
+    use loom_llm::client::MockLlm;
+    use loom_tools::tool_source::MockToolSource;
+    use loom_stream::StreamEvent;
     use std::sync::{Arc, Mutex};
 
     #[test]
     fn dup_tools_condition_routes_correctly() {
         let no_tools = DupState {
-            core: loom::ReActState::default(),
+            core: loom_types::state::ReActState::default(),
             understood: None,
         };
         assert_eq!(dup_tools_condition(&no_tools), END);
 
         let with_tools = DupState {
-            core: loom::ReActState {
-                tool_calls: vec![loom::ToolCall {
+            core: loom_types::state::ReActState {
+                tool_calls: vec![loom_types::state::ToolCall {
                     name: "x".to_string(),
                     arguments: "{}".to_string(),
                     id: None,
                 }],
-                ..loom::ReActState::default()
+                ..loom_types::state::ReActState::default()
             },
             understood: None,
         };
@@ -335,7 +340,7 @@ mod tests {
             .unwrap();
         assert!(matches!(
             &streamed,
-            crate::runner_common::StreamRunOutcome::Finished(s) if s.last_assistant_reply().is_some()
+            crate::runner_common::StreamRunOutcome::Completed(s) if s.last_assistant_reply().is_some()
         ));
         assert!(!events.lock().unwrap().is_empty());
     }

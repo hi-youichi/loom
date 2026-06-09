@@ -10,7 +10,7 @@ use tokio_util::sync::CancellationToken;
 use crate::agent::react::{build_react_initial_state, REACT_SYSTEM_PROMPT};
 use loom_llm::error::AgentError;
 use loom_graph::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
-use loom_helve::ApprovalPolicy;
+use loom_types::approval::ApprovalPolicy;
 use loom_memory::{CheckpointError, Checkpointer, RunnableConfig, Store};
 use loom_llm::message::Message;
 use crate::runner_common::{self, load_from_checkpoint_or_build};
@@ -109,15 +109,15 @@ struct SharedLlm(Arc<dyn LlmClient>);
 impl LlmClient for SharedLlm {
     async fn invoke(
         &self,
-        messages: &[loom::message::Message],
-    ) -> Result<loom::llm::LlmResponse, AgentError> {
+        messages: &[loom_llm::message::Message],
+    ) -> Result<loom_llm::LlmResponse, AgentError> {
         self.0.invoke(messages).await
     }
     async fn invoke_stream(
         &self,
-        messages: &[loom::message::Message],
-        tx: Option<tokio::sync::mpsc::Sender<loom::stream::MessageChunk>>,
-    ) -> Result<loom::llm::LlmResponse, AgentError> {
+        messages: &[loom_llm::message::Message],
+        tx: Option<tokio::sync::mpsc::Sender<loom_stream::MessageChunk>>,
+    ) -> Result<loom_llm::LlmResponse, AgentError> {
         self.0.invoke_stream(messages, tx).await
     }
 }
@@ -244,9 +244,9 @@ impl TotRunner {
         &self,
         user_message: &str,
         on_event: Option<F>,
-    ) -> Result<runner_common::StreamRunOutcome<TotState>, TotRunError>
+    ) -> Result<runner_common::StreamRunOutcome<TotState, runner_common::StreamRunError>, TotRunError>
     where
-        F: FnMut(StreamEvent<TotState>),
+        F: FnMut(StreamEvent<TotState>) + Send + 'static,
     {
         self.stream_with_config(user_message, None, on_event, None).await
     }
@@ -258,9 +258,9 @@ impl TotRunner {
         config: Option<RunnableConfig>,
         on_event: Option<F>,
         any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
-    ) -> Result<runner_common::StreamRunOutcome<TotState>, TotRunError>
+    ) -> Result<runner_common::StreamRunOutcome<TotState, runner_common::StreamRunError>, TotRunError>
     where
-        F: FnMut(StreamEvent<TotState>),
+        F: FnMut(StreamEvent<TotState>) + Send + 'static,
     {
         let run_config = config.or_else(|| self.runnable_config.clone());
         let state = build_tot_initial_state(
@@ -275,21 +275,24 @@ impl TotRunner {
         let _ = any_stream_event_sender;
         let event_forwarder: Option<std::sync::Arc<dyn Fn(StreamEvent<TotState>) + Send + Sync>> =
             None;
-        runner_common::run_stream_with_config(
-            &self.compiled,
+        let result = runner_common::run_stream_with_config(
+            self.compiled.clone(),
             state,
             run_config,
             on_event,
             self.cancellation.clone(),
             event_forwarder,
         )
-        .await
-        .map_err(|e| match e {
-            runner_common::StreamRunError::Execution(err) => TotRunError::Execution(err),
-            runner_common::StreamRunError::StreamEndedWithoutState(_) => {
-                TotRunError::StreamEndedWithoutState
-            }
-        })
+        .await;
+        match result {
+            Ok(outcome) => match outcome {
+                runner_common::StreamRunOutcome::Completed(s) => Ok(runner_common::StreamRunOutcome::Completed(s)),
+                runner_common::StreamRunOutcome::Cancelled => Ok(runner_common::StreamRunOutcome::Cancelled),
+                runner_common::StreamRunOutcome::Error(runner_common::StreamRunError::Execution(err)) => Err(TotRunError::Execution(err)),
+                runner_common::StreamRunOutcome::Empty => Ok(runner_common::StreamRunOutcome::Empty),
+            },
+            Err(runner_common::StreamRunError::Execution(err)) => Err(TotRunError::Execution(err)),
+        }
     }
 }
 
@@ -297,12 +300,15 @@ impl TotRunner {
 mod tests {
     use super::super::state::TotCandidate;
     use super::*;
-    use crate::{MockLlm, MockToolSource, StreamEvent, ToolCall};
+    use loom_llm::client::MockLlm;
+    use loom_tools::tool_source::MockToolSource;
+    use loom_stream::StreamEvent;
+    use loom_llm::ToolCall;
     use std::sync::{Arc, Mutex};
 
     fn state_with_tools(has_tools: bool) -> TotState {
         TotState {
-            core: loom::ReActState {
+            core: loom_types::state::ReActState {
                 tool_calls: if has_tools {
                     vec![ToolCall {
                         name: "search".to_string(),
@@ -312,7 +318,7 @@ mod tests {
                 } else {
                     vec![]
                 },
-                ..loom::ReActState::default()
+                ..loom_types::state::ReActState::default()
             },
             tot: TotExtension::default(),
         }
@@ -389,7 +395,7 @@ mod tests {
             .unwrap();
         assert!(matches!(
             &streamed,
-            crate::runner_common::StreamRunOutcome::Finished(s) if s.last_assistant_reply().is_some()
+            crate::runner_common::StreamRunOutcome::Completed(s) if s.last_assistant_reply().is_some()
         ));
         assert!(!events.lock().unwrap().is_empty());
     }

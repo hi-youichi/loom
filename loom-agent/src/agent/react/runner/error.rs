@@ -42,4 +42,3 @@ mod tests {
         assert_eq!(err.to_string(), "stream ended without final state");
     }
 }
-

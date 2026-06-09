@@ -11,6 +11,7 @@ use loom_llm::message::Message;
 use loom_llm::LlmClient;
 
 use super::dag::{append_subgraph, AppendSubgraphError};
+use super::state::TaskGraph;
 use super::prompt::AGOT_EXPAND_SYSTEM;
 use super::state::{GotState, TaskNode, TaskNodeState, TaskStatus};
 
@@ -272,7 +273,12 @@ where
     let n_before = state.task_graph.nodes.len();
     let e_before = state.task_graph.edges.len();
 
-    append_subgraph(&mut state.task_graph, new_nodes, new_edges)?;
+    let subgraph = TaskGraph {
+        nodes: new_nodes,
+        edges: new_edges,
+    };
+    let parent_id = format!("expand_{}", n_before);
+    state.task_graph = append_subgraph(&state.task_graph, subgraph, &parent_id)?;
 
     let nodes_added = state.task_graph.nodes.len() - n_before;
     let edges_added = state.task_graph.edges.len() - e_before;
@@ -392,7 +398,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn expand_node_via_llm_parses_and_prefixes() {
-        use loom::llm::MockLlm;
+        use loom_llm::client::MockLlm;
         let json = r#"{"nodes":[{"id":"step1","description":"First step"},{"id":"step2","description":"Second step"}],"edges":[["analyze","step1"],["step1","step2"]]}"#;
         let mock = MockLlm::with_no_tool_calls(json);
         let llm = Arc::new(mock);
@@ -454,4 +460,3 @@ mod tests {
         assert_eq!(state.node_states.len(), 3);
     }
 }
-
