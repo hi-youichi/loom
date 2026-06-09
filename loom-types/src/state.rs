@@ -5,6 +5,7 @@ use loom_llm::ToolChoiceMode;
 use loom_llm::LlmUsage;
 use loom_llm::message::{AssistantToolCall, Message};
 use model_spec_core::spec::ModelTier;
+use loom_llm::support::uuid6::uuid6;
 
 // Re-export ToolCall and ToolOutputStrategy from loom-llm
 pub use loom_llm::ToolCall;
@@ -123,14 +124,21 @@ impl Default for ReActState {
 impl ReActState {
     pub fn apply_think(mut self, content: String, reasoning_content: Option<String>, tool_calls: Vec<ToolCall>, response_usage: Option<LlmUsage>) -> Self {
         let (usage, total_usage) = compute_think_usage(self.total_usage.as_ref(), response_usage.as_ref());
-        let atc: Vec<AssistantToolCall> = tool_calls.iter().map(|tc| AssistantToolCall {
-            id: tc.id.clone().unwrap_or_default(), name: tc.name.clone(), arguments: tc.arguments.clone(),
+        let fixed_tool_calls: Vec<ToolCall> = tool_calls.iter().map(|tc| {
+            if tc.id.as_deref().is_none_or(|s| s.is_empty()) {
+                ToolCall { id: Some(format!("call_{}", uuid6())), ..tc.clone() }
+            } else {
+                tc.clone()
+            }
+        }).collect();
+        let atc: Vec<AssistantToolCall> = fixed_tool_calls.iter().map(|tc| {
+            AssistantToolCall { id: tc.id.clone().unwrap(), name: tc.name.clone(), arguments: tc.arguments.clone() }
         }).collect();
         let is_empty = content.trim().is_empty() && reasoning_content.as_ref().is_none_or(|s| s.trim().is_empty()) && tool_calls.is_empty();
         let msg = if atc.is_empty() { Message::assistant_with_reasoning(content, reasoning_content.clone()) } else { Message::assistant_with_tool_calls_and_reasoning(content, atc, reasoning_content.clone()) };
         if !is_empty { self.messages.push(msg); }
         self.last_reasoning_content = reasoning_content;
-        self.tool_calls = tool_calls;
+        self.tool_calls = fixed_tool_calls;
         self.usage = usage;
         self.total_usage = total_usage;
         self.message_count_after_last_think = Some(self.messages.len());
