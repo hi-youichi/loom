@@ -4,7 +4,7 @@ use serde_json::json;
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 use crate::tools::Tool;
 
-pub const TOOL_HELP: &str = "help";
+pub use loom_types::tools::tool_name::TOOL_HELP;
 
 const HELP_TEXT: &str = r#"# Loom Help
 

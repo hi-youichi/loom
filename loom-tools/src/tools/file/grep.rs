@@ -26,7 +26,7 @@ use crate::tools::Tool;
 use super::path::resolve_path_under;
 
 /// Tool name for grep file content search.
-pub const TOOL_GREP: &str = "grep";
+pub use loom_types::tools::tool_name::TOOL_GREP;
 
 /// Maximum bytes per matched line before truncation (char-boundary safe).
 const MAX_LINE_LENGTH: usize = 2000;

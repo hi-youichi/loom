@@ -15,8 +15,7 @@ use crate::tools::Tool;
 use super::todo_file_path;
 use super::TodoInfo;
 
-/// Tool name for writing the todo list.
-pub const TOOL_TODO_WRITE: &str = "todo_write";
+pub use loom_types::tools::tool_name::TOOL_TODO_WRITE;
 
 /// Tool that writes the todo list to thread context.
 ///

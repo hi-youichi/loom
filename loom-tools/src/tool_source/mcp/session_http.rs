@@ -17,11 +17,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::tool_source::ToolSourceError;
-
-/// MCP protocol version for HTTP header.
-const MCP_PROTOCOL_VERSION: &str = "2025-11-25";
-/// Request id for initialize.
-const INITIALIZE_REQUEST_ID: &str = "loom-mcp-initialize";
+use super::{MCP_INITIALIZE_REQUEST_ID, MCP_PROTOCOL_VERSION};
 
 /// JSON-RPC error object in response body.
 #[derive(Debug, Deserialize)]
@@ -154,7 +150,7 @@ impl McpHttpSession {
                 "version": env!("CARGO_PKG_VERSION")
             }
         });
-        let request = RequestMessage::new(INITIALIZE_REQUEST_ID, "initialize", params);
+        let request = RequestMessage::new(MCP_INITIALIZE_REQUEST_ID, "initialize", params);
         let body =
             serde_json::to_vec(&request).map_err(|e| ToolSourceError::Transport(e.to_string()))?;
         let mut req = self

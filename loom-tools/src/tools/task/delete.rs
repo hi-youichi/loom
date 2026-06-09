@@ -7,7 +7,7 @@ use task_core::{ShowError, TaskDb};
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 use crate::tools::Tool;
 
-pub const TOOL_TASK_DELETE: &str = "task_delete";
+pub use loom_types::tools::tool_name::TOOL_TASK_DELETE;
 
 pub struct TaskDeleteTool {
     db: Arc<TaskDb>,

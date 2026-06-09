@@ -11,7 +11,7 @@ use crate::{ToolOutputHint, ToolOutputStrategy};
 mod executor;
 pub use executor::{CommandExecutor, LocalCommandExecutor};
 
-pub const TOOL_BASH: &str = "bash";
+pub use loom_types::tools::tool_name::TOOL_BASH;
 
 pub struct BashTool {
     working_folder: Option<Arc<std::path::PathBuf>>,

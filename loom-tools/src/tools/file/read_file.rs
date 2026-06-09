@@ -15,7 +15,7 @@ use crate::tools::Tool;
 use super::path::resolve_path_under;
 
 /// Tool name for reading a file.
-pub const TOOL_READ_FILE: &str = "read";
+pub use loom_types::tools::tool_name::TOOL_READ_FILE;
 
 const DEFAULT_READ_LIMIT: usize = 2000;
 const MAX_LINE_LENGTH: usize = 2000;

@@ -18,8 +18,7 @@ use crate::tools::Tool;
 use super::todo_file_path;
 use super::TodoInfo;
 
-/// Tool name for reading the todo list.
-pub const TOOL_TODO_READ: &str = "todo_read";
+pub use loom_types::tools::tool_name::TOOL_TODO_READ;
 
 /// Tool that reads the todo list from XDG state home.
 ///

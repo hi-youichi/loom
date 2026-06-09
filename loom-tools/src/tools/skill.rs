@@ -10,8 +10,7 @@ use loom_skill::SkillRegistry;
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError};
 use crate::tools::Tool;
 
-/// Tool name for loading a skill.
-pub const TOOL_SKILL: &str = "skill";
+pub use loom_types::tools::tool_name::TOOL_SKILL;
 
 const SKILLS_SUBDIR: &str = ".loom/skills";
 

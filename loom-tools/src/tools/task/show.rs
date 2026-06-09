@@ -7,7 +7,7 @@ use task_core::{ShowError, TaskDb};
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 use crate::tools::Tool;
 
-pub const TOOL_TASK_SHOW: &str = "task_show";
+pub use loom_types::tools::tool_name::TOOL_TASK_SHOW;
 
 pub struct TaskShowTool {
     db: Arc<TaskDb>,

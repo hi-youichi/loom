@@ -51,7 +51,7 @@ use loom_types::tool_output_normalizer::{ToolOutputHint, ToolOutputStrategy};
 use loom_tier::resolve_tier_and_build_config;
 use crate::agent::react::build::build_react_runner;
 
-pub const TOOL_INVOKE_AGENT: &str = "invoke_agent";
+pub use loom_types::tools::tool_name::TOOL_INVOKE_AGENT;
 const DEFAULT_MAX_DEPTH: u32 = 3;
 
 pub struct InvokeAgentTool {

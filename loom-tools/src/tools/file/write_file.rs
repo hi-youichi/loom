@@ -15,7 +15,7 @@ use crate::tools::Tool;
 use super::path::resolve_path_under;
 
 /// Tool name for writing a file.
-pub const TOOL_WRITE_FILE: &str = "write_file";
+pub use loom_types::tools::tool_name::TOOL_WRITE_FILE;
 
 /// Tool that writes text content to a file under the working folder.
 ///

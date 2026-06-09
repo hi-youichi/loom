@@ -7,7 +7,7 @@ use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError};
 use crate::tools::Tool;
 
 /// Tool name for the recall operation.
-pub const TOOL_RECALL: &str = "recall";
+pub use loom_types::tools::tool_name::TOOL_RECALL;
 
 /// Tool for reading a value by key from long-term memory.
 ///

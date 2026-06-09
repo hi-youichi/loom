@@ -34,7 +34,7 @@ use crate::tools::Tool;
 use super::path::resolve_path_under;
 
 /// Tool name for editing a file.
-pub const TOOL_EDIT_FILE: &str = "edit";
+pub use loom_types::tools::tool_name::TOOL_EDIT_FILE;
 
 const DESCRIPTION: &str = "\
 Performs exact string replacements in files.

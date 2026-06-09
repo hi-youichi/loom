@@ -8,8 +8,7 @@ use serde_json::json;
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSource, ToolSourceError};
 use crate::tools::{AggregateToolSource, Tool};
 
-/// Tool name for batch execution.
-pub const TOOL_BATCH: &str = "batch";
+pub use loom_types::tools::tool_name::TOOL_BATCH;
 
 const MAX_CALLS: usize = 25;
 

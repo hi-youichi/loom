@@ -19,7 +19,7 @@ use crate::tools::Tool;
 use super::path::resolve_path_under;
 
 /// Tool name for glob file search.
-pub const TOOL_GLOB: &str = "glob";
+pub use loom_types::tools::tool_name::TOOL_GLOB;
 
 /// Normalizes a path string for glob matching: use forward slashes so that
 /// `glob::Pattern` (Unix-style) matches correctly on all platforms.

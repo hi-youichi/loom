@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use crate::tool_source::{ToolSource, ToolSourceError};
 use crate::tools::{AggregateToolSource, WebFetcherTool};
 
-pub const TOOL_WEB_FETCHER: &str = "web_fetcher";
+pub use loom_types::tools::tool_name::TOOL_WEB_FETCHER;
 
 /// Tool source that exposes web fetcher as one tool: web_fetcher.
 ///

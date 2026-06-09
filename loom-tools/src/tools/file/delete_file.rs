@@ -15,7 +15,7 @@ use crate::tools::Tool;
 use super::path::resolve_path_under;
 
 /// Tool name for deleting a file or directory.
-pub const TOOL_DELETE_FILE: &str = "delete_file";
+pub use loom_types::tools::tool_name::TOOL_DELETE_FILE;
 
 /// Tool that deletes a file or directory under the working folder.
 ///

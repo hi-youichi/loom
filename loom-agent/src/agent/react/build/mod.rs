@@ -1,9 +1,13 @@
 //! Builds checkpointer, store, runnable_config and tool_source from ReactBuildConfig.
+//!
+//! Identical submodules are re-exported from loom_agent_patterns.
+//! Custom files (context, llm, tool_source) remain local.
+
+pub use loom_agent_patterns::agent::react::build::error;
+pub use loom_agent_patterns::agent::react::build::store;
 
 mod context;
-mod error;
 pub(crate) mod llm;
-mod store;
 mod tool_source;
 
 use std::sync::Arc;

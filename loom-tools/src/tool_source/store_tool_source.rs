@@ -13,10 +13,10 @@ use crate::tools::{
     AggregateToolSource, ListMemoriesTool, RecallTool, RememberTool, SearchMemoriesTool,
 };
 
-pub const TOOL_REMEMBER: &str = "remember";
-pub const TOOL_RECALL: &str = "recall";
-pub const TOOL_SEARCH_MEMORIES: &str = "search_memories";
-pub const TOOL_LIST_MEMORIES: &str = "list_memories";
+pub use loom_types::tools::tool_name::TOOL_REMEMBER;
+pub use loom_types::tools::tool_name::TOOL_RECALL;
+pub use loom_types::tools::tool_name::TOOL_SEARCH_MEMORIES;
+pub use loom_types::tools::tool_name::TOOL_LIST_MEMORIES;
 
 /// Tool source that exposes Store operations as tools (remember, recall, search_memories, list_memories).
 ///

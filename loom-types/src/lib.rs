@@ -12,3 +12,4 @@ pub mod command;
 pub mod prompts;
 pub mod tool_output_normalizer;
 pub mod active_operation;
+pub mod tools;

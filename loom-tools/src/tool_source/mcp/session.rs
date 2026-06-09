@@ -14,10 +14,7 @@ use mcp_client::stdio::{
 use mcp_core::{MessageId, NotificationMessage, RequestMessage, ResultMessage};
 use serde_json::{json, Value};
 
-/// Protocol version for MCP initialize.
-const PROTOCOL_VERSION: &str = "2025-11-25";
-/// Request id for initialize.
-const INITIALIZE_REQUEST_ID: &str = "loom-mcp-initialize";
+use super::{MCP_INITIALIZE_REQUEST_ID, MCP_PROTOCOL_VERSION};
 
 /// MCP session over stdio: spawns server process, performs initialize handshake,
 /// provides `send_request` and `wait_for_result` for JSON-RPC calls.
@@ -116,16 +113,16 @@ impl McpSession {
     /// send `notifications/initialized`. Uses empty roots for tools-only use.
     fn initialize(&mut self) -> Result<(), McpSessionError> {
         let params = json!({
-            "protocolVersion": PROTOCOL_VERSION,
+"protocolVersion": MCP_PROTOCOL_VERSION,
             "capabilities": { "tools": {} },
             "clientInfo": {
                 "name": "loom-mcp",
                 "version": env!("CARGO_PKG_VERSION")
             }
         });
-        self.send_request(INITIALIZE_REQUEST_ID, "initialize", params)?;
+        self.send_request(MCP_INITIALIZE_REQUEST_ID, "initialize", params)?;
 
-        match self.wait_for_result(INITIALIZE_REQUEST_ID, initialize_timeout())? {
+        match self.wait_for_result(MCP_INITIALIZE_REQUEST_ID, initialize_timeout())? {
             Some(result) => {
                 if result.error.is_some() {
                     return Err(McpSessionError::Initialize(

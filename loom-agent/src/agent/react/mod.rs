@@ -24,13 +24,17 @@
 //! - [`ReactRunner`]: owns the compiled graph plus the services needed to run it.
 //! - [`ReactBuildConfig`]: configuration for building runners from env or files.
 //! - [`ReactRunContext`]: resolved checkpointer, store, tool source, and run config.
+//!
+//! Identical submodules are re-exported from loom_agent_patterns.
+//! Custom files (act_node, observe_node, think_node, with_node_logging, runner, build) remain local.
+
+pub use loom_agent_patterns::agent::react::config;
+pub use loom_agent_patterns::agent::react::title_node;
 
 mod act_node;
 pub mod build;
-mod config;
 mod observe_node;
 mod runner;
-mod title_node;
 mod think_node;
 mod with_node_logging;
 
@@ -100,8 +104,8 @@ pub const REACT_SYSTEM_PROMPT: &str = "";
 #[cfg(test)]
 mod tests {
     use super::*;
-use loom_llm::ToolCall;
-use loom_llm::message::Message;
+    use loom_llm::ToolCall;
+    use loom_llm::message::Message;
 
     #[test]
     fn tools_condition_returns_end_when_no_tool_calls() {
@@ -128,5 +132,3 @@ use loom_llm::message::Message;
         assert_eq!(tools_condition(&state).as_str(), "tools");
     }
 }
-
-

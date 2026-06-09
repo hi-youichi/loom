@@ -10,8 +10,7 @@ use loom_lsp::LspManager;
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError};
 use crate::tools::Tool;
 
-/// Tool name for LSP.
-pub const TOOL_LSP: &str = "lsp";
+pub use loom_types::tools::tool_name::TOOL_LSP;
 
 /// LSP tool provides code completion, diagnostics, and navigation features.
 pub struct LspTool {

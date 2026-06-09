@@ -7,7 +7,7 @@ use task_core::{parse_status, ListParams, TaskDb};
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 use crate::tools::Tool;
 
-pub const TOOL_TASK_LIST: &str = "task_list";
+pub use loom_types::tools::tool_name::TOOL_TASK_LIST;
 
 pub struct TaskListTool {
     db: Arc<TaskDb>,

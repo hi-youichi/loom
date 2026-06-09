@@ -7,7 +7,7 @@ use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError};
 use crate::tools::Tool;
 
 /// Tool name for the search_memories operation.
-pub const TOOL_SEARCH_MEMORIES: &str = "search_memories";
+pub use loom_types::tools::tool_name::TOOL_SEARCH_MEMORIES;
 
 /// Tool for searching long-term memories by query (optional) and limit (optional).
 ///

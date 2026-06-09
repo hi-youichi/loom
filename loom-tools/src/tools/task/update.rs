@@ -7,7 +7,7 @@ use task_core::{parse_status, TaskDb, UpdateParams};
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 use crate::tools::Tool;
 
-pub const TOOL_TASK_UPDATE: &str = "task_update";
+pub use loom_types::tools::tool_name::TOOL_TASK_UPDATE;
 
 pub struct TaskUpdateTool {
     db: Arc<TaskDb>,

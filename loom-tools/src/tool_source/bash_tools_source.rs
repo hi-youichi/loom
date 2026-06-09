@@ -8,7 +8,7 @@ use crate::tool_source::{ToolSource, ToolSourceError};
 use crate::tools::{AggregateToolSource, BashTool};
 
 /// Tool name: run a shell command.
-pub const TOOL_BASH: &str = "bash";
+pub use loom_types::tools::tool_name::TOOL_BASH;
 
 /// Tool source that exposes bash (shell) execution as one tool: `bash`.
 ///

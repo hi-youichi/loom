@@ -23,6 +23,12 @@ use crate::{ToolOutputHint, ToolOutputStrategy};
 pub use session::{McpSession, McpSessionError};
 pub use session_http::McpHttpSession;
 
+/// MCP protocol version for HTTP header and handshake.
+pub const MCP_PROTOCOL_VERSION: &str = "2025-11-25";
+
+/// Request ID for initialize request.
+pub const MCP_INITIALIZE_REQUEST_ID: &str = "loom-mcp-initialize";
+
 /// Transport kind: stdio (spawn process) or HTTP (POST to URL).
 /// HTTP variant uses `Arc` so we can release the mutex before awaiting.
 #[allow(clippy::large_enum_variant)]

@@ -7,7 +7,7 @@ use task_core::{parse_status, CreateParams, TaskDb};
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 use crate::tools::Tool;
 
-pub const TOOL_TASK_CREATE: &str = "task_create";
+pub use loom_types::tools::tool_name::TOOL_TASK_CREATE;
 
 pub struct TaskCreateTool {
     db: Arc<TaskDb>,
