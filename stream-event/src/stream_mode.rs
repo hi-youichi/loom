@@ -21,3 +21,37 @@ pub enum StreamMode {
     /// Emit both checkpoints and tasks events (debug mode).
     Debug,
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stream_mode_all_variants_serialize() {
+        let modes = vec![
+            StreamMode::Values,
+            StreamMode::Updates,
+            StreamMode::Messages,
+            StreamMode::Custom,
+            StreamMode::Checkpoints,
+            StreamMode::Tasks,
+            StreamMode::Tools,
+            StreamMode::Debug,
+        ];
+        for mode in &modes {
+            let json = serde_json::to_string(mode).unwrap();
+            let back: StreamMode = serde_json::from_str(&json).unwrap();
+            assert_eq!(*mode, back);
+        }
+    }
+
+    #[test]
+    fn stream_mode_hash_eq() {
+        use std::collections::HashSet;
+        let set: HashSet<StreamMode> = [
+            StreamMode::Values,
+            StreamMode::Updates,
+            StreamMode::Values,
+        ].into_iter().collect();
+        assert_eq!(set.len(), 2);
+    }
+}

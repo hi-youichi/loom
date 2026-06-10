@@ -11,7 +11,7 @@ use tokio::sync::RwLock;
 pub struct ModelService {
     providers: Arc<RwLock<HashMap<String, Provider>>>,
     models: Arc<RwLock<HashMap<String, Model>>>,
-    model_to_provider: Arc<RwLock<HashMap<String, String>>>, // Maps model_id to provider_id
+    model_to_provider: Arc<RwLock<HashMap<String, String>>>,
 }
 
 impl ModelService {
@@ -41,97 +41,143 @@ impl ModelService {
             return Err(format!("Models.dev returned status: {}", status));
         }
 
-        // Parse directly as serde_json::Value first to inspect structure
         let json_value: serde_json::Value = response.json().await.map_err(|e| {
             tracing::error!("Failed to read response body: {}", e);
             format!("Failed to read response body: {}", e)
         })?;
 
-        // Then try to parse as Provider types
-        let providers_json: HashMap<String, Provider> = serde_json::from_value(json_value)
-            .map_err(|e| {
-                tracing::error!("Failed to parse models: {}", e);
-                format!("Failed to parse models: {}", e)
-            })?;
+        tracing::debug!("Response structure: {:?}", json_value);
 
-        let mut providers = self.providers.write().await;
-        let mut models = self.models.write().await;
-        let mut model_to_provider = self.model_to_provider.write().await;
-
-        let mut total_models = 0;
-        for (provider_id, provider) in providers_json {
-            for (model_id, model) in &provider.models {
-                models.insert(model_id.clone(), model.clone());
-                model_to_provider.insert(model_id.clone(), provider_id.clone());
-                total_models += 1;
-            }
-            providers.insert(provider_id, provider);
+        if let Some(providers_array) = json_value.as_array() {
+            self.parse_providers_array(providers_array).await?;
+        } else if let Some(providers_obj) = json_value.as_object() {
+            self.parse_providers_object(providers_obj).await?;
+        } else {
+            return Err("Unknown JSON structure from models.dev".to_string());
         }
 
-        tracing::info!("Loaded {} models from models.dev", total_models);
         Ok(())
     }
 
-    /// Get all available models
-    pub async fn get_available_models(&self) -> Vec<ModelInfo> {
-        let models = self.models.read().await;
-        let providers = self.providers.read().await;
-        let model_to_provider = self.model_to_provider.read().await;
+    async fn parse_providers_array(&self, providers_array: &[serde_json::Value]) -> Result<(), String> {
+        tracing::info!("Parsing {} providers from array", providers_array.len());
 
-        models
-            .values()
-            .map(|model| {
-                let provider = model_to_provider
-                    .get(&model.id)
-                    .and_then(|provider_id| providers.get(provider_id))
-                    .map(|p| p.name.clone())
-                    .unwrap_or_else(|| "Unknown".to_string());
+        let mut providers_guard = self.providers.write().await;
+        let mut models_guard = self.models.write().await;
+        let mut model_to_provider_guard = self.model_to_provider.write().await;
 
-                ModelInfo {
-                    id: model.id.clone(),
-                    name: model.name.clone(),
-                    provider,
-                    family: model.family.clone(),
-                    capabilities: Self::extract_capabilities(model),
+        for provider_value in providers_array {
+            if let Ok(provider) = serde_json::from_value::<Provider>(provider_value.clone()) {
+                tracing::debug!("Loaded provider: {}", provider.id);
+
+                providers_guard.insert(provider.id.clone(), provider.clone());
+
+                for (model_id, model) in &provider.models {
+                    tracing::debug!("Loaded model: {} from provider {}", model_id, provider.id);
+                    models_guard.insert(model_id.clone(), model.clone());
+                    model_to_provider_guard.insert(model_id.clone(), provider.id.clone());
                 }
-            })
+            }
+        }
+
+        tracing::info!("Loaded {} providers and {} models total",
+                     providers_guard.len(), models_guard.len());
+
+        Ok(())
+    }
+
+    async fn parse_providers_object(&self, providers_obj: &serde_json::Map<String, serde_json::Value>) -> Result<(), String> {
+        tracing::info!("Parsing providers from object with {} keys", providers_obj.len());
+
+        let mut providers_guard = self.providers.write().await;
+        let mut models_guard = self.models.write().await;
+        let mut model_to_provider_guard = self.model_to_provider.write().await;
+
+        for (provider_id, provider_value) in providers_obj {
+            if let Some(models_array) = provider_value.as_array() {
+                tracing::debug!("Processing provider {} with {} models", provider_id, models_array.len());
+
+                let provider = Provider {
+                    id: provider_id.clone(),
+                    name: provider_id.clone(),
+                    api: None,
+                    models: HashMap::new(),
+                    doc: None,
+                    env: vec![],
+                    npm: None,
+                };
+
+                for model_value in models_array {
+                    if let Ok(model) = serde_json::from_value::<Model>(model_value.clone()) {
+                        tracing::debug!("Loaded model: {} from provider {}", model.id, provider_id);
+                        models_guard.insert(model.id.clone(), model.clone());
+                        model_to_provider_guard.insert(model.id.clone(), provider.id.clone());
+                    }
+                }
+
+                providers_guard.insert(provider.id.clone(), provider);
+            }
+        }
+
+        tracing::info!("Loaded {} providers and {} models total",
+                     providers_guard.len(), models_guard.len());
+
+        Ok(())
+    }
+
+    /// Get all available providers
+    pub async fn get_providers(&self) -> HashMap<String, Provider> {
+        self.providers.read().await.clone()
+    }
+
+    /// Get all available models
+    pub async fn get_models(&self) -> HashMap<String, Model> {
+        self.models.read().await.clone()
+    }
+
+    /// Get provider for a specific model
+    pub async fn get_provider_for_model(&self, model_id: &str) -> Option<String> {
+        self.model_to_provider.read().await.get(model_id).cloned()
+    }
+
+    /// Get specific model by ID
+    pub async fn get_model(&self, model_id: &str) -> Option<Model> {
+        self.models.read().await.get(model_id).cloned()
+    }
+
+    /// Get specific provider by ID
+    pub async fn get_provider(&self, provider_id: &str) -> Option<Provider> {
+        self.providers.read().await.get(provider_id).cloned()
+    }
+
+    /// Get models filtered by provider
+    pub async fn get_models_by_provider(&self, provider_id: &str) -> Vec<Model> {
+        let models = self.models.read().await;
+        let provider_map = self.model_to_provider.read().await;
+
+        models.iter()
+            .filter(|(id, _)| provider_map.get(*id).is_some_and(|p| p == provider_id))
+            .map(|(_, model)| model.clone())
             .collect()
     }
 
-    /// Get model by ID
-    pub async fn get_model(&self, model_id: &str) -> Option<Model> {
+    /// Convert models to ModelInfo format for API responses
+    pub async fn to_model_info_list(&self) -> Vec<ModelInfo> {
         let models = self.models.read().await;
-        models.get(model_id).cloned()
-    }
+        let provider_map = self.model_to_provider.read().await;
 
-    /// Extract capabilities from model metadata
-    fn extract_capabilities(model: &Model) -> Option<Vec<String>> {
-        let mut capabilities = Vec::new();
-
-        if model.tool_call {
-            capabilities.push("tool_call".to_string());
-        }
-        if model.attachment {
-            capabilities.push("attachment".to_string());
-        }
-        if model.reasoning {
-            capabilities.push("reasoning".to_string());
-        }
-        if model.structured_output.unwrap_or(false) {
-            capabilities.push("structured_output".to_string());
-        }
-
-        if capabilities.is_empty() {
-            None
-        } else {
-            Some(capabilities)
-        }
-    }
-
-    /// Validate model availability
-    pub async fn is_model_available(&self, model_id: &str) -> bool {
-        let models = self.models.read().await;
-        models.contains_key(model_id)
+        models.iter()
+            .map(|(id, model)| {
+                let provider_id = provider_map.get(id).cloned().unwrap_or_default();
+                ModelInfo {
+                    id: id.clone(),
+                    name: model.name.clone(),
+                    provider: provider_id,
+                    family: model.family.clone(),
+                    capabilities: None,
+                }
+            })
+            .collect()
     }
 }
 
@@ -146,27 +192,82 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_model_service_creation() {
+    fn test_model_service_new() {
         let service = ModelService::new();
-        // Service should be created successfully
-        let models = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(service.get_available_models());
-        assert!(
-            models.is_empty(),
-            "Model service should start with no models"
-        );
+        let providers = tokio::runtime::Runtime::new().unwrap().block_on(async {
+            service.get_providers().await
+        });
+        assert!(providers.is_empty());
     }
 
     #[test]
     fn test_model_service_default() {
         let service = ModelService::default();
-        let models = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(service.get_available_models());
-        assert!(
-            models.is_empty(),
-            "Default model service should start with no models"
-        );
+        let providers = tokio::runtime::Runtime::new().unwrap().block_on(async {
+            service.get_providers().await
+        });
+        assert!(providers.is_empty());
+    }
+
+    #[test]
+    fn test_model_service_empty_state() {
+        let service = ModelService::new();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+
+        rt.block_on(async {
+            assert!(service.get_providers().await.is_empty());
+            assert!(service.get_models().await.is_empty());
+            assert!(service.get_provider_for_model("test").await.is_none());
+            assert!(service.get_model("test").await.is_none());
+            assert!(service.get_provider("test").await.is_none());
+        });
+    }
+
+    #[test]
+    fn test_model_service_cloning() {
+        let service = ModelService::new();
+        let cloned = service.clone();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+
+        rt.block_on(async {
+            let providers1 = service.get_providers().await;
+            let providers2 = cloned.get_providers().await;
+            assert_eq!(providers1.len(), providers2.len());
+        });
+    }
+
+    #[test]
+    fn test_model_info_conversion_empty() {
+        let service = ModelService::new();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+
+        let result = rt.block_on(async {
+            service.to_model_info_list().await
+        });
+
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_models_by_provider_empty() {
+        let service = ModelService::new();
+        let result = service.get_models_by_provider("test_provider").await;
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_arc_rwlock_structure() {
+        let service = ModelService::new();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+
+        rt.block_on(async {
+            let providers = service.providers.read().await;
+            let models = service.models.read().await;
+            let model_to_provider = service.model_to_provider.read().await;
+
+            assert!(providers.is_empty());
+            assert!(models.is_empty());
+            assert!(model_to_provider.is_empty());
+        });
     }
 }

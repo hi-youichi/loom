@@ -45,3 +45,58 @@ impl Default for PregelConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pregel_durability_default_is_sync() {
+        assert_eq!(PregelDurability::default(), PregelDurability::Sync);
+    }
+
+    #[test]
+    fn test_pregel_durability_variants() {
+        assert_eq!(PregelDurability::Sync, PregelDurability::Sync);
+        assert_eq!(PregelDurability::Async, PregelDurability::Async);
+        assert_eq!(PregelDurability::Exit, PregelDurability::Exit);
+
+        assert_ne!(PregelDurability::Sync, PregelDurability::Async);
+        assert_ne!(PregelDurability::Async, PregelDurability::Exit);
+    }
+
+    #[test]
+    fn test_pregel_durability_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(PregelDurability::Sync);
+        set.insert(PregelDurability::Async);
+        set.insert(PregelDurability::Sync);
+        assert_eq!(set.len(), 2);
+    }
+
+    #[test]
+    fn test_pregel_config_default() {
+        let config = PregelConfig::default();
+        assert_eq!(config.max_steps, 100);
+        assert_eq!(config.durability, PregelDurability::Sync);
+        assert!(config.stream_mode.is_empty());
+        assert!(config.interrupt_before.is_empty());
+        assert!(config.interrupt_after.is_empty());
+    }
+
+    #[test]
+    fn test_pregel_config_clone() {
+        let config = PregelConfig::default();
+        let cloned = config.clone();
+        assert_eq!(config.max_steps, cloned.max_steps);
+        assert_eq!(config.durability, cloned.durability);
+    }
+
+    #[test]
+    fn test_pregel_config_debug() {
+        let config = PregelConfig::default();
+        let debug_str = format!("{:?}", config);
+        assert!(debug_str.contains("PregelConfig"));
+    }
+}

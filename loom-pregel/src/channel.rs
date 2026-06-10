@@ -462,3 +462,295 @@ pub fn build_channel(spec: &ChannelSpec) -> BoxedChannel {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_channel_spec_new() {
+        let spec = ChannelSpec::new(ChannelKind::LastValue);
+        assert!(matches!(spec.kind, ChannelKind::LastValue));
+    }
+
+    #[test]
+    fn test_channel_spec_clone() {
+        let spec = ChannelSpec::new(ChannelKind::Topic { accumulate: true });
+        let cloned = spec.clone();
+        assert!(matches!(cloned.kind, ChannelKind::Topic { accumulate: true }));
+    }
+
+    #[test]
+    fn test_channel_spec_debug() {
+        let spec = ChannelSpec::new(ChannelKind::LastValue);
+        let debug_str = format!("{:?}", spec);
+        assert!(debug_str.contains("ChannelSpec"));
+    }
+
+    #[test]
+    fn test_channel_kind_variants() {
+        let last_value = ChannelKind::LastValue;
+        let ephemeral = ChannelKind::Ephemeral;
+        let topic = ChannelKind::Topic { accumulate: false };
+        let tasks = ChannelKind::Tasks;
+
+        assert!(!matches!(last_value, ChannelKind::Topic { .. }));
+        assert!(!matches!(ephemeral, ChannelKind::LastValue));
+        assert!(matches!(topic, ChannelKind::Topic { .. }));
+        assert!(matches!(tasks, ChannelKind::Tasks));
+    }
+
+    #[test]
+    fn test_channel_kind_debug() {
+        let last_value = ChannelKind::LastValue;
+        let debug_str = format!("{:?}", last_value);
+        assert!(debug_str.contains("LastValue"));
+
+        let topic = ChannelKind::Topic { accumulate: true };
+        let debug_str = format!("{:?}", topic);
+        assert!(debug_str.contains("Topic"));
+    }
+
+    #[test]
+    fn test_build_channel_last_value() {
+        let spec = ChannelSpec::new(ChannelKind::LastValue);
+        let channel = build_channel(&spec);
+
+        assert_eq!(channel.channel_type(), "LastValueChannel");
+        assert!(channel.is_available());
+        assert_eq!(channel.snapshot(), serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_build_channel_ephemeral() {
+        let spec = ChannelSpec::new(ChannelKind::Ephemeral);
+        let channel = build_channel(&spec);
+
+        assert_eq!(channel.channel_type(), "EphemeralChannel");
+        assert!(channel.is_available());
+    }
+
+    #[test]
+    fn test_build_channel_topic() {
+        let spec = ChannelSpec::new(ChannelKind::Topic { accumulate: true });
+        let channel = build_channel(&spec);
+
+        assert_eq!(channel.channel_type(), "TopicChannel");
+        assert!(channel.is_available());
+    }
+
+    #[test]
+    fn test_build_channel_topic_non_accumulate() {
+        let spec = ChannelSpec::new(ChannelKind::Topic { accumulate: false });
+        let channel = build_channel(&spec);
+
+        assert_eq!(channel.channel_type(), "TopicChannel");
+        assert!(channel.is_available());
+    }
+
+    #[test]
+    fn test_build_channel_tasks() {
+        let spec = ChannelSpec::new(ChannelKind::Tasks);
+        let channel = build_channel(&spec);
+
+        assert_eq!(channel.channel_type(), "TasksChannel");
+        assert!(channel.is_available());
+    }
+
+    #[test]
+    fn test_build_channel_binary_aggregate() {
+        let reducer: Arc<dyn for<'a, 'b> Fn(std::option::Option<&'a ChannelValue>, &'b [ChannelValue]) -> ChannelValue + Send + Sync> = Arc::new(
+            |old: Option<&ChannelValue>, new: &[ChannelValue]| {
+                if let Some(old_value) = old {
+                    return old_value.clone();
+                }
+                if new.is_empty() {
+                    return ChannelValue::Null;
+                }
+                new.last().unwrap().clone()
+            }
+        );
+        
+        let spec = ChannelSpec::new(ChannelKind::BinaryAggregate { reducer });
+        let channel = build_channel(&spec);
+
+        assert_eq!(channel.channel_type(), "BinaryAggregateChannel");
+        assert!(channel.is_available());
+    }
+
+    #[test]
+    fn test_build_channel_named_barrier() {
+        let spec = ChannelSpec::new(ChannelKind::NamedBarrier {
+            expected: vec!["node1".to_string(), "node2".to_string()],
+        });
+        let channel = build_channel(&spec);
+
+        assert_eq!(channel.channel_type(), "NamedBarrierChannel");
+        assert!(channel.is_available());
+    }
+
+    #[test]
+    fn test_last_value_channel_lifecycle() {
+        let mut channel = LastValueChannel::new();
+
+        assert_eq!(channel.snapshot(), serde_json::Value::Null);
+        assert!(channel.is_available());
+
+        let changed = channel.update(&[serde_json::json!("value1"), serde_json::json!("value2")]);
+        assert!(changed);
+        assert_eq!(channel.snapshot(), serde_json::json!("value2"));
+
+        let changed = channel.consume();
+        assert!(!changed);
+
+        let changed = channel.finish();
+        assert!(changed);
+        assert!(!channel.is_available());
+    }
+
+    #[test]
+    fn test_ephemeral_channel_lifecycle() {
+        let mut channel = EphemeralChannel::new();
+
+        assert_eq!(channel.snapshot(), serde_json::Value::Null);
+
+        let changed = channel.update(&[serde_json::json!("value1")]);
+        assert!(changed);
+        assert_eq!(channel.snapshot(), serde_json::json!("value1"));
+
+        let changed = channel.consume();
+        assert!(!changed);
+        assert_eq!(channel.snapshot(), serde_json::json!("value1"));
+
+        let changed = channel.consume();
+        assert!(changed);
+        assert_eq!(channel.snapshot(), serde_json::Value::Null);
+
+        let changed = channel.finish();
+        assert!(changed);
+    }
+
+    #[test]
+    fn test_topic_channel_accumulate() {
+        let mut channel = TopicChannel::new(true);
+
+        channel.update(&[serde_json::json!("value1")]);
+        channel.update(&[serde_json::json!("value2")]);
+
+        let snapshot = channel.snapshot();
+        assert_eq!(snapshot, serde_json::json!(["value1", "value2"]));
+
+        let changed = channel.consume();
+        assert!(!changed);
+
+        let snapshot = channel.snapshot();
+        assert_eq!(snapshot, serde_json::json!(["value1", "value2"]));
+    }
+
+    #[test]
+    fn test_topic_channel_no_accumulate() {
+        let mut channel = TopicChannel::new(false);
+
+        channel.update(&[serde_json::json!("value1")]);
+        channel.update(&[serde_json::json!("value2")]);
+
+        let snapshot = channel.snapshot();
+        assert_eq!(snapshot, serde_json::json!(["value2"]));
+
+        let changed = channel.consume();
+        assert!(changed);
+
+        let snapshot = channel.snapshot();
+        assert_eq!(snapshot, serde_json::json!([]));
+    }
+
+    #[test]
+    fn test_tasks_channel_lifecycle() {
+        let mut channel = TasksChannel::new();
+
+        channel.update(&[serde_json::json!("task1"), serde_json::json!("task2")]);
+
+        let snapshot = channel.snapshot();
+        assert_eq!(snapshot, serde_json::json!(["task1", "task2"]));
+
+        let changed = channel.consume();
+        assert!(changed);
+
+        let snapshot = channel.snapshot();
+        assert_eq!(snapshot, serde_json::json!([]));
+    }
+
+    #[test]
+    fn test_binary_aggregate_channel() {
+        let reducer = Arc::new(|old: Option<&ChannelValue>, new: &[ChannelValue]| {
+            let old_count = old.and_then(|v| v.as_i64()).unwrap_or(0);
+            let new_count: i64 = new.iter().filter_map(|v| v.as_i64()).sum();
+            serde_json::json!(old_count + new_count)
+        });
+
+        let mut channel = BinaryAggregateChannel::new(reducer);
+
+        let changed = channel.update(&[serde_json::json!(5)]);
+        assert!(changed);
+        assert_eq!(channel.snapshot(), serde_json::json!(5));
+
+        let changed = channel.update(&[serde_json::json!(3)]);
+        assert!(changed);
+        assert_eq!(channel.snapshot(), serde_json::json!(8));
+
+        let changed = channel.consume();
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_named_barrier_channel() {
+        let mut channel = NamedBarrierChannel::new(vec!["node1".to_string(), "node2".to_string()]);
+
+        assert_eq!(channel.snapshot(), serde_json::Value::Null);
+        assert!(!channel.barrier_met());
+
+        let changed = channel.update(&[serde_json::json!("node1")]);
+        assert!(changed);
+        assert_eq!(channel.snapshot(), serde_json::Value::Null);
+
+        let changed = channel.update(&[serde_json::json!("node2")]);
+        assert!(changed);
+        assert_eq!(channel.snapshot(), serde_json::json!(true));
+
+        let changed = channel.update(&[serde_json::json!("node1")]);
+        assert!(!changed);
+
+        let changed = channel.consume();
+        assert!(changed);
+        assert_eq!(channel.snapshot(), serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_channel_update_empty_values() {
+        let mut last_value = LastValueChannel::new();
+        let changed = last_value.update(&[]);
+        assert!(!changed);
+
+        let mut topic = TopicChannel::new(false);
+        let changed = topic.update(&[]);
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_channel_finish_returns_false_when_already_finished() {
+        let mut last_value = LastValueChannel::new();
+        let changed = last_value.finish();
+        assert!(changed);
+
+        let changed = last_value.finish();
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_channel_consumes_are_noop_when_no_value() {
+        let mut last_value = LastValueChannel::new();
+        let changed = last_value.consume();
+        assert!(!changed);
+        assert!(last_value.is_available());
+    }
+}

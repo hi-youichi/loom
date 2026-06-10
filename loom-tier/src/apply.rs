@@ -26,6 +26,7 @@ pub async fn resolve_tier_and_build_config_with_resolver(
             );
 
             config.model = Some(resolved.model_id);
+            config.model_tier = None;
 
             if let Some(base_url) = resolved.base_url {
                 tracing::debug!(
@@ -56,24 +57,295 @@ pub async fn resolve_tier_and_build_config_with_resolver(
                 config.llm_provider_name = Some(provider_name);
             }
 
-            tracing::debug!(
-                final_model = ?config.model,
-                final_provider = ?config.llm_provider,
-                final_base_url = ?config.openai_base_url,
-                has_api_key = config.openai_api_key.is_some(),
-                "Applied complete tier-resolved model configuration"
-            );
+            config
         }
         None => {
             tracing::warn!(
                 tier = ?tier,
-                model = ?config.model,
-                llm_provider = ?config.llm_provider,
-                "tier resolution failed, using model as-is"
+                "Tier resolution failed, returning config as-is"
             );
+            config
         }
     }
-    config.model_tier = None;
-    config.parent_model_hint = None;
-    config
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use loom_react_config::ReactBuildConfig;
+    use model_spec_core::spec::ModelTier;
+    use crate::ResolvedTierModel;
+
+    struct MockTierResolver {
+        should_resolve: bool,
+        test_result: Option<ResolvedTierModel>,
+    }
+
+    #[async_trait::async_trait]
+    impl TierResolver for MockTierResolver {
+        async fn resolve_tier(
+            &self,
+            _config: &ReactBuildConfig,
+            _tier: ModelTier,
+        ) -> Option<ResolvedTierModel> {
+            if self.should_resolve {
+                self.test_result.clone()
+            } else {
+                None
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolve_tier_and_build_config_no_tier() {
+        let config = ReactBuildConfig {
+            model_tier: None,
+            model: Some("test_model".to_string()),
+            db_path: None,
+            thread_id: None,
+            trace_thread_id: None,
+            user_id: None,
+            system_prompt: None,
+            exa_api_key: None,
+            exa_codesearch_enabled: false,
+            twitter_api_key: None,
+            mcp_exa_url: String::new(),
+            mcp_remote_cmd: String::new(),
+            mcp_remote_args: String::new(),
+            github_token: None,
+            mcp_github_cmd: String::new(),
+            mcp_github_args: vec![],
+            mcp_github_url: None,
+            mcp_verbose: false,
+            openai_api_key: None,
+            openai_base_url: None,
+            llm_provider: None,
+            llm_provider_name: None,
+            openai_temperature: None,
+            embedding_api_key: None,
+            embedding_base_url: None,
+            embedding_model: None,
+            working_folder: None,
+            approval_policy: None,
+            compaction_config: None,
+            tot_config: Default::default(),
+            got_config: Default::default(),
+            mcp_servers: None,
+            skill_registry: None,
+            max_sub_agent_depth: None,
+            dry_run: false,
+            builtin_tool_filter: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
+            parent_model_hint: None,
+        };
+
+        let resolver = MockTierResolver {
+            should_resolve: true,
+            test_result: Some(ResolvedTierModel {
+                model_id: "resolved_model".to_string(),
+                base_url: Some("https://resolved.com".to_string()),
+                api_key: Some("resolved_key".to_string()),
+                provider_type: Some("resolved_type".to_string()),
+                provider_name: Some("resolved_provider".to_string()),
+            }),
+        };
+
+        let result = resolve_tier_and_build_config_with_resolver(&config, &resolver).await;
+
+        assert_eq!(result.model_tier, None);
+        assert_eq!(result.model.as_deref(), Some("test_model"));
+        assert_eq!(result.openai_base_url, None);
+        assert_eq!(result.openai_api_key, None);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_tier_and_build_config_resolution_success() {
+        let config = ReactBuildConfig {
+            model_tier: Some(ModelTier::Light),
+            model: None,
+            db_path: None,
+            thread_id: None,
+            trace_thread_id: None,
+            user_id: None,
+            system_prompt: None,
+            exa_api_key: None,
+            exa_codesearch_enabled: false,
+            twitter_api_key: None,
+            mcp_exa_url: String::new(),
+            mcp_remote_cmd: String::new(),
+            mcp_remote_args: String::new(),
+            github_token: None,
+            mcp_github_cmd: String::new(),
+            mcp_github_args: vec![],
+            mcp_github_url: None,
+            mcp_verbose: false,
+            openai_api_key: None,
+            openai_base_url: None,
+            llm_provider: None,
+            llm_provider_name: None,
+            openai_temperature: None,
+            embedding_api_key: None,
+            embedding_base_url: None,
+            embedding_model: None,
+            working_folder: None,
+            approval_policy: None,
+            compaction_config: None,
+            tot_config: Default::default(),
+            got_config: Default::default(),
+            mcp_servers: None,
+            skill_registry: None,
+            max_sub_agent_depth: None,
+            dry_run: false,
+            builtin_tool_filter: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
+            parent_model_hint: None,
+        };
+
+        let resolver = MockTierResolver {
+            should_resolve: true,
+            test_result: Some(ResolvedTierModel {
+                model_id: "resolved_model".to_string(),
+                base_url: Some("https://resolved.com".to_string()),
+                api_key: Some("resolved_key".to_string()),
+                provider_type: Some("resolved_type".to_string()),
+                provider_name: Some("resolved_provider".to_string()),
+            }),
+        };
+
+        let result = resolve_tier_and_build_config_with_resolver(&config, &resolver).await;
+
+        assert_eq!(result.model, Some("resolved_model".to_string()));
+        assert_eq!(result.openai_base_url, Some("https://resolved.com".to_string()));
+        assert_eq!(result.openai_api_key, Some("resolved_key".to_string()));
+        assert_eq!(result.llm_provider, Some("resolved_type".to_string()));
+        assert_eq!(result.llm_provider_name, Some("resolved_provider".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_tier_and_build_config_resolution_failure() {
+        let config = ReactBuildConfig {
+            model_tier: Some(ModelTier::Strong),
+            model: Some("original_model".to_string()),
+            openai_base_url: Some("https://original.com".to_string()),
+            openai_api_key: Some("original_key".to_string()),
+            llm_provider: Some("original_type".to_string()),
+            llm_provider_name: Some("original_provider".to_string()),
+            db_path: None,
+            thread_id: None,
+            trace_thread_id: None,
+            user_id: None,
+            system_prompt: None,
+            exa_api_key: None,
+            exa_codesearch_enabled: false,
+            twitter_api_key: None,
+            mcp_exa_url: String::new(),
+            mcp_remote_cmd: String::new(),
+            mcp_remote_args: String::new(),
+            github_token: None,
+            mcp_github_cmd: String::new(),
+            mcp_github_args: vec![],
+            mcp_github_url: None,
+            mcp_verbose: false,
+            openai_temperature: None,
+            embedding_api_key: None,
+            embedding_base_url: None,
+            embedding_model: None,
+            working_folder: None,
+            approval_policy: None,
+            compaction_config: None,
+            tot_config: Default::default(),
+            got_config: Default::default(),
+            mcp_servers: None,
+            skill_registry: None,
+            max_sub_agent_depth: None,
+            dry_run: false,
+            builtin_tool_filter: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
+            parent_model_hint: None,
+        };
+
+        let resolver = MockTierResolver {
+            should_resolve: false,
+            test_result: None,
+        };
+
+        let result = resolve_tier_and_build_config_with_resolver(&config, &resolver).await;
+
+        assert_eq!(result.model, Some("original_model".to_string()));
+        assert_eq!(result.openai_base_url, Some("https://original.com".to_string()));
+        assert_eq!(result.openai_api_key, Some("original_key".to_string()));
+        assert_eq!(result.llm_provider, Some("original_type".to_string()));
+        assert_eq!(result.llm_provider_name, Some("original_provider".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_tier_and_build_config_partial_resolution() {
+        let config = ReactBuildConfig {
+            model_tier: Some(ModelTier::Standard),
+            model: None,
+            db_path: None,
+            thread_id: None,
+            trace_thread_id: None,
+            user_id: None,
+            system_prompt: None,
+            exa_api_key: None,
+            exa_codesearch_enabled: false,
+            twitter_api_key: None,
+            mcp_exa_url: String::new(),
+            mcp_remote_cmd: String::new(),
+            mcp_remote_args: String::new(),
+            github_token: None,
+            mcp_github_cmd: String::new(),
+            mcp_github_args: vec![],
+            mcp_github_url: None,
+            mcp_verbose: false,
+            openai_base_url: None,
+            openai_api_key: None,
+            llm_provider: None,
+            llm_provider_name: None,
+            openai_temperature: None,
+            embedding_api_key: None,
+            embedding_base_url: None,
+            embedding_model: None,
+            working_folder: None,
+            approval_policy: None,
+            compaction_config: None,
+            tot_config: Default::default(),
+            got_config: Default::default(),
+            mcp_servers: None,
+            skill_registry: None,
+            max_sub_agent_depth: None,
+            dry_run: false,
+            builtin_tool_filter: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
+            parent_model_hint: None,
+        };
+
+        let resolver = MockTierResolver {
+            should_resolve: true,
+            test_result: Some(ResolvedTierModel {
+                model_id: "partial_model".to_string(),
+                base_url: Some("https://partial.com".to_string()),
+                api_key: None,
+                provider_type: None,
+                provider_name: None,
+            }),
+        };
+
+        let result = resolve_tier_and_build_config_with_resolver(&config, &resolver).await;
+
+        assert_eq!(result.model, Some("partial_model".to_string()));
+        assert_eq!(result.openai_base_url, Some("https://partial.com".to_string()));
+        assert_eq!(result.openai_api_key, None);
+        assert_eq!(result.llm_provider, None);
+        assert_eq!(result.llm_provider_name, None);
+    }
 }

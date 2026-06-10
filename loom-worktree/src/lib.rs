@@ -252,4 +252,323 @@ shared_cache:
         assert_eq!(cfg.include_patterns, vec![".env"]);
         assert_eq!(cfg.shared_cache_dirs, vec!["target/"]);
     }
+
+    #[test]
+    fn base_ref_variants() {
+        assert!(matches!(BaseRef::Fresh, BaseRef::Fresh));
+        assert!(matches!(BaseRef::Head, BaseRef::Head));
+        assert!(matches!(BaseRef::Ref("main".to_string()), BaseRef::Ref(_)));
+    }
+
+    #[test]
+    fn base_ref_default() {
+        let default_ref = BaseRef::default();
+        assert!(matches!(default_ref, BaseRef::Fresh));
+    }
+
+    #[test]
+    fn conflict_detection_variants() {
+        assert!(matches!(ConflictDetection::None, ConflictDetection::None));
+        assert!(matches!(ConflictDetection::FilePath, ConflictDetection::FilePath));
+        assert!(matches!(ConflictDetection::HunkLevel, ConflictDetection::HunkLevel));
+    }
+
+    #[test]
+    fn conflict_detection_default() {
+        let default_cd = ConflictDetection::default();
+        assert!(matches!(default_cd, ConflictDetection::None));
+    }
+
+    #[test]
+    fn cleanup_strategy_variants() {
+        assert!(matches!(CleanupStrategy::Sync, CleanupStrategy::Sync));
+        assert!(matches!(CleanupStrategy::AsyncTrash, CleanupStrategy::AsyncTrash));
+    }
+
+    #[test]
+    fn cleanup_strategy_default() {
+        let default_cs = CleanupStrategy::default();
+        assert!(matches!(default_cs, CleanupStrategy::Sync));
+    }
+
+    #[test]
+    fn worktree_state_variants() {
+        assert!(matches!(WorktreeState::Active, WorktreeState::Active));
+        assert!(matches!(WorktreeState::Completed, WorktreeState::Completed));
+        assert!(matches!(WorktreeState::Failed, WorktreeState::Failed));
+        assert!(matches!(WorktreeState::Trashed, WorktreeState::Trashed));
+    }
+
+    #[test]
+    fn worktree_state_equality() {
+        assert_eq!(WorktreeState::Active, WorktreeState::Active);
+        assert_ne!(WorktreeState::Active, WorktreeState::Completed);
+    }
+
+    #[test]
+    fn conflict_severity_variants() {
+        assert!(matches!(ConflictSeverity::FileOverlap, ConflictSeverity::FileOverlap));
+        assert!(matches!(ConflictSeverity::HunkOverlap, ConflictSeverity::HunkOverlap));
+    }
+
+    #[test]
+    fn conflict_severity_equality() {
+        assert_eq!(ConflictSeverity::FileOverlap, ConflictSeverity::FileOverlap);
+        assert_ne!(ConflictSeverity::FileOverlap, ConflictSeverity::HunkOverlap);
+    }
+
+    #[test]
+    fn worktree_config_default() {
+        let config = WorktreeConfig::default();
+        assert!(matches!(config.base_ref, BaseRef::Fresh));
+        assert!(config.storage_dir.is_none());
+        assert!(config.branch_prefix.is_none());
+        assert!(!config.auto_cleanup);
+        assert!(!config.detached);
+        assert!(config.include_patterns.is_empty());
+        assert!(config.symlink_patterns.is_empty());
+        assert!(config.shared_cache_dirs.is_empty());
+        assert!(config.sparse_paths.is_empty());
+        assert!(matches!(config.conflict_detection, ConflictDetection::None));
+        assert!(matches!(config.cleanup_strategy, CleanupStrategy::Sync));
+    }
+
+    #[test]
+    fn worktree_config_clone() {
+        let mut config = WorktreeConfig::default();
+        config.auto_cleanup = true;
+        config.branch_prefix = Some("custom-".to_string());
+        
+        let cloned = config.clone();
+        assert_eq!(cloned.auto_cleanup, true);
+        assert_eq!(cloned.branch_prefix, Some("custom-".to_string()));
+    }
+
+    #[test]
+    fn worktree_config_with_all_fields() {
+        let config = WorktreeConfig {
+            base_ref: BaseRef::Ref("main".to_string()),
+            storage_dir: Some(PathBuf::from("/custom/path")),
+            branch_prefix: Some("test-".to_string()),
+            auto_cleanup: true,
+            detached: false,
+            include_patterns: vec!["*.txt".to_string()],
+            symlink_patterns: vec!["node_modules".to_string()],
+            shared_cache_dirs: vec!["target/".to_string()],
+            sparse_paths: vec!["src/".to_string()],
+            conflict_detection: ConflictDetection::FilePath,
+            cleanup_strategy: CleanupStrategy::AsyncTrash,
+        };
+
+        assert!(matches!(config.base_ref, BaseRef::Ref(_)));
+        assert_eq!(config.storage_dir, Some(PathBuf::from("/custom/path")));
+        assert_eq!(config.branch_prefix, Some("test-".to_string()));
+        assert!(config.auto_cleanup);
+        assert!(!config.detached);
+        assert_eq!(config.include_patterns.len(), 1);
+        assert_eq!(config.symlink_patterns.len(), 1);
+        assert_eq!(config.shared_cache_dirs.len(), 1);
+        assert_eq!(config.sparse_paths.len(), 1);
+        assert!(matches!(config.conflict_detection, ConflictDetection::FilePath));
+        assert!(matches!(config.cleanup_strategy, CleanupStrategy::AsyncTrash));
+    }
+
+    #[test]
+    fn sanitize_slug_empty_string() {
+        assert_eq!(sanitize_slug(""), "");
+    }
+
+    #[test]
+    fn sanitize_unicode_chars() {
+        assert_eq!(sanitize_slug("用户任务"), "用户任务");
+    }
+
+    #[test]
+    fn sanitize_slug_special_only() {
+        assert_eq!(sanitize_slug("@#$%"), "");
+    }
+
+    #[test]
+    fn sanitize_slug_preserves_case() {
+        assert_eq!(sanitize_slug("MyTask"), "MyTask");
+    }
+
+    #[test]
+    fn sanitize_slug_numbers() {
+        assert_eq!(sanitize_slug("task123"), "task123");
+    }
+
+    #[test]
+    fn worktree_profile_config_all_fields() {
+        let yaml = r#"
+base_ref: "origin/main"
+auto_cleanup: true
+cleanup_strategy: "sync"
+conflict_detection: "hunk_level"
+include:
+  - "*.env"
+  - "*.md"
+symlink:
+  - "node_modules"
+shared_cache:
+  - "target/"
+  - ".next/"
+sparse_paths:
+  - "src/"
+  - "tests/"
+"#;
+        let profile: WorktreeProfileConfig = serde_yaml::from_str(yaml).unwrap();
+        
+        assert_eq!(profile.base_ref, Some("origin/main".to_string()));
+        assert_eq!(profile.auto_cleanup, Some(true));
+        assert_eq!(profile.cleanup_strategy, Some("sync".to_string()));
+        assert_eq!(profile.conflict_detection, Some("hunk_level".to_string()));
+        assert_eq!(profile.include.len(), 2);
+        assert_eq!(profile.symlink.len(), 1);
+        assert_eq!(profile.shared_cache.len(), 2);
+        assert_eq!(profile.sparse_paths.len(), 2);
+    }
+
+    #[test]
+    fn worktree_profile_config_to_config_conversions() {
+        let test_cases = vec![
+            ("base_ref: fresh", BaseRef::Fresh),
+            ("base_ref: head", BaseRef::Head),
+            ("base_ref: \"custom\"", BaseRef::Ref("custom".to_string())),
+        ];
+
+        for (yaml, _expected_base_ref) in test_cases {
+            let profile: WorktreeProfileConfig = serde_yaml::from_str(yaml).unwrap();
+            let config = profile.to_worktree_config();
+            assert!(matches!(config.base_ref, _expected_base_ref));
+        }
+    }
+
+    #[test]
+    fn worktree_profile_config_cleanup_strategies() {
+        let test_cases = vec![
+            ("cleanup_strategy: sync", CleanupStrategy::Sync),
+            ("cleanup_strategy: async_trash", CleanupStrategy::AsyncTrash),
+            ("cleanup_strategy: invalid", CleanupStrategy::Sync), // defaults to sync
+        ];
+
+        for (yaml, _expected_strategy) in test_cases {
+            let profile: WorktreeProfileConfig = serde_yaml::from_str(yaml).unwrap();
+            let config = profile.to_worktree_config();
+            assert!(matches!(config.cleanup_strategy, _expected_strategy));
+        }
+    }
+
+    #[test]
+    fn worktree_profile_config_conflict_detection() {
+        let test_cases = vec![
+            ("conflict_detection: none", ConflictDetection::None),
+            ("conflict_detection: file_path", ConflictDetection::FilePath),
+            ("conflict_detection: hunk_level", ConflictDetection::HunkLevel),
+            ("conflict_detection: invalid", ConflictDetection::None), // defaults to none
+        ];
+
+        for (yaml, _expected_cd) in test_cases {
+            let profile: WorktreeProfileConfig = serde_yaml::from_str(yaml).unwrap();
+            let config = profile.to_worktree_config();
+            assert!(matches!(config.conflict_detection, _expected_cd));
+        }
+    }
+
+    #[test]
+    fn worktree_profile_config_auto_cleanup_defaults() {
+        let profile: WorktreeProfileConfig = serde_yaml::from_str("{}").unwrap();
+        let config = profile.to_worktree_config();
+        assert_eq!(config.auto_cleanup, true); // defaults to true
+    }
+
+    #[test]
+    fn conflict_info_structure() {
+        let info = ConflictInfo {
+            other_agent: "agent-b".to_string(),
+            conflicting_paths: vec!["src/main.rs".to_string(), "src/utils.rs".to_string()],
+            severity: ConflictSeverity::FileOverlap,
+        };
+
+        assert_eq!(info.other_agent, "agent-b");
+        assert_eq!(info.conflicting_paths.len(), 2);
+        assert!(matches!(info.severity, ConflictSeverity::FileOverlap));
+    }
+
+    #[test]
+    fn detect_worktree_nesting_with_git_file() {
+        use tempfile::TempDir;
+        let dir = TempDir::new().unwrap();
+        let git_dir = dir.path().join(".git");
+        
+        // Create a .git file that points to a Loom worktree
+        std::fs::write(&git_dir, "gitdir: /path/to/.loom/worktrees/agent-123/.git").unwrap();
+        
+        assert!(detect_worktree_nesting(dir.path()));
+    }
+
+    #[test]
+    fn detect_worktree_nesting_without_loom_path() {
+        use tempfile::TempDir;
+        let dir = TempDir::new().unwrap();
+        let git_dir = dir.path().join(".git");
+        
+        // Create a .git file that doesn't point to a Loom worktree
+        std::fs::write(&git_dir, "gitdir: /other/path/.git").unwrap();
+        
+        assert!(!detect_worktree_nesting(dir.path()));
+    }
+
+    #[test]
+    fn detect_worktree_nesting_without_git_file() {
+        use tempfile::TempDir;
+        let dir = TempDir::new().unwrap();
+        
+        // No .git file exists
+        assert!(!detect_worktree_nesting(dir.path()));
+    }
+
+    #[test]
+    fn worktree_state_debug() {
+        // Verify WorktreeState implements Debug
+        let state = WorktreeState::Active;
+        let debug_str = format!("{:?}", state);
+        assert!(debug_str.contains("Active"));
+    }
+
+    #[test]
+    fn conflict_severity_debug() {
+        // Verify ConflictSeverity implements Debug
+        let severity = ConflictSeverity::FileOverlap;
+        let debug_str = format!("{:?}", severity);
+        assert!(debug_str.contains("FileOverlap"));
+    }
+
+    #[test]
+    fn sanitize_slug_preserves_underscores() {
+        assert_eq!(sanitize_slug("task_name"), "task_name");
+    }
+
+    #[test]
+    fn sanitize_slug_mixed_special_chars() {
+        assert_eq!(sanitize_slug("task-name_v2.test"), "task-name_v2test");
+    }
+
+    #[test]
+    fn worktree_profile_config_json_parsing() {
+        let json = r#"{
+            "base_ref": "main",
+            "auto_cleanup": false,
+            "cleanup_strategy": "async_trash",
+            "conflict_detection": "file_path"
+        }"#;
+        
+        let profile: WorktreeProfileConfig = serde_json::from_str(json).unwrap();
+        let config = profile.to_worktree_config();
+        
+        assert!(matches!(config.base_ref, BaseRef::Ref(_)));
+        assert!(!config.auto_cleanup);
+        assert!(matches!(config.cleanup_strategy, CleanupStrategy::AsyncTrash));
+        assert!(matches!(config.conflict_detection, ConflictDetection::FilePath));
+    }
 }

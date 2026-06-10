@@ -154,3 +154,156 @@ where
         arguments: Value,
     },
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::CheckpointEvent;
+    use serde_json::json;
+
+    #[derive(Clone, Debug)]
+    struct TestState(String);
+
+    #[test]
+    fn values_variant() {
+        let ev = StreamEvent::<TestState>::Values(TestState("snap".to_string()));
+        if let StreamEvent::Values(s) = ev {
+            assert_eq!(s.0, "snap");
+        } else {
+            panic!("expected Values");
+        }
+    }
+
+    #[test]
+    fn updates_variant() {
+        let ev = StreamEvent::<TestState>::Updates {
+            node_id: "think".to_string(),
+            state: TestState("updated".to_string()),
+            namespace: Some("ns".to_string()),
+        };
+        if let StreamEvent::Updates { node_id, state, namespace } = ev {
+            assert_eq!(node_id, "think");
+            assert_eq!(state.0, "updated");
+            assert_eq!(namespace.as_deref(), Some("ns"));
+        } else {
+            panic!("expected Updates");
+        }
+    }
+
+    #[test]
+    fn custom_variant() {
+        let ev = StreamEvent::<TestState>::Custom(json!({"key": "val"}));
+        if let StreamEvent::Custom(v) = ev {
+            assert_eq!(v["key"], "val");
+        } else {
+            panic!("expected Custom");
+        }
+    }
+
+    #[test]
+    fn checkpoint_variant() {
+        let cp = CheckpointEvent {
+            checkpoint_id: "cp-1".to_string(),
+            timestamp: "2025-01-01".to_string(),
+            step: 0,
+            state: TestState("s".to_string()),
+            thread_id: None,
+            checkpoint_ns: None,
+        };
+        let ev = StreamEvent::Checkpoint(cp);
+        if let StreamEvent::Checkpoint(c) = ev {
+            assert_eq!(c.checkpoint_id, "cp-1");
+        } else {
+            panic!("expected Checkpoint");
+        }
+    }
+
+    #[test]
+    fn task_start_variant() {
+        let ev = StreamEvent::<TestState>::TaskStart {
+            node_id: "act".to_string(),
+            namespace: None,
+        };
+        if let StreamEvent::TaskStart { node_id, .. } = ev {
+            assert_eq!(node_id, "act");
+        } else {
+            panic!("expected TaskStart");
+        }
+    }
+
+    #[test]
+    fn task_end_variant() {
+        let ev = StreamEvent::<TestState>::TaskEnd {
+            node_id: "act".to_string(),
+            result: Ok(()),
+            namespace: None,
+        };
+        if let StreamEvent::TaskEnd { result, .. } = ev {
+            assert!(result.is_ok());
+        } else {
+            panic!("expected TaskEnd");
+        }
+    }
+
+    #[test]
+    fn tot_expand_variant() {
+        let ev = StreamEvent::<TestState>::TotExpand {
+            candidates: vec!["a".to_string(), "b".to_string()],
+        };
+        if let StreamEvent::TotExpand { candidates } = ev {
+            assert_eq!(candidates.len(), 2);
+        } else {
+            panic!("expected TotExpand");
+        }
+    }
+
+    #[test]
+    fn tot_evaluate_variant() {
+        let ev = StreamEvent::<TestState>::TotEvaluate {
+            chosen: 1,
+            scores: vec![0.3, 0.9],
+        };
+        if let StreamEvent::TotEvaluate { chosen, scores } = ev {
+            assert_eq!(chosen, 1);
+            assert_eq!(scores.len(), 2);
+        } else {
+            panic!("expected TotEvaluate");
+        }
+    }
+
+    #[test]
+    fn usage_variant() {
+        let ev = StreamEvent::<TestState>::Usage {
+            prompt_tokens: 10,
+            completion_tokens: 20,
+            total_tokens: 30,
+            prefill_duration: Some(std::time::Duration::from_millis(100)),
+            decode_duration: None,
+        };
+        if let StreamEvent::Usage { total_tokens, .. } = ev {
+            assert_eq!(total_tokens, 30);
+        } else {
+            panic!("expected Usage");
+        }
+    }
+
+    #[test]
+    fn tool_call_variant() {
+        let ev = StreamEvent::<TestState>::ToolCall {
+            call_id: Some("c1".to_string()),
+            name: "bash".to_string(),
+            arguments: json!({"cmd": "ls"}),
+        };
+        if let StreamEvent::ToolCall { name, .. } = ev {
+            assert_eq!(name, "bash");
+        } else {
+            panic!("expected ToolCall");
+        }
+    }
+
+    #[test]
+    fn debug_format() {
+        let ev = StreamEvent::<TestState>::Values(TestState("x".to_string()));
+        let s = format!("{:?}", ev);
+        assert!(s.contains("Values"));
+    }
+}

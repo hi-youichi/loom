@@ -14,6 +14,12 @@ const MAX_TITLE_LENGTH: usize = 80;
 
 const FALLBACK_MAX_CHARS: usize = 20;
 
+fn fallback_title(user_message: &str) -> String {
+    let chars: Vec<char> = user_message.chars().collect();
+    let truncate_len = std::cmp::min(FALLBACK_MAX_CHARS, chars.len());
+    chars[..truncate_len].iter().collect()
+}
+
 /// Generate a title for a conversation based on the first user message.
 ///
 /// Uses the Light-tier model from the same provider as the given model string.
@@ -72,11 +78,69 @@ async fn generate_title_llm(user_message: &str, model: Option<&str>) -> Option<S
     }
 }
 
-fn fallback_title(user_message: &str) -> String {
-    let truncated: String = user_message.chars().take(FALLBACK_MAX_CHARS).collect();
-    if user_message.chars().count() > FALLBACK_MAX_CHARS {
-        format!("{}...", truncated)
-    } else {
-        truncated
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fallback_title_short_message() {
+        let result = fallback_title("Hello");
+        assert_eq!(result, "Hello");
+    }
+
+    #[test]
+    fn test_fallback_title_exact_length() {
+        let message = "12345678901234567890";
+        let result = fallback_title(message);
+        assert_eq!(result, message);
+    }
+
+    #[test]
+    fn test_fallback_title_long_message() {
+        let message = "1234567890123456789012345";
+        let result = fallback_title(message);
+        assert_eq!(result.len(), 20);
+        assert_eq!(result, "12345678901234567890");
+    }
+
+    #[test]
+    fn test_fallback_title_empty_message() {
+        let result = fallback_title("");
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_fallback_title_unicode_characters() {
+        let message = "你好世界，这是一个测试";
+        let result = fallback_title(message);
+        assert_eq!(result, message);
+    }
+
+    #[test]
+    fn test_fallback_title_mixed_unicode() {
+        let message = "Hello你好World世界";
+        let result = fallback_title(message);
+        assert_eq!(result, message);
+    }
+
+    #[test]
+    fn test_constants_are_reasonable() {
+        assert_eq!(TITLE_TIMEOUT.as_secs(), 10);
+        assert_eq!(MAX_TITLE_LENGTH, 80);
+        assert_eq!(FALLBACK_MAX_CHARS, 20);
+    }
+
+    #[test]
+    fn test_fallback_title_multibyte_truncation() {
+        let message = "12345678901234567890你好";
+        let result = fallback_title(message);
+        assert_eq!(result.len(), 20);
+        assert_eq!(result, "12345678901234567890");
+    }
+
+    #[tokio::test]
+    async fn test_generate_title_fallback_path() {
+        let result = generate_title("test message", None).await;
+        assert_eq!(result, "test message");
     }
 }

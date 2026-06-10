@@ -52,7 +52,7 @@ pub(super) fn messages_to_openai(messages: &[Message]) -> Vec<ChatCompletionRequ
                                 ContentPart::ImageUrl { url, detail } => {
                                     let image_url = ImageUrl {
                                         url: url.clone(),
-                                        detail: detail.as_ref().map(|d| match d.as_str() {
+                                        detail: detail.as_ref().map(|d: &String| match d.as_str() {
                                             "low" => ImageDetail::Low,
                                             "auto" => ImageDetail::Auto,
                                             _ => ImageDetail::High,

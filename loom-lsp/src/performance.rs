@@ -402,4 +402,380 @@ mod tests {
         assert_eq!(stats.cache_hit_rate(), 50.0);
         assert_eq!(stats.average_duration(), Duration::from_millis(10));
     }
+
+    #[test]
+    fn test_operation_stats_empty() {
+        let stats = OperationStats::default();
+        assert_eq!(stats.total_count, 0);
+        assert_eq!(stats.success_count, 0);
+        assert_eq!(stats.failure_count, 0);
+        assert_eq!(stats.cache_hit_count, 0);
+        assert_eq!(stats.total_duration, Duration::ZERO);
+        assert!(stats.min_duration.is_none());
+        assert!(stats.max_duration.is_none());
+        assert_eq!(stats.success_rate(), 0.0);
+        assert_eq!(stats.cache_hit_rate(), 0.0);
+        assert_eq!(stats.average_duration(), Duration::ZERO);
+    }
+
+    #[test]
+    fn test_operation_stats_min_max_duration() {
+        let mut stats = OperationStats::default();
+        stats.min_duration = Some(Duration::from_millis(5));
+        stats.max_duration = Some(Duration::from_millis(100));
+
+        assert_eq!(stats.min_duration, Some(Duration::from_millis(5)));
+        assert_eq!(stats.max_duration, Some(Duration::from_millis(100)));
+    }
+
+    #[test]
+    fn test_performance_monitor_default() {
+        let monitor = PerformanceMonitor::default();
+        assert_eq!(monitor.operation_types().len(), 0);
+        assert_eq!(monitor.languages().len(), 0);
+    }
+
+    #[test]
+    fn test_performance_monitor_multiple_operations() {
+        let monitor = PerformanceMonitor::new(100);
+
+        for i in 0..10 {
+            let metric = OperationMetric {
+                operation_type: format!("operation_{}", i % 3),
+                language: format!("lang_{}", i % 2),
+                duration: Duration::from_millis(10 + i as u64 * 5),
+                success: i % 2 == 0,
+                cache_hit: i % 3 == 0,
+                timestamp: Instant::now(),
+            };
+            monitor.record(metric);
+        }
+
+        let operations = monitor.operation_types();
+        assert_eq!(operations.len(), 3);
+
+        let languages = monitor.languages();
+        assert_eq!(languages.len(), 2);
+    }
+
+    #[test]
+    fn test_performance_monitor_clear() {
+        let monitor = PerformanceMonitor::new(100);
+
+        for _ in 0..5 {
+            let metric = OperationMetric {
+                operation_type: "test".to_string(),
+                language: "rust".to_string(),
+                duration: Duration::from_millis(10),
+                success: true,
+                cache_hit: false,
+                timestamp: Instant::now(),
+            };
+            monitor.record(metric);
+        }
+
+        assert!(monitor.operation_types().len() > 0);
+        assert!(monitor.languages().len() > 0);
+
+        monitor.clear();
+
+        assert_eq!(monitor.operation_types().len(), 0);
+        assert_eq!(monitor.languages().len(), 0);
+    }
+
+    #[test]
+    fn test_performance_monitor_language_stats() {
+        let monitor = PerformanceMonitor::new(100);
+
+        let metric1 = OperationMetric {
+            operation_type: "completion".to_string(),
+            language: "rust".to_string(),
+            duration: Duration::from_millis(50),
+            success: true,
+            cache_hit: false,
+            timestamp: Instant::now(),
+        };
+
+        let metric2 = OperationMetric {
+            operation_type: "completion".to_string(),
+            language: "typescript".to_string(),
+            duration: Duration::from_millis(30),
+            success: false,
+            cache_hit: true,
+            timestamp: Instant::now(),
+        };
+
+        monitor.record(metric1);
+        monitor.record(metric2);
+
+        let rust_stats = monitor.get_language_stats("rust").unwrap();
+        assert_eq!(rust_stats.total_count, 1);
+        assert_eq!(rust_stats.success_count, 1);
+
+        let ts_stats = monitor.get_language_stats("typescript").unwrap();
+        assert_eq!(ts_stats.total_count, 1);
+        assert_eq!(ts_stats.failure_count, 1);
+    }
+
+    #[test]
+    fn test_performance_monitor_stats_aggregation() {
+        let monitor = PerformanceMonitor::new(100);
+
+        for i in 0..5 {
+            let metric = OperationMetric {
+                operation_type: "completion".to_string(),
+                language: "rust".to_string(),
+                duration: Duration::from_millis(10 + i * 10),
+                success: true,
+                cache_hit: i % 2 == 0,
+                timestamp: Instant::now(),
+            };
+            monitor.record(metric);
+        }
+
+        let stats = monitor.get_operation_stats("completion").unwrap();
+        assert_eq!(stats.total_count, 5);
+        assert_eq!(stats.success_count, 5);
+        assert_eq!(stats.cache_hit_count, 3); // 0, 2, 4
+        assert_eq!(stats.total_duration.as_millis(), 150); // 10 + 20 + 30 + 40 + 50
+        assert_eq!(stats.min_duration, Some(Duration::from_millis(10)));
+        assert_eq!(stats.max_duration, Some(Duration::from_millis(50)));
+    }
+
+    #[test]
+    fn test_performance_report_generation() {
+        let monitor = PerformanceMonitor::new(100);
+
+        let metric = OperationMetric {
+            operation_type: "completion".to_string(),
+            language: "rust".to_string(),
+            duration: Duration::from_millis(50),
+            success: true,
+            cache_hit: false,
+            timestamp: Instant::now(),
+        };
+
+        monitor.record(metric);
+
+        let report = monitor.generate_report();
+        assert_eq!(report.total_operations, 1);
+        assert_eq!(report.total_success, 1);
+        assert_eq!(report.total_failures, 0);
+        assert_eq!(report.total_cache_hits, 0);
+        assert!(report.average_latency_ms > 0.0);
+        assert_eq!(report.operation_breakdown.len(), 1);
+        assert_eq!(report.language_breakdown.len(), 1);
+    }
+
+    #[test]
+    fn test_performance_report_empty() {
+        let monitor = PerformanceMonitor::new(100);
+        let report = monitor.generate_report();
+
+        assert_eq!(report.total_operations, 0);
+        assert_eq!(report.total_success, 0);
+        assert_eq!(report.total_failures, 0);
+        assert_eq!(report.total_cache_hits, 0);
+        assert_eq!(report.average_latency_ms, 0.0);
+        assert!(report.operation_breakdown.is_empty());
+        assert!(report.language_breakdown.is_empty());
+    }
+
+    #[test]
+    fn test_performance_report_success_rate() {
+        let report = PerformanceReport {
+            total_operations: 10,
+            total_success: 8,
+            total_failures: 2,
+            total_cache_hits: 5,
+            average_latency_ms: 50.0,
+            operation_breakdown: HashMap::new(),
+            language_breakdown: HashMap::new(),
+        };
+
+        assert_eq!(report.success_rate(), 80.0);
+        assert_eq!(report.cache_hit_rate(), 50.0);
+    }
+
+    #[test]
+    fn test_performance_report_zero_operations() {
+        let report = PerformanceReport {
+            total_operations: 0,
+            total_success: 0,
+            total_failures: 0,
+            total_cache_hits: 0,
+            average_latency_ms: 0.0,
+            operation_breakdown: HashMap::new(),
+            language_breakdown: HashMap::new(),
+        };
+
+        assert_eq!(report.success_rate(), 0.0);
+        assert_eq!(report.cache_hit_rate(), 0.0);
+    }
+
+    #[test]
+    fn test_operation_timer() {
+        let monitor = Arc::new(PerformanceMonitor::new(100));
+        let timer = OperationTimer::new(
+            "test_operation".to_string(),
+            "test_language".to_string(),
+            monitor.clone(),
+        );
+
+        std::thread::sleep(Duration::from_millis(10));
+        timer.finish(true, true);
+
+        let stats = monitor.get_operation_stats("test_operation").unwrap();
+        assert_eq!(stats.total_count, 1);
+        assert_eq!(stats.success_count, 1);
+        assert_eq!(stats.cache_hit_count, 1);
+    }
+
+    #[test]
+    fn test_operation_timer_failure() {
+        let monitor = Arc::new(PerformanceMonitor::new(100));
+        let timer = OperationTimer::new(
+            "failing_operation".to_string(),
+            "test_language".to_string(),
+            monitor.clone(),
+        );
+
+        std::thread::sleep(Duration::from_millis(5));
+        timer.finish(false, false);
+
+        let stats = monitor.get_operation_stats("failing_operation").unwrap();
+        assert_eq!(stats.total_count, 1);
+        assert_eq!(stats.failure_count, 1);
+        assert_eq!(stats.success_count, 0);
+    }
+
+    #[test]
+    fn test_operation_metric_fields() {
+        let metric = OperationMetric {
+            operation_type: "test_op".to_string(),
+            language: "test_lang".to_string(),
+            duration: Duration::from_millis(100),
+            success: true,
+            cache_hit: false,
+            timestamp: Instant::now(),
+        };
+
+        assert_eq!(metric.operation_type, "test_op");
+        assert_eq!(metric.language, "test_lang");
+        assert_eq!(metric.duration, Duration::from_millis(100));
+        assert!(metric.success);
+        assert!(!metric.cache_hit);
+    }
+
+    #[test]
+    fn test_operation_report_fields() {
+        let op_report = OperationReport {
+            count: 100,
+            success_rate: 95.0,
+            cache_hit_rate: 40.0,
+            average_latency_ms: 25.5,
+            min_latency_ms: 5.0,
+            max_latency_ms: 200.0,
+        };
+
+        assert_eq!(op_report.count, 100);
+        assert_eq!(op_report.success_rate, 95.0);
+        assert_eq!(op_report.cache_hit_rate, 40.0);
+        assert_eq!(op_report.average_latency_ms, 25.5);
+        assert_eq!(op_report.min_latency_ms, 5.0);
+        assert_eq!(op_report.max_latency_ms, 200.0);
+    }
+
+    #[test]
+    fn test_performance_monitor_circular_buffer() {
+        let monitor = PerformanceMonitor::new(3); // Small buffer
+
+        for i in 0..5 {
+            let metric = OperationMetric {
+                operation_type: "test".to_string(),
+                language: "rust".to_string(),
+                duration: Duration::from_millis(i as u64 * 10),
+                success: true,
+                cache_hit: false,
+                timestamp: Instant::now(),
+            };
+            monitor.record(metric);
+        }
+
+        let stats = monitor.get_operation_stats("test").unwrap();
+        assert_eq!(stats.total_count, 5); // Stats should still count all operations
+    }
+
+    #[test]
+    fn test_multiple_languages_stats() {
+        let monitor = PerformanceMonitor::new(100);
+
+        let languages = vec!["rust", "typescript", "python", "go", "java"];
+
+        for (i, lang) in languages.iter().enumerate() {
+            let metric = OperationMetric {
+                operation_type: "completion".to_string(),
+                language: lang.to_string(),
+                duration: Duration::from_millis(((i + 1) * 10) as u64),
+                success: true,
+                cache_hit: i % 2 == 0,
+                timestamp: Instant::now(),
+            };
+            monitor.record(metric);
+        }
+
+        assert_eq!(monitor.languages().len(), 5);
+
+        for lang in &languages {
+            let stats = monitor.get_language_stats(lang);
+            assert!(stats.is_some());
+        }
+    }
+
+    #[test]
+    fn test_performance_report_comprehensive() {
+        let monitor = PerformanceMonitor::new(100);
+
+        // Add various operations
+        let operations = vec![
+            ("completion", "rust", Duration::from_millis(50), true, true),
+            ("completion", "typescript", Duration::from_millis(30), true, false),
+            ("hover", "rust", Duration::from_millis(20), true, true),
+            ("definition", "python", Duration::from_millis(80), true, false),
+            ("completion", "rust", Duration::from_millis(40), false, false),
+        ];
+
+        for (op_type, lang, duration, success, cache_hit) in operations {
+            let metric = OperationMetric {
+                operation_type: op_type.to_string(),
+                language: lang.to_string(),
+                duration,
+                success,
+                cache_hit,
+                timestamp: Instant::now(),
+            };
+            monitor.record(metric);
+        }
+
+        let report = monitor.generate_report();
+        assert_eq!(report.total_operations, 5);
+        assert_eq!(report.total_success, 4);
+        assert_eq!(report.total_failures, 1);
+        assert_eq!(report.total_cache_hits, 2);
+        assert_eq!(report.operation_breakdown.len(), 3);
+        assert_eq!(report.language_breakdown.len(), 3);
+    }
+
+    #[test]
+    fn test_operation_stats_failure_count() {
+        let mut stats = OperationStats::default();
+        stats.total_count = 10;
+        stats.success_count = 7;
+        stats.failure_count = 3;
+
+        assert_eq!(stats.total_count, 10);
+        assert_eq!(stats.success_count, 7);
+        assert_eq!(stats.failure_count, 3);
+        assert_eq!(stats.success_rate(), 70.0);
+    }
 }

@@ -576,3 +576,351 @@ fn prepare_push_tasks(
         );
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::channel::{ChannelKind, ChannelSpec};
+    use crate::node::PregelNode;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use async_trait::async_trait;
+    use loom_llm::AgentError;
+    use crate::node::{PregelNodeInput, PregelNodeOutput, PregelNodeContext};
+
+    struct MockNode {
+        name: String,
+        triggers: Vec<String>,
+        reads: Vec<String>,
+    }
+
+    impl MockNode {
+        fn new(name: &str, triggers: &[&str], reads: &[&str]) -> Self {
+            Self {
+                name: name.to_string(),
+                triggers: triggers.iter().map(|s| s.to_string()).collect(),
+                reads: reads.iter().map(|s| s.to_string()).collect(),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl PregelNode for MockNode {
+        fn name(&self) -> &str {
+            &self.name
+        }
+
+        fn triggers(&self) -> &[String] {
+            &self.triggers
+        }
+
+        fn reads(&self) -> &[String] {
+            &self.reads
+        }
+
+        async fn run(
+            &self,
+            _input: PregelNodeInput,
+            _ctx: &PregelNodeContext,
+        ) -> Result<PregelNodeOutput, AgentError> {
+            Ok(PregelNodeOutput::default())
+        }
+    }
+
+    fn create_test_checkpoint() -> loom_graph::memory::Checkpoint<serde_json::Value> {
+        loom_graph::memory::Checkpoint {
+            id: "test-checkpoint".to_string(),
+            ts: "1234567890".to_string(),
+            v: 2,
+            kernel: loom_graph::memory::KernelMetadata {
+                source: loom_graph::memory::CheckpointSource::default(),
+                step: 0,
+                created_at: None,
+                parents: HashMap::new(),
+                children: HashMap::new(),
+                summary: None,
+            },
+            channel_values: serde_json::json!({}),
+            updated_channels: None,
+            pending_sends: vec![],
+            pending_writes: vec![],
+            pending_interrupts: vec![],
+            channel_versions: HashMap::new(),
+            versions_seen: HashMap::new(),
+            user: (),
+        }
+    }
+
+    fn create_test_graph() -> PregelGraph {
+        let mut nodes = HashMap::new();
+        nodes.insert(
+            "node1".to_string(),
+            Arc::new(MockNode::new("node1", &["input1"], &["input1", "input2"])) as Arc<dyn PregelNode>,
+        );
+        nodes.insert(
+            "node2".to_string(),
+            Arc::new(MockNode::new("node2", &["input2"], &["input2"])) as Arc<dyn PregelNode>,
+        );
+
+        let mut channels = HashMap::new();
+        channels.insert("input1".to_string(), ChannelSpec::new(ChannelKind::LastValue));
+        channels.insert("input2".to_string(), ChannelSpec::new(ChannelKind::LastValue));
+
+        PregelGraph {
+            nodes,
+            channels,
+            input_channels: vec!["input1".to_string()],
+            output_channels: vec![],
+            trigger_to_nodes: HashMap::new(),
+        }
+    }
+
+    fn create_test_channels() -> HashMap<ChannelName, BoxedChannel> {
+        let mut channels = HashMap::new();
+        channels.insert("input1".to_string(), build_channel(&ChannelSpec::new(ChannelKind::LastValue)));
+        channels.insert("input2".to_string(), build_channel(&ChannelSpec::new(ChannelKind::LastValue)));
+        channels
+    }
+
+    #[test]
+    fn test_finish_channels() {
+        let mut channels = create_test_channels();
+        finish_channels(&mut channels);
+
+        for channel in channels.values() {
+            assert!(!channel.is_available());
+        }
+    }
+
+    #[test]
+    fn test_snapshot_channels() {
+        let mut channels = create_test_channels();
+        
+        let input1_channel = channels.get_mut("input1").unwrap();
+        input1_channel.update(&[serde_json::json!("value1")]);
+
+        let input2_channel = channels.get_mut("input2").unwrap();
+        input2_channel.update(&[serde_json::json!("value2")]);
+
+        let snapshot = snapshot_channels(&channels);
+
+        assert_eq!(snapshot.get("input1"), Some(&serde_json::json!("value1")));
+        assert_eq!(snapshot.get("input2"), Some(&serde_json::json!("value2")));
+    }
+
+    #[test]
+    fn test_task_id_for() {
+        let id1 = task_id_for("ns", "node", 5, TaskKind::Pull);
+        let id2 = task_id_for("ns", "node", 5, TaskKind::Pull);
+        assert_eq!(id1, id2);
+
+        let id3 = task_id_for("ns", "node", 6, TaskKind::Pull);
+        assert_ne!(id1, id3);
+
+        let id4 = task_id_for("ns", "node", 5, TaskKind::Push);
+        assert_ne!(id1, id4);
+
+        let id5 = task_id_for("other-ns", "node", 5, TaskKind::Pull);
+        assert_ne!(id1, id5);
+    }
+
+    #[test]
+    fn test_restore_channels_from_checkpoint() {
+        let mut checkpoint = create_test_checkpoint();
+        checkpoint.channel_values = serde_json::json!({
+            "input1": "restored_value1",
+            "input2": "restored_value2"
+        });
+
+        let graph = create_test_graph();
+        let channels = restore_channels_from_checkpoint(&checkpoint, &graph);
+
+        assert_eq!(channels.len(), 2);
+        assert_eq!(channels.get("input1").unwrap().snapshot(), serde_json::json!("restored_value1"));
+        assert_eq!(channels.get("input2").unwrap().snapshot(), serde_json::json!("restored_value2"));
+    }
+
+    #[test]
+    fn test_pending_send_packet_id() {
+        let packet = SendPacket::new("test-packet", "target-node", serde_json::json!("payload"), None, 5);
+        let packet_value = serde_json::to_value(packet).unwrap();
+
+        let packet_id = pending_send_packet_id(&packet_value);
+        assert_eq!(packet_id, Some("test-packet".to_string()));
+    }
+
+    #[test]
+    fn test_pending_send_packet_id_non_packet_value() {
+        let non_packet_value = serde_json::json!("not a packet");
+
+        let packet_id = pending_send_packet_id(&non_packet_value);
+        assert!(packet_id.is_none());
+    }
+
+    #[test]
+    fn test_prepare_resume_tasks_from_interrupts() {
+        let mut checkpoint = create_test_checkpoint();
+        
+        let interrupt_record = InterruptRecord {
+            interrupt_id: "int-1".to_string(),
+            namespace: "ns-1".to_string(),
+            task_id: "task-1".to_string(),
+            node_name: "node1".to_string(),
+            step: 3,
+            value: serde_json::json!("interrupt-value"),
+        };
+        
+        checkpoint.pending_interrupts.push(serde_json::to_value(interrupt_record).unwrap());
+
+        let graph = create_test_graph();
+        let mut channels = create_test_channels();
+        
+        channels.get_mut("input1").unwrap().update(&[serde_json::json!("input_value")]);
+        channels.get_mut("input2").unwrap().update(&[serde_json::json!("input2_value")]);
+
+        let resume_interrupt_ids = std::collections::HashSet::from(["int-1".to_string()]);
+        let tasks = prepare_resume_tasks_from_interrupts(&checkpoint, &channels, &graph, 5, &resume_interrupt_ids);
+
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].node_name, "node1");
+        assert_eq!(tasks[0].kind, TaskKind::Pull);
+        assert_eq!(tasks[0].step, 5);
+    }
+
+    #[test]
+    fn test_prepare_resume_tasks_from_interrupts_filters_by_interrupt_id() {
+        let mut checkpoint = create_test_checkpoint();
+        
+        let interrupt_record1 = InterruptRecord {
+            interrupt_id: "int-1".to_string(),
+            namespace: "ns-1".to_string(),
+            task_id: "task-1".to_string(),
+            node_name: "node1".to_string(),
+            step: 3,
+            value: serde_json::json!("interrupt-value1"),
+        };
+        
+        let interrupt_record2 = InterruptRecord {
+            interrupt_id: "int-2".to_string(),
+            namespace: "ns-1".to_string(),
+            task_id: "task-2".to_string(),
+            node_name: "node1".to_string(),
+            step: 4,
+            value: serde_json::json!("interrupt-value2"),
+        };
+        
+        checkpoint.pending_interrupts.push(serde_json::to_value(interrupt_record1).unwrap());
+        checkpoint.pending_interrupts.push(serde_json::to_value(interrupt_record2).unwrap());
+
+        let graph = create_test_graph();
+        let channels = create_test_channels();
+
+        let resume_interrupt_ids = std::collections::HashSet::from(["int-1".to_string()]);
+        let tasks = prepare_resume_tasks_from_interrupts(&checkpoint, &channels, &graph, 5, &resume_interrupt_ids);
+
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].id, "task-1");
+    }
+
+    #[test]
+    fn test_normalize_pending_sends_filters_duplicate_packets() {
+        let mut pending_sends = vec![
+            ("task1".to_string(), TASKS_CHANNEL.to_string(), serde_json::json!("duplicate1")),
+            ("task2".to_string(), TASKS_CHANNEL.to_string(), serde_json::json!("different")),
+            ("task3".to_string(), TASKS_CHANNEL.to_string(), serde_json::json!("duplicate1")),
+        ];
+
+        let _initial_len = pending_sends.len();
+        normalize_pending_sends(&mut pending_sends);
+        
+        assert_eq!(pending_sends.len(), 3);
+    }
+
+    #[test]
+    fn test_normalize_pending_writes_deduplicates() {
+        let mut pending_writes = vec![
+            ("task1".to_string(), "channel1".to_string(), serde_json::json!("value1")),
+            ("task1".to_string(), "channel1".to_string(), serde_json::json!("value1")),
+            ("task2".to_string(), "channel2".to_string(), serde_json::json!("value2")),
+        ];
+
+        normalize_pending_writes(&mut pending_writes);
+        
+        assert_eq!(pending_writes.len(), 2);
+    }
+
+    #[test]
+    fn test_task_cache_key_consistency() {
+        let config = RunnableConfig {
+            thread_id: Some("thread-1".to_string()),
+            checkpoint_id: None,
+            checkpoint_ns: "test-ns".to_string(),
+            user_id: None,
+            resume_from_node_id: None,
+            depth: None,
+            acp_session_id: None,
+            resume_value: None,
+            resume_values_by_namespace: Default::default(),
+            resume_values_by_interrupt_id: Default::default(),
+        };
+
+        let task1 = PreparedTask {
+            id: "task-1".to_string(),
+            kind: TaskKind::Pull,
+            node_name: "node1".to_string(),
+            step: 5,
+            triggers: vec!["input1".to_string()],
+            input: serde_json::json!({"key": "value"}),
+            packet_id: None,
+            origin_task_id: None,
+            cached_writes: vec![],
+        };
+
+        let task2 = PreparedTask {
+            id: "task-2".to_string(),
+            kind: TaskKind::Pull,
+            node_name: "node1".to_string(),
+            step: 5,
+            triggers: vec!["input1".to_string()],
+            input: serde_json::json!({"key": "value"}),
+            packet_id: None,
+            origin_task_id: None,
+            cached_writes: vec![],
+        };
+
+        let key1 = task_cache_key(&task1, &config);
+        let key2 = task_cache_key(&task2, &config);
+
+        assert_eq!(key1.node_name, key2.node_name);
+        assert_eq!(key1.step, key2.step);
+        assert_eq!(key1.input_hash, key2.input_hash);
+    }
+
+    #[test]
+    fn test_snapshot_channels_with_empty_channels() {
+        let empty_channels: HashMap<ChannelName, BoxedChannel> = HashMap::new();
+        let snapshot = snapshot_channels(&empty_channels);
+
+        assert_eq!(snapshot, serde_json::json!({}));
+    }
+
+    #[test]
+    fn test_restore_channels_from_checkpoint_with_empty_checkpoint() {
+        let checkpoint = create_test_checkpoint();
+        let graph = create_test_graph();
+        let channels = restore_channels_from_checkpoint(&checkpoint, &graph);
+
+        assert_eq!(channels.len(), 2);
+        for channel in channels.values() {
+            assert_eq!(channel.snapshot(), serde_json::Value::Null);
+        }
+    }
+
+    #[test]
+    fn test_finish_channels_empty_channels() {
+        let mut empty_channels: HashMap<ChannelName, BoxedChannel> = HashMap::new();
+        finish_channels(&mut empty_channels);
+
+        assert!(empty_channels.is_empty());
+    }
+}

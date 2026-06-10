@@ -367,4 +367,195 @@ mod tests {
                 java_server.check_args.contains(&"version".to_string()),
                 "Java check args should include version check");
     }
+
+    #[test]
+    fn test_server_installation_struct() {
+        let installation = ServerInstallation {
+            language: "test_lang".to_string(),
+            server_name: "test-server".to_string(),
+            is_installed: true,
+            executable_path: Some(PathBuf::from("/usr/bin/test-server")),
+            version: Some("1.0.0".to_string()),
+            install_command: Some("test install".to_string()),
+        };
+
+        assert_eq!(installation.language, "test_lang");
+        assert_eq!(installation.server_name, "test-server");
+        assert!(installation.is_installed);
+        assert!(installation.executable_path.is_some());
+        assert_eq!(installation.version, Some("1.0.0".to_string()));
+        assert_eq!(installation.install_command, Some("test install".to_string()));
+    }
+
+    #[test]
+    fn test_server_installation_struct_minimal() {
+        let installation = ServerInstallation {
+            language: "test_lang".to_string(),
+            server_name: "test-server".to_string(),
+            is_installed: false,
+            executable_path: None,
+            version: None,
+            install_command: None,
+        };
+
+        assert_eq!(installation.language, "test_lang");
+        assert!(!installation.is_installed);
+        assert!(installation.executable_path.is_none());
+        assert!(installation.version.is_none());
+        assert!(installation.install_command.is_none());
+    }
+
+    #[test]
+    fn test_installer_server_definitions_structure() {
+        let installer = LspInstaller::new();
+
+        for server in &installer.servers {
+            assert!(!server.language.is_empty());
+            assert!(!server.server_name.is_empty());
+            assert!(!server.executable.is_empty());
+            assert!(!server.check_args.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_installer_language_count() {
+        let installer = LspInstaller::new();
+        assert!(installer.servers.len() >= 6); // At least: rust, typescript, python, go, cpp, java
+    }
+
+    #[test]
+    fn test_installer_unique_languages() {
+        let installer = LspInstaller::new();
+        let mut languages = std::collections::HashSet::new();
+
+        for server in &installer.servers {
+            languages.insert(&server.language);
+        }
+
+        assert_eq!(languages.len(), installer.servers.len(), "All server languages should be unique");
+    }
+
+    #[test]
+    fn test_get_install_instructions_empty_commands() {
+        // Create a test installer with empty commands for a specific language
+        let mut custom_installer = LspInstaller::new();
+        custom_installer.servers.push(ServerDefinition {
+            language: "empty_test".to_string(),
+            server_name: "empty-server".to_string(),
+            executable: "empty".to_string(),
+            check_args: vec![],
+            install_commands: vec![],
+            package_managers: vec![],
+        });
+
+        let instructions = custom_installer.get_install_instructions("empty_test");
+        assert!(instructions.is_none(), "Should return None when install_commands is empty");
+    }
+
+    #[test]
+    fn test_get_install_instructions_nonexistent_language() {
+        let installer = LspInstaller::new();
+        let instructions = installer.get_install_instructions("nonexistent_language_xyz");
+        assert!(instructions.is_none());
+    }
+
+    #[test]
+    fn test_check_all_returns_all_servers() {
+        let installer = LspInstaller::new();
+        let installations = installer.check_all();
+
+        assert_eq!(installations.len(), installer.servers.len());
+
+        for installation in &installations {
+            assert!(!installation.language.is_empty());
+            assert!(!installation.server_name.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_installer_all_servers_have_check_args() {
+        let installer = LspInstaller::new();
+
+        for server in &installer.servers {
+            assert!(!server.check_args.is_empty(), 
+                "{} should have check arguments", server.server_name);
+        }
+    }
+
+    #[test]
+    fn test_installer_all_servers_have_install_commands() {
+        let installer = LspInstaller::new();
+
+        for server in &installer.servers {
+            assert!(!server.install_commands.is_empty(),
+                "{} should have install commands", server.server_name);
+        }
+    }
+
+    #[test]
+    fn test_installer_all_servers_have_package_managers() {
+        let installer = LspInstaller::new();
+
+        for server in &installer.servers {
+            assert!(!server.package_managers.is_empty(),
+                "{} should have at least one package manager", server.server_name);
+        }
+    }
+
+    #[test]
+    fn test_installer_configured_languages() {
+        let installer = LspInstaller::new();
+        let languages: Vec<&str> = installer.servers.iter().map(|s| s.language.as_str()).collect();
+
+        assert!(languages.contains(&"rust"), "Should support Rust");
+        assert!(languages.contains(&"typescript"), "Should support TypeScript");
+        assert!(languages.contains(&"python"), "Should support Python");
+        assert!(languages.contains(&"go"), "Should support Go");
+        assert!(languages.contains(&"cpp"), "Should support C++");
+        assert!(languages.contains(&"java"), "Should support Java");
+    }
+
+    #[test]
+    fn test_server_installation_clone() {
+        let installation = ServerInstallation {
+            language: "test_lang".to_string(),
+            server_name: "test-server".to_string(),
+            is_installed: true,
+            executable_path: Some(PathBuf::from("/usr/bin/test-server")),
+            version: Some("1.0.0".to_string()),
+            install_command: Some("test install".to_string()),
+        };
+
+        let cloned = installation.clone();
+        assert_eq!(installation.language, cloned.language);
+        assert_eq!(installation.server_name, cloned.server_name);
+        assert_eq!(installation.is_installed, cloned.is_installed);
+    }
+
+    #[test]
+    fn test_check_installation_various_languages() {
+        let installer = LspInstaller::new();
+        
+        for server in &installer.servers {
+            let result = installer.check_installation(&server.language);
+            assert!(result.is_ok(), "Check installation should not error for {}", server.language);
+            
+            let installation = result.unwrap();
+            assert_eq!(installation.language, server.language);
+            assert_eq!(installation.server_name, server.server_name);
+        }
+    }
+
+    #[test]
+    fn test_installer_consistency() {
+        let installer1 = LspInstaller::new();
+        let installer2 = LspInstaller::new();
+
+        assert_eq!(installer1.servers.len(), installer2.servers.len());
+
+        for (server1, server2) in installer1.servers.iter().zip(installer2.servers.iter()) {
+            assert_eq!(server1.language, server2.language);
+            assert_eq!(server1.server_name, server2.server_name);
+        }
+    }
 }

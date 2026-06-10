@@ -159,30 +159,158 @@ pub async fn resolve_tier_to_model_id(
 mod tests {
     use super::*;
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn test_resolve_tier_returns_none_for_unknown_provider() {
-        let providers = vec![ProviderConfig {
+    #[test]
+    fn test_entry_with_spec_fallback_base_url_missing() {
+        let provider_cfg = ProviderConfig {
             name: "test_provider".to_string(),
-            base_url: Some("https://api.test.com/v1".to_string()),
-            api_key: Some("sk-test".to_string()),
+            base_url: None,
+            api_key: Some("test_key".to_string()),
+            provider_type: Some("openai".to_string()),
+            fetch_models: false,
+            cache_ttl: None,
+            enable_tier_resolution: true,
+        };
+
+        let spec_api = Some("https://spec.api.com".to_string());
+        let result = entry_with_spec_fallback(&provider_cfg, "test_model", spec_api.as_ref());
+
+        assert_eq!(result.id, "test_provider/test_model");
+        assert_eq!(result.base_url, Some("https://spec.api.com".to_string()));
+        assert_eq!(result.provider, "test_provider");
+    }
+
+    #[test]
+    fn test_entry_with_spec_fallback_base_url_present() {
+        let provider_cfg = ProviderConfig {
+            name: "test_provider".to_string(),
+            base_url: Some("https://provider.url.com".to_string()),
+            api_key: Some("provider_key".to_string()),
+            provider_type: Some("openai".to_string()),
+            fetch_models: false,
+            cache_ttl: None,
+            enable_tier_resolution: true,
+        };
+
+        let spec_api = Some("https://spec.api.com".to_string());
+        let result = entry_with_spec_fallback(&provider_cfg, "test_model", spec_api.as_ref());
+
+        assert_eq!(result.base_url, Some("https://provider.url.com".to_string()));
+    }
+
+    #[test]
+    fn test_entry_with_spec_fallback_provider_type_openai() {
+        let provider_cfg = ProviderConfig {
+            name: "openai".to_string(),
+            base_url: Some("https://api.openai.com".to_string()),
+            api_key: Some("openai_key".to_string()),
             provider_type: None,
             fetch_models: false,
             cache_ttl: None,
             enable_tier_resolution: true,
-        }];
-        let result = resolve_tier_intelligent(
-            "unknown_provider",
-            model_spec_core::spec::ModelTier::Light,
-            &providers,
-        )
-        .await;
+        };
+
+        let result = entry_with_spec_fallback(&provider_cfg, "gpt-4", None);
+        assert_eq!(result.provider_type, None);
+    }
+
+    #[test]
+    fn test_entry_with_spec_fallback_provider_type_non_openai() {
+        let provider_cfg = ProviderConfig {
+            name: "custom_provider".to_string(),
+            base_url: Some("https://custom.api.com".to_string()),
+            api_key: Some("custom_key".to_string()),
+            provider_type: None,
+            fetch_models: false,
+            cache_ttl: None,
+            enable_tier_resolution: true,
+        };
+
+        let result = entry_with_spec_fallback(&provider_cfg, "custom_model", None);
+        assert_eq!(result.provider_type, Some("openai_compat".to_string()));
+    }
+
+    #[test]
+    fn test_entry_with_spec_fallback_case_insensitive() {
+        let provider_cfg = ProviderConfig {
+            name: "OPENAI".to_string(),
+            base_url: Some("https://api.openai.com".to_string()),
+            api_key: Some("key".to_string()),
+            provider_type: None,
+            fetch_models: false,
+            cache_ttl: None,
+            enable_tier_resolution: true,
+        };
+
+        let result = entry_with_spec_fallback(&provider_cfg, "gpt-4", None);
+        assert_eq!(result.provider_type, None);
+    }
+
+    #[test]
+    fn test_entry_with_spec_fallback_no_spec_api() {
+        let provider_cfg = ProviderConfig {
+            name: "test_provider".to_string(),
+            base_url: None,
+            api_key: Some("key".to_string()),
+            provider_type: None,
+            fetch_models: false,
+            cache_ttl: None,
+            enable_tier_resolution: true,
+        };
+
+        let result = entry_with_spec_fallback(&provider_cfg, "model", None);
+        assert_eq!(result.base_url, None);
+        assert_eq!(result.provider_type, Some("openai_compat".to_string()));
+    }
+
+    #[test]
+    fn test_entry_with_spec_fallback_complete_case() {
+        let provider_cfg = ProviderConfig {
+            name: "complete_provider".to_string(),
+            base_url: Some("https://complete.com".to_string()),
+            api_key: Some("complete_key".to_string()),
+            provider_type: Some("custom_type".to_string()),
+            fetch_models: true,
+            cache_ttl: Some(3600),
+            enable_tier_resolution: true,
+        };
+
+        let spec_api = Some("https://spec.com".to_string());
+        let result = entry_with_spec_fallback(&provider_cfg, "complete_model", spec_api.as_ref());
+
+        assert_eq!(result.id, "complete_provider/complete_model");
+        assert_eq!(result.provider, "complete_provider");
+        assert_eq!(result.base_url, Some("https://complete.com".to_string()));
+        assert_eq!(result.api_key, Some("complete_key".to_string()));
+        assert_eq!(result.provider_type, Some("custom_type".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_from_local_always_none() {
+        let result = resolve_from_local("test", model_spec_core::spec::ModelTier::Light, &[]).await;
         assert!(result.is_none());
     }
 
     #[test]
     fn test_resolve_for_model_extracts_provider() {
-        let _providers: Vec<ProviderConfig> = vec![];
         let result = ModelEntry::parse_id("openai/gpt-4o");
         assert_eq!(result, Some(("openai", "gpt-4o")));
+    }
+
+    #[test]
+    fn test_model_entry_parse_id_invalid_format() {
+        let result = ModelEntry::parse_id("invalid_id_without_slash");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_model_entry_parse_id_empty_provider() {
+        let result = ModelEntry::parse_id("/model_only");
+        assert_eq!(result, Some(("", "model_only")));
+    }
+
+    #[test]
+    fn test_model_entry_parse_id_empty_model() {
+        let result = ModelEntry::parse_id("provider/");
+        assert_eq!(result, Some(("provider", "")));
     }
 }

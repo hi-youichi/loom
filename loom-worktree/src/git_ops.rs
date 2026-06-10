@@ -244,4 +244,108 @@ pub fn ensure_gitignore_entry(repo_root: &Path) -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
 
+    #[test]
+    fn git_worktree_error_command_failed() {
+        let err = GitWorktreeError::CommandFailed {
+            message: "test error".to_string(),
+            stdout: "test stdout".to_string(),
+            stderr: "test stderr".to_string(),
+        };
+        assert_eq!(err.to_string(), "git command failed: test error\nstdout: test stdout\nstderr: test stderr");
+    }
+
+    #[test]
+    fn git_worktree_error_not_git_repo() {
+        let path = PathBuf::from("/test/path");
+        let err = GitWorktreeError::NotGitRepo { path: path.clone() };
+        assert_eq!(err.to_string(), "not a git repository: /test/path");
+    }
+
+    #[test]
+    fn git_worktree_error_git_not_found() {
+        let err = GitWorktreeError::GitNotFound;
+        assert_eq!(err.to_string(), "git not found on PATH");
+    }
+
+    #[test]
+    fn git_worktree_error_worktree_exists() {
+        let path = PathBuf::from("/test/worktree");
+        let err = GitWorktreeError::WorktreeExists { path: path.clone() };
+        assert_eq!(err.to_string(), "worktree already exists: /test/worktree");
+    }
+
+    #[test]
+    fn git_worktree_error_branch_exists() {
+        let err = GitWorktreeError::BranchExists { name: "test-branch".to_string() };
+        assert_eq!(err.to_string(), "branch already exists: test-branch");
+    }
+
+    #[test]
+    fn git_worktree_error_index_lock_conflict() {
+        let err = GitWorktreeError::IndexLockConflict;
+        assert_eq!(err.to_string(), "index lock conflict after retries");
+    }
+
+    #[test]
+    fn git_worktree_error_from_io_error() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied");
+        let git_err = GitWorktreeError::from(io_err);
+        assert!(git_err.to_string().contains("IO error"));
+    }
+
+    #[test]
+    fn is_index_lock_error_detects_lock_conflict() {
+        let err = GitWorktreeError::CommandFailed {
+            message: "git error".to_string(),
+            stdout: "".to_string(),
+            stderr: "index.lock: File exists".to_string(),
+        };
+        assert!(is_index_lock_error(&err));
+    }
+
+    #[test]
+    fn is_index_lock_error_detects_unable_to_create() {
+        let err = GitWorktreeError::CommandFailed {
+            message: "git error".to_string(),
+            stdout: "".to_string(),
+            stderr: "Unable to create 'index.lock'".to_string(),
+        };
+        assert!(is_index_lock_error(&err));
+    }
+
+    #[test]
+    fn is_index_lock_error_non_command_errors() {
+        let err = GitWorktreeError::NotGitRepo {
+            path: PathBuf::from("/test"),
+        };
+        assert!(!is_index_lock_error(&err));
+    }
+
+    #[test]
+    fn is_index_lock_error_no_lock_in_stderr() {
+        let err = GitWorktreeError::CommandFailed {
+            message: "git error".to_string(),
+            stdout: "".to_string(),
+            stderr: "some other error".to_string(),
+        };
+        assert!(!is_index_lock_error(&err));
+    }
+
+    #[test]
+    fn git_worktree_error_display_formats_correctly() {
+        let errors = vec![
+            GitWorktreeError::GitNotFound,
+            GitWorktreeError::IndexLockConflict,
+            GitWorktreeError::BranchExists { name: "main".to_string() },
+        ];
+        
+        for err in errors {
+            let display_str = err.to_string();
+            assert!(!display_str.is_empty());
+        }
+    }
+}

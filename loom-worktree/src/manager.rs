@@ -474,4 +474,275 @@ mod tests {
         assert_eq!(conflicts.len(), 1);
         assert_eq!(conflicts[0].other_agent, "agent-b");
     }
+
+    #[test]
+    fn manager_error_git_conversion() {
+        let git_err = git_ops::GitWorktreeError::GitNotFound;
+        let mgr_err = WorktreeManagerError::from(git_err);
+        assert!(mgr_err.to_string().contains("git operation failed"));
+    }
+
+    #[test]
+    fn manager_error_not_git_repo() {
+        let path = PathBuf::from("/fake/repo");
+        let err = WorktreeManagerError::NotGitRepo { path: path.clone() };
+        assert!(err.to_string().contains("not a git repository"));
+    }
+
+    #[test]
+    fn manager_error_nested_worktree() {
+        let err = WorktreeManagerError::NestedWorktree;
+        assert!(err.to_string().contains("worktree nesting detected"));
+    }
+
+    #[test]
+    fn manager_default_storage_path() {
+        let dir = TempDir::new().unwrap();
+        let config = WorktreeConfig::default();
+        let manager = WorktreeManager::new(dir.path().to_path_buf(), config);
+        let storage = manager.storage_path();
+        assert!(storage.ends_with(".loom/worktrees"));
+    }
+
+    #[test]
+    fn manager_custom_storage_path() {
+        let dir = TempDir::new().unwrap();
+        let custom_path = dir.path().join("custom/worktrees");
+        let config = WorktreeConfig {
+            storage_dir: Some(custom_path.clone()),
+            ..Default::default()
+        };
+        let manager = WorktreeManager::new(dir.path().to_path_buf(), config);
+        let storage = manager.storage_path();
+        assert_eq!(storage, custom_path);
+    }
+
+    #[test]
+    fn manager_detect_parallel_conflicts_none() {
+        let dir = TempDir::new().unwrap();
+        let config = WorktreeConfig {
+            conflict_detection: ConflictDetection::None,
+            ..Default::default()
+        };
+        let manager = WorktreeManager::new(dir.path().to_path_buf(), config);
+
+        let h1 = WorktreeHandle {
+            repo_root: dir.path().to_path_buf(),
+            path: dir.path().join("wt1"),
+            branch: Some("b1".into()),
+            has_changes: false,
+            agent_name: "agent-a".into(),
+            estimated_paths: vec!["src/auth/".into()],
+            state: WorktreeState::Active,
+        };
+        let h2 = WorktreeHandle {
+            repo_root: dir.path().to_path_buf(),
+            path: dir.path().join("wt2"),
+            branch: Some("b2".into()),
+            has_changes: false,
+            agent_name: "agent-b".into(),
+            estimated_paths: vec!["src/auth/".into()],
+            state: WorktreeState::Active,
+        };
+
+        let conflicts = manager.detect_parallel_conflicts(&[&h1, &h2]);
+        assert_eq!(conflicts.len(), 0);
+    }
+
+    #[test]
+    fn manager_detect_parallel_conflicts_hunk_level() {
+        let dir = TempDir::new().unwrap();
+        let config = WorktreeConfig {
+            conflict_detection: ConflictDetection::HunkLevel,
+            ..Default::default()
+        };
+        let manager = WorktreeManager::new(dir.path().to_path_buf(), config);
+
+        let h1 = WorktreeHandle {
+            repo_root: dir.path().to_path_buf(),
+            path: dir.path().join("wt1"),
+            branch: Some("b1".into()),
+            has_changes: false,
+            agent_name: "agent-a".into(),
+            estimated_paths: vec!["src/main.rs".into()],
+            state: WorktreeState::Active,
+        };
+        let h2 = WorktreeHandle {
+            repo_root: dir.path().to_path_buf(),
+            path: dir.path().join("wt2"),
+            branch: Some("b2".into()),
+            has_changes: false,
+            agent_name: "agent-b".into(),
+            estimated_paths: vec!["src/main.rs".into()],
+            state: WorktreeState::Active,
+        };
+
+        let conflicts = manager.detect_parallel_conflicts(&[&h1, &h2]);
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].severity, ConflictSeverity::FileOverlap);
+    }
+
+    #[test]
+    fn manager_detect_parallel_conflicts_no_overlap() {
+        let dir = TempDir::new().unwrap();
+        let config = WorktreeConfig {
+            conflict_detection: ConflictDetection::FilePath,
+            ..Default::default()
+        };
+        let manager = WorktreeManager::new(dir.path().to_path_buf(), config);
+
+        let h1 = WorktreeHandle {
+            repo_root: dir.path().to_path_buf(),
+            path: dir.path().join("wt1"),
+            branch: Some("b1".into()),
+            has_changes: false,
+            agent_name: "agent-a".into(),
+            estimated_paths: vec!["src/auth/".into()],
+            state: WorktreeState::Active,
+        };
+        let h2 = WorktreeHandle {
+            repo_root: dir.path().to_path_buf(),
+            path: dir.path().join("wt2"),
+            branch: Some("b2".into()),
+            has_changes: false,
+            agent_name: "agent-b".into(),
+            estimated_paths: vec!["src/api/".into()],
+            state: WorktreeState::Active,
+        };
+
+        let conflicts = manager.detect_parallel_conflicts(&[&h1, &h2]);
+        assert_eq!(conflicts.len(), 0);
+    }
+
+    #[test]
+    fn manager_detect_parallel_conflicts_partial_overlap() {
+        let dir = TempDir::new().unwrap();
+        let config = WorktreeConfig {
+            conflict_detection: ConflictDetection::FilePath,
+            ..Default::default()
+        };
+        let manager = WorktreeManager::new(dir.path().to_path_buf(), config);
+
+        let h1 = WorktreeHandle {
+            repo_root: dir.path().to_path_buf(),
+            path: dir.path().join("wt1"),
+            branch: Some("b1".into()),
+            has_changes: false,
+            agent_name: "agent-a".into(),
+            estimated_paths: vec!["src/auth/".into(), "src/common/".into()],
+            state: WorktreeState::Active,
+        };
+        let h2 = WorktreeHandle {
+            repo_root: dir.path().to_path_buf(),
+            path: dir.path().join("wt2"),
+            branch: Some("b2".into()),
+            has_changes: false,
+            agent_name: "agent-b".into(),
+            estimated_paths: vec!["src/common/".into(), "src/api/".into()],
+            state: WorktreeState::Active,
+        };
+
+        let conflicts = manager.detect_parallel_conflicts(&[&h1, &h2]);
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].conflicting_paths, vec!["src/common/"]);
+    }
+
+    #[test]
+    fn manager_new_creates_with_config() {
+        let dir = TempDir::new().unwrap();
+        let config = WorktreeConfig {
+            auto_cleanup: true,
+            detached: false,
+            ..Default::default()
+        };
+        let manager = WorktreeManager::new(dir.path().to_path_buf(), config);
+        assert_eq!(manager.repo_root, dir.path());
+        assert_eq!(manager.config.auto_cleanup, true);
+        assert_eq!(manager.config.detached, false);
+    }
+
+    #[test]
+    fn manager_base_ref_conversion() {
+        let dir = TempDir::new().unwrap();
+        
+        let config_fresh = WorktreeConfig {
+            base_ref: BaseRef::Fresh,
+            ..Default::default()
+        };
+        let manager_fresh = WorktreeManager::new(dir.path().to_path_buf(), config_fresh);
+        assert!(matches!(manager_fresh.config.base_ref, BaseRef::Fresh));
+
+        let config_head = WorktreeConfig {
+            base_ref: BaseRef::Head,
+            ..Default::default()
+        };
+        let manager_head = WorktreeManager::new(dir.path().to_path_buf(), config_head);
+        assert!(matches!(manager_head.config.base_ref, BaseRef::Head));
+
+        let config_ref = WorktreeConfig {
+            base_ref: BaseRef::Ref("main".to_string()),
+            ..Default::default()
+        };
+        let manager_ref = WorktreeManager::new(dir.path().to_path_buf(), config_ref);
+        assert!(matches!(manager_ref.config.base_ref, BaseRef::Ref(_)));
+    }
+
+    #[test]
+    fn manager_conflict_detection_strategies() {
+        let dir = TempDir::new().unwrap();
+        
+        for (strategy, expected_count) in vec![
+            (ConflictDetection::None, 0),
+            (ConflictDetection::FilePath, 1),
+            (ConflictDetection::HunkLevel, 1),
+        ] {
+            let config = WorktreeConfig {
+                conflict_detection: strategy.clone(),
+                ..Default::default()
+            };
+            let manager = WorktreeManager::new(dir.path().to_path_buf(), config);
+
+            let h1 = WorktreeHandle {
+                repo_root: dir.path().to_path_buf(),
+                path: dir.path().join("wt1"),
+                branch: Some("b1".into()),
+                has_changes: false,
+                agent_name: "agent-a".into(),
+                estimated_paths: vec!["src/main.rs".into()],
+                state: WorktreeState::Active,
+            };
+            let h2 = WorktreeHandle {
+                repo_root: dir.path().to_path_buf(),
+                path: dir.path().join("wt2"),
+                branch: Some("b2".into()),
+                has_changes: false,
+                agent_name: "agent-b".into(),
+                estimated_paths: vec!["src/main.rs".into()],
+                state: WorktreeState::Active,
+            };
+
+            let conflicts = manager.detect_parallel_conflicts(&[&h1, &h2]);
+            assert_eq!(conflicts.len(), expected_count, "Strategy: {:?}", strategy);
+        }
+    }
+
+    #[test]
+    fn worktree_handle_properties() {
+        let dir = TempDir::new().unwrap();
+        let handle = WorktreeHandle {
+            repo_root: dir.path().to_path_buf(),
+            path: dir.path().join("test-wt"),
+            branch: Some("test-branch".into()),
+            has_changes: true,
+            agent_name: "test-agent".into(),
+            estimated_paths: vec!["src/test.rs".into()],
+            state: WorktreeState::Completed,
+        };
+
+        assert_eq!(handle.agent_name, "test-agent");
+        assert_eq!(handle.has_changes, true);
+        assert_eq!(handle.state, WorktreeState::Completed);
+        assert_eq!(handle.estimated_paths.len(), 1);
+        assert_eq!(handle.branch, Some("test-branch".into()));
+    }
 }

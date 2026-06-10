@@ -9,6 +9,7 @@ pub struct TurnResult {
     pub work_summary: Option<String>,
 }
 
+#[derive(Clone)]
 pub struct ToolCallSummary {
     pub tool_name: String,
     pub result_preview: String,
@@ -190,3 +191,389 @@ impl Default for GoalMeta {
 pub const DEFAULT_MAX_ITERATIONS: u32 = 100;
 pub const MAX_CONSECUTIVE_FAILURES: u32 = 3;
 pub const MAX_HISTORY_ENTRIES: usize = 20;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tool_error_execution_failed_display() {
+        let error = ToolError::ExecutionFailed("Tool not found".to_string());
+        let display = format!("{}", error);
+        assert_eq!(display, "execution failed: Tool not found");
+    }
+
+    #[test]
+    fn test_tool_error_timeout_display() {
+        let error = ToolError::Timeout;
+        let display = format!("{}", error);
+        assert_eq!(display, "tool execution timed out");
+    }
+
+    #[test]
+    fn test_tool_error_aborted_display() {
+        let error = ToolError::Aborted;
+        let display = format!("{}", error);
+        assert_eq!(display, "tool execution aborted");
+    }
+
+    #[test]
+    fn test_tool_error_rate_limited_display() {
+        let error = ToolError::RateLimited("Too many requests".to_string());
+        let display = format!("{}", error);
+        assert_eq!(display, "rate limited: Too many requests");
+    }
+
+    #[test]
+    fn test_tool_error_invalid_json_arguments_display() {
+        let error = ToolError::InvalidJsonArguments {
+            tool_name: "grep_tool".to_string(),
+            raw_args: r#"pattern: "*.rs""#.to_string(),
+            parse_error: "expected colon at line 1 column 9".to_string(),
+        };
+        let display = format!("{}", error);
+        assert!(display.contains("[grep_tool]"));
+        assert!(display.contains("invalid arguments: expected valid JSON object string"));
+        assert!(display.contains("Parse error: expected colon at line 1 column 9"));
+        assert!(display.contains("Raw input:"));
+        assert!(display.contains(r#"pattern: "*.rs""#));
+    }
+
+    #[test]
+    fn test_tool_error_invalid_json_arguments_long_truncation() {
+        let long_args = "z".repeat(150);
+        let error = ToolError::InvalidJsonArguments {
+            tool_name: "test_tool".to_string(),
+            raw_args: long_args.clone(),
+            parse_error: "parse error".to_string(),
+        };
+        let display = format!("{}", error);
+        
+        // Display should truncate to 100 chars in the preview part
+        assert!(display.contains("Raw input:"));
+        
+        // Check that the Display impl truncates to 100 chars in the preview (using 'z' which doesn't appear elsewhere)
+        let z_count_in_display = display.matches("z").count();
+        assert_eq!(z_count_in_display, 100, "Display should contain exactly 100 'z' characters in the truncated preview");
+        
+        // Also check that self_correct_hint truncates to 150 chars
+        let hint = error.self_correct_hint();
+        let z_count_in_hint = hint.matches("z").count();
+        assert_eq!(z_count_in_hint, 150, "Self-correct hint should contain exactly 150 'z' characters in the truncated preview");
+    }
+
+    #[test]
+    fn test_tool_call_summary_fields() {
+        let summary = ToolCallSummary {
+            tool_name: "read_file".to_string(),
+            result_preview: "Successfully read file contents".to_string(),
+        };
+        
+        assert_eq!(summary.tool_name, "read_file");
+        assert_eq!(summary.result_preview, "Successfully read file contents");
+    }
+
+    #[test]
+    fn test_turn_result_fields() {
+        let turn_result = TurnResult {
+            reply: "Task completed successfully".to_string(),
+            reasoning_content: Some("Using grep to find the pattern".to_string()),
+            tool_calls_summary: vec![
+                ToolCallSummary {
+                    tool_name: "grep".to_string(),
+                    result_preview: "Found 5 matches".to_string(),
+                }
+            ],
+            usage: None,
+            work_summary: Some("Completed grep search across source files".to_string()),
+        };
+        
+        assert_eq!(turn_result.reply, "Task completed successfully");
+        assert_eq!(turn_result.reasoning_content, Some("Using grep to find the pattern".to_string()));
+        assert_eq!(turn_result.tool_calls_summary.len(), 1);
+        assert_eq!(turn_result.tool_calls_summary[0].tool_name, "grep");
+        assert!(turn_result.usage.is_none());
+        assert_eq!(turn_result.work_summary, Some("Completed grep search across source files".to_string()));
+    }
+
+    #[test]
+    fn test_turn_result_empty() {
+        let turn_result = TurnResult {
+            reply: String::new(),
+            reasoning_content: None,
+            tool_calls_summary: vec![],
+            usage: None,
+            work_summary: None,
+        };
+        
+        assert!(turn_result.reply.is_empty());
+        assert!(turn_result.reasoning_content.is_none());
+        assert!(turn_result.tool_calls_summary.is_empty());
+        assert!(turn_result.usage.is_none());
+        assert!(turn_result.work_summary.is_none());
+    }
+
+    #[test]
+    fn test_tool_error_is_transient_api_error_rate_limit() {
+        let msg = "rate limit exceeded, please try again later";
+        assert!(ToolError::is_transient_api_error(msg));
+    }
+
+    #[test]
+    fn test_tool_error_is_transient_api_error_chinese_messages() {
+        let chinese_msg1 = "访问量过大，请稍后再试";
+        let chinese_msg2 = "请稍后再试";
+        assert!(ToolError::is_transient_api_error(chinese_msg1));
+        assert!(ToolError::is_transient_api_error(chinese_msg2));
+    }
+
+    #[test]
+    fn test_tool_error_is_transient_api_error_429() {
+        let msg = "HTTP 429 - Too Many Requests";
+        assert!(ToolError::is_transient_api_error(msg));
+    }
+
+    #[test]
+    fn test_tool_error_is_transient_api_error_503() {
+        let msg = "HTTP 503 Service Unavailable";
+        assert!(ToolError::is_transient_api_error(msg));
+    }
+
+    #[test]
+    fn test_tool_error_is_transient_api_error_code_1305() {
+        let msg = "Error code: 1305 - Rate limit exceeded";
+        assert!(ToolError::is_transient_api_error(msg));
+    }
+
+    #[test]
+    fn test_tool_error_is_transient_api_error_overloaded() {
+        let msg = "Service overloaded, please try again";
+        assert!(ToolError::is_transient_api_error(msg));
+    }
+
+    #[test]
+    fn test_tool_error_is_transient_api_error_permanent_failure() {
+        let msg = "Tool not found";
+        assert!(!ToolError::is_transient_api_error(msg));
+    }
+
+    #[test]
+    fn test_tool_error_is_self_correctable() {
+        let json_error = ToolError::InvalidJsonArguments {
+            tool_name: "grep_tool".to_string(),
+            raw_args: "invalid".to_string(),
+            parse_error: "parse error".to_string(),
+        };
+        assert!(json_error.is_self_correctable());
+
+        let exec_error = ToolError::ExecutionFailed("Tool not found".to_string());
+        assert!(!exec_error.is_self_correctable());
+
+        let timeout_error = ToolError::Timeout;
+        assert!(!timeout_error.is_self_correctable());
+
+        let aborted_error = ToolError::Aborted;
+        assert!(!aborted_error.is_self_correctable());
+
+        let rate_limited_error = ToolError::RateLimited("Too many requests".to_string());
+        assert!(!rate_limited_error.is_self_correctable());
+    }
+
+    #[test]
+    fn test_tool_error_self_correct_hint_for_json_error() {
+        let json_error = ToolError::InvalidJsonArguments {
+            tool_name: "grep_tool".to_string(),
+            raw_args: r#"pattern: "*.rs""#.to_string(),
+            parse_error: "parse error".to_string(),
+        };
+        
+        let hint = json_error.self_correct_hint();
+        assert!(hint.contains("[grep_tool]"));
+        assert!(hint.contains("invalid arguments"));
+        assert!(hint.contains("expected a JSON object string"));
+        assert!(hint.contains(r#"pattern: "*.rs""#));
+        assert!(hint.contains("Please provide valid JSON"));
+    }
+
+    #[test]
+    fn test_tool_error_self_correct_hint_for_other_errors() {
+        let exec_error = ToolError::ExecutionFailed("Tool not found".to_string());
+        let hint = exec_error.self_correct_hint();
+        assert_eq!(hint, "execution failed: Tool not found");
+
+        let timeout_error = ToolError::Timeout;
+        let hint = timeout_error.self_correct_hint();
+        assert_eq!(hint, "tool execution timed out");
+    }
+
+    #[test]
+    fn test_goal_outcome_display() {
+        assert_eq!(format!("{}", GoalOutcome::Achieved), "Goal achieved");
+        
+        assert_eq!(format!("{}", GoalOutcome::Error("Test error".to_string())), "Goal error: Test error");
+        
+        assert_eq!(
+            format!("{}", GoalOutcome::UsageLimited { tokens_used: 100, token_budget: 1000 }),
+            "Token budget exhausted (100/1000)"
+        );
+    }
+
+    #[test]
+    fn test_goal_meta_default() {
+        let default_meta = GoalMeta::default();
+        
+        assert_eq!(default_meta.iteration, 0);
+        assert_eq!(default_meta.tool, "loom");
+        assert_eq!(default_meta.time_used_seconds, 0);
+        assert!(default_meta.token_budget.is_none());
+        assert_eq!(default_meta.tokens_used, 0);
+        assert!(default_meta.history.is_empty());
+        assert!(default_meta.verify_command.is_none());
+    }
+
+    #[test]
+    fn test_goal_meta_with_values() {
+        let meta = GoalMeta {
+            iteration: 5,
+            tool: "test_tool".to_string(),
+            time_used_seconds: 120,
+            token_budget: Some(5000),
+            tokens_used: 2500,
+            history: vec![],
+            verify_command: Some("cargo test".to_string()),
+        };
+        
+        assert_eq!(meta.iteration, 5);
+        assert_eq!(meta.tool, "test_tool");
+        assert_eq!(meta.time_used_seconds, 120);
+        assert_eq!(meta.token_budget, Some(5000));
+        assert_eq!(meta.tokens_used, 2500);
+        assert_eq!(meta.verify_command, Some("cargo test".to_string()));
+    }
+
+    #[test]
+    fn test_history_entry_fields() {
+        let entry = HistoryEntry {
+            iteration: 1,
+            timestamp: "2025-08-19T10:30:00Z".to_string(),
+            summary: Some("Completed grep search".to_string()),
+        };
+        
+        assert_eq!(entry.iteration, 1);
+        assert_eq!(entry.timestamp, "2025-08-19T10:30:00Z");
+        assert_eq!(entry.summary, Some("Completed grep search".to_string()));
+    }
+
+    #[test]
+    fn test_history_entry_without_summary() {
+        let entry = HistoryEntry {
+            iteration: 2,
+            timestamp: "2025-08-19T10:31:00Z".to_string(),
+            summary: None,
+        };
+        
+        assert_eq!(entry.iteration, 2);
+        assert_eq!(entry.timestamp, "2025-08-19T10:31:00Z");
+        assert!(entry.summary.is_none());
+    }
+
+    #[test]
+    fn test_constants_values() {
+        assert_eq!(DEFAULT_MAX_ITERATIONS, 100);
+        assert_eq!(MAX_CONSECUTIVE_FAILURES, 3);
+        assert_eq!(MAX_HISTORY_ENTRIES, 20);
+    }
+
+    #[test]
+    fn test_tool_error_clone() {
+        let error = ToolError::ExecutionFailed("Test error".to_string());
+        let cloned = error.clone();
+        assert_eq!(format!("{}", error), format!("{}", cloned));
+
+        let timeout = ToolError::Timeout;
+        let cloned_timeout = timeout.clone();
+        assert_eq!(format!("{}", timeout), format!("{}", cloned_timeout));
+    }
+
+    #[test]
+    fn test_tool_call_summary_clone() {
+        let summary = ToolCallSummary {
+            tool_name: "test_tool".to_string(),
+            result_preview: "Test result".to_string(),
+        };
+        
+        let cloned = summary.clone();
+        assert_eq!(summary.tool_name, cloned.tool_name);
+        assert_eq!(summary.result_preview, cloned.result_preview);
+    }
+
+    #[test]
+    fn test_goal_outcome_debug() {
+        let achieved = GoalOutcome::Achieved;
+        let error = GoalOutcome::Error("Test error".to_string());
+        let limited = GoalOutcome::UsageLimited { tokens_used: 100, token_budget: 1000 };
+        
+        assert!(format!("{:?}", achieved).contains("Achieved"));
+        assert!(format!("{:?}", error).contains("Error"));
+        assert!(format!("{:?}", limited).contains("UsageLimited"));
+    }
+
+    #[test]
+    fn test_turn_result_with_multiple_tool_summaries() {
+        let turn_result = TurnResult {
+            reply: "Completed multiple operations".to_string(),
+            reasoning_content: None,
+            tool_calls_summary: vec![
+                ToolCallSummary {
+                    tool_name: "read_file".to_string(),
+                    result_preview: "Read file contents".to_string(),
+                },
+                ToolCallSummary {
+                    tool_name: "grep".to_string(),
+                    result_preview: "Found 3 matches".to_string(),
+                },
+                ToolCallSummary {
+                    tool_name: "write_file".to_string(),
+                    result_preview: "Written 200 bytes".to_string(),
+                },
+            ],
+            usage: None,
+            work_summary: None,
+        };
+        
+        assert_eq!(turn_result.tool_calls_summary.len(), 3);
+        assert_eq!(turn_result.tool_calls_summary[0].tool_name, "read_file");
+        assert_eq!(turn_result.tool_calls_summary[1].tool_name, "grep");
+        assert_eq!(turn_result.tool_calls_summary[2].tool_name, "write_file");
+    }
+
+    #[test]
+    fn test_tool_error_case_insensitive_transient_detection() {
+        let msg = "RATE LIMIT EXCEEDED";
+        assert!(ToolError::is_transient_api_error(msg));
+        
+        let msg = "Rate Limit Exceeded";
+        assert!(ToolError::is_transient_api_error(msg));
+        
+        let msg = "rate_limit_exceeded";
+        assert!(ToolError::is_transient_api_error(msg));
+    }
+
+    #[test]
+    fn test_tool_error_all_transient_patterns() {
+        let patterns = vec![
+            "Rate limit reached",
+            "rate_limit",
+            "Too many requests",
+            "HTTP 429",
+            "Code: 1305",
+            "Server overloaded",
+            "503 Service unavailable",
+            "Please try again",
+        ];
+        
+        for pattern in patterns {
+            assert!(ToolError::is_transient_api_error(pattern), "Pattern should be transient: {}", pattern);
+        }
+    }
+}

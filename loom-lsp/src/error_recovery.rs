@@ -346,4 +346,259 @@ mod tests {
         // Should cap at max_delay_ms
         assert_eq!(config.delay_for_attempt(4), Duration::from_millis(1000));
     }
+
+    #[test]
+    fn test_circuit_breaker_config_default() {
+        let config = CircuitBreakerConfig::default();
+        assert_eq!(config.failure_threshold, 5);
+        assert_eq!(config.timeout_secs, 60);
+        assert_eq!(config.success_threshold, 2);
+    }
+
+    #[test]
+    fn test_retry_config_default() {
+        let config = RetryConfig::default();
+        assert_eq!(config.max_retries, 3);
+        assert_eq!(config.initial_delay_ms, 100);
+        assert_eq!(config.max_delay_ms, 5000);
+        assert_eq!(config.backoff_multiplier, 2.0);
+    }
+
+    #[test]
+    fn test_circuit_state_equality() {
+        assert_eq!(CircuitState::Closed, CircuitState::Closed);
+        assert_eq!(CircuitState::Open, CircuitState::Open);
+        assert_eq!(CircuitState::HalfOpen, CircuitState::HalfOpen);
+        assert_ne!(CircuitState::Closed, CircuitState::Open);
+        assert_ne!(CircuitState::Open, CircuitState::HalfOpen);
+    }
+
+    #[test]
+    fn test_circuit_state_clone() {
+        let state = CircuitState::Closed;
+        let cloned = state.clone();
+        assert_eq!(state, cloned);
+    }
+
+    #[test]
+    fn test_circuit_breaker_config_clone() {
+        let config = CircuitBreakerConfig {
+            failure_threshold: 10,
+            timeout_secs: 30,
+            success_threshold: 5,
+        };
+
+        let cloned = config.clone();
+        assert_eq!(cloned.failure_threshold, 10);
+        assert_eq!(cloned.timeout_secs, 30);
+        assert_eq!(cloned.success_threshold, 5);
+    }
+
+    #[test]
+    fn test_retry_config_clone() {
+        let config = RetryConfig {
+            max_retries: 5,
+            initial_delay_ms: 200,
+            max_delay_ms: 10000,
+            backoff_multiplier: 1.5,
+        };
+
+        let cloned = config.clone();
+        assert_eq!(cloned.max_retries, 5);
+        assert_eq!(cloned.initial_delay_ms, 200);
+        assert_eq!(cloned.max_delay_ms, 10000);
+        assert_eq!(cloned.backoff_multiplier, 1.5);
+    }
+
+    #[test]
+    fn test_circuit_breaker_debug() {
+        let config = CircuitBreakerConfig::default();
+        let cb = CircuitBreaker::new(config);
+        let debug_str = format!("{:?}", cb);
+        assert!(debug_str.contains("CircuitBreaker"));
+    }
+
+    #[test]
+    fn test_circuit_breaker_failure_count_tracking() {
+        let config = CircuitBreakerConfig {
+            failure_threshold: 3,
+            timeout_secs: 10,
+            success_threshold: 2,
+        };
+        let mut cb = CircuitBreaker::new(config);
+
+        cb.record_failure();
+        cb.record_failure();
+        
+        assert_eq!(cb.state(), &CircuitState::Closed);
+        assert!(cb.allow_request());
+
+        cb.record_failure();
+        
+        assert_eq!(cb.state(), &CircuitState::Open);
+        assert!(!cb.allow_request());
+    }
+
+    #[test]
+    fn test_circuit_breaker_timeout_recovery() {
+        let config = CircuitBreakerConfig {
+            failure_threshold: 1,
+            timeout_secs: 10, // Wait 10 seconds before allowing requests
+            success_threshold: 1,
+        };
+        let mut cb = CircuitBreaker::new(config);
+
+        cb.record_failure();
+        assert_eq!(cb.state(), &CircuitState::Open);
+        assert!(!cb.allow_request());
+
+        // Wait a moment for timeout
+        std::thread::sleep(std::time::Duration::from_secs(11));
+        
+        assert!(cb.allow_request());
+        assert_eq!(cb.state(), &CircuitState::HalfOpen);
+    }
+
+    #[test]
+    fn test_circuit_breaker_success_from_half_open() {
+        let config = CircuitBreakerConfig {
+            failure_threshold: 1,
+            timeout_secs: 10,
+            success_threshold: 2,
+        };
+        let mut cb = CircuitBreaker::new(config);
+
+        cb.state = CircuitState::HalfOpen;
+        cb.success_count = 0;
+
+        cb.record_success();
+        assert_eq!(cb.state(), &CircuitState::HalfOpen);
+        assert_eq!(cb.success_count, 1);
+
+        cb.record_success();
+        assert_eq!(cb.state(), &CircuitState::Closed);
+        assert_eq!(cb.success_count, 0);
+        assert_eq!(cb.failure_count, 0);
+    }
+
+    #[test]
+    fn test_circuit_breaker_failure_from_half_open() {
+        let config = CircuitBreakerConfig::default();
+        let mut cb = CircuitBreaker::new(config);
+
+        cb.state = CircuitState::HalfOpen;
+        cb.success_count = 1;
+
+        cb.record_failure();
+        assert_eq!(cb.state(), &CircuitState::Open);
+    }
+
+    #[test]
+    fn test_circuit_breaker_open_state_no_timeout() {
+        let config = CircuitBreakerConfig {
+            failure_threshold: 1,
+            timeout_secs: 100, // Long timeout
+            success_threshold: 1,
+        };
+        let mut cb = CircuitBreaker::new(config);
+
+        cb.record_failure();
+        assert_eq!(cb.state(), &CircuitState::Open);
+        assert!(!cb.allow_request());
+        
+        // Immediate check should still be blocked
+        assert!(!cb.allow_request());
+    }
+
+    #[test]
+    fn test_error_recovery_manager_creation() {
+        let retry_config = RetryConfig::default();
+        let circuit_config = CircuitBreakerConfig::default();
+        let manager = ErrorRecoveryManager::new(retry_config, circuit_config);
+        
+        assert_eq!(manager.retry_config().max_retries, 3);
+    }
+
+    #[test]
+    fn test_retry_config_delay_calculations() {
+        let config = RetryConfig {
+            max_retries: 10,
+            initial_delay_ms: 50,
+            max_delay_ms: 500,
+            backoff_multiplier: 3.0,
+        };
+
+        let delays: Vec<_> = (0..=config.max_retries)
+            .map(|attempt| config.delay_for_attempt(attempt).as_millis())
+            .collect();
+
+        // Verify exponential growth
+        assert!(delays[0] >= 50); // 50ms * 3.0^0 = 50ms
+        assert!(delays[1] >= 150); // 50ms * 3.0^1 = 150ms
+        assert!(delays[2] >= 450); // 50ms * 3.0^2 = 450ms
+
+        // Verify max capping
+        assert!(delays.iter().all(|&delay| delay <= 500));
+    }
+
+    #[test]
+    fn test_circuit_breaker_reset_after_closed_state() {
+        let config = CircuitBreakerConfig {
+            failure_threshold: 2,
+            ..Default::default()
+        };
+        let mut cb = CircuitBreaker::new(config);
+
+        cb.record_failure();
+        cb.record_failure();
+        
+        assert_eq!(cb.state(), &CircuitState::Open);
+
+        cb.state = CircuitState::Closed;
+        cb.failure_count = 0;
+        cb.record_failure();
+        
+        assert_eq!(cb.state(), &CircuitState::Closed);
+    }
+
+    #[test]
+    fn test_retry_config_no_negative_delays() {
+        let config = RetryConfig::default();
+        
+        for attempt in 0..=10 {
+            let _ = config.delay_for_attempt(attempt);
+        }
+    }
+
+    #[test]
+    fn test_circuit_breaker_consistency_after_multiple_operations() {
+        let config = CircuitBreakerConfig {
+            failure_threshold: 3,
+            timeout_secs: 1,
+            success_threshold: 2,
+        };
+        let mut cb = CircuitBreaker::new(config);
+
+        // Simulate a typical pattern
+        cb.record_success();
+        assert_eq!(cb.state(), &CircuitState::Closed);
+
+        cb.record_failure();
+        assert_eq!(cb.state(), &CircuitState::Closed);
+
+        cb.record_failure();
+        cb.record_failure();
+        assert_eq!(cb.state(), &CircuitState::Open);
+        assert!(!cb.allow_request());
+
+        // Wait for timeout
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        
+        assert!(cb.allow_request());
+        assert_eq!(cb.state(), &CircuitState::HalfOpen);
+
+        cb.record_success();
+        cb.record_success();
+        assert_eq!(cb.state(), &CircuitState::Closed);
+    }
 }

@@ -400,3 +400,265 @@ impl From<reqwest::Error> for AgentError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // LlmHeaders tests
+    #[test]
+    fn llm_headers_default_is_empty() {
+        let headers = LlmHeaders::default();
+        assert!(headers.thread_id.is_none());
+        assert!(headers.trace_id.is_none());
+        assert!(headers.custom_headers.is_empty());
+    }
+
+    #[test]
+    fn llm_headers_builder_methods() {
+        let headers = LlmHeaders::default()
+            .with_thread_id("thread-123")
+            .with_trace_id("trace-456")
+            .add_header("X-Custom-Header", "custom-value")
+            .add_header("X-Another-Header", "another-value");
+        
+        assert_eq!(headers.thread_id.as_deref(), Some("thread-123"));
+        assert_eq!(headers.trace_id.as_deref(), Some("trace-456"));
+        assert_eq!(headers.custom_headers.get("X-Custom-Header"), Some(&"custom-value".to_string()));
+        assert_eq!(headers.custom_headers.get("X-Another-Header"), Some(&"another-value".to_string()));
+        assert_eq!(headers.custom_headers.len(), 2);
+    }
+
+    #[test]
+    fn llm_headers_from_env_when_not_set() {
+        let headers = LlmHeaders::from_env();
+        assert!(headers.thread_id.is_none());
+        assert!(headers.trace_id.is_none());
+        assert!(headers.custom_headers.is_empty());
+    }
+
+    // ToolChoiceMode tests
+    #[test]
+    fn tool_choice_mode_default_is_auto() {
+        let mode = ToolChoiceMode::default();
+        assert_eq!(mode, ToolChoiceMode::Auto);
+    }
+
+    #[test]
+    fn tool_choice_mode_from_str_valid() {
+        assert_eq!("auto".parse::<ToolChoiceMode>().unwrap(), ToolChoiceMode::Auto);
+        assert_eq!("none".parse::<ToolChoiceMode>().unwrap(), ToolChoiceMode::None);
+        assert_eq!("required".parse::<ToolChoiceMode>().unwrap(), ToolChoiceMode::Required);
+    }
+
+    #[test]
+    fn tool_choice_mode_from_str_case_insensitive() {
+        assert_eq!("Auto".parse::<ToolChoiceMode>().unwrap(), ToolChoiceMode::Auto);
+        assert_eq!("AUTO".parse::<ToolChoiceMode>().unwrap(), ToolChoiceMode::Auto);
+        assert_eq!("NONE".parse::<ToolChoiceMode>().unwrap(), ToolChoiceMode::None);
+        assert_eq!("Required".parse::<ToolChoiceMode>().unwrap(), ToolChoiceMode::Required);
+        assert_eq!("REQUIRED".parse::<ToolChoiceMode>().unwrap(), ToolChoiceMode::Required);
+    }
+
+    #[test]
+    fn tool_choice_mode_from_str_invalid() {
+        assert!("invalid".parse::<ToolChoiceMode>().is_err());
+        assert!("".parse::<ToolChoiceMode>().is_err());
+        assert!("random".parse::<ToolChoiceMode>().is_err());
+        
+        let err = "bogus".parse::<ToolChoiceMode>().unwrap_err();
+        assert!(err.contains("unknown tool_choice"));
+        assert!(err.contains("bogus"));
+    }
+
+    #[test]
+    fn tool_choice_mode_serde_roundtrip() {
+        let modes = vec![ToolChoiceMode::Auto, ToolChoiceMode::None, ToolChoiceMode::Required];
+        
+        for mode in modes {
+            let serialized = serde_json::to_string(&mode).unwrap();
+            let deserialized: ToolChoiceMode = serde_json::from_str(&serialized).unwrap();
+            assert_eq!(mode, deserialized);
+        }
+    }
+
+    // LlmUsage tests
+    #[test]
+    fn llm_usage_default() {
+        let usage = LlmUsage::default();
+        assert_eq!(usage.prompt_tokens, 0);
+        assert_eq!(usage.completion_tokens, 0);
+        assert_eq!(usage.total_tokens, 0);
+        assert!(usage.prompt_tokens_details.is_none());
+        assert!(usage.completion_tokens_details.is_none());
+    }
+
+    #[test]
+    fn llm_usage_accumulate() {
+        let usage1 = LlmUsage {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            prompt_tokens_details: Some(PromptTokensDetails {
+                cached_tokens: Some(20),
+                audio_tokens: None,
+            }),
+            completion_tokens_details: Some(CompletionTokensDetails {
+                reasoning_tokens: Some(10),
+                audio_tokens: None,
+                accepted_prediction_tokens: None,
+                rejected_prediction_tokens: None,
+            }),
+        };
+        
+        let usage2 = LlmUsage {
+            prompt_tokens: 200,
+            completion_tokens: 100,
+            total_tokens: 300,
+            prompt_tokens_details: Some(PromptTokensDetails {
+                cached_tokens: Some(30),
+                audio_tokens: Some(5),
+            }),
+            completion_tokens_details: Some(CompletionTokensDetails {
+                reasoning_tokens: Some(20),
+                audio_tokens: Some(10),
+                accepted_prediction_tokens: Some(5),
+                rejected_prediction_tokens: Some(2),
+            }),
+        };
+        
+        let accumulated = usage1.accumulate(&usage2);
+        assert_eq!(accumulated.prompt_tokens, 300);
+        assert_eq!(accumulated.completion_tokens, 150);
+        assert_eq!(accumulated.total_tokens, 450);
+        assert!(accumulated.prompt_tokens_details.is_none());
+        assert!(accumulated.completion_tokens_details.is_none());
+    }
+
+    #[test]
+    fn llm_usage_accumulate_with_details() {
+        let usage1 = LlmUsage {
+            prompt_tokens: 50,
+            completion_tokens: 25,
+            total_tokens: 75,
+            prompt_tokens_details: Some(PromptTokensDetails {
+                cached_tokens: Some(10),
+                audio_tokens: Some(2),
+            }),
+            completion_tokens_details: Some(CompletionTokensDetails {
+                reasoning_tokens: Some(5),
+                audio_tokens: Some(3),
+                accepted_prediction_tokens: Some(1),
+                rejected_prediction_tokens: None,
+            }),
+        };
+        
+        let usage2 = LlmUsage {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            prompt_tokens_details: Some(PromptTokensDetails {
+                cached_tokens: Some(20),
+                audio_tokens: None,
+            }),
+            completion_tokens_details: None,
+        };
+        
+        let accumulated = usage1.accumulate(&usage2);
+        assert_eq!(accumulated.prompt_tokens, 150);
+        assert_eq!(accumulated.completion_tokens, 75);
+        assert_eq!(accumulated.total_tokens, 225);
+        assert!(accumulated.prompt_tokens_details.is_none());
+        assert!(accumulated.completion_tokens_details.is_none());
+    }
+
+    // LlmResponse tests
+    #[test]
+    fn llm_response_text_creates_response() {
+        let response = LlmResponse::text("Hello, world!");
+        assert_eq!(response.content, "Hello, world!");
+        assert!(response.reasoning_content.is_none());
+        assert!(response.tool_calls.is_empty());
+        assert!(response.usage.is_none());
+    }
+
+    #[test]
+    fn llm_response_is_empty_when_no_content_no_tools() {
+        let response = LlmResponse::text("");
+        assert!(response.is_empty());
+    }
+
+    #[test]
+    fn llm_response_is_not_empty_with_content() {
+        let response = LlmResponse::text("Some content");
+        assert!(!response.is_empty());
+    }
+
+    #[test]
+    fn llm_response_is_not_empty_with_tool_calls() {
+        let response = LlmResponse {
+            content: String::new(),
+            reasoning_content: None,
+            tool_calls: vec![crate::tool::ToolCall::new("test_tool", "{}")],
+            usage: None,
+        };
+        assert!(!response.is_empty());
+    }
+
+    // MessageChunk tests
+    #[test]
+    fn message_chunk_message_factory() {
+        let chunk = MessageChunk::message("test content");
+        assert_eq!(chunk.content, "test content");
+        assert_eq!(chunk.kind, MessageChunkKind::Message);
+        assert!(!chunk.is_thinking());
+    }
+
+    #[test]
+    fn message_chunk_thinking_factory() {
+        let chunk = MessageChunk::thinking("thinking content");
+        assert_eq!(chunk.content, "thinking content");
+        assert_eq!(chunk.kind, MessageChunkKind::Thinking);
+        assert!(chunk.is_thinking());
+    }
+
+    #[test]
+    fn message_chunk_is_thinking() {
+        let message_chunk = MessageChunk::message("content");
+        assert!(!message_chunk.is_thinking());
+        
+        let thinking_chunk = MessageChunk::thinking("thinking");
+        assert!(thinking_chunk.is_thinking());
+    }
+
+    #[test]
+    fn message_chunk_default() {
+        let chunk = MessageChunk::default();
+        assert!(chunk.content.is_empty());
+        assert_eq!(chunk.kind, MessageChunkKind::Message);
+        assert!(!chunk.is_thinking());
+    }
+
+    #[test]
+    fn message_chunk_kind_default() {
+        let kind = MessageChunkKind::default();
+        assert_eq!(kind, MessageChunkKind::Message);
+    }
+
+    // PromptTokensDetails & CompletionTokensDetails tests
+    #[test]
+    fn prompt_tokens_details_default() {
+        let details = PromptTokensDetails::default();
+        assert!(details.cached_tokens.is_none());
+        assert!(details.audio_tokens.is_none());
+    }
+
+    #[test]
+    fn completion_tokens_details_default() {
+        let details = CompletionTokensDetails::default();
+        assert!(details.reasoning_tokens.is_none());
+        assert!(details.audio_tokens.is_none());
+        assert!(details.accepted_prediction_tokens.is_none());
+        assert!(details.rejected_prediction_tokens.is_none());
+    }
+}

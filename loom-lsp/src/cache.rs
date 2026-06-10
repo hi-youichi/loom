@@ -270,4 +270,311 @@ mod tests {
         assert_eq!(stats.active_entries, 1);
         assert_eq!(stats.expired_entries, 0);
     }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_cache_expiry() {
+        let config = DiagnosticCacheConfig {
+            ttl: Duration::from_millis(100), // Short TTL
+            max_entries: 1000,
+        };
+        let cache = DiagnosticCache::with_config(config);
+        let uri = Url::parse("file:///test.rs").unwrap();
+        let diagnostics = vec![create_test_diagnostic("Test error")];
+
+        cache.put(uri.clone(), 1, diagnostics.clone()).await;
+
+        // Should be available immediately
+        let cached = cache.get(&uri, 1).await;
+        assert!(cached.is_some());
+
+        // Wait for expiry
+        tokio::time::sleep(Duration::from_millis(150)).await;
+
+        // Should be expired
+        let cached = cache.get(&uri, 1).await;
+        assert!(cached.is_none());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_cache_eviction_when_full() {
+        let config = DiagnosticCacheConfig {
+            ttl: Duration::from_secs(10), // Long TTL
+            max_entries: 2, // Small cache
+        };
+        let cache = DiagnosticCache::with_config(config);
+
+        // Fill the cache beyond capacity
+        for i in 0..5 {
+            let uri = Url::parse(&format!("file:///test{}.rs", i)).unwrap();
+            let diagnostics = vec![create_test_diagnostic(&format!("Error {}", i))];
+            cache.put(uri.clone(), i, diagnostics).await;
+        }
+
+        let stats = cache.stats().await;
+        assert_eq!(stats.total_entries, 2); // Should be at max capacity
+        assert_eq!(stats.active_entries, 2);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_cache_get_latest() {
+        let cache = DiagnosticCache::new();
+        let uri = Url::parse("file:///test.rs").unwrap();
+        let diagnostics = vec![create_test_diagnostic("Test error")];
+
+        cache.put(uri.clone(), 1, diagnostics.clone()).await;
+
+        let cached = cache.get_latest(&uri).await;
+        assert!(cached.is_some());
+        assert_eq!(cached.unwrap(), diagnostics);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_cache_get_latest_expired() {
+        let config = DiagnosticCacheConfig {
+            ttl: Duration::from_millis(100),
+            max_entries: 1000,
+        };
+        let cache = DiagnosticCache::with_config(config);
+        let uri = Url::parse("file:///test.rs").unwrap();
+        let diagnostics = vec![create_test_diagnostic("Test error")];
+
+        cache.put(uri.clone(), 1, diagnostics).await;
+
+        tokio::time::sleep(Duration::from_millis(150)).await;
+
+        let cached = cache.get_latest(&uri).await;
+        assert!(cached.is_none());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_cache_multiple_entries() {
+        let cache = DiagnosticCache::new();
+
+        for i in 0..5 {
+            let uri = Url::parse(&format!("file:///test{}.rs", i)).unwrap();
+            let diagnostics = vec![create_test_diagnostic(&format!("Error {}", i))];
+            cache.put(uri.clone(), i, diagnostics).await;
+        }
+
+        let stats = cache.stats().await;
+        assert_eq!(stats.total_entries, 5);
+        assert_eq!(stats.active_entries, 5);
+        assert_eq!(stats.expired_entries, 0);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_cache_empty_diagnostics() {
+        let cache = DiagnosticCache::new();
+        let uri = Url::parse("file:///test.rs").unwrap();
+        let empty_diagnostics = vec![];
+
+        cache.put(uri.clone(), 1, empty_diagnostics.clone()).await;
+
+        let cached = cache.get(&uri, 1).await;
+        assert!(cached.is_some());
+        assert_eq!(cached.unwrap(), empty_diagnostics);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_cache_nonexistent_file() {
+        let cache = DiagnosticCache::new();
+        let uri = Url::parse("file:///nonexistent.rs").unwrap();
+
+        let cached = cache.get(&uri, 1).await;
+        assert!(cached.is_none());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_cache_invalidate_nonexistent() {
+        let cache = DiagnosticCache::new();
+        let uri = Url::parse("file:///nonexistent.rs").unwrap();
+
+        cache.invalidate(&uri).await;
+
+        // Should not panic and stats should remain 0
+        let stats = cache.stats().await;
+        assert_eq!(stats.total_entries, 0);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_cache_overwrite_existing() {
+        let cache = DiagnosticCache::new();
+        let uri = Url::parse("file:///test.rs").unwrap();
+
+        let diagnostics1 = vec![create_test_diagnostic("Error 1")];
+        let diagnostics2 = vec![create_test_diagnostic("Error 2")];
+
+        cache.put(uri.clone(), 1, diagnostics1).await;
+        cache.put(uri.clone(), 1, diagnostics2.clone()).await;
+
+        let cached = cache.get(&uri, 1).await;
+        assert!(cached.is_some());
+        assert_eq!(cached.unwrap(), diagnostics2); // Should have latest data
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_cache_config_custom() {
+        let config = DiagnosticCacheConfig {
+            ttl: Duration::from_secs(30),
+            max_entries: 500,
+        };
+        let cache = DiagnosticCache::with_config(config);
+
+        let stats = cache.stats().await;
+        assert_eq!(stats.total_entries, 0); // Verify cache is initialized correctly
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_cache_stats_display() {
+        let cache = DiagnosticCache::new();
+        let stats = cache.stats().await;
+
+        let stats_str = format!("{:?}", stats);
+        assert!(stats_str.contains("DiagnosticCacheStats"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_cache_with_multiple_severities() {
+        let cache = DiagnosticCache::new();
+        let uri = Url::parse("file:///test.rs").unwrap();
+
+        let diagnostics = vec![
+            Diagnostic {
+                range: Range {
+                    start: Position { line: 0, character: 0 },
+                    end: Position { line: 0, character: 10 },
+                },
+                severity: Some(DiagnosticSeverity::ERROR),
+                code: None,
+                code_description: None,
+                source: Some("test".to_string()),
+                message: "Error message".to_string(),
+                related_information: None,
+                tags: None,
+                data: None,
+            },
+            Diagnostic {
+                range: Range {
+                    start: Position { line: 1, character: 0 },
+                    end: Position { line: 1, character: 10 },
+                },
+                severity: Some(DiagnosticSeverity::WARNING),
+                code: None,
+                code_description: None,
+                source: Some("test".to_string()),
+                message: "Warning message".to_string(),
+                related_information: None,
+                tags: None,
+                data: None,
+            },
+            Diagnostic {
+                range: Range {
+                    start: Position { line: 2, character: 0 },
+                    end: Position { line: 2, character: 10 },
+                },
+                severity: Some(DiagnosticSeverity::HINT),
+                code: None,
+                code_description: None,
+                source: Some("test".to_string()),
+                message: "Hint message".to_string(),
+                related_information: None,
+                tags: None,
+                data: None,
+            },
+        ];
+
+        cache.put(uri.clone(), 1, diagnostics.clone()).await;
+
+        let cached = cache.get(&uri, 1).await;
+        assert!(cached.is_some());
+        assert_eq!(cached.unwrap().len(), 3);
+    }
+
+    #[test]
+    fn test_diagnostic_cache_entry_struct() {
+        let entry = DiagnosticCacheEntry {
+            diagnostics: vec![create_test_diagnostic("Test")],
+            timestamp: Instant::now(),
+            version: 5,
+        };
+
+        assert_eq!(entry.version, 5);
+        assert_eq!(entry.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_diagnostic_cache_config_default() {
+        let config = DiagnosticCacheConfig::default();
+        assert_eq!(config.ttl, Duration::from_secs(5));
+        assert_eq!(config.max_entries, 1000);
+    }
+
+    #[test]
+    fn test_diagnostic_cache_config_clone() {
+        let config = DiagnosticCacheConfig {
+            ttl: Duration::from_secs(10),
+            max_entries: 500,
+        };
+
+        let cloned = config.clone();
+        assert_eq!(cloned.ttl, Duration::from_secs(10));
+        assert_eq!(cloned.max_entries, 500);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_diagnostic_cache_default() {
+        let cache = DiagnosticCache::default();
+        assert!(cache.get(&Url::parse("file:///test.rs").unwrap(), 1).await.is_none());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_cache_concurrent_access() {
+        let cache = Arc::new(DiagnosticCache::new());
+        let handles: Vec<_> = (0..10)
+            .map(|i| {
+                let cache = Arc::clone(&cache);
+                tokio::spawn(async move {
+                    let uri = Url::parse(&format!("file:///test{}.rs", i)).unwrap();
+                    let diagnostics = vec![create_test_diagnostic(&format!("Error {}", i))];
+                    cache.put(uri.clone(), i, diagnostics).await;
+                    cache.get(&uri, i).await
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            let result = handle.await.unwrap();
+            assert!(result.is_some());
+        }
+
+        let stats = cache.stats().await;
+        assert_eq!(stats.total_entries, 10);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_cache_stats_active_after_expiry() {
+        let config = DiagnosticCacheConfig {
+            ttl: Duration::from_millis(100),
+            max_entries: 1000,
+        };
+        let cache = DiagnosticCache::with_config(config);
+
+        // Add entries that will expire
+        for i in 0..3 {
+            let uri = Url::parse(&format!("file:///test{}.rs", i)).unwrap();
+            let diagnostics = vec![create_test_diagnostic(&format!("Error {}", i))];
+            cache.put(uri.clone(), i, diagnostics).await;
+        }
+
+        tokio::time::sleep(Duration::from_millis(150)).await;
+
+        // Add a fresh entry
+        let fresh_uri = Url::parse("file:///fresh.rs").unwrap();
+        let fresh_diagnostics = vec![create_test_diagnostic("Fresh error")];
+        cache.put(fresh_uri.clone(), 1, fresh_diagnostics).await;
+
+        let stats = cache.stats().await;
+        assert!(stats.active_entries >= 1);
+        assert!(stats.expired_entries >= 3);
+    }
 }

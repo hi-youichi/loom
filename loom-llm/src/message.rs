@@ -7,70 +7,6 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
-/// One-line diagnostic summary of a message for structured logging.
-pub fn message_summary(idx: usize, msg: &Message) -> String {
-    match msg {
-        Message::System(s) => format!("[{idx}] role=system content_len={}", s.len()),
-        Message::User(c) => format!("[{idx}] role=user content_len={}", c.as_text().len()),
-        Message::Assistant(p) => {
-            let tc_ids: Vec<&str> = p.tool_calls.iter().map(|tc| tc.id.as_str()).collect();
-            if tc_ids.is_empty() {
-                format!(
-                    "[{idx}] role=assistant content_len={} reasoning_len={}",
-                    p.content.len(),
-                    p.reasoning_content.as_ref().map(|s| s.len()).unwrap_or(0)
-                )
-            } else {
-                format!(
-                    "[{idx}] role=assistant tool_calls=[{}] content_len={} reasoning_len={}",
-                    tc_ids.join(","),
-                    p.content.len(),
-                    p.reasoning_content.as_ref().map(|s| s.len()).unwrap_or(0)
-                )
-            }
-        }
-        Message::Tool { tool_call_id, content } => {
-            format!(
-                "[{idx}] role=tool tool_call_id={} content_len={}",
-                tool_call_id,
-                content.to_display_string().len()
-            )
-        }
-    }
-}
-
-/// Check messages for orphan assistant+tool_calls without following tool messages.
-/// Returns a list of warnings (empty if all OK).
-pub fn check_orphan_tool_calls(messages: &[Message]) -> Vec<String> {
-    let mut warnings = Vec::new();
-    for (i, msg) in messages.iter().enumerate() {
-        if let Message::Assistant(p) = msg {
-            if p.tool_calls.is_empty() {
-                continue;
-            }
-            let expected_ids: Vec<&str> =
-                p.tool_calls.iter().map(|tc| tc.id.as_str()).collect();
-            let following_tool_ids: Vec<&str> = messages[i + 1..]
-                .iter()
-                .take_while(|m| matches!(m, Message::Tool { .. }))
-                .filter_map(|m| match m {
-                    Message::Tool { tool_call_id, .. } => Some(tool_call_id.as_str()),
-                    _ => None,
-                })
-                .collect();
-            if expected_ids.len() != following_tool_ids.len() {
-                warnings.push(format!(
-                    "orphan_tool_calls idx={i} tc_ids=[{}] following_tool_msgs={} following_ids=[{}]",
-                    expected_ids.join(","),
-                    following_tool_ids.len(),
-                    following_tool_ids.join(","),
-                ));
-            }
-        }
-    }
-    warnings
-}
-
 /// User message content: plain text or multimodal part array.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -218,17 +154,6 @@ impl ContentPart {
             ContentPart::PdfUrl { .. } | ContentPart::PdfBase64 { .. } => "Pdf".to_string(),
             ContentPart::File { .. } => "Text".to_string(),
         }
-    }
-}
-
-/// Convert a `ContentPart` to a `ModalityType` for model validation.
-pub fn content_part_modality(part: &ContentPart) -> model_spec_core::spec::ModalityType {
-    match part {
-        ContentPart::Text { .. } | ContentPart::File { .. } => model_spec_core::spec::ModalityType::Text,
-        ContentPart::ImageUrl { .. } | ContentPart::ImageBase64 { .. } => model_spec_core::spec::ModalityType::Image,
-        ContentPart::AudioBase64 { .. } => model_spec_core::spec::ModalityType::Audio,
-        ContentPart::VideoUrl { .. } | ContentPart::VideoBase64 { .. } => model_spec_core::spec::ModalityType::Video,
-        ContentPart::PdfUrl { .. } | ContentPart::PdfBase64 { .. } => model_spec_core::spec::ModalityType::Pdf,
     }
 }
 
@@ -411,7 +336,7 @@ impl<'de> Deserialize<'de> for ToolCallContent {
                     match key.as_str() {
                         "type" => content_type = Some(map.next_value()?),
                         "path" => path = Some(map.next_value()?),
-                        "old_text" => old_text = map.next_value()?,
+                        "old_text" => old_text = Some(map.next_value()?),
                         "new_text" => new_text = Some(map.next_value()?),
                         "terminal_id" => terminal_id = Some(map.next_value()?),
                         _ => {
@@ -682,6 +607,58 @@ pub fn assistant_content_for_chat_api(s: &str) -> Cow<'_, str> {
     } else {
         Cow::Borrowed(s)
     }
+}
+
+/// Convert ContentPart to ModalityType for model validation
+pub fn content_part_modality(part: &ContentPart) -> &'static str {
+    match part {
+        ContentPart::Text { .. } | ContentPart::File { .. } => "text",
+        ContentPart::ImageUrl { .. } | ContentPart::ImageBase64 { .. } => "image",
+        ContentPart::AudioBase64 { .. } => "audio",
+        ContentPart::VideoUrl { .. } | ContentPart::VideoBase64 { .. } => "video",
+        ContentPart::PdfUrl { .. } | ContentPart::PdfBase64 { .. } => "pdf",
+    }
+}
+
+/// Helper function to check for orphan tool calls
+pub fn check_orphan_tool_calls(messages: &[Message]) -> Vec<String> {
+    let mut warnings = Vec::new();
+    let mut expected_tool_results = std::collections::HashSet::new();
+    
+    for msg in messages {
+        match msg {
+            Message::Assistant(payload) => {
+                for tc in &payload.tool_calls {
+                    expected_tool_results.insert(tc.id.clone());
+                }
+            }
+            Message::Tool { tool_call_id, .. } => {
+                expected_tool_results.remove(tool_call_id);
+            }
+            _ => {}
+        }
+    }
+    
+    for orphan_id in expected_tool_results {
+        warnings.push(format!("Tool call '{}' without matching tool result", orphan_id));
+    }
+    
+    warnings
+}
+
+/// Helper function to create a summary of a message
+pub fn message_summary(index: usize, msg: &Message) -> String {
+    let content_preview = msg.content()
+        .chars()
+        .take(50)
+        .collect::<String>();
+    
+    format!("{}: {}{}", index, msg.role(), 
+        if content_preview.len() < msg.content().len() {
+            format!("{}...", content_preview)
+        } else {
+            content_preview
+        })
 }
 
 impl std::fmt::Display for Message {

@@ -1,9 +1,0 @@
-[package]
-name = "loom-evolution"
-version = "0.2.1"
-edition = "2021"
-description = "DEPRECATED: This crate has been removed from the workspace"
-license = "MIT"
-
-[dependencies]
-loom = { path = "../loom", optional = true }

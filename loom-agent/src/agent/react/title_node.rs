@@ -82,3 +82,53 @@ impl Node<ReActState> for TitleNode {
         Ok((state, Next::Node("think".into())))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_clamp_short_string_unchanged() {
+        assert_eq!(clamp_summary_chars("hello"), "hello");
+    }
+
+    #[test]
+    fn test_clamp_exact_50_chars_unchanged() {
+        let exact_50 = "a".repeat(50);
+        assert_eq!(clamp_summary_chars(&exact_50), exact_50);
+        assert_eq!(exact_50.len(), 50);
+    }
+
+    #[test]
+    fn test_clamp_truncates_long_string() {
+        let long_string = "a".repeat(60);
+        let result = clamp_summary_chars(&long_string);
+        assert_eq!(result.len(), 50);
+        assert_eq!(result, "a".repeat(47) + "...");
+    }
+
+    #[test]
+    fn test_clamp_unicode_chars() {
+        let chinese = "这是一段中文测试文字，每个字符算一个字";
+        let result = clamp_summary_chars(chinese);
+        assert_eq!(result, chinese);
+        
+        let long_chinese = "这是一段很长的中文测试文字，每个字符算一个字，会被截断显示还有更多的字加上去超过五十个字符的限制，需要添加更多的中文字符来确保总长度超过五十个字符";
+        let result = clamp_summary_chars(long_chinese);
+        assert_eq!(result.chars().count(), 50);
+        assert!(result.ends_with("..."));
+    }
+
+    #[test]
+    fn test_clamp_empty_string() {
+        assert_eq!(clamp_summary_chars(""), "");
+    }
+
+    #[test]
+    fn test_clamp_single_char_over_50() {
+        let single_over = "a".repeat(51);
+        let result = clamp_summary_chars(&single_over);
+        assert_eq!(result.len(), 50);
+        assert_eq!(result, "a".repeat(47) + "...");
+    }
+}

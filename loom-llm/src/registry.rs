@@ -36,7 +36,7 @@ impl CachedModelList {
 
     /// Check if the cache has expired.
     pub fn is_expired(&self) -> bool {
-        self.fetched_at.elapsed() > self.ttl
+        self.fetched_at.elapsed() >= self.ttl
     }
 }
 
