@@ -1,4 +1,4 @@
-//! ReactRunner: compiled graph, invoke and stream.
+//! ReactRunner: compiled graph and stream.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -134,26 +134,7 @@ impl ReactRunner {
         })
     }
 
-    pub async fn invoke(&self, user_message: &str) -> Result<ReActState, RunError> {
-        self.invoke_with_config(user_message, None).await
-    }
 
-    pub async fn invoke_with_config(
-        &self,
-        user_message: &str,
-        config: Option<RunnableConfig>,
-    ) -> Result<ReActState, RunError> {
-        let run_config = config.or_else(|| self.runnable_config.clone());
-        let state = build_react_initial_state(
-            user_message,
-            self.checkpointer.as_deref(),
-            run_config.as_ref(),
-            &self.system_prompt,
-        )
-        .await?;
-        let final_state = self.compiled.invoke(state, run_config).await?;
-        Ok(final_state)
-    }
 
     pub async fn stream_with_callback<F>(
         &self,
@@ -218,29 +199,6 @@ impl ReactRunner {
     }
 }
 
-pub async fn run_agent(
-    user_message: &str,
-    options: Option<AgentOptions>,
-) -> Result<ReActState, RunError> {
-    let opts = resolve_run_agent_options(options.unwrap_or_default());
-    let runner = ReactRunner::new(
-        opts.provider,
-        opts.tool_source,
-        opts.checkpointer,
-        opts.store,
-        opts.runnable_config,
-        REACT_SYSTEM_PROMPT.to_string(),
-        None,
-        opts.user_message_store,
-        None,
-        opts.verbose,
-        None,
-        None,
-    )?;
-    runner.invoke(user_message).await
-
-}
-
 pub async fn run_react_graph_stream<F>(
     user_message: &str,
     options: Option<AgentOptions>,
@@ -265,7 +223,4 @@ where
         None,
     )?;
     runner.stream_with_callback(user_message, on_event).await
-
 }
-
-

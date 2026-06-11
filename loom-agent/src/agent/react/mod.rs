@@ -49,7 +49,7 @@ pub use build::{DefaultTierResolver, ResolvedTierModel, TierResolver};
 pub use config::{BuiltinToolFilter, GotRunnerConfig, ReactBuildConfig, TotRunnerConfig};
 pub use observe_node::ObserveNode;
 pub use runner::{
-    build_react_initial_state, run_agent, run_react_graph_stream, AgentOptions, ReactRunner,
+    build_react_initial_state, run_react_graph_stream, AgentOptions, ReactRunner,
     RunError,
 };
 pub use title_node::TitleNode;

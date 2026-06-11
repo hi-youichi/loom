@@ -1,4 +1,4 @@
-//! GoT graph runner: build, initial state, invoke and stream.
+//! GoT graph runner: build, initial state, and stream.
 //!
 //! Graph: START → plan_graph → execute_graph → [has_pending] → execute_graph | END.
 
@@ -150,28 +150,6 @@ impl GotRunner {
         })
     }
 
-    /// Invokes the graph with the given user message.
-    pub async fn invoke(&self, user_message: &str) -> Result<GotState, GotRunError> {
-        self.invoke_with_config(user_message, None).await
-    }
-
-    /// Invokes with optional per-invoke config.
-    pub async fn invoke_with_config(
-        &self,
-        user_message: &str,
-        config: Option<RunnableConfig>,
-    ) -> Result<GotState, GotRunError> {
-        let run_config = config.or_else(|| self.runnable_config.clone());
-        let state = build_got_initial_state(
-            user_message,
-            self.checkpointer.as_deref(),
-            run_config.as_ref(),
-        )
-        .await?;
-        let final_state = self.compiled.invoke(state, run_config).await?;
-        Ok(final_state)
-    }
-
     /// Streams the graph execution; returns the final state.
     pub async fn stream_with_callback<F>(
         &self,
@@ -292,9 +270,9 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn got_runner_invoke_and_stream_with_mock_llm() {
+    async fn got_runner_stream_with_mock_llm() {
         let llm_response =
-            r#"{"nodes":[{"id":"collect","description":"collect info"}],"edges":[]}"#;
+            r#"{\"nodes\":[{\"id\":\"collect\",\"description\":\"collect info\"}],\"edges\":[]}"#;
         let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(llm_response));
         let runner = GotRunner::new(
             llm,
@@ -308,10 +286,6 @@ mod tests {
             false,
         )
         .unwrap();
-
-        let out = runner.invoke("help me").await.unwrap();
-        assert!(!out.task_graph.nodes.is_empty());
-        assert_eq!(out.summary_result(), llm_response);
 
         let events: Arc<Mutex<Vec<StreamEvent<GotState>>>> = Arc::new(Mutex::new(Vec::new()));
         let events_clone = Arc::clone(&events);

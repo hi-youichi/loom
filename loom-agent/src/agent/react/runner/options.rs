@@ -1,4 +1,4 @@
-//! Optional configuration for run_agent and run_react_graph_stream, and its resolved form.
+//! Optional configuration for run_react_graph_stream, and its resolved form.
 
 use std::sync::Arc;
 

@@ -298,7 +298,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn build_react_runner_with_mock_llm_and_system_prompt_invokes() {
+    async fn build_react_runner_with_mock_llm_and_system_prompt_streams() {
         let mut cfg = base_config();
         cfg.system_prompt = Some("test system prompt".to_string());
         let runner = build_react_runner(
@@ -312,12 +312,17 @@ mod tests {
         )
         .await
         .unwrap();
-        let out = runner.invoke("hello").await.unwrap();
-        assert!(out.last_assistant_reply().is_some());
+        let outcome = runner.stream_with_callback("hello", Some(|_| {} )).await.unwrap();
+        match outcome {
+            crate::runner_common::StreamRunOutcome::Completed(s) => {
+                assert!(s.last_assistant_reply().is_some());
+            }
+            other => panic!("expected Completed, got {:?}", other),
+        }
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn build_dup_tot_got_runners_with_mock_llm_invoke() {
+    async fn build_dup_tot_got_runners_with_mock_llm_stream() {
         let cfg = base_config();
 
         let dup = build_dup_runner(
@@ -327,8 +332,13 @@ mod tests {
         )
         .await
         .unwrap();
-        let dup_out = dup.invoke("q").await.unwrap();
-        assert!(dup_out.last_assistant_reply().is_some());
+        let dup_out = dup.stream_with_callback("q", Some(|_| {} )).await.unwrap();
+        match dup_out {
+            crate::runner_common::StreamRunOutcome::Completed(s) => {
+                assert!(s.last_assistant_reply().is_some());
+            }
+            other => panic!("expected Completed, got {:?}", other),
+        }
 
         let tot = build_tot_runner(
             &cfg,
@@ -337,8 +347,13 @@ mod tests {
         )
         .await
         .unwrap();
-        let tot_out = tot.invoke("q").await.unwrap();
-        assert!(tot_out.last_assistant_reply().is_some());
+        let tot_out = tot.stream_with_callback("q", Some(|_| {} )).await.unwrap();
+        match tot_out {
+            crate::runner_common::StreamRunOutcome::Completed(s) => {
+                assert!(s.last_assistant_reply().is_some());
+            }
+            other => panic!("expected Completed, got {:?}", other),
+        }
 
         let got = build_got_runner(
             &cfg,
@@ -347,7 +362,12 @@ mod tests {
         )
         .await
         .unwrap();
-        let got_out = got.invoke("q").await.unwrap();
-        assert!(!got_out.summary_result().is_empty() || !got_out.task_graph.nodes.is_empty());
+        let got_out = got.stream_with_callback("q", Some(|_| {} )).await.unwrap();
+        match got_out {
+            crate::runner_common::StreamRunOutcome::Completed(s) => {
+                assert!(!s.summary_result().is_empty() || !s.task_graph.nodes.is_empty());
+            }
+            other => panic!("expected Completed, got {:?}", other),
+        }
     }
 }

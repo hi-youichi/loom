@@ -1,4 +1,4 @@
-//! DUP graph runner: build, initial state, invoke and stream.
+//! DUP graph runner: build, initial state, and stream.
 //!
 //! Graph: START → understand → plan → [tools_condition] → act | end, observe → plan.
 
@@ -187,29 +187,6 @@ impl DupRunner {
         })
     }
 
-    /// Invokes the graph with the given user message.
-    pub async fn invoke(&self, user_message: &str) -> Result<DupState, DupRunError> {
-        self.invoke_with_config(user_message, None).await
-    }
-
-    /// Invokes with optional per-invoke config.
-    pub async fn invoke_with_config(
-        &self,
-        user_message: &str,
-        config: Option<RunnableConfig>,
-    ) -> Result<DupState, DupRunError> {
-        let run_config = config.or_else(|| self.runnable_config.clone());
-        let state = build_dup_initial_state(
-            user_message,
-            self.checkpointer.as_deref(),
-            run_config.as_ref(),
-            self.system_prompt.as_deref(),
-        )
-        .await?;
-        let final_state = self.compiled.invoke(state, run_config).await?;
-        Ok(final_state)
-    }
-
     /// Streams the graph execution; returns the final state.
     pub async fn stream_with_callback<F>(
         &self,
@@ -307,7 +284,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn dup_runner_invoke_and_stream_with_mock_llm() {
+    async fn dup_runner_stream_with_mock_llm() {
         let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls("final answer"));
         let runner = DupRunner::new(
             llm,
@@ -320,9 +297,6 @@ mod tests {
             false,
         )
         .unwrap();
-
-        let out = runner.invoke("what time is it?").await.unwrap();
-        assert!(out.last_assistant_reply().is_some());
 
         let events: Arc<Mutex<Vec<StreamEvent<DupState>>>> = Arc::new(Mutex::new(Vec::new()));
         let events_clone = Arc::clone(&events);

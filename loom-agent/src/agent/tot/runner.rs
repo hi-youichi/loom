@@ -1,4 +1,4 @@
-//! ToT graph runner: build, initial state, invoke and stream.
+//! ToT graph runner: build, initial state, and stream.
 //!
 //! Graph: START → think_expand → think_evaluate → [tools_condition] → act | end,
 //! act → observe → (observe returns Next::Node("think_expand")).
@@ -214,29 +214,6 @@ impl TotRunner {
         })
     }
 
-    /// Invokes the graph with the given user message.
-    pub async fn invoke(&self, user_message: &str) -> Result<TotState, TotRunError> {
-        self.invoke_with_config(user_message, None).await
-    }
-
-    /// Invokes with optional per-invoke config.
-    pub async fn invoke_with_config(
-        &self,
-        user_message: &str,
-        config: Option<RunnableConfig>,
-    ) -> Result<TotState, TotRunError> {
-        let run_config = config.or_else(|| self.runnable_config.clone());
-        let state = build_tot_initial_state(
-            user_message,
-            self.checkpointer.as_deref(),
-            run_config.as_ref(),
-            self.system_prompt.as_deref(),
-        )
-        .await?;
-        let final_state = self.compiled.invoke(state, run_config).await?;
-        Ok(final_state)
-    }
-
     /// Streams the graph execution; returns the final state.
     pub async fn stream_with_callback<F>(
         &self,
@@ -357,7 +334,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn tot_runner_invoke_and_stream_with_mock_llm() {
+    async fn tot_runner_stream_with_mock_llm() {
         let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(
             "CANDIDATE 1: THOUGHT: answer directly | TOOL_CALLS: []",
         ));
@@ -375,9 +352,6 @@ mod tests {
             false,
         )
         .unwrap();
-
-        let out = runner.invoke("what is rust").await.unwrap();
-        assert!(out.last_assistant_reply().is_some());
 
         let events: Arc<Mutex<Vec<StreamEvent<TotState>>>> = Arc::new(Mutex::new(Vec::new()));
         let events_clone = Arc::clone(&events);

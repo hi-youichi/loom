@@ -1,4 +1,4 @@
-//! ReAct graph runner: encapsulates graph build, initial state, invoke and stream.
+//! ReAct graph runner: encapsulates graph build, initial state, and stream.
 //!
 //! Custom files (error, initial_state, options, runner) remain local.
 
@@ -12,4 +12,4 @@ mod runner;
 pub use error::RunError;
 pub use initial_state::build_react_initial_state;
 pub use options::AgentOptions;
-pub use runner::{run_agent, run_react_graph_stream, ReactRunner};
+pub use runner::{run_react_graph_stream, ReactRunner};

@@ -76,15 +76,22 @@ impl Tool for AgentTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolSourceError::InvalidInput("missing required argument: task".into()))?;
 
-        let final_state = self
+        let outcome = self
             .runner
-            .invoke(task)
+            .stream_with_callback(task, Some(|_: loom_stream::StreamEvent<loom_types::state::ReActState>| {}))
             .await
             .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
 
-        let reply = final_state
-            .last_assistant_reply()
-            .unwrap_or_else(|| "(no reply)".to_string());
+        let reply = match outcome {
+            crate::runner_common::StreamRunOutcome::Completed(s) => {
+                s.last_assistant_reply().unwrap_or_else(|| "(no reply)".to_string())
+            }
+            crate::runner_common::StreamRunOutcome::Cancelled => "(sub-agent cancelled)".to_string(),
+            crate::runner_common::StreamRunOutcome::Error(e) => {
+                return Err(ToolSourceError::Transport(e.to_string()));
+            }
+            crate::runner_common::StreamRunOutcome::Empty => "(no reply)".to_string(),
+        };
 
         Ok(ToolCallContent::text(reply))
     }
