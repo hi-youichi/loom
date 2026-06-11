@@ -28,9 +28,6 @@ pub fn convert(profile: &AgentProfile) -> ExportOutput {
     if let Some(max_turns) = resolve_max_turns(profile) {
         fm.push_str(&format!("maxTurns: {max_turns}\n"));
     }
-    if let Some(perm) = resolve_permission_mode(profile) {
-        fm.push_str(&format!("permissionMode: {perm}\n"));
-    }
     fm.push_str("---\n");
 
     let mut body = role_content(profile);
@@ -95,15 +92,7 @@ fn resolve_max_turns(profile: &AgentProfile) -> Option<u32> {
     profile.behavior.as_ref()?.max_iterations
 }
 
-fn resolve_permission_mode(profile: &AgentProfile) -> Option<&'static str> {
-    let policy = profile.behavior.as_ref()?.approval_policy.as_deref()?;
-    Some(match policy {
-        "auto-approve" | "none" => "auto",
-        "suggest" | "default" => "default",
-        "strict" => "plan",
-        _ => "default",
-    })
-}
+
 
 fn loom_to_claude_tool(name: &str) -> Option<&'static str> {
     Some(match name {

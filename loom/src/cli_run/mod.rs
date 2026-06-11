@@ -211,7 +211,6 @@ pub fn build_helve_config(
         working_folder: Some(working_folder.clone()),
         thread_id: effective_opts.thread_id.clone(),
         user_id: base.user_id.clone(),
-        approval_policy: None,
         role_setting: agent_instructions,
         agents_md: load_agents_md(Some(&working_folder)),
         system_prompt_override: None,

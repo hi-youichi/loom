@@ -29,6 +29,7 @@ pub use agent_loop::{
 };
 pub use memory::{MemoryStore, MemoryFile, MemoryConfig, MemoryError, MemoryProvenance};
 pub use skill_registry::{SkillRegistry, SkillContent, SkillMeta, SkillError, Lifecycle, Source};
+pub use loom_skill::{SkillUsage, SkillUsageStore};
 pub use curator::{
     Curator, CuratorConfig, CuratorReport,
     CuratorState, CuratorStateStore, FileStateStore, MemoryStateStore,

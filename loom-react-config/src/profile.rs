@@ -170,8 +170,6 @@ pub struct ModelConfig {
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct BehaviorConfig {
     #[serde(default)]
-    pub approval_policy: Option<String>,
-    #[serde(default)]
     pub max_iterations: Option<u32>,
     #[serde(default)]
     pub timeout: Option<u32>,
@@ -1027,8 +1025,7 @@ model:
   temperature: 0.7
   max_tokens: 4096
 behavior:
-  approval_policy: auto
-  max_iterations: 10
+  max_iterations: 100
   timeout: 300
   max_sub_agent_depth: 3
 environment:

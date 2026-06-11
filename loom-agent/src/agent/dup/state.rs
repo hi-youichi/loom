@@ -14,7 +14,7 @@ use loom_cli_types::ReActState;
 pub struct UnderstandOutput {
     /// One sentence describing what the user wants to achieve.
     pub core_goal: String,
-    /// Key constraints (e.g. working folder, approval policy).
+    /// Key constraints (e.g. working folder).
     pub key_constraints: Vec<String>,
     /// Brief summary of workspace, files, or context that matters.
     pub relevant_context: String,

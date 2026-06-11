@@ -147,12 +147,6 @@ where
         /// instead of `result` (which may be a head-tail excerpt or file reference).
         raw_result: Option<String>,
     },
-    /// Tool requires user approval before execution (Act node).
-    ToolApproval {
-        call_id: Option<String>,
-        name: String,
-        arguments: Value,
-    },
 }
 #[cfg(test)]
 mod tests {

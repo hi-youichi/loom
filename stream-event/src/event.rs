@@ -150,7 +150,7 @@ pub enum ProtocolEvent {
         arguments_delta: String,
     },
     /// Complete tool call: name and full arguments. Emitted when the model finishes the call.
-    /// Followed by [`ToolStart`](Self::ToolStart) → [`ToolOutput`](Self::ToolOutput) (zero or more) → [`ToolEnd`](Self::ToolEnd); or [`ToolApproval`](Self::ToolApproval) if approval is required.
+    /// Followed by [`ToolStart`](Self::ToolStart) → [`ToolOutput`](Self::ToolOutput) (zero or more) → [`ToolEnd`](Self::ToolEnd).
     ToolCall {
         call_id: Option<String>,
         name: String,
@@ -179,13 +179,6 @@ pub enum ProtocolEvent {
         /// instead of `result` (which may be a head-tail excerpt or file reference).
         #[serde(skip_serializing_if = "Option::is_none")]
         raw_result: Option<String>,
-    },
-    /// Tool call awaiting user approval (e.g. destructive or privileged actions).
-    /// Contains the tool name and arguments for the client to confirm or reject. See [`ToolCall`](Self::ToolCall).
-    ToolApproval {
-        call_id: Option<String>,
-        name: String,
-        arguments: Value,
     },
 }
 
@@ -366,19 +359,6 @@ mod tests {
         assert_eq!(v["result"], "Error: command not found");
     }
 
-    #[test]
-    fn tool_approval_format() {
-        let event = ProtocolEvent::ToolApproval {
-            call_id: Some("call_2".to_string()),
-            name: "delete_file".to_string(),
-            arguments: json!({"path": "./important.txt"}),
-        };
-        let v = event.to_value().unwrap();
-        assert_eq!(v["type"], "tool_approval");
-        assert_eq!(v["call_id"], "call_2");
-        assert_eq!(v["name"], "delete_file");
-        assert_eq!(v["arguments"]["path"], "./important.txt");
-    }
 
     // ── Previously untested variants ──
 

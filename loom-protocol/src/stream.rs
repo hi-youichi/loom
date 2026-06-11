@@ -167,15 +167,6 @@ where
             is_error: *is_error,
             raw_result: raw_result.clone(),
         },
-        StreamEvent::ToolApproval {
-            call_id,
-            name,
-            arguments,
-        } => ProtocolEvent::ToolApproval {
-            call_id: call_id.clone(),
-            name: name.clone(),
-            arguments: arguments.clone(),
-        },
     };
     Ok(pe)
 }
@@ -529,24 +520,8 @@ mod tests {
             .unwrap()
             .to_value()
             .unwrap();
-        assert_eq!(v["type"], "tool_end");
-        assert_eq!(v["is_error"], true);
-    }
-
-    #[test]
-    fn tool_approval_format() {
-        let ev: StreamEvent<DummyState> = StreamEvent::ToolApproval {
-            call_id: Some("c2".into()),
-            name: "delete_file".into(),
-            arguments: serde_json::json!({"path": "x.txt"}),
-        };
-        let v = stream_event_to_protocol_event(&ev)
-            .unwrap()
-            .to_value()
-            .unwrap();
-        assert_eq!(v["type"], "tool_approval");
-        assert_eq!(v["name"], "delete_file");
-        assert_eq!(v["arguments"]["path"], "x.txt");
+            assert_eq!(v["type"], "tool_end");
+            assert_eq!(v["is_error"], true);
     }
 
     #[test]

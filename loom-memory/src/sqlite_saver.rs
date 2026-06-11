@@ -587,7 +587,7 @@ mod tests {
             pending_writes: vec![(
                 "task-interrupt".to_string(),
                 "__interrupt__".to_string(),
-                serde_json::json!({"kind": "approval_required"}),
+                serde_json::json!({"kind": "test"}),
             )],
             pending_interrupts: vec![serde_json::json!({"interrupt_id": "int-1"})],
             user: (),

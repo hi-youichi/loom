@@ -4,7 +4,8 @@
 //! "loom", "loom-agent", and other workspace crates.
 //! No heavy dependencies (no MCP, no rusqlite, no lancedb).
 
-pub mod approval;
+
+
 pub mod cli_run;
 pub mod config;
 pub mod state;

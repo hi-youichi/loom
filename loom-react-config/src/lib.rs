@@ -74,7 +74,6 @@ pub struct ReactBuildConfig {
     pub embedding_base_url: Option<String>,
     pub embedding_model: Option<String>,
     pub working_folder: Option<PathBuf>,
-    pub approval_policy: Option<loom_types::approval::ApprovalPolicy>,
     pub compaction_config: Option<loom_types::config::CompactionConfig>,
     pub tot_config: TotRunnerConfig,
     pub got_config: GotRunnerConfig,
@@ -149,14 +148,6 @@ impl ReactBuildConfig {
             embedding_base_url: std::env::var("EMBEDDING_BASE_URL").ok(),
             embedding_model: std::env::var("EMBEDDING_MODEL").ok(),
             working_folder: std::env::var("WORKING_FOLDER").ok().map(PathBuf::from),
-            approval_policy: std::env::var("LOOM_APPROVAL_POLICY").ok().and_then(|s| {
-                match s.to_lowercase().as_str() {
-                    "always" => Some(loom_types::approval::ApprovalPolicy::Always),
-                    "destructive_only" => Some(loom_types::approval::ApprovalPolicy::DestructiveOnly),
-                    "none" => Some(loom_types::approval::ApprovalPolicy::None),
-                    _ => None,
-                }
-            }),
             compaction_config: None,
             tot_config: TotRunnerConfig::default(),
             got_config: GotRunnerConfig {

@@ -8,7 +8,7 @@ use loom_compress::{build_graph, CompactionConfig, CompressionGraphNode};
 use loom_graph::{
     CompilationError, CompiledStateGraph, LoggingNodeMiddleware, StateGraph, END, START,
 };
-use loom_types::approval::ApprovalPolicy;
+
 use loom_llm::LlmProvider;
 use loom_memory::{Checkpointer, RunnableConfig, Store};
 use crate::runner_common;
@@ -53,7 +53,6 @@ impl ReactRunner {
         store: Option<Arc<dyn Store>>,
         runnable_config: Option<RunnableConfig>,
         system_prompt: String,
-        approval_policy: Option<ApprovalPolicy>,
         compaction_config: Option<CompactionConfig>,
         _user_message_store: Option<Arc<dyn UserMessageStore>>,
         cancellation: Option<RunCancellation>,
@@ -63,7 +62,6 @@ impl ReactRunner {
     ) -> Result<Self, CompilationError> {
         let think = ThinkNode::new(Arc::clone(&provider));
         let act = ActNode::new(tool_source)
-            .with_approval_policy(approval_policy)
             .with_run_cancellation(cancellation.clone());
         let observe = ObserveNode::with_loop();
 
@@ -233,7 +231,6 @@ pub async fn run_agent(
         opts.runnable_config,
         REACT_SYSTEM_PROMPT.to_string(),
         None,
-        None,
         opts.user_message_store,
         None,
         opts.verbose,
@@ -241,6 +238,7 @@ pub async fn run_agent(
         None,
     )?;
     runner.invoke(user_message).await
+
 }
 
 pub async fn run_react_graph_stream<F>(
@@ -260,7 +258,6 @@ where
         opts.runnable_config,
         REACT_SYSTEM_PROMPT.to_string(),
         None,
-        None,
         opts.user_message_store,
         None,
         opts.verbose,
@@ -268,6 +265,7 @@ where
         None,
     )?;
     runner.stream_with_callback(user_message, on_event).await
+
 }
 
 

@@ -16,7 +16,7 @@ pub enum StreamMode {
     Checkpoints,
     /// Emit task start/end events for each node execution.
     Tasks,
-    /// Emit tool lifecycle events (tool_call, tool_start, tool_output, tool_end, tool_approval).
+    /// Emit tool lifecycle events (tool_call, tool_start, tool_output, tool_end).
     Tools,
     /// Emit both checkpoints and tasks events (debug mode).
     Debug,

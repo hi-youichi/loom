@@ -153,13 +153,6 @@ where
             }
             obj
         }
-        StreamEvent::ToolApproval {
-            call_id,
-            name,
-            arguments,
-        } => json!({
-            "ToolApproval": { "call_id": call_id, "name": name, "arguments": arguments }
-        }),
     };
     Ok(obj)
 }
@@ -412,16 +405,5 @@ mod tests {
         };
         let v = stream_event_to_format_a(&ev).unwrap();
         assert_eq!(v["ToolEnd"]["is_error"], false);
-    }
-
-    #[test]
-    fn tool_approval_format() {
-        let ev: StreamEvent<DummyState> = StreamEvent::ToolApproval {
-            call_id: Some("c1".to_string()),
-            name: "bash".to_string(),
-            arguments: serde_json::json!({}),
-        };
-        let v = stream_event_to_format_a(&ev).unwrap();
-        assert_eq!(v["ToolApproval"]["name"], "bash");
     }
 }

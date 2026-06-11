@@ -90,8 +90,7 @@ pub struct ReActState {
     pub tool_results: Vec<ToolResult>,
     #[serde(default)]
     pub turn_count: u32,
-    #[serde(default)]
-    pub approval_result: Option<bool>,
+
     #[serde(default)]
     pub usage: Option<LlmUsage>,
     #[serde(default)]
@@ -114,7 +113,7 @@ impl Default for ReActState {
     fn default() -> Self {
         Self {
             model_config: ModelConfig::default(), messages: vec![], last_reasoning_content: None,
-            tool_calls: vec![], tool_results: vec![], turn_count: 0, approval_result: None,
+            tool_calls: vec![], tool_results: vec![], turn_count: 0,
             usage: None, total_usage: None, message_count_after_last_think: None,
             think_count: 0, summary: None, should_continue: true, force_compact: false,
         }
@@ -216,7 +215,7 @@ impl ResetState for ReActState {
         self.summary = None;
         self.think_count = 0;
         self.message_count_after_last_think = None;
-        self.approval_result = None;
+
         self.should_continue = true;
     }
 }

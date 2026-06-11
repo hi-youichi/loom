@@ -7,13 +7,13 @@
 use std::path::PathBuf;
 
 use crate::env_context::EnvContext;
-use crate::prompt::{assemble_react_system_prompt, ApprovalPolicy, ReactPromptInputs};
+use crate::prompt::{assemble_react_system_prompt, ReactPromptInputs};
 use loom_react_config::ReactBuildConfig;
 
 /// Product-semantic configuration for a Helve-style run.
 ///
 /// Holds only the fields that carry product meaning (working folder, thread, user,
-/// approval policy, role setting, optional system prompt override). Convert to [`ReactBuildConfig`]
+/// role setting, optional system prompt override). Convert to [`ReactBuildConfig`]
 /// via [`to_react_build_config`] so that runner build (e.g. `build_react_runner`) can use it.
 ///
 /// **Interaction**: Built by Server from request body or by CLI from args; passed to
@@ -27,15 +27,13 @@ pub struct HelveConfig {
     pub thread_id: Option<String>,
     /// User ID for long-term store (namespace).
     pub user_id: Option<String>,
-    /// When set, tools that require approval (e.g. delete_file) will interrupt before execution.
-    pub approval_policy: Option<ApprovalPolicy>,
     /// Role/persona setting (e.g. from instructions.md): prepended to the assembled system prompt.
     /// E.g. "You are a code review expert." Does not apply when `system_prompt_override` is set.
     pub role_setting: Option<String>,
     /// Project-level agent rules (e.g. from AGENTS.md): appended after role_setting, before base.
     /// Order in prompt: role_setting + agents_md + base_content.
     pub agents_md: Option<String>,
-    /// When set, used as the full system prompt instead of assembling from workdir + approval.
+    /// When set, used as the full system prompt instead of assembling from workdir.
     pub system_prompt_override: Option<String>,
     /// Skills prompt: available_skills summary (and optionally preloaded content). Injected between agents_md and base_content.
     pub skills_prompt: Option<String>,
@@ -47,7 +45,7 @@ pub struct HelveConfig {
 
 /// Converts a HelveConfig and a base ReactBuildConfig into a single ReactBuildConfig.
 ///
-/// Product fields (working_folder, thread_id, user_id, approval_policy) are taken from
+/// Product fields (working_folder, thread_id, user_id) are taken from
 /// `helve` when set; otherwise from `base`. The final system prompt is assembled
 /// through [`assemble_react_system_prompt`].
 ///
@@ -62,7 +60,6 @@ pub fn to_react_build_config(helve: &HelveConfig, base: ReactBuildConfig) -> Rea
         memory_prompt: helve.memory_prompt.clone(),
         env_context: helve.env_context.clone(),
         working_folder: helve.working_folder.clone(),
-        approval_policy: helve.approval_policy,
     };
     let system_prompt = Some(assemble_react_system_prompt(&prompt_inputs));
 
@@ -73,7 +70,6 @@ pub fn to_react_build_config(helve: &HelveConfig, base: ReactBuildConfig) -> Rea
         thread_id: resolved_thread_id.clone(),
         trace_thread_id: resolved_thread_id,
         user_id: helve.user_id.clone().or(base.user_id),
-        approval_policy: helve.approval_policy.or(base.approval_policy),
         ..base
     }
 }
@@ -82,14 +78,13 @@ pub fn to_react_build_config(helve: &HelveConfig, base: ReactBuildConfig) -> Rea
 mod tests {
     use super::*;
 
-    /// **Scenario**: to_react_build_config with working_folder and approval_policy sets system_prompt from assembly.
+    /// **Scenario**: to_react_build_config with working_folder sets system_prompt from assembly.
     #[test]
     fn to_react_build_config_assembles_prompt_when_working_folder_set() {
         let mut base = ReactBuildConfig::from_env();
         base.thread_id = Some("t1".into());
         let helve = HelveConfig {
             working_folder: Some(PathBuf::from("/tmp/ws")),
-            approval_policy: Some(ApprovalPolicy::DestructiveOnly),
             ..Default::default()
         };
         let out = to_react_build_config(&helve, base);
@@ -97,9 +92,7 @@ mod tests {
             out.working_folder.as_deref(),
             Some(std::path::Path::new("/tmp/ws"))
         );
-        assert_eq!(out.approval_policy, Some(ApprovalPolicy::DestructiveOnly));
         assert!(out.system_prompt.as_ref().unwrap().contains("/tmp/ws"));
-        assert!(out.system_prompt.as_ref().unwrap().contains("APPROVAL"));
         assert_eq!(out.thread_id.as_deref(), Some("t1"));
     }
 
@@ -123,7 +116,6 @@ mod tests {
         assert!(c.working_folder.is_none());
         assert!(c.thread_id.is_none());
         assert!(c.user_id.is_none());
-        assert!(c.approval_policy.is_none());
         assert!(c.role_setting.is_none());
         assert!(c.agents_md.is_none());
         assert!(c.system_prompt_override.is_none());

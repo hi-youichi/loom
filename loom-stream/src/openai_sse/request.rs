@@ -30,9 +30,6 @@ pub struct ChatCompletionRequest {
     /// Optional working folder path for file tools (extension). When set, must exist and be a directory.
     #[serde(default)]
     pub working_folder: Option<String>,
-    /// Optional approval policy: "none" | "destructive_only" | "always" (extension).
-    #[serde(default)]
-    pub approval_policy: Option<String>,
 }
 
 fn default_true() -> bool {

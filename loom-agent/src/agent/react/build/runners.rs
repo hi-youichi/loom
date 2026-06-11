@@ -140,7 +140,6 @@ pub async fn build_react_runner(
         ctx.store,
         ctx.runnable_config,
         system_prompt,
-        config.approval_policy,
         Some(compaction_config),
         None,
         cancellation,
@@ -174,7 +173,6 @@ pub async fn build_dup_runner(
         ctx.store,
         ctx.runnable_config,
         config.system_prompt.clone(),
-        config.approval_policy,
         None,
         verbose,
     )?;
@@ -205,7 +203,6 @@ pub async fn build_tot_runner(
         ctx.store,
         ctx.runnable_config,
         config.system_prompt.clone(),
-        config.approval_policy,
         None,
         verbose,
         tot.max_depth,

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::args::{SkillUsageCommand, SkillUsageArgs};
 use loom_background_review::skill_registry::SkillRegistry;
-use loom_background_review::skill_usage::{SkillUsage, SkillUsageStore};
+use loom_background_review::{SkillUsage, SkillUsageStore};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncResult {

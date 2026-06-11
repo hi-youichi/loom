@@ -9,11 +9,11 @@
 //!
 //! - `loom_graph` — `StateGraph`, `CompiledStateGraph`, `Node`, `Next`, `Agent`, `channels`, `managed`
 //! - `loom_llm` — `LlmClient`, `ChatOpenAI`, `MockLlm`, `Message`, `ToolCall`, etc.
-//! - `loom_types` — `ReActState`, `ToolResult`, `ToolCall`, `ModelConfig`, approval types
+//! - `loom_types` — `ReActState`, `ToolResult`, `ToolCall`, `ModelConfig`
 //! - `loom_tools` — `ToolSource`, `ToolSpec`, `McpToolSource`, `BashTool`, etc.
 //! - `loom_memory` — `Checkpointer`, `Store`, `MemorySaver`, `SqliteSaver`
 //! - `loom_stream` — `StreamEvent`, `StreamMode`, `StreamWriter`
-//! - `loom_helve` — `HelveConfig`, `assemble_system_prompt`, approval policy
+//! - `loom_helve` — `HelveConfig`, `assemble_system_prompt`
 //! - `loom_tier` — tier resolution, model registry, LLM factory
 //! - `loom_cache` — `Cache`, `InMemoryCache`
 //! - `loom_compress` — context compression / compaction

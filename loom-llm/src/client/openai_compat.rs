@@ -69,9 +69,10 @@ fn is_retryable_status_for(
 }
 
 fn backoff_for_attempt(attempt: u32) -> std::time::Duration {
-    let secs = COMPAT_RETRY_INITIAL_BACKOFF.as_secs_f64() * 2_f64.powi(attempt as i32);
-    let d = std::time::Duration::from_secs_f64(secs);
-    d.min(COMPAT_RETRY_MAX_BACKOFF)
+    let max_secs = COMPAT_RETRY_MAX_BACKOFF.as_secs_f64();
+    let secs = (COMPAT_RETRY_INITIAL_BACKOFF.as_secs_f64() * 2_f64.powi(attempt as i32))
+        .min(max_secs);
+    std::time::Duration::from_secs_f64(secs)
 }
 
 // ----- API error response parsing -----

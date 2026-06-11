@@ -8,7 +8,6 @@ use crate::agent::react::{ActNode, ObserveNode};
 use loom_llm::error::AgentError;
 use loom_graph::Next;
 use loom_graph::Node;
-use loom_types::approval::ApprovalPolicy;
 use loom_tools::tool_source::ToolSource;
 
 use super::state::TotState;
@@ -26,11 +25,6 @@ impl TotActNode {
         Self {
             act: ActNode::new(tool_source),
         }
-    }
-
-    pub fn with_approval_policy(mut self, policy: Option<ApprovalPolicy>) -> Self {
-        self.act = self.act.with_approval_policy(policy);
-        self
     }
 }
 

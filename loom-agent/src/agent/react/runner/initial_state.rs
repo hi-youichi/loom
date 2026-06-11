@@ -29,7 +29,6 @@ Ok(ReActState {
             tool_calls: vec![],
             tool_results: vec![],
             turn_count: 0,
-            approval_result: None,
             usage: None,
             total_usage: None,
             message_count_after_last_think: None,

@@ -21,7 +21,6 @@ pub struct RunnableConfig {
     /// Optional user id; used by Store for cross-thread memory (namespace).
     pub user_id: Option<String>,
     /// When set, the graph starts from this node instead of the first (e.g. resume after Interrupt at "act").
-    /// Used when resuming after an approval_required interrupt: load checkpoint state, set state.approval_result, set this to "act".
     pub resume_from_node_id: Option<String>,
     /// Current sub-agent nesting depth. Used by `InvokeAgentTool` to prevent
     /// infinite recursion. `None` or `Some(0)` means top-level.

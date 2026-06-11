@@ -91,10 +91,6 @@ pub fn format_react_state_display(state: &ReActState, max: usize) -> String {
     }
 
     lines.push(format!("{}turn_count: {}", INDENT, state.turn_count));
-    lines.push(format!(
-        "{}approval_result: {:?}",
-        INDENT, state.approval_result
-    ));
     lines.push("}".to_string());
 
     lines.join("\n")
@@ -196,7 +192,6 @@ mod tests {
                 ..ToolResult::default()
             }],
             turn_count: 2,
-            approval_result: Some(true),
             ..ReActState::default()
         };
 
@@ -206,7 +201,6 @@ mod tests {
         assert!(rendered.contains("tool_calls:"));
         assert!(rendered.contains("tool_results:"));
         assert!(rendered.contains("turn_count: 2"));
-        assert!(rendered.contains("approval_result: Some(true)"));
         assert!(rendered.contains("Assistant(answer)"));
         assert!(rendered.contains("..."));
     }

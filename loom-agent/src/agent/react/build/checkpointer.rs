@@ -95,7 +95,6 @@ pub(crate) fn base_config() -> crate::agent::react::config::ReactBuildConfig {
         embedding_base_url: None,
         embedding_model: None,
         working_folder: None,
-        approval_policy: None,
         compaction_config: None,
         tot_config: TotRunnerConfig::default(),
         got_config: GotRunnerConfig::default(),

@@ -155,24 +155,5 @@ mod tests {
             }
             _ => panic!("expected ToolEnd"),
         }
-
-        // Test ToolApproval variant
-        let event: StreamEvent<DummyState> = StreamEvent::ToolApproval {
-            call_id: Some("call1".to_string()),
-            name: "tool1".to_string(),
-            arguments: serde_json::json!({"arg": "value"}),
-        };
-        match event {
-            StreamEvent::ToolApproval {
-                call_id,
-                name,
-                arguments,
-            } => {
-                assert_eq!(call_id, Some("call1".to_string()));
-                assert_eq!(name, "tool1".to_string());
-                assert_eq!(arguments, serde_json::json!({"arg": "value"}));
-            }
-            _ => panic!("expected ToolApproval"),
-        }
     }
 }

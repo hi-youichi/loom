@@ -9,7 +9,6 @@ use tokio_util::sync::CancellationToken;
 use crate::agent::react::{build_react_initial_state, REACT_SYSTEM_PROMPT};
 use loom_llm::error::AgentError;
 use loom_graph::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
-use loom_types::approval::ApprovalPolicy;
 use loom_memory::{CheckpointError, Checkpointer, RunnableConfig, Store};
 use loom_llm::message::Message;
 use crate::runner_common::{self, load_from_checkpoint_or_build};
@@ -127,7 +126,6 @@ impl DupRunner {
         store: Option<Arc<dyn Store>>,
         runnable_config: Option<RunnableConfig>,
         system_prompt: Option<String>,
-        approval_policy: Option<ApprovalPolicy>,
         cancellation: Option<CancellationToken>,
         verbose: bool,
     ) -> Result<Self, CompilationError> {
@@ -137,7 +135,7 @@ impl DupRunner {
             model_id: "dup".to_string(),
         });
         let plan = PlanNode::new(plan_provider);
-        let act = DupActNode::new(tool_source).with_approval_policy(approval_policy);
+        let act = DupActNode::new(tool_source);
         let observe = DupObserveNode::new();
 
         let mut graph = StateGraph::<DupState>::new();
@@ -314,7 +312,6 @@ mod tests {
         let runner = DupRunner::new(
             llm,
             Box::new(MockToolSource::get_time_example()),
-            None,
             None,
             None,
             None,

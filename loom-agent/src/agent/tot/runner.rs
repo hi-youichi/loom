@@ -10,7 +10,6 @@ use tokio_util::sync::CancellationToken;
 use crate::agent::react::{build_react_initial_state, REACT_SYSTEM_PROMPT};
 use loom_llm::error::AgentError;
 use loom_graph::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
-use loom_types::approval::ApprovalPolicy;
 use loom_memory::{CheckpointError, Checkpointer, RunnableConfig, Store};
 use loom_llm::message::Message;
 use crate::runner_common::{self, load_from_checkpoint_or_build};
@@ -137,7 +136,6 @@ impl TotRunner {
         store: Option<Arc<dyn Store>>,
         runnable_config: Option<RunnableConfig>,
         system_prompt: Option<String>,
-        approval_policy: Option<ApprovalPolicy>,
         cancellation: Option<CancellationToken>,
         verbose: bool,
         max_depth: u32,
@@ -148,7 +146,7 @@ impl TotRunner {
             .with_candidates_per_step(candidates_per_step as usize)
             .with_research_quality_addon(research_quality_addon);
         let evaluate = ThinkEvaluateNode::new();
-        let act = TotActNode::new(tool_source).with_approval_policy(approval_policy);
+        let act = TotActNode::new(tool_source);
         let observe = TotObserveNode::new();
         let backtrack = BacktrackNode::new();
 
@@ -371,10 +369,9 @@ mod tests {
             None,
             None,
             None,
-            None,
             false,
             3,
-            2,
+            3,
             false,
         )
         .unwrap();

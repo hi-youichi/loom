@@ -428,35 +428,4 @@ mod tests {
             _ => panic!("expected ToolEnd event"),
         }
     }
-
-    /// **Scenario**: ToolStreamWriter emit approval events work correctly.
-    #[tokio::test(flavor = "current_thread")]
-    async fn stream_writer_emit_tool_approval() {
-        let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
-        let modes = HashSet::from_iter([StreamMode::Tools]);
-        let writer = StreamWriter::new(Some(tx.clone()), modes);
-
-        let sent = writer
-            .emit_tool_approval(
-                Some("call1".to_string()),
-                "sensitive_tool".to_string(),
-                serde_json::json!({"file": "secret.txt"}),
-            )
-            .await;
-        assert!(sent, "should send tool approval event");
-
-        let event = rx.recv().await.expect("should receive event");
-        match event {
-            StreamEvent::ToolApproval {
-                call_id,
-                name,
-                arguments,
-            } => {
-                assert_eq!(call_id, Some("call1".to_string()));
-                assert_eq!(name, "sensitive_tool");
-                assert_eq!(arguments, serde_json::json!({"file": "secret.txt"}));
-            }
-            _ => panic!("expected ToolApproval event"),
-        }
-    }
 }

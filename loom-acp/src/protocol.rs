@@ -65,7 +65,7 @@
 //! - **Direction**: Agent calls Client (Loom asks IDE for user approval).
 //! - **RequestPermissionRequest**: session_id, tool_call_update, permission_options (AllowOnce/AllowAlways/DenyOnce/DenyAlways, etc.).
 //! - **RequestPermissionResponse**: outcome is SelectedPermissionOutcome (with permission_option_id) or **Cancelled** (user cancelled or Client sent session/cancel).
-//! - Loom: Matches ApprovalPolicy / tools_requiring_approval; await request_permission before executing tool; execute or write denial and return Cancelled based on result.
+//! - Loom: Checks tool against permission policy; await request_permission before executing tool; execute or write denial and return Cancelled based on result.
 //!
 //! ## session/cancel (cancellation)
 //!

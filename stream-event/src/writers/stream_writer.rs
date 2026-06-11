@@ -426,28 +426,6 @@ where
         }
     }
 
-    pub async fn emit_tool_approval(
-        &self,
-        call_id: Option<String>,
-        name: String,
-        arguments: Value,
-    ) -> bool {
-        if !self.is_tools_enabled() {
-            return false;
-        }
-        if let Some(tx) = &self.tx {
-            tx.send(StreamEvent::ToolApproval {
-                call_id,
-                name,
-                arguments,
-            })
-            .await
-            .is_ok()
-        } else {
-            false
-        }
-    }
-
     /// Returns the raw sender if available.
     ///
     /// This allows advanced use cases where direct access to the sender is needed.

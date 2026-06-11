@@ -24,8 +24,8 @@ use loom_cli_types::RunCancellation;
 use crate::AnyStreamEvent;
 use loom_llm::error::AgentError;
 use loom_cli_types::goal_runner::state::ToolError;
-use loom_graph::{run_cancellable, Interrupt, Next, Node, RunContext};
-use loom_types::approval::{tools_requiring_approval, ApprovalPolicy, APPROVAL_REQUIRED_EVENT_TYPE};
+use loom_graph::{run_cancellable, Next, Node, RunContext};
+
 use loom_memory::uuid6;
 use loom_types::tool_output_normalizer::{
     normalize_tool_output, NormalizationConfig, ToolOutputHint,
@@ -130,21 +130,12 @@ pub const DEFAULT_EXECUTION_ERROR_TEMPLATE: &str =
 
 
 
-fn approval_required_payload(tc: &ToolCall, args: &Value) -> Value {
-    serde_json::json!({
-        "type": APPROVAL_REQUIRED_EVENT_TYPE,
-        "node_id": "act",
-        "tool_name": tc.name,
-        "call_id": tc.id,
-        "arguments": args,
-    })
-}
 
 /// Act node: one ReAct step that executes tool_calls and produces tool_results.
 #[allow(clippy::type_complexity)]
 pub struct ActNode {
     tools: Box<dyn ToolSource>,
-    approval_policy: Option<ApprovalPolicy>,
+
     /// Shared cancellation handle with active-operation tracking (loom-level, not in loom-graph RunContext).
     run_cancellation: Option<RunCancellation>,
     /// Optional sender for forwarding AnyStreamEvent to external consumer (loom-level).
@@ -156,16 +147,13 @@ impl ActNode {
     pub fn new(tools: Box<dyn ToolSource>) -> Self {
         Self {
             tools,
-            approval_policy: None,
+
             run_cancellation: None,
             any_stream_event_sender: std::sync::Mutex::new(None),
         }
     }
 
-    pub fn with_approval_policy(mut self, policy: Option<ApprovalPolicy>) -> Self {
-        self.approval_policy = policy;
-        self
-    }
+
 
     pub fn with_run_cancellation(mut self, rc: Option<RunCancellation>) -> Self {
         self.run_cancellation = rc;
@@ -178,12 +166,7 @@ impl ActNode {
         *self.any_stream_event_sender.lock().unwrap() = sender;
     }
 
-    fn needs_approval(&self, tool_name: &str) -> bool {
-        match &self.approval_policy {
-            None => false,
-            Some(p) => tools_requiring_approval(*p).contains(&tool_name),
-        }
-    }
+
 
 
 
@@ -254,7 +237,6 @@ impl Node<ReActState> for ActNode {
         let ctx = ToolCallContext::new(state.messages.clone());
         let tool_output_hints = self.load_tool_output_hints().await;
         let mut tool_results = Vec::with_capacity(state.tool_calls.len());
-        let mut approval_result_consumed = false;
         let mut used_observation_chars = 0usize;
 
         for tc in &state.tool_calls {
@@ -315,39 +297,6 @@ impl Node<ReActState> for ActNode {
                     continue;
                 }
             };
-
-            if self.needs_approval(&tc.name) {
-                match state.approval_result {
-                    None => {
-                        let payload = approval_required_payload(tc, &args);
-                        return Err(AgentError::Interrupted(Interrupt::new(
-                            payload,
-                        )));                    }
-                    Some(false) => {
-                        let normalized = normalize_tool_output(
-                            &tc.name,
-                            &args,
-                            "User rejected.",
-                            true,
-                            tool_output_hints.get(&tc.name),
-                            NormalizationConfig::runtime_default()
-                                .with_used_observation_chars(used_observation_chars),
-                        );
-                        used_observation_chars += normalized.observation_chars;
-                        tool_results.push(
-                            ToolResult::from(normalized)
-                                .with_call_id(tc.id.clone())
-                                .with_name(Some(tc.name.clone()))
-                                .with_is_error(true),
-                        );
-                        approval_result_consumed = true;
-                        continue;
-                    }
-                    Some(true) => {
-                        approval_result_consumed = true;
-                    }
-                }
-            }
 
             if tc.name.trim().is_empty() {
                 let hint = "你提交了一个空的工具名，请从可用工具列表中选择一个有效工具。";
@@ -463,11 +412,6 @@ impl Node<ReActState> for ActNode {
 
         let new_state = ReActState {
             tool_results,
-            approval_result: if approval_result_consumed {
-                None
-            } else {
-                state.approval_result
-            },
             ..state
         };
         Ok((new_state, Next::Continue))
@@ -514,7 +458,6 @@ impl Node<ReActState> for ActNode {
         }
 
         let mut tool_results = Vec::with_capacity(state.tool_calls.len());
-        let mut approval_result_consumed = false;
         let mut used_observation_chars = 0usize;
 
         for tc in &state.tool_calls {
@@ -570,75 +513,6 @@ impl Node<ReActState> for ActNode {
                     continue;
                 }
             };
-
-            if self.needs_approval(&tc.name) {
-                match state.approval_result {
-                    None => {
-                        if tools_mode {
-                            if let Some(tx) = &run_ctx.stream_tx {
-                                let _ = tx
-                                    .send(StreamEvent::ToolApproval {
-                                        call_id: tc.id.clone(),
-                                        name: tc.name.clone(),
-                                        arguments: args.clone(),
-                                    })
-                                    .await;
-                            }
-                        } else {
-                            let payload = approval_required_payload(tc, &args);
-                            let _ = run_ctx.emit_custom(payload.clone()).await;
-                        }
-                        let payload = approval_required_payload(tc, &args);
-                        return Err(AgentError::Interrupted(Interrupt::new(
-                            payload,
-                        )));                    }
-                    Some(false) => {
-                        let normalized = normalize_tool_output(
-                            &tc.name,
-                            &args,
-                            "User rejected.",
-                            true,
-                            tool_output_hints.get(&tc.name),
-                            NormalizationConfig::runtime_default()
-                                .with_used_observation_chars(used_observation_chars),
-                        );
-                        let display_text = normalized.display_text.clone();
-                        let summary = truncate_for_log(&normalized.display_text, 200);
-                        used_observation_chars += normalized.observation_chars;
-                        tool_results.push(
-                            ToolResult::from(normalized)
-                                .with_call_id(tc.id.clone())
-                                .with_name(Some(tc.name.clone()))
-                                .with_is_error(true),
-                        );
-                        approval_result_consumed = true;
-                        if tools_mode {
-                            if let Some(tx) = &run_ctx.stream_tx {
-                                let _ = tx
-                                    .send(StreamEvent::ToolEnd {
-                                        call_id: tc.id.clone(),
-                                        name: tc.name.clone(),
-                                        result: display_text,
-                                        is_error: true,
-                                        raw_result: None,
-                                    })
-                                    .await;
-                            }
-                        } else {
-                            let payload = step_progress_payload(
-                                &tc.name,
-                                tc.id.as_deref().unwrap_or(""),
-                                &summary,
-                            );
-                            let _ = run_ctx.emit_custom(payload).await;
-                        }
-                        continue;
-                    }
-                    Some(true) => {
-                        approval_result_consumed = true;
-                    }
-                }
-            }
 
             if tc.name.trim().is_empty() {
                 let hint = "你提交了一个空的工具名，请从可用工具列表中选择一个有效工具。";
@@ -891,11 +765,6 @@ impl Node<ReActState> for ActNode {
 
         let new_state = ReActState {
             tool_results,
-            approval_result: if approval_result_consumed {
-                None
-            } else {
-                state.approval_result
-            },
             ..state
         };
         Ok((new_state, Next::Continue))
@@ -974,20 +843,7 @@ mod tests {
         assert_eq!(p["summary"], "done");
     }
 
-    #[test]
-    fn approval_required_payload_structure() {
-        let tc = ToolCall {
-            id: Some("c1".to_string()),
-            name: "delete_file".to_string(),
-            arguments: "{}".to_string(),
-        };
-        let p = approval_required_payload(&tc, &serde_json::json!({"path": "x.txt"}));
-        assert_eq!(p["type"], APPROVAL_REQUIRED_EVENT_TYPE);
-        assert_eq!(p["tool_name"], "delete_file");
-        assert_eq!(p["arguments"]["path"], "x.txt");
-    }
 
-    #[test]
     fn act_node_id() {
         use loom_tools::tool_source::MockToolSource;
         let node = ActNode::new(Box::new(MockToolSource::default()));

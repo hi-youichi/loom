@@ -40,10 +40,6 @@ pub enum AgentEvent {
         result: String,
         is_error: bool,
     },
-    ToolApproval {
-        name: String,
-        arguments: String,
-    },
     Usage {
         prompt_tokens: u32,
         completion_tokens: u32,
@@ -114,12 +110,6 @@ fn map_stream_event(ev: StreamEvent<ReActState>) -> Option<AgentEvent> {
             result,
             is_error,
         }),
-        StreamEvent::ToolApproval { name, arguments, .. } => {
-            Some(AgentEvent::ToolApproval {
-                name,
-                arguments: arguments.to_string(),
-            })
-        }
         StreamEvent::Usage {
             prompt_tokens,
             completion_tokens,
@@ -242,23 +232,6 @@ mod tests {
             map_stream_event(ev),
             Some(AgentEvent::ToolEnd { is_error: true, .. })
         ));
-    }
-
-    #[test]
-    fn map_tool_approval() {
-        let ev = StreamEvent::<ReActState>::ToolApproval {
-            call_id: None,
-            name: "bash".into(),
-            arguments: serde_json::json!({"command": "rm -rf /"}),
-        };
-        let mapped = map_stream_event(ev).unwrap();
-        match mapped {
-            AgentEvent::ToolApproval { name, arguments } => {
-                assert_eq!(name, "bash");
-                assert!(arguments.contains("rm"));
-            }
-            other => panic!("expected ToolApproval, got {:?}", other),
-        }
     }
 
     #[test]

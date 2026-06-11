@@ -51,7 +51,6 @@ fn base_config(working_folder: std::path::PathBuf) -> ReactBuildConfig {
         embedding_base_url: None,
         embedding_model: None,
         working_folder: Some(working_folder),
-        approval_policy: None,
         compaction_config: None,
         tot_config: loom_types::config::TotRunnerConfig::default(),
         got_config: loom_types::config::GotRunnerConfig::default(),
