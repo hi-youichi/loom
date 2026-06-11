@@ -123,8 +123,8 @@ fn print_outcome(outcome: &GoalOutcome) {
 
 
 
-/// Build a background review config from env vars and optional model override,
-/// then spawn the review as a background task.
+use loom_background_review::BackgroundReviewCallbacks;
+
 fn spawn_goal_background_review(
     model_override: &Option<String>,
     session_content: String,
@@ -149,5 +149,5 @@ fn spawn_goal_background_review(
         model,
         ..Default::default()
     };
-    loom_background_review::spawn_background_review(config, session_content, session_id, None);
+    loom_background_review::spawn_background_review(config, session_content, session_id, BackgroundReviewCallbacks::default());
 }

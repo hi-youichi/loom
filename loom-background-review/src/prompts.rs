@@ -76,7 +76,23 @@ original failure.\n\
 \n\
 If a tool failed because of setup state, capture the FIX (install command, \
 config step, env var to set) under an existing setup or troubleshooting \
-skill — never 'this tool does not work' as a standalone constraint.\n\
+skill — never 'this tool does not work' as a standalone constraint.
+\
+\n\
+Protected skills (DO NOT edit these):
+\
+  • Bundled skills (shipped with Loom).
+\
+  • Hub-installed skills (installed via 'loom skills install').
+\
+Pinned skills (marked via 'loom curator pin') CAN be improved — \
+pin only blocks deletion/archive/consolidation by the curator, not \
+content updates. Patch them when a pitfall or missing step turns up, \
+same as any other agent-created skill.
+\
+If the only skills that need updating are protected, say \
+'Nothing to save.' and stop.
+\
 \n\
 Act on the skill dimension. If genuinely nothing stands out, say 'Nothing \
 to save.' and stop — but don't reach for that conclusion as a default.";
@@ -148,6 +164,16 @@ original failure.\n\
 If a tool failed because of setup state, capture the FIX (install command, \
 config step, env var to set) under an existing setup or troubleshooting \
 skill — never 'this tool does not work' as a standalone constraint.\n\
+\n\
+Protected skills (DO NOT edit these):\n\
+  • Bundled skills (shipped with Loom).\n\
+  • Hub-installed skills (installed via 'loom skills install').\n\
+Pinned skills (marked via 'loom curator pin') CAN be improved — \
+pin only blocks deletion/archive/consolidation by the curator, not \
+content updates. Patch them when a pitfall or missing step turns up, \
+same as any other agent-created skill.\n\
+If the only skills that need updating are protected, say \
+'Nothing to save.' and stop.\n\
 \n\
 Act on whichever of the two dimensions has real signal. If genuinely \
 nothing stands out on either, say 'Nothing to save.' and stop — but don't \
@@ -265,6 +291,8 @@ mod tests {
         assert!(SKILL_REVIEW_PROMPT.contains("skill library"));
         assert!(SKILL_REVIEW_PROMPT.contains("CLASS-LEVEL"));
         assert!(SKILL_REVIEW_PROMPT.contains("PATCH"));
+        assert!(SKILL_REVIEW_PROMPT.contains("Protected skills"));
+        assert!(SKILL_REVIEW_PROMPT.contains("Bundled skills"));
     }
 
     #[test]

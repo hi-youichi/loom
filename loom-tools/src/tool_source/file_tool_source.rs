@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use loom_background_review::skill_usage::SkillUsageStore;
+use loom_skill::SkillUsageStore;
 use loom_skill::SkillRegistry;
 use crate::tool_source::{ToolSource, ToolSourceError};
 use crate::tools::file::{

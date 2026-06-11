@@ -12,10 +12,14 @@
 //! 3. In the CLI (if used): add a variant to `RunCmd`, a branch in `run::builder::build_runner` that
 //!    calls `build_my_agent_runner`, and in `run_agent` a branch that runs and returns the reply.
 
+#[allow(clippy::module_inception)]
+mod agent;
 pub mod dup;
 pub mod got;
 pub mod react;
 pub mod tot;
+
+pub use agent::{Agent, AgentConfig, AgentError, AgentEvent, AgentResult};
 
 pub use dup::{build_dup_initial_state, DupRunError, DupRunner, DupState, UnderstandOutput};
 pub use got::{

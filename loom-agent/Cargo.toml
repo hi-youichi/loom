@@ -16,7 +16,7 @@ loom-memory = { path = "../loom-memory" }
 loom-tools = { path = "../loom-tools" }
 loom-compress = { path = "../loom-compress" }
 loom-cli-types = { path = "../loom-cli-types" }
-loom-background-review = { path = "../loom-background-review" }
+loom-skill = { path = "../loom-skill" }
 loom-tier = { path = "../loom-tier" }
 loom-react-config = { path = "../loom-react-config" }
 loom-worktree = { path = "../loom-worktree" }
@@ -25,7 +25,6 @@ loom-stream-display = { path = "../loom-stream-display" }
 loom-commands = { path = "../loom-commands" }
 loom-cache = { path = "../loom-cache" }
 loom-lsp = { path = "../loom-lsp" }
-loom-skill = { path = "../loom-skill" }
 
 async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }

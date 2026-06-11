@@ -2,13 +2,26 @@ use super::curator::Curator;
 use super::memory::{MemoryFile, MemoryStore};
 use super::security::{validate_skill_create, validate_skill_path, Severity};
 use super::skill_registry::{Lifecycle, SkillContent, SkillRegistry, Source};
-use super::skill_usage::SkillUsageStore;
+use loom_skill::SkillUsageStore;
 use loom_llm::ToolSpec;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 const MAX_MEMORY_FILE_SIZE: usize = 64 * 1024;
 const REPLACE_SHRINK_RATIO: f64 = 0.3;
+
+const REVIEW_ALLOWED_TOOLS: &[&str] = &[
+    "memory_get",
+    "memory_set",
+    "skills_list",
+    "skill_view",
+    "skill_create",
+    "skill_edit",
+    "skill_patch",
+    "skill_delete",
+    "skill_write_file",
+    "skill_remove_file",
+];
 
 pub struct ReviewToolExecutor<'a> {
     pub memory: &'a MemoryStore,
@@ -49,6 +62,15 @@ impl<'a> ReviewToolExecutor<'a> {
     }
 
     pub fn execute(&mut self, tool_name: &str, args: &Value) -> Value {
+        if !REVIEW_ALLOWED_TOOLS.contains(&tool_name) {
+            return json!({
+                "success": false,
+                "error": format!(
+                    "Background review denied non-whitelisted tool: {}. Only memory/skill tools are allowed.",
+                    tool_name
+                )
+            });
+        }
         match tool_name {
             "memory_get" => self.memory_get(args),
             "memory_set" => self.memory_set(args),

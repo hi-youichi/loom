@@ -61,7 +61,7 @@ pub(super) fn build_runnable_config(config: &ReactBuildConfig) -> Option<Runnabl
 }
 
 #[cfg(test)]
-pub(super) fn base_config() -> crate::agent::react::config::ReactBuildConfig {
+pub(crate) fn base_config() -> crate::agent::react::config::ReactBuildConfig {
     use crate::agent::react::{GotRunnerConfig, TotRunnerConfig};
     crate::agent::react::config::ReactBuildConfig {
         db_path: None,

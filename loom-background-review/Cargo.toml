@@ -39,8 +39,9 @@ thiserror = { workspace = true }
 # Logging
 tracing = "0.1"
 
-# File system operations
 dirs = "5"
+
+loom-skill = { path = "../loom-skill" }
 
 # Archive handling for curator backup
 flate2 = "1.0"

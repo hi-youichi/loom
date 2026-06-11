@@ -10,6 +10,14 @@ pub enum MemoryFile {
     Facts,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryProvenance {
+    pub write_origin: String,
+    pub execution_context: String,
+    pub session_id: Option<String>,
+    pub parent_session_id: Option<String>,
+}
+
 impl MemoryFile {
     pub fn filename(&self) -> &'static str {
         match self {
@@ -97,6 +105,23 @@ impl MemoryStore {
         fs::write(&path, &new_content)?;
         self.truncate_to_limit(file, self.config.max_chars)?;
         Ok(())
+    }
+
+    pub fn append_with_provenance(
+        &self,
+        file: MemoryFile,
+        content: &str,
+        provenance: &MemoryProvenance,
+    ) -> Result<(), MemoryError> {
+        let header = format!(
+            "<!-- provenance: origin={} context={} session={} parent={} -->",
+            provenance.write_origin,
+            provenance.execution_context,
+            provenance.session_id.as_deref().unwrap_or("-"),
+            provenance.parent_session_id.as_deref().unwrap_or("-"),
+        );
+        let tagged = format!("{}\n{}", header, content);
+        self.append(file, &tagged)
     }
 
     pub fn replace(&self, file: MemoryFile, content: &str) -> Result<(), MemoryError> {

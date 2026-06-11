@@ -852,7 +852,8 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
                     };
                     let session_content = format!("User: {}\n\nAssistant: {}", user_msg, run_result.reply);
                     loom_background_review::spawn_background_review(
-                        review_config, session_content, session_id, None,
+                        review_config, session_content, session_id,
+                        loom_background_review::BackgroundReviewCallbacks::default(),
                     );
                 }
             }

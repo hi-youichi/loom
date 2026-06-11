@@ -25,7 +25,6 @@ loom-lsp = { path = "../loom-lsp" }
 lsp-types = "0.95"
 loom-stream = { path = "../loom-stream" }
 loom-skill = { path = "../loom-skill" }
-loom-background-review = { path = "../loom-background-review" }
 loom-commands = { path = "../loom-commands" }
 
 # MCP client

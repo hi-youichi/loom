@@ -107,12 +107,18 @@ impl PendingReviewRegistry {
 /// Callback type for review output notifications.
 pub type ReviewOutputFn = Arc<dyn Fn(&str) + Send + Sync>;
 
+#[derive(Default)]
+pub struct BackgroundReviewCallbacks {
+    pub on_output: Option<ReviewOutputFn>,
+    pub on_review_complete: Option<ReviewOutputFn>,
+}
+
 /// Spawn a background review task using the current Tokio runtime.
 pub fn spawn_background_review(
     config: BackgroundReviewConfig,
     session_content: String,
     session_id: String,
-    on_output: Option<ReviewOutputFn>,
+    callbacks: BackgroundReviewCallbacks,
 ) {
     let registry = pending_reviews();
     let handle = tokio::spawn(async move {
@@ -123,8 +129,11 @@ pub fn spawn_background_review(
                 info!("Background review completed: {} ({} actions, {}ms)", summary, action_count, duration_ms);
 
                 if action_count > 0 {
-                    if let Some(ref on_output) = on_output {
+                    if let Some(ref on_output) = callbacks.on_output {
                         on_output(&summary);
+                    }
+                    if let Some(ref on_complete) = callbacks.on_review_complete {
+                        on_complete(&format!("Self-improvement review: {}", summary));
                     }
                 }
 

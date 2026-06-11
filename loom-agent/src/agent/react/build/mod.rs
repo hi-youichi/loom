@@ -1,4 +1,6 @@
 mod checkpointer;
+#[cfg(test)]
+pub(crate) use checkpointer::base_config;
 mod context;
 pub(crate) mod error;
 pub(crate) mod llm;

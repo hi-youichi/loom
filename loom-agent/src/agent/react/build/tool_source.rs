@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use loom_background_review::skill_usage::SkillUsageStore;
+use loom_skill::SkillUsageStore;
 use loom_llm::error::AgentError;
 use loom_tools::tool_source::{register_file_tools, McpToolSource, ToolSource, ToolSourceError};
 #[cfg(windows)]

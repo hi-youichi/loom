@@ -195,11 +195,35 @@ impl AgentReviewRunner {
         if filtered.is_empty() {
             return "No updates.".to_string();
         }
-        filtered
-            .iter()
-            .map(|a| a.summary.clone())
-            .collect::<Vec<_>>()
-            .join("; ")
+
+        let mut seen_targets: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut memory_lines: Vec<String> = Vec::new();
+        let mut skill_lines: Vec<String> = Vec::new();
+
+        for a in &filtered {
+            let key = format!("{}:{}", a.kind, a.target);
+            if !seen_targets.insert(key) {
+                continue;
+            }
+            match a.kind.as_str() {
+                "memory" => memory_lines.push(a.summary.clone()),
+                _ => skill_lines.push(a.summary.clone()),
+            }
+        }
+
+        let mut parts: Vec<String> = Vec::new();
+        if !memory_lines.is_empty() {
+            parts.push(format!("Memory: {}", memory_lines.join(", ")));
+        }
+        if !skill_lines.is_empty() {
+            parts.push(format!("Skills: {}", skill_lines.join(", ")));
+        }
+
+        if parts.is_empty() {
+            "No updates.".to_string()
+        } else {
+            parts.join(" | ")
+        }
     }
 }
 
