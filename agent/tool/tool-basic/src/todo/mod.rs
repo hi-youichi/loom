@@ -18,11 +18,14 @@ const TODOS_FILENAME: &str = "todo.json";
 pub fn todo_file_path(
     thread_id: Option<&str>,
 ) -> Result<std::path::PathBuf, tool_core::ToolSourceError> {
-    let home = dirs::home_dir().ok_or_else(|| {
-        tool_core::ToolSourceError::Transport("failed to determine home directory".to_string())
-    })?;
-    
-    let base = home.join(".loom");
+    let base = if let Ok(custom) = std::env::var("LOOM_HOME") {
+        std::path::PathBuf::from(custom)
+    } else {
+        let home = dirs::home_dir().ok_or_else(|| {
+            tool_core::ToolSourceError::Transport("failed to determine home directory".to_string())
+        })?;
+        home.join(".loom")
+    };
     match thread_id {
         Some(tid) => Ok(base.join("thread").join(tid).join(TODOS_FILENAME)),
         None => Ok(base.join(TODOS_FILENAME)),

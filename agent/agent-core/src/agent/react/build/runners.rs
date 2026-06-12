@@ -179,7 +179,7 @@ mod tests {
         assert!(ctx.checkpointer.is_none());
         assert!(ctx.store.is_none());
         assert!(ctx.runnable_config.is_none());
-        let tools = ctx.tool_source.list_tools().await.unwrap();
+        let tools = ctx.tool_source.list_tools().await;
         assert!(!tools.is_empty());
     }
 
@@ -189,7 +189,7 @@ mod tests {
         cfg.exa_api_key = Some("k".to_string());
         cfg.exa_codesearch_enabled = false;
         let ctx = build_react_run_context(&cfg).await.unwrap();
-        let tools = ctx.tool_source.list_tools().await.unwrap();
+        let tools = ctx.tool_source.list_tools().await;
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"websearch"));
         assert!(!names.contains(&"codesearch"));
@@ -201,7 +201,7 @@ mod tests {
         cfg.exa_api_key = Some("k".to_string());
         cfg.exa_codesearch_enabled = true;
         let ctx = build_react_run_context(&cfg).await.unwrap();
-        let tools = ctx.tool_source.list_tools().await.unwrap();
+        let tools = ctx.tool_source.list_tools().await;
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"websearch"));
         assert!(names.contains(&"codesearch"));

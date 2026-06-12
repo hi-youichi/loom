@@ -131,6 +131,34 @@ impl McpToolSource {
         parse_list_tools_result(result)
     }
 
+    pub async fn list_tools_async(&self) -> Result<Vec<ToolSpec>, ToolSourceError> {
+        let is_http = {
+            let kind = self
+                .session
+                .lock()
+                .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
+            matches!(&*kind, McpSessionKind::Http(_))
+        };
+        if is_http {
+            let http = {
+                let kind = self
+                    .session
+                    .lock()
+                    .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
+                match &*kind {
+                    McpSessionKind::Http(http) => Arc::clone(http),
+                    McpSessionKind::Stdio(_) => unreachable!(),
+                }
+            };
+            let result = http
+                .request("loom-tools-list", "tools/list", Value::Object(serde_json::Map::new()))
+                .await?;
+            parse_list_tools_result(result)
+        } else {
+            self.list_tools_sync()
+        }
+    }
+
     /// Calls a tool by sending `tools/call` and extracting text from content.
     pub fn call_tool_sync(
         &self,
@@ -143,6 +171,38 @@ impl McpToolSource {
             .request(&id, "tools/call", params)?
             .ok_or_else(|| ToolSourceError::Transport("timeout waiting for tools/call".into()))?;
         parse_call_tool_result(result)
+    }
+
+    pub async fn call_tool_async(
+        &self,
+        name: &str,
+        arguments: Value,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+        let is_http = {
+            let kind = self
+                .session
+                .lock()
+                .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
+            matches!(&*kind, McpSessionKind::Http(_))
+        };
+        if is_http {
+            let http = {
+                let kind = self
+                    .session
+                    .lock()
+                    .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
+                match &*kind {
+                    McpSessionKind::Http(http) => Arc::clone(http),
+                    McpSessionKind::Stdio(_) => unreachable!(),
+                }
+            };
+            let id = format!("loom-call-{}", name);
+            let params = serde_json::json!({ "name": name, "arguments": arguments });
+            let result = http.request(&id, "tools/call", params).await?;
+            parse_call_tool_result(result)
+        } else {
+            tokio::task::block_in_place(|| self.call_tool_sync(name, arguments))
+        }
     }
 }
 
@@ -238,10 +298,10 @@ fn parse_call_tool_result(result: ResultMessage) -> Result<ToolCallContent, Tool
 mod tests {
     use super::*;
     use mcp_core::ErrorObject;
-    use std::sync::{Arc, Mutex as StdMutex};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::{TcpListener, TcpStream};
+    use tokio::net::TcpStream;
 
+    #[allow(dead_code)]
     async fn read_http_request(stream: &mut TcpStream) -> (String, String) {
         let mut buf = Vec::new();
         let mut tmp = [0u8; 1024];
@@ -279,6 +339,7 @@ mod tests {
         (String::new(), String::new())
     }
 
+    #[allow(dead_code)]
     async fn write_http_response(
         stream: &mut TcpStream,
         status: &str,

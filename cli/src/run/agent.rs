@@ -883,7 +883,8 @@ mod tests {
     use loom::agent_run::{
         RunCmd, RunOptions,
     };
-    use agent_extensions::{GotRunnerConfig, TaskGraph, TaskNode, TaskNodeState, TaskStatus, TotExtension, TotRunnerConfig, UnderstandOutput};
+    use agent_extensions::{TaskGraph, TaskNode, TaskNodeState, TaskStatus, TotExtension, UnderstandOutput};
+    use loom_react_config::{GotRunnerConfig, TotRunnerConfig};
     use loom_llm::{message::Message, ToolCall};
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};

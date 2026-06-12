@@ -74,7 +74,7 @@ async fn github_token_none_build_succeeds() {
     let ctx = build_react_run_context(&config)
         .await
         .expect("build_react_run_context");
-    let tools = ctx.tool_source.list_tools().await.expect("list_tools");
+    let tools = ctx.tool_source.list_tools().await;
     assert!(!tools.is_empty());
     // Base tools (e.g. bash, web_fetcher, file tools) are present; no GitHub MCP tools required.
 }
@@ -91,6 +91,6 @@ async fn github_mcp_invalid_command_build_succeeds_github_skipped() {
     let ctx = build_react_run_context(&config)
         .await
         .expect("build_react_run_context");
-    let tools = ctx.tool_source.list_tools().await.expect("list_tools");
+    let tools = ctx.tool_source.list_tools().await;
     assert!(!tools.is_empty());
 }

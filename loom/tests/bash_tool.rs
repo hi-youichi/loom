@@ -2,9 +2,8 @@
 
 mod init_logging;
 
-use loom_tools::tools::bash::BashTool;
-use loom_tools::tools::bash::TOOL_BASH;
-use loom_tools::Tool;
+use tool_basic::{BashTool, TOOL_BASH};
+use tool_core::Tool;
 use serde_json::json;
 
 #[tokio::test]
@@ -35,7 +34,7 @@ async fn bash_tool_spec_has_correct_properties() {
 async fn bash_tool_call_missing_command_returns_error() {
     let tool = BashTool::new();
     let args = json!({});
-    let result = tool.call(args, None).await;
+    let result: Result<tool_core::ToolCallContent, tool_core::ToolSourceError> = tool.call(args, None).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(

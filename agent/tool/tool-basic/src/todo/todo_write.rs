@@ -167,7 +167,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn todo_write_call_valid_todos_writes_and_returns() {
         let _lock = crate::env_test_lock().lock().unwrap();
-        let _g = tool_core::todo::XDG_TEST_LOCK.lock().unwrap();
+        let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
@@ -181,7 +181,7 @@ mod tests {
         assert!(out.as_text().unwrap().contains("1 todos"));
         assert!(out.as_text().unwrap().contains("First"));
         assert!(out.as_text().unwrap().contains("Second"));
-        let path = tool_core::todo::todo_file_path(None).unwrap();
+        let path = crate::todo::todo_file_path(None).unwrap();
         let raw = std::fs::read_to_string(&path).unwrap();
         assert!(raw.contains("First"));
         assert!(raw.contains("completed"));
@@ -192,7 +192,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn todo_write_call_missing_todos_returns_invalid_input() {
         let _lock = crate::env_test_lock().lock().unwrap();
-        let _g = tool_core::todo::XDG_TEST_LOCK.lock().unwrap();
+        let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
@@ -207,7 +207,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn todo_write_call_todos_not_array_returns_invalid_input() {
         let _lock = crate::env_test_lock().lock().unwrap();
-        let _g = tool_core::todo::XDG_TEST_LOCK.lock().unwrap();
+        let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
@@ -223,7 +223,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn todo_write_call_item_missing_id_returns_invalid_input() {
         let _lock = crate::env_test_lock().lock().unwrap();
-        let _g = tool_core::todo::XDG_TEST_LOCK.lock().unwrap();
+        let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
@@ -243,7 +243,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn todo_write_call_item_missing_content_returns_invalid_input() {
         let _lock = crate::env_test_lock().lock().unwrap();
-        let _g = tool_core::todo::XDG_TEST_LOCK.lock().unwrap();
+        let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
@@ -263,7 +263,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn todo_write_call_item_not_object_returns_invalid_input() {
         let _lock = crate::env_test_lock().lock().unwrap();
-        let _g = tool_core::todo::XDG_TEST_LOCK.lock().unwrap();
+        let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
@@ -279,7 +279,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn todo_write_call_default_status_and_priority() {
         let _lock = crate::env_test_lock().lock().unwrap();
-        let _g = tool_core::todo::XDG_TEST_LOCK.lock().unwrap();
+        let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
@@ -288,7 +288,7 @@ mod tests {
         });
         let out = tool.call(args, None).await.unwrap();
         assert!(out.as_text().unwrap().contains("1 todos"));
-        let path = tool_core::todo::todo_file_path(None).unwrap();
+        let path = crate::todo::todo_file_path(None).unwrap();
         let raw = std::fs::read_to_string(&path).unwrap();
         assert!(raw.contains("pending"));
         assert!(raw.contains("medium"));
@@ -299,7 +299,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn todo_write_call_with_thread_id_writes_to_thread_path() {
         let _lock = crate::env_test_lock().lock().unwrap();
-        let _g = tool_core::todo::XDG_TEST_LOCK.lock().unwrap();
+        let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
 
@@ -318,7 +318,7 @@ mod tests {
         assert!(out.as_text().unwrap().contains("1 todos"));
 
         // Verify file is in thread-specific path
-        let thread_path = tool_core::todo::todo_file_path(Some(thread_id)).unwrap();
+        let thread_path = crate::todo::todo_file_path(Some(thread_id)).unwrap();
         assert!(thread_path.exists());
         assert!(thread_path.to_str().unwrap().contains("thread"));
         assert!(thread_path.to_str().unwrap().contains(thread_id));

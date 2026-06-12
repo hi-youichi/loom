@@ -258,7 +258,6 @@ mod tests {
     use super::super::state::TotCandidate;
     use super::*;
     use loom_llm::client::MockLlm;
-    use tool_core::MockTool;
     use loom_stream::StreamEvent;
     use loom_llm::ToolCall;
     use std::sync::{Arc, Mutex};

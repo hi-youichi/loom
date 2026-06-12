@@ -298,10 +298,17 @@ impl Tool for WebFetcherTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::shared_client::test_client;
     use serde_json::json;
     use wiremock::{Mock, MockServer, ResponseTemplate};
     use wiremock::matchers::method;
+
+    fn test_client() -> reqwest::Client {
+        reqwest::Client::builder()
+            .tls_built_in_root_certs(false)
+            .no_proxy()
+            .build()
+            .expect("test client")
+    }
 
     async fn spawn_mock(
         status: u16,
@@ -356,7 +363,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn web_fetcher_tool_call_404_returns_error() {
-        let server = spawn_mock(404, "text/plain", "not found").await;
+        let server: MockServer = spawn_mock(404, "text/plain", "not found").await;
         let tool = WebFetcherTool::with_client(test_client());
         let args = json!({"url": &server.uri()});
         let result = tool.call(args, None).await;
@@ -365,7 +372,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn web_fetcher_tool_fetches_plain_text() {
-        let server = spawn_mock(200, "text/plain", "User-agent: *\nDisallow: /").await;
+        let server: MockServer = spawn_mock(200, "text/plain", "User-agent: *\nDisallow: /").await;
         let tool = WebFetcherTool::with_client(test_client());
         let args = json!({"url": &server.uri()});
         let result = tool.call(args, None).await.unwrap();
@@ -387,7 +394,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn web_fetcher_tool_call_get_with_only_url() {
-        let server = spawn_mock(200, "application/json", "{\"host\": \"mock-server\"}").await;
+        let server: MockServer = spawn_mock(200, "application/json", "{\"host\": \"mock-server\"}").await;
         let tool = WebFetcherTool::with_client(test_client());
         let args = json!({"url": &server.uri()});
         let result = tool.call(args, None).await.unwrap();
@@ -397,7 +404,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn web_fetcher_tool_call_post_with_json_body() {
         let body = "{\"hello\": \"world\", \"n\": 42}";
-        let server = MockServer::start().await;
+        let server: MockServer = MockServer::start().await;
         let template = ResponseTemplate::new(200)
             .set_body_string(body)
             .insert_header("content-type", "application/json");
@@ -419,7 +426,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn web_fetcher_tool_call_post_with_string_body() {
-        let server = MockServer::start().await;
+        let server: MockServer = MockServer::start().await;
         let template = ResponseTemplate::new(200)
             .set_body_string("plain text body")
             .insert_header("content-type", "text/plain");
@@ -439,7 +446,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn web_fetcher_tool_call_unsupported_method_returns_error() {
-        let server = MockServer::start().await;
+        let server: MockServer = MockServer::start().await;
         let template_get = ResponseTemplate::new(200)
             .set_body_string("ok")
             .insert_header("content-type", "text/plain");

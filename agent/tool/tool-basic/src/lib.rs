@@ -7,6 +7,10 @@ pub mod shared;
 pub mod batch;
 pub mod date;
 pub mod http_retry;
+pub mod mcp;
+pub mod mcp_adapter;
+pub mod skill;
+pub mod exa;
 
 // Re-export tools
 pub use bash::{BashTool, CommandExecutor, LocalCommandExecutor, TOOL_BASH};
@@ -17,6 +21,9 @@ pub use todo::*;
 pub use shared::{canceller::*, shell_output::*};
 pub use batch::{BatchTool, TOOL_BATCH};
 pub use date::{DateTool, TOOL_DATE};
+pub use mcp::{McpSession, McpSessionError, McpToolSource};
+pub use mcp_adapter::{register_mcp_tools, register_mcp_tools_with_specs, McpToolAdapter};
+pub use skill::SkillTool;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -65,4 +72,12 @@ pub fn register_file_tools(
 
 pub async fn register_web_tools(registry: &ToolRegistryLocked) {
     registry.register_async(Box::new(WebFetcherTool::new())).await;
+}
+
+#[cfg(test)]
+static ENV_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(test)]
+pub(crate) fn env_test_lock() -> &'static std::sync::Mutex<()> {
+    &ENV_TEST_LOCK
 }

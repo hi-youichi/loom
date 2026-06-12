@@ -51,7 +51,7 @@ impl Tool for McpToolAdapter {
         args: serde_json::Value,
         _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        tokio::task::block_in_place(|| self.source.call_tool_sync(self.name.as_str(), args))
+        self.source.call_tool_async(self.name.as_str(), args).await
     }
 }
 
@@ -68,7 +68,7 @@ pub async fn register_mcp_tools(
     aggregate: &tool_core::ToolRegistryLocked,
     mcp: Arc<McpToolSource>,
 ) -> Result<(), ToolSourceError> {
-    let specs = mcp.list_tools_sync()?;
+    let specs = mcp.list_tools_async().await?;
     register_mcp_tools_with_specs(aggregate, mcp, specs).await;
     Ok(())
 }
@@ -205,7 +205,7 @@ mod tests {
             .await
             .unwrap();
 
-        let tools = aggregate.list_tools().await.unwrap();
+        let tools = aggregate.list_tools().await;
         assert!(tools.iter().any(|t| t.name == "demo_mcp"));
 
         let out = aggregate

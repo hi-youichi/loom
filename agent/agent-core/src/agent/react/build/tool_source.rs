@@ -6,13 +6,13 @@ use tool_core::{ArcTool, ToolRegistryLocked, ToolSourceError, YamlSpecError};
 use tool_basic::{
     bash::BashTool, powershell::PowerShellTool, batch::BatchTool,
     web::WebFetcherTool, register_file_tools,
+    mcp::McpToolSource, register_mcp_tools, register_mcp_tools_with_specs,
+    exa::ExaCodesearchTool, exa::ExaWebsearchTool,
 };
 use tool_extensions::{
-    exa::ExaCodesearchTool, exa::ExaWebsearchTool, lsp::LspTool,
-    twitter::TwitterSearchTool, mcp::McpToolSource,
-    register_mcp_tools, register_mcp_tools_with_specs,
+    lsp::LspTool, twitter::TwitterSearchTool,
 };
-use tool_experimental::{register_memory_tools, register_task_tools};
+use tool_experimental::register_task_tools;
 use crate::tools::InvokeAgentTool;
 
 use env_config::McpServerDef;
@@ -22,8 +22,6 @@ use super::super::config::ReactBuildConfig;
 fn to_agent_error(e: impl std::fmt::Display) -> AgentError {
     AgentError::ExecutionFailed(e.to_string())
 }
-
-const DEFAULT_MEMORY_NAMESPACE: &[&str] = &["default", "memories"];
 
 pub(crate) async fn build_tool_source(
     config: &ReactBuildConfig,
@@ -35,7 +33,7 @@ pub(crate) async fn build_tool_source(
     let has_twitter = config.twitter_api_key.is_some();
     let working_folder_arc = config.working_folder.as_ref().map(|p| Arc::new(p.clone()));
 
-    if !has_memory && !has_exa && !has_working_folder && !has_twitter {
+    if has_memory || has_exa || has_working_folder || has_twitter {
         let aggregate = Arc::new(ToolRegistryLocked::new());
         aggregate
             .register_async(Box::new(WebFetcherTool::new()))
@@ -219,29 +217,23 @@ pub(crate) async fn build_tool_source(
         .await;
         // ListAgentsTool is not available in this build (depends on loom's profile system)
         apply_registry_config(&aggregate, config).await.map_err(to_agent_error)?;
+    } else {
+        let aggregate = Arc::new(ToolRegistryLocked::new());
+        aggregate
+            .register_async(Box::new(WebFetcherTool::new()))
+            .await;
+        aggregate.register_sync(Box::new(LspTool::default()));
+        aggregate
+            .register_async(Box::new(InvokeAgentTool::new(
+                Arc::new(config.clone()),
+                config.max_sub_agent_depth,
+            )))
+            .await;
+        apply_registry_config(&aggregate, config).await.map_err(to_agent_error)?;
         return Ok(aggregate);
     }
 
-    let base = if has_memory {
-        let s = store.as_ref().unwrap();
-        let namespace: Vec<String> = config
-            .user_id
-            .as_ref()
-            .map(|u| vec![u.clone(), "memories".to_string()])
-            .unwrap_or_else(|| {
-                DEFAULT_MEMORY_NAMESPACE
-                    .iter()
-                    .map(|s| (*s).to_string())
-                    .collect()
-            });
-
-        let aggregate = Arc::new(ToolRegistryLocked::new());
-        register_memory_tools(&aggregate, s.clone(), namespace).await;
-        aggregate
-    } else {
-        Arc::new(ToolRegistryLocked::new())
-    };
-    let aggregate = base;
+    let aggregate = Arc::new(ToolRegistryLocked::new());
 
     aggregate
         .register_async(Box::new(WebFetcherTool::new()))

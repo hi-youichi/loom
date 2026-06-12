@@ -6,9 +6,9 @@
 
 mod init_logging;
 
-use loom_tools::tools::powershell::PowerShellTool;
-use loom_tools::tools::powershell::TOOL_POWERSHELL;
-use loom_tools::Tool;
+use tool_basic::PowerShellTool;
+use tool_basic::TOOL_POWERSHELL;
+use tool_core::Tool;
 use serde_json::json;
 
 // ============================================================================

@@ -230,7 +230,6 @@ impl DupRunner {
 mod tests {
     use super::*;
     use loom_llm::client::MockLlm;
-    use tool_core::MockTool;
     use loom_stream::StreamEvent;
     use std::sync::{Arc, Mutex};
 

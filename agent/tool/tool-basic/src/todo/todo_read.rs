@@ -111,7 +111,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn todo_read_call_when_file_missing_returns_empty_list() {
         let _lock = crate::env_test_lock().lock().unwrap();
-        let _g = tool_core::todo::XDG_TEST_LOCK.lock().unwrap();
+        let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
         let tool = TodoReadTool::new(Arc::new(dir.path().to_path_buf()));
@@ -126,12 +126,12 @@ mod tests {
     async fn todo_read_call_when_thread_file_exists_returns_parsed_todos() {
         let _lock = crate::env_test_lock().lock().unwrap();
         use tool_core::ToolCallContext;
-        let _g = tool_core::todo::XDG_TEST_LOCK.lock().unwrap();
+        let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
 
         let thread_id = "test-thread-123";
-        let path = tool_core::todo::todo_file_path(Some(thread_id)).unwrap();
+        let path = crate::todo::todo_file_path(Some(thread_id)).unwrap();
         if let Some(p) = path.parent() {
             std::fs::create_dir_all(p).unwrap();
         }
@@ -155,10 +155,10 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn todo_read_call_when_global_file_exists_returns_parsed_todos() {
         let _lock = crate::env_test_lock().lock().unwrap();
-        let _g = tool_core::todo::XDG_TEST_LOCK.lock().unwrap();
+        let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
-        let path = tool_core::todo::todo_file_path(None).unwrap();
+        let path = crate::todo::todo_file_path(None).unwrap();
         if let Some(p) = path.parent() {
             std::fs::create_dir_all(p).unwrap();
         }
@@ -180,10 +180,10 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn todo_read_call_when_invalid_json_returns_empty_list() {
         let _lock = crate::env_test_lock().lock().unwrap();
-        let _g = tool_core::todo::XDG_TEST_LOCK.lock().unwrap();
+        let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("LOOM_HOME", dir.path());
-        let path = tool_core::todo::todo_file_path(None).unwrap();
+        let path = crate::todo::todo_file_path(None).unwrap();
         if let Some(p) = path.parent() {
             std::fs::create_dir_all(p).unwrap();
         }

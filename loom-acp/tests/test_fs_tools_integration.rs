@@ -9,9 +9,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use loom_tools::ToolCallContent;
+use tool_core::{Tool, ToolCallContent};
 use serial_test::serial;
-use loom_tools::Tool;
 use serde_json::json;
 use loom_acp::tools::{clear_client_bridge, set_client_bridge, ClientBridgeTrait, ReadTextFileTool, TerminalExitResult, TerminalOutput, WriteTextFileTool};
 

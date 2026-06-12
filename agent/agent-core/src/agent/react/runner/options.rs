@@ -52,7 +52,7 @@ pub(super) fn resolve_run_agent_options(opts: AgentOptions) -> ResolvedRunAgentO
         });
     let tool_source = opts
         .tool_source
-        .unwrap_or_else(|| tool_core::mock_registry());
+        .unwrap_or_else(tool_core::mock_registry);
     ResolvedRunAgentOptions {
         provider,
         tool_source,
