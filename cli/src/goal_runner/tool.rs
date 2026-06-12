@@ -6,7 +6,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 
-use loom_agent::{AnyStreamEvent, run_agent_with_options};
+use loom_agent::{run_agent_with_options, AnyStreamEvent as FullAnyStreamEvent};
+use loom_cli_types::AnyStreamEvent;
 use loom_stream::StreamEvent;
 
 use loom_cli_types::goal_runner::state::{ToolCallSummary, ToolError, TurnResult};
@@ -143,7 +144,7 @@ pub struct LoomTool {
     api_key: Option<String>,
     provider_type: Option<String>,
     agent: Option<String>,
-    any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
+    any_stream_event_sender: Option<Arc<dyn Fn(FullAnyStreamEvent) + Send + Sync>>,
 }
 
 impl LoomTool {
@@ -192,7 +193,7 @@ impl LoomTool {
 
     pub fn with_event_sender(
         mut self,
-        sender: Arc<dyn Fn(AnyStreamEvent) + Send + Sync>,
+        sender: Arc<dyn Fn(FullAnyStreamEvent) + Send + Sync>,
     ) -> Self {
         self.any_stream_event_sender = Some(sender);
         self
@@ -208,12 +209,15 @@ impl CodingTool for LoomTool {
         let tool_summaries: Arc<Mutex<Vec<ToolCallSummary>>> =
             Arc::new(Mutex::new(Vec::new()));
 
-        let on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>> =
+        let on_event: Option<Box<dyn FnMut(FullAnyStreamEvent) + Send>> =
             if let Some(ref sender) = self.any_stream_event_sender {
                 let sender = sender.clone();
                 let summaries = tool_summaries.clone();
-                Some(Box::new(move |ev: AnyStreamEvent| {
-                    collect_tool_summary(&ev, &summaries);
+                Some(Box::new(move |ev: FullAnyStreamEvent| {
+                    // Convert full event to cli_types event for summary collection
+                    if let Some(cli_ev) = loom_agent::to_loom_any_stream_event(&ev) {
+                        collect_tool_summary(&cli_ev, &summaries);
+                    }
                     sender(ev);
                 }))
             } else {
@@ -227,10 +231,10 @@ impl CodingTool for LoomTool {
                     },
                 );
                 let summaries = tool_summaries.clone();
-                Some(Box::new(move |ev: AnyStreamEvent| {
-                    collect_tool_summary(&ev, &summaries);
-                    if let Some(looms_ev) = loom_agent::to_loom_any_stream_event(&ev) {
-                        original(looms_ev);
+                Some(Box::new(move |ev: FullAnyStreamEvent| {
+                    if let Some(cli_ev) = loom_agent::to_loom_any_stream_event(&ev) {
+                        collect_tool_summary(&cli_ev, &summaries);
+                        original(cli_ev);
                     }
                 }))
             };
@@ -255,7 +259,14 @@ impl CodingTool for LoomTool {
             output_timestamp: false,
             dry_run: false,
             debug_llm: false,
-            any_stream_event_sender: self.any_stream_event_sender.clone(),
+            any_stream_event_sender: self.any_stream_event_sender.as_ref().map(|sender| {
+                let sender = sender.clone();
+                Arc::new(move |ev: loom_cli_types::AnyStreamEvent| {
+                    // Convert cli_types event to full event (best-effort, only React supported)
+                    let full_ev = FullAnyStreamEvent::from_loom(ev);
+                    sender(full_ev);
+                }) as Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>
+            }),
             bash_executor: None,
             extra_tools: None,
             acp_session_id: None,

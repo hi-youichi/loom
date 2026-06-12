@@ -207,7 +207,9 @@ pub(super) async fn run_agent_task(
     let any_message_count = message_count.clone();
     let any_dropped_appends = dropped_appends.clone();
     let any_on_title = on_title.clone();
-    opts.any_stream_event_sender = Some(Arc::new(move |ev: AnyStreamEvent| {
+    opts.any_stream_event_sender = Some(Arc::new(move |ev: loom_cli_types::AnyStreamEvent| {
+        // Convert from loom_cli_types::AnyStreamEvent to loom_agent::AnyStreamEvent
+        let ev = AnyStreamEvent::from_loom(ev);
         let event_ctx = EventContext {
             state: &any_state,
             tx: &any_tx,

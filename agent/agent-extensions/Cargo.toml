@@ -1,0 +1,47 @@
+[package]
+name = "agent-extensions"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+loom = { path = "../../loom" }
+loom-types = { path = "../../loom-types" }
+loom-graph = { path = "../../loom-graph" }
+loom-pregel = { path = "../../loom-pregel" }
+loom-llm = { path = "../../loom-llm" }
+loom-stream = { path = "../../loom-stream" }
+loom-protocol = { path = "../../loom-protocol" }
+loom-helve = { path = "../../loom-helve" }
+loom-memory = { path = "../../loom-memory" }
+loom-tools = { path = "../../loom-tools" }
+loom-compress = { path = "../../loom-compress" }
+loom-cli-types = { path = "../../loom-cli-types" }
+loom-skill = { path = "../../loom-skill" }
+loom-tier = { path = "../../loom-tier" }
+loom-react-config = { path = "../../loom-react-config" }
+loom-worktree = { path = "../../loom-worktree" }
+loom-model-spec = { path = "../../loom-model-spec" }
+loom-stream-display = { path = "../../loom-stream-display" }
+loom-commands = { path = "../../loom-commands" }
+loom-cache = { path = "../../loom-cache" }
+loom-lsp = { path = "../../loom-lsp" }
+
+async-trait = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+tokio = { version = "1.0", features = ["full"] }
+tokio-stream = "0.1"
+tokio-util = { version = "0.7", features = ["rt"] }
+tracing = "0.1"
+futures = "0.3"
+futures-util = "0.3"
+env-config = { path = "../../config", package = "config" }
+model-spec-core = { path = "../../model-spec-core" }
+async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
+task-core = { path = "../../task-core" }
+
+agent = { path = "../agent-core" }
+
+[dev-dependencies]
+tempfile = "3"

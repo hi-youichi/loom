@@ -762,10 +762,11 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
         let tx_for_opts = self.session_update_tx.clone();
         let any_stream_event_sender = tx_for_opts.map(|sender| {
             let session_id = session_id_for_opts;
-            std::sync::Arc::new(move |ev: AnyStreamEvent| {
+            std::sync::Arc::new(move |ev: loom_cli_types::AnyStreamEvent| {
+                let ev = AnyStreamEvent::from_loom(ev);
                 let notifier = SessionNotifier::new(sender.clone(), session_id.clone());
                 notifier.try_send_event(&ev);
-            }) as std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>
+            }) as std::sync::Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>
         });
 
         let opts = RunOptions {
