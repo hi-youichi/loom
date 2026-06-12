@@ -1,4 +1,4 @@
-//! ACP Agent implementation: maps protocol requests to Loom execution.
+﻿//! ACP Agent implementation: maps protocol requests to Loom execution.
 //!
 //! [`LoomAcpAgent`] implements `agent_client_protocol::Agent` and maps ACP requests
 //! to Loom sessions and execution. See [`crate::protocol`] for protocol and behavior details.
@@ -26,7 +26,7 @@ use loom_types::state::ReActState;
 
 use chrono::DateTime;
 use config::load_full_config;
-use loom_agent::{AnyStreamEvent, RunCmd, RunCompletion, RunOptions, RunError, run_agent_with_options};
+use loom::agent_run::{AnyStreamEvent, RunCmd, RunCompletion, RunOptions, RunError, run_agent_with_options};
 use rusqlite::Connection;
 use std::path::PathBuf;
 use std::sync::Arc;

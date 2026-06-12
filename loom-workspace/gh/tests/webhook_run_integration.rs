@@ -1,4 +1,4 @@
-//! L3: Webhook handler invokes run entry (mock); assert 200, run called once, RunOptions correct.
+﻿//! L3: Webhook handler invokes run entry (mock); assert 200, run called once, RunOptions correct.
 
 use gh::{webhook_router, RunAgentCallback};
 use hmac::Mac;
@@ -39,7 +39,7 @@ async fn spawn_webhook_server_with_mock(
 ) -> (
     String,
     tokio::task::JoinHandle<()>,
-    mpsc::Receiver<loom_agent::RunOptions>,
+    mpsc::Receiver<loom::agent_run::RunOptions>,
 ) {
     let (tx, rx) = mpsc::channel(2);
     let run_agent: RunAgentCallback = Arc::new(move |opts| {

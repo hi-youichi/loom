@@ -1,4 +1,4 @@
-//! Handle `Run` request: execute agent (streaming or single reply).
+﻿//! Handle `Run` request: execute agent (streaming or single reply).
 //!
 //! Flow: request preparation (register thread, append initial message, build opts/cmd) →
 //! spawn run task → consume event stream and send over WebSocket → send RunEnd or Error.
@@ -115,8 +115,8 @@ mod tests {
     use async_trait::async_trait;
     use loom_protocol::{EnvelopeState, ProtocolEvent, ProtocolEventEnvelope, ServerResponse};
     use loom_llm::client::MockLlm;
-    use loom_agent::{RunCmd, RunCompletion, RunError, RunOptions};
-    use loom_agent::cli_run_agent::AgentRunResult;
+    use loom::agent_run::{RunCmd, RunCompletion, RunError, RunOptions};
+    use loom::agent_run::AgentRunResult;
     use std::sync::atomic::AtomicUsize;
     use std::sync::{Arc, Mutex};
     use tokio::sync::mpsc;
@@ -234,7 +234,7 @@ mod tests {
         let state = Arc::new(Mutex::new(EnvelopeState::new("run-1".into())));
         let run_handle = tokio::spawn(async move {
             (
-                Err(RunError::Build(loom_agent::BuildRunnerError::NoLlm)),
+                Err(RunError::Build(agent::BuildRunnerError::NoLlm)),
                 state,
                 Arc::new(AtomicUsize::new(0)),
                 Arc::new(AtomicUsize::new(0)),

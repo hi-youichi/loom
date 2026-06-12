@@ -1,12 +1,12 @@
-//! L4 E2E: Webhook → 200 → loom run started (and completes with MockLlm).
+﻿//! L4 E2E: Webhook → 200 → loom run started (and completes with MockLlm).
 //!
-//! Uses injectable run_agent that actually invokes loom_agent::run_agent_with_llm_override
+//! Uses injectable run_agent that actually invokes loom::agent_run::run_agent_with_llm_override
 //! with MockLlm so the run completes without real API. Asserts 200, run started
 //! (opts received), and optionally run finished.
 
 use gh::{webhook_router, RunAgentCallback};
 use hmac::Mac;
-use loom_agent::{RunCmd, RunOptions, run_agent_with_llm_override};
+use loom::agent_run::{RunCmd, RunOptions, run_agent_with_llm_override};
 use loom_llm::client::MockLlm;
 use std::sync::Arc;
 use tokio::net::TcpListener;

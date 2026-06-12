@@ -1,6 +1,6 @@
-//! Map Loom stream events to ACP SessionUpdate-equivalent structures
+﻿//! Map Loom stream events to ACP SessionUpdate-equivalent structures
 //!
-//! [`loom_agent::run_agent_with_options`]'s `on_event` callback receives [`loom_cli_types::AnyStreamEvent`].
+//! [`loom::agent_run::run_agent_with_options`]'s `on_event` callback receives [`loom_cli_types::AnyStreamEvent`].
 //! This module provides [`loom_event_to_updates`] to turn a single Loom event into zero or more [`StreamUpdate`],
 //! which the upper layer sends as **session/update notifications** (no response) via the `agent_client_protocol` connection.
 //! Protocol details are in [`crate::protocol`].
@@ -38,7 +38,7 @@ use agent_client_protocol::schema::{
 };
 use loom_llm::message::Message;
 use loom_stream::{MessageChunkKind, StreamEvent};
-use loom_agent::AnyStreamEvent;
+use loom::agent_run::AnyStreamEvent;
 use serde_json::Value;
 use std::sync::Mutex;
 use std::collections::HashMap;

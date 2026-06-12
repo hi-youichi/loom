@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
 use agent::agent::react::{build_react_initial_state, REACT_SYSTEM_PROMPT};
-use loom_llm::error::AgentError;
+
 use loom_graph::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
 use loom_memory::{CheckpointError, Checkpointer, RunnableConfig, Store};
 use loom_llm::message::Message;
@@ -68,18 +68,7 @@ pub async fn build_dup_initial_state(
     .await
 }
 
-/// Error type for DupRunner operations.
-#[derive(Debug, thiserror::Error)]
-pub enum DupRunError {
-    #[error("compilation failed: {0}")]
-    Compilation(#[from] CompilationError),
-    #[error("checkpoint error: {0}")]
-    Checkpoint(#[from] CheckpointError),
-    #[error("execution failed: {0}")]
-    Execution(#[from] AgentError),
-    #[error("stream ended without final state")]
-    StreamEndedWithoutState,
-}
+pub use agent::RunnerError as DupRunError;
 
 /// DUP graph runner: encapsulates compiled graph and persistence.
 pub struct DupRunner {

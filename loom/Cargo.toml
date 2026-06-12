@@ -14,6 +14,8 @@ lance = ["dep:lancedb", "dep:arrow-array", "dep:arrow-schema", "loom-memory/lanc
 testing = []
 
 [dependencies]
+agent = { path = "../agent/agent-core" }
+agent-extensions = { path = "../agent/agent-extensions" }
 stream-event = { path = "../stream-event" }
 tokio = { workspace = true }
 async-trait = { workspace = true }
@@ -141,7 +143,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ctor = "0.2"
 wiremock = "0.6"
 temp-env = { version = "0.3", features = ["async_closure"] }
-loom-agent = { path = "../loom-agent" }
+agent = { path = "../agent/agent-core" }
 loom-tools = { path = "../loom-tools" }
 loom-model-spec = { path = "../loom-model-spec" }
 loom-stream = { path = "../loom-stream" }

@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+﻿use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -6,7 +6,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 
-use loom_agent::{run_agent_with_options, AnyStreamEvent as FullAnyStreamEvent};
+use loom::agent_run::{run_agent_with_options, AnyStreamEvent as FullAnyStreamEvent};
 use loom_cli_types::AnyStreamEvent;
 use loom_stream::StreamEvent;
 
@@ -203,7 +203,7 @@ impl LoomTool {
 #[async_trait]
 impl CodingTool for LoomTool {
     async fn execute(&self, prompt: &str, working_dir: &Path) -> Result<TurnResult, ToolError> {
-        use loom_agent::{RunCmd, RunCompletion, RunOptions};
+        use loom::agent_run::{RunCmd, RunCompletion, RunOptions};
         use loom_llm::message::UserContent;
 
         let tool_summaries: Arc<Mutex<Vec<ToolCallSummary>>> =
@@ -215,7 +215,7 @@ impl CodingTool for LoomTool {
                 let summaries = tool_summaries.clone();
                 Some(Box::new(move |ev: FullAnyStreamEvent| {
                     // Convert full event to cli_types event for summary collection
-                    if let Some(cli_ev) = loom_agent::to_loom_any_stream_event(&ev) {
+                    if let Some(cli_ev) = loom::agent_run::to_loom_any_stream_event(&ev) {
                         collect_tool_summary(&cli_ev, &summaries);
                     }
                     sender(ev);
@@ -232,7 +232,7 @@ impl CodingTool for LoomTool {
                 );
                 let summaries = tool_summaries.clone();
                 Some(Box::new(move |ev: FullAnyStreamEvent| {
-                    if let Some(cli_ev) = loom_agent::to_loom_any_stream_event(&ev) {
+                    if let Some(cli_ev) = loom::agent_run::to_loom_any_stream_event(&ev) {
                         collect_tool_summary(&cli_ev, &summaries);
                         original(cli_ev);
                     }

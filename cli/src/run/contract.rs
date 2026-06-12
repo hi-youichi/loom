@@ -1,9 +1,9 @@
-//! CLI run result types, JSON streaming contract, and in-process dispatch to agent/tool helpers.
+﻿//! CLI run result types, JSON streaming contract, and in-process dispatch to agent/tool helpers.
 
 use crate::model_cmd::{list_all_models, list_provider_models};
 use crate::tool_cmd::{list_tools, show_tool, ToolShowFormat};
 use loom_protocol::Envelope;
-use loom_agent::{RunCmd, RunError, RunOptions};
+use loom::agent_run::{RunCmd, RunError, RunOptions};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 

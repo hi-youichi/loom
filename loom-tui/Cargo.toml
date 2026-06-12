@@ -27,7 +27,6 @@ async-trait = "0.1"
 
 # Agent Integration - reuse existing modules
 loom = { path = "../loom" }
-loom-agent = { path = "../loom-agent" }
 cli = { path = "../cli" }
 config = { path = "../config", features = ["tracing-init"] }
 stream-event = { path = "../stream-event" }

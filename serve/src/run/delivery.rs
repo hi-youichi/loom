@@ -1,10 +1,10 @@
-//! Delivering run stream to the client: RunStreamSender abstraction and handle_run_stream.
+﻿//! Delivering run stream to the client: RunStreamSender abstraction and handle_run_stream.
 
 use async_trait::async_trait;
 use axum::extract::ws::Message;
 use futures::SinkExt;
 use loom_protocol::{EnvelopeState, ErrorResponse, ProtocolEventEnvelope, RunEndResponse, RunStreamEventResponse, ServerResponse};
-use loom_agent::{RunCompletion, RunError};
+use loom::agent_run::{RunCompletion, RunError};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::mpsc;

@@ -1,6 +1,6 @@
-//! Agent run task: stream events to protocol envelopes and optional message store append.
+﻿//! Agent run task: stream events to protocol envelopes and optional message store append.
 
-use loom_agent::{
+use loom::agent_run::{
     run_agent_with_options, run_agent_with_llm_override,
     AnyStreamEvent, RunCmd,
     RunCompletion, RunError, RunOptions,
@@ -208,7 +208,7 @@ pub(super) async fn run_agent_task(
     let any_dropped_appends = dropped_appends.clone();
     let any_on_title = on_title.clone();
     opts.any_stream_event_sender = Some(Arc::new(move |ev: loom_cli_types::AnyStreamEvent| {
-        // Convert from loom_cli_types::AnyStreamEvent to loom_agent::AnyStreamEvent
+        // Convert from loom_cli_types::AnyStreamEvent to loom::agent_run::AnyStreamEvent
         let ev = AnyStreamEvent::from_loom(ev);
         let event_ctx = EventContext {
             state: &any_state,

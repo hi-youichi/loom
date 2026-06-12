@@ -29,12 +29,10 @@ tracing-appender = "0.2"
 axum = { version = "0.7", features = ["json", "macros"] }
 tower-http = { version = "0.5", features = ["util"] }
 loom = { path = "../../loom" }
-loom-agent = { path = "../../loom-agent" }
 loom-llm = { path = "../../loom-llm" }
 clap = { workspace = true }
 
 [dev-dependencies]
-loom-agent = { path = "../../loom-agent" }
 loom-llm = { path = "../../loom-llm" }
 hmac = "0.12"
 hex = "0.4"

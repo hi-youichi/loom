@@ -1,4 +1,4 @@
-//! Models subcommand: list available models from model spec metadata.
+﻿//! Models subcommand: list available models from model spec metadata.
 //!
 //! Reads configured providers from `~/.loom/config.toml`, resolves models from
 //! model spec, and displays available models. Supports filtering by provider name.
@@ -10,7 +10,7 @@ use config::{load_full_config, ProviderDef};
 use loom_llm::ModelInfo;
 use loom_llm::ProviderConfig;
 use loom_tier::ModelRegistry;
-use loom_agent::RunError;
+use loom::agent_run::RunError;
 use std::collections::HashMap;
 
 /// Result of querying models from a single provider.

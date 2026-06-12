@@ -1,4 +1,4 @@
-//! Webhook HTTP server: router and handler for use by the binary and integration tests.
+﻿//! Webhook HTTP server: router and handler for use by the binary and integration tests.
 //!
 //! On valid "issues" events, returns 200 then spawns a loom agent run asynchronously
 //! (so GitHub webhook delivery does not time out).
@@ -16,7 +16,7 @@ use axum::{
     routing::post,
     Router,
 };
-use loom_agent::RunOptions;
+use loom::agent_run::RunOptions;
 
 /// Optional run entry: when set, called with RunOptions instead of spawning the real agent.
 pub type RunAgentCallback = Arc<dyn Fn(RunOptions) + Send + Sync>;

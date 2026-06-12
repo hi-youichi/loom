@@ -28,6 +28,7 @@
 //! - `loom_cli_types` — `RunOptions`, `RunCmd`, `RunCompletion`, `AnyStreamEvent`
 //! - `loom_react_config` — `ReactBuildConfig`, profile types
 
+pub mod agent_run;
 pub mod cli_run;
 
 /// Global lock for tests that modify `LOOM_HOME` or `OPENAI_BASE_URL` env vars.

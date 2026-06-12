@@ -1,10 +1,10 @@
-//! Handle `ToolsList` and `ToolShow` requests.
+﻿//! Handle `ToolsList` and `ToolShow` requests.
 
 use loom::cli_run::build_helve_config;
 use loom_protocol::{ErrorResponse, ServerResponse, ToolShowOutput, ToolShowResponse, ToolsListResponse};
 use loom_cli_types::RunOptions;
 use loom_llm::message::UserContent;
-use loom_agent::build_react_run_context;
+use agent::build_react_run_context;
 use std::path::PathBuf;
 
 use crate::app::RunConfig;

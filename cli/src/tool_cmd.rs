@@ -1,4 +1,4 @@
-//! Tool subcommand: list tools and show tool definition.
+﻿//! Tool subcommand: list tools and show tool definition.
 //!
 //! Lists or displays tool specs (name, description, input_schema) from the same
 //! tool source used by agent runners. Uses [`build_helve_config`](crate::run::build_helve_config)
@@ -11,7 +11,7 @@
 
 use loom_tools::ToolSpec;
 use loom_llm::AgentError;
-use loom_agent::{build_react_run_context, BuildRunnerError};
+use agent::{build_react_run_context, BuildRunnerError};
 use serde::Serialize;
 
 use crate::run::{build_helve_config, RunError, RunOptions};

@@ -1,4 +1,4 @@
-//! Message and state display formatting for stderr output.
+﻿//! Message and state display formatting for stderr output.
 //!
 //! Provides truncation and formatting utilities for [`Message`](loom::Message)
 //! and agent state types (ReActState, TotState, DupState, GotState) when streaming
@@ -7,7 +7,7 @@
 use loom_llm::{message::Message, ToolCall};
 use loom_types::state::ReActState;
 use loom_types::state::ToolResult;
-use loom_agent::agent::{DupState, GotState, TotState};
+use agent_extensions::{DupState, GotState, TotState};
 use std::collections::HashMap;
 
 /// Indent for nested state fields (one level).
@@ -154,7 +154,7 @@ pub(crate) fn format_got_state_display(state: &GotState, max: usize) -> String {
     let node_states: HashMap<String, String> = state
         .node_states
         .iter()
-        .map(|(id, ns): (&String, &loom_agent::agent::TaskNodeState)| {
+        .map(|(id, ns): (&String, &agent_extensions::TaskNodeState)| {
             let r = ns
                 .result
                 .as_ref()
@@ -187,7 +187,7 @@ mod tests {
     use super::*;
     use loom_llm::ToolCall;
     use loom_types::state::ToolResult;
-    use loom_agent::agent::{TaskGraph, TaskNode, TaskNodeState, TaskStatus};
+    use agent_extensions::{TaskGraph, TaskNode, TaskNodeState, TaskStatus};
     use std::collections::HashMap;
 
     #[test]
@@ -251,7 +251,7 @@ mod tests {
         };
         let tot = TotState {
             core: core.clone(),
-            tot: loom_agent::agent::TotExtension::default(),
+            tot: agent_extensions::TotExtension::default(),
         };
         let dup = DupState {
             core,

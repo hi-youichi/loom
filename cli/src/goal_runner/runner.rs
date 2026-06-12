@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+﻿use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -544,7 +544,7 @@ pub async fn resume_with_event_sender(
     db: Arc<TaskDb>,
     cancel: CancellationToken,
     run_cancellation: Option<loom_cli_types::RunCancellation>,
-    event_sender: Option<Arc<dyn Fn(loom_agent::AnyStreamEvent) + Send + Sync>>,
+    event_sender: Option<Arc<dyn Fn(loom::agent_run::AnyStreamEvent) + Send + Sync>>,
 ) -> Result<GoalRunner, GoalError> {
     let updated = db
         .atomic_update_status(id, TaskStatus::Pending, TaskStatus::InProgress)
@@ -598,7 +598,7 @@ fn resolve_tool(
     db_path: &std::path::Path,
     working_dir: &std::path::Path,
     run_cancellation: &Option<loom_cli_types::RunCancellation>,
-    event_sender: &Option<Arc<dyn Fn(loom_agent::AnyStreamEvent) + Send + Sync>>,
+    event_sender: &Option<Arc<dyn Fn(loom::agent_run::AnyStreamEvent) + Send + Sync>>,
     cancel: &CancellationToken,
 ) -> Result<Box<dyn CodingTool>, GoalError> {
     match tool_name {

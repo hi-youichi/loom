@@ -25,7 +25,6 @@ rand = "0.8"
 rusqlite = { version = "0.31", features = ["bundled"] }
 config = { path = "../config", features = ["tracing-init"] }
 loom = { path = "../loom" }
-loom-agent = { path = "../loom-agent" }
 loom-memory = { path = "../loom-memory" }
 loom-tools = { path = "../loom-tools" }
 loom-llm = { path = "../loom-llm" }

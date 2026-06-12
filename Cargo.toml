@@ -26,7 +26,6 @@ members = [
     "task-cli",
     "task-mcp-server",
     "loom-types",
-    "loom-agent",
     "agent/agent-core",
     "agent/agent-extensions",
     "loom-compress",

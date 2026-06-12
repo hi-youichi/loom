@@ -78,18 +78,7 @@ pub async fn build_tot_initial_state(
     .await
 }
 
-/// Error type for TotRunner operations.
-#[derive(Debug, thiserror::Error)]
-pub enum TotRunError {
-    #[error("compilation failed: {0}")]
-    Compilation(#[from] CompilationError),
-    #[error("checkpoint error: {0}")]
-    Checkpoint(#[from] CheckpointError),
-    #[error("execution failed: {0}")]
-    Execution(#[from] AgentError),
-    #[error("stream ended without final state")]
-    StreamEndedWithoutState,
-}
+pub use agent::RunnerError as TotRunError;
 
 /// ToT graph runner: encapsulates compiled graph and persistence.
 pub struct TotRunner {

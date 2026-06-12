@@ -15,7 +15,6 @@ path = "src/lib.rs"
 
 [dependencies]
 loom = { path = "../loom" }
-loom-agent = { path = "../loom-agent" }
 loom-cli-types = { path = "../loom-cli-types" }
 loom-protocol = { path = "../loom-protocol" }
 loom-graph = { path = "../loom-graph" }

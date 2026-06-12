@@ -1,4 +1,4 @@
-//! L2 e2e: mcp_servers from config injected into build_react_run_context / build_tool_source.
+﻿//! L2 e2e: mcp_servers from config injected into build_react_run_context / build_tool_source.
 //!
 //! Scheme B: no real MCP process; assert build does not panic and tool source is built.
 
@@ -15,7 +15,7 @@ fn ensure_short_mcp_timeout() {
 }
 
 use loom::cli_run::build_helve_config;
-use loom_agent::agent::react::build::build_react_run_context;
+use agent::build_react_run_context;
 use loom_cli_types::RunOptions;
 use std::path::PathBuf;
 

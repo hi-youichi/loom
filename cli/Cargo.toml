@@ -1,4 +1,4 @@
-[package]
+﻿[package]
 name = "cli"
 version.workspace = true
 edition.workspace = true
@@ -16,7 +16,8 @@ path = "src/main.rs"
 
 [dependencies]
 loom = { path = "../loom" }
-loom-agent = { path = "../loom-agent" }
+agent = { path = "../agent/agent-core" }
+agent-extensions = { path = "../agent/agent-extensions" }
 loom-llm = { path = "../loom-llm" }
 loom-protocol = { path = "../loom-protocol" }
 loom-types = { path = "../loom-types" }

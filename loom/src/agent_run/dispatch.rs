@@ -1,12 +1,17 @@
-//! Unified agent runner: ReAct, DUP, ToT, GoT.
-//!
-//! This module defines the full run orchestration types and functions.
-//! It uses types from `agent` (core) and `agent-extensions` for all agent patterns.
-
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use loom::cli_run::build_helve_config;
+use agent::run_types::{AgentRunError, AgentRunResult, RunCompletion, RunOptions};
+use agent::RunnerError;
+use agent::agent::react::build::{build_react_runner, BuildRunnerError};
+use agent::agent::react::ReactRunner;
+use agent::runner_common;
+use agent_extensions::dup::build::build_dup_runner;
+use agent_extensions::dup::{DupRunner, DupState};
+use agent_extensions::got::build::build_got_runner;
+use agent_extensions::got::{GotRunner, GotState};
+use agent_extensions::tot::build::build_tot_runner;
+use agent_extensions::tot::{TotRunner, TotState};
 use loom_llm::LlmClient;
 use loom_llm::support::uuid6::uuid6;
 use loom_protocol::export::stream_event_to_format_a;
@@ -14,43 +19,20 @@ use loom_protocol::stream::stream_event_to_protocol_envelope;
 use loom_protocol::{EnvelopeState, ProtocolEventEnvelope};
 use loom_react_config::ReactBuildConfig;
 use loom_stream::StreamEvent;
+use loom_types::active_operation::RunCancellation;
 use loom_types::state::ReActState;
 use serde_json::Value;
 use thiserror::Error;
 use tracing::Instrument;
 
-use agent::agent::react::build::{
-    build_react_runner,
-    BuildRunnerError,
-};
-use agent_extensions::dup::build::build_dup_runner;
-use agent_extensions::got::build::build_got_runner;
-use agent_extensions::tot::build::build_tot_runner;
+use crate::cli_run::build_helve_config;
 
-use agent_extensions::dup::{DupRunner, DupState, DupRunError};
-use agent_extensions::got::{GotRunner, GotState, GotRunError};
-use agent_extensions::tot::{TotRunner, TotState, TotRunError};
-use agent::agent::react::ReactRunner;
-
-// Re-export cancellation types from loom
-pub use loom_types::active_operation::{ActiveOperationCanceller, ActiveOperationKind, ActiveOperation, RunCancellation};
-
-// Re-export core run types
-pub use agent::run_types::{RunCompletion, RunOptions, AgentRunResult, AgentRunError};
-
-/// Error type for run operations.
 #[derive(Debug, Error)]
 pub enum RunError {
     #[error("build runner: {0}")]
     Build(#[from] BuildRunnerError),
     #[error("run: {0}")]
-    Run(#[from] agent::agent::react::RunError),
-    #[error("dup run: {0}")]
-    DupRun(#[from] DupRunError),
-    #[error("tot run: {0}")]
-    TotRun(#[from] TotRunError),
-    #[error("got run: {0}")]
-    GotRun(#[from] GotRunError),
+    Run(#[from] RunnerError),
     #[error("tool not found: {0}")]
     ToolNotFound(String),
     #[error("remote: {0}")]
@@ -59,7 +41,6 @@ pub enum RunError {
     ConfigError(String),
 }
 
-/// Command mode for running an agent.
 #[derive(Clone, Debug)]
 pub enum RunCmd {
     React,
@@ -68,7 +49,6 @@ pub enum RunCmd {
     Got { got_adaptive: bool },
 }
 
-/// Type-erased runner for any agent pattern.
 pub enum AnyRunner {
     React(ReactRunner),
     Dup(DupRunner),
@@ -76,7 +56,6 @@ pub enum AnyRunner {
     Got(GotRunner),
 }
 
-/// Type-erased stream event for all agent types (with real state types).
 #[derive(Debug)]
 pub enum AnyStreamEvent {
     React(StreamEvent<ReActState>),
@@ -115,8 +94,6 @@ impl AnyStreamEvent {
         event.to_value()
     }
 
-    /// Convert from loom's stub AnyStreamEvent to local AnyStreamEvent.
-    /// Only React events can be converted; DUP/TOT/GOT stubs are ignored.
     pub fn from_loom(ev: loom_cli_types::AnyStreamEvent) -> Self {
         match ev {
             loom_cli_types::AnyStreamEvent::React(e) => AnyStreamEvent::React(e),
@@ -125,7 +102,6 @@ impl AnyStreamEvent {
     }
 }
 
-/// Convert loom-agent AnyStreamEvent to loom's stub AnyStreamEvent.
 pub fn to_loom_any_stream_event(ev: &AnyStreamEvent) -> Option<loom_cli_types::AnyStreamEvent> {
     match ev {
         AnyStreamEvent::React(e) => Some(loom_cli_types::AnyStreamEvent::React(e.clone())),
@@ -133,7 +109,6 @@ pub fn to_loom_any_stream_event(ev: &AnyStreamEvent) -> Option<loom_cli_types::A
     }
 }
 
-/// Runs the agent.
 #[allow(clippy::type_complexity)]
 pub async fn run_agent(
     opts: &RunOptions,
@@ -188,17 +163,17 @@ pub async fn run_agent(
                 .stream_with_config(opts.message.as_text().as_ref(), None, on_ev)
                 .await?;
             match outcome {
-                agent::runner_common::StreamRunOutcome::Completed(state) => {
+                runner_common::StreamRunOutcome::Completed(state) => {
                     RunCompletion::Finished(AgentRunResult {
                         reply: state.last_assistant_reply().unwrap_or_default(),
                         reasoning_content: state.last_reasoning_content(),
                     })
                 }
-                agent::runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
-                agent::runner_common::StreamRunOutcome::Error(e) => {
+                runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
+                runner_common::StreamRunOutcome::Error(e) => {
                     RunCompletion::Error(AgentRunError(e.to_string()))
                 }
-                agent::runner_common::StreamRunOutcome::Empty => {
+                runner_common::StreamRunOutcome::Empty => {
                     RunCompletion::Error(AgentRunError("stream ended with empty state".to_string()))
                 }
             }
@@ -214,17 +189,17 @@ pub async fn run_agent(
             });
             let outcome = r.stream_with_config(opts.message.as_text().as_ref(), None, on_ev).await?;
             match outcome {
-                agent::runner_common::StreamRunOutcome::Completed(state) => {
+                runner_common::StreamRunOutcome::Completed(state) => {
                     RunCompletion::Finished(AgentRunResult {
                         reply: state.last_assistant_reply().unwrap_or_default(),
                         reasoning_content: state.last_reasoning_content(),
                     })
                 }
-                agent::runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
-                agent::runner_common::StreamRunOutcome::Error(e) => {
+                runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
+                runner_common::StreamRunOutcome::Error(e) => {
                     RunCompletion::Error(AgentRunError(e.to_string()))
                 }
-                agent::runner_common::StreamRunOutcome::Empty => {
+                runner_common::StreamRunOutcome::Empty => {
                     RunCompletion::Error(AgentRunError("stream ended with empty state".to_string()))
                 }
             }
@@ -240,17 +215,17 @@ pub async fn run_agent(
             });
             let outcome = r.stream_with_config(opts.message.as_text().as_ref(), None, on_ev).await?;
             match outcome {
-                agent::runner_common::StreamRunOutcome::Completed(state) => {
+                runner_common::StreamRunOutcome::Completed(state) => {
                     RunCompletion::Finished(AgentRunResult {
                         reply: state.last_assistant_reply().unwrap_or_default(),
                         reasoning_content: state.last_reasoning_content(),
                     })
                 }
-                agent::runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
-                agent::runner_common::StreamRunOutcome::Error(e) => {
+                runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
+                runner_common::StreamRunOutcome::Error(e) => {
                     RunCompletion::Error(AgentRunError(e.to_string()))
                 }
-                agent::runner_common::StreamRunOutcome::Empty => {
+                runner_common::StreamRunOutcome::Empty => {
                     RunCompletion::Error(AgentRunError("stream ended with empty state".to_string()))
                 }
             }
@@ -266,17 +241,17 @@ pub async fn run_agent(
             });
             let outcome = r.stream_with_config(opts.message.as_text().as_ref(), None, on_ev).await?;
             match outcome {
-                agent::runner_common::StreamRunOutcome::Completed(state) => {
+                runner_common::StreamRunOutcome::Completed(state) => {
                     RunCompletion::Finished(AgentRunResult {
                         reply: state.summary_result(),
                         reasoning_content: None,
                     })
                 }
-                agent::runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
-                agent::runner_common::StreamRunOutcome::Error(e) => {
+                runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
+                runner_common::StreamRunOutcome::Error(e) => {
                     RunCompletion::Error(AgentRunError(e.to_string()))
                 }
-                agent::runner_common::StreamRunOutcome::Empty => {
+                runner_common::StreamRunOutcome::Empty => {
                     RunCompletion::Error(AgentRunError("stream ended with empty state".to_string()))
                 }
             }
@@ -286,7 +261,6 @@ pub async fn run_agent(
     Ok(result)
 }
 
-/// Common execution path shared by both CLI and ACP entry points.
 pub async fn run_agent_with_options(
     opts: &RunOptions,
     cmd: &RunCmd,
@@ -351,5 +325,3 @@ pub async fn build_runner(
         }
     }
 }
-
-pub use loom_tier::{resolve_tier_and_build_config, resolve_tier_and_build_config_with_resolver};

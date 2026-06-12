@@ -8,8 +8,11 @@
 
 pub mod agent;
 pub mod runner_common;
+pub mod runner_error;
 pub mod run_types;
 pub mod tools;
+
+pub use runner_error::RunnerError;
 
 // Re-export agent types at crate root
 pub use agent::{

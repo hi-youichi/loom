@@ -1,4 +1,4 @@
-//! Wraps loom::run_agent_with_options with stderr display callback.
+﻿//! Wraps loom::run_agent_with_options with stderr display callback.
 //! Uses protocol format (type + payload) and optional envelope per protocol_spec.
 
 use chrono::Local;
@@ -11,11 +11,12 @@ use loom_types::state::ToolResult;
 use loom_protocol::Envelope;
 use loom_types::state::ReActState;
 use loom_llm::ToolCall;
-use loom_agent::{
-    build_react_run_context, run_agent_with_options,
+use agent::build_react_run_context;
+use loom::agent_run::{
+    run_agent_with_options,
     AnyStreamEvent,
-    agent::{DupState, GotState, TotState},
 };
+use agent_extensions::{DupState, GotState, TotState};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -28,7 +29,7 @@ use super::display::{
 };
 use loom_stream_display as panel_format;
 use loom_protocol::EnvelopeState;
-use loom_agent::{RunCmd, RunOptions};
+use loom::agent_run::{RunCmd, RunOptions};
 use loom_stream::StreamEvent;
 
 use super::RunError;
@@ -39,15 +40,15 @@ pub enum RunStopReason {
     Cancelled,
 }
 
-fn completion_reply(result: loom_agent::RunCompletion) -> (String, Option<String>, RunStopReason) {
+fn completion_reply(result: loom::agent_run::RunCompletion) -> (String, Option<String>, RunStopReason) {
     match result {
-        loom_agent::RunCompletion::Finished(result) => (
+        loom::agent_run::RunCompletion::Finished(result) => (
             result.reply,
             result.reasoning_content,
             RunStopReason::EndTurn,
         ),
-        loom_agent::RunCompletion::Cancelled => (String::new(), None, RunStopReason::Cancelled),
-        loom_agent::RunCompletion::Error(e) => (e.0, None, RunStopReason::Cancelled),
+        loom::agent_run::RunCompletion::Cancelled => (String::new(), None, RunStopReason::Cancelled),
+        loom::agent_run::RunCompletion::Error(e) => (e.0, None, RunStopReason::Cancelled),
     }
 }
 
@@ -776,9 +777,9 @@ impl EventState {
 async fn print_loaded_tools(config: &loom_react_config::ReactBuildConfig) -> Result<(), RunError> {
     let ctx = build_react_run_context(config)
         .await
-        .map_err(|e| RunError::Build(loom_agent::BuildRunnerError::Context(e)))?;
+        .map_err(|e| RunError::Build(agent::BuildRunnerError::Context(e)))?;
     let tools = ctx.tool_source.list_tools().await.map_err(|e| {
-        RunError::Build(loom_agent::BuildRunnerError::Context(
+        RunError::Build(agent::BuildRunnerError::Context(
             loom_llm::AgentError::ExecutionFailed(e.to_string()),
         ))
     })?;
@@ -883,9 +884,10 @@ fn on_event_got(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_agent::{
-        agent::{GotRunnerConfig, TaskGraph, TaskNode, TaskNodeState, TaskStatus, TotExtension, TotRunnerConfig, UnderstandOutput}
+    use loom::agent_run::{
+        RunCmd, RunOptions,
     };
+    use agent_extensions::{GotRunnerConfig, TaskGraph, TaskNode, TaskNodeState, TaskStatus, TotExtension, TotRunnerConfig, UnderstandOutput};
     use loom_llm::{message::Message, ToolCall};
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};

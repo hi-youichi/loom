@@ -5,7 +5,7 @@
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
-use loom_llm::error::AgentError;
+
 use loom_graph::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
 use loom_memory::{CheckpointError, Checkpointer, RunnableConfig, Store};
 use agent::runner_common;
@@ -53,18 +53,7 @@ pub async fn build_got_initial_state(
     })
 }
 
-/// Error type for GotRunner operations.
-#[derive(Debug, thiserror::Error)]
-pub enum GotRunError {
-    #[error("compilation failed: {0}")]
-    Compilation(#[from] CompilationError),
-    #[error("checkpoint error: {0}")]
-    Checkpoint(#[from] CheckpointError),
-    #[error("execution failed: {0}")]
-    Execution(#[from] AgentError),
-    #[error("stream ended without final state")]
-    StreamEndedWithoutState,
-}
+pub use agent::RunnerError as GotRunError;
 
 /// GoT graph runner: encapsulates compiled graph and optional persistence.
 pub struct GotRunner {

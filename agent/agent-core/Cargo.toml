@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-loom = { path = "../../loom" }
 loom-types = { path = "../../loom-types" }
 loom-graph = { path = "../../loom-graph" }
 loom-pregel = { path = "../../loom-pregel" }

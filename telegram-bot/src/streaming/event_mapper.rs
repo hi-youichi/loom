@@ -1,11 +1,11 @@
-//! No-op event mapper.
+﻿//! No-op event mapper.
 //!
 //! The streaming handler no longer displays intermediate act/tool phases.
 //! This module is kept as a thin adapter to satisfy the agent run callback signature.
 
 use std::sync::Arc;
 
-use loom_agent::AnyStreamEvent;
+use loom::agent_run::AnyStreamEvent;
 use tokio::sync::mpsc;
 
 use crate::streaming::message_handler::StreamCommand;

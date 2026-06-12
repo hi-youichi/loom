@@ -14,7 +14,6 @@ testing = []
 
 [dependencies]
 loom = { path = "../loom" }
-loom-agent = { path = "../loom-agent" }
 loom-llm = { path = "../loom-llm" }
 loom-tools = { path = "../loom-tools" }
 loom-types = { path = "../loom-types" }
