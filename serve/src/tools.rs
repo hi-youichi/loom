@@ -44,13 +44,10 @@ pub(crate) async fn handle_tools_list(
     };
     let (_helve, config, _resolved_agent) = build_helve_config(&opts);
     match build_react_run_context(&config).await {
-        Ok(ctx) => match ctx.tool_source.list_tools().await {
-            Ok(tools) => ServerResponse::ToolsList(ToolsListResponse { id, tools }),
-            Err(e) => ServerResponse::Error(ErrorResponse {
-                id: Some(id),
-                error: e.to_string(),
-            }),
-        },
+        Ok(ctx) => {
+            let tools = ctx.tool_source.list_tools().await;
+            ServerResponse::ToolsList(ToolsListResponse { id, tools })
+        }
         Err(e) => ServerResponse::Error(ErrorResponse {
             id: Some(id),
             error: e.to_string(),
@@ -93,49 +90,44 @@ pub(crate) async fn handle_tool_show(
     };
     let (_helve, config, _resolved_agent) = build_helve_config(&opts);
     match build_react_run_context(&config).await {
-        Ok(ctx) => match ctx.tool_source.list_tools().await {
-            Ok(tools) => {
-                let spec = tools.into_iter().find(|s| s.name == r.name);
-                match spec {
-                    Some(s) => {
-                        let (tool, tool_yaml) = match r.output.as_ref() {
-                            Some(ToolShowOutput::Yaml) => (
-                                None,
-                                Some(
-                                    serde_yaml::to_string(&serde_json::json!({
-                                        "name": s.name,
-                                        "description": s.description,
-                                        "input_schema": s.input_schema
-                                    }))
-                                    .unwrap_or_default(),
-                                ),
-                            ),
-                            _ => (
-                                Some(serde_json::json!({
+        Ok(ctx) => {
+            let tools = ctx.tool_source.list_tools().await;
+            let spec = tools.into_iter().find(|s| s.name == r.name);
+            match spec {
+                Some(s) => {
+                    let (tool, tool_yaml) = match r.output.as_ref() {
+                        Some(ToolShowOutput::Yaml) => (
+                            None,
+                            Some(
+                                serde_yaml::to_string(&serde_json::json!({
                                     "name": s.name,
                                     "description": s.description,
                                     "input_schema": s.input_schema
-                                })),
-                                None,
+                                }))
+                                .unwrap_or_default(),
                             ),
-                        };
-                        ServerResponse::ToolShow(ToolShowResponse {
-                            id,
-                            tool,
-                            tool_yaml,
-                        })
-                    }
-                    None => ServerResponse::Error(ErrorResponse {
-                        id: Some(id),
-                        error: format!("tool not found: {}", r.name),
-                    }),
+                        ),
+                        _ => (
+                            Some(serde_json::json!({
+                                "name": s.name,
+                                "description": s.description,
+                                "input_schema": s.input_schema
+                            })),
+                            None,
+                        ),
+                    };
+                    ServerResponse::ToolShow(ToolShowResponse {
+                        id,
+                        tool,
+                        tool_yaml,
+                    })
                 }
+                None => ServerResponse::Error(ErrorResponse {
+                    id: Some(id),
+                    error: format!("tool not found: {}", r.name),
+                }),
             }
-            Err(e) => ServerResponse::Error(ErrorResponse {
-                id: Some(id),
-                error: e.to_string(),
-            }),
-        },
+        }
         Err(e) => ServerResponse::Error(ErrorResponse {
             id: Some(id),
             error: e.to_string(),

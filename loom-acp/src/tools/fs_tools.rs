@@ -1,11 +1,11 @@
-//! File system tools via ACP client.
+﻿//! File system tools via ACP client.
 //!
 //! These tools delegate file operations to the IDE via ACP protocol,
 //! allowing access to unsaved buffer contents and IDE workspace files.
 
 use async_trait::async_trait;
-use loom_tools::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
-use loom_tools::Tool;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
+use tool_core::Tool;
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;

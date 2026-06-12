@@ -1,4 +1,4 @@
-//! ExecuteGraph node: run task nodes in DAG order; each sub-task uses ReAct.
+﻿//! ExecuteGraph node: run task nodes in DAG order; each sub-task uses ReAct.
 //!
 //! Computes ready nodes, runs one (or more) per step, writes node_states.
 //! Emits GotNodeStart, GotNodeComplete, GotNodeFailed.
@@ -14,7 +14,7 @@ use loom_llm::message::Message;
 use loom_llm::LlmProvider;
 use loom_types::state::ReActState;
 use loom_stream::{StreamEvent, StreamMode};
-use loom_tools::tool_source::ToolSource;
+use tool_core::ToolRegistryLocked;
 use loom_graph::Node;
 
 use super::adaptive::{
@@ -108,7 +108,7 @@ impl ExecuteGraphNode {
     /// classify simple vs complex instead of the heuristic.
     pub fn new(
         provider: Arc<dyn LlmProvider>,
-        tool_source: Box<dyn ToolSource>,
+        tool_source: Arc<ToolRegistryLocked>,
         adaptive: bool,
         agot_llm_complexity: bool,
     ) -> Self {

@@ -1,11 +1,11 @@
-use super::memory::MemoryStore;
+﻿use super::memory::MemoryStore;
 use super::prompts::{select_review_prompt, COMBINED_REVIEW_PROMPT};
 use super::skill_registry::SkillRegistry;
 use super::tools::{review_tool_specs, ReviewAction, ReviewToolExecutor};
 use loom_llm::ChatOpenAICompat;
 use loom_llm::LlmClient;
 use loom_llm::message::{AssistantToolCall, Message};
-use loom_tools::tool_source::ToolCallContent;
+use tool_core::ToolCallContent;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 

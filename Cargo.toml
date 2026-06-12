@@ -31,7 +31,10 @@ members = [
     "loom-compress",
     "loom-commands",
     "loom-stream",
-    "loom-tools",
+    "agent/tool/tool-core",
+    "agent/tool/tool-basic",
+    "agent/tool/tool-extensions",
+    "agent/tool/tool-experimental",
     "loom-background-review",
     "loom-protocol",
     "loom-stream-display",
@@ -58,6 +61,7 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tracing = "0.1"
+ctor = "0.2"
 
 # Test profile optimizations: build tests with optimizations for faster execution
 # while keeping debug assertions for safety checks.

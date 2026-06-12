@@ -11,7 +11,8 @@ authors.workspace = true
 loom-skill = { path = "../loom-skill" }
 
 # Tool traits (Arc<dyn CommandExecutor>, Arc<dyn Tool>)
-loom-tools = { path = "../loom-tools" }
+tool-core = { path = "../agent/tool/tool-core" }
+tool-basic = { path = "../agent/tool/tool-basic" }
 
 # Model tier
 loom-model-spec = { path = "../loom-model-spec" }

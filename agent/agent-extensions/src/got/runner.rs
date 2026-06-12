@@ -1,4 +1,4 @@
-//! GoT graph runner: build, initial state, and stream.
+﻿//! GoT graph runner: build, initial state, and stream.
 //!
 //! Graph: START → plan_graph → execute_graph → [has_pending] → execute_graph | END.
 
@@ -10,7 +10,7 @@ use loom_graph::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
 use loom_memory::{CheckpointError, Checkpointer, RunnableConfig, Store};
 use agent::runner_common;
 use loom_stream::StreamEvent;
-use loom_tools::ToolSource;
+use tool_core::ToolRegistryLocked;
 use loom_llm::LlmClient;
 use loom_graph::{StateGraph, END, START};
 
@@ -76,7 +76,7 @@ impl GotRunner {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         llm: Arc<dyn LlmClient>,
-        tool_source: Box<dyn ToolSource>,
+        tool_source: Arc<ToolRegistryLocked>,
         checkpointer: Option<Arc<dyn Checkpointer<GotState>>>,
         store: Option<Arc<dyn Store>>,
         runnable_config: Option<RunnableConfig>,
@@ -212,7 +212,7 @@ impl LlmClient for SharedLlm {
 mod tests {
     use super::*;
     use loom_llm::client::MockLlm;
-    use loom_tools::tool_source::MockToolSource;
+    use tool_core::MockTool;
     use loom_stream::StreamEvent;
     use std::sync::{Arc, Mutex};
 
@@ -258,7 +258,7 @@ mod tests {
         let llm: Arc<dyn LlmClient> = Arc::new(MockLlm::with_no_tool_calls(llm_response));
         let runner = GotRunner::new(
             llm,
-            Box::new(MockToolSource::get_time_example()),
+            tool_core::mock_registry(),
             None,
             None,
             None,

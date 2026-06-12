@@ -20,7 +20,8 @@ loom-protocol = { path = "../loom-protocol" }
 loom-graph = { path = "../loom-graph" }
 loom-llm = { path = "../loom-llm" }
 loom-memory = { path = "../loom-memory" }
-loom-tools = { path = "../loom-tools" }
+tool-core = { path = "../agent/tool/tool-core" }
+tool-basic = { path = "../agent/tool/tool-basic" }
 loom-types = { path = "../loom-types" }
 loom-tier = { path = "../loom-tier" }
 loom-react-config = { path = "../loom-react-config" }

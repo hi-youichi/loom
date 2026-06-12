@@ -2,20 +2,17 @@ use std::sync::Arc;
 
 use loom_skill::SkillUsageStore;
 use loom_llm::error::AgentError;
-use loom_tools::tool_source::{register_file_tools, McpToolSource, ToolSource, ToolSourceError};
-#[cfg(windows)]
-use loom_tools::tools::powershell::PowerShellTool;
-#[cfg(not(windows))]
-use loom_tools::tools::BashTool;
-#[cfg(windows)]
-use loom_tools::tools::BashTool;
-use loom_tools::tools::{
-    register_mcp_tools, register_mcp_tools_with_specs, AggregateToolSource, BatchTool,
-    ExaCodesearchTool, ExaWebsearchTool, LspTool,
-    TwitterSearchTool, WebFetcherTool,
+use tool_core::{ArcTool, ToolRegistryLocked, ToolSourceError, YamlSpecError};
+use tool_basic::{
+    bash::BashTool, powershell::PowerShellTool, batch::BatchTool,
+    web::WebFetcherTool, register_file_tools,
 };
-use loom_tools::tools::register_memory_tools;
-// use loom_tools::tools::task;
+use tool_extensions::{
+    exa::ExaCodesearchTool, exa::ExaWebsearchTool, lsp::LspTool,
+    twitter::TwitterSearchTool, mcp::McpToolSource,
+    register_mcp_tools, register_mcp_tools_with_specs,
+};
+use tool_experimental::{register_memory_tools, register_task_tools};
 use crate::tools::InvokeAgentTool;
 
 use env_config::McpServerDef;
@@ -31,7 +28,7 @@ const DEFAULT_MEMORY_NAMESPACE: &[&str] = &["default", "memories"];
 pub(crate) async fn build_tool_source(
     config: &ReactBuildConfig,
     store: &Option<Arc<dyn loom_memory::Store>>,
-) -> Result<Box<dyn ToolSource>, AgentError> {
+) -> Result<Arc<ToolRegistryLocked>, AgentError> {
     let has_memory = store.is_some();
     let has_exa = config.exa_api_key.is_some();
     let has_working_folder = config.working_folder.is_some();
@@ -39,7 +36,7 @@ pub(crate) async fn build_tool_source(
     let working_folder_arc = config.working_folder.as_ref().map(|p| Arc::new(p.clone()));
 
     if !has_memory && !has_exa && !has_working_folder && !has_twitter {
-        let aggregate = Arc::new(AggregateToolSource::new());
+        let aggregate = Arc::new(ToolRegistryLocked::new());
         aggregate
             .register_async(Box::new(WebFetcherTool::new()))
     .await;
@@ -77,7 +74,7 @@ pub(crate) async fn build_tool_source(
             };
             aggregate.register_async(Box::new(ps_tool)).await;
         }
-        aggregate.register_sync(Box::new(BatchTool::new(Arc::clone(&aggregate))));
+        aggregate.register_sync(Box::new(BatchTool::new(Arc::new(working_folder_arc.as_ref().unwrap().as_ref().clone()))));
         aggregate.register_sync(Box::new(LspTool::default()));
         if let Some(ref servers) = config.mcp_servers {
             for def in servers {
@@ -211,7 +208,6 @@ pub(crate) async fn build_tool_source(
         }
     if let Some(ref tools) = config.extra_tools {
         for tool in tools.iter() {
-            use loom_tools::ArcTool;
             aggregate.register_async(Box::new(ArcTool(tool.clone()))).await;
         }
     }
@@ -223,7 +219,7 @@ pub(crate) async fn build_tool_source(
         .await;
         // ListAgentsTool is not available in this build (depends on loom's profile system)
         apply_registry_config(&aggregate, config).await.map_err(to_agent_error)?;
-        return Ok(Box::new(aggregate));
+        return Ok(aggregate);
     }
 
     let base = if has_memory {
@@ -239,11 +235,11 @@ pub(crate) async fn build_tool_source(
                     .collect()
             });
 
-        let aggregate = Arc::new(AggregateToolSource::new());
+        let aggregate = Arc::new(ToolRegistryLocked::new());
         register_memory_tools(&aggregate, s.clone(), namespace).await;
         aggregate
     } else {
-        Arc::new(AggregateToolSource::new())
+        Arc::new(ToolRegistryLocked::new())
     };
     let aggregate = base;
 
@@ -309,10 +305,12 @@ pub(crate) async fn build_tool_source(
         let db_dir = db_path.parent().unwrap();
         let _ = std::fs::create_dir_all(db_dir);
         if let Ok(db) = task_core::TaskDb::open(&db_path).await {
-            loom_tools::tools::task::register_task_tools(&aggregate, Arc::new(db)).await;
+            register_task_tools(&aggregate, Arc::new(db)).await;
         }
     }
-    aggregate.register_sync(Box::new(BatchTool::new(Arc::clone(&aggregate))));
+    if let Some(ref wf) = config.working_folder {
+        aggregate.register_sync(Box::new(BatchTool::new(Arc::new(wf.clone()))));
+    }
     aggregate.register_sync(Box::new(LspTool::default()));
 
     if let Some(ref servers) = config.mcp_servers {
@@ -442,7 +440,6 @@ pub(crate) async fn build_tool_source(
 
     if let Some(ref tools) = config.extra_tools {
         for tool in tools.iter() {
-            use loom_tools::ArcTool;
             aggregate.register_async(Box::new(ArcTool(tool.clone()))).await;
         }
     }
@@ -457,13 +454,13 @@ pub(crate) async fn build_tool_source(
 
     apply_registry_config(&aggregate, config).await.map_err(to_agent_error)?;
 
-    Ok(Box::new(aggregate))
+    Ok(aggregate)
 }
 
 async fn apply_registry_config(
-    aggregate: &Arc<AggregateToolSource>,
+    aggregate: &Arc<ToolRegistryLocked>,
     config: &ReactBuildConfig,
-) -> Result<(), loom_tools::YamlSpecError> {
+) -> Result<(), YamlSpecError> {
     aggregate.load_yaml_specs().await?;
     if let Some(ref filter) = config.builtin_tool_filter {
         if !filter.is_noop() {

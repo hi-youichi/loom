@@ -1,6 +1,8 @@
-//! ToT adapter nodes: Act and Observe that operate on TotState.
+﻿//! ToT adapter nodes: Act and Observe that operate on TotState.
 //!
 //! Observe sets `suggest_backtrack` when tool results look bad and another candidate can be tried.
+
+use std::sync::Arc;
 
 use async_trait::async_trait;
 
@@ -8,7 +10,7 @@ use agent::agent::react::{ActNode, ObserveNode};
 use loom_llm::error::AgentError;
 use loom_graph::Next;
 use loom_graph::Node;
-use loom_tools::tool_source::ToolSource;
+use tool_core::ToolRegistryLocked;
 
 use super::state::TotState;
 
@@ -21,7 +23,7 @@ pub struct TotActNode {
 }
 
 impl TotActNode {
-    pub fn new(tool_source: Box<dyn ToolSource>) -> Self {
+    pub fn new(tool_source: Arc<ToolRegistryLocked>) -> Self {
         Self {
             act: ActNode::new(tool_source),
         }

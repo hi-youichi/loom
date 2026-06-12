@@ -16,8 +16,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use loom_tools::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
-use loom_tools::tools::Tool;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
+use tool_core::Tool;
 
 use super::runner::ReactRunner;
 

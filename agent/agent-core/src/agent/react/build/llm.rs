@@ -11,7 +11,7 @@ use loom_llm::{ChatOpenAI, ChatOpenAICompat, LlmClient, LlmProvider, ModelEntry}
 use loom_llm::client::{FixedLlmProvider, RetryLlmClient};
 use loom_tier::create_llm_client;
 use loom_model_spec::ModelTier;
-use loom_tools::tool_source::ToolSource;
+use tool_core::ToolRegistryLocked;
 
 use super::super::config::ReactBuildConfig;
 use super::error::BuildRunnerError;
@@ -138,7 +138,7 @@ pub(crate) fn model_entry_from_config(
 /// This is the async version that fetches tools from the tool source.
 pub async fn build_default_llm_with_tool_source(
     config: &ReactBuildConfig,
-    tool_source: &dyn ToolSource,
+    tool_source: &ToolRegistryLocked,
     audit_log: Option<Arc<dyn LlmAuditLog>>,
 ) -> Result<Box<dyn LlmClient>, BuildRunnerError> {
     let entry = model_entry_from_config(config)?;
@@ -150,12 +150,7 @@ pub async fn build_default_llm_with_tool_source(
         }
     });
 
-    let tools = tool_source.list_tools().await.map_err(|e| {
-        BuildRunnerError::Context(AgentError::ExecutionFailed(format!(
-            "Failed to list tools: {}",
-            e
-        )))
-    })?;
+    let tools = tool_source.list_tools().await;
 
     match provider_type {
         "openai" => {
@@ -239,7 +234,7 @@ pub async fn build_default_llm_with_tool_source(
 
 pub(crate) async fn build_default_provider(
     config: &ReactBuildConfig,
-    tool_source: &dyn ToolSource,
+    tool_source: &ToolRegistryLocked,
     audit_log: Option<Arc<dyn LlmAuditLog>>,
 ) -> Result<Arc<dyn LlmProvider>, BuildRunnerError> {
     let llm = build_default_llm_with_tool_source(config, tool_source, audit_log).await?;

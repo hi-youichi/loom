@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "cli"
 version.workspace = true
 edition.workspace = true
@@ -21,7 +21,7 @@ agent-extensions = { path = "../agent/agent-extensions" }
 loom-llm = { path = "../loom-llm" }
 loom-protocol = { path = "../loom-protocol" }
 loom-types = { path = "../loom-types" }
-loom-tools = { path = "../loom-tools" }
+tool-core = { path = "../agent/tool/tool-core" }
 loom-stream = { path = "../loom-stream" }
 loom-stream-display = { path = "../loom-stream-display" }
 loom-background-review = { path = "../loom-background-review" }

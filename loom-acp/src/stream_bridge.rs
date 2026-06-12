@@ -228,8 +228,8 @@ where
             let id = resolve_tool_call_id(call_id);
             
             // Try to deserialize content as ToolCallContent to check for Diff
-    if let Ok(loom_tools::tool_source::ToolCallContent::Diff { path, old_text, new_text }) =
-                serde_json::from_str::<loom_tools::tool_source::ToolCallContent>(content)
+    if let Ok(tool_core::ToolCallContent::Diff { path, old_text, new_text }) =
+                serde_json::from_str::<tool_core::ToolCallContent>(content)
             {
                 return vec![StreamUpdate::Diff {
                     tool_call_id: id,
@@ -259,19 +259,19 @@ where
             let is_diff_output = raw_result
                 .as_deref()
                 .or(Some(result.as_str()))
-                .and_then(|s| serde_json::from_str::<loom_tools::tool_source::ToolCallContent>(s).ok())
-                .map(|c| matches!(c, loom_tools::tool_source::ToolCallContent::Diff { .. }))
+                .and_then(|s| serde_json::from_str::<tool_core::ToolCallContent>(s).ok())
+                .map(|c| matches!(c, tool_core::ToolCallContent::Diff { .. }))
                 .unwrap_or(false);
 
             let mut updates = if is_diff_output {
                 let diff_content = raw_result
                     .as_deref()
                     .or(Some(result.as_str()))
-                    .and_then(|s| serde_json::from_str::<loom_tools::tool_source::ToolCallContent>(s).ok());
+                    .and_then(|s| serde_json::from_str::<tool_core::ToolCallContent>(s).ok());
 
                 let mut updates = Vec::new();
 
-                if let Some(loom_tools::tool_source::ToolCallContent::Diff { path, old_text, new_text }) = diff_content {
+                if let Some(tool_core::ToolCallContent::Diff { path, old_text, new_text }) = diff_content {
                     updates.push(StreamUpdate::Diff {
                         tool_call_id: id.clone(),
                         path,
@@ -427,7 +427,7 @@ pub fn stream_update_to_session_notification(
 }
 
 fn extract_text_from_result(result: &str) -> Option<String> {
-    if let Ok(content) = serde_json::from_str::<loom_tools::tool_source::ToolCallContent>(result) {
+    if let Ok(content) = serde_json::from_str::<tool_core::ToolCallContent>(result) {
         return Some(content.into_text());
     }
     if let Ok(s) = serde_json::from_str::<String>(result) {
@@ -696,14 +696,14 @@ impl SessionNotifier {
                 } => {
                     let id = ToolCallId::new(tool_call_id.clone());
                     let acp_content = match content {
-                        loom_tools::tool_source::ToolCallContent::Text(t) => {
+                        tool_core::ToolCallContent::Text(t) => {
                             ToolCallContent::from(
                                 ContentBlock::Text(
                                     TextContent::new(t.clone()),
                                 ),
                             )
                         }
-                        loom_tools::tool_source::ToolCallContent::Diff {
+                        tool_core::ToolCallContent::Diff {
                             path,
                             old_text,
                             new_text,
@@ -711,7 +711,7 @@ impl SessionNotifier {
                             Diff::new(path.clone(), new_text.clone())
                                 .old_text(old_text.clone()),
                         ),
-                        loom_tools::tool_source::ToolCallContent::Terminal { terminal_id } => {
+                        tool_core::ToolCallContent::Terminal { terminal_id } => {
                             ToolCallContent::Terminal(Terminal::new(
                                 TerminalId::new(terminal_id.clone()),
                             ))
@@ -791,10 +791,10 @@ impl SessionNotifier {
     }
 }
 
-fn tool_call_content_to_raw_output(content: &loom_tools::tool_source::ToolCallContent) -> Value {
+fn tool_call_content_to_raw_output(content: &tool_core::ToolCallContent) -> Value {
     match content {
-        loom_tools::tool_source::ToolCallContent::Text(text) => serde_json::json!(text),
-        loom_tools::tool_source::ToolCallContent::Diff {
+        tool_core::ToolCallContent::Text(text) => serde_json::json!(text),
+        tool_core::ToolCallContent::Diff {
             path,
             old_text,
             new_text,
@@ -804,7 +804,7 @@ fn tool_call_content_to_raw_output(content: &loom_tools::tool_source::ToolCallCo
             "oldText": old_text,
             "newText": new_text,
         }),
-        loom_tools::tool_source::ToolCallContent::Terminal { terminal_id } => serde_json::json!({
+        tool_core::ToolCallContent::Terminal { terminal_id } => serde_json::json!({
             "type": "terminal",
             "terminalId": terminal_id,
         }),

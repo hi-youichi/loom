@@ -7,7 +7,7 @@ use crate::error::{BotError, Result};
 use crate::streaming::event_mapper::StreamEventMapper;
 use crate::streaming::message_handler::StreamCommand;
 use crate::traits::{AgentRunContext, MessageSender};
-use loom_tools::set_current_chat_id;
+use tool_extensions::set_current_chat_id;
 use loom::agent_run::{run_agent_with_options, RunCmd, RunCompletion, RunOptions};
 use loom_llm::message::UserContent;
 use std::path::PathBuf;

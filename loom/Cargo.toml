@@ -64,8 +64,11 @@ loom-stream-display = { path = "../loom-stream-display" }
 # Helve configuration and prompts (loom-helve crate)
 loom-helve = { path = "../loom-helve" }
 
-# Tools (loom-tools crate)
-loom-tools = { path = "../loom-tools" }
+# Tools
+tool-core = { path = "../agent/tool/tool-core" }
+tool-basic = { path = "../agent/tool/tool-basic" }
+tool-extensions = { path = "../agent/tool/tool-extensions" }
+tool-experimental = { path = "../agent/tool/tool-experimental" }
 
 # Protocol types (loom-protocol crate)
 loom-protocol = { path = "../loom-protocol" }
@@ -144,7 +147,6 @@ ctor = "0.2"
 wiremock = "0.6"
 temp-env = { version = "0.3", features = ["async_closure"] }
 agent = { path = "../agent/agent-core" }
-loom-tools = { path = "../loom-tools" }
 loom-model-spec = { path = "../loom-model-spec" }
 loom-stream = { path = "../loom-stream" }
 loom-llm = { path = "../loom-llm" }

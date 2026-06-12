@@ -5,7 +5,7 @@ use std::sync::Arc;
 use loom_llm::LlmProvider;
 use loom_memory::{Checkpointer, RunnableConfig, Store};
 use loom_cli_types::ReActState;
-use loom_tools::tool_source::ToolSource;
+use tool_core::ToolRegistryLocked;
 use loom_memory::user_message::UserMessageStore;
 
 /// Optional configuration for [`super::run_agent`] and [`super::run_react_graph_stream`].
@@ -17,7 +17,7 @@ pub struct AgentOptions {
     /// LLM provider. Defaults to a mock that returns one tool call then a final reply.
     pub provider: Option<Arc<dyn LlmProvider>>,
     /// Tool source. Defaults to a mock that provides `get_time`.
-    pub tool_source: Option<Box<dyn ToolSource>>,
+    pub tool_source: Option<Arc<ToolRegistryLocked>>,
     /// Optional checkpointer for persisting/restoring conversation state.
     pub checkpointer: Option<Arc<dyn Checkpointer<ReActState>>>,
     /// Optional long-term memory store (e.g. LanceDB).
@@ -30,9 +30,9 @@ pub struct AgentOptions {
     pub verbose: bool,
 }
 
-pub(super) struct ResolvedRunAgentOptions {
+pub struct ResolvedRunAgentOptions {
     pub provider: Arc<dyn LlmProvider>,
-    pub tool_source: Box<dyn ToolSource>,
+    pub tool_source: Arc<ToolRegistryLocked>,
     pub checkpointer: Option<Arc<dyn Checkpointer<ReActState>>>,
     pub store: Option<Arc<dyn Store>>,
     pub runnable_config: Option<RunnableConfig>,
@@ -52,7 +52,7 @@ pub(super) fn resolve_run_agent_options(opts: AgentOptions) -> ResolvedRunAgentO
         });
     let tool_source = opts
         .tool_source
-        .unwrap_or_else(|| Box::new(loom_tools::tool_source::MockToolSource::get_time_example()));
+        .unwrap_or_else(|| tool_core::mock_registry());
     ResolvedRunAgentOptions {
         provider,
         tool_source,

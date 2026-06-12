@@ -1,0 +1,68 @@
+pub mod bash;
+pub mod powershell;
+pub mod file;
+pub mod web;
+pub mod todo;
+pub mod shared;
+pub mod batch;
+pub mod date;
+pub mod http_retry;
+
+// Re-export tools
+pub use bash::{BashTool, CommandExecutor, LocalCommandExecutor, TOOL_BASH};
+pub use powershell::{LocalPowerShellExecutor, PowerShellExecutor, PowerShellTool, TOOL_POWERSHELL};
+pub use file::*;
+pub use web::WebFetcherTool;
+pub use todo::*;
+pub use shared::{canceller::*, shell_output::*};
+pub use batch::{BatchTool, TOOL_BATCH};
+pub use date::{DateTool, TOOL_DATE};
+
+use std::path::Path;
+use std::sync::Arc;
+
+use tool_core::{ToolRegistryLocked, ToolSourceError};
+
+pub async fn register_bash_tools(registry: &ToolRegistryLocked) {
+    registry.register_async(Box::new(BashTool::new())).await;
+}
+
+pub fn register_file_tools(
+    aggregate: &ToolRegistryLocked,
+    working_folder: impl AsRef<Path>,
+    _skill_registry: Option<Arc<loom_skill::SkillRegistry>>,
+    _skill_usage: Option<loom_skill::SkillUsageStore>,
+) -> Result<(), ToolSourceError> {
+    let path = working_folder.as_ref();
+    let canonical = path.canonicalize().map_err(|e| {
+        ToolSourceError::InvalidInput(format!(
+            "working folder not found or not a directory: {}",
+            e
+        ))
+    })?;
+    if !canonical.is_dir() {
+        return Err(ToolSourceError::InvalidInput(
+            "working folder is not a directory".to_string(),
+        ));
+    }
+    let working_folder = Arc::new(canonical);
+    aggregate.register_sync(Box::new(file::LsTool::new(working_folder.clone())));
+    aggregate.register_sync(Box::new(file::ReadFileTool::new(working_folder.clone())));
+    aggregate.register_sync(Box::new(file::WriteFileTool::new(working_folder.clone())));
+    aggregate.register_sync(Box::new(file::EditFileTool::new(working_folder.clone())));
+    aggregate.register_sync(Box::new(file::MultieditTool::new(working_folder.clone())));
+    aggregate.register_sync(Box::new(file::ApplyPatchTool::new(working_folder.clone())));
+    aggregate.register_sync(Box::new(file::MoveFileTool::new(working_folder.clone())));
+    aggregate.register_sync(Box::new(file::DeleteFileTool::new(working_folder.clone())));
+    aggregate.register_sync(Box::new(file::CreateDirTool::new(working_folder.clone())));
+    aggregate.register_sync(Box::new(file::GlobTool::new(working_folder.clone())));
+    aggregate.register_sync(Box::new(file::GrepTool::new(working_folder.clone())));
+    aggregate.register_sync(Box::new(todo::TodoWriteTool::new(working_folder.clone())));
+    aggregate.register_sync(Box::new(todo::TodoReadTool::new(working_folder.clone())));
+    aggregate.register_sync(Box::new(date::DateTool::new()));
+    Ok(())
+}
+
+pub async fn register_web_tools(registry: &ToolRegistryLocked) {
+    registry.register_async(Box::new(WebFetcherTool::new())).await;
+}

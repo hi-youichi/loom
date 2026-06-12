@@ -8,7 +8,7 @@ use loom_graph::Next;
 use loom_memory::uuid6;
 use loom_llm::message::{message_summary, Message};
 use loom_cli_types::ReActState;
-use loom_tools::tool_source::ToolCallContent;
+use tool_core::ToolCallContent;
 use loom_graph::Node;
 
 pub struct ObserveNode {

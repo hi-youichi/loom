@@ -9,7 +9,7 @@
 //! or `loom tool show <NAME>`. Uses [`RunOptions`](crate::run::RunOptions) with a
 //! placeholder message (not used for execution).
 
-use loom_tools::ToolSpec;
+use tool_core::ToolSpec;
 use loom_llm::AgentError;
 use agent::{build_react_run_context, BuildRunnerError};
 use serde::Serialize;
@@ -39,11 +39,7 @@ pub async fn list_tools(opts: &RunOptions) -> Result<(), RunError> {
     let ctx = build_react_run_context(&config)
         .await
         .map_err(|e| RunError::Build(BuildRunnerError::Context(e)))?;
-    let tools = ctx.tool_source.list_tools().await.map_err(|e| {
-        RunError::Build(BuildRunnerError::Context(AgentError::ExecutionFailed(
-            e.to_string(),
-        )))
-    })?;
+    let tools = ctx.tool_source.list_tools().await;
     format_tools_list(&tools, opts.output_json)
 }
 
@@ -168,11 +164,7 @@ pub async fn show_tool(
     let ctx = build_react_run_context(&config)
         .await
         .map_err(|e| RunError::Build(BuildRunnerError::Context(e)))?;
-    let tools = ctx.tool_source.list_tools().await.map_err(|e| {
-        RunError::Build(BuildRunnerError::Context(AgentError::ExecutionFailed(
-            e.to_string(),
-        )))
-    })?;
+    let tools = ctx.tool_source.list_tools().await;
 
     let spec = tools
         .into_iter()
@@ -210,7 +202,7 @@ pub async fn show_tool(
 mod tests {
     use super::*;
     use loom_protocol::ToolShowResponse;
-    use loom_tools::ToolSpec;
+    use tool_core::ToolSpec;
     use std::path::PathBuf;
 
     #[test]
@@ -279,7 +271,7 @@ mod tests {
             mcp_config_path: None,
             output_timestamp: false,
             dry_run: false,
-    any_stream_event_sender: None,
+            any_stream_event_sender: None,
             bash_executor: None,
             extra_tools: None,
             acp_session_id: None,

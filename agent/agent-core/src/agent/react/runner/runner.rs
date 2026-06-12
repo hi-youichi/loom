@@ -14,7 +14,7 @@ use loom_memory::{Checkpointer, RunnableConfig, Store};
 use crate::runner_common;
 use loom_types::state::ReActState;
 use loom_stream::StreamEvent;
-use loom_tools::ToolSource;
+use tool_core::ToolRegistryLocked;
 use loom_memory::user_message::UserMessageStore;
 use loom_types::active_operation::RunCancellation;
 
@@ -46,7 +46,7 @@ impl ReactRunner {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         provider: Arc<dyn LlmProvider>,
-        tool_source: Box<dyn ToolSource>,
+        tool_source: Arc<ToolRegistryLocked>,
         checkpointer: Option<Arc<dyn Checkpointer<ReActState>>>,
         store: Option<Arc<dyn Store>>,
         runnable_config: Option<RunnableConfig>,

@@ -11,7 +11,7 @@ use crate::session_config_store::SessionConfigStore;
 use crate::stream_bridge::SessionNotifier;
 use crate::terminal::TerminalManager;
 use crate::tools::create_acp_tools;
-use loom_tools::LocalCommandExecutor;
+use tool_basic::bash::LocalCommandExecutor;
 use agent_client_protocol::schema::{
     AuthenticateRequest, AuthenticateResponse, CancelNotification, ForkSessionRequest,
     ForkSessionResponse, InitializeRequest, InitializeResponse, ListSessionsRequest,
@@ -796,7 +796,7 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
             acp_session_id: Some(args.session_id.to_string()),
             bash_executor: {
                 tracing::info!("Using local bash executor (ACP terminal disabled)");
-                Some(Arc::new(LocalCommandExecutor) as Arc<dyn loom_tools::CommandExecutor>)
+                Some(Arc::new(LocalCommandExecutor) as Arc<dyn tool_basic::bash::CommandExecutor>)
             },
             extra_tools: {
                 let caps = self.client_capabilities.read().unwrap_or_else(|e| e.into_inner());
@@ -805,7 +805,7 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
                     None
                 } else {
                     tracing::info!(count = tools.len(), "Registering ACP tools");
-                    Some(Arc::new(tools.into_iter().map(|t| Arc::from(t) as Arc<dyn loom_tools::Tool>).collect()))
+                    Some(Arc::new(tools.into_iter().map(|t| Arc::from(t) as Arc<dyn tool_core::Tool>).collect()))
                 }
             },
             force_compact: false,

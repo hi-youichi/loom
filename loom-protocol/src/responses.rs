@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use loom_llm::LlmUsage;
-use loom_tools::ToolSpec;
+use tool_core::ToolSpec;
 use stream_event::ProtocolEvent;
 
 /// Typed protocol stream event payload with optional envelope fields.
@@ -339,7 +339,7 @@ pub struct SetModelResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_tools::ToolSpec;
+    use tool_core::ToolSpec;
     use loom_llm::LlmUsage;
 
     #[test]

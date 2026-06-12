@@ -9,7 +9,8 @@ authors.workspace = true
 [dependencies]
 loom-types = { path = "../loom-types" }
 loom-stream = { path = "../loom-stream" }
-loom-tools = { path = "../loom-tools" }
+tool-core = { path = "../agent/tool/tool-core" }
+tool-basic = { path = "../agent/tool/tool-basic" }
 loom-llm = { path = "../loom-llm" }
 loom-react-config = { path = "../loom-react-config" }
 serde = { workspace = true, features = ["derive"] }

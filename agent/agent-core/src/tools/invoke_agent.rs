@@ -45,7 +45,7 @@ use serde_json::Value;
 
 use loom_react_config::build_config_from_profile;
 use loom_react_config::profile::{list_available_profiles, resolve_profile};
-use loom_tools::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec, Tool};
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec, Tool};
 use loom_react_config::ReactBuildConfig;
 use loom_types::tool_output_normalizer::{ToolOutputHint, ToolOutputStrategy};
 use loom_tier::resolve_tier_and_build_config;

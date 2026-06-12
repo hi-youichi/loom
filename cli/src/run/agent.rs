@@ -778,11 +778,7 @@ async fn print_loaded_tools(config: &loom_react_config::ReactBuildConfig) -> Res
     let ctx = build_react_run_context(config)
         .await
         .map_err(|e| RunError::Build(agent::BuildRunnerError::Context(e)))?;
-    let tools = ctx.tool_source.list_tools().await.map_err(|e| {
-        RunError::Build(agent::BuildRunnerError::Context(
-            loom_llm::AgentError::ExecutionFailed(e.to_string()),
-        ))
-    })?;
+    let tools = ctx.tool_source.list_tools().await;
     let names: Vec<&str> = tools.iter().map(|s| s.name.as_str()).collect();
     eprintln!("{}", panel_format::format_tools_line(&names));
     Ok(())

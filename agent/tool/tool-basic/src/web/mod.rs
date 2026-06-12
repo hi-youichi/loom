@@ -1,0 +1,464 @@
+use async_trait::async_trait;
+
+use serde_json::json;
+
+use crate::http_retry::{
+    is_retryable_reqwest_error, retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES,
+};
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
+use tool_core::Tool;
+use tool_core::{ToolOutputHint, ToolOutputStrategy};
+
+pub use loom_types::tools::tool_name::TOOL_WEB_FETCHER;
+
+/// Tool for HTTP requests to URLs (GET or POST).
+///
+/// Wraps reqwest::Client and exposes it as a tool for the LLM.
+/// Supports GET (default) and POST with optional body and headers.
+///
+/// # Examples
+///
+/// ```no_run
+/// use loom_tools::tools::{Tool, WebFetcherTool};
+/// use serde_json::json;
+///
+/// # #[tokio::main]
+/// # async fn main() {
+/// let tool = WebFetcherTool::new();
+///
+/// // GET (default)
+/// let args = json!({ "url": "https://example.com/api/data" });
+/// let result = tool.call(args, None).await.unwrap();
+/// assert!(!result.as_text().unwrap().is_empty());
+///
+/// // POST with JSON body
+/// let args = json!({
+///     "url": "https://example.com/api",
+///     "method": "POST",
+///     "body": { "key": "value" }
+/// });
+/// let result = tool.call(args, None).await.unwrap();
+/// # }
+/// ```
+///
+/// # Interaction
+///
+/// - **reqwest::Client**: Performs HTTP GET or POST
+/// - **ToolRegistry**: Registers this tool by name "web_fetcher"
+/// - **AggregateToolSource**: Uses this tool via ToolRegistry
+/// - **ToolSourceError**: Maps HTTP errors to tool error types
+pub struct WebFetcherTool {
+    client: reqwest::Client,
+}
+
+impl Default for WebFetcherTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl WebFetcherTool {
+    /// Creates a new WebFetcherTool with a default HTTP client.
+    ///
+    /// Uses reqwest::Client::new() to create a client with default settings.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use loom_tools::tools::web::WebFetcherTool;
+    ///
+    /// let tool = WebFetcherTool::new();
+    /// ```
+    pub fn new() -> Self {
+        Self {
+            client: reqwest::Client::new(),
+        }
+    }
+
+    /// Creates a new WebFetcherTool with a custom HTTP client.
+    ///
+    /// # Parameters
+    ///
+    /// - `client`: Custom reqwest::Client for configuring timeouts, proxies, etc.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use loom_tools::tools::web::WebFetcherTool;
+    /// use std::time::Duration;
+    ///
+    /// let client = reqwest::Client::builder()
+    ///     .timeout(Duration::from_secs(30))
+    ///     .build()
+    ///     .unwrap();
+    /// let tool = WebFetcherTool::with_client(client);
+    /// ```
+    pub fn with_client(client: reqwest::Client) -> Self {
+        Self { client }
+    }
+}
+
+#[async_trait]
+impl Tool for WebFetcherTool {
+    /// Returns the unique name of this tool.
+    ///
+    /// Returns "web_fetcher" as the tool identifier.
+    fn name(&self) -> &str {
+        TOOL_WEB_FETCHER
+    }
+
+    /// Returns the specification for this tool.
+    ///
+    /// Includes tool name, description (for the LLM), and JSON schema for arguments.
+    /// The spec describes the required "url" parameter.
+    ///
+    /// # Interaction
+    ///
+    /// - Called by ToolRegistry::list() to build Vec<ToolSpec>
+    /// - Spec fields are aligned with MCP tools/list result
+    fn spec(&self) -> tool_core::ToolSpec {
+        tool_core::ToolSpec {
+            name: TOOL_WEB_FETCHER.to_string(),
+            description: Some(
+                "Fetch or send content to a URL. Use this tool to retrieve web pages (GET), call \
+                 APIs with a body (POST), or other HTTP-accessible content. Optional: method (default \
+                 GET), body (string or JSON object), headers (object). Returns the response body as text.".to_string(),
+            ),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The URL to request. Must be a valid HTTP/HTTPS URL."
+                    },
+                    "method": {
+                        "type": "string",
+                        "description": "HTTP method. One of: GET, POST. Default is GET.",
+                        "enum": ["GET", "POST"]
+                    },
+                    "body": {
+                        "description": "Request body for POST. May be a string (sent as-is with Content-Type: text/plain) or a JSON object (sent as application/json)."
+                    },
+                    "headers": {
+                        "type": "object",
+                        "description": "Optional HTTP headers as key-value pairs (string keys and values).",
+                        "additionalProperties": { "type": "string" }
+                    }
+                },
+                "required": ["url"]
+            }),
+            output_hint: Some(ToolOutputHint::preferred(
+                ToolOutputStrategy::FileRefWithExcerpt,
+            )),
+        }
+    }
+
+    /// Executes the tool by performing an HTTP request to the specified URL.
+    ///
+    /// # Parameters
+    ///
+    /// - `args`: JSON with required "url"; optional "method" (GET|POST), "body", "headers"
+    /// - `_ctx`: Optional per-call context (not used by this tool)
+    ///
+    /// # Returns
+    ///
+    /// The HTTP response body as text content.
+    ///
+    /// # Errors
+    ///
+    /// Returns ToolSourceError for:
+    /// - Missing or invalid "url" (InvalidInput)
+    /// - Unsupported "method" (InvalidInput)
+    /// - HTTP request failures (Transport)
+    /// - Non-success HTTP status codes (Transport)
+    /// - Response read failures (Transport)
+    ///
+    /// # Interaction
+    ///
+    /// - Called by ToolRegistry::call(); uses reqwest::Client for GET or POST
+    async fn call(
+        &self,
+        args: serde_json::Value,
+        _ctx: Option<&ToolCallContext>,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+        let url = args
+            .get("url")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ToolSourceError::InvalidInput("missing url".to_string()))?;
+
+        let method = args
+            .get("method")
+            .and_then(|v| v.as_str())
+            .unwrap_or("GET")
+            .to_uppercase();
+        if method != "GET" && method != "POST" {
+            return Err(ToolSourceError::InvalidInput(format!(
+                "unsupported method: {} (use GET or POST)",
+                method
+            )));
+        }
+
+        let mut request = match method.as_str() {
+            "GET" => self.client.get(url),
+            _ => self.client.post(url),
+        };
+
+        if let Some(h) = args.get("headers").and_then(|v| v.as_object()) {
+            for (k, v) in h {
+                if let Some(v_str) = v.as_str() {
+                    request = request.header(k.as_str(), v_str);
+                }
+            }
+        }
+
+        if method == "POST" {
+            if let Some(body) = args.get("body") {
+                if body.is_object() {
+                    request = request.json(body);
+                } else if let Some(s) = body.as_str() {
+                    request = request
+                        .body(s.to_string())
+                        .header("Content-Type", "text/plain; charset=utf-8");
+                } else if !body.is_null() {
+                    request = request.json(body);
+                }
+            }
+        }
+
+        let allow_retry = method == "GET";
+        let mut attempt = 0;
+        loop {
+            let req = request.try_clone().ok_or_else(|| {
+                ToolSourceError::Transport("failed to clone request for retry".to_string())
+            })?;
+            let response = match req.send().await {
+                Ok(response) => response,
+                Err(e)
+                    if allow_retry
+                        && is_retryable_reqwest_error(&e)
+                        && attempt < TRANSIENT_HTTP_MAX_RETRIES =>
+                {
+                    let delay = retry_backoff_for_attempt(attempt);
+                    tracing::warn!(
+                        url = %url,
+                        method = %method,
+                        attempt = attempt + 1,
+                        max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                        delay_secs = delay.as_secs_f64(),
+                        error = %e,
+                        "web request transport failed, retrying"
+                    );
+                    attempt += 1;
+                    tokio::time::sleep(delay).await;
+                    continue;
+                }
+                Err(e) => {
+                    return Err(ToolSourceError::Transport(format!("request failed: {}", e)));
+                }
+            };
+
+            if !response.status().is_success() {
+                return Err(ToolSourceError::Transport(format!(
+                    "request failed with status: {}",
+                    response.status()
+                )));
+            }
+
+            match response.text().await {
+                Ok(content) => return Ok(ToolCallContent::text(content)),
+                Err(e)
+                    if allow_retry
+                        && is_retryable_reqwest_error(&e)
+                        && attempt < TRANSIENT_HTTP_MAX_RETRIES =>
+                {
+                    let delay = retry_backoff_for_attempt(attempt);
+                    tracing::warn!(
+                        url = %url,
+                        method = %method,
+                        attempt = attempt + 1,
+                        max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                        delay_secs = delay.as_secs_f64(),
+                        error = %e,
+                        "web response body read failed, retrying"
+                    );
+                    attempt += 1;
+                    tokio::time::sleep(delay).await;
+                }
+                Err(e) => {
+                    return Err(ToolSourceError::Transport(format!(
+                        "failed to read response: {}",
+                        e
+                    )));
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_util::shared_client::test_client;
+    use serde_json::json;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    use wiremock::matchers::method;
+
+    async fn spawn_mock(
+        status: u16,
+        content_type: &str,
+        body: &str,
+    ) -> MockServer {
+        let server = MockServer::start().await;
+        let template = ResponseTemplate::new(status)
+            .set_body_string(body)
+            .insert_header("content-type", content_type);
+        Mock::given(method("GET"))
+            .respond_with(template)
+            .mount(&server)
+            .await;
+        server
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn web_fetcher_tool_name_returns_web_fetcher() {
+        let tool = WebFetcherTool::with_client(test_client());
+        assert_eq!(tool.name(), TOOL_WEB_FETCHER);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn web_fetcher_tool_spec_has_correct_properties() {
+        let tool = WebFetcherTool::with_client(test_client());
+        let spec = tool.spec();
+        assert_eq!(spec.name, TOOL_WEB_FETCHER);
+        assert!(spec.description.is_some());
+        let desc = spec.description.unwrap();
+        assert!(desc.contains("URL") && (desc.contains("GET") || desc.contains("POST")));
+        assert!(spec.input_schema.is_object());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn web_fetcher_tool_call_missing_url_returns_error() {
+        let tool = WebFetcherTool::with_client(test_client());
+        let args = json!({});
+        let result = tool.call(args, None).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("missing") || err.to_string().contains("InvalidInput"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn web_fetcher_tool_call_invalid_url_returns_error() {
+        let tool = WebFetcherTool::with_client(test_client());
+        let args = json!({"url": "not-a-valid-url"});
+        let result = tool.call(args, None).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn web_fetcher_tool_call_404_returns_error() {
+        let server = spawn_mock(404, "text/plain", "not found").await;
+        let tool = WebFetcherTool::with_client(test_client());
+        let args = json!({"url": &server.uri()});
+        let result = tool.call(args, None).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn web_fetcher_tool_fetches_plain_text() {
+        let server = spawn_mock(200, "text/plain", "User-agent: *\nDisallow: /").await;
+        let tool = WebFetcherTool::with_client(test_client());
+        let args = json!({"url": &server.uri()});
+        let result = tool.call(args, None).await.unwrap();
+        assert!(result.as_text().unwrap().contains("User-agent"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn web_fetcher_tool_default_construction() {
+        let tool = WebFetcherTool::with_client(test_client());
+        assert_eq!(tool.name(), TOOL_WEB_FETCHER);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn web_fetcher_tool_with_custom_client() {
+        let client = test_client();
+        let tool = WebFetcherTool::with_client(client);
+        assert_eq!(tool.name(), TOOL_WEB_FETCHER);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn web_fetcher_tool_call_get_with_only_url() {
+        let server = spawn_mock(200, "application/json", "{\"host\": \"mock-server\"}").await;
+        let tool = WebFetcherTool::with_client(test_client());
+        let args = json!({"url": &server.uri()});
+        let result = tool.call(args, None).await.unwrap();
+        assert!(result.as_text().unwrap().contains("mock-server"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn web_fetcher_tool_call_post_with_json_body() {
+        let body = "{\"hello\": \"world\", \"n\": 42}";
+        let server = MockServer::start().await;
+        let template = ResponseTemplate::new(200)
+            .set_body_string(body)
+            .insert_header("content-type", "application/json");
+        Mock::given(method("POST"))
+            .respond_with(template)
+            .mount(&server)
+            .await;
+        let tool = WebFetcherTool::with_client(test_client());
+        let args = json!({
+            "url": &server.uri(),
+            "method": "POST",
+            "body": { "hello": "world", "n": 42 }
+        });
+        let result = tool.call(args, None).await.unwrap();
+        let text = result.as_text().unwrap();
+        assert!(text.contains("hello"));
+        assert!(text.contains("42"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn web_fetcher_tool_call_post_with_string_body() {
+        let server = MockServer::start().await;
+        let template = ResponseTemplate::new(200)
+            .set_body_string("plain text body")
+            .insert_header("content-type", "text/plain");
+        Mock::given(method("POST"))
+            .respond_with(template)
+            .mount(&server)
+            .await;
+        let tool = WebFetcherTool::with_client(test_client());
+        let args = json!({
+            "url": &server.uri(),
+            "method": "POST",
+            "body": "plain text body"
+        });
+        let result = tool.call(args, None).await.unwrap();
+        assert!(result.as_text().unwrap().contains("plain text body"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn web_fetcher_tool_call_unsupported_method_returns_error() {
+        let server = MockServer::start().await;
+        let template_get = ResponseTemplate::new(200)
+            .set_body_string("ok")
+            .insert_header("content-type", "text/plain");
+        let template_post = ResponseTemplate::new(200)
+            .set_body_string("ok")
+            .insert_header("content-type", "text/plain");
+        Mock::given(method("GET"))
+            .respond_with(template_get)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(template_post)
+            .mount(&server)
+            .await;
+        let tool = WebFetcherTool::with_client(test_client());
+        let args = json!({"url": &server.uri(), "method": "PUT"});
+        let result = tool.call(args, None).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("unsupported") || err.to_string().contains("InvalidInput"));
+    }
+}

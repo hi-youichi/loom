@@ -18,6 +18,7 @@
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tracing::{debug, trace, warn};
 
 use loom_cli_types::RunCancellation;
@@ -32,7 +33,7 @@ use loom_types::tool_output_normalizer::{
 use loom_types::state::{ReActState, ToolResult};
 use loom_llm::ToolCall;
 use loom_stream::{StreamEvent, StreamMode, ToolStreamWriter};
-use loom_tools::{ToolCallContent, ToolCallContext, ToolSource};
+use tool_core::{ToolCallContent, ToolCallContext, ToolRegistryLocked};
 
 /// Event type for Custom stream events emitted after each tool call (step progress).
 /// Server or clients can use this to show progress (e.g. "Calling list_dir", "Done: 12 entries").
@@ -133,14 +134,14 @@ pub const DEFAULT_EXECUTION_ERROR_TEMPLATE: &str =
 /// Act node: one ReAct step that executes tool_calls and produces tool_results.
 #[allow(clippy::type_complexity)]
 pub struct ActNode {
-    tools: Box<dyn ToolSource>,
+    tools: Arc<ToolRegistryLocked>,
 
     /// Shared cancellation handle with active-operation tracking (loom-level, not in loom-graph RunContext).
     run_cancellation: Option<RunCancellation>,
 }
 
 impl ActNode {
-    pub fn new(tools: Box<dyn ToolSource>) -> Self {
+    pub fn new(tools: Arc<ToolRegistryLocked>) -> Self {
         Self {
             tools,
             run_cancellation: None,
@@ -161,16 +162,11 @@ impl ActNode {
 
 
     async fn load_tool_output_hints(&self) -> HashMap<String, ToolOutputHint> {
-        match self.tools.list_tools().await {
-            Ok(specs) => specs
-                .into_iter()
-                .filter_map(|spec| spec.output_hint.map(|hint| (spec.name, hint)))
-                .collect(),
-            Err(error) => {
-                warn!(error = %error, "failed to load tool specs for output hints");
-                HashMap::new()
-            }
-        }
+        let specs = self.tools.list_tools().await;
+        specs
+            .into_iter()
+            .filter_map(|spec| spec.output_hint.map(|hint| (spec.name, hint)))
+            .collect()
     }
 }
 
@@ -834,9 +830,9 @@ mod tests {
     }
 
 
+    #[test]
     fn act_node_id() {
-        use loom_tools::tool_source::MockToolSource;
-        let node = ActNode::new(Box::new(MockToolSource::default()));
+        let node = ActNode::new(tool_core::mock_registry());
         assert_eq!(Node::<ReActState>::id(&node), "act");
     }
 

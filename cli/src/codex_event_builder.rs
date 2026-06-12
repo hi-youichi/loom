@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use loom_llm::LlmUsage;
 use loom_llm::message::{AssistantPayload, Message};
 use loom_types::state::ReActState;
-use loom_tools::ToolCallContent;
+    use tool_core::ToolCallContent;
 use stream_event::codex::{
     agent_message_item, command_execution_item, mcp_tool_call_item, reasoning_item,
     CodexEvent, CodexUsage, McpToolCallItemError,
@@ -386,7 +386,7 @@ mod tests {
     use loom_llm::LlmUsage;
     use loom_llm::message::{AssistantPayload, AssistantToolCall, Message};
     use loom_types::state::ReActState;
-    use loom_tools::ToolCallContent;
+use tool_core::ToolCallContent;
     use stream_event::codex::{CodexEvent, CodexUsage};
 
     use super::build_codex_events;

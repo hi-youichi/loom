@@ -88,8 +88,8 @@ pub struct ReactBuildConfig {
     /// Optional filter for builtin tools (enabled whitelist / disabled blacklist).
     /// Populated from agent profile `tools.builtin` config.
     pub builtin_tool_filter: Option<BuiltinToolFilter>,
-    pub bash_executor: Option<Arc<dyn loom_tools::CommandExecutor>>,
-    pub extra_tools: Option<Arc<Vec<Arc<dyn loom_tools::Tool>>>>,
+    pub bash_executor: Option<Arc<dyn tool_basic::bash::CommandExecutor>>,
+    pub extra_tools: Option<Arc<Vec<Arc<dyn tool_core::Tool>>>>,
     pub acp_session_id: Option<String>,
 }
 

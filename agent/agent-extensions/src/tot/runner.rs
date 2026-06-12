@@ -1,4 +1,4 @@
-//! ToT graph runner: build, initial state, and stream.
+﻿//! ToT graph runner: build, initial state, and stream.
 //!
 //! Graph: START → think_expand → think_evaluate → [tools_condition] → act | end,
 //! act → observe → (observe returns Next::Node("think_expand")).
@@ -14,7 +14,7 @@ use loom_memory::{CheckpointError, Checkpointer, RunnableConfig, Store};
 use loom_llm::message::Message;
 use agent::runner_common::{self, load_from_checkpoint_or_build};
 use loom_stream::StreamEvent;
-use loom_tools::ToolSource;
+use tool_core::ToolRegistryLocked;
 use loom_llm::LlmClient;
 use loom_graph::{StateGraph, END, START};
 
@@ -119,7 +119,7 @@ impl TotRunner {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         llm: Arc<dyn LlmClient>,
-        tool_source: Box<dyn ToolSource>,
+        tool_source: Arc<ToolRegistryLocked>,
         checkpointer: Option<Arc<dyn Checkpointer<TotState>>>,
         store: Option<Arc<dyn Store>>,
         runnable_config: Option<RunnableConfig>,
@@ -258,7 +258,7 @@ mod tests {
     use super::super::state::TotCandidate;
     use super::*;
     use loom_llm::client::MockLlm;
-    use loom_tools::tool_source::MockToolSource;
+    use tool_core::MockTool;
     use loom_stream::StreamEvent;
     use loom_llm::ToolCall;
     use std::sync::{Arc, Mutex};
@@ -322,7 +322,7 @@ mod tests {
         ));
         let runner = TotRunner::new(
             llm,
-            Box::new(MockToolSource::get_time_example()),
+            tool_core::mock_registry(),
             None,
             None,
             None,

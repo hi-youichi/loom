@@ -1,11 +1,11 @@
-use std::path::Path;
+﻿use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use loom_tools::{ToolCallContent, ToolCallContext, ToolSourceError};
-use loom_tools::format_terminal_timed_out_output;
-use loom_tools::CommandExecutor;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
+use tool_basic::shared::shell_output::format_terminal_timed_out_output;
+use tool_basic::bash::CommandExecutor;
 use tracing::{error, info, instrument, warn};
 
 use crate::terminal::TerminalManager;

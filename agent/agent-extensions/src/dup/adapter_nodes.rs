@@ -1,4 +1,4 @@
-//! Adapter nodes: PlanNode, ActNode, ObserveNode for DupState.
+﻿//! Adapter nodes: PlanNode, ActNode, ObserveNode for DupState.
 //!
 //! Each wraps the corresponding react node, extracting state.core, calling the inner
 //! node, and writing the result back.
@@ -12,7 +12,7 @@ use loom_llm::error::AgentError;
 use loom_graph::Next;
 use loom_llm::LlmProvider;
 use loom_graph::Node;
-use loom_tools::tool_source::ToolSource;
+use tool_core::ToolRegistryLocked;
 
 use super::state::DupState;
 
@@ -53,7 +53,7 @@ pub struct DupActNode {
 }
 
 impl DupActNode {
-    pub fn new(tool_source: Box<dyn ToolSource>) -> Self {
+    pub fn new(tool_source: Arc<ToolRegistryLocked>) -> Self {
         Self {
             act: ActNode::new(tool_source),
         }

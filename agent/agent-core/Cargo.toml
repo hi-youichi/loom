@@ -12,7 +12,10 @@ loom-stream = { path = "../../loom-stream" }
 loom-protocol = { path = "../../loom-protocol" }
 loom-helve = { path = "../../loom-helve" }
 loom-memory = { path = "../../loom-memory" }
-loom-tools = { path = "../../loom-tools" }
+tool-core = { path = "../tool/tool-core" }
+tool-basic = { path = "../tool/tool-basic" }
+tool-extensions = { path = "../tool/tool-extensions" }
+tool-experimental = { path = "../tool/tool-experimental" }
 loom-compress = { path = "../../loom-compress" }
 loom-cli-types = { path = "../../loom-cli-types" }
 loom-skill = { path = "../../loom-skill" }
