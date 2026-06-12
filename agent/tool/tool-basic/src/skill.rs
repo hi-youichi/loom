@@ -4,15 +4,24 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::json;
+use skill::SkillUsageStore;
 
-use loom_skill::SkillUsageStore;
-use loom_skill::SkillRegistry;
+use skill::SkillRegistry;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 use tool_core::Tool;
 
 pub use loom_types::tools::tool_name::TOOL_SKILL;
 
 const SKILLS_SUBDIR: &str = ".loom/skills";
+
+static TEMPLATE_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r"\$\{(LOOM_SKILL_DIR|HERMES_SKILL_DIR)\}").unwrap()
+});
+
+fn substitute_template_vars(content: &str, skill_dir: &std::path::Path) -> String {
+    let dir_str = skill_dir.to_string_lossy().to_string();
+    TEMPLATE_RE.replace_all(content, dir_str.as_str()).to_string()
+}
 
 /// Tool that loads skill content by name. Prefers registry-based loading when a
 /// [`SkillRegistry`] is provided; otherwise falls back to directory scan under working folder.
@@ -121,10 +130,12 @@ impl Tool for SkillTool {
                     .collect();
                 return Ok(ToolCallContent::text(lines.join("\n")));
             }
-            let content = registry
-                .load_skill(name)
+            let (content, base_path) = registry
+                .load_skill_with_dir(name)
                 .map_err(|e| ToolSourceError::InvalidInput(e.to_string()))?;
+            let content = substitute_template_vars(&content, &base_path);
             if let Some(ref store) = self.usage_store {
+                store.bump_view(name);
                 store.bump_use(name);
             }
             return Ok(ToolCallContent::text(format!(
@@ -149,7 +160,9 @@ impl Tool for SkillTool {
             if p.is_file() {
                 let content = std::fs::read_to_string(&p)
                     .map_err(|e| ToolSourceError::Transport(format!("read skill: {}", e)))?;
+                let content = substitute_template_vars(&content, p.parent().unwrap_or(std::path::Path::new(".")));
                 if let Some(ref store) = self.usage_store {
+                    store.bump_view(name);
                     store.bump_use(name);
                 }
                 return Ok(ToolCallContent::text(format!(
@@ -184,8 +197,10 @@ impl Tool for SkillTool {
 
         let content = std::fs::read_to_string(&path)
             .map_err(|e| ToolSourceError::Transport(format!("read skill: {}", e)))?;
+        let content = substitute_template_vars(&content, path.parent().unwrap_or(std::path::Path::new(".")));
 
         if let Some(ref store) = self.usage_store {
+            store.bump_view(name);
             store.bump_use(name);
         }
         Ok(ToolCallContent::text(format!(

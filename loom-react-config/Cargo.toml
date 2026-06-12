@@ -8,7 +8,7 @@ authors.workspace = true
 
 [dependencies]
 # Skill registry (Arc<SkillRegistry> field)
-loom-skill = { path = "../loom-skill" }
+skill = { path = "../agent/skill" }
 
 # Tool traits (Arc<dyn CommandExecutor>, Arc<dyn Tool>)
 tool-core = { path = "../agent/tool/tool-core" }

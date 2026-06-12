@@ -2,7 +2,7 @@ use super::curator::Curator;
 use tool_experimental::MemoryTool;
 use super::security::{validate_skill_create, validate_skill_path, Severity};
 use super::skill_registry::{Lifecycle, SkillContent, SkillRegistry, Source};
-use loom_skill::SkillUsageStore;
+use skill::{SkillUsageStore, WriteOrigin, WriteOriginGuard};
 use loom_llm::ToolSpec;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -67,6 +67,7 @@ impl<'a> ReviewToolExecutor<'a> {
                 )
             });
         }
+        let _guard = WriteOriginGuard::new(WriteOrigin::BackgroundReview);
         match tool_name {
             "memory" => {
                 let result = self.memory_tool.dispatch(args);
@@ -264,6 +265,17 @@ impl<'a> ReviewToolExecutor<'a> {
 
     fn skill_delete(&mut self, args: &Value) -> Value {
         let name = args["name"].as_str().unwrap_or("");
+        if let Some(su) = self.skill_usage {
+            if !su.is_agent_created(name) {
+                return json!({
+                    "success": false,
+                    "error": format!(
+                        "Refusing to delete '{}': not agent-created. Only skills autonomously created by background review can be deleted.",
+                        name
+                    )
+                });
+            }
+        }
         match self.skills.delete(name) {
             Ok(()) => {
                 self.actions.push(ReviewAction {

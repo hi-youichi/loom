@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use loom_skill::SkillUsageStore;
+use skill::SkillUsageStore;
 use loom_llm::error::AgentError;
 use tool_core::{ArcTool, ToolRegistryLocked, ToolSourceError, YamlSpecError};
 use tool_basic::{

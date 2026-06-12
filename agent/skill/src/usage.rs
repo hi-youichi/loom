@@ -165,6 +165,26 @@ impl SkillUsageStore {
         });
     }
 
+    /// Check if a skill was created by the agent (background review).
+    pub fn is_agent_created(&self, name: &str) -> bool {
+        self.get(name)
+            .and_then(|u| u.created_by)
+            .map(|by| by == "agent")
+            .unwrap_or(false)
+    }
+
+    /// List all skill names created by the agent.
+    pub fn agent_created_names(&self) -> Vec<String> {
+        self.load()
+            .map(|data| {
+                data.iter()
+                    .filter(|(_, u)| u.created_by.as_deref() == Some("agent"))
+                    .map(|(name, _)| name.clone())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// Update the lifecycle state of a skill.
     pub fn set_state(&self, name: &str, state: Lifecycle) {
         self.update(name, |u| {

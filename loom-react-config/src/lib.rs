@@ -8,7 +8,7 @@ use env_config::McpServerDef;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use loom_skill::SkillRegistry;
+use skill::SkillRegistry;
 
 // Re-exported from loom-types
 pub use loom_types::config::{BuiltinToolFilter, TotRunnerConfig, GotRunnerConfig};

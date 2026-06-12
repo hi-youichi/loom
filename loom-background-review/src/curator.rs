@@ -4,7 +4,7 @@ pub use loom_llm::tool::ToolCall as CuratorToolCall;
 
 use super::prompts::CURATOR_REVIEW_PROMPT;
 use super::skill_registry::{Lifecycle, SkillContent, SkillError, SkillMeta, SkillRegistry, Source};
-use loom_skill::{SkillUsageReport, SkillUsageStore};
+use skill::{SkillUsageReport, SkillUsageStore};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

@@ -59,18 +59,16 @@ pub struct AgentProfile {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct SkillsConfig {
-    /// Additional directories to scan for skills.
     #[serde(default)]
     pub dirs: Option<Vec<String>>,
-    /// Whitelist: only these skills are available (empty = all).
     #[serde(default)]
     pub enabled: Option<Vec<String>>,
-    /// Blacklist: these skills are excluded.
     #[serde(default)]
     pub disabled: Option<Vec<String>>,
-    /// Skills whose full content is injected into system prompt at startup.
     #[serde(default)]
     pub preload: Option<Vec<String>>,
+    #[serde(default)]
+    pub platform_disabled: Option<std::collections::HashMap<String, Vec<String>>>,
 }
 
 /// Built-in dev agent: instructions embedded at compile time (loom-react-config/agents/dev/).

@@ -37,8 +37,8 @@ pub async fn register_bash_tools(registry: &ToolRegistryLocked) {
 pub fn register_file_tools(
     aggregate: &ToolRegistryLocked,
     working_folder: impl AsRef<Path>,
-    _skill_registry: Option<Arc<loom_skill::SkillRegistry>>,
-    _skill_usage: Option<loom_skill::SkillUsageStore>,
+    _skill_registry: Option<Arc<::skill::SkillRegistry>>,
+    _skill_usage: Option<::skill::SkillUsageStore>,
 ) -> Result<(), ToolSourceError> {
     let path = working_folder.as_ref();
     let canonical = path.canonicalize().map_err(|e| {
@@ -67,6 +67,18 @@ pub fn register_file_tools(
     aggregate.register_sync(Box::new(todo::TodoWriteTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(todo::TodoReadTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(date::DateTool::new()));
+
+    if let Some(registry) = _skill_registry {
+        let mut skill_tool = skill::SkillTool::new_with_registry(registry);
+        if let Some(usage) = _skill_usage {
+            skill_tool = skill_tool.with_store(usage);
+        }
+        aggregate.register_sync(Box::new(skill_tool));
+    } else if let Some(usage) = _skill_usage {
+        let skill_tool = skill::SkillTool::new_with_store(working_folder.clone()).with_store(usage);
+        aggregate.register_sync(Box::new(skill_tool));
+    }
+
     Ok(())
 }
 

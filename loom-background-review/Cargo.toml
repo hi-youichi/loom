@@ -41,7 +41,7 @@ tracing = "0.1"
 
 dirs = "5"
 
-loom-skill = { path = "../loom-skill" }
+skill = { path = "../agent/skill" }
 tool-experimental = { path = "../agent/tool/tool-experimental" }
 memory-v2 = { path = "../experimental/memory-v2" }
 

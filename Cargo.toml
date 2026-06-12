@@ -9,7 +9,7 @@ members = [
     "loom-cache",
     "loom-worktree",
     "loom-curator",
-    "loom-skill",
+    "agent/skill",
     "loom-graph",
     "loom-pregel",
     "config",

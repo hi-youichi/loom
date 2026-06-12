@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::profile::AgentProfile;
 use crate::ReactBuildConfig;
 use crate::BuiltinToolFilter;
-use loom_skill::discovery::SkillRegistry;
+use skill::discovery::SkillRegistry;
 
 
 const AGENTS_MD_FILE: &str = "AGENTS.md";
@@ -178,7 +178,18 @@ pub fn build_config_from_profile(
         }
     }
     if let Some(ref sc) = profile.skills {
-        registry.apply_filters(sc.enabled.as_deref(), sc.disabled.as_deref());
+        let platform = Some(std::env::consts::OS);
+        let platform_disabled: Vec<String> = sc.platform_disabled.as_ref()
+            .and_then(|m| m.get(std::env::consts::OS))
+            .cloned()
+            .unwrap_or_default();
+        registry.apply_filters(
+            sc.enabled.as_deref(),
+            sc.disabled.as_deref(),
+            platform,
+            Some(&platform_disabled),
+        );
+        registry.apply_toolset_filters(None, None);
     }
     config.skill_registry = Some(Arc::new(registry));
 

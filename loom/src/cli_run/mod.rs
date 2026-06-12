@@ -9,7 +9,7 @@
 mod profile;
 
 use loom_react_config::ReactBuildConfig;
-use loom_skill::discovery::SkillRegistry;
+use skill::discovery::SkillRegistry;
 use loom_helve::env_context::{EnvContext, ProjectInfo};
 use loom_helve::config::{HelveConfig, to_react_build_config};
 use std::path::PathBuf;
@@ -152,7 +152,18 @@ pub fn build_helve_config(
                 }
             }
             if let Some(ref sc) = p.skills {
-                registry.apply_filters(sc.enabled.as_deref(), sc.disabled.as_deref());
+                let platform = Some(std::env::consts::OS);
+                let platform_disabled: Vec<String> = sc.platform_disabled.as_ref()
+                    .and_then(|m| m.get(std::env::consts::OS))
+                    .cloned()
+                    .unwrap_or_default();
+                registry.apply_filters(
+                    sc.enabled.as_deref(),
+                    sc.disabled.as_deref(),
+                    platform,
+                    Some(&platform_disabled),
+                );
+                registry.apply_toolset_filters(None, None);
             }
         }
         let arc = Arc::new(registry);

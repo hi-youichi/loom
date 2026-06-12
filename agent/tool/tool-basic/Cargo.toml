@@ -21,7 +21,7 @@ loom-llm = { path = "../../../loom-llm" }
 loom-types = { path = "../../../loom-types" }
 loom-stream = { path = "../../../loom-stream" }
 loom-commands = { path = "../../../loom-commands" }
-loom-skill = { path = "../../../loom-skill" }
+skill = { path = "../../skill" }
 config = { path = "../../../config" }
 
 mcp_client = { git = "https://github.com/graphweave/mcm-rust", package = "mcp_client" }
