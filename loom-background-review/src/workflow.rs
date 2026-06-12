@@ -8,7 +8,7 @@
 
 use super::curator::{Curator, CuratorConfig};
 
-use super::memory::MemoryStore;
+use memory_v2::MemoryStore;
 use super::observability::ObservabilityStore;
 use super::agent_loop::{
     build_review_agent_client, AgentReviewRunner, AgentReviewConfig, ReviewMode,
@@ -229,6 +229,7 @@ pub async fn run_background_review_inner(
     review_skills: bool,
 ) -> Result<BackgroundReviewHandle, String> {
     let memory = MemoryStore::new(&MemoryStore::default_path());
+    let memory_tool = tool_experimental::MemoryTool::new(std::sync::Arc::new(memory));
     let skills = SkillRegistry::new(&SkillRegistry::default_path());
 
     let config = AgentReviewConfig {
@@ -241,7 +242,7 @@ pub async fn run_background_review_inner(
 
     let result = AgentReviewRunner::run_with_refs(
         llm,
-        &memory,
+        &memory_tool,
         &skills,
         session_content,
         &config,

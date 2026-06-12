@@ -42,6 +42,8 @@ tracing = "0.1"
 dirs = "5"
 
 loom-skill = { path = "../loom-skill" }
+tool-experimental = { path = "../agent/tool/tool-experimental" }
+memory-v2 = { path = "../experimental/memory-v2" }
 
 # Archive handling for curator backup
 flate2 = "1.0"

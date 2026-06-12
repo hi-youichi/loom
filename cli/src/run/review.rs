@@ -52,6 +52,7 @@ impl Default for ReviewConfig {
 }
 
 use crate::run::memory::MemoryStore;
+use tool_experimental::MemoryTool;
 
 /// Legacy ReviewAgent for explicit `levol review` / `levol review-skill` CLI commands.
 /// For automatic post-turn review, see `background_review.rs`.
@@ -105,9 +106,10 @@ impl ReviewAgent {
             review_memory: true,
             review_skills: true,
         };
+        let memory_tool = MemoryTool::new(std::sync::Arc::new(MemoryStore::new(&self.memory.base_dir())));
         let result = crate::run::review_agent_loop::AgentReviewRunner::run_with_refs(
             &*self.llm,
-            &self.memory,
+            &memory_tool,
             &self.skills,
             session_content,
             &config,
@@ -171,8 +173,7 @@ impl ReviewAgent {
         for update in updates {
             let file = match update.file.to_lowercase().as_str() {
                 "user" | "user.md" => MemoryFile::User,
-                "project" | "project.md" => MemoryFile::Project,
-                "facts" | "facts.md" => MemoryFile::Facts,
+                "project" | "project.md" | "memory" | "memory.md" => MemoryFile::Project,
                 _ => {
                     warn!("Unknown memory file in review output: {}", update.file);
                     continue;
@@ -180,17 +181,17 @@ impl ReviewAgent {
             };
 
             match update.action.to_lowercase().as_str() {
-                "append" => {
+                "append" | "add" => {
                     self.memory
-                        .append(file, &update.content)
+                        .add_entry(file, &update.content)
                         .map_err(|e| e.to_string())?;
-                    info!("Appended to {:?}: {} chars", file, update.content.len());
+                    info!("Added to {:?}: {} chars", file, update.content.len());
                 }
                 "replace" => {
                     self.memory
-                        .replace(file, &update.content)
+                        .add_entry(file, &update.content)
                         .map_err(|e| e.to_string())?;
-                    info!("Replaced {:?}: {} chars", file, update.content.len());
+                    info!("Added to {:?}: {} chars", file, update.content.len());
                 }
                 other => {
                     warn!("Unknown memory action: {}", other);
@@ -325,19 +326,19 @@ mod tests {
                     tool_calls: vec![
                         loom_llm::ToolCall {
                             id: Some("tc-1".to_string()),
-                            name: "memory_set".to_string(),
+                            name: "memory".to_string(),
                             arguments: serde_json::json!({
-                                "file": "USER",
-                                "action": "append",
+                                "action": "add",
+                                "target": "user",
                                 "content": "prefers Rust"
                             }).to_string(),
                         },
                         loom_llm::ToolCall {
                             id: Some("tc-2".to_string()),
-                            name: "memory_set".to_string(),
+                            name: "memory".to_string(),
                             arguments: serde_json::json!({
-                                "file": "FACTS",
-                                "action": "append",
+                                "action": "add",
+                                "target": "memory",
                                 "content": "uses tokio runtime"
                             }).to_string(),
                         },

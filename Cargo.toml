@@ -42,6 +42,7 @@ members = [
     "loom-tier",
     "loom-react-config",
     "loom-cli-types",
+    "experimental/memory-v2",
 ]
 
 [workspace.package]

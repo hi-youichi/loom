@@ -12,8 +12,9 @@ use tool_basic::{
 use tool_extensions::{
     lsp::LspTool, twitter::TwitterSearchTool,
 };
-use tool_experimental::register_task_tools;
+use tool_experimental::{register_task_tools, register_file_memory_tool};
 use crate::tools::InvokeAgentTool;
+use memory_v2::MemoryStore;
 
 use env_config::McpServerDef;
 
@@ -299,6 +300,9 @@ pub(crate) async fn build_tool_source(
         if let Ok(db) = task_core::TaskDb::open(&db_path).await {
             register_task_tools(&aggregate, Arc::new(db)).await;
         }
+
+        let memory_store = Arc::new(MemoryStore::new(&MemoryStore::default_path()));
+        register_file_memory_tool(&aggregate, memory_store).await;
     }
     if let Some(ref wf) = config.working_folder {
         aggregate.register_sync(Box::new(BatchTool::new(Arc::new(wf.clone()))));

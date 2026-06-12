@@ -13,9 +13,8 @@
 pub mod agent_loop;
 pub mod curator;
 pub mod curator_backup;
-pub mod history;
-pub mod memory;
-pub mod observability;
+	pub mod history;
+	pub mod observability;
 pub mod prompts;
 pub mod security;
 pub mod skill_registry;
@@ -27,7 +26,7 @@ pub use agent_loop::{
     AgentReviewRunner, AgentReviewConfig, ReviewMode, AgentReviewResult,
     build_review_agent_client,
 };
-pub use memory::{MemoryStore, MemoryFile, MemoryConfig, MemoryError, MemoryProvenance};
+
 pub use skill_registry::{SkillRegistry, SkillContent, SkillMeta, SkillError, Lifecycle, Source};
 pub use loom_skill::{SkillUsage, SkillUsageStore};
 pub use curator::{

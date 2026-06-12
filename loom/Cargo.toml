@@ -85,6 +85,9 @@ loom-cli-types = { path = "../loom-cli-types" }
 # Background review system (loom-background-review crate)
 loom-background-review = { path = "../loom-background-review" }
 
+# Memory system
+memory-v2 = { path = "../experimental/memory-v2" }
+
 crossbeam-channel = "0.5"
 mcp_client = { git = "https://github.com/graphweave/mcm-rust", package = "mcp_client" }
 mcp_core = { git = "https://github.com/graphweave/mcm-rust", package = "mcp_core" }

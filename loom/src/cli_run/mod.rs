@@ -30,21 +30,8 @@ use loom_react_config::profile::AgentProfile;
 /// Reads memory prompt from LOOM_HOME/data/memory/.
 pub fn load_memory_prompt() -> Option<String> {
     let memory_dir = env_config::home::loom_home().join("data").join("memory");
-    let files = [
-        ("FACTS.md", "## Facts"),
-        ("PROJECT.md", "## Project"),
-        ("USER.md", "## User"),
-    ];
-    let mut parts = Vec::new();
-    for (filename, header) in &files {
-        let path = memory_dir.join(filename);
-        if let Ok(content) = std::fs::read_to_string(&path) {
-            if !content.trim().is_empty() {
-                parts.push(format!("{}\n{}", header, content));
-            }
-        }
-    }
-    if parts.is_empty() { None } else { Some(parts.join("\n\n")) }
+    let store = memory_v2::MemoryStore::new(&memory_dir);
+    store.capture_snapshot().ok().filter(|s| !s.is_empty())
 }
 
 /// `role_setting` from the resolved agent profile only (trimmed non-empty content).

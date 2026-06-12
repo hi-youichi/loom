@@ -16,6 +16,7 @@ tool-core = { path = "../tool/tool-core" }
 tool-basic = { path = "../tool/tool-basic" }
 tool-extensions = { path = "../tool/tool-extensions" }
 tool-experimental = { path = "../tool/tool-experimental" }
+memory-v2 = { path = "../../experimental/memory-v2" }
 loom-compress = { path = "../../loom-compress" }
 loom-cli-types = { path = "../../loom-cli-types" }
 loom-skill = { path = "../../loom-skill" }

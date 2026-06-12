@@ -485,26 +485,22 @@ pub(crate) fn handle_memory_command(
         MemoryCommand::Show => {
             let user = store.load(MemoryFile::User)?;
             let project = store.load(MemoryFile::Project)?;
-            let facts = store.load(MemoryFile::Facts)?;
             if json {
                 let obj = serde_json::json!({
                     "user": user,
                     "project": project,
-                    "facts": facts,
                 });
                 println!("{}", serde_json::to_string_pretty(&obj)?);
             } else {
                 println!("USER.md:\n{}\n", if user.is_empty() { "(empty)".to_string() } else { user });
                 println!("PROJECT.md:\n{}\n", if project.is_empty() { "(empty)".to_string() } else { project });
-                println!("FACTS.md:\n{}\n", if facts.is_empty() { "(empty)".to_string() } else { facts });
             }
         }
         MemoryCommand::Edit { file } => {
             let mf = match file.to_lowercase().as_str() {
                 "user" | "user.md" => MemoryFile::User,
-                "project" | "project.md" => MemoryFile::Project,
-                "facts" | "facts.md" => MemoryFile::Facts,
-                _ => { return Err(format!("Unknown memory file: {}. Use USER, PROJECT, or FACTS.", file).into()); }
+                "project" | "project.md" | "memory" | "memory.md" => MemoryFile::Project,
+                _ => { return Err(format!("Unknown memory file: {}. Use USER or PROJECT (or MEMORY).", file).into()); }
             };
             let content = store.load(mf)?;
             let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
@@ -514,7 +510,7 @@ pub(crate) fn handle_memory_command(
             let status = std::process::Command::new(&editor).arg(&tmp_path).status()?;
             if status.success() {
                 let edited = std::fs::read_to_string(&tmp_path)?;
-                store.replace(mf, &edited)?;
+                store.add_entry(mf, &edited)?;
                 println!("Updated {}.", file);
             }
             let _ = std::fs::remove_file(&tmp_path);

@@ -1,4 +1,4 @@
-use super::memory::MemoryStore;
+use tool_experimental::MemoryTool;
 use super::prompts::{select_review_prompt, COMBINED_REVIEW_PROMPT};
 use super::skill_registry::SkillRegistry;
 use super::tools::{review_tool_specs, ReviewAction, ReviewToolExecutor};
@@ -48,7 +48,7 @@ pub struct AgentReviewRunner;
 impl AgentReviewRunner {
     pub async fn run_with_refs(
         llm: &dyn LlmClient,
-        memory: &MemoryStore,
+        memory_tool: &MemoryTool,
         skills: &SkillRegistry,
         session_content: &str,
         config: &AgentReviewConfig,
@@ -74,7 +74,7 @@ impl AgentReviewRunner {
         );
 
         let mut messages = vec![Message::system(&prompt), Message::user(review_instruction.as_str())];
-        let mut executor = ReviewToolExecutor::new(memory, skills);
+        let mut executor = ReviewToolExecutor::new(memory_tool, skills);
         let mut iterations = 0u32;
         let mut session_messages: Vec<serde_json::Value> = Vec::new();
 

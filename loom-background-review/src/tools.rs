@@ -1,5 +1,5 @@
 use super::curator::Curator;
-use super::memory::{MemoryFile, MemoryStore};
+use tool_experimental::MemoryTool;
 use super::security::{validate_skill_create, validate_skill_path, Severity};
 use super::skill_registry::{Lifecycle, SkillContent, SkillRegistry, Source};
 use loom_skill::SkillUsageStore;
@@ -7,12 +7,8 @@ use loom_llm::ToolSpec;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-const MAX_MEMORY_FILE_SIZE: usize = 64 * 1024;
-const REPLACE_SHRINK_RATIO: f64 = 0.3;
-
 const REVIEW_ALLOWED_TOOLS: &[&str] = &[
-    "memory_get",
-    "memory_set",
+    "memory",
     "skills_list",
     "skill_view",
     "skill_create",
@@ -24,7 +20,7 @@ const REVIEW_ALLOWED_TOOLS: &[&str] = &[
 ];
 
 pub struct ReviewToolExecutor<'a> {
-    pub memory: &'a MemoryStore,
+    pub memory_tool: &'a MemoryTool,
     pub skills: &'a SkillRegistry,
     pub curator: Option<&'a Curator>,
     pub skill_usage: Option<&'a SkillUsageStore>,
@@ -41,9 +37,9 @@ pub struct ReviewAction {
 }
 
 impl<'a> ReviewToolExecutor<'a> {
-    pub fn new(memory: &'a MemoryStore, skills: &'a SkillRegistry) -> Self {
+    pub fn new(memory_tool: &'a MemoryTool, skills: &'a SkillRegistry) -> Self {
         Self {
-            memory,
+            memory_tool,
             skills,
             curator: None,
             skill_usage: None,
@@ -72,8 +68,20 @@ impl<'a> ReviewToolExecutor<'a> {
             });
         }
         match tool_name {
-            "memory_get" => self.memory_get(args),
-            "memory_set" => self.memory_set(args),
+            "memory" => {
+                let result = self.memory_tool.dispatch(args);
+                if result.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    let action = args["action"].as_str().unwrap_or("");
+                    let target = args["target"].as_str().unwrap_or("memory");
+                    self.actions.push(ReviewAction {
+                        kind: "memory".to_string(),
+                        target: target.to_string(),
+                        summary: format!("Memory {} {}", action, target),
+                        has_modification: true,
+                    });
+                }
+                result
+            }
             "skills_list" => self.skills_list(args),
             "skill_view" => self.skill_view(args),
             "skill_create" => self.skill_create(args),
@@ -83,93 +91,6 @@ impl<'a> ReviewToolExecutor<'a> {
             "skill_write_file" => self.skill_write_file(args),
             "skill_remove_file" => self.skill_remove_file(args),
             _ => json!({"success": false, "error": format!("Unknown tool: {}", tool_name)}),
-        }
-    }
-
-    /// Parse a memory file identifier string into a [`MemoryFile`].
-    ///
-    /// Accepts case-insensitive names with or without `.md` extension.
-    fn parse_memory_file(file_str: &str) -> Result<MemoryFile, Value> {
-        match file_str.to_lowercase().as_str() {
-            "user" | "user.md" => Ok(MemoryFile::User),
-            "project" | "project.md" => Ok(MemoryFile::Project),
-            "facts" | "facts.md" => Ok(MemoryFile::Facts),
-            _ => Err(json!({"success": false, "error": format!("Unknown memory file: {}", file_str)})),
-        }
-    }
-
-    fn memory_get(&self, args: &Value) -> Value {
-        let file_str = args["file"].as_str().unwrap_or("user");
-        let file = match Self::parse_memory_file(file_str) {
-            Ok(f) => f,
-            Err(e) => return e,
-        };
-        match self.memory.load(file) {
-            Ok(content) => json!({"success": true, "content": content}),
-            Err(e) => json!({"success": false, "error": e.to_string()}),
-        }
-    }
-
-    fn memory_set(&mut self, args: &Value) -> Value {
-        let file_str = args["file"].as_str().unwrap_or("user");
-        let action = args["action"].as_str().unwrap_or("append");
-        let content = args["content"].as_str().unwrap_or("");
-
-        let file = match Self::parse_memory_file(file_str) {
-            Ok(f) => f,
-            Err(e) => return e,
-        };
-
-        if action == "append" {
-            if let Ok(existing) = self.memory.load(file) {
-                if existing.contains(content) {
-                    return json!({"success": true, "warning": "Content already exists in memory, skipping duplicate"});
-                }
-                if existing.len() + content.len() > MAX_MEMORY_FILE_SIZE {
-                    return json!({"success": false, "error": format!(
-                        "Memory file would exceed {} bytes (current: {}, new: {})",
-                        MAX_MEMORY_FILE_SIZE, existing.len(), content.len()
-                    )});
-                }
-            }
-        }
-
-        if action == "replace" {
-            if let Ok(existing) = self.memory.load(file) {
-                if !existing.is_empty() && !content.is_empty() {
-                    let ratio = content.len() as f64 / existing.len() as f64;
-                    if ratio < REPLACE_SHRINK_RATIO {
-                        return json!({"success": false, "error": format!(
-                            "Replace would shrink file too much ({} -> {} chars, ratio {:.0}%). Use skill_patch for targeted edits.",
-                            existing.len(), content.len(), ratio * 100.0
-                        )});
-                    }
-                }
-                if content.len() > MAX_MEMORY_FILE_SIZE {
-                    return json!({"success": false, "error": format!(
-                        "New content exceeds {} bytes", MAX_MEMORY_FILE_SIZE
-                    )});
-                }
-            }
-        }
-
-        let result = match action {
-            "append" => self.memory.append(file, content),
-            "replace" => self.memory.replace(file, content),
-            _ => return json!({"success": false, "error": format!("Unknown action: {}", action)}),
-        };
-
-        match result {
-            Ok(()) => {
-                self.actions.push(ReviewAction {
-                    kind: "memory".to_string(),
-                    target: file_str.to_string(),
-                    summary: format!("Memory {} {}", action, file_str),
-                    has_modification: true,
-                });
-                json!({"success": true})
-            }
-            Err(e) => json!({"success": false, "error": e.to_string()}),
         }
     }
 
@@ -406,32 +327,7 @@ impl<'a> ReviewToolExecutor<'a> {
 
 pub fn review_tool_specs() -> Vec<ToolSpec> {
     vec![
-        ToolSpec {
-            name: "memory_get".into(),
-            description: Some("Read a memory file (USER, PROJECT, or FACTS).".into()),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "file": {"type": "string", "enum": ["USER", "PROJECT", "FACTS"], "description": "Memory file to read"}
-                },
-                "required": ["file"]
-            }),
-            output_hint: None,
-        },
-        ToolSpec {
-            name: "memory_set".into(),
-            description: Some("Write to a memory file. Action can be 'append' or 'replace'.".into()),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "file": {"type": "string", "enum": ["USER", "PROJECT", "FACTS"], "description": "Memory file to write"},
-                    "action": {"type": "string", "enum": ["append", "replace"], "description": "'append' to add content, 'replace' to overwrite"},
-                    "content": {"type": "string", "description": "Content to write"}
-                },
-                "required": ["file", "action", "content"]
-            }),
-            output_hint: None,
-        },
+        MemoryTool::tool_spec(),
         ToolSpec {
             name: "skills_list".into(),
             description: Some("List all skills in the skill library.".into()),

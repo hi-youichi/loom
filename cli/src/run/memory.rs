@@ -1,2 +1,1 @@
-//! Re-export from loom crate.
-pub use loom_background_review::memory::*;
+pub use memory_v2::*;
