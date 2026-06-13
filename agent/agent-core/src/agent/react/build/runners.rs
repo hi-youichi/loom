@@ -4,7 +4,10 @@ use loom_compress::CompactionConfig;
 use loom_llm::error::AgentError;
 use loom_llm::{LlmClient, LlmProvider};
 use loom_llm::client::FixedLlmProvider;
-use loom_model_spec::{ModelLimitResolver, ModelsDevResolver};
+use loom_model_spec::{
+    build_composite_resolver, ConfigModelEntry, ConfigProviderEntry,
+    ModelLimitResolver, ModelSpec,
+};
 use loom_types::active_operation::RunCancellation;
 
 use super::super::config::ReactBuildConfig;
@@ -54,34 +57,64 @@ async fn resolve_compaction_config(config: &ReactBuildConfig) -> CompactionConfi
     }
 
     if let Some(ref model) = config.model {
-        let resolver = ModelsDevResolver::new();
+        let providers = load_config_providers();
+        let resolver = build_composite_resolver(None, providers);
 
-        if model.contains('/') {
-            if let Some(spec) = resolver.resolve_combined(model).await {
-                tracing::info!(
-                    model = %model,
-                    context_limit = spec.context_limit,
-                    output_limit = spec.output_limit,
-                    "resolved model spec from models.dev"
-                );
-                return CompactionConfig::with_max_context_tokens(spec.context_limit);
-            }
-        }
+        let spec = if model.contains('/') {
+            resolver.resolve_combined(model).await
+        } else {
+            resolve_bare_model_name(&resolver, model).await
+        };
 
-        if let Some(spec) = resolver.resolve_by_bare_model_name(model).await {
+        if let Some(spec) = spec {
             tracing::info!(
                 model = %model,
                 context_limit = spec.context_limit,
                 output_limit = spec.output_limit,
-                "resolved model spec from models.dev by bare model name"
+                "resolved model spec"
             );
             return CompactionConfig::with_max_context_tokens(spec.context_limit);
         }
 
-        tracing::debug!(model = %model, "model not found in models.dev, using default config");
+        tracing::debug!(model = %model, "model spec not found, using default config");
     }
 
     CompactionConfig::default()
+}
+
+fn load_config_providers() -> Vec<ConfigProviderEntry> {
+    let full = env_config::load_full_config("loom").ok();
+    full.map(|f| {
+        f.providers
+            .into_iter()
+            .filter(|p| !p.models.is_empty())
+            .map(|p| ConfigProviderEntry {
+                name: p.name,
+                models: p
+                    .models
+                    .into_iter()
+                    .map(|m| ConfigModelEntry {
+                        id: m.id,
+                        context_limit: m.context_limit,
+                        output_limit: m.output_limit,
+                    })
+                    .collect(),
+            })
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
+async fn resolve_bare_model_name(
+    resolver: &Arc<loom_model_spec::CompositeResolver>,
+    model: &str,
+) -> Option<ModelSpec> {
+    for p in load_config_providers() {
+        if let Some(spec) = resolver.resolve(&p.name, model).await {
+            return Some(spec);
+        }
+    }
+    resolver.resolve("openai", model).await
 }
 
 pub struct BoxedLlmClient(pub Box<dyn LlmClient>);

@@ -15,6 +15,29 @@ pub fn config_path(_app_name: &str) -> Result<Option<PathBuf>, LoadError> {
     }
 }
 
+/// A model specification declared manually in `config.toml` via `[[providers.models]]`.
+///
+/// Used to supplement models.dev coverage for models that are missing or outdated.
+///
+/// ```toml
+/// [[providers]]
+/// name = "zhipuai-coding-plan"
+///
+/// [[providers.models]]
+/// id = "glm-5.2"
+/// context_limit = 1000000
+/// output_limit = 131072
+/// ```
+#[derive(serde::Deserialize, Clone, Debug)]
+pub struct ProviderModelDef {
+    /// Model ID (e.g. `"glm-5.2"`).
+    pub id: String,
+    /// Context (input) token limit.
+    pub context_limit: u32,
+    /// Output token limit.
+    pub output_limit: u32,
+}
+
 /// A named LLM provider definition from `[[providers]]` in `config.toml`.
 ///
 /// Example:
@@ -39,6 +62,15 @@ pub fn config_path(_app_name: &str) -> Result<Option<PathBuf>, LoadError> {
 /// type = "bigmodel"
 /// tool_choice = "none"
 /// temperature = 0.7
+///
+/// [[providers]]
+/// name = "zhipuai-coding-plan"
+/// base_url = "https://open.bigmodel.cn/api/coding/paas/v4"
+///
+/// [[providers.models]]
+/// id = "glm-5.2"
+/// context_limit = 1000000
+/// output_limit = 131072
 /// ```
 #[derive(serde::Deserialize, Clone, Debug)]
 pub struct ProviderDef {
@@ -65,6 +97,9 @@ pub struct ProviderDef {
     /// When `true`, enable tier resolution for this provider. Default: `true`.
     #[serde(default)]
     pub enable_tier_resolution: Option<bool>,
+    /// Manually declared model specs to supplement models.dev.
+    #[serde(default)]
+    pub models: Vec<ProviderModelDef>,
 }
 
 impl ProviderDef {
@@ -338,6 +373,7 @@ BAR = "baz"
             fetch_models: None,
             cache_ttl: None,
             enable_tier_resolution: None,
+            models: vec![],
         };
         assert!(!p.to_env_map().contains_key("OPENAI_TOOL_CHOICE"));
     }
@@ -354,6 +390,7 @@ BAR = "baz"
             fetch_models: None,
             cache_ttl: None,
             enable_tier_resolution: None,
+            models: vec![],
         };
         let m = p.to_env_map();
         assert_eq!(
@@ -374,6 +411,7 @@ BAR = "baz"
             fetch_models: None,
             cache_ttl: None,
             enable_tier_resolution: None,
+            models: vec![],
         };
         assert!(!p.to_env_map().contains_key("OPENAI_TEMPERATURE"));
     }
@@ -396,5 +434,38 @@ temperature = 0.5
         let _guard = LoomHomeGuard::set(dir.path());
         let full = load_full_config("loom").unwrap();
         assert_eq!(full.providers[0].temperature, Some(0.5));
+    }
+
+    #[test]
+    fn load_full_config_parses_provider_models() {
+        let _lock = XDG_TEST_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("config.toml"),
+            r#"
+[[providers]]
+name = "zhipuai-coding-plan"
+
+[[providers.models]]
+id = "glm-5.2"
+context_limit = 1000000
+output_limit = 131072
+
+[[providers.models]]
+id = "glm-4.6"
+context_limit = 204800
+output_limit = 131072
+"#,
+        )
+        .unwrap();
+        let _guard = LoomHomeGuard::set(dir.path());
+        let full = load_full_config("loom").unwrap();
+        assert_eq!(full.providers.len(), 1);
+        assert_eq!(full.providers[0].models.len(), 2);
+        assert_eq!(full.providers[0].models[0].id, "glm-5.2");
+        assert_eq!(full.providers[0].models[0].context_limit, 1_000_000);
+        assert_eq!(full.providers[0].models[0].output_limit, 131_072);
+        assert_eq!(full.providers[0].models[1].id, "glm-4.6");
+        assert_eq!(full.providers[0].models[1].context_limit, 204_800);
     }
 }

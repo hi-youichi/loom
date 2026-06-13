@@ -4,7 +4,10 @@
 use chrono::Local;
 use loom::cli_run::build_helve_config;
 use loom_react_config::profile::list_available_profiles;
-use loom_model_spec::{ModelLimitResolver, ModelsDevResolver};
+use loom_model_spec::{
+    build_composite_resolver, ConfigModelEntry, ConfigProviderEntry,
+    ModelLimitResolver,
+};
 use loom_stream::MessageChunkKind;
 use loom_cli_types::ResolvedAgent;
 use loom_types::state::ToolResult;
@@ -33,6 +36,29 @@ use loom::agent_run::{RunCmd, RunOptions};
 use loom_stream::StreamEvent;
 
 use super::RunError;
+
+fn load_config_providers() -> Vec<ConfigProviderEntry> {
+    let full = config::load_full_config("loom").ok();
+    full.map(|f| {
+        f.providers
+            .into_iter()
+            .filter(|p| !p.models.is_empty())
+            .map(|p| ConfigProviderEntry {
+                name: p.name,
+                models: p
+                    .models
+                    .into_iter()
+                    .map(|m| ConfigModelEntry {
+                        id: m.id,
+                        context_limit: m.context_limit,
+                        output_limit: m.output_limit,
+                    })
+                    .collect(),
+            })
+            .collect()
+    })
+    .unwrap_or_default()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunStopReason {
@@ -106,11 +132,20 @@ async fn print_model_info(model: Option<&String>) {
         }
     };
 
-    let resolver = ModelsDevResolver::new();
+    let providers = load_config_providers();
+    let resolver = build_composite_resolver(None, providers);
     let spec = if model_name.contains('/') {
         resolver.resolve_combined(model_name).await
     } else {
-        resolver.resolve_by_bare_model_name(model_name).await
+        let providers = load_config_providers();
+        let mut found = None;
+        for p in &providers {
+            if let Some(s) = resolver.resolve(&p.name, model_name).await {
+                found = Some(s);
+                break;
+            }
+        }
+        found
     };
     match spec {
         Some(spec) => {
