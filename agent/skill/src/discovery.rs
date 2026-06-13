@@ -40,11 +40,15 @@ pub enum SkillSource {
 
 pub struct SkillRegistry {
     pub skills: Vec<SkillEntry>,
+    cache: std::sync::Mutex<crate::cache::SkillCache>,
 }
 
 impl SkillRegistry {
     pub fn empty() -> Self {
-        Self { skills: Vec::new() }
+        Self {
+            skills: Vec::new(),
+            cache: std::sync::Mutex::new(crate::cache::SkillCache::new()),
+        }
     }
 
     pub fn discover(
@@ -82,7 +86,10 @@ impl SkillRegistry {
         let mut seen = HashSet::new();
         skills.retain(|e| seen.insert(e.metadata.name.clone()));
 
-        Ok(Self { skills })
+        Ok(Self {
+            skills,
+            cache: std::sync::Mutex::new(crate::cache::SkillCache::new()),
+        })
     }
 
     pub fn add_agent_skills(&mut self, agent_skills_dir: &Path) -> Result<(), SkillDiscoveryError> {
@@ -234,6 +241,12 @@ impl SkillRegistry {
         lines.push("</available_skills>".to_string());
         lines.join("\n")
     }
+
+    pub fn invalidate_cache(&self) {
+        if let Ok(mut cache) = self.cache.lock() {
+            cache.invalidate_all();
+        }
+    }
 }
 
 fn read_category_description(dir: &Path) -> Option<String> {
@@ -363,6 +376,15 @@ fn scan_skills_dir_recursive(dir: &Path, source: SkillSource) -> Vec<SkillEntry>
 mod tests {
     use super::*;
 
+macro_rules! registry_from_skills {
+    ($entries:expr) => {
+        SkillRegistry {
+            skills: $entries,
+            cache: std::sync::Mutex::new(crate::cache::SkillCache::new()),
+        }
+    };
+}
+
     fn make_test_entry(name: &str, source: SkillSource) -> SkillEntry {
         SkillEntry {
             metadata: SkillMetadata {
@@ -390,7 +412,7 @@ mod tests {
         ];
         entries[0].metadata.category = Some("coding".to_string());
         entries[1].metadata.category = Some("testing".to_string());
-        let registry = SkillRegistry { skills: entries };
+        let registry = registry_from_skills!(entries);
         let prompt = registry.available_skills_prompt();
         assert!(prompt.contains("<available_skills>"));
         assert!(prompt.contains("</available_skills>"));
@@ -403,7 +425,7 @@ mod tests {
     #[test]
     fn available_skills_prompt_uncategorized_as_general() {
         let entries = vec![make_test_entry("standalone", SkillSource::Project)];
-        let registry = SkillRegistry { skills: entries };
+        let registry = registry_from_skills!(entries);
         let prompt = registry.available_skills_prompt();
         assert!(prompt.contains("  general:"));
         assert!(prompt.contains("    - standalone:"));
@@ -419,14 +441,14 @@ mod tests {
             },
             ..Default::default()
         });
-        let mut registry = SkillRegistry { skills: entries };
+        let mut registry = registry_from_skills!(entries);
 
         let mut toolsets = HashSet::new();
         toolsets.insert("web".to_string());
         registry.apply_toolset_filters(None, Some(&toolsets));
         assert!(registry.list().is_empty());
 
-        let mut registry2 = SkillRegistry { skills: vec![make_test_entry("duckduckgo", SkillSource::Project)] };
+        let mut registry2 = registry_from_skills!(vec![make_test_entry("duckduckgo", SkillSource::Project)]);
         registry2.skills[0].metadata.metadata = Some(crate::utils::SkillMetadataBlock {
             conditions: crate::utils::SkillConditions {
                 fallback_for_toolsets: vec!["web".to_string()],
@@ -448,7 +470,7 @@ mod tests {
             },
             ..Default::default()
         });
-        let mut registry = SkillRegistry { skills: entries };
+        let mut registry = registry_from_skills!(entries);
         registry.apply_toolset_filters(None, Some(&HashSet::new()));
         assert!(registry.list().is_empty());
     }
@@ -456,7 +478,7 @@ mod tests {
     #[test]
     fn apply_toolset_filters_none_skips() {
         let entries = vec![make_test_entry("any", SkillSource::Project)];
-        let mut registry = SkillRegistry { skills: entries };
+        let mut registry = registry_from_skills!(entries);
         registry.apply_toolset_filters(None, None);
         assert_eq!(registry.list().len(), 1);
     }
@@ -467,7 +489,7 @@ mod tests {
             make_test_entry("a", SkillSource::Project),
             make_test_entry("b", SkillSource::Project),
         ];
-        let mut registry = SkillRegistry { skills: entries };
+        let mut registry = registry_from_skills!(entries);
         registry.apply_filters(Some(&["a".to_string()]), None, None, None);
         assert_eq!(registry.list().len(), 1);
         assert_eq!(registry.list()[0].metadata.name, "a");
@@ -479,7 +501,7 @@ mod tests {
             make_test_entry("a", SkillSource::Project),
             make_test_entry("b", SkillSource::Project),
         ];
-        let mut registry = SkillRegistry { skills: entries };
+        let mut registry = registry_from_skills!(entries);
         registry.apply_filters(None, Some(&["a".to_string()]), None, None);
         let names: Vec<&str> = registry.list().iter().map(|e| e.metadata.name.as_str()).collect();
         assert!(!names.contains(&"a"));
@@ -490,14 +512,14 @@ mod tests {
     fn apply_filters_platform_excludes() {
         let mut entries = vec![make_test_entry("mac-only", SkillSource::Project)];
         entries[0].metadata.platforms = vec!["macos".to_string()];
-        let mut registry = SkillRegistry { skills: entries };
+        let mut registry = registry_from_skills!(entries);
 
         registry.apply_filters(None, None, Some("windows"), None);
         assert!(registry.list().is_empty());
 
         let mut entries2 = vec![make_test_entry("mac-only", SkillSource::Project)];
         entries2[0].metadata.platforms = vec!["macos".to_string()];
-        let mut registry2 = SkillRegistry { skills: entries2 };
+        let mut registry2 = registry_from_skills!(entries2);
         registry2.apply_filters(None, None, Some("darwin"), None);
         assert_eq!(registry2.list().len(), 1);
     }
@@ -508,7 +530,7 @@ mod tests {
             make_test_entry("a", SkillSource::Project),
             make_test_entry("b", SkillSource::Project),
         ];
-        let mut registry = SkillRegistry { skills: entries };
+        let mut registry = registry_from_skills!(entries);
         registry.apply_filters(None, None, None, Some(&["a".to_string()]));
         let names: Vec<&str> = registry.list().iter().map(|e| e.metadata.name.as_str()).collect();
         assert!(!names.contains(&"a"));

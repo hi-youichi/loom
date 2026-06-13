@@ -23,7 +23,7 @@ pub use batch::{BatchTool, TOOL_BATCH};
 pub use date::{DateTool, TOOL_DATE};
 pub use mcp::{McpSession, McpSessionError, McpToolSource};
 pub use mcp_adapter::{register_mcp_tools, register_mcp_tools_with_specs, McpToolAdapter};
-pub use skill::SkillTool;
+pub use skill::{SkillListTool, SkillViewTool};
 
 use std::path::Path;
 use std::sync::Arc;
@@ -69,14 +69,13 @@ pub fn register_file_tools(
     aggregate.register_sync(Box::new(date::DateTool::new()));
 
     if let Some(registry) = _skill_registry {
-        let mut skill_tool = skill::SkillTool::new_with_registry(registry);
-        if let Some(usage) = _skill_usage {
-            skill_tool = skill_tool.with_store(usage);
-        }
-        aggregate.register_sync(Box::new(skill_tool));
+        let (list_tool, view_tool) = skill::make_skill_tools_with_registry(registry, _skill_usage);
+        aggregate.register_sync(Box::new(list_tool));
+        aggregate.register_sync(Box::new(view_tool));
     } else if let Some(usage) = _skill_usage {
-        let skill_tool = skill::SkillTool::new_with_store(working_folder.clone()).with_store(usage);
-        aggregate.register_sync(Box::new(skill_tool));
+        let (list_tool, view_tool) = skill::make_skill_tools_with_folder(working_folder.clone(), Some(usage));
+        aggregate.register_sync(Box::new(list_tool));
+        aggregate.register_sync(Box::new(view_tool));
     }
 
     Ok(())

@@ -14,6 +14,8 @@ chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 tokio = { workspace = true }
 env_config = { path = "../../config", package = "config" }
+regex = "1.12.4"
+shellexpand = "3.1.2"
 
 [dev-dependencies]
 tempfile = "3"

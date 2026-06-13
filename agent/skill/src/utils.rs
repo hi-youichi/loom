@@ -5,6 +5,13 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ReadinessStatus {
+    Available,
+    SetupNeeded(Vec<String>),
+    Unsupported(String),
+}
+
 pub fn parse_frontmatter(content: &str) -> (serde_yaml::Mapping, String) {
     let trimmed = content.trim_start();
     if !trimmed.starts_with("---") {
@@ -67,6 +74,18 @@ pub struct SkillMetadataBlock {
     pub tags: Vec<String>,
     #[serde(default)]
     pub related_skills: Vec<String>,
+    #[serde(default)]
+    pub required_env_vars: Vec<EnvVarDecl>,
+}
+
+/// A declared required environment variable.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct EnvVarDecl {
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub default: Option<String>,
 }
 
 /// Prerequisites declared in frontmatter.
@@ -109,6 +128,27 @@ impl SkillMetadata {
             requires_tools: vec![],
         };
         self.metadata.as_ref().map(|m| &m.conditions).unwrap_or(&EMPTY)
+    }
+
+    pub fn required_env_vars(&self) -> &[EnvVarDecl] {
+        static EMPTY: &[EnvVarDecl] = &[];
+        self.metadata.as_ref().map(|m| m.required_env_vars.as_slice()).unwrap_or(EMPTY)
+    }
+
+    pub fn readiness_status(&self) -> ReadinessStatus {
+        let vars = self.required_env_vars();
+        if vars.is_empty() {
+            return ReadinessStatus::Available;
+        }
+        let missing: Vec<&EnvVarDecl> = vars
+            .iter()
+            .filter(|v| std::env::var(&v.name).is_err() && v.default.is_none())
+            .collect();
+        if missing.is_empty() {
+            ReadinessStatus::Available
+        } else {
+            ReadinessStatus::SetupNeeded(missing.iter().map(|v| v.name.clone()).collect())
+        }
     }
 
     pub fn matches_platform(&self, current_platform: &str) -> bool {
@@ -172,7 +212,7 @@ mod tests {
     #[test]
     fn parse_skill_frontmatter_basic() {
         let content = "---\nname: test\ndescription: desc\n---\nBody";
-        let (meta_opt, body) = parse_skill_frontmatter(content);
+        let (meta_opt, _body) = parse_skill_frontmatter(content);
         let meta = meta_opt.unwrap();
         assert_eq!(meta.name, "test");
         assert_eq!(meta.description, "desc");

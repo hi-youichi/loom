@@ -126,8 +126,11 @@ pub mod tool_name {
     /// lsp — Language Server Protocol for code intelligence.
     pub const TOOL_LSP: &str = "lsp";
 
-    /// skill — load and execute a Loom skill by name.
-    pub const TOOL_SKILL: &str = "skill";
+    /// skill_list — list all available skills with descriptions.
+    pub const TOOL_SKILL_LIST: &str = "skill_list";
+
+    /// skill_view — load a skill's full content by name.
+    pub const TOOL_SKILL_VIEW: &str = "skill_view";
 
     /// help — show help information about Loom, Skills, and MCP.
     pub const TOOL_HELP: &str = "help";

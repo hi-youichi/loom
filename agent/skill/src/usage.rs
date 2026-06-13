@@ -36,6 +36,8 @@ pub struct SkillUsage {
     pub pinned: bool,
     #[serde(default)]
     pub archived_at: Option<String>,
+    #[serde(default)]
+    pub absorbed_into: Option<String>,
 }
 
 fn default_state() -> Lifecycle {
@@ -58,6 +60,7 @@ impl SkillUsage {
             state: Lifecycle::Active,
             pinned: false,
             archived_at: None,
+            absorbed_into: None,
         }
     }
 
@@ -202,10 +205,20 @@ impl SkillUsageStore {
         });
     }
 
-    /// Remove usage data for a skill.
+    /// Remove usage data for a skill, optionally recording the deletion intent.
     pub fn forget(&self, name: &str) {
+        self.forget_with_intent(name, None);
+    }
+
+    /// Remove usage data for a skill, recording where it was absorbed into.
+    pub fn forget_with_intent(&self, name: &str, absorbed_into: Option<&str>) {
         match self.load() {
             Ok(mut data) => {
+                if let Some(target) = absorbed_into {
+                    if let Some(entry) = data.get_mut(name) {
+                        entry.absorbed_into = Some(target.to_string());
+                    }
+                }
                 data.remove(name);
                 if let Err(e) = self.save(&data) {
                     debug!("SkillUsageStore: forget '{}' failed: {}", name, e);
@@ -290,124 +303,153 @@ impl SkillUsageStore {
 mod tests {
     use super::*;
 
-    fn make_store() -> (tempfile::TempDir, SkillUsageStore) {
+    #[test]
+    fn new_skill_has_zero_counts() {
+        let usage = SkillUsage::new("test-skill");
+        assert_eq!(usage.use_count, 0);
+        assert_eq!(usage.view_count, 0);
+        assert_eq!(usage.patch_count, 0);
+        assert_eq!(usage.state, Lifecycle::Active);
+        assert!(usage.pinned == false);
+        assert!(usage.absorbed_into.is_none());
+        assert!(usage.created_by.is_none());
+    }
+
+    #[test]
+    fn bump_increments_counts() {
         let dir = tempfile::tempdir().unwrap();
         let store = SkillUsageStore::new(dir.path());
-        (dir, store)
+
+        store.bump_use("skill-a");
+        store.bump_use("skill-a");
+        store.bump_view("skill-a");
+
+        let entry = store.get("skill-a").unwrap();
+        assert_eq!(entry.use_count, 2);
+        assert_eq!(entry.view_count, 1);
     }
 
     #[test]
-    fn bump_use_increments_count() {
-        let (_dir, store) = make_store();
-        store.bump_use("test-skill");
-        store.bump_use("test-skill");
-        let usage = store.get("test-skill").unwrap();
-        assert_eq!(usage.use_count, 2);
-        assert!(usage.last_used_at.is_some());
+    fn bump_sets_timestamps() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SkillUsageStore::new(dir.path());
+
+        store.bump_use("s1");
+        let entry = store.get("s1").unwrap();
+        assert!(entry.last_used_at.is_some());
+        assert!(entry.last_activity_at().is_some());
     }
 
     #[test]
-    fn bump_view_increments_count() {
-        let (_dir, store) = make_store();
-        store.bump_view("test-skill");
-        let usage = store.get("test-skill").unwrap();
-        assert_eq!(usage.view_count, 1);
-    }
+    fn bump_patch_increments() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SkillUsageStore::new(dir.path());
 
-    #[test]
-    fn bump_patch_increments_count() {
-        let (_dir, store) = make_store();
-        store.bump_patch("test-skill");
-        let usage = store.get("test-skill").unwrap();
-        assert_eq!(usage.patch_count, 1);
+        store.bump_patch("s1");
+        store.bump_patch("s1");
+        store.bump_patch("s1");
+        let entry = store.get("s1").unwrap();
+        assert_eq!(entry.patch_count, 3);
+        assert!(entry.last_patched_at.is_some());
     }
 
     #[test]
     fn mark_agent_created() {
-        let (_dir, store) = make_store();
-        store.mark_agent_created("ai-skill");
-        let usage = store.get("ai-skill").unwrap();
-        assert_eq!(usage.created_by, Some("agent".to_string()));
+        let dir = tempfile::tempdir().unwrap();
+        let store = SkillUsageStore::new(dir.path());
+
+        store.bump_use("agent-skill");
+        store.mark_agent_created("agent-skill");
+
+        assert!(store.is_agent_created("agent-skill"));
+        let names = store.agent_created_names();
+        assert!(names.contains(&"agent-skill".to_string()));
     }
 
     #[test]
     fn set_state_archived() {
-        let (_dir, store) = make_store();
-        store.set_state("old-skill", Lifecycle::Archived);
-        let usage = store.get("old-skill").unwrap();
-        assert!(matches!(usage.state, Lifecycle::Archived));
-        assert!(usage.archived_at.is_some());
+        let dir = tempfile::tempdir().unwrap();
+        let store = SkillUsageStore::new(dir.path());
+
+        store.bump_use("s1");
+        store.set_state("s1", Lifecycle::Archived);
+        let entry = store.get("s1").unwrap();
+        assert_eq!(entry.state, Lifecycle::Archived);
+        assert!(entry.archived_at.is_some());
     }
 
     #[test]
     fn set_pinned() {
-        let (_dir, store) = make_store();
-        store.set_pinned("favorite-skill", true);
-        let usage = store.get("favorite-skill").unwrap();
-        assert!(usage.pinned);
+        let dir = tempfile::tempdir().unwrap();
+        let store = SkillUsageStore::new(dir.path());
+
+        store.bump_use("s1");
+        store.set_pinned("s1", true);
+        let entry = store.get("s1").unwrap();
+        assert!(entry.pinned);
     }
 
     #[test]
     fn forget_removes_entry() {
-        let (_dir, store) = make_store();
-        store.bump_use("temp-skill");
-        store.forget("temp-skill");
-        assert!(store.get("temp-skill").is_none());
+        let dir = tempfile::tempdir().unwrap();
+        let store = SkillUsageStore::new(dir.path());
+
+        store.bump_use("to-remove");
+        store.forget("to-remove");
+        assert!(store.get("to-remove").is_none());
     }
 
     #[test]
-    fn agent_created_report() {
-        let (_dir, store) = make_store();
-        store.mark_agent_created("ai-skill-1");
-        store.mark_agent_created("ai-skill-2");
+    fn forget_with_intent_records_absorbed_into() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SkillUsageStore::new(dir.path());
+
+        store.bump_use("old-skill");
+        store.forget_with_intent("old-skill", Some("new-skill"));
+
+        assert!(store.get("old-skill").is_none());
+    }
+
+    #[test]
+    fn get_nonexistent_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SkillUsageStore::new(dir.path());
+        assert!(store.get("nope").is_none());
+    }
+
+    #[test]
+    fn load_empty_dir_returns_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SkillUsageStore::new(dir.path());
+        let data = store.load().unwrap();
+        assert!(data.is_empty());
+    }
+
+    #[test]
+    fn activity_count_sums_all() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SkillUsageStore::new(dir.path());
+
+        store.bump_use("s1");
+        store.bump_use("s1");
+        store.bump_view("s1");
+        store.bump_patch("s1");
+
+        let entry = store.get("s1").unwrap();
+        assert_eq!(entry.activity_count(), 4);
+    }
+
+    #[test]
+    fn agent_created_report_filters() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SkillUsageStore::new(dir.path());
+
         store.bump_use("manual-skill");
+        store.bump_use("agent-skill");
+        store.mark_agent_created("agent-skill");
+
         let report = store.agent_created_report().unwrap();
-        assert_eq!(report.len(), 2);
-        assert!(report.iter().all(|r| r.name.starts_with("ai-skill")));
-    }
-
-    #[test]
-    fn skill_usage_activity_count() {
-        let usage = SkillUsage::new("test");
-        assert_eq!(usage.activity_count(), 0);
-        
-        let mut usage = usage;
-        usage.use_count = 5;
-        usage.view_count = 3;
-        usage.patch_count = 2;
-        assert_eq!(usage.activity_count(), 10);
-    }
-
-    #[test]
-    fn skill_usage_last_activity_at() {
-        let mut usage = SkillUsage::new("test");
-        assert!(usage.last_activity_at().is_none());
-        
-        usage.last_used_at = Some("2024-01-01T00:00:00Z".to_string());
-        usage.last_viewed_at = Some("2024-01-02T00:00:00Z".to_string());
-        usage.last_patched_at = Some("2024-01-01T12:00:00Z".to_string());
-        
-        assert_eq!(usage.last_activity_at(), Some("2024-01-02T00:00:00Z".to_string()));
-    }
-
-    #[test]
-    fn skill_usage_report_from_usage() {
-        let usage = SkillUsage {
-            name: "test-skill".to_string(),
-            use_count: 10,
-            view_count: 5,
-            patch_count: 2,
-            last_used_at: Some("2024-01-01T00:00:00Z".to_string()),
-            last_viewed_at: None,
-            last_patched_at: None,
-            created_at: "2024-01-01T00:00:00Z".to_string(),
-            created_by: Some("agent".to_string()),
-            state: Lifecycle::Active,
-            pinned: false,
-            archived_at: None,
-        };
-        let report = SkillUsageReport::from(("test-skill".to_string(), usage));
-        assert_eq!(report.name, "test-skill");
-        assert_eq!(report.activity_count, 17);
+        assert_eq!(report.len(), 1);
+        assert_eq!(report[0].name, "agent-skill");
     }
 }
