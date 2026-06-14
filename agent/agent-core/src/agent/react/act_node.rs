@@ -138,6 +138,9 @@ pub struct ActNode {
 
     /// Shared cancellation handle with active-operation tracking (loom-level, not in loom-graph RunContext).
     run_cancellation: Option<RunCancellation>,
+
+    /// Forwarded to ToolCallContext for sub-agent event propagation (e.g. invoke_agent → ACP).
+    any_stream_event_sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>>,
 }
 
 impl ActNode {
@@ -145,6 +148,7 @@ impl ActNode {
         Self {
             tools,
             run_cancellation: None,
+            any_stream_event_sender: None,
         }
     }
 
@@ -152,6 +156,11 @@ impl ActNode {
 
     pub fn with_run_cancellation(mut self, rc: Option<RunCancellation>) -> Self {
         self.run_cancellation = rc;
+        self
+    }
+
+    pub fn with_any_stream_event_sender(mut self, sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>>) -> Self {
+        self.any_stream_event_sender = sender;
         self
     }
 
@@ -570,6 +579,22 @@ impl Node<ReActState> for ActNode {
                 base_custom_writer.clone()
             };
 
+            let any_stream_sender: Option<Arc<dyn Fn(loom_types::cli_run::AnyStreamEvent) + Send + Sync>> =
+                self.any_stream_event_sender.as_ref().map(|sender| {
+                    let sender = sender.clone();
+                    Arc::new(move |ev: loom_types::cli_run::AnyStreamEvent| {
+                        if let loom_types::cli_run::AnyStreamEvent::React(v) = &ev {
+                            if let Ok(stream_ev) = serde_json::from_value::<
+                                loom_stream::StreamEvent<loom_types::state::ReActState>,
+                            >(v.clone())
+                            {
+                                sender(loom_cli_types::AnyStreamEvent::React(stream_ev));
+                            }
+                        }
+                    })
+                        as Arc<dyn Fn(loom_types::cli_run::AnyStreamEvent) + Send + Sync>
+                });
+
             let tool_ctx = ToolCallContext {
                 recent_messages: state.messages.clone(),
                 stream_writer: Some(per_tool_writer),
@@ -577,7 +602,7 @@ impl Node<ReActState> for ActNode {
                 user_id: run_ctx.config.user_id.clone(),
                 depth: run_ctx.config.depth.unwrap_or(0),
                 run_cancellation: self.run_cancellation.clone(),
-                any_stream_event_sender: None, // TODO: type mismatch between cli_run_agent::AnyStreamEvent and loom_types::cli_run::AnyStreamEvent
+                any_stream_event_sender: any_stream_sender,
                 acp_session_id: run_ctx.config.acp_session_id.clone(),
             };
 

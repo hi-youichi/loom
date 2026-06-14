@@ -396,8 +396,16 @@ pub fn stream_update_to_session_notification(
                 fields,
             ))
         }
-        StreamUpdate::ToolCallChunk { .. } => {
-            return None;
+        StreamUpdate::ToolCallChunk { tool_call_id, name: _, arguments_delta } => {
+            let fields = ToolCallUpdateFields::new()
+                .content(vec![
+                    ToolCallContent::from(ContentBlock::Text(TextContent::new(arguments_delta.clone()))),
+                ]);
+
+            SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
+                ToolCallId::new(tool_call_id.as_str()),
+                fields,
+            ))
         }
         StreamUpdate::Diff { tool_call_id, path, old_text, new_text } => {
             let mut fields = ToolCallUpdateFields::new()

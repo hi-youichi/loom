@@ -221,7 +221,7 @@ impl LlmResponse {
 ///
 /// When an LLM emits separate thinking content (e.g. extended thinking, reasoning tokens),
 /// chunks with `Thinking` are streamed as ACP `agent_thought_chunk`; `Message` as `agent_message_chunk`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MessageChunkKind {
     /// Final assistant reply; maps to ACP `agent_message_chunk`.
     #[default]
@@ -233,7 +233,7 @@ pub enum MessageChunkKind {
 /// One chunk of streamed message content.
 ///
 /// Use [`MessageChunkKind`] to separate thinking from final reply when the LLM provides both.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageChunk {
     pub content: String,
     /// When `Thinking`, ACP bridge emits `agent_thought_chunk`; otherwise `agent_message_chunk`.

@@ -123,31 +123,33 @@ fn print_outcome(outcome: &GoalOutcome) {
 
 
 
-use loom_background_review::BackgroundReviewCallbacks;
+// [TEMP-DISABLE BG REVIEW] — uncomment to re-enable
+// use loom_background_review::BackgroundReviewCallbacks;
 
 fn spawn_goal_background_review(
-    model_override: &Option<String>,
-    session_content: String,
-    session_id: String,
+    _model_override: &Option<String>,
+    _session_content: String,
+    _session_id: String,
 ) {
-    if session_content.trim().is_empty() {
-        return;
-    }
-    let base_url = std::env::var("OPENAI_BASE_URL").unwrap_or_default();
-    let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_default();
-    if base_url.is_empty() || api_key.is_empty() {
-        return;
-    }
-    let model = model_override
-        .clone()
-        .or_else(|| std::env::var("MODEL").ok())
-        .unwrap_or_else(|| "gpt-4o-mini".to_string());
-    let config = loom_background_review::BackgroundReviewConfig {
-        enabled: true,
-        base_url,
-        api_key,
-        model,
-        ..Default::default()
-    };
-    loom_background_review::spawn_background_review(config, session_content, session_id, BackgroundReviewCallbacks::default());
+    // [TEMP-DISABLE BG REVIEW] — original spawn logic commented out below
+    // if session_content.trim().is_empty() {
+    //     return;
+    // }
+    // let base_url = std::env::var("OPENAI_BASE_URL").unwrap_or_default();
+    // let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_default();
+    // if base_url.is_empty() || api_key.is_empty() {
+    //     return;
+    // }
+    // let model = model_override
+    //     .clone()
+    //     .or_else(|| std::env::var("MODEL").ok())
+    //     .unwrap_or_else(|| "gpt-4o-mini".to_string());
+    // let config = loom_background_review::BackgroundReviewConfig {
+    //     enabled: true,
+    //     base_url,
+    //     api_key,
+    //     model,
+    //     ..Default::default()
+    // };
+    // loom_background_review::spawn_background_review(config, session_content, session_id, BackgroundReviewCallbacks::default());
 }

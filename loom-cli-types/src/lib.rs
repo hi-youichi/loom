@@ -10,6 +10,7 @@
 
 pub mod goal_runner;
 
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -145,7 +146,7 @@ pub enum RunError {
 }
 
 /// Union type for stream events from different agent patterns.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum AnyStreamEvent {
     React(loom_stream::StreamEvent<ReActState>),
     Dup(loom_stream::StreamEvent<StubDupState>),

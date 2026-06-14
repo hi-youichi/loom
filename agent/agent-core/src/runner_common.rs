@@ -97,7 +97,7 @@ where
     let stream = compiled.stream(
         state,
         run_config,
-        [StreamMode::Values, StreamMode::Messages, StreamMode::Updates, StreamMode::Tasks],
+        [StreamMode::Values, StreamMode::Messages, StreamMode::Updates, StreamMode::Tasks, StreamMode::Tools],
         None,
         None,
     );

@@ -53,7 +53,7 @@ pub struct Agent {
 
 impl Agent {
     pub async fn from_config(config: AgentConfig) -> Result<Self, AgentError> {
-        let runner = build_react_runner(&config, None, false, None)
+        let runner = build_react_runner(&config, None, false, None, None)
             .await
             .map_err(|e| AgentError::Build(e.to_string()))?;
         Ok(Self { runner })
@@ -292,6 +292,7 @@ mod tests {
                 model_id: "mock".to_string(),
             })),
             false,
+            None,
             None,
         )
         .await

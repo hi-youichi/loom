@@ -845,7 +845,7 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
                     model,
                     ..Default::default()
                 };
-                if review_config.enabled {
+                if review_config.enabled { // [TEMP-DISABLE BG REVIEW] — commented out spawn below
                     let session_id = opts.thread_id.clone()
                         .unwrap_or_else(|| format!("acp-{}", args.session_id));
                     let user_msg = match &opts.message {
@@ -853,10 +853,11 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
                         _ => String::new(),
                     };
                     let session_content = format!("User: {}\n\nAssistant: {}", user_msg, run_result.reply);
-                    loom_background_review::spawn_background_review(
-                        review_config, session_content, session_id,
-                        loom_background_review::BackgroundReviewCallbacks::default(),
-                    );
+                    // [TEMP-DISABLE BG REVIEW] loom_background_review::spawn_background_review(
+                    //     review_config, session_content, session_id,
+                    //     loom_background_review::BackgroundReviewCallbacks::default(),
+                    // );
+                    let _ = (review_config, session_content, session_id);
                 }
             }
         }

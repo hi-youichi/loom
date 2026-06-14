@@ -141,6 +141,7 @@ pub async fn build_react_runner(
     provider: Option<Arc<dyn LlmProvider>>,
     verbose: bool,
     cancellation: Option<RunCancellation>,
+    any_stream_event_sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>>,
 ) -> Result<ReactRunner, BuildRunnerError> {
     let ctx = build_react_run_context(config).await?;
     let provider_override = provider.is_some();
@@ -176,6 +177,7 @@ pub async fn build_react_runner(
         verbose,
         title_provider,
         title_headers,
+        any_stream_event_sender,
     )?;
     Ok(runner)
 }
@@ -191,7 +193,7 @@ pub async fn build_react_runner_with_openai(
     build_react_runner(config, Some(Arc::new(FixedLlmProvider {
         client: Arc::from(Box::new(client) as Box<dyn LlmClient>),
         model_id: "openai".to_string(),
-    })), verbose, None).await
+    })), verbose, None, None).await
 }
 
 #[cfg(test)]
@@ -251,6 +253,7 @@ mod tests {
                 model_id: "mock".to_string(),
             })),
             false,
+            None,
             None,
         )
         .await

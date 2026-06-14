@@ -1,7 +1,8 @@
 use std::fmt::Debug;
+use serde::{Deserialize, Serialize};
 
 /// Metadata attached to streamed messages.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamMetadata {
     /// Loom node id that produced the message.
     pub loom_node: String,
@@ -13,7 +14,7 @@ pub struct StreamMetadata {
 ///
 /// Contains the checkpoint id, metadata, and optionally the state snapshot.
 /// This aligns with graph-based checkpoint streaming format.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CheckpointEvent<S>
 where
     S: Clone + Send + Sync + Debug + 'static,

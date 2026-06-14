@@ -386,7 +386,17 @@ impl InvokeAgentTool {
         );
 
         tracing::debug!(agent = %agent_name, "Building React runner");
-        let runner = build_react_runner(&sub_config, None, false, None)
+        let depth = ctx.map_or(1u32, |c| c.depth + 1);
+        let loom_sender = ctx.and_then(|c| c.any_stream_event_sender.clone());
+        let cli_sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>> =
+            loom_sender.as_ref().map(|s| {
+                let s = s.clone();
+                Arc::new(move |ev: loom_cli_types::AnyStreamEvent| {
+                    let val = serde_json::to_value(&ev).unwrap_or_default();
+                    s(loom_types::cli_run::AnyStreamEvent::React(val));
+                }) as Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>
+            });
+        let runner = build_react_runner(&sub_config, None, false, None, cli_sender)
             .await
             .map_err(|e| {
                 tracing::error!(agent = %agent_name, error = %e, "Failed to build sub-agent runner");
@@ -397,11 +407,6 @@ impl InvokeAgentTool {
             })?;
 
 tracing::debug!(agent = %agent_name, "Starting sub-agent execution");
-        let depth = ctx.map_or(1u32, |c| c.depth + 1);
-        let loom_sender = ctx.and_then(|c| c.any_stream_event_sender.clone());
-        // any_stream_event_sender disabled: loom-agent-patterns ActNode ignores it (hardcoded None)
-        // and loom_types::cli_run::AnyStreamEvent differs from loom::cli_run::AnyStreamEvent.
-        let _unused_any_sender: Option<std::sync::Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>> = None;
         let agent_name_for_event = agent_name.to_string();
         let start = std::time::Instant::now();
         let buffer = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
@@ -413,10 +418,10 @@ tracing::debug!(agent = %agent_name, "Starting sub-agent execution");
             ) {
                 buffer_clone.lock().unwrap().push(formatted);
             }
-            // Note: loom_sender forwarding disabled because loom_tools::ToolCallContext
-            // uses loom_types::cli_run::AnyStreamEvent which differs from loom::cli_run::AnyStreamEvent.
-            // loom_sender is always None at runtime (ActNode hardcodes it to None).
-            let _ = &loom_sender;
+            if let Some(ref sender) = loom_sender {
+                let val = serde_json::to_value(&event).unwrap_or_default();
+                sender(loom_types::cli_run::AnyStreamEvent::React(val));
+            }
         });
 
         let outcome = runner
@@ -1015,7 +1020,17 @@ async fn invoke_single_agent(
     );
 
     tracing::debug!(agent = %agent_name, "Building React runner");
-    let runner = build_react_runner(&sub_config, None, false, None)
+    let depth = ctx.map_or(1u32, |c| c.depth + 1);
+    let loom_sender = ctx.and_then(|c| c.any_stream_event_sender.clone());
+    let cli_sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>> =
+        loom_sender.as_ref().map(|s| {
+            let s = s.clone();
+            Arc::new(move |ev: loom_cli_types::AnyStreamEvent| {
+                let val = serde_json::to_value(&ev).unwrap_or_default();
+                s(loom_types::cli_run::AnyStreamEvent::React(val));
+            }) as Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>
+        });
+    let runner = build_react_runner(&sub_config, None, false, None, cli_sender.clone())
         .await
         .map_err(|e| {
             tracing::error!(agent = %agent_name, error = %e, "Failed to build sub-agent runner");
@@ -1023,11 +1038,6 @@ async fn invoke_single_agent(
         })?;
 
 tracing::debug!(agent = %agent_name, "Starting sub-agent execution");
-    let depth = ctx.map_or(1u32, |c| c.depth + 1);
-    let loom_sender = ctx.and_then(|c| c.any_stream_event_sender.clone());
-    // any_stream_event_sender disabled: loom-agent-patterns ActNode ignores it (hardcoded None)
-    // and loom_types::cli_run::AnyStreamEvent differs from loom::cli_run::AnyStreamEvent.
-    let _unused_any_sender: Option<std::sync::Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>> = None;
     let agent_name_for_event = agent_name.to_string();
     let start = std::time::Instant::now();
     let buffer = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
@@ -1039,10 +1049,10 @@ tracing::debug!(agent = %agent_name, "Starting sub-agent execution");
         ) {
             buffer_clone.lock().unwrap().push(formatted);
         }
-        // Note: loom_sender forwarding disabled because loom_tools::ToolCallContext
-        // uses loom_types::cli_run::AnyStreamEvent which differs from loom::cli_run::AnyStreamEvent.
-        // loom_sender is always None at runtime (ActNode hardcodes it to None).
-        let _ = &loom_sender;
+        if let Some(ref sender) = loom_sender {
+            let val = serde_json::to_value(&event).unwrap_or_default();
+            sender(loom_types::cli_run::AnyStreamEvent::React(val));
+        }
     });
 
     let outcome = runner

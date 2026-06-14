@@ -305,7 +305,7 @@ pub async fn build_runner(
     });
     match cmd {
         RunCmd::React => {
-            let r = build_react_runner(&config, llm_override_provider, opts.verbose, None).await?;
+            let r = build_react_runner(&config, llm_override_provider, opts.verbose, None, opts.any_stream_event_sender.clone()).await?;
             Ok(AnyRunner::React(r.with_cancellation(opts.cancellation.clone())))
         }
         RunCmd::Dup => {

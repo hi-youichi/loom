@@ -360,6 +360,7 @@ pub async fn run_agent_wrapper(
     let (reply, reasoning_content, stop_reason) = completion_reply(result);
 
     if matches!(stop_reason, RunStopReason::EndTurn) && !reply.is_empty() {
+        // [TEMP-DISABLE BG REVIEW] — uncomment the spawn line below to re-enable
         let config = super::background_review::build_background_config_from_opts_ext(
             loom_opts.base_url.clone().unwrap_or_default(),
             loom_opts.api_key.clone().unwrap_or_default(),
@@ -379,8 +380,8 @@ pub async fn run_agent_wrapper(
         };
         let session_content = format!("User: {}\n\nAssistant: {}", user_msg, reply);
 
-        // Spawn background review - tracked globally and waited on at process exit
-        super::background_review::spawn_background_review(config, session_content, session_id.clone());
+        // [TEMP-DISABLE BG REVIEW] super::background_review::spawn_background_review(config, session_content, session_id.clone());
+        let _ = (config, session_content); // suppress unused warnings
         let store = super::session_store::FileSessionStore::new(
             &super::session_store::FileSessionStore::default_path(),
         );

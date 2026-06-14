@@ -1,10 +1,11 @@
+use serde::{Deserialize, Serialize};
 use crate::{CheckpointEvent, StreamMetadata};
 use loom_llm::traits::MessageChunk;
 use serde_json::Value;
 use std::fmt::Debug;
 
 /// Streamed event emitted while running a graph.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum StreamEvent<S>
 where
     S: Clone + Send + Sync + Debug + 'static,

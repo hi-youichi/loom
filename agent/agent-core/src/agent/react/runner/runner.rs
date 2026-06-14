@@ -35,11 +35,17 @@ pub struct ReactRunner {
     runnable_config: Option<RunnableConfig>,
     system_prompt: String,
     cancellation: Option<RunCancellation>,
+    any_stream_event_sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>>,
 }
 
 impl ReactRunner {
     pub fn with_cancellation(mut self, cancellation: Option<RunCancellation>) -> Self {
         self.cancellation = cancellation;
+        self
+    }
+
+    pub fn with_any_stream_event_sender(mut self, sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>>) -> Self {
+        self.any_stream_event_sender = sender;
         self
     }
 
@@ -57,10 +63,12 @@ impl ReactRunner {
         verbose: bool,
         title_provider: Option<Arc<dyn LlmProvider>>,
         title_headers: Option<loom_llm::LlmHeaders>,
+        any_stream_event_sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>>,
     ) -> Result<Self, CompilationError> {
         let think = ThinkNode::new(Arc::clone(&provider));
         let act = ActNode::new(tool_source)
-            .with_run_cancellation(cancellation.clone());
+            .with_run_cancellation(cancellation.clone())
+            .with_any_stream_event_sender(any_stream_event_sender.clone());
         let observe = ObserveNode::with_loop();
 
         let compaction_cfg = compaction_config.unwrap_or_default();
@@ -128,6 +136,7 @@ impl ReactRunner {
             runnable_config,
             system_prompt,
             cancellation,
+            any_stream_event_sender,
         })
     }
 
@@ -202,6 +211,7 @@ where
         opts.user_message_store,
         None,
         opts.verbose,
+        None,
         None,
         None,
     )?;
