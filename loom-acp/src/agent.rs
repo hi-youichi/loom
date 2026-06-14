@@ -812,6 +812,7 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
             force_compact: false,
             chat_id: None,
             worktree: false,
+            goal_mode: false,
         };
 
         let session_id = args.session_id.clone();
@@ -845,7 +846,7 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
                     model,
                     ..Default::default()
                 };
-                if review_config.enabled { // [TEMP-DISABLE BG REVIEW] — commented out spawn below
+                if review_config.enabled { // [TEMP-DISABLE BG REVIEW] � commented out spawn below
                     let session_id = opts.thread_id.clone()
                         .unwrap_or_else(|| format!("acp-{}", args.session_id));
                     let user_msg = match &opts.message {
@@ -861,8 +862,6 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
                 }
             }
         }
-
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         match result {
             Ok(RunCompletion::Finished(_reply)) => Ok(PromptResponse::new(StopReason::EndTurn)),
@@ -1315,7 +1314,7 @@ fn normalize_current_model_for_acp(current_model: &str, options: &[ModelOption])
 }
 
 /// Build config_options array with "mode" and "model" options (protocol types are non_exhaustive, so we construct via serde).
-/// SessionConfigOption has kind flattened; SessionConfigKind uses tag "type" → "type": "select" and SessionConfigSelect fields at top level (camelCase).
+/// SessionConfigOption has kind flattened; SessionConfigKind uses tag "type" ? "type": "select" and SessionConfigSelect fields at top level (camelCase).
 fn build_session_config_options(
     current_mode: &str,
     current_model: &str,

@@ -132,7 +132,12 @@ pub async fn run_serve_on_listener(
         info!("✅ Connection completed, exiting (once mode)");
     } else {
         info!("🔄 Server running in persistent mode (will handle multiple connections)");
-        axum::serve(listener, app).await?;
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async {
+                let _ = tokio::signal::ctrl_c().await;
+                info!("🛑 Received Ctrl+C, initiating graceful shutdown...");
+            })
+            .await?;
     }
 
     info!("🛑 Server shutdown complete");

@@ -1,4 +1,4 @@
-//! Configuration management for Loom TUI
+﻿//! Configuration management for Loom TUI
 
 use clap::Parser;
 use serde::{Deserialize, Serialize};
@@ -241,6 +241,7 @@ impl Config {
             force_compact: false,
             chat_id: None,
             worktree: args.cli_args.worktree,
+            goal_mode: false,
         }
     }
 }

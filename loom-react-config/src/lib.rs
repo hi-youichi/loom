@@ -91,6 +91,9 @@ pub struct ReactBuildConfig {
     pub bash_executor: Option<Arc<dyn tool_basic::bash::CommandExecutor>>,
     pub extra_tools: Option<Arc<Vec<Arc<dyn tool_core::Tool>>>>,
     pub acp_session_id: Option<String>,
+    /// When true, task management tools (task_create/update/show/list/delete) are registered.
+    /// Only enabled in goal mode.
+    pub goal_mode: bool,
 }
 
 impl std::fmt::Debug for ReactBuildConfig {
@@ -173,6 +176,7 @@ impl ReactBuildConfig {
             bash_executor: None,
             extra_tools: None,
             acp_session_id: None,
+            goal_mode: false,
         }
     }
 }

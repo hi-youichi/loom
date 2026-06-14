@@ -1,7 +1,7 @@
 ﻿//! Handle `Run` request: execute agent (streaming or single reply).
 //!
-//! Flow: request preparation (register thread, append initial message, build opts/cmd) →
-//! spawn run task → consume event stream and send over WebSocket → send RunEnd or Error.
+//! Flow: request preparation (register thread, append initial message, build opts/cmd) ?
+//! spawn run task ? consume event stream and send over WebSocket ? send RunEnd or Error.
 
 mod delivery;
 mod request;
@@ -106,7 +106,15 @@ pub(crate) async fn handle_run(
     }));
 
     let mut sender = delivery::WebSocketRunSender(sink.clone());
-    let result = delivery::handle_run_stream(run_id.clone(), request_id, rx, run_handle, &mut sender).await?;
+    let result = delivery::handle_run_stream(
+        run_id.clone(),
+        request_id,
+        rx,
+        run_handle,
+        Some(cancellation.clone()),
+        &mut sender,
+    )
+    .await?;
     Ok((run_id, cancellation, result))
 }
 
@@ -191,7 +199,7 @@ mod tests {
             last_run_end: None,
             last_error: None,
         };
-        let out = handle_run_stream("run-1".to_string(), None, rx, run_handle, &mut sender).await;
+        let out = handle_run_stream("run-1".to_string(), None, rx, run_handle, None, &mut sender).await;
         assert!(out.is_err());
         assert_eq!(out.unwrap_err().to_string(), "mock send failure");
     }
@@ -218,7 +226,7 @@ mod tests {
             last_run_end: None,
             last_error: None,
         };
-        let out = handle_run_stream("run-1".to_string(), None, rx, run_handle, &mut sender).await;
+        let out = handle_run_stream("run-1".to_string(), None, rx, run_handle, None, &mut sender).await;
         assert!(out.is_ok());
         assert!(out.unwrap().is_none());
         assert_eq!(sender.send_count, 1);
@@ -246,7 +254,7 @@ mod tests {
             last_run_end: None,
             last_error: None,
         };
-        let out = handle_run_stream("run-1".to_string(), None, rx, run_handle, &mut sender).await;
+        let out = handle_run_stream("run-1".to_string(), None, rx, run_handle, None, &mut sender).await;
         assert!(out.is_ok());
         assert_eq!(sender.send_count, 1);
         let (id, error) = sender.last_error.as_ref().unwrap();
@@ -267,7 +275,7 @@ mod tests {
             last_run_end: None,
             last_error: None,
         };
-        let out = handle_run_stream("run-1".to_string(), None, rx, run_handle, &mut sender).await;
+        let out = handle_run_stream("run-1".to_string(), None, rx, run_handle, None, &mut sender).await;
         assert!(out.is_err());
         assert_eq!(sender.send_count, 0);
     }
@@ -361,6 +369,7 @@ mod tests {
             force_compact: false,
             chat_id: None,
             worktree: false,
+            goal_mode: false,
             debug_llm: false,
         };
         let (result, state, _dropped_events, _dropped_appends) = run_agent_task(AgentTaskParams {
@@ -413,6 +422,7 @@ mod tests {
             force_compact: false,
             chat_id: None,
             worktree: false,
+            goal_mode: false,
             debug_llm: false,
         };
         let (result, state, _dropped_events, _dropped_appends) = run_agent_task(AgentTaskParams {

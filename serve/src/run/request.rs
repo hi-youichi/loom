@@ -89,20 +89,20 @@ pub(super) async fn prepare_run(
     // Log the model resolution
     match &r.model {
         Some(model) => {
-            tracing::info!("🤖 [RunRequest] Model requested from frontend: {}", model);
+            tracing::info!("?? [RunRequest] Model requested from frontend: {}", model);
             if let Some(ref resolved_model) = resolved.model {
                 tracing::info!(
-                    "✅ [RunRequest] Model resolved: {} (provider: {:?})",
+                    "? [RunRequest] Model resolved: {} (provider: {:?})",
                     resolved_model,
                     resolved.provider
                 );
             } else {
-                tracing::warn!("⚠️  [RunRequest] Model resolution returned empty, using defaults");
+                tracing::warn!("??  [RunRequest] Model resolution returned empty, using defaults");
             }
         }
         None => {
             tracing::info!(
-                "🤖 [RunRequest] No model specified from frontend, using default configuration"
+                "?? [RunRequest] No model specified from frontend, using default configuration"
             );
         }
     }
@@ -138,6 +138,7 @@ pub(super) async fn prepare_run(
             force_compact: false,
             chat_id: None,
             worktree: false,
+            goal_mode: false,
             debug_llm: false,
         };
 
@@ -156,7 +157,7 @@ pub(super) async fn prepare_run(
     };
 
     // Log final run options
-    tracing::info!("🎯 Run options configured:");
+    tracing::info!("?? Run options configured:");
     tracing::info!("  Model: {:?}", opts.model);
     tracing::info!("  Provider: {:?}", opts.provider);
     tracing::info!("  Agent: {:?}", r_agent);

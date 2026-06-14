@@ -73,6 +73,7 @@ pub async fn run_loom_agent_streaming(
             force_compact,
             chat_id: Some(chat_id),
             worktree: false,
+            goal_mode: false,
         };
 
 

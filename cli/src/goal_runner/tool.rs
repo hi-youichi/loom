@@ -273,6 +273,7 @@ impl CodingTool for LoomTool {
             force_compact: false,
             chat_id: None,
             worktree: false,
+            goal_mode: true,
         };
 
         let result = run_agent_with_options(&opts, &RunCmd::React, on_event)

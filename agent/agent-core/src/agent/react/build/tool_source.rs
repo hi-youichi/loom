@@ -2,11 +2,11 @@ use std::sync::Arc;
 
 use skill::SkillUsageStore;
 use loom_llm::error::AgentError;
-use tool_core::{ArcTool, ToolRegistryLocked, ToolSourceError, YamlSpecError};
+use tool_core::{ArcTool, ToolRegistryLocked, YamlSpecError};
 use tool_basic::{
     bash::BashTool, powershell::PowerShellTool, batch::BatchTool,
     web::WebFetcherTool, register_file_tools,
-    mcp::McpToolSource, register_mcp_tools, register_mcp_tools_with_specs,
+    mcp::McpToolSource, register_mcp_tools,
     exa::ExaCodesearchTool, exa::ExaWebsearchTool,
 };
 use tool_extensions::{
@@ -84,45 +84,29 @@ pub(crate) async fn build_tool_source(
                         args,
                         env,
                     } => {
-                        tracing::debug!(name = %name, "starting MCP stdio server (spawn_blocking, pre-fetch tools)");
+                        tracing::debug!(name = %name, "starting MCP stdio server");
                         let command = command.clone();
                         let args = args.clone();
                         let env_vec: Vec<(String, String)> =
                             env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                         let mcp_verbose = config.mcp_verbose;
-                        let create_result = tokio::task::spawn_blocking(move || {
-                            let mcp = McpToolSource::new_with_env(
-                                command,
-                                args,
-                                env_vec,
-                                mcp_verbose,
-                            )
-                            .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
-                            let specs = mcp.list_tools_sync()?;
-                            Ok::<_, ToolSourceError>((mcp, specs))
-                        })
-                        .await;
-                        match create_result {
-                            Ok(Ok((mcp, specs))) => {
-                                register_mcp_tools_with_specs(
-                                    aggregate.as_ref(),
-                                    Arc::new(mcp),
-                                    specs,
-                                )
-                                .await;
+                        match McpToolSource::new_with_env(command, args, env_vec, mcp_verbose).await {
+                            Ok(mcp) => {
+                                if let Err(e) =
+                                    register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
+                                {
+                                    tracing::warn!(
+                                        name = %name,
+                                        "mcp server registered but list/call may fail: {}",
+                                        e
+                                    );
+                                }
                             }
-                            Ok(Err(e)) => {
+                            Err(e) => {
                                 tracing::warn!(
                                     name = %name,
-                                    "mcp server failed to start or list tools, skipping: {}",
+                                    "mcp server failed to start, skipping: {}",
                                     e
-                                );
-                            }
-                            Err(join_e) => {
-                                tracing::warn!(
-                                    name = %name,
-                                    "mcp server spawn_blocking join failed: {}",
-                                    join_e
                                 );
                             }
                         }
@@ -178,29 +162,23 @@ pub(crate) async fn build_tool_source(
                     }
                 }
             } else {
-                tracing::debug!("starting GitHub MCP (stdio, spawn_blocking, pre-fetch tools)");
+                tracing::debug!("starting GitHub MCP (stdio)");
                 let cmd = config.mcp_github_cmd.clone();
                 let args = config.mcp_github_args.clone();
                 let env_github = vec![("GITHUB_TOKEN".to_string(), token.clone())];
                 let mcp_verbose = config.mcp_verbose;
-                let create_result = tokio::task::spawn_blocking(move || {
-                    let mcp =
-                        McpToolSource::new_with_env(cmd, args, env_github, mcp_verbose)
-                            .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
-                    let specs = mcp.list_tools_sync()?;
-                    Ok::<_, ToolSourceError>((mcp, specs))
-                })
-                .await;
-                match create_result {
-                    Ok(Ok((mcp, specs))) => {
-                        register_mcp_tools_with_specs(aggregate.as_ref(), Arc::new(mcp), specs)
-                            .await;
+                match McpToolSource::new_with_env(cmd, args, env_github, mcp_verbose).await {
+                    Ok(mcp) => {
+                        if let Err(e) = register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
+                        {
+                            tracing::warn!(
+                                "GitHub MCP registered but list/call may fail: {}",
+                                e
+                            );
+                        }
                     }
-                    Ok(Err(e)) => {
-                        tracing::warn!("GitHub MCP failed to start or list tools, skipping: {}", e);
-                    }
-                    Err(join_e) => {
-                        tracing::warn!("GitHub MCP spawn_blocking join failed: {}", join_e);
+                    Err(e) => {
+                        tracing::warn!("GitHub MCP failed to start, skipping: {}", e);
                     }
                 }
             }
@@ -297,8 +275,10 @@ pub(crate) async fn build_tool_source(
         let db_path = env_config::home::loom_home().join("tasks").join("tasks.db");
         let db_dir = db_path.parent().unwrap();
         let _ = std::fs::create_dir_all(db_dir);
-        if let Ok(db) = task_core::TaskDb::open(&db_path).await {
-            register_task_tools(&aggregate, Arc::new(db)).await;
+        if config.goal_mode {
+            if let Ok(db) = task_core::TaskDb::open(&db_path).await {
+                register_task_tools(&aggregate, Arc::new(db)).await;
+            }
         }
 
         let memory_store = Arc::new(MemoryStore::new(&MemoryStore::default_path()));
@@ -318,41 +298,29 @@ pub(crate) async fn build_tool_source(
                     args,
                     env,
                 } => {
-                    tracing::debug!(name = %name, "starting MCP stdio server (spawn_blocking, pre-fetch tools)");
+                tracing::debug!(name = %name, "starting MCP stdio server");
                     let command = command.clone();
                     let args = args.clone();
                     let env_vec: Vec<(String, String)> =
                         env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                     let mcp_verbose = config.mcp_verbose;
-                    let create_result = tokio::task::spawn_blocking(move || {
-                        let mcp = McpToolSource::new_with_env(
-                            command,
-                            args,
-                            env_vec,
-                            mcp_verbose,
-                        )
-                        .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
-                        let specs = mcp.list_tools_sync()?;
-                        Ok::<_, ToolSourceError>((mcp, specs))
-                    })
-                    .await;
-                    match create_result {
-                        Ok(Ok((mcp, specs))) => {
-                            register_mcp_tools_with_specs(aggregate.as_ref(), Arc::new(mcp), specs)
-                                .await;
+                    match McpToolSource::new_with_env(command, args, env_vec, mcp_verbose).await {
+                        Ok(mcp) => {
+                            if let Err(e) =
+                                register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
+                            {
+                                tracing::warn!(
+                                    name = %name,
+                                    "mcp server registered but list/call may fail: {}",
+                                    e
+                                );
+                            }
                         }
-                        Ok(Err(e)) => {
+                        Err(e) => {
                             tracing::warn!(
                                 name = %name,
-                                "mcp server failed to start or list tools, skipping: {}",
+                                "mcp server failed to start, skipping: {}",
                                 e
-                            );
-                        }
-                        Err(join_e) => {
-                            tracing::warn!(
-                                name = %name,
-                                "mcp server spawn_blocking join failed: {}",
-                                join_e
                             );
                         }
                     }
@@ -407,30 +375,25 @@ pub(crate) async fn build_tool_source(
                 }
             }
         } else {
-            tracing::debug!("starting GitHub MCP (stdio, spawn_blocking, pre-fetch tools)");
-            let cmd = config.mcp_github_cmd.clone();
-            let args = config.mcp_github_args.clone();
-            let env_github = vec![("GITHUB_TOKEN".to_string(), token.clone())];
-            let mcp_verbose = config.mcp_verbose;
-            let create_result = tokio::task::spawn_blocking(move || {
-                let mcp =
-                    McpToolSource::new_with_env(cmd, args, env_github, mcp_verbose)
-                        .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
-                let specs = mcp.list_tools_sync()?;
-                Ok::<_, ToolSourceError>((mcp, specs))
-            })
-            .await;
-            match create_result {
-                Ok(Ok((mcp, specs))) => {
-                    register_mcp_tools_with_specs(aggregate.as_ref(), Arc::new(mcp), specs).await;
+                tracing::debug!("starting GitHub MCP (stdio)");
+                let cmd = config.mcp_github_cmd.clone();
+                let args = config.mcp_github_args.clone();
+                let env_github = vec![("GITHUB_TOKEN".to_string(), token.clone())];
+                let mcp_verbose = config.mcp_verbose;
+                match McpToolSource::new_with_env(cmd, args, env_github, mcp_verbose).await {
+                    Ok(mcp) => {
+                        if let Err(e) = register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
+                        {
+                            tracing::warn!(
+                                "GitHub MCP registered but list/call may fail: {}",
+                                e
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("GitHub MCP failed to start, skipping: {}", e);
+                    }
                 }
-                Ok(Err(e)) => {
-                    tracing::warn!("GitHub MCP failed to start or list tools, skipping: {}", e);
-                }
-                Err(join_e) => {
-                    tracing::warn!("GitHub MCP spawn_blocking join failed: {}", join_e);
-                }
-            }
         }
     }
 

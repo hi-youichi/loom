@@ -59,6 +59,7 @@ pub(super) async fn handle_run_stream<S>(
     request_id: Option<String>,
     mut rx: mpsc::Receiver<ProtocolEventEnvelope>,
     run_handle: tokio::task::JoinHandle<RunTaskResult>,
+    cancellation: Option<loom_cli_types::RunCancellation>,
     sender: &mut S,
 ) -> Result<Option<ServerResponse>, Box<dyn std::error::Error + Send + Sync>>
 where
@@ -98,11 +99,25 @@ where
     );
 
     if let Some(e) = send_err {
-        // Client disconnected or send failed; abort the agent task. Graceful cancellation would
-        // require loom to accept a CancellationToken so the runner can stop mid-run.
-        tracing::warn!("⚠️  Stream delivery failed, aborting run: {}", run_id);
-        run_handle.abort();
-        let _ = run_handle.await;
+        tracing::warn!("⚠️  Stream delivery failed, cancelling run: {}", run_id);
+        // Try graceful cancellation first; fall back to abort after a grace period.
+        let mut run_handle = run_handle;
+        if let Some(ref cancellation) = cancellation {
+            cancellation.cancel();
+            tokio::select! {
+                _ = &mut run_handle => {
+                    tracing::info!("Run {} cancelled gracefully", run_id);
+                }
+                _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {
+                    tracing::warn!("⚠️  Run {} did not finish in 5s after cancel, aborting", run_id);
+                    run_handle.abort();
+                    let _ = run_handle.await;
+                }
+            }
+        } else {
+            run_handle.abort();
+            let _ = run_handle.await;
+        }
         return Err(e);
     }
 

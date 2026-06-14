@@ -510,8 +510,13 @@ impl GoalRunner {
     }
 
     async fn cleanup(&mut self) {
+        self.cancel.cancel();
         if let Some(ref mut child) = self.mcp_server {
             let _ = child.kill().await;
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                child.wait(),
+            ).await;
         }
     }
 }

@@ -1,4 +1,4 @@
-//! Agent Profile — helpers that depend on `RunOptions`.
+﻿//! Agent Profile — helpers that depend on `RunOptions`.
 //
 //! The core profile types and functions live in `loom_react_config::profile`.
 //! Consumers should import directly from that crate.
@@ -50,6 +50,7 @@ mod tests {
             force_compact: false,
             chat_id: None,
             worktree: false,
+            goal_mode: false,
         };
         let (profile, source) = load_profile_from_options(&opts).expect("built-in dev profile");
         assert_eq!(profile.name, "dev");
@@ -92,6 +93,7 @@ mod tests {
             force_compact: false,
             chat_id: None,
             worktree: false,
+            goal_mode: false,
         };
         let (profile, source) =
             load_profile_from_options(&opts).expect("built-in agent-builder profile");
@@ -139,6 +141,7 @@ mod tests {
             force_compact: false,
             chat_id: None,
             worktree: false,
+            goal_mode: false,
         };
         let result = load_profile_from_options(&opts);
 
@@ -187,6 +190,7 @@ mod tests {
             force_compact: false,
             chat_id: None,
             worktree: false,
+            goal_mode: false,
         };
         let result = load_profile_from_options(&opts);
         match prev_loom {

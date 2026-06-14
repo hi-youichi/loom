@@ -65,6 +65,7 @@ pub fn build_helve_config(
     }
 
     let mut base = ReactBuildConfig::from_env();
+    base.goal_mode = effective_opts.goal_mode;
     base.dry_run = effective_opts.dry_run;
     {
         let model = effective_opts.model.as_deref();

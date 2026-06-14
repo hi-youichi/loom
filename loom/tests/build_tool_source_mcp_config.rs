@@ -47,6 +47,7 @@ fn opts(working_folder: PathBuf) -> RunOptions {
             force_compact: false,
             chat_id: None,
             worktree: false,
+            goal_mode: false,
         }
 }
 

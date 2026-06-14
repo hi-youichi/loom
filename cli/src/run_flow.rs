@@ -1,4 +1,4 @@
-//! Build run options and execute single-turn or interactive agent runs.
+﻿//! Build run options and execute single-turn or interactive agent runs.
 
 use std::sync::Arc;
 
@@ -57,6 +57,7 @@ pub(crate) fn build_run_options(args: &Args, message: String, got_adaptive: bool
         force_compact: false,
         chat_id: None,
         worktree: args.worktree,
+        goal_mode: false,
     }
 }
 

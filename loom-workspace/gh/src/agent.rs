@@ -67,5 +67,6 @@ pub fn run_options_from_issues_event(
             force_compact: false,
             chat_id: None,
             worktree: false,
+            goal_mode: false,
         }
 }

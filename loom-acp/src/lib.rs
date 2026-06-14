@@ -316,7 +316,7 @@ pub async fn run_stdio_loop() -> Result<StdioLoopResult, Box<dyn std::error::Err
             let agent12 = agent.clone();
 
             let drain_conn = conn_shared.clone();
-            let _drain_task = tokio::task::spawn_local(async move {
+            let drain_task = tokio::task::spawn_local(async move {
                 let mut rx = rx;
                 while let Some(n) = rx.recv().await {
                     let guard = drain_conn.read().await;
@@ -480,6 +480,12 @@ pub async fn run_stdio_loop() -> Result<StdioLoopResult, Box<dyn std::error::Err
                 })?;
 
             agent12.cancel_all();
+            // Give cancelled tasks and pending session notifications a brief grace period
+            // to wind down before the LocalSet is dropped.
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_millis(200),
+                drain_task,
+            ).await;
             Ok(())
         })
         .await;

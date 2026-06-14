@@ -8,6 +8,7 @@
 //! - Sanitization: API keys and Authorization headers are stripped.
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -136,7 +137,8 @@ enum AuditMsg {
 /// Uses an `mpsc::unbounded_channel` for async writes; a background tokio task
 /// consumes the queue and appends each record as a JSONL line to the file.
 pub struct FileLlmAuditLog {
-    tx: mpsc::UnboundedSender<AuditMsg>,
+    tx: Option<mpsc::UnboundedSender<AuditMsg>>,
+    join_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl FileLlmAuditLog {
@@ -151,8 +153,11 @@ impl FileLlmAuditLog {
     /// dropped (the sender is dropped), the task exits automatically.
     pub fn new(base_path: PathBuf) -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
-        tokio::spawn(Self::writer_task(rx, base_path));
-        Self { tx }
+        let join_handle = tokio::spawn(Self::writer_task(rx, base_path));
+        Self {
+            tx: Some(tx),
+            join_handle: Some(join_handle),
+        }
     }
 
     async fn writer_task(
@@ -191,7 +196,30 @@ impl FileLlmAuditLog {
 
 impl LlmAuditLog for FileLlmAuditLog {
     fn log(&self, entry: LlmAuditEntry) {
-        let _ = self.tx.send(AuditMsg::Write(entry));
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(AuditMsg::Write(entry));
+        }
+    }
+}
+
+impl Drop for FileLlmAuditLog {
+    fn drop(&mut self) {
+        // Drop the sender to signal the writer task to drain remaining messages and exit.
+        self.tx.take();
+
+        if let Some(handle) = self.join_handle.take() {
+            if let Ok(rt) = tokio::runtime::Handle::try_current() {
+                let _ = tokio::task::block_in_place(|| {
+                    rt.block_on(tokio::time::timeout(
+                        Duration::from_secs(2),
+                        handle,
+                    ))
+                });
+            } else {
+                // Outside a runtime; abort the writer since we cannot await.
+                handle.abort();
+            }
+        }
     }
 }
 

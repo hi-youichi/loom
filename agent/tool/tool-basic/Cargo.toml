@@ -24,8 +24,7 @@ loom-commands = { path = "../../../loom-commands" }
 skill = { path = "../../skill" }
 config = { path = "../../../config" }
 
-mcp_client = { git = "https://github.com/graphweave/mcm-rust", package = "mcp_client" }
-mcp_core = { git = "https://github.com/graphweave/mcm-rust", package = "mcp_core" }
+rmcp = { version = "0.16", features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest"] }
 
 walkdir = "2"
 glob = "0.3"
@@ -39,7 +38,7 @@ chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 thiserror = { workspace = true }
 tokio-stream = { workspace = true }
-crossbeam-channel = "0.5"
+
 dirs = "5"
 
 [dev-dependencies]

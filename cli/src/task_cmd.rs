@@ -1,4 +1,3 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use task_core::{CreateParams, ListParams, TaskDb, TaskStatus};
@@ -48,28 +47,30 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
 
             let working_dir = std::env::current_dir()?;
             let message = format!(
-                "客户提交了一个新任务，请开始处理。\n\n主 Task ID: {}\n需求：{}\n\n请按 Task-Driven Workflow 执行。",
+                "??????????,??????\n\n? Task ID: {}\n??:{}\n\n?? Task-Driven Workflow ???",
                 task.id, desc
             );
 
             let run_cancellation = loom_cli_types::RunCancellation::new(0);
             let rc_clone = run_cancellation.clone();
-            let was_cancelled = Arc::new(AtomicBool::new(false));
-            let wc_clone = was_cancelled.clone();
+            let last_ctrlc = Arc::new(std::sync::Mutex::new(None::<std::time::Instant>));
+            let lc_clone = last_ctrlc.clone();
             let force_quit = Arc::new(Notify::new());
             let fq_clone = force_quit.clone();
             ctrlc::set_handler(move || {
                 rc_clone.cancel();
-                if wc_clone.swap(true, Ordering::SeqCst) {
+                let now = std::time::Instant::now();
+                let is_double_press = {
+                    let mut guard = lc_clone.lock().unwrap();
+                    let prev = guard.replace(now);
+                    prev.map(|p| now.duration_since(p) < std::time::Duration::from_secs(2))
+                        .unwrap_or(false)
+                };
+                if is_double_press {
                     fq_clone.notify_one();
                     std::thread::sleep(std::time::Duration::from_millis(100));
                     std::process::exit(130);
                 }
-                let wc_reset = wc_clone.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_secs(2));
-                    wc_reset.store(false, Ordering::SeqCst);
-                });
             })?;
 
             let mut opts = RunOptions {
@@ -98,6 +99,7 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
                 force_compact: false,
                 chat_id: None,
                 worktree: false,
+                goal_mode: false,
                 debug_llm: false,
             };
 
@@ -109,7 +111,7 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
             let stream_out = make_stream_out(&output);
             let reply_len = max_message_len();
 
-            let initial_message = Some(format!("Task {} 已创建", task_id_short));
+            let initial_message = Some(format!("Task {} ???", task_id_short));
             run_interactive_mode(
                 &mut opts,
                 &Command::React,
@@ -178,28 +180,30 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
 
             let working_dir = std::env::current_dir()?;
             let message = format!(
-                "请继续处理以下任务。\n\n主 Task ID: {}\n需求：{}\n状态：{}\n\n请检查子任务进度，继续执行。",
+                "??????????\n\n? Task ID: {}\n??:{}\n??:{}\n\n????????,?????",
                 task.id, task.description, task.status
             );
 
             let run_cancellation = loom_cli_types::RunCancellation::new(0);
             let rc_clone = run_cancellation.clone();
-            let was_cancelled = Arc::new(AtomicBool::new(false));
-            let wc_clone = was_cancelled.clone();
+            let last_ctrlc = Arc::new(std::sync::Mutex::new(None::<std::time::Instant>));
+            let lc_clone = last_ctrlc.clone();
             let force_quit = Arc::new(Notify::new());
             let fq_clone = force_quit.clone();
             ctrlc::set_handler(move || {
                 rc_clone.cancel();
-                if wc_clone.swap(true, Ordering::SeqCst) {
+                let now = std::time::Instant::now();
+                let is_double_press = {
+                    let mut guard = lc_clone.lock().unwrap();
+                    let prev = guard.replace(now);
+                    prev.map(|p| now.duration_since(p) < std::time::Duration::from_secs(2))
+                        .unwrap_or(false)
+                };
+                if is_double_press {
                     fq_clone.notify_one();
                     std::thread::sleep(std::time::Duration::from_millis(100));
                     std::process::exit(130);
                 }
-                let wc_reset = wc_clone.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_secs(2));
-                    wc_reset.store(false, Ordering::SeqCst);
-                });
             })?;
 
             let mut opts = RunOptions {
@@ -228,6 +232,7 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
                 force_compact: false,
                 chat_id: None,
                 worktree: false,
+                goal_mode: false,
                 debug_llm: false,
             };
 
@@ -239,7 +244,7 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
             let stream_out = make_stream_out(&output);
             let reply_len = max_message_len();
 
-            let initial_message = Some(format!("Task {} 已恢复", task_id_short));
+            let initial_message = Some(format!("Task {} ???", task_id_short));
             run_interactive_mode(
                 &mut opts,
                 &Command::React,

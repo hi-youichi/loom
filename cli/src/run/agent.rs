@@ -334,7 +334,7 @@ pub async fn run_agent_wrapper(
 
     if verbose {
         if let Some(ref from) = state.lock().unwrap().last_node {
-            eprintln!("flow: {} → END", from);
+            eprintln!("flow: {} ? END", from);
         }
     }
     if let Ok(s) = state.lock() {
@@ -360,7 +360,7 @@ pub async fn run_agent_wrapper(
     let (reply, reasoning_content, stop_reason) = completion_reply(result);
 
     if matches!(stop_reason, RunStopReason::EndTurn) && !reply.is_empty() {
-        // [TEMP-DISABLE BG REVIEW] — uncomment the spawn line below to re-enable
+        // [TEMP-DISABLE BG REVIEW] � uncomment the spawn line below to re-enable
         let config = super::background_review::build_background_config_from_opts_ext(
             loom_opts.base_url.clone().unwrap_or_default(),
             loom_opts.api_key.clone().unwrap_or_default(),
@@ -482,7 +482,7 @@ fn on_event_react(
                 eprintln!("--- {} ---", label);
                 eprintln!("{}", format_react_state_display(react_state, display_max_len));
                 if node_id == "think" && react_state.tool_calls.is_empty() {
-                    eprintln!("(think → END: tool_calls empty, LLM gave FINAL_ANSWER)");
+                    eprintln!("(think ? END: tool_calls empty, LLM gave FINAL_ANSWER)");
                 }
             } else {
             // Save tool_calls during think (non-verbose)
@@ -874,7 +874,7 @@ fn on_event_got(
         } => {
             if verbose {
                 eprintln!(
-                    "--- AGoT expand: {} → +{} nodes, +{} edges ---",
+                    "--- AGoT expand: {} ? +{} nodes, +{} edges ---",
                     node_id, nodes_added, edges_added
                 );
             }
@@ -1394,6 +1394,7 @@ mod tests {
             force_compact: false,
             chat_id: None,
             worktree: false,
+            goal_mode: false,
             debug_llm: false,
         }
     }

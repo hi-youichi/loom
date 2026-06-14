@@ -59,6 +59,8 @@ pub struct RunOptions {
     pub force_compact: bool,
     pub chat_id: Option<i64>,
     pub worktree: bool,
+    /// When true, task management tools are registered. Only in goal mode.
+    pub goal_mode: bool,
 }
 
 impl std::fmt::Debug for RunOptions {
@@ -103,6 +105,7 @@ impl RunOptions {
             force_compact: self.force_compact,
             chat_id: self.chat_id,
             worktree: self.worktree,
+            goal_mode: self.goal_mode,
         }
     }
 }

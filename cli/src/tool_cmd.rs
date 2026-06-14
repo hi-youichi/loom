@@ -278,6 +278,7 @@ mod tests {
             force_compact: false,
             chat_id: None,
             worktree: false,
+            goal_mode: false,
             debug_llm: false,
         }
     }

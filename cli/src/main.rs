@@ -27,7 +27,6 @@ mod tui_cmd;
 
 pub(crate) use args::Command;
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use clap::Parser;
@@ -197,26 +196,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Second press within 2s: force-exit the process (also triggers REPL exit in interactive mode).
     let run_cancellation = RunCancellation::new(0);
     let rc_clone = run_cancellation.clone();
-    let was_cancelled = Arc::new(AtomicBool::new(false));
-    let wc_clone = was_cancelled.clone();
+    let last_ctrlc = Arc::new(std::sync::Mutex::new(None::<std::time::Instant>));
+    let lc_clone = last_ctrlc.clone();
     let force_quit = Arc::new(Notify::new());
     let fq_clone = force_quit.clone();
     ctrlc::set_handler(move || {
         rc_clone.cancel();
-        if wc_clone.swap(true, Ordering::SeqCst) {
-            // Second Ctrl+C within the grace period: force exit.
+        let now = std::time::Instant::now();
+        let is_double_press = {
+            let mut guard = lc_clone.lock().unwrap();
+            let prev = guard.replace(now);
+            prev.map(|p| now.duration_since(p) < std::time::Duration::from_secs(2))
+                .unwrap_or(false)
+        };
+        if is_double_press {
             fq_clone.notify_one();
-            // Give the REPL/agent a brief moment to notice, then hard exit.
             std::thread::sleep(std::time::Duration::from_millis(100));
             std::process::exit(130);
         }
-        // Reset the "was cancelled" flag after a grace period so the user
-        // can continue using the REPL after cancelling a single agent run.
-        let wc_reset = wc_clone.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_secs(2));
-            wc_reset.store(false, Ordering::SeqCst);
-        });
     })?;
 
     let mut opts = build_run_options(&args, message.clone().unwrap_or_default(), got_adaptive);

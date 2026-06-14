@@ -40,6 +40,7 @@ pub(crate) async fn handle_tools_list(
             force_compact: false,
             chat_id: None,
             worktree: false,
+            goal_mode: false,
             debug_llm: false,
     };
     let (_helve, config, _resolved_agent) = build_helve_config(&opts);
@@ -86,6 +87,7 @@ pub(crate) async fn handle_tool_show(
             force_compact: false,
             chat_id: None,
             worktree: false,
+            goal_mode: false,
             debug_llm: false,
     };
     let (_helve, config, _resolved_agent) = build_helve_config(&opts);

@@ -11,6 +11,7 @@ use loom_llm::ModelEntry;
 use loom_tier::factory::LlmFactory;
 use chrono::Utc;
 use std::sync::{Arc, Mutex as StdMutex};
+use std::time::Duration;
 use tracing::{error, info, warn};
 
 /// Handle for the result of a background review.
@@ -91,8 +92,15 @@ impl PendingReviewRegistry {
 
         info!("Waiting for {} background review(s) to complete...", count);
 
+        const WAIT_TIMEOUT: Duration = Duration::from_secs(60);
         for handle in handles {
-            let _ = handle.await;
+            match tokio::time::timeout(WAIT_TIMEOUT, handle).await {
+                Ok(_) => {}
+                Err(_) => warn!(
+                    timeout = ?WAIT_TIMEOUT,
+                    "Background review task did not finish in time, abandoning"
+                ),
+            }
         }
 
         info!("All {} background review(s) completed.", count);

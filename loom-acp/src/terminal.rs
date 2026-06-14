@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
 use tokio::sync::{Notify, RwLock};
@@ -41,6 +42,9 @@ pub enum TerminalError {
 
     #[error("Terminal not running: {0}")]
     NotRunning(String),
+
+    #[error("Terminal wait timed out: {0}")]
+    Timeout(String),
 }
 
 struct TerminalEntry {
@@ -163,9 +167,10 @@ impl TerminalManager {
             };
 
             if let Some(mut child) = child_process {
-                let result = child.wait().await;
+                const CHILD_WAIT_TIMEOUT: Duration = Duration::from_secs(3600);
+                let result = tokio::time::timeout(CHILD_WAIT_TIMEOUT, child.wait()).await;
                 let status = match result {
-                    Ok(exit_status) => {
+                    Ok(Ok(exit_status)) => {
                         let exit_code = exit_status.code().map(|c| c as u32);
                         #[cfg(unix)]
                         let signal = {
@@ -182,13 +187,22 @@ impl TerminalManager {
                         );
                         TerminalStatus::Completed { exit_code, signal }
                     }
-                    Err(e) => {
+                    Ok(Err(e)) => {
                         error!(terminal_id = %terminal_id, error = %e, "Exit watcher failed to wait for process");
                         TerminalStatus::Completed {
                             exit_code: None,
                             signal: None,
                         }
                     },
+                    Err(_) => {
+                        warn!(
+                            terminal_id = %terminal_id,
+                            timeout = ?CHILD_WAIT_TIMEOUT,
+                            "Child process did not exit within timeout, killing"
+                        );
+                        let _ = child.kill().await;
+                        TerminalStatus::Killed
+                    }
                 };
 
                 let mut map = terminals.write().await;
@@ -264,7 +278,18 @@ impl TerminalManager {
             entry.exit_notify.clone()
         };
 
-        exit_notify.notified().await;
+        const WAIT_NOTIFY_TIMEOUT: Duration = Duration::from_secs(3700);
+        match tokio::time::timeout(WAIT_NOTIFY_TIMEOUT, exit_notify.notified()).await {
+            Ok(_) => {}
+            Err(_) => {
+                warn!(
+                    terminal_id = %terminal_id,
+                    timeout = ?WAIT_NOTIFY_TIMEOUT,
+                    "wait_for_exit timed out waiting for exit notification"
+                );
+                return Err(TerminalError::Timeout(terminal_id.to_string()));
+            }
+        }
         debug!(terminal_id = %terminal_id, "wait_for_exit notified");
 
         let map = self.terminals.read().await;
