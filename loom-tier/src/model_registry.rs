@@ -181,6 +181,15 @@ impl ModelRegistry {
             }
         }
 
+        for provider in providers {
+            for model_id in &provider.declared_models {
+                let entry = ModelEntry::from_provider_config(provider, model_id);
+                if seen_ids.insert(entry.id.clone()) {
+                    all_models.push(entry);
+                }
+            }
+        }
+
         all_models.sort_by(|a, b| {
             a.provider
                 .cmp(&b.provider)
@@ -553,6 +562,7 @@ mod tests {
             fetch_models: false,
             cache_ttl: None,
             enable_tier_resolution: true,
+            declared_models: Vec::new(),
         };
         let cloned = config.clone();
         assert_eq!(config.name, cloned.name);

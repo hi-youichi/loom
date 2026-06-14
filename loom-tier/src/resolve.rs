@@ -169,6 +169,7 @@ mod tests {
             fetch_models: false,
             cache_ttl: None,
             enable_tier_resolution: true,
+            declared_models: Vec::new(),
         };
 
         let spec_api = Some("https://spec.api.com".to_string());
@@ -189,6 +190,7 @@ mod tests {
             fetch_models: false,
             cache_ttl: None,
             enable_tier_resolution: true,
+            declared_models: Vec::new(),
         };
 
         let spec_api = Some("https://spec.api.com".to_string());
@@ -207,6 +209,7 @@ mod tests {
             fetch_models: false,
             cache_ttl: None,
             enable_tier_resolution: true,
+            declared_models: Vec::new(),
         };
 
         let result = entry_with_spec_fallback(&provider_cfg, "gpt-4", None);
@@ -223,6 +226,7 @@ mod tests {
             fetch_models: false,
             cache_ttl: None,
             enable_tier_resolution: true,
+            declared_models: Vec::new(),
         };
 
         let result = entry_with_spec_fallback(&provider_cfg, "custom_model", None);
@@ -239,6 +243,7 @@ mod tests {
             fetch_models: false,
             cache_ttl: None,
             enable_tier_resolution: true,
+            declared_models: Vec::new(),
         };
 
         let result = entry_with_spec_fallback(&provider_cfg, "gpt-4", None);
@@ -255,6 +260,7 @@ mod tests {
             fetch_models: false,
             cache_ttl: None,
             enable_tier_resolution: true,
+            declared_models: Vec::new(),
         };
 
         let result = entry_with_spec_fallback(&provider_cfg, "model", None);
@@ -272,6 +278,7 @@ mod tests {
             fetch_models: true,
             cache_ttl: Some(3600),
             enable_tier_resolution: true,
+            declared_models: Vec::new(),
         };
 
         let spec_api = Some("https://spec.com".to_string());

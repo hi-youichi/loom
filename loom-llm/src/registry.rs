@@ -96,6 +96,8 @@ pub struct ProviderConfig {
     pub cache_ttl: Option<u64>,
     /// When `true`, enable tier resolution for this provider. Default: `true`.
     pub enable_tier_resolution: bool,
+    /// Model IDs declared in `config.toml` via `[[providers.models]]`.
+    pub declared_models: Vec<String>,
 }
 
 impl Default for ProviderConfig {
@@ -108,6 +110,7 @@ impl Default for ProviderConfig {
             fetch_models: false,
             cache_ttl: None,
             enable_tier_resolution: true,
+            declared_models: Vec::new(),
         }
     }
 }
@@ -288,6 +291,7 @@ mod tests {
             fetch_models: false,
             cache_ttl: None,
             enable_tier_resolution: true,
+            declared_models: Vec::new(),
         };
 
         let entry = ModelEntry::from_provider_config(&provider, "gpt-4o");

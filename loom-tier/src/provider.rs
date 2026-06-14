@@ -17,6 +17,7 @@ pub fn load_provider_configs() -> Option<Vec<ProviderConfig>> {
                 fetch_models: p.fetch_models.unwrap_or(false),
                 cache_ttl: p.cache_ttl,
                 enable_tier_resolution: p.enable_tier_resolution.unwrap_or(true),
+                declared_models: p.models.into_iter().map(|m| m.id).collect(),
             })
             .collect(),
     )

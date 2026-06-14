@@ -61,6 +61,7 @@ async fn fetch_available_models() -> Vec<ModelOption> {
                 fetch_models: p.fetch_models.unwrap_or(false),
                 cache_ttl: None,
                 enable_tier_resolution: true,
+                declared_models: p.models.into_iter().map(|m| m.id).collect(),
             })
             .collect(),
         Err(_) => vec![],

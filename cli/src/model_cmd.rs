@@ -106,6 +106,7 @@ async fn query_providers_models_from_spec(providers: &[ProviderDef]) -> Vec<Prov
             fetch_models: p.fetch_models.unwrap_or(false),
             cache_ttl: None,
             enable_tier_resolution: true,
+            declared_models: p.models.clone().into_iter().map(|m| m.id).collect(),
         })
         .collect();
 

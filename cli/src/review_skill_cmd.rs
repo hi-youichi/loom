@@ -44,6 +44,7 @@ pub(crate) fn build_review_client(
             fetch_models: false,
             cache_ttl: None,
             enable_tier_resolution: true,
+            declared_models: Vec::new(),
         },
         &model,
     );
