@@ -260,10 +260,10 @@ mod tests {
         .unwrap();
         let outcome = runner.stream_with_callback("hello", Some(|_| {} )).await.unwrap();
         match outcome {
-            crate::runner_common::StreamRunOutcome::Completed(s) => {
+            crate::runner_common::StreamRunOutcome::Finished(s) => {
                 assert!(s.last_assistant_reply().is_some());
             }
-            other => panic!("expected Completed, got {:?}", other),
+            other => panic!("expected Finished, got {:?}", other),
         }
     }
 

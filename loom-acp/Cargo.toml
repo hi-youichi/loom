@@ -26,7 +26,7 @@ loom-types = { path = "../loom-types" }
 loom-tier = { path = "../loom-tier" }
 loom-react-config = { path = "../loom-react-config" }
 loom-stream = { path = "../loom-stream" }
-loom-background-review = { path = "../loom-background-review" }
+
 loom-commands = { path = "../loom-commands" }
 config = { path = "../config", features = ["tracing-init"] }
 task-core = { path = "../task-core" }

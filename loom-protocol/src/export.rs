@@ -114,13 +114,6 @@ where
                 "total_tokens": total_tokens
             }
         }),
-        StreamEvent::ToolCallChunk {
-            call_id,
-            name,
-            arguments_delta,
-        } => json!({
-            "ToolCallChunk": { "call_id": call_id, "name": name, "arguments_delta": arguments_delta }
-        }),
         StreamEvent::ToolCall {
             call_id,
             name,
@@ -349,17 +342,6 @@ mod tests {
         };
         let v = stream_event_to_format_a(&ev).unwrap();
         assert_eq!(v["GotExpand"]["nodes_added"], 2);
-    }
-
-    #[test]
-    fn tool_call_chunk_format() {
-        let ev: StreamEvent<DummyState> = StreamEvent::ToolCallChunk {
-            call_id: Some("c1".to_string()),
-            name: Some("bash".to_string()),
-            arguments_delta: "{\"cmd\"".to_string(),
-        };
-        let v = stream_event_to_format_a(&ev).unwrap();
-        assert_eq!(v["ToolCallChunk"]["name"], "bash");
     }
 
     #[test]

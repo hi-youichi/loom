@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use agent::run_types::{AgentRunError, AgentRunResult, RunCompletion, RunOptions};
+use agent::run_types::{AgentRunResult, RunCompletion, RunOptions};
 use agent::RunnerError;
 use agent::agent::react::build::{build_react_runner, BuildRunnerError};
 use agent::agent::react::ReactRunner;
@@ -163,19 +163,13 @@ pub async fn run_agent(
                 .stream_with_config(opts.message.as_text().as_ref(), None, on_ev)
                 .await?;
             match outcome {
-                runner_common::StreamRunOutcome::Completed(state) => {
+                runner_common::StreamRunOutcome::Finished(state) => {
                     RunCompletion::Finished(AgentRunResult {
                         reply: state.last_assistant_reply().unwrap_or_default(),
                         reasoning_content: state.last_reasoning_content(),
                     })
                 }
                 runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
-                runner_common::StreamRunOutcome::Error(e) => {
-                    RunCompletion::Error(AgentRunError(e.to_string()))
-                }
-                runner_common::StreamRunOutcome::Empty => {
-                    RunCompletion::Error(AgentRunError("stream ended with empty state".to_string()))
-                }
             }
         }
         AnyRunner::Dup(r) => {
@@ -189,19 +183,13 @@ pub async fn run_agent(
             });
             let outcome = r.stream_with_config(opts.message.as_text().as_ref(), None, on_ev).await?;
             match outcome {
-                runner_common::StreamRunOutcome::Completed(state) => {
+                runner_common::StreamRunOutcome::Finished(state) => {
                     RunCompletion::Finished(AgentRunResult {
                         reply: state.last_assistant_reply().unwrap_or_default(),
                         reasoning_content: state.last_reasoning_content(),
                     })
                 }
                 runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
-                runner_common::StreamRunOutcome::Error(e) => {
-                    RunCompletion::Error(AgentRunError(e.to_string()))
-                }
-                runner_common::StreamRunOutcome::Empty => {
-                    RunCompletion::Error(AgentRunError("stream ended with empty state".to_string()))
-                }
             }
         }
         AnyRunner::Tot(r) => {
@@ -215,19 +203,13 @@ pub async fn run_agent(
             });
             let outcome = r.stream_with_config(opts.message.as_text().as_ref(), None, on_ev).await?;
             match outcome {
-                runner_common::StreamRunOutcome::Completed(state) => {
+                runner_common::StreamRunOutcome::Finished(state) => {
                     RunCompletion::Finished(AgentRunResult {
                         reply: state.last_assistant_reply().unwrap_or_default(),
                         reasoning_content: state.last_reasoning_content(),
                     })
                 }
                 runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
-                runner_common::StreamRunOutcome::Error(e) => {
-                    RunCompletion::Error(AgentRunError(e.to_string()))
-                }
-                runner_common::StreamRunOutcome::Empty => {
-                    RunCompletion::Error(AgentRunError("stream ended with empty state".to_string()))
-                }
             }
         }
         AnyRunner::Got(r) => {
@@ -241,19 +223,13 @@ pub async fn run_agent(
             });
             let outcome = r.stream_with_config(opts.message.as_text().as_ref(), None, on_ev).await?;
             match outcome {
-                runner_common::StreamRunOutcome::Completed(state) => {
+                runner_common::StreamRunOutcome::Finished(state) => {
                     RunCompletion::Finished(AgentRunResult {
                         reply: state.summary_result(),
                         reasoning_content: None,
                     })
                 }
                 runner_common::StreamRunOutcome::Cancelled => RunCompletion::Cancelled,
-                runner_common::StreamRunOutcome::Error(e) => {
-                    RunCompletion::Error(AgentRunError(e.to_string()))
-                }
-                runner_common::StreamRunOutcome::Empty => {
-                    RunCompletion::Error(AgentRunError("stream ended with empty state".to_string()))
-                }
             }
         }
     };
@@ -311,17 +287,17 @@ pub async fn build_runner(
         RunCmd::Dup => {
             let llm_boxed = llm_override_provider.map(|p| p.create_client(p.default_model()).unwrap());
             let r = build_dup_runner(&config, llm_boxed, opts.verbose).await?;
-            Ok(AnyRunner::Dup(r.with_cancellation(cancellation.clone())))
+            Ok(AnyRunner::Dup(r.with_cancellation(cancellation.clone()).with_any_stream_event_sender(opts.any_stream_event_sender.clone())))
         }
         RunCmd::Tot => {
             let llm_boxed = llm_override_provider.as_ref().map(|p| p.create_client(p.default_model()).unwrap());
             let r = build_tot_runner(&config, llm_boxed, opts.verbose).await?;
-            Ok(AnyRunner::Tot(r.with_cancellation(cancellation.clone())))
+            Ok(AnyRunner::Tot(r.with_cancellation(cancellation.clone()).with_any_stream_event_sender(opts.any_stream_event_sender.clone())))
         }
         RunCmd::Got { .. } => {
             let llm_boxed = llm_override_provider.as_ref().map(|p| p.create_client(p.default_model()).unwrap());
             let r = build_got_runner(&config, llm_boxed, opts.verbose).await?;
-            Ok(AnyRunner::Got(r.with_cancellation(cancellation)))
+            Ok(AnyRunner::Got(r.with_cancellation(cancellation).with_any_stream_event_sender(opts.any_stream_event_sender.clone())))
         }
     }
 }

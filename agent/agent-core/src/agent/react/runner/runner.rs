@@ -146,9 +146,9 @@ impl ReactRunner {
         &self,
         user_message: &str,
         on_event: Option<F>,
-    ) -> Result<runner_common::StreamRunOutcome<ReActState, runner_common::StreamRunError>, RunError>
+    ) -> Result<runner_common::StreamRunOutcome<ReActState>, RunError>
     where
-        F: FnMut(StreamEvent<ReActState>) + Send + 'static,
+        F: Fn(StreamEvent<ReActState>) + Clone + Send + 'static,
     {
         self.stream_with_config(user_message, None, on_event).await
     }
@@ -158,9 +158,9 @@ impl ReactRunner {
         user_message: &str,
         config: Option<RunnableConfig>,
         on_event: Option<F>,
-    ) -> Result<runner_common::StreamRunOutcome<ReActState, runner_common::StreamRunError>, RunError>
+    ) -> Result<runner_common::StreamRunOutcome<ReActState>, RunError>
     where
-        F: FnMut(StreamEvent<ReActState>) + Send + 'static,
+        F: Fn(StreamEvent<ReActState>) + Clone + Send + 'static,
     {
         let run_config = config.or_else(|| self.runnable_config.clone());
         let state = build_react_initial_state(
@@ -170,23 +170,27 @@ impl ReactRunner {
             &self.system_prompt,
         )
         .await?;
+        let event_forwarder: Option<std::sync::Arc<dyn Fn(StreamEvent<ReActState>) + Send + Sync>> =
+            self.any_stream_event_sender.as_ref().map(|sender| {
+                let sender = sender.clone();
+                std::sync::Arc::new(move |ev: StreamEvent<ReActState>| {
+                    sender(loom_cli_types::AnyStreamEvent::React(ev));
+                }) as std::sync::Arc<dyn Fn(StreamEvent<ReActState>) + Send + Sync>
+            });
         let result = runner_common::run_stream_with_config(
-            self.compiled.clone(),
+            &self.compiled,
             state,
             run_config,
             on_event,
             self.cancellation.as_ref().map(RunCancellation::token),
-            None,
+            event_forwarder,
         )
         .await;
         match result {
-            Ok(outcome) => match outcome {
-                runner_common::StreamRunOutcome::Completed(s) => Ok(runner_common::StreamRunOutcome::Completed(s)),
-                runner_common::StreamRunOutcome::Cancelled => Ok(runner_common::StreamRunOutcome::Cancelled),
-                runner_common::StreamRunOutcome::Error(runner_common::StreamRunError::Execution(err)) => Err(RunError::Execution(err)),
-                runner_common::StreamRunOutcome::Empty => Ok(runner_common::StreamRunOutcome::Empty),
-            },
+            Ok(runner_common::StreamRunOutcome::Finished(s)) => Ok(runner_common::StreamRunOutcome::Finished(s)),
+            Ok(runner_common::StreamRunOutcome::Cancelled) => Ok(runner_common::StreamRunOutcome::Cancelled),
             Err(runner_common::StreamRunError::Execution(err)) => Err(RunError::Execution(err)),
+            Err(runner_common::StreamRunError::StreamEndedWithoutState(_)) => Err(RunError::StreamEndedWithoutState),
         }
     }
 }
@@ -195,9 +199,9 @@ pub async fn run_react_graph_stream<F>(
     user_message: &str,
     options: Option<AgentOptions>,
     on_event: Option<F>,
-) -> Result<runner_common::StreamRunOutcome<ReActState, runner_common::StreamRunError>, RunError>
+) -> Result<runner_common::StreamRunOutcome<ReActState>, RunError>
 where
-    F: FnMut(StreamEvent<ReActState>) + Send + 'static,
+    F: Fn(StreamEvent<ReActState>) + Clone + Send + 'static,
 {
     let opts = resolve_run_agent_options(options.unwrap_or_default());
     let runner = ReactRunner::new(

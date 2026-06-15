@@ -828,41 +828,6 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
         let result = run_agent_with_options(&opts, &RunCmd::React, on_event).await;
         self.sessions.finish_prompt(&key, cancellation.generation());
 
-        // Trigger background review after successful completion
-        if let Ok(RunCompletion::Finished(ref run_result)) = &result {
-            if !run_result.reply.is_empty() {
-                let base_url = opts.base_url.clone()
-                    .or_else(|| std::env::var("OPENAI_BASE_URL").ok())
-                    .unwrap_or_default();
-                let api_key = opts.api_key.clone()
-                    .or_else(|| std::env::var("OPENAI_API_KEY").ok())
-                    .unwrap_or_default();
-                let model = opts.model.clone()
-                    .or_else(|| std::env::var("MODEL").ok())
-                    .unwrap_or_else(|| "gpt-4o-mini".to_string());
-                let review_config = loom_background_review::BackgroundReviewConfig {
-                    base_url,
-                    api_key,
-                    model,
-                    ..Default::default()
-                };
-                if review_config.enabled { // [TEMP-DISABLE BG REVIEW] � commented out spawn below
-                    let session_id = opts.thread_id.clone()
-                        .unwrap_or_else(|| format!("acp-{}", args.session_id));
-                    let user_msg = match &opts.message {
-                        loom_llm::message::UserContent::Text(t) => t.clone(),
-                        _ => String::new(),
-                    };
-                    let session_content = format!("User: {}\n\nAssistant: {}", user_msg, run_result.reply);
-                    // [TEMP-DISABLE BG REVIEW] loom_background_review::spawn_background_review(
-                    //     review_config, session_content, session_id,
-                    //     loom_background_review::BackgroundReviewCallbacks::default(),
-                    // );
-                    let _ = (review_config, session_content, session_id);
-                }
-            }
-        }
-
         match result {
             Ok(RunCompletion::Finished(_reply)) => Ok(PromptResponse::new(StopReason::EndTurn)),
             Ok(RunCompletion::Cancelled) => Ok(PromptResponse::new(StopReason::Cancelled)),

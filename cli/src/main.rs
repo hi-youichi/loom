@@ -40,7 +40,6 @@ use run_flow::{
     build_run_options, output_config, resolve_user_message, run_interactive_mode,
     run_single_turn_mode,
 };
-use cli::run::background_review::wait_for_pending_reviews;
 use subcommands::{
     handle_agent_command, handle_curator_command, handle_mcp_command,
     handle_memory_command, handle_models_command, handle_session_command, handle_skills_command,
@@ -226,10 +225,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         run_single_turn_mode(&mut opts, &cmd, reply_len, &output).await?;
     }
-
-    // Wait for all pending background reviews to complete before exiting.
-    // This ensures that memory updates and skill modifications are persisted.
-    let _ = wait_for_pending_reviews().await;
 
     Ok(())
 }

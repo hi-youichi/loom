@@ -176,7 +176,7 @@ pub struct ModelCapabilities {
 // Response and Delta Types
 // ============================================================================
 
-/// Delta for one tool call from LLM streaming (for tool_call_chunk events).
+/// Delta for one tool call from LLM streaming (internal; not propagated to stream events).
 #[derive(Clone, Debug)]
 pub struct ToolCallDelta {
     /// Stable tool call id when the provider emits one.
@@ -337,20 +337,49 @@ pub trait LlmClient: Send + Sync {
         chunk_tx: Option<mpsc::Sender<MessageChunk>>,
     ) -> Result<LlmResponse, AgentError> {
         let response = self.invoke(messages).await?;
+        tracing::info!(
+            hang_probe = "invoke_stream",
+            content_len = response.content.len(),
+            reasoning_len = response.reasoning_content.as_ref().map_or(0, |s| s.len()),
+            tool_calls = response.tool_calls.len(),
+            "hang_probe: invoke_stream invoke completed"
+        );
 
         // Default: send full content as single chunk if streaming is enabled
         if let Some(tx) = chunk_tx {
             if let Some(ref reasoning_content) = response.reasoning_content {
                 if !reasoning_content.is_empty() {
+                    tracing::info!(
+                        hang_probe = "invoke_stream_send",
+                        kind = "reasoning",
+                        len = reasoning_content.len(),
+                        "hang_probe: invoke_stream send reasoning start"
+                    );
                     let _ = tx
                         .send(MessageChunk::thinking(reasoning_content.clone()))
                         .await;
+                    tracing::info!(
+                        hang_probe = "invoke_stream_send",
+                        kind = "reasoning",
+                        "hang_probe: invoke_stream send reasoning done"
+                    );
                 }
             }
             if !response.content.is_empty() {
+                tracing::info!(
+                    hang_probe = "invoke_stream_send",
+                    kind = "message",
+                    len = response.content.len(),
+                    "hang_probe: invoke_stream send message start"
+                );
                 let _ = tx
                     .send(MessageChunk::message(response.content.clone()))
                     .await;
+                tracing::info!(
+                    hang_probe = "invoke_stream_send",
+                    kind = "message",
+                    "hang_probe: invoke_stream send message done"
+                );
             }
         }
 

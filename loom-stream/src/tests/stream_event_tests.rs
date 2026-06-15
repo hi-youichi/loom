@@ -61,25 +61,6 @@ mod tests {
             _ => panic!("expected Custom"),
         }
 
-        // Test ToolCallChunk variant
-        let event: StreamEvent<DummyState> = StreamEvent::ToolCallChunk {
-            call_id: Some("call1".to_string()),
-            name: Some("tool1".to_string()),
-            arguments_delta: "{\"arg\": \"value\"}".to_string(),
-        };
-        match event {
-            StreamEvent::ToolCallChunk {
-                call_id,
-                name,
-                arguments_delta,
-            } => {
-                assert_eq!(call_id, Some("call1".to_string()));
-                assert_eq!(name, Some("tool1".to_string()));
-                assert_eq!(arguments_delta, "{\"arg\": \"value\"}".to_string());
-            }
-            _ => panic!("expected ToolCallChunk"),
-        }
-
         // Test ToolCall variant
         let event: StreamEvent<DummyState> = StreamEvent::ToolCall {
             call_id: Some("call1".to_string()),

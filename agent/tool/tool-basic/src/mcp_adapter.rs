@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn mcp_tool_adapter_name_and_spec() {
-        let spec = ToolSpec {
+        let _spec = ToolSpec {
             name: "demo".to_string(),
             description: Some("demo tool".to_string()),
             input_schema: serde_json::json!({"type": "object"}),

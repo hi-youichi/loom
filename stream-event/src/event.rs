@@ -140,15 +140,6 @@ pub enum ProtocolEvent {
         nodes_added: usize,
         edges_added: usize,
     },
-    /// Tool call arguments streamed incrementally (e.g. streaming JSON).
-    /// First chunk usually has `call_id` and `name`; later chunks may have only `arguments_delta`.
-    /// Complete call is then emitted as [`ToolCall`](Self::ToolCall).
-    ToolCallChunk {
-        call_id: Option<String>,
-        name: Option<String>,
-        /// Incremental JSON or text for the arguments.
-        arguments_delta: String,
-    },
     /// Complete tool call: name and full arguments. Emitted when the model finishes the call.
     /// Followed by [`ToolStart`](Self::ToolStart) → [`ToolOutput`](Self::ToolOutput) (zero or more) → [`ToolEnd`](Self::ToolEnd).
     ToolCall {
@@ -245,33 +236,6 @@ mod tests {
         assert_eq!(value["type"], "got_expand");
         assert_eq!(value["node_id"], "n-3");
         assert!(value.get("id").is_none());
-    }
-
-    #[test]
-    fn tool_call_chunk_format() {
-        let event = ProtocolEvent::ToolCallChunk {
-            call_id: Some("call_abc".to_string()),
-            name: Some("bash".to_string()),
-            arguments_delta: "{\"cmd\":\"cargo".to_string(),
-        };
-        let v = event.to_value().unwrap();
-        assert_eq!(v["type"], "tool_call_chunk");
-        assert_eq!(v["call_id"], "call_abc");
-        assert_eq!(v["name"], "bash");
-        assert_eq!(v["arguments_delta"], "{\"cmd\":\"cargo");
-    }
-
-    #[test]
-    fn tool_call_chunk_null_name_on_subsequent_delta() {
-        let event = ProtocolEvent::ToolCallChunk {
-            call_id: Some("call_abc".to_string()),
-            name: None,
-            arguments_delta: " build\"}".to_string(),
-        };
-        let v = event.to_value().unwrap();
-        assert_eq!(v["type"], "tool_call_chunk");
-        assert!(v["name"].is_null());
-        assert_eq!(v["arguments_delta"], " build\"}");
     }
 
     #[test]

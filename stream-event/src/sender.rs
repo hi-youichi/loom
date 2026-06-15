@@ -1,4 +1,4 @@
-use crate::{MessageChunk, StreamEvent, StreamMetadata};
+use crate::{MessageChunk, MessageChunkKind, StreamEvent, StreamMetadata};
 use std::fmt::Debug;
 use tokio::sync::mpsc;
 
@@ -61,11 +61,31 @@ where
         let namespace = self.namespace.clone();
         let mut forwarded = 0usize;
         let mut first_token_at: Option<std::time::Instant> = None;
+        tracing::info!(
+            hang_probe = "ChunkToStreamSender::forward",
+            "hang_probe: forward enter"
+        );
         while let Some(chunk) = chunk_rx.recv().await {
+            let kind_label = match &chunk.kind {
+                MessageChunkKind::Message => "message",
+                MessageChunkKind::Thinking => "thinking",
+            };
             if first_token_at.is_none() {
                 first_token_at = Some(std::time::Instant::now());
+                tracing::info!(
+                    hang_probe = "ChunkToStreamSender::forward",
+                    kind = kind_label,
+                    "hang_probe: forward first chunk"
+                );
             }
             forwarded += 1;
+            if forwarded.is_multiple_of(50) {
+                tracing::info!(
+                    hang_probe = "ChunkToStreamSender::forward",
+                    forwarded,
+                    "hang_probe: forward progress"
+                );
+            }
             let event = StreamEvent::Messages {
                 chunk,
                 metadata: StreamMetadata {
@@ -73,8 +93,35 @@ where
                     namespace: namespace.clone(),
                 },
             };
-            let _ = stream_tx.send(event).await;
+            let send_start = std::time::Instant::now();
+            tracing::trace!(
+                hang_probe = "ChunkToStreamSender::forward",
+                forwarded,
+                "hang_probe: forward send start"
+            );
+            if stream_tx.try_send(event).is_err() {
+                tracing::warn!(
+                    hang_probe = "ChunkToStreamSender::forward",
+                    forwarded,
+                    "hang_probe: forward send returned Err (receiver dropped)"
+                );
+                break;
+            }
+            let send_elapsed = send_start.elapsed();
+            if send_elapsed > std::time::Duration::from_millis(50) {
+                tracing::warn!(
+                    hang_probe = "ChunkToStreamSender::forward",
+                    forwarded,
+                    send_elapsed_ms = send_elapsed.as_millis() as u64,
+                    "hang_probe: forward send blocked >50ms"
+                );
+            }
         }
+        tracing::info!(
+            hang_probe = "ChunkToStreamSender::forward",
+            forwarded,
+            "hang_probe: forward end"
+        );
         (forwarded, first_token_at)
     }
 }

@@ -494,15 +494,28 @@ impl Node<ReActState> for ActNode {
                     );
                     if tools_mode {
                         if let Some(tx) = &run_ctx.stream_tx {
+                            tracing::info!(
+                                hang_probe = "act_send",
+                                event = "ToolEnd",
+                                name = %tc.name,
+                                is_error = true,
+                                reason = "parse_error",
+                                "hang_probe: act send start"
+                            );
                             let _ = tx
-                                .send(StreamEvent::ToolEnd {
+                                .try_send(StreamEvent::ToolEnd {
                                     call_id: tc.id.clone(),
                                     name: tc.name.clone(),
                                     result: display_text,
                                     is_error: true,
                                     raw_result: None,
-                                })
-                                .await;
+                                });
+                            tracing::info!(
+                                hang_probe = "act_send",
+                                event = "ToolEnd",
+                                name = %tc.name,
+                                "hang_probe: act send done"
+                            );
                         }
                     }
                     continue;
@@ -531,15 +544,22 @@ impl Node<ReActState> for ActNode {
                 );
                 if tools_mode {
                     if let Some(tx) = &run_ctx.stream_tx {
+                        tracing::info!(
+                            hang_probe = "act_send",
+                            event = "ToolEnd",
+                            name = %tc.name,
+                            is_error = false,
+                            reason = "empty_name",
+                            "hang_probe: act send start"
+                        );
                         let _ = tx
-                            .send(StreamEvent::ToolEnd {
+                            .try_send(StreamEvent::ToolEnd {
                                 call_id: tc.id.clone(),
                                 name: tc.name.clone(),
                                 result: display_text,
                                 is_error: false,
                                 raw_result: None,
-                            })
-                            .await;
+                            });
                     }
                 } else {
                     let payload = step_progress_payload(
@@ -608,12 +628,23 @@ impl Node<ReActState> for ActNode {
 
             if tools_mode {
                 if let Some(tx) = &run_ctx.stream_tx {
+                    tracing::info!(
+                        hang_probe = "act_send",
+                        event = "ToolStart",
+                        name = %tc.name,
+                        "hang_probe: act send start"
+                    );
                     let _ = tx
-                        .send(StreamEvent::ToolStart {
+                        .try_send(StreamEvent::ToolStart {
                             call_id: tc.id.clone(),
                             name: tc.name.clone(),
-                        })
-                        .await;
+                        });
+                    tracing::info!(
+                        hang_probe = "act_send",
+                        event = "ToolStart",
+                        name = %tc.name,
+                        "hang_probe: act send done"
+                    );
                 }
             }
 
@@ -679,15 +710,28 @@ impl Node<ReActState> for ActNode {
 
                     if tools_mode {
                         if let Some(tx) = &run_ctx.stream_tx {
+                            tracing::info!(
+                                hang_probe = "act_send",
+                                event = "ToolEnd",
+                                name = %tc.name,
+                                is_error = false,
+                                reason = "ok",
+                                "hang_probe: act send start"
+                            );
                             let _ = tx
-                                .send(StreamEvent::ToolEnd {
+                                .try_send(StreamEvent::ToolEnd {
                                     call_id: tc.id.clone(),
                                     name: tc.name.clone(),
                                     result: display_text,
                                     is_error: false,
                                     raw_result: raw_result_value,
-                                })
-                                .await;
+                                });
+                            tracing::info!(
+                                hang_probe = "act_send",
+                                event = "ToolEnd",
+                                name = %tc.name,
+                                "hang_probe: act send done"
+                            );
                         }
                     } else {
                         let call_id = tc.id.as_deref().unwrap_or("");
@@ -724,15 +768,28 @@ impl Node<ReActState> for ActNode {
 
                     if tools_mode {
                         if let Some(tx) = &run_ctx.stream_tx {
+                            tracing::info!(
+                                hang_probe = "act_send",
+                                event = "ToolEnd",
+                                name = %tc.name,
+                                is_error = true,
+                                reason = "exec_error",
+                                "hang_probe: act send start"
+                            );
                             let _ = tx
-                                .send(StreamEvent::ToolEnd {
+                                .try_send(StreamEvent::ToolEnd {
                                     call_id: tc.id.clone(),
                                     name: tc.name.clone(),
                                     result: display_text,
                                     is_error: true,
                                     raw_result: None,
-                                })
-                                .await;
+                                });
+                            tracing::info!(
+                                hang_probe = "act_send",
+                                event = "ToolEnd",
+                                name = %tc.name,
+                                "hang_probe: act send done"
+                            );
                         }
                     } else {
                         let call_id = tc.id.as_deref().unwrap_or("");

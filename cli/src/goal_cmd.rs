@@ -35,10 +35,7 @@ pub(crate) async fn handle_goal_command(ga: &GoalArgs) -> Result<(), Box<dyn std
         let mut runner = resume(id, working_dir, db, cancel, Some(run_cancellation)).await?;
         print_task_id(runner.task_id());
         let outcome = runner.run().await;
-        let session_content = runner.into_session_content();
-        let session_id = format!("goal-{}", &id[..8.min(id.len())]);
         print_outcome(&outcome);
-        spawn_goal_background_review(&ga.model, session_content, session_id);
         if let GoalOutcome::Error(_) = outcome {
             std::process::exit(1);
         }
@@ -96,9 +93,7 @@ let description = match &ga.description {
     }
     print_task_id(runner.task_id());
     let outcome = runner.run().await;
-    let session_content = runner.into_session_content();
     print_outcome(&outcome);
-    spawn_goal_background_review(&ga.model, session_content, session_id);
     if let GoalOutcome::Error(_) = outcome {
         std::process::exit(1);
     }
@@ -117,39 +112,4 @@ fn print_outcome(outcome: &GoalOutcome) {
         }
         GoalOutcome::Achieved => eprintln!("goal achieved"),
     }
-}
-
-
-
-
-
-// [TEMP-DISABLE BG REVIEW] — uncomment to re-enable
-// use loom_background_review::BackgroundReviewCallbacks;
-
-fn spawn_goal_background_review(
-    _model_override: &Option<String>,
-    _session_content: String,
-    _session_id: String,
-) {
-    // [TEMP-DISABLE BG REVIEW] — original spawn logic commented out below
-    // if session_content.trim().is_empty() {
-    //     return;
-    // }
-    // let base_url = std::env::var("OPENAI_BASE_URL").unwrap_or_default();
-    // let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_default();
-    // if base_url.is_empty() || api_key.is_empty() {
-    //     return;
-    // }
-    // let model = model_override
-    //     .clone()
-    //     .or_else(|| std::env::var("MODEL").ok())
-    //     .unwrap_or_else(|| "gpt-4o-mini".to_string());
-    // let config = loom_background_review::BackgroundReviewConfig {
-    //     enabled: true,
-    //     base_url,
-    //     api_key,
-    //     model,
-    //     ..Default::default()
-    // };
-    // loom_background_review::spawn_background_review(config, session_content, session_id, BackgroundReviewCallbacks::default());
 }

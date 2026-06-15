@@ -62,6 +62,7 @@ fn base_config(working_folder: std::path::PathBuf) -> ReactBuildConfig {
             bash_executor: None,
             extra_tools: None,
             acp_session_id: None,
+            goal_mode: false,
     }
 }
 

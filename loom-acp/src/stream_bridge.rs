@@ -92,16 +92,6 @@ pub enum StreamUpdate {
         raw_output: Option<String>,
     },
 
-    /// Incremental tool call argument chunk (during LLM streaming).
-    /// Maps to ToolCallUpdate with raw_input_delta if ACP supports it, otherwise ignored.
-    ToolCallChunk {
-        tool_call_id: String,
-        /// Tool name (only present in first chunk).
-        name: Option<String>,
-        /// Incremental arguments JSON delta.
-        arguments_delta: String,
-    },
-
     /// File diff update (ACP `tool_call_update` with diff content).
     /// Shows file modifications in a format suitable for client display.
     Diff {
@@ -312,19 +302,6 @@ where
 
             updates
         }
-        StreamEvent::ToolCallChunk {
-            call_id,
-            name,
-            arguments_delta,
-        } => {
-            // Generate or use existing call_id
-            let id = resolve_tool_call_id(call_id);
-            vec![StreamUpdate::ToolCallChunk {
-                tool_call_id: id,
-                name: name.clone(),
-                arguments_delta: arguments_delta.clone(),
-            }]
-        }
         _ => vec![],
     }
 }
@@ -391,17 +368,6 @@ pub fn stream_update_to_session_notification(
                     .content(vec![s.clone().into()])
                     .raw_output(parse_text_output_to_raw_value(effective_raw));
             }
-            SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
-                ToolCallId::new(tool_call_id.as_str()),
-                fields,
-            ))
-        }
-        StreamUpdate::ToolCallChunk { tool_call_id, name: _, arguments_delta } => {
-            let fields = ToolCallUpdateFields::new()
-                .content(vec![
-                    ToolCallContent::from(ContentBlock::Text(TextContent::new(arguments_delta.clone()))),
-                ]);
-
             SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
                 ToolCallId::new(tool_call_id.as_str()),
                 fields,

@@ -172,11 +172,10 @@ where
                         || ctx.stream_mode.contains(&StreamMode::Debug)
                     {
                         let _ = tx
-                            .send(StreamEvent::TaskStart {
+                            .try_send(StreamEvent::TaskStart {
                                 node_id: current_id.clone(),
                                 namespace: None,
-                            })
-                            .await;
+                            });
                     }
                 }
             }
@@ -213,7 +212,7 @@ where
                                             Some(cfg.checkpoint_ns.clone())
                                         };
                                         let _ = tx
-                                            .send(StreamEvent::Checkpoint(
+                                            .try_send(StreamEvent::Checkpoint(
                                                 CheckpointEvent {
                                                     checkpoint_id: checkpoint.id.clone(),
                                                     timestamp: checkpoint.ts.clone(),
@@ -222,8 +221,7 @@ where
                                                     thread_id: cfg.thread_id.clone(),
                                                     checkpoint_ns,
                                                 },
-                                            ))
-                                            .await;
+                                            ));
                                     }
                                 }
                             }
@@ -242,15 +240,14 @@ where
                                 || ctx.stream_mode.contains(&StreamMode::Debug)
                             {
                                 let _ = tx
-                                    .send(StreamEvent::TaskEnd {
+                                    .try_send(StreamEvent::TaskEnd {
                                         node_id: current_id.clone(),
                                         result: Err(format!(
                                             "interrupted: {:?}",
                                             interrupt.value
                                         )),
                                         namespace: None,
-                                    })
-                                    .await;
+                                    });
                             }
                         }
                     }
@@ -267,12 +264,11 @@ where
                                 || ctx.stream_mode.contains(&StreamMode::Debug)
                             {
                                 let _ = tx
-                                    .send(StreamEvent::TaskEnd {
+                                    .try_send(StreamEvent::TaskEnd {
                                         node_id: current_id.clone(),
                                         result: Err(e.to_string()),
                                         namespace: None,
-                                    })
-                                    .await;
+                                    });
                             }
                         }
                     }
@@ -288,12 +284,11 @@ where
                         || ctx.stream_mode.contains(&StreamMode::Debug)
                     {
                         let _ = tx
-                            .send(StreamEvent::TaskEnd {
+                            .try_send(StreamEvent::TaskEnd {
                                 node_id: current_id.clone(),
                                 result: Ok(()),
                                 namespace: None,
-                            })
-                            .await;
+                            });
                     }
                 }
             }
@@ -315,16 +310,15 @@ where
             if let Some(ctx) = run_ctx {
                 if let Some(tx) = &ctx.stream_tx {
                     if ctx.stream_mode.contains(&StreamMode::Values) {
-                        let _ = tx.send(StreamEvent::Values(state.clone())).await;
+                        let _ = tx.try_send(StreamEvent::Values(state.clone()));
                     }
                     if ctx.stream_mode.contains(&StreamMode::Updates) {
                         let _ = tx
-                            .send(StreamEvent::Updates {
+                            .try_send(StreamEvent::Updates {
                                 node_id: current_id.clone(),
                                 state: state.clone(),
                                 namespace: None,
-                            })
-                            .await;
+                            });
                     }
                 }
             }
@@ -380,7 +374,7 @@ where
                                         Some(cfg.checkpoint_ns.clone())
                                     };
                                     let _ = tx
-                                        .send(StreamEvent::Checkpoint(
+                                        .try_send(StreamEvent::Checkpoint(
                                             CheckpointEvent {
                                                 checkpoint_id: checkpoint.id.clone(),
                                                 timestamp: checkpoint.ts.clone(),
@@ -389,8 +383,7 @@ where
                                                 thread_id: cfg.thread_id.clone(),
                                                 checkpoint_ns,
                                             },
-                                        ))
-                                        .await;
+                                        ));
                                 }
                             }
                         }

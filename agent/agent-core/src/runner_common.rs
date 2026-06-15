@@ -3,13 +3,15 @@
 //! - [`run_stream_with_config`]: build initial state → compiled.stream → consume events → return final state.
 //! - [`load_from_checkpoint_or_build`]: try load from checkpointer, else run `build_fresh` future; merge user message when loaded.
 
+use std::collections::HashSet;
 use std::future::Future;
+use std::sync::Arc;
 
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 
-use loom_llm::error::AgentError;
 use loom_graph::CompiledStateGraph;
+use loom_llm::error::AgentError;
 use loom_memory::{CheckpointError, Checkpointer, RunnableConfig};
 use loom_stream::{StreamEvent, StreamMode};
 
@@ -39,104 +41,161 @@ where
         );
         let tuple = cp.get_tuple(config).await?;
         if let Some((checkpoint, _)) = tuple {
-            tracing::debug!("checkpoint found, merging user message");
-            let merged = merge(checkpoint.channel_values.clone(), user_message.to_string());
-            return Ok(merged);
+            tracing::info!(
+                thread_id = ?runnable_config.expect("runnable_config is Some").thread_id,
+                "load_from_checkpoint_or_build: checkpoint found, merging user message"
+            );
+            return Ok(merge(checkpoint.channel_values, user_message.to_string()));
         }
+        tracing::info!("load_from_checkpoint_or_build: no checkpoint found, building fresh state");
     }
 
-    tracing::debug!("no checkpoint found, building fresh state");
     build_fresh.await
 }
 
-/// Unified result type for stream-based agent runs.
-#[derive(Debug, Clone)]
-pub enum StreamRunOutcome<S = (), E = ()> {
-    /// Agent ran to completion; `S` is the final agent state.
-    Completed(S),
-    /// Agent was cancelled externally (e.g. user pressed Ctrl+C).
+/// Error when the stream ends without producing a final `Values` state.
+#[derive(Debug, thiserror::Error)]
+#[error("stream ended without final state")]
+pub struct StreamEndedWithoutState;
+
+/// Final outcome of a stream run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StreamRunOutcome<S> {
+    Finished(S),
     Cancelled,
-    /// Agent hit a fatal error; `E` is the error type.
-    Error(E),
-    /// Stream produced no events and never reached a final state.
-    Empty,
 }
 
-/// Error types for stream execution.
-#[derive(Debug, Clone)]
+/// Error when stream execution fails for reasons other than cancellation.
+#[derive(Debug, thiserror::Error)]
 pub enum StreamRunError {
-    Execution(AgentError),
+    #[error(transparent)]
+    Execution(#[from] AgentError),
+    #[error(transparent)]
+    StreamEndedWithoutState(#[from] StreamEndedWithoutState),
 }
 
-impl std::fmt::Display for StreamRunError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            StreamRunError::Execution(e) => write!(f, "{}", e),
-        }
-    }
-}
-
-/// Runs the graph stream with config-driven cancellation support.
+/// Runs the compiled graph in streaming mode, consuming events and returning the final state.
 ///
-/// Returns the final state if the stream ends normally,
-/// or `StreamRunOutcome::Cancelled` if cancelled.
+/// Uses fixed stream modes (Messages, Tasks, Updates, Values, Custom). When `on_event`
+/// is provided, invokes it for each `StreamEvent`. Returns the state from the last
+/// `StreamEvent::Values` in the stream.
 pub async fn run_stream_with_config<S, F>(
-    compiled: CompiledStateGraph<S>,
-    state: S,
+    compiled: &CompiledStateGraph<S>,
+    initial_state: S,
     run_config: Option<RunnableConfig>,
     on_event: Option<F>,
-    cancel_token: Option<CancellationToken>,
-    _event_forwarder: Option<std::sync::Arc<dyn Fn(StreamEvent<S>) + Send + Sync>>,
-) -> Result<StreamRunOutcome<S, StreamRunError>, StreamRunError>
+    cancellation: Option<CancellationToken>,
+    event_forwarder: Option<Arc<dyn Fn(StreamEvent<S>) + Send + Sync>>,
+) -> Result<StreamRunOutcome<S>, StreamRunError>
 where
     S: Clone + Send + Sync + std::fmt::Debug + 'static,
-    F: FnMut(StreamEvent<S>) + Send + 'static,
+    F: Fn(StreamEvent<S>) + Clone + Send + 'static,
 {
-    let cancel_token = cancel_token.unwrap_or_default();
-    let mut on_event = on_event;
-    let stream = compiled.stream(
-        state,
+    let modes = HashSet::from([
+        StreamMode::Messages,
+        StreamMode::Tasks,
+        StreamMode::Tools,
+        StreamMode::Updates,
+        StreamMode::Values,
+        StreamMode::Custom,
+        StreamMode::Checkpoints,
+    ]);
+
+    let has_cancellation = cancellation.is_some();
+    let graph_stream = compiled.stream(
+        initial_state,
         run_config,
-        [StreamMode::Values, StreamMode::Messages, StreamMode::Updates, StreamMode::Tasks, StreamMode::Tools],
-        None,
-        None,
+        modes,
+        cancellation,
+        event_forwarder,
+    );
+    let mut stream = graph_stream.events;
+    tracing::info!(
+        hang_probe = "run_stream_with_config",
+        has_on_event = on_event.is_some(),
+        has_cancellation,
+        "hang_probe: run_stream_with_config enter"
     );
     let mut final_state: Option<S> = None;
-    let error_state: Option<StreamRunError> = None;
-
-    tokio::pin!(stream);
-
+    let mut iters: u64 = 0;
     loop {
-        tokio::select! {
-            biased;
-
-            _ = cancel_token.cancelled() => {
-                tracing::debug!("run_stream_with_config: cancelled");
-                return Ok(StreamRunOutcome::Cancelled);
-            }
-
-            event = stream.events.next() => {
-                match event {
-                    Some(ev) => {
-                        if let Some(ref mut cb) = on_event {
-                            cb(ev.clone());
-                        }
-                        if let StreamEvent::Values(ref state) = ev {
-                            final_state = Some(state.clone());
-                        }
-                    }
-                    None => {
-                        if let Some(err) = error_state {
-                            return Err(err);
-                        }
-                        if let Some(state) = final_state {
-                            return Ok(StreamRunOutcome::Completed(state));
-                        }
-                        tracing::warn!("stream ended without final state");
-                        return Ok(StreamRunOutcome::Empty);
-                    }
+        // --- hang probe: pre-next (producer side) ---
+        let poll_start = std::time::Instant::now();
+        let event: Option<StreamEvent<S>> =
+            match tokio::time::timeout(std::time::Duration::from_secs(600), stream.next()).await {
+                Ok(Some(e)) => Some(e),
+                Ok(None) => None,
+                Err(_) => {
+                    tracing::warn!(
+                        hang_probe = "run_stream_with_config",
+                        iters,
+                        elapsed_secs = poll_start.elapsed().as_secs(),
+                        "hang_probe: stream.next() timed out after 10s — skipping"
+                    );
+                    break;
                 }
-            }
+            };
+
+        let event = match event {
+            Some(e) => e,
+            None => break,
+        };
+
+        let poll_elapsed_ms = poll_start.elapsed().as_millis() as u64;
+        if poll_elapsed_ms > 1_000 {
+            tracing::info!(
+                hang_probe = "run_stream_with_config",
+                iters,
+                poll_elapsed_ms,
+                "hang_probe: producer side — waited for next event"
+            );
         }
+
+        iters += 1;
+        if iters == 1 || iters.is_multiple_of(20) {
+            tracing::info!(
+                hang_probe = "run_stream_with_config",
+                iters,
+                "hang_probe: run_stream_with_config loop iter"
+            );
+        }
+
+        // --- hang probe: pre-processing (consumer side) ---
+        let proc_start = std::time::Instant::now();
+        if let StreamEvent::Values(s) = event.clone() {
+            final_state = Some(s);
+        }
+        if let Some(ref f) = on_event {
+            f(event);
+        }
+        let proc_elapsed_ms = proc_start.elapsed().as_millis() as u64;
+        if proc_elapsed_ms > 1_000 {
+            tracing::info!(
+                hang_probe = "run_stream_with_config",
+                iters,
+                proc_elapsed_ms,
+                "hang_probe: consumer side — event processing took long"
+            );
+        }
+    }
+    tracing::info!(
+        hang_probe = "run_stream_with_config",
+        iters,
+        final_state_is_some = final_state.is_some(),
+        "hang_probe: run_stream_with_config while loop end"
+    );
+    tracing::debug!("finish");
+    let completion = graph_stream.completion.await.map_err(|e| {
+        StreamRunError::Execution(AgentError::ExecutionFailed(format!(
+            "graph stream task failed: {}",
+            e
+        )))
+    })?;
+    match completion {
+        Ok(()) => final_state
+            .map(StreamRunOutcome::Finished)
+            .ok_or(StreamEndedWithoutState.into()),
+        Err(AgentError::Cancelled) => Ok(StreamRunOutcome::Cancelled),
+        Err(e) => Err(StreamRunError::Execution(e)),
     }
 }

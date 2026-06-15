@@ -115,12 +115,6 @@ where
         /// `None` in non-streaming mode.
         decode_duration: Option<std::time::Duration>,
     },
-    /// LLM streaming tool call argument delta (Think node, per chunk).
-    ToolCallChunk {
-        call_id: Option<String>,
-        name: Option<String>,
-        arguments_delta: String,
-    },
     /// LLM decided to call a tool (Think node, complete arguments).
     ToolCall {
         call_id: Option<String>,

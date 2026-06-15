@@ -77,6 +77,7 @@ pub struct DupRunner {
     runnable_config: Option<RunnableConfig>,
     system_prompt: Option<String>,
     cancellation: Option<CancellationToken>,
+    any_stream_event_sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>>,
 }
 
 /// Wraps Arc<dyn LlmClient> to share one LLM between UnderstandNode and PlanNode.
@@ -102,6 +103,11 @@ impl LlmClient for SharedLlm {
 impl DupRunner {
     pub fn with_cancellation(mut self, cancellation: Option<CancellationToken>) -> Self {
         self.cancellation = cancellation;
+        self
+    }
+
+    pub fn with_any_stream_event_sender(mut self, sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>>) -> Self {
+        self.any_stream_event_sender = sender;
         self
     }
 
@@ -172,6 +178,7 @@ impl DupRunner {
             runnable_config,
             system_prompt,
             cancellation,
+            any_stream_event_sender: None,
         })
     }
 
@@ -180,9 +187,9 @@ impl DupRunner {
         &self,
         user_message: &str,
         on_event: Option<F>,
-    ) -> Result<runner_common::StreamRunOutcome<DupState, runner_common::StreamRunError>, DupRunError>
+    ) -> Result<runner_common::StreamRunOutcome<DupState>, DupRunError>
     where
-        F: FnMut(StreamEvent<DupState>) + Send + 'static,
+        F: Fn(StreamEvent<DupState>) + Clone + Send + 'static,
     {
         self.stream_with_config(user_message, None, on_event).await
     }
@@ -193,9 +200,9 @@ impl DupRunner {
         user_message: &str,
         config: Option<RunnableConfig>,
         on_event: Option<F>,
-    ) -> Result<runner_common::StreamRunOutcome<DupState, runner_common::StreamRunError>, DupRunError>
+    ) -> Result<runner_common::StreamRunOutcome<DupState>, DupRunError>
     where
-        F: FnMut(StreamEvent<DupState>) + Send + 'static,
+        F: Fn(StreamEvent<DupState>) + Clone + Send + 'static,
     {
         let run_config = config.or_else(|| self.runnable_config.clone());
         let state = build_dup_initial_state(
@@ -205,23 +212,29 @@ impl DupRunner {
             self.system_prompt.as_deref(),
         )
         .await?;
+        let event_forwarder: Option<std::sync::Arc<dyn Fn(StreamEvent<DupState>) + Send + Sync>> =
+            self.any_stream_event_sender.as_ref().map(|sender| {
+                let sender = sender.clone();
+                std::sync::Arc::new(move |ev: StreamEvent<DupState>| {
+                    if let Ok(json) = serde_json::to_value(&ev) {
+                        sender(loom_cli_types::AnyStreamEvent::React(StreamEvent::Custom(json)));
+                    }
+                }) as std::sync::Arc<dyn Fn(StreamEvent<DupState>) + Send + Sync>
+            });
         let result = runner_common::run_stream_with_config(
-            self.compiled.clone(),
+            &self.compiled,
             state,
             run_config,
             on_event,
             self.cancellation.clone(),
-            None,
+            event_forwarder,
         )
         .await;
         match result {
-            Ok(outcome) => match outcome {
-                runner_common::StreamRunOutcome::Completed(s) => Ok(runner_common::StreamRunOutcome::Completed(s)),
-                runner_common::StreamRunOutcome::Cancelled => Ok(runner_common::StreamRunOutcome::Cancelled),
-                runner_common::StreamRunOutcome::Error(runner_common::StreamRunError::Execution(err)) => Err(DupRunError::Execution(err)),
-                runner_common::StreamRunOutcome::Empty => Ok(runner_common::StreamRunOutcome::Empty),
-            },
+            Ok(runner_common::StreamRunOutcome::Finished(s)) => Ok(runner_common::StreamRunOutcome::Finished(s)),
+            Ok(runner_common::StreamRunOutcome::Cancelled) => Ok(runner_common::StreamRunOutcome::Cancelled),
             Err(runner_common::StreamRunError::Execution(err)) => Err(DupRunError::Execution(err)),
+            Err(runner_common::StreamRunError::StreamEndedWithoutState(_)) => Err(DupRunError::StreamEndedWithoutState),
         }
     }
 }
@@ -292,7 +305,7 @@ mod tests {
             .unwrap();
         assert!(matches!(
             &streamed,
-            agent::runner_common::StreamRunOutcome::Completed(s) if s.last_assistant_reply().is_some()
+            agent::runner_common::StreamRunOutcome::Finished(s) if s.last_assistant_reply().is_some()
         ));
         assert!(!events.lock().unwrap().is_empty());
     }

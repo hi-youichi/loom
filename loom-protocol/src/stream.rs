@@ -123,15 +123,6 @@ where
             nodes_added: *nodes_added,
             edges_added: *edges_added,
         },
-        StreamEvent::ToolCallChunk {
-            call_id,
-            name,
-            arguments_delta,
-        } => ProtocolEvent::ToolCallChunk {
-            call_id: call_id.clone(),
-            name: name.clone(),
-            arguments_delta: arguments_delta.clone(),
-        },
         StreamEvent::ToolCall {
             call_id,
             name,
@@ -425,23 +416,6 @@ mod tests {
             ProtocolEvent::NodeEnter { id } => assert_eq!(id, "think"),
             _ => panic!("expected node_enter"),
         }
-    }
-
-    #[test]
-    fn tool_call_chunk_format() {
-        let ev: StreamEvent<DummyState> = StreamEvent::ToolCallChunk {
-            call_id: Some("c1".into()),
-            name: Some("bash".into()),
-            arguments_delta: "{\"cmd\":".into(),
-        };
-        let v = stream_event_to_protocol_event(&ev)
-            .unwrap()
-            .to_value()
-            .unwrap();
-        assert_eq!(v["type"], "tool_call_chunk");
-        assert_eq!(v["call_id"], "c1");
-        assert_eq!(v["name"], "bash");
-        assert_eq!(v["arguments_delta"], "{\"cmd\":");
     }
 
     #[test]

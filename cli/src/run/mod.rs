@@ -15,7 +15,7 @@ pub mod security;
 pub mod session_store;
 pub mod skill_registry;
 mod spinner;
-pub mod background_review;
+
 
 
 pub use agent::{

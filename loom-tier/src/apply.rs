@@ -138,6 +138,7 @@ mod tests {
             extra_tools: None,
             acp_session_id: None,
             parent_model_hint: None,
+            goal_mode: false,
         };
 
         let resolver = MockTierResolver {
@@ -201,6 +202,7 @@ mod tests {
             extra_tools: None,
             acp_session_id: None,
             parent_model_hint: None,
+            goal_mode: false,
         };
 
         let resolver = MockTierResolver {
@@ -265,6 +267,7 @@ mod tests {
             extra_tools: None,
             acp_session_id: None,
             parent_model_hint: None,
+            goal_mode: false,
         };
 
         let resolver = MockTierResolver {
@@ -323,6 +326,7 @@ mod tests {
             extra_tools: None,
             acp_session_id: None,
             parent_model_hint: None,
+            goal_mode: false,
         };
 
         let resolver = MockTierResolver {

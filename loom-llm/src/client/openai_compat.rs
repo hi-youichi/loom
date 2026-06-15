@@ -925,6 +925,7 @@ error = ?e,
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         let audit_start = std::time::Instant::now();
         let audit_request = self.build_audit_request(&body);
+        let invoke_start = std::time::Instant::now();
         debug!(
             trace_id = %trace_id,
             request_id = %request_id,
@@ -934,6 +935,15 @@ error = ?e,
             stream = true,
             tools_count = tools_count,
             "OpenAI-compat chat create_stream"
+        );
+        tracing::info!(
+            hang_probe = "openai_compat::invoke_stream_with_tool_delta",
+            url = %url,
+            model = %self.model,
+            message_count = messages.len(),
+            tools_count,
+            tool_delta_tx_is_some = tool_delta_tx.is_some(),
+            "hang_probe: oai invoke_stream enter"
         );
 
         let response = {
@@ -1071,12 +1081,28 @@ error = ?e,
         let mut thinking_parser = self.parse_thinking_tags.then(ThinkingTagParser::new);
         let mut done = false;
         let mut stream_read_attempt = 0;
+        let mut sse_chunk_count: u64 = 0;
+        tracing::info!(
+            hang_probe = "openai_compat::invoke_stream_with_tool_delta",
+            "hang_probe: oai sse loop enter"
+        );
 
         let mut res = response;
 
         while !done {
             let chunk = match res.chunk().await {
-                Ok(Some(bytes)) => Some(bytes),
+                Ok(Some(bytes)) => {
+                    sse_chunk_count += 1;
+                    if sse_chunk_count == 1 || sse_chunk_count.is_multiple_of(50) {
+                        tracing::info!(
+                            hang_probe = "openai_compat::invoke_stream_with_tool_delta",
+                            sse_chunk_count,
+                            bytes_len = bytes.len(),
+                            "hang_probe: oai sse progress"
+                        );
+                    }
+                    Some(bytes)
+                }
                 Ok(None) => None,
                 Err(e)
                     if is_retryable_reqwest_error(&e)
@@ -1295,6 +1321,14 @@ error = ?e,
         let duration_ms = audit_start.elapsed().as_millis() as u64;
         let audit_response = Self::build_audit_response(&response);
         self.record_audit(&trace_id, "chat_stream", &url, duration_ms, 200, audit_request, Some(audit_response), None);
+        let invoke_elapsed = invoke_start.elapsed();
+        tracing::info!(
+            hang_probe = "openai_compat::invoke_stream_with_tool_delta",
+            elapsed_ms = invoke_elapsed.as_millis() as u64,
+            content_len = response.content.len(),
+            tool_calls_count = response.tool_calls.len(),
+            "hang_probe: oai invoke_stream exit"
+        );
         Ok(response)
     }
 

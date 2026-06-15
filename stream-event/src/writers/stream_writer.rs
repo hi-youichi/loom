@@ -321,28 +321,6 @@ where
         self.modes.contains(&StreamMode::Tools) || self.modes.contains(&StreamMode::Debug)
     }
 
-    pub async fn emit_tool_call_chunk(
-        &self,
-        call_id: Option<String>,
-        name: Option<String>,
-        arguments_delta: String,
-    ) -> bool {
-        if !self.is_tools_enabled() {
-            return false;
-        }
-        if let Some(tx) = &self.tx {
-            tx.send(StreamEvent::ToolCallChunk {
-                call_id,
-                name,
-                arguments_delta,
-            })
-            .await
-            .is_ok()
-        } else {
-            false
-        }
-    }
-
     pub async fn emit_tool_call(
         &self,
         call_id: Option<String>,

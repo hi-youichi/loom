@@ -4,6 +4,7 @@ use crate::runner_common::StreamRunOutcome;
 use loom_llm::MessageChunkKind;
 use loom_stream::StreamEvent;
 use loom_cli_types::ReActState;
+use std::sync::Arc;
 
 pub type AgentConfig = ReactBuildConfig;
 
@@ -61,12 +62,13 @@ impl Agent {
 
     pub async fn run<F>(&self, message: &str, on_event: F) -> Result<AgentResult, AgentError>
     where
-        F: FnMut(AgentEvent) + Send + 'static,
+        F: FnMut(AgentEvent) + Send + Sync + Clone + 'static,
     {
-        let mut user_cb = on_event;
+        let user_cb = Arc::new(on_event);
         let bridge = move |ev: StreamEvent<ReActState>| {
             if let Some(e) = map_stream_event(ev) {
-                user_cb(e);
+                let mut cb = user_cb.as_ref().clone();
+                cb(e);
             }
         };
 
@@ -77,15 +79,11 @@ impl Agent {
             .map_err(|e| AgentError::Run(e.to_string()))?;
 
         match outcome {
-            StreamRunOutcome::Completed(state) => Ok(AgentResult {
+            StreamRunOutcome::Finished(state) => Ok(AgentResult {
                 reply: state.last_assistant_reply().unwrap_or_default(),
                 reasoning: state.last_reasoning_content(),
             }),
             StreamRunOutcome::Cancelled => Err(AgentError::Cancelled),
-            StreamRunOutcome::Error(e) => Err(AgentError::Run(e.to_string())),
-            StreamRunOutcome::Empty => {
-                Err(AgentError::Run("stream ended with empty state".into()))
-            }
         }
     }
 }
@@ -269,18 +267,6 @@ mod tests {
         };
         assert!(map_stream_event(ev).is_none());
     }
-
-    #[test]
-    fn map_tool_call_chunk_discarded() {
-        let ev = StreamEvent::<ReActState>::ToolCallChunk {
-            call_id: None,
-            name: None,
-            arguments_delta: "ar".into(),
-        };
-        assert!(map_stream_event(ev).is_none());
-    }
-
-
 
     #[tokio::test(flavor = "current_thread")]
     async fn agent_run_with_mock_llm_returns_reply() {

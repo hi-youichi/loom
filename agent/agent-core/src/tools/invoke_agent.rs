@@ -440,7 +440,7 @@ tracing::debug!(agent = %agent_name, "Starting sub-agent execution");
         }
 
         let reply = match outcome {
-            crate::runner_common::StreamRunOutcome::Completed(final_state) => {
+            crate::runner_common::StreamRunOutcome::Finished(final_state) => {
                 let reply = final_state
                     .last_assistant_reply()
                     .unwrap_or_else(|| "(no reply from sub-agent)".to_string());
@@ -454,14 +454,6 @@ tracing::debug!(agent = %agent_name, "Starting sub-agent execution");
             crate::runner_common::StreamRunOutcome::Cancelled => {
                 tracing::warn!(agent = %agent_name, "Sub-agent was cancelled");
                 "(sub-agent cancelled)".to_string()
-            }
-            crate::runner_common::StreamRunOutcome::Error(e) => {
-                tracing::error!(agent = %agent_name, error = %e, "Sub-agent hit a fatal error");
-                format!("(sub-agent error: {})", e)
-            }
-            crate::runner_common::StreamRunOutcome::Empty => {
-                tracing::warn!(agent = %agent_name, "Sub-agent stream ended with empty state");
-                "(sub-agent ended with empty state)".to_string()
             }
         };
 
@@ -1071,7 +1063,7 @@ tracing::debug!(agent = %agent_name, "Starting sub-agent execution");
     }
 
     let reply = match outcome {
-        crate::runner_common::StreamRunOutcome::Completed(final_state) => {
+        crate::runner_common::StreamRunOutcome::Finished(final_state) => {
             let reply = final_state
                 .last_assistant_reply()
                 .unwrap_or_else(|| "(no reply from sub-agent)".to_string());
@@ -1085,14 +1077,6 @@ tracing::debug!(agent = %agent_name, "Starting sub-agent execution");
         crate::runner_common::StreamRunOutcome::Cancelled => {
             tracing::warn!(agent = %agent_name, "Sub-agent was cancelled");
             "(sub-agent cancelled)".to_string()
-        }
-        crate::runner_common::StreamRunOutcome::Error(e) => {
-            tracing::error!(agent = %agent_name, error = %e, "Sub-agent hit a fatal error");
-            format!("(sub-agent error: {})", e)
-        }
-        crate::runner_common::StreamRunOutcome::Empty => {
-            tracing::warn!(agent = %agent_name, "Sub-agent stream ended with empty state");
-            "(sub-agent ended with empty state)".to_string()
         }
     };
 

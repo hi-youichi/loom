@@ -55,7 +55,6 @@ use crate::run::memory::MemoryStore;
 use tool_experimental::MemoryTool;
 
 /// Legacy ReviewAgent for explicit `levol review` / `levol review-skill` CLI commands.
-/// For automatic post-turn review, see `background_review.rs`.
 pub struct ReviewAgent {
     llm: Box<dyn LlmClient>,
     memory: MemoryStore,

@@ -83,14 +83,10 @@ impl Tool for AgentTool {
             .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
 
         let reply = match outcome {
-            crate::runner_common::StreamRunOutcome::Completed(s) => {
+            crate::runner_common::StreamRunOutcome::Finished(s) => {
                 s.last_assistant_reply().unwrap_or_else(|| "(no reply)".to_string())
             }
             crate::runner_common::StreamRunOutcome::Cancelled => "(sub-agent cancelled)".to_string(),
-            crate::runner_common::StreamRunOutcome::Error(e) => {
-                return Err(ToolSourceError::Transport(e.to_string()));
-            }
-            crate::runner_common::StreamRunOutcome::Empty => "(no reply)".to_string(),
         };
 
         Ok(ToolCallContent::text(reply))

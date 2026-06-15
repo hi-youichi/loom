@@ -183,12 +183,6 @@ fn run_server(args: Args) -> Result<(), Box<dyn std::error::Error + Send + Sync>
     #[cfg(not(unix))]
     let result = rt.block_on(loom_acp::run_stdio_loop());
 
-    // Wait for any pending background reviews before exiting
-    let pending = rt.block_on(loom_background_review::wait_for_pending_reviews());
-    if pending > 0 {
-        tracing::info!(pending = pending, "Waited for pending background reviews");
-    }
-
     match result {
         Ok(r) => {
             if r.connection_closed {

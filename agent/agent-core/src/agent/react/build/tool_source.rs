@@ -1,20 +1,17 @@
 use std::sync::Arc;
 
-use skill::SkillUsageStore;
-use loom_llm::error::AgentError;
-use tool_core::{ArcTool, ToolRegistryLocked, YamlSpecError};
-use tool_basic::{
-    bash::BashTool, powershell::PowerShellTool, batch::BatchTool,
-    web::WebFetcherTool, register_file_tools,
-    mcp::McpToolSource, register_mcp_tools,
-    exa::ExaCodesearchTool, exa::ExaWebsearchTool,
-};
-use tool_extensions::{
-    lsp::LspTool, twitter::TwitterSearchTool,
-};
-use tool_experimental::{register_task_tools, register_file_memory_tool};
 use crate::tools::InvokeAgentTool;
+use loom_llm::error::AgentError;
 use memory_v2::MemoryStore;
+use skill::SkillUsageStore;
+use tool_basic::{
+    bash::BashTool, batch::BatchTool, exa::ExaCodesearchTool, exa::ExaWebsearchTool,
+    mcp::McpToolSource, powershell::PowerShellTool, register_file_tools, register_mcp_tools,
+    web::WebFetcherTool,
+};
+use tool_core::{ArcTool, ToolRegistryLocked, YamlSpecError};
+use tool_experimental::{register_file_memory_tool, register_task_tools};
+use tool_extensions::twitter::TwitterSearchTool;
 
 use env_config::McpServerDef;
 
@@ -38,14 +35,13 @@ pub(crate) async fn build_tool_source(
         let aggregate = Arc::new(ToolRegistryLocked::new());
         aggregate
             .register_async(Box::new(WebFetcherTool::new()))
-    .await;
+            .await;
         #[cfg(not(windows))]
         let bash_tool = if let Some(ref executor) = config.bash_executor {
             match &working_folder_arc {
-                Some(wf) => BashTool::with_working_folder_and_executor(
-                    Arc::clone(wf),
-                    executor.clone(),
-                ),
+                Some(wf) => {
+                    BashTool::with_working_folder_and_executor(Arc::clone(wf), executor.clone())
+                }
                 None => BashTool::with_executor(executor.clone()),
             }
         } else {
@@ -59,10 +55,9 @@ pub(crate) async fn build_tool_source(
         #[cfg(windows)]
         if let Some(ref executor) = config.bash_executor {
             let bash_tool = match &working_folder_arc {
-                Some(wf) => BashTool::with_working_folder_and_executor(
-                    Arc::clone(wf),
-                    executor.clone(),
-                ),
+                Some(wf) => {
+                    BashTool::with_working_folder_and_executor(Arc::clone(wf), executor.clone())
+                }
                 None => BashTool::with_executor(executor.clone()),
             };
             aggregate.register_async(Box::new(bash_tool)).await;
@@ -73,8 +68,10 @@ pub(crate) async fn build_tool_source(
             };
             aggregate.register_async(Box::new(ps_tool)).await;
         }
-        aggregate.register_sync(Box::new(BatchTool::new(Arc::new(working_folder_arc.as_ref().unwrap().as_ref().clone()))));
-        aggregate.register_sync(Box::new(LspTool::default()));
+        aggregate.register_sync(Box::new(BatchTool::new(Arc::new(
+            working_folder_arc.as_ref().unwrap().as_ref().clone(),
+        ))));
+        // aggregate.register_sync(Box::new(LspTool::default()));
         if let Some(ref servers) = config.mcp_servers {
             for def in servers {
                 match def {
@@ -90,7 +87,8 @@ pub(crate) async fn build_tool_source(
                         let env_vec: Vec<(String, String)> =
                             env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                         let mcp_verbose = config.mcp_verbose;
-                        match McpToolSource::new_with_env(command, args, env_vec, mcp_verbose).await {
+                        match McpToolSource::new_with_env(command, args, env_vec, mcp_verbose).await
+                        {
                             Ok(mcp) => {
                                 if let Err(e) =
                                     register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
@@ -111,7 +109,13 @@ pub(crate) async fn build_tool_source(
                             }
                         }
                     }
-                    McpServerDef::Http { name, url, headers, oauth: _, .. } => {
+                    McpServerDef::Http {
+                        name,
+                        url,
+                        headers,
+                        oauth: _,
+                        ..
+                    } => {
                         let headers_iter = headers.iter().map(|(k, v)| (k.as_str(), v.as_str()));
                         match McpToolSource::new_http(url.clone(), headers_iter).await {
                             Ok(mcp) => {
@@ -171,10 +175,7 @@ pub(crate) async fn build_tool_source(
                     Ok(mcp) => {
                         if let Err(e) = register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
                         {
-                            tracing::warn!(
-                                "GitHub MCP registered but list/call may fail: {}",
-                                e
-                            );
+                            tracing::warn!("GitHub MCP registered but list/call may fail: {}", e);
                         }
                     }
                     Err(e) => {
@@ -183,32 +184,38 @@ pub(crate) async fn build_tool_source(
                 }
             }
         }
-    if let Some(ref tools) = config.extra_tools {
-        for tool in tools.iter() {
-            aggregate.register_async(Box::new(ArcTool(tool.clone()))).await;
+        if let Some(ref tools) = config.extra_tools {
+            for tool in tools.iter() {
+                aggregate
+                    .register_async(Box::new(ArcTool(tool.clone())))
+                    .await;
+            }
         }
-    }
-    aggregate
-        .register_async(Box::new(InvokeAgentTool::new(
-            Arc::new(config.clone()),
-            config.max_sub_agent_depth,
-        )))
-        .await;
-        // ListAgentsTool is not available in this build (depends on loom's profile system)
-        apply_registry_config(&aggregate, config).await.map_err(to_agent_error)?;
-    } else {
-        let aggregate = Arc::new(ToolRegistryLocked::new());
-        aggregate
-            .register_async(Box::new(WebFetcherTool::new()))
-            .await;
-        aggregate.register_sync(Box::new(LspTool::default()));
         aggregate
             .register_async(Box::new(InvokeAgentTool::new(
                 Arc::new(config.clone()),
                 config.max_sub_agent_depth,
             )))
             .await;
-        apply_registry_config(&aggregate, config).await.map_err(to_agent_error)?;
+        // ListAgentsTool is not available in this build (depends on loom's profile system)
+        apply_registry_config(&aggregate, config)
+            .await
+            .map_err(to_agent_error)?;
+    } else {
+        let aggregate = Arc::new(ToolRegistryLocked::new());
+        aggregate
+            .register_async(Box::new(WebFetcherTool::new()))
+            .await;
+        // aggregate.register_sync(Box::new(LspTool::default()));
+        aggregate
+            .register_async(Box::new(InvokeAgentTool::new(
+                Arc::new(config.clone()),
+                config.max_sub_agent_depth,
+            )))
+            .await;
+        apply_registry_config(&aggregate, config)
+            .await
+            .map_err(to_agent_error)?;
         return Ok(aggregate);
     }
 
@@ -216,14 +223,13 @@ pub(crate) async fn build_tool_source(
 
     aggregate
         .register_async(Box::new(WebFetcherTool::new()))
-    .await;
+        .await;
     #[cfg(not(windows))]
     let bash_tool = if let Some(ref executor) = config.bash_executor {
         match &working_folder_arc {
-            Some(wf) => BashTool::with_working_folder_and_executor(
-                Arc::clone(wf),
-                executor.clone(),
-            ),
+            Some(wf) => {
+                BashTool::with_working_folder_and_executor(Arc::clone(wf), executor.clone())
+            }
             None => BashTool::with_executor(executor.clone()),
         }
     } else {
@@ -238,10 +244,9 @@ pub(crate) async fn build_tool_source(
     #[cfg(windows)]
     if let Some(ref executor) = config.bash_executor {
         let bash_tool = match &working_folder_arc {
-            Some(wf) => BashTool::with_working_folder_and_executor(
-                Arc::clone(wf),
-                executor.clone(),
-            ),
+            Some(wf) => {
+                BashTool::with_working_folder_and_executor(Arc::clone(wf), executor.clone())
+            }
             None => BashTool::with_executor(executor.clone()),
         };
         aggregate.register_async(Box::new(bash_tool)).await;
@@ -269,8 +274,13 @@ pub(crate) async fn build_tool_source(
         }
     }
     if let Some(ref wf) = config.working_folder {
-        register_file_tools(aggregate.as_ref(), wf, config.skill_registry.clone(), Some(SkillUsageStore::new(&wf.join(".loom/skills"))))
-            .map_err(to_agent_error)?;
+        register_file_tools(
+            aggregate.as_ref(),
+            wf,
+            config.skill_registry.clone(),
+            Some(SkillUsageStore::new(&wf.join(".loom/skills"))),
+        )
+        .map_err(to_agent_error)?;
 
         let db_path = env_config::home::loom_home().join("tasks").join("tasks.db");
         let db_dir = db_path.parent().unwrap();
@@ -287,7 +297,7 @@ pub(crate) async fn build_tool_source(
     if let Some(ref wf) = config.working_folder {
         aggregate.register_sync(Box::new(BatchTool::new(Arc::new(wf.clone()))));
     }
-    aggregate.register_sync(Box::new(LspTool::default()));
+    // aggregate.register_sync(Box::new(LspTool::default()));
 
     if let Some(ref servers) = config.mcp_servers {
         for def in servers {
@@ -298,7 +308,7 @@ pub(crate) async fn build_tool_source(
                     args,
                     env,
                 } => {
-                tracing::debug!(name = %name, "starting MCP stdio server");
+                    tracing::debug!(name = %name, "starting MCP stdio server");
                     let command = command.clone();
                     let args = args.clone();
                     let env_vec: Vec<(String, String)> =
@@ -325,7 +335,13 @@ pub(crate) async fn build_tool_source(
                         }
                     }
                 }
-                McpServerDef::Http { name, url, headers, oauth: _, .. } => {
+                McpServerDef::Http {
+                    name,
+                    url,
+                    headers,
+                    oauth: _,
+                    ..
+                } => {
                     let headers_iter = headers.iter().map(|(k, v)| (k.as_str(), v.as_str()));
                     match McpToolSource::new_http(url.clone(), headers_iter).await {
                         Ok(mcp) => {
@@ -375,31 +391,29 @@ pub(crate) async fn build_tool_source(
                 }
             }
         } else {
-                tracing::debug!("starting GitHub MCP (stdio)");
-                let cmd = config.mcp_github_cmd.clone();
-                let args = config.mcp_github_args.clone();
-                let env_github = vec![("GITHUB_TOKEN".to_string(), token.clone())];
-                let mcp_verbose = config.mcp_verbose;
-                match McpToolSource::new_with_env(cmd, args, env_github, mcp_verbose).await {
-                    Ok(mcp) => {
-                        if let Err(e) = register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
-                        {
-                            tracing::warn!(
-                                "GitHub MCP registered but list/call may fail: {}",
-                                e
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!("GitHub MCP failed to start, skipping: {}", e);
+            tracing::debug!("starting GitHub MCP (stdio)");
+            let cmd = config.mcp_github_cmd.clone();
+            let args = config.mcp_github_args.clone();
+            let env_github = vec![("GITHUB_TOKEN".to_string(), token.clone())];
+            let mcp_verbose = config.mcp_verbose;
+            match McpToolSource::new_with_env(cmd, args, env_github, mcp_verbose).await {
+                Ok(mcp) => {
+                    if let Err(e) = register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await {
+                        tracing::warn!("GitHub MCP registered but list/call may fail: {}", e);
                     }
                 }
+                Err(e) => {
+                    tracing::warn!("GitHub MCP failed to start, skipping: {}", e);
+                }
+            }
         }
     }
 
     if let Some(ref tools) = config.extra_tools {
         for tool in tools.iter() {
-            aggregate.register_async(Box::new(ArcTool(tool.clone()))).await;
+            aggregate
+                .register_async(Box::new(ArcTool(tool.clone())))
+                .await;
         }
     }
 
@@ -411,7 +425,9 @@ pub(crate) async fn build_tool_source(
         .await;
     // ListAgentsTool is not available in this build (depends on loom's profile system)
 
-    apply_registry_config(&aggregate, config).await.map_err(to_agent_error)?;
+    apply_registry_config(&aggregate, config)
+        .await
+        .map_err(to_agent_error)?;
 
     Ok(aggregate)
 }
@@ -436,4 +452,3 @@ async fn apply_registry_config(
     }
     Ok(())
 }
-

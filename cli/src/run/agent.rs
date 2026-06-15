@@ -359,37 +359,6 @@ pub async fn run_agent_wrapper(
     }
     let (reply, reasoning_content, stop_reason) = completion_reply(result);
 
-    if matches!(stop_reason, RunStopReason::EndTurn) && !reply.is_empty() {
-        // [TEMP-DISABLE BG REVIEW] � uncomment the spawn line below to re-enable
-        let config = super::background_review::build_background_config_from_opts_ext(
-            loom_opts.base_url.clone().unwrap_or_default(),
-            loom_opts.api_key.clone().unwrap_or_default(),
-            loom_opts.model.clone().unwrap_or_default(),
-            true,
-        );
-        let session_id = opts
-            .thread_id.clone()
-            .or_else(|| opts.session_id.clone())
-            .unwrap_or_else(|| format!("auto-{}", std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()));
-        let user_msg = match &opts.message {
-            loom_llm::message::UserContent::Text(t) => t.clone(),
-            _ => String::new(),
-        };
-        let session_content = format!("User: {}\n\nAssistant: {}", user_msg, reply);
-
-        // [TEMP-DISABLE BG REVIEW] super::background_review::spawn_background_review(config, session_content, session_id.clone());
-        let _ = (config, session_content); // suppress unused warnings
-        let store = super::session_store::FileSessionStore::new(
-            &super::session_store::FileSessionStore::default_path(),
-        );
-        let _ = super::session_store::store_session_from_conversation(
-            &store, &session_id, &user_msg, &reply, vec!["auto".to_string()],
-        );
-    }
-
     Ok(RunAgentOutput {
         reply,
         reasoning_content,
@@ -412,6 +381,37 @@ fn on_event_react(
     verbose: bool,
     output_timestamp: bool,
 ) {
+    let ev_tag: &'static str = match ev {
+        StreamEvent::TaskStart { node_id, .. } => match node_id.as_str() {
+            "think" => "TaskStart(think)",
+            "act" => "TaskStart(act)",
+            "observe" => "TaskStart(observe)",
+            _ => "TaskStart(other)",
+        },
+        StreamEvent::TaskEnd { node_id, .. } => match node_id.as_str() {
+            "think" => "TaskEnd(think)",
+            "act" => "TaskEnd(act)",
+            "observe" => "TaskEnd(observe)",
+            _ => "TaskEnd(other)",
+        },
+        StreamEvent::Messages { .. } => "Messages",
+        StreamEvent::Values(_) => "Values",
+        StreamEvent::Updates { .. } => "Updates",
+        StreamEvent::Custom(_) => "Custom",
+        StreamEvent::Checkpoint(_) => "Checkpoint",
+        StreamEvent::TotExpand { .. } => "TotExpand",
+        StreamEvent::TotEvaluate { .. } => "TotEvaluate",
+        StreamEvent::TotBacktrack { .. } => "TotBacktrack",
+        _ => "other",
+    };
+    tracing::info!(
+        hang_probe = "on_event_react",
+        ev = ev_tag,
+        turn = s.turn,
+        reply_started = s.reply_started,
+        spinner_alive = s.spinner.is_some(),
+        "hang_probe: on_event_react enter"
+    );
     match ev {
         StreamEvent::TaskStart { node_id, .. } => {
             if let Some(sp) = s.spinner.take() {
@@ -976,6 +976,7 @@ mod tests {
             bash_executor: None,
             extra_tools: None,
             acp_session_id: None,
+            goal_mode: false,
         }
     }
 

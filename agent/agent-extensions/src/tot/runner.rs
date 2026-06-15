@@ -87,6 +87,7 @@ pub struct TotRunner {
     runnable_config: Option<RunnableConfig>,
     system_prompt: Option<String>,
     cancellation: Option<CancellationToken>,
+    any_stream_event_sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>>,
 }
 
 /// Wraps Arc<dyn LlmClient> to share one LLM between ThinkExpandNode and potential future nodes.
@@ -112,6 +113,11 @@ impl LlmClient for SharedLlm {
 impl TotRunner {
     pub fn with_cancellation(mut self, cancellation: Option<CancellationToken>) -> Self {
         self.cancellation = cancellation;
+        self
+    }
+
+    pub fn with_any_stream_event_sender(mut self, sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>>) -> Self {
+        self.any_stream_event_sender = sender;
         self
     }
 
@@ -199,6 +205,7 @@ impl TotRunner {
             runnable_config,
             system_prompt,
             cancellation,
+            any_stream_event_sender: None,
         })
     }
 
@@ -207,9 +214,9 @@ impl TotRunner {
         &self,
         user_message: &str,
         on_event: Option<F>,
-    ) -> Result<runner_common::StreamRunOutcome<TotState, runner_common::StreamRunError>, TotRunError>
+    ) -> Result<runner_common::StreamRunOutcome<TotState>, TotRunError>
     where
-        F: FnMut(StreamEvent<TotState>) + Send + 'static,
+        F: Fn(StreamEvent<TotState>) + Clone + Send + 'static,
     {
         self.stream_with_config(user_message, None, on_event).await
     }
@@ -220,9 +227,9 @@ impl TotRunner {
         user_message: &str,
         config: Option<RunnableConfig>,
         on_event: Option<F>,
-    ) -> Result<runner_common::StreamRunOutcome<TotState, runner_common::StreamRunError>, TotRunError>
+    ) -> Result<runner_common::StreamRunOutcome<TotState>, TotRunError>
     where
-        F: FnMut(StreamEvent<TotState>) + Send + 'static,
+        F: Fn(StreamEvent<TotState>) + Clone + Send + 'static,
     {
         let run_config = config.or_else(|| self.runnable_config.clone());
         let state = build_tot_initial_state(
@@ -232,23 +239,29 @@ impl TotRunner {
             self.system_prompt.as_deref(),
         )
         .await?;
+        let event_forwarder: Option<std::sync::Arc<dyn Fn(StreamEvent<TotState>) + Send + Sync>> =
+            self.any_stream_event_sender.as_ref().map(|sender| {
+                let sender = sender.clone();
+                std::sync::Arc::new(move |ev: StreamEvent<TotState>| {
+                    if let Ok(json) = serde_json::to_value(&ev) {
+                        sender(loom_cli_types::AnyStreamEvent::React(StreamEvent::Custom(json)));
+                    }
+                }) as std::sync::Arc<dyn Fn(StreamEvent<TotState>) + Send + Sync>
+            });
         let result = runner_common::run_stream_with_config(
-            self.compiled.clone(),
+            &self.compiled,
             state,
             run_config,
             on_event,
             self.cancellation.clone(),
-            None,
+            event_forwarder,
         )
         .await;
         match result {
-            Ok(outcome) => match outcome {
-                runner_common::StreamRunOutcome::Completed(s) => Ok(runner_common::StreamRunOutcome::Completed(s)),
-                runner_common::StreamRunOutcome::Cancelled => Ok(runner_common::StreamRunOutcome::Cancelled),
-                runner_common::StreamRunOutcome::Error(runner_common::StreamRunError::Execution(err)) => Err(TotRunError::Execution(err)),
-                runner_common::StreamRunOutcome::Empty => Ok(runner_common::StreamRunOutcome::Empty),
-            },
+            Ok(runner_common::StreamRunOutcome::Finished(s)) => Ok(runner_common::StreamRunOutcome::Finished(s)),
+            Ok(runner_common::StreamRunOutcome::Cancelled) => Ok(runner_common::StreamRunOutcome::Cancelled),
             Err(runner_common::StreamRunError::Execution(err)) => Err(TotRunError::Execution(err)),
+            Err(runner_common::StreamRunError::StreamEndedWithoutState(_)) => Err(TotRunError::StreamEndedWithoutState),
         }
     }
 }
@@ -347,7 +360,7 @@ mod tests {
             .unwrap();
         assert!(matches!(
             &streamed,
-            agent::runner_common::StreamRunOutcome::Completed(s) if s.last_assistant_reply().is_some()
+            agent::runner_common::StreamRunOutcome::Finished(s) if s.last_assistant_reply().is_some()
         ));
         assert!(!events.lock().unwrap().is_empty());
     }
