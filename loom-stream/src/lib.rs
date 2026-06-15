@@ -5,18 +5,16 @@
 
 pub mod any_event;
 pub mod openai_sse;
-pub mod sender;
 pub mod writers;
 
 // Re-export core types from stream-event crate
 pub use stream_event::{
-    CheckpointEvent, MessageChunk, MessageChunkKind, StreamEvent, StreamMetadata, StreamMode,
-    StreamWriter,
+    CheckpointEvent, ChunkToStreamSender, MessageChunk, MessageChunkKind, StreamEvent,
+    StreamMetadata, StreamMode, StreamWriter,
 };
 
 // Loom-specific types
 pub use any_event::TypedAnyStreamEvent;
-pub use sender::ChunkToStreamSender;
 pub use writers::tool_stream_writer::ToolStreamWriter;
 
 #[cfg(test)]
