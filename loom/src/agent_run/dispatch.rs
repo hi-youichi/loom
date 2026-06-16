@@ -25,7 +25,7 @@ use serde_json::Value;
 use thiserror::Error;
 use tracing::Instrument;
 
-use crate::cli_run::build_helve_config;
+use crate::cli_run::build_react_config;
 
 #[derive(Debug, Error)]
 pub enum RunError {
@@ -117,7 +117,7 @@ pub async fn run_agent(
     llm_override: Option<Box<dyn LlmClient>>,
 ) -> Result<RunCompletion, RunError> {
     let loom_opts = opts.to_cli_run_options();
-    let (_helve, mut config, _resolved_agent) = build_helve_config(&loom_opts);
+    let (mut config, _resolved_agent) = build_react_config(&loom_opts);
     if opts.debug_llm {
         eprintln!("========== [DEBUG-LLM] System Prompt ==========");
         if let Some(ref sp) = config.system_prompt {

@@ -38,7 +38,7 @@ members = [
     "loom-background-review",
     "loom-protocol",
     "loom-stream-display",
-    "loom-helve",
+    "loom-prompt",
     "loom-tier",
     "loom-react-config",
     "loom-cli-types",

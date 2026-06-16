@@ -657,8 +657,8 @@ mod tests {
         };
         let manager = WorktreeManager::new(dir.path().to_path_buf(), config);
         assert_eq!(manager.repo_root, dir.path());
-        assert_eq!(manager.config.auto_cleanup, true);
-        assert_eq!(manager.config.detached, false);
+        assert!(manager.config.auto_cleanup);
+        assert!(!manager.config.detached);
     }
 
     #[test]
@@ -691,7 +691,7 @@ mod tests {
     fn manager_conflict_detection_strategies() {
         let dir = TempDir::new().unwrap();
         
-        for (strategy, expected_count) in vec![
+        for (strategy, expected_count) in [
             (ConflictDetection::None, 0),
             (ConflictDetection::FilePath, 1),
             (ConflictDetection::HunkLevel, 1),
@@ -740,7 +740,7 @@ mod tests {
         };
 
         assert_eq!(handle.agent_name, "test-agent");
-        assert_eq!(handle.has_changes, true);
+        assert!(handle.has_changes);
         assert_eq!(handle.state, WorktreeState::Completed);
         assert_eq!(handle.estimated_paths.len(), 1);
         assert_eq!(handle.branch, Some("test-branch".into()));

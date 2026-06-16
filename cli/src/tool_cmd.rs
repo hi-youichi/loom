@@ -1,7 +1,7 @@
 ﻿//! Tool subcommand: list tools and show tool definition.
 //!
 //! Lists or displays tool specs (name, description, input_schema) from the same
-//! tool source used by agent runners. Uses [`build_helve_config`](crate::run::build_helve_config)
+//! tool source used by agent runners. Uses [`build_react_config`](crate::run::build_react_config)
 //! and [`build_react_run_context`](loom::build_react_run_context) so the output
 //! matches what would be used for `react`/`dup`/`tot`/`got`.
 //!
@@ -14,7 +14,7 @@ use loom_llm::AgentError;
 use agent::{build_react_run_context, BuildRunnerError};
 use serde::Serialize;
 
-use crate::run::{build_helve_config, RunError, RunOptions};
+use crate::run::{build_react_config, RunError, RunOptions};
 
 /// Maximum length for description in the list table. Longer descriptions are truncated with "...".
 const LIST_DESC_MAX_LEN: usize = 60;
@@ -31,11 +31,11 @@ pub enum ToolShowFormat {
 
 /// Lists all tools: builds run context from opts, then prints name and description (table or JSON).
 ///
-/// Interacts with [`build_helve_config`](crate::run::build_helve_config) and
+/// Interacts with [`build_react_config`](crate::run::build_react_config) and
 /// [`build_react_run_context`](loom::build_react_run_context).
 pub async fn list_tools(opts: &RunOptions) -> Result<(), RunError> {
     let loom_opts = opts.to_cli_run_options();
-    let (_helve, config, _resolved_agent) = build_helve_config(&loom_opts);
+    let (config, _resolved_agent) = build_react_config(&loom_opts);
     let ctx = build_react_run_context(&config)
         .await
         .map_err(|e| RunError::Build(BuildRunnerError::Context(e)))?;
@@ -160,7 +160,7 @@ pub async fn show_tool(
     format: ToolShowFormat,
 ) -> Result<(), RunError> {
     let loom_opts = opts.to_cli_run_options();
-    let (_helve, config, _resolved_agent) = build_helve_config(&loom_opts);
+    let (config, _resolved_agent) = build_react_config(&loom_opts);
     let ctx = build_react_run_context(&config)
         .await
         .map_err(|e| RunError::Build(BuildRunnerError::Context(e)))?;

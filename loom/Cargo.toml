@@ -61,8 +61,8 @@ loom-stream = { path = "../loom-stream" }
 # Stream display (loom-stream-display crate)
 loom-stream-display = { path = "../loom-stream-display" }
 
-# Helve configuration and prompts (loom-helve crate)
-loom-helve = { path = "../loom-helve" }
+# Prompt assembly and environment context (loom-prompt crate)
+loom-prompt = { path = "../loom-prompt" }
 
 # Tools
 tool-core = { path = "../agent/tool/tool-core" }

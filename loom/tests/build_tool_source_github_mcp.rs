@@ -63,6 +63,12 @@ fn base_config(working_folder: std::path::PathBuf) -> ReactBuildConfig {
             extra_tools: None,
             acp_session_id: None,
             goal_mode: false,
+            role_setting: None,
+            agents_md: None,
+            system_prompt_override: None,
+            skills_prompt: None,
+            memory_prompt: None,
+            env_context: None,
     }
 }
 

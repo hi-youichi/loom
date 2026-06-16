@@ -16,7 +16,7 @@ loom-protocol = { path = "../loom-protocol" }
 loom-graph = { path = "../loom-graph" }
 loom-llm = { path = "../loom-llm" }
 loom-memory = { path = "../loom-memory" }
-loom-helve = { path = "../loom-helve" }
+loom-prompt = { path = "../loom-prompt" }
 loom-workspace = { path = "../loom-workspace" }
 loom-tier = { path = "../loom-tier" }
 loom-stream = { path = "../loom-stream" }

@@ -23,7 +23,7 @@ const AGENTS_MD_FILE: &str = "AGENTS.md";
 /// overrides for model, tools, skills, and working folder.
 ///
 /// The `system_prompt` field is NOT assembled here — callers should handle
-/// prompt assembly themselves since that depends on `loom-helve`.
+/// prompt assembly themselves since that depends on `loom-prompt`.
 pub fn build_config_from_profile(
     profile: &AgentProfile,
     parent_config: &ReactBuildConfig,

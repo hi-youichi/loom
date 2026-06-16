@@ -335,12 +335,14 @@ shared_cache:
 
     #[test]
     fn worktree_config_clone() {
-        let mut config = WorktreeConfig::default();
-        config.auto_cleanup = true;
-        config.branch_prefix = Some("custom-".to_string());
-        
+        let config = WorktreeConfig {
+            auto_cleanup: true,
+            branch_prefix: Some("custom-".to_string()),
+            ..Default::default()
+        };
+
         let cloned = config.clone();
-        assert_eq!(cloned.auto_cleanup, true);
+        assert!(cloned.auto_cleanup);
         assert_eq!(cloned.branch_prefix, Some("custom-".to_string()));
     }
 
@@ -479,7 +481,7 @@ sparse_paths:
     fn worktree_profile_config_auto_cleanup_defaults() {
         let profile: WorktreeProfileConfig = serde_yaml::from_str("{}").unwrap();
         let config = profile.to_worktree_config();
-        assert_eq!(config.auto_cleanup, true); // defaults to true
+        assert!(config.auto_cleanup); // defaults to true
     }
 
     #[test]

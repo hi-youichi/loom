@@ -2,7 +2,7 @@
 //! Uses protocol format (type + payload) and optional envelope per protocol_spec.
 
 use chrono::Local;
-use loom::cli_run::build_helve_config;
+use loom::cli_run::build_react_config;
 use loom_react_config::profile::list_available_profiles;
 use loom_model_spec::{
     build_composite_resolver, ConfigModelEntry, ConfigProviderEntry,
@@ -195,7 +195,7 @@ pub async fn run_agent_wrapper(
     // caller-side async functions.
 
     let loom_opts = opts.to_cli_run_options();
-    let (helve, config, resolved_agent) = build_helve_config(&loom_opts);
+    let (config, resolved_agent) = build_react_config(&loom_opts);
 
     print_loaded_tools(&config).await?;
     if !opts.output_json {
@@ -204,10 +204,10 @@ pub async fn run_agent_wrapper(
         }
         print_agent_banner(&resolved_agent);
         print_available_agents();
-        if helve.role_setting.is_some() {
+        if config.role_setting.is_some() {
             eprintln!("agent profile role included in system prompt (see state.messages[0]).");
         }
-        if helve.agents_md.is_some() {
+        if config.agents_md.is_some() {
             eprintln!("AGENTS.md loaded; included in system prompt.");
         }
         print_model_info(config.model.as_ref()).await;
@@ -919,8 +919,7 @@ mod tests {
     use loom::agent_run::{
         RunCmd, RunOptions,
     };
-    use agent_extensions::{TaskGraph, TaskNode, TaskNodeState, TaskStatus, TotExtension, UnderstandOutput};
-    use loom_react_config::{GotRunnerConfig, TotRunnerConfig};
+use agent_extensions::{TaskGraph, TaskNode, TaskNodeState, TaskStatus, TotExtension, UnderstandOutput};
     use loom_llm::{message::Message, ToolCall};
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
@@ -932,51 +931,17 @@ mod tests {
         }
     }
 
-    fn minimal_build_config() -> loom_react_config::ReactBuildConfig {
+fn minimal_build_config() -> loom_react_config::ReactBuildConfig {
         loom_react_config::ReactBuildConfig {
-            db_path: None,
-            thread_id: None,
-            trace_thread_id: None,
-            user_id: None,
-            system_prompt: None,
-            exa_api_key: None,
-            exa_codesearch_enabled: false,
-            twitter_api_key: None,
             mcp_exa_url: "https://mcp.exa.ai/mcp".to_string(),
             mcp_remote_cmd: "npx".to_string(),
             mcp_remote_args: "-y mcp-remote".to_string(),
-            github_token: None,
             mcp_github_cmd: "npx".to_string(),
             mcp_github_args: vec![
                 "-y".to_string(),
                 "@modelcontextprotocol/server-github".to_string(),
             ],
-            mcp_github_url: None,
-            mcp_verbose: false,
-            openai_api_key: None,
-            openai_base_url: None,
-            model: None,
-            model_tier: None,
-            parent_model_hint: None,
-            llm_provider: None,
-            llm_provider_name: None,
-            openai_temperature: None,
-            embedding_api_key: None,
-            embedding_base_url: None,
-            embedding_model: None,
-            working_folder: None,
-            compaction_config: None,
-            tot_config: TotRunnerConfig::default(),
-            got_config: GotRunnerConfig::default(),
-            mcp_servers: None,
-            skill_registry: None,
-            max_sub_agent_depth: None,
-            dry_run: false,
-            builtin_tool_filter: None,
-            bash_executor: None,
-            extra_tools: None,
-            acp_session_id: None,
-            goal_mode: false,
+            ..Default::default()
         }
     }
 

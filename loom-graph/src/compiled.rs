@@ -353,7 +353,7 @@ where
                     }
                 };
 
-            let should_end = next_id.is_none() || next_id.as_deref() == Some(END);
+let should_end = next_id.is_none() || next_id.as_deref() == Some(END);
             if should_end {
                 if let (Some(cp), Some(cfg)) = (&self.checkpointer, config) {
                     if cfg.thread_id.is_some() {
@@ -389,6 +389,19 @@ where
                         }
                     }
                 }
+
+                // Emit a terminal Values event so consumers using
+                // `StreamMode::Values` can capture the final state. Without this,
+                // the consumer would observe `StreamEndedWithoutState` even
+                // though the graph ran to completion.
+                if let Some(ctx) = run_ctx {
+                    if let Some(tx) = &ctx.stream_tx {
+                        if ctx.stream_mode.contains(&StreamMode::Values) {
+                            let _ = tx.try_send(StreamEvent::Values(state.clone()));
+                        }
+                    }
+                }
+
                 log_graph_complete();
                 return Ok(());
             }

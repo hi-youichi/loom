@@ -6,6 +6,7 @@
 use std::collections::HashSet;
 use std::future::Future;
 
+use futures::FutureExt;
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 
@@ -119,6 +120,7 @@ where
     let mut completion_result: Option<Result<Result<(), AgentError>, tokio::task::JoinError>> = None;
     let mut final_state: Option<S> = None;
     let mut iters: u64 = 0;
+    let mut completion_consumed = false;
     loop {
         // --- hang probe: pre-next (producer side) ---
         let poll_start = std::time::Instant::now();
@@ -126,20 +128,36 @@ where
         // resolves first wins. This makes the consumer loop terminate when the
         // producer task is finished, even if the mpsc channel happens to be held
         // open by a leaked Sender clone.
-        let event: Option<StreamEvent<S>> = tokio::select! {
-            biased;
-            // Producer completion is checked first. If the producer is done, we can
-            // safely break out of the loop regardless of channel state.
-            res = &mut completion => {
-                completion_result = Some(res);
-                None
+        //
+        // When `completion_consumed` is true, the JoinHandle has already been
+        // polled in a previous iteration; re-polling it would panic. Drain the
+        // channel directly until it closes.
+        let event: Option<StreamEvent<S>> = if completion_consumed {
+            stream.next().await
+        } else {
+            tokio::select! {
+                biased;
+                // Producer completion is checked first. If the producer is done, we can
+                // safely break out of the loop regardless of channel state.
+                res = &mut completion => {
+                    completion_result = Some(res);
+                    completion_consumed = true;
+                    None
+                }
+                next = stream.next() => next,
             }
-            next = stream.next() => next,
         };
 
         let event = match event {
-            Some(e) => e,
+            // When the producer completes, the channel may still hold the terminal
+            // Values event. Drain any buffered events before exiting so callers
+            // using `StreamMode::Values` can capture the final state.
+            None if completion_consumed => match stream.next().now_or_never() {
+                Some(Some(e)) => e,
+                _ => break,
+            },
             None => break,
+            Some(e) => e,
         };
 
         let poll_elapsed_ms = poll_start.elapsed().as_millis() as u64;

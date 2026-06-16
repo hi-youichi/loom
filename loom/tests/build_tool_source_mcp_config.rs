@@ -14,7 +14,7 @@ fn ensure_short_mcp_timeout() {
     });
 }
 
-use loom::cli_run::build_helve_config;
+use loom::cli_run::build_react_config;
 use agent::build_react_run_context;
 use loom_cli_types::RunOptions;
 use std::path::PathBuf;
@@ -63,8 +63,8 @@ async fn mcp_config_injected_into_build_tool_source() {
     std::fs::write(loom_dir.join("mcp.json"), mcp_json).expect("write mcp.json");
 
     let run_opts = opts(working);
-    let (_, config, _) = build_helve_config(&run_opts);
-    // load_mcp_config_from_path fails for that file; build_helve_config only sets mcp_servers on Ok, so we get None or from_env
+    let (config, _) = build_react_config(&run_opts);
+    // load_mcp_config_from_path fails for that file; build_react_config only sets mcp_servers on Ok, so we get None or from_env
     let ctx = build_react_run_context(&config)
         .await
         .expect("build_react_run_context");

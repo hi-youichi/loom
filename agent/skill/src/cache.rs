@@ -327,7 +327,7 @@ mod tests {
     fn make_cache_key_deterministic() {
         let p1 = std::path::Path::new("/foo");
         let p2 = std::path::PathBuf::from("/bar");
-        let k1 = make_cache_key(p1, &[p2.clone()]);
+        let k1 = make_cache_key(p1, std::slice::from_ref(&p2));
         let k2 = make_cache_key(p1, &[p2]);
         assert_eq!(k1, k2);
     }

@@ -10,8 +10,8 @@ mod profile;
 
 use loom_react_config::ReactBuildConfig;
 use skill::discovery::SkillRegistry;
-use loom_helve::env_context::{EnvContext, ProjectInfo};
-use loom_helve::config::{HelveConfig, to_react_build_config};
+use loom_prompt::env_context::{EnvContext, ProjectInfo};
+use loom_prompt::{SystemPromptInputs, assemble_system_prompt};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -46,11 +46,11 @@ fn role_content_from_profile(profile_role: Option<String>) -> Option<String> {
     })
 }
 
-/// Builds HelveConfig and ReactBuildConfig from RunOptions.
-/// Returns an optional `ResolvedAgent` describing which agent profile was loaded.
-pub fn build_helve_config(
+/// Builds ReactBuildConfig from RunOptions.
+/// Returns the config and an optional `ResolvedAgent` describing which agent profile was loaded.
+pub fn build_react_config(
     opts: &RunOptions,
-) -> (HelveConfig, ReactBuildConfig, Option<ResolvedAgent>) {
+) -> (ReactBuildConfig, Option<ResolvedAgent>) {
     let loaded = load_profile_from_options(opts);
     let resolved_agent = loaded.as_ref().map(|(p, source)| ResolvedAgent {
         name: p.name.clone(),
@@ -114,6 +114,8 @@ pub fn build_helve_config(
         .working_folder
         .clone()
         .unwrap_or_else(|| PathBuf::from(DEFAULT_WORKING_FOLDER));
+    base.working_folder = Some(working_folder.clone());
+    base.thread_id = effective_opts.thread_id.clone().or(base.thread_id.clone());
 
     let profile_role = profile
         .as_ref()
@@ -206,26 +208,38 @@ pub fn build_helve_config(
         "agent prompt",
     );
 
-    let helve = HelveConfig {
-        working_folder: Some(working_folder.clone()),
-        thread_id: effective_opts.thread_id.clone(),
-        user_id: base.user_id.clone(),
-        role_setting: agent_instructions,
-        agents_md: load_agents_md(Some(&working_folder)),
-        system_prompt_override: None,
-        skills_prompt,
-        memory_prompt: load_memory_prompt(),
-        env_context: Some({
-            let mut ctx = EnvContext::detect().with_project(
-                ProjectInfo::detect(&working_folder),
-            );
-            if let Some(cid) = effective_opts.chat_id {
-                ctx = ctx.with_chat_id(cid);
-            }
-            ctx
-        }),
+    // Transfer base into config for final assembly
+    let mut config = base;
+
+    // Set prompt assembly fields directly on config
+    config.role_setting = agent_instructions;
+    config.agents_md = load_agents_md(Some(&working_folder));
+    config.skills_prompt = skills_prompt;
+    config.memory_prompt = load_memory_prompt();
+    config.env_context = Some({
+        let mut ctx = EnvContext::detect().with_project(
+            ProjectInfo::detect(&working_folder),
+        );
+        if let Some(cid) = effective_opts.chat_id {
+            ctx = ctx.with_chat_id(cid);
+        }
+        ctx
+    });
+
+    // Assemble system prompt from config fields
+    let env_ctx = config.env_context.as_ref();
+    let inputs = SystemPromptInputs {
+        full_override: None,
+        base_prompt_override: None,
+        role_setting: config.role_setting.as_deref(),
+        agents_md: config.agents_md.as_deref(),
+        skills_prompt: config.skills_prompt.as_deref(),
+        memory_prompt: config.memory_prompt.as_deref(),
+        env_context: env_ctx,
+        working_folder: config.working_folder.as_deref(),
     };
-    let mut config = to_react_build_config(&helve, base);
+    config.system_prompt = Some(assemble_system_prompt(&inputs));
+
     config.skill_registry = Some(skill_registry.0);
     config.max_sub_agent_depth = profile
         .as_ref()
@@ -247,7 +261,7 @@ pub fn build_helve_config(
         }
     }
 
-    (helve, config, resolved_agent)
+    (config, resolved_agent)
 }
 
 

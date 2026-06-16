@@ -209,12 +209,20 @@ impl Drop for FileLlmAuditLog {
 
         if let Some(handle) = self.join_handle.take() {
             if let Ok(rt) = tokio::runtime::Handle::try_current() {
-                let _ = tokio::task::block_in_place(|| {
-                    rt.block_on(tokio::time::timeout(
-                        Duration::from_secs(2),
-                        handle,
-                    ))
-                });
+                if rt.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread {
+                    let _ = tokio::task::block_in_place(|| {
+                        rt.block_on(tokio::time::timeout(
+                            Duration::from_secs(2),
+                            handle,
+                        ))
+                    });
+                } else {
+                    // Single-threaded runtime: block_in_place is unavailable and the
+                    // JoinHandle is bound to this runtime. Abort the writer and
+                    // accept possible loss of any in-flight audit entries; the
+                    // sender is already closed so the task will exit promptly.
+                    handle.abort();
+                }
             } else {
                 // Outside a runtime; abort the writer since we cannot await.
                 handle.abort();

@@ -1,6 +1,6 @@
 ﻿//! Handle `ToolsList` and `ToolShow` requests.
 
-use loom::cli_run::build_helve_config;
+use loom::cli_run::build_react_config;
 use loom_protocol::{ErrorResponse, ServerResponse, ToolShowOutput, ToolShowResponse, ToolsListResponse};
 use loom_cli_types::RunOptions;
 use loom_llm::message::UserContent;
@@ -43,7 +43,7 @@ pub(crate) async fn handle_tools_list(
             goal_mode: false,
             debug_llm: false,
     };
-    let (_helve, config, _resolved_agent) = build_helve_config(&opts);
+    let (config, _resolved_agent) = build_react_config(&opts);
     match build_react_run_context(&config).await {
         Ok(ctx) => {
             let tools = ctx.tool_source.list_tools().await;
@@ -90,7 +90,7 @@ pub(crate) async fn handle_tool_show(
             goal_mode: false,
             debug_llm: false,
     };
-    let (_helve, config, _resolved_agent) = build_helve_config(&opts);
+    let (config, _resolved_agent) = build_react_config(&opts);
     match build_react_run_context(&config).await {
         Ok(ctx) => {
             let tools = ctx.tool_source.list_tools().await;

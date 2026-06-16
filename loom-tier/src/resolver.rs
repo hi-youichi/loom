@@ -27,84 +27,6 @@ impl ResolvedTierModel {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use loom_llm::registry::ModelEntry;
-
-    #[test]
-    fn test_resolved_tier_model_from_entry_complete() {
-        let entry = ModelEntry {
-            id: "test_provider/test_model".to_string(),
-            name: "test_model".to_string(),
-            provider: "test_provider".to_string(),
-            base_url: Some("https://api.test.com".to_string()),
-            api_key: Some("test_key".to_string()),
-            provider_type: Some("openai_compat".to_string()),
-            temperature: None,
-            tool_choice: None,
-            family: Some("test_family".to_string()),
-            version: None,
-            max_tokens: Some(2048),
-        };
-
-        let resolved = ResolvedTierModel::from_entry(entry);
-        assert_eq!(resolved.model_id, "test_provider/test_model");
-        assert_eq!(resolved.base_url, Some("https://api.test.com".to_string()));
-        assert_eq!(resolved.api_key, Some("test_key".to_string()));
-        assert_eq!(resolved.provider_type, Some("openai_compat".to_string()));
-        assert_eq!(resolved.provider_name, Some("test_provider".to_string()));
-    }
-
-    #[test]
-    fn test_resolved_tier_model_from_entry_minimal() {
-        let entry = ModelEntry {
-            id: "provider/model".to_string(),
-            name: "model".to_string(),
-            provider: "provider".to_string(),
-            base_url: None,
-            api_key: None,
-            provider_type: None,
-            temperature: None,
-            tool_choice: None,
-            family: None,
-            version: None,
-            max_tokens: None,
-        };
-
-        let resolved = ResolvedTierModel::from_entry(entry);
-        assert_eq!(resolved.model_id, "provider/model");
-        assert_eq!(resolved.base_url, None);
-        assert_eq!(resolved.api_key, None);
-        assert_eq!(resolved.provider_type, None);
-        assert_eq!(resolved.provider_name, Some("provider".to_string()));
-    }
-
-    #[test]
-    fn test_resolved_tier_model_partial_fields() {
-        let entry = ModelEntry {
-            id: "prov/model".to_string(),
-            name: "model".to_string(),
-            provider: "prov".to_string(),
-            base_url: Some("https://url.com".to_string()),
-            api_key: None,
-            provider_type: Some("custom".to_string()),
-            temperature: None,
-            tool_choice: None,
-            family: None,
-            version: None,
-            max_tokens: None,
-        };
-
-        let resolved = ResolvedTierModel::from_entry(entry);
-        assert_eq!(resolved.model_id, "prov/model");
-        assert_eq!(resolved.base_url, Some("https://url.com".to_string()));
-        assert_eq!(resolved.api_key, None);
-        assert_eq!(resolved.provider_type, Some("custom".to_string()));
-        assert_eq!(resolved.provider_name, Some("prov".to_string()));
-    }
-}
-
 #[async_trait]
 pub trait TierResolver: Send + Sync {
     async fn resolve_tier(
@@ -193,9 +115,87 @@ fn extract_provider_from_config(config: &ReactBuildConfig) -> Option<String> {
             return Some(provider.to_string());
         }
     }
-    config
+config
         .llm_provider_name
         .as_deref()
         .or(config.llm_provider.as_deref())
         .map(|p| p.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use loom_llm::registry::ModelEntry;
+
+    #[test]
+    fn test_resolved_tier_model_from_entry_complete() {
+        let entry = ModelEntry {
+            id: "test_provider/test_model".to_string(),
+            name: "test_model".to_string(),
+            provider: "test_provider".to_string(),
+            base_url: Some("https://api.test.com".to_string()),
+            api_key: Some("test_key".to_string()),
+            provider_type: Some("openai_compat".to_string()),
+            temperature: None,
+            tool_choice: None,
+            family: Some("test_family".to_string()),
+            version: None,
+            max_tokens: Some(2048),
+        };
+
+        let resolved = ResolvedTierModel::from_entry(entry);
+        assert_eq!(resolved.model_id, "test_provider/test_model");
+        assert_eq!(resolved.base_url, Some("https://api.test.com".to_string()));
+        assert_eq!(resolved.api_key, Some("test_key".to_string()));
+        assert_eq!(resolved.provider_type, Some("openai_compat".to_string()));
+        assert_eq!(resolved.provider_name, Some("test_provider".to_string()));
+    }
+
+    #[test]
+    fn test_resolved_tier_model_from_entry_minimal() {
+        let entry = ModelEntry {
+            id: "provider/model".to_string(),
+            name: "model".to_string(),
+            provider: "provider".to_string(),
+            base_url: None,
+            api_key: None,
+            provider_type: None,
+            temperature: None,
+            tool_choice: None,
+            family: None,
+            version: None,
+            max_tokens: None,
+        };
+
+        let resolved = ResolvedTierModel::from_entry(entry);
+        assert_eq!(resolved.model_id, "provider/model");
+        assert_eq!(resolved.base_url, None);
+        assert_eq!(resolved.api_key, None);
+        assert_eq!(resolved.provider_type, None);
+        assert_eq!(resolved.provider_name, Some("provider".to_string()));
+    }
+
+    #[test]
+    fn test_resolved_tier_model_partial_fields() {
+        let entry = ModelEntry {
+            id: "prov/model".to_string(),
+            name: "model".to_string(),
+            provider: "prov".to_string(),
+            base_url: Some("https://url.com".to_string()),
+            api_key: None,
+            provider_type: Some("custom".to_string()),
+            temperature: None,
+            tool_choice: None,
+            family: None,
+            version: None,
+            max_tokens: None,
+        };
+
+        let resolved = ResolvedTierModel::from_entry(entry);
+        assert_eq!(resolved.model_id, "prov/model");
+        assert_eq!(resolved.base_url, Some("https://url.com".to_string()));
+        assert_eq!(resolved.api_key, None);
+        assert_eq!(resolved.provider_type, Some("custom".to_string()));
+        assert_eq!(resolved.provider_name, Some("prov".to_string()));
+    }
 }

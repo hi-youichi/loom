@@ -10,6 +10,9 @@ use std::sync::Arc;
 
 use skill::SkillRegistry;
 
+// Re-export EnvContext from loom-prompt
+pub use loom_prompt::env_context::EnvContext;
+
 // Re-exported from loom-types
 pub use loom_types::config::{BuiltinToolFilter, TotRunnerConfig, GotRunnerConfig};
 
@@ -24,7 +27,7 @@ pub mod build_config;
 pub use build_config::{build_config_from_profile, load_agents_md};
 
 /// Configuration for building ReAct run context.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ReactBuildConfig {
     pub db_path: Option<String>,
     pub thread_id: Option<String>,
@@ -79,7 +82,7 @@ pub struct ReactBuildConfig {
     pub got_config: GotRunnerConfig,
     /// MCP servers from mcp.json (discovered by CLI/ACP) or from ACP request.
     pub mcp_servers: Option<Vec<McpServerDef>>,
-    /// Skill registry for the skill tool (built during helve config construction).
+    /// Skill registry for the skill tool (built during ReactBuildConfig construction in `build_react_config`).
     pub skill_registry: Option<Arc<SkillRegistry>>,
     /// Maximum nesting depth for `invoke_agent` tool calls (default 3).
     pub max_sub_agent_depth: Option<u32>,
@@ -94,6 +97,20 @@ pub struct ReactBuildConfig {
     /// When true, task management tools (task_create/update/show/list/delete) are registered.
     /// Only enabled in goal mode.
     pub goal_mode: bool,
+
+    // --- Prompt assembly inputs (migrated from HelveConfig) ---
+    /// Role/persona setting (e.g. from instructions.md).
+    pub role_setting: Option<String>,
+    /// Project-level agent rules (e.g. from AGENTS.md).
+    pub agents_md: Option<String>,
+    /// Optional full system prompt override (bypasses assembly).
+    pub system_prompt_override: Option<String>,
+    /// Skills section (from skill registry).
+    pub skills_prompt: Option<String>,
+    /// Memory context (user preferences, project facts).
+    pub memory_prompt: Option<String>,
+    /// Runtime environment context (OS, locale, agent intro).
+    pub env_context: Option<EnvContext>,
 }
 
 impl std::fmt::Debug for ReactBuildConfig {
@@ -177,6 +194,12 @@ impl ReactBuildConfig {
             extra_tools: None,
             acp_session_id: None,
             goal_mode: false,
+            role_setting: None,
+            agents_md: None,
+            system_prompt_override: None,
+            skills_prompt: None,
+            memory_prompt: None,
+            env_context: None,
         }
     }
 }

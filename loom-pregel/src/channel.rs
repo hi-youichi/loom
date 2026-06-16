@@ -9,6 +9,12 @@ use crate::types::ChannelValue;
 pub type ReducerFn =
     Arc<dyn Fn(Option<&ChannelValue>, &[ChannelValue]) -> ChannelValue + Send + Sync>;
 
+/// Reducer function used by binary aggregate channels.
+/// Higher-ranked over the input lifetimes so the alias can be used in struct fields.
+pub type BinaryAggregateReducer = Arc<
+    dyn for<'a, 'b> Fn(Option<&'a ChannelValue>, &'b [ChannelValue]) -> ChannelValue + Send + Sync,
+>;
+
 /// Pregel runtime channel contract.
 pub trait Channel: Send + Sync + fmt::Debug {
     /// Returns the current channel snapshot.
@@ -559,7 +565,7 @@ mod tests {
 
     #[test]
     fn test_build_channel_binary_aggregate() {
-        let reducer: Arc<dyn for<'a, 'b> Fn(std::option::Option<&'a ChannelValue>, &'b [ChannelValue]) -> ChannelValue + Send + Sync> = Arc::new(
+        let reducer: BinaryAggregateReducer = Arc::new(
             |old: Option<&ChannelValue>, new: &[ChannelValue]| {
                 if let Some(old_value) = old {
                     return old_value.clone();
@@ -570,7 +576,7 @@ mod tests {
                 new.last().unwrap().clone()
             }
         );
-        
+
         let spec = ChannelSpec::new(ChannelKind::BinaryAggregate { reducer });
         let channel = build_channel(&spec);
 

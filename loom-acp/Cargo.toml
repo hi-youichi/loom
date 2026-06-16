@@ -30,7 +30,7 @@ loom-stream = { path = "../loom-stream" }
 loom-commands = { path = "../loom-commands" }
 config = { path = "../config", features = ["tracing-init"] }
 task-core = { path = "../task-core" }
-loom-helve = { path = "../loom-helve" }
+loom-prompt = { path = "../loom-prompt" }
 agent-client-protocol = { version = "0.11.1", features = ["unstable_boolean_config", "unstable_session_model", "unstable_session_fork", "unstable_message_id"] }
 async-trait = { workspace = true }
 tokio = { workspace = true }

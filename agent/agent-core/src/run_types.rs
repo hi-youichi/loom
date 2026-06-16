@@ -76,7 +76,7 @@ impl std::fmt::Debug for RunOptions {
 }
 
 impl RunOptions {
-    /// Convert to loom_cli_types::RunOptions for use with build_helve_config.
+    /// Convert to loom_cli_types::RunOptions for use with build_react_config.
     pub fn to_cli_run_options(&self) -> loom_cli_types::RunOptions {
         loom_cli_types::RunOptions {
             message: self.message.clone(),

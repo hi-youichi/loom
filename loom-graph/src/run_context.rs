@@ -383,10 +383,12 @@ mod tests {
     }
 
     #[test]
-    fn test_run_context_config_accessible() {
-        let mut config = RunnableConfig::default();
-        config.thread_id = Some("test-thread".to_string());
-        
+fn test_run_context_config_accessible() {
+        let config = RunnableConfig {
+            thread_id: Some("test-thread".to_string()),
+            ..Default::default()
+        };
+
         let ctx = RunContext::<String>::new(config.clone());
         assert_eq!(ctx.config.thread_id, Some("test-thread".to_string()));
     }

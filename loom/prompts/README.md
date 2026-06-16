@@ -6,7 +6,7 @@
 - `tot.yaml` — ToT expand addon, research quality addon
 - `got.yaml` — GoT plan_system, agot_expand_system
 - `dup.yaml` — DUP understand_prompt
-- `helve.yaml` — Helve workdir template (`{workdir}`), approval_destructive, approval_always
+- `prompt.yaml` — Prompt workdir template (`{workdir}`), approval_destructive, approval_always
 
 Default agent role/persona: built-in agent **dev** in `loom/agents/dev/` (instructions.md + config.yaml, compile-time embedded). Override at runtime with `instructions.md` or legacy `SOUL.md` in working folder, or use `--agent dev` explicitly.
 

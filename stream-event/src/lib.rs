@@ -21,6 +21,7 @@ pub use stream_event::StreamEvent;
 pub use stream_mode::StreamMode;
 pub use metadata::{CheckpointEvent, StreamMetadata};
 pub use message::{MessageChunk, MessageChunkKind};
+pub use writers::StreamWriter;
 
 #[cfg(test)]
 mod tests {
@@ -94,4 +95,3 @@ mod tests {
         }
     }
 }
-pub use writers::StreamWriter;

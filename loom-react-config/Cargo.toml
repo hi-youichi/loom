@@ -20,6 +20,9 @@ loom-model-spec = { path = "../loom-model-spec" }
 # Shared types (BuiltinToolFilter, TotRunnerConfig, GotRunnerConfig)
 loom-types = { path = "../loom-types" }
 
+# Prompt assembly (EnvContext for config field)
+loom-prompt = { path = "../loom-prompt" }
+
 # Worktree profile config
 loom-worktree = { path = "../loom-worktree" }
 

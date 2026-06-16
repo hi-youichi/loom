@@ -286,7 +286,7 @@ mod tests {
         let text = result.as_text().unwrap();
         
         assert!(text.contains("main.rs"));
-        assert!(text.contains("test.txt") == false); // .txt files should not match
+        assert!(!text.contains("test.txt")); // .txt files should not match
     }
 
     #[tokio::test]
@@ -330,7 +330,7 @@ mod tests {
         // Should only find .rs files in src directory
         assert!(text.contains("src/lib.rs"));
         assert!(text.contains("src/utils.rs"));
-        assert!(text.contains("main.rs") == false); // Should not find root file
+        assert!(!text.contains("main.rs")); // Should not find root file
     }
 
     #[tokio::test]

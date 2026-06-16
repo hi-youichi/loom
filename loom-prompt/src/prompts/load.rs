@@ -8,7 +8,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use super::{DupPromptsFile, GotPromptsFile, HelvePromptsFile, ReactPromptsFile, TotPromptsFile};
+use super::{DupPromptsFile, GotPromptsFile, PromptOverridesFile, ReactPromptsFile, TotPromptsFile};
 
 /// Embedded default YAML (canonical source: `loom/prompts/*.yaml`).
 macro_rules! embed_prompt_yaml {
@@ -20,7 +20,7 @@ const EMBED_REACT: &str = embed_prompt_yaml!("react.yaml");
 const EMBED_TOT: &str = embed_prompt_yaml!("tot.yaml");
 const EMBED_GOT: &str = embed_prompt_yaml!("got.yaml");
 const EMBED_DUP: &str = embed_prompt_yaml!("dup.yaml");
-const EMBED_HELVE: &str = embed_prompt_yaml!("helve.yaml");
+const EMBED_PROMPT: &str = embed_prompt_yaml!("prompt.yaml");
 
 /// Error when loading prompts from a directory (missing dir, invalid YAML).
 #[derive(Debug, thiserror::Error)]
@@ -38,7 +38,7 @@ const REACT_FILE: &str = "react.yaml";
 const TOT_FILE: &str = "tot.yaml";
 const GOT_FILE: &str = "got.yaml";
 const DUP_FILE: &str = "dup.yaml";
-const HELVE_FILE: &str = "helve.yaml";
+const PROMPT_FILE: &str = "prompt.yaml";
 
 /// Default directory name when `PROMPTS_DIR` is not set.
 #[allow(dead_code)]
@@ -59,7 +59,7 @@ pub fn load(dir: &Path) -> Result<AgentPrompts, LoadError> {
         tot: load_file(dir, TOT_FILE).unwrap_or_default(),
         got: load_file(dir, GOT_FILE).unwrap_or_default(),
         dup: load_file(dir, DUP_FILE).unwrap_or_default(),
-        helve: load_file(dir, HELVE_FILE).unwrap_or_default(),
+        prompt_overrides: load_file(dir, PROMPT_FILE).unwrap_or_default(),
     })
 }
 
@@ -75,7 +75,7 @@ pub fn default_from_embedded() -> AgentPrompts {
         tot: parse_yaml(EMBED_TOT).unwrap_or_default(),
         got: parse_yaml(EMBED_GOT).unwrap_or_default(),
         dup: parse_yaml(EMBED_DUP).unwrap_or_default(),
-        helve: parse_yaml(EMBED_HELVE).unwrap_or_default(),
+        prompt_overrides: parse_yaml(EMBED_PROMPT).unwrap_or_default(),
     }
 }
 
@@ -119,7 +119,7 @@ pub struct AgentPrompts {
     pub tot: TotPromptsFile,
     pub got: GotPromptsFile,
     pub dup: DupPromptsFile,
-    pub helve: HelvePromptsFile,
+    pub prompt_overrides: PromptOverridesFile,
 }
 
 #[cfg(test)]
@@ -161,6 +161,6 @@ mod tests {
         assert!(!EMBED_TOT.is_empty());
         assert!(!EMBED_GOT.is_empty());
         assert!(!EMBED_DUP.is_empty());
-        assert!(!EMBED_HELVE.is_empty());
+        assert!(!EMBED_PROMPT.is_empty());
     }
 }

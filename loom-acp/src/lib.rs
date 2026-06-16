@@ -54,7 +54,7 @@
 //! |                     |                                                             |
 //! |                     v                                                             |
 //! |  +-------------------------------------------------------------------------+     |
-//! |  |  Loom   loom::run_agent_with_options / build_helve_config              |     |
+//! |  |  Loom   loom::run_agent_with_options / build_react_config              |     |
 //! |  |  - RunOptions, RunCmd, on_event(AnyStreamEvent) -> reply                 |     |
 //! |  +-------------------------------------------------------------------------+     |
 //! |         |  Tools MCP(new_session/config) / local; graph execution -> StreamBridge  |
@@ -118,7 +118,7 @@
 //!          |                |        |   updates()      |
 //!          v                v        | StreamUpdate     |
 //!    +------------------------------------------------------------------+
-//!    |  loom crate   RunOptions, RunCmd, AnyStreamEvent, build_helve_config
+//!    |  loom crate   RunOptions, RunCmd, AnyStreamEvent, build_react_config
 //!    |  tools from MCP (new_session) / config                           |
 //!    +------------------------------------------------------------------+
 //! ```

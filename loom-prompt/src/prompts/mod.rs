@@ -1,8 +1,8 @@
 //! Agent prompts loaded from YAML files by directory (optional override for in-code defaults).
 //!
 //! See [`AgentPrompts`] and [`load`].
-//! Interacts with [`ReactBuildConfig`](loom_agent::ReactBuildConfig), [`assemble_system_prompt`](crate::prompt::assemble_system_prompt),
-//! and runners that use system/prompt strings (ReAct, ToT, GoT, DUP, Helve).
+//! Interacts with [`ReactBuildConfig`](loom_react_config::ReactBuildConfig), [`assemble_system_prompt`](crate::assemble::assemble_system_prompt),
+//! and runners that use system/prompt strings (ReAct, ToT, GoT, DUP).
 
 mod load;
 mod resolve;
@@ -44,9 +44,9 @@ pub struct DupPromptsFile {
     pub understand_prompt: Option<String>,
 }
 
-/// Per-file YAML shape for `prompts/helve.yaml`. Placeholder in workdir template: `{workdir}`.
+/// Per-file YAML shape for `prompts/prompt.yaml`.
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(rename_all = "snake_case", default)]
-pub struct HelvePromptsFile {
-    pub helve_system_addon: Option<String>,
+pub struct PromptOverridesFile {
+    pub system_addon: Option<String>,
 }

@@ -420,9 +420,11 @@ mod tests {
 
     #[test]
     fn test_operation_stats_min_max_duration() {
-        let mut stats = OperationStats::default();
-        stats.min_duration = Some(Duration::from_millis(5));
-        stats.max_duration = Some(Duration::from_millis(100));
+        let stats = OperationStats {
+            min_duration: Some(Duration::from_millis(5)),
+            max_duration: Some(Duration::from_millis(100)),
+            ..Default::default()
+        };
 
         assert_eq!(stats.min_duration, Some(Duration::from_millis(5)));
         assert_eq!(stats.max_duration, Some(Duration::from_millis(100)));
@@ -474,8 +476,8 @@ mod tests {
             monitor.record(metric);
         }
 
-        assert!(monitor.operation_types().len() > 0);
-        assert!(monitor.languages().len() > 0);
+        assert!(!monitor.operation_types().is_empty());
+        assert!(!monitor.languages().is_empty());
 
         monitor.clear();
 
@@ -768,10 +770,12 @@ mod tests {
 
     #[test]
     fn test_operation_stats_failure_count() {
-        let mut stats = OperationStats::default();
-        stats.total_count = 10;
-        stats.success_count = 7;
-        stats.failure_count = 3;
+        let stats = OperationStats {
+            total_count: 10,
+            success_count: 7,
+            failure_count: 3,
+            ..Default::default()
+        };
 
         assert_eq!(stats.total_count, 10);
         assert_eq!(stats.success_count, 7);

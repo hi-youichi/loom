@@ -10,7 +10,7 @@ loom-pregel = { path = "../../loom-pregel" }
 loom-llm = { path = "../../loom-llm" }
 loom-stream = { path = "../../loom-stream" }
 loom-protocol = { path = "../../loom-protocol" }
-loom-helve = { path = "../../loom-helve" }
+loom-prompt = { path = "../../loom-prompt" }
 loom-memory = { path = "../../loom-memory" }
 tool-core = { path = "../tool/tool-core" }
 tool-basic = { path = "../tool/tool-basic" }

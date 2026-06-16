@@ -310,7 +310,7 @@ mod tests {
         assert_eq!(usage.view_count, 0);
         assert_eq!(usage.patch_count, 0);
         assert_eq!(usage.state, Lifecycle::Active);
-        assert!(usage.pinned == false);
+        assert!(!usage.pinned);
         assert!(usage.absorbed_into.is_none());
         assert!(usage.created_by.is_none());
     }

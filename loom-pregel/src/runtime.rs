@@ -336,7 +336,7 @@ impl PregelRuntime {
         };
         let mut inflight_checkpoint = None;
 
-        let result = async {
+let result = async {
             loop {
                 let Some(tasks) = loop_state.tick().await? else {
                     break;
@@ -375,6 +375,12 @@ impl PregelRuntime {
                     crate::PregelDurability::Exit => {}
                 }
             }
+
+            // Emit a final Values event with the loop output before exiting the
+            // stream so consumers using `StreamMode::Values` can capture the
+            // terminal state. Without this, the consumer only sees Values events
+            // emitted during active ticks and would observe `StreamEndedWithoutState`.
+            emit_values_event(&node_ctx, &loop_state.output()).await;
 
             crate::finish_channels(&mut loop_state.channels);
 

@@ -6,7 +6,7 @@
 
 use loom_types::prompts::{DUP_UNDERSTAND_PROMPT, AGOT_EXPAND_SYSTEM, GOT_PLAN_SYSTEM, TOT_EXPAND_SYSTEM_ADDON, TOT_RESEARCH_QUALITY_ADDON};
 
-use super::{DupPromptsFile, GotPromptsFile, HelvePromptsFile, ReactPromptsFile, TotPromptsFile};
+use super::{DupPromptsFile, GotPromptsFile, PromptOverridesFile, ReactPromptsFile, TotPromptsFile};
 
 /// Loaded YAML prompt materials for all agent patterns.
 ///
@@ -18,7 +18,7 @@ pub struct AgentPrompts {
     pub tot: TotPromptsFile,
     pub got: GotPromptsFile,
     pub dup: DupPromptsFile,
-    pub helve: HelvePromptsFile,
+    pub prompt_overrides: PromptOverridesFile,
 }
 
 impl AgentPrompts {
@@ -62,9 +62,9 @@ impl AgentPrompts {
             .unwrap_or_else(|| DUP_UNDERSTAND_PROMPT.trim().to_string())
     }
 
-    /// Helve system addon (workdir rules for Helve pattern).
-    pub fn helve_system_addon(&self) -> Option<String> {
-        self.helve.helve_system_addon.clone()
+    /// System addon (workdir rules addon).
+    pub fn system_addon(&self) -> Option<String> {
+        self.prompt_overrides.system_addon.clone()
     }
 }
 
@@ -147,16 +147,16 @@ mod tests {
     }
 
     #[test]
-    fn helve_system_addon_resolves_only_from_loaded() {
+    fn system_addon_resolves_only_from_loaded() {
         let prompts = AgentPrompts {
-            helve: HelvePromptsFile {
-                helve_system_addon: Some("helve addon".to_string()),
+            prompt_overrides: PromptOverridesFile {
+                system_addon: Some("system addon".to_string()),
             },
             ..Default::default()
         };
-        assert_eq!(prompts.helve_system_addon(), Some("helve addon".to_string()));
+        assert_eq!(prompts.system_addon(), Some("system addon".to_string()));
 
         let prompts_default = AgentPrompts::default();
-        assert!(prompts_default.helve_system_addon().is_none());
+        assert!(prompts_default.system_addon().is_none());
     }
 }

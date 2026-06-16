@@ -3,7 +3,7 @@
 //! Run orchestration and shared types for building stateful AI agents.
 //!
 //! This crate provides the `cli_run` module which contains profile loading,
-//! helve config building, and model resolution logic.
+//! prompt config building, and model resolution logic.
 //!
 //! All core types are now in their own crates — import them directly:
 //!
@@ -13,7 +13,7 @@
 //! - `loom_tools` — `ToolSource`, `ToolSpec`, `McpToolSource`, `BashTool`, etc.
 //! - `loom_memory` — `Checkpointer`, `Store`, `MemorySaver`, `SqliteSaver`
 //! - `loom_stream` — `StreamEvent`, `StreamMode`, `StreamWriter`
-//! - `loom_helve` — `HelveConfig`, `assemble_system_prompt`
+//! - `loom_prompt` — `assemble_system_prompt`, `EnvContext`
 //! - `loom_tier` — tier resolution, model registry, LLM factory
 //! - `loom_cache` — `Cache`, `InMemoryCache`
 //! - `loom_compress` — context compression / compaction
