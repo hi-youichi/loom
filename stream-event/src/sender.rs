@@ -1,127 +1,222 @@
-use crate::{MessageChunk, MessageChunkKind, StreamEvent, StreamMetadata};
+//! StreamEventSink: lightweight adapter that implements [`StreamSink`] and forwards
+//! streamed `MessageChunk`s directly to a `mpsc::Sender<StreamEvent<S>>`.
+//!
+//! This replaces the previous `ChunkToStreamSender` adapter that required an extra
+//! intermediate `mpsc::channel::<MessageChunk>(128)` and a separate `forward()` task.
+//! With `StreamEventSink`, the LLM implementation calls `sink.try_send_message(chunk, node_id)`
+//! directly inside its SSE parsing loop. There is **no** intermediate channel, **no**
+//! forwarder task, and **no** `.await` on a send inside the LLM — the LLM only does a
+//! single `try_send` per chunk.
+//!
+//! # Why this design
+//!
+//! - The LLM streaming hot path used to be:
+//!   `LLM (await send) → chunk_rx (cap 128) → forward task (try_send) → stream_tx`.
+//!   If `stream_tx` was full or its receiver slow, `forward` would `try_send` Err and
+//!   `break`, leaving `chunk_rx` undrained, which then backed up and stalled the LLM's
+//!   `await send`.
+//! - The new path is `LLM (try_send) → stream_tx`. The LLM never awaits a send; the
+//!   downstream consumer is the only backpressure point.
+//!
+//! # `first_chunk_at`
+//!
+//! `try_send_message` returns `Some(Instant)` exactly once (on the very first chunk),
+//! so the caller can populate `LlmResponse::first_chunk_at` for prefill/decode timing.
+
 use std::fmt::Debug;
+use std::sync::Mutex;
+
+use loom_llm::traits::{MessageChunk, StreamSink};
 use tokio::sync::mpsc;
 
-/// Adapter that converts `MessageChunk` into `StreamEvent::Messages` and sends to `stream_tx`.
+use crate::{StreamEvent, StreamMetadata};
+
+/// Sink that converts `MessageChunk`s into `StreamEvent::Messages` and forwards them
+/// to a `mpsc::Sender<StreamEvent<S>>`.
 ///
-/// Used by ThinkNode (and similar nodes) to avoid manual channel setup and forward loops.
-/// Call `channel()` to get (chunk_tx, chunk_rx), pass `chunk_tx` to `invoke_stream`, then
-/// `forward(chunk_rx)` alongside it with `tokio::join!` so all chunks are forwarded before return.
-pub struct ChunkToStreamSender<S>
+/// Implements [`StreamSink`] so it can be passed directly to
+/// [`LlmClient::invoke_stream`](loom_llm::traits::LlmClient::invoke_stream).
+///
+/// Created per LLM call (cheap: just two `clone()`s and one `Mutex`). Cheap to drop.
+pub struct StreamEventSink<S>
 where
     S: Clone + Send + Sync + Debug + 'static,
 {
     stream_tx: mpsc::Sender<StreamEvent<S>>,
-    node_id: String,
     namespace: Option<String>,
+    first_chunk_at: Mutex<Option<std::time::Instant>>,
 }
 
-impl<S> ChunkToStreamSender<S>
+impl<S> StreamEventSink<S>
 where
     S: Clone + Send + Sync + Debug + 'static,
 {
-    pub fn new(stream_tx: mpsc::Sender<StreamEvent<S>>, node_id: impl Into<String>) -> Self {
+    /// Create a new sink that forwards to `stream_tx`. `namespace` is attached to every
+    /// outgoing event for subgraph routing (pass `None` for top-level graphs).
+    pub fn new(stream_tx: mpsc::Sender<StreamEvent<S>>, namespace: Option<String>) -> Self {
         Self {
             stream_tx,
-            node_id: node_id.into(),
-            namespace: None,
-        }
-    }
-
-    pub fn new_with_namespace(
-        stream_tx: mpsc::Sender<StreamEvent<S>>,
-        node_id: impl Into<String>,
-        namespace: Option<String>,
-    ) -> Self {
-        Self {
-            stream_tx,
-            node_id: node_id.into(),
             namespace,
+            first_chunk_at: Mutex::new(None),
         }
     }
 
-    /// Returns (chunk_tx, chunk_rx). Pass chunk_tx to `invoke_stream`, then await
-    /// `forward(chunk_rx)` together with invoke_stream via `tokio::join!` so forwarding
-    /// completes before the caller returns.
-    pub fn channel(&self) -> (mpsc::Sender<MessageChunk>, mpsc::Receiver<MessageChunk>) {
-        mpsc::channel::<MessageChunk>(128)
+    /// Returns `true` if at least one chunk has been forwarded through this sink.
+    /// Useful for tests and for callers that want to inspect state without moving
+    /// out of the `Mutex`.
+    pub fn has_emitted(&self) -> bool {
+        self.first_chunk_at.lock().unwrap().is_some()
+    }
+}
+
+impl<S> StreamSink for StreamEventSink<S>
+where
+    S: Clone + Send + Sync + Debug + 'static,
+{
+    fn try_send_message(&self, chunk: MessageChunk, node_id: &str) -> Option<std::time::Instant> {
+        let event = StreamEvent::Messages {
+            chunk,
+            metadata: StreamMetadata {
+                loom_node: node_id.to_string(),
+                namespace: self.namespace.clone(),
+            },
+        };
+        // Non-blocking send: drop chunk silently if downstream is full / disconnected.
+        let _ = self.stream_tx.try_send(event);
+
+        // First-chunk timing: return Some(Instant) exactly once.
+        let mut guard = self.first_chunk_at.lock().expect("first_chunk_at mutex poisoned");
+        if guard.is_none() {
+            *guard = Some(std::time::Instant::now());
+            *guard
+        } else {
+            None
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use loom_llm::traits::MessageChunk;
+    use std::sync::Arc;
+
+    #[derive(Clone, Debug)]
+    struct TestState(String);
+
+    #[test]
+    fn first_chunk_emits_event_and_returns_some_instant() {
+        let (tx, mut rx) = mpsc::channel::<StreamEvent<TestState>>(16);
+        let sink = StreamEventSink::new(tx, None);
+
+        let now = sink
+            .try_send_message(MessageChunk::message("hello"), "think")
+            .expect("first chunk should return Instant");
+
+        // Channel should now have one event
+        let ev = rx.try_recv().expect("event should be sent");
+        match ev {
+            StreamEvent::Messages { chunk, metadata } => {
+                assert_eq!(chunk.content, "hello");
+                assert_eq!(chunk.kind, loom_llm::traits::MessageChunkKind::Message);
+                assert_eq!(metadata.loom_node, "think");
+                assert!(metadata.namespace.is_none());
+            }
+            other => panic!("expected Messages, got {:?}", other),
+        }
+        assert!(sink.has_emitted());
+        // We don't assert the instant value is `now` because try_send_message captures
+        // its own Instant internally.
+        let _ = now;
     }
 
-    /// Forwards chunks from `chunk_rx` to `stream_tx` as `StreamEvent::Messages`.
-    /// Completes when `chunk_rx` is closed (e.g. when invoke_stream drops its sender).
-    ///
-    /// Returns `(count, first_token_at)` where `first_token_at` is the `Instant` at which
-    /// the very first chunk was received (used by callers to compute prefill/decode durations).
-    pub async fn forward(
-        &self,
-        mut chunk_rx: mpsc::Receiver<MessageChunk>,
-    ) -> (usize, Option<std::time::Instant>) {
-        let stream_tx = self.stream_tx.clone();
-        let node_id = self.node_id.clone();
-        let namespace = self.namespace.clone();
-        let mut forwarded = 0usize;
-        let mut first_token_at: Option<std::time::Instant> = None;
-        tracing::info!(
-            hang_probe = "ChunkToStreamSender::forward",
-            "hang_probe: forward enter"
-        );
-        while let Some(chunk) = chunk_rx.recv().await {
-            let kind_label = match &chunk.kind {
-                MessageChunkKind::Message => "message",
-                MessageChunkKind::Thinking => "thinking",
-            };
-            if first_token_at.is_none() {
-                first_token_at = Some(std::time::Instant::now());
-                tracing::info!(
-                    hang_probe = "ChunkToStreamSender::forward",
-                    kind = kind_label,
-                    "hang_probe: forward first chunk"
-                );
+    #[test]
+    fn second_chunk_returns_none() {
+        let (tx, mut rx) = mpsc::channel::<StreamEvent<TestState>>(16);
+        let sink = StreamEventSink::new(tx, None);
+
+        let first = sink.try_send_message(MessageChunk::message("a"), "think");
+        let second = sink.try_send_message(MessageChunk::message("b"), "think");
+        assert!(first.is_some());
+        assert!(second.is_none());
+
+        let _ = rx.try_recv();
+        let _ = rx.try_recv();
+    }
+
+    #[test]
+    fn thinking_chunk_kind_is_preserved() {
+        let (tx, mut rx) = mpsc::channel::<StreamEvent<TestState>>(16);
+        let sink = StreamEventSink::new(tx, None);
+
+        let _ = sink.try_send_message(MessageChunk::thinking("reasoning"), "think");
+        let ev = rx.try_recv().unwrap();
+        match ev {
+            StreamEvent::Messages { chunk, .. } => {
+                assert!(chunk.is_thinking());
+                assert_eq!(chunk.content, "reasoning");
             }
-            forwarded += 1;
-            if forwarded.is_multiple_of(50) {
-                tracing::info!(
-                    hang_probe = "ChunkToStreamSender::forward",
-                    forwarded,
-                    "hang_probe: forward progress"
-                );
+            other => panic!("expected Messages, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn namespace_is_attached() {
+        let (tx, mut rx) = mpsc::channel::<StreamEvent<TestState>>(16);
+        let sink = StreamEventSink::new(tx, Some("sub".to_string()));
+
+        let _ = sink.try_send_message(MessageChunk::message("hi"), "think");
+        let ev = rx.try_recv().unwrap();
+        match ev {
+            StreamEvent::Messages { metadata, .. } => {
+                assert_eq!(metadata.namespace.as_deref(), Some("sub"));
             }
-            let event = StreamEvent::Messages {
-                chunk,
-                metadata: StreamMetadata {
-                    loom_node: node_id.clone(),
-                    namespace: namespace.clone(),
-                },
-            };
-            let send_start = std::time::Instant::now();
-            tracing::trace!(
-                hang_probe = "ChunkToStreamSender::forward",
-                forwarded,
-                "hang_probe: forward send start"
-            );
-            if stream_tx.try_send(event).is_err() {
-                tracing::warn!(
-                    hang_probe = "ChunkToStreamSender::forward",
-                    forwarded,
-                    "hang_probe: forward send returned Err (receiver dropped)"
-                );
-                break;
-            }
-            let send_elapsed = send_start.elapsed();
-            if send_elapsed > std::time::Duration::from_millis(50) {
-                tracing::warn!(
-                    hang_probe = "ChunkToStreamSender::forward",
-                    forwarded,
-                    send_elapsed_ms = send_elapsed.as_millis() as u64,
-                    "hang_probe: forward send blocked >50ms"
-                );
+            other => panic!("expected Messages, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn downstream_drop_does_not_panic() {
+        let (tx, rx) = mpsc::channel::<StreamEvent<TestState>>(1);
+        let sink = StreamEventSink::new(tx, None);
+        drop(rx);
+
+        // try_send_message should not panic even if the receiver is gone.
+        let result = sink.try_send_message(MessageChunk::message("dropped"), "think");
+        // First chunk still returns Some(Instant) — we record first_chunk_at
+        // before discovering the send failed.
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn concurrent_senders_only_return_first_instant_once() {
+        let (tx, _rx) = mpsc::channel::<StreamEvent<TestState>>(128);
+        let sink = Arc::new(StreamEventSink::new(tx, None));
+        let mut handles = vec![];
+
+        for _ in 0..8 {
+            let sink = Arc::clone(&sink);
+            handles.push(std::thread::spawn(move || {
+                let mut got_some = false;
+                for _ in 0..50 {
+                    if sink
+                        .try_send_message(MessageChunk::message("x"), "think")
+                        .is_some()
+                    {
+                        got_some = true;
+                    }
+                }
+                got_some
+            }));
+        }
+
+        let mut total_first = 0;
+        for h in handles {
+            if h.join().unwrap() {
+                total_first += 1;
             }
         }
-        tracing::info!(
-            hang_probe = "ChunkToStreamSender::forward",
-            forwarded,
-            "hang_probe: forward end"
-        );
-        (forwarded, first_token_at)
+        // Exactly one thread should observe the very first chunk across all threads.
+        assert_eq!(total_first, 1);
     }
 }

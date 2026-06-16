@@ -350,9 +350,10 @@ mod tests {
                                 "body": "1. Read error\n2. Fix\n"
                             }).to_string(),
                         },
-                    ],
+],
                     reasoning_content: None,
                     usage: None,
+                    ..Default::default()
                 })
             } else {
                 Ok(LlmResponse {
@@ -360,6 +361,7 @@ mod tests {
                     tool_calls: vec![],
                     reasoning_content: None,
                     usage: None,
+                    ..Default::default()
                 })
             }
         }

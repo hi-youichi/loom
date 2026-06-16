@@ -16,7 +16,7 @@ pub mod writers;
 pub use codex::CodexEvent;
 pub use envelope::{to_json, Envelope, EnvelopeState};
 pub use event::ProtocolEvent;
-pub use sender::ChunkToStreamSender;
+pub use sender::StreamEventSink;
 pub use stream_event::StreamEvent;
 pub use stream_mode::StreamMode;
 pub use metadata::{CheckpointEvent, StreamMetadata};

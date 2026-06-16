@@ -16,6 +16,8 @@ idea/
 lancedb_data/
 author-name.txt
 
+docs/dev
+
 # Cargo
 target
 /target

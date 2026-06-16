@@ -130,9 +130,10 @@ impl LlmClient for BoxedLlmClient {
     async fn invoke_stream(
         &self,
         messages: &[loom_llm::message::Message],
-        tx: Option<tokio::sync::mpsc::Sender<loom_stream::MessageChunk>>,
+        sink: Option<&dyn loom_llm::traits::StreamSink>,
+        node_id: &str,
     ) -> Result<loom_llm::LlmResponse, loom_llm::error::AgentError> {
-        self.0.invoke_stream(messages, tx).await
+        self.0.invoke_stream(messages, sink, node_id).await
     }
 }
 

@@ -9,7 +9,7 @@ pub mod writers;
 
 // Re-export core types from stream-event crate
 pub use stream_event::{
-    CheckpointEvent, ChunkToStreamSender, MessageChunk, MessageChunkKind, StreamEvent,
+    CheckpointEvent, MessageChunk, MessageChunkKind, StreamEvent, StreamEventSink,
     StreamMetadata, StreamMode, StreamWriter,
 };
 

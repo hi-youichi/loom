@@ -94,11 +94,12 @@ impl LlmClient for MemoryMockLlm {
             vec![]
         };
 
-        Ok(LlmResponse {
+Ok(LlmResponse {
             content,
             reasoning_content: None,
             tool_calls,
             usage: None,
+            ..Default::default()
         })
     }
 }

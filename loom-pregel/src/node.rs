@@ -16,7 +16,7 @@ use crate::types::{
     ResumeMap,
 };
 use stream_event::{
-    ChunkToStreamSender, MessageChunk, StreamEvent, StreamMetadata, StreamMode, StreamWriter,
+    MessageChunk, StreamEvent, StreamMetadata, StreamMode, StreamWriter,
 };
 
 /// Input passed to a Pregel node for one task execution.
@@ -101,25 +101,7 @@ impl PregelNodeContext {
         .is_ok()
     }
 
-    /// Creates a chunk-forwarding adapter for nodes that stream token-by-token output.
-    pub fn chunk_stream_sender(
-        &self,
-        node_id: impl Into<String>,
-    ) -> Option<ChunkToStreamSender<ChannelValue>> {
-        if !self.stream_mode.contains(&StreamMode::Messages) {
-            return None;
-        }
-        let namespace = if self.run_config.checkpoint_ns.is_empty() {
-            None
-        } else {
-            Some(self.run_config.checkpoint_ns.clone())
-        };
-        self.stream_tx
-            .clone()
-            .map(|tx| ChunkToStreamSender::new_with_namespace(tx, node_id, namespace))
-    }
-
-    /// Returns whether a specific stream mode is enabled.
+/// Returns whether a specific stream mode is enabled.
     pub fn is_streaming_mode(&self, mode: StreamMode) -> bool {
         self.stream_mode.contains(&mode)
     }

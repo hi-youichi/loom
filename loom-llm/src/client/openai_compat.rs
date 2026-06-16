@@ -7,13 +7,13 @@
 //!
 //! # Streaming
 //!
-//! Implements `invoke_stream()` and `invoke_stream_with_tool_delta()` via SSE; parses
-//! `data:` lines and `data: [DONE]`, accumulates content and tool_calls, and sends
-//! `MessageChunk` / `ToolCallDelta` through the provided channel.
+//! Implements `invoke_stream()` via SSE; parses `data:` lines and `data: [DONE]`,
+//! accumulates content and tool_calls, and forwards `MessageChunk`s to the
+//! caller-supplied [`StreamSink`] via `try_send_message` (non-blocking).
 //!
 //! The response body is read with `res.chunk().await` in a loop; each chunk is appended
 //! to a line buffer and complete SSE lines (`data: ...` / `data: [DONE]`) are parsed and
-//! emitted to `chunk_tx` as they arrive, so the client sees tokens in real time.
+//! emitted to the sink as they arrive, so the client sees tokens in real time.
 //!
 //! **Interaction**: Implements `LlmClient`; used by ThinkNode like `ChatOpenAI`.
 //! Depends on `reqwest` (no async_openai).
@@ -22,7 +22,6 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tokio::sync::mpsc;
 use tracing::{debug, trace};
 
 use crate::error::AgentError;
@@ -30,7 +29,7 @@ use crate::support::http_retry::{
     is_retryable_reqwest_error, retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES,
 };
 use crate::support::error_classifier::LlmErrorClassifierConfig;
-use crate::traits::{LlmClient, LlmResponse, LlmUsage, ToolCallDelta};
+use crate::traits::{LlmClient, LlmResponse, LlmUsage, StreamSink};
 use crate::support::uuid6::uuid6;
 use crate::message::{assistant_content_for_chat_api, ContentPart, Message, UserContent};
 use crate::tool::ToolCall;
@@ -886,11 +885,12 @@ error = ?e,
             completion_tokens_details: u.completion_tokens_details,
         });
 
-        let llm_response = LlmResponse {
+let llm_response = LlmResponse {
             content,
             reasoning_content,
             tool_calls,
             usage,
+            ..Default::default()
         };
         let duration_ms = audit_start.elapsed().as_millis() as u64;
         let audit_response = Self::build_audit_response(&llm_response);
@@ -898,28 +898,19 @@ error = ?e,
         Ok(llm_response)
     }
 
-    async fn invoke_stream(
+async fn invoke_stream(
         &self,
         messages: &[Message],
-        chunk_tx: Option<mpsc::Sender<MessageChunk>>,
+        sink: Option<&dyn StreamSink>,
+        node_id: &str,
     ) -> Result<LlmResponse, AgentError> {
-        self.invoke_stream_with_tool_delta(messages, chunk_tx, None)
-            .await
-    }
-
-    async fn invoke_stream_with_tool_delta(
-        &self,
-        messages: &[Message],
-        chunk_tx: Option<mpsc::Sender<MessageChunk>>,
-        tool_delta_tx: Option<mpsc::Sender<ToolCallDelta>>,
-    ) -> Result<LlmResponse, AgentError> {
-        if chunk_tx.is_none() {
+        if sink.is_none() {
             return self.invoke(messages).await;
         }
 
         let trace_id = uuid6().to_string();
         let request_id = uuid6().to_string();
-        let chunk_tx = chunk_tx.expect("chunk_tx must be Some when streaming");
+        let sink = sink.expect("sink must be Some when streaming");
         let url = self.chat_completions_url();
         let body = self.build_request(messages, true);
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
@@ -936,13 +927,12 @@ error = ?e,
             tools_count = tools_count,
             "OpenAI-compat chat create_stream"
         );
-        tracing::info!(
-            hang_probe = "openai_compat::invoke_stream_with_tool_delta",
+tracing::info!(
+            hang_probe = "openai_compat::invoke_stream",
             url = %url,
             model = %self.model,
             message_count = messages.len(),
             tools_count,
-            tool_delta_tx_is_some = tool_delta_tx.is_some(),
             "hang_probe: oai invoke_stream enter"
         );
 
@@ -1082,8 +1072,9 @@ error = ?e,
         let mut done = false;
         let mut stream_read_attempt = 0;
         let mut sse_chunk_count: u64 = 0;
+let mut first_chunk_at: Option<std::time::Instant> = None;
         tracing::info!(
-            hang_probe = "openai_compat::invoke_stream_with_tool_delta",
+            hang_probe = "openai_compat::invoke_stream",
             "hang_probe: oai sse loop enter"
         );
 
@@ -1093,9 +1084,9 @@ error = ?e,
             let chunk = match res.chunk().await {
                 Ok(Some(bytes)) => {
                     sse_chunk_count += 1;
-                    if sse_chunk_count == 1 || sse_chunk_count.is_multiple_of(50) {
+if sse_chunk_count == 1 || sse_chunk_count.is_multiple_of(50) {
                         tracing::info!(
-                            hang_probe = "openai_compat::invoke_stream_with_tool_delta",
+                            hang_probe = "openai_compat::invoke_stream",
                             sse_chunk_count,
                             bytes_len = bytes.len(),
                             "hang_probe: oai sse progress"
@@ -1172,12 +1163,15 @@ error = ?e,
                 for choice in choices {
                     let delta = choice.delta;
 
-                    if let Some(ref reasoning_content) = delta.reasoning_content {
+if let Some(ref reasoning_content) = delta.reasoning_content {
                         if !reasoning_content.is_empty() {
                             full_reasoning_content.push_str(reasoning_content);
-                            let _ = chunk_tx
-                                .send(MessageChunk::thinking(reasoning_content.clone()))
-                                .await;
+                            let chunk = MessageChunk::thinking(reasoning_content.clone());
+                            if first_chunk_at.is_none() {
+                                first_chunk_at = sink.try_send_message(chunk, node_id);
+                            } else {
+                                let _ = sink.try_send_message(chunk, node_id);
+                            }
                         }
                     }
 
@@ -1188,62 +1182,51 @@ error = ?e,
 
                             if let Some(ref mut parser) = thinking_parser {
                                 for seg in parser.feed(content) {
-                                    match seg {
-                                        ThinkingSegment::Message(s) => {
-                                            let _ = chunk_tx.send(MessageChunk::message(s)).await;
-                                        }
-                                        ThinkingSegment::Thinking(s) => {
-                                            let _ = chunk_tx.send(MessageChunk::thinking(s)).await;
-                                        }
+                                    let chunk = match seg {
+                                        ThinkingSegment::Message(s) => MessageChunk::message(s),
+                                        ThinkingSegment::Thinking(s) => MessageChunk::thinking(s),
+                                    };
+                                    if first_chunk_at.is_none() {
+                                        first_chunk_at = sink.try_send_message(chunk, node_id);
+                                    } else {
+                                        let _ = sink.try_send_message(chunk, node_id);
                                     }
                                 }
                             } else {
-                                let _ = chunk_tx.send(MessageChunk::message(content.clone())).await;
+                                let chunk = MessageChunk::message(content.clone());
+                                if first_chunk_at.is_none() {
+                                    first_chunk_at = sink.try_send_message(chunk, node_id);
+                                } else {
+                                    let _ = sink.try_send_message(chunk, node_id);
+                                }
                             }
                         }
                     }
 
                     if let Some(ref tool_calls) = delta.tool_calls {
                         for tc in tool_calls {
-                            let tool_name = tc.function.as_ref().and_then(|f| f.name.clone());
-                            let args_delta = tc
-                                .function
-                                .as_ref()
-                                .and_then(|f| f.arguments.clone())
-                                .unwrap_or_default();
-
                             tool_calls_acc.push(RawToolCallDelta {
                                 index: tc.index,
                                 id: tc.id.clone(),
                                 name: tc.function.as_ref().and_then(|f| f.name.clone()),
                                 arguments: tc.function.as_ref().and_then(|f| f.arguments.clone()),
                             });
-                            if let Some(ref tool_tx) = tool_delta_tx {
-                                if !args_delta.is_empty() || tc.id.is_some() {
-                                    let _ = tool_tx
-                                        .send(ToolCallDelta {
-                                            call_id: tc.id.clone(),
-                                            name: tool_name,
-                                            arguments_delta: args_delta,
-                                        })
-                                        .await;
-                                }
-                            }
                         }
                     }
                 }
             }
         }
 
-        if let Some(parser) = thinking_parser {
+if let Some(parser) = thinking_parser {
             if let Some(seg) = parser.flush() {
-                match seg {
-                    ThinkingSegment::Message(s) => {
-                        let _ = chunk_tx.send(MessageChunk::message(s)).await;
-                    }
-                    ThinkingSegment::Thinking(s) => {
-                        let _ = chunk_tx.send(MessageChunk::thinking(s)).await;
-                    }
+                let chunk = match seg {
+                    ThinkingSegment::Message(s) => MessageChunk::message(s),
+                    ThinkingSegment::Thinking(s) => MessageChunk::thinking(s),
+                };
+                if first_chunk_at.is_none() {
+                    first_chunk_at = sink.try_send_message(chunk, node_id);
+                } else {
+                    let _ = sink.try_send_message(chunk, node_id);
                 }
             }
         }
@@ -1265,15 +1248,21 @@ error = ?e,
                     full_content = fallback_resp.content.clone();
                     if let Some(reasoning_content) = fallback_resp.reasoning_content.clone() {
                         full_reasoning_content = reasoning_content.clone();
-                        let _ = chunk_tx
-                            .send(MessageChunk::thinking(reasoning_content))
-                            .await;
+                        let chunk = MessageChunk::thinking(reasoning_content);
+                        if first_chunk_at.is_none() {
+                            first_chunk_at = sink.try_send_message(chunk, node_id);
+                        } else {
+                            let _ = sink.try_send_message(chunk, node_id);
+                        }
                     }
                     if !full_content.is_empty() {
                         sent_any_content = true;
-                        let _ = chunk_tx
-                            .send(MessageChunk::message(full_content.clone()))
-                            .await;
+                        let chunk = MessageChunk::message(full_content.clone());
+                        if first_chunk_at.is_none() {
+                            first_chunk_at = sink.try_send_message(chunk, node_id);
+                        } else {
+                            let _ = sink.try_send_message(chunk, node_id);
+                        }
                     }
                     if stream_usage.is_none() {
                         stream_usage = fallback_resp.usage;
@@ -1284,9 +1273,12 @@ error = ?e,
         }
 
         if !sent_any_content && !full_content.is_empty() {
-            let _ = chunk_tx
-                .send(MessageChunk::message(full_content.clone()))
-                .await;
+            let chunk = MessageChunk::message(full_content.clone());
+            if first_chunk_at.is_none() {
+                first_chunk_at = sink.try_send_message(chunk, node_id);
+            } else {
+                let _ = sink.try_send_message(chunk, node_id);
+            }
         }
 
         let tool_calls = tool_calls_acc.finish();
@@ -1317,13 +1309,14 @@ error = ?e,
             reasoning_content,
             tool_calls,
             usage: stream_usage,
+            first_chunk_at,
         };
         let duration_ms = audit_start.elapsed().as_millis() as u64;
         let audit_response = Self::build_audit_response(&response);
         self.record_audit(&trace_id, "chat_stream", &url, duration_ms, 200, audit_request, Some(audit_response), None);
         let invoke_elapsed = invoke_start.elapsed();
         tracing::info!(
-            hang_probe = "openai_compat::invoke_stream_with_tool_delta",
+            hang_probe = "openai_compat::invoke_stream",
             elapsed_ms = invoke_elapsed.as_millis() as u64,
             content_len = response.content.len(),
             tool_calls_count = response.tool_calls.len(),

@@ -13,21 +13,13 @@ impl LlmClient for CloneableLlmClient {
         self.0.invoke(messages).await
     }
 
-    async fn invoke_stream(
+async fn invoke_stream(
         &self,
         messages: &[crate::message::Message],
-        chunk_tx: Option<tokio::sync::mpsc::Sender<crate::traits::MessageChunk>>,
+        sink: Option<&dyn crate::traits::StreamSink>,
+        node_id: &str,
     ) -> Result<crate::traits::LlmResponse, AgentError> {
-        self.0.invoke_stream(messages, chunk_tx).await
-    }
-
-    async fn invoke_stream_with_tool_delta(
-        &self,
-        messages: &[crate::message::Message],
-        chunk_tx: Option<tokio::sync::mpsc::Sender<crate::traits::MessageChunk>>,
-        tool_delta_tx: Option<tokio::sync::mpsc::Sender<crate::traits::ToolCallDelta>>,
-    ) -> Result<crate::traits::LlmResponse, AgentError> {
-        self.0.invoke_stream_with_tool_delta(messages, chunk_tx, tool_delta_tx).await
+        self.0.invoke_stream(messages, sink, node_id).await
     }
 }
 

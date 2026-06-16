@@ -10,15 +10,6 @@ A graph-based agent framework in Rust with a **state-in, state-out** design: a s
 - **Tool system**: Pluggable ToolSource (MCP, Web, Bash, Store, etc.)
 - **Memory & persistence**: Checkpointer, Store (SQLite, optional LanceDB)
 
-## Streaming output (JSON)
-
-With `--json`, the CLI emits [NDJSON](https://ndjson.org/) per [docs/protocol_spec.md](docs/protocol_spec.md): one JSON object per line (events with `type` + payload, then a final line with `reply`). Optional envelope fields `session_id`, `node_id`, `event_id` are included for merging multi-turn or multi-session streams.
-
-```bash
-cargo run -p cli -- -m "Hello" --json
-# or stream to file: --json --file out.json
-```
-
 ## Quick start
 
 ```bash
@@ -29,19 +20,6 @@ cp .env.example .env
 cargo run -p cli -- -m "What time is it?"
 cargo run -p cli -- --working-folder . "Summarize this repo"
 ```
-
-## WebSocket server
-
-Run the WebSocket server so other clients can connect (default: ws://127.0.0.1:8080, keeps running until killed):
-
-```bash
-cargo run -p cli -- serve
-
-# Custom address
-cargo run -p cli -- serve --addr 127.0.0.1:9000
-```
-
-When a Run request includes both `workspace_id` and `thread_id`, the thread is associated with that workspace (see `loom-workspace`). The server uses a SQLite DB for workspaces; set `WORKSPACE_DB` to a file path (default: `workspace.db` in the current directory).
 
 
 ## Workspace (crates)

@@ -6,12 +6,12 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use serde_json::Value;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock};
 use tracing::{debug, trace};
 
 use loom_graph::{run_cancellable, Next, Node, RunContext};
-use loom_llm::{AgentError, LlmClient, LlmProvider, LlmResponse, LlmUsage, Message, ToolCall, ToolCallDelta};
-use loom_stream::{ChunkToStreamSender, MessageChunk, StreamEvent, StreamMetadata, StreamMode};
+use loom_llm::{AgentError, LlmClient, LlmProvider, LlmResponse, LlmUsage, Message, ToolCall};
+use loom_stream::{MessageChunk, StreamEvent, StreamEventSink, StreamMetadata, StreamMode};
 use loom_tier::load_provider_configs;
 use loom_tier::resolve_tier_intelligent;
 use loom_types::state::{ModelConfig, ReActState};
@@ -187,60 +187,42 @@ async fn invoke_think_llm(
     llm: &Arc<dyn LlmClient>,
     messages: &[Message],
     should_stream: bool,
-    should_stream_tools: bool,
-    stream_tx: mpsc::Sender<StreamEvent<ReActState>>,
+    _should_stream_tools: bool,
+    stream_tx: tokio::sync::mpsc::Sender<StreamEvent<ReActState>>,
     node_id: &str,
 ) -> Result<(LlmResponse, u64, Option<Instant>), AgentError> {
-    let (chunk_tx, chunk_rx) = if should_stream {
-        let adapter = ChunkToStreamSender::new(stream_tx.clone(), node_id);
-        let (tx, rx) = adapter.channel();
-        (Some(tx), Some((adapter, rx)))
-    } else {
-        (None, None)
-    };
+    if !should_stream {
+        // No streaming: skip sink entirely. Tool deltas were never consumed anywhere
+        // (only drained by the tool_forward task) and are removed in this refactor.
+        let response = llm.invoke(messages).await?;
+        return Ok((response, 0, None));
+    }
 
-    let (tool_delta_tx, tool_delta_rx) = if should_stream_tools {
-        let (tx, rx) = mpsc::channel::<ToolCallDelta>(64);
-        (Some(tx), Some(rx))
-    } else {
-        (None, None)
-    };
-
-    let tool_forward = async move {
-        if let Some(mut rx) = tool_delta_rx {
-            while rx.recv().await.is_some() {}
-        }
-    };
-
-    let msg_forward = async move {
-        if let Some((adapter, rx)) = chunk_rx {
-            adapter.forward(rx).await
-        } else {
-            (0, None)
-        }
-    };
+    // New streaming path: LLM calls sink.try_send_message() directly. No intermediate
+    // channel, no separate forwarder task, no .await on send inside LLM.
+    let sink = StreamEventSink::new(stream_tx, None);
 
     let join_start = std::time::Instant::now();
     tracing::info!(
         hang_probe = "invoke_think_llm",
         should_stream,
-        should_stream_tools,
-        "hang_probe: invoke_think_llm before tokio::join"
+        "hang_probe: invoke_think_llm before invoke_stream"
     );
-    let (result, (forwarded_chunks, first_token_at), _) = tokio::join!(
-        llm.invoke_stream_with_tool_delta(messages, chunk_tx, tool_delta_tx),
-        msg_forward,
-        tool_forward,
-    );
+    let result = llm.invoke_stream(messages, Some(&sink), node_id).await;
     let join_elapsed = join_start.elapsed();
+    let response = result?;
+    // We don't have a per-chunk count anymore (no forwarder). Use first_chunk_at as
+    // a proxy: at least one chunk was forwarded iff first_chunk_at is Some.
+    let streamed_chunks: u64 = u64::from(response.first_chunk_at.is_some());
+    let first_token_at = response.first_chunk_at;
     tracing::info!(
         hang_probe = "invoke_think_llm",
         elapsed_ms = join_elapsed.as_millis() as u64,
-        forwarded_chunks,
-        ok = result.is_ok(),
-        "hang_probe: invoke_think_llm after tokio::join"
+        streamed_chunks,
+        ok = true,
+        "hang_probe: invoke_think_llm after invoke_stream"
     );
-    Ok((result?, forwarded_chunks as u64, first_token_at))
+    Ok((response, streamed_chunks, first_token_at))
 }
 
 #[async_trait]
@@ -327,6 +309,7 @@ impl Node<ReActState> for ThinkNode {
             reasoning_content,
             tool_calls,
             usage,
+            first_chunk_at: _,
         } = response;
 
         let content = if !resp_content.is_empty() {

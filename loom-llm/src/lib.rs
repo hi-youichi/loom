@@ -33,7 +33,7 @@ pub use error::{AgentError, Interrupt};
 // Re-exports — LLM traits and response types
 pub use traits::{
     LlmClient, LlmProvider, LlmResponse, LlmUsage, LlmHeaders,
-    ToolChoiceMode, ToolCallDelta, ModelInfo, ModelCapabilities,
+    StreamSink, ToolChoiceMode, ModelInfo, ModelCapabilities,
     PromptTokensDetails, CompletionTokensDetails,
     MessageChunk, MessageChunkKind,
 };

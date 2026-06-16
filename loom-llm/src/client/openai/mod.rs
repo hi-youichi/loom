@@ -15,7 +15,6 @@ use async_openai::{
 };
 use async_trait::async_trait;
 use std::sync::Arc;
-use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 use tracing::{debug, trace};
 
@@ -27,7 +26,7 @@ use crate::support::audit::{
     build_audit_entry, LlmAuditLog, LlmAuditRequest, LlmAuditRequestParams, LlmAuditResponse,
     LlmAuditToolCall, LlmAuditUsage,
 };
-use crate::traits::{LlmClient, LlmResponse, LlmUsage, MessageChunk, ToolCallDelta};
+use crate::traits::{LlmClient, LlmResponse, LlmUsage, StreamSink};
 use crate::support::uuid6::uuid6;
 use crate::message::Message;
 use crate::tool::ToolCall;
@@ -398,36 +397,28 @@ impl LlmClient for ChatOpenAI {
             self.record_audit(&trace_id, "chat", &url, duration_ms, 200, audit_request, Some(audit_response), None);
         }
 
-        Ok(LlmResponse {
+Ok(LlmResponse {
             content,
             reasoning_content,
             tool_calls,
             usage,
+            ..Default::default()
         })
     }
 
-    async fn invoke_stream(
+async fn invoke_stream(
         &self,
         messages: &[Message],
-        chunk_tx: Option<mpsc::Sender<MessageChunk>>,
+        sink: Option<&dyn StreamSink>,
+        node_id: &str,
     ) -> Result<LlmResponse, AgentError> {
-        self.invoke_stream_with_tool_delta(messages, chunk_tx, None)
-            .await
-    }
-
-    async fn invoke_stream_with_tool_delta(
-        &self,
-        messages: &[Message],
-        chunk_tx: Option<mpsc::Sender<MessageChunk>>,
-        tool_delta_tx: Option<mpsc::Sender<ToolCallDelta>>,
-    ) -> Result<LlmResponse, AgentError> {
-        if chunk_tx.is_none() {
+        if sink.is_none() {
             return self.invoke(messages).await;
         }
 
         let trace_id = uuid6().to_string();
         let request_id = uuid6().to_string();
-        let chunk_tx = chunk_tx.expect("chunk_tx must be Some when streaming");
+        let sink = sink.expect("sink must be Some when streaming");
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         let url = Self::chat_completions_url();
         let audit_start = std::time::Instant::now();
@@ -509,16 +500,27 @@ impl LlmClient for ChatOpenAI {
         };
 
         let mut acc = stream::StreamAccumulator::new(self.parse_thinking_tags);
+        let mut first_chunk_at: Option<std::time::Instant> = None;
         while let Some(result) = stream.next().await {
             let response = result
                 .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI stream error: {} (trace_id: {})", e, trace_id)))?;
-            acc.process_chunk(response, &chunk_tx, tool_delta_tx.as_ref())
-                .await;
+            if let Some(t) = acc.process_chunk(response, sink, node_id) {
+                if first_chunk_at.is_none() {
+                    first_chunk_at = Some(t);
+                }
+            }
         }
 
-        acc.flush(&chunk_tx).await;
-
-        acc.emit_full_if_needed(&chunk_tx).await;
+        if let Some(t) = acc.flush(sink, node_id) {
+            if first_chunk_at.is_none() {
+                first_chunk_at = Some(t);
+            }
+        }
+        if let Some(t) = acc.emit_full_if_needed(sink, node_id) {
+            if first_chunk_at.is_none() {
+                first_chunk_at = Some(t);
+            }
+        }
 
         let result = acc.finish();
         trace!(
@@ -580,6 +582,7 @@ impl LlmClient for ChatOpenAI {
             reasoning_content: result.reasoning_content,
             tool_calls: result.tool_calls,
             usage: result.usage,
+            first_chunk_at,
         })
     }
 

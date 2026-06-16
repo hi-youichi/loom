@@ -7,7 +7,6 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
 
 use crate::message::Message;
 use crate::error::AgentError;
@@ -176,19 +175,8 @@ pub struct ModelCapabilities {
 // Response and Delta Types
 // ============================================================================
 
-/// Delta for one tool call from LLM streaming (internal; not propagated to stream events).
-#[derive(Clone, Debug)]
-pub struct ToolCallDelta {
-    /// Stable tool call id when the provider emits one.
-    pub call_id: Option<String>,
-    /// Tool/function name when the provider emits it.
-    pub name: Option<String>,
-    /// Incremental argument fragment for this tool call.
-    pub arguments_delta: String,
-}
-
 /// Response from an LLM completion: assistant message text and optional tool calls.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct LlmResponse {
     /// Assistant message content (plain text).
     pub content: String,
@@ -198,6 +186,12 @@ pub struct LlmResponse {
     pub tool_calls: Vec<crate::tool::ToolCall>,
     /// Token usage for this call, when available (e.g. OpenAI returns this).
     pub usage: Option<LlmUsage>,
+    /// Time when the first streamed chunk was emitted during streaming, used for
+    /// prefill/decode duration computation in usage events.
+    ///
+    /// `None` when streaming was disabled (sink is `None`), the LLM does not stream
+    /// by character, or no chunks were emitted (e.g. cached / prebuilt responses).
+    pub first_chunk_at: Option<std::time::Instant>,
 }
 
 impl LlmResponse {
@@ -208,6 +202,7 @@ impl LlmResponse {
             reasoning_content: None,
             tool_calls: vec![],
             usage: None,
+            first_chunk_at: None,
         }
     }
 
@@ -273,9 +268,27 @@ impl Default for MessageChunk {
     }
 }
 
-// ============================================================================
-// Core Traits
-// ============================================================================
+/// Sink that receives streamed `MessageChunk`s as they arrive from the LLM.
+///
+/// Implementations are typically lightweight (e.g. [`StreamEventSink`](stream_event::StreamEventSink)
+/// which packs chunks into `StreamEvent::Messages` and forwards to the main `stream_tx`).
+/// The sink must be `Send + Sync` and the `try_send_message` method **must not block** —
+/// it is called from inside the LLM's SSE parsing loop, and any backpressure here would
+/// stall token parsing. If the channel is full or closed, implementations should drop
+/// the chunk silently rather than awaiting.
+pub trait StreamSink: Send + Sync {
+    /// Sends one streamed message chunk through to the underlying stream pipeline.
+    ///
+    /// `node_id` identifies the LLM caller (typically the graph node, e.g. `"think"`).
+    /// Implementations pack it into the outgoing `StreamMetadata` so consumers can
+    /// route the chunk back to the originating node.
+    ///
+    /// Returns `None` after a successful send, or `Some(Instant)` **on the first chunk**
+    /// so the caller can record `first_chunk_at` for prefill/decode timing. Implementations
+    /// must return `Some(now)` exactly once per session (the very first chunk) and `None`
+    /// afterwards.
+    fn try_send_message(&self, chunk: MessageChunk, node_id: &str) -> Option<std::time::Instant>;
+}
 
 /// Provider-level factory that can create [`LlmClient`] instances for different model names.
 ///
@@ -313,9 +326,11 @@ pub trait LlmProvider: Send + Sync {
 ///
 /// # Streaming
 ///
-/// The trait supports streaming via `invoke_stream()`. When `chunk_tx` is `Some`,
-/// implementations should send `MessageChunk` tokens through the channel as they
-/// arrive from the LLM. The method still returns the complete `LlmResponse` at the end.
+/// The trait supports streaming via `invoke_stream()`. When `sink` is `Some`, implementations
+/// should call `sink.try_send_message(chunk, node_id)` as tokens arrive from the LLM. The
+/// method is **non-blocking** (a typical sink uses `try_send` internally) — implementations
+/// must never `.await` on a channel send inside `invoke_stream`. The method still returns the
+/// complete `LlmResponse` at the end, with `first_chunk_at` populated by the sink.
 #[async_trait]
 pub trait LlmClient: Send + Sync {
     /// Invokes the model for one turn.
@@ -324,17 +339,22 @@ pub trait LlmClient: Send + Sync {
     /// the current turn and return the fully assembled assistant response.
     async fn invoke(&self, messages: &[Message]) -> Result<LlmResponse, AgentError>;
 
-    /// Streaming variant: invoke with optional chunk sender for token streaming.
+    /// Streaming variant: invoke with optional sink for token streaming.
     ///
-    /// When `chunk_tx` is `Some`, implementations should send `MessageChunk` tokens
-    /// through the channel as they arrive. The method returns the complete `LlmResponse`
-    /// after all tokens are collected.
+    /// When `sink` is `Some`, implementations should call `sink.try_send_message(chunk, node_id)`
+    /// as tokens arrive from the LLM. The sink is **non-blocking** — implementations must never
+    /// `.await` on a channel send here. The method returns the complete `LlmResponse` after all
+    /// tokens are collected, with `first_chunk_at` populated (via the sink) when streaming was used.
+    ///
+    /// `node_id` is forwarded to every `try_send_message` call so the sink can tag outgoing
+    /// events with the originating graph node.
     ///
     /// Default implementation calls `invoke()` and sends the full content as one chunk.
     async fn invoke_stream(
         &self,
         messages: &[Message],
-        chunk_tx: Option<mpsc::Sender<MessageChunk>>,
+        sink: Option<&dyn StreamSink>,
+        node_id: &str,
     ) -> Result<LlmResponse, AgentError> {
         let response = self.invoke(messages).await?;
         tracing::info!(
@@ -346,7 +366,7 @@ pub trait LlmClient: Send + Sync {
         );
 
         // Default: send full content as single chunk if streaming is enabled
-        if let Some(tx) = chunk_tx {
+        if let Some(s) = sink {
             if let Some(ref reasoning_content) = response.reasoning_content {
                 if !reasoning_content.is_empty() {
                     tracing::info!(
@@ -355,9 +375,10 @@ pub trait LlmClient: Send + Sync {
                         len = reasoning_content.len(),
                         "hang_probe: invoke_stream send reasoning start"
                     );
-                    let _ = tx
-                        .send(MessageChunk::thinking(reasoning_content.clone()))
-                        .await;
+                    let _ = s.try_send_message(
+                        MessageChunk::thinking(reasoning_content.clone()),
+                        node_id,
+                    );
                     tracing::info!(
                         hang_probe = "invoke_stream_send",
                         kind = "reasoning",
@@ -372,9 +393,10 @@ pub trait LlmClient: Send + Sync {
                     len = response.content.len(),
                     "hang_probe: invoke_stream send message start"
                 );
-                let _ = tx
-                    .send(MessageChunk::message(response.content.clone()))
-                    .await;
+                let _ = s.try_send_message(
+                    MessageChunk::message(response.content.clone()),
+                    node_id,
+                );
                 tracing::info!(
                     hang_probe = "invoke_stream_send",
                     kind = "message",
@@ -394,23 +416,6 @@ pub trait LlmClient: Send + Sync {
     async fn list_models(&self) -> Result<Vec<ModelInfo>, AgentError> {
         // Default: not supported, return empty list
         Ok(Vec::new())
-    }
-
-    /// Streaming variant with tool call delta support.
-    ///
-    /// Like `invoke_stream`, but additionally sends `ToolCallDelta` through
-    /// `tool_delta_tx` as the LLM produces tool call arguments incrementally.
-    ///
-    /// The default implementation delegates to [`Self::invoke_stream`] and emits
-    /// no tool deltas.
-    async fn invoke_stream_with_tool_delta(
-        &self,
-        messages: &[Message],
-        chunk_tx: Option<mpsc::Sender<MessageChunk>>,
-        tool_delta_tx: Option<mpsc::Sender<ToolCallDelta>>,
-    ) -> Result<LlmResponse, AgentError> {
-        let _ = tool_delta_tx;
-        self.invoke_stream(messages, chunk_tx).await
     }
 }
 
@@ -601,7 +606,7 @@ mod tests {
         assert!(accumulated.completion_tokens_details.is_none());
     }
 
-    // LlmResponse tests
+// LlmResponse tests
     #[test]
     fn llm_response_text_creates_response() {
         let response = LlmResponse::text("Hello, world!");
@@ -609,6 +614,7 @@ mod tests {
         assert!(response.reasoning_content.is_none());
         assert!(response.tool_calls.is_empty());
         assert!(response.usage.is_none());
+        assert!(response.first_chunk_at.is_none());
     }
 
     #[test]
@@ -630,6 +636,7 @@ mod tests {
             reasoning_content: None,
             tool_calls: vec![crate::tool::ToolCall::new("test_tool", "{}")],
             usage: None,
+            first_chunk_at: None,
         };
         assert!(!response.is_empty());
     }

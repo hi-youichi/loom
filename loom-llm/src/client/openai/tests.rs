@@ -1,13 +1,43 @@
 use async_openai::config::OpenAIConfig;
+use std::sync::Mutex as StdMutex;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc;
 
-use crate::traits::{LlmClient, ToolChoiceMode};
+use crate::traits::{LlmClient, MessageChunk, StreamSink, ToolChoiceMode};
 use crate::message::Message;
 use crate::tool::ToolSpec;
 
 use super::ChatOpenAI;
+
+/// Test sink: collects every chunk received via `try_send_message`. Mirrors the API used by
+/// the production `StreamEventSink` (sink → forwarder → consumer), but keeps chunks in a
+/// `Vec` instead of forwarding to a `StreamEvent` channel.
+struct TestSink {
+    pub chunks: StdMutex<Vec<MessageChunk>>,
+    pub first_chunk_at: StdMutex<Option<std::time::Instant>>,
+}
+
+impl TestSink {
+    fn new() -> Self {
+        Self {
+            chunks: StdMutex::new(Vec::new()),
+            first_chunk_at: StdMutex::new(None),
+        }
+    }
+}
+
+impl StreamSink for TestSink {
+    fn try_send_message(&self, chunk: MessageChunk, _node_id: &str) -> Option<std::time::Instant> {
+        self.chunks.lock().unwrap().push(chunk);
+        let mut guard = self.first_chunk_at.lock().unwrap();
+        if guard.is_none() {
+            *guard = Some(std::time::Instant::now());
+            *guard
+        } else {
+            None
+        }
+    }
+}
 
 fn env_lock() -> &'static std::sync::Mutex<()> {
     static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
@@ -154,9 +184,9 @@ async fn invoke_stream_with_unreachable_base_returns_error() {
         .with_api_key("test-key")
         .with_api_base(format!("http://{addr}/v1"));
     let client = ChatOpenAI::with_config(config, "gpt-4o-mini");
-    let (chunk_tx, _chunk_rx) = mpsc::channel(8);
+    let sink = TestSink::new();
     let err = client
-        .invoke_stream(&[Message::user("hello")], Some(chunk_tx))
+        .invoke_stream(&[Message::user("hello")], Some(&sink), "think")
         .await
         .err();
     assert!(err.is_some());
@@ -259,7 +289,7 @@ async fn invoke_stream_with_none_channel_delegates_to_invoke() {
     let messages = [Message::user("Hi")];
 
     let res_invoke = client.invoke(&messages).await;
-    let res_stream = client.invoke_stream(&messages, None).await;
+    let res_stream = client.invoke_stream(&messages, None, "think").await;
 
     assert!(res_invoke.is_err());
     assert!(res_stream.is_err());
@@ -323,7 +353,7 @@ async fn invoke_and_invoke_stream_none_channel_succeed_with_mock_server() {
     assert_eq!(res.tool_calls.len(), 1);
     assert_eq!(res.usage.unwrap().total_tokens, 2);
 
-    let res_stream = client.invoke_stream(&messages, None).await.unwrap();
+    let res_stream = client.invoke_stream(&messages, None, "think").await.unwrap();
     assert_eq!(res_stream.content, "hello");
     assert_eq!(res_stream.tool_calls.len(), 1);
 }
@@ -424,9 +454,9 @@ async fn invoke_stream_with_mock_api_returns_ok() {
         .with_api_base(format!("http://{}", addr));
     let client = ChatOpenAI::with_config(config, "gpt-4o-mini");
     let messages = [Message::user("Say exactly: ok")];
-    let (tx, mut rx) = mpsc::channel(16);
+    let sink = TestSink::new();
 
-    let result = client.invoke_stream(&messages, Some(tx)).await;
+    let result = client.invoke_stream(&messages, Some(&sink), "think").await;
 
     let response = result.expect("invoke_stream with mock API should succeed");
     assert!(
@@ -434,9 +464,6 @@ async fn invoke_stream_with_mock_api_returns_ok() {
         "response should have content or tool_calls"
     );
 
-    let mut chunks = 0u32;
-    while rx.try_recv().is_ok() {
-        chunks += 1;
-    }
-    assert!(chunks > 0, "should receive at least one stream chunk");
+    let chunks = sink.chunks.lock().unwrap();
+    assert!(!chunks.is_empty(), "should receive at least one stream chunk");
 }

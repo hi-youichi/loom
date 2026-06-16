@@ -2,12 +2,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tracing::warn;
 
 use crate::error::AgentError;
-use crate::traits::{LlmClient, LlmResponse, MessageChunk, ModelInfo, ToolCallDelta};
+use crate::traits::{LlmClient, LlmResponse, ModelInfo, StreamSink};
 
 const DEFAULT_MAX_RETRIES: u32 = 3;
 const BASE_DELAY: Duration = Duration::from_millis(500);
@@ -75,7 +74,6 @@ impl RetryLlmClient {
             retries: self.max_retries,
         })
     }
-
 }
 
 trait IsEmptyResponse {
@@ -100,14 +98,15 @@ impl LlmClient for RetryLlmClient {
     async fn invoke_stream(
         &self,
         messages: &[crate::message::Message],
-        chunk_tx: Option<mpsc::Sender<MessageChunk>>,
+        sink: Option<&dyn StreamSink>,
+        node_id: &str,
     ) -> Result<LlmResponse, AgentError> {
         let inner = Arc::clone(&self.inner);
         let messages = messages.to_vec();
 
         for attempt in 0..=self.max_retries {
             let resp = inner
-                .invoke_stream(&messages, chunk_tx.clone())
+                .invoke_stream(&messages, sink, node_id)
                 .await
                 .map_err(|e| AgentError::ExecutionFailed(e.to_string()))?;
 
@@ -133,40 +132,6 @@ impl LlmClient for RetryLlmClient {
     async fn list_models(&self) -> Result<Vec<ModelInfo>, AgentError> {
         self.inner.list_models().await
     }
-
-    async fn invoke_stream_with_tool_delta(
-        &self,
-        messages: &[crate::message::Message],
-        chunk_tx: Option<mpsc::Sender<MessageChunk>>,
-        tool_delta_tx: Option<mpsc::Sender<ToolCallDelta>>,
-    ) -> Result<LlmResponse, AgentError> {
-        let inner = Arc::clone(&self.inner);
-        let messages = messages.to_vec();
-
-        for attempt in 0..=self.max_retries {
-            let resp = inner
-                .invoke_stream_with_tool_delta(&messages, chunk_tx.clone(), tool_delta_tx.clone())
-                .await
-                .map_err(|e| AgentError::ExecutionFailed(e.to_string()))?;
-
-            if !resp.is_empty() {
-                return Ok(resp);
-            }
-
-            warn!(
-                max_retries = self.max_retries,
-                attempt = attempt + 1,
-                "empty LLM response in stream with tool delta mode, retrying"
-            );
-
-            let delay = self.base_delay * 2_u32.pow(attempt);
-            sleep(delay).await;
-        }
-
-        Err(AgentError::EmptyLlmResponse {
-            retries: self.max_retries,
-        })
-    }
 }
 
 #[cfg(test)]
@@ -176,23 +141,13 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_is_empty_response_all_empty() {
-        let resp = LlmResponse {
-            content: String::new(),
-            reasoning_content: None,
-            tool_calls: vec![],
-            usage: None,
-        };
+        let resp = LlmResponse::default();
         assert!(is_empty_response(&resp));
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_is_empty_response_with_content() {
-        let resp = LlmResponse {
-            content: "hello".to_string(),
-            reasoning_content: None,
-            tool_calls: vec![],
-            usage: None,
-        };
+        let resp = LlmResponse::text("hello");
         assert!(!is_empty_response(&resp));
     }
 
@@ -203,6 +158,7 @@ mod tests {
             reasoning_content: Some("thinking".to_string()),
             tool_calls: vec![],
             usage: None,
+            first_chunk_at: None,
         };
         assert!(!is_empty_response(&resp));
     }
@@ -218,6 +174,7 @@ mod tests {
                 arguments: "{}".to_string(),
             }],
             usage: None,
+            first_chunk_at: None,
         };
         assert!(!is_empty_response(&resp));
     }
@@ -229,6 +186,7 @@ mod tests {
             reasoning_content: Some("   ".to_string()),
             tool_calls: vec![],
             usage: None,
+            first_chunk_at: None,
         };
         assert!(is_empty_response(&resp));
     }

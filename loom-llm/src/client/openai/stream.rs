@@ -1,19 +1,23 @@
 //! Stream response accumulation for OpenAI SSE chat completions.
 //!
 //! [`StreamAccumulator`] consumes `async_openai` stream chunks and
-//! emits [`MessageChunk`] / [`ToolCallDelta`](crate::llm::ToolCallDelta) through channels, while
+//! emits [`MessageChunk`] via a [`StreamSink`](crate::llm::StreamSink), while
 //! assembling the final [`LlmResponse`](crate::llm::LlmResponse) content.
+//!
+//! Tool call deltas are accumulated internally into a [`ToolCallAccumulator`] but
+//! **no longer pushed to a separate channel** — that channel only drained and had
+//! no consumer. Final tool calls are exposed via [`StreamResult::tool_calls`] in
+//! `finish()`.
 
 use async_openai::types::chat::{
     ChatCompletionMessageToolCallChunk, CreateChatCompletionStreamResponse,
 };
-use tokio::sync::mpsc;
 
 use crate::support::thinking::{
     collect_thinking_tags, strip_thinking_tags, ThinkingSegment, ThinkingTagParser,
 };
-use crate::support::tool_call_accumulator::{RawToolCallDelta, ToolCallAccumulator};
-use crate::traits::{LlmUsage, ToolCallDelta};
+use crate::support::tool_call_accumulator::ToolCallAccumulator;
+use crate::traits::{LlmUsage, StreamSink};
 use crate::traits::MessageChunk;
 
 /// Accumulates streaming SSE chunks into a complete response.
@@ -51,69 +55,79 @@ impl StreamAccumulator {
 
     /// Process one SSE stream response chunk.
     ///
-    /// Sends incremental content/thinking to `chunk_tx` and tool deltas
-    /// to `tool_delta_tx`. Updates internal accumulators.
-    pub async fn process_chunk(
+    /// Forwards incremental content/thinking to `sink` (non-blocking) and
+    /// accumulates tool calls internally. Returns `Some(Instant)` exactly once,
+    /// on the very first chunk — useful for tracking first-token latency.
+    pub fn process_chunk(
         &mut self,
         response: CreateChatCompletionStreamResponse,
-        chunk_tx: &mpsc::Sender<MessageChunk>,
-        tool_delta_tx: Option<&mpsc::Sender<ToolCallDelta>>,
-    ) {
+        sink: &dyn StreamSink,
+        node_id: &str,
+    ) -> Option<std::time::Instant> {
         if let Some(ref u) = response.usage {
             self.usage = Some(super::completion_usage_to_llm(u));
         }
 
+        let mut first_chunk = None;
         for choice in response.choices {
             let delta = &choice.delta;
 
             if let Some(ref content) = delta.content {
                 if !content.is_empty() {
-                    self.process_content_delta(content, chunk_tx).await;
+                    if first_chunk.is_none() {
+                        first_chunk = self.process_content_delta(content, sink, node_id);
+                    } else {
+                        self.process_content_delta(content, sink, node_id);
+                    }
                 }
             }
 
             if let Some(ref tool_calls) = delta.tool_calls {
-                self.process_tool_calls_delta(tool_calls, tool_delta_tx)
-                    .await;
+                self.process_tool_calls_delta(tool_calls);
             }
         }
+        first_chunk
     }
 
-    async fn send_thinking_segment(chunk_tx: &mpsc::Sender<MessageChunk>, seg: ThinkingSegment) {
+    fn send_thinking_segment(sink: &dyn StreamSink, seg: ThinkingSegment, node_id: &str) -> Option<std::time::Instant> {
         match seg {
             ThinkingSegment::Message(s) => {
-                let _ = chunk_tx.send(MessageChunk::message(s)).await;
+                sink.try_send_message(MessageChunk::message(s), node_id)
             }
             ThinkingSegment::Thinking(s) => {
-                let _ = chunk_tx.send(MessageChunk::thinking(s)).await;
+                sink.try_send_message(MessageChunk::thinking(s), node_id)
             }
         }
     }
 
-    async fn process_content_delta(
+    fn process_content_delta(
         &mut self,
         content: &str,
-        chunk_tx: &mpsc::Sender<MessageChunk>,
-    ) {
+        sink: &dyn StreamSink,
+        node_id: &str,
+    ) -> Option<std::time::Instant> {
         self.full_content.push_str(content);
         self.sent_any_content = true;
 
         if let Some(ref mut parser) = self.thinking_parser {
+            let mut first = None;
             for seg in parser.feed(content) {
-                Self::send_thinking_segment(chunk_tx, seg).await;
+                let r = Self::send_thinking_segment(sink, seg, node_id);
+                if first.is_none() && r.is_some() {
+                    first = r;
+                }
             }
+            first
         } else {
-            let _ = chunk_tx
-                .send(MessageChunk::message(content.to_owned()))
-                .await;
+            sink.try_send_message(MessageChunk::message(content.to_owned()), node_id)
         }
     }
 
-    async fn process_tool_calls_delta(
+    fn process_tool_calls_delta(
         &mut self,
         tool_calls: &[ChatCompletionMessageToolCallChunk],
-        tool_delta_tx: Option<&mpsc::Sender<ToolCallDelta>>,
     ) {
+        use crate::support::tool_call_accumulator::RawToolCallDelta;
         for tc in tool_calls {
             self.tool_calls.push(RawToolCallDelta {
                 index: tc.index,
@@ -129,44 +143,28 @@ impl StreamAccumulator {
                 arguments = ?tc.function.as_ref().and_then(|f| f.arguments.as_deref()),
                 "tool_calls chunk"
             );
-
-            if let Some(tool_tx) = tool_delta_tx {
-                let args_delta = tc
-                    .function
-                    .as_ref()
-                    .and_then(|f| f.arguments.clone())
-                    .unwrap_or_default();
-                if !args_delta.is_empty() || tc.id.is_some() {
-                    let _ = tool_tx
-                        .send(ToolCallDelta {
-                            call_id: tc.id.clone(),
-                            name: tc.function.as_ref().and_then(|f| f.name.clone()),
-                            arguments_delta: args_delta,
-                        })
-                        .await;
-                }
-            }
         }
     }
 
     /// Flush remaining thinking buffer and handle edge cases.
     ///
     /// Must be called after the stream ends, before `finish()`.
-    pub async fn flush(&mut self, chunk_tx: &mpsc::Sender<MessageChunk>) {
+    pub fn flush(&mut self, sink: &dyn StreamSink, node_id: &str) -> Option<std::time::Instant> {
         if let Some(parser) = self.thinking_parser.take() {
             if let Some(seg) = parser.flush() {
-                Self::send_thinking_segment(chunk_tx, seg).await;
+                return Self::send_thinking_segment(sink, seg, node_id);
             }
         }
+        None
     }
 
     /// Send full content as one chunk if no incremental content was sent
     /// (some proxies only include content in the final payload).
-    pub async fn emit_full_if_needed(&self, chunk_tx: &mpsc::Sender<MessageChunk>) {
+    pub fn emit_full_if_needed(&self, sink: &dyn StreamSink, node_id: &str) -> Option<std::time::Instant> {
         if !self.sent_any_content && !self.full_content.is_empty() {
-            let _ = chunk_tx
-                .send(MessageChunk::message(self.full_content.clone()))
-                .await;
+            sink.try_send_message(MessageChunk::message(self.full_content.clone()), node_id)
+        } else {
+            None
         }
     }
 
@@ -187,13 +185,57 @@ impl StreamAccumulator {
     }
 }
 
+/// Test sink: counts calls and returns first-chunk timing.
+#[cfg(test)]
+pub(super) mod test_support {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
+
+    use crate::traits::{MessageChunk, StreamSink};
+
+    pub(super) struct CountingSink {
+        pub count: AtomicUsize,
+        pub first: Mutex<Option<std::time::Instant>>,
+        pub chunks: Mutex<Vec<MessageChunk>>,
+        pub node_ids: Mutex<Vec<String>>,
+    }
+
+    impl CountingSink {
+        pub(super) fn new() -> Self {
+            Self {
+                count: AtomicUsize::new(0),
+                first: Mutex::new(None),
+                chunks: Mutex::new(Vec::new()),
+                node_ids: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    impl StreamSink for CountingSink {
+        fn try_send_message(&self, chunk: MessageChunk, node_id: &str) -> Option<std::time::Instant> {
+            self.count.fetch_add(1, Ordering::SeqCst);
+            self.chunks.lock().unwrap().push(chunk);
+            self.node_ids.lock().unwrap().push(node_id.to_string());
+            let mut guard = self.first.lock().unwrap();
+            if guard.is_none() {
+                *guard = Some(std::time::Instant::now());
+                *guard
+            } else {
+                None
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(deprecated)]
 
+    use super::test_support::CountingSink;
     use super::*;
     use crate::support::thinking::ThinkingSegment;
     use crate::traits::MessageChunkKind;
+    use std::sync::atomic::Ordering;
     use async_openai::types::chat::{
         ChatChoiceStream, ChatCompletionMessageToolCallChunk, ChatCompletionStreamResponseDelta,
         CreateChatCompletionStreamResponse, FunctionCallStream,
@@ -224,47 +266,48 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn send_thinking_segment_emits_message_chunk() {
-        let (tx, mut rx) = mpsc::channel(4);
-        StreamAccumulator::send_thinking_segment(&tx, ThinkingSegment::Message("hi".into())).await;
-        let c = rx.recv().await.unwrap();
-        assert_eq!(c.content, "hi");
-        assert_eq!(c.kind, MessageChunkKind::Message);
+        let sink = CountingSink::new();
+        StreamAccumulator::send_thinking_segment(&sink, ThinkingSegment::Message("hi".into()), "think");
+        let chunks = sink.chunks.lock().unwrap();
+        assert_eq!(chunks[0].content, "hi");
+        assert_eq!(chunks[0].kind, MessageChunkKind::Message);
+        assert_eq!(sink.node_ids.lock().unwrap()[0], "think");
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn send_thinking_segment_emits_thinking_chunk() {
-        let (tx, mut rx) = mpsc::channel(4);
-        StreamAccumulator::send_thinking_segment(&tx, ThinkingSegment::Thinking("r".into())).await;
-        let c = rx.recv().await.unwrap();
-        assert_eq!(c.content, "r");
-        assert_eq!(c.kind, MessageChunkKind::Thinking);
+        let sink = CountingSink::new();
+        StreamAccumulator::send_thinking_segment(&sink, ThinkingSegment::Thinking("r".into()), "think");
+        let chunks = sink.chunks.lock().unwrap();
+        assert_eq!(chunks[0].content, "r");
+        assert_eq!(chunks[0].kind, MessageChunkKind::Thinking);
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn process_content_delta_plain_accumulates_and_sends_one_chunk() {
         let mut acc = StreamAccumulator::new(false);
-        let (tx, mut rx) = mpsc::channel(4);
-        acc.process_content_delta("ab", &tx).await;
+        let sink = CountingSink::new();
+        acc.process_content_delta("ab", &sink, "think");
         assert_eq!(acc.full_content, "ab");
         assert!(acc.sent_any_content);
-        let c = rx.recv().await.unwrap();
-        assert_eq!(c.content, "ab");
-        assert_eq!(c.kind, MessageChunkKind::Message);
+        let chunks = sink.chunks.lock().unwrap();
+        assert_eq!(chunks[0].content, "ab");
+        assert_eq!(chunks[0].kind, MessageChunkKind::Message);
+        assert_eq!(sink.count.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn process_content_delta_with_thinking_parser_splits_kinds() {
         let mut acc = StreamAccumulator::new(true);
-        let (tx, mut rx) = mpsc::channel(16);
+        let sink = CountingSink::new();
         let tag_s = crate::support::thinking::THINKING_START;
         let tag_e = crate::support::thinking::THINKING_END;
-        acc.process_content_delta(&format!("a {}x{} b", tag_s, tag_e), &tx)
-            .await;
+        acc.process_content_delta(&format!("a {}x{} b", tag_s, tag_e), &sink, "think");
         assert!(acc.sent_any_content);
         assert!(!acc.full_content.is_empty());
         let mut saw_message = false;
         let mut saw_thinking = false;
-        while let Ok(c) = rx.try_recv() {
+        for c in sink.chunks.lock().unwrap().iter() {
             match c.kind {
                 MessageChunkKind::Message => saw_message = true,
                 MessageChunkKind::Thinking => saw_thinking = true,
@@ -274,10 +317,9 @@ mod tests {
         assert!(saw_thinking);
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn process_tool_calls_delta_accumulates_without_tool_channel() {
+    #[test]
+    fn process_tool_calls_delta_accumulates_without_tool_channel() {
         let mut acc = StreamAccumulator::new(false);
-        let (_tx, _rx) = mpsc::channel::<MessageChunk>(4);
         let chunks = [ChatCompletionMessageToolCallChunk {
             index: 0,
             id: Some("id1".into()),
@@ -287,74 +329,35 @@ mod tests {
             }),
             r#type: None,
         }];
-        acc.process_tool_calls_delta(&chunks, None).await;
+        acc.process_tool_calls_delta(&chunks);
         let r = acc.finish();
         assert_eq!(r.tool_calls.len(), 1);
         assert_eq!(r.tool_calls[0].name, "n");
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn process_tool_calls_delta_sends_delta_when_id_present_and_args_empty() {
+    #[test]
+    fn process_tool_calls_delta_accumulates_arguments() {
         let mut acc = StreamAccumulator::new(false);
-        let (ttx, mut trx) = mpsc::channel(4);
         let chunks = [ChatCompletionMessageToolCallChunk {
             index: 0,
             id: Some("call-1".into()),
-            function: Some(FunctionCallStream {
-                name: Some("fn".into()),
-                arguments: Some(String::new()),
-            }),
-            r#type: None,
-        }];
-        acc.process_tool_calls_delta(&chunks, Some(&ttx)).await;
-        let d = trx.recv().await.unwrap();
-        assert_eq!(d.call_id.as_deref(), Some("call-1"));
-        assert_eq!(d.name.as_deref(), Some("fn"));
-        assert!(d.arguments_delta.is_empty());
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn process_tool_calls_delta_sends_delta_when_args_non_empty_without_id() {
-        let mut acc = StreamAccumulator::new(false);
-        let (ttx, mut trx) = mpsc::channel(4);
-        let chunks = [ChatCompletionMessageToolCallChunk {
-            index: 0,
-            id: None,
             function: Some(FunctionCallStream {
                 name: Some("fn".into()),
                 arguments: Some("{}".into()),
             }),
             r#type: None,
         }];
-        acc.process_tool_calls_delta(&chunks, Some(&ttx)).await;
-        let d = trx.recv().await.unwrap();
-        assert_eq!(d.call_id, None);
-        assert_eq!(d.arguments_delta, "{}");
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn process_tool_calls_delta_skips_tool_channel_when_no_id_and_empty_args() {
-        let mut acc = StreamAccumulator::new(false);
-        let (ttx, mut trx) = mpsc::channel(4);
-        let chunks = [ChatCompletionMessageToolCallChunk {
-            index: 0,
-            id: None,
-            function: Some(FunctionCallStream {
-                name: Some("fn".into()),
-                arguments: Some(String::new()),
-            }),
-            r#type: None,
-        }];
-        acc.process_tool_calls_delta(&chunks, Some(&ttx)).await;
-        assert!(trx.try_recv().is_err());
+        acc.process_tool_calls_delta(&chunks);
         let r = acc.finish();
-        assert_eq!(r.tool_calls.len(), 1);
+        assert_eq!(r.tool_calls[0].id.as_deref(), Some("call-1"));
+        assert_eq!(r.tool_calls[0].name, "fn");
+        assert!(r.tool_calls[0].arguments.contains("{}"));
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn accumulator_processes_content_chunk() {
+    #[test]
+    fn accumulator_processes_content_chunk() {
         let mut acc = StreamAccumulator::new(false);
-        let (tx, mut rx) = mpsc::channel(8);
+        let sink = CountingSink::new();
         let mut resp = empty_stream_response();
         resp.choices.push(ChatChoiceStream {
             delta: ChatCompletionStreamResponseDelta {
@@ -365,17 +368,18 @@ mod tests {
             index: 0,
             logprobs: None,
         });
-        acc.process_chunk(resp, &tx, None).await;
-        let chunk = rx.recv().await.unwrap();
-        assert_eq!(chunk.content, "hello");
+        let first = acc.process_chunk(resp, &sink, "think");
+        assert!(first.is_some(), "first chunk should return Instant");
+        let chunks = sink.chunks.lock().unwrap();
+        assert_eq!(chunks[0].content, "hello");
         let r = acc.finish();
         assert_eq!(r.content, "hello");
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn accumulator_processes_tool_call_delta() {
+    #[test]
+    fn accumulator_processes_tool_call_delta() {
         let mut acc = StreamAccumulator::new(false);
-        let (tx, _rx) = mpsc::channel(8);
+        let sink = CountingSink::new();
         let mut resp = empty_stream_response();
         resp.choices.push(ChatChoiceStream {
             delta: ChatCompletionStreamResponseDelta {
@@ -394,16 +398,16 @@ mod tests {
             index: 0,
             logprobs: None,
         });
-        acc.process_chunk(resp, &tx, None).await;
+        acc.process_chunk(resp, &sink, "think");
         let r = acc.finish();
         assert_eq!(r.tool_calls.len(), 1);
         assert_eq!(r.tool_calls[0].name, "t");
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn accumulator_thinking_mode() {
+    #[test]
+    fn accumulator_thinking_mode() {
         let mut acc = StreamAccumulator::new(true);
-        let (tx, mut rx) = mpsc::channel(16);
+        let sink = CountingSink::new();
         let tag_s = crate::support::thinking::THINKING_START;
         let tag_e = crate::support::thinking::THINKING_END;
         let mut resp = empty_stream_response();
@@ -416,10 +420,10 @@ mod tests {
             index: 0,
             logprobs: None,
         });
-        acc.process_chunk(resp, &tx, None).await;
-        acc.flush(&tx).await;
+        acc.process_chunk(resp, &sink, "think");
+        acc.flush(&sink, "think");
         let mut saw_thinking = false;
-        while let Ok(c) = rx.try_recv() {
+        for c in sink.chunks.lock().unwrap().iter() {
             if c.kind == MessageChunkKind::Thinking {
                 saw_thinking = true;
             }
