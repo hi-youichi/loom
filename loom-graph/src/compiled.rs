@@ -485,7 +485,6 @@ where
         config: Option<RunnableConfig>,
         stream_mode: impl Into<HashSet<StreamMode>>,
         cancellation: Option<CancellationToken>,
-        event_forwarder: Option<std::sync::Arc<dyn Fn(stream_event::StreamEvent<S>) + Send + Sync>>,
     ) -> GraphStream<S> {
         let (tx, rx) = mpsc::channel(128);
         let graph = self.clone();
@@ -501,7 +500,7 @@ where
             run_ctx.stream_tx = Some(tx);
             run_ctx.stream_mode = mode_set;
             run_ctx.cancellation = cancellation;
-            run_ctx.event_forwarder = event_forwarder;
+
 
             graph
                 .run_loop_inner(&mut state, &config, &mut current_id, Some(&run_ctx))

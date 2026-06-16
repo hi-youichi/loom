@@ -1,4 +1,4 @@
-﻿//! DUP graph runner: build, initial state, and stream.
+//! DUP graph runner: build, initial state, and stream.
 //!
 //! Graph: START → understand → plan → [tools_condition] → act | end, observe → plan.
 
@@ -94,9 +94,10 @@ impl LlmClient for SharedLlm {
     async fn invoke_stream(
         &self,
         messages: &[loom_llm::message::Message],
-        tx: Option<tokio::sync::mpsc::Sender<loom_stream::MessageChunk>>,
+        sink: Option<&dyn loom_llm::traits::StreamSink>,
+        node_id: &str,
     ) -> Result<loom_llm::LlmResponse, loom_llm::error::AgentError> {
-        self.0.invoke_stream(messages, tx).await
+        self.0.invoke_stream(messages, sink, node_id).await
     }
 }
 
@@ -212,22 +213,12 @@ impl DupRunner {
             self.system_prompt.as_deref(),
         )
         .await?;
-        let event_forwarder: Option<std::sync::Arc<dyn Fn(StreamEvent<DupState>) + Send + Sync>> =
-            self.any_stream_event_sender.as_ref().map(|sender| {
-                let sender = sender.clone();
-                std::sync::Arc::new(move |ev: StreamEvent<DupState>| {
-                    if let Ok(json) = serde_json::to_value(&ev) {
-                        sender(loom_cli_types::AnyStreamEvent::React(StreamEvent::Custom(json)));
-                    }
-                }) as std::sync::Arc<dyn Fn(StreamEvent<DupState>) + Send + Sync>
-            });
         let result = runner_common::run_stream_with_config(
             &self.compiled,
             state,
             run_config,
             on_event,
             self.cancellation.clone(),
-            event_forwarder,
         )
         .await;
         match result {

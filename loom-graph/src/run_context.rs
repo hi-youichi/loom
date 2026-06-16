@@ -96,8 +96,6 @@ where
 
     /// Cancellation token for the current run.
     pub cancellation: Option<CancellationToken>,
-    /// Optional sender for forwarding raw `StreamEvent<S>` to an external consumer (e.g. ACP).
-    pub event_forwarder: Option<Arc<dyn Fn(stream_event::StreamEvent<S>) + Send + Sync>>,
 }
 
 impl<S> RunContext<S>
@@ -115,7 +113,6 @@ where
             previous: None,
             runtime_context: None,
             cancellation: None,
-            event_forwarder: None,
         }
     }
 
@@ -363,7 +360,6 @@ mod tests {
         assert!(ctx.previous.is_none());
         assert!(ctx.runtime_context.is_none());
         assert!(ctx.cancellation.is_none());
-        assert!(ctx.event_forwarder.is_none());
     }
 
     #[test]

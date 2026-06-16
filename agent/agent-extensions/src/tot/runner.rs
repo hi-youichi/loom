@@ -1,4 +1,4 @@
-﻿//! ToT graph runner: build, initial state, and stream.
+//! ToT graph runner: build, initial state, and stream.
 //!
 //! Graph: START → think_expand → think_evaluate → [tools_condition] → act | end,
 //! act → observe → (observe returns Next::Node("think_expand")).
@@ -104,9 +104,10 @@ impl LlmClient for SharedLlm {
     async fn invoke_stream(
         &self,
         messages: &[loom_llm::message::Message],
-        tx: Option<tokio::sync::mpsc::Sender<loom_stream::MessageChunk>>,
+        sink: Option<&dyn loom_llm::traits::StreamSink>,
+        node_id: &str,
     ) -> Result<loom_llm::LlmResponse, AgentError> {
-        self.0.invoke_stream(messages, tx).await
+        self.0.invoke_stream(messages, sink, node_id).await
     }
 }
 
@@ -239,22 +240,12 @@ impl TotRunner {
             self.system_prompt.as_deref(),
         )
         .await?;
-        let event_forwarder: Option<std::sync::Arc<dyn Fn(StreamEvent<TotState>) + Send + Sync>> =
-            self.any_stream_event_sender.as_ref().map(|sender| {
-                let sender = sender.clone();
-                std::sync::Arc::new(move |ev: StreamEvent<TotState>| {
-                    if let Ok(json) = serde_json::to_value(&ev) {
-                        sender(loom_cli_types::AnyStreamEvent::React(StreamEvent::Custom(json)));
-                    }
-                }) as std::sync::Arc<dyn Fn(StreamEvent<TotState>) + Send + Sync>
-            });
         let result = runner_common::run_stream_with_config(
             &self.compiled,
             state,
             run_config,
             on_event,
             self.cancellation.clone(),
-            event_forwarder,
         )
         .await;
         match result {

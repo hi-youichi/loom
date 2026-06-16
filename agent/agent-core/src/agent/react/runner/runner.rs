@@ -170,20 +170,12 @@ impl ReactRunner {
             &self.system_prompt,
         )
         .await?;
-        let event_forwarder: Option<std::sync::Arc<dyn Fn(StreamEvent<ReActState>) + Send + Sync>> =
-            self.any_stream_event_sender.as_ref().map(|sender| {
-                let sender = sender.clone();
-                std::sync::Arc::new(move |ev: StreamEvent<ReActState>| {
-                    sender(loom_cli_types::AnyStreamEvent::React(ev));
-                }) as std::sync::Arc<dyn Fn(StreamEvent<ReActState>) + Send + Sync>
-            });
         let result = runner_common::run_stream_with_config(
             &self.compiled,
             state,
             run_config,
             on_event,
             self.cancellation.as_ref().map(RunCancellation::token),
-            event_forwarder,
         )
         .await;
         match result {

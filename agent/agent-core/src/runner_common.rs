@@ -5,7 +5,6 @@
 
 use std::collections::HashSet;
 use std::future::Future;
-use std::sync::Arc;
 
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
@@ -85,7 +84,6 @@ pub async fn run_stream_with_config<S, F>(
     run_config: Option<RunnableConfig>,
     on_event: Option<F>,
     cancellation: Option<CancellationToken>,
-    event_forwarder: Option<Arc<dyn Fn(StreamEvent<S>) + Send + Sync>>,
 ) -> Result<StreamRunOutcome<S>, StreamRunError>
 where
     S: Clone + Send + Sync + std::fmt::Debug + 'static,
@@ -107,7 +105,6 @@ where
         run_config,
         modes,
         cancellation,
-        event_forwarder,
     );
     let mut stream = graph_stream.events;
     tracing::info!(
