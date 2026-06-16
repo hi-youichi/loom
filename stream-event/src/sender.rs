@@ -102,7 +102,7 @@ mod tests {
     use std::sync::Arc;
 
     #[derive(Clone, Debug)]
-    struct TestState(String);
+    struct TestState;
 
     #[test]
     fn first_chunk_emits_event_and_returns_some_instant() {
