@@ -50,7 +50,7 @@ use crate::support::audit::{
 const DEFAULT_BASE_URL: &str = "https://open.bigmodel.cn/api/paas/v4";
 
 /// Max retries for retryable 5xx (500, 502, 503, 504). Total attempts = 1 + this.
-const COMPAT_RETRY_MAX_RETRIES: u32 = 999;
+const COMPAT_RETRY_MAX_RETRIES: u32 = 20;
 /// Initial backoff before first retry.
 const COMPAT_RETRY_INITIAL_BACKOFF: std::time::Duration = std::time::Duration::from_secs(1);
 /// Max backoff cap.
@@ -916,7 +916,6 @@ async fn invoke_stream(
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
         let audit_start = std::time::Instant::now();
         let audit_request = self.build_audit_request(&body);
-        let invoke_start = std::time::Instant::now();
         debug!(
             trace_id = %trace_id,
             request_id = %request_id,
@@ -926,14 +925,6 @@ async fn invoke_stream(
             stream = true,
             tools_count = tools_count,
             "OpenAI-compat chat create_stream"
-        );
-tracing::info!(
-            hang_probe = "openai_compat::invoke_stream",
-            url = %url,
-            model = %self.model,
-            message_count = messages.len(),
-            tools_count,
-            "hang_probe: oai invoke_stream enter"
         );
 
         let response = {
@@ -1071,27 +1062,13 @@ tracing::info!(
         let mut thinking_parser = self.parse_thinking_tags.then(ThinkingTagParser::new);
         let mut done = false;
         let mut stream_read_attempt = 0;
-        let mut sse_chunk_count: u64 = 0;
-let mut first_chunk_at: Option<std::time::Instant> = None;
-        tracing::info!(
-            hang_probe = "openai_compat::invoke_stream",
-            "hang_probe: oai sse loop enter"
-        );
+        let mut first_chunk_at: Option<std::time::Instant> = None;
 
         let mut res = response;
 
         while !done {
             let chunk = match res.chunk().await {
                 Ok(Some(bytes)) => {
-                    sse_chunk_count += 1;
-if sse_chunk_count == 1 || sse_chunk_count.is_multiple_of(50) {
-                        tracing::info!(
-                            hang_probe = "openai_compat::invoke_stream",
-                            sse_chunk_count,
-                            bytes_len = bytes.len(),
-                            "hang_probe: oai sse progress"
-                        );
-                    }
                     Some(bytes)
                 }
                 Ok(None) => None,
@@ -1314,14 +1291,6 @@ if let Some(parser) = thinking_parser {
         let duration_ms = audit_start.elapsed().as_millis() as u64;
         let audit_response = Self::build_audit_response(&response);
         self.record_audit(&trace_id, "chat_stream", &url, duration_ms, 200, audit_request, Some(audit_response), None);
-        let invoke_elapsed = invoke_start.elapsed();
-        tracing::info!(
-            hang_probe = "openai_compat::invoke_stream",
-            elapsed_ms = invoke_elapsed.as_millis() as u64,
-            content_len = response.content.len(),
-            tool_calls_count = response.tool_calls.len(),
-            "hang_probe: oai invoke_stream exit"
-        );
         Ok(response)
     }
 

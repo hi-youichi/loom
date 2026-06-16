@@ -357,50 +357,21 @@ pub trait LlmClient: Send + Sync {
         node_id: &str,
     ) -> Result<LlmResponse, AgentError> {
         let response = self.invoke(messages).await?;
-        tracing::info!(
-            hang_probe = "invoke_stream",
-            content_len = response.content.len(),
-            reasoning_len = response.reasoning_content.as_ref().map_or(0, |s| s.len()),
-            tool_calls = response.tool_calls.len(),
-            "hang_probe: invoke_stream invoke completed"
-        );
 
         // Default: send full content as single chunk if streaming is enabled
         if let Some(s) = sink {
             if let Some(ref reasoning_content) = response.reasoning_content {
                 if !reasoning_content.is_empty() {
-                    tracing::info!(
-                        hang_probe = "invoke_stream_send",
-                        kind = "reasoning",
-                        len = reasoning_content.len(),
-                        "hang_probe: invoke_stream send reasoning start"
-                    );
                     let _ = s.try_send_message(
                         MessageChunk::thinking(reasoning_content.clone()),
                         node_id,
                     );
-                    tracing::info!(
-                        hang_probe = "invoke_stream_send",
-                        kind = "reasoning",
-                        "hang_probe: invoke_stream send reasoning done"
-                    );
                 }
             }
             if !response.content.is_empty() {
-                tracing::info!(
-                    hang_probe = "invoke_stream_send",
-                    kind = "message",
-                    len = response.content.len(),
-                    "hang_probe: invoke_stream send message start"
-                );
                 let _ = s.try_send_message(
                     MessageChunk::message(response.content.clone()),
                     node_id,
-                );
-                tracing::info!(
-                    hang_probe = "invoke_stream_send",
-                    kind = "message",
-                    "hang_probe: invoke_stream send message done"
                 );
             }
         }

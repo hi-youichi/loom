@@ -1,12 +1,11 @@
 //! Think node: read messages, call LLM, write assistant message and optional tool_calls.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
+use dashmap::DashMap;
 use serde_json::Value;
-use tokio::sync::{RwLock};
 use tracing::{debug, trace};
 
 use loom_graph::{run_cancellable, Next, Node, RunContext};
@@ -19,14 +18,14 @@ use model_spec_core::ModelTier;
 
 pub struct ThinkNode {
     provider: Arc<dyn LlmProvider>,
-    client_cache: RwLock<HashMap<String, Arc<dyn LlmClient>>>,
+    client_cache: DashMap<String, Arc<dyn LlmClient>>,
 }
 
 impl ThinkNode {
     pub fn new(provider: Arc<dyn LlmProvider>) -> Self {
         Self {
             provider,
-            client_cache: RwLock::new(HashMap::new()),
+            client_cache: DashMap::new(),
         }
     }
 
@@ -55,19 +54,13 @@ impl ThinkNode {
             self.provider.default_model().to_string()
         };
 
-        {
-            let cache = self.client_cache.read().await;
-            if let Some(client) = cache.get(&model) {
-                return Ok(Arc::clone(client));
-            }
+        if let Some(client) = self.client_cache.get(&model) {
+            return Ok(Arc::clone(client.value()));
         }
 
         let client = self.provider.create_client(&model)?;
         let client = Arc::from(client);
-        {
-            let mut cache = self.client_cache.write().await;
-            cache.entry(model).or_insert_with(|| Arc::clone(&client));
-        }
+        self.client_cache.entry(model).or_insert_with(|| Arc::clone(&client));
         Ok(client)
     }
 
@@ -89,12 +82,6 @@ impl ThinkNode {
         };
 
         if should_stream && !content.is_empty() && streamed_chunks == 0 {
-            tracing::info!(
-                hang_probe = "think_send",
-                event = "Messages",
-                len = content.len(),
-                "hang_probe: think send start"
-            );
             let _ = stream_tx
                 .try_send(StreamEvent::Messages {
                     chunk: MessageChunk::message(content.to_string()),
@@ -103,11 +90,6 @@ impl ThinkNode {
                         namespace: None,
                     },
                 });
-            tracing::info!(
-                hang_probe = "think_send",
-                event = "Messages",
-                "hang_probe: think send done"
-            );
         }
 
         if should_stream_tools && !tool_calls.is_empty() {
@@ -117,24 +99,12 @@ impl ThinkNode {
                 }
                 let args: Value = serde_json::from_str(&tc.arguments)
                     .unwrap_or_else(|_| Value::String(tc.arguments.clone()));
-                tracing::info!(
-                    hang_probe = "think_send",
-                    event = "ToolCall",
-                    name = %tc.name,
-                    "hang_probe: think send start"
-                );
                 let _ = stream_tx
                     .try_send(StreamEvent::ToolCall {
                         call_id: tc.id.clone(),
                         name: tc.name.clone(),
                         arguments: args,
                     });
-                tracing::info!(
-                    hang_probe = "think_send",
-                    event = "ToolCall",
-                    name = %tc.name,
-                    "hang_probe: think send done"
-                );
             }
         }
 
@@ -175,11 +145,6 @@ impl ThinkNode {
                 prefill_duration,
                 decode_duration,
             });
-        tracing::debug!(
-            hang_probe = "think_send",
-            event = "Usage",
-            "hang_probe: think send done"
-        );
     }
 }
 
@@ -202,26 +167,12 @@ async fn invoke_think_llm(
     // channel, no separate forwarder task, no .await on send inside LLM.
     let sink = StreamEventSink::new(stream_tx, None);
 
-    let join_start = std::time::Instant::now();
-    tracing::info!(
-        hang_probe = "invoke_think_llm",
-        should_stream,
-        "hang_probe: invoke_think_llm before invoke_stream"
-    );
     let result = llm.invoke_stream(messages, Some(&sink), node_id).await;
-    let join_elapsed = join_start.elapsed();
     let response = result?;
     // We don't have a per-chunk count anymore (no forwarder). Use first_chunk_at as
     // a proxy: at least one chunk was forwarded iff first_chunk_at is Some.
     let streamed_chunks: u64 = u64::from(response.first_chunk_at.is_some());
     let first_token_at = response.first_chunk_at;
-    tracing::info!(
-        hang_probe = "invoke_think_llm",
-        elapsed_ms = join_elapsed.as_millis() as u64,
-        streamed_chunks,
-        ok = true,
-        "hang_probe: invoke_think_llm after invoke_stream"
-    );
     Ok((response, streamed_chunks, first_token_at))
 }
 

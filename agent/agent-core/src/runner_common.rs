@@ -99,7 +99,7 @@ where
         StreamMode::Checkpoints,
     ]);
 
-    let has_cancellation = cancellation.is_some();
+    let _has_cancellation = cancellation.is_some();
     let graph_stream = compiled.stream(
         initial_state,
         run_config,
@@ -117,12 +117,6 @@ where
     // so we capture its result the first time `tokio::select!` fires for it and
     // reuse it after the loop exits.
     let mut completion_result: Option<Result<Result<(), AgentError>, tokio::task::JoinError>> = None;
-    tracing::info!(
-        hang_probe = "run_stream_with_config",
-        has_on_event = on_event.is_some(),
-        has_cancellation,
-        "hang_probe: run_stream_with_config enter"
-    );
     let mut final_state: Option<S> = None;
     let mut iters: u64 = 0;
     loop {
@@ -138,11 +132,6 @@ where
             // safely break out of the loop regardless of channel state.
             res = &mut completion => {
                 completion_result = Some(res);
-                tracing::info!(
-                    hang_probe = "run_stream_with_config",
-                    iters,
-                    "hang_probe: producer task completed, breaking consumer loop"
-                );
                 None
             }
             next = stream.next() => next,
@@ -155,24 +144,16 @@ where
 
         let poll_elapsed_ms = poll_start.elapsed().as_millis() as u64;
         if poll_elapsed_ms > 1_000 {
-            tracing::info!(
-                hang_probe = "run_stream_with_config",
-                iters,
+            tracing::debug!(
                 poll_elapsed_ms,
-                "hang_probe: producer side — waited for next event"
+                iters,
+                "run_stream: slow event poll"
             );
         }
 
         iters += 1;
-        if iters == 1 || iters.is_multiple_of(20) {
-            tracing::info!(
-                hang_probe = "run_stream_with_config",
-                iters,
-                "hang_probe: run_stream_with_config loop iter"
-            );
-        }
 
-        // --- hang probe: pre-processing (consumer side) ---
+        // --- event processing (consumer side) ---
         let proc_start = std::time::Instant::now();
         if let StreamEvent::Values(s) = event.clone() {
             final_state = Some(s);
@@ -182,20 +163,13 @@ where
         }
         let proc_elapsed_ms = proc_start.elapsed().as_millis() as u64;
         if proc_elapsed_ms > 1_000 {
-            tracing::info!(
-                hang_probe = "run_stream_with_config",
-                iters,
+            tracing::debug!(
                 proc_elapsed_ms,
-                "hang_probe: consumer side — event processing took long"
+                iters,
+                "run_stream: slow event processing"
             );
         }
     }
-    tracing::info!(
-        hang_probe = "run_stream_with_config",
-        iters,
-        final_state_is_some = final_state.is_some(),
-        "hang_probe: run_stream_with_config while loop end"
-    );
     tracing::debug!("finish");
     // The completion future has already been polled in the loop above. We must not
     // await it again here because that would panic (JoinHandle polled after
