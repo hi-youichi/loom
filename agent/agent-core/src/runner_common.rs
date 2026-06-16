@@ -107,6 +107,16 @@ where
         cancellation,
     );
     let mut stream = graph_stream.events;
+    // Take the completion handle out so we can poll it together with the event stream.
+    // If the producer task finishes before the channel closes (e.g. due to a leaked
+    // Sender clone in a node), we still break out of the consumer loop instead of
+    // waiting the full 600s timeout.
+    let mut completion = graph_stream.completion;
+    // Tracks the resolved producer task result if/when it completes during the
+    // consumer loop. We can't re-await a JoinHandle after it resolves (it panics),
+    // so we capture its result the first time `tokio::select!` fires for it and
+    // reuse it after the loop exits.
+    let mut completion_result: Option<Result<Result<(), AgentError>, tokio::task::JoinError>> = None;
     tracing::info!(
         hang_probe = "run_stream_with_config",
         has_on_event = on_event.is_some(),
@@ -118,20 +128,25 @@ where
     loop {
         // --- hang probe: pre-next (producer side) ---
         let poll_start = std::time::Instant::now();
-        let event: Option<StreamEvent<S>> =
-            match tokio::time::timeout(std::time::Duration::from_secs(600), stream.next()).await {
-                Ok(Some(e)) => Some(e),
-                Ok(None) => None,
-                Err(_) => {
-                    tracing::warn!(
-                        hang_probe = "run_stream_with_config",
-                        iters,
-                        elapsed_secs = poll_start.elapsed().as_secs(),
-                        "hang_probe: stream.next() timed out after 600s — producer stuck, continuing"
-                    );
-                    continue;
-                }
-            };
+        // Poll the event stream and the producer completion concurrently. Whichever
+        // resolves first wins. This makes the consumer loop terminate when the
+        // producer task is finished, even if the mpsc channel happens to be held
+        // open by a leaked Sender clone.
+        let event: Option<StreamEvent<S>> = tokio::select! {
+            biased;
+            // Producer completion is checked first. If the producer is done, we can
+            // safely break out of the loop regardless of channel state.
+            res = &mut completion => {
+                completion_result = Some(res);
+                tracing::info!(
+                    hang_probe = "run_stream_with_config",
+                    iters,
+                    "hang_probe: producer task completed, breaking consumer loop"
+                );
+                None
+            }
+            next = stream.next() => next,
+        };
 
         let event = match event {
             Some(e) => e,
@@ -182,17 +197,24 @@ where
         "hang_probe: run_stream_with_config while loop end"
     );
     tracing::debug!("finish");
-    let completion = graph_stream.completion.await.map_err(|e| {
-        StreamRunError::Execution(AgentError::ExecutionFailed(format!(
-            "graph stream task failed: {}",
-            e
-        )))
-    })?;
-    match completion {
-        Ok(()) => final_state
+    // The completion future has already been polled in the loop above. We must not
+    // await it again here because that would panic (JoinHandle polled after
+    // completion). Instead, if the producer completion was captured in the loop,
+    // reuse it; otherwise the loop exited via stream.next() returning None (the
+    // channel closed cleanly), and we still need to wait for the producer task to
+    // finish so we surface any error.
+    let join_result = match completion_result {
+        Some(res) => res,
+        None => completion.await,
+    };
+    match join_result {
+        Ok(Ok(())) => final_state
             .map(StreamRunOutcome::Finished)
             .ok_or(StreamEndedWithoutState.into()),
-        Err(AgentError::Cancelled) => Ok(StreamRunOutcome::Cancelled),
-        Err(e) => Err(StreamRunError::Execution(e)),
+        Ok(Err(AgentError::Cancelled)) => Ok(StreamRunOutcome::Cancelled),
+        Ok(Err(e)) => Err(StreamRunError::Execution(e)),
+        Err(e) => Err(StreamRunError::Execution(AgentError::ExecutionFailed(
+            format!("graph stream task failed: {}", e),
+        ))),
     }
 }
