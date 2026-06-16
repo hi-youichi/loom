@@ -130,9 +130,9 @@ where
                         hang_probe = "run_stream_with_config",
                         iters,
                         elapsed_secs = poll_start.elapsed().as_secs(),
-                        "hang_probe: stream.next() timed out after 10s — skipping"
+                        "hang_probe: stream.next() timed out after 600s — producer stuck, continuing"
                     );
-                    break;
+                    continue;
                 }
             };
 
