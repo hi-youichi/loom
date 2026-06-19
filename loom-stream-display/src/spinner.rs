@@ -223,13 +223,12 @@ fn truncate_to_terminal_width(s: &str, margin: usize) -> String {
 
 /// Returns terminal width, defaulting to 80 on failure.
 fn get_terminal_width() -> usize {
-    termsize::get().map(|s| s.cols as usize).unwrap_or(80)
+    crate::terminal::get_terminal_width()
 }
 
 /// Checks if stderr is connected to a TTY.
 fn is_stderr_tty() -> bool {
-    use std::io::IsTerminal;
-    std::io::stderr().is_terminal()
+    crate::terminal::is_stderr_tty()
 }
 
 /// A no-op spinner that does nothing. Used when spinning is disabled (quiet mode).

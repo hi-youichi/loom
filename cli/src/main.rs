@@ -18,6 +18,7 @@ mod review_cmd;
 mod review_skill_cmd;
 mod run_flow;
 mod session;
+mod session_view;
 mod skill_usage_cmd;
 mod subcommands;
 mod task_cmd;

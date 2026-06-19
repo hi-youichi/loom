@@ -161,10 +161,10 @@ async fn do_review_batch(
     } else if let Some(dur_str) = recent {
         let days = parse_duration_days(dur_str)?;
         let since = Utc::now() - Duration::days(days as i64);
-        mgr.list_sessions_since(since)?
+        mgr.list_sessions_filtered(0, Some(since), None, false)?
     } else if *all_unreviewed {
         let reviewed = history.reviewed_session_ids()?;
-        mgr.list_sessions()?
+        mgr.list_sessions_filtered(0, None, None, false)?
             .into_iter()
             .filter(|s| !reviewed.contains(&s.session_id))
             .collect()
@@ -349,7 +349,7 @@ fn show_pending(limit: usize, json: bool) -> Result<(), Box<dyn std::error::Erro
     let mgr = SessionManager::with_default_path();
 
     let reviewed = history.reviewed_session_ids()?;
-    let all = mgr.list_sessions()?;
+    let all = mgr.list_sessions_filtered(0, None, None, false)?;
     let pending: Vec<_> = all
         .into_iter()
         .filter(|s| !reviewed.contains(&s.session_id))

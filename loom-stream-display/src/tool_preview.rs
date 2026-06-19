@@ -6,7 +6,11 @@
 //! PREVIEW: Shows a snapshot of tool output (read, glob, grep, etc.)
 //! DIFF: Shows edit changes with red/green highlighting
 
-use crate::panel_format::color_enabled;
+use crate::terminal::stderr_color_enabled;
+
+fn color_enabled() -> bool {
+    stderr_color_enabled()
+}
 
 /// Maximum number of preview lines before collapsing.
 const MAX_PREVIEW_LINES: usize = 10;

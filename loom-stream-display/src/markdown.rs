@@ -4,7 +4,11 @@
 //! for terminal display. Used by the goal runner and stream display to render
 //! LLM output (reasoning, replies) with formatting.
 
-use crate::panel_format::{bold, color_enabled, dim, yellow};
+use crate::terminal::{bold, dim, yellow};
+
+fn color_enabled() -> bool {
+    crate::terminal::stderr_color_enabled()
+}
 
 /// Renders a markdown string to a terminal-friendly ANSI string.
 ///

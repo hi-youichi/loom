@@ -59,6 +59,9 @@ ctrlc = "3"
 termsize = "0.1"
 ratatui = "0.29"
 crossterm = "0.28"
+unicode-width = "0.2"
+chrono-humanize = "0.2"
+minus = { version = "5.7", default-features = false, features = ["static_output"] }
 
 [dev-dependencies]
 dotenv = { workspace = true }

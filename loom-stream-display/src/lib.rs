@@ -4,14 +4,20 @@ pub mod format_subagent;
 pub mod markdown;
 pub mod panel_format;
 pub mod spinner;
+pub mod terminal;
 pub mod streaming_markdown;
 pub mod tool_preview;
 pub mod tool_summary;
 
 pub use markdown::render_markdown;
+// Re-export terminal utilities for downstream crates.
+pub use terminal::{
+    bold, dim, get_terminal_width, green, is_stderr_tty, is_stdout_tty,
+    stderr_color_enabled, stdout_color_enabled, yellow,
+};
 pub use panel_format::{
-    dim, format_agent_line, format_model_line, format_panel_line, format_thinking_separator,
-    format_tools_line, format_usage_line,
+   format_agent_line, format_model_line, format_panel_line, format_thinking_separator,
+   format_tools_line, format_usage_line,
 };
 pub use format::format_context_limit;
 pub use spinner::{NoopSpinner, Spinner, SpinnerTrait};

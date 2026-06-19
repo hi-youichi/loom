@@ -50,9 +50,101 @@ pub(crate) async fn handle_session_command(
     let manager = SessionManager::with_default_path();
 
     match &sa.command {
-        SessionCommand::List => {
-            let sessions = manager.list_sessions()?;
-            manager.print_session_list(&sessions, json)?;
+        SessionCommand::List(args) => {
+            // Load config defaults (non-fatal: fall back to empty config on
+            // parse errors so a malformed config.toml never blocks `session list`).
+            let cfg = config::xdg_toml::load_full_config("loom").unwrap_or_else(|e| {
+                eprintln!("warning: failed to load config.toml: {}", e);
+                config::FullConfig::default_session()
+            });
+            let effective_limit = args
+                .limit
+                .or(cfg.session.default_limit)
+                .unwrap_or(50);
+            let effective_format: Option<String> =
+                args.format.clone().or(cfg.session.default_format);
+
+            let since = args
+                .since
+                .as_deref()
+                .map(SessionManager::parse_date_arg)
+                .transpose()
+                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+            let until = args
+                .until
+                .as_deref()
+                .map(SessionManager::parse_date_arg)
+                .transpose()
+                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+
+            // Build the effective args (with config defaults applied) for the
+            // formatter. We don't mutate `args` because clap's derive keeps
+            // the original; we just shadow it locally.
+            let mut effective_args = args.clone();
+            effective_args.limit = Some(effective_limit);
+            if effective_args.format.is_none() {
+                effective_args.format = effective_format;
+            }
+
+            let sessions = if let Some(query) = &effective_args.grep {
+                // Keyword search: walk thread_ids and inspect recent payloads.
+                // Limit is taken from --limit; since/until applied in memory.
+                let mut found = manager.search_sessions(query, effective_limit)?;
+                if let Some(since) = since {
+                    let since_ms = since.timestamp_millis();
+                    found.retain(|s| {
+                        s.last_updated
+                            .map(|t| t.timestamp_millis() >= since_ms)
+                            .unwrap_or(false)
+                    });
+                }
+                if let Some(until) = until {
+                    let until_ms = until.timestamp_millis();
+                    found.retain(|s| {
+                        s.last_updated
+                            .map(|t| t.timestamp_millis() <= until_ms)
+                            .unwrap_or(false)
+                    });
+                }
+                if effective_args.reverse {
+                    found.sort_by(|a, b| a.last_updated.cmp(&b.last_updated));
+                }
+                found
+            } else {
+                manager.list_sessions_filtered(
+                    effective_limit,
+                    since,
+                    until,
+                    effective_args.reverse,
+                )?
+            };
+
+            let use_pager = !json
+                && !effective_args.no_pager
+                && effective_args.format.is_none()
+                && loom_stream_display::terminal::is_stdout_tty();
+
+            // Build display config from effective args (P2: decoupled from ListArgs).
+            let display_cfg = crate::session_view::SessionListDisplayConfig {
+                oneline: effective_args.oneline,
+                format: effective_args.format.clone(),
+            };
+
+            if json {
+                crate::session_view::print_json(&sessions)?;
+            } else if use_pager {
+                let formatted = crate::session_view::format_session_list(&sessions, &display_cfg);
+                tokio::task::spawn_blocking(move || -> Result<(), String> {
+                    let pager = minus::Pager::new();
+                    pager.set_text(formatted).map_err(|e| format!("Pager set_text error: {}", e))?;
+                    minus::page_all(pager).map_err(|e| format!("Pager error: {}", e))
+                })
+                .await
+                .map_err(|e| format!("Pager task join error: {}", e))??;
+            } else {
+                let formatted = crate::session_view::format_session_list(&sessions, &display_cfg);
+                print!("{}", formatted);
+            }
         }
         SessionCommand::Show { session_id } => match manager.show_session(session_id)? {
             Some(detail) => manager.print_session_detail(&detail, json)?,

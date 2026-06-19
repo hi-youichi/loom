@@ -205,6 +205,28 @@ impl LlmSection {
     }
 }
 
+/// Defaults applied to `loom session list` when the user does not provide the
+/// corresponding CLI flag. Loaded from the `[session]` table in `config.toml`.
+///
+/// Example:
+/// ```toml
+/// [session]
+/// default_limit = 100
+/// default_format = "%h  %r  %t  (%c)"
+/// ```
+#[derive(serde::Deserialize, Clone, Debug, Default)]
+pub struct SessionSection {
+    /// Default value for `--limit` when the user does not specify it.
+    /// Falls back to the CLI's hardcoded default (50) when unset.
+    #[serde(default)]
+    pub default_limit: Option<usize>,
+
+    /// Default value for `--format` (placeholder template) when the user
+    /// does not specify it. Empty/missing disables the template default.
+    #[serde(default)]
+    pub default_format: Option<String>,
+}
+
 #[derive(serde::Deserialize, Default)]
 struct DefaultSection {
     provider: Option<String>,
@@ -222,15 +244,29 @@ struct ConfigFile {
     llm: Option<LlmSection>,
     #[serde(default)]
     logging: Option<LoggingSection>,
+    #[serde(default)]
+    session: Option<SessionSection>,
 }
 
 /// Parsed content of `config.toml`: env map, default provider name, and provider definitions.
+#[derive(Default)]
 pub struct FullConfig {
     pub env: HashMap<String, String>,
     pub default_provider: Option<String>,
     pub providers: Vec<ProviderDef>,
     pub llm: LlmSection,
     pub logging: LoggingSection,
+    /// `[session]` section with defaults for `loom session list`.
+    /// `None` fields mean "no override", falling back to CLI hardcoded defaults.
+    pub session: SessionSection,
+}
+
+impl FullConfig {
+    /// Convenience constructor for config-load failure fallback.
+    /// Returns an empty config with session defaults unset.
+    pub fn default_session() -> Self {
+        Self::default()
+    }
 }
 
 /// Returns env key-value pairs from `[env]` section. Missing file or empty section returns empty map.
@@ -244,15 +280,7 @@ pub fn load_env_map(app_name: &str) -> Result<HashMap<String, String>, LoadError
 pub fn load_full_config(app_name: &str) -> Result<FullConfig, LoadError> {
     let path = match config_path(app_name)? {
         Some(p) => p,
-        None => {
-            return Ok(FullConfig {
-                env: HashMap::new(),
-                default_provider: None,
-                providers: vec![],
-                llm: LlmSection::default(),
-                logging: LoggingSection::default(),
-            })
-        }
+        None => return Ok(FullConfig::default()),
     };
     let content = std::fs::read_to_string(&path).map_err(LoadError::XdgRead)?;
     let config: ConfigFile = toml::from_str(&content)?;
@@ -262,6 +290,7 @@ pub fn load_full_config(app_name: &str) -> Result<FullConfig, LoadError> {
         providers: config.providers,
         llm: config.llm.unwrap_or_default(),
         logging: config.logging.unwrap_or_default(),
+        session: config.session.unwrap_or_default(),
     })
 }
 
@@ -467,5 +496,39 @@ output_limit = 131072
         assert_eq!(full.providers[0].models[0].output_limit, 131_072);
         assert_eq!(full.providers[0].models[1].id, "glm-4.6");
         assert_eq!(full.providers[0].models[1].context_limit, 204_800);
+    }
+
+    #[test]
+    fn load_full_config_parses_session_defaults() {
+        let _lock = XDG_TEST_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("config.toml"),
+            r#"
+[session]
+default_limit = 200
+default_format = "%h  %r  %t  (%c)"
+"#,
+        )
+        .unwrap();
+        let _guard = LoomHomeGuard::set(dir.path());
+        let full = load_full_config("loom").unwrap();
+        assert_eq!(full.session.default_limit, Some(200));
+        assert_eq!(
+            full.session.default_format.as_deref(),
+            Some("%h  %r  %t  (%c)")
+        );
+    }
+
+    #[test]
+    fn load_full_config_missing_session_returns_defaults() {
+        let _lock = XDG_TEST_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        // No [session] section — should fall back to empty SessionSection.
+        std::fs::write(dir.path().join("config.toml"), "[env]\nFOO = \"x\"\n").unwrap();
+        let _guard = LoomHomeGuard::set(dir.path());
+        let full = load_full_config("loom").unwrap();
+        assert_eq!(full.session.default_limit, None);
+        assert_eq!(full.session.default_format, None);
     }
 }
