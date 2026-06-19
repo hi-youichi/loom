@@ -31,6 +31,7 @@ impl Tool for ArcTool {
 pub struct ToolRegistry {
     tools: HashMap<String, Box<dyn Tool>>,
     filter: Option<BuiltinToolFilter>,
+    call_filter: Option<BuiltinToolFilter>,
     dry_run: bool,
     yaml_specs: Option<HashMap<String, ToolSpec>>,
     context: Arc<std::sync::RwLock<Option<ToolCallContext>>>,
@@ -41,6 +42,7 @@ impl ToolRegistry {
         Self {
             tools: HashMap::new(),
             filter: None,
+            call_filter: None,
             dry_run: false,
             yaml_specs: None,
             context: Arc::new(std::sync::RwLock::new(None)),
@@ -54,6 +56,10 @@ impl ToolRegistry {
 
     pub fn set_filter(&mut self, filter: Option<BuiltinToolFilter>) {
         self.filter = filter;
+    }
+
+    pub fn set_call_filter(&mut self, filter: Option<BuiltinToolFilter>) {
+        self.call_filter = filter;
     }
 
     pub fn set_dry_run(&mut self, dry_run: bool) {
@@ -107,6 +113,14 @@ impl ToolRegistry {
                 name
             )));
         }
+        if let Some(cf) = &self.call_filter {
+            if !cf.is_allowed(name) {
+                return Err(ToolSourceError::NotFound(format!(
+                    "tool '{}' is denied by call_filter for this agent",
+                    name
+                )));
+            }
+        }
         if self.dry_run {
             return Ok(ToolCallContent::text(format!(
                 "(dry run: {} was not executed)",
@@ -119,7 +133,6 @@ impl ToolRegistry {
             .ok_or_else(|| ToolSourceError::NotFound(name.to_string()))?;
         tool.call(args, ctx).await
     }
-
     fn set_context(&self, ctx: ToolCallContext) {
         if let Ok(mut g) = self.context.write() {
             *g = Some(ctx);
@@ -172,6 +185,11 @@ impl ToolRegistryLocked {
     pub async fn set_filter(&self, filter: Option<BuiltinToolFilter>) {
         let mut inner = self.inner.write().await;
         inner.set_filter(filter);
+    }
+
+    pub async fn set_call_filter(&self, filter: Option<BuiltinToolFilter>) {
+        let mut inner = self.inner.write().await;
+        inner.set_call_filter(filter);
     }
 
     pub async fn set_dry_run(&self, dry_run: bool) {

@@ -15,6 +15,7 @@ use super::agent_loop::{
 };
 use super::history::{ReviewHistory, ReviewRecord};
 use super::skill_registry::SkillRegistry;
+use super::skill_registry::default_path as skills_default_path;
 use chrono::Utc;
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
@@ -145,7 +146,7 @@ pub fn spawn_background_review(
                     }
                 }
 
-                if let Err(e) = run_curator_if_needed(&SkillRegistry::default_path(), &config.curator_config) {
+                if let Err(e) = run_curator_if_needed(&skills_default_path(), &config.curator_config) {
                     warn!("Curator auto-run failed: {}", e);
                 }
             }
@@ -238,7 +239,7 @@ pub async fn run_background_review_inner(
 ) -> Result<BackgroundReviewHandle, String> {
     let memory = MemoryStore::new(&MemoryStore::default_path());
     let memory_tool = tool_experimental::MemoryTool::new(std::sync::Arc::new(memory));
-    let skills = SkillRegistry::new(&SkillRegistry::default_path());
+    let skills = SkillRegistry::new(&skills_default_path());
 
     let config = AgentReviewConfig {
         max_iterations,

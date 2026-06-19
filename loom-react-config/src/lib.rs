@@ -90,7 +90,14 @@ pub struct ReactBuildConfig {
     pub dry_run: bool,
     /// Optional filter for builtin tools (enabled whitelist / disabled blacklist).
     /// Populated from agent profile `tools.builtin` config.
+    /// Affects BOTH `list_tools()` (LLM-visible) and `call_tool()` (execution).
     pub builtin_tool_filter: Option<BuiltinToolFilter>,
+    /// Optional execution-only filter. Unlike `builtin_tool_filter`, this does NOT
+    /// affect `list_tools()` — the LLM still sees the full tool set (preserving
+    /// prompt cache parity with the parent agent), but `call_tool()` rejects
+    /// non-whitelisted tools at execution time.
+    /// Use this for review/fork scenarios where you want cache parity + safety.
+    pub call_tool_filter: Option<BuiltinToolFilter>,
     pub bash_executor: Option<Arc<dyn tool_basic::bash::CommandExecutor>>,
     pub extra_tools: Option<Arc<Vec<Arc<dyn tool_core::Tool>>>>,
     pub acp_session_id: Option<String>,
@@ -190,6 +197,7 @@ impl ReactBuildConfig {
                 .map(|s| matches!(s.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
                 .unwrap_or(false),
             builtin_tool_filter: None,
+            call_tool_filter: None,
             bash_executor: None,
             extra_tools: None,
             acp_session_id: None,

@@ -145,6 +145,9 @@ pub async fn build_react_runner(
     any_stream_event_sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>>,
 ) -> Result<ReactRunner, BuildRunnerError> {
     let ctx = build_react_run_context(config).await?;
+    if let Some(ref cf) = config.call_tool_filter {
+        ctx.tool_source.set_call_filter(Some(cf.clone())).await;
+    }
     let provider_override = provider.is_some();
     let provider = match provider {
         Some(p) => p,

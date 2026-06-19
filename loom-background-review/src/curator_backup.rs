@@ -1,6 +1,6 @@
 //! Curator Snapshot & Rollback — Phase 4
 //!
-//! Reference Hermes `curator_backup.py` (693 lines) core safety capabilities:
+//! Curator backup and snapshot logic.
 //! - `snapshot()` — execute pre-backup of skills directory as tar.gz
 //! - `rollback()` — rollback from snapshot
 //! - `list_snapshots()` — list available snapshots
@@ -51,7 +51,7 @@ pub struct SnapshotMeta {
 
 /// Curator snapshot and rollback manager
 ///
-/// Corresponds to Hermes `CuratorBackup` class, provides:
+/// Corresponds to `CuratorBackup` class, provides:
 /// - Automatic snapshot (before curator modifies skills)
 /// - Manual/auto rollback
 /// - Snapshot list and cleanup
@@ -296,11 +296,11 @@ impl CuratorBackup {
         Ok(Some(filename))
     }
 
-    /// Wrapper for snapshot() + auto prune (aligns with Hermes `snapshot_skills(reason)`)
+    /// Wrapper for snapshot() + auto prune (aligns with `snapshot_skills(reason)`)
     ///
     /// Difference from `auto_snapshot`:
-    /// - Checks curator enabled config (Hermes `_snapshot_skills` logic)
-    /// - Checks if skills_dir exists (Hermes logic)
+    /// - Checks curator enabled config 
+    /// - Checks if skills_dir exists 
     /// - Calls `snapshot()` to execute backup
     /// - Calls `prune_old_snapshots()` to clean old snapshots
     ///
@@ -316,7 +316,7 @@ impl CuratorBackup {
             .join("loom")
             .join("skills");
 
-        // 1. Check enabled (Hermes logic)
+        // 1. Check enabled 
         // TODO: Read curator.enabled from config.toml
         let enabled = std::env::var("CURATION_ENABLED")
             .map(|v| v != "false")
@@ -326,13 +326,13 @@ impl CuratorBackup {
             return None;
         }
 
-        // 2. Check if skills_dir exists (Hermes logic)
+        // 2. Check if skills_dir exists 
         if !skills_dir.exists() {
             tracing::debug!("skills dir does not exist — nothing to back up");
             return None;
         }
 
-        // 3. Create backup directory (Hermes logic: mkdir parents=True)
+        // 3. Create backup directory 
         if fs::create_dir_all(&self.backup_dir).is_err() {
             tracing::debug!("failed to create backup dir {:?}", self.backup_dir);
             return None;
@@ -347,7 +347,7 @@ impl CuratorBackup {
             }
         };
 
-        // 5. Prune old snapshots (Hermes logic: _prune_old(keep=get_keep()))
+        // 5. Prune old snapshots ))
         if self.prune_old_snapshots(5, false).is_err() {
             tracing::debug!("prune_old_snapshots failed");
         }

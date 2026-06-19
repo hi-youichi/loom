@@ -86,7 +86,7 @@ async fn do_review_single(
 
     let llm = build_review_client(args.model.as_deref())?;
     let memory = MemoryStore::new(&MemoryStore::default_path());
-    let skills = SkillRegistry::new(&SkillRegistry::default_path());
+    let skills = SkillRegistry::new(&loom_background_review::skill_registry::default_path());
 
     let review_config = ReviewConfig {
         auto_create_threshold: 1,

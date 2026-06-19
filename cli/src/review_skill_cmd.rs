@@ -83,7 +83,7 @@ pub(crate) async fn handle_review_skill_command(
     eprintln!("Reviewing {} chars of input...", input.len());
 
     let memory = MemoryStore::new(&MemoryStore::default_path());
-    let skills = SkillRegistry::new(&SkillRegistry::default_path());
+    let skills = SkillRegistry::new(&loom_background_review::skill_registry::default_path());
 
     let review_config = ReviewConfig {
         auto_create_threshold: 1,

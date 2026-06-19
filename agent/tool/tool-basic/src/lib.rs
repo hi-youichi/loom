@@ -23,7 +23,7 @@ pub use batch::{BatchTool, TOOL_BATCH};
 pub use date::{DateTool, TOOL_DATE};
 pub use mcp::{McpSession, McpSessionError, McpToolSource};
 pub use mcp_adapter::{register_mcp_tools, register_mcp_tools_with_specs, McpToolAdapter};
-pub use skill::{SkillListTool, SkillViewTool};
+pub use skill::{SkillListTool, SkillManagerTool, SkillViewTool, TOOL_SKILL_MANAGE};
 
 use std::path::Path;
 use std::sync::Arc;
@@ -77,6 +77,13 @@ pub fn register_file_tools(
         aggregate.register_sync(Box::new(list_tool));
         aggregate.register_sync(Box::new(view_tool));
     }
+
+    let skills_dir = path.join(".loom/skills");
+    let storage = Arc::new(::skill::storage::SkillStorageRegistry::new(&skills_dir));
+    let usage = Arc::new(::skill::SkillUsageStore::new(&skills_dir));
+    aggregate.register_sync(Box::new(
+        skill::SkillManagerTool::for_foreground(storage, Some(usage))
+    ));
 
     Ok(())
 }

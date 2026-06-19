@@ -1,8 +1,9 @@
 use super::curator::Curator;
 use tool_experimental::MemoryTool;
-use super::security::{validate_skill_create, validate_skill_path, Severity};
-use super::skill_registry::{Lifecycle, SkillContent, SkillRegistry, Source};
-use skill::{SkillUsageStore, WriteOrigin, WriteOriginGuard};
+use skill::validation::{validate_skill_create, validate_skill_path, Severity};
+use skill::storage::{Lifecycle, SkillContent, SkillStorageRegistry as SkillRegistry, Source};
+use skill::usage::SkillUsageStore;
+use skill::provenance::{WriteOrigin, WriteOriginGuard};
 use loom_llm::ToolSpec;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

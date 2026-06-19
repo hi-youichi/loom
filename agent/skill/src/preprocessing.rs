@@ -16,6 +16,7 @@ pub fn substitute_template_vars(content: &str, skill_dir: &Path, session_id: Opt
     let dir_str = skill_dir.to_string_lossy().to_string();
     TEMPLATE_RE.replace_all(content, |caps: &regex::Captures| {
         match &caps[1] {
+            // Legacy HERMES_* variables are deprecated aliases for LOOM_* equivalents.
             "LOOM_SKILL_DIR" | "HERMES_SKILL_DIR" => dir_str.clone(),
             "LOOM_SESSION_ID" | "HERMES_SESSION_ID" => session_id.unwrap_or("").to_string(),
             _ => caps[0].to_string(),
@@ -72,7 +73,7 @@ mod tests {
     }
 
     #[test]
-    fn substitute_hermes_skill_dir_backward_compat() {
+    fn substitute_legacy_skill_dir_backward_compat() {
         let content = "Path: ${HERMES_SKILL_DIR}/scripts/setup.sh";
         let dir = Path::new("/home/user/.loom/skills/my-skill");
         let result = substitute_template_vars(content, dir, None);
@@ -91,7 +92,7 @@ mod tests {
     }
 
     #[test]
-    fn substitute_hermes_session_id_backward_compat() {
+    fn substitute_legacy_session_id_backward_compat() {
         let content = "Session: ${HERMES_SESSION_ID}";
         let dir = Path::new(".");
         let result = substitute_template_vars(content, dir, Some("sess-456"));

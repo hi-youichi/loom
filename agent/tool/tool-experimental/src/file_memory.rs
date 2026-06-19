@@ -276,7 +276,7 @@ mod tests {
     }
 
     #[test]
-    fn spec_matches_hermes() {
+    fn spec_matches_reference() {
         let spec = MemoryTool::tool_spec();
         assert_eq!(spec.name, "memory");
         let schema = &spec.input_schema;

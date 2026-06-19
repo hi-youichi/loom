@@ -44,6 +44,9 @@ dirs = "5"
 skill = { path = "../agent/skill" }
 tool-experimental = { path = "../agent/tool/tool-experimental" }
 memory-v2 = { path = "../experimental/memory-v2" }
+agent = { path = "../agent/agent-core" }
+loom-react-config = { path = "../loom-react-config" }
+loom-graph = { path = "../loom-graph" }
 
 # Archive handling for curator backup
 flate2 = "1.0"

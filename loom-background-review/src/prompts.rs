@@ -1,8 +1,7 @@
-//! Review prompts copied from Hermes `run_agent.py`.
+//! Review prompts for the background review agent.
 //!
 //! These three prompts are used by the background review agent to analyze
-//! conversations and update memory/skills. They are the exact text from
-//! Hermes source code.
+//! conversations and update memory/skills.
 
 /// Memory-only review prompt.
 pub const MEMORY_REVIEW_PROMPT: &str = "\

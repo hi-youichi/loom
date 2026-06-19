@@ -100,7 +100,7 @@ pub struct OverlapPair {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Hermes Alignment Types
+// Curator Types
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]

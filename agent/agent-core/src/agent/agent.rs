@@ -1,6 +1,7 @@
 use crate::agent::react::build::build_react_runner;
 use crate::agent::react::{ReactBuildConfig, ReactRunner};
 use crate::runner_common::StreamRunOutcome;
+use loom_graph::RunnableConfig;
 use loom_llm::MessageChunkKind;
 use loom_stream::StreamEvent;
 use loom_cli_types::ReActState;
@@ -64,6 +65,18 @@ impl Agent {
     where
         F: FnMut(AgentEvent) + Send + Sync + Clone + 'static,
     {
+        self.run_with_config(message, None, on_event).await
+    }
+
+    pub async fn run_with_config<F>(
+        &self,
+        message: &str,
+        config: Option<RunnableConfig>,
+        on_event: F,
+    ) -> Result<AgentResult, AgentError>
+    where
+        F: FnMut(AgentEvent) + Send + Sync + Clone + 'static,
+    {
         let user_cb = Arc::new(on_event);
         let bridge = move |ev: StreamEvent<ReActState>| {
             if let Some(e) = map_stream_event(ev) {
@@ -74,7 +87,7 @@ impl Agent {
 
         let outcome = self
             .runner
-            .stream_with_config(message, None, Some(bridge))
+            .stream_with_config(message, config, Some(bridge))
             .await
             .map_err(|e| AgentError::Run(e.to_string()))?;
 
@@ -299,5 +312,59 @@ mod tests {
         assert!(events.iter().any(|e| matches!(e, AgentEvent::TextChunk(_))));
     }
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn agent_run_with_config_forwards_config_to_runner() {
+        let cfg = base_config();
+        let runner = build_react_runner(
+            &cfg,
+            Some(Arc::new(FixedLlmProvider {
+                client: Arc::new(MockLlm::with_no_tool_calls("via config")),
+                model_id: "mock".to_string(),
+            })),
+            false,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
 
+        let agent = Agent { runner };
+        let fork_config = RunnableConfig {
+            thread_id: Some("review-fork-test".to_string()),
+            checkpoint_ns: "background-review".to_string(),
+            ..Default::default()
+        };
+
+        let result = agent
+            .run_with_config("test message", Some(fork_config), |_| {})
+            .await
+            .unwrap();
+
+        assert_eq!(result.reply, "via config");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn agent_run_with_none_config_matches_run() {
+        let cfg = base_config();
+        let runner = build_react_runner(
+            &cfg,
+            Some(Arc::new(FixedLlmProvider {
+                client: Arc::new(MockLlm::with_no_tool_calls("no config")),
+                model_id: "mock".to_string(),
+            })),
+            false,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let agent = Agent { runner };
+        let result = agent
+            .run_with_config("test message", None, |_| {})
+            .await
+            .unwrap();
+
+        assert_eq!(result.reply, "no config");
+    }
 }

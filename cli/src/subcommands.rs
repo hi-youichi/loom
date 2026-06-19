@@ -300,7 +300,7 @@ pub(crate) fn handle_skills_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use cli::run::skill_registry::{SkillRegistry, Source, SkillContent, Lifecycle};
 
-    let registry = SkillRegistry::new(&SkillRegistry::default_path());
+    let registry = SkillRegistry::new(&loom_background_review::skill_registry::default_path());
 
     match &skills_args.command {
         SkillsCommand::List => {
@@ -388,7 +388,7 @@ pub(crate) fn handle_curator_command(
     };
     use cli::run::skill_registry::SkillRegistry;
 
-    let skills = SkillRegistry::new(&SkillRegistry::default_path());
+    let skills = SkillRegistry::new(&loom_background_review::skill_registry::default_path());
     let curator = Curator::new(skills, CuratorConfig::default());
 
     match &curator_args.command {
@@ -448,7 +448,7 @@ pub(crate) fn handle_curator_command(
             }
         }
         CuratorCommand::Prune { days } => {
-            // Hermes 对齐：bulk archive old skills
+            // bulk archive old skills
             let report = curator.run(curator_args.dry_run)?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&report)?);

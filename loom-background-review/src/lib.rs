@@ -16,6 +16,8 @@ pub mod curator_backup;
 	pub mod history;
 	pub mod observability;
 pub mod prompts;
+pub mod review;
+pub mod review_tool_gate;
 pub mod security;
 pub mod skill_registry;
 pub mod tools;
@@ -26,6 +28,8 @@ pub use agent_loop::{
     AgentReviewRunner, AgentReviewConfig, ReviewMode, AgentReviewResult,
     build_review_agent_client,
 };
+pub use review::{ReviewActionSummary, ReviewOutcome, run_review};
+pub use review_tool_gate::{ReviewToolGate, REVIEW_ALLOWED_TOOLS};
 
 pub use skill_registry::{SkillRegistry, SkillContent, SkillMeta, SkillError, Lifecycle, Source};
 pub use skill::{SkillUsage, SkillUsageStore};

@@ -8,7 +8,7 @@ members = [
     "loom-model-spec",
     "loom-cache",
     "loom-worktree",
-    "loom-curator",
+
     "agent/skill",
     "loom-graph",
     "loom-pregel",
@@ -43,6 +43,7 @@ members = [
     "loom-react-config",
     "loom-cli-types",
     "experimental/memory-v2",
+    "loom-core",
 ]
 
 [workspace.package]

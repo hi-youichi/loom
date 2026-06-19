@@ -94,7 +94,7 @@ impl SkillStorageRegistry {
         &self.base_dir
     }
 
-    fn skill_dir(&self, source: Source, name: &str) -> PathBuf {
+    pub fn skill_dir(&self, source: Source, name: &str) -> PathBuf {
         let subdir = match source {
             Source::Auto => "auto",
             Source::Manual => "curated",
@@ -103,7 +103,7 @@ impl SkillStorageRegistry {
         self.base_dir.join(subdir).join(name)
     }
 
-    fn skill_file_path(&self, source: Source, name: &str) -> PathBuf {
+    pub fn skill_file_path(&self, source: Source, name: &str) -> PathBuf {
         self.skill_dir(source, name).join("SKILL.md")
     }
 
@@ -291,6 +291,55 @@ impl SkillStorageRegistry {
         };
 
         // Update description and triggers from frontmatter
+        if let Some(desc) = frontmatter
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(String::from)
+        {
+            updated.description = desc;
+        }
+        if let Some(triggers) = frontmatter
+            .get("triggers")
+            .and_then(|v| v.as_sequence())
+            .map(|seq| {
+                seq.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+        {
+            updated.triggers = triggers;
+        }
+
+        self.save(name, &updated)
+    }
+
+    /// Patch a skill by replacing **every** occurrence of `old_string` with
+    /// `new_string`. Fails if `old_string` is not present.
+    pub fn patch_all(
+        &self,
+        name: &str,
+        old_string: &str,
+        new_string: &str,
+    ) -> Result<(), SkillError> {
+        let mut content = self.load(name)?;
+        if !content.raw.contains(old_string) {
+            return Err(SkillError::InvalidFormat(format!(
+                "old_string not found in skill '{}'",
+                name
+            )));
+        }
+        content.raw = content.raw.replace(old_string, new_string);
+        let (frontmatter, body) = parse_frontmatter(&content.raw);
+        let mut updated = SkillContent {
+            name: content.name.clone(),
+            description: content.description.clone(),
+            triggers: content.triggers.clone(),
+            lifecycle: content.lifecycle,
+            source: content.source,
+            body,
+            raw: content.raw.clone(),
+        };
+
         if let Some(desc) = frontmatter
             .get("description")
             .and_then(|v| v.as_str())
