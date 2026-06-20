@@ -1,25 +1,21 @@
 //! Wraps loom::run_agent_with_options with stderr display callback.
 //! Uses protocol format (type + payload) and optional envelope per protocol_spec.
 
-use chrono::Local;
-use loom::cli_run::build_react_config;
-use loom_react_config::profile::list_available_profiles;
-use loom_model_spec::{
-    build_composite_resolver, ConfigModelEntry, ConfigProviderEntry,
-    ModelLimitResolver,
-};
-use loom_stream::MessageChunkKind;
-use loom_cli_types::ResolvedAgent;
-use loom_types::state::ToolResult;
-use loom_protocol::Envelope;
-use loom_types::state::ReActState;
-use loom_llm::ToolCall;
 use agent::build_react_run_context;
-use loom::agent_run::{
-    run_agent_with_options,
-    AnyStreamEvent,
-};
 use agent_extensions::{DupState, GotState, TotState};
+use chrono::Local;
+use loom::agent_run::{run_agent_with_options, AnyStreamEvent};
+use loom::cli_run::build_react_config;
+use loom_cli_types::ResolvedAgent;
+use loom_llm::ToolCall;
+use loom_model_spec::{
+    build_composite_resolver, ConfigModelEntry, ConfigProviderEntry, ModelLimitResolver,
+};
+use loom_protocol::Envelope;
+use loom_react_config::profile::list_available_profiles;
+use loom_stream::MessageChunkKind;
+use loom_types::state::ReActState;
+use loom_types::state::ToolResult;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -30,10 +26,10 @@ use super::display::{
     format_dup_state_display, format_got_state_display, format_react_state_display,
     format_tot_state_display, truncate_display,
 };
-use loom_stream_display as panel_format;
-use loom_protocol::EnvelopeState;
 use loom::agent_run::{RunCmd, RunOptions};
+use loom_protocol::EnvelopeState;
 use loom_stream::StreamEvent;
+use loom_stream_display as panel_format;
 
 use super::RunError;
 
@@ -66,14 +62,18 @@ pub enum RunStopReason {
     Cancelled,
 }
 
-fn completion_reply(result: loom::agent_run::RunCompletion) -> (String, Option<String>, RunStopReason) {
+fn completion_reply(
+    result: loom::agent_run::RunCompletion,
+) -> (String, Option<String>, RunStopReason) {
     match result {
         loom::agent_run::RunCompletion::Finished(result) => (
             result.reply,
             result.reasoning_content,
             RunStopReason::EndTurn,
         ),
-        loom::agent_run::RunCompletion::Cancelled => (String::new(), None, RunStopReason::Cancelled),
+        loom::agent_run::RunCompletion::Cancelled => {
+            (String::new(), None, RunStopReason::Cancelled)
+        }
         loom::agent_run::RunCompletion::Error(e) => (e.0, None, RunStopReason::Cancelled),
     }
 }
@@ -82,14 +82,14 @@ fn completion_reply(result: loom::agent_run::RunCompletion) -> (String, Option<S
 fn print_agent_banner(resolved: &Option<ResolvedAgent>) {
     match resolved {
         Some(ra) => {
-                eprintln!(
-                    "{}",
-                    panel_format::format_agent_line(
-                        &ra.name,
-                        &ra.source.to_string(),
-                        ra.description.as_deref(),
-                    )
-                );
+            eprintln!(
+                "{}",
+                panel_format::format_agent_line(
+                    &ra.name,
+                    &ra.source.to_string(),
+                    ra.description.as_deref(),
+                )
+            );
         }
         None => eprintln!("{}", panel_format::format_panel_line("AGENT", "(none)")),
     }
@@ -127,7 +127,10 @@ async fn print_model_info(model: Option<&String>) {
     let model_name = match model {
         Some(m) if !m.is_empty() => m.as_str(),
         _ => {
-            eprintln!("{}", panel_format::format_model_line("(default)", "unknown context"));
+            eprintln!(
+                "{}",
+                panel_format::format_model_line("(default)", "unknown context")
+            );
             return;
         }
     };
@@ -153,7 +156,10 @@ async fn print_model_info(model: Option<&String>) {
                 "{}",
                 panel_format::format_model_line(
                     model_name,
-                    &format!("{} context", panel_format::format_context_limit(spec.context_limit)),
+                    &format!(
+                        "{} context",
+                        panel_format::format_context_limit(spec.context_limit)
+                    ),
                 )
             );
         }
@@ -163,7 +169,10 @@ async fn print_model_info(model: Option<&String>) {
                  The model may not be in the models.dev database, or there was a network error.",
                 model_name
             );
-            eprintln!("{}", panel_format::format_model_line(model_name, "context: unknown"));
+            eprintln!(
+                "{}",
+                panel_format::format_model_line(model_name, "context: unknown")
+            );
         }
     }
 }
@@ -327,6 +336,33 @@ pub async fn run_agent_wrapper(
     let result = run_agent_with_options(opts, cmd, Some(on_event)).await?;
     let duration = start.elapsed();
 
+    let outcome = match &result {
+        loom::agent_run::RunCompletion::Finished(_) => "finished",
+        loom::agent_run::RunCompletion::Cancelled => "cancelled",
+        loom::agent_run::RunCompletion::Error(_) => "error",
+    };
+    let (prompt_tokens, completion_tokens, last_node, agent) = state
+        .lock()
+        .map(|s| {
+            (
+                s.total_prompt_tokens,
+                s.total_completion_tokens,
+                s.last_node.clone(),
+                s.agent_display.clone(),
+            )
+        })
+        .unwrap_or((0, 0, None, None));
+    tracing::debug!(
+        stage = "agent_run_completed",
+        duration_ms = duration.as_millis() as u64,
+        outcome = outcome,
+        prompt_tokens = prompt_tokens,
+        completion_tokens = completion_tokens,
+        last_node = last_node.as_deref().unwrap_or(""),
+        agent = agent.as_deref().unwrap_or(""),
+        "agent run completed; flushing display"
+    );
+
     // Flush the streaming markdown renderer's remaining buffer
     if let Ok(mut s) = state.lock() {
         s.markdown_renderer.finish();
@@ -404,14 +440,7 @@ fn on_event_react(
         StreamEvent::TotBacktrack { .. } => "TotBacktrack",
         _ => "other",
     };
-    tracing::info!(
-        hang_probe = "on_event_react",
-        ev = ev_tag,
-        turn = s.turn,
-        reply_started = s.reply_started,
-        spinner_alive = s.spinner.is_some(),
-        "hang_probe: on_event_react enter"
-    );
+    tracing::info!(ev = ev_tag, "on_event_react enter");
     match ev {
         StreamEvent::TaskStart { node_id, .. } => {
             if let Some(sp) = s.spinner.take() {
@@ -454,7 +483,11 @@ fn on_event_react(
             }
             print_stream_chunk(chunk, &mut s.markdown_renderer);
         }
-        StreamEvent::Updates { node_id, state: react_state, .. } => {
+        StreamEvent::Updates {
+            node_id,
+            state: react_state,
+            ..
+        } => {
             // Always show title generation result (non-verbose too)
             if node_id == "title" {
                 if let Some(ref title) = react_state.summary {
@@ -480,31 +513,45 @@ fn on_event_react(
                     _ => format!("state after {}", node_id),
                 };
                 eprintln!("--- {} ---", label);
-                eprintln!("{}", format_react_state_display(react_state, display_max_len));
+                eprintln!(
+                    "{}",
+                    format_react_state_display(react_state, display_max_len)
+                );
                 if node_id == "think" && react_state.tool_calls.is_empty() {
                     eprintln!("(think ? END: tool_calls empty, LLM gave FINAL_ANSWER)");
                 }
             } else {
-            // Save tool_calls during think (non-verbose)
+                // Save tool_calls during think (non-verbose)
                 if node_id == "think" && !react_state.tool_calls.is_empty() {
                     if let Some(sp) = s.spinner.take() {
                         sp.finish_box();
                     }
                     // Show tool call lines (name + args summary)
                     for tc in &react_state.tool_calls {
-                        let summary = loom_stream_display::tool_summary::format_call_summary(&tc.name, &tc.arguments);
-                        eprintln!("{}", panel_format::panel_format::format_tool_call(&tc.name, &summary));
+                        let summary = loom_stream_display::tool_summary::format_call_summary(
+                            &tc.name,
+                            &tc.arguments,
+                        );
+                        eprintln!(
+                            "{}",
+                            panel_format::panel_format::format_tool_call(&tc.name, &summary)
+                        );
                         // Show DIFF immediately for edit/multiedit (doesn't need result)
-                        if let Some(diff) = loom_stream_display::format_diff(
-                            &tc.name, &tc.arguments, "", false,
-                        ) {
+                        if let Some(diff) =
+                            loom_stream_display::format_diff(&tc.name, &tc.arguments, "", false)
+                        {
                             eprintln!("{}", diff);
                         }
                     }
                     if let Some(tc) = react_state.tool_calls.first() {
-                        let desc = serde_json::from_str::<Value>(&tc.arguments)
-                            .ok()
-                            .and_then(|v| v.get("description").and_then(|d| d.as_str()).map(String::from));
+                        let desc =
+                            serde_json::from_str::<Value>(&tc.arguments)
+                                .ok()
+                                .and_then(|v| {
+                                    v.get("description")
+                                        .and_then(|d| d.as_str())
+                                        .map(String::from)
+                                });
                         let label = match desc {
                             Some(d) if !d.is_empty() => format!("{} - {}", tc.name, d),
                             _ => tc.name.clone(),
@@ -530,12 +577,10 @@ fn on_event_react(
                     &react_state.tool_results
                 };
                 for tc in s.pending_tool_calls.drain(..) {
-                    let result_text = loom_stream_display::find_tool_result(
-                        tool_results, &tc.name, &tc.id,
-                    );
-                    let is_error = loom_stream_display::find_tool_result_error(
-                        tool_results, &tc.name, &tc.id,
-                    );
+                    let result_text =
+                        loom_stream_display::find_tool_result(tool_results, &tc.name, &tc.id);
+                    let is_error =
+                        loom_stream_display::find_tool_result_error(tool_results, &tc.name, &tc.id);
                     let is_edit_like = tc.name == "edit" || tc.name == "multiedit";
 
                     if is_error {
@@ -543,20 +588,36 @@ fn on_event_react(
                             Some(r) => r.lines().next().unwrap_or("error"),
                             None => "error",
                         };
-                        eprintln!("{}", panel_format::format_panel_line("ERROR", &format!("{}: {}", tc.name, loom_stream_display::tool_summary::truncate(err_msg, 80))));
+                        eprintln!(
+                            "{}",
+                            panel_format::format_panel_line(
+                                "ERROR",
+                                &format!(
+                                    "{}: {}",
+                                    tc.name,
+                                    loom_stream_display::tool_summary::truncate(err_msg, 80)
+                                )
+                            )
+                        );
                     }
 
                     // PREVIEW and result fallback: skip for edit/multiedit (diff already shown)
                     if !is_edit_like {
                         if let Some(ref result) = result_text {
                             if let Some(preview) = loom_stream_display::format_preview(
-                                &tc.name, &tc.arguments, result, false,
+                                &tc.name,
+                                &tc.arguments,
+                                result,
+                                false,
                             ) {
                                 eprintln!("{}", preview);
                             } else if !is_error && !result.trim().is_empty() {
-                                eprintln!("{}", loom_stream_display::tool_preview::format_result_preview(
-                                    &tc.name, result, elapsed,
-                                ));
+                                eprintln!(
+                                    "{}",
+                                    loom_stream_display::tool_preview::format_result_preview(
+                                        &tc.name, result, elapsed,
+                                    )
+                                );
                             }
                         }
                     }
@@ -565,7 +626,10 @@ fn on_event_react(
                     if !is_edit_like {
                         if let Some(ref result) = result_text {
                             if let Some(diff) = loom_stream_display::format_diff(
-                                &tc.name, &tc.arguments, result, false,
+                                &tc.name,
+                                &tc.arguments,
+                                result,
+                                false,
                             ) {
                                 eprintln!("{}", diff);
                             }
@@ -579,7 +643,14 @@ fn on_event_react(
                             result_text.as_deref().unwrap_or(""),
                             is_error,
                         );
-                        eprintln!("{}", panel_format::panel_format::format_tool_done(&tc.name, &done_summary, elapsed));
+                        eprintln!(
+                            "{}",
+                            panel_format::panel_format::format_tool_done(
+                                &tc.name,
+                                &done_summary,
+                                elapsed
+                            )
+                        );
                     }
                 }
                 s.pending_tool_start = None;
@@ -593,10 +664,17 @@ fn on_event_react(
             decode_duration,
             ..
         } => {
-            s.accumulate_usage(*prompt_tokens, *completion_tokens, *prefill_duration, *decode_duration);
+            s.accumulate_usage(
+                *prompt_tokens,
+                *completion_tokens,
+                *prefill_duration,
+                *decode_duration,
+            );
         }
         _ => {}
     }
+
+    tracing::info!(ev = ev_tag, "on_event_react exit");
 }
 
 fn on_event_dup(
@@ -655,9 +733,14 @@ fn on_event_dup(
                         sp.finish_box();
                     }
                     if let Some(tc) = state.core.tool_calls.first() {
-                        let desc = serde_json::from_str::<Value>(&tc.arguments)
-                            .ok()
-                            .and_then(|v| v.get("description").and_then(|d| d.as_str()).map(String::from));
+                        let desc =
+                            serde_json::from_str::<Value>(&tc.arguments)
+                                .ok()
+                                .and_then(|v| {
+                                    v.get("description")
+                                        .and_then(|d| d.as_str())
+                                        .map(String::from)
+                                });
                         let label = match desc {
                             Some(d) if !d.is_empty() => format!("{} - {}", tc.name, d),
                             _ => tc.name.clone(),
@@ -674,7 +757,12 @@ fn on_event_dup(
             decode_duration,
             ..
         } => {
-            s.accumulate_usage(*prompt_tokens, *completion_tokens, *prefill_duration, *decode_duration);
+            s.accumulate_usage(
+                *prompt_tokens,
+                *completion_tokens,
+                *prefill_duration,
+                *decode_duration,
+            );
         }
         _ => {}
     }
@@ -752,7 +840,12 @@ fn on_event_tot(
             decode_duration,
             ..
         } => {
-            s.accumulate_usage(*prompt_tokens, *completion_tokens, *prefill_duration, *decode_duration);
+            s.accumulate_usage(
+                *prompt_tokens,
+                *completion_tokens,
+                *prefill_duration,
+                *decode_duration,
+            );
         }
         _ => {}
     }
@@ -797,7 +890,9 @@ impl EventState {
         decode_duration: Option<std::time::Duration>,
     ) {
         self.total_prompt_tokens = self.total_prompt_tokens.saturating_add(prompt_tokens);
-        self.total_completion_tokens = self.total_completion_tokens.saturating_add(completion_tokens);
+        self.total_completion_tokens = self
+            .total_completion_tokens
+            .saturating_add(completion_tokens);
         self.last_prefill_duration = prefill_duration;
         self.last_decode_duration = decode_duration;
         tracing::info!(
@@ -907,7 +1002,12 @@ fn on_event_got(
             decode_duration,
             ..
         } => {
-            s.accumulate_usage(*prompt_tokens, *completion_tokens, *prefill_duration, *decode_duration);
+            s.accumulate_usage(
+                *prompt_tokens,
+                *completion_tokens,
+                *prefill_duration,
+                *decode_duration,
+            );
         }
         _ => {}
     }
@@ -916,10 +1016,10 @@ fn on_event_got(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom::agent_run::{
-        RunCmd, RunOptions,
+    use agent_extensions::{
+        TaskGraph, TaskNode, TaskNodeState, TaskStatus, TotExtension, UnderstandOutput,
     };
-use agent_extensions::{TaskGraph, TaskNode, TaskNodeState, TaskStatus, TotExtension, UnderstandOutput};
+    use loom::agent_run::{RunCmd, RunOptions};
     use loom_llm::{message::Message, ToolCall};
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
@@ -931,7 +1031,7 @@ use agent_extensions::{TaskGraph, TaskNode, TaskNodeState, TaskStatus, TotExtens
         }
     }
 
-fn minimal_build_config() -> loom_react_config::ReactBuildConfig {
+    fn minimal_build_config() -> loom_react_config::ReactBuildConfig {
         loom_react_config::ReactBuildConfig {
             mcp_exa_url: "https://mcp.exa.ai/mcp".to_string(),
             mcp_remote_cmd: "npx".to_string(),
@@ -1353,7 +1453,7 @@ fn minimal_build_config() -> loom_react_config::ReactBuildConfig {
             base_url: None,
             api_key: None,
             provider_type: None,
-    any_stream_event_sender: None,
+            any_stream_event_sender: None,
             bash_executor: None,
             extra_tools: None,
             acp_session_id: None,
@@ -1361,7 +1461,7 @@ fn minimal_build_config() -> loom_react_config::ReactBuildConfig {
             chat_id: None,
             worktree: false,
             goal_mode: false,
-        force_review: false,
+            force_review: false,
             debug_llm: false,
         }
     }

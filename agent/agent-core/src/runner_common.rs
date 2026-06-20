@@ -100,101 +100,45 @@ where
         StreamMode::Checkpoints,
     ]);
 
-    let _has_cancellation = cancellation.is_some();
-    let graph_stream = compiled.stream(
-        initial_state,
-        run_config,
-        modes,
-        cancellation,
-    );
+    let graph_stream = compiled.stream(initial_state, run_config, modes, cancellation);
     let mut stream = graph_stream.events;
-    // Take the completion handle out so we can poll it together with the event stream.
-    // If the producer task finishes before the channel closes (e.g. due to a leaked
-    // Sender clone in a node), we still break out of the consumer loop instead of
-    // waiting the full 600s timeout.
+    // Poll completion concurrently with the event stream so the consumer loop
+    // terminates even if a leaked Sender keeps the channel open. After completion
+    // fires, drain non-blockingly (now_or_never) to capture buffered events
+    // without risking an infinite hang.
     let mut completion = graph_stream.completion;
-    // Tracks the resolved producer task result if/when it completes during the
-    // consumer loop. We can't re-await a JoinHandle after it resolves (it panics),
-    // so we capture its result the first time `tokio::select!` fires for it and
-    // reuse it after the loop exits.
     let mut completion_result: Option<Result<Result<(), GraphError>, tokio::task::JoinError>> = None;
     let mut final_state: Option<S> = None;
-    let mut iters: u64 = 0;
     let mut completion_consumed = false;
+
     loop {
-        // --- hang probe: pre-next (producer side) ---
-        let poll_start = std::time::Instant::now();
-        // Poll the event stream and the producer completion concurrently. Whichever
-        // resolves first wins. This makes the consumer loop terminate when the
-        // producer task is finished, even if the mpsc channel happens to be held
-        // open by a leaked Sender clone.
-        //
-        // When `completion_consumed` is true, the JoinHandle has already been
-        // polled in a previous iteration; re-polling it would panic. Drain the
-        // channel directly until it closes.
-        let event: Option<StreamEvent<S>> = if completion_consumed {
-            stream.next().await
+        let event = if completion_consumed {
+            stream.next().now_or_never().flatten()
         } else {
             tokio::select! {
                 biased;
-                // Producer completion is checked first. If the producer is done, we can
-                // safely break out of the loop regardless of channel state.
                 res = &mut completion => {
                     completion_result = Some(res);
                     completion_consumed = true;
-                    None
+                    continue;
                 }
                 next = stream.next() => next,
             }
         };
 
-        let event = match event {
-            // When the producer completes, the channel may still hold the terminal
-            // Values event. Drain any buffered events before exiting so callers
-            // using `StreamMode::Values` can capture the final state.
-            None if completion_consumed => match stream.next().now_or_never() {
-                Some(Some(e)) => e,
-                _ => break,
-            },
+        match event {
+            Some(e) => {
+                if let StreamEvent::Values(s) = e.clone() {
+                    final_state = Some(s);
+                }
+                if let Some(ref f) = on_event {
+                    f(e);
+                }
+            }
             None => break,
-            Some(e) => e,
-        };
-
-        let poll_elapsed_ms = poll_start.elapsed().as_millis() as u64;
-        if poll_elapsed_ms > 1_000 {
-            tracing::debug!(
-                poll_elapsed_ms,
-                iters,
-                "run_stream: slow event poll"
-            );
-        }
-
-        iters += 1;
-
-        // --- event processing (consumer side) ---
-        let proc_start = std::time::Instant::now();
-        if let StreamEvent::Values(s) = event.clone() {
-            final_state = Some(s);
-        }
-        if let Some(ref f) = on_event {
-            f(event);
-        }
-        let proc_elapsed_ms = proc_start.elapsed().as_millis() as u64;
-        if proc_elapsed_ms > 1_000 {
-            tracing::debug!(
-                proc_elapsed_ms,
-                iters,
-                "run_stream: slow event processing"
-            );
         }
     }
-    tracing::debug!("finish");
-    // The completion future has already been polled in the loop above. We must not
-    // await it again here because that would panic (JoinHandle polled after
-    // completion). Instead, if the producer completion was captured in the loop,
-    // reuse it; otherwise the loop exited via stream.next() returning None (the
-    // channel closed cleanly), and we still need to wait for the producer task to
-    // finish so we surface any error.
+
     let join_result = match completion_result {
         Some(res) => res,
         None => completion.await,
