@@ -23,8 +23,8 @@ pub mod workflow;
 
 // Re-export key types for convenience
 pub use review::{
-    REVIEW_INSTRUCTION, ReviewActionSummary, ReviewConfig,
-    ReviewOutcome, run_review, spawn_background_review, spawn_review_after_session,
+    REVIEW_INSTRUCTION, ReviewActionSummary, ReviewConfig, ReviewOutcome, TokenUsageSummary,
+    run_review, spawn_background_review, spawn_review_after_session,
 };
 pub use review_tool_gate::{ReviewToolGate, REVIEW_ALLOWED_TOOLS};
 

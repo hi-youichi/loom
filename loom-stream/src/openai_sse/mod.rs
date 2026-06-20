@@ -391,6 +391,7 @@ mod tests {
             prompt_tokens: 10,
             completion_tokens: 20,
             total_tokens: 30,
+            cached_tokens: None,
             prefill_duration: None,
             decode_duration: None,
         });
@@ -408,6 +409,7 @@ mod tests {
             prompt_tokens: 5,
             completion_tokens: 10,
             total_tokens: 15,
+            cached_tokens: None,
             prefill_duration: None,
             decode_duration: None,
         });
@@ -508,6 +510,7 @@ mod tests {
             prompt_tokens: 1,
             completion_tokens: 2,
             total_tokens: 3,
+            cached_tokens: None,
             prefill_duration: None,
             decode_duration: None,
         });

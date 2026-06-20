@@ -3,7 +3,9 @@ use crate::review_history::{ReviewHistory, ReviewRecord};
 use crate::review_skill_cmd::build_review_react_config;
 use crate::session::SessionManager;
 use chrono::{Duration, Utc};
-use loom_background_review::{run_review, ReviewConfig as BgReviewConfig, ReviewOutcome};
+use loom_background_review::{
+    run_review, ReviewConfig as BgReviewConfig, ReviewOutcome, TokenUsageSummary,
+};
 use std::time::Instant;
 
 pub(crate) async fn handle_review_command(
@@ -132,6 +134,7 @@ async fn do_review_single(
                         "duration_ms": outcome.duration_ms,
                         "skipped": outcome.skipped,
                         "skip_reason": outcome.skip_reason,
+                        "tokens": &outcome.tokens,
                     },
                 });
                 println!("{}", serde_json::to_string_pretty(&result)?);
@@ -435,17 +438,19 @@ fn print_review_outcome(outcome: &ReviewOutcome, verbose: bool) {
 
     if outcome.actions.is_empty() {
         println!("  No actions taken.");
-        return;
-    }
-
-    for action in &outcome.actions {
-        let status = if action.succeeded { "OK" } else { "FAIL" };
-        println!(
-            "  [{}] {} ({})",
-            status, action.target, action.kind
-        );
-        if verbose && !action.summary.is_empty() {
-            println!("    {}", action.summary);
+    } else {
+        for action in &outcome.actions {
+            let status = if action.succeeded { "OK" } else { "FAIL" };
+            let detail = if action.summary.is_empty() {
+                String::new()
+            } else {
+                format!(" — {}", action.summary)
+            };
+            println!("  [{}] {} ({}){}", status, action.target, action.kind, detail);
+            if verbose && !action.summary.is_empty() {
+                // Verbose already shows the summary inline above; reserve this slot
+                // for future richer context (e.g. raw tool result, provenance).
+            }
         }
     }
 
@@ -455,6 +460,35 @@ fn print_review_outcome(outcome: &ReviewOutcome, verbose: bool) {
             println!("    - {}", v);
         }
     }
+
+    if !outcome.tokens.is_empty() {
+        println!("  Tokens: {}", format_token_summary(&outcome.tokens));
+    }
+}
+
+fn format_token_summary(t: &TokenUsageSummary) -> String {
+    // Lays out cached vs non-cached split so a single glance answers
+    // "did the cache help?" — e.g. "1200 in (800 cached, 400 fresh) + 100 out = 1300 total (1 LLM call)".
+    // When the provider does not report cache hits (cached_tokens == 0) we drop
+    // the parenthetical split so the line is not noisy.
+    let call_word = if t.llm_calls == 1 { "call" } else { "calls" };
+    if t.cached_tokens == 0 {
+        format!(
+            "{} in + {} out = {} total ({} LLM {})",
+            t.prompt_tokens, t.completion_tokens, t.total_tokens, t.llm_calls, call_word
+        )
+    } else {
+        format!(
+            "{} in ({} cached, {} fresh) + {} out = {} total ({} LLM {})",
+            t.prompt_tokens,
+            t.cached_tokens,
+            t.non_cached_prompt(),
+            t.completion_tokens,
+            t.total_tokens,
+            t.llm_calls,
+            call_word
+        )
+    }
 }
 
 fn format_duration_ms(ms: u64) -> String {
@@ -462,5 +496,81 @@ fn format_duration_ms(ms: u64) -> String {
         format!("{}ms", ms)
     } else {
         format!("{:.1}s", ms as f64 / 1000.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use loom_background_review::TokenUsageSummary;
+
+    #[test]
+    fn format_token_summary_omits_cache_split_when_zero() {
+        // When no cache hit was reported we don't want to print "(0 cached, N fresh)"
+        // — it's noise. Verify the line stays clean.
+        let mut t = TokenUsageSummary::default();
+        t.llm_calls = 1;
+        t.prompt_tokens = 500;
+        t.completion_tokens = 50;
+        t.total_tokens = 550;
+        let s = format_token_summary(&t);
+        assert!(s.contains("500 in"), "got: {s}");
+        assert!(s.contains("50 out"), "got: {s}");
+        assert!(s.contains("550 total"), "got: {s}");
+        assert!(s.contains("1 LLM call"), "got: {s}");
+        assert!(!s.contains("cached"), "should not mention cache when none: {s}");
+    }
+
+    #[test]
+    fn format_token_summary_shows_cache_split_when_present() {
+        // The whole point of the feature: when the provider reports a cache
+        // hit, the CLI must surface it as "X cached, Y fresh" so the user
+        // can see whether prefix caching is actually saving them money.
+        let mut t = TokenUsageSummary::default();
+        t.llm_calls = 2;
+        t.prompt_tokens = 3_500;
+        t.cached_tokens = 2_000;
+        t.completion_tokens = 180;
+        t.total_tokens = 3_680;
+        let s = format_token_summary(&t);
+        assert!(s.contains("3500 in"), "got: {s}");
+        assert!(s.contains("(2000 cached, 1500 fresh)"), "got: {s}");
+        assert!(s.contains("180 out"), "got: {s}");
+        assert!(s.contains("3680 total"), "got: {s}");
+        assert!(s.contains("2 LLM calls"), "got: {s}");
+    }
+
+    #[test]
+    fn format_token_summary_singular_vs_plural_calls() {
+        // 1 LLM call vs N LLM calls — simple grammar check, but it's user-facing.
+        let mut one = TokenUsageSummary::default();
+        one.llm_calls = 1;
+        one.prompt_tokens = 10;
+        one.completion_tokens = 1;
+        one.total_tokens = 11;
+        assert!(format_token_summary(&one).contains("1 LLM call"));
+        assert!(!format_token_summary(&one).contains("1 LLM calls"));
+
+        let mut many = TokenUsageSummary::default();
+        many.llm_calls = 3;
+        many.prompt_tokens = 30;
+        many.completion_tokens = 3;
+        many.total_tokens = 33;
+        assert!(format_token_summary(&many).contains("3 LLM calls"));
+    }
+
+    #[test]
+    fn format_token_summary_with_only_cached_prompt_saturates_fresh_at_zero() {
+        // Edge case: provider reports 100% cache hit. The "fresh" portion
+        // should be 0, not negative. (non_cached_prompt saturates in
+        // TokenUsageSummary; we just verify the formatting doesn't break.)
+        let mut t = TokenUsageSummary::default();
+        t.llm_calls = 1;
+        t.prompt_tokens = 1_000;
+        t.cached_tokens = 1_000;
+        t.completion_tokens = 50;
+        t.total_tokens = 1_050;
+        let s = format_token_summary(&t);
+        assert!(s.contains("(1000 cached, 0 fresh)"), "got: {s}");
     }
 }

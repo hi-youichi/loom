@@ -6,7 +6,20 @@ use loom_react_config::ReactBuildConfig;
 use std::sync::{Arc, Mutex};
 use tracing::{error, info, warn};
 
-/// Minimum length of a system prompt prefix kept byte-exact for prefix-cache parity.
+/// Review instruction appended to the user message of every background-review
+/// agent run.
+///
+/// Tells the LLM, in plain prose, that it should only call memory/skill
+/// tools, that other tool calls will be denied at runtime, and what to say
+/// when nothing is worth saving. Prevents the LLM from drifting toward
+/// non-review tools (e.g. `todo_read`) that the parent agent's default
+/// ReAct system prompt otherwise advertises.
+///
+/// **Alignment with Hermes** (`agent/background_review.py:474-479`): Hermes
+/// appends a shorter version of this to its user message — "You can only
+/// call memory and skill management tools. Other tools will be denied at
+/// runtime — do not attempt them." This constant is the fuller Loom
+/// equivalent: same intent, plus an explicit "Nothing to save." branch.
 pub const REVIEW_INSTRUCTION: &str = "<background_review>
 Review the conversation above and extract durable knowledge.
 - Use memory tools to save user preferences and project facts.
@@ -41,6 +54,10 @@ impl Default for ReviewConfig {
 pub struct ReviewActionSummary {
     pub kind: String,
     pub target: String,
+    /// Human-readable detail about the action. For successes, the tool's own
+    /// `message` field (e.g. "Skill 'foo' created."); for failures, the tool's
+    /// `error` field (falling back to `message`). Capped at 160 characters with
+    /// UTF-8 safe truncation (Chinese text safe).
     pub summary: String,
     pub succeeded: bool,
 }
@@ -56,6 +73,68 @@ pub struct ReviewOutcome {
     pub duration_ms: u64,
     pub skipped: bool,
     pub skip_reason: Option<String>,
+    /// Aggregated LLM token usage across all `AgentEvent::Usage` events in this run.
+    /// Sums `prompt_tokens` / `completion_tokens` across every LLM call (think node
+    /// may be invoked multiple times in a multi-step review) and tracks the subset
+    /// of `prompt_tokens` served from cache so the CLI can print a hit rate.
+    pub tokens: TokenUsageSummary,
+}
+
+/// Aggregated token usage for one review run.
+///
+/// `cached_tokens` is the sum of `prompt_tokens_details.cached_tokens` reported
+/// by the provider; it is a subset of `prompt_tokens` (not additional to it).
+/// `non_cached_prompt` is derived for display: `prompt_tokens - cached_tokens`.
+/// `non_cached_prompt` saturates at 0 to guard against provider inconsistencies
+/// where `cached_tokens` occasionally exceeds `prompt_tokens`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+pub struct TokenUsageSummary {
+    pub prompt_tokens: u64,
+    pub cached_tokens: u64,
+    pub completion_tokens: u64,
+    pub total_tokens: u64,
+    /// Number of LLM calls that produced a `Usage` event. Used to label the
+    /// output (e.g. "1 LLM call" vs "3 LLM calls").
+    pub llm_calls: u32,
+}
+
+impl TokenUsageSummary {
+    /// Non-cached prompt tokens (`prompt - cached`, clamped at 0).
+    pub fn non_cached_prompt(&self) -> u64 {
+        self.prompt_tokens.saturating_sub(self.cached_tokens)
+    }
+
+    /// Returns `true` when at least one LLM call reported usage.
+    pub fn is_empty(&self) -> bool {
+        self.llm_calls == 0
+    }
+
+    /// Records a single `AgentEvent::Usage`. The provider's per-call `total_tokens`
+    /// can diverge from the implied `prompt + completion` on some APIs (e.g. when
+    /// there is a `cached_tokens` overcount), so we accumulate the components
+    /// rather than re-deriving totals to keep the sums faithful.
+    fn record(&mut self, usage: &AgentTokenUsage) {
+        self.llm_calls = self.llm_calls.saturating_add(1);
+        self.prompt_tokens = self.prompt_tokens.saturating_add(u64::from(usage.prompt_tokens));
+        self.completion_tokens = self
+            .completion_tokens
+            .saturating_add(u64::from(usage.completion_tokens));
+        self.cached_tokens = self
+            .cached_tokens
+            .saturating_add(u64::from(usage.cached_tokens.unwrap_or(0)));
+        self.total_tokens = self
+            .total_tokens
+            .saturating_add(u64::from(usage.total_tokens));
+    }
+}
+
+/// Lightweight view of an `AgentEvent::Usage` so this module doesn't have to
+/// destructure the full event.
+struct AgentTokenUsage {
+    prompt_tokens: u32,
+    completion_tokens: u32,
+    total_tokens: u32,
+    cached_tokens: Option<u32>,
 }
 
 impl ReviewOutcome {
@@ -81,22 +160,81 @@ pub struct ReviewCallbacks {
 pub type ReviewCallbackFn = Arc<dyn Fn(&str) + Send + Sync>;
 
 fn parse_action(name: &str, result: &str) -> Option<ReviewActionSummary> {
+    // Alignment with Hermes `summarize_background_review_actions` (background_review.py:237-297):
+    // Hermes parses tool message content as JSON and checks `data["success"]`.
+    // Loom mirrors this but works at the event level (tool name + result string)
+    // rather than the message-snapshot level.
     let kind = match name {
         "memory" => "memory",
-        n if n.starts_with("skill_") || n == "skills_list" => "skill",
+        "skill_manage" => "skill",
+        n if n.starts_with("skill_") || n == "skill_list" => "skill",
         _ => "other",
     };
-    let preview = if result.len() > 80 {
-        format!("{}...", &result[..80])
+
+    // Try structured JSON parsing first (aligns with Hermes `data.get("success")`).
+    // For successes, surface the tool's `message` field (e.g. "Skill 'foo' created.").
+    // For failures, surface the `error` field so the user can see WHY it failed —
+    // previously we always read `message`, which made failures look like successes
+    // with the generic "updated" placeholder.
+    //
+    // Fallback chain:
+    //   success:  message  →  count  (e.g. "Listed 8 skills")  →  "updated"
+    //   failure:  error    →  message                            →  "unknown error"
+    //
+    // The `count` fallback covers read-only tools like `skill_list` that don't
+    // bother to set `message` but do report how many items they listed.
+    let (succeeded, detail) = if let Ok(data) = serde_json::from_str::<serde_json::Value>(result)
+    {
+        let success = data.get("success").and_then(|v| v.as_bool()).unwrap_or(true);
+        let detail = if success {
+            data.get("message")
+                .and_then(|v| v.as_str())
+                .map(String::from)
+                .or_else(|| {
+                    data.get("count")
+                        .and_then(|v| v.as_u64())
+                        .map(|c| format_listed_summary(name, c))
+                })
+                .unwrap_or_else(|| "updated".to_string())
+        } else {
+            // Failures: prefer `error`, fall back to `message`, then generic placeholder.
+            data.get("error")
+                .and_then(|v| v.as_str())
+                .or_else(|| data.get("message").and_then(|v| v.as_str()))
+                .unwrap_or("unknown error")
+                .to_string()
+        };
+        (success, detail)
     } else {
-        result.to_string()
+        // Fallback: heuristic string match for non-JSON results.
+        let success = !result.contains("\"success\": false") && !result.contains("error");
+        (success, result.to_string())
     };
+
+    // UTF-8 safe truncation: previous code used `&message[..80]` which would panic
+    // on Chinese/multibyte text. 160 chars is wide enough for most tool messages
+    // while keeping the inline CLI output compact.
+    const MAX_DETAIL_CHARS: usize = 160;
+    let preview = truncate_unicode(&detail, MAX_DETAIL_CHARS);
+
     Some(ReviewActionSummary {
         kind: kind.to_string(),
         target: name.to_string(),
         summary: preview,
-        succeeded: !result.contains("\"success\": false") && !result.contains("error"),
+        succeeded,
     })
+}
+
+/// Tool-aware phrasing for read-only tools that report how many items they
+/// listed. Currently recognizes `skill_list` ("Listed 8 skills"); other tools
+/// fall back to a neutral "Found N items".
+fn format_listed_summary(name: &str, count: u64) -> String {
+    let (verb, noun) = match name {
+        "skill_list" => ("Listed", "skills"),
+        "skill_view" => ("Viewed", "skill"),
+        _ => ("Found", "items"),
+    };
+    format!("{} {} {}", verb, count, noun)
 }
 
 fn truncate_unicode(s: &str, max_chars: usize) -> String {
@@ -123,8 +261,8 @@ fn build_review_user_message(
     let prompt = select_review_prompt(review_memory, review_skills)?;
     let truncated = truncate_unicode(session_content, max_chars);
     Some(format!(
-        "Here is the conversation to review:\n\n---\n{}\n---\n\n{}",
-        truncated, prompt
+        "Here is the conversation to review:\n\n---\n{}\n---\n\n{}\n\n{}",
+        truncated, prompt, REVIEW_INSTRUCTION
     ))
 }
 
@@ -175,6 +313,27 @@ pub async fn run_review(
     let gate = ReviewToolGate::new();
     review_config.call_tool_filter = Some(gate.as_builtin_filter());
 
+    // Mark this agent as a background-review agent so downstream nodes (and any nudge
+    // logic) can short-circuit — prevents recursive background reviews.
+    // (plan 011-04, aligns Hermes `background_review_runner` `is_background_review=True`.)
+    review_config.is_background_review = true;
+
+    // Disable nudges entirely — review agents must never trigger further reviews.
+    review_config.memory_nudge_interval = 0;
+    review_config.skill_nudge_interval = 0;
+
+    // In skill-only review mode, disable memory writes entirely so the LLM cannot
+    // use memory tools even if it tries to call them (belt-and-suspenders with the
+    // tool gate, which already filters them out).
+    if !config.review_memory {
+        review_config.memory_enabled = false;
+        review_config.user_profile_enabled = false;
+    }
+    // In memory-only review mode, disable skill writes.
+    if !config.review_skills {
+        // Skill tools are already gated out by ReviewToolGate; nothing further needed.
+    }
+
     info!(
         session_chars = session_content.chars().count(),
         prompt_chars = user_message.chars().count(),
@@ -196,8 +355,10 @@ pub async fn run_review(
 
     let actions: Arc<Mutex<Vec<ReviewActionSummary>>> = Arc::new(Mutex::new(Vec::new()));
     let violations: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let tokens: Arc<Mutex<TokenUsageSummary>> = Arc::new(Mutex::new(TokenUsageSummary::default()));
     let actions_clone = actions.clone();
     let violations_clone = violations.clone();
+    let tokens_clone = tokens.clone();
 
     info!("Review agent running (thread_id: {})...", fork_thread_id_log);
 
@@ -217,18 +378,32 @@ pub async fn run_review(
                 }
                 AgentEvent::ToolEnd { name, result, is_error } => {
                     if is_error {
-                        warn!("Review tool '{}' failed: {}", name, &result[..result.len().min(200)]);
+                        let preview = truncate_unicode(&result, 200);
+                        warn!("Review tool '{}' failed: {}", name, preview);
                         violations_clone
                             .lock()
                             .unwrap()
                             .push(format!("tool '{}' error: {}", name, result));
                     } else {
-                        let preview = if result.len() > 120 { format!("{}...", &result[..120]) } else { result.clone() };
-                        info!("Review tool '{}' ok: {}", name, preview);
+                        let preview = truncate_unicode(&result, 120);
+                        info!("Review tool '{}' ok: {}{}", name, preview, if result.chars().count() > 120 { "..." } else { "" });
                         if let Some(a) = parse_action(&name, &result) {
                             actions_clone.lock().unwrap().push(a);
                         }
                     }
+                }
+                AgentEvent::Usage {
+                    prompt_tokens,
+                    completion_tokens,
+                    total_tokens,
+                    cached_tokens,
+                } => {
+                    tokens_clone.lock().unwrap().record(&AgentTokenUsage {
+                        prompt_tokens,
+                        completion_tokens,
+                        total_tokens,
+                        cached_tokens,
+                    });
                 }
                 _ => {}
             }
@@ -237,6 +412,7 @@ pub async fn run_review(
 
     let actions = actions.lock().unwrap().clone();
     let tool_violations = violations.lock().unwrap().clone();
+    let tokens = tokens.lock().unwrap().clone();
     let summary = actions
         .iter()
         .filter(|a| a.succeeded)
@@ -260,6 +436,11 @@ pub async fn run_review(
         duration_ms,
         violations = tool_violations.len(),
         reply_chars = result.reply.chars().count(),
+        prompt_tokens = tokens.prompt_tokens,
+        cached_tokens = tokens.cached_tokens,
+        completion_tokens = tokens.completion_tokens,
+        total_tokens = tokens.total_tokens,
+        llm_calls = tokens.llm_calls,
         "Review completed"
     );
 
@@ -273,6 +454,7 @@ pub async fn run_review(
         duration_ms,
         skipped: false,
         skip_reason: None,
+        tokens,
     })
 }
 
@@ -372,23 +554,144 @@ mod tests {
 
     #[test]
     fn parse_action_recognizes_skill_tools() {
-        for name in ["skills_list", "skill_view", "skill_create", "skill_edit"] {
+        for name in ["skill_list", "skill_view", "skill_manage"] {
             let a = parse_action(name, r#"{"ok": true}"#).unwrap();
             assert_eq!(a.kind, "skill", "name: {}", name);
         }
     }
 
     #[test]
+    fn parse_action_parses_json_success_field() {
+        // Aligns with Hermes `data.get("success")` parsing.
+        let a = parse_action(
+            "memory",
+            r#"{"success": true, "message": "Entry added to memory"}"#,
+        )
+        .unwrap();
+        assert!(a.succeeded);
+        assert_eq!(a.summary, "Entry added to memory");
+    }
+
+    #[test]
+    fn parse_action_json_failure_flag() {
+        let a = parse_action(
+            "skill_manage",
+            r#"{"success": false, "error": "skill not found"}"#,
+        )
+        .unwrap();
+        assert!(!a.succeeded);
+        // The error field must be surfaced so the CLI can show WHY it failed.
+        assert_eq!(a.summary, "skill not found");
+    }
+
+    #[test]
     fn parse_action_flags_failure() {
         let a = parse_action("memory", r#"{"success": false, "error": "denied"}"#).unwrap();
         assert!(!a.succeeded);
+        assert_eq!(a.summary, "denied");
+    }
+
+    #[test]
+    fn parse_action_failure_falls_back_to_message_when_error_missing() {
+        // Some tool failures use `message` instead of `error`. Make sure we still
+        // surface something useful.
+        let a = parse_action(
+            "memory",
+            r#"{"success": false, "message": "Could not write to USER.md"}"#,
+        )
+        .unwrap();
+        assert!(!a.succeeded);
+        assert_eq!(a.summary, "Could not write to USER.md");
+    }
+
+    #[test]
+    fn parse_action_failure_uses_unknown_error_when_both_missing() {
+        let a = parse_action(
+            "memory",
+            r#"{"success": false}"#,
+        )
+        .unwrap();
+        assert!(!a.succeeded);
+        assert_eq!(a.summary, "unknown error");
+    }
+
+    #[test]
+    fn parse_action_skill_list_uses_count_fallback() {
+        // skill_list doesn't set `message` but reports `count`. The fallback
+        // chain should turn `{"success": true, "count": 8}` into "Listed 8 skills"
+        // instead of the generic "updated".
+        let a = parse_action(
+            "skill_list",
+            r#"{"success": true, "count": 8, "skills": ["a","b","c"]}"#,
+        )
+        .unwrap();
+        assert!(a.succeeded);
+        assert_eq!(a.summary, "Listed 8 skills");
+    }
+
+    #[test]
+    fn parse_action_skill_view_uses_count_fallback() {
+        let a = parse_action(
+            "skill_view",
+            r#"{"success": true, "count": 1}"#,
+        )
+        .unwrap();
+        assert_eq!(a.summary, "Viewed 1 skill");
+    }
+
+    #[test]
+    fn parse_action_message_field_wins_over_count() {
+        // If both `message` and `count` are present, prefer `message` (more
+        // specific). The count fallback only kicks in when message is absent.
+        let a = parse_action(
+            "skill_list",
+            r#"{"success": true, "message": "Listed 8 skills", "count": 8}"#,
+        )
+        .unwrap();
+        assert_eq!(a.summary, "Listed 8 skills");
+    }
+
+    #[test]
+    fn parse_action_count_fallback_does_not_apply_to_failures() {
+        // For failures, the count fallback must NOT trigger — we need the error
+        // reason, not "Found N items".
+        let a = parse_action(
+            "skill_list",
+            r#"{"success": false, "error": "skills dir missing", "count": 0}"#,
+        )
+        .unwrap();
+        assert!(!a.succeeded);
+        assert_eq!(a.summary, "skills dir missing");
+    }
+
+    #[test]
+    fn format_listed_summary_table_driven() {
+        // Lock the verb/noun mapping so future changes are intentional.
+        assert_eq!(format_listed_summary("skill_list", 8), "Listed 8 skills");
+        assert_eq!(format_listed_summary("skill_list", 1), "Listed 1 skills");
+        assert_eq!(format_listed_summary("skill_view", 1), "Viewed 1 skill");
+        assert_eq!(format_listed_summary("memory", 0), "Found 0 items");
+        assert_eq!(format_listed_summary("unknown_tool", 42), "Found 42 items");
     }
 
     #[test]
     fn parse_action_truncates_long_result() {
-        let long = "x".repeat(200);
+        let long = "x".repeat(500);
         let a = parse_action("memory", &long).unwrap();
-        assert!(a.summary.len() <= 84);
+        // Truncated to MAX_DETAIL_CHARS (160) using UTF-8 safe chars().take().
+        assert_eq!(a.summary.chars().count(), 160);
+    }
+
+    #[test]
+    fn parse_action_truncation_is_utf8_safe_chinese() {
+        // Regression: previous byte-slice implementation `&message[..80]` would
+        // panic on multibyte text. Now uses chars().take() which is safe.
+        let long = "用户偏好 Rust 2024 edition。".repeat(20);
+        let a = parse_action("memory", &long).unwrap();
+        // Must not panic. Truncation is at 160 chars.
+        assert_eq!(a.summary.chars().count(), 160);
+        // Round-trips: each char is intact (no half-character from byte slicing).
+        assert!(a.summary.chars().all(|c| c.is_alphanumeric() || c == ' ' || c == '。' || c == '，' || c == '\''));
     }
 
     #[test]
@@ -411,14 +714,118 @@ mod tests {
 
     #[test]
     fn review_outcome_has_modifications() {
-        let mut o = ReviewOutcome::default();
-        o.memory_count = 1;
-        o.skill_count = 2;
-        assert!(o.has_modifications());
+        let with_actions = ReviewOutcome {
+            memory_count: 1,
+            skill_count: 2,
+            ..Default::default()
+        };
+        assert!(with_actions.has_modifications());
 
-        o.memory_count = 0;
-        o.skill_count = 0;
-        assert!(!o.has_modifications());
+        let empty = ReviewOutcome::default();
+        assert!(!empty.has_modifications());
+    }
+
+    #[test]
+    fn token_usage_summary_default_is_empty() {
+        let t = TokenUsageSummary::default();
+        assert!(t.is_empty());
+        assert_eq!(t.prompt_tokens, 0);
+        assert_eq!(t.cached_tokens, 0);
+        assert_eq!(t.completion_tokens, 0);
+        assert_eq!(t.total_tokens, 0);
+        assert_eq!(t.llm_calls, 0);
+        assert_eq!(t.non_cached_prompt(), 0);
+    }
+
+    #[test]
+    fn token_usage_summary_record_aggregates_multiple_calls() {
+        // Simulate a 2-step review where the LLM was called twice; the second
+        // call hit the cache for 800 of its 1500 prompt tokens.
+        let mut t = TokenUsageSummary::default();
+        t.record(&AgentTokenUsage {
+            prompt_tokens: 2_000,
+            completion_tokens: 100,
+            total_tokens: 2_100,
+            cached_tokens: Some(1_200),
+        });
+        t.record(&AgentTokenUsage {
+            prompt_tokens: 1_500,
+            completion_tokens: 80,
+            total_tokens: 1_580,
+            cached_tokens: Some(800),
+        });
+        assert_eq!(t.llm_calls, 2);
+        assert_eq!(t.prompt_tokens, 3_500);
+        assert_eq!(t.cached_tokens, 2_000);
+        assert_eq!(t.completion_tokens, 180);
+        assert_eq!(t.total_tokens, 3_680);
+        assert_eq!(t.non_cached_prompt(), 1_500);
+        assert!(!t.is_empty());
+    }
+
+    #[test]
+    fn token_usage_summary_record_handles_missing_cached_field() {
+        // Providers that don't report cached_tokens (e.g. Anthropic legacy
+        // endpoints) leave the field as `None`; we should treat that as 0
+        // without panicking and the summary should still aggregate cleanly.
+        let mut t = TokenUsageSummary::default();
+        t.record(&AgentTokenUsage {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            cached_tokens: None,
+        });
+        assert_eq!(t.cached_tokens, 0);
+        assert_eq!(t.non_cached_prompt(), 100);
+        assert_eq!(t.llm_calls, 1);
+    }
+
+    #[test]
+    fn token_usage_summary_non_cached_prompt_saturates_at_zero() {
+        // Defensive: a provider bug could surface `cached_tokens > prompt_tokens`.
+        // `non_cached_prompt` must clamp at 0 so the CLI never prints a negative.
+        let mut t = TokenUsageSummary::default();
+        t.record(&AgentTokenUsage {
+            prompt_tokens: 100,
+            completion_tokens: 10,
+            total_tokens: 110,
+            cached_tokens: Some(150),
+        });
+        assert_eq!(t.cached_tokens, 150);
+        assert_eq!(t.non_cached_prompt(), 0);
+    }
+
+    #[test]
+    fn review_outcome_default_has_empty_tokens() {
+        let o = ReviewOutcome::default();
+        assert!(o.tokens.is_empty());
+        assert_eq!(o.tokens.prompt_tokens, 0);
+    }
+
+    #[test]
+    fn review_outcome_skipped_has_empty_tokens() {
+        let o = ReviewOutcome::skipped("noop");
+        assert!(o.tokens.is_empty());
+    }
+
+    #[test]
+    fn token_usage_summary_serializes_with_all_fields() {
+        // The CLI's `--json` path serializes the summary verbatim, so all five
+        // fields (plus llm_calls) must be present in the output. Locking the
+        // shape protects downstream parsers.
+        let mut t = TokenUsageSummary::default();
+        t.record(&AgentTokenUsage {
+            prompt_tokens: 10,
+            completion_tokens: 5,
+            total_tokens: 15,
+            cached_tokens: Some(3),
+        });
+        let json = serde_json::to_value(&t).unwrap();
+        assert_eq!(json["prompt_tokens"], 10);
+        assert_eq!(json["cached_tokens"], 3);
+        assert_eq!(json["completion_tokens"], 5);
+        assert_eq!(json["total_tokens"], 15);
+        assert_eq!(json["llm_calls"], 1);
     }
 
     #[test]
@@ -472,6 +879,35 @@ mod tests {
     }
 
     #[test]
+    fn build_review_user_message_includes_review_instruction() {
+        // Hermes parity: the user message must include the explicit
+        // "only memory/skill tools" instruction so the LLM doesn't drift
+        // toward non-review tools (e.g. todo_read) advertised by the
+        // default ReAct system prompt.
+        let msg = build_review_user_message("user: hi", true, true, 1000).unwrap();
+        assert!(
+            msg.contains(REVIEW_INSTRUCTION),
+            "REVIEW_INSTRUCTION should be appended to the user message"
+        );
+        assert!(msg.contains("Only use memory and skill tools"));
+        assert!(msg.contains("denied at runtime"));
+        assert!(msg.contains("Nothing to save"));
+    }
+
+    #[test]
+    fn build_review_user_message_includes_instruction_in_all_modes() {
+        for (memory, skills) in [(true, true), (true, false), (false, true)] {
+            let msg = build_review_user_message("user: hi", memory, skills, 1000).unwrap();
+            assert!(
+                msg.contains(REVIEW_INSTRUCTION),
+                "REVIEW_INSTRUCTION missing for memory={}, skills={}",
+                memory,
+                skills
+            );
+        }
+    }
+
+    #[test]
     fn build_review_user_message_memory_only() {
         let msg = build_review_user_message("user: hi", true, false, 1000).unwrap();
         assert!(msg.contains("user: hi"));
@@ -510,7 +946,7 @@ mod tests {
             "msg should not contain the full 10k content; max 100 chars preserved"
         );
         assert!(
-            msg.chars().count() < 5000,
+            msg.chars().count() < 8000,
             "msg should not be absurdly long (got {} chars)",
             msg.chars().count()
         );

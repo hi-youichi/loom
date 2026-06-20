@@ -25,6 +25,24 @@ pub async fn register_file_memory_tool(
         .await;
 }
 
+/// Register a foreground `MemoryTool` honouring the `user_profile_enabled` guard.
+///
+/// When `memory_enabled=false` AND `user_profile_enabled=false` this is a no-op
+/// (caller should check before calling — see `tool_source.rs`).
+/// When `user_profile_enabled=false`, writes targeting `USER.md` are rejected at runtime.
+pub async fn register_file_memory_tool_guarded(
+    registry: &ToolRegistryLocked,
+    store: Arc<MemoryStore>,
+    user_profile_enabled: bool,
+) {
+    registry
+        .register_async(Box::new(MemoryTool::for_foreground(
+            store,
+            user_profile_enabled,
+        )))
+        .await;
+}
+
 #[allow(dead_code)]
 pub async fn register_memory_tools(registry: &ToolRegistryLocked, store: Arc<dyn Store>, namespace: Namespace) {
     registry.register_async(Box::new(memory::RememberTool::new(store.clone(), namespace.clone()))).await;

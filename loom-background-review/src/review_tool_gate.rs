@@ -1,16 +1,21 @@
 use loom_types::config::BuiltinToolFilter;
 use std::collections::HashSet;
 
+/// Tool whitelist for background review agents.
+///
+/// **Alignment with Hermes** (`agent/background_review.py:459-465`): the review
+/// fork installs a thread-local whitelist derived from `get_tool_definitions(
+/// enabled_toolsets=["memory", "skills"])`. Hermes's Python tool name is
+/// `skills_list` (plural) — see `hermes-agent/tools/skills_tool.py:1449` —
+/// but Loom's unified Rust implementation renamed it to `skill_list`
+/// (singular) to match the rest of the `skill_*` family (`skill_view`,
+/// `skill_manage`). See `loom_types::tools::tool_name::TOOL_SKILL_LIST`. The
+/// other three names are identical between Python and Rust.
 pub const REVIEW_ALLOWED_TOOLS: &[&str] = &[
     "memory",
-    "skills_list",
+    "skill_list",
     "skill_view",
-    "skill_create",
-    "skill_edit",
-    "skill_patch",
-    "skill_delete",
-    "skill_write_file",
-    "skill_remove_file",
+    "skill_manage",
 ];
 
 #[derive(Clone)]
@@ -65,14 +70,22 @@ mod tests {
     fn default_gate_allows_only_review_tools() {
         let gate = ReviewToolGate::new();
         assert!(gate.is_allowed("memory"));
-        assert!(gate.is_allowed("skills_list"));
+        assert!(gate.is_allowed("skill_list"));
         assert!(gate.is_allowed("skill_view"));
-        assert!(gate.is_allowed("skill_create"));
-        assert!(gate.is_allowed("skill_edit"));
-        assert!(gate.is_allowed("skill_patch"));
-        assert!(gate.is_allowed("skill_delete"));
-        assert!(gate.is_allowed("skill_write_file"));
-        assert!(gate.is_allowed("skill_remove_file"));
+        assert!(gate.is_allowed("skill_manage"));
+    }
+
+    #[test]
+    fn default_gate_denies_legacy_split_skill_tools() {
+        // Legacy split tool names must NOT be whitelisted — the unified
+        // `skill_manage` replaces them (alignment with Hermes).
+        let gate = ReviewToolGate::new();
+        assert!(!gate.is_allowed("skill_create"));
+        assert!(!gate.is_allowed("skill_edit"));
+        assert!(!gate.is_allowed("skill_patch"));
+        assert!(!gate.is_allowed("skill_delete"));
+        assert!(!gate.is_allowed("skill_write_file"));
+        assert!(!gate.is_allowed("skill_remove_file"));
     }
 
     #[test]
@@ -93,7 +106,8 @@ mod tests {
         let filter = gate.as_builtin_filter();
         let enabled = filter.enabled.expect("enabled should be set");
         assert!(enabled.contains(&"memory".to_string()));
-        assert!(enabled.contains(&"skill_create".to_string()));
+        assert!(enabled.contains(&"skill_manage".to_string()));
+        assert!(!enabled.contains(&"skill_create".to_string()));
         assert!(!enabled.contains(&"bash".to_string()));
     }
 
@@ -102,16 +116,17 @@ mod tests {
         let gate = ReviewToolGate::new();
         let filter = gate.as_builtin_filter();
         assert!(filter.is_allowed("memory"));
-        assert!(filter.is_allowed("skill_create"));
+        assert!(filter.is_allowed("skill_manage"));
+        assert!(!filter.is_allowed("skill_create"));
         assert!(!filter.is_allowed("bash"));
         assert!(!filter.is_allowed("write_file"));
     }
 
     #[test]
     fn with_allowed_supports_custom_whitelist() {
-        let gate = ReviewToolGate::with_allowed(vec!["memory", "skills_list"]);
+        let gate = ReviewToolGate::with_allowed(vec!["memory", "skill_list"]);
         assert!(gate.is_allowed("memory"));
-        assert!(gate.is_allowed("skills_list"));
+        assert!(gate.is_allowed("skill_list"));
         assert!(!gate.is_allowed("skill_create"));
         assert!(!gate.is_allowed("bash"));
     }

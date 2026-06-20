@@ -10,7 +10,7 @@ use tool_basic::{
     web::WebFetcherTool,
 };
 use tool_core::{ArcTool, ToolRegistryLocked, YamlSpecError};
-use tool_experimental::{register_file_memory_tool, register_task_tools};
+use tool_experimental::{register_file_memory_tool_guarded, register_task_tools};
 use tool_extensions::twitter::TwitterSearchTool;
 
 use env_config::McpServerDef;
@@ -100,8 +100,21 @@ register_file_tools(
             }
         }
 
-        let memory_store = Arc::new(MemoryStore::new(&MemoryStore::default_path()));
-        register_file_memory_tool(&aggregate, memory_store).await;
+        // Memory tool registration — gated by config flags (plan 011-03, aligns Hermes agent_init.py:1076).
+        //
+        // MemoryStore is created when EITHER memory_enabled OR user_profile_enabled is true.
+        // MemoryTool is registered when memory_enabled OR user_profile_enabled is true,
+        // but writes to USER.md are guarded by user_profile_enabled at the tool level.
+        let needs_memory = config.memory_enabled || config.user_profile_enabled;
+        if needs_memory {
+            let memory_store = Arc::new(MemoryStore::new(&MemoryStore::default_path()));
+            register_file_memory_tool_guarded(
+                &aggregate,
+                memory_store,
+                config.user_profile_enabled,
+            )
+            .await;
+        }
     }
     if let Some(ref wf) = config.working_folder {
         aggregate.register_sync(Box::new(BatchTool::new(Arc::new(wf.clone()))));

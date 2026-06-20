@@ -813,7 +813,627 @@ mod tests {
         assert!(json.contains("\"type\":\"text\""));
         assert!(json.contains("\"type\":\"image_url\""));
 
-        let uc2: UserContent = serde_json::from_str(&json).unwrap();
+let uc2: UserContent = serde_json::from_str(&json).unwrap();
         assert_eq!(uc, uc2);
+    }
+
+    #[test]
+    fn message_user_with_user_content() {
+        let msg = Message::user("hello");
+        assert!(matches!(msg, Message::User(UserContent::Text(s)) if s == "hello"));
+
+        let parts = vec![ContentPart::Text {
+            text: "hi".to_string(),
+        }];
+        let msg = Message::user_multimodal(parts).unwrap();
+        assert!(matches!(msg, Message::User(UserContent::Multimodal(..))));
+    }
+
+    #[test]
+    fn legacy_checkpoint_compatibility() {
+        // 旧格式：纯字符串
+        let json = r#"{"User":"hello"}"#;
+        let msg: Message = serde_json::from_str(json).unwrap();
+        assert!(matches!(msg, Message::User(UserContent::Text(s)) if s == "hello"));
+
+        // 新格式：多模态数组
+        let json = r#"{"User":[{"type":"text","text":"hello"}]}"#;
+        let msg: Message = serde_json::from_str(json).unwrap();
+        assert!(matches!(msg, Message::User(UserContent::Multimodal(..))));
+    }
+
+    #[test]
+    fn content_part_modality() {
+        assert_eq!(
+            ContentPart::Text {
+                text: "hi".to_string()
+            }
+            .modality(),
+            model_spec_core::spec::ModalityType::Text
+        );
+        assert_eq!(
+            ContentPart::ImageUrl {
+                url: "https://x.com/img.png".to_string(),
+                detail: None
+            }
+            .modality(),
+            model_spec_core::spec::ModalityType::Image
+        );
+        assert_eq!(
+            ContentPart::ImageBase64 {
+                media_type: "image/png".to_string(),
+                data: "abc".to_string()
+            }
+            .modality(),
+            model_spec_core::spec::ModalityType::Image
+        );
+        assert_eq!(
+            ContentPart::AudioBase64 {
+                media_type: "audio/mp3".to_string(),
+                data: "abc".to_string()
+            }
+            .modality(),
+            model_spec_core::spec::ModalityType::Audio
+        );
+        assert_eq!(
+            ContentPart::VideoUrl {
+                url: "https://x.com/vid.mp4".to_string()
+            }
+            .modality(),
+            model_spec_core::spec::ModalityType::Video
+        );
+        assert_eq!(
+            ContentPart::PdfUrl {
+                url: "https://x.com/doc.pdf".to_string()
+            }
+            .modality(),
+            model_spec_core::spec::ModalityType::Pdf
+        );
+        assert_eq!(
+            ContentPart::File {
+                file_id: None,
+                file_data: None,
+                filename: Some("data.csv".to_string())
+            }
+            .modality(),
+            model_spec_core::spec::ModalityType::Text
+        );
+    }
+
+    #[test]
+    fn user_content_as_text() {
+        let text = UserContent::Text("hello".to_string());
+        assert_eq!(text.as_text(), "hello");
+
+        let parts = vec![
+            ContentPart::Text {
+                text: "first".to_string(),
+            },
+            ContentPart::Text {
+                text: "second".to_string(),
+            },
+        ];
+        let multimodal = UserContent::Multimodal(parts);
+        assert_eq!(multimodal.as_text(), "first\nsecond");
+    }
+
+    #[test]
+    fn user_content_modalities() {
+        let text = UserContent::Text("hello".to_string());
+        assert_eq!(
+            text.modalities(),
+            vec![model_spec_core::spec::ModalityType::Text]
+        );
+
+        let parts = vec![
+            ContentPart::Text {
+                text: "hi".to_string(),
+            },
+            ContentPart::ImageUrl {
+                url: "https://x.com/img.png".to_string(),
+                detail: None,
+            },
+        ];
+        let multimodal = UserContent::Multimodal(parts);
+        assert_eq!(
+            multimodal.modalities(),
+            vec![
+                model_spec_core::spec::ModalityType::Text,
+                model_spec_core::spec::ModalityType::Image
+            ]
+        );
+    }
+
+    #[test]
+    fn user_content_unsupported_modalities() {
+        use model_spec_core::spec::{Modalities, Model};
+
+        // Model that only supports text and image
+        let model = Model {
+            id: "test-model".to_string(),
+            name: "test-model".to_string(),
+            family: None,
+            attachment: false,
+            limit: None,
+            modalities: Modalities {
+                input: vec![
+                    model_spec_core::spec::ModalityType::Text,
+                    model_spec_core::spec::ModalityType::Image,
+                ],
+                output: vec![model_spec_core::spec::ModalityType::Text],
+            },
+            tool_call: false,
+            temperature: false,
+            structured_output: None,
+            knowledge: None,
+            release_date: None,
+            last_updated: None,
+            reasoning: false,
+            open_weights: false,
+            cost: None,
+        };
+
+        // Text + Image is fully supported
+        let supported = UserContent::Multimodal(vec![
+            ContentPart::Text {
+                text: "hi".to_string(),
+            },
+            ContentPart::ImageUrl {
+                url: "https://x.com/img.png".to_string(),
+                detail: None,
+            },
+        ]);
+        assert!(supported.is_supported_by(&model));
+        assert_eq!(supported.unsupported_modalities(&model), vec![]);
+
+        // Audio is NOT supported
+        let unsupported = UserContent::Multimodal(vec![
+            ContentPart::Text {
+                text: "hi".to_string(),
+            },
+            ContentPart::AudioBase64 {
+                media_type: "audio/mp3".to_string(),
+                data: "abc".to_string(),
+            },
+        ]);
+        assert!(!unsupported.is_supported_by(&model));
+        assert_eq!(
+            unsupported.unsupported_modalities(&model),
+            vec![model_spec_core::spec::ModalityType::Audio]
+        );
+    }
+
+    #[test]
+    fn content_part_is_supported_by() {
+        use model_spec_core::spec::{Modalities, Model};
+
+        let model = Model {
+            id: "test-model".to_string(),
+            name: "test-model".to_string(),
+            family: None,
+            attachment: false,
+            limit: None,
+            modalities: Modalities {
+                input: vec![
+                    model_spec_core::spec::ModalityType::Text,
+                    model_spec_core::spec::ModalityType::Image,
+                ],
+                output: vec![model_spec_core::spec::ModalityType::Text],
+            },
+            tool_call: false,
+            temperature: false,
+            structured_output: None,
+            knowledge: None,
+            release_date: None,
+            last_updated: None,
+            reasoning: false,
+            open_weights: false,
+            cost: None,
+        };
+
+        assert!(ContentPart::Text {
+            text: "hi".to_string()
+        }
+        .is_supported_by(&model));
+        assert!(ContentPart::ImageUrl {
+            url: "https://x.com/img.png".to_string(),
+            detail: None
+        }
+        .is_supported_by(&model));
+        assert!(!ContentPart::AudioBase64 {
+            media_type: "audio/mp3".to_string(),
+            data: "abc".to_string()
+        }
+        .is_supported_by(&model));
+    }
+
+    // Additional message_summary tests for coverage
+    #[test]
+    fn message_summary_user_message_multimodal() {
+        let parts = vec![
+            ContentPart::Text {
+                text: "text content".to_string(),
+            },
+            ContentPart::ImageUrl {
+                url: "https://example.com/img.png".to_string(),
+                detail: None,
+            },
+        ];
+        let msg = Message::user_multimodal(parts).unwrap();
+        let summary = message_summary(1, &msg);
+        assert_eq!(summary, "[1] role=user content_len=13"); // should count only text parts
+    }
+
+    #[test]
+    fn message_summary_assistant_with_both_tool_calls_and_reasoning() {
+        let msg = Message::assistant_with_tool_calls_and_reasoning(
+            "Response".to_string(),
+            vec![
+                AssistantToolCall {
+                    id: "call_123".to_string(),
+                    name: "search".to_string(),
+                    arguments: "{}".to_string(),
+                },
+            ],
+            Some("Reasoning process".to_string()),
+        );
+        let summary = message_summary(6, &msg);
+        assert_eq!(summary, "[6] role=assistant tool_calls=[call_123] content_len=8 reasoning_len=17");
+    }
+
+    // Additional UserContent edge cases
+    #[test]
+    fn user_content_multimodal_no_text_parts() {
+        let parts = vec![
+            ContentPart::ImageUrl {
+                url: "https://example.com/img.png".to_string(),
+                detail: None,
+            },
+            ContentPart::AudioBase64 {
+                media_type: "audio/mp3".to_string(),
+                data: "base64data".to_string(),
+            },
+        ];
+        let content = UserContent::Multimodal(parts);
+        let text = content.as_text();
+        assert_eq!(text.as_ref(), ""); // no text parts should return empty
+    }
+
+    #[test]
+    fn user_content_multimodal_only_text_parts() {
+        let parts = vec![
+            ContentPart::Text {
+                text: "First".to_string(),
+            },
+            ContentPart::Text {
+                text: "Second".to_string(),
+            },
+            ContentPart::Text {
+                text: "Third".to_string(),
+            },
+        ];
+        let content = UserContent::Multimodal(parts);
+        let text = content.as_text();
+        assert_eq!(text.as_ref(), "First\nSecond\nThird");
+    }
+
+    // Additional AssistantPayload edge cases
+    #[test]
+    fn assistant_payload_serialization_no_tool_calls_no_reasoning() {
+        let payload = AssistantPayload {
+            content: "simple response".to_string(),
+            tool_calls: vec![],
+            reasoning_content: None,
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        // Should serialize as plain string when no tool_calls and no reasoning
+        assert_eq!(json, "\"simple response\"");
+    }
+
+    #[test]
+    fn assistant_payload_serialization_empty_content_with_tool_calls() {
+        let payload = AssistantPayload {
+            content: "".to_string(),
+            tool_calls: vec![AssistantToolCall {
+                id: "call_123".to_string(),
+                name: "search".to_string(),
+                arguments: "{}".to_string(),
+            }],
+            reasoning_content: None,
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"content\":\"\""));
+        assert!(json.contains("\"tool_calls\""));
+    }
+
+    #[test]
+    fn assistant_payload_serialization_empty_content_with_reasoning() {
+        let payload = AssistantPayload {
+            content: "".to_string(),
+            tool_calls: vec![],
+            reasoning_content: Some("thinking".to_string()),
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"content\":\"\""));
+        assert!(json.contains("\"reasoning_content\""));
+    }
+
+    // Additional ToolCallContent method tests
+    #[test]
+    fn tool_call_content_diff_factory_none_old_text() {
+        let content = ToolCallContent::diff("new_file.txt", None, "new content".to_string());
+        match content {
+            ToolCallContent::Diff { path, old_text, new_text } => {
+                assert_eq!(path, "new_file.txt");
+                assert_eq!(old_text, None);
+                assert_eq!(new_text, "new content");
+            }
+            _ => panic!("Expected Diff variant"),
+        }
+    }
+
+    #[test]
+    fn tool_call_content_diff_factory_with_old_text() {
+        let content = ToolCallContent::diff(
+            "existing.txt",
+            Some("old content".to_string()),
+            "new content".to_string(),
+        );
+        match content {
+            ToolCallContent::Diff { path, old_text, new_text } => {
+                assert_eq!(path, "existing.txt");
+                assert_eq!(old_text, Some("old content".to_string()));
+                assert_eq!(new_text, "new content");
+            }
+            _ => panic!("Expected Diff variant"),
+        }
+    }
+
+    #[test]
+    fn tool_call_content_len_empty_text() {
+        let content = ToolCallContent::Text("".to_string());
+        assert_eq!(content.len(), 0);
+    }
+
+    #[test]
+    fn tool_call_content_is_empty_all_variants() {
+        assert!(ToolCallContent::Text("".to_string()).is_empty());
+        assert!(!ToolCallContent::Text("non-empty".to_string()).is_empty());
+        assert!(ToolCallContent::diff("file.txt", None, "".to_string()).is_empty());
+        assert!(!ToolCallContent::diff("file.txt", None, "content".to_string()).is_empty());
+        assert!(ToolCallContent::terminal("").is_empty());
+        assert!(!ToolCallContent::terminal("term_123").is_empty());
+    }
+
+    // Additional Message::to_role_content_pair edge cases
+    #[test]
+    fn message_to_role_content_pair_user_multimodal() {
+        let parts = vec![
+            ContentPart::Text {
+                text: "text part".to_string(),
+            },
+            ContentPart::ImageUrl {
+                url: "https://example.com/img.png".to_string(),
+                detail: None,
+            },
+        ];
+        let msg = Message::user_multimodal(parts).unwrap();
+        let (role, content) = msg.to_role_content_pair();
+        assert_eq!(role, "user");
+        // Should extract text from multimodal content
+        assert_eq!(content, "text part");
+    }
+
+    #[test]
+    fn message_to_role_content_pair_assistant_with_reasoning() {
+        let msg = Message::assistant_with_reasoning(
+            "response".to_string(),
+            Some("reasoning".to_string()),
+        );
+        let (role, content) = msg.to_role_content_pair();
+        assert_eq!(role, "assistant");
+        assert_eq!(content, "response");
+    }
+
+    #[test]
+    fn message_to_role_content_pair_tool_diff_content() {
+        let msg = Message::Tool {
+            tool_call_id: "call_123".to_string(),
+            content: ToolCallContent::diff("file.txt", None, "new content".to_string()),
+        };
+        let (role, content) = msg.to_role_content_pair();
+        assert_eq!(role, "tool");
+        let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert_eq!(parsed["tool_call_id"], "call_123");
+        assert_eq!(parsed["content"], "Modified file: file.txt");
+    }
+
+    #[test]
+    fn message_to_role_content_pair_tool_terminal_content() {
+        let msg = Message::Tool {
+            tool_call_id: "call_456".to_string(),
+            content: ToolCallContent::terminal("term_789"),
+        };
+        let (role, content) = msg.to_role_content_pair();
+        assert_eq!(role, "tool");
+        let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert_eq!(parsed["tool_call_id"], "call_456");
+        assert_eq!(parsed["content"], "Terminal: term_789");
+    }
+
+    // Additional Message::to_role_content_pair_for_store edge cases
+    #[test]
+    fn message_to_role_content_pair_for_store_non_tool_messages_unchanged() {
+        let sys_msg = Message::system("system prompt".to_string());
+        let (role, content) = sys_msg.to_role_content_pair_for_store();
+        assert_eq!((role, content), sys_msg.to_role_content_pair());
+
+        let user_msg = Message::user("user input");
+        let (role, content) = user_msg.to_role_content_pair_for_store();
+        assert_eq!((role, content), user_msg.to_role_content_pair());
+
+        let assistant_msg = Message::assistant("assistant reply");
+        let (role, content) = assistant_msg.to_role_content_pair_for_store();
+        assert_eq!((role, content), assistant_msg.to_role_content_pair());
+    }
+
+    // Additional Message::assistant_with_reasoning tests
+    #[test]
+    fn message_assistant_with_reasoning_none() {
+        let msg = Message::assistant_with_reasoning("response".to_string(), None);
+        assert_eq!(msg.role(), "assistant");
+        match msg {
+            Message::Assistant(payload) => {
+                assert_eq!(payload.content, "response");
+                assert!(payload.tool_calls.is_empty());
+                assert_eq!(payload.reasoning_content, None);
+            }
+            _ => panic!("Expected Assistant message"),
+        }
+    }
+
+    // Additional Message Display impl tests
+    #[test]
+    fn message_display_all_message_types() {
+        let sys_msg = Message::system("system");
+        assert_eq!(sys_msg.to_string(), "system: system");
+
+        let user_msg = Message::user("user");
+        assert_eq!(user_msg.to_string(), "user: user");
+
+        let assistant_msg = Message::assistant("assistant");
+        assert_eq!(assistant_msg.to_string(), "assistant: assistant");
+
+        let tool_msg = Message::Tool {
+            tool_call_id: "call".to_string(),
+            content: ToolCallContent::text("tool"),
+        };
+        assert!(tool_msg.to_string().contains("tool[call]:"));
+    }
+
+    // Additional edge case tests
+    #[test]
+    fn message_summary_with_large_index() {
+        let msg = Message::system("test".to_string());
+        let summary = message_summary(999999, &msg);
+        assert_eq!(summary, "[999999] role=system content_len=4");
+    }
+
+    #[test]
+    fn message_summary_with_empty_contents() {
+        let sys_msg = Message::System("".to_string());
+        let summary = message_summary(0, &sys_msg);
+        assert_eq!(summary, "[0] role=system content_len=0");
+
+        let user_msg = Message::User(UserContent::Text("".to_string()));
+        let summary = message_summary(1, &user_msg);
+        assert_eq!(summary, "[1] role=user content_len=0");
+
+        let assistant_msg = Message::Assistant(AssistantPayload {
+            content: "".to_string(),
+            tool_calls: vec![],
+            reasoning_content: None,
+        });
+        let summary = message_summary(2, &assistant_msg);
+        assert_eq!(summary, "[2] role=assistant content_len=0 reasoning_len=0");
+    }
+
+    #[test]
+    fn tool_call_content_serialization_roundtrip_text() {
+        let original = ToolCallContent::Text("test content".to_string());
+        let json = serde_json::to_string(&original).unwrap();
+        assert_eq!(json, "\"test content\""); // Text should serialize as plain string
+        let deserialized: ToolCallContent = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, deserialized);
+    }
+
+    #[test]
+    fn tool_call_content_serialization_diff_structure() {
+        let original = ToolCallContent::diff(
+            "test.txt",
+            Some("old".to_string()),
+            "new".to_string(),
+        );
+        let json = serde_json::to_string(&original).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["type"], "diff");
+        assert_eq!(parsed["path"], "test.txt");
+        assert_eq!(parsed["old_text"], "old");
+        assert_eq!(parsed["new_text"], "new");
+    }
+
+    #[test]
+    fn tool_call_content_serialization_terminal_structure() {
+        let original = ToolCallContent::terminal("term_123");
+        let json = serde_json::to_string(&original).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["type"], "terminal");
+        assert_eq!(parsed["terminal_id"], "term_123");
+    }
+
+    #[test]
+    fn user_content_from_string_overloads() {
+        let content1: UserContent = String::from("string").into();
+        assert_eq!(content1, UserContent::Text("string".to_string()));
+
+        let content2: UserContent = "str".into();
+        assert_eq!(content2, UserContent::Text("str".to_string()));
+    }
+
+    #[test]
+    fn user_content_partial_eq_overloads() {
+        let content = UserContent::Text("test".to_string());
+        
+        // Test PartialEq<&str>
+        assert_eq!(content, "test");
+        assert_ne!(content, "different");
+        
+        // Test PartialEq<String>
+        assert_eq!(content, String::from("test"));
+        assert_ne!(content, String::from("different"));
+    }
+
+    #[test]
+    fn content_part_modality_string_all_variants() {
+        assert_eq!(
+            ContentPart::Text { text: "test".to_string() }.modality_string(),
+            "Text"
+        );
+        assert_eq!(
+            ContentPart::ImageUrl { url: "url".to_string(), detail: None }.modality_string(),
+            "Image"
+        );
+        assert_eq!(
+            ContentPart::ImageBase64 { media_type: "png".to_string(), data: "data".to_string() }.modality_string(),
+            "Image"
+        );
+        assert_eq!(
+            ContentPart::AudioBase64 { media_type: "mp3".to_string(), data: "data".to_string() }.modality_string(),
+            "Audio"
+        );
+        assert_eq!(
+            ContentPart::VideoUrl { url: "url".to_string() }.modality_string(),
+            "Video"
+        );
+        assert_eq!(
+            ContentPart::VideoBase64 { media_type: "mp4".to_string(), data: "data".to_string() }.modality_string(),
+            "Video"
+        );
+        assert_eq!(
+            ContentPart::PdfUrl { url: "url".to_string() }.modality_string(),
+            "Pdf"
+        );
+        assert_eq!(
+            ContentPart::PdfBase64 { data: "data".to_string() }.modality_string(),
+            "Pdf"
+        );
+        assert_eq!(
+            ContentPart::File {
+                file_id: None,
+                file_data: None,
+                filename: None,
+            }.modality_string(),
+"Text"
+        );
     }
 }

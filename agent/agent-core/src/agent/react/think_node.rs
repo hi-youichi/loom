@@ -137,11 +137,16 @@ impl ThinkNode {
             ?decode_duration,
             "think: stream usage"
         );
+        let cached_tokens = usage
+            .prompt_tokens_details
+            .as_ref()
+            .and_then(|d| d.cached_tokens);
         let _ = stream_tx
             .try_send(StreamEvent::Usage {
                 prompt_tokens: usage.prompt_tokens,
                 completion_tokens: usage.completion_tokens,
                 total_tokens: usage.total_tokens,
+                cached_tokens,
                 prefill_duration,
                 decode_duration,
             });

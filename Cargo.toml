@@ -66,15 +66,13 @@ serde_json = "1.0"
 tracing = "0.1"
 ctor = "0.2"
 
-# Test profile optimizations: build tests with optimizations for faster execution
-# while keeping debug assertions for safety checks.
 [profile.test]
-opt-level = 2          # Optimize for speed (default is 0)
-debug = 1              # Minimal debug info (faster compilation)
+opt-level = 2
+debug = 1
 debug-assertions = true
 overflow-checks = true
-lto = false            # Skip LTO for faster compilation
-codegen-units = 16     # Max parallelism during compilation
+lto = false
+codegen-units = 16
 incremental = true
 
 [profile.dev]

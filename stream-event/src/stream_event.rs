@@ -108,6 +108,11 @@ where
         completion_tokens: u32,
         /// Total tokens (prompt + completion).
         total_tokens: u32,
+        /// Cached prompt tokens (OpenAI `prompt_tokens_details.cached_tokens`).
+        /// `None` when the provider does not report cache hits, or when the
+        /// current request had no cacheable prefix.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cached_tokens: Option<u32>,
         /// Time from LLM call start to first token received (prefill phase).
         /// `None` in non-streaming mode where the two phases cannot be separated.
         prefill_duration: Option<std::time::Duration>,
@@ -265,11 +270,13 @@ mod tests {
             prompt_tokens: 10,
             completion_tokens: 20,
             total_tokens: 30,
+            cached_tokens: Some(5),
             prefill_duration: Some(std::time::Duration::from_millis(100)),
             decode_duration: None,
         };
-        if let StreamEvent::Usage { total_tokens, .. } = ev {
+        if let StreamEvent::Usage { total_tokens, cached_tokens, .. } = ev {
             assert_eq!(total_tokens, 30);
+            assert_eq!(cached_tokens, Some(5));
         } else {
             panic!("expected Usage");
         }

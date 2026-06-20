@@ -46,6 +46,10 @@ pub enum AgentEvent {
         prompt_tokens: u32,
         completion_tokens: u32,
         total_tokens: u32,
+        /// Cached prompt tokens (OpenAI `prompt_tokens_details.cached_tokens`).
+        /// `None` when the provider does not report cache hits, or when the
+        /// current request had no cacheable prefix.
+        cached_tokens: Option<u32>,
     },
 }
 
@@ -149,11 +153,13 @@ fn map_stream_event(ev: StreamEvent<ReActState>) -> Option<AgentEvent> {
             prompt_tokens,
             completion_tokens,
             total_tokens,
+            cached_tokens,
             ..
         } => Some(AgentEvent::Usage {
             prompt_tokens,
             completion_tokens,
             total_tokens,
+            cached_tokens,
         }),
         _ => None,
     }
@@ -281,13 +287,46 @@ mod tests {
             prompt_tokens: 100,
             completion_tokens: 50,
             total_tokens: 150,
+            cached_tokens: None,
             prefill_duration: None,
             decode_duration: None,
         };
         assert!(matches!(
             map_stream_event(ev),
-            Some(AgentEvent::Usage { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 })
+            Some(AgentEvent::Usage {
+                prompt_tokens: 100,
+                completion_tokens: 50,
+                total_tokens: 150,
+                cached_tokens: None,
+            })
         ));
+    }
+
+    #[test]
+    fn map_usage_event_propagates_cached_tokens() {
+        let ev = StreamEvent::<ReActState>::Usage {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            cached_tokens: Some(40),
+            prefill_duration: None,
+            decode_duration: None,
+        };
+        let mapped = map_stream_event(ev);
+        if let Some(AgentEvent::Usage {
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+            cached_tokens,
+        }) = mapped
+        {
+            assert_eq!(prompt_tokens, 100);
+            assert_eq!(completion_tokens, 50);
+            assert_eq!(total_tokens, 150);
+            assert_eq!(cached_tokens, Some(40));
+        } else {
+            panic!("expected AgentEvent::Usage, got {mapped:?}");
+        }
     }
 
     #[test]

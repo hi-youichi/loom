@@ -263,6 +263,71 @@ impl MemoryStore {
         self.capture_snapshot()
     }
 
+    /// Format a single memory file's entries as a system-prompt block.
+    ///
+    /// Aligns with Hermes `MemoryStore.format_for_system_prompt("memory"|"user")`
+    /// (`system_prompt.py:304-313`): the caller selects which file to inject,
+    /// gated by `_memory_enabled` / `_user_profile_enabled`.
+    ///
+    /// Returns `None` when the file is empty or missing.
+    pub fn format_for_system_prompt(&self, file: MemoryFile) -> Option<String> {
+        let entries = self.read_file_entries(file).ok()?;
+        if entries.is_empty() {
+            return None;
+        }
+        let deduped = dedup_entries(&entries);
+        let body = deduped.join(ENTRY_DELIMITER);
+        if body.trim().is_empty() {
+            return None;
+        }
+        let usage_pct = (body.len() * 100 / file.char_limit()).min(999);
+        let header = format!(
+            "══ {} [{}% — {}/{} chars] ══",
+            file.label(),
+            usage_pct,
+            body.len(),
+            file.char_limit(),
+        );
+        Some(format!("{}\n{}", header, body))
+    }
+
+    /// Build the system-prompt memory section from the specified files.
+    ///
+    /// Aligns with Hermes `system_prompt.py:304-313`:
+    /// ```text
+    /// if agent._memory_enabled:
+    ///     mem_block = agent._memory_store.format_for_system_prompt("memory")
+    ///     if mem_block: volatile_parts.append(mem_block)
+    /// if agent._user_profile_enabled:
+    ///     user_block = agent._memory_store.format_for_system_prompt("user")
+    ///     if user_block: volatile_parts.append(user_block)
+    /// ```
+    ///
+    /// Pass `memory_enabled=false` to skip PROJECT.md, `user_profile_enabled=false`
+    /// to skip USER.md.
+    pub fn system_prompt_section(
+        &self,
+        memory_enabled: bool,
+        user_profile_enabled: bool,
+    ) -> Option<String> {
+        let mut parts = Vec::new();
+        if memory_enabled {
+            if let Some(block) = self.format_for_system_prompt(MemoryFile::Project) {
+                parts.push(block);
+            }
+        }
+        if user_profile_enabled {
+            if let Some(block) = self.format_for_system_prompt(MemoryFile::User) {
+                parts.push(block);
+            }
+        }
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join("\n\n"))
+        }
+    }
+
     // ── Entry-level operations ────────────────────────
 
     pub fn add_entry(
@@ -880,5 +945,86 @@ mod tests {
         let entries = store.read_entries(MemoryFile::User).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0], "replaced");
+    }
+
+    // ── system_prompt_section tests (plan 011-03 Task 6) ──
+
+    #[test]
+    fn format_for_system_prompt_single_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = MemoryStore::new(dir.path());
+        store.add_entry(MemoryFile::User, "user pref", &fg()).unwrap();
+        store.add_entry(MemoryFile::Project, "proj fact", &fg()).unwrap();
+
+        let user_block = store.format_for_system_prompt(MemoryFile::User).unwrap();
+        assert!(user_block.contains("USER"));
+        assert!(user_block.contains("user pref"));
+        assert!(!user_block.contains("proj fact"));
+
+        let proj_block = store.format_for_system_prompt(MemoryFile::Project).unwrap();
+        assert!(proj_block.contains("PROJECT"));
+        assert!(proj_block.contains("proj fact"));
+        assert!(!proj_block.contains("user pref"));
+    }
+
+    #[test]
+    fn format_for_system_prompt_empty_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = MemoryStore::new(dir.path());
+        assert!(store.format_for_system_prompt(MemoryFile::User).is_none());
+        assert!(store.format_for_system_prompt(MemoryFile::Project).is_none());
+    }
+
+    #[test]
+    fn system_prompt_section_both_enabled() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = MemoryStore::new(dir.path());
+        store.add_entry(MemoryFile::User, "user data", &fg()).unwrap();
+        store.add_entry(MemoryFile::Project, "proj data", &fg()).unwrap();
+
+        let section = store.system_prompt_section(true, true).unwrap();
+        assert!(section.contains("user data"));
+        assert!(section.contains("proj data"));
+    }
+
+    #[test]
+    fn system_prompt_section_memory_disabled_skips_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = MemoryStore::new(dir.path());
+        store.add_entry(MemoryFile::User, "user data", &fg()).unwrap();
+        store.add_entry(MemoryFile::Project, "proj data", &fg()).unwrap();
+
+        let section = store.system_prompt_section(false, true).unwrap();
+        assert!(section.contains("user data"));
+        assert!(!section.contains("proj data")); // PROJECT skipped
+    }
+
+    #[test]
+    fn system_prompt_section_user_disabled_skips_user() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = MemoryStore::new(dir.path());
+        store.add_entry(MemoryFile::User, "user data", &fg()).unwrap();
+        store.add_entry(MemoryFile::Project, "proj data", &fg()).unwrap();
+
+        let section = store.system_prompt_section(true, false).unwrap();
+        assert!(!section.contains("user data")); // USER skipped
+        assert!(section.contains("proj data"));
+    }
+
+    #[test]
+    fn system_prompt_section_both_disabled_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = MemoryStore::new(dir.path());
+        store.add_entry(MemoryFile::User, "user data", &fg()).unwrap();
+        store.add_entry(MemoryFile::Project, "proj data", &fg()).unwrap();
+
+        assert!(store.system_prompt_section(false, false).is_none());
+    }
+
+    #[test]
+    fn system_prompt_section_no_data_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = MemoryStore::new(dir.path());
+        assert!(store.system_prompt_section(true, true).is_none());
     }
 }

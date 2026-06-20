@@ -108,10 +108,12 @@ fn print_review_outcome(outcome: &ReviewOutcome) {
         eprintln!("  Actions ({}):", outcome.actions.len());
         for action in &outcome.actions {
             let status = if action.succeeded { "OK" } else { "FAIL" };
-            eprintln!("    [{}] {} ({})", status, action.target, action.kind);
-            if !action.summary.is_empty() {
-                eprintln!("      {}", action.summary);
-            }
+            let detail = if action.summary.is_empty() {
+                String::new()
+            } else {
+                format!(" — {}", action.summary)
+            };
+            eprintln!("    [{}] {} ({}){}", status, action.target, action.kind, detail);
         }
     }
 

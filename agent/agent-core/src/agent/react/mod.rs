@@ -33,6 +33,7 @@ mod act_executor;
 pub mod build;
 mod agent_tool;
 mod config;
+pub mod nudge;
 mod observe_node;
 mod runner;
 mod think_node;

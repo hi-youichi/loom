@@ -2,8 +2,7 @@
 
 mod init_logging;
 
-use tool_basic::{BashTool, TOOL_BASH};
-use tool_core::Tool;
+use loom::tools::{BashTool, Tool, TOOL_BASH};
 use serde_json::json;
 
 #[tokio::test]
@@ -27,14 +26,13 @@ async fn bash_tool_spec_has_correct_properties() {
         .contains(&json!("command")));
 }
 
-// NOTE: bash_tool_call_echo_returns_hello (spawns bash) is deleted per task
-// NOTE: bash_tool_call_missing_command_returns_error (invalid args, no spawn needed) is kept
+
 
 #[tokio::test]
 async fn bash_tool_call_missing_command_returns_error() {
     let tool = BashTool::new();
     let args = json!({});
-    let result: Result<tool_core::ToolCallContent, tool_core::ToolSourceError> = tool.call(args, None).await;
+    let result = tool.call(args, None).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(

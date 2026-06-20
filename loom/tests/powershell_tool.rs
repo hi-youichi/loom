@@ -6,9 +6,7 @@
 
 mod init_logging;
 
-use tool_basic::PowerShellTool;
-use tool_basic::TOOL_POWERSHELL;
-use tool_core::Tool;
+use loom::tools::{PowerShellTool, Tool, TOOL_POWERSHELL};
 use serde_json::json;
 
 // ============================================================================
@@ -61,11 +59,5 @@ async fn powershell_tool_default_construction() {
     assert_eq!(tool.name(), TOOL_POWERSHELL);
 }
 
-// All Windows-only execution tests (>500ms each, deleted per task):
-// - call_get_location_returns_path, call_echo_returns_hello,
-// - call_with_workdir_changes_directory, call_with_env_vars_exports_them,
-// - call_with_execution_policy_bypass, call_wmi_query_succeeds,
-// - call_registry_read_succeeds, call_pipeline_succeeds,
-// - call_multiline_script_succeeds, call_invalid_command_reports_failure_in_output,
-// - call_missing_command_returns_error, call_with_timeout_terminates_long_running,
-// - stderr_is_captured, working_folder_with_special_chars
+// All Windows-only execution tests (pwsh.exe spawn) are deleted.
+// Universal tests above are sufficient for cross-platform validation.

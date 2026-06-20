@@ -27,7 +27,11 @@ pub mod build_config;
 pub use build_config::{build_config_from_profile, load_agents_md};
 
 /// Configuration for building ReAct run context.
-#[derive(Clone, Default)]
+///
+/// **Prefer `ReactBuildConfig::from_env()`** over `Default::default()` — the latter
+/// produces empty strings for network/MCP fields and `false` for toggles.
+/// `from_env()` applies all the documented production defaults.
+#[derive(Clone)]
 pub struct ReactBuildConfig {
     pub db_path: Option<String>,
     pub thread_id: Option<String>,
@@ -115,6 +119,23 @@ pub acp_session_id: Option<String>,
     /// This flag does NOT auto-short-circuit nudge intervals — that is the review agent's own
     /// responsibility (see plan 011-03).
     pub is_background_review: bool,
+
+    // --- Memory / Skill toggle & nudge fields (plan 011-03) ---
+    /// Master switch for memory *writes*. When `false`, `MemoryTool` is not registered
+    /// (alignment with Hermes `agent_init.py:1076`). Default `true`.
+    pub memory_enabled: bool,
+    /// Switch for USER.md *writes*. When `false`, `MemoryTool` rejects writes targeting
+    /// `USER.md` (alignment with Hermes `file_memory` guard semantics).
+    /// Default `true`.
+    pub user_profile_enabled: bool,
+    /// Every N *user turns* the memory review nudge fires (0 = disabled).
+    /// Default `10` (matches Hermes `memory.nudge_interval`).
+    /// Background-review agents set this to `0` to prevent recursive reviews.
+    pub memory_nudge_interval: u32,
+    /// Every N *tool iterations* the skill review nudge fires (0 = disabled).
+    /// Default `10` (matches Hermes `skills.creation_nudge_interval`).
+    /// Background-review agents set this to `0` to prevent recursive reviews.
+    pub skill_nudge_interval: u32,
 
     // --- Prompt assembly inputs (migrated from HelveConfig) ---
     /// Role/persona setting (e.g. from instructions.md).
@@ -214,6 +235,13 @@ impl ReactBuildConfig {
             acp_session_id: None,
             goal_mode: false,
             is_background_review: false,
+            // plan 011-03: memory/skill defaults aligned with Hermes user-config defaults.
+            // Hermes runtime inits to false then hydrates from user-config (default true).
+            // Loom uses struct defaults directly — matching the observable "works out of the box" state.
+            memory_enabled: true,
+            user_profile_enabled: true,
+            memory_nudge_interval: 10,
+            skill_nudge_interval: 10,
             role_setting: None,
             agents_md: None,
             system_prompt_override: None,
