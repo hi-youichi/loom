@@ -1,4 +1,4 @@
-﻿//! Agent execution with streaming support
+//! Agent execution with streaming support
 //!
 //! Provides functions for running Loom agent with real-time streaming.
 
@@ -74,6 +74,7 @@ pub async fn run_loom_agent_streaming(
             chat_id: Some(chat_id),
             worktree: false,
             goal_mode: false,
+        force_review: false,
         };
 
 

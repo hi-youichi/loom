@@ -44,6 +44,7 @@ members = [
     "loom-cli-types",
     "experimental/memory-v2",
     "loom-core",
+    "loom-codex",
 ]
 
 [workspace.package]

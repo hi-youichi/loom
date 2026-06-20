@@ -18,7 +18,7 @@ use std::sync::Arc;
 use tokio_stream::StreamExt;
 use tracing::{debug, trace};
 
-use crate::error::AgentError;
+use crate::error::LlmError;
 use crate::support::http_retry::{retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES};
 use crate::support::error_classifier::LlmErrorClassifierConfig;
 use crate::support::thinking::collect_thinking_tags;
@@ -239,7 +239,7 @@ impl ChatOpenAI {
         &self,
         messages: &[Message],
         stream: bool,
-    ) -> Result<CreateChatCompletionRequest, AgentError> {
+    ) -> Result<CreateChatCompletionRequest, LlmError> {
         request::build_chat_request(
             &self.model,
             messages,
@@ -253,7 +253,7 @@ impl ChatOpenAI {
 
 #[async_trait]
 impl LlmClient for ChatOpenAI {
-    async fn invoke(&self, messages: &[Message]) -> Result<LlmResponse, AgentError> {
+    async fn invoke(&self, messages: &[Message]) -> Result<LlmResponse, LlmError> {
         let trace_id = uuid6().to_string();
         let request_id = uuid6().to_string();
         let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
@@ -327,7 +327,7 @@ impl LlmClient for ChatOpenAI {
                         None,
                         Some(error_message.clone()),
                     );
-                    return Err(AgentError::ExecutionFailed(format!(
+                    return Err(LlmError::InvokeFailed(format!(
                         "OpenAI API error: {} (trace_id: {})",
                         error_message, trace_id
                     )));
@@ -337,7 +337,7 @@ impl LlmClient for ChatOpenAI {
 
         let choice =
             response.choices.into_iter().next().ok_or_else(|| {
-                AgentError::ExecutionFailed("OpenAI returned no choices".to_string())
+                LlmError::InvokeFailed("OpenAI returned no choices".to_string())
             })?;
 
         let msg = choice.message;
@@ -411,7 +411,7 @@ async fn invoke_stream(
         messages: &[Message],
         sink: Option<&dyn StreamSink>,
         node_id: &str,
-    ) -> Result<LlmResponse, AgentError> {
+    ) -> Result<LlmResponse, LlmError> {
         if sink.is_none() {
             return self.invoke(messages).await;
         }
@@ -491,7 +491,7 @@ async fn invoke_stream(
                         None,
                         Some(error_message.clone()),
                     );
-                    return Err(AgentError::ExecutionFailed(format!(
+                    return Err(LlmError::InvokeFailed(format!(
                         "OpenAI stream error: {} (trace_id: {})",
                         error_message, trace_id
                     )));
@@ -503,7 +503,7 @@ async fn invoke_stream(
         let mut first_chunk_at: Option<std::time::Instant> = None;
         while let Some(result) = stream.next().await {
             let response = result
-                .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI stream error: {} (trace_id: {})", e, trace_id)))?;
+                .map_err(|e| LlmError::InvokeFailed(format!("OpenAI stream error: {} (trace_id: {})", e, trace_id)))?;
             if let Some(t) = acc.process_chunk(response, sink, node_id) {
                 if first_chunk_at.is_none() {
                     first_chunk_at = Some(t);
@@ -586,7 +586,7 @@ async fn invoke_stream(
         })
     }
 
-    async fn list_models(&self) -> Result<Vec<crate::traits::ModelInfo>, AgentError> {
+    async fn list_models(&self) -> Result<Vec<crate::traits::ModelInfo>, LlmError> {
         models::list_models(self.client.config()).await
     }
 }

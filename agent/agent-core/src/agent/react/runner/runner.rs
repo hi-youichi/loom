@@ -44,6 +44,17 @@ impl ReactRunner {
         self
     }
 
+    /// Returns a clone of the runnable config used by this runner.
+    /// Used to query the current `thread_id` and `checkpoint_id`.
+    pub fn runnable_config(&self) -> Option<RunnableConfig> {
+        self.runnable_config.clone()
+    }
+
+    /// Returns a reference to the checkpointer, if any.
+    pub fn checkpointer(&self) -> Option<&Arc<dyn Checkpointer<ReActState>>> {
+        self.checkpointer.as_ref()
+    }
+
     pub fn with_any_stream_event_sender(mut self, sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>>) -> Self {
         self.any_stream_event_sender = sender;
         self

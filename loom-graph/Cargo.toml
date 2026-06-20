@@ -8,7 +8,6 @@ authors.workspace = true
 
 [dependencies]
 # Core dependencies
-loom-llm = { path = "../loom-llm" }
 stream-event = { path = "../stream-event" }
 
 # Async runtime

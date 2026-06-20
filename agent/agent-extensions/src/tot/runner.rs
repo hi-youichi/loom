@@ -8,7 +8,6 @@ use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
 use agent::agent::react::{build_react_initial_state, REACT_SYSTEM_PROMPT};
-use loom_llm::error::AgentError;
 use loom_graph::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
 use loom_memory::{CheckpointError, Checkpointer, RunnableConfig, Store};
 use loom_llm::message::Message;
@@ -98,7 +97,7 @@ impl LlmClient for SharedLlm {
     async fn invoke(
         &self,
         messages: &[loom_llm::message::Message],
-    ) -> Result<loom_llm::LlmResponse, AgentError> {
+    ) -> Result<loom_llm::LlmResponse, loom_llm::LlmError> {
         self.0.invoke(messages).await
     }
     async fn invoke_stream(
@@ -106,7 +105,7 @@ impl LlmClient for SharedLlm {
         messages: &[loom_llm::message::Message],
         sink: Option<&dyn loom_llm::traits::StreamSink>,
         node_id: &str,
-    ) -> Result<loom_llm::LlmResponse, AgentError> {
+    ) -> Result<loom_llm::LlmResponse, loom_llm::LlmError> {
         self.0.invoke_stream(messages, sink, node_id).await
     }
 }

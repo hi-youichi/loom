@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use tokio_util::sync::CancellationToken;
-use loom_llm::AgentError;
+use loom_graph::GraphError;
 use loom_graph::Interrupt;
 use crate::algo::{
     apply_writes, normalize_pending_sends, normalize_pending_writes, pending_send_packet_id,
@@ -96,9 +96,9 @@ impl PregelLoop {
     ///
     /// This derives the next batch of executable tasks from updated channels
     /// and pending interrupts. It returns `Ok(None)` when the run is complete
-    /// and returns [`AgentError::Interrupted`] when configured interrupts fire
+    /// and returns [`GraphError::Interrupted`] when configured interrupts fire
     /// before task execution.
-    pub async fn tick(&mut self) -> Result<Option<Vec<PreparedTask>>, AgentError> {
+    pub async fn tick(&mut self) -> Result<Option<Vec<PreparedTask>>, GraphError> {
         if self.step >= self.stop {
             self.status = LoopStatus::OutOfSteps;
             return Ok(None);
@@ -178,7 +178,7 @@ impl PregelLoop {
                     .collect(),
                 &self.interrupts.consumed_interrupt_ids,
             );
-            return Err(AgentError::Interrupted(interrupt));
+            return Err(GraphError::Interrupted(interrupt));
         }
 
         Ok(Some(tasks))
@@ -188,7 +188,7 @@ impl PregelLoop {
     ///
     /// This merges successful writes, records interrupts, advances checkpoint
     /// metadata, and may surface execution errors or post-step interrupts.
-    pub async fn after_tick(&mut self, outcomes: Vec<TaskOutcome>) -> Result<(), AgentError> {
+    pub async fn after_tick(&mut self, outcomes: Vec<TaskOutcome>) -> Result<(), GraphError> {
         let direct_interrupts = outcomes
             .iter()
             .filter_map(|outcome| match outcome {
@@ -214,7 +214,7 @@ impl PregelLoop {
             );
             stage_successful_task_writes(&mut self.checkpoint, &outcomes, &HashSet::new());
             self.status = LoopStatus::InterruptedAfter;
-            return Err(AgentError::Interrupted(interrupt.clone()));
+            return Err(GraphError::Interrupted(interrupt.clone()));
         }
 
         let reserved_interrupts = outcomes
@@ -241,7 +241,7 @@ impl PregelLoop {
             );
             stage_successful_task_writes(&mut self.checkpoint, &outcomes, &excluded_task_ids);
             self.status = LoopStatus::InterruptedAfter;
-            return Err(AgentError::Interrupted(interrupt.clone()));
+            return Err(GraphError::Interrupted(interrupt.clone()));
         }
 
         if let Some((task_id, error)) = outcomes.iter().find_map(|outcome| match outcome {
@@ -253,7 +253,7 @@ impl PregelLoop {
             let excluded_task_ids = [task_id].into_iter().collect::<HashSet<_>>();
             stage_successful_task_writes(&mut self.checkpoint, &outcomes, &excluded_task_ids);
             self.status = LoopStatus::Failed;
-            return Err(AgentError::ExecutionFailed(error));
+            return Err(GraphError::ExecutionFailed(error));
         }
 
         let interrupt_after_tasks = outcomes
@@ -290,7 +290,7 @@ impl PregelLoop {
                 &self.interrupts.consumed_interrupt_ids,
             );
             stage_successful_task_writes(&mut self.checkpoint, &outcomes, &HashSet::new());
-            return Err(AgentError::Interrupted(interrupt));
+            return Err(GraphError::Interrupted(interrupt));
         }
 
         if outcomes
@@ -299,7 +299,7 @@ impl PregelLoop {
         {
             stage_successful_task_writes(&mut self.checkpoint, &outcomes, &HashSet::new());
             self.status = LoopStatus::Cancelled;
-            return Err(AgentError::Cancelled);
+            return Err(GraphError::Cancelled);
         }
 
         if let Some(error) = outcomes.iter().find_map(|outcome| match outcome {
@@ -308,7 +308,7 @@ impl PregelLoop {
         }) {
             stage_successful_task_writes(&mut self.checkpoint, &outcomes, &HashSet::new());
             self.status = LoopStatus::Failed;
-            return Err(AgentError::ExecutionFailed(error));
+            return Err(GraphError::ExecutionFailed(error));
         }
 
         let tasks = outcomes

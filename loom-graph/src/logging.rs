@@ -45,7 +45,7 @@ pub fn log_graph_complete() {
 }
 
 /// Log graph execution error.
-pub fn log_graph_error(error: &loom_llm::error::AgentError, thread_id: Option<&str>) {
+pub fn log_graph_error(error: &crate::error::GraphError, thread_id: Option<&str>) {
     tracing::error!(?error, ?thread_id, "Graph execution error");
 }
 

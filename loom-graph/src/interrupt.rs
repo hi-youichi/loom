@@ -3,10 +3,9 @@
 //! Provides support for interrupting graph execution, useful for human-in-the-loop
 //! scenarios where execution needs to pause for user input or approval.
 
-// Re-export Interrupt from loom-llm
-pub use loom_llm::error::Interrupt;
+pub use crate::error::Interrupt;
 
-use loom_llm::error::AgentError;
+use crate::error::GraphError;
 
 /// Trait for handling interrupts during graph execution.
 ///
@@ -17,7 +16,7 @@ pub trait InterruptHandler: Send + Sync {
     /// This method is called when an interrupt is raised. The handler can
     /// perform actions like prompting the user, logging, or modifying state,
     /// then return a value that will be used to continue execution.
-    fn handle_interrupt(&self, interrupt: &Interrupt) -> Result<serde_json::Value, AgentError>;
+    fn handle_interrupt(&self, interrupt: &Interrupt) -> Result<serde_json::Value, GraphError>;
 }
 
 /// Default interrupt handler that returns the interrupt value as-is.
@@ -25,7 +24,7 @@ pub trait InterruptHandler: Send + Sync {
 pub struct DefaultInterruptHandler;
 
 impl InterruptHandler for DefaultInterruptHandler {
-    fn handle_interrupt(&self, interrupt: &Interrupt) -> Result<serde_json::Value, AgentError> {
+    fn handle_interrupt(&self, interrupt: &Interrupt) -> Result<serde_json::Value, GraphError> {
         Ok(interrupt.value.clone())
     }
 }
@@ -65,7 +64,7 @@ mod tests {
         struct CustomHandler;
         
         impl InterruptHandler for CustomHandler {
-            fn handle_interrupt(&self, interrupt: &Interrupt) -> Result<serde_json::Value, AgentError> {
+            fn handle_interrupt(&self, interrupt: &Interrupt) -> Result<serde_json::Value, GraphError> {
                 let mut value = interrupt.value.clone();
                 if let Some(obj) = value.as_object_mut() {
                     obj.insert("handled".to_string(), serde_json::json!(true));

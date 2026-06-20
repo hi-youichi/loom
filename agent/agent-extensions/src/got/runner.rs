@@ -12,7 +12,6 @@ use agent::runner_common;
 use loom_stream::StreamEvent;
 use tool_core::ToolRegistryLocked;
 use loom_llm::LlmClient;
-use loom_llm::error::AgentError;
 use loom_graph::{StateGraph, END, START};
 
 use super::dag::ready_nodes;
@@ -200,7 +199,7 @@ impl LlmClient for SharedLlm {
     async fn invoke(
         &self,
         messages: &[loom_llm::message::Message],
-    ) -> Result<loom_llm::LlmResponse, loom_llm::error::AgentError> {
+    ) -> Result<loom_llm::LlmResponse, loom_llm::LlmError> {
         self.0.invoke(messages).await
     }
     async fn invoke_stream(
@@ -208,7 +207,7 @@ impl LlmClient for SharedLlm {
         messages: &[loom_llm::message::Message],
         sink: Option<&dyn loom_llm::traits::StreamSink>,
         node_id: &str,
-    ) -> Result<loom_llm::LlmResponse, AgentError> {
+    ) -> Result<loom_llm::LlmResponse, loom_llm::LlmError> {
         self.0.invoke_stream(messages, sink, node_id).await
     }
 }

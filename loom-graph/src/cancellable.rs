@@ -4,7 +4,7 @@
 
 use futures_util::future::abortable;
 use tokio_util::sync::CancellationToken;
-use loom_llm::error::AgentError;
+use crate::error::GraphError;
 
 /// Runs a future with cancellation support.
 ///
@@ -21,18 +21,18 @@ use loom_llm::error::AgentError;
 ///
 /// - `Ok(Ok(T))`: Future completed successfully
 /// - `Ok(Err(E))`: Future returned an error
-/// - `Err(AgentError::Cancelled)`: Future was cancelled or timed out
+/// - `Err(GraphError::Cancelled)`: Future was cancelled or timed out
 pub async fn run_cancellable<T, E>(
     future: impl std::future::Future<Output = Result<T, E>>,
     cancellation: Option<&CancellationToken>,
-) -> Result<Result<T, E>, AgentError> {
+) -> Result<Result<T, E>, GraphError> {
     if let Some(token) = cancellation {
         let (task, _abort_handle) = abortable(future);
         tokio::select! {
-            _ = token.cancelled() => Err(AgentError::Cancelled),
+            _ = token.cancelled() => Err(GraphError::Cancelled),
             r = task => match r {
                 Ok(inner) => Ok(inner),
-                Err(_aborted) => Err(AgentError::Cancelled),
+                Err(_aborted) => Err(GraphError::Cancelled),
             },
         }
     } else {
@@ -41,11 +41,11 @@ pub async fn run_cancellable<T, E>(
         tokio::select! {
             _ = timeout => {
                 abort_handle.abort();
-                Err(AgentError::Cancelled)
+                Err(GraphError::Cancelled)
             }
             r = task => match r {
                 Ok(inner) => Ok(inner),
-                Err(_aborted) => Err(AgentError::Cancelled),
+                Err(_aborted) => Err(GraphError::Cancelled),
             },
         }
     }

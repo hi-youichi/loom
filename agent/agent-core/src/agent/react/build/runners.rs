@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use loom_compress::CompactionConfig;
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_llm::{LlmClient, LlmProvider};
 use loom_llm::client::FixedLlmProvider;
 use loom_model_spec::{
@@ -25,7 +25,7 @@ use super::tool_source::build_tool_source;
 
 pub async fn build_react_run_context(
     config: &ReactBuildConfig,
-) -> Result<ReactRunContext, AgentError> {
+) -> Result<ReactRunContext, GraphError> {
     let db_path_owned = resolve_memory_db_path(config);
     let db_path = db_path_owned.as_str();
 
@@ -124,7 +124,7 @@ impl LlmClient for BoxedLlmClient {
     async fn invoke(
         &self,
         messages: &[loom_llm::message::Message],
-    ) -> Result<loom_llm::LlmResponse, loom_llm::error::AgentError> {
+    ) -> Result<loom_llm::LlmResponse, loom_llm::LlmError> {
         self.0.invoke(messages).await
     }
     async fn invoke_stream(
@@ -132,7 +132,7 @@ impl LlmClient for BoxedLlmClient {
         messages: &[loom_llm::message::Message],
         sink: Option<&dyn loom_llm::traits::StreamSink>,
         node_id: &str,
-    ) -> Result<loom_llm::LlmResponse, loom_llm::error::AgentError> {
+    ) -> Result<loom_llm::LlmResponse, loom_llm::LlmError> {
         self.0.invoke_stream(messages, sink, node_id).await
     }
 }

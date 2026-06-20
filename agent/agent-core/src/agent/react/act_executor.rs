@@ -12,7 +12,7 @@ use tracing::{debug, trace, warn};
 
 use loom_cli_types::RunCancellation;
 use loom_graph::{run_cancellable, RunContext};
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_llm::ToolCall;
 use loom_memory::uuid6;
 use loom_stream::{StreamEvent, StreamMode, ToolStreamWriter};
@@ -123,15 +123,15 @@ impl ToolCallExecutor {
 
     /// Execute all tool calls in sequence, returning normalized results with
     /// backfilled call_ids.
-    pub async fn execute(&self, tool_calls: &[ToolCall]) -> Result<Vec<ToolResult>, AgentError> {
+    pub async fn execute(&self, tool_calls: &[ToolCall]) -> Result<Vec<ToolResult>, GraphError> {
         if self.is_cancelled() {
-            return Err(AgentError::Cancelled);
+            return Err(GraphError::Cancelled);
         }
 
         let mut tool_results = Vec::with_capacity(tool_calls.len());
         for tc in tool_calls {
             if self.is_cancelled() {
-                return Err(AgentError::Cancelled);
+                return Err(GraphError::Cancelled);
             }
             let outcome = self.execute_one(tc).await?;
             tool_results.push(outcome.result);
@@ -144,7 +144,7 @@ impl ToolCallExecutor {
 
     // ──────────── single tool execution ────────────
 
-    async fn execute_one(&self, tc: &ToolCall) -> Result<NormalizedOutcome, AgentError> {
+    async fn execute_one(&self, tc: &ToolCall) -> Result<NormalizedOutcome, GraphError> {
         debug!(
             call_id = ?tc.id,
             tool_name = %tc.name,
@@ -216,7 +216,7 @@ impl ToolCallExecutor {
         &self,
         tc: &ToolCall,
         args: &serde_json::Value,
-    ) -> Result<Result<ToolCallContent, ToolSourceError>, AgentError> {
+    ) -> Result<Result<ToolCallContent, ToolSourceError>, GraphError> {
         let writer = self.build_writer(tc);
         let tool_ctx = self.build_tool_ctx(&writer);
         self.emit_start(tc);
@@ -240,7 +240,7 @@ impl ToolCallExecutor {
         };
 
         if self.is_cancelled() {
-            return Err(AgentError::Cancelled);
+            return Err(GraphError::Cancelled);
         }
 
         Ok(result)

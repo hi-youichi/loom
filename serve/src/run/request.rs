@@ -1,4 +1,4 @@
-﻿//! Request preparation: register thread in workspace, append initial user message, build RunOptions and RunCmd.
+//! Request preparation: register thread in workspace, append initial user message, build RunOptions and RunCmd.
 
 use loom_cli_types::RunCancellation;
 use loom_llm::message::Message;
@@ -139,6 +139,7 @@ pub(super) async fn prepare_run(
             chat_id: None,
             worktree: false,
             goal_mode: false,
+        force_review: false,
             debug_llm: false,
         };
 

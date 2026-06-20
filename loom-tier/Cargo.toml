@@ -9,6 +9,7 @@ authors.workspace = true
 [dependencies]
 # Internal crates
 loom-llm = { path = "../loom-llm" }
+loom-graph = { path = "../loom-graph" }
 loom-model-spec = { path = "../loom-model-spec" }
 loom-protocol = { path = "../loom-protocol" }
 model-spec-core = { path = "../model-spec-core" }

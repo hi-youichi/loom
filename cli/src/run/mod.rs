@@ -7,10 +7,7 @@ pub mod memory;
 pub mod memory_provider;
 pub mod observability;
 
-pub mod review;
-pub mod review_agent_loop;
 pub mod review_prompts;
-pub mod review_tools;
 pub mod security;
 pub mod session_store;
 pub mod skill_registry;

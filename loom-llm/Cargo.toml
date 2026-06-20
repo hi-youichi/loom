@@ -40,6 +40,12 @@ chrono = { version = "0.4", features = ["serde"] }
 # Config loading (for audit.rs LlmAuditConfig)
 env_config = { path = "../config", package = "config" }
 
+# Graph error types (GraphError, Interrupt)
+loom-graph = { path = "../loom-graph" }
+
+# Streaming types (MessageChunk, StreamSink)
+stream-event = { path = "../stream-event" }
+
 # Model spec (for content_part_modality)
 model-spec-core = { path = "../model-spec-core" }
 

@@ -88,7 +88,7 @@ impl LlmClient for SharedLlm {
     async fn invoke(
         &self,
         messages: &[loom_llm::message::Message],
-    ) -> Result<loom_llm::LlmResponse, loom_llm::error::AgentError> {
+    ) -> Result<loom_llm::LlmResponse, loom_llm::LlmError> {
         self.0.invoke(messages).await
     }
     async fn invoke_stream(
@@ -96,7 +96,7 @@ impl LlmClient for SharedLlm {
         messages: &[loom_llm::message::Message],
         sink: Option<&dyn loom_llm::traits::StreamSink>,
         node_id: &str,
-    ) -> Result<loom_llm::LlmResponse, loom_llm::error::AgentError> {
+    ) -> Result<loom_llm::LlmResponse, loom_llm::LlmError> {
         self.0.invoke_stream(messages, sink, node_id).await
     }
 }

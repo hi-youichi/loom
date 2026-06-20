@@ -26,7 +26,7 @@
 use std::fmt::Debug;
 use std::sync::Mutex;
 
-use loom_llm::traits::{MessageChunk, StreamSink};
+use crate::message::{MessageChunk, StreamSink};
 use tokio::sync::mpsc;
 
 use crate::{StreamEvent, StreamMetadata};
@@ -35,7 +35,7 @@ use crate::{StreamEvent, StreamMetadata};
 /// to a `mpsc::Sender<StreamEvent<S>>`.
 ///
 /// Implements [`StreamSink`] so it can be passed directly to
-/// [`LlmClient::invoke_stream`](loom_llm::traits::LlmClient::invoke_stream).
+/// Streaming sink called from LLM clients during `invoke_stream`.
 ///
 /// Created per LLM call (cheap: just two `clone()`s and one `Mutex`). Cheap to drop.
 pub struct StreamEventSink<S>
@@ -98,7 +98,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_llm::traits::MessageChunk;
+    use crate::message::MessageChunk;
     use std::sync::Arc;
 
     #[derive(Clone, Debug)]
@@ -118,7 +118,7 @@ mod tests {
         match ev {
             StreamEvent::Messages { chunk, metadata } => {
                 assert_eq!(chunk.content, "hello");
-                assert_eq!(chunk.kind, loom_llm::traits::MessageChunkKind::Message);
+                assert_eq!(chunk.kind, crate::message::MessageChunkKind::Message);
                 assert_eq!(metadata.loom_node, "think");
                 assert!(metadata.namespace.is_none());
             }

@@ -82,7 +82,7 @@ impl ChatOpenAICompat {
         self.log_entry(ctx, status, Some(response), None);
     }
 
-    /// Record an error and return the corresponding `AgentError`.
+    /// Record an error and return the corresponding `LlmError`.
     pub(super) fn record_error(&self, ctx: &AuditCtx<'_>, status: u16, err_msg: String) {
         self.log_entry(ctx, status, None, Some(err_msg));
     }

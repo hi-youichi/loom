@@ -21,7 +21,7 @@ use crate::memory::{Checkpoint, CheckpointSource, Checkpointer, RunnableConfig, 
 use crate::node_middleware::NodeMiddleware;
 use crate::retry::RetryPolicy;
 use crate::state_graph::END;
-use loom_llm::error::AgentError;
+use crate::error::GraphError;
 use stream_event::{CheckpointEvent, StreamEvent, StreamMode};
 use crate::{Next, Node, RunContext};
 
@@ -63,7 +63,7 @@ where
     S: Clone + Send + Sync + Debug + 'static,
 {
     pub events: ReceiverStream<StreamEvent<S>>,
-    pub completion: JoinHandle<Result<(), AgentError>>,
+    pub completion: JoinHandle<Result<(), GraphError>>,
 }
 
 impl<S> CompiledStateGraph<S>
@@ -85,7 +85,7 @@ where
         node: Arc<dyn Node<S>>,
         state: S,
         run_ctx: Option<&RunContext<S>>,
-    ) -> Result<(S, Next), AgentError> {
+    ) -> Result<(S, Next), GraphError> {
         let mut attempt = 0;
         loop {
             let current_state = state.clone();
@@ -146,13 +146,13 @@ where
         config: &Option<RunnableConfig>,
         current_id: &mut String,
         run_ctx: Option<&RunContext<S>>,
-    ) -> Result<(), AgentError> {
+    ) -> Result<(), GraphError> {
         log_graph_start();
 
         loop {
             if Self::is_cancelled(run_ctx) {
-                log_graph_error(&AgentError::Cancelled, config.as_ref().and_then(|c| c.thread_id.as_deref()));
-                return Err(AgentError::Cancelled);
+                log_graph_error(&GraphError::Cancelled, config.as_ref().and_then(|c| c.thread_id.as_deref()));
+                return Err(GraphError::Cancelled);
             }
             let node = self
                 .nodes
@@ -188,7 +188,7 @@ where
             // Handle errors (including interrupts)
             let (new_state, next) = match result {
                 Ok(output) => output,
-                Err(AgentError::Interrupted(ref interrupt)) => {
+                Err(GraphError::Interrupted(ref interrupt)) => {
                     // Handle interrupt: save checkpoint and optionally call handler
                     if let (Some(cp), Some(cfg)) = (&self.checkpointer, config) {
                         if cfg.thread_id.is_some() {
@@ -253,8 +253,8 @@ where
                     }
 
                     // Log and return the interrupt error
-                    log_graph_error(&AgentError::Interrupted(interrupt.clone()), config.as_ref().and_then(|c| c.thread_id.as_deref()));
-                    return Err(AgentError::Interrupted(interrupt.clone()));
+                    log_graph_error(&GraphError::Interrupted(interrupt.clone()), config.as_ref().and_then(|c| c.thread_id.as_deref()));
+                    return Err(GraphError::Interrupted(interrupt.clone()));
                 }
                 Err(e) => {
                     // Emit TaskEnd event with error if Tasks or Debug mode is enabled
@@ -303,8 +303,8 @@ where
             log_state_update(current_id);
 
             if Self::is_cancelled(run_ctx) {
-                log_graph_error(&AgentError::Cancelled, config.as_ref().and_then(|c| c.thread_id.as_deref()));
-                return Err(AgentError::Cancelled);
+                log_graph_error(&GraphError::Cancelled, config.as_ref().and_then(|c| c.thread_id.as_deref()));
+                return Err(GraphError::Cancelled);
             }
 
             if let Some(ctx) = run_ctx {
@@ -425,9 +425,9 @@ let should_end = next_id.is_none() || next_id.as_deref() == Some(END);
     /// - `Next::Continue`: run the next node in edge_order, or end if last.
     /// - `Next::Node(id)`: run the node with that id next.
     /// - `Next::End`: stop and return current state.
-    pub async fn invoke(&self, state: S, config: Option<RunnableConfig>) -> Result<S, AgentError> {
+    pub async fn invoke(&self, state: S, config: Option<RunnableConfig>) -> Result<S, GraphError> {
         if self.nodes.is_empty() || !self.nodes.contains_key(&self.first_node_id) {
-            return Err(AgentError::ExecutionFailed("empty graph".into()));
+            return Err(GraphError::ExecutionFailed("empty graph".into()));
         }
         let config = config.unwrap_or_default();
         let run_ctx = RunContext::new(config.clone());
@@ -474,7 +474,7 @@ let should_end = next_id.is_none() || next_id.as_deref() == Some(END);
         &self,
         state: S,
         run_ctx: RunContext<S>,
-    ) -> Result<S, AgentError> {
+    ) -> Result<S, GraphError> {
         let mut state = state;
         let mut current_id = run_ctx
             .config

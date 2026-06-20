@@ -6,7 +6,7 @@
 use crate::command::{Command, CommandResult};
 use loom_compress::compaction::{build_summary_prompt, compact, prune};
 use loom_compress::config::CompactionConfig;
-use loom_llm::AgentError;
+use loom_graph::GraphError;
 use loom_llm::LlmClient;
 use loom_llm::message::{Message, UserContent};
 
@@ -33,7 +33,7 @@ pub async fn execute_async<S>(
     state: &mut S,
     llm: &dyn LlmClient,
     compaction_config: &CompactionConfig,
-) -> Result<CommandResult, AgentError>
+) -> Result<CommandResult, GraphError>
 where
     S: ResetState + CompactState + SummarizeState,
 {

@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use tracing::{debug, trace};
 
-use crate::error::AgentError;
+use crate::error::LlmError;
 use crate::support::http_retry::{
     is_retryable_reqwest_error, retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES,
 };
@@ -93,7 +93,7 @@ impl ChatOpenAICompat {
         request_id: &str,
         log_prefix: &str,
         ctx: &AuditCtx<'_>,
-    ) -> Result<reqwest::Response, AgentError> {
+    ) -> Result<reqwest::Response, LlmError> {
         let trace_id = ctx.trace_id;
         // --- Phase 1: initial send with transport retry ---
         let res = match self.send_post(url, body, request_id).await {
@@ -176,10 +176,10 @@ impl ChatOpenAICompat {
         unreachable!("retry loop always returns on last iteration")
     }
 
-    /// Record an audit error entry and return the corresponding `AgentError`.
-    fn audit_error(&self, ctx: &AuditCtx<'_>, status: u16, err_msg: String) -> AgentError {
+    /// Record an audit error entry and return the corresponding `LlmError`.
+    fn audit_error(&self, ctx: &AuditCtx<'_>, status: u16, err_msg: String) -> LlmError {
         self.record_error(ctx, status, err_msg.clone());
-        AgentError::ExecutionFailed(err_msg)
+        LlmError::InvokeFailed(err_msg)
     }
 }
 
@@ -189,7 +189,7 @@ impl ChatOpenAICompat {
 
 #[async_trait]
 impl LlmClient for ChatOpenAICompat {
-    async fn invoke(&self, messages: &[crate::message::Message]) -> Result<LlmResponse, AgentError> {
+    async fn invoke(&self, messages: &[crate::message::Message]) -> Result<LlmResponse, LlmError> {
         let trace_id = uuid6().to_string();
         let request_id = uuid6().to_string();
         let url = self.chat_completions_url();
@@ -223,13 +223,13 @@ impl LlmClient for ChatOpenAICompat {
 
         let response: ChatCompletionResponse =
             serde_json::from_slice(&body_bytes).map_err(|e| {
-                AgentError::ExecutionFailed(format!(
+                LlmError::InvokeFailed(format!(
                     "OpenAI-compat response parse: {e} (trace_id: {trace_id})"
                 ))
             })?;
 
         let choice = response.choices.into_iter().next().ok_or_else(|| {
-            AgentError::ExecutionFailed(format!(
+            LlmError::InvokeFailed(format!(
                 "OpenAI-compat returned no choices (trace_id: {trace_id})"
             ))
         })?;
@@ -282,7 +282,7 @@ impl LlmClient for ChatOpenAICompat {
         messages: &[crate::message::Message],
         sink: Option<&dyn StreamSink>,
         node_id: &str,
-    ) -> Result<LlmResponse, AgentError> {
+    ) -> Result<LlmResponse, LlmError> {
         if sink.is_none() {
             return self.invoke(messages).await;
         }
@@ -529,7 +529,7 @@ impl LlmClient for ChatOpenAICompat {
         Ok(response)
     }
 
-    async fn list_models(&self) -> Result<Vec<crate::traits::ModelInfo>, AgentError> {
+    async fn list_models(&self) -> Result<Vec<crate::traits::ModelInfo>, LlmError> {
         let request_id = uuid6().to_string();
         let base = self.base_url.trim_end_matches('/');
         let url = format!("{base}/models");
@@ -540,12 +540,12 @@ impl LlmClient for ChatOpenAICompat {
             )
             .send()
             .await
-            .map_err(|e| AgentError::ExecutionFailed(format!("list_models request failed: {e}")))?;
+            .map_err(|e| LlmError::InvokeFailed(format!("list_models request failed: {e}")))?;
 
         if !res.status().is_success() {
             let status = res.status();
             let body = res.text().await.unwrap_or_default();
-            return Err(AgentError::ExecutionFailed(format!(
+            return Err(LlmError::InvokeFailed(format!(
                 "list_models failed: {status} - {body}"
             )));
         }
@@ -553,10 +553,10 @@ impl LlmClient for ChatOpenAICompat {
         let body = res
             .text()
             .await
-            .map_err(|e| AgentError::ExecutionFailed(format!("list_models read body failed: {e}")))?;
+            .map_err(|e| LlmError::InvokeFailed(format!("list_models read body failed: {e}")))?;
 
         let models_resp: ModelsResponse = serde_json::from_str(&body)
-            .map_err(|e| AgentError::ExecutionFailed(format!("list_models parse failed: {e}")))?;
+            .map_err(|e| LlmError::InvokeFailed(format!("list_models parse failed: {e}")))?;
 
         Ok(models_resp
             .data

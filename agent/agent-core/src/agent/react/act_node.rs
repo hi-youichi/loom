@@ -9,7 +9,7 @@ use tracing::{debug, warn};
 
 use loom_cli_types::RunCancellation;
 use loom_graph::{Next, Node, RunnableConfig, RunContext};
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_stream::StreamMode;
 use loom_types::state::ReActState;
 use tool_core::ToolRegistryLocked;
@@ -53,7 +53,7 @@ impl Node<ReActState> for ActNode {
         "act"
     }
 
-    async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
+    async fn run(&self, state: ReActState) -> Result<(ReActState, Next), GraphError> {
         self.run_with_context(state, &RunContext::new(RunnableConfig::default()))
             .await
     }
@@ -62,7 +62,7 @@ impl Node<ReActState> for ActNode {
         &self,
         state: ReActState,
         run_ctx: &RunContext<ReActState>,
-    ) -> Result<(ReActState, Next), AgentError> {
+    ) -> Result<(ReActState, Next), GraphError> {
         let tools_mode = run_ctx.stream_mode.contains(&StreamMode::Tools)
             || run_ctx.stream_mode.contains(&StreamMode::Debug);
 

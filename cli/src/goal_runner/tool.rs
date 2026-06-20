@@ -1,4 +1,4 @@
-﻿use std::path::{Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -274,6 +274,7 @@ impl CodingTool for LoomTool {
             chat_id: None,
             worktree: false,
             goal_mode: true,
+        force_review: false,
         };
 
         let result = run_agent_with_options(&opts, &RunCmd::React, on_event)

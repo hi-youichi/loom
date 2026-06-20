@@ -11,7 +11,7 @@ use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 
 use loom_graph::CompiledStateGraph;
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_memory::{CheckpointError, Checkpointer, RunnableConfig};
 use loom_stream::{StreamEvent, StreamMode};
 
@@ -69,7 +69,7 @@ pub enum StreamRunOutcome<S> {
 #[derive(Debug, thiserror::Error)]
 pub enum StreamRunError {
     #[error(transparent)]
-    Execution(#[from] AgentError),
+    Execution(#[from] GraphError),
     #[error(transparent)]
     StreamEndedWithoutState(#[from] StreamEndedWithoutState),
 }
@@ -117,7 +117,7 @@ where
     // consumer loop. We can't re-await a JoinHandle after it resolves (it panics),
     // so we capture its result the first time `tokio::select!` fires for it and
     // reuse it after the loop exits.
-    let mut completion_result: Option<Result<Result<(), AgentError>, tokio::task::JoinError>> = None;
+    let mut completion_result: Option<Result<Result<(), GraphError>, tokio::task::JoinError>> = None;
     let mut final_state: Option<S> = None;
     let mut iters: u64 = 0;
     let mut completion_consumed = false;
@@ -203,9 +203,9 @@ where
         Ok(Ok(())) => final_state
             .map(StreamRunOutcome::Finished)
             .ok_or(StreamEndedWithoutState.into()),
-        Ok(Err(AgentError::Cancelled)) => Ok(StreamRunOutcome::Cancelled),
+        Ok(Err(GraphError::Cancelled)) => Ok(StreamRunOutcome::Cancelled),
         Ok(Err(e)) => Err(StreamRunError::Execution(e)),
-        Err(e) => Err(StreamRunError::Execution(AgentError::ExecutionFailed(
+        Err(e) => Err(StreamRunError::Execution(GraphError::ExecutionFailed(
             format!("graph stream task failed: {}", e),
         ))),
     }

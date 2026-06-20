@@ -9,7 +9,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::message::Message;
-use crate::error::AgentError;
+use crate::error::LlmError;
+use loom_graph::GraphError;
 
 // ============================================================================
 // Headers
@@ -212,83 +213,8 @@ impl LlmResponse {
     }
 }
 
-/// Distinguishes reasoning/thinking output from final assistant message for streaming.
-///
-/// When an LLM emits separate thinking content (e.g. extended thinking, reasoning tokens),
-/// chunks with `Thinking` are streamed as ACP `agent_thought_chunk`; `Message` as `agent_message_chunk`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub enum MessageChunkKind {
-    /// Final assistant reply; maps to ACP `agent_message_chunk`.
-    #[default]
-    Message,
-    /// Agent reasoning/thinking; maps to ACP `agent_thought_chunk`.
-    Thinking,
-}
-
-/// One chunk of streamed message content.
-///
-/// Use [`MessageChunkKind`] to separate thinking from final reply when the LLM provides both.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MessageChunk {
-    pub content: String,
-    /// When `Thinking`, ACP bridge emits `agent_thought_chunk`; otherwise `agent_message_chunk`.
-    #[allow(clippy::struct_field_names)]
-    pub kind: MessageChunkKind,
-}
-
-impl MessageChunk {
-    /// Chunk of final assistant message (ACP `agent_message_chunk`).
-    pub fn message(content: impl Into<String>) -> Self {
-        Self {
-            content: content.into(),
-            kind: MessageChunkKind::Message,
-        }
-    }
-
-    /// Chunk of agent reasoning/thinking (ACP `agent_thought_chunk`).
-    pub fn thinking(content: impl Into<String>) -> Self {
-        Self {
-            content: content.into(),
-            kind: MessageChunkKind::Thinking,
-        }
-    }
-
-    /// Returns `true` if this is a thinking/reasoning chunk.
-    pub fn is_thinking(&self) -> bool {
-        self.kind == MessageChunkKind::Thinking
-    }
-}
-
-impl Default for MessageChunk {
-    fn default() -> Self {
-        Self {
-            content: String::new(),
-            kind: MessageChunkKind::Message,
-        }
-    }
-}
-
-/// Sink that receives streamed `MessageChunk`s as they arrive from the LLM.
-///
-/// Implementations are typically lightweight (e.g. [`StreamEventSink`](stream_event::StreamEventSink)
-/// which packs chunks into `StreamEvent::Messages` and forwards to the main `stream_tx`).
-/// The sink must be `Send + Sync` and the `try_send_message` method **must not block** —
-/// it is called from inside the LLM's SSE parsing loop, and any backpressure here would
-/// stall token parsing. If the channel is full or closed, implementations should drop
-/// the chunk silently rather than awaiting.
-pub trait StreamSink: Send + Sync {
-    /// Sends one streamed message chunk through to the underlying stream pipeline.
-    ///
-    /// `node_id` identifies the LLM caller (typically the graph node, e.g. `"think"`).
-    /// Implementations pack it into the outgoing `StreamMetadata` so consumers can
-    /// route the chunk back to the originating node.
-    ///
-    /// Returns `None` after a successful send, or `Some(Instant)` **on the first chunk**
-    /// so the caller can record `first_chunk_at` for prefill/decode timing. Implementations
-    /// must return `Some(now)` exactly once per session (the very first chunk) and `None`
-    /// afterwards.
-    fn try_send_message(&self, chunk: MessageChunk, node_id: &str) -> Option<std::time::Instant>;
-}
+// Re-export streaming types from stream-event for backward compatibility
+pub use stream_event::message::{MessageChunk, MessageChunkKind, StreamSink};
 
 /// Provider-level factory that can create [`LlmClient`] instances for different model names.
 ///
@@ -297,7 +223,7 @@ pub trait StreamSink: Send + Sync {
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
     /// Create a new [`LlmClient`] for the given model name.
-    fn create_client(&self, model: &str) -> Result<Box<dyn LlmClient>, AgentError>;
+    fn create_client(&self, model: &str) -> Result<Box<dyn LlmClient>, GraphError>;
 
     /// Create a new [`LlmClient`] with optional HTTP headers.
     ///
@@ -307,7 +233,7 @@ pub trait LlmProvider: Send + Sync {
         &self,
         model: &str,
         headers: Option<LlmHeaders>,
-    ) -> Result<Box<dyn LlmClient>, AgentError> {
+    ) -> Result<Box<dyn LlmClient>, GraphError> {
         let _ = headers;
         self.create_client(model)
     }
@@ -337,7 +263,7 @@ pub trait LlmClient: Send + Sync {
     ///
     /// Implementations should treat `messages` as the full prompt context for
     /// the current turn and return the fully assembled assistant response.
-    async fn invoke(&self, messages: &[Message]) -> Result<LlmResponse, AgentError>;
+    async fn invoke(&self, messages: &[Message]) -> Result<LlmResponse, LlmError>;
 
     /// Streaming variant: invoke with optional sink for token streaming.
     ///
@@ -355,7 +281,7 @@ pub trait LlmClient: Send + Sync {
         messages: &[Message],
         sink: Option<&dyn StreamSink>,
         node_id: &str,
-    ) -> Result<LlmResponse, AgentError> {
+    ) -> Result<LlmResponse, LlmError> {
         let response = self.invoke(messages).await?;
 
         // Default: send full content as single chunk if streaming is enabled
@@ -384,7 +310,7 @@ pub trait LlmClient: Send + Sync {
     /// Returns a list of models available from this provider. Not all providers
     /// support this endpoint; implementations should return an empty Vec or
     /// an appropriate error if unsupported.
-    async fn list_models(&self) -> Result<Vec<ModelInfo>, AgentError> {
+    async fn list_models(&self) -> Result<Vec<ModelInfo>, LlmError> {
         // Default: not supported, return empty list
         Ok(Vec::new())
     }
@@ -393,18 +319,9 @@ pub trait LlmClient: Send + Sync {
 // ============================================================================
 // Conversions from reqwest errors
 // ============================================================================
-
-impl From<reqwest::Error> for AgentError {
-    fn from(e: reqwest::Error) -> Self {
-        if e.is_timeout() {
-            AgentError::ExecutionFailed("LLM request timeout".into())
-        } else if e.is_connect() {
-            AgentError::ExecutionFailed(format!("LLM connection error: {}", e))
-        } else {
-            AgentError::ExecutionFailed(format!("LLM request failed: {}", e))
-        }
-    }
-}
+//
+// Note: `From<reqwest::Error> for GraphError` and `From<reqwest::Error> for LlmError`
+// are defined in `error.rs`.
 
 #[cfg(test)]
 mod tests {

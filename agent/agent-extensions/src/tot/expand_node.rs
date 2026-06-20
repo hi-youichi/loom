@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_graph::{Next, RunContext};
 use loom_llm::message::Message;
 use loom_llm::ToolCall;
@@ -224,7 +224,7 @@ impl Node<TotState> for ThinkExpandNode {
         "think_expand"
     }
 
-    async fn run(&self, state: TotState) -> Result<(TotState, Next), AgentError> {
+    async fn run(&self, state: TotState) -> Result<(TotState, Next), GraphError> {
         let messages = self.build_messages(&state);
         let response = self.llm.invoke(&messages).await?;
         let mut candidates = self.parse_candidates(&response.content);
@@ -257,7 +257,7 @@ impl Node<TotState> for ThinkExpandNode {
         &self,
         state: TotState,
         ctx: &RunContext<TotState>,
-    ) -> Result<(TotState, Next), AgentError> {
+    ) -> Result<(TotState, Next), GraphError> {
         let (out, next) = self.run(state).await?;
         if let Some(ref tx) = ctx.stream_tx {
             let summaries: Vec<String> = out

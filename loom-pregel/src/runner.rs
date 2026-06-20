@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use loom_llm::AgentError;
+use loom_graph::GraphError;
 use crate::algo::{ExecutableTask, PreparedTask, TaskOutcome};
 use crate::node::{PregelGraph, PregelNodeContext};
 use stream_event::{StreamEvent, StreamMode};
@@ -95,7 +95,7 @@ impl PregelRunner {
                         writes: Vec::new(),
                         attempt: 0,
                     },
-                    error: AgentError::ExecutionFailed(join_error.to_string()),
+                    error: GraphError::ExecutionFailed(join_error.to_string()),
                 },
             };
 
@@ -176,7 +176,7 @@ impl PregelRunner {
                     prepared: prepared.clone(),
                     attempt: 0,
                 },
-                error: AgentError::ExecutionFailed(format!(
+                error: GraphError::ExecutionFailed(format!(
                     "pregel node not found: {}",
                     prepared.node_name
                 )),
@@ -215,7 +215,7 @@ impl PregelRunner {
                         },
                     };
                 }
-                Err(AgentError::Interrupted(interrupt)) => {
+                Err(GraphError::Interrupted(interrupt)) => {
                     return TaskOutcome::Interrupted {
                         task: ExecutableTask {
                             writes: Vec::new(),

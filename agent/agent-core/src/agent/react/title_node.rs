@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_graph::Next;
 use loom_llm::{LlmHeaders, LlmProvider};
 use loom_llm::message::Message;
@@ -52,7 +52,7 @@ impl TitleNode {
 impl Node<ReActState> for TitleNode {
     fn id(&self) -> &str { "title" }
 
-    async fn run(&self, mut state: ReActState) -> Result<(ReActState, Next), AgentError> {
+    async fn run(&self, mut state: ReActState) -> Result<(ReActState, Next), GraphError> {
         // Build messages for title generation
         let recent = state
             .messages

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::tools::InvokeAgentTool;
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use memory_v2::MemoryStore;
 use skill::SkillUsageStore;
 use tool_basic::{
@@ -17,14 +17,14 @@ use env_config::McpServerDef;
 
 use super::super::config::ReactBuildConfig;
 
-fn to_agent_error(e: impl std::fmt::Display) -> AgentError {
-    AgentError::ExecutionFailed(e.to_string())
+fn to_agent_error(e: impl std::fmt::Display) -> GraphError {
+    GraphError::ExecutionFailed(e.to_string())
 }
 
 pub(crate) async fn build_tool_source(
     config: &ReactBuildConfig,
     _store: &Option<Arc<dyn loom_memory::Store>>,
-) -> Result<Arc<ToolRegistryLocked>, AgentError> {
+) -> Result<Arc<ToolRegistryLocked>, GraphError> {
     let working_folder_arc = config.working_folder.as_ref().map(|p| Arc::new(p.clone()));
 
     let aggregate = Arc::new(ToolRegistryLocked::new());

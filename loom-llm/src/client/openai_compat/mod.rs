@@ -22,7 +22,7 @@ mod stream;
 
 use std::sync::Arc;
 
-use crate::error::AgentError;
+use crate::error::LlmError;
 use crate::support::audit::LlmAuditLog;
 use crate::tool::ToolSpec;
 use crate::traits::ToolChoiceMode;
@@ -58,9 +58,9 @@ impl ChatOpenAICompat {
     ///
     /// This reads `OPENAI_API_KEY` and optionally `OPENAI_BASE_URL`. The model
     /// name is still provided explicitly so callers can choose it at runtime.
-    pub fn new(model: impl Into<String>) -> Result<Self, AgentError> {
+    pub fn new(model: impl Into<String>) -> Result<Self, LlmError> {
         let api_key = std::env::var("OPENAI_API_KEY")
-            .map_err(|_| AgentError::ExecutionFailed("OPENAI_API_KEY is not set".to_string()))?;
+            .map_err(|_| LlmError::InvokeFailed("OPENAI_API_KEY is not set".to_string()))?;
         let base_url =
             std::env::var("OPENAI_BASE_URL").unwrap_or_else(|_| retry::DEFAULT_BASE_URL.to_string());
         let model = model.into();

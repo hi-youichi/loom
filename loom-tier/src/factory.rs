@@ -11,7 +11,7 @@ use model_spec_core::spec::ModelTier;
 
 use crate::model_registry::{ModelEntry, create_llm_client};
 use crate::model_registry::ProviderConfig;
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_llm::traits::LlmClient;
 
 /// LLM client factory that unifies provider config loading, tier resolution, and client creation.
@@ -66,7 +66,7 @@ impl LlmFactory {
     }
 
     /// Build an LLM client from a ModelEntry.
-    pub fn build_client(&self, entry: &ModelEntry) -> Result<Box<dyn LlmClient>, AgentError> {
+    pub fn build_client(&self, entry: &ModelEntry) -> Result<Box<dyn LlmClient>, GraphError> {
         create_llm_client(entry, None)
     }
 }

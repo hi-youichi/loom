@@ -75,6 +75,8 @@ pub struct RunOptions {
     /// When true, task management tools (task_create, task_update, etc.) are registered.
     /// Only enabled in goal mode.
     pub goal_mode: bool,
+    /// Force a background review after session completion.
+    pub force_review: bool,
 }
 
 impl std::fmt::Debug for RunOptions {
@@ -121,6 +123,7 @@ impl Clone for RunOptions {
             chat_id: self.chat_id,
             worktree: self.worktree,
             goal_mode: self.goal_mode,
+            force_review: self.force_review,
         }
     }
 }

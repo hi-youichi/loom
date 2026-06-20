@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_llm::message::Message;
 use loom_llm::LlmClient;
 
@@ -44,7 +44,7 @@ pub async fn complexity_score_via_llm(
     llm: Arc<dyn LlmClient>,
     node: &TaskNode,
     _ctx: &ExpandContext<'_>,
-) -> Result<ComplexityLevel, AgentError> {
+) -> Result<ComplexityLevel, GraphError> {
     let user = format!(
         "{}\nNode id: {}\nDescription: {}",
         AGOT_COMPLEXITY_PROMPT, node.id, node.description
@@ -116,7 +116,7 @@ pub async fn expand_node_via_llm(
     llm: Arc<dyn LlmClient>,
     ctx: &ExpandContext<'_>,
     node: &TaskNode,
-) -> Result<Option<(Vec<TaskNode>, Vec<(String, String)>)>, AgentError> {
+) -> Result<Option<(Vec<TaskNode>, Vec<(String, String)>)>, GraphError> {
     let user_content = format!(
         r#"Parent node id: {}
 Parent description: {}
@@ -143,7 +143,7 @@ Output JSON with "nodes" and "edges". Node ids must be short (e.g. step1, step2)
 fn parse_expand_output(
     raw: &str,
     parent_id: &str,
-) -> Result<Option<(Vec<TaskNode>, Vec<(String, String)>)>, AgentError> {
+) -> Result<Option<(Vec<TaskNode>, Vec<(String, String)>)>, GraphError> {
     #[derive(serde::Deserialize)]
     struct RawNode {
         id: Option<String>,
@@ -156,7 +156,7 @@ fn parse_expand_output(
     }
 
     let parsed: RawGraph = serde_json::from_str(raw)
-        .map_err(|e| AgentError::ExecutionFailed(format!("expand parse error: {}", e)))?;
+        .map_err(|e| GraphError::ExecutionFailed(format!("expand parse error: {}", e)))?;
 
     let Some(nodes) = parsed.nodes else {
         return Ok(None);

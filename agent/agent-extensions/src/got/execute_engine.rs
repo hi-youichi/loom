@@ -1,4 +1,4 @@
-﻿//! ExecuteGraph node: run task nodes in DAG order; each sub-task uses ReAct.
+//! ExecuteGraph node: run task nodes in DAG order; each sub-task uses ReAct.
 //!
 //! Computes ready nodes, runs one (or more) per step, writes node_states.
 //! Emits GotNodeStart, GotNodeComplete, GotNodeFailed.
@@ -8,7 +8,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use agent::agent::react::{ActNode, ObserveNode, ThinkNode};
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_graph::{Next, RunContext};
 use loom_llm::message::Message;
 use loom_llm::LlmProvider;
@@ -87,7 +87,7 @@ pub(crate) fn build_sub_task_user_message(
 
 /// ExecuteGraph node: runs ready DAG nodes one at a time; each node runs as a ReAct sub-task.
 ///
-/// Holds LLM and ToolSource to run Think → Act → Observe for each task node.
+/// Holds LLM and ToolSource to run Think ? Act ? Observe for each task node.
 /// Emits GotNodeStart / GotNodeComplete / GotNodeFailed when Custom mode is enabled.
 /// When `adaptive` is true (AGoT), may expand complex nodes into subgraphs after completion.
 /// When `agot_llm_complexity` is true, complexity is decided by LLM instead of heuristic.
@@ -129,7 +129,7 @@ impl ExecuteGraphNode {
     ///
     /// `user_message` is the full user content for the sub-task (task goal, predecessor
     /// results, and this node's description). Built by [`build_sub_task_user_message`].
-    async fn run_sub_task(&self, user_message: &str) -> Result<String, AgentError> {
+    async fn run_sub_task(&self, user_message: &str) -> Result<String, GraphError> {
 let mut state = ReActState {
             model_config: Default::default(),
             messages: vec![
@@ -169,7 +169,7 @@ impl Node<GotState> for ExecuteGraphNode {
         "execute_graph"
     }
 
-    async fn run(&self, state: GotState) -> Result<(GotState, Next), AgentError> {
+    async fn run(&self, state: GotState) -> Result<(GotState, Next), GraphError> {
         let ctx = RunContext::new(loom_memory::RunnableConfig::default());
         self.run_with_context(state, &ctx).await
     }
@@ -178,7 +178,7 @@ impl Node<GotState> for ExecuteGraphNode {
         &self,
         state: GotState,
         ctx: &RunContext<GotState>,
-    ) -> Result<(GotState, Next), AgentError> {
+    ) -> Result<(GotState, Next), GraphError> {
         let ready = ready_nodes(&state.task_graph, &state.node_states);
         if ready.is_empty() {
             return Ok((state, Next::End));
@@ -191,7 +191,7 @@ impl Node<GotState> for ExecuteGraphNode {
             .iter()
             .find(|n| n.id == node_id)
             .map(|n| n.description.clone())
-            .ok_or_else(|| AgentError::ExecutionFailed("node not found".to_string()))?;
+            .ok_or_else(|| GraphError::ExecutionFailed("node not found".to_string()))?;
 
         let user_message = build_sub_task_user_message(&state, &node_id, &description);
 

@@ -10,7 +10,7 @@
 //! ```rust,ignore
 //! use loom_graph::RunContext;
 //!
-//! async fn run_with_context(&self, state: S, ctx: &RunContext<S>) -> Result<(S, crate::next::Next), loom_llm::error::AgentError> {
+//! async fn run_with_context(&self, state: S, ctx: &RunContext<S>) -> Result<(S, crate::next::Next), crate::error::GraphError> {
 //!     // Method 1: Use stream_writer() to get a StreamWriter
 //!     let writer = ctx.stream_writer();
 //!     writer.emit_custom(serde_json::json!({"progress": 50})).await;

@@ -9,7 +9,7 @@ use serde_json::Value;
 use tracing::{debug, trace};
 
 use loom_graph::{run_cancellable, Next, Node, RunContext};
-use loom_llm::{AgentError, LlmClient, LlmProvider, LlmResponse, LlmUsage, Message, ToolCall};
+use loom_llm::{GraphError, LlmClient, LlmProvider, LlmResponse, LlmUsage, Message, ToolCall};
 use loom_stream::{MessageChunk, StreamEvent, StreamEventSink, StreamMetadata, StreamMode};
 use loom_tier::load_provider_configs;
 use loom_tier::resolve_tier_intelligent;
@@ -29,12 +29,12 @@ impl ThinkNode {
         }
     }
 
-    async fn resolve_client(&self, model_config: &ModelConfig) -> Result<Arc<dyn LlmClient>, AgentError> {
+    async fn resolve_client(&self, model_config: &ModelConfig) -> Result<Arc<dyn LlmClient>, GraphError> {
         let model = if !model_config.model_id.is_empty() {
             model_config.model_id.clone()
         } else if model_config.tier != ModelTier::None {
             let providers = load_provider_configs().ok_or_else(|| {
-                AgentError::ExecutionFailed("no provider configs for tier resolution".into())
+                GraphError::ExecutionFailed("no provider configs for tier resolution".into())
             })?;
             let entry = resolve_tier_intelligent(
                 self.provider.provider_name(),
@@ -43,7 +43,7 @@ impl ThinkNode {
             )
             .await
             .ok_or_else(|| {
-                AgentError::ExecutionFailed(format!(
+                GraphError::ExecutionFailed(format!(
                     "no model found for tier {:?} on provider '{}'",
                     model_config.tier,
                     self.provider.provider_name()
@@ -76,7 +76,7 @@ impl ThinkNode {
         tool_calls: &[ToolCall],
         should_stream_tools: bool,
         is_cancelled: impl Fn() -> bool,
-    ) -> Result<(), AgentError> {
+    ) -> Result<(), GraphError> {
         let Some(stream_tx) = ctx.stream_tx.as_ref() else {
             return Ok(());
         };
@@ -95,7 +95,7 @@ impl ThinkNode {
         if should_stream_tools && !tool_calls.is_empty() {
             for tc in tool_calls {
                 if is_cancelled() {
-                    return Err(AgentError::Cancelled);
+                    return Err(GraphError::Cancelled);
                 }
                 let args: Value = serde_json::from_str(&tc.arguments)
                     .unwrap_or_else(|_| Value::String(tc.arguments.clone()));
@@ -155,7 +155,7 @@ async fn invoke_think_llm(
     _should_stream_tools: bool,
     stream_tx: tokio::sync::mpsc::Sender<StreamEvent<ReActState>>,
     node_id: &str,
-) -> Result<(LlmResponse, u64, Option<Instant>), AgentError> {
+) -> Result<(LlmResponse, u64, Option<Instant>), GraphError> {
     if !should_stream {
         // No streaming: skip sink entirely. Tool deltas were never consumed anywhere
         // (only drained by the tool_forward task) and are removed in this refactor.
@@ -182,7 +182,7 @@ impl Node<ReActState> for ThinkNode {
         "think"
     }
 
-    async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
+    async fn run(&self, state: ReActState) -> Result<(ReActState, Next), GraphError> {
         let llm = self.resolve_client(&state.model_config).await?;
         let response = llm.invoke(&state.messages).await?;
         let new_state = state.apply_think(
@@ -198,14 +198,14 @@ impl Node<ReActState> for ThinkNode {
         &self,
         state: ReActState,
         ctx: &RunContext<ReActState>,
-    ) -> Result<(ReActState, Next), AgentError> {
+    ) -> Result<(ReActState, Next), GraphError> {
         let is_cancelled = || {
             ctx.cancellation
                 .as_ref()
                 .is_some_and(tokio_util::sync::CancellationToken::is_cancelled)
         };
         if is_cancelled() {
-            return Err(AgentError::Cancelled);
+            return Err(GraphError::Cancelled);
         }
         let should_stream =
             ctx.stream_mode.contains(&StreamMode::Messages) && ctx.stream_tx.is_some();
@@ -252,7 +252,7 @@ impl Node<ReActState> for ThinkNode {
         };
 
         if is_cancelled() {
-            return Err(AgentError::Cancelled);
+            return Err(GraphError::Cancelled);
         }
 
         let LlmResponse {

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use crate::{CheckpointEvent, StreamMetadata};
-use loom_llm::traits::MessageChunk;
+use crate::message::MessageChunk;
 use serde_json::Value;
 use std::fmt::Debug;
 

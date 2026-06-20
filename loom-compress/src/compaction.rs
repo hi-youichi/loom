@@ -6,7 +6,7 @@
 
 use tracing::{debug, info};
 
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_llm::message::{Message, ToolCallContent, UserContent};
 
 use super::config::CompactionConfig;
@@ -112,7 +112,7 @@ pub async fn compact(
     messages: &[Message],
     llm: &dyn loom_llm::LlmClient,
     config: &CompactionConfig,
-) -> Result<Vec<Message>, AgentError> {
+) -> Result<Vec<Message>, GraphError> {
     let keep = config.compact_keep_recent;
     let message_count = messages.len();
     if message_count <= keep {

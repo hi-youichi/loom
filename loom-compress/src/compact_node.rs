@@ -5,7 +5,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tracing::debug;
 
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_llm::LlmClient;
 use loom_types::state::ReActState;
 use loom_graph::{Next, Node};
@@ -26,7 +26,7 @@ impl Node<ReActState> for CompactNode {
         "compact"
     }
 
-    async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
+    async fn run(&self, state: ReActState) -> Result<(ReActState, Next), GraphError> {
         let message_count = state.messages.len();
         debug!(
             message_count,
@@ -77,7 +77,7 @@ impl Node<ReActState> for CompactNode {
         &self,
         state: ReActState,
         _ctx: &loom_graph::RunContext<ReActState>,
-    ) -> Result<(ReActState, Next), AgentError> {
+    ) -> Result<(ReActState, Next), GraphError> {
         // For now, delegate to run. Implement proper context handling if needed.
         self.run(state).await
     }

@@ -1,4 +1,4 @@
-﻿//! Handle `ToolsList` and `ToolShow` requests.
+//! Handle `ToolsList` and `ToolShow` requests.
 
 use loom::cli_run::build_react_config;
 use loom_protocol::{ErrorResponse, ServerResponse, ToolShowOutput, ToolShowResponse, ToolsListResponse};
@@ -41,6 +41,7 @@ pub(crate) async fn handle_tools_list(
             chat_id: None,
             worktree: false,
             goal_mode: false,
+        force_review: false,
             debug_llm: false,
     };
     let (config, _resolved_agent) = build_react_config(&opts);
@@ -88,6 +89,7 @@ pub(crate) async fn handle_tool_show(
             chat_id: None,
             worktree: false,
             goal_mode: false,
+        force_review: false,
             debug_llm: false,
     };
     let (config, _resolved_agent) = build_react_config(&opts);

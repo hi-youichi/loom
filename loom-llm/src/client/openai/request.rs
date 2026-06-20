@@ -17,7 +17,7 @@ use async_openai::types::chat::{
     FunctionCall, FunctionObject, ImageDetail, ImageUrl, ToolChoiceOptions,
 };
 
-use crate::error::AgentError;
+use crate::error::LlmError;
 use crate::traits::ToolChoiceMode;
 use crate::message::{assistant_content_for_chat_api, check_orphan_tool_calls, message_summary, Message};
 use crate::tool::ToolSpec;
@@ -172,7 +172,7 @@ pub(super) fn build_chat_request(
     temperature: Option<f32>,
     tool_choice: Option<ToolChoiceMode>,
     stream: bool,
-) -> Result<async_openai::types::chat::CreateChatCompletionRequest, AgentError> {
+) -> Result<async_openai::types::chat::CreateChatCompletionRequest, LlmError> {
     debug!(
         model,
         stream,
@@ -236,7 +236,7 @@ pub(super) fn build_chat_request(
 
     let req = args
         .build()
-        .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI request build failed: {}", e)))?;
+        .map_err(|e| LlmError::InvokeFailed(format!("OpenAI request build failed: {}", e)))?;
 
     // tracing::trace!(
     //     request = %serde_json::to_string(&req).unwrap_or_else(|e| format!("<serde error: {e}>")),

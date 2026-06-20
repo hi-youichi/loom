@@ -6,7 +6,7 @@
 
 use async_trait::async_trait;
 
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_graph::{Next, RunContext};
 use loom_llm::message::Message;
 use loom_stream::StreamEvent;
@@ -53,7 +53,7 @@ impl Node<TotState> for BacktrackNode {
         "backtrack"
     }
 
-    async fn run(&self, state: TotState) -> Result<(TotState, Next), AgentError> {
+    async fn run(&self, state: TotState) -> Result<(TotState, Next), GraphError> {
         let mut tot = state.tot;
         let candidates_len = tot.candidates.len();
         let next_index = (0..candidates_len)
@@ -81,7 +81,7 @@ impl Node<TotState> for BacktrackNode {
         &self,
         state: TotState,
         ctx: &RunContext<TotState>,
-    ) -> Result<(TotState, Next), AgentError> {
+    ) -> Result<(TotState, Next), GraphError> {
         let reason = state
             .tot
             .path_failed_reason

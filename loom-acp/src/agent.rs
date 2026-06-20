@@ -1,4 +1,4 @@
-﻿//! ACP Agent implementation: maps protocol requests to Loom execution.
+//! ACP Agent implementation: maps protocol requests to Loom execution.
 //!
 //! [`LoomAcpAgent`] implements `agent_client_protocol::Agent` and maps ACP requests
 //! to Loom sessions and execution. See [`crate::protocol`] for protocol and behavior details.
@@ -813,6 +813,7 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
             chat_id: None,
             worktree: false,
             goal_mode: false,
+        force_review: false,
         };
 
         let session_id = args.session_id.clone();

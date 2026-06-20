@@ -87,6 +87,10 @@ pub(crate) struct Args {
     #[arg(long)]
     pub(crate) debug_llm: bool,
 
+    /// Force a background review of this session immediately after completion (for testing).
+    #[arg(long = "review")]
+    pub(crate) force_review: bool,
+
     /// Log level (tracing EnvFilter syntax). Overrides RUST_LOG when set; default RUST_LOG or info.
     #[arg(long, global = true, value_name = "LEVEL")]
     pub(crate) log_level: Option<String>,
@@ -190,6 +194,9 @@ pub(crate) enum ReviewCommand {
     Session {
         /// Session ID to review
         session_id: String,
+        /// Trigger source for review history (manual, background, batch)
+        #[arg(long, default_value = "manual")]
+        trigger: String,
     },
     /// Batch review multiple sessions
     Sessions {

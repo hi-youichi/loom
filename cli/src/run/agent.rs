@@ -1,4 +1,4 @@
-﻿//! Wraps loom::run_agent_with_options with stderr display callback.
+//! Wraps loom::run_agent_with_options with stderr display callback.
 //! Uses protocol format (type + payload) and optional envelope per protocol_spec.
 
 use chrono::Local;
@@ -1361,6 +1361,7 @@ fn minimal_build_config() -> loom_react_config::ReactBuildConfig {
             chat_id: None,
             worktree: false,
             goal_mode: false,
+        force_review: false,
             debug_llm: false,
         }
     }

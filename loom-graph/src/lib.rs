@@ -8,6 +8,7 @@ pub mod channels;
 pub mod compile_error;
 pub mod compiled;
 pub mod conditional;
+pub mod error;
 pub mod interrupt;
 pub mod logging;
 pub mod logging_middleware;
@@ -29,7 +30,8 @@ pub use channels::{Channel, ChannelError, BinaryOperatorAggregate, EphemeralValu
 pub use compile_error::CompilationError;
 pub use compiled::{CompiledStateGraph, GraphStream};
 pub use conditional::{ConditionalRouter, ConditionalRouterFn};
-pub use interrupt::{InterruptHandler, DefaultInterruptHandler, Interrupt};
+pub use error::{GraphError, Interrupt};
+pub use interrupt::{InterruptHandler, DefaultInterruptHandler};
 pub use logging::{log_node_start, log_node_state, log_node_complete, log_state_update, log_graph_start, log_graph_complete, log_graph_error};
 pub use logging_middleware::LoggingNodeMiddleware;
 pub use managed::{ManagedValue, IsLastStep};

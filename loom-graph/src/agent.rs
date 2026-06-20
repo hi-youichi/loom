@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use loom_llm::error::AgentError;
+use crate::error::GraphError;
 
 use crate::{Next, Node};
 
@@ -39,7 +39,7 @@ pub trait Agent: Send + Sync {
     ///
     /// Caller puts input (e.g. user message) into state before calling;
     /// reads output (e.g. assistant message) from the returned state.
-    async fn run(&self, state: Self::State) -> Result<Self::State, AgentError>;
+    async fn run(&self, state: Self::State) -> Result<Self::State, GraphError>;
 }
 
 /// Wrapper that adapts an [`Agent`] into a [`Node<S>`] for use in `StateGraph::add_node`.
@@ -71,7 +71,7 @@ impl<A: Agent> Node<A::State> for AgentNode<A> {
         self.inner.name()
     }
 
-    async fn run(&self, state: A::State) -> Result<(A::State, Next), AgentError> {
+    async fn run(&self, state: A::State) -> Result<(A::State, Next), GraphError> {
         self.inner.run(state).await.map(|s| (s, Next::Continue))
     }
 }

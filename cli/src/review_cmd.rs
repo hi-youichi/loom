@@ -1,12 +1,9 @@
 use crate::args::{ReviewArgs, ReviewCommand};
 use crate::review_history::{ReviewHistory, ReviewRecord};
-use crate::review_skill_cmd::build_review_client;
+use crate::review_skill_cmd::build_review_react_config;
 use crate::session::SessionManager;
 use chrono::{Duration, Utc};
-use cli::run::memory::MemoryStore;
-use cli::run::review::{ReviewAgent, ReviewConfig, ReviewOutput};
-use cli::run::review_agent_loop::ReviewMode;
-use cli::run::skill_registry::SkillRegistry;
+use loom_background_review::{run_review, ReviewConfig as BgReviewConfig, ReviewOutcome};
 use std::time::Instant;
 
 pub(crate) async fn handle_review_command(
@@ -14,7 +11,10 @@ pub(crate) async fn handle_review_command(
     json: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match &args.command {
-        ReviewCommand::Session { session_id } => do_review_single(session_id, args, json).await,
+        ReviewCommand::Session {
+            session_id,
+            trigger,
+        } => do_review_single(session_id, trigger, args, json).await,
         ReviewCommand::Sessions {
             recent,
             all_unreviewed,
@@ -28,6 +28,7 @@ pub(crate) async fn handle_review_command(
 
 async fn do_review_single(
     session_id: &str,
+    trigger: &str,
     args: &ReviewArgs,
     json: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -60,11 +61,11 @@ async fn do_review_single(
         return Ok(());
     }
 
-    if text.len() < 200 {
+    if text.chars().count() < 200 {
         let record = ReviewRecord {
             session_id: session_id.to_string(),
             reviewed_at: Utc::now(),
-            trigger: "manual".to_string(),
+            trigger: trigger.to_string(),
             model: String::new(),
             memory_update_count: 0,
             skill_update_count: 0,
@@ -84,33 +85,37 @@ async fn do_review_single(
         return Ok(());
     }
 
-    let llm = build_review_client(args.model.as_deref())?;
-    let memory = MemoryStore::new(&MemoryStore::default_path());
-    let skills = SkillRegistry::new(&loom_background_review::skill_registry::default_path());
+    let model_name = args.model.as_deref().unwrap_or("(default)");
 
-    let review_config = ReviewConfig {
-        auto_create_threshold: 1,
-        max_session_chars: 24000,
-        max_iterations: 10,
-        mode: ReviewMode::Json,
-    };
-    let agent = ReviewAgent::with_config(llm, memory, skills, review_config);
+    let mut review_config = BgReviewConfig::default();
+    if args.memory_only {
+        review_config.review_skills = false;
+    }
+    if args.skills_only {
+        review_config.review_memory = false;
+    }
 
     if !json {
         eprintln!("Reviewing session: {}", session_id);
+        eprintln!("  Model:    {}", model_name);
+        eprintln!("  Content:  {} chars", text.len());
+        eprintln!("  Trigger:  {}", trigger);
     }
 
-    match agent.review_session(&text).await {
-        Ok(output) => {
+    let react_config = build_review_react_config(args.model.as_deref())?;
+    let checkpoint_id = session_id.to_string();
+
+    match run_review(react_config, checkpoint_id, &text, &review_config).await {
+        Ok(outcome) => {
             let record = ReviewRecord {
                 session_id: session_id.to_string(),
                 reviewed_at: Utc::now(),
-                trigger: "manual".to_string(),
+                trigger: trigger.to_string(),
                 model: String::new(),
-                memory_update_count: output.memory_updates.len(),
-                skill_update_count: output.skill_suggestions.len(),
-                skipped: false,
-                skip_reason: None,
+                memory_update_count: outcome.memory_count,
+                skill_update_count: outcome.skill_count,
+                skipped: outcome.skipped,
+                skip_reason: outcome.skip_reason.clone(),
                 duration_ms: start.elapsed().as_millis() as u64,
             };
             history.append(&record)?;
@@ -118,19 +123,31 @@ async fn do_review_single(
             if json {
                 let result = serde_json::json!({
                     "record": record,
-                    "output": output,
+                    "outcome": {
+                        "actions": outcome.actions,
+                        "summary": outcome.summary,
+                        "memory_count": outcome.memory_count,
+                        "skill_count": outcome.skill_count,
+                        "tool_violations": outcome.tool_violations,
+                        "duration_ms": outcome.duration_ms,
+                        "skipped": outcome.skipped,
+                        "skip_reason": outcome.skip_reason,
+                    },
                 });
                 println!("{}", serde_json::to_string_pretty(&result)?);
             } else {
-                print_review_output(&output, args.verbose);
-                eprintln!("Duration: {}ms", start.elapsed().as_millis());
+                print_review_outcome(&outcome, args.verbose);
+                eprintln!(
+                    "Duration: {}",
+                    format_duration_ms(start.elapsed().as_millis() as u64)
+                );
             }
         }
         Err(e) => {
             let record = ReviewRecord {
                 session_id: session_id.to_string(),
                 reviewed_at: Utc::now(),
-                trigger: "manual".to_string(),
+                trigger: trigger.to_string(),
                 model: String::new(),
                 memory_update_count: 0,
                 skill_update_count: 0,
@@ -139,7 +156,7 @@ async fn do_review_single(
                 duration_ms: start.elapsed().as_millis() as u64,
             };
             history.append(&record)?;
-            return Err(e.into());
+            return Err(e.to_string().into());
         }
     }
     Ok(())
@@ -225,6 +242,7 @@ async fn do_review_batch(
         let single_args = ReviewArgs {
             command: ReviewCommand::Session {
                 session_id: session.session_id.clone(),
+                trigger: "batch".to_string(),
             },
             model: args.model.clone(),
             verbose: false,
@@ -233,8 +251,22 @@ async fn do_review_batch(
             skills_only: args.skills_only,
         };
 
-        match do_review_single(&session.session_id, &single_args, false).await {
-            Ok(()) => reviewed_count += 1,
+        let single_start = Instant::now();
+        match do_review_single(
+            &session.session_id,
+            "batch",
+            &single_args,
+            true,
+        )
+        .await
+        {
+            Ok(()) => {
+                eprintln!(
+                    "OK ({}s)",
+                    single_start.elapsed().as_millis() as f64 / 1000.0
+                );
+                reviewed_count += 1;
+            }
             Err(e) => {
                 eprintln!("ERROR: {}", e);
                 skipped_count += 1;
@@ -392,28 +424,43 @@ fn parse_duration_days(s: &str) -> Result<usize, String> {
     }
 }
 
-fn print_review_output(output: &ReviewOutput, verbose: bool) {
-    if output.memory_updates.is_empty() && output.skill_suggestions.is_empty() {
-        println!("  No updates extracted.");
+fn print_review_outcome(outcome: &ReviewOutcome, verbose: bool) {
+    if outcome.skipped {
+        println!(
+            "  Skipped: {}",
+            outcome.skip_reason.as_deref().unwrap_or("unknown")
+        );
         return;
     }
 
-    for update in &output.memory_updates {
+    if outcome.actions.is_empty() {
+        println!("  No actions taken.");
+        return;
+    }
+
+    for action in &outcome.actions {
+        let status = if action.succeeded { "OK" } else { "FAIL" };
         println!(
-            "  + {} ({}): {} chars",
-            update.action,
-            update.file,
-            update.content.len()
+            "  [{}] {} ({})",
+            status, action.target, action.kind
         );
-        if verbose && update.content.len() <= 300 {
-            println!("    {}", update.content);
+        if verbose && !action.summary.is_empty() {
+            println!("    {}", action.summary);
         }
     }
 
-    for skill in &output.skill_suggestions {
-        println!("  ~ {}: {}", skill.name, skill.description);
-        if verbose {
-            println!("    Triggers: {:?}", skill.triggers);
+    if !outcome.tool_violations.is_empty() {
+        println!("  Violations: {}", outcome.tool_violations.len());
+        for v in &outcome.tool_violations {
+            println!("    - {}", v);
         }
+    }
+}
+
+fn format_duration_ms(ms: u64) -> String {
+    if ms < 1000 {
+        format!("{}ms", ms)
+    } else {
+        format!("{:.1}s", ms as f64 / 1000.0)
     }
 }

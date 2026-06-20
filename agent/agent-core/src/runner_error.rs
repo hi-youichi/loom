@@ -1,5 +1,5 @@
 use loom_graph::CompilationError;
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_memory::CheckpointError;
 
 #[derive(Debug, thiserror::Error)]
@@ -9,14 +9,14 @@ pub enum RunnerError {
     #[error("checkpoint error: {0}")]
     Checkpoint(#[from] CheckpointError),
     #[error("execution failed: {0}")]
-    Execution(#[from] AgentError),
+    Execution(#[from] GraphError),
     #[error("stream ended without final state")]
     StreamEndedWithoutState,
 }
 
 impl From<std::io::Error> for RunnerError {
     fn from(e: std::io::Error) -> Self {
-        RunnerError::Execution(AgentError::ExecutionFailed(e.to_string()))
+        RunnerError::Execution(GraphError::ExecutionFailed(e.to_string()))
     }
 }
 

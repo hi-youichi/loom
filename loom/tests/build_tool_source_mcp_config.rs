@@ -1,4 +1,4 @@
-﻿//! L2 e2e: mcp_servers from config injected into build_react_run_context / build_tool_source.
+//! L2 e2e: mcp_servers from config injected into build_react_run_context / build_tool_source.
 //!
 //! Scheme B: no real MCP process; assert build does not panic and tool source is built.
 
@@ -48,6 +48,7 @@ fn opts(working_folder: PathBuf) -> RunOptions {
             chat_id: None,
             worktree: false,
             goal_mode: false,
+        force_review: false,
         }
 }
 

@@ -7,7 +7,6 @@ license.workspace = true
 
 [dependencies]
 # Core dependencies
-loom-llm = { path = "../loom-llm" }
 loom-graph = { path = "../loom-graph" }
 stream-event = { path = "../stream-event" }
 

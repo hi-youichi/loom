@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_llm::support::audit::LlmAuditLog;
 use loom_llm::{ChatOpenAI, ChatOpenAICompat, LlmClient, LlmProvider, ModelEntry};
 use loom_llm::client::{FixedLlmProvider, RetryLlmClient};
@@ -58,7 +58,7 @@ pub(crate) fn model_entry_from_config(
         .clone()
         .or_else(|| std::env::var("OPENAI_API_KEY").ok())
         .ok_or_else(|| {
-            BuildRunnerError::Context(AgentError::ExecutionFailed(
+            BuildRunnerError::Context(GraphError::ExecutionFailed(
                 "OPENAI_API_KEY is not set".to_string(),
             ))
         })?;
@@ -191,13 +191,13 @@ pub async fn build_default_llm_with_tool_source(
                 .clone()
                 .or_else(|| std::env::var("OPENAI_BASE_URL").ok())
                 .ok_or_else(|| {
-                    BuildRunnerError::Context(AgentError::ExecutionFailed(format!(
+                    BuildRunnerError::Context(GraphError::ExecutionFailed(format!(
                         "OPENAI_BASE_URL is required for non-openai provider '{}'",
                         provider_type
                     )))
                 })?;
             let api_key = entry.api_key.clone().ok_or_else(|| {
-                BuildRunnerError::Context(AgentError::ExecutionFailed(format!(
+                BuildRunnerError::Context(GraphError::ExecutionFailed(format!(
                     "api_key is required for provider '{}'",
                     provider_type
                 )))

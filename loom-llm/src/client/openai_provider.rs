@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use async_openai::config::OpenAIConfig;
 
-use crate::error::AgentError;
+use loom_graph::GraphError;
 use crate::client::ChatOpenAI;
 use crate::traits::{LlmClient, LlmProvider, LlmHeaders};
 use crate::registry::{ModelEntry, ProviderConfig};
@@ -37,7 +37,7 @@ impl OpenAIProvider {
 
 #[async_trait]
 impl LlmProvider for OpenAIProvider {
-    fn create_client(&self, model: &str) -> Result<Box<dyn LlmClient>, AgentError> {
+    fn create_client(&self, model: &str) -> Result<Box<dyn LlmClient>, GraphError> {
         let client = ChatOpenAI::with_config(self.config.clone(), model);
         Ok(Box::new(client))
     }
@@ -46,7 +46,7 @@ impl LlmProvider for OpenAIProvider {
         &self,
         model: &str,
         headers: Option<LlmHeaders>,
-    ) -> Result<Box<dyn LlmClient>, AgentError> {
+    ) -> Result<Box<dyn LlmClient>, GraphError> {
         let mut client = ChatOpenAI::with_config(self.config.clone(), model);
         if let Some(h) = headers {
             client = client.with_headers(h);

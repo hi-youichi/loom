@@ -3,32 +3,29 @@
 //! This crate provides the background review functionality that analyzes
 //! completed conversations and updates memory/skills. It includes:
 //!
-//! - **Agent Loop**: Review agent that processes conversations using LLM tools
+//! - **Review**: ReAct-based agent fork that processes conversations using LLM tools
+//! - **Tool Gate**: Whitelist filter for review-time tool access
 //! - **Curator**: Skill lifecycle management and consolidation
-//! - **Memory Store**: Persistent memory for user/project facts
-//! - **Skill Registry**: Skill library with lifecycle management
-//! - **Tool Executor**: Review tool implementations for the agent
-//! - **Workflow**: Background review task orchestration
+//! - **Prompts**: Detailed review prompts aligned with Hermes
+//! - **History / Observability**: Review record persistence and metrics
+//! - **Workflow**: Global task registry and Curator auto-run
 
-pub mod agent_loop;
 pub mod curator;
 pub mod curator_backup;
-	pub mod history;
-	pub mod observability;
+pub mod history;
+pub mod observability;
 pub mod prompts;
 pub mod review;
 pub mod review_tool_gate;
 pub mod security;
 pub mod skill_registry;
-pub mod tools;
 pub mod workflow;
 
 // Re-export key types for convenience
-pub use agent_loop::{
-    AgentReviewRunner, AgentReviewConfig, ReviewMode, AgentReviewResult,
-    build_review_agent_client,
+pub use review::{
+    REVIEW_INSTRUCTION, ReviewActionSummary, ReviewConfig,
+    ReviewOutcome, run_review, spawn_background_review, spawn_review_after_session,
 };
-pub use review::{ReviewActionSummary, ReviewOutcome, run_review};
 pub use review_tool_gate::{ReviewToolGate, REVIEW_ALLOWED_TOOLS};
 
 pub use skill_registry::{SkillRegistry, SkillContent, SkillMeta, SkillError, Lifecycle, Source};
@@ -43,13 +40,10 @@ pub use curator::{
     parse_llm_review_response, build_llm_prompt, reconcile_classification,
 };
 pub use curator_backup::{CuratorBackup, BackupError, SnapshotMeta};
-pub use tools::{ReviewToolExecutor, ReviewAction, review_tool_specs};
 pub use history::{ReviewHistory, ReviewRecord};
 pub use observability::ObservabilityStore;
 
 pub use workflow::{
-    BackgroundReviewConfig, BackgroundReviewHandle, PendingReviewRegistry,
-    ReviewOutputFn, BackgroundReviewCallbacks, spawn_background_review, wait_for_pending_reviews,
-    run_background_review_workflow, run_background_review_inner,
-    build_background_config_from_opts_ext,
+    run_curator_if_needed,
+    skills_default_path_public, wait_for_pending_reviews,
 };

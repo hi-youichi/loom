@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_graph::{Next, RunContext};
 use loom_llm::LlmClient;
 use loom_llm::message::Message;
@@ -92,7 +92,7 @@ impl Node<GotState> for PlanGraphNode {
         "plan_graph"
     }
 
-    async fn run(&self, state: GotState) -> Result<(GotState, Next), AgentError> {
+    async fn run(&self, state: GotState) -> Result<(GotState, Next), GraphError> {
         let ctx = loom_graph::RunContext::new(loom_memory::RunnableConfig::default());
         self.run_with_context(state, &ctx).await
     }
@@ -101,7 +101,7 @@ impl Node<GotState> for PlanGraphNode {
         &self,
         state: GotState,
         ctx: &RunContext<GotState>,
-    ) -> Result<(GotState, Next), AgentError> {
+    ) -> Result<(GotState, Next), GraphError> {
         let messages = vec![
             Message::system(GOT_PLAN_SYSTEM),
             Message::user(state.input_message.clone()),

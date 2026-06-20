@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::RwLock;
 
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_llm::traits::{LlmClient, LlmProvider};
 use loom_llm::{ChatOpenAI, ChatOpenAICompat, OpenAICompatProvider, OpenAIProvider};
 use loom_model_spec::Provider as SpecProvider;
@@ -94,7 +94,7 @@ impl ModelRegistry {
     pub async fn list_all_models_result(
         &self,
         providers: &[ProviderConfig],
-    ) -> Result<Vec<ModelEntry>, AgentError> {
+    ) -> Result<Vec<ModelEntry>, GraphError> {
         if providers.is_empty() {
             tracing::info!(
                 total_models = 0,
@@ -220,7 +220,7 @@ impl ModelRegistry {
         &self,
         combined_id: &str,
         providers: &[ProviderConfig],
-    ) -> Result<Option<ModelEntry>, AgentError> {
+    ) -> Result<Option<ModelEntry>, GraphError> {
         let Some((provider_name, model_id)) = combined_id.split_once('/') else {
             return Ok(None);
         };
@@ -270,7 +270,7 @@ impl ModelRegistry {
 
     async fn fetch_or_get_cached_spec_providers(
         &self,
-    ) -> Result<HashMap<String, SpecProvider>, AgentError> {
+    ) -> Result<HashMap<String, SpecProvider>, GraphError> {
         {
             let inner = self.inner.read().await;
             if let Some(cached) = &inner.cache {
@@ -284,7 +284,7 @@ impl ModelRegistry {
             .fetch_all_providers()
             .await
             .map_err(|e| {
-                AgentError::ExecutionFailed(format!("failed to fetch model spec providers: {e}"))
+                GraphError::ExecutionFailed(format!("failed to fetch model spec providers: {e}"))
             })?;
         let providers: HashMap<String, SpecProvider> = fetched
             .into_iter()
@@ -352,7 +352,7 @@ impl ModelRegistry {
     pub async fn fetch_provider_models_cached(
         &self,
         provider: &ProviderConfig,
-    ) -> Result<Vec<ModelEntry>, AgentError> {
+    ) -> Result<Vec<ModelEntry>, GraphError> {
         if let Some(cached) = self.get_cached_provider_models(&provider.name).await {
             tracing::debug!(
                 provider = %provider.name,
@@ -376,9 +376,9 @@ impl ModelRegistry {
     async fn fetch_provider_models_api(
         &self,
         provider: &ProviderConfig,
-    ) -> Result<Vec<ModelEntry>, AgentError> {
+    ) -> Result<Vec<ModelEntry>, GraphError> {
         let base_url = provider.base_url.as_ref().ok_or_else(|| {
-            AgentError::ExecutionFailed(format!("Provider {} has no base_url configured", provider.name))
+            GraphError::ExecutionFailed(format!("Provider {} has no base_url configured", provider.name))
         })?;
 
         let url = format!("{}/models", base_url.trim_end_matches('/'));
@@ -418,7 +418,7 @@ struct OpenAiModelItem {
 async fn fetch_models_from_api(
     url: &str,
     api_key: Option<&str>,
-) -> Result<Vec<String>, AgentError> {
+) -> Result<Vec<String>, GraphError> {
     let client = reqwest::Client::new();
     let mut req = client.get(url);
     if let Some(key) = api_key {
@@ -430,12 +430,12 @@ async fn fetch_models_from_api(
         .send()
         .await
         .map_err(|e| {
-            AgentError::ExecutionFailed(format!("failed to fetch models from {url}: {e}"))
+            GraphError::ExecutionFailed(format!("failed to fetch models from {url}: {e}"))
         })?
         .json()
         .await
         .map_err(|e| {
-            AgentError::ExecutionFailed(format!("failed to parse models response from {url}: {e}"))
+            GraphError::ExecutionFailed(format!("failed to parse models response from {url}: {e}"))
         })?;
     Ok(resp.data.into_iter().map(|m| m.id).collect())
 }
@@ -444,7 +444,7 @@ async fn fetch_models_from_api(
 pub fn create_llm_client(
     entry: &ModelEntry,
     headers: Option<loom_llm::traits::LlmHeaders>,
-) -> Result<Box<dyn LlmClient>, AgentError> {
+) -> Result<Box<dyn LlmClient>, GraphError> {
     let model = entry.name.clone();
     let provider_type = entry.provider_type.as_deref().unwrap_or_else(|| {
         if entry.provider.eq_ignore_ascii_case("openai") {
@@ -478,7 +478,7 @@ pub fn create_llm_client(
         }
         _ => {
             let api_key = entry.api_key.clone().ok_or_else(|| {
-                AgentError::ExecutionFailed(format!(
+                GraphError::ExecutionFailed(format!(
                     "api_key is required for provider '{}'",
                     provider_type
                 ))
@@ -488,7 +488,7 @@ pub fn create_llm_client(
                 .clone()
                 .or_else(|| std::env::var("OPENAI_BASE_URL").ok())
                 .ok_or_else(|| {
-                    AgentError::ExecutionFailed(format!(
+                    GraphError::ExecutionFailed(format!(
                         "base_url (or OPENAI_BASE_URL) is required for non-openai provider '{}'",
                         provider_type
                     ))
@@ -514,7 +514,7 @@ pub fn create_llm_client(
 pub fn create_llm_provider(
     entry: &ModelEntry,
     providers: Vec<ProviderConfig>,
-) -> Result<Arc<dyn LlmProvider>, AgentError> {
+) -> Result<Arc<dyn LlmProvider>, GraphError> {
     let provider_type = entry.provider_type.as_deref().unwrap_or_else(|| {
         if entry.provider.eq_ignore_ascii_case("openai") {
             "openai"

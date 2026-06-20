@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 
-use crate::error::AgentError;
+use crate::error::LlmError;
 use crate::traits::{LlmClient, LlmResponse, LlmUsage, StreamSink};
 use crate::message::Message;
 use crate::tool::ToolCall;
@@ -145,7 +145,7 @@ impl MockLlm {
 
 #[async_trait]
 impl LlmClient for MockLlm {
-    async fn invoke(&self, _messages: &[Message]) -> Result<LlmResponse, AgentError> {
+    async fn invoke(&self, _messages: &[Message]) -> Result<LlmResponse, LlmError> {
         let (content, tool_calls) = match &self.call_count {
             Some(c) => {
                 let n = c.fetch_add(1, Ordering::SeqCst);
@@ -182,7 +182,7 @@ impl LlmClient for MockLlm {
         messages: &[Message],
         sink: Option<&dyn StreamSink>,
         node_id: &str,
-    ) -> Result<LlmResponse, AgentError> {
+    ) -> Result<LlmResponse, LlmError> {
         // Get the response content (handles stateful mode)
         let response = self.invoke(messages).await?;
 
@@ -222,7 +222,7 @@ impl LlmClient for MockLlm {
         Ok(response)
     }
 
-    async fn list_models(&self) -> Result<Vec<crate::traits::ModelInfo>, AgentError> {
+    async fn list_models(&self) -> Result<Vec<crate::traits::ModelInfo>, LlmError> {
         Ok(vec![crate::traits::ModelInfo {
             id: "mock-model".to_string(),
             created: None,
@@ -253,7 +253,7 @@ impl MultiRoundMockLlm {
 
 #[async_trait]
 impl LlmClient for MultiRoundMockLlm {
-    async fn invoke(&self, _messages: &[Message]) -> Result<LlmResponse, AgentError> {
+    async fn invoke(&self, _messages: &[Message]) -> Result<LlmResponse, LlmError> {
         let idx = self.current.fetch_add(1, Ordering::SeqCst);
         let idx = idx.min(self.rounds.len() - 1);
         let (content, tool_calls) = self.rounds[idx].clone();
@@ -266,7 +266,7 @@ impl LlmClient for MultiRoundMockLlm {
         })
     }
 
-    async fn list_models(&self) -> Result<Vec<crate::traits::ModelInfo>, AgentError> {
+    async fn list_models(&self) -> Result<Vec<crate::traits::ModelInfo>, LlmError> {
         Ok(vec![crate::traits::ModelInfo {
             id: "mock-model".to_string(),
             created: None,

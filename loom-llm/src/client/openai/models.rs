@@ -2,26 +2,26 @@
 
 use async_openai::config::Config;
 
-use crate::error::AgentError;
+use crate::error::LlmError;
 use crate::traits::ModelInfo;
 
 /// Fetch models from the provider's `/models` endpoint.
 ///
 /// Uses `reqwest` directly (not `async_openai`) because some gateways
 /// omit `created` and `async_openai::Model` fails to deserialize.
-pub(super) async fn list_models(config: &impl Config) -> Result<Vec<ModelInfo>, AgentError> {
+pub(super) async fn list_models(config: &impl Config) -> Result<Vec<ModelInfo>, LlmError> {
     let url = config.url("/models");
     let res = reqwest::Client::new()
         .get(&url)
         .headers(config.headers())
         .send()
         .await
-        .map_err(|e| AgentError::ExecutionFailed(format!("Failed to list models: {}", e)))?;
+        .map_err(|e| LlmError::InvokeFailed(format!("Failed to list models: {}", e)))?;
 
     if !res.status().is_success() {
         let status = res.status();
         let body = res.text().await.unwrap_or_default();
-        return Err(AgentError::ExecutionFailed(format!(
+        return Err(LlmError::InvokeFailed(format!(
             "Failed to list models: {} - {}",
             status, body
         )));
@@ -30,10 +30,10 @@ pub(super) async fn list_models(config: &impl Config) -> Result<Vec<ModelInfo>, 
     let body = res
         .text()
         .await
-        .map_err(|e| AgentError::ExecutionFailed(format!("Failed to list models: {}", e)))?;
+        .map_err(|e| LlmError::InvokeFailed(format!("Failed to list models: {}", e)))?;
 
     let parsed: OpenAiListModelsBody = serde_json::from_str(&body).map_err(|e| {
-        AgentError::ExecutionFailed(format!(
+        LlmError::InvokeFailed(format!(
             "Failed to list models: failed to deserialize api response: {} content:{}",
             e, body
         ))

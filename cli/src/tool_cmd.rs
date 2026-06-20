@@ -1,4 +1,4 @@
-﻿//! Tool subcommand: list tools and show tool definition.
+//! Tool subcommand: list tools and show tool definition.
 //!
 //! Lists or displays tool specs (name, description, input_schema) from the same
 //! tool source used by agent runners. Uses [`build_react_config`](crate::run::build_react_config)
@@ -10,7 +10,7 @@
 //! placeholder message (not used for execution).
 
 use tool_core::ToolSpec;
-use loom_llm::AgentError;
+use loom_graph::GraphError;
 use agent::{build_react_run_context, BuildRunnerError};
 use serde::Serialize;
 
@@ -58,7 +58,7 @@ pub fn format_tools_list(tools: &[ToolSpec], output_json: bool) -> Result<(), Ru
         println!(
             "{}",
             serde_json::to_string_pretty(&list).map_err(|e| {
-                RunError::Build(BuildRunnerError::Context(AgentError::ExecutionFailed(
+                RunError::Build(BuildRunnerError::Context(GraphError::ExecutionFailed(
                     e.to_string(),
                 )))
             })?
@@ -100,7 +100,7 @@ pub fn format_tool_show_output(
                 print!("{}", yaml);
             } else if let Some(ref v) = r.tool {
                 let yaml = serde_yaml::to_string(v).map_err(|e| {
-                    RunError::Build(BuildRunnerError::Context(AgentError::ExecutionFailed(
+                    RunError::Build(BuildRunnerError::Context(GraphError::ExecutionFailed(
                         e.to_string(),
                     )))
                 })?;
@@ -116,7 +116,7 @@ pub fn format_tool_show_output(
                 println!(
                     "{}",
                     serde_json::to_string_pretty(v).map_err(|e| {
-                        RunError::Build(BuildRunnerError::Context(AgentError::ExecutionFailed(
+                        RunError::Build(BuildRunnerError::Context(GraphError::ExecutionFailed(
                             e.to_string(),
                         )))
                     })?
@@ -127,7 +127,7 @@ pub fn format_tool_show_output(
                 println!(
                     "{}",
                     serde_json::to_string_pretty(&v).map_err(|e| {
-                        RunError::Build(BuildRunnerError::Context(AgentError::ExecutionFailed(
+                        RunError::Build(BuildRunnerError::Context(GraphError::ExecutionFailed(
                             e.to_string(),
                         )))
                     })?
@@ -180,7 +180,7 @@ pub async fn show_tool(
     match format {
         ToolShowFormat::Yaml => {
             let yaml = serde_yaml::to_string(&out).map_err(|e| {
-                RunError::Build(BuildRunnerError::Context(AgentError::ExecutionFailed(
+                RunError::Build(BuildRunnerError::Context(GraphError::ExecutionFailed(
                     e.to_string(),
                 )))
             })?;
@@ -188,7 +188,7 @@ pub async fn show_tool(
         }
         ToolShowFormat::Json => {
             let json = serde_json::to_string_pretty(&out).map_err(|e| {
-                RunError::Build(BuildRunnerError::Context(AgentError::ExecutionFailed(
+                RunError::Build(BuildRunnerError::Context(GraphError::ExecutionFailed(
                     e.to_string(),
                 )))
             })?;
@@ -279,6 +279,7 @@ mod tests {
             chat_id: None,
             worktree: false,
             goal_mode: false,
+        force_review: false,
             debug_llm: false,
         }
     }

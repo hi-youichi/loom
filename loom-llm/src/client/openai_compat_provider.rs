@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 
-use crate::error::AgentError;
+use loom_graph::GraphError;
 use crate::client::ChatOpenAICompat;
 use crate::traits::{LlmClient, LlmProvider, LlmHeaders};
 use crate::registry::{ModelEntry, ProviderConfig};
@@ -35,7 +35,7 @@ impl OpenAICompatProvider {
 
 #[async_trait]
 impl LlmProvider for OpenAICompatProvider {
-    fn create_client(&self, model: &str) -> Result<Box<dyn LlmClient>, AgentError> {
+    fn create_client(&self, model: &str) -> Result<Box<dyn LlmClient>, GraphError> {
         let client =
             ChatOpenAICompat::with_config(self.base_url.clone(), self.api_key.clone(), model);
         Ok(Box::new(client))
@@ -45,7 +45,7 @@ impl LlmProvider for OpenAICompatProvider {
         &self,
         model: &str,
         headers: Option<LlmHeaders>,
-    ) -> Result<Box<dyn LlmClient>, AgentError> {
+    ) -> Result<Box<dyn LlmClient>, GraphError> {
         let mut client =
             ChatOpenAICompat::with_config(self.base_url.clone(), self.api_key.clone(), model);
         if let Some(h) = headers {

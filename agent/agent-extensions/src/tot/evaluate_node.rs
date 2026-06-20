@@ -6,7 +6,7 @@
 
 use async_trait::async_trait;
 
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_graph::{Next, RunContext};
 use loom_llm::message::Message;
 use loom_stream::StreamEvent;
@@ -124,7 +124,7 @@ impl Node<TotState> for ThinkEvaluateNode {
         "think_evaluate"
     }
 
-    async fn run(&self, state: TotState) -> Result<(TotState, Next), AgentError> {
+    async fn run(&self, state: TotState) -> Result<(TotState, Next), GraphError> {
         let mut tot = state.tot;
         if tot.candidates.is_empty() {
             tot.chosen_index = None;
@@ -158,7 +158,7 @@ impl Node<TotState> for ThinkEvaluateNode {
         &self,
         state: TotState,
         ctx: &RunContext<TotState>,
-    ) -> Result<(TotState, Next), AgentError> {
+    ) -> Result<(TotState, Next), GraphError> {
         let (out, next) = self.run(state).await?;
         if let (Some(tx), Some(chosen)) = (ctx.stream_tx.as_ref(), out.tot.chosen_index) {
             let scores: Vec<f32> = out.tot.candidates.iter().filter_map(|c| c.score).collect();

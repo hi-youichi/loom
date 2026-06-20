@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use std::fmt::Debug;
 use std::pin::Pin;
 
-use loom_llm::error::AgentError;
+use crate::error::GraphError;
 
 use crate::next::Next;
 
@@ -32,8 +32,8 @@ where
             dyn FnOnce(
                     S,
                 ) -> Pin<
-                    Box<dyn std::future::Future<Output = Result<(S, Next), AgentError>> + Send>,
+                    Box<dyn std::future::Future<Output = Result<(S, Next), GraphError>> + Send>,
                 > + Send,
         >,
-    ) -> Result<(S, Next), AgentError>;
+    ) -> Result<(S, Next), GraphError>;
 }

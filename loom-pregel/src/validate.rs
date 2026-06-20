@@ -6,7 +6,7 @@
 
 use std::collections::HashSet;
 
-use loom_llm::AgentError;
+use loom_graph::GraphError;
 use crate::channel::ChannelKind;
 use crate::config::PregelConfig;
 use crate::node::{PregelGraph, PregelNode};
@@ -17,7 +17,7 @@ impl PregelGraph {
     ///
     /// This is the same validation used by [`crate::PregelRuntime`]
     /// before executing or exporting a graph.
-    pub fn validate_with_config(&self, config: &PregelConfig) -> Result<(), AgentError> {
+    pub fn validate_with_config(&self, config: &PregelConfig) -> Result<(), GraphError> {
         for (name, spec) in &self.channels {
             validate_channel_name(name, &spec.kind)?;
         }
@@ -43,24 +43,24 @@ impl PregelGraph {
     }
 }
 
-fn validate_channel_name(name: &str, kind: &ChannelKind) -> Result<(), AgentError> {
+fn validate_channel_name(name: &str, kind: &ChannelKind) -> Result<(), GraphError> {
     if name == TASKS_CHANNEL {
         if matches!(kind, ChannelKind::Tasks) {
             return Ok(());
         }
-        return Err(AgentError::ExecutionFailed(format!(
+        return Err(GraphError::ExecutionFailed(format!(
             "reserved channel {TASKS_CHANNEL} must use ChannelKind::Tasks"
         )));
     }
 
     if matches_reserved_name(name) {
-        return Err(AgentError::ExecutionFailed(format!(
+        return Err(GraphError::ExecutionFailed(format!(
             "channel name {name} is reserved"
         )));
     }
 
     if matches!(kind, ChannelKind::Tasks) {
-        return Err(AgentError::ExecutionFailed(format!(
+        return Err(GraphError::ExecutionFailed(format!(
             "ChannelKind::Tasks must use reserved channel name {TASKS_CHANNEL}"
         )));
     }
@@ -68,9 +68,9 @@ fn validate_channel_name(name: &str, kind: &ChannelKind) -> Result<(), AgentErro
     Ok(())
 }
 
-fn validate_node_name(name: &str) -> Result<(), AgentError> {
+fn validate_node_name(name: &str) -> Result<(), GraphError> {
     if matches_reserved_name(name) {
-        return Err(AgentError::ExecutionFailed(format!(
+        return Err(GraphError::ExecutionFailed(format!(
             "node name {name} is reserved"
         )));
     }
@@ -82,7 +82,7 @@ fn validate_node_channels(
     node: &dyn PregelNode,
     known_channels: &HashSet<String>,
     subscribed_channels: &mut HashSet<String>,
-) -> Result<(), AgentError> {
+) -> Result<(), GraphError> {
     let reads_push_payload = node
         .triggers()
         .iter()
@@ -90,7 +90,7 @@ fn validate_node_channels(
 
     for trigger in node.triggers() {
         if !known_channels.contains(trigger) {
-            return Err(AgentError::ExecutionFailed(format!(
+            return Err(GraphError::ExecutionFailed(format!(
                 "node {node_name} subscribes to unknown channel {trigger}"
             )));
         }
@@ -102,7 +102,7 @@ fn validate_node_channels(
             continue;
         }
         if !known_channels.contains(read) {
-            return Err(AgentError::ExecutionFailed(format!(
+            return Err(GraphError::ExecutionFailed(format!(
                 "node {node_name} reads unknown channel {read}"
             )));
         }
@@ -115,10 +115,10 @@ fn validate_input_channels(
     input_channels: &[String],
     known_channels: &HashSet<String>,
     _subscribed_channels: &HashSet<String>,
-) -> Result<(), AgentError> {
+) -> Result<(), GraphError> {
     for channel in input_channels {
         if !known_channels.contains(channel) {
-            return Err(AgentError::ExecutionFailed(format!(
+            return Err(GraphError::ExecutionFailed(format!(
                 "input channel {channel} is not defined"
             )));
         }
@@ -129,10 +129,10 @@ fn validate_input_channels(
 fn validate_output_channels(
     output_channels: &[String],
     known_channels: &HashSet<String>,
-) -> Result<(), AgentError> {
+) -> Result<(), GraphError> {
     for channel in output_channels {
         if !known_channels.contains(channel) {
-            return Err(AgentError::ExecutionFailed(format!(
+            return Err(GraphError::ExecutionFailed(format!(
                 "output channel {channel} is not defined"
             )));
         }
@@ -144,10 +144,10 @@ fn validate_interrupt_nodes(
     nodes: &[String],
     label: &str,
     known_nodes: &std::collections::HashMap<String, std::sync::Arc<dyn PregelNode>>,
-) -> Result<(), AgentError> {
+) -> Result<(), GraphError> {
     for node in nodes {
         if !known_nodes.contains_key(node) {
-            return Err(AgentError::ExecutionFailed(format!(
+            return Err(GraphError::ExecutionFailed(format!(
                 "{label} references unknown node {node}"
             )));
         }
@@ -214,7 +214,7 @@ mod tests {
             &self,
             _input: crate::node::PregelNodeInput,
             _ctx: &crate::node::PregelNodeContext,
-        ) -> Result<crate::node::PregelNodeOutput, loom_llm::AgentError> {
+        ) -> Result<crate::node::PregelNodeOutput, loom_graph::GraphError> {
             Ok(crate::node::PregelNodeOutput::default())
         }
 

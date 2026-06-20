@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_graph::Next;
 use loom_llm::LlmClient;
 use loom_llm::message::Message;
@@ -118,7 +118,7 @@ fn extract_json_array(line: &str) -> Option<Vec<String>> {
 impl Node<DupState> for UnderstandNode {
     fn id(&self) -> &str { "understand" }
 
-    async fn run(&self, mut state: DupState) -> Result<(DupState, Next), AgentError> {
+    async fn run(&self, mut state: DupState) -> Result<(DupState, Next), GraphError> {
         // Build messages: system prompt + last user message
         let last_user = state
             .core

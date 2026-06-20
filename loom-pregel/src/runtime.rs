@@ -12,7 +12,7 @@ use tokio::task::JoinHandle;
 use tokio_stream::wrappers::ReceiverStream;
 
 use tokio_util::sync::CancellationToken;
-use loom_llm::AgentError;
+use loom_graph::GraphError;
 use loom_graph::memory::{
     Checkpoint, CheckpointError, CheckpointListItem, CheckpointSource, Checkpointer,
     RunnableConfig, Store,
@@ -45,12 +45,12 @@ pub struct PregelStream {
     ///
     /// Consumers should await this handle to learn whether the run completed
     /// successfully, even if they ignore `events`.
-    pub completion: JoinHandle<Result<ChannelValue, AgentError>>,
+    pub completion: JoinHandle<Result<ChannelValue, GraphError>>,
 }
 
 struct PendingCheckpointWrite {
     checkpoint: Checkpoint<ChannelValue>,
-    completion: JoinHandle<Result<(), AgentError>>,
+    completion: JoinHandle<Result<(), GraphError>>,
 }
 
 /// Public runtime entrypoint for Pregel graph execution.
@@ -178,7 +178,7 @@ impl PregelRuntime {
     ///
     /// Call this early in tests or setup code when you want structural errors
     /// to fail fast before any execution begins.
-    pub fn validate(&self) -> Result<(), AgentError> {
+    pub fn validate(&self) -> Result<(), GraphError> {
         self.graph.validate_with_config(&self.config)
     }
 
@@ -186,7 +186,7 @@ impl PregelRuntime {
     ///
     /// This is useful for tests, debugging, and UIs that need to inspect the
     /// graph without depending on internal runtime types.
-    pub fn get_graph(&self) -> Result<PregelGraphView, AgentError> {
+    pub fn get_graph(&self) -> Result<PregelGraphView, GraphError> {
         self.validate()?;
         Ok(PregelGraphView::from_graph(self.graph.as_ref()))
     }
@@ -195,7 +195,7 @@ impl PregelRuntime {
     ///
     /// When `recurse` is `true`, nested graphs reachable through node-attached
     /// subgraphs are embedded in the result.
-    pub fn get_graph_xray(&self, recurse: bool) -> Result<PregelGraphView, AgentError> {
+    pub fn get_graph_xray(&self, recurse: bool) -> Result<PregelGraphView, GraphError> {
         self.validate()?;
         Ok(PregelGraphView::from_graph_with_subgraphs(
             self.graph.as_ref(),
@@ -204,12 +204,12 @@ impl PregelRuntime {
     }
 
     /// Async wrapper for graph export to mirror other Pregel APIs.
-    pub async fn aget_graph(&self) -> Result<PregelGraphView, AgentError> {
+    pub async fn aget_graph(&self) -> Result<PregelGraphView, GraphError> {
         self.get_graph()
     }
 
     /// Async wrapper for recursive graph export.
-    pub async fn aget_graph_xray(&self, recurse: bool) -> Result<PregelGraphView, AgentError> {
+    pub async fn aget_graph_xray(&self, recurse: bool) -> Result<PregelGraphView, GraphError> {
         self.get_graph_xray(recurse)
     }
 
@@ -217,7 +217,7 @@ impl PregelRuntime {
     ///
     /// The returned entries include stable paths so callers can surface nested
     /// graphs in tooling without executing them.
-    pub fn get_subgraphs(&self, recurse: bool) -> Result<Vec<PregelSubgraphEntry>, AgentError> {
+    pub fn get_subgraphs(&self, recurse: bool) -> Result<Vec<PregelSubgraphEntry>, GraphError> {
         self.validate()?;
         let mut entries = Vec::new();
         collect_subgraphs(self, "", recurse, &mut entries);
@@ -229,12 +229,12 @@ impl PregelRuntime {
     pub async fn aget_subgraphs(
         &self,
         recurse: bool,
-    ) -> Result<Vec<PregelSubgraphEntry>, AgentError> {
+    ) -> Result<Vec<PregelSubgraphEntry>, GraphError> {
         self.get_subgraphs(recurse)
     }
 
     /// Clears all entries from the configured task cache, if any.
-    pub fn clear_cache(&self) -> Result<(), AgentError> {
+    pub fn clear_cache(&self) -> Result<(), GraphError> {
         if let Some(cache) = &self.task_cache {
             cache.clear();
         }
@@ -242,12 +242,12 @@ impl PregelRuntime {
     }
 
     /// Async wrapper for clearing the configured task cache.
-    pub async fn aclear_cache(&self) -> Result<(), AgentError> {
+    pub async fn aclear_cache(&self) -> Result<(), GraphError> {
         self.clear_cache()
     }
 
     /// Clears cached writes for the selected node names only.
-    pub fn clear_cache_for_nodes(&self, node_names: &[String]) -> Result<(), AgentError> {
+    pub fn clear_cache_for_nodes(&self, node_names: &[String]) -> Result<(), GraphError> {
         if let Some(cache) = &self.task_cache {
             cache.clear_nodes(node_names);
         }
@@ -255,7 +255,7 @@ impl PregelRuntime {
     }
 
     /// Async wrapper for selective cache invalidation.
-    pub async fn aclear_cache_for_nodes(&self, node_names: &[String]) -> Result<(), AgentError> {
+    pub async fn aclear_cache_for_nodes(&self, node_names: &[String]) -> Result<(), GraphError> {
         self.clear_cache_for_nodes(node_names)
     }
 
@@ -267,7 +267,7 @@ impl PregelRuntime {
         &self,
         input: ChannelValue,
         config: Option<RunnableConfig>,
-    ) -> Result<PregelLoop, AgentError> {
+    ) -> Result<PregelLoop, GraphError> {
         self.validate()?;
         let config = config.unwrap_or_default();
         validate_checkpointer_config(self.checkpointer.as_ref(), &config)?;
@@ -308,7 +308,7 @@ impl PregelRuntime {
         &self,
         input: ChannelValue,
         config: Option<RunnableConfig>,
-    ) -> Result<ChannelValue, AgentError> {
+    ) -> Result<ChannelValue, GraphError> {
         self.invoke_inner(input, config, None).await
     }
 
@@ -317,7 +317,7 @@ impl PregelRuntime {
         input: ChannelValue,
         config: Option<RunnableConfig>,
         stream_tx: Option<mpsc::Sender<StreamEvent<ChannelValue>>>,
-    ) -> Result<ChannelValue, AgentError> {
+    ) -> Result<ChannelValue, GraphError> {
         let run_config = config.unwrap_or_default();
         let mut loop_state = self.init_loop(input, Some(run_config.clone())).await?;
         let runner = PregelRunner::new(self.config.retry_policy.clone());
@@ -401,13 +401,13 @@ let result = async {
                 }
             }
 
-            Ok::<(), AgentError>(())
+            Ok::<(), GraphError>(())
         }
         .await;
 
         match result {
             Ok(()) => Ok(loop_state.final_output()),
-            Err(AgentError::Interrupted(interrupt)) => {
+            Err(GraphError::Interrupted(interrupt)) => {
                 flush_inflight_checkpoint(&mut inflight_checkpoint, &node_ctx, &run_config).await?;
                 self.persist_checkpoint(
                     &mut loop_state,
@@ -416,9 +416,9 @@ let result = async {
                     CheckpointSource::Loop,
                 )
                 .await?;
-                Err(AgentError::Interrupted(interrupt))
+                Err(GraphError::Interrupted(interrupt))
             }
-            Err(AgentError::Cancelled) => {
+            Err(GraphError::Cancelled) => {
                 flush_inflight_checkpoint(&mut inflight_checkpoint, &node_ctx, &run_config).await?;
                 if checkpoint_has_recoverable_progress(&loop_state.checkpoint) {
                     self.persist_checkpoint(
@@ -429,9 +429,9 @@ let result = async {
                     )
                     .await?;
                 }
-                Err(AgentError::Cancelled)
+                Err(GraphError::Cancelled)
             }
-            Err(AgentError::ExecutionFailed(message)) => {
+            Err(GraphError::ExecutionFailed(message)) => {
                 flush_inflight_checkpoint(&mut inflight_checkpoint, &node_ctx, &run_config).await?;
                 if checkpoint_has_recoverable_progress(&loop_state.checkpoint) {
                     self.persist_checkpoint(
@@ -442,20 +442,7 @@ let result = async {
                     )
                     .await?;
                 }
-                Err(AgentError::ExecutionFailed(message))
-            }
-            Err(AgentError::EmptyLlmResponse { retries }) => {
-                flush_inflight_checkpoint(&mut inflight_checkpoint, &node_ctx, &run_config).await?;
-                if checkpoint_has_recoverable_progress(&loop_state.checkpoint) {
-                    self.persist_checkpoint(
-                        &mut loop_state,
-                        &run_config,
-                        &node_ctx,
-                        CheckpointSource::Loop,
-                    )
-                    .await?;
-                }
-                Err(AgentError::EmptyLlmResponse { retries })
+                Err(GraphError::ExecutionFailed(message))
             }
         }
     }
@@ -483,7 +470,7 @@ let result = async {
     pub async fn get_state(
         &self,
         config: RunnableConfig,
-    ) -> Result<Option<PregelStateSnapshot>, AgentError> {
+    ) -> Result<Option<PregelStateSnapshot>, GraphError> {
         let Some(checkpointer) = &self.checkpointer else {
             return Ok(None);
         };
@@ -509,7 +496,7 @@ let result = async {
         limit: Option<usize>,
         before: Option<&str>,
         after: Option<&str>,
-    ) -> Result<Vec<CheckpointListItem>, AgentError> {
+    ) -> Result<Vec<CheckpointListItem>, GraphError> {
         let Some(checkpointer) = &self.checkpointer else {
             return Ok(Vec::new());
         };
@@ -528,7 +515,7 @@ let result = async {
         &self,
         config: RunnableConfig,
         request: StateUpdateRequest,
-    ) -> Result<PregelStateSnapshot, AgentError> {
+    ) -> Result<PregelStateSnapshot, GraphError> {
         self.bulk_update_state(
             config,
             BulkStateUpdateRequest {
@@ -546,7 +533,7 @@ let result = async {
         &self,
         config: RunnableConfig,
         request: BulkStateUpdateRequest,
-    ) -> Result<PregelStateSnapshot, AgentError> {
+    ) -> Result<PregelStateSnapshot, GraphError> {
         validate_checkpointer_config(self.checkpointer.as_ref(), &config)?;
         let mut checkpoint = self
             .load_checkpoint_or_default(&config, serde_json::json!({}))
@@ -604,7 +591,7 @@ let result = async {
         &self,
         config: RunnableConfig,
         request: ReplayRequest,
-    ) -> Result<Option<ReplayResult>, AgentError> {
+    ) -> Result<Option<ReplayResult>, GraphError> {
         match request.mode {
             ReplayMode::InspectCheckpoint(checkpoint_id) => {
                 let mut replay_config = config.clone();
@@ -713,7 +700,7 @@ let result = async {
         child_runtime: &PregelRuntime,
         config: RunnableConfig,
         invocation: SubgraphInvocation,
-    ) -> Result<SubgraphResult, AgentError> {
+    ) -> Result<SubgraphResult, GraphError> {
         self.invoke_subgraph_with_stream(child_runtime, config, invocation, None)
             .await
     }
@@ -724,7 +711,7 @@ let result = async {
         config: RunnableConfig,
         invocation: SubgraphInvocation,
         stream_tx: Option<mpsc::Sender<StreamEvent<ChannelValue>>>,
-    ) -> Result<SubgraphResult, AgentError> {
+    ) -> Result<SubgraphResult, GraphError> {
         let child_runtime = child_runtime
             .clone()
             .with_cancellation(self.cancellation.clone());
@@ -744,7 +731,7 @@ let result = async {
             .await
         {
             Ok(value) => SubgraphResult::Completed(value),
-            Err(AgentError::Interrupted(interrupt)) => {
+            Err(GraphError::Interrupted(interrupt)) => {
                 if let Some(state) = child_runtime.get_state(child_config.clone()).await? {
                     if let Some(mut record) = state.pending_interrupts.into_iter().next() {
                         if record.namespace.is_empty() {
@@ -766,7 +753,7 @@ let result = async {
                     value: interrupt.value,
                 })
             }
-            Err(AgentError::Cancelled) => SubgraphResult::Cancelled,
+            Err(GraphError::Cancelled) => SubgraphResult::Cancelled,
             Err(error) => SubgraphResult::Failed(error.to_string()),
         };
 
@@ -819,7 +806,7 @@ let result = async {
         config: &RunnableConfig,
         ctx: &PregelNodeContext,
         source: CheckpointSource,
-    ) -> Result<(), AgentError> {
+    ) -> Result<(), GraphError> {
         let Some(checkpointer) = &self.checkpointer else {
             return Ok(());
         };
@@ -839,7 +826,7 @@ let result = async {
         &self,
         config: &RunnableConfig,
         checkpoint: &Checkpoint<ChannelValue>,
-    ) -> Result<Checkpoint<ChannelValue>, AgentError> {
+    ) -> Result<Checkpoint<ChannelValue>, GraphError> {
         let Some(checkpointer) = &self.checkpointer else {
             return Ok(checkpoint.clone());
         };
@@ -856,7 +843,7 @@ let result = async {
         &self,
         config: &RunnableConfig,
         fallback_input: ChannelValue,
-    ) -> Result<Checkpoint<ChannelValue>, AgentError> {
+    ) -> Result<Checkpoint<ChannelValue>, GraphError> {
         validate_checkpointer_config(self.checkpointer.as_ref(), config)?;
         match &self.checkpointer {
             Some(checkpointer) => match checkpointer.get_tuple(config).await {
@@ -1051,15 +1038,15 @@ async fn emit_checkpoint_event(
 fn validate_checkpointer_config(
     checkpointer: Option<&Arc<dyn Checkpointer<ChannelValue>>>,
     config: &RunnableConfig,
-) -> Result<(), AgentError> {
+) -> Result<(), GraphError> {
     if checkpointer.is_some() && config.thread_id.is_none() {
         return Err(checkpoint_error(CheckpointError::ThreadIdRequired));
     }
     Ok(())
 }
 
-fn checkpoint_error(error: CheckpointError) -> AgentError {
-    AgentError::ExecutionFailed(error.to_string())
+fn checkpoint_error(error: CheckpointError) -> GraphError {
+    GraphError::ExecutionFailed(error.to_string())
 }
 
 fn checkpoint_has_recoverable_progress(checkpoint: &Checkpoint<ChannelValue>) -> bool {
@@ -1122,14 +1109,14 @@ async fn flush_inflight_checkpoint(
     inflight: &mut Option<PendingCheckpointWrite>,
     ctx: &PregelNodeContext,
     config: &RunnableConfig,
-) -> Result<(), AgentError> {
+) -> Result<(), GraphError> {
     let Some(pending) = inflight.take() else {
         return Ok(());
     };
     let result = pending
         .completion
         .await
-        .map_err(|error| AgentError::ExecutionFailed(error.to_string()))?;
+        .map_err(|error| GraphError::ExecutionFailed(error.to_string()))?;
     result?;
     emit_checkpoint_event(ctx, config, &pending.checkpoint).await;
     Ok(())
@@ -1308,10 +1295,10 @@ fn synthetic_update_task(
     step: u64,
     request: &StateUpdateRequest,
     graph: &PregelGraph,
-) -> Result<crate::ExecutableTask, AgentError> {
+) -> Result<crate::ExecutableTask, GraphError> {
     if let Some(node_name) = &request.as_node {
         if !graph.nodes.contains_key(node_name) {
-            return Err(AgentError::ExecutionFailed(format!(
+            return Err(GraphError::ExecutionFailed(format!(
                 "pregel node not found for state update: {}",
                 node_name
             )));
@@ -1340,9 +1327,9 @@ fn synthetic_update_task(
 
 fn update_writes_from_value(
     value: &ChannelValue,
-) -> Result<Vec<(String, ChannelValue)>, AgentError> {
+) -> Result<Vec<(String, ChannelValue)>, GraphError> {
     let Some(map) = value.as_object() else {
-        return Err(AgentError::ExecutionFailed(
+        return Err(GraphError::ExecutionFailed(
             "state update values must be a JSON object".to_string(),
         ));
     };

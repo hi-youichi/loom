@@ -234,7 +234,40 @@ pub async fn run_agent(
         }
     };
 
+    if let RunCompletion::Finished(ref _run_result) = result {
+        if should_spawn_background_review(opts) {
+            let session_id = opts
+                .thread_id
+                .clone()
+                .or_else(|| opts.session_id.clone())
+                .unwrap_or_else(|| uuid6().to_string());
+
+            tracing::info!(
+                session_id = %session_id,
+                "Spawning background review subprocess after agent session"
+            );
+
+            loom_background_review::spawn_review_after_session(
+                session_id,
+                config.model.clone(),
+            );
+        }
+    }
+
     Ok(result)
+}
+
+fn should_spawn_background_review(opts: &RunOptions) -> bool {
+    if opts.force_review {
+        return true;
+    }
+    if std::env::var("LOOM_BACKGROUND_REVIEW")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    false
 }
 
 pub async fn run_agent_with_options(

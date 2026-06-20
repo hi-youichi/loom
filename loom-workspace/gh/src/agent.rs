@@ -1,4 +1,4 @@
-﻿//! Build loom RunOptions from GitHub IssuesEvent for webhook-triggered agent runs.
+//! Build loom RunOptions from GitHub IssuesEvent for webhook-triggered agent runs.
 
 use std::path::PathBuf;
 
@@ -68,5 +68,6 @@ pub fn run_options_from_issues_event(
             chat_id: None,
             worktree: false,
             goal_mode: false,
+        force_review: false,
         }
 }

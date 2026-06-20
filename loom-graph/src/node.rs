@@ -8,7 +8,7 @@
 use async_trait::async_trait;
 use std::fmt::Debug;
 
-use loom_llm::error::AgentError;
+use crate::error::GraphError;
 
 use crate::next::Next;
 use crate::run_context::RunContext;
@@ -33,7 +33,7 @@ where
     ///
     /// Return `Next::Continue` to follow the linear edge order; `Next::Node(id)` to
     /// jump to a node; `Next::End` to stop. The runner uses this for conditional edges.
-    async fn run(&self, state: S) -> Result<(S, Next), AgentError>;
+    async fn run(&self, state: S) -> Result<(S, Next), GraphError>;
 
     /// Optional variant with run context (streaming, config).
     ///
@@ -42,7 +42,7 @@ where
         &self,
         state: S,
         _ctx: &RunContext<S>,
-    ) -> Result<(S, Next), AgentError> {
+    ) -> Result<(S, Next), GraphError> {
         self.run(state).await
     }
 }

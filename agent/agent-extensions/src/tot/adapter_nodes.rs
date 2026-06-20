@@ -1,4 +1,4 @@
-﻿//! ToT adapter nodes: Act and Observe that operate on TotState.
+//! ToT adapter nodes: Act and Observe that operate on TotState.
 //!
 //! Observe sets `suggest_backtrack` when tool results look bad and another candidate can be tried.
 
@@ -7,7 +7,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use agent::agent::react::{ActNode, ObserveNode};
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_graph::Next;
 use loom_graph::Node;
 use tool_core::ToolRegistryLocked;
@@ -36,7 +36,7 @@ impl Node<TotState> for TotActNode {
         "act"
     }
 
-    async fn run(&self, state: TotState) -> Result<(TotState, Next), AgentError> {
+    async fn run(&self, state: TotState) -> Result<(TotState, Next), GraphError> {
         let (core_out, next) = self.act.run(state.core).await?;
         Ok((
             TotState {
@@ -73,7 +73,7 @@ impl Node<TotState> for TotObserveNode {
         "observe"
     }
 
-    async fn run(&self, state: TotState) -> Result<(TotState, Next), AgentError> {
+    async fn run(&self, state: TotState) -> Result<(TotState, Next), GraphError> {
         let mut tot = state.tot;
         let results = &state.core.tool_results;
         let can_try_another =

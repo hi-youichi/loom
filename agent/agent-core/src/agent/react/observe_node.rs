@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use tracing::{debug, warn};
 
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_graph::Next;
 use loom_memory::uuid6;
 use loom_llm::message::{message_summary, Message};
@@ -54,7 +54,7 @@ impl Node<ReActState> for ObserveNode {
         "observe"
     }
 
-    async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
+    async fn run(&self, state: ReActState) -> Result<(ReActState, Next), GraphError> {
         let had_tool_calls = !state.tool_calls.is_empty();
         let messages_before = state.messages.len();
         debug!(

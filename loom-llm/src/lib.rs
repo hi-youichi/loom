@@ -28,7 +28,10 @@ pub use tool::{
 };
 
 // Re-exports — Error types
-pub use error::{AgentError, Interrupt};
+pub use error::LlmError;
+pub use loom_graph::{GraphError, Interrupt};
+#[allow(deprecated)]
+pub use error::AgentError;
 
 // Re-exports — LLM traits and response types
 pub use traits::{

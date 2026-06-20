@@ -1,4 +1,4 @@
-﻿//! Adapter nodes: PlanNode, ActNode, ObserveNode for DupState.
+//! Adapter nodes: PlanNode, ActNode, ObserveNode for DupState.
 //!
 //! Each wraps the corresponding react node, extracting state.core, calling the inner
 //! node, and writing the result back.
@@ -8,7 +8,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use agent::agent::react::{ActNode, ObserveNode, ThinkNode};
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_graph::Next;
 use loom_llm::LlmProvider;
 use loom_graph::Node;
@@ -35,7 +35,7 @@ impl Node<DupState> for PlanNode {
         "plan"
     }
 
-    async fn run(&self, state: DupState) -> Result<(DupState, Next), AgentError> {
+    async fn run(&self, state: DupState) -> Result<(DupState, Next), GraphError> {
         let (core_out, next) = self.think.run(state.core).await?;
         Ok((
             DupState {
@@ -66,7 +66,7 @@ impl Node<DupState> for DupActNode {
         "act"
     }
 
-    async fn run(&self, state: DupState) -> Result<(DupState, Next), AgentError> {
+    async fn run(&self, state: DupState) -> Result<(DupState, Next), GraphError> {
         let (core_out, next) = self.act.run(state.core).await?;
         Ok((
             DupState {
@@ -103,7 +103,7 @@ impl Node<DupState> for DupObserveNode {
         "observe"
     }
 
-    async fn run(&self, state: DupState) -> Result<(DupState, Next), AgentError> {
+    async fn run(&self, state: DupState) -> Result<(DupState, Next), GraphError> {
         let (core_out, next) = self.observe.run(state.core).await?;
         // Map Next::Node("think") to Next::Node("plan") for DUP graph
         let mapped_next = match &next {

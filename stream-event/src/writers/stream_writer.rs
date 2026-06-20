@@ -1,5 +1,5 @@
 use crate::{CheckpointEvent, StreamEvent, StreamMetadata, StreamMode};
-use loom_llm::traits::MessageChunk;
+use crate::message::MessageChunk;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::fmt::Debug;

@@ -7,7 +7,7 @@
 use async_trait::async_trait;
 use std::fmt::Debug;
 
-use loom_llm::error::AgentError;
+use crate::error::GraphError;
 use crate::next::Next;
 use crate::node::Node;
 
@@ -38,7 +38,7 @@ where
     }
 
     /// Pass-through: returns the same state and `Next::Continue`.
-    async fn run(&self, state: S) -> Result<(S, Next), AgentError> {
+    async fn run(&self, state: S) -> Result<(S, Next), GraphError> {
         Ok((state, Next::Continue))
     }
 }

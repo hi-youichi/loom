@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 
 use tokio_util::sync::CancellationToken;
-use loom_llm::{AgentError, Interrupt};
+use loom_graph::{GraphError, Interrupt};
 use loom_graph::memory::RunnableConfig;
 use crate::channel::ChannelSpec;
 use crate::runtime::PregelRuntime;
@@ -111,9 +111,9 @@ impl PregelNodeContext {
         &self,
         child_runtime: &PregelRuntime,
         invocation: SubgraphInvocation,
-    ) -> Result<SubgraphResult, AgentError> {
+    ) -> Result<SubgraphResult, GraphError> {
         let Some(parent_runtime) = &self.parent_runtime else {
-            return Err(AgentError::ExecutionFailed(
+            return Err(GraphError::ExecutionFailed(
                 "pregel subgraph invocation requires a parent runtime".to_string(),
             ));
         };
@@ -160,17 +160,17 @@ impl PregelNodeContext {
         &self,
         child_runtime: &PregelRuntime,
         invocation: SubgraphInvocation,
-    ) -> Result<ChannelValue, AgentError> {
+    ) -> Result<ChannelValue, GraphError> {
         match self
             .invoke_subgraph(child_runtime, invocation.clone())
             .await?
         {
             SubgraphResult::Completed(value) => Ok(value),
-            SubgraphResult::Interrupted(record) => Err(AgentError::Interrupted(
+            SubgraphResult::Interrupted(record) => Err(GraphError::Interrupted(
                 Interrupt::with_id(interrupt_value_from_record(&record), record.interrupt_id),
             )),
-            SubgraphResult::Cancelled => Err(AgentError::Cancelled),
-            SubgraphResult::Failed(error) => Err(AgentError::ExecutionFailed(error)),
+            SubgraphResult::Cancelled => Err(GraphError::Cancelled),
+            SubgraphResult::Failed(error) => Err(GraphError::ExecutionFailed(error)),
         }
     }
 
@@ -247,7 +247,7 @@ pub trait PregelNode: Send + Sync {
         &self,
         input: PregelNodeInput,
         ctx: &PregelNodeContext,
-    ) -> Result<PregelNodeOutput, AgentError>;
+    ) -> Result<PregelNodeOutput, GraphError>;
 }
 
 /// Static graph definition for a Pregel runtime.

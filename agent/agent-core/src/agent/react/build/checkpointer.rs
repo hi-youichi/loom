@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
 use loom_cli_types::ReActState;
 use serde::de::DeserializeOwned;
@@ -8,8 +8,8 @@ use serde::Serialize;
 
 use crate::agent::react::config::ReactBuildConfig;
 
-pub(super) fn to_agent_error(e: impl std::fmt::Display) -> AgentError {
-    AgentError::ExecutionFailed(e.to_string())
+pub(super) fn to_agent_error(e: impl std::fmt::Display) -> GraphError {
+    GraphError::ExecutionFailed(e.to_string())
 }
 
 pub fn resolve_memory_db_path(config: &ReactBuildConfig) -> String {
@@ -23,7 +23,7 @@ pub fn resolve_memory_db_path(config: &ReactBuildConfig) -> String {
 pub fn build_checkpointer_for_state<S>(
     config: &ReactBuildConfig,
     db_path: &str,
-) -> Result<Option<Arc<dyn Checkpointer<S>>>, AgentError>
+) -> Result<Option<Arc<dyn Checkpointer<S>>>, GraphError>
 where
     S: Clone + Send + Sync + 'static + Serialize + DeserializeOwned,
 {
@@ -38,7 +38,7 @@ where
 pub(super) fn build_checkpointer(
     config: &ReactBuildConfig,
     db_path: &str,
-) -> Result<Option<Arc<dyn Checkpointer<ReActState>>>, AgentError> {
+) -> Result<Option<Arc<dyn Checkpointer<ReActState>>>, GraphError> {
     build_checkpointer_for_state::<ReActState>(config, db_path)
 }
 

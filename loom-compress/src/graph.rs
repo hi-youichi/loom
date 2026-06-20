@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 use loom_llm::LlmProvider;
 use loom_types::state::ReActState;
 use loom_graph::{
@@ -58,7 +58,7 @@ impl Node<ReActState> for CompressionGraphNode {
         "compress"
     }
 
-    async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
+    async fn run(&self, state: ReActState) -> Result<(ReActState, Next), GraphError> {
         let new_state = self.inner.invoke(state, None).await?;
         Ok((new_state, Next::Continue))
     }
@@ -67,7 +67,7 @@ impl Node<ReActState> for CompressionGraphNode {
         &self,
         state: ReActState,
         ctx: &RunContext<ReActState>,
-    ) -> Result<(ReActState, Next), AgentError> {
+    ) -> Result<(ReActState, Next), GraphError> {
         let config = Some(ctx.config.clone());
         let new_state = self.inner.invoke(state, config).await?;
         Ok((new_state, Next::Continue))

@@ -49,7 +49,7 @@ pub enum TaskOutcome {
     },
     Failed {
         task: ExecutableTask,
-        error: loom_llm::AgentError,
+        error: loom_graph::GraphError,
     },
 }
 
@@ -585,7 +585,7 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
     use async_trait::async_trait;
-    use loom_llm::AgentError;
+    use loom_graph::GraphError;
     use crate::node::{PregelNodeInput, PregelNodeOutput, PregelNodeContext};
 
     struct MockNode {
@@ -622,7 +622,7 @@ mod tests {
             &self,
             _input: PregelNodeInput,
             _ctx: &PregelNodeContext,
-        ) -> Result<PregelNodeOutput, AgentError> {
+        ) -> Result<PregelNodeOutput, GraphError> {
             Ok(PregelNodeOutput::default())
         }
     }

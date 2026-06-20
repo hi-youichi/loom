@@ -2,14 +2,14 @@
 
 use std::sync::Arc;
 
-use loom_llm::error::AgentError;
+use loom_graph::GraphError;
 
 use super::super::config::ReactBuildConfig;
 
 pub(crate) fn build_store(
     config: &ReactBuildConfig,
     _db_path: &str,
-) -> Result<Option<Arc<dyn loom_memory::Store>>, AgentError> {
+) -> Result<Option<Arc<dyn loom_memory::Store>>, GraphError> {
     match build_vector_store(config) {
         Ok(store) => Ok(Some(store)),
         Err(_) => Ok(None),
@@ -18,7 +18,7 @@ pub(crate) fn build_store(
 
 fn build_vector_store(
     config: &ReactBuildConfig,
-) -> Result<Arc<dyn loom_memory::Store>, AgentError> {
+) -> Result<Arc<dyn loom_memory::Store>, GraphError> {
     use loom_memory::{InMemoryVectorStore, OpenAIEmbedder};
     use async_openai::config::OpenAIConfig;
 
@@ -28,7 +28,7 @@ fn build_vector_store(
         .or(config.openai_api_key.as_deref())
         .filter(|s| !s.is_empty())
         .ok_or_else(|| {
-            AgentError::ExecutionFailed(
+            GraphError::ExecutionFailed(
                 "embedding requires EMBEDDING_API_KEY or OPENAI_API_KEY".into(),
             )
         })?;

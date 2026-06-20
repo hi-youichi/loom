@@ -100,6 +100,7 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
                 chat_id: None,
                 worktree: false,
                 goal_mode: false,
+        force_review: false,
                 debug_llm: false,
             };
 
@@ -233,6 +234,7 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
                 chat_id: None,
                 worktree: false,
                 goal_mode: false,
+        force_review: false,
                 debug_llm: false,
             };
 

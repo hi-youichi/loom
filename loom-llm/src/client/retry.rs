@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use tokio::time::sleep;
 use tracing::warn;
 
-use crate::error::AgentError;
+use crate::error::LlmError;
 use crate::traits::{LlmClient, LlmResponse, ModelInfo, StreamSink};
 
 const DEFAULT_MAX_RETRIES: u32 = 3;
@@ -46,11 +46,11 @@ impl RetryLlmClient {
         self
     }
 
-    async fn retry_with_delay<F, Fut, T, E>(&self, mut f: F) -> Result<T, AgentError>
+    async fn retry_with_delay<F, Fut, T, E>(&self, mut f: F) -> Result<T, LlmError>
     where
         F: FnMut() -> Fut,
         Fut: std::future::Future<Output = Result<T, E>>,
-        E: Into<AgentError>,
+        E: Into<LlmError>,
         T: IsEmptyResponse,
     {
         for attempt in 0..=self.max_retries {
@@ -70,7 +70,7 @@ impl RetryLlmClient {
             sleep(delay).await;
         }
 
-        Err(AgentError::EmptyLlmResponse {
+        Err(LlmError::EmptyResponse {
             retries: self.max_retries,
         })
     }
@@ -88,7 +88,7 @@ impl IsEmptyResponse for LlmResponse {
 
 #[async_trait]
 impl LlmClient for RetryLlmClient {
-    async fn invoke(&self, messages: &[crate::message::Message]) -> Result<LlmResponse, AgentError> {
+    async fn invoke(&self, messages: &[crate::message::Message]) -> Result<LlmResponse, LlmError> {
         let inner = Arc::clone(&self.inner);
         let messages = messages.to_vec();
 
@@ -100,7 +100,7 @@ impl LlmClient for RetryLlmClient {
         messages: &[crate::message::Message],
         sink: Option<&dyn StreamSink>,
         node_id: &str,
-    ) -> Result<LlmResponse, AgentError> {
+    ) -> Result<LlmResponse, LlmError> {
         let inner = Arc::clone(&self.inner);
         let messages = messages.to_vec();
 
@@ -108,7 +108,7 @@ impl LlmClient for RetryLlmClient {
             let resp = inner
                 .invoke_stream(&messages, sink, node_id)
                 .await
-                .map_err(|e| AgentError::ExecutionFailed(e.to_string()))?;
+                .map_err(|e| LlmError::InvokeFailed(e.to_string()))?;
 
             if !resp.is_empty() {
                 return Ok(resp);
@@ -124,12 +124,12 @@ impl LlmClient for RetryLlmClient {
             sleep(delay).await;
         }
 
-        Err(AgentError::EmptyLlmResponse {
+        Err(LlmError::EmptyResponse {
             retries: self.max_retries,
         })
     }
 
-    async fn list_models(&self) -> Result<Vec<ModelInfo>, AgentError> {
+    async fn list_models(&self) -> Result<Vec<ModelInfo>, LlmError> {
         self.inner.list_models().await
     }
 }
@@ -212,7 +212,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            AgentError::EmptyLlmResponse { retries: 3 }
+            LlmError::EmptyResponse { retries: 3 }
         ));
     }
 
@@ -226,7 +226,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            AgentError::EmptyLlmResponse { retries: 3 }
+            LlmError::EmptyResponse { retries: 3 }
         ));
     }
 
@@ -241,7 +241,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            AgentError::EmptyLlmResponse { retries: 1 }
+            LlmError::EmptyResponse { retries: 1 }
         ));
     }
 }

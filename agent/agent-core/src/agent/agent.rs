@@ -51,6 +51,7 @@ pub enum AgentEvent {
 
 pub struct Agent {
     runner: ReactRunner,
+    config: AgentConfig,
 }
 
 impl Agent {
@@ -58,7 +59,30 @@ impl Agent {
         let runner = build_react_runner(&config, None, false, None, None)
             .await
             .map_err(|e| AgentError::Build(e.to_string()))?;
-        Ok(Self { runner })
+        Ok(Self { runner, config })
+    }
+
+    /// Constructs an Agent from an existing runner. Primarily useful for
+    /// testing with a custom (e.g. mock) LLM provider.
+    pub fn from_runner(config: AgentConfig, runner: ReactRunner) -> Self {
+        Self { config, runner }
+    }
+
+    /// Returns a clone of the configuration used to build this agent.
+    /// Useful for forking the agent (e.g. for background review).
+    pub fn config_snapshot(&self) -> AgentConfig {
+        self.config.clone()
+    }
+
+    /// Returns the runnable config used by the underlying runner.
+    /// This contains the `thread_id` and original `checkpoint_id`.
+    pub fn runnable_config(&self) -> Option<RunnableConfig> {
+        self.runner.runnable_config()
+    }
+
+    /// Returns the current thread id (typically the session id).
+    pub fn current_thread_id(&self) -> Option<String> {
+        self.runner.runnable_config()?.thread_id.clone()
     }
 
     pub async fn run<F>(&self, message: &str, on_event: F) -> Result<AgentResult, AgentError>
@@ -297,7 +321,7 @@ mod tests {
         .await
         .unwrap();
 
-        let agent = Agent { runner };
+        let agent = Agent::from_runner(cfg.clone(), runner);
         let events: Arc<std::sync::Mutex<Vec<AgentEvent>>> = Arc::new(std::sync::Mutex::new(vec![]));
         let events_clone = events.clone();
         let result = agent
@@ -310,6 +334,9 @@ mod tests {
         assert_eq!(result.reply, "hello from agent");
         let events = events.lock().unwrap();
         assert!(events.iter().any(|e| matches!(e, AgentEvent::TextChunk(_))));
+
+        let snapshot = agent.config_snapshot();
+        assert_eq!(snapshot.working_folder, cfg.working_folder);
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -328,7 +355,7 @@ mod tests {
         .await
         .unwrap();
 
-        let agent = Agent { runner };
+        let agent = Agent::from_runner(cfg, runner);
         let fork_config = RunnableConfig {
             thread_id: Some("review-fork-test".to_string()),
             checkpoint_ns: "background-review".to_string(),
@@ -359,12 +386,39 @@ mod tests {
         .await
         .unwrap();
 
-        let agent = Agent { runner };
+        let agent = Agent::from_runner(cfg, runner);
         let result = agent
             .run_with_config("test message", None, |_| {})
             .await
             .unwrap();
 
         assert_eq!(result.reply, "no config");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn agent_exposes_config_snapshot_and_thread_id() {
+        let cfg = base_config();
+        let runner = build_react_runner(
+            &cfg,
+            Some(Arc::new(FixedLlmProvider {
+                client: Arc::new(MockLlm::with_no_tool_calls("ok")),
+                model_id: "mock".to_string(),
+            })),
+            false,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let agent = Agent::from_runner(cfg.clone(), runner);
+
+        let snapshot = agent.config_snapshot();
+        assert_eq!(snapshot.working_folder, cfg.working_folder);
+
+        let runnable = agent.runnable_config();
+        assert!(runnable.is_none() || runnable.unwrap().thread_id.is_none());
+
+        assert!(agent.current_thread_id().is_none());
     }
 }
