@@ -252,6 +252,28 @@ fn truncate_unicode(s: &str, max_chars: usize) -> String {
     out
 }
 
+/// Extracts the meaningful error reason from a tool result string.
+///
+/// Tool errors follow the template (see `act_utils.rs`):
+///   `Error executing tool '{name}' with kwargs {kwargs} with error:\n {error}\n Please fix...`
+/// The kwargs portion can be huge (e.g. full skill content for `skill_manage`),
+/// burying the actual error. This function extracts just the `{error}` part.
+/// Falls back to the full result (truncated) when the template doesn't match.
+fn extract_error_reason(result: &str) -> String {
+    const MARKER: &str = " with error:\n";
+    const SUFFIX: &str = "\n Please fix the error and try again.";
+    if let Some(idx) = result.find(MARKER) {
+        let after = &result[idx + MARKER.len()..];
+        // Strip the trailing " Please fix..." suffix if present.
+        let core = after.strip_suffix(SUFFIX).unwrap_or(after);
+        let trimmed = core.trim();
+        if !trimmed.is_empty() {
+            return truncate_unicode(trimmed, 500);
+        }
+    }
+    truncate_unicode(result, 300)
+}
+
 fn build_review_user_message(
     session_content: &str,
     review_memory: bool,
@@ -383,7 +405,7 @@ pub async fn run_review(
                         violations_clone
                             .lock()
                             .unwrap()
-                            .push(format!("tool '{}' error: {}", name, result));
+                            .push(format!("tool '{}' error: {}", name, extract_error_reason(&result)));
                     } else {
                         let preview = truncate_unicode(&result, 120);
                         info!("Review tool '{}' ok: {}{}", name, preview, if result.chars().count() > 120 { "..." } else { "" });
@@ -959,5 +981,49 @@ mod tests {
         assert!(c.review_skills);
         assert_eq!(c.max_session_chars, 24_000);
         assert_eq!(c.min_session_chars, 200);
+    }
+
+    #[test]
+    fn extract_error_reason_from_template() {
+        // The standard tool error template — kwargs can be huge, but the
+        // actual error reason is after " with error:\n".
+        let result = "Error executing tool 'skill_manage' with kwargs {\"action\":\"create\",\"content\":\"...very long skill...\"} with error:\n Skill name 'test' already exists\n Please fix the error and try again.";
+        let extracted = extract_error_reason(result);
+        assert_eq!(extracted, "Skill name 'test' already exists");
+    }
+
+    #[test]
+    fn extract_error_reason_chinese() {
+        let result = "Error executing tool 'memory' with kwargs {} with error:\n 内存已满，无法写入\n Please fix the error and try again.";
+        let extracted = extract_error_reason(result);
+        assert_eq!(extracted, "内存已满，无法写入");
+    }
+
+    #[test]
+    fn extract_error_reason_no_marker_truncates() {
+        // When the result doesn't follow the template, fall back to truncation.
+        let result = "Some unexpected error format without the marker";
+        let extracted = extract_error_reason(result);
+        assert_eq!(extracted, "Some unexpected error format without the marker");
+    }
+
+    #[test]
+    fn extract_error_reason_empty_after_marker_falls_back() {
+        // Edge case: marker present but nothing after it.
+        let result = "Error executing tool 'x' with kwargs {} with error:\n \n Please fix.";
+        let extracted = extract_error_reason(result);
+        // After trimming, the error part is empty — fall back to full result truncated.
+        assert!(!extracted.is_empty());
+    }
+
+    #[test]
+    fn extract_error_reason_truncates_long_error() {
+        let long_error = "E".repeat(1000);
+        let result = format!(
+            "Error executing tool 'x' with kwargs {{}} with error:\n {}",
+            long_error
+        );
+        let extracted = extract_error_reason(&result);
+        assert_eq!(extracted.chars().count(), 500);
     }
 }
