@@ -51,6 +51,39 @@ pub struct MemoryProvenance {
     pub parent_session_id: Option<String>,
 }
 
+impl MemoryProvenance {
+    pub fn foreground_default() -> Self {
+        Self {
+            write_origin: "assistant_tool".into(),
+            execution_context: "foreground".into(),
+            session_id: None,
+            parent_session_id: None,
+        }
+    }
+
+    pub fn background_review(
+        session_id: impl Into<String>,
+        parent_session_id: impl Into<String>,
+    ) -> Self {
+        let session_id = session_id.into();
+        let parent_session_id = parent_session_id.into();
+        assert!(
+            !session_id.trim().is_empty(),
+            "background_review session_id must not be empty"
+        );
+        assert!(
+            !parent_session_id.trim().is_empty(),
+            "background_review parent_session_id must not be empty"
+        );
+        Self {
+            write_origin: "background_review".into(),
+            execution_context: "background_review".into(),
+            session_id: Some(session_id),
+            parent_session_id: Some(parent_session_id),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryMatch {
     pub file: MemoryFile,
@@ -93,6 +126,7 @@ pub struct AddResult {
     pub message: String,
     pub entry_count: usize,
     pub usage: String,
+    pub provenance: MemoryProvenance,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -231,11 +265,23 @@ impl MemoryStore {
 
     // ── Entry-level operations ────────────────────────
 
-    pub fn add_entry(&self, file: MemoryFile, content: &str) -> Result<AddResult, MemoryError> {
+    pub fn add_entry(
+        &self,
+        file: MemoryFile,
+        content: &str,
+        provenance: &MemoryProvenance,
+    ) -> Result<AddResult, MemoryError> {
         let trimmed = content.trim();
         if trimmed.is_empty() {
             return Err(MemoryError::EmptyContent);
         }
+
+        info!(
+            write_origin = %provenance.write_origin,
+            execution_context = %provenance.execution_context,
+            "Memory add to {:?}",
+            file
+        );
 
         self.ensure_dir()?;
         let _lock = self.acquire_file_lock(file)?;
@@ -247,6 +293,7 @@ impl MemoryStore {
                 message: "Entry already exists, skipping duplicate".into(),
                 entry_count: entries.len(),
                 usage: self.fmt_usage(file, &entries),
+                provenance: provenance.clone(),
             });
         }
 
@@ -268,6 +315,7 @@ impl MemoryStore {
             message: "Entry added".into(),
             entry_count: entries.len(),
             usage: self.fmt_usage(file, &entries),
+            provenance: provenance.clone(),
         })
     }
 
@@ -593,14 +641,18 @@ fn dedup_entries(entries: &[String]) -> Vec<String> {
 mod tests {
     use super::*;
 
+    fn fg() -> MemoryProvenance {
+        MemoryProvenance::foreground_default()
+    }
+
     #[test]
     fn add_and_read_entries() {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
         store
-            .add_entry(MemoryFile::User, "prefers Rust")
+            .add_entry(MemoryFile::User, "prefers Rust", &fg())
             .unwrap();
-        store.add_entry(MemoryFile::User, "uses vim").unwrap();
+        store.add_entry(MemoryFile::User, "uses vim", &fg()).unwrap();
         let entries = store.read_entries(MemoryFile::User).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0], "prefers Rust");
@@ -612,10 +664,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
         store
-            .add_entry(MemoryFile::User, "likes coffee")
+            .add_entry(MemoryFile::User, "likes coffee", &fg())
             .unwrap();
         let result = store
-            .add_entry(MemoryFile::User, "likes coffee")
+            .add_entry(MemoryFile::User, "likes coffee", &fg())
             .unwrap();
         assert!(result.message.contains("duplicate"));
         assert_eq!(store.read_entries(MemoryFile::User).unwrap().len(), 1);
@@ -626,7 +678,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
         store
-            .add_entry(MemoryFile::User, "likes tea")
+            .add_entry(MemoryFile::User, "likes tea", &fg())
             .unwrap();
         store
             .replace_entry(MemoryFile::User, "tea", "coffee")
@@ -640,10 +692,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
         store
-            .add_entry(MemoryFile::User, "likes Rust fast")
+            .add_entry(MemoryFile::User, "likes Rust fast", &fg())
             .unwrap();
         store
-            .add_entry(MemoryFile::User, "likes Rust safe")
+            .add_entry(MemoryFile::User, "likes Rust safe", &fg())
             .unwrap();
         let result = store.replace_entry(MemoryFile::User, "Rust", "C++");
         assert!(matches!(result, Err(MemoryError::AmbiguousMatch(2))));
@@ -654,10 +706,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
         store
-            .add_entry(MemoryFile::User, "entry A")
+            .add_entry(MemoryFile::User, "entry A", &fg())
             .unwrap();
         store
-            .add_entry(MemoryFile::User, "entry B")
+            .add_entry(MemoryFile::User, "entry B", &fg())
             .unwrap();
         store
             .remove_entry(MemoryFile::User, "entry A")
@@ -672,7 +724,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
         store
-            .add_entry(MemoryFile::User, "exists")
+            .add_entry(MemoryFile::User, "exists", &fg())
             .unwrap();
         let result = store.remove_entry(MemoryFile::User, "nonexistent");
         assert!(matches!(result, Err(MemoryError::NotFound)));
@@ -683,8 +735,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
         let big = "x".repeat(3990);
-        store.add_entry(MemoryFile::User, &big).unwrap();
-        let result = store.add_entry(MemoryFile::User, &"y".repeat(50));
+        store.add_entry(MemoryFile::User, &big, &fg()).unwrap();
+        let result = store.add_entry(MemoryFile::User, &"y".repeat(50), &fg());
         assert!(matches!(result, Err(MemoryError::CapacityExceeded(_))));
     }
 
@@ -693,10 +745,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
         store
-            .add_entry(MemoryFile::Project, "entry 1")
+            .add_entry(MemoryFile::Project, "entry 1", &fg())
             .unwrap();
         store
-            .add_entry(MemoryFile::Project, "entry 2")
+            .add_entry(MemoryFile::Project, "entry 2", &fg())
             .unwrap();
         let raw = fs::read_to_string(dir.path().join("PROJECT.md")).unwrap();
         assert!(raw.contains('§'));
@@ -732,11 +784,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
         store
-            .add_entry(MemoryFile::User, "before snapshot")
+            .add_entry(MemoryFile::User, "before snapshot", &fg())
             .unwrap();
         let snap1 = store.capture_snapshot().unwrap();
         store
-            .add_entry(MemoryFile::User, "after snapshot")
+            .add_entry(MemoryFile::User, "after snapshot", &fg())
             .unwrap();
         let snap2 = store.snapshot_text().unwrap();
         assert_eq!(snap1, snap2);
@@ -749,10 +801,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
         store
-            .add_entry(MemoryFile::User, "user entry")
+            .add_entry(MemoryFile::User, "user entry", &fg())
             .unwrap();
         store
-            .add_entry(MemoryFile::Project, "project entry")
+            .add_entry(MemoryFile::Project, "project entry", &fg())
             .unwrap();
         let snap = store.capture_snapshot().unwrap();
         assert!(snap.contains("PROJECT"));
@@ -766,7 +818,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
         store
-            .add_entry(MemoryFile::User, "likes Rust\nhates bugs")
+            .add_entry(MemoryFile::User, "likes Rust\nhates bugs", &fg())
             .unwrap();
         let matches = store.search("rust").unwrap();
         assert_eq!(matches.len(), 1);
@@ -778,7 +830,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
         store
-            .add_entry(MemoryFile::User, "hello")
+            .add_entry(MemoryFile::User, "hello", &fg())
             .unwrap();
         let content = store.load(MemoryFile::User).unwrap();
         assert!(content.contains("hello"));
@@ -804,7 +856,7 @@ mod tests {
     fn add_rejects_empty() {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
-        let result = store.add_entry(MemoryFile::User, "");
+        let result = store.add_entry(MemoryFile::User, "", &fg());
         assert!(matches!(result, Err(MemoryError::EmptyContent)));
     }
 
@@ -813,13 +865,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
         store
-            .add_entry(MemoryFile::User, "identical")
+            .add_entry(MemoryFile::User, "identical", &fg())
             .unwrap();
         store
-            .add_entry(MemoryFile::User, "identical")
+            .add_entry(MemoryFile::User, "identical", &fg())
             .unwrap();
         let result = store
-            .add_entry(MemoryFile::User, "identical")
+            .add_entry(MemoryFile::User, "identical", &fg())
             .unwrap();
         assert!(result.message.contains("duplicate"));
         store

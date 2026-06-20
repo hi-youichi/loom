@@ -569,7 +569,7 @@ pub(crate) fn handle_memory_command(
     memory_args: &MemoryCmdArgs,
     json: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use cli::run::memory::{MemoryFile, MemoryStore};
+    use cli::run::memory::{MemoryFile, MemoryProvenance, MemoryStore};
 
     let store = MemoryStore::new(&MemoryStore::default_path());
 
@@ -602,7 +602,7 @@ pub(crate) fn handle_memory_command(
             let status = std::process::Command::new(&editor).arg(&tmp_path).status()?;
             if status.success() {
                 let edited = std::fs::read_to_string(&tmp_path)?;
-                store.add_entry(mf, &edited)?;
+                store.add_entry(mf, &edited, &MemoryProvenance::foreground_default())?;
                 println!("Updated {}.", file);
             }
             let _ = std::fs::remove_file(&tmp_path);

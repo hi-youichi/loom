@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use memory_v2::{
-    AddResult, MemoryError, MemoryFile, MemoryStore, RemoveResult, ReplaceResult,
+    AddResult, MemoryError, MemoryFile, MemoryProvenance, MemoryStore, RemoveResult,
+    ReplaceResult,
 };
 use loom_llm::message::ToolCallContent;
 use loom_llm::tool::{ToolSourceError, ToolSpec};
@@ -41,15 +42,50 @@ SKIP: trivial/obvious info, things easily re-discovered, raw data dumps, and tem
 
 pub struct MemoryTool {
     store: Arc<MemoryStore>,
+    default_provenance: MemoryProvenance,
+    user_profile_enabled: bool,
 }
 
 impl MemoryTool {
     pub fn new(store: Arc<MemoryStore>) -> Self {
-        Self { store }
+        Self::for_foreground(store, true)
+    }
+
+    pub fn for_foreground(store: Arc<MemoryStore>, user_profile_enabled: bool) -> Self {
+        Self {
+            store,
+            default_provenance: MemoryProvenance::foreground_default(),
+            user_profile_enabled,
+        }
+    }
+
+    pub fn for_background_review(
+        store: Arc<MemoryStore>,
+        session_id: impl Into<String>,
+        parent_id: impl Into<String>,
+    ) -> Self {
+        Self::for_background_review_with_user_profile(store, session_id, parent_id, false)
+    }
+
+    pub fn for_background_review_with_user_profile(
+        store: Arc<MemoryStore>,
+        session_id: impl Into<String>,
+        parent_id: impl Into<String>,
+        user_profile_enabled: bool,
+    ) -> Self {
+        Self {
+            store,
+            default_provenance: MemoryProvenance::background_review(session_id, parent_id),
+            user_profile_enabled,
+        }
     }
 
     pub fn store(&self) -> &Arc<MemoryStore> {
         &self.store
+    }
+
+    pub fn default_provenance(&self) -> &MemoryProvenance {
+        &self.default_provenance
     }
 
     fn parse_target(target: &str) -> Result<MemoryFile, Value> {
@@ -64,17 +100,19 @@ impl MemoryTool {
     }
 
     fn handle_add(&self, file: MemoryFile, content: &str) -> Value {
-        match self.store.add_entry(file, content) {
+        match self.store.add_entry(file, content, &self.default_provenance) {
             Ok(AddResult {
                 success,
                 message,
                 entry_count,
                 usage,
+                provenance,
             }) => json!({
                 "success": success,
                 "message": message,
                 "entries": entry_count,
-                "usage": usage
+                "usage": usage,
+                "provenance": provenance,
             }),
             Err(e) => Self::fmt_error(&e),
         }
@@ -163,6 +201,13 @@ impl MemoryTool {
             Ok(f) => f,
             Err(err_resp) => return err_resp,
         };
+
+        if file == MemoryFile::User && !self.user_profile_enabled {
+            return json!({
+                "success": false,
+                "error": "User profile writes are disabled in this context."
+            });
+        }
 
         match action {
             "add" => {
@@ -310,5 +355,158 @@ mod tests {
     fn target_memory_maps_to_project() {
         assert_eq!(MemoryTool::parse_target("memory").unwrap(), MemoryFile::Project);
         assert_eq!(MemoryTool::parse_target("user").unwrap(), MemoryFile::User);
+    }
+
+    #[test]
+    fn foreground_default_provenance() {
+        let store = test_store();
+        let tool = MemoryTool::for_foreground(store, true);
+        assert_eq!(tool.default_provenance().write_origin, "assistant_tool");
+        assert_eq!(tool.default_provenance().execution_context, "foreground");
+        assert!(tool.default_provenance().session_id.is_none());
+    }
+
+    #[test]
+    fn background_review_memory_writes_with_provenance() {
+        let store = test_store();
+        let tool =
+            MemoryTool::for_background_review_with_user_profile(store, "session-1", "parent-1", true);
+        assert_eq!(tool.default_provenance().execution_context, "background_review");
+        assert_eq!(tool.default_provenance().write_origin, "background_review");
+        assert_eq!(
+            tool.default_provenance().session_id.as_deref(),
+            Some("session-1")
+        );
+        assert_eq!(
+            tool.default_provenance().parent_session_id.as_deref(),
+            Some("parent-1")
+        );
+    }
+
+    #[test]
+    fn background_review_defaults_to_user_profile_disabled() {
+        let store = test_store();
+        let tool = MemoryTool::for_background_review(store, "s", "p");
+        assert!(!tool.user_profile_enabled);
+    }
+
+    #[test]
+    fn background_review_empty_session_id_panics() {
+        let store = test_store();
+        let result = std::panic::catch_unwind(|| {
+            MemoryTool::for_background_review(store, "", "p");
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn background_review_empty_parent_id_panics() {
+        let store = test_store();
+        let result = std::panic::catch_unwind(|| {
+            MemoryTool::for_background_review(store, "s", "");
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn background_review_blocks_user_writes_by_default() {
+        let store = test_store();
+        let tool = MemoryTool::for_background_review(store.clone(), "s", "p");
+        let result = tool.dispatch(&json!({
+            "action": "add",
+            "target": "user",
+            "content": "should be blocked by default"
+        }));
+        assert!(!result["success"].as_bool().unwrap());
+        assert!(result["error"].as_str().unwrap().contains("disabled"));
+    }
+
+    #[test]
+    fn background_review_allows_user_writes_when_opted_in() {
+        let store = test_store();
+        let tool = MemoryTool::for_background_review_with_user_profile(
+            store.clone(),
+            "s",
+            "p",
+            true,
+        );
+        let result = tool.dispatch(&json!({
+            "action": "add",
+            "target": "user",
+            "content": "allowed via opt-in"
+        }));
+        assert!(result["success"].as_bool().unwrap());
+        assert_eq!(
+            result["provenance"]["execution_context"].as_str().unwrap(),
+            "background_review"
+        );
+    }
+
+    #[test]
+    fn review_and_main_share_storage() {
+        let store = test_store();
+        let main = MemoryTool::for_foreground(store.clone(), true);
+        let review = MemoryTool::for_background_review(store.clone(), "rv-1", "p-1");
+        let result = main.dispatch(&json!({
+            "action": "add",
+            "target": "memory",
+            "content": "shared fact"
+        }));
+        assert!(result["success"].as_bool().unwrap());
+        let entries = review.store().read_entries(MemoryFile::Project).unwrap();
+        assert!(entries.iter().any(|e| e.contains("shared fact")));
+    }
+
+    #[test]
+    fn add_response_includes_provenance() {
+        let store = test_store();
+        let tool = MemoryTool::for_background_review(store.clone(), "s", "p");
+        let result = tool.dispatch(&json!({
+            "action": "add",
+            "target": "memory",
+            "content": "tagged entry"
+        }));
+        assert!(result["success"].as_bool().unwrap());
+        assert_eq!(
+            result["provenance"]["write_origin"].as_str().unwrap(),
+            "background_review"
+        );
+        assert_eq!(
+            result["provenance"]["execution_context"].as_str().unwrap(),
+            "background_review"
+        );
+        assert_eq!(
+            result["provenance"]["session_id"].as_str().unwrap(),
+            "s"
+        );
+    }
+
+    #[test]
+    fn user_profile_disabled_blocks_user_md_writes() {
+        let store = test_store();
+        let tool = MemoryTool::for_foreground(store.clone(), false);
+        let result = tool.dispatch(&json!({
+            "action": "add",
+            "target": "user",
+            "content": "should be blocked"
+        }));
+        assert!(!result["success"].as_bool().unwrap());
+        assert!(result["error"].as_str().unwrap().contains("disabled"));
+        let entries = store.read_entries(MemoryFile::User).unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn user_profile_enabled_allows_user_md_writes() {
+        let store = test_store();
+        let tool = MemoryTool::for_foreground(store.clone(), true);
+        let result = tool.dispatch(&json!({
+            "action": "add",
+            "target": "user",
+            "content": "should be allowed"
+        }));
+        assert!(result["success"].as_bool().unwrap());
+        let entries = store.read_entries(MemoryFile::User).unwrap();
+        assert!(entries.iter().any(|e| e.contains("should be allowed")));
     }
 }

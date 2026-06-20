@@ -1,4 +1,4 @@
-use crate::run::memory::{MemoryFile, MemoryStore, MemoryError};
+use crate::run::memory::{MemoryFile, MemoryProvenance, MemoryStore, MemoryError};
 use std::path::Path;
 
 pub trait MemoryProvider: Send + Sync {
@@ -44,7 +44,7 @@ impl MemoryProvider for LocalFileProvider {
     }
 
     fn add_entry(&self, file: MemoryFile, content: &str) -> Result<String, MemoryProviderError> {
-        let result = self.store.add_entry(file, content).map_err(map_err)?;
+        let result = self.store.add_entry(file, content, &MemoryProvenance::foreground_default()).map_err(map_err)?;
         Ok(serde_json::to_string_pretty(&result).unwrap_or_default())
     }
 
