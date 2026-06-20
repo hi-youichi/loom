@@ -39,6 +39,7 @@ pub fn register_file_tools(
     working_folder: impl AsRef<Path>,
     _skill_registry: Option<Arc<::skill::SkillRegistry>>,
     _skill_usage: Option<::skill::SkillUsageStore>,
+    is_background_review: bool,
 ) -> Result<(), ToolSourceError> {
     let path = working_folder.as_ref();
     let canonical = path.canonicalize().map_err(|e| {
@@ -81,9 +82,15 @@ pub fn register_file_tools(
     let skills_dir = path.join(".loom/skills");
     let storage = Arc::new(::skill::storage::SkillStorageRegistry::new(&skills_dir));
     let usage = Arc::new(::skill::SkillUsageStore::new(&skills_dir));
-    aggregate.register_sync(Box::new(
+    // 011-02: route SkillManagerTool factory based on write origin.
+    // For background-review agents, register the BackgroundReview factory so created skills
+    // are marked `agent-created` (see `SkillManagerTool::handle_create` at manage.rs:219).
+    let manager = if is_background_review {
+        skill::SkillManagerTool::for_background_review(storage, Some(usage))
+    } else {
         skill::SkillManagerTool::for_foreground(storage, Some(usage))
-    ));
+    };
+    aggregate.register_sync(Box::new(manager));
 
     Ok(())
 }

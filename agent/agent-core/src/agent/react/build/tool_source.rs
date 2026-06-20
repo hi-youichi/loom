@@ -82,11 +82,12 @@ pub(crate) async fn build_tool_source(
         }
     }
     if let Some(ref wf) = config.working_folder {
-        register_file_tools(
+register_file_tools(
             aggregate.as_ref(),
             wf,
             config.skill_registry.clone(),
             Some(SkillUsageStore::new(&wf.join(".loom/skills"))),
+            config.is_background_review,
         )
         .map_err(to_agent_error)?;
 

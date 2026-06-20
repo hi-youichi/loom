@@ -100,10 +100,21 @@ pub struct ReactBuildConfig {
     pub call_tool_filter: Option<BuiltinToolFilter>,
     pub bash_executor: Option<Arc<dyn tool_basic::bash::CommandExecutor>>,
     pub extra_tools: Option<Arc<Vec<Arc<dyn tool_core::Tool>>>>,
-    pub acp_session_id: Option<String>,
+pub acp_session_id: Option<String>,
     /// When true, task management tools (task_create/update/show/list/delete) are registered.
     /// Only enabled in goal mode.
     pub goal_mode: bool,
+    /// When true, this config builds a background-review agent (sub-fork of a main agent).
+    /// Affects tool factory selection:
+    /// - `SkillManagerTool::for_background_review` — writes go through `WriteOrigin::BackgroundReview`
+    ///   thread-local guard, marking created skills as `agent-created`.
+    /// - `MemoryTool::for_background_review` — writes carry `execution_context="background_review"`
+    ///   provenance and default `user_profile_enabled=false`.
+    ///
+    /// Default `false`; only `review.rs` should set this to `true` when forking a review agent.
+    /// This flag does NOT auto-short-circuit nudge intervals — that is the review agent's own
+    /// responsibility (see plan 011-03).
+    pub is_background_review: bool,
 
     // --- Prompt assembly inputs (migrated from HelveConfig) ---
     /// Role/persona setting (e.g. from instructions.md).
@@ -202,6 +213,7 @@ impl ReactBuildConfig {
             extra_tools: None,
             acp_session_id: None,
             goal_mode: false,
+            is_background_review: false,
             role_setting: None,
             agents_md: None,
             system_prompt_override: None,
