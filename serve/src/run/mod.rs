@@ -370,7 +370,6 @@ mod tests {
             chat_id: None,
             worktree: false,
             goal_mode: false,
-        force_review: false,
             debug_llm: false,
         };
         let (result, state, _dropped_events, _dropped_appends) = run_agent_task(AgentTaskParams {
@@ -424,7 +423,6 @@ mod tests {
             chat_id: None,
             worktree: false,
             goal_mode: false,
-        force_review: false,
             debug_llm: false,
         };
         let (result, state, _dropped_events, _dropped_appends) = run_agent_task(AgentTaskParams {

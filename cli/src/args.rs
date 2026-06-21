@@ -87,10 +87,6 @@ pub(crate) struct Args {
     #[arg(long)]
     pub(crate) debug_llm: bool,
 
-    /// Force a background review of this session immediately after completion (for testing).
-    #[arg(long = "review")]
-    pub(crate) force_review: bool,
-
     /// Log level (tracing EnvFilter syntax). Overrides RUST_LOG when set; default RUST_LOG or info.
     #[arg(long, global = true, value_name = "LEVEL")]
     pub(crate) log_level: Option<String>,
@@ -518,7 +514,11 @@ pub enum SkillUsageCommand {
 #[derive(clap::Subcommand, Debug, Clone)]
 pub(crate) enum CuratorCommand {
     /// Run curator review (automatic state transitions + LLM pass)
-    Run,
+    Run {
+        /// Force LLM pass even if interval gating would skip it
+        #[arg(long)]
+        force: bool,
+    },
     /// Show curator status and statistics
     Status,
     /// Bulk archive old skills
@@ -531,6 +531,44 @@ pub(crate) enum CuratorCommand {
     Pause,
     /// Resume curator (enable scheduled runs)
     Resume,
+    /// Pin a skill so the curator never archives or consolidates it
+    Pin {
+        /// Name of the skill to pin
+        #[arg(value_name = "SKILL")]
+        skill: String,
+    },
+    /// Remove a pin from a skill
+    Unpin {
+        /// Name of the skill to unpin
+        #[arg(value_name = "SKILL")]
+        skill: String,
+    },
+    /// Restore an archived skill back to Active
+    Restore {
+        /// Name of the skill to restore
+        #[arg(value_name = "SKILL")]
+        skill: String,
+    },
+    /// Manually archive a single skill (Lifecycle → Archived)
+    Archive {
+        /// Name of the skill to archive
+        #[arg(value_name = "SKILL")]
+        skill: String,
+    },
+    /// Create a backup snapshot of the entire skill library
+    Backup {
+        /// Optional description for the snapshot
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// Roll back the skill library to a previous snapshot
+    Rollback {
+        /// Snapshot filename (e.g. curator-2025-08-19T12-34-56.tar.gz)
+        #[arg(value_name = "SNAPSHOT")]
+        snapshot: String,
+    },
+    /// List available backup snapshots
+    Snapshots,
 }
 
 #[derive(clap::Args, Debug, Clone)]

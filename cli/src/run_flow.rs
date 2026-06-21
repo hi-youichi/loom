@@ -58,7 +58,6 @@ pub(crate) fn build_run_options(args: &Args, message: String, got_adaptive: bool
         chat_id: None,
         worktree: args.worktree,
         goal_mode: false,
-        force_review: args.force_review,
     }
 }
 

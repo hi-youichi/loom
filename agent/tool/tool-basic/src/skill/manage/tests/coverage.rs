@@ -879,6 +879,7 @@ async fn remove_file_no_files_available_returns_null() {
                 triggers: vec![],
                 lifecycle: Lifecycle::Active,
                 source: Source::Manual,
+                created_by: None,
                 body: "body".into(),
                 raw: String::new(),
             },

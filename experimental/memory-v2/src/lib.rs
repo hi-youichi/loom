@@ -146,6 +146,30 @@ pub struct RemoveResult {
     pub usage: String,
 }
 
+/// Build a single-line preview of memory content for use in tool result
+/// messages, so the review CLI can show *what* was changed (e.g.
+/// `[OK] memory (memory) — Entry added: 用户偏好中文沟通`) instead of the
+/// generic `Entry added`.
+///
+/// - Collapses all whitespace (including newlines) to single spaces.
+/// - Truncates to `max_chars` Unicode characters using `chars()` (UTF-8 safe).
+/// - Appends `"…"` when truncated.
+fn content_preview(content: &str, max_chars: usize) -> String {
+    let collapsed: String = content.split_whitespace().collect::<Vec<_>>().join(" ");
+    let count = collapsed.chars().count();
+    if count <= max_chars {
+        return collapsed;
+    }
+    let mut out: String = collapsed.chars().take(max_chars).collect();
+    out.push('…');
+    out
+}
+
+/// Default preview width for memory messages.
+fn preview_default(content: &str) -> String {
+    content_preview(content, 80)
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum MemoryError {
     #[error("IO error: {0}")]
@@ -355,7 +379,10 @@ impl MemoryStore {
         if entries.iter().any(|e| e.trim() == trimmed) {
             return Ok(AddResult {
                 success: true,
-                message: "Entry already exists, skipping duplicate".into(),
+                message: format!(
+                    "Entry already exists, skipping duplicate: {}",
+                    preview_default(trimmed)
+                ),
                 entry_count: entries.len(),
                 usage: self.fmt_usage(file, &entries),
                 provenance: provenance.clone(),
@@ -377,7 +404,7 @@ impl MemoryStore {
 
         Ok(AddResult {
             success: true,
-            message: "Entry added".into(),
+            message: format!("Entry added: {}", preview_default(trimmed)),
             entry_count: entries.len(),
             usage: self.fmt_usage(file, &entries),
             provenance: provenance.clone(),
@@ -433,7 +460,7 @@ impl MemoryStore {
 
         Ok(ReplaceResult {
             success: true,
-            message: "Entry replaced".into(),
+            message: format!("Entry replaced: {}", preview_default(new_trimmed)),
             matched_count: indices.len(),
             entry_count: entries.len(),
             usage: self.fmt_usage(file, &entries),
@@ -461,28 +488,26 @@ impl MemoryStore {
             .map(|(i, _)| i)
             .collect();
 
-        match indices.len() {
+        let removed_entry = match indices.len() {
             0 => return Err(MemoryError::NotFound),
-            1 => {
-                entries.remove(indices[0]);
-            }
+            1 => entries.remove(indices[0]),
             _ => {
                 let all_same = indices
                     .iter()
                     .all(|&i| entries[i] == entries[indices[0]]);
                 if all_same {
-                    entries.remove(indices[0]);
+                    entries.remove(indices[0])
                 } else {
                     return Err(MemoryError::AmbiguousMatch(indices.len()));
                 }
             }
-        }
+        };
 
         self.write_file_entries_atomic(file, &entries)?;
 
         Ok(RemoveResult {
             success: true,
-            message: "Entry removed".into(),
+            message: format!("Entry removed: {}", preview_default(&removed_entry)),
             entry_count: entries.len(),
             usage: self.fmt_usage(file, &entries),
         })
@@ -1027,4 +1052,65 @@ mod tests {
         let store = MemoryStore::new(dir.path());
         assert!(store.system_prompt_section(true, true).is_none());
     }
+
+    // ── content_preview tests ──
+
+    #[test]
+    fn content_preview_short_unchanged() {
+        assert_eq!(preview_default("hello world"), "hello world");
+    }
+
+    #[test]
+    fn content_preview_collapses_whitespace() {
+        assert_eq!(
+            preview_default("hello\n  world\t\twith\n\nnewlines"),
+            "hello world with newlines"
+        );
+    }
+
+    #[test]
+    fn content_preview_truncates_long() {
+        let long = "x".repeat(200);
+        let p = content_preview(&long, 80);
+        assert_eq!(p.chars().count(), 81); // 80 chars + '…'
+        assert!(p.ends_with('…'));
+    }
+
+    #[test]
+    fn content_preview_unicode_safe() {
+        let chinese = "用".repeat(100);
+        let p = content_preview(&chinese, 10);
+        assert_eq!(p.chars().count(), 11); // 10 chars + '…'
+    }
+
+    #[test]
+    fn add_message_includes_preview() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = MemoryStore::new(dir.path());
+        let r = store
+            .add_entry(MemoryFile::User, "user prefers Chinese", &fg())
+            .unwrap();
+        assert!(r.message.contains("user prefers Chinese"));
+    }
+
+    #[test]
+    fn replace_message_includes_preview() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = MemoryStore::new(dir.path());
+        store.add_entry(MemoryFile::User, "old text", &fg()).unwrap();
+        let r = store
+            .replace_entry(MemoryFile::User, "old", "brand new text")
+            .unwrap();
+        assert!(r.message.contains("brand new text"));
+    }
+
+    #[test]
+    fn remove_message_includes_preview() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = MemoryStore::new(dir.path());
+        store.add_entry(MemoryFile::User, "doomed entry", &fg()).unwrap();
+        let r = store.remove_entry(MemoryFile::User, "doomed").unwrap();
+        assert!(r.message.contains("doomed entry"));
+    }
 }
+

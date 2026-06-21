@@ -42,6 +42,8 @@ tracing = "0.1"
 dirs = "5"
 
 skill = { path = "../agent/skill" }
+tool-core = { path = "../agent/tool/tool-core" }
+tool-basic = { path = "../agent/tool/tool-basic" }
 tool-experimental = { path = "../agent/tool/tool-experimental" }
 memory-v2 = { path = "../experimental/memory-v2" }
 agent = { path = "../agent/agent-core" }

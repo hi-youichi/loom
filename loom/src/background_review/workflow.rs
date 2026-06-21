@@ -12,6 +12,11 @@ use chrono::Utc;
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
+// Bring the LLM-enabled curator entry point into scope.
+// `loom_background_review::run_curator_llm_if_needed` is the async, LLM-driven
+// consolidation pass that builds umbrellas via tool-augmented multi-turn.
+use loom_background_review::run_curator_llm_if_needed;
+
 /// Handle for the result of a background review.
 pub struct BackgroundReviewHandle {
     pub summary: String,
@@ -92,8 +97,51 @@ pub fn spawn_background_review(
                     }
                 }
 
+                // Phase 1: heuristic curator (stale/archive/overlap detection)
                 if let Err(e) = run_curator_if_needed(&SkillRegistry::default_path(), &config.curator_config) {
-                    warn!("Curator auto-run failed: {}", e);
+                    warn!("Curator heuristic run failed: {}", e);
+                }
+
+                // Phase 2: LLM-driven consolidation pass (umbrella building).
+                //
+                // Only runs when API credentials are available. The LLM pass
+                // builds clusters, prunes obsolete skills, and consolidates
+                // overlapping skills into umbrella skills via tool-augmented
+                // multi-turn. This aligns with Hermes `Curator.run_llm_pass()`.
+                //
+                // P0 fix: previously this was defined but never wired into
+                // the production path — the LLM consolidation pass was dead code.
+                if !config.base_url.is_empty() && !config.api_key.is_empty() {
+                    let curator_llm_result = rt.block_on(async {
+                        let llm = build_review_agent_client(
+                            &config.base_url,
+                            &config.api_key,
+                            &config.model,
+                        );
+                        run_curator_llm_if_needed(
+                            &SkillRegistry::default_path(),
+                            &config.curator_config,
+                            &*llm,
+                        )
+                        .await
+                    });
+                    match curator_llm_result {
+                        Ok(Some(outcome)) => {
+                            info!(
+                                "Curator LLM pass: {} consolidated, {} pruned, {} turns, {:.1}s",
+                                outcome.classification.consolidated.len(),
+                                outcome.classification.pruned.len(),
+                                outcome.turns,
+                                outcome.elapsed_seconds,
+                            );
+                        }
+                        Ok(None) => {
+                            info!("Curator LLM pass: skipped (gating conditions not met)");
+                        }
+                        Err(e) => {
+                            warn!("Curator LLM pass failed: {}", e);
+                        }
+                    }
                 }
             }
             Err(e) => {

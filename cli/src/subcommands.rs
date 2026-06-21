@@ -440,6 +440,7 @@ pub(crate) fn handle_skills_command(
                 triggers: triggers.clone(),
                 lifecycle: Lifecycle::Active,
                 source: Source::Manual,
+                created_by: None,
                 body: String::new(),
                 raw: String::new(),
             };
@@ -470,7 +471,50 @@ pub(crate) fn handle_skills_command(
     Ok(())
 }
 
-pub(crate) fn handle_curator_command(
+/// Resolve LLM credentials for the curator LLM pass.
+///
+/// Priority: config.toml `[providers]` first → env vars fallback.
+/// Returns `(base_url, api_key, model)` or `None` if no credentials found.
+fn resolve_curator_llm_credentials() -> Option<(String, String, String)> {
+    // Try config.toml first
+    if let Ok(config) = config::xdg_toml::load_full_config("loom") {
+        let provider = if let Some(ref name) = config.default_provider {
+            config.providers.iter().find(|p| &p.name == name)
+        } else {
+            config.providers.first()
+        };
+        if let Some(provider) = provider {
+            let api_key = provider.api_key.clone().filter(|k| !k.is_empty())?;
+            let base_url = provider
+                .base_url
+                .clone()
+                .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
+            let model = std::env::var("LOOM_MODEL")
+                .or_else(|_| std::env::var("MODEL"))
+                .ok()
+                .or_else(|| provider.model.clone())
+                .unwrap_or_else(|| "gpt-4o-mini".to_string());
+            return Some((base_url, api_key, model));
+        }
+    }
+
+    // Fallback: env vars
+    let api_key = std::env::var("OPENAI_API_KEY")
+        .or_else(|_| std::env::var("LOOM_API_KEY"))
+        .ok()?;
+    if api_key.is_empty() {
+        return None;
+    }
+    let base_url = std::env::var("OPENAI_BASE_URL")
+        .or_else(|_| std::env::var("LOOM_BASE_URL"))
+        .unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
+    let model = std::env::var("LOOM_MODEL")
+        .or_else(|_| std::env::var("MODEL"))
+        .unwrap_or_else(|_| "gpt-4o-mini".to_string());
+    Some((base_url, api_key, model))
+}
+
+pub(crate) async fn handle_curator_command(
     curator_args: &CuratorCmdArgs,
     json: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -480,12 +524,13 @@ pub(crate) fn handle_curator_command(
     };
     use cli::run::skill_registry::SkillRegistry;
 
-    let skills = SkillRegistry::new(&loom_background_review::skill_registry::default_path());
+    let skills_path = loom_background_review::skill_registry::default_path();
+    let skills = SkillRegistry::new(&skills_path);
     let curator = Curator::new(skills, CuratorConfig::default());
 
     match &curator_args.command {
-        CuratorCommand::Run => {
-            // Run auto-transitions (stale/archive/reactivate)
+        CuratorCommand::Run { force: _ } => {
+            // Phase 0: Run auto-transitions (stale/archive/reactivate)
             let report: CuratorReport = curator.run(curator_args.dry_run)?;
 
             if json {
@@ -499,6 +544,59 @@ pub(crate) fn handle_curator_command(
                 println!("Reactivated: {} {:?}", report.reactivated.len(), report.reactivated);
                 println!("Overlapping: {} pairs", report.overlapping.len());
             }
+
+            // Phase 1: LLM-driven consolidation pass (umbrella-building).
+            //
+            // Aligns with Hermes `run_curator_review()` which always runs
+            // both phases. Only attempted when LLM credentials are available
+            // and not in dry-run mode.
+            if !curator_args.dry_run {
+                if let Some((base_url, api_key, model)) = resolve_curator_llm_credentials() {
+                    eprintln!("Curator LLM pass: starting (model: {})", model);
+                    let mut agent_config = loom_react_config::ReactBuildConfig::from_env();
+                    agent_config.openai_api_key = Some(api_key);
+                    agent_config.openai_base_url = Some(base_url);
+                    agent_config.model = Some(model);
+                    let curator_config = CuratorConfig::default();
+                    match loom_background_review::run_curator_llm_if_needed(
+                        &skills_path,
+                        &curator_config,
+                        agent_config,
+                        true,
+                    )
+                    .await
+                    {
+                        Ok(Some(outcome)) => {
+                            println!();
+                            println!("Curator LLM Pass:");
+                            println!("{}", "=".repeat(60));
+                            println!(
+                                "Consolidated: {} | Pruned: {} | Turns: {} | {:.1}s",
+                                outcome.classification.consolidated.len(),
+                                outcome.classification.pruned.len(),
+                                outcome.turns,
+                                outcome.elapsed_seconds,
+                            );
+                            for c in &outcome.classification.consolidated {
+                                println!("  - consolidated: {} -> {}", c.source, c.into);
+                            }
+                            for p in &outcome.classification.pruned {
+                                println!("  - pruned: {} ({})", p.name, p.reason);
+                            }
+                        }
+                        Ok(None) => {
+                            eprintln!("Curator LLM pass: skipped (gating conditions not met)");
+                        }
+                        Err(e) => {
+                            eprintln!("Curator LLM pass failed: {}", e);
+                        }
+                    }
+                } else {
+                    eprintln!(
+                        "Curator LLM pass: skipped (no LLM credentials - set OPENAI_API_KEY or configure config.toml)"
+                    );
+                }
+            }
         }
         CuratorCommand::Status => {
             let state: CuratorState = curator.load_state().unwrap_or_default();
@@ -509,9 +607,23 @@ pub(crate) fn handle_curator_command(
             let archived = all.iter().filter(|m| m.lifecycle == cli::run::skill_registry::Lifecycle::Archived).count();
             let pinned = all.iter().filter(|m| m.pinned).count();
 
+            // Determine next-run eligibility
+            let eligible = curator.should_run(None);
+            let total = active + stale + archived + pinned;
+
+            // Load usage for top-skills display
+            let usage_store = loom_background_review::SkillUsageStore::new(curator.skills.base_dir());
+            let usage_reports = usage_store.agent_created_report().unwrap_or_default();
+            let mut top_skills: Vec<_> = usage_reports
+                .iter()
+                .filter(|u| u.use_count > 0)
+                .collect();
+            top_skills.sort_by(|a, b| b.use_count.cmp(&a.use_count));
+            let top_skills: Vec<_> = top_skills.into_iter().take(5).collect();
+
             if json {
                 println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-                    "enabled": true,
+                    "enabled": curator.config_enabled(),
                     "paused": state.paused,
                     "run_count": state.run_count,
                     "last_run_at": state.last_run_at,
@@ -521,22 +633,51 @@ pub(crate) fn handle_curator_command(
                     "stale": stale,
                     "archived": archived,
                     "pinned": pinned,
+                    "total": total,
+                    "next_run_eligible": eligible,
+                    "interval_hours": curator.config_interval_hours(),
+                    "min_skills_to_run": curator.config_min_skills(),
+                    "overlap_threshold": curator.config_overlap_threshold(),
+                    "stale_days_auto": curator.config_stale_days_auto(),
+                    "stale_days_manual": curator.config_stale_days_manual(),
+                    "archive_days": curator.config_archive_days(),
+                    "top_skills": top_skills.iter().map(|u| serde_json::json!({
+                        "name": u.name,
+                        "uses": u.use_count,
+                        "views": u.view_count,
+                    })).collect::<Vec<_>>(),
                 }))?);
             } else {
                 println!("Curator Status:");
                 println!("{}", "═".repeat(60));
-                println!("Enabled: true");
+                println!("Enabled: {}", curator.config_enabled());
                 println!("Paused: {}", state.paused);
                 println!("Run Count: {}", state.run_count);
                 println!("Last Run: {}", state.last_run_at.as_deref().unwrap_or("never"));
+                println!("Next Run Eligible: {}", if eligible { "✓ yes" } else { "✗ no" });
+                println!();
+                println!("Config:");
+                println!("  Interval: every {}h", curator.config_interval_hours());
+                println!("  Min skills: {}", curator.config_min_skills());
+                println!("  Overlap threshold: {:.0}%", curator.config_overlap_threshold() * 100.0);
+                println!("  Stale days (auto/manual): {}/{}", curator.config_stale_days_auto(), curator.config_stale_days_manual());
+                println!("  Archive days: {}", curator.config_archive_days());
                 if let Some(summary) = &state.last_run_summary {
+                    println!();
                     println!("Last Summary:\n{}", summary);
                 }
-                println!("\nSkill Counts:");
-                println!("  Active: {}", active);
-                println!("  Stale: {}", stale);
-                println!("  Archived: {}", archived);
-                println!("  Pinned: {}", pinned);
+                println!();
+                println!("Skill Counts ({} total):", total);
+                println!("  Active: {}  |  Stale: {}  |  Archived: {}  |  Pinned: {}",
+                    active, stale, archived, pinned);
+                if !top_skills.is_empty() {
+                    println!();
+                    println!("Top Skills (by usage):");
+                    for (i, u) in top_skills.iter().enumerate() {
+                        println!("  {}. {} — {} uses, {} views",
+                            i + 1, u.name, u.use_count, u.view_count);
+                    }
+                }
             }
         }
         CuratorCommand::Prune { days } => {
@@ -560,6 +701,100 @@ pub(crate) fn handle_curator_command(
         CuratorCommand::Resume => {
             curator.set_paused(false)?;
             println!("Curator resumed.");
+        }
+        CuratorCommand::Pin { skill } => {
+            curator.skills.set_pinned(skill, true).map_err(|e| format!("{:?}", e))?;
+            println!("✓ Pinned '{}'", skill);
+        }
+        CuratorCommand::Unpin { skill } => {
+            curator.skills.set_pinned(skill, false).map_err(|e| format!("{:?}", e))?;
+            println!("✓ Unpinned '{}'", skill);
+        }
+        CuratorCommand::Restore { skill } => {
+            use cli::run::skill_registry::Lifecycle;
+            curator.skills.set_lifecycle(skill, Lifecycle::Active).map_err(|e| format!("{:?}", e))?;
+            println!("✓ Restored '{}' to Active", skill);
+        }
+        CuratorCommand::Archive { skill } => {
+            use cli::run::skill_registry::Lifecycle;
+
+            // Package integrity gate: warn but don't block manual archive
+            let integrity = loom_background_review::curator::check_package_integrity(
+                curator.skills.base_dir(),
+                skill,
+            );
+            if !integrity.is_safe {
+                eprintln!(
+                    "⚠ Warning: '{}' has broken relative links: {}",
+                    skill,
+                    integrity.broken_links.join(", ")
+                );
+            }
+
+            curator.skills.set_lifecycle(skill, Lifecycle::Archived).map_err(|e| format!("{:?}", e))?;
+            println!("✓ Archived '{}' (Lifecycle → Archived)", skill);
+        }
+        CuratorCommand::Backup { description } => {
+            use loom_background_review::CuratorBackup;
+
+            let skills_dir = loom_background_review::skill_registry::default_path();
+            let backup = CuratorBackup::new();
+
+            let filename = backup
+                .snapshot(&skills_dir, description.as_deref())
+                .map_err(|e| format!("{:?}", e))?;
+
+            if json {
+                println!("{}", serde_json::json!({
+                    "snapshot": filename,
+                    "backup_dir": backup.backup_dir(),
+                }));
+            } else {
+                println!("✓ Snapshot created: {}", filename);
+                println!("  Location: {}", backup.backup_dir().display());
+            }
+        }
+        CuratorCommand::Rollback { snapshot } => {
+            use loom_background_review::CuratorBackup;
+
+            let skills_dir = loom_background_review::skill_registry::default_path();
+            let backup = CuratorBackup::new();
+
+            backup
+                .rollback(snapshot, &skills_dir)
+                .map_err(|e| format!("{:?}", e))?;
+
+            println!("✓ Rolled back to snapshot '{}'", snapshot);
+        }
+        CuratorCommand::Snapshots => {
+            use loom_background_review::CuratorBackup;
+
+            let backup = CuratorBackup::new();
+            let snapshots = backup
+                .list_snapshots()
+                .map_err(|e| format!("{:?}", e))?;
+
+            if json {
+                println!("{}", serde_json::to_string_pretty(&snapshots)?);
+            } else if snapshots.is_empty() {
+                println!("No snapshots found. Use 'loom curator backup' to create one.");
+            } else {
+                println!("Curator Snapshots ({} total):", snapshots.len());
+                println!("{}", "═".repeat(60));
+                for meta in &snapshots {
+                    let size_kb = meta.size_bytes as f64 / 1024.0;
+                    println!(
+                        "  curator-{}.tar.gz  ({} skills, {:.1} KB){}",
+                        meta.timestamp,
+                        meta.skills_count,
+                        size_kb,
+                        meta.description
+                            .as_deref()
+                            .map(|d| format!(" — {}", d))
+                            .unwrap_or_default(),
+                    );
+                }
+            }
         }
     }
     Ok(())

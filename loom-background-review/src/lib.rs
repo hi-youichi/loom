@@ -12,6 +12,7 @@
 
 pub mod curator;
 pub mod curator_backup;
+pub mod curator_llm;
 pub mod history;
 pub mod observability;
 pub mod prompts;
@@ -36,7 +37,7 @@ pub use curator::{
     AutoCounts, CuratorReviewResult, LlmPassResult,
     LlMReviewResult, SkillCluster, PruningDecision, ConsolidationDecision,
     CuratorToolCall, AbsorbedIntoDeclaration, ClassificationResult,
-    SkillSnapshot, CuratorRunReport,
+    SkillSnapshot, StateTransition, CuratorRunReport,
     parse_llm_review_response, build_llm_prompt, reconcile_classification,
 };
 pub use curator_backup::{CuratorBackup, BackupError, SnapshotMeta};
@@ -45,5 +46,6 @@ pub use observability::ObservabilityStore;
 
 pub use workflow::{
     run_curator_if_needed,
+    run_curator_llm_if_needed,
     skills_default_path_public, wait_for_pending_reviews,
 };

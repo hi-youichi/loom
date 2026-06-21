@@ -813,7 +813,6 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
             chat_id: None,
             worktree: false,
             goal_mode: false,
-        force_review: false,
         };
 
         let session_id = args.session_id.clone();

@@ -74,7 +74,6 @@ pub async fn run_loom_agent_streaming(
             chat_id: Some(chat_id),
             worktree: false,
             goal_mode: false,
-        force_review: false,
         };
 
 

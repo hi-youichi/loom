@@ -315,7 +315,6 @@ impl CodexAgent {
                 chat_id: None,
                 worktree: false,
                 goal_mode: false,
-                force_review: false,
             };
 
             if let Some(sp) = system_prompt {

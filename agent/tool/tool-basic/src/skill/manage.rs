@@ -182,6 +182,7 @@ impl SkillManagerTool {
             triggers: Vec::new(),
             lifecycle: Lifecycle::Active,
             source: Source::Auto,
+            created_by: Some("agent".to_string()),
             body,
             raw: String::new(),
         };
@@ -290,6 +291,7 @@ impl SkillManagerTool {
             triggers: Vec::new(),
             lifecycle: Lifecycle::Active,
             source: Source::Auto,
+            created_by: Some("agent".to_string()),
             body,
             raw: String::new(),
         };
@@ -420,6 +422,7 @@ impl SkillManagerTool {
                 triggers: Vec::new(),
                 lifecycle: Lifecycle::Active,
                 source: Source::Auto,
+                created_by: Some("agent".to_string()),
                 body,
                 raw: new_content.clone(),
             };

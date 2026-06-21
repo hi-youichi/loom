@@ -225,7 +225,24 @@ Act on whichever of the two dimensions has real signal. If \
 genuinely nothing stands out on either, say 'Nothing to save.' \
 and stop — but don't reach for that conclusion as a default.";
 
+/// System prompt for the curator ReAct agent.
+///
+/// Replaces the default ReAct system prompt when the curator runs in agent
+/// mode. Concisely establishes the curator role and instructs the LLM to use
+/// only skill tools for consolidation.
+pub const CURATOR_SYSTEM_PROMPT: &str = "You are Loom's background skill CURATOR. Follow the instructions precisely. Use skill_list, skill_view, and skill_manage tools to inspect and consolidate skills. Other tools are not available.";
+
 /// Curator LLM review prompt for skill consolidation.
+///
+/// Aligned with Hermes `CURATOR_REVIEW_PROMPT` (`agent/curator.py:330-464`),
+/// ~130 lines. Contains seven key segments:
+///   A. Hard rules (5 inviolable rules)
+///   B. Candidate list rendering instruction
+///   C. Three consolidation strategies
+///   D. Package integrity directive
+///   E. absorbed_into declaration requirement
+///   F. Iteration driving force
+///   G. Tool parameter documentation (Loom tool names)
 ///
 /// Used by the curator's LLM pass to analyze skills and decide:
 /// - Which skills should be consolidated into umbrella skills
@@ -238,17 +255,104 @@ duplicate-finder.
 The goal of the skill collection is a LIBRARY OF CLASS-LEVEL
 INSTRUCTIONS AND EXPERIENTIAL KNOWLEDGE. A collection of hundreds of
 narrow skills where each one captures one session's specific bug is
-a FAILURE of the library - not a feature. An agent searching skills
+a FAILURE of the library — not a feature. An agent searching skills
 matches on descriptions, not on exact names; one broad umbrella
 skill with labeled subsections beats twenty one-off entries every time.
 
-Your job:
-1. Identify clusters of related/narrow skills that should be umbrella-ified
-2. Decide: for each cluster, which skill should become the umbrella?
-3. For skills that are truly stale, irrelevant, or obsolete: mark for pruning
-4. Output a structured summary of your decisions
+## How to work
 
-Output format (use this exact YAML structure):
+1. Scan the candidate list below. Each entry shows the skill name,
+   description, and usage metadata. Use `skill_view` to inspect the full
+   content of any skill you want to consolidate.
+
+2. Below is the current set of agent-created skills with usage metadata.
+   Each skill's pinned/protected status is noted.
+
+3. Three ways to consolidate — use the right one per cluster:
+   a. MERGE INTO EXISTING UMBRELLA — one skill in the cluster is already
+      broad enough to be the umbrella. Patch it to add a labeled section
+      for each sibling's unique insight, then archive the siblings.
+   b. CREATE A NEW UMBRELLA SKILL — no existing member is broad enough.
+      Use skill_create to write a new class-level skill whose SKILL.md
+      covers the shared workflow and has short labeled subsections.
+      Archive the now-absorbed narrow siblings.
+   c. DEMOTE TO REFERENCES/TEMPLATES/SCRIPTS — a sibling has narrow-but-
+      valuable session-specific content. Move it into the umbrella's
+      appropriate support directory:
+        • references/<topic>.md for session-specific detail OR condensed
+          knowledge banks
+        • templates/<name>.<ext> for starter files meant to be copied
+          and modified
+        • scripts/<name>.<ext> for statically re-runnable actions
+          (verification scripts, fixture generators, probes)
+
+## Hard rules — do not violate
+
+1. DO NOT touch bundled or hub-installed skills. The candidate list below
+   is already filtered to agent-created skills only.
+2. DO NOT delete any skill. Archiving (moving the skill's directory into
+   the archive) is the maximum destructive action.
+3. DO NOT touch skills shown as pinned=yes. Skip them entirely.
+4. DO NOT use usage counters as a reason to skip consolidation.
+5. DO NOT reject consolidation on the grounds that 'each skill has a
+   distinct trigger'. The right bar is: 'would a human maintainer write
+   this as N separate skills, or as one skill with N labeled subsections?'
+
+## Package integrity — not optional
+
+Before demoting or archiving a skill, inspect it as a COMPLETE directory
+package, not just SKILL.md. A skill root may include references/,
+templates/, scripts/, and assets/; skill_view discovers those relative
+to the skill root.
+
+If the source skill has support files OR SKILL.md contains relative links
+such as references/..., templates/..., scripts/..., or assets/..., DO NOT
+flatten only SKILL.md into <umbrella>/references/<old>.md. Choose one safe
+path instead:
+   • keep it as a standalone skill, OR
+   • fully merge it by re-homing every needed support file into the
+     umbrella's canonical directories AND rewrite the destination
+     instructions to the new paths, OR
+   • archive the entire original skill package unchanged.
+
+Never leave archived/demoted instructions pointing at files that were left
+behind under the old skill directory.
+
+## Iterate
+
+After one consolidation round, scan the remaining set and look for the
+NEXT umbrella opportunity. Don't stop after 3 merges.
+
+Expected output: real umbrella-ification. Process every obvious cluster.
+If you end the pass with fewer than 10 archives, you stopped too early —
+go back and look at the clusters you left alone.
+
+## Tools available
+
+  You have THREE tools for skill inspection and management:
+
+  - **skill_list** — list all skills with names, descriptions, and categories.
+  - **skill_view** — load a skill's full content by name (SKILL.md + sub-files).
+    Use this to inspect skills before deciding how to consolidate.
+  - **skill_manage** — manage skills via an `action` parameter:
+
+    - skill_manage action=patch   — patch an existing skill's SKILL.md
+                                     (requires: name, old_string, new_string)
+    - skill_manage action=create  — create a new class-level umbrella
+                                     (requires: name, content = full SKILL.md)
+    - skill_manage action=delete  — archive a skill. MUST pass
+                                     absorbed_into=<umbrella> when you've
+                                     merged its content into another skill,
+                                     or absorbed_into="" when you're truly
+                                     pruning with no forwarding target. This
+                                     drives cron-job skill-reference migration
+                                     — guessing from your YAML summary after
+                                     the fact is fragile.
+    - skill_manage action=write_file — write support files
+                                        (references/, templates/, scripts/)
+                                        (requires: name, file_path, content)
+
+## Output format (use this exact YAML structure)
 
 ```yaml
 summary: |
@@ -272,11 +376,11 @@ consolidations:
 ```
 
 Rules:
-- Every skill you want to archive MUST appear in either `consolidations` or `prunings`
+- Every skill you want to archive MUST appear in either `consolidations` or `prunings`.
 - If consolidated X into umbrella Y (patched Y, wrote a references file to Y,
   or created Y with X's content absorbed), X goes under `consolidations` with
-  `into: Y`
-- If archived X with no absorption - truly stale, irrelevant, or obsolete -
+  `into: Y`.
+- If archived X with no absorption — truly stale, irrelevant, or obsolete —
   X goes under `prunings`
 - Leave a list empty (`consolidations: []`) if none. Do not omit the block.
 - The block comes AFTER your human-readable summary of clusters processed,
@@ -361,5 +465,43 @@ mod tests {
         assert!(CURATOR_REVIEW_PROMPT.contains("skill collection"));
         assert!(CURATOR_REVIEW_PROMPT.contains("prunings"));
         assert!(CURATOR_REVIEW_PROMPT.contains("consolidations"));
+    }
+
+    #[test]
+    fn test_curator_prompt_has_all_seven_segments() {
+        // A. Hard rules
+        assert!(CURATOR_REVIEW_PROMPT.contains("Hard rules"));
+        assert!(CURATOR_REVIEW_PROMPT.contains("DO NOT touch bundled"));
+        assert!(CURATOR_REVIEW_PROMPT.contains("pinned=yes"));
+        // B. Candidate list rendering
+        assert!(CURATOR_REVIEW_PROMPT.contains("candidate list below"));
+        // C. Three consolidation strategies
+        assert!(CURATOR_REVIEW_PROMPT.contains("MERGE INTO EXISTING UMBRELLA"));
+        assert!(CURATOR_REVIEW_PROMPT.contains("CREATE A NEW UMBRELLA"));
+        assert!(CURATOR_REVIEW_PROMPT.contains("DEMOTE TO REFERENCES"));
+        // D. Package integrity
+        assert!(CURATOR_REVIEW_PROMPT.contains("Package integrity"));
+        // E. absorbed_into
+        assert!(CURATOR_REVIEW_PROMPT.contains("absorbed_into"));
+        // F. Iteration driving
+        assert!(CURATOR_REVIEW_PROMPT.contains("NEXT umbrella opportunity"));
+        // G. Tool documentation — single skill_manage tool with actions
+        assert!(CURATOR_REVIEW_PROMPT.contains("skill_manage action=patch"));
+        assert!(CURATOR_REVIEW_PROMPT.contains("skill_manage action=create"));
+        assert!(CURATOR_REVIEW_PROMPT.contains("skill_manage action=delete"));
+        assert!(CURATOR_REVIEW_PROMPT.contains("skill_manage action=write_file"));
+    }
+
+    #[test]
+    fn test_curator_prompt_uses_loom_tool_names() {
+        // The prompt must reference the actual registered tool name
+        // "skill_manage" with action= parameters, NOT non-existent tools
+        // like skill_update, skill_create, skill_delete as separate tools.
+        assert!(CURATOR_REVIEW_PROMPT.contains("skill_manage action=delete"));
+        // Must NOT advertise non-existent separate tool names
+        assert!(!CURATOR_REVIEW_PROMPT.contains("- skill_create"));
+        assert!(!CURATOR_REVIEW_PROMPT.contains("- skill_update"));
+        assert!(!CURATOR_REVIEW_PROMPT.contains("- skill_view"));
+        assert!(!CURATOR_REVIEW_PROMPT.contains("- skill_list"));
     }
 }

@@ -140,7 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
     if let Some(Cmd::Curator(ca)) = &args.cmd {
-        if let Err(err) = handle_curator_command(ca, args.json) {
+        if let Err(err) = handle_curator_command(ca, args.json).await {
             eprintln!("{}", err);
             std::process::exit(1);
         }

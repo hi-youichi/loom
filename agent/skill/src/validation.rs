@@ -420,6 +420,7 @@ mod tests {
             triggers: vec![],
             lifecycle: Lifecycle::Active,
             source: Source::Auto,
+            created_by: None,
             body: body.to_string(),
             raw: body.to_string(),
         }

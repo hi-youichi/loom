@@ -39,3 +39,22 @@ impl SkillRegistryExt for SkillRegistry {
         env_config::home::loom_home().join("data").join("skills")
     }
 }
+
+/// Extension methods for `SkillStorageRegistry` that the shared
+/// `agent::skill::storage` crate does not provide but the curator needs.
+pub trait SkillRegistryCuratorExt {
+    /// Return the creation time of the skill library base directory.
+    ///
+    /// Used by the curator's first-run delay logic to avoid consolidating
+    /// a freshly-installed skill set. Returns `None` if the directory
+    /// metadata cannot be read (e.g. the directory does not exist yet).
+    fn library_created_at(&self) -> Option<chrono::DateTime<chrono::Utc>>;
+}
+
+impl SkillRegistryCuratorExt for SkillRegistry {
+    fn library_created_at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        let meta = std::fs::metadata(self.base_dir()).ok()?;
+        let created = meta.created().ok()?;
+        chrono::DateTime::<chrono::Utc>::from(created).into()
+    }
+}

@@ -242,7 +242,6 @@ impl Config {
             chat_id: None,
             worktree: args.cli_args.worktree,
             goal_mode: false,
-        force_review: false,
         }
     }
 }

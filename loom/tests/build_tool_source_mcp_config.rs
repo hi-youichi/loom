@@ -48,7 +48,6 @@ fn opts(working_folder: PathBuf) -> RunOptions {
             chat_id: None,
             worktree: false,
             goal_mode: false,
-        force_review: false,
         }
 }
 

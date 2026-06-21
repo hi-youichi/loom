@@ -3,7 +3,9 @@
 pub use loom_llm::tool::ToolCall as CuratorToolCall;
 
 use super::prompts::CURATOR_REVIEW_PROMPT;
-use super::skill_registry::{Lifecycle, SkillContent, SkillError, SkillMeta, SkillRegistry, Source};
+use super::skill_registry::{
+    Lifecycle, SkillContent, SkillError, SkillMeta, SkillRegistry, SkillRegistryCuratorExt, Source,
+};
 use skill::{SkillUsageReport, SkillUsageStore};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -30,12 +32,20 @@ pub struct CuratorConfig {
     pub interval_hours: u64,
     #[serde(default = "default_min_idle_minutes")]
     pub min_idle_minutes: u64,
+    /// Minimum number of skills required for the curator to run.
+    ///
+    /// Avoids triggering consolidation on near-empty libraries (e.g. fresh
+    /// installs). Aligns with Hermes behavior where the candidate list is
+    /// only meaningful when there are enough skills to cluster.
+    #[serde(default = "default_min_skills_to_run")]
+    pub min_skills_to_run: usize,
 }
 
 
 fn default_enabled() -> bool { true }
 fn default_interval_hours() -> u64 { 168 }
 fn default_min_idle_minutes() -> u64 { 120 }
+fn default_min_skills_to_run() -> usize { 5 }
 
 fn default_stale_days() -> u32 {
     60
@@ -60,6 +70,7 @@ impl Default for CuratorConfig {
             enabled: default_enabled(),
             interval_hours: default_interval_hours(),
             min_idle_minutes: default_min_idle_minutes(),
+            min_skills_to_run: default_min_skills_to_run(),
         }
     }
 }
@@ -281,6 +292,16 @@ impl Curator {
     }
 
     pub fn should_run(&self, idle_for_seconds: Option<f64>) -> bool {
+        // Gate 0: minimum skill count (don't run on near-empty libraries)
+        let skill_count = self.skills.list().map(|m| m.len()).unwrap_or(0);
+        if skill_count < self.config.min_skills_to_run {
+            info!(
+                "Curator: too few skills ({}) — need at least {}",
+                skill_count, self.config.min_skills_to_run
+            );
+            return false;
+        }
+
         // Gate 1: enabled
         if !self.config.enabled {
             info!("Curator: disabled in config");
@@ -294,8 +315,27 @@ impl Curator {
             return false;
         }
 
-        // Gate 3: interval
-        if let Some(last_run) = state
+        // Gate 3: interval (or first-run delay)
+        //
+        // On the very first run (run_count == 0, no last_run_at), require at
+        // least `interval_hours` of wall-clock time since skill library
+        // creation to avoid consolidating freshly-installed skill sets.
+        // Aligns with Hermes behavior where the curator waits one full
+        // interval before its initial pass.
+        if state.run_count == 0 || state.last_run_at.is_none() {
+            if let Some(installed_at) = self.skills.library_created_at() {
+                let elapsed = Utc::now() - installed_at;
+                let needed = chrono::Duration::hours(self.config.interval_hours as i64);
+                if elapsed < needed {
+                    info!(
+                        "Curator: first-run delay not yet met ({:.1}h < {}h since library creation)",
+                        elapsed.num_minutes() as f64 / 60.0,
+                        self.config.interval_hours
+                    );
+                    return false;
+                }
+            }
+        } else if let Some(last_run) = state
             .last_run_at
             .as_ref()
             .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
@@ -338,7 +378,60 @@ impl Curator {
         self.load_state().map(|s| s.paused).unwrap_or(false)
     }
 
+    // === Config accessors (for CLI status display) ===
+
+    pub fn config_enabled(&self) -> bool {
+        self.config.enabled
+    }
+
+    pub fn config_interval_hours(&self) -> u64 {
+        self.config.interval_hours
+    }
+
+    pub fn config_min_skills(&self) -> usize {
+        self.config.min_skills_to_run
+    }
+
+    pub fn config_overlap_threshold(&self) -> f64 {
+        self.config.overlap_threshold
+    }
+
+    pub fn config_stale_days_auto(&self) -> u32 {
+        self.config.stale_days_auto
+    }
+
+    pub fn config_stale_days_manual(&self) -> u32 {
+        self.config.stale_days_manual
+    }
+
+    pub fn config_archive_days(&self) -> u32 {
+        self.config.archive_days
+    }
+
+
     pub fn run(&self, dry_run: bool) -> Result<CuratorReport, SkillError> {
+        // Phase 0: Pre-run snapshot — create a backup before any mutations.
+        //
+        // Aligns with Hermes `curator_backup.snapshot_skills()` called at the
+        // start of `run_curator_review()`. The snapshot is skipped in dry-run
+        // mode (no mutations will occur) and on best-effort basis (snapshot
+        // failure logs a warning but does not abort the run).
+        if !dry_run {
+            let backup = crate::curator_backup::CuratorBackup::new();
+            let skills_dir = self.skills.base_dir();
+            match backup.auto_snapshot(skills_dir) {
+                Ok(Some(snapshot_name)) => {
+                    info!("Curator: pre-run snapshot created: {}", snapshot_name);
+                }
+                Ok(None) => {
+                    debug!("Curator: pre-run snapshot skipped (dir not found)");
+                }
+                Err(e) => {
+                    warn!("Curator: pre-run snapshot failed (continuing): {}", e);
+                }
+            }
+        }
+
         let all_skills = self.skills.list()?;
         let mut state = self.load_state()?;
 
@@ -458,6 +551,30 @@ impl Curator {
         Ok(())
     }
 
+    /// Mark that a curator run (heuristic or LLM) has completed.
+    ///
+    /// Updates `last_run_at`, `run_count`, and `skill_last_used` in the
+    /// curator state file. Used by the LLM pass to record its execution
+    /// so that `should_run()` correctly defers the next run.
+    pub fn mark_run_completed(&self) -> Result<(), SkillError> {
+        let mut state = self.load_state()?;
+        let now = Utc::now();
+        state.last_run_at = Some(now.to_rfc3339());
+        state.run_count += 1;
+
+        // Seed skill_last_used for all currently-known skills
+        if let Ok(metas) = self.skills.list() {
+            for meta in &metas {
+                state
+                    .skill_last_used
+                    .entry(meta.name.clone())
+                    .or_insert_with(|| now.to_rfc3339());
+            }
+        }
+
+        self.save_state(&state)
+    }
+
     fn update_lifecycle(&self, name: &str, lifecycle: Lifecycle) -> Result<(), SkillError> {
         let mut skill = self.skills.load(name)?;
         skill.lifecycle = lifecycle;
@@ -541,6 +658,118 @@ fn compute_skill_similarity(a: &SkillContent, b: &SkillContent) -> f64 {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Package Integrity Check
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Result of a package integrity check for a single skill.
+///
+/// Aligns with Hermes `check_package_integrity()` (`agent/curator.py:580-620`).
+/// Scans the skill's SKILL.md body for relative links to `references/`,
+/// `templates/`, `scripts/`, and `assets/` directories, then verifies that
+/// each linked file exists on disk.
+#[derive(Debug, Clone)]
+pub struct PackageIntegrityResult {
+    /// Name of the skill checked.
+    pub skill_name: String,
+    /// Whether the package is safe to archive (no broken links).
+    pub is_safe: bool,
+    /// List of broken relative links found in SKILL.md.
+    pub broken_links: Vec<String>,
+    /// List of support directories that exist under the skill root.
+    pub support_dirs: Vec<String>,
+}
+
+/// Check package integrity for a skill before archiving.
+///
+/// Scans the skill's SKILL.md body for relative links to support directories
+/// (`references/`, `templates/`, `scripts/`, `assets/`) and verifies that
+/// the linked files exist on disk.
+///
+/// # Arguments
+/// * `skills_base_dir` - The base directory of the skill library
+/// * `skill_name` - The name of the skill to check
+///
+/// # Returns
+/// `PackageIntegrityResult` with `is_safe=true` if no broken links found.
+pub fn check_package_integrity(
+    skills_base_dir: &std::path::Path,
+    skill_name: &str,
+) -> PackageIntegrityResult {
+    let skill_dir = skills_base_dir.join(skill_name);
+    let skill_md_path = skill_dir.join("SKILL.md");
+
+    let mut broken_links = Vec::new();
+    let mut support_dirs = Vec::new();
+
+    // Check which support directories exist
+    for dir_name in &["references", "templates", "scripts", "assets"] {
+        if skill_dir.join(dir_name).exists() {
+            support_dirs.push(dir_name.to_string());
+        }
+    }
+
+    // Read SKILL.md
+    let body = match fs::read_to_string(&skill_md_path) {
+        Ok(content) => content,
+        Err(_) => {
+            return PackageIntegrityResult {
+                skill_name: skill_name.to_string(),
+                is_safe: true, // No SKILL.md = nothing to check
+                broken_links,
+                support_dirs,
+            };
+        }
+    };
+
+    // Regex to find relative links to support directories
+    let link_re = regex::Regex::new(
+        r"(?:references|templates|scripts|assets)/[a-zA-Z0-9_\-./]+",
+    )
+    .unwrap();
+
+    let md_link_re =
+        regex::Regex::new(r"\]\((references|templates|scripts|assets)/[^)]+\)").unwrap();
+
+    // Collect all referenced paths
+    let mut referenced: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for cap in link_re.captures_iter(&body) {
+        if let Some(m) = cap.get(0) {
+            let path = m
+                .as_str()
+                .trim_end_matches(|c: char| {
+                    !c.is_alphanumeric() && c != '/' && c != '.' && c != '-' && c != '_'
+                });
+            referenced.insert(path.to_string());
+        }
+    }
+
+    for cap in md_link_re.captures_iter(&body) {
+        if let Some(full) = cap.get(0) {
+            let inner = full.as_str().trim_start_matches("](").trim_end_matches(')');
+            referenced.insert(inner.to_string());
+        }
+    }
+
+    // Verify each referenced path exists
+    for rel_path in &referenced {
+        let full_path = skill_dir.join(rel_path);
+        if !full_path.exists() {
+            broken_links.push(rel_path.clone());
+        }
+    }
+
+    let is_safe = broken_links.is_empty();
+
+    PackageIntegrityResult {
+        skill_name: skill_name.to_string(),
+        is_safe,
+        broken_links,
+        support_dirs,
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // LLM Review Types
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -552,7 +781,7 @@ pub struct LlMReviewResult {
     pub consolidations: Vec<ConsolidationDecision>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct SkillCluster {
     pub name: String,
     pub members: Vec<String>,
@@ -582,13 +811,24 @@ pub struct SkillSnapshot {
     pub body_len: usize,
 }
 
+/// A skill lifecycle state change observed between before/after snapshots.
+///
+/// Aligns with Hermes `state_transitions` payload field
+/// (`agent/curator.py:1052-1057`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StateTransition {
+    pub name: String,
+    pub from: String,
+    pub to: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct AbsorbedIntoDeclaration {
     pub name: String,
     pub into: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ClassificationResult {
     pub consolidated: Vec<ConsolidationDecision>,
     pub pruned: Vec<PruningDecision>,
@@ -599,6 +839,8 @@ pub struct CuratorRunReport {
     pub run_id: String,
     pub started_at: String,
     pub elapsed_seconds: f64,
+    pub model: String,
+    pub provider: String,
     pub auto_counts: AutoCounts,
     pub before_snapshots: Vec<SkillSnapshot>,
     pub after_snapshots: Vec<SkillSnapshot>,
@@ -606,9 +848,286 @@ pub struct CuratorRunReport {
     pub pruned: Vec<PruningDecision>,
     pub llm_summary: Option<String>,
     pub classification_sources: std::collections::HashMap<String, String>,
+    /// LLM pass error (Hermes `llm_error`). None = success.
+    pub run_error: Option<String>,
+    /// All tool calls collected during the pass (Hermes `tool_calls`).
+    pub tool_calls: Vec<CuratorToolCall>,
+    /// Skills removed this run (Hermes `archived`).
+    pub removed: Vec<String>,
+    /// Skills added this run (Hermes `added`).
+    pub added: Vec<String>,
+    /// Skill lifecycle state changes (Hermes `state_transitions`).
+    pub state_transitions: Vec<StateTransition>,
 }
 
-/// Parse LLM YAML response (curator review output)
+impl CuratorRunReport {
+    /// Save the report as both JSON and Markdown to the given directory.
+    ///
+    /// Creates `<dir>/<run_id>.json` and `<dir>/<run_id>.md`.
+    /// Returns the paths of both files.
+    ///
+    /// Aligns with Hermes `CuratorRunReport.save_to_dir()` (`agent/curator.py:622-651`).
+    pub fn save_to_dir(&self, dir: &std::path::Path) -> Result<(PathBuf, PathBuf), SkillError> {
+        fs::create_dir_all(dir)?;
+
+        let json_path = dir.join(format!("{}.json", self.run_id));
+        let md_path = dir.join(format!("{}.md", self.run_id));
+
+        // Write JSON
+        let json = serde_json::to_string_pretty(self)
+            .map_err(|e| SkillError::InvalidFormat(e.to_string()))?;
+        fs::write(&json_path, &json)?;
+
+        // Write Markdown
+        let md = self.render_markdown();
+        fs::write(&md_path, &md)?;
+
+        Ok((json_path, md_path))
+    }
+
+    /// Render the report as a human-readable Markdown document.
+    ///
+    /// Aligns with Hermes `CuratorRunReport.render_markdown()` (`agent/curator.py:653-690`).
+    pub fn render_markdown(&self) -> String {
+        use std::fmt::Write;
+        let mut md = String::new();
+
+        let _ = writeln!(md, "# Curator Run Report");
+        let _ = writeln!(md);
+        let _ = writeln!(md, "- **Run ID**: `{}`", self.run_id);
+        let _ = writeln!(md, "- **Started**: {}", self.started_at);
+        let _ = writeln!(md, "- **Elapsed**: {:.1}s", self.elapsed_seconds);
+        if !self.model.is_empty() {
+            let _ = writeln!(md, "- **Model**: `{}`", self.model);
+        }
+        if !self.provider.is_empty() {
+            let _ = writeln!(md, "- **Provider**: `{}`", self.provider);
+        }
+        let _ = writeln!(md);
+
+        // LLM error warning (Hermes `> ⚠ LLM pass error`)
+        if let Some(ref err) = self.run_error {
+            let _ = writeln!(md, "> ⚠ **LLM pass error**: `{}`", err);
+            let _ = writeln!(md);
+        }
+
+        // Auto transitions
+        let _ = writeln!(md, "## Auto Transitions");
+        let _ = writeln!(md);
+        let _ = writeln!(
+            md,
+            "- Checked: {} | Stale: {} | Archived: {} | Reactivated: {}",
+            self.auto_counts.checked,
+            self.auto_counts.marked_stale,
+            self.auto_counts.archived,
+            self.auto_counts.reactivated,
+        );
+        let _ = writeln!(md);
+
+        // LLM consolidation pass statistics (Hermes `_render_report_markdown` §2)
+        let _ = writeln!(md, "## LLM Consolidation Pass");
+        let _ = writeln!(md);
+        // Compute tool_call_counts by-name
+        let mut tc_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        for tc in &self.tool_calls {
+            *tc_counts.entry(tc.name.as_str()).or_default() += 1;
+        }
+        let _ = writeln!(md, "- **Tool calls**: {}", self.tool_calls.len());
+        if !tc_counts.is_empty() {
+            let mut sorted: Vec<(& &str, &usize)> = tc_counts.iter().collect();
+            sorted.sort_by_key(|(k, _)| *k);
+            let by_name: Vec<String> = sorted.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
+            let _ = writeln!(md, "  - By name: {}", by_name.join(", "));
+        }
+        let _ = writeln!(md, "- **Consolidated**: {}", self.consolidated.len());
+        let _ = writeln!(md, "- **Pruned**: {}", self.pruned.len());
+        let _ = writeln!(md, "- **Added**: {}", self.added.len());
+        let _ = writeln!(md, "- **State transitions**: {}", self.state_transitions.len());
+        let _ = writeln!(md);
+
+        // LLM summary
+        if let Some(summary) = &self.llm_summary {
+            let _ = writeln!(md, "## LLM Summary");
+            let _ = writeln!(md);
+            let _ = writeln!(md, "{}", summary);
+            let _ = writeln!(md);
+        }
+
+        // Consolidated — list format with reason (aligns Hermes §3)
+        if !self.consolidated.is_empty() {
+            let _ = writeln!(md, "### Consolidated ({})", self.consolidated.len());
+            let _ = writeln!(md);
+            for c in &self.consolidated {
+                let _ = writeln!(md, "- `{}` → merged into `{}` — {}", c.source, c.into, c.method);
+            }
+            let _ = writeln!(md);
+        }
+
+        // Pruned — list format with reason (aligns Hermes §4)
+        if !self.pruned.is_empty() {
+            let _ = writeln!(md, "### Pruned ({})", self.pruned.len());
+            let _ = writeln!(md);
+            for p in &self.pruned {
+                let _ = writeln!(md, "- `{}` — {}", p.name, p.reason);
+            }
+            let _ = writeln!(md);
+        }
+
+        // New skills this run (aligns Hermes §5)
+        if !self.added.is_empty() {
+            let _ = writeln!(md, "### New skills this run ({})", self.added.len());
+            let _ = writeln!(md);
+            for name in &self.added {
+                let _ = writeln!(md, "- `{}`", name);
+            }
+            let _ = writeln!(md);
+        }
+
+        // State transitions (aligns Hermes §6)
+        if !self.state_transitions.is_empty() {
+            let _ = writeln!(md, "### State transitions ({})", self.state_transitions.len());
+            let _ = writeln!(md);
+            for t in &self.state_transitions {
+                let _ = writeln!(md, "- `{}`: {} → {}", t.name, t.from, t.to);
+            }
+            let _ = writeln!(md);
+        }
+
+        // Before/After skill counts
+        if !self.before_snapshots.is_empty() || !self.after_snapshots.is_empty() {
+            let _ = writeln!(md, "## Skill Library Changes");
+            let _ = writeln!(md);
+            let _ = writeln!(
+                md,
+                "- Before: {} skills | After: {} skills (Δ {:+})",
+                self.before_snapshots.len(),
+                self.after_snapshots.len(),
+                self.after_snapshots.len() as i64 - self.before_snapshots.len() as i64,
+            );
+            let _ = writeln!(md);
+        }
+
+        // Classification sources breakdown
+        if !self.classification_sources.is_empty() {
+            let _ = writeln!(md, "## Classification Sources");
+            let _ = writeln!(md);
+            let mut counts: std::collections::HashMap<&str, usize> =
+                std::collections::HashMap::new();
+            for method in self.classification_sources.values() {
+                *counts.entry(method.as_str()).or_default() += 1;
+            }
+            for (method, count) in counts {
+                let _ = writeln!(md, "- **{}**: {}", method, count);
+            }
+            let _ = writeln!(md);
+        }
+
+        md
+    }
+
+    /// Build a `CuratorRunReport` from an LLM pass outcome.
+    pub fn from_llm_pass_outcome(
+        outcome: &crate::curator_llm::CuratorLlmPassOutcome,
+        run_id: &str,
+    ) -> Self {
+        use std::collections::HashMap;
+
+        let started_at = chrono::Utc::now().to_rfc3339();
+
+        // Build classification_sources map from the outcome
+        let mut classification_sources = HashMap::new();
+        for c in &outcome.classification.consolidated {
+            classification_sources.insert(c.source.clone(), c.method.clone());
+        }
+
+        // Compute state transitions by diffing before/after snapshot lifecycles
+        // (aligns Hermes curator.py:1052-1057).
+        let state_transitions = {
+            let before_map: HashMap<&str, &str> = outcome
+                .before_snapshots
+                .iter()
+                .map(|s| (s.name.as_str(), s.lifecycle.as_str()))
+                .collect();
+            let mut transitions = Vec::new();
+            for after in &outcome.after_snapshots {
+                if let Some(&before_lc) = before_map.get(after.name.as_str()) {
+                    if before_lc != after.lifecycle {
+                        transitions.push(StateTransition {
+                            name: after.name.clone(),
+                            from: before_lc.to_string(),
+                            to: after.lifecycle.clone(),
+                        });
+                    }
+                }
+            }
+            transitions
+        };
+
+        Self {
+            run_id: run_id.to_string(),
+            started_at,
+            elapsed_seconds: outcome.elapsed_seconds,
+            model: outcome.model.clone(),
+            provider: outcome.provider.clone(),
+            auto_counts: AutoCounts::default(),
+            before_snapshots: outcome.before_snapshots.clone(),
+            after_snapshots: outcome.after_snapshots.clone(),
+            consolidated: outcome.classification.consolidated.clone(),
+            pruned: outcome.classification.pruned.clone(),
+            llm_summary: if outcome.summary.is_empty() {
+                None
+            } else {
+                Some(outcome.summary.clone())
+            },
+            classification_sources,
+            run_error: outcome.run_error.clone(),
+            tool_calls: outcome.all_tool_calls.clone(),
+            removed: outcome.removed_skills(),
+            added: outcome.added_skills(),
+            state_transitions,
+        }
+    }
+}
+
+/// Intermediate struct for deserializing the full YAML response.
+///
+/// Maps directly to the YAML schema the prompt instructs the LLM to produce:
+/// ```yaml
+/// summary: |
+///   ...
+/// clusters:
+///   - name: ...
+///     members: [...]
+///     umbrella: ...
+///     action: ...
+/// prunings:
+///   - name: ...
+///     reason: ...
+/// consolidations:
+///   - source: ...
+///     into: ...
+///     method: ...
+/// ```
+#[derive(Deserialize)]
+struct RawYamlResponse {
+    summary: Option<String>,
+    clusters: Option<Vec<SkillCluster>>,
+    prunings: Option<Vec<PruningDecision>>,
+    consolidations: Option<Vec<ConsolidationDecision>>,
+}
+
+/// Parse LLM YAML response (curator review output).
+///
+/// Extracts `summary`, `clusters`, `prunings`, and `consolidations` from the
+/// YAML block. Aligns with the full prompt schema — no longer a stub.
+///
+/// The function first tries to extract a ```yaml fenced block; if none is
+/// found, it treats the entire raw text as YAML. It then deserializes via
+/// `serde_yaml` into [`RawYamlResponse`] and maps the result.
+///
+/// If the YAML is malformed, the function falls back to regex-based summary
+/// extraction and returns empty lists for the structured fields (graceful
+/// degradation).
 pub fn parse_llm_review_response(raw: &str) -> LlMReviewResult {
     static YAML_BLOCK_RE: once_cell::sync::Lazy<regex::Regex> =
         once_cell::sync::Lazy::new(|| {
@@ -621,36 +1140,60 @@ pub fn parse_llm_review_response(raw: &str) -> LlMReviewResult {
         .map(|m| m.as_str())
         .unwrap_or(raw);
 
-    let mut result = LlMReviewResult::default();
+    // Attempt full structured deserialization
+    match serde_yaml::from_str::<RawYamlResponse>(yaml_body) {
+        Ok(parsed) => {
+            let result = LlMReviewResult {
+                summary: parsed.summary.unwrap_or_default().trim().to_string(),
+                clusters: parsed.clusters.unwrap_or_default(),
+                prunings: parsed.prunings.unwrap_or_default(),
+                consolidations: parsed.consolidations.unwrap_or_default(),
+            };
+            debug!(
+                "Parsed LLM review: {} clusters, {} prunings, {} consolidations",
+                result.clusters.len(),
+                result.prunings.len(),
+                result.consolidations.len()
+            );
+            result
+        }
+        Err(e) => {
+            // Graceful fallback: extract summary via regex, leave structured
+            // fields empty. This handles LLMs that produce slightly malformed
+            // YAML while still capturing the human-readable summary.
+            debug!(
+                "YAML parse failed ({}), falling back to regex summary extraction",
+                e
+            );
 
-    static SUMMARY_RE: once_cell::sync::Lazy<regex::Regex> =
-        once_cell::sync::Lazy::new(|| {
-            regex::Regex::new(r"(?m)^summary:\s*\|?\s*\n?((?:  .+\n?)+)").unwrap()
-        });
-    if let Some(cap) = SUMMARY_RE.captures(yaml_body) {
-        let content = cap.get(1).map(|m| m.as_str()).unwrap_or("");
-        result.summary = content
-            .lines()
-            .map(|l| l.trim_start_matches("  ").trim())
-            .collect::<Vec<_>>()
-            .join(" ")
-            .trim()
-            .to_string();
+            let mut result = LlMReviewResult::default();
+
+            static SUMMARY_RE: once_cell::sync::Lazy<regex::Regex> =
+                once_cell::sync::Lazy::new(|| {
+                    regex::Regex::new(r"(?m)^summary:\s*\|?\s*\n?((?:  .+\n?)+)").unwrap()
+                });
+            if let Some(cap) = SUMMARY_RE.captures(yaml_body) {
+                let content = cap.get(1).map(|m| m.as_str()).unwrap_or("");
+                result.summary = content
+                    .lines()
+                    .map(|l| l.trim_start_matches("  ").trim())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .trim()
+                    .to_string();
+            }
+
+            result
+        }
     }
-
-    // Simplified parsing - in a full implementation, this would extract
-    // clusters, prunings, and consolidations from the YAML
-
-    debug!(
-        "Parsed LLM review: {} clusters, {} prunings, {} consolidations",
-        result.clusters.len(),
-        result.prunings.len(),
-        result.consolidations.len()
-    );
-    result
 }
 
-/// Build LLM prompt for curator review
+/// Build LLM prompt for curator review.
+///
+/// Aligns with Hermes `_render_candidate_list()` (`agent/curator.py:1368`):
+/// sends only name + description + usage stats per skill (no body, no triggers).
+/// This keeps the prompt compact (~150 chars/skill vs ~450 in the old format)
+/// so 200+ skills fit in a single LLM context without timeout.
 pub fn build_llm_prompt(skills: &[SkillContent], usage_reports: &[SkillUsageReport]) -> String {
     use std::collections::HashMap;
     use std::fmt::Write;
@@ -666,24 +1209,30 @@ pub fn build_llm_prompt(skills: &[SkillContent], usage_reports: &[SkillUsageRepo
     if skills.is_empty() {
         prompt.push_str("(No active skills found. Nothing to consolidate.)");
     } else {
+        let _ = writeln!(prompt, "Agent-created skills ({}):\n", skills.len());
         for skill in skills {
-            let usage_line = usage_map.get(skill.name.as_str()).map(|u| {
-                format!(
-                    "Usage: {} uses, {} views, {} patches (last: {})\n",
-                    u.use_count,
-                    u.view_count,
-                    u.patch_count,
-                    u.last_activity_at.as_deref().unwrap_or("never")
-                )
-            }).unwrap_or_default();
+            let u = usage_map.get(skill.name.as_str());
+            let usage_line = match u {
+                Some(r) => format!(
+                    "  activity={} use={} view={} patches={} last={}",
+                    r.activity_count,
+                    r.use_count,
+                    r.view_count,
+                    r.patch_count,
+                    r.last_activity_at.as_deref().unwrap_or("never")
+                ),
+                None => String::new(),
+            };
             let _ = writeln!(
                 prompt,
-                "### {}\nDescription: {}\nTriggers: {}\n{}Body (first 200 chars): {}\n",
+                "- {}  {}{}",
                 skill.name,
                 skill.description,
-                skill.triggers.join(", "),
-                usage_line,
-                skill.body.chars().take(200).collect::<String>()
+                if usage_line.is_empty() {
+                    String::new()
+                } else {
+                    format!("\n  {}", usage_line)
+                }
             );
         }
     }
@@ -737,7 +1286,23 @@ pub fn reconcile_classification(
                 });
             }
         } else if let Some(c) = model_cons.get(name) {
-            consolidated.push((*c).clone());
+            // Validate that the model-declared destination actually exists.
+            // The LLM YAML block may claim consolidation into a skill that was
+            // never created (hallucinated umbrella name). If the destination
+            // does not exist in `after_names`, fall through to pruning rather
+            // than recording a dangling reference.
+            if after_names.contains(&c.into) {
+                consolidated.push((*c).clone());
+            } else {
+                debug!(
+                    "Model consolidation for '{}' into '{}' rejected: destination does not exist",
+                    name, c.into
+                );
+                pruned.push(PruningDecision {
+                    name: name.clone(),
+                    reason: format!("model declared '{}' but it was not created", c.into),
+                });
+            }
         } else if let Some(c) = heur_cons.get(name) {
             consolidated.push((*c).clone());
         } else {
@@ -758,10 +1323,22 @@ fn extract_absorbed_into_declarations(
     let mut declarations = std::collections::HashMap::new();
 
     for call in tool_calls {
-        if call.name != "skill_manage" {
+        // Loom exposes a single `skill_manage` tool; `absorbed_into` is only
+        // meaningful on `action=delete`. Accept both the canonical tool name
+        // (`skill_manage`) and the prompt-facing alias (`skill_delete`) so the
+        // extraction survives regardless of how the tool-call is serialised.
+        if call.name != "skill_manage" && call.name != "skill_delete" {
             continue;
         }
         let args = extract_args(call);
+        // Only `delete` action carries `absorbed_into`; skip writes/patches/etc.
+        let action = args
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("delete");
+        if call.name == "skill_manage" && action != "delete" {
+            continue;
+        }
         if !args.contains_key("absorbed_into") {
             continue;
         }
@@ -804,7 +1381,7 @@ fn classify_removed_skills(
 
             for value in args.values() {
                 if let Some(s) = value.as_str() {
-                    if s.contains(name) || s.replace('-', "_").contains(&name.replace('-', "_")) {
+                    if name_mentioned_in_value(name, s) {
                         found_into = Some(target.to_string());
                         break 'search;
                     }
@@ -827,6 +1404,73 @@ fn classify_removed_skills(
     }
 
     ClassificationResult { consolidated, pruned }
+}
+
+/// Check whether a skill `name` is mentioned in a tool-call argument `value`.
+///
+/// Uses **token boundary matching** instead of raw `value.contains(name)` to
+/// avoid false positives. For example, `name = "rust"` should match
+/// `"rust-debug"` or `"merge rust into umbrella"` but NOT `"trust"`.
+///
+/// Tokenization splits on `-`, `_`, `/`, whitespace, and common punctuation,
+/// treating each segment as a distinct token. Both the hyphen and underscore
+/// forms of the name are checked (so `"rust_debug"` matches `"rust-debug"`).
+///
+/// Aligns with Hermes `classify_removed_skills()` precision requirements.
+fn name_mentioned_in_value(name: &str, value: &str) -> bool {
+    // Normalize: replace hyphens with underscores for consistent tokenization
+    let normalize = |s: &str| s.replace('-', "_");
+    let name_norm = normalize(name);
+    let value_norm = normalize(value);
+
+    // Quick exit: if the entire value is the name (exact match)
+    if value_norm == name_norm {
+        return true;
+    }
+
+    // Collect all candidate tokens from the value:
+    //
+    // 1. **Full tokens** — split on whitespace + punctuation (but NOT `_`
+    //    or `-` which are part of skill names). These match multi-word
+    //    skill names like "rust_debug" in "merge rust_debug into umbrella".
+    //
+    // 2. **Sub-tokens** — additionally split each full token on `_` to handle
+    //    cases where `name = "rust"` should match `value = "rust-debug"`
+    //    (normalized: "rust_debug" → sub-tokens: ["rust", "debug"]).
+    //    This ensures single-word components match inside compound names
+    //    without false positives like "trust" matching "rust".
+    let mut candidates: Vec<&str> = Vec::new();
+
+    let full_tokens: Vec<&str> = value_norm
+        .split(|c: char| c.is_whitespace() || "/,.;:()[]{}\"'".contains(c))
+        .filter(|t| !t.is_empty())
+        .collect();
+
+    for token in &full_tokens {
+        candidates.push(token);
+        // Also add sub-tokens split on underscore for component matching
+        for sub in token.split('_') {
+            if !sub.is_empty() {
+                candidates.push(sub);
+            }
+        }
+    }
+
+    // Check if any candidate equals the name
+    if candidates.iter().any(|t| *t == name_norm) {
+        return true;
+    }
+
+    // Also check path-component matching: if the value looks like a file path
+    // (e.g. "skills/rust-debug/SKILL.md"), match on path components.
+    if value.contains('/') {
+        let components: Vec<&str> = value_norm.split('/').collect();
+        if components.iter().any(|c| *c == name_norm) {
+            return true;
+        }
+    }
+
+    false
 }
 
 #[cfg(test)]
@@ -862,7 +1506,57 @@ consolidations:
 ```
 "#;
         let result = parse_llm_review_response(raw);
+
+        // Summary
         assert!(result.summary.contains("2 clusters"));
+
+        // Clusters (was always empty in the old stub)
+        assert_eq!(result.clusters.len(), 1);
+        assert_eq!(result.clusters[0].name, "rust-debug");
+        assert_eq!(result.clusters[0].members, vec!["rust-debug-a", "rust-debug-b"]);
+        assert_eq!(result.clusters[0].umbrella, "rust-debug");
+        assert_eq!(result.clusters[0].action, "merge");
+
+        // Prunings
+        assert_eq!(result.prunings.len(), 1);
+        assert_eq!(result.prunings[0].name, "obsolete-one-off");
+        assert!(result.prunings[0].reason.contains("stale"));
+
+        // Consolidations
+        assert_eq!(result.consolidations.len(), 2);
+        assert_eq!(result.consolidations[0].source, "rust-debug-a");
+        assert_eq!(result.consolidations[0].into, "rust-debug");
+        assert_eq!(result.consolidations[0].method, "patched");
+        assert_eq!(result.consolidations[1].source, "rust-debug-b");
+        assert_eq!(result.consolidations[1].method, "references");
+    }
+
+    #[test]
+    fn test_parse_llm_review_response_malformed_fallback() {
+        // Malformed YAML should still extract the summary via regex fallback
+        let raw = r#"
+```yaml
+summary: |
+  This is a valid summary.
+clusters: [[invalid yaml
+```
+"#;
+        let result = parse_llm_review_response(raw);
+        // Summary should be extracted even if structured parsing fails
+        assert!(result.summary.contains("valid summary"));
+        // Structured fields should be empty (graceful degradation)
+        assert!(result.clusters.is_empty());
+        assert!(result.prunings.is_empty());
+        assert!(result.consolidations.is_empty());
+    }
+
+    #[test]
+    fn test_parse_llm_review_response_no_yaml_block() {
+        // Raw YAML without code fence should also be parsed
+        let raw = "summary: A short summary.\nconsolidations: []\n";
+        let result = parse_llm_review_response(raw);
+        assert_eq!(result.summary, "A short summary.");
+        assert!(result.consolidations.is_empty());
     }
 
     #[test]
@@ -872,6 +1566,39 @@ consolidations:
         assert!(result.clusters.is_empty());
         assert!(result.prunings.is_empty());
         assert!(result.consolidations.is_empty());
+    }
+
+    #[test]
+    fn test_name_mentioned_in_value_token_boundary() {
+        // Exact match
+        assert!(name_mentioned_in_value("rust", "rust"));
+
+        // Hyphen-separated token: "rust" in "rust-debug" → match
+        assert!(name_mentioned_in_value("rust", "rust-debug"));
+        assert!(name_mentioned_in_value("rust-debug", "rust-debug"));
+
+        // Underscore normalization: "rust_debug" matches "rust-debug"
+        assert!(name_mentioned_in_value("rust_debug", "merge rust-debug into umbrella"));
+
+        // Path component: "rust" in "skills/rust/SKILL.md" → match
+        assert!(name_mentioned_in_value("rust", "skills/rust/SKILL.md"));
+
+        // Sentence context: "merge rust into umbrella" → match
+        assert!(name_mentioned_in_value("rust", "merge rust into umbrella"));
+
+        // CRITICAL: substring false positive must NOT match
+        // "rust" in "trust" → NO match (word boundary)
+        assert!(!name_mentioned_in_value("rust", "trust"));
+        assert!(!name_mentioned_in_value("rust", "trusting"));
+        assert!(!name_mentioned_in_value("rust", "robust"));
+
+        // Punctuation boundary: "rust," → match
+        assert!(name_mentioned_in_value("rust", "merge rust, debug into umbrella"));
+
+        // Empty value
+        assert!(!name_mentioned_in_value("rust", ""));
+        // Empty name (shouldn't match anything meaningful)
+        assert!(!name_mentioned_in_value("", "anything"));
     }
 }
 
@@ -886,6 +1613,7 @@ mod tests {
             triggers: vec!["test".into()],
             lifecycle: Lifecycle::Active,
             source,
+            created_by: None,
             body: "Do stuff".to_string(),
             raw: String::new(),
         }
@@ -936,5 +1664,244 @@ mod tests {
 
         let report = curator.run(true).unwrap();
         assert!(report.active > 0, "reactivated skill should be active, not stale");
+    }
+
+    #[test]
+    fn test_curator_run_report_render_markdown() {
+        let report = CuratorRunReport {
+            run_id: "test-run-001".into(),
+            started_at: "2025-07-22T12:00:00Z".into(),
+            elapsed_seconds: 12.5,
+            model: "test-model".into(),
+            provider: "test-provider".into(),
+            auto_counts: AutoCounts {
+                checked: 10,
+                marked_stale: 2,
+                archived: 1,
+                reactivated: 0,
+            },
+            before_snapshots: vec![],
+            after_snapshots: vec![],
+            consolidated: vec![ConsolidationDecision {
+                source: "narrow-a".into(),
+                into: "umbrella".into(),
+                method: "patched".into(),
+            }],
+            pruned: vec![PruningDecision {
+                name: "obsolete".into(),
+                reason: "truly stale".into(),
+            }],
+            llm_summary: Some("Merged 2 clusters".into()),
+            classification_sources: std::collections::HashMap::new(),
+            run_error: None,
+            tool_calls: vec![CuratorToolCall {
+                id: None,
+                name: "skill_list".into(),
+                arguments: "{}".into(),
+            }],
+            removed: vec!["old-skill".into()],
+            added: vec!["new-skill".into()],
+            state_transitions: vec![StateTransition {
+                name: "mid-skill".into(),
+                from: "Active".into(),
+                to: "Stale".into(),
+            }],
+        };
+
+        let md = report.render_markdown();
+        assert!(md.contains("# Curator Run Report"));
+        assert!(md.contains("test-run-001"));
+        assert!(md.contains("12.5s"));
+        assert!(md.contains("Checked: 10"));
+        assert!(md.contains("Merged 2 clusters"));
+        // New sections
+        assert!(md.contains("## LLM Consolidation Pass"));
+        assert!(md.contains("Tool calls**: 1"));
+        assert!(md.contains("skill_list=1"));
+        assert!(md.contains("Consolidated**: 1"));
+        assert!(md.contains("Pruned**: 1"));
+        assert!(md.contains("Added**: 1"));
+        assert!(md.contains("State transitions**: 1"));
+        // Consolidated list format
+        assert!(md.contains("### Consolidated (1)"));
+        assert!(md.contains("`narrow-a` → merged into `umbrella` — patched"));
+        // Pruned list format
+        assert!(md.contains("### Pruned (1)"));
+        assert!(md.contains("`obsolete` — truly stale"));
+        // Added section
+        assert!(md.contains("### New skills this run (1)"));
+        assert!(md.contains("`new-skill`"));
+        // State transitions section
+        assert!(md.contains("### State transitions (1)"));
+        assert!(md.contains("`mid-skill`: Active → Stale"));
+    }
+
+    #[test]
+    fn test_curator_run_report_render_with_error() {
+        let report = CuratorRunReport {
+            run_id: "err-run".into(),
+            started_at: "2025-07-22T12:00:00Z".into(),
+            elapsed_seconds: 1.0,
+            model: String::new(),
+            provider: String::new(),
+            auto_counts: AutoCounts::default(),
+            before_snapshots: vec![],
+            after_snapshots: vec![],
+            consolidated: vec![],
+            pruned: vec![],
+            llm_summary: None,
+            classification_sources: std::collections::HashMap::new(),
+            run_error: Some("Agent build error: timeout".into()),
+            tool_calls: vec![],
+            removed: vec![],
+            added: vec![],
+            state_transitions: vec![],
+        };
+
+        let md = report.render_markdown();
+        assert!(md.contains("⚠ **LLM pass error**"));
+        assert!(md.contains("Agent build error: timeout"));
+    }
+
+    #[test]
+    fn test_curator_run_report_save_to_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let report = CuratorRunReport {
+            run_id: "save-test".into(),
+            started_at: "2025-07-22T12:00:00Z".into(),
+            elapsed_seconds: 5.0,
+            model: String::new(),
+            provider: String::new(),
+            auto_counts: AutoCounts::default(),
+            before_snapshots: vec![],
+            after_snapshots: vec![],
+            consolidated: vec![],
+            pruned: vec![],
+            llm_summary: None,
+            classification_sources: std::collections::HashMap::new(),
+            run_error: None,
+            tool_calls: vec![],
+            removed: vec![],
+            added: vec![],
+            state_transitions: vec![],
+        };
+
+        let (json_path, md_path) = report.save_to_dir(dir.path()).unwrap();
+        assert!(json_path.exists());
+        assert!(md_path.exists());
+        assert!(json_path.to_string_lossy().ends_with("save-test.json"));
+        assert!(md_path.to_string_lossy().ends_with("save-test.md"));
+
+        // Verify JSON is valid
+        let json_content = std::fs::read_to_string(&json_path).unwrap();
+        let _: CuratorRunReport = serde_json::from_str(&json_content).unwrap();
+
+        // Verify Markdown is non-empty
+        let md_content = std::fs::read_to_string(&md_path).unwrap();
+        assert!(md_content.contains("# Curator Run Report"));
+    }
+
+    #[test]
+    fn test_check_package_integrity_safe_no_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let skill_dir = dir.path().join("test-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "# Test Skill\n\nNo links here.",
+        )
+        .unwrap();
+
+        let result = check_package_integrity(dir.path(), "test-skill");
+        assert!(result.is_safe);
+        assert!(result.broken_links.is_empty());
+    }
+
+    #[test]
+    fn test_check_package_integrity_broken_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let skill_dir = dir.path().join("broken-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "# Broken Skill\n\nSee [details](references/missing.md) for more.",
+        )
+        .unwrap();
+
+        let result = check_package_integrity(dir.path(), "broken-skill");
+        assert!(!result.is_safe);
+        assert!(result.broken_links.iter().any(|l| l.contains("missing.md")));
+    }
+
+    #[test]
+    fn test_check_package_integrity_valid_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let skill_dir = dir.path().join("good-skill");
+        let refs_dir = skill_dir.join("references");
+        std::fs::create_dir_all(&refs_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "# Good Skill\n\nSee [details](references/details.md).",
+        )
+        .unwrap();
+        std::fs::write(refs_dir.join("details.md"), "Details content").unwrap();
+
+        let result = check_package_integrity(dir.path(), "good-skill");
+        assert!(result.is_safe);
+        assert!(result.broken_links.is_empty());
+        assert!(result.support_dirs.contains(&"references".to_string()));
+    }
+
+    #[test]
+    fn test_should_run_rejects_too_few_skills() {
+        // A near-empty library (1 skill < min_skills_to_run=5) should not run
+        let dir = tempfile::tempdir().unwrap();
+        let registry = SkillRegistry::new(dir.path());
+        // Create a single skill
+        let skill = make_test_skill("lonely", Source::Auto);
+        registry.save("lonely", &skill).unwrap();
+
+        let curator = Curator::new(registry, CuratorConfig::default());
+        // Even with idle time satisfied, too few skills blocks the run
+        assert!(!curator.should_run(Some(99999.0)));
+    }
+
+    #[test]
+    fn test_should_run_first_run_delay_blocks_immediate_run() {
+        // On first run (run_count == 0), the curator should wait for
+        // interval_hours since library creation before triggering.
+        let dir = tempfile::tempdir().unwrap();
+        let registry = SkillRegistry::new(dir.path());
+
+        // Create enough skills to pass the min_skills gate
+        for i in 0..6 {
+            let skill = make_test_skill(&format!("skill-{}", i), Source::Auto);
+            registry.save(&format!("skill-{}", i), &skill).unwrap();
+        }
+
+        // Use a very large interval to ensure the delay is not met
+        let mut config = CuratorConfig::default();
+        config.interval_hours = 99999;
+        config.min_idle_minutes = 0; // disable idle gate for this test
+
+        let curator = Curator::new(registry, config);
+        // First run should be blocked by the delay
+        assert!(!curator.should_run(Some(99999.0)));
+    }
+
+    #[test]
+    fn test_should_run_disabled_blocks_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = SkillRegistry::new(dir.path());
+        for i in 0..6 {
+            let skill = make_test_skill(&format!("skill-{}", i), Source::Auto);
+            registry.save(&format!("skill-{}", i), &skill).unwrap();
+        }
+
+        let mut config = CuratorConfig::default();
+        config.enabled = false;
+
+        let curator = Curator::new(registry, config);
+        assert!(!curator.should_run(Some(99999.0)));
     }
 }

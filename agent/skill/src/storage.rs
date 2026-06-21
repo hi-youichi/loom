@@ -3,7 +3,7 @@
 //! This module provides `SkillStorageRegistry` for managing skill persistence,
 //! including creation, reading, updating, and deletion of skills with metadata.
 
-use crate::utils::parse_frontmatter;
+use crate::utils::{is_excluded_path, parse_frontmatter};
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value as YamlValue;
 use std::collections::HashSet;
@@ -49,6 +49,8 @@ pub struct SkillMeta {
     pub last_used: Option<String>,
     #[serde(default)]
     pub pinned: bool,
+    #[serde(default)]
+    pub created_by: Option<String>,
 }
 
 /// Full skill content including body.
@@ -59,6 +61,8 @@ pub struct SkillContent {
     pub triggers: Vec<String>,
     pub lifecycle: Lifecycle,
     pub source: Source,
+    #[serde(default)]
+    pub created_by: Option<String>,
     pub body: String,
     pub raw: String,
 }
@@ -94,6 +98,12 @@ impl SkillStorageRegistry {
         &self.base_dir
     }
 
+    /// Compute the storage directory for a skill given its source.
+    ///
+    /// Maps `Source` to a subdirectory under `base_dir`:
+    /// - `Auto`    → `base_dir/auto/<name>/`
+    /// - `Manual`  → `base_dir/curated/<name>/`
+    /// - `Evolved` → `base_dir/evolved/<name>/`
     pub fn skill_dir(&self, source: Source, name: &str) -> PathBuf {
         let subdir = match source {
             Source::Auto => "auto",
@@ -107,47 +117,109 @@ impl SkillStorageRegistry {
         self.skill_dir(source, name).join("SKILL.md")
     }
 
-    /// List all skills in the registry.
-    pub fn list(&self) -> Result<Vec<SkillMeta>, SkillError> {
-        let mut skills = Vec::new();
-        for source in [Source::Auto, Source::Manual, Source::Evolved] {
-            let subdir = match source {
-                Source::Auto => "auto",
-                Source::Manual => "curated",
-                Source::Evolved => "evolved",
-            };
-            let dir = self.base_dir.join(subdir);
-            if !dir.exists() {
+    /// Find the directory containing a skill by name, searching the entire tree.
+    ///
+    /// Walks `base_dir` recursively looking for `<dir>/SKILL.md` where
+    /// `<dir>` has the given name. Excludes `.git`, `node_modules`, etc.
+    /// Returns the path to the directory containing `SKILL.md`.
+    fn find_skill_dir(&self, name: &str) -> Option<PathBuf> {
+        if !self.base_dir.exists() {
+            return None;
+        }
+        self.scan_for_skill_dir(&self.base_dir, name)
+    }
+
+    /// Recursive helper for `find_skill_dir`.
+    fn scan_for_skill_dir(&self, dir: &Path, name: &str) -> Option<PathBuf> {
+        let entries = fs::read_dir(dir).ok()?;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() || is_excluded_path(&path) {
                 continue;
             }
-            for entry in fs::read_dir(&dir)? {
-                let entry = entry?;
-                if entry.file_type()?.is_dir() {
-                    let skill_path = entry.path().join("SKILL.md");
-                    if skill_path.exists() {
-                        if let Ok(content) = self.load_from_path(&skill_path) {
-                            skills.push(SkillMeta {
-                                name: content.name.clone(),
-                                description: content.description.clone(),
-                                lifecycle: content.lifecycle,
-                                source,
-                                triggers: content.triggers,
-                                created_at: None,
-                                last_used: None,
-                                pinned: false,
-                            });
-                        }
+            // Check if this directory IS the skill (matches name + has SKILL.md)
+            if path.file_name().and_then(|n| n.to_str()) == Some(name) {
+                let skill_md = path.join("SKILL.md");
+                if skill_md.exists() {
+                    return Some(path);
+                }
+            }
+            // Recurse into subdirectories
+            if let Some(found) = self.scan_for_skill_dir(&path, name) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
+    /// Recursively collect all `SKILL.md` file paths under `base_dir`.
+    fn collect_skill_files(&self) -> Vec<PathBuf> {
+        if !self.base_dir.exists() {
+            return Vec::new();
+        }
+        let mut result = Vec::new();
+        self.collect_skill_files_recursive(&self.base_dir, &mut result);
+        result
+    }
+
+    /// Recursive helper for `collect_skill_files`.
+    fn collect_skill_files_recursive(&self, dir: &Path, out: &mut Vec<PathBuf>) {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    if is_excluded_path(&path) {
+                        continue;
+                    }
+                    // Check if this dir has a SKILL.md
+                    let skill_md = path.join("SKILL.md");
+                    if skill_md.exists() {
+                        out.push(skill_md);
+                    } else {
+                        // Recurse deeper
+                        self.collect_skill_files_recursive(&path, out);
                     }
                 }
+            }
+        }
+    }
+
+    /// List all skills in the registry.
+    ///
+    /// Recursively scans `base_dir` for all `SKILL.md` files, excluding
+    /// directories like `.git`, `node_modules`, `.archive`, etc.
+    /// This aligns with Hermes `iter_skill_index_files()` (rglob + EXCLUDED_DIRS).
+    pub fn list(&self) -> Result<Vec<SkillMeta>, SkillError> {
+        let mut skills = Vec::new();
+        for skill_md in self.collect_skill_files() {
+            if let Ok(content) = self.load_from_path(&skill_md) {
+                let pinned = self
+                    .read_pinned_from_frontmatter(&skill_md)
+                    .unwrap_or(false);
+                skills.push(SkillMeta {
+                    name: content.name.clone(),
+                    description: content.description.clone(),
+                    lifecycle: content.lifecycle,
+                    source: content.source,
+                    triggers: content.triggers,
+                    created_at: None,
+                    last_used: None,
+                    pinned,
+                    created_by: content.created_by.clone(),
+                });
             }
         }
         Ok(skills)
     }
 
     /// Load a skill by name.
+    ///
+    /// Searches the entire `base_dir` tree for `<name>/SKILL.md`,
+    /// providing backward compatibility with both old (`auto/curated/evolved/`)
+    /// and new (flat/category) layouts.
     pub fn load(&self, name: &str) -> Result<SkillContent, SkillError> {
-        for source in [Source::Auto, Source::Manual, Source::Evolved] {
-            let path = self.skill_file_path(source, name);
+        if let Some(dir) = self.find_skill_dir(name) {
+            let path = dir.join("SKILL.md");
             if path.exists() {
                 return self.load_from_path(&path);
             }
@@ -194,12 +266,18 @@ impl SkillStorageRegistry {
             .and_then(|s| serde_yaml::from_str(s).ok())
             .unwrap_or(Source::Manual);
 
+        let created_by = frontmatter
+            .get("created_by")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
         Ok(SkillContent {
             name,
             description,
             triggers,
             lifecycle,
             source,
+            created_by,
             body,
             raw: raw_owned,
         })
@@ -207,7 +285,12 @@ impl SkillStorageRegistry {
 
     /// Save a skill to the registry.
     pub fn save(&self, name: &str, content: &SkillContent) -> Result<(), SkillError> {
-        let dir = self.skill_dir(content.source, name);
+        // If skill already exists somewhere in the tree, overwrite in place
+        // to avoid creating duplicates when the layout has been migrated.
+        let dir = match self.find_skill_dir(name) {
+            Some(existing) => existing,
+            None => self.skill_dir(content.source, name),
+        };
         fs::create_dir_all(&dir)?;
         let path = dir.join("SKILL.md");
 
@@ -249,6 +332,12 @@ impl SkillStorageRegistry {
                         .to_string(),
                 ),
             );
+            if let Some(ref by) = content.created_by {
+                map.insert(
+                    YamlValue::String("created_by".into()),
+                    YamlValue::String(by.clone()),
+                );
+            }
             map
         }))?;
 
@@ -258,11 +347,72 @@ impl SkillStorageRegistry {
     }
 
     /// Delete a skill from the registry.
+    ///
+    /// Searches the entire tree for the skill directory and removes it.
     pub fn delete(&self, name: &str) -> Result<(), SkillError> {
-        for source in [Source::Auto, Source::Manual, Source::Evolved] {
-            let dir = self.skill_dir(source, name);
+        if let Some(dir) = self.find_skill_dir(name) {
             if dir.exists() {
                 fs::remove_dir_all(&dir)?;
+                return Ok(());
+            }
+        }
+        Err(SkillError::NotFound(name.to_string()))
+    }
+
+    /// Set the `pinned` flag on a skill by updating its SKILL.md frontmatter.
+    ///
+    /// This reads the current SKILL.md, modifies the `pinned` field in the
+    /// YAML frontmatter, and writes it back — preserving the body unchanged.
+    pub fn set_pinned(&self, name: &str, pinned: bool) -> Result<(), SkillError> {
+        if let Some(dir) = self.find_skill_dir(name) {
+            let path = dir.join("SKILL.md");
+            if path.exists() {
+                let raw = fs::read_to_string(&path)?;
+                let (mut frontmatter, body) = parse_frontmatter(&raw);
+
+                frontmatter.insert(
+                    serde_yaml::Value::String("pinned".into()),
+                    serde_yaml::Value::Bool(pinned),
+                );
+
+                let new_yaml = serde_yaml::to_string(&frontmatter)
+                    .map_err(|e| SkillError::InvalidFormat(e.to_string()))?;
+                let new_content = format!("---\n{}---\n{}", new_yaml, body);
+                fs::write(&path, new_content)?;
+                return Ok(());
+            }
+        }
+        Err(SkillError::NotFound(name.to_string()))
+    }
+
+    /// Set the `lifecycle` of a skill by updating its SKILL.md frontmatter.
+    ///
+    /// Used by `curator restore` to move a skill back to Active.
+    pub fn set_lifecycle(
+        &self,
+        name: &str,
+        lifecycle: Lifecycle,
+    ) -> Result<(), SkillError> {
+        if let Some(dir) = self.find_skill_dir(name) {
+            let path = dir.join("SKILL.md");
+            if path.exists() {
+                let raw = fs::read_to_string(&path)?;
+                let (mut frontmatter, body) = parse_frontmatter(&raw);
+
+                frontmatter.insert(
+                    serde_yaml::Value::String("lifecycle".into()),
+                    serde_yaml::Value::String(
+                        serde_yaml::to_string(&lifecycle)
+                            .unwrap_or_default()
+                            .trim()
+                            .to_string(),
+                    ),
+                );
+
+                let new_yaml = serde_yaml::to_string(&frontmatter)
+                    .map_err(|e| SkillError::InvalidFormat(e.to_string()))?;
+                let new_content = format!("---\n{}---\n{}", new_yaml, body);
+                fs::write(&path, new_content)?;
                 return Ok(());
             }
         }
@@ -286,6 +436,7 @@ impl SkillStorageRegistry {
             triggers: content.triggers.clone(),
             lifecycle: content.lifecycle,
             source: content.source,
+            created_by: content.created_by.clone(),
             body,
             raw: content.raw.clone(),
         };
@@ -336,6 +487,7 @@ impl SkillStorageRegistry {
             triggers: content.triggers.clone(),
             lifecycle: content.lifecycle,
             source: content.source,
+            created_by: content.created_by.clone(),
             body,
             raw: content.raw.clone(),
         };
@@ -369,8 +521,9 @@ impl SkillStorageRegistry {
         path: &str,
         content: &str,
     ) -> Result<(), SkillError> {
-        let skill = self.load(skill_name)?;
-        let dir = self.skill_dir(skill.source, skill_name);
+        let dir = self
+            .find_skill_dir(skill_name)
+            .ok_or_else(|| SkillError::NotFound(skill_name.to_string()))?;
         let file_path = dir.join(path.trim_start_matches('/'));
         if let Some(parent) = file_path.parent() {
             fs::create_dir_all(parent)?;
@@ -381,8 +534,9 @@ impl SkillStorageRegistry {
 
     /// Remove a file from a skill's directory.
     pub fn remove_file(&self, skill_name: &str, path: &str) -> Result<(), SkillError> {
-        let skill = self.load(skill_name)?;
-        let dir = self.skill_dir(skill.source, skill_name);
+        let dir = self
+            .find_skill_dir(skill_name)
+            .ok_or_else(|| SkillError::NotFound(skill_name.to_string()))?;
         let file_path = dir.join(path.trim_start_matches('/'));
         if file_path.exists() {
             fs::remove_file(&file_path)?;
@@ -418,6 +572,15 @@ impl SkillStorageRegistry {
             }
         }
         Ok(results)
+    }
+
+    /// Read the `pinned` field from a SKILL.md frontmatter.
+    fn read_pinned_from_frontmatter(&self, skill_md: &Path) -> Option<bool> {
+        let raw = fs::read_to_string(skill_md).ok()?;
+        let (frontmatter, _) = parse_frontmatter(&raw);
+        frontmatter
+            .get("pinned")
+            .and_then(|v| v.as_bool())
     }
 }
 
@@ -466,6 +629,7 @@ mod tests {
             triggers: vec!["rust".into(), "cargo".into(), "compiler error".into()],
             lifecycle: Lifecycle::Active,
             source: Source::Auto,
+            created_by: None,
             body: "1. Read the error\n2. Identify cause\n".to_string(),
             raw: String::new(),
         };
@@ -486,6 +650,7 @@ mod tests {
             triggers: vec!["test".into()],
             lifecycle: Lifecycle::Active,
             source: Source::Manual,
+            created_by: None,
             body: "Do stuff".to_string(),
             raw: String::new(),
         };
@@ -505,6 +670,7 @@ mod tests {
             triggers: vec!["rust compiler error".into()],
             lifecycle: Lifecycle::Active,
             source: Source::Auto,
+            created_by: None,
             body: "Steps...".to_string(),
             raw: String::new(),
         };
@@ -523,6 +689,7 @@ mod tests {
             triggers: vec![],
             lifecycle: Lifecycle::Active,
             source: Source::Manual,
+            created_by: None,
             body: "...".to_string(),
             raw: String::new(),
         };
@@ -548,6 +715,7 @@ mod tests {
             triggers: vec![],
             lifecycle: Lifecycle::Active,
             source: Source::Manual,
+            created_by: None,
             body: "...".to_string(),
             raw: String::new(),
         };

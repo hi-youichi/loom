@@ -41,7 +41,6 @@ pub(crate) async fn handle_tools_list(
             chat_id: None,
             worktree: false,
             goal_mode: false,
-        force_review: false,
             debug_llm: false,
     };
     let (config, _resolved_agent) = build_react_config(&opts);
@@ -89,7 +88,6 @@ pub(crate) async fn handle_tool_show(
             chat_id: None,
             worktree: false,
             goal_mode: false,
-        force_review: false,
             debug_llm: false,
     };
     let (config, _resolved_agent) = build_react_config(&opts);

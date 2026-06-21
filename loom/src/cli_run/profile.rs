@@ -51,7 +51,6 @@ mod tests {
             chat_id: None,
             worktree: false,
             goal_mode: false,
-            force_review: false,
         };
         let (profile, source) = load_profile_from_options(&opts).expect("built-in dev profile");
         assert_eq!(profile.name, "dev");
@@ -95,7 +94,6 @@ mod tests {
             chat_id: None,
             worktree: false,
             goal_mode: false,
-            force_review: false,
         };
         let (profile, source) =
             load_profile_from_options(&opts).expect("built-in agent-builder profile");
@@ -144,7 +142,6 @@ mod tests {
             chat_id: None,
             worktree: false,
             goal_mode: false,
-            force_review: false,
         };
         let result = load_profile_from_options(&opts);
 
@@ -194,7 +191,6 @@ mod tests {
             chat_id: None,
             worktree: false,
             goal_mode: false,
-            force_review: false,
         };
         let result = load_profile_from_options(&opts);
         match prev_loom {
