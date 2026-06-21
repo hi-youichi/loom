@@ -42,7 +42,7 @@ use agent::agent::{Agent, AgentEvent};
 use loom_graph::RunnableConfig;
 use loom_react_config::ReactBuildConfig;
 use skill::SkillUsageStore;
-use tool_basic::skill::{make_skill_tools_with_folder, SkillManagerTool};
+use tool_basic::skill::{make_skill_tools_with_skills_dir, SkillManagerTool};
 use tool_core::Tool;
 
 use std::collections::HashSet;
@@ -174,10 +174,13 @@ fn build_curator_tools(skills_base_dir: &std::path::Path) -> Vec<Arc<dyn Tool>> 
     let registry = Arc::new(SkillRegistry::new(skills_base_dir));
     let usage_store = Arc::new(SkillUsageStore::new(skills_base_dir));
 
-    let working_folder = Arc::new(skills_base_dir.to_path_buf());
+    // Use make_skill_tools_with_skills_dir (not _with_folder) — the base_dir
+    // is already the skills storage root (e.g. ~/.loom/data/skills/), not a
+    // working folder. Using _with_folder would join ".loom/skills" again,
+    // producing a non-existent double path like ~/.loom/data/skills/.loom/skills.
     let view_usage = SkillUsageStore::new(skills_base_dir);
     let (list_tool, view_tool) =
-        make_skill_tools_with_folder(working_folder, Some(view_usage));
+        make_skill_tools_with_skills_dir(skills_base_dir, Some(view_usage));
 
     let manage = Arc::new(SkillManagerTool::for_background_review(
         registry,

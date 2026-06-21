@@ -276,45 +276,12 @@ impl SkillViewTool {
             )));
         }
 
-        const EXTENSIONS: &[&str] = &["md", "txt", "markdown"];
-        for ext in EXTENSIONS {
-            let p = skills_dir.join(format!("{}.{}", name, ext));
-            if p.is_file() {
-                let base_path = p
-                    .parent()
-                    .unwrap_or(std::path::Path::new("."))
-                    .to_path_buf();
+        let mut temp_registry = SkillRegistry::empty();
+        temp_registry.skills = skill::discovery::scan_skills_dir_recursive(
+            &skills_dir,
+            skill::SkillSource::Project,
+        );
 
-                if let Some(fp) = file_path {
-                    return self.view_sub_file(&base_path, fp, name);
-                }
-
-                let content = std::fs::read_to_string(&p)
-                    .map_err(|e| ToolSourceError::Transport(format!("read skill: {}", e)))?;
-                let content = skill::substitute_template_vars(&content, &base_path, None);
-                if let Some(ref store) = self.ctx.usage_store {
-                    store.bump_view(name);
-                    store.bump_use(name);
-                }
-                return Ok(ToolCallContent::text(format!(
-                    "<skill_content name=\"{}\">\n{}\n</skill_content>",
-                    name, content
-                )));
-            }
-        }
-
-        let mut available = Vec::new();
-        if let Ok(entries) = std::fs::read_dir(&skills_dir) {
-            for e in entries.flatten() {
-                if let Some(stem) = e.path().file_stem() {
-                    available.push(stem.to_string_lossy().to_string());
-                }
-            }
-        }
-        Err(ToolSourceError::InvalidInput(format!(
-            "skill '{}' not found. Available: {}",
-            name,
-            available.join(", ")
-        )))
+        self.view_from_registry(&temp_registry, name, file_path)
     }
 }

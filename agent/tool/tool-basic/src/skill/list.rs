@@ -125,41 +125,29 @@ impl Tool for SkillListTool {
             ));
         }
 
-        let mut skills = Vec::new();
-        let categories_set: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let scanned = skill::discovery::scan_skills_dir_recursive(
+            &skills_dir,
+            skill::SkillSource::Project,
+        );
 
-        const EXTENSIONS: &[&str] = &["md", "txt", "markdown"];
-        if let Ok(entries) = std::fs::read_dir(&skills_dir) {
-            for e in entries.flatten() {
-                let path = e.path();
-                if path.is_file() {
-                    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                    if !EXTENSIONS.contains(&ext) {
-                        continue;
-                    }
-                    let name = path
-                        .file_stem()
-                        .map(|s| s.to_string_lossy().to_string())
-                        .unwrap_or_default();
-                    if name.eq_ignore_ascii_case("SKILL") || name.eq_ignore_ascii_case("DESCRIPTION") {
-                        continue;
-                    }
-                    let content = match std::fs::read_to_string(&path) {
-                        Ok(c) => c,
-                        Err(_) => continue,
-                    };
-                    let (meta_opt, _) = skill::utils::parse_skill_frontmatter(&content);
-                    let description = meta_opt
-                        .as_ref()
-                        .map(|m| m.description.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    skills.push(json!({
-                        "name": name,
-                        "description": description,
-                    }));
+        let mut skills = Vec::new();
+        let mut categories_set: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        for entry in &scanned {
+            if let Some(ref cf) = category_filter {
+                if entry.metadata.category.as_deref() != Some(cf.as_str()) {
+                    continue;
                 }
             }
+            let mut obj = json!({
+                "name": entry.metadata.name,
+                "description": entry.metadata.description,
+            });
+            if let Some(ref cat) = entry.metadata.category {
+                obj["category"] = json!(cat);
+                categories_set.insert(cat.clone());
+            }
+            skills.push(obj);
         }
 
         let result = json!({

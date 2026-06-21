@@ -354,7 +354,7 @@ pub fn scan_skills_dir(dir: &Path, source: SkillSource) -> Vec<SkillEntry> {
     entries
 }
 
-fn scan_skills_dir_recursive(dir: &Path, source: SkillSource) -> Vec<SkillEntry> {
+pub fn scan_skills_dir_recursive(dir: &Path, source: SkillSource) -> Vec<SkillEntry> {
     let mut entries = scan_skills_dir(dir, source);
     let Ok(read_dir) = std::fs::read_dir(dir) else { return entries };
 
