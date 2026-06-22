@@ -1,3 +1,9 @@
+//! Content-addressable memory store with provenance tracking.
+//!
+//! See `threat_patterns` module for content security scanning.
+
+pub mod threat_patterns;
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
