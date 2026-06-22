@@ -1,7 +1,9 @@
 //! Content-addressable memory store with provenance tracking.
 //!
-//! See `threat_patterns` module for content security scanning.
+//! - See `threat_patterns` module for content security scanning.
+//! - See `context_fence` module for memory context injection fencing.
 
+pub mod context_fence;
 pub mod threat_patterns;
 
 use serde::{Deserialize, Serialize};
