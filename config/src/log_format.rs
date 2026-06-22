@@ -46,24 +46,17 @@ impl Default for TextWithSpanIds {
 }
 
 impl TextWithSpanIds {
-    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::default()
     }
-
-    #[allow(dead_code)]
     pub fn with_level(mut self, on: bool) -> Self {
         self.with_level = on;
         self
     }
-
-    #[allow(dead_code)]
     pub fn with_target(mut self, on: bool) -> Self {
         self.with_target = on;
         self
     }
-
-    #[allow(dead_code)]
     pub fn with_module_path(mut self, on: bool) -> Self {
         self.with_module_path = on;
         self
@@ -202,7 +195,6 @@ impl Default for JsonWithSpanIds {
 }
 
 impl JsonWithSpanIds {
-    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::default()
     }

@@ -94,7 +94,6 @@ impl WorkspaceWatcher {
             workspace_id,
         })
     }
-
     #[allow(dead_code)]
     pub fn workspace_id(&self) -> &str {
         &self.workspace_id

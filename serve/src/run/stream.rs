@@ -1,4 +1,4 @@
-﻿//! Agent run task: stream events to protocol envelopes and optional message store append.
+//! Agent run task: stream events to protocol envelopes and optional message store append.
 
 use loom::agent_run::{
     run_agent_with_options, run_agent_with_llm_override,
@@ -13,11 +13,11 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
 /// Default event queue capacity (used by tests; production uses [`crate::app::RunConfig`]).
-#[allow(dead_code)]
+#[cfg(test)]
 pub(super) const EVENT_QUEUE_CAPACITY: usize = 128;
 
 /// Default append queue capacity (used by tests; production uses [`crate::app::RunConfig`]).
-#[allow(dead_code)]
+#[cfg(test)]
 pub(super) const APPEND_QUEUE_CAPACITY: usize = 64;
 
 /// Extracts the message list from a React stream event, if the event carries one.

@@ -1,4 +1,4 @@
-﻿//! Models subcommand: list available models from model spec metadata.
+//! Models subcommand: list available models from model spec metadata.
 //!
 //! Reads configured providers from `~/.loom/config.toml`, resolves models from
 //! model spec, and displays available models. Supports filtering by provider name.
@@ -39,11 +39,9 @@ impl ProviderModels {
 }
 
 /// Maximum number of models to display per provider before truncating.
-#[allow(dead_code)]
 const MAX_MODELS_DISPLAY: usize = 30;
 
 /// List models from all configured providers.
-#[allow(dead_code)]
 pub async fn list_all_models(json: bool) -> Result<(), RunError> {
     let config = load_full_config("loom")
         .map_err(|e| RunError::ConfigError(format!("Failed to load config: {}", e)))?;
@@ -66,7 +64,6 @@ pub async fn list_all_models(json: bool) -> Result<(), RunError> {
 }
 
 /// List models from a specific provider.
-#[allow(dead_code)]
 pub async fn list_provider_models(provider_name: &str, json: bool) -> Result<(), RunError> {
     let config = load_full_config("loom")
         .map_err(|e| RunError::ConfigError(format!("Failed to load config: {}", e)))?;
@@ -93,7 +90,6 @@ pub async fn list_provider_models(provider_name: &str, json: bool) -> Result<(),
 }
 
 /// Query models from providers using model spec.
-#[allow(dead_code)]
 async fn query_providers_models_from_spec(providers: &[ProviderDef]) -> Vec<ProviderModels> {
     let registry = ModelRegistry::global();
     let provider_configs: Vec<ProviderConfig> = providers
@@ -146,7 +142,6 @@ async fn query_providers_models_from_spec(providers: &[ProviderDef]) -> Vec<Prov
 }
 
 /// Output results as JSON.
-#[allow(dead_code)]
 fn output_json(results: &[ProviderModels]) {
     let json_results: Vec<serde_json::Value> = results
         .iter()
@@ -177,7 +172,6 @@ fn output_json(results: &[ProviderModels]) {
 }
 
 /// Output results in human-readable format.
-#[allow(dead_code)]
 fn output_human(results: &[ProviderModels]) {
     for result in results {
         println!("\n📦 Provider: {}", result.provider);

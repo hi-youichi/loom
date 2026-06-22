@@ -11,6 +11,12 @@
 //! ```
 //!
 //! The tool runs the full ReAct loop and returns the sub-agent's final reply.
+//!
+//! **Note**: This module is currently unused — superseded by `InvokeAgentTool`
+//! which dynamically resolves sub-agents by profile name. Retained for
+//! potential future use as a pre-built runner wrapper.
+
+#![allow(dead_code)]
 
 use std::sync::Arc;
 
@@ -25,14 +31,12 @@ use super::runner::ReactRunner;
 ///
 /// Created via [`ReactRunner::as_tool`]. The tool name is taken from
 /// `runner.name` and the description from `runner.description`.
-#[allow(dead_code)]
 pub struct AgentTool {
     pub(super) runner: Arc<ReactRunner>,
 }
 
 impl AgentTool {
     /// The tool name used in LLM calls (snake_case, no spaces).
-    #[allow(dead_code)]
     pub fn tool_name(&self) -> String {
         // Default to "agent" since ReactRunner doesn't have a name field
         "agent".replace([' ', '-'], "_")

@@ -42,7 +42,6 @@ impl CachedModelList {
 
 /// Combined model list from multiple sources.
 #[derive(Clone, Debug, Default)]
-#[allow(dead_code)]
 pub struct CombinedModelList {
     /// Models from models.dev registry.
     pub models_dev: Vec<ModelEntry>,
@@ -54,7 +53,6 @@ pub struct CombinedModelList {
 
 impl CombinedModelList {
     /// Merge all model lists, removing duplicates.
-    #[allow(dead_code)]
     pub fn merge_all(self) -> Vec<ModelEntry> {
         let mut seen = std::collections::HashSet::new();
         let mut result = Vec::new();

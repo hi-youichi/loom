@@ -29,12 +29,11 @@ pub(super) struct StreamDelta {
 
 /// One choice inside a stream chunk.
 #[derive(serde::Deserialize)]
-#[allow(dead_code)]
 pub(super) struct StreamChoice {
     pub delta: StreamDelta,
     /// OpenAI-compatible; optional so we don't fail if the API omits it.
-    #[allow(dead_code)]
     #[serde(default)]
+    #[allow(dead_code)]
     pub finish_reason: Option<String>,
 }
 
