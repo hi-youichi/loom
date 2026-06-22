@@ -350,18 +350,18 @@ impl LlmClient for ChatOpenAICompat {
                 if data == "[DONE]" {
                     break 'sse;
                 }
-                let stream_chunk: super::stream::StreamChunk = match serde_json::from_str(data) {
+                let mut stream_chunk: super::stream::StreamChunk = match serde_json::from_str(data) {
                     Ok(c) => c,
                     Err(_) => continue,
                 };
 
-                if let Some(ref u) = stream_chunk.usage {
+                if let Some(u) = stream_chunk.usage.take() {
                     stream_usage = Some(LlmUsage {
                         prompt_tokens: u.prompt_tokens,
                         completion_tokens: u.completion_tokens,
                         total_tokens: u.total_tokens,
-                        prompt_tokens_details: u.prompt_tokens_details.clone(),
-                        completion_tokens_details: u.completion_tokens_details.clone(),
+                        prompt_tokens_details: u.prompt_tokens_details,
+                        completion_tokens_details: u.completion_tokens_details,
                     });
                 }
 
@@ -371,27 +371,30 @@ impl LlmClient for ChatOpenAICompat {
                 };
 
                 for choice in choices {
-                    let delta = choice.delta;
+                    let mut delta = choice.delta;
 
-                    if let Some(ref reasoning_content) = delta.reasoning_content {
+                    // Move fields out of delta to avoid cloning — delta is
+                    // consumed by the for loop, so we own it.
+                    if let Some(reasoning_content) = delta.reasoning_content.take() {
                         if !reasoning_content.is_empty() {
-                            full_reasoning_content.push_str(reasoning_content);
+                            full_reasoning_content.push_str(&reasoning_content);
+                            // Move the owned String into MessageChunk — no clone needed.
                             send_chunk(
                                 sink,
-                                MessageChunk::thinking(reasoning_content.clone()),
+                                MessageChunk::thinking(reasoning_content),
                                 node_id,
                                 &mut first_chunk_at,
                             );
                         }
                     }
 
-                    if let Some(ref content) = delta.content {
+                    if let Some(content) = delta.content.take() {
                         if !content.is_empty() {
-                            full_content.push_str(content);
+                            full_content.push_str(&content);
                             sent_any_content = true;
 
                             if let Some(ref mut parser) = thinking_parser {
-                                for seg in parser.feed(content) {
+                                for seg in parser.feed(&content) {
                                     let chunk = match seg {
                                         ThinkingSegment::Message(s) => MessageChunk::message(s),
                                         ThinkingSegment::Thinking(s) => MessageChunk::thinking(s),
@@ -399,9 +402,10 @@ impl LlmClient for ChatOpenAICompat {
                                     send_chunk(sink, chunk, node_id, &mut first_chunk_at);
                                 }
                             } else {
+                                // Move the owned String into MessageChunk — no clone needed.
                                 send_chunk(
                                     sink,
-                                    MessageChunk::message(content.clone()),
+                                    MessageChunk::message(content),
                                     node_id,
                                     &mut first_chunk_at,
                                 );
@@ -409,16 +413,18 @@ impl LlmClient for ChatOpenAICompat {
                         }
                     }
 
-                    if let Some(ref tool_calls) = delta.tool_calls {
+                    if let Some(tool_calls) = delta.tool_calls.take() {
                         for tc in tool_calls {
+                            // Destructure function once to avoid double-move
+                            let (name, arguments) = match tc.function {
+                                Some(f) => (f.name, f.arguments),
+                                None => (None, None),
+                            };
                             tool_calls_acc.push(RawToolCallDelta {
                                 index: tc.index,
-                                id: tc.id.clone(),
-                                name: tc.function.as_ref().and_then(|f| f.name.clone()),
-                                arguments: tc
-                                    .function
-                                    .as_ref()
-                                    .and_then(|f| f.arguments.clone()),
+                                id: tc.id,
+                                name,
+                                arguments,
                             });
                         }
                     }
