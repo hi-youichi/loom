@@ -166,7 +166,7 @@ impl SkillManagerTool {
             )));
         }
 
-        let (parsed_name, description, body) = match validate_frontmatter(raw_content) {
+        let (parsed_name, description, triggers, body) = match validate_frontmatter(raw_content) {
             Ok(t) => t,
             Err(v) => return Ok(error_response(&format_critical_warnings(&v.warnings))),
         };
@@ -179,7 +179,7 @@ impl SkillManagerTool {
         let content = SkillContent {
             name: name.to_string(),
             description: description.clone(),
-            triggers: Vec::new(),
+            triggers,
             lifecycle: Lifecycle::Active,
             source: Source::Auto,
             created_by: Some("agent".to_string()),
@@ -275,7 +275,7 @@ impl SkillManagerTool {
             }
         };
 
-        let (parsed_name, description, body) = match validate_frontmatter(raw_content) {
+        let (parsed_name, description, triggers, body) = match validate_frontmatter(raw_content) {
             Ok(t) => t,
             Err(v) => return Ok(error_response(&format_critical_warnings(&v.warnings))),
         };
@@ -288,7 +288,7 @@ impl SkillManagerTool {
         let content = SkillContent {
             name: name.to_string(),
             description: description.clone(),
-            triggers: Vec::new(),
+            triggers,
             lifecycle: Lifecycle::Active,
             source: Source::Auto,
             created_by: Some("agent".to_string()),
@@ -402,7 +402,7 @@ impl SkillManagerTool {
 
         // ── 4. (SKILL.md only) Validate structure + content ──
         if file_path.is_none() {
-            let (_, description, body) = match validate_frontmatter(&new_content) {
+            let (_, description, triggers, body) = match validate_frontmatter(&new_content) {
                 Ok(t) => t,
                 Err(v) => {
                     return Ok(json!({
@@ -416,10 +416,17 @@ impl SkillManagerTool {
                 }
             };
 
+            // Preserve existing triggers when the patch doesn't touch the triggers field.
+            let triggers = if triggers.is_empty() {
+                snapshot.triggers.clone()
+            } else {
+                triggers
+            };
+
             let updated = SkillContent {
                 name: name.to_string(),
                 description: description.clone(),
-                triggers: Vec::new(),
+                triggers,
                 lifecycle: Lifecycle::Active,
                 source: Source::Auto,
                 created_by: Some("agent".to_string()),

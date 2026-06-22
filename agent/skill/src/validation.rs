@@ -70,7 +70,7 @@ pub struct ValidationResult {
     pub warnings: Vec<ValidationWarning>,
 }
 
-pub fn validate_frontmatter(content: &str) -> Result<(String, String, String), ValidationResult> {
+pub fn validate_frontmatter(content: &str) -> Result<(String, String, Vec<String>, String), ValidationResult> {
     let mut warnings = Vec::new();
 
     if content.trim().is_empty() {
@@ -223,7 +223,17 @@ pub fn validate_frontmatter(content: &str) -> Result<(String, String, String), V
         });
     }
 
-    Ok((name, description, body))
+    let triggers: Vec<String> = mapping
+        .get(serde_yaml::Value::String("triggers".into()))
+        .and_then(|v| v.as_sequence())
+        .map(|seq| {
+            seq.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok((name, description, triggers, body))
 }
 
 pub fn validate_name_match(frontmatter_name: &str, arg_name: &str) -> ValidationResult {

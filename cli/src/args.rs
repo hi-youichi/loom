@@ -569,6 +569,15 @@ pub(crate) enum CuratorCommand {
     },
     /// List available backup snapshots
     Snapshots,
+    /// Backfill triggers for skills that have an empty trigger list
+    BackfillTriggers {
+        /// Only process a specific skill by name
+        #[arg(long, value_name = "SKILL")]
+        skill: Option<String>,
+        /// Number of skills per LLM call (default: 10)
+        #[arg(long, default_value = "10", value_name = "N")]
+        batch_size: usize,
+    },
 }
 
 #[derive(clap::Args, Debug, Clone)]

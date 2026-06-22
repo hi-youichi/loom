@@ -10,6 +10,7 @@
 //! - **History / Observability**: Review record persistence and metrics
 //! - **Workflow**: Global task registry and Curator auto-run
 
+pub mod backfill_triggers;
 pub mod curator;
 pub mod curator_backup;
 pub mod curator_llm;
@@ -44,6 +45,9 @@ pub use curator_backup::{CuratorBackup, BackupError, SnapshotMeta};
 pub use history::{ReviewHistory, ReviewRecord};
 pub use observability::ObservabilityStore;
 
+pub use backfill_triggers::{
+    run_backfill_triggers, BackfillTriggersOutcome, DEFAULT_BATCH_SIZE,
+};
 pub use workflow::{
     run_curator_if_needed,
     run_curator_llm_if_needed,

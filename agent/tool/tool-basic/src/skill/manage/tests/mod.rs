@@ -26,7 +26,7 @@ pub fn make_skill_md(name: &str, description: &str, body: &str) -> String {
 /// Save a skill directly into storage (bypassing the tool).
 /// Reduces the `SkillContent { ... }` boilerplate repeated in ~15 tests.
 pub fn save_skill(storage: &SkillStorageRegistry, name: &str, description: &str, body: &str) {
-    let (_, _, parsed_body) = validate_frontmatter(&make_skill_md(name, description, body)).unwrap();
+    let (_, _, _, parsed_body) = validate_frontmatter(&make_skill_md(name, description, body)).unwrap();
     storage
         .save(
             name,

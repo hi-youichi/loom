@@ -796,6 +796,64 @@ pub(crate) async fn handle_curator_command(
                 }
             }
         }
+        CuratorCommand::BackfillTriggers { skill, batch_size } => {
+            let Some((base_url, api_key, model)) = resolve_curator_llm_credentials() else {
+                eprintln!(
+                    "backfill-triggers: no LLM credentials — set OPENAI_API_KEY or configure config.toml"
+                );
+                std::process::exit(1);
+            };
+
+            let mut agent_config = loom_react_config::ReactBuildConfig::from_env();
+            agent_config.openai_api_key = Some(api_key);
+            agent_config.openai_base_url = Some(base_url);
+            agent_config.model = Some(model.clone());
+
+            if !curator_args.dry_run {
+                eprintln!("backfill-triggers: running (model: {})", model);
+            } else {
+                eprintln!("backfill-triggers: dry-run (model: {})", model);
+            }
+
+            let outcome = loom_background_review::run_backfill_triggers(
+                &skills_path,
+                agent_config,
+                curator_args.dry_run,
+                skill.as_deref(),
+                *batch_size,
+            )
+            .await
+            .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+
+            if json {
+                println!("{}", serde_json::to_string_pretty(&serde_json::json!({
+                    "dry_run": outcome.dry_run,
+                    "updated": outcome.updated,
+                    "no_triggers_found": outcome.no_triggers_found,
+                    "failed": outcome.failed.iter().map(|(n, e)| serde_json::json!({"skill": n, "error": e})).collect::<Vec<_>>(),
+                }))?);
+            } else {
+                let label = if outcome.dry_run { " (dry-run)" } else { "" };
+                println!("Backfill Triggers{}:", label);
+                println!("{}", "═".repeat(60));
+                println!("Updated: {}", outcome.updated.len());
+                for name in &outcome.updated {
+                    println!("  ✓ {}", name);
+                }
+                if !outcome.no_triggers_found.is_empty() {
+                    println!("No triggers inferred: {}", outcome.no_triggers_found.len());
+                    for name in &outcome.no_triggers_found {
+                        println!("  ? {}", name);
+                    }
+                }
+                if !outcome.failed.is_empty() {
+                    println!("Failed: {}", outcome.failed.len());
+                    for (name, err) in &outcome.failed {
+                        println!("  ✗ {} — {}", name, err);
+                    }
+                }
+            }
+        }
     }
     Ok(())
 }

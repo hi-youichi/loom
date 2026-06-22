@@ -2,15 +2,24 @@ use super::*;
 
 #[test]
 fn validate_frontmatter_basic() {
-    let (name, desc, body) = validate_frontmatter("---\nname: foo\ndescription: bar\n---\nbody content").unwrap();
+    let (name, desc, triggers, body) = validate_frontmatter("---\nname: foo\ndescription: bar\n---\nbody content").unwrap();
     assert_eq!(name, "foo");
     assert_eq!(desc, "bar");
+    assert!(triggers.is_empty());
     assert_eq!(body, "body content");
 }
 
 #[test]
+fn validate_frontmatter_with_triggers() {
+    let (_, _, triggers, _) = validate_frontmatter(
+        "---\nname: foo\ndescription: bar\ntriggers:\n  - rust error\n  - cargo build\n---\nbody"
+    ).unwrap();
+    assert_eq!(triggers, vec!["rust error", "cargo build"]);
+}
+
+#[test]
 fn validate_frontmatter_multiline_body() {
-    let (_, _, body) = validate_frontmatter("---\nname: foo\ndescription: bar\n---\n# Heading\n\nStep 1.\nStep 2.\n").unwrap();
+    let (_, _, _, body) = validate_frontmatter("---\nname: foo\ndescription: bar\n---\n# Heading\n\nStep 1.\nStep 2.\n").unwrap();
     assert!(body.contains("Step 1."));
     assert!(body.contains("Step 2."));
 }
