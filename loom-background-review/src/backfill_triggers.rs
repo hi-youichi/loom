@@ -227,3 +227,98 @@ pub async fn run_backfill_triggers(
 
     Ok(outcome)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── parse_llm_reply ──
+
+    #[test]
+    fn parse_llm_reply_valid_json_array() {
+        let reply = r#"```json
+[{"name": "rust-build", "triggers": ["cargo build", "rust compile"]}, {"name": "git-flow", "triggers": ["git merge", "rebase"]}]
+```"#;
+        let result = parse_llm_reply(reply);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].0, "rust-build");
+        assert_eq!(result[0].1, vec!["cargo build", "rust compile"]);
+        assert_eq!(result[1].0, "git-flow");
+        assert_eq!(result[1].1, vec!["git merge", "rebase"]);
+    }
+
+    #[test]
+    fn parse_llm_reply_plain_json() {
+        let reply = r#"[{"name": "test-skill", "triggers": ["run tests"]}]"#;
+        let result = parse_llm_reply(reply);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, "test-skill");
+        assert_eq!(result[0].1, vec!["run tests"]);
+    }
+
+    #[test]
+    fn parse_llm_reply_filters_empty_triggers() {
+        let reply = r#"[
+            {"name": "with-triggers", "triggers": ["a"]},
+            {"name": "no-triggers", "triggers": []}
+        ]"#;
+        let result = parse_llm_reply(reply);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, "with-triggers");
+    }
+
+    #[test]
+    fn parse_llm_reply_invalid_json_returns_empty() {
+        let reply = "this is not json at all";
+        let result = parse_llm_reply(reply);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn parse_llm_reply_empty_string() {
+        let result = parse_llm_reply("");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn parse_llm_reply_extracts_array_from_surrounding_text() {
+        let reply = "Here are the triggers:\n[{\"name\": \"x\", \"triggers\": [\"y\"]}]\nDone!";
+        let result = parse_llm_reply(reply);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, "x");
+    }
+
+    // ── build_batch_prompt ──
+
+    #[test]
+    fn build_batch_prompt_includes_skill_names() {
+        let skills = [
+            ("skill-a", "Description A", "body preview A"),
+            ("skill-b", "Description B", "body preview B"),
+        ];
+        let prompt = build_batch_prompt(&skills);
+        assert!(prompt.contains("skill-a"));
+        assert!(prompt.contains("skill-b"));
+        assert!(prompt.contains("Description A"));
+        assert!(prompt.contains("Description B"));
+        assert!(prompt.contains("body preview A"));
+        assert!(prompt.contains("body preview B"));
+    }
+
+    #[test]
+    fn build_batch_prompt_contains_json_instruction() {
+        let skills = [("x", "d", "b")];
+        let prompt = build_batch_prompt(&skills);
+        assert!(prompt.contains("JSON"));
+        assert!(prompt.contains("triggers"));
+    }
+
+    #[test]
+    fn build_batch_prompt_empty_skills() {
+        let skills: [(&str, &str, &str); 0] = [];
+        let prompt = build_batch_prompt(&skills);
+        // Should still contain the instruction, just no skill entries
+        assert!(prompt.contains("trigger phrases"));
+        assert!(prompt.contains("JSON"));
+    }
+}
