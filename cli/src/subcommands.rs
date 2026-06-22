@@ -583,6 +583,29 @@ pub(crate) async fn handle_curator_command(
                             for p in &outcome.classification.pruned {
                                 println!("  - pruned: {} ({})", p.name, p.reason);
                             }
+
+                            // Persist per-run report (JSON + Markdown)
+                            // Aligns with Hermes `CuratorRunReport.save_to_dir()`.
+                            let run_id = format!(
+                                "curator-{}",
+                                chrono::Utc::now().format("%Y-%m-%dT%H-%M-%S")
+                            );
+                            let run_report = cli::run::curator::CuratorRunReport::from_llm_pass_outcome(
+                                &outcome, &run_id,
+                            );
+                            let reports_dir = skills_path.join("curator").join("reports");
+                            match run_report.save_to_dir(&reports_dir) {
+                                Ok((json_path, md_path)) => {
+                                    eprintln!(
+                                        "Curator report saved: {} + {}",
+                                        json_path.display(),
+                                        md_path.display()
+                                    );
+                                }
+                                Err(e) => {
+                                    eprintln!("Curator: failed to save run report: {:?}", e);
+                                }
+                            }
                         }
                         Ok(None) => {
                             eprintln!("Curator LLM pass: skipped (gating conditions not met)");

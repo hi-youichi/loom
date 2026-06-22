@@ -78,6 +78,9 @@ pub enum SkillError {
     NotFound(String),
     #[error("Invalid skill format: {0}")]
     InvalidFormat(String),
+    /// Skill is pinned/protected and cannot be deleted or archived.
+    #[error("Skill '{0}' is pinned and cannot be deleted or archived")]
+    Pinned(String),
 }
 
 /// Registry for persistent skill storage.
@@ -351,6 +354,11 @@ impl SkillStorageRegistry {
     /// Searches the entire tree for the skill directory and removes it.
     pub fn delete(&self, name: &str) -> Result<(), SkillError> {
         if let Some(dir) = self.find_skill_dir(name) {
+            // Protected skills enforcement: pinned skills cannot be deleted.
+            let skill_md = dir.join("SKILL.md");
+            if skill_md.exists() && self.read_pinned_from_frontmatter(&skill_md) == Some(true) {
+                return Err(SkillError::Pinned(name.to_string()));
+            }
             if dir.exists() {
                 fs::remove_dir_all(&dir)?;
                 return Ok(());
@@ -396,6 +404,13 @@ impl SkillStorageRegistry {
         if let Some(dir) = self.find_skill_dir(name) {
             let path = dir.join("SKILL.md");
             if path.exists() {
+                // Protected skills enforcement: pinned skills cannot be archived.
+                if lifecycle == Lifecycle::Archived
+                    && self.read_pinned_from_frontmatter(&path) == Some(true)
+                {
+                    return Err(SkillError::Pinned(name.to_string()));
+                }
+
                 let raw = fs::read_to_string(&path)?;
                 let (mut frontmatter, body) = parse_frontmatter(&raw);
 
@@ -733,5 +748,74 @@ mod tests {
             .join("helper.rs");
         let content = fs::read_to_string(&file_path).unwrap();
         assert_eq!(content, "fn helper() {}\n");
+    }
+
+    #[test]
+    fn pinned_skill_cannot_be_deleted() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = SkillStorageRegistry::new(dir.path());
+        let skill = SkillContent {
+            name: "pinned-skill".to_string(),
+            description: "Protected".to_string(),
+            triggers: vec![],
+            lifecycle: Lifecycle::Active,
+            source: Source::Manual,
+            created_by: None,
+            body: "...".to_string(),
+            raw: String::new(),
+        };
+        registry.save("pinned-skill", &skill).unwrap();
+        registry.set_pinned("pinned-skill", true).unwrap();
+
+        // Delete should fail
+        let result = registry.delete("pinned-skill");
+        assert!(matches!(result, Err(SkillError::Pinned(_))));
+
+        // Skill should still exist
+        assert!(registry.load("pinned-skill").is_ok());
+    }
+
+    #[test]
+    fn pinned_skill_cannot_be_archived() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = SkillStorageRegistry::new(dir.path());
+        let skill = SkillContent {
+            name: "pinned-active".to_string(),
+            description: "Protected".to_string(),
+            triggers: vec![],
+            lifecycle: Lifecycle::Active,
+            source: Source::Manual,
+            created_by: None,
+            body: "...".to_string(),
+            raw: String::new(),
+        };
+        registry.save("pinned-active", &skill).unwrap();
+        registry.set_pinned("pinned-active", true).unwrap();
+
+        // Archive should fail
+        let result = registry.set_lifecycle("pinned-active", Lifecycle::Archived);
+        assert!(matches!(result, Err(SkillError::Pinned(_))));
+
+        // Setting Active (no change) should still succeed
+        registry.set_lifecycle("pinned-active", Lifecycle::Active).unwrap();
+    }
+
+    #[test]
+    fn unpinned_skill_can_be_deleted_and_archived() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = SkillStorageRegistry::new(dir.path());
+        let skill = SkillContent {
+            name: "normal-skill".to_string(),
+            description: "Not protected".to_string(),
+            triggers: vec![],
+            lifecycle: Lifecycle::Active,
+            source: Source::Manual,
+            created_by: None,
+            body: "...".to_string(),
+            raw: String::new(),
+        };
+        registry.save("normal-skill", &skill).unwrap();
+        // Not pinned → archive works
+        registry.set_lifecycle("normal-skill", Lifecycle::Archived).unwrap();
     }
 }
