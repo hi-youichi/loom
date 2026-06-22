@@ -4,7 +4,7 @@
 
 use async_trait::async_trait;
 use loom_graph::Agent;
-use loom_llm::{AgentError, message::Message};
+use loom_llm::{error::GraphError, message::Message};
 use std::env;
 
 #[derive(Debug, Clone, Default)]
@@ -26,7 +26,7 @@ impl Agent for EchoAgent {
         "echo"
     }
     type State = EchoState;
-    async fn run(&self, state: Self::State) -> Result<Self::State, AgentError> {
+    async fn run(&self, state: Self::State) -> Result<Self::State, GraphError> {
         let mut messages = state.messages;
         let last = messages.last().and_then(|m| {
             if let Message::User(s) = m {

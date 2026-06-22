@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::fs;
 
+#[allow(dead_code)]
 pub fn create_agent_config(home: &Path, tier: &str) {
     let agents_dir = home.join(".loom/agents");
     fs::create_dir_all(&agents_dir).expect("Failed to create agents directory");
@@ -13,6 +14,7 @@ pub fn create_agent_config(home: &Path, tier: &str) {
     fs::write(config_path, config).expect("Failed to write agent config");
 }
 
+#[allow(dead_code)]
 pub fn create_subagent_config(home: &Path, agent_name: &str, tier: &str) {
     let agent_dir = home.join(".loom/agents").join(agent_name);
     fs::create_dir_all(&agent_dir).expect("Failed to create agent directory");
@@ -21,6 +23,7 @@ pub fn create_subagent_config(home: &Path, agent_name: &str, tier: &str) {
     let config = format!("tier: {}", tier);
     fs::write(config_path, config).expect("Failed to write subagent config");
 }
+#[allow(dead_code)]
 pub fn read_last_model_file(home: &Path) -> String {
     let last_model_path = home.join("last-model");
     fs::read_to_string(last_model_path)
@@ -28,10 +31,12 @@ pub fn read_last_model_file(home: &Path) -> String {
         .trim()
         .to_string()
 }
+#[allow(dead_code)]
 pub fn write_last_model_file(home: &Path, model: &str) {
     let last_model_path = home.join("last-model");
     fs::write(last_model_path, model).expect("Failed to write last-model file");
 }
+#[allow(dead_code)]
 pub fn create_test_agents_config(home: &Path) {
     let _agents_dir = home.join(".loom/agents");
     

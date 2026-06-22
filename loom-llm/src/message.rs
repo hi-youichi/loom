@@ -1165,7 +1165,6 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
             tool_calls: vec![],
             reasoning_content: None,
         };
-        let json = serde_json::to_string(&payload).unwrap();
     // Direct AssistantPayload serialization uses derive(Serialize), not the custom serde module.
     // The custom serde (plain string when no tool_calls) only applies via Message::Assistant.
     let json = serde_json::to_string(&payload).unwrap();

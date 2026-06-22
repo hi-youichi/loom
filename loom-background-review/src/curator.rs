@@ -1880,9 +1880,11 @@ mod tests {
         }
 
         // Use a very large interval to ensure the delay is not met
-        let mut config = CuratorConfig::default();
-        config.interval_hours = 99999;
-        config.min_idle_minutes = 0; // disable idle gate for this test
+        let config = CuratorConfig {
+            interval_hours: 99999,
+            min_idle_minutes: 0, // disable idle gate for this test
+            ..Default::default()
+        };
 
         let curator = Curator::new(registry, config);
         // First run should be blocked by the delay
@@ -1898,8 +1900,10 @@ mod tests {
             registry.save(&format!("skill-{}", i), &skill).unwrap();
         }
 
-        let mut config = CuratorConfig::default();
-        config.enabled = false;
+        let config = CuratorConfig {
+            enabled: false,
+            ..Default::default()
+        };
 
         let curator = Curator::new(registry, config);
         assert!(!curator.should_run(Some(99999.0)));

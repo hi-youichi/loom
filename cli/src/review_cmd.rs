@@ -508,11 +508,13 @@ mod tests {
     fn format_token_summary_omits_cache_split_when_zero() {
         // When no cache hit was reported we don't want to print "(0 cached, N fresh)"
         // — it's noise. Verify the line stays clean.
-        let mut t = TokenUsageSummary::default();
-        t.llm_calls = 1;
-        t.prompt_tokens = 500;
-        t.completion_tokens = 50;
-        t.total_tokens = 550;
+        let t = TokenUsageSummary {
+            llm_calls: 1,
+            prompt_tokens: 500,
+            completion_tokens: 50,
+            total_tokens: 550,
+            ..Default::default()
+        };
         let s = format_token_summary(&t);
         assert!(s.contains("500 in"), "got: {s}");
         assert!(s.contains("50 out"), "got: {s}");
@@ -526,12 +528,13 @@ mod tests {
         // The whole point of the feature: when the provider reports a cache
         // hit, the CLI must surface it as "X cached, Y fresh" so the user
         // can see whether prefix caching is actually saving them money.
-        let mut t = TokenUsageSummary::default();
-        t.llm_calls = 2;
-        t.prompt_tokens = 3_500;
-        t.cached_tokens = 2_000;
-        t.completion_tokens = 180;
-        t.total_tokens = 3_680;
+        let t = TokenUsageSummary {
+            llm_calls: 2,
+            prompt_tokens: 3_500,
+            cached_tokens: 2_000,
+            completion_tokens: 180,
+            total_tokens: 3_680,
+        };
         let s = format_token_summary(&t);
         assert!(s.contains("3500 in"), "got: {s}");
         assert!(s.contains("(2000 cached, 1500 fresh)"), "got: {s}");
@@ -543,19 +546,23 @@ mod tests {
     #[test]
     fn format_token_summary_singular_vs_plural_calls() {
         // 1 LLM call vs N LLM calls — simple grammar check, but it's user-facing.
-        let mut one = TokenUsageSummary::default();
-        one.llm_calls = 1;
-        one.prompt_tokens = 10;
-        one.completion_tokens = 1;
-        one.total_tokens = 11;
+        let one = TokenUsageSummary {
+            llm_calls: 1,
+            prompt_tokens: 10,
+            completion_tokens: 1,
+            total_tokens: 11,
+            ..Default::default()
+        };
         assert!(format_token_summary(&one).contains("1 LLM call"));
         assert!(!format_token_summary(&one).contains("1 LLM calls"));
 
-        let mut many = TokenUsageSummary::default();
-        many.llm_calls = 3;
-        many.prompt_tokens = 30;
-        many.completion_tokens = 3;
-        many.total_tokens = 33;
+        let many = TokenUsageSummary {
+            llm_calls: 3,
+            prompt_tokens: 30,
+            completion_tokens: 3,
+            total_tokens: 33,
+            ..Default::default()
+        };
         assert!(format_token_summary(&many).contains("3 LLM calls"));
     }
 
@@ -564,12 +571,13 @@ mod tests {
         // Edge case: provider reports 100% cache hit. The "fresh" portion
         // should be 0, not negative. (non_cached_prompt saturates in
         // TokenUsageSummary; we just verify the formatting doesn't break.)
-        let mut t = TokenUsageSummary::default();
-        t.llm_calls = 1;
-        t.prompt_tokens = 1_000;
-        t.cached_tokens = 1_000;
-        t.completion_tokens = 50;
-        t.total_tokens = 1_050;
+        let t = TokenUsageSummary {
+            llm_calls: 1,
+            prompt_tokens: 1_000,
+            cached_tokens: 1_000,
+            completion_tokens: 50,
+            total_tokens: 1_050,
+        };
         let s = format_token_summary(&t);
         assert!(s.contains("(1000 cached, 0 fresh)"), "got: {s}");
     }

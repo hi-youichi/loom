@@ -967,7 +967,7 @@ mod tests {
             "msg should start with the conversation prefix"
         );
         assert!(
-            msg.contains(&suffix),
+            msg.contains(suffix),
             "msg should contain the separator suffix"
         );
         assert!(

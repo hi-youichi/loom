@@ -26,15 +26,18 @@ pub struct TestEnvironment {
 }
 
 impl TestEnvironment {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         let temp_dir = setup_test_home();
         let loom_home = temp_dir.path().to_path_buf();
         
         Self { temp_dir, loom_home }
     }
+    #[allow(dead_code)]
     pub fn agents_dir(&self) -> PathBuf {
         self.loom_home.join(".loom/agents")
     }
+    #[allow(dead_code)]
     pub fn last_model_path(&self) -> PathBuf {
         self.loom_home.join("last-model")
     }
