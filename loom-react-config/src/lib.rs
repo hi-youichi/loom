@@ -164,6 +164,70 @@ impl std::fmt::Debug for ReactBuildConfig {
     }
 }
 
+impl Default for ReactBuildConfig {
+    /// Produces an all-`None`/`false`/empty config with sensible static defaults.
+    ///
+    /// **Prefer `ReactBuildConfig::from_env()`** for production use — it hydrates
+    /// fields from environment variables. This `Default` impl exists so that
+    /// tests and builders can use struct-update syntax (`..Default::default()`).
+    fn default() -> Self {
+        Self {
+            db_path: None,
+            thread_id: None,
+            trace_thread_id: None,
+            user_id: None,
+            system_prompt: None,
+            exa_api_key: None,
+            exa_codesearch_enabled: false,
+            twitter_api_key: None,
+            mcp_exa_url: String::new(),
+            mcp_remote_cmd: String::new(),
+            mcp_remote_args: String::new(),
+            github_token: None,
+            mcp_github_cmd: String::new(),
+            mcp_github_args: Vec::new(),
+            mcp_github_url: None,
+            mcp_verbose: false,
+            openai_api_key: None,
+            openai_base_url: None,
+            openai_temperature: None,
+            model: None,
+            model_tier: None,
+            parent_model_hint: None,
+            llm_provider: None,
+            llm_provider_name: None,
+            embedding_api_key: None,
+            embedding_base_url: None,
+            embedding_model: None,
+            working_folder: None,
+            compaction_config: None,
+            tot_config: TotRunnerConfig::default(),
+            got_config: GotRunnerConfig::default(),
+            mcp_servers: None,
+            skill_registry: None,
+            max_sub_agent_depth: None,
+            dry_run: false,
+            builtin_tool_filter: None,
+            call_tool_filter: None,
+            bash_executor: None,
+            extra_tools: None,
+            acp_session_id: None,
+            goal_mode: false,
+            is_background_review: false,
+            memory_enabled: true,
+            user_profile_enabled: true,
+            memory_nudge_interval: 10,
+            skill_nudge_interval: 10,
+            role_setting: None,
+            agents_md: None,
+            system_prompt_override: None,
+            skills_prompt: None,
+            memory_prompt: None,
+            env_context: None,
+        }
+    }
+}
+
 impl ReactBuildConfig {
     pub fn from_env() -> Self {
         Self {

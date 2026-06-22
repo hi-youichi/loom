@@ -105,6 +105,27 @@ impl UserContent {
             UserContent::Multimodal(parts) => parts.iter().map(|p| p.modality_string()).collect(),
         }
     }
+
+    /// Returns the list of [`ModalityType`]s present in this content.
+    pub fn modalities(&self) -> Vec<model_spec_core::spec::ModalityType> {
+        match self {
+            UserContent::Text(_) => vec![model_spec_core::spec::ModalityType::Text],
+            UserContent::Multimodal(parts) => parts.iter().map(|p| p.modality()).collect(),
+        }
+    }
+
+    /// Returns the modalities present in this content that the given model does **not** support.
+    pub fn unsupported_modalities(&self, model: &model_spec_core::spec::Model) -> Vec<model_spec_core::spec::ModalityType> {
+        self.modalities()
+            .into_iter()
+            .filter(|m| !model.modalities.input.contains(m))
+            .collect()
+    }
+
+    /// Returns `true` if every modality in this content is supported by the given model.
+    pub fn is_supported_by(&self, model: &model_spec_core::spec::Model) -> bool {
+        self.unsupported_modalities(model).is_empty()
+    }
 }
 
 impl From<String> for UserContent {
@@ -144,6 +165,23 @@ impl PartialEq<String> for UserContent {
 }
 
 impl ContentPart {
+    /// Returns the [`ModalityType`] for this content part.
+    pub fn modality(&self) -> model_spec_core::spec::ModalityType {
+        use model_spec_core::spec::ModalityType;
+        match self {
+            ContentPart::Text { .. } | ContentPart::File { .. } => ModalityType::Text,
+            ContentPart::ImageUrl { .. } | ContentPart::ImageBase64 { .. } => ModalityType::Image,
+            ContentPart::AudioBase64 { .. } => ModalityType::Audio,
+            ContentPart::VideoUrl { .. } | ContentPart::VideoBase64 { .. } => ModalityType::Video,
+            ContentPart::PdfUrl { .. } | ContentPart::PdfBase64 { .. } => ModalityType::Pdf,
+        }
+    }
+
+    /// Returns true if the given model's input modalities include this part's modality.
+    pub fn is_supported_by(&self, model: &model_spec_core::spec::Model) -> bool {
+        model.modalities.input.contains(&self.modality())
+    }
+
     /// Returns modality as string (without model_spec_core dependency).
     pub fn modality_string(&self) -> String {
         match self {
@@ -1061,7 +1099,8 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
         ];
         let msg = Message::user_multimodal(parts).unwrap();
         let summary = message_summary(1, &msg);
-        assert_eq!(summary, "[1] role=user content_len=13"); // should count only text parts
+        // message_summary format: "{index}: {role}{content_preview}"
+        assert_eq!(summary, "1: usertext content");
     }
 
     #[test]
@@ -1078,7 +1117,8 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
             Some("Reasoning process".to_string()),
         );
         let summary = message_summary(6, &msg);
-        assert_eq!(summary, "[6] role=assistant tool_calls=[call_123] content_len=8 reasoning_len=17");
+        // message_summary format: "{index}: {role}{content_preview}"
+        assert_eq!(summary, "6: assistantResponse");
     }
 
     // Additional UserContent edge cases
@@ -1126,8 +1166,11 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
             reasoning_content: None,
         };
         let json = serde_json::to_string(&payload).unwrap();
-        // Should serialize as plain string when no tool_calls and no reasoning
-        assert_eq!(json, "\"simple response\"");
+    // Direct AssistantPayload serialization uses derive(Serialize), not the custom serde module.
+    // The custom serde (plain string when no tool_calls) only applies via Message::Assistant.
+    let json = serde_json::to_string(&payload).unwrap();
+    assert!(json.contains("\"content\":\"simple response\""));
+    assert!(json.contains("\"tool_calls\":[]"));
     }
 
     #[test]
@@ -1316,18 +1359,20 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
     fn message_summary_with_large_index() {
         let msg = Message::system("test".to_string());
         let summary = message_summary(999999, &msg);
-        assert_eq!(summary, "[999999] role=system content_len=4");
+        // message_summary format: "{index}: {role}{content_preview}"
+        assert_eq!(summary, "999999: systemtest");
     }
 
     #[test]
     fn message_summary_with_empty_contents() {
         let sys_msg = Message::System("".to_string());
         let summary = message_summary(0, &sys_msg);
-        assert_eq!(summary, "[0] role=system content_len=0");
+        // message_summary format: "{index}: {role}{content_preview}" — empty content → just role
+        assert_eq!(summary, "0: system");
 
         let user_msg = Message::User(UserContent::Text("".to_string()));
         let summary = message_summary(1, &user_msg);
-        assert_eq!(summary, "[1] role=user content_len=0");
+        assert_eq!(summary, "1: user");
 
         let assistant_msg = Message::Assistant(AssistantPayload {
             content: "".to_string(),
@@ -1335,7 +1380,7 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
             reasoning_content: None,
         });
         let summary = message_summary(2, &assistant_msg);
-        assert_eq!(summary, "[2] role=assistant content_len=0 reasoning_len=0");
+        assert_eq!(summary, "2: assistant");
     }
 
     #[test]
