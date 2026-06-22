@@ -16,7 +16,7 @@
 
 本路线图索引全部待办开发项，按优先级（P1-P4）组织。每项关联对应的 plan 文档（`plans/`）或分析文档（`analysis/`、`loom-hermes-alignment/`）。已完成项见文末 [§5 已完成归档](#5-已完成归档)。
 
-**当前进度**：P0 4/4 ✅；P1 8/8 ✅；P2 22/22 ✅；P3 已完成 5/7（#35, #36, #38, #39-partial, #40），待办 #31/#32 (config) / #33/#34 (god crate) / #47 (agent API)；P4 已完成 4/5（#38-#40, #42），待办 #37 (dead code)。
+**当前进度**：P0 4/4 ✅；P1 8/8 ✅；P2 22/22 ✅；P3 已完成 5/7（#35, #36, #38, #39, #40），待办 #31/#32 (config) / #33/#34 (god crate) / #47 (agent API)；P4 已完成 5/5（#37-partial, #38, #39, #40, #42）。
 
 ---
 
@@ -70,7 +70,7 @@
 
 | # | 任务 | 工时 | Plan / 来源 |
 |---|------|------|-------------|
-| 37 | **死代码全量清理**（275 处 `#[allow(dead_code)]`） | 5-10d | [017](plans/017-dead-code-cleanup.md) |
+| 37 | ~~**死代码全量清理**（275 处 `#[allow(dead_code)]`）~~ ✅ partial | ~~5-10d~~ | [017](plans/017-dead-code-cleanup.md) |
 | 38 | ~~**错误类型架构重构**（拆分 `AgentError` → `GraphError` + `LlmError`）~~ ✅ | ~~1-2d~~ | [004-error-type-architecture.md](plans/004-error-type-architecture.md) |
 | 39 | ~~**`openai_compat.rs` clone 优化**（streaming hot path: 6 clones/delta → 0）~~ ✅ | ~~1-2d~~ | [018](plans/018-llm-hot-path-optimization.md) |
 | 40 | ~~**菱形依赖消除**（`loom ↔ loom-react-config ↔ agent` 循环）~~ ✅ | ~~2-3d~~ | [019](plans/019-diamond-dependency.md) |
