@@ -73,7 +73,7 @@
 | 37 | **死代码全量清理**（275 处 `#[allow(dead_code)]`） | 5-10d | [017](plans/017-dead-code-cleanup.md) |
 | 38 | ~~**错误类型架构重构**（拆分 `AgentError` → `GraphError` + `LlmError`）~~ ✅ | ~~1-2d~~ | [004-error-type-architecture.md](plans/004-error-type-architecture.md) |
 | 39 | **`openai_compat.rs` clone 优化**（50+ 处 clone 在 LLM 热路径） | 1-2d | [018](plans/018-llm-hot-path-optimization.md) |
-| 40 | **菱形依赖消除**（`loom ↔ loom-react-config ↔ agent` 循环） | 2-3d | [019](plans/019-diamond-dependency.md) |
+| 40 | ~~**菱形依赖消除**（`loom ↔ loom-react-config ↔ agent` 循环）~~ ✅ | ~~2-3d~~ | [019](plans/019-diamond-dependency.md) |
 | 42 | ~~**Curator 首次运行延迟**（避免启动时立即触发）~~ ✅ | ~~0.5d~~ | [013](plans/013-curator-alignment.md) #6 |
 
 > #41 (Aux model) 已完成，归档至 [§5 P2 已完成项](#p2--已完成项-1)。
