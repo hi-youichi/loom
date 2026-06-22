@@ -16,7 +16,7 @@
 
 本路线图索引全部待办开发项，按优先级（P1-P4）组织。每项关联对应的 plan 文档（`plans/`）或分析文档（`analysis/`、`loom-hermes-alignment/`）。已完成项见文末 [§5 已完成归档](#5-已完成归档)。
 
-**当前进度**：P0 紧急修复 4/4 完成；P1 全部完成（#6-#11, #22, #43, #44）；P2 已完成 20/20 项（#12-#20 Memory 子系统、#21/#23/#24 BG Review 对齐、#25-#28 Curator 对齐、#29 Protected skills、#30 包完整性、#41 Aux model、#45 Review Agent 记忆配置、#46 session list 分页）；P3/P4 待办。
+**当前进度**：P0 紧急修复 4/4 完成；P1 全部完成（#6-#11, #22, #43, #44）；P2 全部完成 22/22 项；P3 已完成 2/7（#35, #36），#38 已实现（待验证标记）；P4 已完成 2/5（#38, #42）。
 
 ---
 
@@ -45,7 +45,7 @@
 | 25 | **Curator LLM Pass 完整链路**（`build_llm_prompt()` → 调用入口） | 3-4h | [013](plans/013-curator-alignment.md) #1 | — |
 | 26 | **Curator prompt 补全**（55 行简化版 → 完整版） | 2h | [013](plans/013-curator-alignment.md) #2 | #25 |
 | 27 | **Per-run 报告持久化**（`CuratorRunReport` 写入） | 2h | [013](plans/013-curator-alignment.md) #3 | #25 |
-| 28 | **`absorbed_into` 声明**（函数已有，prompt 未要求） | 0.5h | [013](plans/013-curator-alignment.md) #4 | #25 |
+| 28 | ~~**`absorbed_into` 声明**（函数已有，prompt 未要求）~~ ✅ | ~~0.5h~~ | [013](plans/013-curator-alignment.md) #4 | — |
 | 29 | **Protected skills**（基于 `SkillMeta.pinned` 实现删除保护） | 2h | [014](plans/014-shared-infra-alignment.md) #1 | — |
 | 30 | **包完整性检查**（Curator 归档前验证 skill 包完整性） | 2h | [013](plans/013-curator-alignment.md) #5 | — |
 | 46 | **`session list` 分页浏览**（类似 `git log`，支持 `--page`/`--limit`） | 2-3h | [009-session-list-pagination.md](plans/009-session-list-pagination.md) | — |
@@ -71,10 +71,10 @@
 | # | 任务 | 工时 | Plan / 来源 |
 |---|------|------|-------------|
 | 37 | **死代码全量清理**（275 处 `#[allow(dead_code)]`） | 5-10d | [017](plans/017-dead-code-cleanup.md) |
-| 38 | **错误类型架构重构**（拆分 `AgentError` → `GraphError` + `LlmError`） | 1-2d | [004-error-type-architecture.md](plans/004-error-type-architecture.md) |
+| 38 | ~~**错误类型架构重构**（拆分 `AgentError` → `GraphError` + `LlmError`）~~ ✅ | ~~1-2d~~ | [004-error-type-architecture.md](plans/004-error-type-architecture.md) |
 | 39 | **`openai_compat.rs` clone 优化**（50+ 处 clone 在 LLM 热路径） | 1-2d | [018](plans/018-llm-hot-path-optimization.md) |
 | 40 | **菱形依赖消除**（`loom ↔ loom-react-config ↔ agent` 循环） | 2-3d | [019](plans/019-diamond-dependency.md) |
-| 42 | **Curator 首次运行延迟**（避免启动时立即触发） | 0.5d | [013](plans/013-curator-alignment.md) #6 |
+| 42 | ~~**Curator 首次运行延迟**（避免启动时立即触发）~~ ✅ | ~~0.5d~~ | [013](plans/013-curator-alignment.md) #6 |
 
 > #41 (Aux model) 已完成，归档至 [§5 P2 已完成项](#p2--已完成项-1)。
 
