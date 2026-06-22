@@ -335,6 +335,13 @@ pub async fn run_review(
     let gate = ReviewToolGate::new();
     review_config.call_tool_filter = Some(gate.as_builtin_filter());
 
+    // If an aux model is configured, use it for the review agent instead of the
+    // parent's main model. This allows cheaper/faster models for background review.
+    // Aligns Hermes `aux_model` / `dev_model` configuration.
+    if let Some(ref aux) = review_config.aux_model {
+        review_config.model = Some(aux.clone());
+    }
+
     // Mark this agent as a background-review agent so downstream nodes (and any nudge
     // logic) can short-circuit — prevents recursive background reviews.
     // (plan 011-04, aligns Hermes `background_review_runner` `is_background_review=True`.)

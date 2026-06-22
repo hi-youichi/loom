@@ -68,6 +68,11 @@ pub struct ReactBuildConfig {
     /// the parent's resolved model (e.g. `"zhipuai-coding-plan/glm-4.7"`) is saved here so that
     /// tier resolution can extract the provider and stay within the same model family.
     pub parent_model_hint: Option<String>,
+    /// Auxiliary model for background tasks (review, curator).
+    /// When set (via `LOOM_AUX_MODEL`), background review and curator agents
+    /// will use this model instead of the main session model.
+    /// Aligns Hermes `aux_model` / `dev_model` configuration.
+    pub aux_model: Option<String>,
     /// Explicit provider type override. When `Some("openai_compat")` or `Some("bigmodel")`, build layer uses `ChatOpenAICompat`; otherwise default is OpenAI.
     /// If unset, build layer may infer provider type from `MODEL` in `provider/model` format.
     pub llm_provider: Option<String>,
@@ -194,6 +199,7 @@ impl Default for ReactBuildConfig {
             model: None,
             model_tier: None,
             parent_model_hint: None,
+            aux_model: None,
             llm_provider: None,
             llm_provider_name: None,
             embedding_api_key: None,
@@ -265,6 +271,7 @@ impl ReactBuildConfig {
             model: None,
             model_tier: None,
             parent_model_hint: None,
+            aux_model: std::env::var("LOOM_AUX_MODEL").ok(),
             llm_provider: None,
             llm_provider_name: None,
             embedding_api_key: std::env::var("EMBEDDING_API_KEY").ok(),
@@ -423,5 +430,25 @@ mod tests {
 
         let fallback = trace_id.or(thread_id);
         assert!(fallback.is_none());
+    }
+
+    #[test]
+    fn aux_model_reads_from_env() {
+        // When LOOM_AUX_MODEL is set, from_env picks it up.
+        with_env("LOOM_AUX_MODEL", Some("cheap-model-v1"), || {
+            let config = ReactBuildConfig::from_env();
+            assert_eq!(config.aux_model.as_deref(), Some("cheap-model-v1"));
+        });
+        // When unset, aux_model is None.
+        with_env("LOOM_AUX_MODEL", None, || {
+            let config = ReactBuildConfig::from_env();
+            assert!(config.aux_model.is_none());
+        });
+    }
+
+    #[test]
+    fn aux_model_default_is_none() {
+        let config = ReactBuildConfig::default();
+        assert!(config.aux_model.is_none());
     }
 }

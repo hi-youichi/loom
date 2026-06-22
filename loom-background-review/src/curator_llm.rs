@@ -243,6 +243,13 @@ pub async fn run_curator_llm_pass(
     // Configure agent for curator mode — mirrors review.rs isolation pattern.
     let gate = ReviewToolGate::with_allowed(vec!["skill_list", "skill_view", "skill_manage"]);
     let mut config = base_config;
+
+    // If an aux model is configured, use it for the curator agent instead of the
+    // main session model. Aligns Hermes `aux_model` / `dev_model` configuration.
+    if let Some(ref aux) = config.aux_model {
+        config.model = Some(aux.clone());
+    }
+
     config.is_background_review = true;
     config.memory_enabled = false;
     config.user_profile_enabled = false;
