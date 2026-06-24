@@ -20,7 +20,7 @@ use agent_client_protocol::schema::v1::{
     SetSessionConfigOptionRequest, SetSessionConfigOptionResponse, SetSessionModeRequest,
 SetSessionModeResponse,
     // SetSessionModelRequest/Response: removed in agent-client-protocol-schema 0.14.0.
-    // Model selection is now routed via SetSessionConfigOptionRequest (see stdio_loop SetSessionConfigOption handler).
+    // Model selection is now routed via SetSessionConfigOptionRequest (configId="model").
 };
 use agent_client_protocol::{
     Agent, ByteStreams, Client, ConnectionTo, Responder, on_receive_notification,

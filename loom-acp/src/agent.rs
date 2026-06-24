@@ -19,9 +19,10 @@ use agent_client_protocol::schema::v1::{
     NewSessionResponse, PromptRequest, PromptResponse, SessionConfigOptionValue,
     SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
 SetSessionModeRequest, SetSessionModeResponse, StopReason, SessionId, SessionNotification,
-    // SetSessionModelRequest/Response: removed in agent-client-protocol-schema 0.14.0.
-    // Model selection now flows through SetSessionConfigOptionRequest with a "model" configId.
-    // Phase 2 will restore a dedicated set_session_model handler that delegates to that path.
+    // SetSessionModelRequest/Response were removed in agent-client-protocol-schema 0.14.0.
+    // Model selection now flows through SetSessionConfigOptionRequest(configId="model"),
+    // handled by `set_session_config_option` below. No dedicated set_session_model RPC exists
+    // in the 0.15.x wire protocol.
 };
 use loom_memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
 use loom_types::state::ReActState;

@@ -89,7 +89,9 @@
 //!
 //! - Mode: e.g. ask/architect/code, mappable to ReAct/DUP/ToT/GoT; set_session_mode switches RunCmd.
 //! - Config: model, max_tokens, etc.; set_session_config_option sends it; inject into RunOptions/config at prompt time.
-//! - set_session_model: dedicated RPC for switching model; equivalent to set_session_config_option("model", ...).
+//! - Model switching has no dedicated RPC in agent-client-protocol 0.15.x (SetSessionModelRequest
+//!   was removed in schema 0.14.0). It is handled through set_session_config_option("model", ...),
+//!   which is the same path that exposes the model as a SessionConfigOption with category="model".
 //!
 //! ## session/fork
 //!
