@@ -8,7 +8,6 @@
 //! - Sanitization: API keys and Authorization headers are stripped.
 
 use std::path::PathBuf;
-use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -204,29 +203,15 @@ impl LlmAuditLog for FileLlmAuditLog {
 
 impl Drop for FileLlmAuditLog {
     fn drop(&mut self) {
-        // Drop the sender to signal the writer task to drain remaining messages and exit.
         self.tx.take();
 
         if let Some(handle) = self.join_handle.take() {
-            if let Ok(rt) = tokio::runtime::Handle::try_current() {
-                if rt.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread {
-                    let _ = tokio::task::block_in_place(|| {
-                        rt.block_on(tokio::time::timeout(
-                            Duration::from_secs(2),
-                            handle,
-                        ))
-                    });
-                } else {
-                    // Single-threaded runtime: block_in_place is unavailable and the
-                    // JoinHandle is bound to this runtime. Abort the writer and
-                    // accept possible loss of any in-flight audit entries; the
-                    // sender is already closed so the task will exit promptly.
-                    handle.abort();
-                }
-            } else {
-                // Outside a runtime; abort the writer since we cannot await.
-                handle.abort();
-            }
+            // block_in_place panics on spawn_blocking threads and Handle::block_on
+            // panics if called from within an async task on the same runtime. The
+            // sender was already dropped above so the writer task has been signaled
+            // to drain and exit. Aborting is safe and avoids all runtime-context
+            // panics at the cost of losing any in-flight audit entries.
+            handle.abort();
         }
     }
 }
