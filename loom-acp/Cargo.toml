@@ -61,3 +61,22 @@ ctor = "0.2"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+# ---- loom-acp e2e test targets (plan 026) ---------------------------------
+#
+# `tests/e2e_mega.rs` is the single-case mega script. Cargo auto-discovers
+# top-level `tests/*.rs`, so we declare it explicitly to keep naming
+# deterministic (the file becomes the `e2e_mega` test binary).
+#
+# `tests/e2e/` is a directory — cargo does NOT auto-discover directories.
+# We pin `tests/e2e/main.rs` as the crate root so `mod common;` inside it
+# resolves `common/{env,harness,...}.rs` as submodules. Micro tests (M1–M5)
+# land under `tests/e2e/*.rs` in Phase 3.
+
+[[test]]
+name = "e2e_mega"
+path = "tests/e2e_mega.rs"
+
+[[test]]
+name = "e2e"
+path = "tests/e2e/main.rs"
