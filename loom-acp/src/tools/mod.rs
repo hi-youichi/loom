@@ -1,4 +1,4 @@
-﻿//! ACP Client Tools — Tools that call Client methods via ACP protocol.
+//! ACP Client Tools — Tools that call Client methods via ACP protocol.
 //!
 //! These tools allow Loom to leverage IDE capabilities when running as an ACP agent:
 //! - File system operations (fs/read_text_file, fs/write_text_file)

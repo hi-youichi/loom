@@ -1,4 +1,4 @@
-﻿//! ACP-internal goal runner: wraps `loom::goal_runner::GoalRunner` for use inside ACP prompt().
+//! ACP-internal goal runner: wraps `loom::goal_runner::GoalRunner` for use inside ACP prompt().
 //!
 //! When the user types `/goal <description>` in the IDE, the ACP prompt handler
 //! delegates to [`run_goal`] which creates a `GoalRunner` with a `LoomTool` that

@@ -31,7 +31,7 @@ loom-commands = { path = "../loom-commands" }
 config = { path = "../config", features = ["tracing-init"] }
 task-core = { path = "../task-core" }
 loom-prompt = { path = "../loom-prompt" }
-agent-client-protocol = { version = "0.11.1", features = ["unstable_boolean_config", "unstable_session_model", "unstable_session_fork", "unstable_message_id"] }
+agent-client-protocol = { version = "0.15.1", features = ["unstable_boolean_config", "unstable_session_fork", "unstable_cancel_request", "unstable_model_config_category"] }
 async-trait = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { version = "0.7", features = ["compat"] }

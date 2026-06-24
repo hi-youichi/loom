@@ -1,4 +1,4 @@
-﻿//! Map Loom stream events to ACP SessionUpdate-equivalent structures
+//! Map Loom stream events to ACP SessionUpdate-equivalent structures
 //!
 //! [`loom::agent_run::run_agent_with_options`]'s `on_event` callback receives [`loom_cli_types::AnyStreamEvent`].
 //! This module provides [`loom_event_to_updates`] to turn a single Loom event into zero or more [`StreamUpdate`],
@@ -30,11 +30,12 @@
 //! `agent_client_protocol::SessionNotification` for the upper layer to send via the connection.
 
 use crate::content::extract_locations;
-use agent_client_protocol::schema::{
-    ContentBlock, ContentChunk, CurrentModeUpdate, Diff, Plan, PlanEntry, PlanEntryPriority,
-    PlanEntryStatus, SessionId, SessionInfoUpdate, SessionModeId, SessionNotification,
-    SessionUpdate, Terminal, TerminalId, TextContent, ToolCall, ToolCallId, ToolCallLocation,
-    ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind, ToolCallContent,
+use agent_client_protocol::schema::v1::{
+    ContentBlock, ContentChunk, CurrentModeUpdate, Diff, MessageId, Plan, PlanEntry,
+    PlanEntryPriority, PlanEntryStatus, SessionId, SessionInfoUpdate, SessionModeId,
+    SessionNotification, SessionUpdate, Terminal, TerminalId, TextContent, ToolCall, ToolCallId,
+    ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
+    ToolCallContent,
 };
 use loom_llm::message::Message;
 use loom_stream::{MessageChunkKind, StreamEvent};
@@ -313,20 +314,20 @@ pub fn stream_update_to_session_notification(
     session_id: &SessionId,
     u: &StreamUpdate,
 ) -> Option<SessionNotification> {
-    let update = match u {
+let update = match u {
         StreamUpdate::UserMessageChunk { text, message_id } => {
             let mut chunk = ContentChunk::new(text.clone().into());
-            chunk = chunk.message_id(message_id.clone());
+            chunk = chunk.message_id(message_id.clone().map(MessageId::new));
             SessionUpdate::UserMessageChunk(chunk)
         }
         StreamUpdate::AgentMessageChunk { text, message_id } => {
             let mut chunk = ContentChunk::new(text.clone().into());
-            chunk = chunk.message_id(message_id.clone());
+            chunk = chunk.message_id(message_id.clone().map(MessageId::new));
             SessionUpdate::AgentMessageChunk(chunk)
         }
         StreamUpdate::AgentThoughtChunk { text, message_id } => {
             let mut chunk = ContentChunk::new(text.clone().into());
-            chunk = chunk.message_id(message_id.clone());
+            chunk = chunk.message_id(message_id.clone().map(MessageId::new));
             SessionUpdate::AgentThoughtChunk(chunk)
         }
         StreamUpdate::ToolCallStarted {
@@ -597,7 +598,7 @@ impl SessionNotifier {
                 Message::System(_) => "system",
             };
             let notifications = match message {
-                Message::User(content) => vec![SessionNotification::new(
+Message::User(content) => vec![SessionNotification::new(
                     self.session_id.clone(),
                     SessionUpdate::UserMessageChunk(
                         ContentChunk::new(
@@ -605,7 +606,7 @@ impl SessionNotifier {
                                 TextContent::new(content.as_text().to_string()),
                             ),
                         )
-                        .message_id(Some(Uuid::new_v4().to_string())),
+                        .message_id(Some(MessageId::new(Uuid::new_v4().to_string()))),
                     ),
                 )],
                 Message::Assistant(payload) => {
@@ -633,11 +634,11 @@ impl SessionNotifier {
                             ContentChunk::new(
                                 payload.content.clone().into(),
                             )
-                            .message_id(Some(msg_id)),
+                            .message_id(Some(MessageId::new(msg_id))),
                         ),
                     )];
 
-                    // 🔧 修复：发送 reasoning_content
+                    // Send reasoning content (ACP agent_thought_chunk) so thinking models stream reasoning to clients.
                     if let Some(ref reasoning) = payload.reasoning_content {
                         if !reasoning.trim().is_empty() {
                             let reasoning_msg_id = Uuid::new_v4().to_string();
@@ -647,7 +648,7 @@ impl SessionNotifier {
                                     ContentChunk::new(
                                         reasoning.clone().into(),
                                     )
-                                    .message_id(Some(reasoning_msg_id)),
+                                    .message_id(Some(MessageId::new(reasoning_msg_id))),
                                 ),
                             ));
                         }

@@ -1,4 +1,4 @@
-use agent_client_protocol::schema::{
+use agent_client_protocol::schema::v1::{
     NewSessionRequest, NewSessionResponse, SetSessionConfigOptionRequest,
 };
 use loom_acp::{LoomAcpAgent, ModelOption, ModelProvider};

@@ -1,4 +1,4 @@
-﻿//! File system tools via ACP client.
+//! File system tools via ACP client.
 //!
 //! These tools delegate file operations to the IDE via ACP protocol,
 //! allowing access to unsaved buffer contents and IDE workspace files.

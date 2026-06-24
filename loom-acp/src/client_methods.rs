@@ -1,5 +1,5 @@
 use agent_client_protocol::{Client, ConnectionTo};
-use agent_client_protocol::schema::{
+use agent_client_protocol::schema::v1::{
     CreateTerminalRequest, KillTerminalRequest, ReadTextFileRequest,
     ReleaseTerminalRequest, SessionId, TerminalId, TerminalOutputRequest,
     TerminalExitStatus, EnvVariable, WaitForTerminalExitRequest,

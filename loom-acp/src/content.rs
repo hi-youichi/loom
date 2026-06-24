@@ -98,12 +98,12 @@ impl ContentBlockLike for String {
 }
 
 /// Adapter for ACP ContentBlock: Text, Resource, and ResourceLink are extracted; Image/Audio unsupported in pure-text mode.
-impl ContentBlockLike for agent_client_protocol::schema::ContentBlock {
+impl ContentBlockLike for agent_client_protocol::schema::v1::ContentBlock {
     fn as_text(&self) -> Option<String> {
         match self {
-            agent_client_protocol::schema::ContentBlock::Text(t) => Some(t.text.clone()),
-            agent_client_protocol::schema::ContentBlock::Resource(r) => {
-                use agent_client_protocol::schema::EmbeddedResourceResource;
+            agent_client_protocol::schema::v1::ContentBlock::Text(t) => Some(t.text.clone()),
+            agent_client_protocol::schema::v1::ContentBlock::Resource(r) => {
+                use agent_client_protocol::schema::v1::EmbeddedResourceResource;
 
                 match &r.resource {
                     EmbeddedResourceResource::TextResourceContents(text_res) => {
@@ -134,7 +134,7 @@ impl ContentBlockLike for agent_client_protocol::schema::ContentBlock {
                     }
                 }
             }
-            agent_client_protocol::schema::ContentBlock::ResourceLink(rl) => {
+            agent_client_protocol::schema::v1::ContentBlock::ResourceLink(rl) => {
                 let mut parts = vec![format!("Reference: {} ({})", rl.name, rl.uri)];
                 if let Some(desc) = &rl.description {
                     parts.push(format!("Description: {}", desc));
@@ -302,9 +302,9 @@ pub fn extract_locations(tool_name: &str, args: &serde_json::Value) -> Vec<ToolC
 /// * `Ok(UserContent)` - The converted content, either Text or Multimodal
 /// * `Err(ContentError::EmptyMessage)` - If blocks is empty or contains no usable content
 pub fn content_blocks_to_user_content(
-    blocks: &[agent_client_protocol::schema::ContentBlock],
+    blocks: &[agent_client_protocol::schema::v1::ContentBlock],
 ) -> Result<UserContent, ContentError> {
-    use agent_client_protocol::schema::{EmbeddedResource, EmbeddedResourceResource};
+    use agent_client_protocol::schema::v1::{EmbeddedResource, EmbeddedResourceResource};
 
     if blocks.is_empty() {
         return Err(ContentError::EmptyMessage);
@@ -314,13 +314,13 @@ pub fn content_blocks_to_user_content(
 
     for block in blocks {
         match block {
-            agent_client_protocol::schema::ContentBlock::Text(t) => {
+            agent_client_protocol::schema::v1::ContentBlock::Text(t) => {
                 parts.push(ContentPart::Text {
                     text: t.text.clone(),
                 });
             }
 
-            agent_client_protocol::schema::ContentBlock::Image(img) => {
+            agent_client_protocol::schema::v1::ContentBlock::Image(img) => {
                 if !img.data.is_empty() {
                     parts.push(ContentPart::ImageBase64 {
                         media_type: img.mime_type.clone(),
@@ -339,7 +339,7 @@ pub fn content_blocks_to_user_content(
                 }
             }
 
-            agent_client_protocol::schema::ContentBlock::Audio(audio) => {
+            agent_client_protocol::schema::v1::ContentBlock::Audio(audio) => {
                 if audio.data.is_empty() {
                     tracing::warn!(
                         mime_type = %audio.mime_type,
@@ -353,7 +353,7 @@ pub fn content_blocks_to_user_content(
                 });
             }
 
-            agent_client_protocol::schema::ContentBlock::Resource(EmbeddedResource { resource, .. }) => {
+            agent_client_protocol::schema::v1::ContentBlock::Resource(EmbeddedResource { resource, .. }) => {
                 match resource {
                     EmbeddedResourceResource::TextResourceContents(text_res) => {
                         parts.push(ContentPart::Text {
@@ -394,7 +394,7 @@ pub fn content_blocks_to_user_content(
                 }
             }
 
-            agent_client_protocol::schema::ContentBlock::ResourceLink(rl) => {
+            agent_client_protocol::schema::v1::ContentBlock::ResourceLink(rl) => {
                 let mut text = format!("Reference: {} ({})", rl.name, rl.uri);
                 if let Some(desc) = &rl.description {
                     text.push_str(&format!("\nDescription: {}", desc));
@@ -433,7 +433,7 @@ pub fn content_blocks_to_user_content(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_client_protocol::schema::{
+    use agent_client_protocol::schema::v1::{
         BlobResourceContents, ContentBlock, EmbeddedResource, EmbeddedResourceResource,
         TextContent, TextResourceContents,
     };
@@ -504,7 +504,7 @@ mod tests {
 
     #[test]
     fn test_image_no_longer_unsupported() {
-        use agent_client_protocol::schema::ImageContent;
+        use agent_client_protocol::schema::v1::ImageContent;
         let block = ContentBlock::Image(ImageContent::new("data", "image/png"));
         assert!(
             !block.is_unsupported(),
@@ -514,7 +514,7 @@ mod tests {
 
     #[test]
     fn test_audio_no_longer_unsupported() {
-        use agent_client_protocol::schema::AudioContent;
+        use agent_client_protocol::schema::v1::AudioContent;
         let block = ContentBlock::Audio(AudioContent::new("data", "audio/mp3"));
         assert!(
             !block.is_unsupported(),
@@ -524,7 +524,7 @@ mod tests {
 
     #[test]
     fn test_content_blocks_to_user_converted() {
-        use agent_client_protocol::schema::{AudioContent, ImageContent};
+        use agent_client_protocol::schema::v1::{AudioContent, ImageContent};
 
         // 文本 + 图片 + 音频
         let blocks = vec![
@@ -599,7 +599,7 @@ mod tests {
 
     #[test]
     fn test_resource_link_as_text() {
-        use agent_client_protocol::schema::ResourceLink;
+        use agent_client_protocol::schema::v1::ResourceLink;
         let rl = ResourceLink::new("document.pdf", "file:///home/user/document.pdf")
             .mime_type(Some("application/pdf".to_string()))
             .description(Some("Important document".to_string()));
@@ -615,7 +615,7 @@ mod tests {
 
     #[test]
     fn test_resource_link_in_content_blocks_to_user_content() {
-        use agent_client_protocol::schema::ResourceLink;
+        use agent_client_protocol::schema::v1::ResourceLink;
         let rl = ResourceLink::new("readme.md", "file:///project/README.md");
         let blocks = vec![
             ContentBlock::Text(TextContent::new("Check this file")),

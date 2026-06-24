@@ -12,14 +12,16 @@ use crate::stream_bridge::SessionNotifier;
 use crate::terminal::TerminalManager;
 use crate::tools::create_acp_tools;
 use tool_basic::bash::LocalCommandExecutor;
-use agent_client_protocol::schema::{
+use agent_client_protocol::schema::v1::{
     AuthenticateRequest, AuthenticateResponse, CancelNotification, ForkSessionRequest,
     ForkSessionResponse, InitializeRequest, InitializeResponse, ListSessionsRequest,
     ListSessionsResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
     NewSessionResponse, PromptRequest, PromptResponse, SessionConfigOptionValue,
     SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
-    SetSessionModeRequest, SetSessionModeResponse, SetSessionModelRequest, SetSessionModelResponse,
-    StopReason, SessionId, SessionNotification,
+SetSessionModeRequest, SetSessionModeResponse, StopReason, SessionId, SessionNotification,
+    // SetSessionModelRequest/Response: removed in agent-client-protocol-schema 0.14.0.
+    // Model selection now flows through SetSessionConfigOptionRequest with a "model" configId.
+    // Phase 2 will restore a dedicated set_session_model handler that delegates to that path.
 };
 use loom_memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
 use loom_types::state::ReActState;
@@ -342,7 +344,7 @@ impl LoomAcpAgent {
         );
         // Build base response using the standard builder
         let base_response = InitializeResponse::new(args.protocol_version).agent_info(
-            agent_client_protocol::schema::Implementation::new("loom", env!("CARGO_PKG_VERSION")),
+            agent_client_protocol::schema::v1::Implementation::new("loom", env!("CARGO_PKG_VERSION")),
         );
 
         // Add loadSession capability by serializing, modifying, and deserializing
@@ -526,32 +528,7 @@ impl LoomAcpAgent {
             tracing::warn!(session_id = %args.session_id, error = %e, "Failed to persist mode config");
         }
 
-        Ok(SetSessionModeResponse::new())
-    }
-
-    pub async fn set_session_model(
-        &self,
-        args: SetSessionModelRequest,
-    ) -> agent_client_protocol::Result<SetSessionModelResponse> {
-        let model_id = args.model_id.to_string();
-        tracing::debug!(session_id = %args.session_id, model_id = %model_id, "set_session_model called");
-
-        let key = OurSessionId::new(args.session_id.to_string());
-        if self.sessions.get(&key).is_none() {
-            return Err(agent_client_protocol::Error::new(-32602, "unknown session"));
-        }
-
-        // Update the model in session config
-        self.sessions
-            .update_session_config(&key, |c| c.model = Some(model_id.clone()));
-        crate::last_model::save(&model_id);
-
-        // Persist to database
-        if let Err(e) = self.config_store.set(&key, "model", &model_id) {
-            tracing::warn!(session_id = %args.session_id, error = %e, "Failed to persist model config");
-        }
-
-        Ok(SetSessionModelResponse::new())
+Ok(SetSessionModeResponse::new())
     }
 
     pub async fn fork_session(
@@ -1040,7 +1017,7 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
 
         // Convert our SessionInfo to JSON and then deserialize to protocol types
         // This is necessary because agent_client_protocol types are non_exhaustive
-        let protocol_sessions: Vec<agent_client_protocol::schema::SessionInfo> = our_sessions
+        let protocol_sessions: Vec<agent_client_protocol::schema::v1::SessionInfo> = our_sessions
             .into_iter()
             .map(|s| {
                 // Convert cwd: Option<String> to PathBuf string (use default if None)
@@ -1283,9 +1260,9 @@ fn normalize_current_model_for_acp(current_model: &str, options: &[ModelOption])
 fn build_session_config_options(
     current_mode: &str,
     current_model: &str,
-    modes: &[agent_client_protocol::schema::SessionMode],
+    modes: &[agent_client_protocol::schema::v1::SessionMode],
     model_options: &[ModelOption],
-) -> Result<Vec<agent_client_protocol::schema::SessionConfigOption>, serde_json::Error> {
+) -> Result<Vec<agent_client_protocol::schema::v1::SessionConfigOption>, serde_json::Error> {
     let current_model = normalize_current_model_for_acp(current_model, model_options);
     let mode_options: Vec<_> = modes
         .iter()
@@ -1328,7 +1305,7 @@ fn build_session_config_options(
 fn build_set_session_config_option_response(
     current_mode: &str,
     current_model: &str,
-    modes: &[agent_client_protocol::schema::SessionMode],
+    modes: &[agent_client_protocol::schema::v1::SessionMode],
     model_options: &[ModelOption],
 ) -> Result<SetSessionConfigOptionResponse, serde_json::Error> {
     let config_options =
@@ -1354,7 +1331,7 @@ mod tests {
 
     #[test]
     fn test_session_config_select_option_structure() {
-        use agent_client_protocol::schema::{SessionConfigSelectOption, SessionConfigValueId};
+        use agent_client_protocol::schema::v1::{SessionConfigSelectOption, SessionConfigValueId};
 
         let option_id = SessionConfigValueId::new("gpt-4o".to_string());
         let select_option = SessionConfigSelectOption::new(option_id, "GPT-4o".to_string());
@@ -1367,12 +1344,12 @@ mod tests {
     #[test]
     fn test_build_session_config_options_populates_options() {
         let modes = vec![
-            agent_client_protocol::schema::SessionMode::new(
-                agent_client_protocol::schema::SessionModeId::new("ask"),
+            agent_client_protocol::schema::v1::SessionMode::new(
+                agent_client_protocol::schema::v1::SessionModeId::new("ask"),
                 "Ask",
             ),
-            agent_client_protocol::schema::SessionMode::new(
-                agent_client_protocol::schema::SessionModeId::new("default"),
+            agent_client_protocol::schema::v1::SessionMode::new(
+                agent_client_protocol::schema::v1::SessionModeId::new("default"),
                 "Default",
             ),
         ];
@@ -1454,8 +1431,8 @@ mod tests {
 
     #[test]
     fn test_build_session_config_options_handles_empty_model_list() {
-        let modes = vec![agent_client_protocol::schema::SessionMode::new(
-            agent_client_protocol::schema::SessionModeId::new("ask"),
+        let modes = vec![agent_client_protocol::schema::v1::SessionMode::new(
+            agent_client_protocol::schema::v1::SessionModeId::new("ask"),
             "Ask",
         )];
         let result = build_session_config_options("ask", "", &modes, &[]);
@@ -1482,8 +1459,8 @@ mod tests {
 
     #[test]
     fn test_build_set_session_config_option_response() {
-        let modes = vec![agent_client_protocol::schema::SessionMode::new(
-            agent_client_protocol::schema::SessionModeId::new("ask"),
+        let modes = vec![agent_client_protocol::schema::v1::SessionMode::new(
+            agent_client_protocol::schema::v1::SessionModeId::new("ask"),
             "Ask",
         )];
         let model_options = vec![ModelOption {
@@ -1549,8 +1526,8 @@ mod tests {
 
     #[test]
     fn test_build_session_config_options_includes_default() {
-        let modes = vec![agent_client_protocol::schema::SessionMode::new(
-            agent_client_protocol::schema::SessionModeId::new("ask"),
+        let modes = vec![agent_client_protocol::schema::v1::SessionMode::new(
+            agent_client_protocol::schema::v1::SessionModeId::new("ask"),
             "Ask",
         )];
         let model_options = vec![

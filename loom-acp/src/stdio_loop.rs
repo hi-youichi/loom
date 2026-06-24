@@ -12,13 +12,15 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use agent_client_protocol::schema::{
+use agent_client_protocol::schema::v1::{
     AuthenticateRequest, AuthenticateResponse, CancelNotification, ForkSessionRequest,
     ForkSessionResponse, InitializeRequest, InitializeResponse, ListSessionsRequest,
     ListSessionsResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
     NewSessionResponse, PromptRequest, PromptResponse, SessionNotification,
     SetSessionConfigOptionRequest, SetSessionConfigOptionResponse, SetSessionModeRequest,
-    SetSessionModeResponse, SetSessionModelRequest, SetSessionModelResponse,
+SetSessionModeResponse,
+    // SetSessionModelRequest/Response: removed in agent-client-protocol-schema 0.14.0.
+    // Model selection is now routed via SetSessionConfigOptionRequest (see stdio_loop SetSessionConfigOption handler).
 };
 use agent_client_protocol::{
     Agent, ByteStreams, Client, ConnectionTo, Responder, on_receive_notification,
@@ -166,11 +168,11 @@ async fn register_handlers_and_connect(
     let a_new = agent.clone();
     let a_prompt = agent.clone();
     let a_fork = agent.clone();
-    let a_load = agent.clone();
+let a_load = agent.clone();
     let a_list = agent.clone();
     let a_config = agent.clone();
     let a_mode = agent.clone();
-    let a_model = agent.clone();
+    // a_model removed: SetSessionModelRequest is gone in 0.14.0; model selection flows through SetSessionConfigOptionRequest.
     let a_cancel = agent.clone();
     let conn_for_init = conn_shared.clone();
 
@@ -308,20 +310,7 @@ async fn register_handlers_and_connect(
                     Ok(())
                 }
             },
-            on_receive_request!(),
-        )
-        .on_receive_request(
-            move |req: SetSessionModelRequest,
-                  responder: Responder<SetSessionModelResponse>,
-                  _conn: ConnectionTo<Client>| {
-                let agent = a_model.clone();
-                async move {
-                    let result = agent.set_session_model(req).await;
-                    let _ = responder.respond_with_result(result);
-                    Ok(())
-                }
-            },
-            on_receive_request!(),
+on_receive_request!(),
         )
         .on_receive_notification(
             move |notif: CancelNotification, _conn: ConnectionTo<Client>| {

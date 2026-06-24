@@ -4,7 +4,7 @@ use std::sync::{Arc, OnceLock, RwLock};
 pub struct TerminalOutput {
     pub output: String,
     pub truncated: bool,
-    pub exit_status: Option<agent_client_protocol::schema::TerminalExitStatus>,
+    pub exit_status: Option<agent_client_protocol::schema::v1::TerminalExitStatus>,
 }
 
 #[derive(Debug, Clone)]
@@ -123,7 +123,7 @@ impl ClientBridgeTrait for AcpClientBridge {
         let conn = guard.as_ref().ok_or_else(|| "No connection available".to_string())?;
         crate::client_methods::read_text_file(
             conn,
-            &agent_client_protocol::schema::SessionId::new("default"),
+            &agent_client_protocol::schema::v1::SessionId::new("default"),
             path,
             line,
             limit,
@@ -136,7 +136,7 @@ impl ClientBridgeTrait for AcpClientBridge {
         let conn = guard.as_ref().ok_or_else(|| "No connection available".to_string())?;
         crate::client_methods::write_text_file(
             conn,
-            &agent_client_protocol::schema::SessionId::new("default"),
+            &agent_client_protocol::schema::v1::SessionId::new("default"),
             path,
             content,
         )
@@ -156,7 +156,7 @@ impl ClientBridgeTrait for AcpClientBridge {
         let conn = guard.as_ref().ok_or_else(|| "No connection available".to_string())?;
         crate::client_methods::terminal_create(
             conn,
-            &agent_client_protocol::schema::SessionId::new(session_id),
+            &agent_client_protocol::schema::v1::SessionId::new(session_id),
             command,
             args,
             env,
@@ -175,7 +175,7 @@ impl ClientBridgeTrait for AcpClientBridge {
         let conn = guard.as_ref().ok_or_else(|| "No connection available".to_string())?;
         crate::client_methods::terminal_output(
             conn,
-            &agent_client_protocol::schema::SessionId::new(session_id),
+            &agent_client_protocol::schema::v1::SessionId::new(session_id),
             terminal_id,
         )
         .await
@@ -190,7 +190,7 @@ impl ClientBridgeTrait for AcpClientBridge {
         let conn = guard.as_ref().ok_or_else(|| "No connection available".to_string())?;
         crate::client_methods::terminal_wait_for_exit(
             conn,
-            &agent_client_protocol::schema::SessionId::new(session_id),
+            &agent_client_protocol::schema::v1::SessionId::new(session_id),
             terminal_id,
         )
         .await
@@ -205,7 +205,7 @@ impl ClientBridgeTrait for AcpClientBridge {
         let conn = guard.as_ref().ok_or_else(|| "No connection available".to_string())?;
         crate::client_methods::terminal_kill(
             conn,
-            &agent_client_protocol::schema::SessionId::new(session_id),
+            &agent_client_protocol::schema::v1::SessionId::new(session_id),
             terminal_id,
         )
         .await
@@ -220,7 +220,7 @@ impl ClientBridgeTrait for AcpClientBridge {
         let conn = guard.as_ref().ok_or_else(|| "No connection available".to_string())?;
         crate::client_methods::terminal_release(
             conn,
-            &agent_client_protocol::schema::SessionId::new(session_id),
+            &agent_client_protocol::schema::v1::SessionId::new(session_id),
             terminal_id,
         )
         .await
