@@ -42,7 +42,7 @@ pub use curator::{
     parse_llm_review_response, build_llm_prompt, reconcile_classification,
 };
 pub use curator_backup::{CuratorBackup, BackupError, SnapshotMeta};
-pub use history::{ReviewHistory, ReviewRecord};
+pub use history::{ReviewHistory, ReviewRecord, ReviewStatus};
 pub use observability::ObservabilityStore;
 
 pub use backfill_triggers::{

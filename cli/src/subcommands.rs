@@ -125,13 +125,21 @@ pub(crate) async fn handle_session_command(
                 && loom_stream_display::terminal::is_stdout_tty();
 
             // Build display config from effective args (P2: decoupled from ListArgs).
+            // Enrich with review status map (non-fatal: empty map on error).
+            let review_map = {
+                let loom_home = config::home::loom_home();
+                crate::review_history::ReviewHistory::new(&loom_home)
+                    .review_status_map()
+                    .unwrap_or_default()
+            };
             let display_cfg = crate::session_view::SessionListDisplayConfig {
                 oneline: effective_args.oneline,
                 format: effective_args.format.clone(),
+                review_map,
             };
 
             if json {
-                crate::session_view::print_json(&sessions)?;
+                crate::session_view::print_json(&sessions, &display_cfg.review_map)?;
             } else if use_pager {
                 let formatted = crate::session_view::format_session_list(&sessions, &display_cfg);
                 tokio::task::spawn_blocking(move || -> Result<(), String> {
