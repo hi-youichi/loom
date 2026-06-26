@@ -687,7 +687,17 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
                             scope = ?scope,
                             "Review-skill command triggered"
                         );
-                        tracing::warn!("review-skill is not yet supported in ACP mode");
+                        let resolved = self
+                            .resolve_model_with_tier_awareness(&entry.session_config)
+                            .await;
+                        let (review_memory, review_skills) =
+                            crate::review_runner::scope_to_review_config(&scope);
+                        crate::review_runner::spawn_inprocess_review(
+                            entry.thread_id.clone(),
+                            resolved,
+                            review_memory,
+                            review_skills,
+                        );
                         return Ok(PromptResponse::new(StopReason::EndTurn));
                     }
                     loom_commands::Command::Models { .. }
@@ -736,6 +746,7 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
         let resolved = self
             .resolve_model_with_tier_awareness(&entry.session_config)
             .await;
+        let resolved_for_review = resolved.clone();
 
         let session_id_for_opts = args.session_id.clone();
         let tx_for_opts = self.session_update_tx.clone();
@@ -807,7 +818,15 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
         self.sessions.finish_prompt(&key, cancellation.generation());
 
         match result {
-            Ok(RunCompletion::Finished(_reply)) => Ok(PromptResponse::new(StopReason::EndTurn)),
+            Ok(RunCompletion::Finished(_reply)) => {
+                crate::review_runner::spawn_inprocess_review(
+                    entry.thread_id.clone(),
+                    resolved_for_review,
+                    true,
+                    true,
+                );
+                Ok(PromptResponse::new(StopReason::EndTurn))
+            }
             Ok(RunCompletion::Cancelled) => Ok(PromptResponse::new(StopReason::Cancelled)),
             Ok(RunCompletion::Error(e)) => {
                 tracing::error!(session_id = %args.session_id, error = %e, "run_agent errored");

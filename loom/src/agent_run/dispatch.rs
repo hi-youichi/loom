@@ -235,21 +235,27 @@ pub async fn run_agent(
     };
 
     if let RunCompletion::Finished(ref _run_result) = result {
-        let session_id = opts
-            .thread_id
-            .clone()
-            .or_else(|| opts.session_id.clone())
-            .unwrap_or_else(|| uuid6().to_string());
+        // CLI path: spawn external review subprocess (preserves original behavior).
+        // ACP path: skip — loom-acp triggers in-process background review itself
+        // (the external spawn is a no-op for ACP since `current_exe()` = loom-acp,
+        // which has no `review session` subcommand).
+        if opts.acp_session_id.is_none() {
+            let session_id = opts
+                .thread_id
+                .clone()
+                .or_else(|| opts.session_id.clone())
+                .unwrap_or_else(|| uuid6().to_string());
 
-        tracing::info!(
-            session_id = %session_id,
-            "Spawning background review subprocess after agent session"
-        );
+            tracing::info!(
+                session_id = %session_id,
+                "Spawning background review subprocess after agent session"
+            );
 
-        loom_background_review::spawn_review_after_session(
-            session_id,
-            config.model.clone(),
-        );
+            loom_background_review::spawn_review_after_session(
+                session_id,
+                config.model.clone(),
+            );
+        }
     }
 
     Ok(result)
