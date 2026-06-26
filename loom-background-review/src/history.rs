@@ -181,6 +181,16 @@ impl ReviewHistory {
     }
 
     fn init_schema(&self, conn: &Connection) -> Result<(), String> {
+        Self::ensure_schema(conn)
+    }
+
+    /// Ensures the review tables exist in the given connection (idempotent).
+    ///
+    /// Callers that open `memory.db` directly — e.g. to LEFT JOIN against
+    /// `review_status` from the ACP session list — should invoke this before
+    /// querying so a database with no review ever recorded does not yield
+    /// "no such table" errors.
+    pub fn ensure_schema(conn: &Connection) -> Result<(), String> {
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS review_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

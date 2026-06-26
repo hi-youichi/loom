@@ -697,6 +697,7 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
                             resolved,
                             review_memory,
                             review_skills,
+                            "review-skill".to_string(),
                         );
                         return Ok(PromptResponse::new(StopReason::EndTurn));
                     }
@@ -824,6 +825,7 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
                     resolved_for_review,
                     true,
                     true,
+                    "background".to_string(),
                 );
                 Ok(PromptResponse::new(StopReason::EndTurn))
             }
@@ -1092,6 +1094,11 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
                             serde_json::Value::String(source),
                         );
                     }
+                    if let Some(review) = meta.review {
+                        if let Ok(review_val) = serde_json::to_value(&review) {
+                            meta_map.insert("review".to_string(), review_val);
+                        }
+                    }
                     if let Some(obj) = session_json.as_object_mut() {
                         obj.insert("_meta".to_string(), serde_json::Value::Object(meta_map));
                     }
@@ -1140,6 +1147,28 @@ pub struct SessionMeta {
     pub latest_step: Option<i64>,
     /// Source of the latest checkpoint
     pub latest_source: Option<String>,
+    /// Background review status for this session (latest record).
+    /// `None` when the session has never been reviewed (implicitly "pending").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub review: Option<SessionReviewMeta>,
+}
+
+/// Background review status for a session, derived from the latest
+/// `review_status` row (updated on every prompt completion and on
+/// `/review-skill`).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SessionReviewMeta {
+    /// "reviewed" | "skipped"
+    pub status: String,
+    /// ISO 8601 timestamp of the most recent review
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reviewed_at: Option<String>,
+    /// Number of memory updates produced by the review
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_update_count: Option<usize>,
+    /// Number of skill updates produced by the review
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_update_count: Option<usize>,
 }
 
 impl LoomAcpAgent {
@@ -1160,6 +1189,12 @@ impl LoomAcpAgent {
             let conn = Connection::open(&db_path)
                 .map_err(|e| format!("Failed to open database: {}", e))?;
 
+            // Ensure the review_status table exists before we LEFT JOIN against
+            // it. On a fresh database with no review ever recorded the table
+            // would otherwise be absent, causing the query to fail.
+            loom_background_review::ReviewHistory::ensure_schema(&conn)
+                .map_err(|e| format!("Failed to ensure review schema: {}", e))?;
+
             // Build query: use CTE to get latest checkpoint per thread,
             // then join with aggregate stats. This avoids 3 correlated subqueries.
             let mut sql = r#"
@@ -1170,7 +1205,11 @@ impl LoomAcpAgent {
                     c.last_updated,
                     lc.metadata_step as latest_step,
                     lc.metadata_source as latest_source,
-                    lc.metadata_summary as latest_summary
+                    lc.metadata_summary as latest_summary,
+                    rs.status as review_status,
+                    rs.reviewed_at as review_reviewed_at,
+                    rs.memory_update_count as review_memory_count,
+                    rs.skill_update_count as review_skill_count
                 FROM (
                     SELECT 
                         thread_id,
@@ -1182,6 +1221,7 @@ impl LoomAcpAgent {
                 ) c
                 INNER JOIN checkpoints lc ON lc.thread_id = c.thread_id
                     AND lc.metadata_created_at = c.last_updated
+                LEFT JOIN review_status rs ON rs.session_id = c.thread_id
                 "#
             .to_string();
 
@@ -1206,6 +1246,10 @@ impl LoomAcpAgent {
                     let latest_step: i64 = row.get(4)?;
                     let latest_source: String = row.get(5)?;
                     let latest_summary: Option<String> = row.get(6)?;
+                    let review_status_str: Option<String> = row.get(7)?;
+                    let review_reviewed_at_ms: Option<i64> = row.get(8)?;
+                    let review_memory_count: Option<i64> = row.get(9)?;
+                    let review_skill_count: Option<i64> = row.get(10)?;
 
                     let updated_at = last_updated_ms
                         .and_then(DateTime::from_timestamp_millis)
@@ -1219,6 +1263,18 @@ impl LoomAcpAgent {
                         ))
                     });
 
+                    // LEFT JOIN yields NULL for all rs.* columns when the
+                    // session has never been reviewed; in that case `review`
+                    // stays None (implicitly "pending").
+                    let review = review_status_str.map(|status| SessionReviewMeta {
+                        status,
+                        reviewed_at: review_reviewed_at_ms
+                            .and_then(DateTime::from_timestamp_millis)
+                            .map(|dt| dt.to_rfc3339()),
+                        memory_update_count: review_memory_count.map(|i| i as usize),
+                        skill_update_count: review_skill_count.map(|i| i as usize),
+                    });
+
                     Ok(SessionInfo {
                         session_id,
                         cwd: None, // TODO: Store cwd in checkpoints or separate table
@@ -1229,6 +1285,7 @@ impl LoomAcpAgent {
                             message_count: None, // Would need to deserialize checkpoint to get message count
                             latest_step: Some(latest_step),
                             latest_source: Some(latest_source),
+                            review,
                         }),
                     })
                 })

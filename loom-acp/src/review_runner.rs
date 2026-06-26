@@ -7,7 +7,7 @@
 
 use std::path::PathBuf;
 
-use loom_background_review::{run_review, ReviewConfig};
+use loom_background_review::{run_review, ReviewConfig, ReviewHistory, ReviewRecord};
 use loom_cli_types::ResolvedModelConfig;
 use loom_llm::message::Message;
 use loom_react_config::ReactBuildConfig;
@@ -95,6 +95,7 @@ pub fn spawn_inprocess_review(
     resolved: ResolvedModelConfig,
     review_memory: bool,
     review_skills: bool,
+    trigger: String,
 ) {
     std::thread::spawn(move || {
         let text = match extract_session_text(&thread_id) {
@@ -129,8 +130,24 @@ pub fn spawn_inprocess_review(
             &config,
         ));
 
+        let history = ReviewHistory::with_db_path(loom_memory::default_memory_db_path());
+
         match result {
             Ok(outcome) => {
+                let record = ReviewRecord {
+                    session_id: thread_id.clone(),
+                    reviewed_at: chrono::Utc::now(),
+                    trigger: trigger.clone(),
+                    model: resolved.model.clone().unwrap_or_default(),
+                    memory_update_count: outcome.memory_count,
+                    skill_update_count: outcome.skill_count,
+                    skipped: outcome.skipped,
+                    skip_reason: outcome.skip_reason.clone(),
+                    duration_ms: start.elapsed().as_millis() as u64,
+                };
+                if let Err(e) = history.append(&record) {
+                    warn!(thread_id = %thread_id, error = %e, "Failed to persist review record");
+                }
                 info!(
                     thread_id = %thread_id,
                     skipped = outcome.skipped,
@@ -141,6 +158,20 @@ pub fn spawn_inprocess_review(
                 );
             }
             Err(e) => {
+                let record = ReviewRecord {
+                    session_id: thread_id.clone(),
+                    reviewed_at: chrono::Utc::now(),
+                    trigger: trigger.clone(),
+                    model: resolved.model.clone().unwrap_or_default(),
+                    memory_update_count: 0,
+                    skill_update_count: 0,
+                    skipped: true,
+                    skip_reason: Some(format!("llm_error: {}", e)),
+                    duration_ms: start.elapsed().as_millis() as u64,
+                };
+                if let Err(persist_err) = history.append(&record) {
+                    warn!(thread_id = %thread_id, error = %persist_err, "Failed to persist review record");
+                }
                 error!(
                     thread_id = %thread_id,
                     error = %e,

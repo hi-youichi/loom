@@ -82,7 +82,8 @@
 //! ## session/list
 //!
 //! - Only when capabilities.sessionCapabilities.list is present. Request: optional `cwd` (filter by working directory), optional `cursor` (pagination).
-//! - Agent queries SQLite checkpoints table to find all unique thread_ids; returns array of SessionInfo with sessionId, cwd, title (from summary), updatedAt, and optional _meta (checkpoint_count, latest_step, latest_source).
+//! - Agent queries SQLite checkpoints table to find all unique thread_ids; returns array of SessionInfo with sessionId, cwd, title (from summary), updatedAt, and optional _meta (checkpoint_count, latest_step, latest_source, review).
+//! - `_meta.review`: latest background-review status for the session (status: "reviewed"|"skipped", reviewed_at, memory/skill update counts). `None`/absent when the session has never been reviewed (implicitly "pending"). Updated on every prompt completion via `spawn_inprocess_review` and on `/review-skill`.
 //! - Response includes `sessions` array and optional `nextCursor` for pagination. Currently pagination is not implemented (returns all sessions).
 //!
 //! ## Session mode and session config

@@ -367,12 +367,12 @@ fn show_review(
             if json {
                 println!(
                     "{}",
-                    serde_json::json!({"error": "not_found", "session_id": session_id})
+                    serde_json::json!({"session_id": session_id, "status": "pending"})
                 );
             } else {
-                eprintln!("No review record found for session: {}", session_id);
+                println!("Session: {}", session_id);
+                println!("Status: pending (no review record yet)");
             }
-            std::process::exit(1);
         }
     }
     Ok(())
