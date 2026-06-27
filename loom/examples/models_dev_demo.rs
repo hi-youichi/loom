@@ -2,7 +2,7 @@
 //!
 //! Run with: cargo run --example models_dev_demo
 
-use loom_model_spec::{ModelLimitResolver, ModelsDevResolver};
+use model_spec_core::resolver::{ModelResolver, ModelsDevResolver};
 
 #[tokio::main]
 async fn main() {
@@ -12,20 +12,23 @@ async fn main() {
 
     // Example 1: Query model with complete information
     println!("1. Query Claude 3.5 Sonnet:");
-    if let Some(spec) = resolver
+    if let Some(model) = resolver
         .resolve("anthropic", "claude-3-5-sonnet-20241022")
         .await
     {
-        println!("   Context limit: {} tokens", spec.context_limit);
-        println!("   Output limit: {} tokens", spec.output_limit);
-        println!("   Supports vision: {}", spec.supports_vision());
-        println!("   Supports audio: {}", spec.supports_audio());
-        println!("   Supports video: {}", spec.supports_video());
-        println!("   Supports PDF: {}", spec.supports_pdf());
-        println!("   Supports tool call: {}", spec.supports_tool_call());
+        println!("   Context limit: {} tokens", model.limit.context);
+        println!("   Output limit: {} tokens", model.limit.output);
+        println!("   Supports vision: {}", model.modalities.supports_vision());
+        println!("   Supports audio: {}", model.modalities.supports_audio());
+        println!("   Supports video: {}", model.modalities.supports_video());
+        println!("   Supports PDF: {}", model.modalities.supports_pdf());
+        println!("   Supports tool call: {}", model.tool_call);
 
-        if let Some(cost) = spec.estimate_cost(100_000, 10_000) {
-            println!("   Estimated cost (100K in, 10K out): ${:.4}", cost);
+        if let Some(cost) = model.cost.as_ref() {
+            println!(
+                "   Estimated cost (100K in, 10K out): ${:.4}",
+                cost.estimate(100_000, 10_000)
+            );
         }
     }
 
@@ -34,10 +37,7 @@ async fn main() {
     if let Some(model) = resolver.fetch_model("google", "gemini-2.0-flash").await {
         println!("   Model: {}", model.name);
         println!("   Family: {:?}", model.family);
-        println!(
-            "   Context: {} tokens",
-            model.limit.as_ref().map(|l| l.context).unwrap_or(0)
-        );
+        println!("   Context: {} tokens", model.limit.context);
         println!("   Multimodal support:");
         println!("     - Text: {}", model.modalities.supports_text());
         println!("     - Image: {}", model.modalities.supports_vision());
@@ -59,11 +59,11 @@ async fn main() {
                     vision_count += 1;
                     if vision_count <= 3 {
                         println!(
-                            "   📷 {} - {}/{} ({} tokens context)",
+                            "   {} - {}/{} ({} tokens context)",
                             model.name,
                             provider_id,
                             model_id,
-                            model.limit.as_ref().map(|l| l.context).unwrap_or(0)
+                            model.limit.context
                         );
                     }
                 }

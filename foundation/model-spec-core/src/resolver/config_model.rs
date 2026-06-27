@@ -6,8 +6,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 
-use crate::resolver::ModelLimitResolver;
-use crate::spec::ModelSpec;
+use super::ModelResolver;
+use crate::{Model, ModelLimit};
 
 /// A provider entry from config.toml with manually declared model specs.
 pub struct ConfigProviderEntry {
@@ -26,7 +26,7 @@ pub struct ConfigModelEntry {
 ///
 /// Priority sits between `ConfigOverride` (global) and `CachedResolver<ModelsDevResolver>`.
 pub struct ConfigModelResolver {
-    specs: Arc<RwLock<HashMap<String, HashMap<String, ModelSpec>>>>,
+    specs: Arc<RwLock<HashMap<String, HashMap<String, Model>>>>,
 }
 
 impl ConfigModelResolver {
@@ -38,7 +38,7 @@ impl ConfigModelResolver {
 
     /// Build from a list of config provider entries.
     pub fn from_providers(providers: &[ConfigProviderEntry]) -> Self {
-        let mut map: HashMap<String, HashMap<String, ModelSpec>> = HashMap::new();
+        let mut map: HashMap<String, HashMap<String, Model>> = HashMap::new();
         for p in providers {
             if p.models.is_empty() {
                 continue;
@@ -47,7 +47,7 @@ impl ConfigModelResolver {
             for m in &p.models {
                 model_map.insert(
                     m.id.clone(),
-                    ModelSpec::new(m.context_limit, m.output_limit),
+                    Model::minimal(&m.id, ModelLimit::new(m.context_limit, m.output_limit)),
                 );
             }
             map.insert(p.name.clone(), model_map);
@@ -57,13 +57,13 @@ impl ConfigModelResolver {
         }
     }
 
-    /// Insert or update a model spec at runtime.
-    pub async fn upsert(&self, provider: &str, model_id: &str, spec: ModelSpec) {
+    /// Insert or update a model at runtime.
+    pub async fn upsert(&self, provider: &str, model_id: &str, model: Model) {
         let mut guard = self.specs.write().await;
         guard
             .entry(provider.to_string())
             .or_default()
-            .insert(model_id.to_string(), spec);
+            .insert(model_id.to_string(), model);
     }
 }
 
@@ -74,8 +74,8 @@ impl Default for ConfigModelResolver {
 }
 
 #[async_trait]
-impl ModelLimitResolver for ConfigModelResolver {
-    async fn resolve(&self, provider_id: &str, model_id: &str) -> Option<ModelSpec> {
+impl ModelResolver for ConfigModelResolver {
+    async fn resolve(&self, provider_id: &str, model_id: &str) -> Option<Model> {
         let guard = self.specs.read().await;
         guard.get(provider_id)?.get(model_id).cloned()
     }
@@ -104,12 +104,12 @@ mod tests {
         }];
         let resolver = ConfigModelResolver::from_providers(&providers);
 
-        let spec = resolver.resolve("zhipuai", "glm-5.2").await.unwrap();
-        assert_eq!(spec.context_limit, 1_000_000);
-        assert_eq!(spec.output_limit, 131_072);
+        let model = resolver.resolve("zhipuai", "glm-5.2").await.unwrap();
+        assert_eq!(model.limit.context, 1_000_000);
+        assert_eq!(model.limit.output, 131_072);
 
-        let spec2 = resolver.resolve("zhipuai", "glm-4.6").await.unwrap();
-        assert_eq!(spec2.context_limit, 204_800);
+        let model2 = resolver.resolve("zhipuai", "glm-4.6").await.unwrap();
+        assert_eq!(model2.limit.context, 204_800);
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -119,14 +119,18 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn upsert_adds_new_spec() {
+    async fn upsert_adds_new_model() {
         let resolver = ConfigModelResolver::new();
         resolver
-            .upsert("zhipuai", "glm-5.2", ModelSpec::new(1_000_000, 131_072))
+            .upsert(
+                "zhipuai",
+                "glm-5.2",
+                Model::minimal("glm-5.2", ModelLimit::new(1_000_000, 131_072)),
+            )
             .await;
 
-        let spec = resolver.resolve("zhipuai", "glm-5.2").await.unwrap();
-        assert_eq!(spec.context_limit, 1_000_000);
+        let model = resolver.resolve("zhipuai", "glm-5.2").await.unwrap();
+        assert_eq!(model.limit.context, 1_000_000);
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -137,5 +141,20 @@ mod tests {
         }];
         let resolver = ConfigModelResolver::from_providers(&providers);
         assert!(resolver.resolve("empty", "any").await.is_none());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn config_model_has_tool_call_true() {
+        let providers = vec![ConfigProviderEntry {
+            name: "test".into(),
+            models: vec![ConfigModelEntry {
+                id: "m1".into(),
+                context_limit: 128_000,
+                output_limit: 4_096,
+            }],
+        }];
+        let resolver = ConfigModelResolver::from_providers(&providers);
+        let model = resolver.resolve("test", "m1").await.unwrap();
+        assert!(model.tool_call);
     }
 }

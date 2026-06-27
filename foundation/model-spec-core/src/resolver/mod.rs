@@ -1,21 +1,39 @@
-//! Model limit resolver trait for querying model specifications.
+//! Model resolver: query model specifications from models.dev, local files, config, or cache.
+
+mod cached;
+mod composite;
+mod config_model;
+mod config_override;
+mod local_file;
+mod models_dev;
+mod refresher;
+
+pub use cached::CachedResolver;
+pub use composite::CompositeResolver;
+pub use config_model::{ConfigModelEntry, ConfigModelResolver, ConfigProviderEntry};
+pub use config_override::ConfigOverride;
+pub use local_file::LocalFileResolver;
+pub use models_dev::{HttpClient, ModelsDevResolver, ReqwestHttpClient, DEFAULT_MODELS_DEV_URL};
+pub use refresher::ResolverRefresher;
+
+use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use super::spec::ModelSpec;
+use crate::Model;
 
-/// Resolves model specifications (context limit, output limit) by provider and model id.
+/// Resolves model specifications by provider and model id.
 ///
 /// Implementations may fetch from remote APIs (e.g., models.dev), read from local files,
 /// or serve from in-memory cache.
 #[async_trait]
-pub trait ModelLimitResolver: Send + Sync {
-    /// Resolve model spec for the given provider and model.
+pub trait ModelResolver: Send + Sync {
+    /// Resolve model for the given provider and model.
     ///
     /// Returns `None` if the model is unknown or resolution fails.
-    async fn resolve(&self, provider_id: &str, model_id: &str) -> Option<ModelSpec>;
+    async fn resolve(&self, provider_id: &str, model_id: &str) -> Option<Model>;
 
-    /// Resolve model spec from a combined string "provider/model".
+    /// Resolve model from a combined string "provider/model".
     ///
     /// # Examples
     /// - `"openai/gpt-4o"` -> provider="openai", model="gpt-4o"
@@ -23,7 +41,7 @@ pub trait ModelLimitResolver: Send + Sync {
     /// - `"google/gemini-2.5-pro"` -> provider="google", model="gemini-2.5-pro"
     ///
     /// Returns `None` if the string doesn't contain '/' or model not found.
-    async fn resolve_combined(&self, model: &str) -> Option<ModelSpec> {
+    async fn resolve_combined(&self, model: &str) -> Option<Model> {
         let (provider, model_id) = split_provider_model(model)?;
         self.resolve(provider, model_id).await
     }
@@ -41,19 +59,46 @@ fn split_provider_model(model: &str) -> Option<(&str, &str)> {
     Some((provider, model_id))
 }
 
+/// Build a `CompositeResolver` with a standard priority chain.
+///
+/// Chain: `ConfigOverride` → `ConfigModelResolver` → `CachedResolver<ModelsDevResolver>`
+///
+/// Pass `config_providers` from `config.toml`'s `[[providers]]` section to enable
+/// manual model spec overrides.
+pub fn build_composite_resolver(
+    config_override: Option<ConfigOverride>,
+    config_providers: Vec<ConfigProviderEntry>,
+) -> Arc<CompositeResolver> {
+    let mut sources: Vec<Arc<dyn ModelResolver>> = Vec::new();
+
+    if let Some(cfg) = config_override {
+        sources.push(Arc::new(cfg));
+    }
+
+    let config_model = ConfigModelResolver::from_providers(&config_providers);
+    sources.push(Arc::new(config_model));
+
+    let models_dev = ModelsDevResolver::new();
+    let cached = CachedResolver::new(models_dev);
+    sources.push(Arc::new(cached));
+
+    Arc::new(CompositeResolver::new(sources))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ModelLimit;
 
     struct MockResolver;
 
     #[async_trait]
-    impl ModelLimitResolver for MockResolver {
-        async fn resolve(&self, provider_id: &str, model_id: &str) -> Option<ModelSpec> {
+    impl ModelResolver for MockResolver {
+        async fn resolve(&self, provider_id: &str, model_id: &str) -> Option<Model> {
             if provider_id == "openai" && model_id == "gpt-4o" {
-                Some(ModelSpec::new(128_000, 16_384))
+                Some(Model::minimal(model_id, ModelLimit::new(128_000, 16_384)))
             } else if provider_id == "zenmux" && model_id == "openai/gpt-5" {
-                Some(ModelSpec::new(400_000, 64_000))
+                Some(Model::minimal(model_id, ModelLimit::new(400_000, 64_000)))
             } else {
                 None
             }
@@ -63,21 +108,20 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn resolve_combined_splits_provider_and_model() {
         let resolver = MockResolver;
-        let spec = resolver.resolve_combined("openai/gpt-4o").await.unwrap();
-        assert_eq!(spec.context_limit, 128_000);
-        assert_eq!(spec.output_limit, 16_384);
+        let model = resolver.resolve_combined("openai/gpt-4o").await.unwrap();
+        assert_eq!(model.limit.context, 128_000);
+        assert_eq!(model.limit.output, 16_384);
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn resolve_combined_handles_nested_model_id() {
         let resolver = MockResolver;
-        // "zenmux/openai/gpt-5" -> provider="zenmux", model="openai/gpt-5"
-        let spec = resolver
+        let model = resolver
             .resolve_combined("zenmux/openai/gpt-5")
             .await
             .unwrap();
-        assert_eq!(spec.context_limit, 400_000);
-        assert_eq!(spec.output_limit, 64_000);
+        assert_eq!(model.limit.context, 400_000);
+        assert_eq!(model.limit.output, 64_000);
     }
 
     #[tokio::test(flavor = "current_thread")]

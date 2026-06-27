@@ -1,0 +1,31 @@
+[package]
+name = "model-spec-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Shared model/provider spec types, parsers, and resolvers for Loom"
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []
+resolver = [
+    "dep:loom-http-retry",
+    "dep:reqwest",
+    "dep:tokio",
+    "dep:async-trait",
+    "dep:tracing",
+]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# resolver feature dependencies (all optional)
+loom-http-retry = { path = "../loom-http-retry", optional = true }
+reqwest = { version = "0.12", features = ["json"], optional = true }
+tokio = { workspace = true, optional = true }
+async-trait = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }

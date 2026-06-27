@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
 use loom_graph::GraphError;
-use loom_model_spec::Provider as SpecProvider;
+use model_spec_core::Provider as SpecProvider;
 
 /// Cached model catalog fetched from models.dev.
 #[derive(Clone, Debug)]
@@ -273,7 +273,7 @@ impl ModelRegistry {
             }
         }
 
-        let fetched = loom_model_spec::ModelsDevResolver::new()
+        let fetched = model_spec_core::resolver::ModelsDevResolver::new()
             .fetch_all_providers()
             .await
             .map_err(|e| {

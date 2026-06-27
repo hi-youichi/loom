@@ -107,15 +107,15 @@ impl UserContent {
     }
 
     /// Returns the list of [`ModalityType`]s present in this content.
-    pub fn modalities(&self) -> Vec<model_spec_core::spec::ModalityType> {
+    pub fn modalities(&self) -> Vec<model_spec_core::ModalityType> {
         match self {
-            UserContent::Text(_) => vec![model_spec_core::spec::ModalityType::Text],
+            UserContent::Text(_) => vec![model_spec_core::ModalityType::Text],
             UserContent::Multimodal(parts) => parts.iter().map(|p| p.modality()).collect(),
         }
     }
 
     /// Returns the modalities present in this content that the given model does **not** support.
-    pub fn unsupported_modalities(&self, model: &model_spec_core::spec::Model) -> Vec<model_spec_core::spec::ModalityType> {
+    pub fn unsupported_modalities(&self, model: &model_spec_core::Model) -> Vec<model_spec_core::ModalityType> {
         self.modalities()
             .into_iter()
             .filter(|m| !model.modalities.input.contains(m))
@@ -123,7 +123,7 @@ impl UserContent {
     }
 
     /// Returns `true` if every modality in this content is supported by the given model.
-    pub fn is_supported_by(&self, model: &model_spec_core::spec::Model) -> bool {
+    pub fn is_supported_by(&self, model: &model_spec_core::Model) -> bool {
         self.unsupported_modalities(model).is_empty()
     }
 }
@@ -166,8 +166,8 @@ impl PartialEq<String> for UserContent {
 
 impl ContentPart {
     /// Returns the [`ModalityType`] for this content part.
-    pub fn modality(&self) -> model_spec_core::spec::ModalityType {
-        use model_spec_core::spec::ModalityType;
+    pub fn modality(&self) -> model_spec_core::ModalityType {
+        use model_spec_core::ModalityType;
         match self {
             ContentPart::Text { .. } | ContentPart::File { .. } => ModalityType::Text,
             ContentPart::ImageUrl { .. } | ContentPart::ImageBase64 { .. } => ModalityType::Image,
@@ -178,7 +178,7 @@ impl ContentPart {
     }
 
     /// Returns true if the given model's input modalities include this part's modality.
-    pub fn is_supported_by(&self, model: &model_spec_core::spec::Model) -> bool {
+    pub fn is_supported_by(&self, model: &model_spec_core::Model) -> bool {
         model.modalities.input.contains(&self.modality())
     }
 
@@ -723,6 +723,7 @@ impl std::fmt::Display for Message {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use model_spec_core::ModelLimit;
 
     #[test]
     fn message_system_user_assistant_constructors() {
@@ -887,7 +888,7 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
                 text: "hi".to_string()
             }
             .modality(),
-            model_spec_core::spec::ModalityType::Text
+            model_spec_core::ModalityType::Text
         );
         assert_eq!(
             ContentPart::ImageUrl {
@@ -895,7 +896,7 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
                 detail: None
             }
             .modality(),
-            model_spec_core::spec::ModalityType::Image
+            model_spec_core::ModalityType::Image
         );
         assert_eq!(
             ContentPart::ImageBase64 {
@@ -903,7 +904,7 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
                 data: "abc".to_string()
             }
             .modality(),
-            model_spec_core::spec::ModalityType::Image
+            model_spec_core::ModalityType::Image
         );
         assert_eq!(
             ContentPart::AudioBase64 {
@@ -911,21 +912,21 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
                 data: "abc".to_string()
             }
             .modality(),
-            model_spec_core::spec::ModalityType::Audio
+            model_spec_core::ModalityType::Audio
         );
         assert_eq!(
             ContentPart::VideoUrl {
                 url: "https://x.com/vid.mp4".to_string()
             }
             .modality(),
-            model_spec_core::spec::ModalityType::Video
+            model_spec_core::ModalityType::Video
         );
         assert_eq!(
             ContentPart::PdfUrl {
                 url: "https://x.com/doc.pdf".to_string()
             }
             .modality(),
-            model_spec_core::spec::ModalityType::Pdf
+            model_spec_core::ModalityType::Pdf
         );
         assert_eq!(
             ContentPart::File {
@@ -934,7 +935,7 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
                 filename: Some("data.csv".to_string())
             }
             .modality(),
-            model_spec_core::spec::ModalityType::Text
+            model_spec_core::ModalityType::Text
         );
     }
 
@@ -960,7 +961,7 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
         let text = UserContent::Text("hello".to_string());
         assert_eq!(
             text.modalities(),
-            vec![model_spec_core::spec::ModalityType::Text]
+            vec![model_spec_core::ModalityType::Text]
         );
 
         let parts = vec![
@@ -976,15 +977,15 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
         assert_eq!(
             multimodal.modalities(),
             vec![
-                model_spec_core::spec::ModalityType::Text,
-                model_spec_core::spec::ModalityType::Image
+                model_spec_core::ModalityType::Text,
+                model_spec_core::ModalityType::Image
             ]
         );
     }
 
     #[test]
     fn user_content_unsupported_modalities() {
-        use model_spec_core::spec::{Modalities, Model};
+        use model_spec_core::{Modalities, Model};
 
         // Model that only supports text and image
         let model = Model {
@@ -992,13 +993,13 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
             name: "test-model".to_string(),
             family: None,
             attachment: false,
-            limit: None,
+            limit: ModelLimit::default(),
             modalities: Modalities {
                 input: vec![
-                    model_spec_core::spec::ModalityType::Text,
-                    model_spec_core::spec::ModalityType::Image,
+                    model_spec_core::ModalityType::Text,
+                    model_spec_core::ModalityType::Image,
                 ],
-                output: vec![model_spec_core::spec::ModalityType::Text],
+                output: vec![model_spec_core::ModalityType::Text],
             },
             tool_call: false,
             temperature: false,
@@ -1037,26 +1038,26 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
         assert!(!unsupported.is_supported_by(&model));
         assert_eq!(
             unsupported.unsupported_modalities(&model),
-            vec![model_spec_core::spec::ModalityType::Audio]
+            vec![model_spec_core::ModalityType::Audio]
         );
     }
 
     #[test]
     fn content_part_is_supported_by() {
-        use model_spec_core::spec::{Modalities, Model};
+        use model_spec_core::{Modalities, Model};
 
         let model = Model {
             id: "test-model".to_string(),
             name: "test-model".to_string(),
             family: None,
             attachment: false,
-            limit: None,
+            limit: ModelLimit::default(),
             modalities: Modalities {
                 input: vec![
-                    model_spec_core::spec::ModalityType::Text,
-                    model_spec_core::spec::ModalityType::Image,
+                    model_spec_core::ModalityType::Text,
+                    model_spec_core::ModalityType::Image,
                 ],
-                output: vec![model_spec_core::spec::ModalityType::Text],
+                output: vec![model_spec_core::ModalityType::Text],
             },
             tool_call: false,
             temperature: false,

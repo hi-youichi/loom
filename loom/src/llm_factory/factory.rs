@@ -7,7 +7,7 @@
 //! let client = factory.build_client(&entry)?;
 //! ```
 
-use model_spec_core::spec::ModelTier;
+use model_spec_core::ModelTier;
 
 use loom_llm::factory::create_llm_client;
 use model_spec_core::registry::{ModelEntry, ProviderConfig};

@@ -50,7 +50,7 @@ loom-graph = { path = "../loom-graph" }
 stream-event = { path = "../stream-event" }
 
 # Model spec (for content_part_modality)
-model-spec-core = { path = "../model-spec-core" }
+model-spec-core = { path = "../foundation/model-spec-core" }
 
 # Optional: LanceDB for model cache
 lancedb = { version = "0.23", optional = true }

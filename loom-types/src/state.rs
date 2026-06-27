@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use loom_llm::ToolChoiceMode;
 use loom_llm::LlmUsage;
 use loom_llm::message::{AssistantToolCall, Message};
-use model_spec_core::spec::ModelTier;
+use model_spec_core::ModelTier;
 use loom_llm::support::uuid6::uuid6;
 
 // Re-export ToolCall and ToolOutputStrategy from loom-llm

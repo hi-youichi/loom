@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use crate::spec::{Cost, Modalities, ModalityType, Model, ModelLimit, Provider};
+use crate::cost::Cost;
+use crate::limit::{Modalities, ModalityType, ModelLimit};
+use crate::model::Model;
+use crate::provider::Provider;
 
 /// Parse Provider from JSON
 pub fn parse_provider(provider_id: &str, value: &Value) -> Option<Provider> {
@@ -140,7 +143,7 @@ pub fn parse_model(model_id: &str, value: &Value) -> Option<Model> {
 
     let cost = value.get("cost").and_then(parse_cost);
 
-    let limit = value.get("limit").and_then(parse_model_limit);
+    let limit = value.get("limit").and_then(parse_model_limit)?;
 
     Some(Model {
         id: model_id.to_string(),

@@ -4,17 +4,15 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use model_spec_core::parser::{
-    parse_all_providers, parse_model, parse_model_limit, parse_provider,
-};
 use serde_json::Value;
 
 use loom_http_retry::{
     is_retryable_reqwest_error, retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES,
 };
 
-use super::resolver::ModelLimitResolver;
-use super::spec::{Model, ModelSpec, Provider};
+use super::ModelResolver;
+use crate::parser::{parse_all_providers, parse_model, parse_provider};
+use crate::{Model, Provider};
 
 /// Default models.dev API URL.
 pub const DEFAULT_MODELS_DEV_URL: &str = "https://models.dev/api.json";
@@ -102,9 +100,9 @@ impl ModelsDevResolver {
         }
     }
 
-    /// Fetch full JSON and parse into provider -> model_id -> ModelSpec map.
+    /// Fetch full JSON and parse into provider -> model_id -> Model map.
     /// Key format: "provider_id/model_id".
-    pub async fn fetch_all(&self) -> Result<HashMap<String, ModelSpec>, String> {
+    pub async fn fetch_all(&self) -> Result<HashMap<String, Model>, String> {
         let body = self.http_client.get(&self.base_url).await?;
         parse_all_models(&body)
     }
@@ -129,15 +127,15 @@ impl ModelsDevResolver {
         provider.models.get(model_id).cloned()
     }
 
-    /// Resolve model spec by bare model name (without provider prefix).
+    /// Resolve model by bare model name (without provider prefix).
     ///
     /// Searches all providers for a matching model ID. Returns the first match.
-    pub async fn resolve_by_bare_model_name(&self, model_name: &str) -> Option<ModelSpec> {
+    pub async fn resolve_by_bare_model_name(&self, model_name: &str) -> Option<Model> {
         let all = self.fetch_all().await.ok()?;
         let suffix = format!("/{}", model_name);
-        for (key, spec) in &all {
+        for (key, model) in &all {
             if key.ends_with(&suffix) {
-                return Some(spec.clone());
+                return Some(model.clone());
             }
         }
         None
@@ -148,13 +146,11 @@ impl ModelsDevResolver {
         json: &Value,
         provider_id: &str,
         model_id: &str,
-    ) -> Option<ModelSpec> {
+    ) -> Option<Model> {
         let provider = json.get(provider_id)?;
         let models = provider.get("models")?.as_object()?;
 
-        // Try model_id as-is first (e.g. "openai/gpt-5")
         let model = models.get(model_id).or_else(|| {
-            // Try "provider_id/model_id" if model_id has no slash
             if !model_id.contains('/') {
                 models.get(&format!("{}/{}", provider_id, model_id))
             } else {
@@ -162,7 +158,7 @@ impl ModelsDevResolver {
             }
         })?;
 
-        parse_model_spec(model)
+        parse_model(model_id, model)
     }
 }
 
@@ -173,30 +169,16 @@ impl Default for ModelsDevResolver {
 }
 
 #[async_trait]
-impl ModelLimitResolver for ModelsDevResolver {
-    async fn resolve(&self, provider_id: &str, model_id: &str) -> Option<ModelSpec> {
+impl ModelResolver for ModelsDevResolver {
+    async fn resolve(&self, provider_id: &str, model_id: &str) -> Option<Model> {
         let body = self.http_client.get(&self.base_url).await.ok()?;
         let json: Value = serde_json::from_str(&body).ok()?;
         self.resolve_from_json(&json, provider_id, model_id)
     }
 }
 
-/// Parse ModelSpec from a model JSON object
-pub(super) fn parse_model_spec(model: &Value) -> Option<ModelSpec> {
-    // Try to parse complete model, fallback to just limit for backward compatibility
-    let full_model = parse_model("", model);
-
-    if let Some(model) = full_model {
-        ModelSpec::from_model(&model)
-    } else {
-        // Fallback: only limit field is present
-        let limit = parse_model_limit(model)?;
-        Some(ModelSpec::from_limit(&limit))
-    }
-}
-
-/// Parse all models into ModelSpec map (legacy format for backward compatibility)
-fn parse_all_models(body: &str) -> Result<HashMap<String, ModelSpec>, String> {
+/// Parse all models into Model map.
+fn parse_all_models(body: &str) -> Result<HashMap<String, Model>, String> {
     let json: Value =
         serde_json::from_str(body).map_err(|e| format!("Failed to parse JSON: {}", e))?;
 
@@ -204,20 +186,20 @@ fn parse_all_models(body: &str) -> Result<HashMap<String, ModelSpec>, String> {
         .as_object()
         .ok_or_else(|| "JSON is not an object".to_string())?;
 
-    let mut specs = HashMap::new();
+    let mut models = HashMap::new();
 
     for (provider_id, provider_value) in json_obj {
-        if let Some(models) = provider_value.get("models").and_then(|v| v.as_object()) {
-            for (model_id, model_value) in models {
-                if let Some(spec) = parse_model_spec(model_value) {
+        if let Some(models_obj) = provider_value.get("models").and_then(|v| v.as_object()) {
+            for (model_id, model_value) in models_obj {
+                if let Some(model) = parse_model(model_id, model_value) {
                     let key = format!("{}/{}", provider_id, model_id);
-                    specs.insert(key, spec);
+                    models.insert(key, model);
                 }
             }
         }
     }
 
-    Ok(specs)
+    Ok(models)
 }
 
 #[cfg(test)]
@@ -294,15 +276,15 @@ mod tests {
         let resolver =
             ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
 
-        let spec = resolver
+        let model = resolver
             .resolve("anthropic", "claude-3-5-sonnet-20241022")
             .await
             .unwrap();
-        assert_eq!(spec.context_limit, 200_000);
-        assert_eq!(spec.output_limit, 8192);
-        assert!(spec.supports_vision());
-        assert!(spec.supports_pdf());
-        assert!(!spec.supports_audio());
+        assert_eq!(model.limit.context, 200_000);
+        assert_eq!(model.limit.output, 8192);
+        assert!(model.modalities.supports_vision());
+        assert!(model.modalities.supports_pdf());
+        assert!(!model.modalities.supports_audio());
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -384,9 +366,8 @@ mod tests {
         assert_eq!(cost.input_cost_usd(), 3.0);
         assert_eq!(cost.output_cost_usd(), 15.0);
 
-        let limit = model.limit.unwrap();
-        assert_eq!(limit.context, 200_000);
-        assert_eq!(limit.output, 8192);
+        assert_eq!(model.limit.context, 200_000);
+        assert_eq!(model.limit.output, 8192);
     }
 
     #[test]
@@ -423,16 +404,15 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn resolve_fallback_when_model_id_has_no_slash() {
-        // Provider "zai" has model key "zai
         let json = r#"{"zai":{"models":{"glm-5":{"limit":{"context":204800,"output":131072}}}}}"#;
         let client = Arc::new(MockHttpClient {
             body: json.to_string(),
         });
         let resolver =
             ModelsDevResolver::with_client("https://example.com/api.json".to_string(), client);
-        let spec = resolver.resolve("zai", "glm-5").await.unwrap();
-        assert_eq!(spec.context_limit, 204_800);
-        assert_eq!(spec.output_limit, 131_072);
+        let model = resolver.resolve("zai", "glm-5").await.unwrap();
+        assert_eq!(model.limit.context, 204_800);
+        assert_eq!(model.limit.output, 131_072);
     }
 
     #[tokio::test(flavor = "current_thread")]

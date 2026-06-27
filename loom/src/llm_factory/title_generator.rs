@@ -3,7 +3,7 @@
 use loom_llm::message::Message;
 use loom_llm::traits::LlmClient;
 use loom_llm::ChatOpenAI;
-use model_spec_core::spec::ModelTier;
+use model_spec_core::ModelTier;
 use std::time::Duration;
 
 const TITLE_SYSTEM_PROMPT: &str = "Generate a concise title (max 30 characters) for a conversation that starts with this message. Reply with ONLY the title text, no quotes, no explanation. Use the same language as the user's message.";

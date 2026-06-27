@@ -41,7 +41,7 @@ impl Modalities {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ModelLimit {
     pub context: u32,
 

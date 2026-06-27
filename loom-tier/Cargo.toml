@@ -9,8 +9,8 @@ authors.workspace = true
 [dependencies]
 # Internal crates
 loom-graph = { path = "../loom-graph" }
-loom-model-spec = { path = "../loom-model-spec" }
-model-spec-core = { path = "../model-spec-core" }
+
+model-spec-core = { path = "../foundation/model-spec-core", features = ["resolver"] }
 loom-react-config = { path = "../loom-react-config" }
 env_config = { path = "../config", package = "config" }
 

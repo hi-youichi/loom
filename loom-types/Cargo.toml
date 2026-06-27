@@ -9,7 +9,7 @@ chrono = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 loom-llm = { path = "../loom-llm" }
-model-spec-core = { path = "../model-spec-core" }
+model-spec-core = { path = "../foundation/model-spec-core" }
 futures-util = "0.3"
 tokio-util = { version = "0.7", features = ["rt"] }
 config = { path = "../config" }

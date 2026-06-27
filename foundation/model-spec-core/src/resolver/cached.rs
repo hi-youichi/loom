@@ -1,4 +1,4 @@
-//! Cached resolver: in-memory cache wrapper for any ModelLimitResolver.
+//! Cached resolver: in-memory cache wrapper for any ModelResolver.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -6,18 +6,18 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 
-use super::resolver::ModelLimitResolver;
-use super::spec::ModelSpec;
+use super::ModelResolver;
+use crate::Model;
 
 /// Wraps any resolver with an in-memory cache.
 pub struct CachedResolver<R> {
     inner: R,
-    cache: Arc<RwLock<HashMap<String, ModelSpec>>>,
+    cache: Arc<RwLock<HashMap<String, Model>>>,
 }
 
 impl<R> CachedResolver<R>
 where
-    R: ModelLimitResolver,
+    R: ModelResolver,
 {
     /// Create a new cached resolver.
     pub fn new(inner: R) -> Self {
@@ -28,7 +28,7 @@ where
     }
 
     /// Refresh cache with new specs. Merges into existing cache.
-    pub async fn refresh(&self, specs: HashMap<String, ModelSpec>) {
+    pub async fn refresh(&self, specs: HashMap<String, Model>) {
         let mut cache = self.cache.write().await;
         for (k, v) in specs {
             cache.insert(k, v);
@@ -47,24 +47,24 @@ where
 }
 
 #[async_trait]
-impl<R> ModelLimitResolver for CachedResolver<R>
+impl<R> ModelResolver for CachedResolver<R>
 where
-    R: ModelLimitResolver + Send + Sync,
+    R: ModelResolver + Send + Sync,
 {
-    async fn resolve(&self, provider_id: &str, model_id: &str) -> Option<ModelSpec> {
+    async fn resolve(&self, provider_id: &str, model_id: &str) -> Option<Model> {
         let key = format!("{}/{}", provider_id, model_id);
         {
             let cache = self.cache.read().await;
-            if let Some(spec) = cache.get(&key).cloned() {
-                return Some(spec);
+            if let Some(model) = cache.get(&key).cloned() {
+                return Some(model);
             }
         }
-        let spec = self.inner.resolve(provider_id, model_id).await?;
+        let model = self.inner.resolve(provider_id, model_id).await?;
         {
             let mut cache = self.cache.write().await;
-            cache.insert(key, spec.clone());
+            cache.insert(key, model.clone());
         }
-        Some(spec)
+        Some(model)
     }
 }
 
@@ -73,7 +73,8 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
-    use crate::models_dev::{HttpClient, ModelsDevResolver};
+    use crate::resolver::models_dev::{HttpClient, ModelsDevResolver};
+    use crate::ModelLimit;
 
     struct CountingMockClient {
         body: String,
@@ -100,12 +101,12 @@ mod tests {
             ModelsDevResolver::with_client("https://x.com/api.json".to_string(), client.clone());
         let cached = CachedResolver::new(models_dev);
 
-        let spec1 = cached.resolve("zai", "glm-5").await.unwrap();
-        assert_eq!(spec1.context_limit, 204_800);
+        let model1 = cached.resolve("zai", "glm-5").await.unwrap();
+        assert_eq!(model1.limit.context, 204_800);
         assert_eq!(client.call_count.load(Ordering::SeqCst), 1);
 
-        let spec2 = cached.resolve("zai", "glm-5").await.unwrap();
-        assert_eq!(spec2.context_limit, 204_800);
+        let model2 = cached.resolve("zai", "glm-5").await.unwrap();
+        assert_eq!(model2.limit.context, 204_800);
         assert_eq!(client.call_count.load(Ordering::SeqCst), 1);
     }
 
@@ -122,14 +123,26 @@ mod tests {
             ModelsDevResolver::with_client("https://x.com/api.json".to_string(), client.clone());
         let cached = CachedResolver::new(models_dev);
 
-        // First call via resolve_combined
-        let spec1 = cached.resolve_combined("openai/gpt-4o").await.unwrap();
-        assert_eq!(spec1.context_limit, 128_000);
+        let model1 = cached.resolve_combined("openai/gpt-4o").await.unwrap();
+        assert_eq!(model1.limit.context, 128_000);
         assert_eq!(client.call_count.load(Ordering::SeqCst), 1);
 
-        // Second call should hit cache
-        let spec2 = cached.resolve_combined("openai/gpt-4o").await.unwrap();
-        assert_eq!(spec2.context_limit, 128_000);
+        let model2 = cached.resolve_combined("openai/gpt-4o").await.unwrap();
+        assert_eq!(model2.limit.context, 128_000);
         assert_eq!(client.call_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn refresh_populates_cache() {
+        let cached = CachedResolver::new(ModelsDevResolver::new());
+        let mut specs = HashMap::new();
+        specs.insert(
+            "test/model".to_string(),
+            Model::minimal("model", ModelLimit::new(999_999, 1_000)),
+        );
+        cached.refresh(specs).await;
+
+        let model = cached.resolve("test", "model").await.unwrap();
+        assert_eq!(model.limit.context, 999_999);
     }
 }

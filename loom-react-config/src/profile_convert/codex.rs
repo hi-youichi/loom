@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::profile::AgentProfile;
-use loom_model_spec::ModelTier;
+use model_spec_core::ModelTier;
 
 use super::{collect_constraints, ExportOutput, role_content};
 

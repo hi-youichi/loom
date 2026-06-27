@@ -1,6 +1,6 @@
 //! Model service for managing available models and model metadata.
 
-use model_spec_core::spec::{Model, Provider};
+use model_spec_core::{Model, Provider};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;

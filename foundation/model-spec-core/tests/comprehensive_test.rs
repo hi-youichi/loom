@@ -172,7 +172,7 @@ fn model_tier_derived() {
         modalities: Modalities::default(),
         open_weights: false,
         cost: None,
-        limit: None,
+        limit: ModelLimit::default(),
     };
     assert_eq!(m.tier(), ModelTier::Light);
 }
@@ -197,7 +197,7 @@ fn model_serde_roundtrip() {
         },
         open_weights: false,
         cost: Some(Cost::new(5.0, 15.0)),
-        limit: Some(ModelLimit::new(128_000, 4096)),
+        limit: ModelLimit::new(128_000, 4096),
     };
     let json = serde_json::to_string(&m).unwrap();
     let de: Model = serde_json::from_str(&json).unwrap();
@@ -213,7 +213,7 @@ fn model_defaults() {
     assert_eq!(m.family, None);
     assert!(!m.attachment);
     assert!(!m.reasoning);
-    assert!(!m.tool_call);
+    assert!(m.tool_call); // default_true (matches ModelSpec behavior)
     assert!(m.temperature); // default_true
     assert_eq!(m.structured_output, None);
     assert!(!m.open_weights);
@@ -260,13 +260,12 @@ fn parse_model_full() {
     assert!(model.attachment);
     assert!(model.tool_call);
     assert!(model.cost.is_some());
-    assert!(model.limit.is_some());
-    assert_eq!(model.limit.unwrap().context, 128000);
+    assert_eq!(model.limit.context, 128000);
 }
 
 #[test]
 fn parse_model_minimal() {
-    let json = serde_json::json!({});
+    let json = serde_json::json!({"limit": {"context": 4096, "output": 1024}});
     let model = parse_model("minimal", &json).unwrap();
     assert_eq!(model.id, "minimal");
     assert_eq!(model.name, "minimal"); // falls back to id
@@ -392,7 +391,7 @@ fn pick_best_for_tier_none_tier_returns_none() {
             modalities: Modalities::default(),
             open_weights: false,
             cost: None,
-            limit: None,
+            limit: ModelLimit::default(),
         },
     );
     assert!(pick_best_for_tier(&models, ModelTier::None).is_none());
@@ -424,7 +423,7 @@ fn pick_best_for_tier_picks_latest_release() {
             modalities: Modalities::default(),
             open_weights: false,
             cost: Some(Cost::new(3.0, 10.0)),
-            limit: None,
+            limit: ModelLimit::default(),
         },
     );
     models.insert(
@@ -444,7 +443,7 @@ fn pick_best_for_tier_picks_latest_release() {
             modalities: Modalities::default(),
             open_weights: false,
             cost: Some(Cost::new(3.0, 10.0)),
-            limit: None,
+            limit: ModelLimit::default(),
         },
     );
     // Both are Standard tier by default
@@ -480,7 +479,8 @@ fn parse_model_with_modalities() {
         "modalities": {
             "input": ["text", "image", "audio"],
             "output": ["text"]
-        }
+        },
+        "limit": {"context": 128000, "output": 4096}
     });
     let model = parse_model("multi", &json).unwrap();
     assert!(model.modalities.supports_text());
@@ -491,14 +491,14 @@ fn parse_model_with_modalities() {
 
 #[test]
 fn parse_model_with_open_weights() {
-    let json = serde_json::json!({"name": "Open", "open_weights": true});
+    let json = serde_json::json!({"name": "Open", "open_weights": true, "limit": {"context": 4096, "output": 1024}});
     let model = parse_model("open", &json).unwrap();
     assert!(model.open_weights);
 }
 
 #[test]
 fn parse_model_with_reasoning() {
-    let json = serde_json::json!({"name": "R1", "reasoning": true});
+    let json = serde_json::json!({"name": "R1", "reasoning": true, "limit": {"context": 4096, "output": 1024}});
     let model = parse_model("r1", &json).unwrap();
     assert!(model.reasoning);
 }

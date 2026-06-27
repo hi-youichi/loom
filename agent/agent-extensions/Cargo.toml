@@ -19,7 +19,7 @@ skill = { path = "../skill" }
 loom-tier = { path = "../../loom-tier" }
 loom-react-config = { path = "../../loom-react-config" }
 loom-worktree = { path = "../../loom-worktree" }
-loom-model-spec = { path = "../../loom-model-spec" }
+
 loom-stream-display = { path = "../../loom-stream-display" }
 loom-commands = { path = "../../loom-commands" }
 loom-cache = { path = "../../loom-cache" }
@@ -36,7 +36,7 @@ tracing = "0.1"
 futures = "0.3"
 futures-util = "0.3"
 env-config = { path = "../../config", package = "config" }
-model-spec-core = { path = "../../model-spec-core" }
+model-spec-core = { path = "../../foundation/model-spec-core", features = ["resolver"] }
 async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
 task-core = { path = "../../experimental/task/task-core" }
 

@@ -19,7 +19,7 @@
 //! - `loom_compress` — context compression / compaction
 //! - `loom_pregel` — low-level Pregel graph runtime
 //! - `loom_commands` — slash command parsing and execution
-//! - `loom_model_spec` — `ModelSpec`, resolvers
+//! - `model_spec_core` — `Model`, `Provider`, resolvers (feature-gated)
 //! - `loom_curator` — background review system
 //! - `loom_stream_display` — stream event display/rendering
 //! - `loom_worktree` — git worktree isolation

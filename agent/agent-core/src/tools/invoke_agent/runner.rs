@@ -76,7 +76,7 @@ pub(super) async fn build_and_run_sub_agent(
             current_profile_model = ?sub_config.model,
             "Processing model_tier override request"
         );
-        match serde_json::from_str::<loom_model_spec::ModelTier>(tier_str) {
+        match serde_json::from_str::<model_spec_core::ModelTier>(tier_str) {
             Ok(tier) => {
                 tracing::info!(
                     agent = %agent_name,

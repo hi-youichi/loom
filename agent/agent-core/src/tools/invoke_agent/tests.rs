@@ -116,11 +116,11 @@ impl loom_tier::TierResolver for MockTierResolver {
     async fn resolve_tier(
         &self,
         _config: &ReactBuildConfig,
-        tier: loom_model_spec::ModelTier,
+        tier: model_spec_core::ModelTier,
     ) -> Option<loom_tier::ResolvedTierModel> {
         assert_eq!(
             tier,
-            loom_model_spec::ModelTier::Light,
+            model_spec_core::ModelTier::Light,
             "explore agent should request Light tier"
         );
         Some(loom_tier::ResolvedTierModel {
@@ -138,7 +138,7 @@ async fn explore_agent_resolves_light_tier_model() {
     let profile = resolve_profile("explore").expect("explore profile should load");
     assert_eq!(
         profile.model.as_ref().and_then(|m| m.tier),
-        Some(loom_model_spec::ModelTier::Light),
+        Some(model_spec_core::ModelTier::Light),
         "explore agent config.yaml should declare tier: light"
     );
 
@@ -150,7 +150,7 @@ async fn explore_agent_resolves_light_tier_model() {
     let sub_config = build_config_from_profile(&profile, &parent_config, None);
     assert_eq!(
         sub_config.model_tier,
-        Some(loom_model_spec::ModelTier::Light),
+        Some(model_spec_core::ModelTier::Light),
         "build_config_from_profile should propagate explore's light tier"
     );
 
@@ -191,13 +191,13 @@ async fn explore_agent_config_inheritance_with_parent_tier() {
     let profile = resolve_profile("explore").expect("explore profile should load");
 
     let mut parent_config = ReactBuildConfig::from_env();
-    parent_config.model_tier = Some(loom_model_spec::ModelTier::Strong);
+    parent_config.model_tier = Some(model_spec_core::ModelTier::Strong);
 
     let sub_config = build_config_from_profile(&profile, &parent_config, None);
 
     assert_eq!(
         sub_config.model_tier,
-        Some(loom_model_spec::ModelTier::Light),
+        Some(model_spec_core::ModelTier::Light),
         "explore's tier: light should override parent's tier"
     );
 }

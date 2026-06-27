@@ -10,7 +10,7 @@ use loom_llm::support::audit::LlmAuditLog;
 use loom_llm::{ChatOpenAI, ChatOpenAICompat, LlmClient, LlmProvider, ModelEntry};
 use loom_llm::client::{FixedLlmProvider, RetryLlmClient};
 use loom_llm::factory::create_llm_client;
-use loom_model_spec::ModelTier;
+use model_spec_core::ModelTier;
 use tool_core::ToolRegistryLocked;
 
 use super::super::config::ReactBuildConfig;

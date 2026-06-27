@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use model_spec_core::spec::ModelTier;
+use model_spec_core::ModelTier;
 
 /// A tier plan maps ModelTier variants to model IDs for a specific provider/family/version.
 #[derive(Debug, Clone)]
@@ -66,7 +66,7 @@ pub fn tier_plans() -> &'static HashMap<String, TierPlan> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use model_spec_core::spec::ModelTier;
+    use model_spec_core::ModelTier;
 
     #[test]
     fn test_tier_plan_from_raw() {

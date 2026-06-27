@@ -31,7 +31,7 @@ memory-v2 = { path = "../../experimental/memory-v2" }
 loom-commands = { path = "../../loom-commands" }
 loom-cli-types = { path = "../../loom-cli-types" }
 loom-react-config = { path = "../../loom-react-config" }
-loom-model-spec = { path = "../../loom-model-spec" }
+model-spec-core = { path = "../../foundation/model-spec-core", features = ["resolver"] }
 loom-memory = { path = "../../loom-memory" }
 loom-tier = { path = "../../loom-tier" }
 loom-acp = { package = "acp", path = "../acp" }

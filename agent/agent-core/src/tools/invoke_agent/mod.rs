@@ -129,7 +129,7 @@ impl Tool for InvokeAgentTool {
                                 },
                                 "model_tier": {
                                     "type": "string",
-                                    "enum": model_spec_core::spec::ModelTier::variants().to_vec(),
+                                    "enum": model_spec_core::ModelTier::variants().to_vec(),
                                     "description": "Optional: override the agent's model tier for this invocation. Switches to the best model of this tier from the same provider."
                                 },
                                 "isolation": {

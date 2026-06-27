@@ -1,11 +1,11 @@
-//! Config override resolver: returns a fixed spec when max_context_tokens is configured.
+//! Config override resolver: returns a fixed model when max_context_tokens is configured.
 
 use async_trait::async_trait;
 
-use super::resolver::ModelLimitResolver;
-use super::spec::ModelSpec;
+use super::ModelResolver;
+use crate::{Model, ModelLimit};
 
-/// Resolver that returns a fixed spec based on explicit config.
+/// Resolver that returns a fixed model based on explicit config.
 ///
 /// Used as the highest-priority source in CompositeResolver when
 /// `CompactionConfig.max_context_tokens` (and optionally output_limit) are set.
@@ -31,11 +31,11 @@ impl ConfigOverride {
 }
 
 #[async_trait]
-impl ModelLimitResolver for ConfigOverride {
-    async fn resolve(&self, _provider_id: &str, _model_id: &str) -> Option<ModelSpec> {
-        Some(ModelSpec::new(
-            self.context_limit,
-            self.output_limit.unwrap_or(64_000),
+impl ModelResolver for ConfigOverride {
+    async fn resolve(&self, _provider_id: &str, model_id: &str) -> Option<Model> {
+        Some(Model::minimal(
+            model_id,
+            ModelLimit::new(self.context_limit, self.output_limit.unwrap_or(64_000)),
         ))
     }
 }

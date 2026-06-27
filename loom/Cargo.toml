@@ -36,9 +36,9 @@ loom-types = { path = "../loom-types" }
 # LSP client (loom-lsp crate)
 loom-lsp = { path = "../loom-lsp" }
 
-# Model specification (loom-model-spec crate)
+# Model specification
 loom-cache = { path = "../loom-cache" }
-loom-model-spec = { path = "../loom-model-spec" }
+
 
 # Context compression (loom-compress crate)
 loom-compress = { path = "../loom-compress" }
@@ -75,7 +75,7 @@ tool-experimental = { path = "../agent/tool/tool-experimental" }
 loom-tier = { path = "../loom-tier" }
 
 # Model spec core types (ModelEntry, ProviderConfig, etc.)
-model-spec-core = { path = "../model-spec-core" }
+model-spec-core = { path = "../foundation/model-spec-core", features = ["resolver"] }
 
 # LLM factory (moved from loom-tier): ChatOpenAI, ChatOpenAICompat
 async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
@@ -141,7 +141,6 @@ jsonrpc-core = "18.0"
 url = "2.5"
 
 
-
 loom-worktree = { path = "../loom-worktree" }
 skill = { path = "../agent/skill" }
 [dev-dependencies]
@@ -152,7 +151,7 @@ ctor = "0.2"
 wiremock = "0.6"
 temp-env = { version = "0.3", features = ["async_closure"] }
 agent = { path = "../agent/agent-core" }
-loom-model-spec = { path = "../loom-model-spec" }
+
 loom-stream = { path = "../loom-stream" }
 loom-llm = { path = "../loom-llm" }
 loom-types = { path = "../loom-types" }

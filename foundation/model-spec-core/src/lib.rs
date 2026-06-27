@@ -4,9 +4,11 @@ pub mod model;
 pub mod parser;
 pub mod provider;
 pub mod registry;
-pub mod spec;
 pub mod tier;
 pub mod tool_choice;
+
+#[cfg(feature = "resolver")]
+pub mod resolver;
 
 pub use cost::Cost;
 pub use limit::{Modalities, ModalityType, ModelLimit};

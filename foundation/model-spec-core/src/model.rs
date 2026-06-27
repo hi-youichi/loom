@@ -23,7 +23,7 @@ pub struct Model {
     #[serde(default)]
     pub reasoning: bool,
 
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub tool_call: bool,
 
     #[serde(default = "default_true")]
@@ -50,12 +50,44 @@ pub struct Model {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<Cost>,
 
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub limit: Option<ModelLimit>,
+    #[serde(default)]
+    pub limit: ModelLimit,
+}
+
+impl Default for Model {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            name: String::new(),
+            family: None,
+            attachment: false,
+            reasoning: false,
+            tool_call: true,
+            temperature: true,
+            structured_output: None,
+            knowledge: None,
+            release_date: None,
+            last_updated: None,
+            modalities: Modalities::default(),
+            open_weights: false,
+            cost: None,
+            limit: ModelLimit::default(),
+        }
+    }
 }
 
 impl Model {
     pub fn tier(&self) -> ModelTier {
         tier_of(&self.id, self.family.as_deref(), self.cost.as_ref())
+    }
+
+    pub fn minimal(id: impl Into<String>, limit: ModelLimit) -> Self {
+        let id = id.into();
+        Self {
+            name: id.clone(),
+            id,
+            limit,
+            ..Default::default()
+        }
     }
 }

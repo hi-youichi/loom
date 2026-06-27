@@ -7,7 +7,7 @@ use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-use loom_model_spec::ModelTier;
+use model_spec_core::ModelTier;
 use loom_worktree::WorktreeProfileConfig;
 
 #[derive(Debug, Error)]

@@ -5,7 +5,6 @@ members = [
     "loom-llm",
     "loom-lsp",
     "loom-memory",
-    "loom-model-spec",
     "loom-cache",
     "loom-worktree",
 
@@ -13,7 +12,7 @@ members = [
     "loom-graph",
     "loom-pregel",
     "config",
-    "model-spec-core",
+    "foundation/model-spec-core",
     "loom-examples",
     "apps/cli",
     "stream-event",

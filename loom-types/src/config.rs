@@ -1,6 +1,6 @@
 //! Shared configuration types for agent building.
 
-use model_spec_core::spec::ModelTier;
+use model_spec_core::ModelTier;
 
 /// Filter for builtin tools: whitelist (enabled) and blacklist (disabled).
 #[derive(Clone, Debug, Default)]

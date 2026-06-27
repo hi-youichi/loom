@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use loom_react_config::ReactBuildConfig;
 use crate::ModelEntry;
-use model_spec_core::spec::ModelTier;
+use model_spec_core::ModelTier;
 use crate::provider::load_provider_configs;
 
 use crate::resolve_tier_intelligent;

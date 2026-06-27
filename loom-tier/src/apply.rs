@@ -73,7 +73,7 @@ pub async fn resolve_tier_and_build_config_with_resolver(
 mod tests {
     use super::*;
     use loom_react_config::ReactBuildConfig;
-    use model_spec_core::spec::ModelTier;
+    use model_spec_core::ModelTier;
     use crate::ResolvedTierModel;
 
     struct MockTierResolver {

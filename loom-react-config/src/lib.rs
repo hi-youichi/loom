@@ -63,7 +63,7 @@ pub struct ReactBuildConfig {
     pub openai_api_key: Option<String>,
     pub openai_base_url: Option<String>,
     pub model: Option<String>,
-    pub model_tier: Option<loom_model_spec::ModelTier>,
+    pub model_tier: Option<model_spec_core::ModelTier>,
     /// When a sub-agent profile declares `tier: light/standard/strong` but no explicit `model.name`,
     /// the parent's resolved model (e.g. `"zhipuai-coding-plan/glm-4.7"`) is saved here so that
     /// tier resolution can extract the provider and stay within the same model family.

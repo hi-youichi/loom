@@ -4,9 +4,9 @@ use loom_compress::CompactionConfig;
 use loom_graph::GraphError;
 use loom_llm::{LlmClient, LlmProvider};
 use loom_llm::client::FixedLlmProvider;
-use loom_model_spec::{
-    build_composite_resolver, ConfigModelEntry, ConfigProviderEntry,
-    ModelLimitResolver, ModelSpec,
+use model_spec_core::{
+    resolver::{build_composite_resolver, ConfigModelEntry, ConfigProviderEntry, ModelResolver},
+    Model,
 };
 use loom_types::active_operation::RunCancellation;
 
@@ -69,11 +69,11 @@ async fn resolve_compaction_config(config: &ReactBuildConfig) -> CompactionConfi
         if let Some(spec) = spec {
             tracing::info!(
                 model = %model,
-                context_limit = spec.context_limit,
-                output_limit = spec.output_limit,
+                context_limit = spec.limit.context,
+                output_limit = spec.limit.output,
                 "resolved model spec"
             );
-            return CompactionConfig::with_max_context_tokens(spec.context_limit);
+            return CompactionConfig::with_max_context_tokens(spec.limit.context);
         }
 
         tracing::debug!(model = %model, "model spec not found, using default config");
@@ -106,9 +106,9 @@ fn load_config_providers() -> Vec<ConfigProviderEntry> {
 }
 
 async fn resolve_bare_model_name(
-    resolver: &Arc<loom_model_spec::CompositeResolver>,
+    resolver: &Arc<model_spec_core::resolver::CompositeResolver>,
     model: &str,
-) -> Option<ModelSpec> {
+) -> Option<Model> {
     for p in load_config_providers() {
         if let Some(spec) = resolver.resolve(&p.name, model).await {
             return Some(spec);

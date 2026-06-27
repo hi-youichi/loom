@@ -25,7 +25,7 @@ fn entry_with_spec_fallback(
 /// Resolve a model from the model spec (models.dev) for the given tier.
 pub async fn resolve_from_spec(
     provider: &str,
-    tier: model_spec_core::spec::ModelTier,
+    tier: model_spec_core::ModelTier,
     providers: &[ProviderConfig],
 ) -> Option<ModelEntry> {
     let registry = ModelRegistry::global();
@@ -34,7 +34,7 @@ pub async fn resolve_from_spec(
         .await?;
 
     let (model_id, _model) =
-        model_spec_core::spec::pick_best_for_tier(&spec_provider.models, tier)?;
+        model_spec_core::pick_best_for_tier(&spec_provider.models, tier)?;
 
     Some(entry_with_spec_fallback(provider_cfg, model_id, spec_provider.api.as_ref()))
 }
@@ -42,7 +42,7 @@ pub async fn resolve_from_spec(
 /// Resolve a model by fetching from the provider's API.
 pub async fn resolve_from_provider_api(
     provider: &str,
-    _tier: model_spec_core::spec::ModelTier,
+    _tier: model_spec_core::ModelTier,
     providers: &[ProviderConfig],
 ) -> Option<ModelEntry> {
     let provider_cfg = providers.iter().find(|p| p.name == provider)?;
@@ -64,7 +64,7 @@ pub async fn resolve_from_provider_api(
 /// Resolve a model from local storage (not yet implemented).
 pub async fn resolve_from_local(
     _provider: &str,
-    _tier: model_spec_core::spec::ModelTier,
+    _tier: model_spec_core::ModelTier,
     _providers: &[ProviderConfig],
 ) -> Option<ModelEntry> {
     None
@@ -73,7 +73,7 @@ pub async fn resolve_from_local(
 /// Resolve a model from the embedded tier plans.
 pub fn resolve_from_plan(
     provider: &str,
-    tier: model_spec_core::spec::ModelTier,
+    tier: model_spec_core::ModelTier,
     providers: &[ProviderConfig],
 ) -> Option<ModelEntry> {
     let plans = tier_plans();
@@ -89,7 +89,7 @@ pub fn resolve_from_plan(
 /// Resolve a tier using all available strategies (plan → spec → provider API → local).
 pub async fn resolve_tier_intelligent(
     provider: &str,
-    tier: model_spec_core::spec::ModelTier,
+    tier: model_spec_core::ModelTier,
     providers: &[ProviderConfig],
 ) -> Option<ModelEntry> {
     if let Some(entry) = resolve_from_plan(provider, tier, providers) {
@@ -139,7 +139,7 @@ pub async fn resolve_tier_intelligent(
 /// Resolve a tier for a specific model ID (extracts provider from the ID).
 pub async fn resolve_for_model(
     model_id: &str,
-    tier: model_spec_core::spec::ModelTier,
+    tier: model_spec_core::ModelTier,
     providers: &[ProviderConfig],
 ) -> Option<ModelEntry> {
     let (provider, _) = ModelEntry::parse_id(model_id)?;
@@ -149,7 +149,7 @@ pub async fn resolve_for_model(
 /// Resolve a tier and return just the model ID string.
 pub async fn resolve_tier_to_model_id(
     provider: &str,
-    tier: model_spec_core::spec::ModelTier,
+    tier: model_spec_core::ModelTier,
     providers: &[ProviderConfig],
 ) -> Option<String> {
     resolve_tier_intelligent(provider, tier, providers).await.map(|e| e.id)
@@ -293,7 +293,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_from_local_always_none() {
-        let result = resolve_from_local("test", model_spec_core::spec::ModelTier::Light, &[]).await;
+        let result = resolve_from_local("test", model_spec_core::ModelTier::Light, &[]).await;
         assert!(result.is_none());
     }
 

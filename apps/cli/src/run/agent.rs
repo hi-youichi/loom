@@ -8,8 +8,8 @@ use loom::agent_run::{run_agent_with_options, AnyStreamEvent};
 use loom::cli_run::build_react_config;
 use loom_cli_types::ResolvedAgent;
 use loom_llm::ToolCall;
-use loom_model_spec::{
-    build_composite_resolver, ConfigModelEntry, ConfigProviderEntry, ModelLimitResolver,
+use model_spec_core::resolver::{
+    build_composite_resolver, ConfigModelEntry, ConfigProviderEntry, ModelResolver,
 };
 use stream_event::Envelope;
 use loom_react_config::profile::list_available_profiles;
@@ -158,7 +158,7 @@ async fn print_model_info(model: Option<&String>) {
                     model_name,
                     &format!(
                         "{} context",
-                        panel_format::format_context_limit(spec.context_limit)
+                        panel_format::format_context_limit(spec.limit.context)
                     ),
                 )
             );
