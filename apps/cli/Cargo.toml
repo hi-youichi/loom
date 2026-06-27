@@ -25,7 +25,7 @@ loom-types = { path = "../../loom-types" }
 tool-core = { path = "../../agent/tool/tool-core" }
 loom-stream = { path = "../../loom-stream" }
 loom-stream-display = { path = "../../loom-stream-display" }
-loom-background-review = { path = "../../loom-background-review" }
+loom-curator = { path = "../../experimental/curator" }
 tool-experimental = { path = "../../agent/tool/tool-experimental" }
 memory-v2 = { path = "../../experimental/memory-v2" }
 loom-commands = { path = "../../loom-commands" }

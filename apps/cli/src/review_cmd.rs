@@ -3,7 +3,7 @@ use crate::review_history::{ReviewHistory, ReviewRecord};
 use crate::review_skill_cmd::build_review_react_config;
 use crate::session::SessionManager;
 use chrono::{Duration, Utc};
-use loom_background_review::{
+use loom_curator::{
     run_review, ReviewConfig as BgReviewConfig, ReviewOutcome, TokenUsageSummary,
 };
 use std::time::Instant;
@@ -502,7 +502,7 @@ fn format_duration_ms(ms: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_background_review::TokenUsageSummary;
+    use loom_curator::TokenUsageSummary;
 
     #[test]
     fn format_token_summary_omits_cache_split_when_zero() {

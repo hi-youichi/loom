@@ -400,7 +400,7 @@ pub(crate) fn handle_skills_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use cli::run::skill_registry::{SkillRegistry, Source, SkillContent, Lifecycle};
 
-    let registry = SkillRegistry::new(&loom_background_review::skill_registry::default_path());
+    let registry = SkillRegistry::new(&loom_curator::skill_registry::default_path());
 
     match &skills_args.command {
         SkillsCommand::List => {
@@ -532,7 +532,7 @@ pub(crate) async fn handle_curator_command(
     };
     use cli::run::skill_registry::SkillRegistry;
 
-    let skills_path = loom_background_review::skill_registry::default_path();
+    let skills_path = loom_curator::skill_registry::default_path();
     let skills = SkillRegistry::new(&skills_path);
     let curator = Curator::new(skills, CuratorConfig::default());
 
@@ -566,7 +566,7 @@ pub(crate) async fn handle_curator_command(
                     agent_config.openai_base_url = Some(base_url);
                     agent_config.model = Some(model);
                     let curator_config = CuratorConfig::default();
-                    match loom_background_review::run_curator_llm_if_needed(
+                    match loom_curator::run_curator_llm_if_needed(
                         &skills_path,
                         &curator_config,
                         agent_config,
@@ -643,7 +643,7 @@ pub(crate) async fn handle_curator_command(
             let total = active + stale + archived + pinned;
 
             // Load usage for top-skills display
-            let usage_store = loom_background_review::SkillUsageStore::new(curator.skills.base_dir());
+            let usage_store = loom_curator::SkillUsageStore::new(curator.skills.base_dir());
             let usage_reports = usage_store.agent_created_report().unwrap_or_default();
             let mut top_skills: Vec<_> = usage_reports
                 .iter()
@@ -750,7 +750,7 @@ pub(crate) async fn handle_curator_command(
             use cli::run::skill_registry::Lifecycle;
 
             // Package integrity gate: warn but don't block manual archive
-            let integrity = loom_background_review::curator::check_package_integrity(
+            let integrity = loom_curator::curator::check_package_integrity(
                 curator.skills.base_dir(),
                 skill,
             );
@@ -766,9 +766,9 @@ pub(crate) async fn handle_curator_command(
             println!("✓ Archived '{}' (Lifecycle → Archived)", skill);
         }
         CuratorCommand::Backup { description } => {
-            use loom_background_review::CuratorBackup;
+            use loom_curator::CuratorBackup;
 
-            let skills_dir = loom_background_review::skill_registry::default_path();
+            let skills_dir = loom_curator::skill_registry::default_path();
             let backup = CuratorBackup::new();
 
             let filename = backup
@@ -786,9 +786,9 @@ pub(crate) async fn handle_curator_command(
             }
         }
         CuratorCommand::Rollback { snapshot } => {
-            use loom_background_review::CuratorBackup;
+            use loom_curator::CuratorBackup;
 
-            let skills_dir = loom_background_review::skill_registry::default_path();
+            let skills_dir = loom_curator::skill_registry::default_path();
             let backup = CuratorBackup::new();
 
             backup
@@ -798,7 +798,7 @@ pub(crate) async fn handle_curator_command(
             println!("✓ Rolled back to snapshot '{}'", snapshot);
         }
         CuratorCommand::Snapshots => {
-            use loom_background_review::CuratorBackup;
+            use loom_curator::CuratorBackup;
 
             let backup = CuratorBackup::new();
             let snapshots = backup
@@ -846,7 +846,7 @@ pub(crate) async fn handle_curator_command(
                 eprintln!("backfill-triggers: dry-run (model: {})", model);
             }
 
-            let outcome = loom_background_review::run_backfill_triggers(
+            let outcome = loom_curator::run_backfill_triggers(
                 &skills_path,
                 agent_config,
                 curator_args.dry_run,

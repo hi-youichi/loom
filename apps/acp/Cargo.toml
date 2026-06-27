@@ -25,7 +25,7 @@ loom-react-config = { path = "../../loom-react-config" }
 loom-stream = { path = "../../loom-stream" }
 
 loom-commands = { path = "../../loom-commands" }
-loom-background-review = { path = "../../loom-background-review" }
+loom-curator = { path = "../../experimental/curator" }
 config = { path = "../../config", features = ["tracing-init"] }
 task-core = { path = "../../experimental/task/task-core" }
 loom-prompt = { path = "../../loom-prompt" }

@@ -8,8 +8,8 @@ use std::fs;
 use serde::{Deserialize, Serialize};
 
 use crate::args::{SkillUsageCommand, SkillUsageArgs};
-use loom_background_review::skill_registry::SkillRegistry;
-use loom_background_review::{SkillUsage, SkillUsageStore};
+use loom_curator::skill_registry::SkillRegistry;
+use loom_curator::{SkillUsage, SkillUsageStore};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncResult {
@@ -42,7 +42,7 @@ async fn sync(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let base_dir = path
         .clone()
-        .unwrap_or_else(loom_background_review::skill_registry::default_path);
+        .unwrap_or_else(loom_curator::skill_registry::default_path);
     let base_dir_str = base_dir.display().to_string();
 
     // Scan skills directory
@@ -123,7 +123,7 @@ async fn show(
     name: &Option<String>,
     json: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let base_dir = loom_background_review::skill_registry::default_path();
+    let base_dir = loom_curator::skill_registry::default_path();
     let store = SkillUsageStore::new(&base_dir);
 
     let data = store.load().unwrap_or_default();
@@ -156,7 +156,7 @@ async fn repair(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let base_dir = path
         .clone()
-        .unwrap_or_else(loom_background_review::skill_registry::default_path);
+        .unwrap_or_else(loom_curator::skill_registry::default_path);
     let usage_path = base_dir.join(".usage.json");
 
     if !usage_path.exists() {

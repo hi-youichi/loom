@@ -1,2 +1,2 @@
 //! Re-export from loom crate.
-pub use loom_background_review::observability::*;
+pub use loom_curator::observability::*;

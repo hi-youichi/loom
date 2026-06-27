@@ -7,7 +7,7 @@
 
 use std::path::PathBuf;
 
-use loom_background_review::{run_review, ReviewConfig, ReviewHistory, ReviewRecord};
+use loom_curator::{run_review, ReviewConfig, ReviewHistory, ReviewRecord};
 use loom_cli_types::ResolvedModelConfig;
 use loom_llm::message::Message;
 use loom_react_config::ReactBuildConfig;

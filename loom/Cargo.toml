@@ -87,8 +87,8 @@ loom-react-config = { path = "../loom-react-config" }
 # CLI run types (loom-cli-types crate)
 loom-cli-types = { path = "../loom-cli-types" }
 
-# Background review system (loom-background-review crate)
-loom-background-review = { path = "../loom-background-review" }
+# Curator system (loom-curator crate)
+loom-curator = { path = "../experimental/curator" }
 
 # Memory system
 memory-v2 = { path = "../experimental/memory-v2" }

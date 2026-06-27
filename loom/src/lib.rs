@@ -20,7 +20,7 @@
 //! - `loom_pregel` — low-level Pregel graph runtime
 //! - `loom_commands` — slash command parsing and execution
 //! - `loom_model_spec` — `ModelSpec`, resolvers
-//! - `loom_background_review` — background review system
+//! - `loom_curator` — background review system
 //! - `loom_stream_display` — stream event display/rendering
 //! - `loom_worktree` — git worktree isolation
 //! - `loom_lsp` — LSP integration

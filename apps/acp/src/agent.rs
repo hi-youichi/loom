@@ -1185,7 +1185,7 @@ impl LoomAcpAgent {
             // Ensure the review_status table exists before we LEFT JOIN against
             // it. On a fresh database with no review ever recorded the table
             // would otherwise be absent, causing the query to fail.
-            loom_background_review::ReviewHistory::ensure_schema(&conn)
+            loom_curator::ReviewHistory::ensure_schema(&conn)
                 .map_err(|e| format!("Failed to ensure review schema: {}", e))?;
 
             // Build query: use CTE to get latest checkpoint per thread,

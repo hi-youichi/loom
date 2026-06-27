@@ -250,7 +250,7 @@ pub async fn run_agent(
                 "Spawning background review subprocess after agent session"
             );
 
-            loom_background_review::spawn_review_after_session(
+            loom_curator::spawn_review_after_session(
                 session_id,
                 config.model.clone(),
             );

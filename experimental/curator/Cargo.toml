@@ -1,8 +1,8 @@
 [package]
-name = "loom-background-review"
+name = "loom-curator"
 version.workspace = true
 edition.workspace = true
-description = "Background review system for Loom - analyzes conversations and updates memory/skills"
+description = "Curator system for Loom - background review, skill curation, and memory updates"
 license.workspace = true
 authors.workspace = true
 
@@ -14,17 +14,17 @@ testing = []
 
 [dependencies]
 # LLM client (loom-llm crate)
-loom-llm = { path = "../loom-llm" }
+loom-llm = { path = "../../loom-llm" }
 
 # Shared types (loom-types crate)
-loom-types = { path = "../loom-types" }
+loom-types = { path = "../../loom-types" }
 
 # Config crate for loom_home
-env_config = { path = "../config", package = "config" }
+env_config = { path = "../../config", package = "config" }
 
 # SQLite for review history persistence
 rusqlite = { version = "0.31", features = ["bundled"] }
-loom-memory = { path = "../loom-memory" }
+loom-memory = { path = "../../loom-memory" }
 
 # Async runtime
 tokio = { workspace = true }
@@ -45,14 +45,14 @@ tracing = "0.1"
 
 dirs = "5"
 
-skill = { path = "../agent/skill" }
-tool-core = { path = "../agent/tool/tool-core" }
-tool-basic = { path = "../agent/tool/tool-basic" }
-tool-experimental = { path = "../agent/tool/tool-experimental" }
-memory-v2 = { path = "../experimental/memory-v2" }
-agent = { path = "../agent/agent-core" }
-loom-react-config = { path = "../loom-react-config" }
-loom-graph = { path = "../loom-graph" }
+skill = { path = "../../agent/skill" }
+tool-core = { path = "../../agent/tool/tool-core" }
+tool-basic = { path = "../../agent/tool/tool-basic" }
+tool-experimental = { path = "../../agent/tool/tool-experimental" }
+memory-v2 = { path = "../../experimental/memory-v2" }
+agent = { path = "../../agent/agent-core" }
+loom-react-config = { path = "../../loom-react-config" }
+loom-graph = { path = "../../loom-graph" }
 
 # Archive handling for curator backup
 flate2 = "1.0"

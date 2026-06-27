@@ -34,7 +34,7 @@ members = [
     "agent/tool/tool-basic",
     "agent/tool/tool-extensions",
     "agent/tool/tool-experimental",
-    "loom-background-review",
+    "experimental/curator",
     "loom-stream-display",
     "loom-prompt",
     "loom-tier",

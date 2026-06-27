@@ -13,9 +13,9 @@ use std::sync::Arc;
 use tracing::{error, info, warn};
 
 // Bring the LLM-enabled curator entry point into scope.
-// `loom_background_review::run_curator_llm_if_needed` is the async, LLM-driven
+// `loom_curator::run_curator_llm_if_needed` is the async, LLM-driven
 // consolidation pass that builds umbrellas via tool-augmented multi-turn.
-use loom_background_review::run_curator_llm_if_needed;
+use loom_curator::run_curator_llm_if_needed;
 
 /// Handle for the result of a background review.
 pub struct BackgroundReviewHandle {
