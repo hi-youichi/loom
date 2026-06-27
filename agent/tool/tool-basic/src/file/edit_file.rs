@@ -1,6 +1,6 @@
 //! Edit-file tool: performs exact string replacements in a file under the working folder.
 //!
-//! The fuzzy find-and-replace engine lives in [`loom_core::text`] and is
+//! The fuzzy find-and-replace engine lives in [`loom_util::text`] and is
 //! re-exported here as [`replace`] for backward compatibility.
 
 use std::sync::Arc;
@@ -20,7 +20,7 @@ pub use loom_types::tools::tool_name::TOOL_EDIT_FILE;
 ///
 /// Kept here so existing callers (`apply_patch`, `multiedit`, `file::mod`) can
 /// continue to use `super::edit_file::replace` without changing their imports.
-pub use loom_core::text::fuzzy_replace::replace;
+pub use loom_util::text::fuzzy_replace::replace;
 
 const DESCRIPTION: &str = "\
 Performs exact string replacements in files.

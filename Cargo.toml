@@ -41,7 +41,8 @@ members = [
     "loom-react-config",
     "loom-cli-types",
     "experimental/memory-v2",
-    "loom-core",
+    "foundation/loom-util",
+    "foundation/loom-http-retry",
     "loom-codex",
 ]
 

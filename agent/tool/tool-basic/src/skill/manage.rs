@@ -369,7 +369,7 @@ impl SkillManagerTool {
         };
 
         // ── 2. Fuzzy find-and-replace ──
-        let new_content = match loom_core::text::fuzzy_replace::replace(
+        let new_content = match loom_util::text::fuzzy_replace::replace(
             &original_raw,
             old_string,
             new_string,

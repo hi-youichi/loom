@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 loom-types = { path = "../../loom-types" }
-loom-core = { path = "../../loom-core" }
+loom-util = { path = "../../foundation/loom-util" }
 loom-graph = { path = "../../loom-graph" }
 loom-pregel = { path = "../../loom-pregel" }
 loom-llm = { path = "../../loom-llm" }

@@ -11,7 +11,7 @@ path = "src/lib.rs"
 
 [dependencies]
 model-spec-core = { path = "../model-spec-core" }
-loom-llm = { path = "../loom-llm" }
+loom-http-retry = { path = "../foundation/loom-http-retry" }
 reqwest = { version = "0.12", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

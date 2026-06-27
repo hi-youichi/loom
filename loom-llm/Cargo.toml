@@ -29,6 +29,9 @@ tracing = "0.1"
 # HTTP client
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 
+# HTTP retry utilities (re-exported via support::http_retry)
+loom-http-retry = { path = "../foundation/loom-http-retry" }
+
 # OpenAI client (for ChatOpenAI)
 async-openai = { version = "0.32", features = ["chat-completion", "model"] }
 
