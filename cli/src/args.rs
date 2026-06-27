@@ -106,8 +106,6 @@ pub(crate) struct Args {
 
 #[derive(Subcommand, Debug, Clone)]
 pub(crate) enum Command {
-    /// Run WebSocket server (ws://127.0.0.1:8080)
-    Serve(ServeArgs),
     /// Run ReAct graph (think → act → observe)
     React,
     /// Run DUP graph (understand → plan → act → observe)
@@ -269,13 +267,6 @@ pub(crate) enum ModelsCommand {
 pub(crate) struct ShowModelsArgs {
     /// Provider name (e.g., openai, bigmodel)
     pub(crate) name: String,
-}
-
-#[derive(clap::Args, Debug, Clone)]
-pub(crate) struct ServeArgs {
-    /// WebSocket listen address (default 127.0.0.1:8080)
-    #[arg(long, value_name = "ADDR")]
-    pub(crate) addr: Option<String>,
 }
 
 /// Arguments for the `got` subcommand.

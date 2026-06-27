@@ -50,7 +50,7 @@ use skill_usage_cmd::handle_skill_usage_command;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut args = Args::parse();
+    let args = Args::parse();
 
     // Preserve shell environment variables BEFORE config.toml is loaded.
     // This allows us to distinguish between shell-set and config.toml-set LOG_FILE.
@@ -58,32 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     print_config_report();
 
-    if let Some(Cmd::Serve(_)) = &args.cmd {
-        if args.log_file.is_none() && std::env::var_os("LOG_FILE").is_none() {
-            // Use the same default as CLI logging
-            let log_dir = config::home::cli_logs_dir();
-            let _ = std::fs::create_dir_all(&log_dir);
-            let log_path = log_dir.join("loom-serve.log");
-            eprintln!("config: log_file={}", log_path.display());
-            args.log_file = Some(log_path);
-        }
-    }
-
     let _log_guard = init_logging(&args, shell_env);
-
-    if let Some(Cmd::Serve(sa)) = &args.cmd {
-        if let Err(e) = serve::run_serve(sa.addr.as_deref(), false).await {
-            eprintln!("serve error: {}", e);
-            let msg = e.to_string();
-            if msg.contains("Address already in use") || msg.contains("already in use") {
-                eprintln!(
-                    "hint: 端口已被占用。可尝试：1) 使用 --addr 指定其他地址，如 --addr 127.0.0.1:8081；2) 结束占用该端口的进程（如 lsof -i :8080）。"
-                );
-            }
-            std::process::exit(1);
-        }
-        return Ok(());
-    }
 
     if let Some(Cmd::Session(sa)) = &args.cmd {
         handle_session_command(sa, args.json).await?;

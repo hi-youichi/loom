@@ -16,7 +16,6 @@ members = [
     "model-spec-core",
     "loom-examples",
     "cli",
-    "serve",
     "stream-event",
     "loom-workspace",
     "loom-acp",

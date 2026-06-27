@@ -1,6 +1,6 @@
 //! Tier resolution strategies: plan, spec, provider API, local.
 
-use loom_llm::registry::{ModelEntry, ProviderConfig};
+use model_spec_core::registry::{ModelEntry, ProviderConfig};
 
 use crate::model_registry::ModelRegistry;
 use crate::plan::tier_plans;

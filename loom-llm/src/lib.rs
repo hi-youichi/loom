@@ -8,6 +8,7 @@ pub mod tool;
 pub mod error;
 pub mod traits;
 pub mod client;
+pub mod factory;
 pub mod registry;
 pub mod support;
 

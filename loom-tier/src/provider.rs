@@ -1,6 +1,6 @@
 //! Provider configuration loading from environment/config.
 
-use loom_llm::registry::ProviderConfig;
+use model_spec_core::registry::ProviderConfig;
 
 /// Load provider configurations from the loom config file.
 pub fn load_provider_configs() -> Option<Vec<ProviderConfig>> {

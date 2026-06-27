@@ -17,7 +17,6 @@ use crate::Command;
 
 fn cmd_to_runcmd(cmd: &Command) -> RunCmd {
     match cmd {
-        Command::Serve(_) => unreachable!("serve handled in main"),
         Command::React => RunCmd::React,
         Command::Dup => RunCmd::Dup,
         Command::Tot => RunCmd::Tot,

@@ -39,8 +39,8 @@ async fn generate_title_llm(user_message: &str, model: Option<&str>) -> Option<S
     let model_str = model?;
     let (provider, _model_id) = model_str.split_once('/')?;
 
-    let providers = crate::provider::load_provider_configs()?;
-    let entry = crate::resolve::resolve_from_spec(provider, ModelTier::Light, &providers).await?;
+    let providers = loom_tier::provider::load_provider_configs()?;
+    let entry = loom_tier::resolve::resolve_from_spec(provider, ModelTier::Light, &providers).await?;
 
     let config = async_openai::config::OpenAIConfig::new()
         .with_api_key(entry.api_key.unwrap_or_default());

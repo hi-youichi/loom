@@ -73,8 +73,15 @@ tool-experimental = { path = "../agent/tool/tool-experimental" }
 # Protocol types (loom-protocol crate)
 loom-protocol = { path = "../loom-protocol" }
 
-# Tier resolution, model registry, LLM factory (loom-tier crate)
+# Tier resolution, model registry (loom-tier crate)
 loom-tier = { path = "../loom-tier" }
+
+# Model spec core types (ModelEntry, ProviderConfig, etc.)
+model-spec-core = { path = "../model-spec-core" }
+
+# LLM factory (moved from loom-tier): ChatOpenAI, ChatOpenAICompat
+async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
+reqwest = { version = "0.12", features = ["json"] }
 
 # React build configuration (loom-react-config crate)
 loom-react-config = { path = "../loom-react-config" }

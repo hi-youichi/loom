@@ -3,8 +3,10 @@ pub mod limit;
 pub mod model;
 pub mod parser;
 pub mod provider;
+pub mod registry;
 pub mod spec;
 pub mod tier;
+pub mod tool_choice;
 
 pub use cost::Cost;
 pub use limit::{Modalities, ModalityType, ModelLimit};
@@ -14,4 +16,6 @@ pub use parser::{
     parse_provider,
 };
 pub use provider::Provider;
+pub use registry::{CachedModelList, CombinedModelList, ModelEntry, ProviderConfig};
 pub use tier::{pick_best_for_tier, ModelTier};
+pub use tool_choice::ToolChoiceMode;

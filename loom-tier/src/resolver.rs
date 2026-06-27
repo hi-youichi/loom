@@ -125,7 +125,7 @@ config
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_llm::registry::ModelEntry;
+    use crate::ModelEntry;
 
     #[test]
     fn test_resolved_tier_model_from_entry_complete() {

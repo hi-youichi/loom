@@ -30,6 +30,7 @@
 
 pub mod agent_run;
 pub mod cli_run;
+pub mod llm_factory;
 
 /// Global lock for tests that modify `LOOM_HOME` or `OPENAI_BASE_URL` env vars.
 /// Use in any test that sets/removes these env vars to prevent data races.

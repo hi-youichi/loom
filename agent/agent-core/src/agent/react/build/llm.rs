@@ -9,7 +9,7 @@ use loom_graph::GraphError;
 use loom_llm::support::audit::LlmAuditLog;
 use loom_llm::{ChatOpenAI, ChatOpenAICompat, LlmClient, LlmProvider, ModelEntry};
 use loom_llm::client::{FixedLlmProvider, RetryLlmClient};
-use loom_tier::create_llm_client;
+use loom_llm::factory::create_llm_client;
 use loom_model_spec::ModelTier;
 use tool_core::ToolRegistryLocked;
 
