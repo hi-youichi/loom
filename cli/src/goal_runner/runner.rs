@@ -85,13 +85,6 @@ impl GoalRunner {
         &self.task_id
     }
 
-    /// Set the maximum number of iterations the goal loop will run.
-    #[allow(dead_code)]
-    pub fn with_max_iterations(mut self, max: u32) -> Self {
-        self.max_iterations = max;
-        self
-    }
-
     /// Set an optional hard cap on cumulative token usage.
     pub fn with_token_budget(mut self, budget: u32) -> Self {
         self.token_budget = Some(budget);

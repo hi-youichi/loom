@@ -5,19 +5,17 @@ use async_trait::async_trait;
 use loom_graph::GraphError;
 use crate::client::ChatOpenAICompat;
 use crate::traits::{LlmClient, LlmProvider, LlmHeaders};
-use crate::registry::{ModelEntry, ProviderConfig};
+use crate::registry::ModelEntry;
 
 pub struct OpenAICompatProvider {
     base_url: String,
     api_key: String,
     provider_name: String,
     default_model: String,
-    #[allow(dead_code)]
-    providers: Vec<ProviderConfig>,
 }
 
 impl OpenAICompatProvider {
-    pub fn from_entry(entry: &ModelEntry, providers: Vec<ProviderConfig>) -> Self {
+    pub fn from_entry(entry: &ModelEntry) -> Self {
         let api_key = entry.api_key.clone().unwrap_or_default();
         let base_url = entry
             .base_url
@@ -28,7 +26,6 @@ impl OpenAICompatProvider {
             api_key,
             provider_name: entry.provider.clone(),
             default_model: entry.name.clone(),
-            providers,
         }
     }
 }

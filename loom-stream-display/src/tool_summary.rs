@@ -42,12 +42,6 @@ fn json_u64(args: &serde_json::Value, field: &str) -> Option<u64> {
     args.get(field).and_then(|v| v.as_u64())
 }
 
-/// Parse a JSON bool field from raw arguments JSON.
-#[allow(dead_code)]
-fn json_bool(args: &serde_json::Value, field: &str) -> Option<bool> {
-    args.get(field).and_then(|v| v.as_bool())
-}
-
 // ── CALL summaries ───────────────────────────────────────────────
 
 /// Generate a smart CALL summary for a tool.

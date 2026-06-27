@@ -91,6 +91,6 @@ pub use router::handle_message_with_deps;
 pub use sender::TeloxideSender;
 pub use session::SqliteSessionManager;
 pub use streaming::{
-    run_loom_agent_streaming, stream_message_handler, stream_message_handler_simple, StreamCommand,
+    run_loom_agent_streaming, stream_message_handler_simple, StreamCommand,
 };
 pub use traits::{AgentRunContext, AgentRunner, FileDownloader, MessageSender, SessionManager};

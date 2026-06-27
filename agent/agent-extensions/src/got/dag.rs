@@ -13,10 +13,11 @@ use super::state::{TaskGraph, TaskNode, TaskNodeState, TaskStatus};
 /// If the graph has a cycle, returns None. Nodes with no edges appear in
 /// arbitrary order relative to each other.
 ///
-/// **Interaction**: Called by `ready_nodes`, ExecuteGraphNode, and
-/// `append_subgraph` to decide execution order and validate DAG.
-#[allow(dead_code)]
-pub fn topological_sort(graph: &TaskGraph) -> Option<Vec<String>> {
+/// **Interaction**: Currently only exercised by unit tests.  Kept as a reusable
+/// utility for future DAG consumers and to document the topological ordering
+/// invariant used elsewhere in the module.
+#[cfg(test)]
+fn topological_sort(graph: &TaskGraph) -> Option<Vec<String>> {
     let ids: HashSet<String> = graph.nodes.iter().map(|n| n.id.clone()).collect();
     let mut in_degree: HashMap<String, usize> = ids.iter().cloned().map(|id| (id, 0)).collect();
     let mut out_edges: HashMap<String, Vec<String>> =

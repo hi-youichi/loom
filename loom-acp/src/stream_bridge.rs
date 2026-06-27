@@ -832,7 +832,9 @@ pub fn generate_tool_title(name: &str, input: Option<&serde_json::Value>) -> Str
                 ToolKind::Think => "Thinking",
                 ToolKind::Fetch => "Fetching",
                 ToolKind::SwitchMode => "Switching mode",
-                ToolKind::Execute | ToolKind::Other | _ => unreachable!(),
+                // Execute/Other are handled above; Unknown/future variants
+                // (ToolKind is #[non_exhaustive]) fall back to the tool name.
+                _ => return target.unwrap_or_else(|| name.to_string()),
             };
             match target {
                 Some(t) => format!("{} {}", verb, t),

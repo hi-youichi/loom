@@ -246,11 +246,6 @@ impl PregelRunner {
             }
         }
     }
-
-    /// Aborts inflight tasks. Currently a no-op since tasks run sequentially
-    /// via `JoinSet`; will be extended when parallel scheduling is added.
-    #[allow(dead_code)]
-    pub fn abort_inflight(&self) {}
 }
 
 fn build_node_input(

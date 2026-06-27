@@ -25,13 +25,12 @@
 //! - [`ReactBuildConfig`]: configuration for building runners from env or files.
 //! - [`ReactRunContext`]: resolved checkpointer, store, tool source, and run config.
 //!
-//! Custom files (act_node, agent_tool, config, observe_node, think_node, title_node, with_node_logging, build, runner) remain local.
+//! Custom files (act_node, config, observe_node, think_node, title_node, with_node_logging, build, runner) remain local.
 
 mod act_node;
 mod act_utils;
 mod act_executor;
 pub mod build;
-mod agent_tool;
 mod config;
 pub mod nudge;
 mod observe_node;

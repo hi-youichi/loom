@@ -12,7 +12,6 @@ pub use help::{HelpTool, TOOL_HELP};
 
 use std::sync::Arc;
 use tool_core::ToolRegistryLocked;
-use loom_memory::{Namespace, Store};
 use memory_v2::MemoryStore;
 use task_core::TaskDb;
 
@@ -41,15 +40,6 @@ pub async fn register_file_memory_tool_guarded(
             user_profile_enabled,
         )))
         .await;
-}
-
-#[allow(dead_code)]
-pub async fn register_memory_tools(registry: &ToolRegistryLocked, store: Arc<dyn Store>, namespace: Namespace) {
-    registry.register_async(Box::new(memory::RememberTool::new(store.clone(), namespace.clone()))).await;
-    registry.register_async(Box::new(memory::RecallTool::new(store.clone(), namespace.clone()))).await;
-    registry.register_async(Box::new(memory::SearchMemoriesTool::new(store.clone(), namespace.clone()))).await;
-    registry.register_async(Box::new(memory::ListMemoriesTool::new(store, namespace))).await;
-    registry.register_async(Box::new(conversation::GetRecentMessagesTool::new())).await;
 }
 
 pub async fn register_task_tools(registry: &ToolRegistryLocked, db: Arc<TaskDb>) {

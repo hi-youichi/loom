@@ -6,18 +6,16 @@ use async_openai::config::OpenAIConfig;
 use loom_graph::GraphError;
 use crate::client::ChatOpenAI;
 use crate::traits::{LlmClient, LlmProvider, LlmHeaders};
-use crate::registry::{ModelEntry, ProviderConfig};
+use crate::registry::ModelEntry;
 
 pub struct OpenAIProvider {
     config: OpenAIConfig,
     provider_name: String,
     default_model: String,
-    #[allow(dead_code)]
-    providers: Vec<ProviderConfig>,
 }
 
 impl OpenAIProvider {
-    pub fn from_entry(entry: &ModelEntry, providers: Vec<ProviderConfig>) -> Self {
+    pub fn from_entry(entry: &ModelEntry) -> Self {
         let mut config = OpenAIConfig::new();
         if let Some(ref api_key) = entry.api_key {
             config = config.with_api_key(api_key);
@@ -30,7 +28,6 @@ impl OpenAIProvider {
             config,
             provider_name: entry.provider.clone(),
             default_model: entry.name.clone(),
-            providers,
         }
     }
 }

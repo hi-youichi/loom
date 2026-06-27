@@ -6,7 +6,6 @@
 //! - Cache server capabilities and diagnostics
 //! - Handle server lifecycle and error recovery
 
-use crate::cache::DiagnosticCache;
 use crate::client::LspClient;
 use dashmap::DashMap;
 use config::LspServerConfig;
@@ -43,9 +42,6 @@ pub struct LspManager {
     clients: DashMap<String, Arc<RwLock<LspClient>>>,
     /// Server configurations
     configs: Vec<LspServerConfig>,
-    /// Diagnostic cache
-    #[allow(dead_code)]
-    diagnostic_cache: DiagnosticCache,
     /// Extension to language mapping
     extension_map: DashMap<String, String>,
     /// Working directory for resolving relative paths
@@ -74,7 +70,6 @@ impl LspManager {
         Self {
             clients: DashMap::new(),
             configs,
-            diagnostic_cache: DiagnosticCache::new(),
             extension_map,
             working_dir: std::env::current_dir().unwrap_or_default(),
         }

@@ -88,12 +88,10 @@ pub fn complexity_score(node: &TaskNode, _context: &ExpandContext) -> Complexity
     ComplexityLevel::Simple
 }
 
-/// Context passed to expand logic: node result, sibling states, task goal.
-#[allow(dead_code)] // Used by LLM expand (A4)
+/// Context passed to expand logic: node result and task goal.
 pub struct ExpandContext<'a> {
     pub node_id: &'a str,
     pub result: &'a str,
-    pub node_states: &'a HashMap<String, TaskNodeState>,
     pub input_message: &'a str,
 }
 
@@ -248,7 +246,6 @@ where
     let ctx = ExpandContext {
         node_id,
         result,
-        node_states: &state.node_states,
         input_message: &state.input_message,
     };
 
@@ -313,7 +310,6 @@ mod tests {
         let ctx = ExpandContext {
             node_id: "a",
             result: "done",
-            node_states: &HashMap::new(),
             input_message: "task",
         };
         assert_eq!(complexity_score(&n, &ctx), ComplexityLevel::Simple);
@@ -325,7 +321,6 @@ mod tests {
         let ctx = ExpandContext {
             node_id: "a",
             result: "done",
-            node_states: &HashMap::new(),
             input_message: "task",
         };
         assert_eq!(complexity_score(&n, &ctx), ComplexityLevel::Complex);
@@ -337,7 +332,6 @@ mod tests {
         let ctx = ExpandContext {
             node_id: "a",
             result: "done",
-            node_states: &HashMap::new(),
             input_message: "task",
         };
         assert_eq!(complexity_score(&n, &ctx), ComplexityLevel::Complex);
@@ -405,7 +399,6 @@ mod tests {
         let ctx = ExpandContext {
             node_id: "analyze",
             result: "intermediate result",
-            node_states: &HashMap::new(),
             input_message: "Overall task",
         };
         let node = node("analyze", "Analyze and compare");

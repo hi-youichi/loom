@@ -40,10 +40,6 @@ const GOT_FILE: &str = "got.yaml";
 const DUP_FILE: &str = "dup.yaml";
 const PROMPT_FILE: &str = "prompt.yaml";
 
-/// Default directory name when `PROMPTS_DIR` is not set.
-#[allow(dead_code)]
-const DEFAULT_PROMPTS_DIR: &str = "prompts";
-
 /// Loads agent prompts from a directory of YAML files.
 ///
 /// # Errors

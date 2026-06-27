@@ -260,7 +260,6 @@ impl Node<GotState> for ExecuteGraphNode {
                     let expand_ctx = ExpandContext {
                         node_id: &node_id,
                         result: &result,
-                        node_states: &state.node_states,
                         input_message: &state.input_message,
                     };
                     let complexity_override = if let Some(ref n) = node {

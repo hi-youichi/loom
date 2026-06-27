@@ -36,11 +36,6 @@ impl ShellTool {
             cancel: None,
         }
     }
-    #[allow(dead_code)]
-    pub fn with_timeout(mut self, timeout: Duration) -> Self {
-        self.timeout = timeout;
-        self
-       }
 
     pub fn with_cancel(mut self, cancel: CancellationToken) -> Self {
         self.cancel = Some(cancel);
@@ -172,19 +167,9 @@ impl LoomTool {
         self.cancellation = Some(c);
         self
     }
-    #[allow(dead_code)]
-    pub fn with_verbose(mut self, v: bool) -> Self {
-        self.verbose = v;
-        self
-    }
 
     pub fn with_model(mut self, m: String) -> Self {
         self.model = Some(m);
-        self
-    }
-    #[allow(dead_code)]
-    pub fn with_agent(mut self, a: String) -> Self {
-        self.agent = Some(a);
         self
     }
 

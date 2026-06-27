@@ -12,15 +12,11 @@ const TICK_INTERVAL: Duration = Duration::from_millis(150);
 
 /// Messages sent from the owner to the spinner background thread.
 enum SpinnerMsg {
-    #[allow(dead_code)] // Used by run_tty_spinner / run_pipe_spinner
-    Update(String),
     Finish,
 }
 
 /// A trait for spinner-like objects, allowing polymorphism between active and no-op spinners.
 pub trait SpinnerTrait: Send {
-    #[allow(dead_code)] // Part of the trait API
-    fn update(&mut self, label: String);
     fn finish_box(self: Box<Self>);
 }
 
@@ -65,12 +61,6 @@ impl Spinner {
         }
     }
 
-    /// Updates the spinner's status label.
-    #[allow(dead_code)] // Part of the public API
-    pub fn update(&self, label: String) {
-        let _ = self.tx.send(SpinnerMsg::Update(label));
-    }
-
     /// Stops the spinner and clears the current line (TTY) or does nothing (pipe).
     pub fn finish(mut self) {
         let _ = self.tx.send(SpinnerMsg::Finish);
@@ -81,9 +71,6 @@ impl Spinner {
 }
 
 impl SpinnerTrait for Spinner {
-    fn update(&mut self, label: String) {
-        Spinner::update(self, label);
-    }
     fn finish_box(self: Box<Self>) {
         self.finish();
     }
@@ -101,7 +88,7 @@ impl Drop for Spinner {
 
 /// Runs the animated spinner loop for TTY stderr.
 fn run_tty_spinner(rx: mpsc::Receiver<SpinnerMsg>, initial_label: &str) {
-    let mut label = initial_label.to_string();
+    let label = initial_label.to_string();
     let mut frame_idx = 0usize;
 
     {
@@ -113,19 +100,6 @@ fn run_tty_spinner(rx: mpsc::Receiver<SpinnerMsg>, initial_label: &str) {
 
     loop {
         match rx.recv_timeout(TICK_INTERVAL) {
-            Ok(SpinnerMsg::Update(new_label)) => {
-                label = new_label;
-                frame_idx = (frame_idx + 1) % SPINNER_FRAMES.len();
-                let stderr = std::io::stderr();
-                let mut stderr_lock = stderr.lock();
-                let _ = write!(
-                    stderr_lock,
-                    "\r{} {}",
-                    SPINNER_FRAMES[frame_idx],
-                    truncate_to_terminal_width(&label, 2)
-                );
-                let _ = stderr_lock.flush();
-            }
             Ok(SpinnerMsg::Finish) | Err(mpsc::RecvTimeoutError::Disconnected) => {
                 let stderr = std::io::stderr();
                 let mut stderr_lock = stderr.lock();
@@ -154,14 +128,8 @@ fn run_pipe_spinner(rx: mpsc::Receiver<SpinnerMsg>, initial_label: &str) {
     // Just print the initial label once
     eprintln!("  {}", initial_label);
 
-    loop {
-        match rx.recv() {
-            Ok(SpinnerMsg::Update(label)) => {
-                eprintln!("  {}", label);
-            }
-            Ok(SpinnerMsg::Finish) | Err(_) => return,
-        }
-    }
+    // Block until the spinner is told to finish (or the sender drops).
+    let _ = rx.recv();
 }
 
 /// Truncates a string to fit within `margin` chars of the terminal width.
@@ -186,19 +154,6 @@ fn is_stderr_tty() -> bool {
     loom_stream_display::terminal::is_stderr_tty()
 }
 
-/// A no-op spinner that does nothing. Used when spinning is disabled (quiet mode).
-#[allow(dead_code)] // Public API for quiet mode
-pub struct NoopSpinner;
-
-#[allow(dead_code)] // Public API for quiet mode
-impl NoopSpinner {
-    pub fn new(_label: String) -> Self {
-        Self
-    }
-    pub fn update(&self, _label: String) {}
-    pub fn finish(self) {}
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,19 +173,9 @@ mod tests {
     }
 
     #[test]
-    fn spinner_msg_send_and_receive() {
+    fn spinner_msg_finish_send_and_receive() {
         let (tx, rx) = mpsc::channel::<SpinnerMsg>();
-        tx.send(SpinnerMsg::Update("test".to_string())).unwrap();
-        match rx.recv().unwrap() {
-            SpinnerMsg::Update(label) => assert_eq!(label, "test"),
-            _ => panic!("expected Update"),
-        }
-    }
-
-    #[test]
-    fn noop_spinner_does_not_crash() {
-        let spinner = NoopSpinner::new("test".to_string());
-        spinner.update("updated".to_string());
-        spinner.finish();
+        tx.send(SpinnerMsg::Finish).unwrap();
+        assert!(matches!(rx.recv().unwrap(), SpinnerMsg::Finish));
     }
 }

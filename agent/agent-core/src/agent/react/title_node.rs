@@ -38,13 +38,11 @@ fn clamp_summary_chars(s: &str) -> String {
 /// suitable for display in session lists.
 pub struct TitleNode {
     provider: Arc<dyn LlmProvider>,
-    #[allow(dead_code)]
-    headers: Option<LlmHeaders>,
 }
 
 impl TitleNode {
-    pub fn new(provider: Arc<dyn LlmProvider>, headers: Option<LlmHeaders>) -> Self {
-        Self { provider, headers }
+    pub fn new(provider: Arc<dyn LlmProvider>, _headers: Option<LlmHeaders>) -> Self {
+        Self { provider }
     }
 }
 

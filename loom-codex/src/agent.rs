@@ -22,13 +22,12 @@ pub enum OutputEvent {
 
 // ── Per-thread session state ──────────────────────────────────────────────────
 
-#[allow(dead_code)]
 struct ThreadSession {
+    #[allow(dead_code)] // thread_id used as HashMap key, not read from struct
     thread_id: String,
     model: String,
     working_dir: PathBuf,
     system_prompt: Option<String>,
-    approval_policy: String,
     cancel_flag: Arc<AtomicBool>,
 }
 
@@ -112,18 +111,12 @@ impl CodexAgent {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .or_else(|| self.args.system_prompt.clone());
-        let approval_policy = params
-            .get("approvalPolicy")
-            .and_then(|v| v.as_str())
-            .unwrap_or(&self.args.approval_policy)
-            .to_string();
 
         let session = ThreadSession {
             thread_id: thread_id.clone(),
             model,
             working_dir,
             system_prompt,
-            approval_policy,
             cancel_flag: Arc::new(AtomicBool::new(false)),
         };
 
@@ -182,18 +175,12 @@ impl CodexAgent {
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
                 .or_else(|| self.args.system_prompt.clone());
-            let approval_policy = params
-                .get("approvalPolicy")
-                .and_then(|v| v.as_str())
-                .unwrap_or(&self.args.approval_policy)
-                .to_string();
 
             let session = ThreadSession {
                 thread_id: thread_id.clone(),
                 model,
                 working_dir,
                 system_prompt,
-                approval_policy,
                 cancel_flag: Arc::new(AtomicBool::new(false)),
             };
 

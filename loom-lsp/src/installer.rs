@@ -45,6 +45,9 @@ struct ServerDefinition {
     executable: String,
     check_args: Vec<String>,
     install_commands: Vec<String>,
+    /// Package managers supported for this language server (metadata only).
+    /// Used by `test_installer_all_servers_have_package_managers` to verify
+    /// every server definition declares at least one package manager.
     #[allow(dead_code)]
     package_managers: Vec<String>,
 }

@@ -29,27 +29,6 @@ fn parse_provider_model(model: &str) -> Option<(&str, &str)> {
 pub use loom_tier::{DefaultTierResolver, ResolvedTierModel, TierResolver};
 pub(crate) use loom_tier::resolve_tier_for_config;
 
-#[allow(dead_code)]
-pub(crate) async fn resolve_title_llm(
-    config: &ReactBuildConfig,
-) -> Option<Arc<dyn LlmClient>> {
-    let resolved = resolve_tier_for_config(config, ModelTier::Light).await?;
-    let entry = ModelEntry {
-        id: resolved.model_id.clone(),
-        name: resolved.model_id,
-        provider: resolved.provider_type.clone().unwrap_or_default(),
-        base_url: resolved.base_url,
-        api_key: resolved.api_key,
-        provider_type: resolved.provider_type,
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        family: None,
-        version: None,
-    };
-    create_llm_client(&entry, None).ok().map(Arc::from)
-}
-
 pub(crate) fn model_entry_from_config(
     config: &ReactBuildConfig,
 ) -> Result<ModelEntry, BuildRunnerError> {

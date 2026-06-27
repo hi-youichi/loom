@@ -9,7 +9,6 @@ use crate::content::content_blocks_to_user_content;
 use crate::session::{SessionId as OurSessionId, SessionStore};
 use crate::session_config_store::SessionConfigStore;
 use crate::stream_bridge::SessionNotifier;
-use crate::terminal::TerminalManager;
 use crate::tools::create_acp_tools;
 use tool_basic::bash::LocalCommandExecutor;
 use agent_client_protocol::schema::v1::{
@@ -101,8 +100,6 @@ pub struct LoomAcpAgent {
     pub(crate) agent_registry: AgentRegistry,
     pub(crate) config_store: SessionConfigStore,
     pub(crate) session_update_tx: Option<mpsc::Sender<SessionNotification>>,
-    #[allow(dead_code)]
-    pub(crate) terminal_mgr: Arc<TerminalManager>,
     pub(crate) client_capabilities: std::sync::RwLock<ClientCapabilitiesInfo>,
     pub(crate) model_provider: Arc<dyn ModelProvider>,
 }
@@ -114,7 +111,6 @@ impl std::fmt::Debug for LoomAcpAgent {
             .field("agent_registry", &"..")
             .field("config_store", &"..")
             .field("session_update_tx", &self.session_update_tx.is_some())
-            .field("terminal_mgr", &"..")
             .finish()
     }
 }
@@ -131,7 +127,6 @@ impl LoomAcpAgent {
             agent_registry: AgentRegistry::new(),
             config_store,
             session_update_tx: None,
-            terminal_mgr: Arc::new(TerminalManager::new()),
             client_capabilities: std::sync::RwLock::new(ClientCapabilitiesInfo::default()),
             model_provider: Arc::new(RealModelProvider),
         })
@@ -147,7 +142,6 @@ impl LoomAcpAgent {
             agent_registry: AgentRegistry::new(),
             config_store,
             session_update_tx: Some(tx),
-            terminal_mgr: Arc::new(TerminalManager::new()),
             client_capabilities: std::sync::RwLock::new(ClientCapabilitiesInfo::default()),
             model_provider: Arc::new(RealModelProvider),
         })
@@ -378,7 +372,6 @@ impl LoomAcpAgent {
         Ok(response)
     }
 
-    #[allow(dead_code)]
     pub async fn authenticate(
         &self,
         _args: AuthenticateRequest,

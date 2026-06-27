@@ -14,7 +14,7 @@ use async_openai::config::OpenAIConfig;
 use crate::traits::{LlmClient, LlmHeaders, LlmProvider};
 use crate::{ChatOpenAI, ChatOpenAICompat, OpenAICompatProvider, OpenAIProvider};
 use loom_graph::GraphError;
-use model_spec_core::registry::{ModelEntry, ProviderConfig};
+use model_spec_core::registry::ModelEntry;
 
 /// Creates an LLM client from a ModelEntry with provider configuration.
 pub fn create_llm_client(
@@ -89,7 +89,6 @@ pub fn create_llm_client(
 /// Create an [`LlmProvider`] from a [`ModelEntry`].
 pub fn create_llm_provider(
     entry: &ModelEntry,
-    providers: Vec<ProviderConfig>,
 ) -> Result<Arc<dyn LlmProvider>, GraphError> {
     let provider_type = entry.provider_type.as_deref().unwrap_or_else(|| {
         if entry.provider.eq_ignore_ascii_case("openai") {
@@ -101,11 +100,11 @@ pub fn create_llm_provider(
 
     match provider_type {
         "openai" => {
-            let provider = OpenAIProvider::from_entry(entry, providers);
+            let provider = OpenAIProvider::from_entry(entry);
             Ok(Arc::new(provider))
         }
         _ => {
-            let provider = OpenAICompatProvider::from_entry(entry, providers);
+            let provider = OpenAICompatProvider::from_entry(entry);
             Ok(Arc::new(provider))
         }
     }

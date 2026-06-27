@@ -5,8 +5,11 @@ use crate::agent::OutputEvent;
 use crate::stdio_loop::CodexNotification;
 use serde_json::json;
 
+/// Result of an approval request. Reserved for the Codex Daemon approval
+/// protocol — `request()` is not yet wired into the event bridge but will be
+/// once command-execution interception is implemented.
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
+#[allow(dead_code)] // reserved: Codex approval protocol (see docs/dev/loom-codex-daemon.md)
 pub enum ApprovalResult {
     Approved,
     Denied,
@@ -14,7 +17,9 @@ pub enum ApprovalResult {
 
 pub struct ApprovalManager {
     pending: Mutex<HashMap<String, oneshot::Sender<bool>>>,
-    #[allow(dead_code)]
+    /// Output channel for sending requestApproval notifications to the client.
+    /// Reserved — only used by `request()` which is not yet wired.
+    #[allow(dead_code)] // reserved: Codex approval protocol
     output_tx: mpsc::Sender<OutputEvent>,
 }
 
@@ -27,7 +32,10 @@ impl ApprovalManager {
     }
 
     /// Sends requestApproval notification to client and waits for approve/deny response.
-    #[allow(dead_code)]
+    ///
+    /// Reserved — not yet called from the event bridge. Will be invoked when
+    /// command-execution interception is implemented.
+    #[allow(dead_code)] // reserved: Codex approval protocol
     pub async fn request(&self, call_id: String, command: String) -> ApprovalResult {
         let (tx, rx) = oneshot::channel();
         {

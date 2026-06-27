@@ -567,7 +567,7 @@ mod tests {
         let jsonl_path = review_dir.join("history.jsonl");
 
         let r1 = make_record("s1", false);
-        std::fs::write(&jsonl_path, &format!("{}\n", serde_json::to_string(&r1).unwrap())).unwrap();
+        std::fs::write(&jsonl_path, format!("{}\n", serde_json::to_string(&r1).unwrap())).unwrap();
 
         // First open migrates
         history.list(10).unwrap();
@@ -575,7 +575,7 @@ mod tests {
 
         // Recreate a stale jsonl to simulate "leftover" — migration should NOT re-run
         // because .bak already exists (migration marker).
-        std::fs::write(&jsonl_path, &format!("{}\n", serde_json::to_string(&make_record("s2", false)).unwrap())).unwrap();
+        std::fs::write(&jsonl_path, format!("{}\n", serde_json::to_string(&make_record("s2", false)).unwrap())).unwrap();
         history.list(10).unwrap();
         // Still only s1, not s2
         assert_eq!(history.review_status_map().unwrap().len(), 1);

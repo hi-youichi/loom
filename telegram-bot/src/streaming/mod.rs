@@ -6,4 +6,4 @@ pub mod message_handler;
 pub mod retry;
 
 pub use agent::run_loom_agent_streaming;
-pub use message_handler::{stream_message_handler, stream_message_handler_simple, StreamCommand};
+pub use message_handler::{stream_message_handler_simple, StreamCommand};
