@@ -11,7 +11,7 @@ use loom_llm::ToolCall;
 use loom_model_spec::{
     build_composite_resolver, ConfigModelEntry, ConfigProviderEntry, ModelLimitResolver,
 };
-use loom_protocol::Envelope;
+use stream_event::Envelope;
 use loom_react_config::profile::list_available_profiles;
 use loom_stream::MessageChunkKind;
 use loom_types::state::ReActState;
@@ -27,7 +27,7 @@ use super::display::{
     format_tot_state_display, truncate_display,
 };
 use loom::agent_run::{RunCmd, RunOptions};
-use loom_protocol::EnvelopeState;
+use stream_event::EnvelopeState;
 use loom_stream::StreamEvent;
 use loom_stream_display as panel_format;
 

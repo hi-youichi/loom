@@ -12,9 +12,19 @@
 use tool_core::ToolSpec;
 use loom_graph::GraphError;
 use agent::{build_react_run_context, BuildRunnerError};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::run::{build_react_config, RunError, RunOptions};
+
+/// Tool show response: either `tool` (JSON) or `tool_yaml` (YAML string).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ToolShowResponse {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_yaml: Option<String>,
+}
 
 /// Maximum length for description in the list table. Longer descriptions are truncated with "...".
 const LIST_DESC_MAX_LEN: usize = 60;
@@ -91,7 +101,7 @@ pub fn format_tools_list(tools: &[ToolSpec], output_json: bool) -> Result<(), Ru
 
 /// Formats tool show output from ToolShowResponse.
 pub fn format_tool_show_output(
-    r: &loom_protocol::ToolShowResponse,
+    r: &ToolShowResponse,
     format: ToolShowFormat,
 ) -> Result<(), RunError> {
     match format {
@@ -201,7 +211,6 @@ pub async fn show_tool(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_protocol::ToolShowResponse;
     use tool_core::ToolSpec;
     use std::path::PathBuf;
 

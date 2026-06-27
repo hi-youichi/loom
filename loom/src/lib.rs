@@ -17,7 +17,6 @@
 //! - `loom_tier` — tier resolution, model registry, LLM factory
 //! - `loom_cache` — `Cache`, `InMemoryCache`
 //! - `loom_compress` — context compression / compaction
-//! - `loom_protocol` — WebSocket message types, streaming protocol
 //! - `loom_pregel` — low-level Pregel graph runtime
 //! - `loom_commands` — slash command parsing and execution
 //! - `loom_model_spec` — `ModelSpec`, resolvers

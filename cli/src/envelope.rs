@@ -1,3 +1,3 @@
 //! Re-export envelope state from loom (protocol_spec §2 / §7.1).
 
-pub use loom_protocol::EnvelopeState;
+pub use stream_event::EnvelopeState;

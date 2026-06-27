@@ -14,9 +14,10 @@ use agent_extensions::tot::build::build_tot_runner;
 use agent_extensions::tot::{TotRunner, TotState};
 use loom_llm::LlmClient;
 use loom_llm::support::uuid6::uuid6;
-use loom_protocol::export::stream_event_to_format_a;
-use loom_protocol::stream::stream_event_to_protocol_envelope;
-use loom_protocol::{EnvelopeState, ProtocolEventEnvelope};
+use crate::agent_run::stream_convert::{
+    stream_event_to_format_a, stream_event_to_protocol_envelope, ProtocolEventEnvelope,
+};
+use stream_event::EnvelopeState;
 use loom_react_config::ReactBuildConfig;
 use loom_stream::StreamEvent;
 use loom_types::active_operation::RunCancellation;

@@ -70,8 +70,6 @@ tool-basic = { path = "../agent/tool/tool-basic" }
 tool-extensions = { path = "../agent/tool/tool-extensions" }
 tool-experimental = { path = "../agent/tool/tool-experimental" }
 
-# Protocol types (loom-protocol crate)
-loom-protocol = { path = "../loom-protocol" }
 
 # Tier resolution, model registry (loom-tier crate)
 loom-tier = { path = "../loom-tier" }

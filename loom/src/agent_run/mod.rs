@@ -1,4 +1,5 @@
 pub mod dispatch;
+pub mod stream_convert;
 
 pub use agent::run_types::{RunCompletion, RunOptions, AgentRunResult, AgentRunError};
 

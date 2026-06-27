@@ -2,7 +2,7 @@
 
 use crate::model_cmd::{list_all_models, list_provider_models};
 use crate::tool_cmd::{list_tools, show_tool, ToolShowFormat};
-use loom_protocol::Envelope;
+use stream_event::Envelope;
 use loom::agent_run::{RunCmd, RunError, RunOptions};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};

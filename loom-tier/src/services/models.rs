@@ -1,10 +1,21 @@
 //! Model service for managing available models and model metadata.
 
-use loom_protocol::responses::ModelInfo;
 use model_spec_core::spec::{Model, Provider};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+/// Model information for API responses.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct ModelInfo {
+    pub id: String,
+    pub name: String,
+    pub provider: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub family: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<Vec<String>>,
+}
 
 /// Model service for managing available models
 #[derive(Clone)]

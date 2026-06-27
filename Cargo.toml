@@ -35,7 +35,6 @@ members = [
     "agent/tool/tool-extensions",
     "agent/tool/tool-experimental",
     "loom-background-review",
-    "loom-protocol",
     "loom-stream-display",
     "loom-prompt",
     "loom-tier",
