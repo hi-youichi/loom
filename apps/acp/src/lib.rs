@@ -194,6 +194,7 @@ pub mod last_model;
 pub mod logging;
 pub mod protocol;
 pub mod review_runner;
+pub mod server;
 pub mod session;
 pub mod session_config_store;
 pub mod stream_bridge;

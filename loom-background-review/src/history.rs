@@ -580,4 +580,86 @@ mod tests {
         // Still only s1, not s2
         assert_eq!(history.review_status_map().unwrap().len(), 1);
     }
+
+    #[test]
+    fn review_status_pending_as_str() {
+        assert_eq!(ReviewStatus::Pending.as_str(), "pending");
+    }
+
+    #[test]
+    fn review_status_from_skipped_variants() {
+        assert_eq!(ReviewStatus::from_skipped(true), ReviewStatus::Skipped);
+        assert_eq!(ReviewStatus::from_skipped(false), ReviewStatus::Reviewed);
+    }
+
+    #[test]
+    fn review_history_new_joins_memory_db() {
+        let dir = TempDir::new().unwrap();
+        let history = ReviewHistory::new(dir.path());
+        history.append(&make_record("new-1", false)).unwrap();
+        assert_eq!(history.list(10).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn open_creates_nested_parent_dirs() {
+        let dir = TempDir::new().unwrap();
+        let nested = dir.path().join("a/b/c/memory.db");
+        let history = ReviewHistory::with_db_path(nested.clone());
+        history.append(&make_record("nested-1", false)).unwrap();
+        assert!(nested.exists());
+    }
+
+    #[test]
+    fn migrate_from_jsonl_skips_blank_lines() {
+        let dir = TempDir::new().unwrap();
+        let loom_home = dir.path();
+        let review_dir = loom_home.join("data").join("review");
+        std::fs::create_dir_all(&review_dir).unwrap();
+        let jsonl_path = review_dir.join("history.jsonl");
+
+        let r1 = make_record("blank-1", false);
+        let valid = serde_json::to_string(&r1).unwrap();
+        // Mix of empty lines (L102) and valid records
+        std::fs::write(&jsonl_path, format!("\n{}\n\n", valid)).unwrap();
+
+        let history = ReviewHistory::with_db_path(loom_home.join("memory.db"));
+        let records = history.list(10).unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].session_id, "blank-1");
+    }
+
+    #[test]
+    fn migrate_from_jsonl_invalid_json_returns_err() {
+        let dir = TempDir::new().unwrap();
+        let loom_home = dir.path();
+        let review_dir = loom_home.join("data").join("review");
+        std::fs::create_dir_all(&review_dir).unwrap();
+        let jsonl_path = review_dir.join("history.jsonl");
+
+        std::fs::write(&jsonl_path, "{\"session_id\":\"x\"}\nNOT_JSON\n").unwrap();
+
+        let history = ReviewHistory::with_db_path(loom_home.join("memory.db"));
+        let result = history.list(10);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Migration: failed to parse"), "got: {}", err);
+    }
+
+    #[test]
+    fn review_status_map_fallback_for_unknown_status() {
+        let (_dir, history) = setup();
+        history.append(&make_record("known", false)).unwrap();
+
+        // Directly corrupt the status to an unrecognized value to exercise the
+        // `_ => ReviewStatus::Reviewed` fallback arm.
+        let conn = rusqlite::Connection::open(&history.db_path).unwrap();
+        conn.execute(
+            "UPDATE review_status SET status = 'unknown' WHERE session_id = 'known'",
+            [],
+        )
+        .unwrap();
+
+        let map = history.review_status_map().unwrap();
+        assert_eq!(map.get("known"), Some(&ReviewStatus::Reviewed));
+    }
 }

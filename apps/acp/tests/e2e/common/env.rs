@@ -13,7 +13,7 @@
 //! }).await;
 //! ```
 //!
-//! The loom-acp child spawned by `AcpTestHarness` inherits the test
+//! The `loom acp` child spawned by `AcpTestHarness` inherits the test
 //! process's environment, so:
 //!
 //!   - sqlite checkpointer lands under `<tmp>/thread/<sid>/...`
@@ -32,24 +32,22 @@ use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
 
-/// Resolved path to the loom-acp binary cargo built for this test invocation.
+/// Resolved path to the `loom` binary (built by the `cli` crate).
 ///
-/// cargo injects `CARGO_BIN_EXE_<name>` at compile time for test binaries,
-/// where `<name>` is the bin name with hyphens replaced by underscores
-/// (hyphens are not valid Rust identifiers). Falls back to deriving the
-/// path from `current_exe()` when the env var is not set (e.g. `cargo build
-/// --tests` without `--test`).
+/// Since the `acp` crate no longer has its own binary, we derive the path
+/// from `current_exe()` — test binaries live in `target/<profile>/deps/`,
+/// so going up two parents gives `target/<profile>/` where `loom` resides.
 pub fn binary_path() -> PathBuf {
-    if let Some(p) = option_env!("CARGO_BIN_EXE_loom_acp") {
+    if let Some(p) = option_env!("CARGO_BIN_EXE_loom") {
         return PathBuf::from(p);
     }
     let exe = std::env::current_exe().expect("get current_exe");
-    let bin_name = if cfg!(windows) { "loom-acp.exe" } else { "loom-acp" };
-    let target_debug = exe
+    let bin_name = if cfg!(windows) { "loom.exe" } else { "loom" };
+    let target_dir = exe
         .parent()
         .and_then(|p| p.parent())
         .unwrap_or_else(|| exe.parent().expect("test exe parent"));
-    target_debug.join(bin_name)
+    target_dir.join(bin_name)
 }
 
 /// Set `LOOM_HOME` to `env.loom_home()`, run `fut`, restore prior value.

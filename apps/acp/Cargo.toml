@@ -1,37 +1,34 @@
 [package]
-name = "loom-acp"
+name = "acp"
 version.workspace = true
 edition.workspace = true
 description = "ACP (Agent Client Protocol) server for Loom — run Loom as an ACP agent in IDEs"
 license.workspace = true
 authors.workspace = true
 
-[[bin]]
-name = "loom-acp"
-path = "src/main.rs"
-
 [lib]
+name = "loom_acp"
 path = "src/lib.rs"
 
 [dependencies]
-loom = { path = "../loom" }
-loom-cli-types = { path = "../loom-cli-types" }
+loom = { path = "../../loom" }
+loom-cli-types = { path = "../../loom-cli-types" }
 
-loom-graph = { path = "../loom-graph" }
-loom-llm = { path = "../loom-llm" }
-loom-memory = { path = "../loom-memory" }
-tool-core = { path = "../agent/tool/tool-core" }
-tool-basic = { path = "../agent/tool/tool-basic" }
-loom-types = { path = "../loom-types" }
-loom-tier = { path = "../loom-tier" }
-loom-react-config = { path = "../loom-react-config" }
-loom-stream = { path = "../loom-stream" }
+loom-graph = { path = "../../loom-graph" }
+loom-llm = { path = "../../loom-llm" }
+loom-memory = { path = "../../loom-memory" }
+tool-core = { path = "../../agent/tool/tool-core" }
+tool-basic = { path = "../../agent/tool/tool-basic" }
+loom-types = { path = "../../loom-types" }
+loom-tier = { path = "../../loom-tier" }
+loom-react-config = { path = "../../loom-react-config" }
+loom-stream = { path = "../../loom-stream" }
 
-loom-commands = { path = "../loom-commands" }
-loom-background-review = { path = "../loom-background-review" }
-config = { path = "../config", features = ["tracing-init"] }
-task-core = { path = "../task-core" }
-loom-prompt = { path = "../loom-prompt" }
+loom-commands = { path = "../../loom-commands" }
+loom-background-review = { path = "../../loom-background-review" }
+config = { path = "../../config", features = ["tracing-init"] }
+task-core = { path = "../../experimental/task/task-core" }
+loom-prompt = { path = "../../loom-prompt" }
 agent-client-protocol = { version = "0.15.1", features = ["unstable_boolean_config", "unstable_session_fork", "unstable_cancel_request", "unstable_model_config_category"] }
 async-trait = { workspace = true }
 tokio = { workspace = true }

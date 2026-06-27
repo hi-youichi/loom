@@ -208,3 +208,78 @@ pub async fn maybe_run_curator(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn registry_new_starts_empty_and_wait_all_returns_zero() {
+        let registry = PendingReviewRegistry::new();
+        assert_eq!(registry.wait_all().await, 0);
+    }
+
+    #[tokio::test]
+    async fn push_then_wait_all_returns_count_and_drains() {
+        let registry = PendingReviewRegistry::new();
+        let handle = tokio::spawn(async {});
+        registry.push(handle);
+        assert_eq!(registry.wait_all().await, 1);
+
+        assert_eq!(registry.wait_all().await, 0);
+    }
+
+    #[tokio::test]
+    async fn wait_for_pending_reviews_invokes_global_registry() {
+        let _ = wait_for_pending_reviews().await;
+    }
+
+    #[tokio::test]
+    async fn wait_all_handles_completion_successfully() {
+        let registry = PendingReviewRegistry::new();
+        let handle = tokio::spawn(async {
+            tokio::task::yield_now().await;
+        });
+        registry.push(handle);
+        let count = registry.wait_all().await;
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn run_curator_if_needed_returns_ok_when_should_run_false() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = run_curator_if_needed(dir.path(), &CuratorConfig::default());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn skills_default_path_public_returns_a_path() {
+        let p = skills_default_path_public();
+        assert!(p.is_absolute() || p.components().count() > 0);
+    }
+
+    #[tokio::test]
+    async fn run_curator_llm_if_needed_returns_none_when_not_forced_and_should_run_false() {
+        let dir = tempfile::tempdir().unwrap();
+        let result =
+            run_curator_llm_if_needed(dir.path(), &CuratorConfig::default(), ReactBuildConfig::default(), false)
+                .await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn maybe_run_curator_returns_none_when_should_run_false() {
+        let dir = tempfile::tempdir().unwrap();
+        let result =
+            maybe_run_curator(dir.path(), &CuratorConfig::default(), ReactBuildConfig::default()).await;
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn background_review_callbacks_default_is_empty() {
+        let cb: BackgroundReviewCallbacks = Default::default();
+        assert!(cb.on_output.is_none());
+        assert!(cb.on_review_complete.is_none());
+    }
+}

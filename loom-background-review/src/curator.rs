@@ -1605,7 +1605,7 @@ clusters: [[invalid yaml
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    
     fn make_test_skill(name: &str, source: Source) -> SkillContent {
         SkillContent {
             name: name.to_string(),
@@ -1908,4 +1908,766 @@ mod tests {
         let curator = Curator::new(registry, config);
         assert!(!curator.should_run(Some(99999.0)));
     }
+
+    #[test]
+    fn test_build_llm_prompt_with_skills() {
+        let skills = vec![
+            make_test_skill("skill-a", Source::Auto),
+            make_test_skill("skill-b", Source::Manual),
+        ];
+
+        let usage_reports = vec![
+            SkillUsageReport {
+                name: "skill-a".to_string(),
+                use_count: 5,
+                view_count: 10,
+                patch_count: 2,
+                last_used_at: Some("2025-07-20T10:00:00Z".to_string()),
+                last_viewed_at: None,
+                last_patched_at: None,
+                created_at: "2025-01-01T00:00:00Z".to_string(),
+                state: Lifecycle::Active,
+                pinned: false,
+                archived_at: None,
+                last_activity_at: Some("2025-07-20T10:00:00Z".to_string()),
+                activity_count: 3,
+            },
+        ];
+
+        let prompt = build_llm_prompt(&skills, &usage_reports);
+
+        assert!(prompt.contains("Active Skills"));
+        assert!(prompt.contains("skill-a"));
+        assert!(prompt.contains("skill-b"));
+        assert!(prompt.contains("activity=3"));
+        assert!(prompt.contains("use=5"));
+        assert!(prompt.contains("view=10"));
+        assert!(prompt.contains("patches=2"));
+        assert!(prompt.contains("last=2025-07-20T10:00:00Z"));
+        assert!(prompt.contains("Output your YAML analysis now"));
+    }
+
+    #[test]
+    fn test_build_llm_prompt_empty_skills() {
+        let skills: Vec<SkillContent> = vec![];
+        let usage_reports: Vec<SkillUsageReport> = vec![];
+
+        let prompt = build_llm_prompt(&skills, &usage_reports);
+
+        assert!(prompt.contains("Active Skills"));
+        assert!(prompt.contains("No active skills found. Nothing to consolidate."));
+        assert!(prompt.contains("Output your YAML analysis now"));
+    }
+
+    #[test]
+    fn test_build_llm_prompt_no_usage_reports() {
+        let skills = vec![make_test_skill("skill-a", Source::Auto)];
+        let usage_reports: Vec<SkillUsageReport> = vec![];
+
+        let prompt = build_llm_prompt(&skills, &usage_reports);
+
+        assert!(prompt.contains("skill-a"));
+        assert!(prompt.contains("Test skill skill-a"));
+        assert!(!prompt.contains("activity="));
+    }
+
+    #[test]
+    fn test_reconcile_classification_with_absorbed_declarations() {
+        let removed = vec!["old-skill".to_string()];
+        let added = vec![];
+        let after_names: std::collections::HashSet<String> = ["new-skill".to_string()].into_iter().collect();
+
+        let tool_calls = vec![CuratorToolCall {
+            id: None,
+            name: "skill_manage".to_string(),
+            arguments: r#"{"action":"delete","name":"old-skill","absorbed_into":"new-skill"}"#.to_string(),
+        }];
+
+        let llm_result = LlMReviewResult::default();
+
+        let result = reconcile_classification(&removed, &added, &after_names, &tool_calls, &llm_result);
+
+        assert_eq!(result.consolidated.len(), 1);
+        assert_eq!(result.consolidated[0].source, "old-skill");
+        assert_eq!(result.consolidated[0].into, "new-skill");
+        assert_eq!(result.consolidated[0].method, "absorbed");
+        assert!(result.pruned.is_empty());
+    }
+
+    #[test]
+    fn test_reconcile_classification_with_explicit_prune() {
+        let removed = vec!["obsolete-skill".to_string()];
+        let added = vec![];
+        let after_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        let tool_calls = vec![CuratorToolCall {
+            id: None,
+            name: "skill_manage".to_string(),
+            arguments: r#"{"action":"delete","name":"obsolete-skill","absorbed_into":""}"#.to_string(),
+        }];
+
+        let llm_result = LlMReviewResult::default();
+
+        let result = reconcile_classification(&removed, &added, &after_names, &tool_calls, &llm_result);
+
+        assert!(result.consolidated.is_empty());
+        assert_eq!(result.pruned.len(), 1);
+        assert_eq!(result.pruned[0].name, "obsolete-skill");
+        assert_eq!(result.pruned[0].reason, "explicit prune");
+    }
+
+    #[test]
+    fn test_reconcile_classification_with_model_consolidation() {
+        let removed = vec!["merged-skill".to_string()];
+        let added = vec![];
+        let after_names: std::collections::HashSet<String> = ["umbrella-skill".to_string()].into_iter().collect();
+
+        let tool_calls: Vec<CuratorToolCall> = vec![];
+
+        let llm_result = LlMReviewResult {
+            summary: String::new(),
+            clusters: vec![],
+            prunings: vec![],
+            consolidations: vec![ConsolidationDecision {
+                source: "merged-skill".to_string(),
+                into: "umbrella-skill".to_string(),
+                method: "llm-suggested".to_string(),
+            }],
+        };
+
+        let result = reconcile_classification(&removed, &added, &after_names, &tool_calls, &llm_result);
+
+        assert_eq!(result.consolidated.len(), 1);
+        assert_eq!(result.consolidated[0].source, "merged-skill");
+        assert_eq!(result.consolidated[0].into, "umbrella-skill");
+        assert_eq!(result.consolidated[0].method, "llm-suggested");
+        assert!(result.pruned.is_empty());
+    }
+
+    #[test]
+    fn test_reconcile_classification_model_consolidation_invalid_destination() {
+        let removed = vec!["merged-skill".to_string()];
+        let added = vec![];
+        let after_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        let tool_calls: Vec<CuratorToolCall> = vec![];
+
+        let llm_result = LlMReviewResult {
+            summary: String::new(),
+            clusters: vec![],
+            prunings: vec![],
+            consolidations: vec![ConsolidationDecision {
+                source: "merged-skill".to_string(),
+                into: "non-existent-skill".to_string(),
+                method: "llm-suggested".to_string(),
+            }],
+        };
+
+        let result = reconcile_classification(&removed, &added, &after_names, &tool_calls, &llm_result);
+
+        assert!(result.consolidated.is_empty());
+        assert_eq!(result.pruned.len(), 1);
+        assert_eq!(result.pruned[0].name, "merged-skill");
+        assert!(result.pruned[0].reason.contains("model declared"));
+        assert!(result.pruned[0].reason.contains("non-existent-skill"));
+    }
+
+    #[test]
+    fn test_reconcile_classification_fallback_no_evidence() {
+        let removed = vec!["orphan-skill".to_string()];
+        let added = vec![];
+        let after_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        let tool_calls: Vec<CuratorToolCall> = vec![];
+        let llm_result = LlMReviewResult::default();
+
+        let result = reconcile_classification(&removed, &added, &after_names, &tool_calls, &llm_result);
+
+        assert!(result.consolidated.is_empty());
+        assert_eq!(result.pruned.len(), 1);
+        assert_eq!(result.pruned[0].name, "orphan-skill");
+        assert_eq!(result.pruned[0].reason, "fallback (no evidence)");
+    }
+
+    #[test]
+    fn test_extract_absorbed_into_declarations() {
+        let tool_calls = vec![
+            CuratorToolCall {
+                id: None,
+                name: "skill_manage".to_string(),
+                arguments: r#"{"action":"delete","name":"skill-a","absorbed_into":"umbrella"}"#.to_string(),
+            },
+            CuratorToolCall {
+                id: None,
+                name: "skill_delete".to_string(),
+                arguments: r#"{"name":"skill-b","absorbed_into":"umbrella"}"#.to_string(),
+            },
+            CuratorToolCall {
+                id: None,
+                name: "skill_manage".to_string(),
+                arguments: r#"{"action":"create","name":"skill-c"}"#.to_string(),
+            },
+            CuratorToolCall {
+                id: None,
+                name: "skill_manage".to_string(),
+                arguments: r#"{"action":"delete","name":"skill-d","absorbed_into":""}"#.to_string(),
+            },
+        ];
+
+        let extract_args = |call: &CuratorToolCall| -> std::collections::HashMap<String, serde_json::Value> {
+            serde_json::from_str(call.arguments.as_str()).unwrap_or_default()
+        };
+
+        let declarations = extract_absorbed_into_declarations(&tool_calls, &extract_args);
+
+        assert_eq!(declarations.len(), 3);
+        assert!(declarations.contains_key("skill-a"));
+        assert!(declarations.contains_key("skill-b"));
+        assert!(declarations.contains_key("skill-d"));
+
+        let skill_a_decl = declarations.get("skill-a").unwrap();
+        assert_eq!(skill_a_decl.into, "umbrella");
+
+        let skill_b_decl = declarations.get("skill-b").unwrap();
+        assert_eq!(skill_b_decl.into, "umbrella");
+
+        let skill_d_decl = declarations.get("skill-d").unwrap();
+        assert_eq!(skill_d_decl.into, "");
+    }
+
+    #[test]
+    fn test_classify_removed_skills_with_heuristic() {
+        let removed = vec!["old-skill".to_string()];
+        let after_names: std::collections::HashSet<String> = ["new-skill".to_string()].into_iter().collect();
+
+        let tool_calls = vec![CuratorToolCall {
+            id: None,
+            name: "skill_manage".to_string(),
+            arguments: r#"{"action":"create","name":"new-skill","content":"merge old-skill into umbrella"}"#.to_string(),
+        }];
+
+        let extract_args = |call: &CuratorToolCall| -> std::collections::HashMap<String, serde_json::Value> {
+            serde_json::from_str(call.arguments.as_str()).unwrap_or_default()
+        };
+
+        let result = classify_removed_skills(&removed, &after_names, &tool_calls, &extract_args);
+
+        assert_eq!(result.consolidated.len(), 1);
+        assert_eq!(result.consolidated[0].source, "old-skill");
+        assert_eq!(result.consolidated[0].into, "new-skill");
+        assert_eq!(result.consolidated[0].method, "heuristic");
+        assert!(result.pruned.is_empty());
+    }
+
+    #[test]
+    fn test_classify_removed_skills_no_evidence() {
+        let removed = vec!["orphan-skill".to_string()];
+        let after_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        let tool_calls: Vec<CuratorToolCall> = vec![];
+
+        let extract_args = |call: &CuratorToolCall| -> std::collections::HashMap<String, serde_json::Value> {
+            serde_json::from_str(call.arguments.as_str()).unwrap_or_default()
+        };
+
+        let result = classify_removed_skills(&removed, &after_names, &tool_calls, &extract_args);
+
+        assert!(result.consolidated.is_empty());
+        assert_eq!(result.pruned.len(), 1);
+        assert_eq!(result.pruned[0].name, "orphan-skill");
+        assert_eq!(result.pruned[0].reason, "no absorption evidence");
+    }
+
+    #[test]
+    fn test_file_state_store_basic_operations() {
+        let dir = tempfile::tempdir().unwrap();
+        let state_path = dir.path().join("state.json");
+        let store = FileStateStore::new(state_path.clone());
+
+        // Test load from non-existent file returns default state
+        let state = store.load().unwrap();
+        assert!(!state.paused);
+        assert_eq!(state.run_count, 0);
+
+        // Test save and load
+        let mut new_state = CuratorState::default();
+        new_state.paused = true;
+        new_state.run_count = 5;
+        store.save(&new_state).unwrap();
+
+        let loaded = store.load().unwrap();
+        assert!(loaded.paused);
+        assert_eq!(loaded.run_count, 5);
+    }
+
+    #[test]
+    fn test_file_state_store_trait_default_methods() {
+        let dir = tempfile::tempdir().unwrap();
+        let state_path = dir.path().join("state.json");
+        let store = FileStateStore::new(state_path);
+
+        // Test set_paused and is_paused
+        store.set_paused(true).unwrap();
+        assert!(store.is_paused());
+
+        store.set_paused(false).unwrap();
+        assert!(!store.is_paused());
+
+        // Test bump_run
+        store.bump_run(10.5, Some("test summary"), Some("/path/to/report")).unwrap();
+        let state = store.load().unwrap();
+        assert_eq!(state.run_count, 1);
+        assert_eq!(state.last_run_duration_seconds, Some(10.5));
+        assert_eq!(state.last_run_summary, Some("test summary".to_string()));
+        assert_eq!(state.last_report_path, Some("/path/to/report".to_string()));
+
+        // Test touch_skill
+        store.touch_skill("test-skill").unwrap();
+        let state = store.load().unwrap();
+        assert!(state.skill_last_used.contains_key("test-skill"));
+
+        // Test mark_summary_shown
+        store.mark_summary_shown().unwrap();
+        let state = store.load().unwrap();
+        assert!(state.last_run_summary_shown_at.is_some());
+    }
+
+    #[test]
+    fn test_memory_state_store_basic_operations() {
+        let store = MemoryStateStore::default();
+
+        // Test initial state
+        let state = store.load().unwrap();
+        assert!(!state.paused);
+        assert_eq!(state.run_count, 0);
+
+        // Test save and load
+        let mut new_state = CuratorState::default();
+        new_state.paused = true;
+        new_state.run_count = 10;
+        store.save(&new_state).unwrap();
+
+        let loaded = store.load().unwrap();
+        assert!(loaded.paused);
+        assert_eq!(loaded.run_count, 10);
+    }
+
+    #[test]
+    fn test_memory_state_store_with_initial_state() {
+        let initial_state = CuratorState {
+            paused: true,
+            run_count: 7,
+            ..Default::default()
+        };
+
+        let store = MemoryStateStore::with_state(initial_state);
+        let loaded = store.load().unwrap();
+
+        assert!(loaded.paused);
+        assert_eq!(loaded.run_count, 7);
+    }
+
+    #[test]
+    fn test_memory_state_store_trait_overrides() {
+        let store = MemoryStateStore::default();
+
+        // Test overridden set_paused and is_paused
+        store.set_paused(true).unwrap();
+        assert!(store.is_paused());
+
+        store.set_paused(false).unwrap();
+        assert!(!store.is_paused());
+
+        // Test that these work alongside trait methods
+        store.touch_skill("skill-a").unwrap();
+        // Check paused state remains false
+        assert!(!store.is_paused());
+    }
+
+    #[test]
+    fn test_curator_mark_run_completed() {
+        let dir = tempfile::tempdir().unwrap();
+        let skills = SkillRegistry::new(dir.path());
+        
+        // Add some skills
+        for i in 0..3 {
+            let skill = make_test_skill(&format!("skill-{}", i), Source::Auto);
+            skills.save(&format!("skill-{}", i), &skill).unwrap();
+        }
+
+        let state_dir = tempfile::tempdir().unwrap();
+        let curator = Curator::new(skills, CuratorConfig::default())
+            .with_state_path(state_dir.path().join("state.json"));
+
+        // Mark run as completed
+        curator.mark_run_completed().unwrap();
+
+        // Verify state was updated
+        let state = curator.load_state().unwrap();
+        assert_eq!(state.run_count, 1);
+        assert!(state.last_run_at.is_some());
+        assert_eq!(state.skill_last_used.len(), 3); // All skills should be seeded
+    }
+
+    #[test]
+    fn test_curator_load_and_save_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let skills = SkillRegistry::new(dir.path());
+        let skill = make_test_skill("test-skill", Source::Auto);
+        skills.save("test-skill", &skill).unwrap();
+
+        let state_dir = tempfile::tempdir().unwrap();
+        let curator = Curator::new(skills, CuratorConfig::default())
+            .with_state_path(state_dir.path().join("state.json"));
+
+        // Test save_state
+        let mut state = CuratorState::default();
+        state.paused = true;
+        state.run_count = 3;
+        curator.save_state(&state).unwrap();
+
+        // Test load_state
+        let loaded = curator.load_state().unwrap();
+        assert!(loaded.paused);
+        assert_eq!(loaded.run_count, 3);
+
+        // Test that state persists across instances
+        let state_path = state_dir.path().join("state.json");
+        let curator2 = Curator::new(
+            SkillRegistry::new(dir.path()), 
+            CuratorConfig::default()
+        ).with_state_path(state_path);
+
+        let loaded2 = curator2.load_state().unwrap();
+        assert!(loaded2.paused);
+        assert_eq!(loaded2.run_count, 3);
+    }
+
+    #[test]
+    fn test_curator_update_lifecycle() {
+        let dir = tempfile::tempdir().unwrap();
+        let skills = SkillRegistry::new(dir.path());
+        let skill = make_test_skill("test-skill", Source::Auto);
+        skills.save("test-skill", &skill).unwrap();
+
+        let state_dir = tempfile::tempdir().unwrap();
+        let curator = Curator::new(skills, CuratorConfig::default())
+            .with_state_path(state_dir.path().join("state.json"));
+
+        // Update lifecycle to Stale
+        curator.update_lifecycle("test-skill", Lifecycle::Stale).unwrap();
+
+        // Verify the lifecycle was updated
+        let updated_skill = curator.skills.load("test-skill").unwrap();
+        assert_eq!(updated_skill.lifecycle, Lifecycle::Stale);
+
+        // Update lifecycle back to Active
+        curator.update_lifecycle("test-skill", Lifecycle::Active).unwrap();
+        let reactivated_skill = curator.skills.load("test-skill").unwrap();
+        assert_eq!(reactivated_skill.lifecycle, Lifecycle::Active);
+    }
+
+    #[test]
+    fn test_curator_run_with_various_lifecycles() {
+        let dir = tempfile::tempdir().unwrap();
+        let skills = SkillRegistry::new(dir.path());
+
+        // Create skills with different lifecycles
+        let mut active_skill = make_test_skill("active-skill", Source::Auto);
+        active_skill.lifecycle = Lifecycle::Active;
+        skills.save("active-skill", &active_skill).unwrap();
+
+        let mut stale_skill = make_test_skill("stale-skill", Source::Auto);
+        stale_skill.lifecycle = Lifecycle::Stale;
+        skills.save("stale-skill", &stale_skill).unwrap();
+
+        let mut archived_skill = make_test_skill("archived-skill", Source::Auto);
+        archived_skill.lifecycle = Lifecycle::Archived;
+        skills.save("archived-skill", &archived_skill).unwrap();
+
+        let state_dir = tempfile::tempdir().unwrap();
+        let config = CuratorConfig {
+            stale_days_auto: 0, // Make skills stale immediately
+            archive_days: 0,
+            ..Default::default()
+        };
+        let curator = Curator::new(skills, config)
+            .with_state_path(state_dir.path().join("state.json"));
+
+        // Run in dry_run mode to check classification
+        let report = curator.run(true).unwrap();
+
+        // Verify that skills are properly classified
+        assert!(!report.stale.is_empty() || !report.archived.is_empty()); // Some should be stale or archived
+    }
+
+    #[test]
+    fn test_curator_run_dry_run_doesnt_modify_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let skills = SkillRegistry::new(dir.path());
+        let skill = make_test_skill("test-skill", Source::Auto);
+        skills.save("test-skill", &skill).unwrap();
+
+        let state_dir = tempfile::tempdir().unwrap();
+        let curator = Curator::new(skills, CuratorConfig::default())
+            .with_state_path(state_dir.path().join("state.json"));
+
+        // Run in dry_run mode
+        let _ = curator.run(true).unwrap();
+
+        // Verify that state was not modified (no run count increment)
+        let state = curator.load_state().unwrap();
+        assert_eq!(state.run_count, 0);
+        assert!(state.last_run_at.is_none());
+    }
+
+    #[test]
+    fn test_curator_config_accessors() {
+        let dir = tempfile::tempdir().unwrap();
+        let skills = SkillRegistry::new(dir.path());
+        let skill = make_test_skill("test-skill", Source::Auto);
+        skills.save("test-skill", &skill).unwrap();
+
+        let config = CuratorConfig {
+            enabled: true,
+            interval_hours: 100,
+            min_idle_minutes: 30,
+            min_skills_to_run: 10,
+            overlap_threshold: 0.8,
+            stale_days_auto: 90,
+            stale_days_manual: 45,
+            archive_days: 120,
+        };
+
+        let curator = Curator::new(skills, config);
+
+        assert!(curator.config_enabled());
+        assert_eq!(curator.config_interval_hours(), 100);
+        assert_eq!(curator.config_min_skills(), 10);
+        assert_eq!(curator.config_overlap_threshold(), 0.8);
+        assert_eq!(curator.config_stale_days_auto(), 90);
+        assert_eq!(curator.config_stale_days_manual(), 45);
+        assert_eq!(curator.config_archive_days(), 120);
+    }
+
+
+
+    #[test]
+    fn test_curator_state_store_default_impls_via_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let state_path = dir.path().join("state.json");
+        let store = FileStateStore::new(state_path);
+
+        // Test set_paused and is_paused trait defaults
+        store.set_paused(true).unwrap();
+        assert!(store.is_paused());
+        store.set_paused(false).unwrap();
+        assert!(!store.is_paused());
+
+        // Test bump_run trait default
+        store.bump_run(10.5, Some("Test summary"), Some("/test/path.md")).unwrap();
+        let state = store.load().unwrap();
+        assert_eq!(state.run_count, 1);
+        assert_eq!(state.last_run_duration_seconds, Some(10.5));
+        assert_eq!(state.last_run_summary, Some("Test summary".to_string()));
+        assert_eq!(state.last_report_path, Some("/test/path.md".to_string()));
+
+        // Test touch_skill trait default
+        store.touch_skill("skill-one").unwrap();
+        let state = store.load().unwrap();
+        assert!(state.skill_last_used.contains_key("skill-one"));
+
+        // Test mark_summary_shown trait default
+        store.mark_summary_shown().unwrap();
+        let state = store.load().unwrap();
+        assert!(state.last_run_summary_shown_at.is_some());
+    }
+
+    #[test]
+    fn test_curator_state_store_memory_store_direct() {
+        let store = MemoryStateStore::default();
+
+        // Test set_paused and is_paused trait defaults
+        store.set_paused(true).unwrap();
+        assert!(store.is_paused());
+        store.set_paused(false).unwrap();
+        assert!(!store.is_paused());
+
+        // Test bump_run trait default
+        store.bump_run(5.0, Some("Memory summary"), None).unwrap();
+        let state = store.load().unwrap();
+        assert_eq!(state.run_count, 1);
+        assert_eq!(state.last_run_duration_seconds, Some(5.0));
+        assert_eq!(state.last_run_summary, Some("Memory summary".to_string()));
+    }
+
+    #[test]
+    fn test_curator_state_store_with_state_initialization() {
+        let initial_state = CuratorState {
+            paused: true,
+            run_count: 10,
+            skill_last_used: {
+                let mut map = HashMap::new();
+                map.insert("pre-skill".to_string(), "2025-01-01T00:00:00Z".to_string());
+                map
+            },
+            ..Default::default()
+        };
+
+        let store = MemoryStateStore::with_state(initial_state);
+        let loaded = store.load().unwrap();
+
+        assert!(loaded.paused);
+        assert_eq!(loaded.run_count, 10);
+        assert!(loaded.skill_last_used.contains_key("pre-skill"));
+    }
+
+    #[test]
+    fn test_curator_config_builder_pattern() {
+        let dir = tempfile::tempdir().unwrap();
+        let skills = SkillRegistry::new(dir.path());
+        let skill = make_test_skill("test-skill", Source::Auto);
+        skills.save("test-skill", &skill).unwrap();
+
+        let config = CuratorConfig {
+            enabled: true,
+            interval_hours: 24,
+            min_idle_minutes: 15,
+            min_skills_to_run: 5,
+            overlap_threshold: 0.85,
+            stale_days_auto: 30,
+            stale_days_manual: 60,
+            archive_days: 90,
+        };
+
+        let curator = Curator::new(skills, config);
+
+        assert!(curator.config_enabled());
+        assert_eq!(curator.config_interval_hours(), 24);
+        assert_eq!(curator.config_min_skills(), 5);
+        assert_eq!(curator.config_overlap_threshold(), 0.85);
+        assert_eq!(curator.config_stale_days_auto(), 30);
+        assert_eq!(curator.config_stale_days_manual(), 60);
+        assert_eq!(curator.config_archive_days(), 90);
+    }
+
+    #[test]
+    fn test_curator_should_run_with_state_conditions() {
+        let dir = tempfile::tempdir().unwrap();
+        let skills = SkillRegistry::new(dir.path());
+        for i in 0..7 { // Need more than min_skills_to_run (default 5)
+            let skill = make_test_skill(&format!("skill-{}", i), Source::Auto);
+            skills.save(&format!("skill-{}", i), &skill).unwrap();
+        }
+
+        let state_dir = tempfile::tempdir().unwrap();
+        let config = CuratorConfig {
+            enabled: true,
+            interval_hours: 1, // 1 hour interval
+            min_skills_to_run: 5,
+            ..Default::default()
+        };
+
+        let curator = Curator::new(skills, config)
+            .with_state_path(state_dir.path().join("state.json"));
+
+        // Manually complete a run to establish state (bypassing first-run delay)
+        curator.mark_run_completed().unwrap();
+
+        // Should not run immediately after (within interval)
+        assert!(!curator.should_run(None), "Should not run immediately after completing a run");
+    }
+
+    #[test]
+    fn test_curator_update_lifecycle_nonexistent_skill() {
+        let dir = tempfile::tempdir().unwrap();
+        let skills = SkillRegistry::new(dir.path());
+
+        let state_dir = tempfile::tempdir().unwrap();
+        let curator = Curator::new(skills, CuratorConfig::default())
+            .with_state_path(state_dir.path().join("state.json"));
+
+        // Attempting to update non-existent skill should return an error
+        let result = curator.update_lifecycle("nonexistent-skill", Lifecycle::Active);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_curator_run_preserves_lifecycle_classification() {
+        let dir = tempfile::tempdir().unwrap();
+        let skills = SkillRegistry::new(dir.path());
+
+        // Create a skill with explicitly set stale lifecycle
+        let mut stale_skill = make_test_skill("stale-skill", Source::Auto);
+        stale_skill.lifecycle = Lifecycle::Stale;
+        skills.save("stale-skill", &stale_skill).unwrap();
+
+        let state_dir = tempfile::tempdir().unwrap();
+        let config = CuratorConfig {
+            stale_days_auto: 0, // Immediate stale
+            ..Default::default()
+        };
+
+        let curator = Curator::new(skills, config)
+            .with_state_path(state_dir.path().join("state.json"));
+
+        // Run the curator (should recognize existing stale state)
+        let report = curator.run(true).unwrap();
+
+        // Verify that the stale skill is properly classified
+        assert!(!report.stale.is_empty() || !report.archived.is_empty()); // Should have some lifecycle changes
+
+        // Verify the lifecycle was preserved
+        let loaded_skill = curator.skills.load("stale-skill").unwrap();
+        assert_eq!(loaded_skill.lifecycle, Lifecycle::Stale);
+    }
+
+    #[test]
+    fn test_curator_should_run_respects_disabled_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let skills = SkillRegistry::new(dir.path());
+        for i in 0..10 {
+            let skill = make_test_skill(&format!("skill-{}", i), Source::Auto);
+            skills.save(&format!("skill-{}", i), &skill).unwrap();
+        }
+
+        let state_dir = tempfile::tempdir().unwrap();
+        let config = CuratorConfig {
+            enabled: false,
+            ..Default::default()
+        };
+
+        let curator = Curator::new(skills, config)
+            .with_state_path(state_dir.path().join("state.json"));
+
+        // Should not run when disabled
+        assert!(!curator.should_run(Some(99999.0)));
+    }
+
+    #[test]
+    fn test_curator_state_persistence_across_instances() {
+        let dir = tempfile::tempdir().unwrap();
+        let state_dir = tempfile::tempdir().unwrap();
+        let state_path = state_dir.path().join("state.json");
+
+        let skill = make_test_skill("test-skill", Source::Auto);
+
+        // First instance - modify state
+        let skills1 = SkillRegistry::new(dir.path());
+        skills1.save("test-skill", &skill).unwrap();
+        let curator1 = Curator::new(skills1, CuratorConfig::default())
+            .with_state_path(state_path.clone());
+        curator1.mark_run_completed().unwrap();
+
+        // Second instance - verify state persisted
+        let skills2 = SkillRegistry::new(dir.path());
+        let curator2 = Curator::new(skills2, CuratorConfig::default())
+            .with_state_path(state_path.clone());
+
+        let state = curator2.load_state().unwrap();
+        assert_eq!(state.run_count, 1);
+        assert!(state.skill_last_used.contains_key("test-skill"));
+    }
+
+
 }

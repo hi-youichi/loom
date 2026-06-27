@@ -539,4 +539,125 @@ mod tests {
         assert_eq!(truncated.chars().count(), 401); // 400 + "."
         assert!(truncated.ends_with('.'));
     }
+
+    fn make_test_skill_content(name: &str) -> SkillContent {
+        SkillContent {
+            name: name.to_string(),
+            description: format!("Test skill {}", name),
+            triggers: vec!["test".into()],
+            lifecycle: Lifecycle::Active,
+            source: crate::Source::Auto,
+            created_by: None,
+            body: "Do stuff".to_string(),
+            raw: String::new(),
+        }
+    }
+
+    #[test]
+    fn snapshot_skill_names_empty_registry() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = SkillRegistry::new(dir.path());
+        let names = snapshot_skill_names(&registry).unwrap();
+        assert!(names.is_empty());
+    }
+
+    #[test]
+    fn snapshot_skill_names_returns_all() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = SkillRegistry::new(dir.path());
+        registry.save("a", &make_test_skill_content("a")).unwrap();
+        registry.save("b", &make_test_skill_content("b")).unwrap();
+        let names = snapshot_skill_names(&registry).unwrap();
+        assert_eq!(names.len(), 2);
+    }
+
+    #[test]
+    fn snapshot_skill_metas_includes_body_len() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = SkillRegistry::new(dir.path());
+        registry.save("x", &make_test_skill_content("x")).unwrap();
+        let metas = snapshot_skill_metas(&registry).unwrap();
+        assert_eq!(metas.len(), 1);
+        assert_eq!(metas[0].name, "x");
+        assert!(metas[0].body_len > 0);
+    }
+
+    #[test]
+    fn snapshot_skill_metas_empty_registry() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = SkillRegistry::new(dir.path());
+        let metas = snapshot_skill_metas(&registry).unwrap();
+        assert!(metas.is_empty());
+    }
+
+    #[test]
+    fn snapshot_active_skills_empty_registry() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = SkillRegistry::new(dir.path());
+        let usage = SkillUsageStore::new(dir.path());
+        let skills = snapshot_active_skills(&registry, &usage).unwrap();
+        assert!(skills.is_empty());
+    }
+
+    #[test]
+    fn snapshot_active_skills_filters_by_agent_created() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = SkillRegistry::new(dir.path());
+        let usage = SkillUsageStore::new(dir.path());
+
+        registry.save("agent-skill", &make_test_skill_content("agent-skill")).unwrap();
+        usage.mark_agent_created("agent-skill");
+
+        registry.save("user-skill", &make_test_skill_content("user-skill")).unwrap();
+
+        let skills = snapshot_active_skills(&registry, &usage).unwrap();
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "agent-skill");
+    }
+
+    #[test]
+    fn snapshot_active_skills_excludes_pinned() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = SkillRegistry::new(dir.path());
+        let usage = SkillUsageStore::new(dir.path());
+
+        registry.save("pinned", &make_test_skill_content("pinned")).unwrap();
+        usage.mark_agent_created("pinned");
+        registry.set_pinned("pinned", true).unwrap();
+
+        let skills = snapshot_active_skills(&registry, &usage).unwrap();
+        assert!(skills.is_empty(), "pinned skills should be excluded");
+    }
+
+    #[test]
+    fn snapshot_active_skills_excludes_non_active() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = SkillRegistry::new(dir.path());
+        let usage = SkillUsageStore::new(dir.path());
+
+        let mut skill = make_test_skill_content("stale");
+        skill.lifecycle = Lifecycle::Stale;
+        registry.save("stale", &skill).unwrap();
+        usage.mark_agent_created("stale");
+
+        let skills = snapshot_active_skills(&registry, &usage).unwrap();
+        assert!(skills.is_empty(), "non-active skills should be excluded");
+    }
+
+    #[tokio::test]
+    async fn run_curator_llm_pass_returns_outcome_on_agent_build_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = SkillRegistry::new(dir.path());
+        let usage = SkillUsageStore::new(dir.path());
+
+        let outcome = run_curator_llm_pass(
+            ReactBuildConfig::default(),
+            &registry,
+            &usage,
+            &[],
+        ).await.unwrap();
+
+        // Agent::from_config with default config should fail, returning a degraded outcome
+        assert!(outcome.run_error.is_some() || !outcome.final_reply.is_empty());
+    }
 }

@@ -1033,4 +1033,45 @@ mod tests {
         let extracted = extract_error_reason(&result);
         assert_eq!(extracted.chars().count(), 500);
     }
+
+    #[test]
+    fn parse_action_other_kind_for_unknown_tool() {
+        let a = parse_action("bash", r#"{"success": true}"#).unwrap();
+        assert_eq!(a.kind, "other");
+    }
+
+    #[test]
+    fn parse_action_skill_view_mapped_to_skill_kind() {
+        let a = parse_action("skill_view", r#"{"success": true}"#).unwrap();
+        assert_eq!(a.kind, "skill");
+    }
+
+    #[tokio::test]
+    async fn run_review_skips_when_no_mode_enabled() {
+        let config = ReviewConfig {
+            review_memory: false,
+            review_skills: false,
+            ..Default::default()
+        };
+        let outcome = run_review(
+            ReactBuildConfig::default(),
+            "checkpoint-skip".to_string(),
+            "hello",
+            &config,
+        )
+        .await
+        .unwrap();
+        assert!(outcome.skipped);
+        assert_eq!(outcome.skip_reason.as_deref(), Some("no review mode enabled"));
+    }
+
+    #[test]
+    fn spawn_background_review_does_not_panic() {
+        spawn_background_review("test-bg-review-noop".to_string(), None);
+    }
+
+    #[test]
+    fn spawn_review_after_session_does_not_panic() {
+        spawn_review_after_session("test-after-session-noop".to_string(), Some("test-model".to_string()));
+    }
 }

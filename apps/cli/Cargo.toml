@@ -15,28 +15,29 @@ name = "loom"
 path = "src/main.rs"
 
 [dependencies]
-loom = { path = "../loom" }
-agent = { path = "../agent/agent-core" }
-agent-extensions = { path = "../agent/agent-extensions" }
-loom-llm = { path = "../loom-llm" }
-loom-graph = { path = "../loom-graph" }
+loom = { path = "../../loom" }
+agent = { path = "../../agent/agent-core" }
+agent-extensions = { path = "../../agent/agent-extensions" }
+loom-llm = { path = "../../loom-llm" }
+loom-graph = { path = "../../loom-graph" }
 
-loom-types = { path = "../loom-types" }
-tool-core = { path = "../agent/tool/tool-core" }
-loom-stream = { path = "../loom-stream" }
-loom-stream-display = { path = "../loom-stream-display" }
-loom-background-review = { path = "../loom-background-review" }
-tool-experimental = { path = "../agent/tool/tool-experimental" }
-memory-v2 = { path = "../experimental/memory-v2" }
-loom-commands = { path = "../loom-commands" }
-loom-cli-types = { path = "../loom-cli-types" }
-loom-react-config = { path = "../loom-react-config" }
-loom-model-spec = { path = "../loom-model-spec" }
-loom-memory = { path = "../loom-memory" }
-loom-tier = { path = "../loom-tier" }
+loom-types = { path = "../../loom-types" }
+tool-core = { path = "../../agent/tool/tool-core" }
+loom-stream = { path = "../../loom-stream" }
+loom-stream-display = { path = "../../loom-stream-display" }
+loom-background-review = { path = "../../loom-background-review" }
+tool-experimental = { path = "../../agent/tool/tool-experimental" }
+memory-v2 = { path = "../../experimental/memory-v2" }
+loom-commands = { path = "../../loom-commands" }
+loom-cli-types = { path = "../../loom-cli-types" }
+loom-react-config = { path = "../../loom-react-config" }
+loom-model-spec = { path = "../../loom-model-spec" }
+loom-memory = { path = "../../loom-memory" }
+loom-tier = { path = "../../loom-tier" }
+loom-acp = { package = "acp", path = "../acp" }
 
-stream-event = { path = "../stream-event" }
-config = { path = "../config", features = ["tracing-init"] }
+stream-event = { path = "../../stream-event" }
+config = { path = "../../config", features = ["tracing-init"] }
 reqwest = { version = "0.12", features = ["json", "blocking"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "net"] }
 clap = { workspace = true }
@@ -52,7 +53,7 @@ tracing-appender = "0.2"
 tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 futures-util = "0.3"
 rusqlite = { version = "0.31", features = ["bundled"] }
-task-core = { path = "../task-core" }
+task-core = { path = "../../experimental/task/task-core" }
 tokio-util = { version = "0.7", features = ["rt"] }
 async-trait = { workspace = true }
 ctrlc = "3"

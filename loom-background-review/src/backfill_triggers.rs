@@ -321,4 +321,55 @@ mod tests {
         assert!(prompt.contains("trigger phrases"));
         assert!(prompt.contains("JSON"));
     }
+
+    // ── run_backfill_triggers ──
+
+    #[tokio::test]
+    async fn run_backfill_triggers_empty_library_returns_empty_outcome() {
+        let dir = tempfile::tempdir().unwrap();
+        let outcome = run_backfill_triggers(
+            dir.path(),
+            ReactBuildConfig::default(),
+            false,
+            None,
+            DEFAULT_BATCH_SIZE,
+        )
+        .await
+        .unwrap();
+        assert!(outcome.updated.is_empty());
+        assert!(outcome.no_triggers_found.is_empty());
+        assert!(outcome.failed.is_empty());
+        assert!(!outcome.dry_run);
+    }
+
+    #[tokio::test]
+    async fn run_backfill_triggers_dry_run_flag_propagates_on_empty_library() {
+        let dir = tempfile::tempdir().unwrap();
+        let outcome = run_backfill_triggers(
+            dir.path(),
+            ReactBuildConfig::default(),
+            true,
+            None,
+            DEFAULT_BATCH_SIZE,
+        )
+        .await
+        .unwrap();
+        assert!(outcome.dry_run);
+    }
+
+    #[tokio::test]
+    async fn run_backfill_triggers_missing_dir_returns_empty_outcome() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("does-not-exist");
+        let outcome = run_backfill_triggers(
+            &missing,
+            ReactBuildConfig::default(),
+            false,
+            None,
+            DEFAULT_BATCH_SIZE,
+        )
+        .await
+        .unwrap();
+        assert!(outcome.updated.is_empty());
+    }
 }

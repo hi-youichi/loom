@@ -22,7 +22,7 @@ loom-memory = { path = "../../../loom-memory" }
 memory-v2 = { path = "../../../experimental/memory-v2" }
 loom-stream = { path = "../../../loom-stream" }
 loom-commands = { path = "../../../loom-commands" }
-task-core = { path = "../../../task-core" }
+task-core = { path = "../../../experimental/task/task-core" }
 
 tracing = "0.1"
 thiserror = { workspace = true }

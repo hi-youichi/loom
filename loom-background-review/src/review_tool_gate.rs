@@ -138,4 +138,14 @@ mod tests {
         assert!(allowed.contains("memory"));
         assert!(allowed.contains("skill_view"));
     }
+
+    #[test]
+    fn default_is_same_as_new() {
+        let d = ReviewToolGate::default();
+        let n = ReviewToolGate::new();
+        assert_eq!(d.allowed().len(), n.allowed().len());
+        assert!(d.is_allowed("memory"));
+        assert!(d.is_allowed("skill_manage"));
+        assert!(!d.is_allowed("bash"));
+    }
 }

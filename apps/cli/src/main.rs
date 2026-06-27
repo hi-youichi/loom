@@ -33,7 +33,7 @@ use std::sync::Arc;
 use clap::Parser;
 use tokio::sync::Notify;
 
-use args::{Args, Command as Cmd, GotArgs};
+use args::{AcpCmd, Args, Command as Cmd, GotArgs};
 use bootstrap::{init_logging, preserve_shell_env, print_config_report};
 use display_limits::max_reply_len;
 use loom_cli_types::RunCancellation;
@@ -51,6 +51,38 @@ use skill_usage_cmd::handle_skill_usage_command;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
+
+    // ACP path: must branch before any stdout output (config report, logging).
+    // The ACP protocol uses stdout for JSON-RPC; any extra output corrupts it.
+    if let Some(Cmd::Acp(acp_args)) = &args.cmd {
+        if acp_args.show_log_dir {
+            match loom_acp::server::acp_log_dir() {
+                Some(p) => println!("{}", p.display()),
+                None => {
+                    eprintln!("loom acp: could not determine log directory");
+                    std::process::exit(1);
+                }
+            }
+            return Ok(());
+        }
+        if let Some(AcpCmd::Reload) = acp_args.cmd {
+            loom_acp::server::run_reload();
+            return Ok(());
+        }
+
+        let log_config = loom_acp::logging::LogConfig {
+            level: args.log_level.clone().unwrap_or_else(|| "info".to_string()),
+            file: args.log_file.clone(),
+            rotate: config::tracing_init::LogRotate::from_str_or_daily(&args.log_rotate),
+            format: args.log_format.parse().unwrap_or_default(),
+        };
+
+        if let Err(e) = loom_acp::server::run_server(log_config).await {
+            eprintln!("loom acp: {e}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
 
     // Preserve shell environment variables BEFORE config.toml is loaded.
     // This allows us to distinguish between shell-set and config.toml-set LOG_FILE.

@@ -94,7 +94,7 @@ loom-background-review = { path = "../loom-background-review" }
 memory-v2 = { path = "../experimental/memory-v2" }
 
 rusqlite = { version = "0.31", features = ["bundled"] }
-task-core = { path = "../task-core" }
+task-core = { path = "../experimental/task/task-core" }
 tracing = "0.1"
 
 # Optional: LanceDB for persistent Store with vector search (feature "lance").

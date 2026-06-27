@@ -52,6 +52,7 @@ impl AcpTestHarness {
         cmd.env("OPENAI_BASE_URL", format!("{llm_url}/v1"))
             .env("OPENAI_API_KEY", "test-key")
             .env("OPENAI_MODEL", "openai/gpt-4o")
+            .arg("acp")
             .arg("--log-file")
             .arg(&log_path)
             .arg("--log-level")

@@ -237,9 +237,7 @@ pub async fn run_agent(
 
     if let RunCompletion::Finished(ref _run_result) = result {
         // CLI path: spawn external review subprocess (preserves original behavior).
-        // ACP path: skip — loom-acp triggers in-process background review itself
-        // (the external spawn is a no-op for ACP since `current_exe()` = loom-acp,
-        // which has no `review session` subcommand).
+        // ACP path: skip — ACP triggers in-process background review itself.
         if opts.acp_session_id.is_none() {
             let session_id = opts
                 .thread_id

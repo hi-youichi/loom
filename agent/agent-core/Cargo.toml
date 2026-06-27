@@ -45,7 +45,7 @@ futures-util = "0.3"
 env-config = { path = "../../config", package = "config" }
 model-spec-core = { path = "../../model-spec-core" }
 async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
-task-core = { path = "../../task-core" }
+task-core = { path = "../../experimental/task/task-core" }
 
 [dev-dependencies]
 tempfile = "3"

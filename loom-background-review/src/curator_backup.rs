@@ -488,4 +488,87 @@ mod tests {
         let remaining = backup.list_snapshots().unwrap();
         assert_eq!(remaining.len(), 5, "auto_snapshot should prune to 5");
     }
+
+    #[test]
+    fn backup_dir_accessor_returns_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let backup = CuratorBackup::new().with_backup_dir(dir.path().to_path_buf());
+        assert_eq!(backup.backup_dir(), dir.path());
+    }
+
+    #[test]
+    fn default_impl_creates_instance() {
+        let backup = CuratorBackup::default();
+        assert!(backup.backup_dir().components().count() > 0);
+    }
+
+    #[test]
+    fn snapshot_nonexistent_skills_dir_returns_err() {
+        let backup_dir = tempfile::tempdir().unwrap();
+        let backup = CuratorBackup::new().with_backup_dir(backup_dir.path().to_path_buf());
+        let result = backup.snapshot(Path::new("/nonexistent/skills"), None);
+        assert!(matches!(result, Err(BackupError::SkillsDirNotFound(_))));
+    }
+
+    #[test]
+    fn list_snapshots_returns_empty_when_no_backup_dir() {
+        let backup_dir = tempfile::tempdir().unwrap();
+        let missing = backup_dir.path().join("never-created");
+        let backup = CuratorBackup::new().with_backup_dir(missing);
+        assert_eq!(backup.list_snapshots().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn rollback_nonexistent_snapshot_returns_err() {
+        let backup_dir = tempfile::tempdir().unwrap();
+        let backup = CuratorBackup::new().with_backup_dir(backup_dir.path().to_path_buf());
+        let skills_dir = tempfile::tempdir().unwrap();
+        let result = backup.rollback("nonexistent.tar.gz", skills_dir.path());
+        assert!(matches!(result, Err(BackupError::SnapshotNotFound(_))));
+    }
+
+    #[test]
+    fn prune_when_fewer_than_keep_returns_empty() {
+        let backup_dir = tempfile::tempdir().unwrap();
+        let backup = CuratorBackup::new().with_backup_dir(backup_dir.path().to_path_buf());
+        let skills_dir = tempfile::tempdir().unwrap();
+        fs::write(skills_dir.path().join("x"), "x").unwrap();
+        backup.snapshot(skills_dir.path(), None).unwrap();
+
+        let deleted = backup.prune_old_snapshots(5, false).unwrap();
+        assert!(deleted.is_empty());
+    }
+
+    #[test]
+    fn prune_dry_run_reports_without_deleting() {
+        let backup_dir = tempfile::tempdir().unwrap();
+        let backup = CuratorBackup::new().with_backup_dir(backup_dir.path().to_path_buf());
+        let skills_dir = tempfile::tempdir().unwrap();
+
+        for i in 0..7 {
+            let subdir = skills_dir.path().join(format!("s{}", i));
+            fs::create_dir_all(&subdir).unwrap();
+            fs::write(subdir.join("x"), "x").unwrap();
+            backup.snapshot(&subdir, None).unwrap();
+        }
+
+        let deleted = backup.prune_old_snapshots(5, true).unwrap();
+        assert_eq!(deleted.len(), 2);
+
+        // Dry run: nothing actually deleted
+        let remaining = backup.list_snapshots().unwrap();
+        assert_eq!(remaining.len(), 7);
+    }
+
+    #[test]
+    fn snapshot_skills_returns_none_when_disabled() {
+        let backup_dir = tempfile::tempdir().unwrap();
+        let backup = CuratorBackup::new().with_backup_dir(backup_dir.path().to_path_buf());
+
+        std::env::set_var("CURATION_ENABLED", "false");
+        let result = backup.snapshot_skills("test");
+        std::env::remove_var("CURATION_ENABLED");
+
+        assert!(result.is_none());
+    }
 }

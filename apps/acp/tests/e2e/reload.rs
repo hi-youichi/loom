@@ -8,14 +8,15 @@
 
 use crate::common::env::binary_path;
 
-/// `loom-acp --show-log-dir` should print a path containing `loom`.
+/// `loom acp --show-log-dir` should print a path containing `loom`.
 #[tokio::test(flavor = "current_thread")]
 async fn show_log_dir_outputs_path() {
     let output = tokio::process::Command::new(binary_path())
+        .arg("acp")
         .arg("--show-log-dir")
         .output()
         .await
-        .expect("spawn loom-acp --show-log-dir");
+        .expect("spawn loom acp --show-log-dir");
 
     assert!(
         output.status.success(),
@@ -34,16 +35,17 @@ async fn show_log_dir_outputs_path() {
     );
 }
 
-/// `loom-acp reload` without a PID file should not crash.
+/// `loom acp reload` without a PID file should not crash.
 /// On Windows it prints "not supported"; on Unix it exits 1 when no PID file.
 #[tokio::test(flavor = "current_thread")]
 async fn reload_without_pid_does_not_crash() {
     let output = tokio::process::Command::new(binary_path())
+        .arg("acp")
         .arg("reload")
         .env("LOOM_HOME", std::env::temp_dir().join("loom-acp-e2e-no-pid"))
         .output()
         .await
-        .expect("spawn loom-acp reload");
+        .expect("spawn loom acp reload");
 
     // The process should exit (either 0 on Windows "not supported",
     // or non-zero on Unix when PID file is missing). Either way, it

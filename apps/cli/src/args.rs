@@ -144,6 +144,8 @@ Skills(SkillsArgs),
     Task(TaskArgs),
     /// Run interactive TUI with persistent input bar and status bar
     Tui(TuiArgs),
+    /// Run as ACP (Agent Client Protocol) server for IDE integration
+    Acp(AcpArgs),
 }
 
 #[derive(clap::Args, Debug, Clone)]
@@ -669,4 +671,21 @@ pub(crate) struct TuiArgs {
     /// Path to MCP config JSON
     #[arg(long, value_name = "PATH")]
     pub(crate) mcp_config: Option<PathBuf>,
+}
+
+/// Arguments for the `acp` subcommand.
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct AcpArgs {
+    /// Print the log (and PID) file directory and exit.
+    #[arg(long)]
+    pub(crate) show_log_dir: bool,
+
+    #[command(subcommand)]
+    pub(crate) cmd: Option<AcpCmd>,
+}
+
+#[derive(clap::Subcommand, Debug, Clone)]
+pub(crate) enum AcpCmd {
+    /// Send SIGHUP to the running ACP process (read PID from `~/.loom/acp`). Unix only.
+    Reload,
 }
