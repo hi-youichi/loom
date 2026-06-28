@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-loom-llm = { path = "../loom-llm" }
-loom-graph = { path = "../loom-graph" }
-loom-types = { path = "../loom-types" }
+loom-llm = { path = "../../loom-llm" }
+loom-graph = { path = "../../loom-graph" }
+loom-types = { path = "../../loom-types" }
 
 async-trait = { workspace = true }
 tracing = { workspace = true }

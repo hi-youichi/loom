@@ -50,7 +50,7 @@ members = [
 
     "agent/agent-extensions",
 
-    "loom-compress",
+    "agent/compress",
 
     "loom-commands",
 

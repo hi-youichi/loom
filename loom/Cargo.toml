@@ -75,7 +75,7 @@ lsp = { path = "../experimental/tool/lsp" }
 
 
 # Context compression (loom-compress crate)
-loom-compress = { path = "../loom-compress" }
+loom-compress = { path = "../agent/compress" }
 
 
 

@@ -28,7 +28,7 @@ loom-memory = { path = "../../loom-memory" }
 
 tool-core = { path = "../tool/tool-core" }
 
-loom-compress = { path = "../../loom-compress" }
+loom-compress = { path = "../compress" }
 
 loom-cli-types = { path = "../../loom-cli-types" }
 

@@ -38,7 +38,7 @@ tool-experimental = { path = "../tool/tool-experimental" }
 
 memory-v2 = { path = "../../experimental/memory-v2" }
 
-loom-compress = { path = "../../loom-compress" }
+loom-compress = { path = "../compress" }
 
 loom-cli-types = { path = "../../loom-cli-types" }
 
