@@ -22,7 +22,7 @@
 //! - `model_spec_core` — `Model`, `Provider`, resolvers (feature-gated)
 //! - `loom_curator` — background review system
 //! - `loom_stream_display` — stream event display/rendering
-//! - `loom_worktree` — git worktree isolation
+//! - `worktree` — git worktree isolation
 //! - `lsp` — LSP integration
 //! - `loom_cli_types` — `RunOptions`, `RunCmd`, `RunCompletion`, `AnyStreamEvent`
 //! - `loom_react_config` — `ReactBuildConfig`, profile types

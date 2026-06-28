@@ -131,8 +131,8 @@ pub async fn run_agent(
 
     if opts.worktree {
         let current_dir = config.working_folder.as_deref().unwrap_or_else(|| std::path::Path::new("."));
-        let wt_config = loom_worktree::WorktreeConfig::default();
-        if let Ok(manager) = loom_worktree::WorktreeManager::from_working_dir(current_dir, wt_config) {
+        let wt_config = worktree::WorktreeConfig::default();
+        if let Ok(manager) = worktree::WorktreeManager::from_working_dir(current_dir, wt_config) {
             if let Ok(handle) = manager.create_for_agent("top-level", None, None).await {
                 config.working_folder = Some(handle.path.clone());
             }

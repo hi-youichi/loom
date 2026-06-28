@@ -24,7 +24,7 @@ loom-types = { path = "../loom-types" }
 loom-prompt = { path = "../loom-prompt" }
 
 # Worktree profile config
-loom-worktree = { path = "../loom-worktree" }
+worktree = { path = "../experimental/worktree" }
 
 # Env config (McpServerDef, home::loom_home)
 env_config = { path = "../config", package = "config" }

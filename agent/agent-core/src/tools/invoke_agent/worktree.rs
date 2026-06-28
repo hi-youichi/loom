@@ -102,7 +102,7 @@ pub(super) async fn invoke_single_agent(
             .as_deref()
             .unwrap_or_else(|| std::path::Path::new("."));
 
-        match loom_worktree::WorktreeManager::from_working_dir(current_dir, worktree_config) {
+        match worktree::WorktreeManager::from_working_dir(current_dir, worktree_config) {
             Ok(manager) => {
                 match manager
                     .create_for_agent(
@@ -171,7 +171,7 @@ pub(super) async fn invoke_single_agent(
             .as_ref()
             .map(|wc| wc.to_worktree_config())
             .unwrap_or_default();
-        let manager = loom_worktree::WorktreeManager::new(handle.repo_root.clone(), wt_config.clone());
+        let manager = worktree::WorktreeManager::new(handle.repo_root.clone(), wt_config.clone());
         let has_changes = manager.check_changes(&handle).await.unwrap_or(false);
 
         if !has_changes && wt_config.auto_cleanup {

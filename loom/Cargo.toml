@@ -138,7 +138,7 @@ jsonrpc-core = "18.0"
 url = "2.5"
 
 
-loom-worktree = { path = "../loom-worktree" }
+worktree = { path = "../experimental/worktree" }
 skill = { path = "../agent/skill" }
 [dev-dependencies]
 tempfile = "3"

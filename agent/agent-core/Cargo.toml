@@ -22,7 +22,7 @@ loom-compress = { path = "../../loom-compress" }
 loom-cli-types = { path = "../../loom-cli-types" }
 skill = { path = "../skill" }
 loom-react-config = { path = "../../loom-react-config" }
-loom-worktree = { path = "../../loom-worktree" }
+worktree = { path = "../../experimental/worktree" }
 
 loom-stream-display = { path = "../../loom-stream-display" }
 loom-commands = { path = "../../loom-commands" }

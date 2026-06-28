@@ -6,7 +6,7 @@ members = [
     "experimental/tool/lsp",
     "loom-memory",
     "loom-cache",
-    "loom-worktree",
+    "experimental/worktree",
 
     "agent/skill",
     "loom-graph",

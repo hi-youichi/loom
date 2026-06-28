@@ -1,5 +1,5 @@
 [package]
-name = "loom-worktree"
+name = "worktree"
 version.workspace = true
 edition.workspace = true
 description = "Git worktree isolation for parallel sub-agent execution"

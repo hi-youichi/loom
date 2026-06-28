@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 use model_spec_core::ModelTier;
-use loom_worktree::WorktreeProfileConfig;
+use worktree::WorktreeProfileConfig;
 
 #[derive(Debug, Error)]
 pub enum ProfileError {
