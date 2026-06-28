@@ -15,7 +15,6 @@ loom = { path = "../loom" }
 loom-llm = { path = "../loom-llm" }
 loom-memory = { path = "../loom-memory" }
 loom-workspace = { path = "../loom-workspace" }
-loom-tier = { path = "../loom-tier" }
 config = { path = "../config" }
 stream-event = { path = "../stream-event" }
 

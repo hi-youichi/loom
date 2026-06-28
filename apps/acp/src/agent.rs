@@ -49,13 +49,13 @@ impl ModelProvider for RealModelProvider {
 }
 
 async fn fetch_available_models() -> Vec<ModelOption> {
-    let registry = loom_tier::ModelRegistry::global();
+    let registry = model_spec_core::ModelRegistry::global();
 
-    let providers: Vec<loom_tier::ProviderConfig> = match load_full_config("loom") {
+    let providers: Vec<model_spec_core::ProviderConfig> = match load_full_config("loom") {
         Ok(config) => config
             .providers
             .into_iter()
-            .map(|p| loom_tier::ProviderConfig {
+            .map(|p| model_spec_core::ProviderConfig {
                 name: p.name,
                 base_url: p.base_url,
                 api_key: p.api_key,
@@ -212,7 +212,7 @@ impl LoomAcpAgent {
 
                     let mut config = loom_react_config::ReactBuildConfig::from_env();
                     config.model_tier = Some(tier);
-                    let resolved_config = loom_tier::resolve_tier_and_build_config(&config).await;
+                    let resolved_config = loom_react_config::resolve_tier_and_build_config(&config).await;
 
                     if resolved_config.model.is_some() {
                         let resolved = loom_cli_types::ResolvedModelConfig {

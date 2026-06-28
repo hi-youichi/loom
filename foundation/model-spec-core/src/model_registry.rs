@@ -2,10 +2,8 @@
 //!
 //! Provides a single source of truth for all available models across providers.
 //! Combines provider configuration with model lists to return fully resolved model entries.
-//!
-//! `create_llm_client` / `create_llm_provider` have been moved to `loom::llm_factory`.
 
-pub use model_spec_core::registry::{
+pub use crate::registry::{
     CachedModelList, CombinedModelList, ModelEntry, ProviderConfig,
     DEFAULT_CACHE_TTL, DEFAULT_PROVIDER_CACHE_TTL,
 };
@@ -16,15 +14,13 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::RwLock;
 
-use loom_graph::GraphError;
-use model_spec_core::Provider as SpecProvider;
+use crate::tier_error::TierError;
+use crate::Provider as SpecProvider;
 
 /// Cached model catalog fetched from models.dev.
 #[derive(Clone, Debug)]
 struct CachedSpecProviders {
-    /// Provider metadata from models.dev keyed by normalized provider name.
     providers: HashMap<String, SpecProvider>,
-    /// When the models were fetched.
     fetched_at: Instant,
 }
 
@@ -43,21 +39,16 @@ pub struct ModelRegistry {
 
 #[derive(Default)]
 struct RegistryInner {
-    /// Cached provider catalog from models.dev.
     cache: Option<CachedSpecProviders>,
-    /// Cached model lists from provider APIs.
     provider_cache: HashMap<String, CachedModelList>,
-    /// Local model lists (persisted storage).
     local_models: HashMap<String, Vec<ModelEntry>>,
 }
 
 impl ModelRegistry {
-    /// Create a new ModelRegistry with default TTL (5 minutes).
     pub fn new() -> Self {
         Self::with_ttl(DEFAULT_CACHE_TTL)
     }
 
-    /// Create a new ModelRegistry with custom TTL.
     pub fn with_ttl(ttl: Duration) -> Self {
         Self {
             inner: Arc::new(RwLock::new(RegistryInner::default())),
@@ -65,14 +56,12 @@ impl ModelRegistry {
         }
     }
 
-    /// Get the global singleton instance.
     pub fn global() -> Self {
         static INSTANCE: std::sync::OnceLock<ModelRegistry> = std::sync::OnceLock::new();
         INSTANCE.get_or_init(ModelRegistry::new).clone()
     }
 
     /// List all available models from all providers.
-    /// Returns models in "{provider}/{model_id}" format with provider configuration.
     pub async fn list_all_models(&self, providers: &[ProviderConfig]) -> Vec<ModelEntry> {
         match self.list_all_models_result(providers).await {
             Ok(models) => models,
@@ -83,11 +72,20 @@ impl ModelRegistry {
         }
     }
 
-    /// List all available models from configured providers using model spec.
+    /// List all available models, returning an error on failure.
     pub async fn list_all_models_result(
         &self,
         providers: &[ProviderConfig],
-    ) -> Result<Vec<ModelEntry>, GraphError> {
+    ) -> Result<Vec<ModelEntry>, String> {
+        self.list_all_models_inner(providers)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    async fn list_all_models_inner(
+        &self,
+        providers: &[ProviderConfig],
+    ) -> Result<Vec<ModelEntry>, TierError> {
         if providers.is_empty() {
             tracing::info!(
                 total_models = 0,
@@ -208,12 +206,22 @@ impl ModelRegistry {
             .flatten()
     }
 
-    /// Get a specific model by combined ID using model spec metadata.
+    /// Get a specific model by combined ID, returning an error on failure.
     pub async fn get_model_result(
         &self,
         combined_id: &str,
         providers: &[ProviderConfig],
-    ) -> Result<Option<ModelEntry>, GraphError> {
+    ) -> Result<Option<ModelEntry>, String> {
+        self.get_model_inner(combined_id, providers)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    async fn get_model_inner(
+        &self,
+        combined_id: &str,
+        providers: &[ProviderConfig],
+    ) -> Result<Option<ModelEntry>, TierError> {
         let Some((provider_name, model_id)) = combined_id.split_once('/') else {
             return Ok(None);
         };
@@ -263,7 +271,7 @@ impl ModelRegistry {
 
     async fn fetch_or_get_cached_spec_providers(
         &self,
-    ) -> Result<HashMap<String, SpecProvider>, GraphError> {
+    ) -> Result<HashMap<String, SpecProvider>, TierError> {
         {
             let inner = self.inner.read().await;
             if let Some(cached) = &inner.cache {
@@ -273,11 +281,11 @@ impl ModelRegistry {
             }
         }
 
-        let fetched = model_spec_core::resolver::ModelsDevResolver::new()
+        let fetched = crate::resolver::ModelsDevResolver::new()
             .fetch_all_providers()
             .await
             .map_err(|e| {
-                GraphError::ExecutionFailed(format!("failed to fetch model spec providers: {e}"))
+                TierError::execution(format!("failed to fetch model spec providers: {e}"))
             })?;
         let providers: HashMap<String, SpecProvider> = fetched
             .into_iter()
@@ -342,10 +350,10 @@ impl ModelRegistry {
         inner.local_models.insert(provider, models);
     }
 
-    pub async fn fetch_provider_models_cached(
+    pub(crate) async fn fetch_provider_models_cached(
         &self,
         provider: &ProviderConfig,
-    ) -> Result<Vec<ModelEntry>, GraphError> {
+    ) -> Result<Vec<ModelEntry>, TierError> {
         if let Some(cached) = self.get_cached_provider_models(&provider.name).await {
             tracing::debug!(
                 provider = %provider.name,
@@ -369,9 +377,9 @@ impl ModelRegistry {
     async fn fetch_provider_models_api(
         &self,
         provider: &ProviderConfig,
-    ) -> Result<Vec<ModelEntry>, GraphError> {
+    ) -> Result<Vec<ModelEntry>, TierError> {
         let base_url = provider.base_url.as_ref().ok_or_else(|| {
-            GraphError::ExecutionFailed(format!("Provider {} has no base_url configured", provider.name))
+            TierError::execution(format!("Provider {} has no base_url configured", provider.name))
         })?;
 
         let url = format!("{}/models", base_url.trim_end_matches('/'));
@@ -411,7 +419,7 @@ struct OpenAiModelItem {
 async fn fetch_models_from_api(
     url: &str,
     api_key: Option<&str>,
-) -> Result<Vec<String>, GraphError> {
+) -> Result<Vec<String>, TierError> {
     let client = reqwest::Client::new();
     let mut req = client.get(url);
     if let Some(key) = api_key {
@@ -423,12 +431,12 @@ async fn fetch_models_from_api(
         .send()
         .await
         .map_err(|e| {
-            GraphError::ExecutionFailed(format!("failed to fetch models from {url}: {e}"))
+            TierError::execution(format!("failed to fetch models from {url}: {e}"))
         })?
         .json()
         .await
         .map_err(|e| {
-            GraphError::ExecutionFailed(format!("failed to parse models response from {url}: {e}"))
+            TierError::execution(format!("failed to parse models response from {url}: {e}"))
         })?;
     Ok(resp.data.into_iter().map(|m| m.id).collect())
 }

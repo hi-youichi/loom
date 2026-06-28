@@ -21,7 +21,6 @@ memory-v2 = { path = "../../experimental/memory-v2" }
 loom-compress = { path = "../../loom-compress" }
 loom-cli-types = { path = "../../loom-cli-types" }
 skill = { path = "../skill" }
-loom-tier = { path = "../../loom-tier" }
 loom-react-config = { path = "../../loom-react-config" }
 loom-worktree = { path = "../../loom-worktree" }
 
@@ -43,7 +42,7 @@ dashmap = "6.0"
 futures = "0.3"
 futures-util = "0.3"
 env-config = { path = "../../config", package = "config" }
-model-spec-core = { path = "../../foundation/model-spec-core", features = ["resolver"] }
+model-spec-core = { path = "../../foundation/model-spec-core", features = ["tier"] }
 async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
 task-core = { path = "../../experimental/task/task-core" }
 

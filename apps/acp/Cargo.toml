@@ -20,8 +20,8 @@ loom-memory = { path = "../../loom-memory" }
 tool-core = { path = "../../agent/tool/tool-core" }
 tool-basic = { path = "../../agent/tool/tool-basic" }
 loom-types = { path = "../../loom-types" }
-loom-tier = { path = "../../loom-tier" }
 loom-react-config = { path = "../../loom-react-config" }
+model-spec-core = { path = "../../foundation/model-spec-core", features = ["tier"] }
 loom-stream = { path = "../../loom-stream" }
 
 loom-commands = { path = "../../loom-commands" }

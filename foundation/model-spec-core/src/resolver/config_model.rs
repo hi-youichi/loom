@@ -56,15 +56,6 @@ impl ConfigModelResolver {
             specs: Arc::new(RwLock::new(map)),
         }
     }
-
-    /// Insert or update a model at runtime.
-    pub async fn upsert(&self, provider: &str, model_id: &str, model: Model) {
-        let mut guard = self.specs.write().await;
-        guard
-            .entry(provider.to_string())
-            .or_default()
-            .insert(model_id.to_string(), model);
-    }
 }
 
 impl Default for ConfigModelResolver {
@@ -116,21 +107,6 @@ mod tests {
     async fn resolve_returns_none_for_unknown() {
         let resolver = ConfigModelResolver::from_providers(&[]);
         assert!(resolver.resolve("zhipuai", "glm-5.2").await.is_none());
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn upsert_adds_new_model() {
-        let resolver = ConfigModelResolver::new();
-        resolver
-            .upsert(
-                "zhipuai",
-                "glm-5.2",
-                Model::minimal("glm-5.2", ModelLimit::new(1_000_000, 131_072)),
-            )
-            .await;
-
-        let model = resolver.resolve("zhipuai", "glm-5.2").await.unwrap();
-        assert_eq!(model.limit.context, 1_000_000);
     }
 
     #[tokio::test(flavor = "current_thread")]

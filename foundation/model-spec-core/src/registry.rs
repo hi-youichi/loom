@@ -1,7 +1,5 @@
 //! Model registry types: ProviderConfig, ModelEntry, CachedModelList.
 
-use crate::tool_choice::ToolChoiceMode;
-
 /// Default TTL for cached model lists (5 minutes).
 pub const DEFAULT_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(300);
 
@@ -139,9 +137,6 @@ pub struct ModelEntry {
     pub temperature: Option<f32>,
     /// Maximum tokens to generate.
     pub max_tokens: Option<u32>,
-    /// Tool choice mode (auto, none, required).
-    pub tool_choice: Option<ToolChoiceMode>,
-
     // === Model Selection ===
     /// Model family (e.g., "glm", "gpt-5.5").
     pub family: Option<String>,
@@ -204,13 +199,7 @@ impl ModelEntry {
         self
     }
 
-    /// Set the tool choice mode.
-    pub fn with_tool_choice(mut self, tool_choice: ToolChoiceMode) -> Self {
-        self.tool_choice = Some(tool_choice);
-        self
-    }
-
-    /// Parse a model ID in format "provider/model" and return (provider, model).
+    /// Parse a model ID
     pub fn parse_id(id: &str) -> Option<(&str, &str)> {
         id.split_once('/')
     }

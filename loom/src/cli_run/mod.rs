@@ -279,12 +279,12 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
 
     tracing::info!("🔍 Resolving model configuration for: {}", model_str);
 
-    let providers: Vec<loom_tier::model_registry::ProviderConfig> =
-        loom_tier::provider::load_provider_configs().unwrap_or_default();
+    let providers: Vec<model_spec_core::ProviderConfig> =
+        env_config::load_provider_configs_from_xdg().unwrap_or_default();
 
     // 1. Try ModelRegistry first
     tracing::debug!("🔎 Searching ModelRegistry for: {}", model_str);
-    if let Some(entry) = loom_tier::model_registry::ModelRegistry::global()
+    if let Some(entry) = model_spec_core::ModelRegistry::global()
         .get_model(model_str, &providers)
         .await
     {

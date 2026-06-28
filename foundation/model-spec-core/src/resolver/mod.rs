@@ -4,17 +4,13 @@ mod cached;
 mod composite;
 mod config_model;
 mod config_override;
-mod local_file;
 mod models_dev;
-mod refresher;
 
 pub use cached::CachedResolver;
 pub use composite::CompositeResolver;
-pub use config_model::{ConfigModelEntry, ConfigModelResolver, ConfigProviderEntry};
+pub use config_model::{ConfigModelEntry, ConfigProviderEntry};
 pub use config_override::ConfigOverride;
-pub use local_file::LocalFileResolver;
 pub use models_dev::{HttpClient, ModelsDevResolver, ReqwestHttpClient, DEFAULT_MODELS_DEV_URL};
-pub use refresher::ResolverRefresher;
 
 use std::sync::Arc;
 
@@ -75,7 +71,7 @@ pub fn build_composite_resolver(
         sources.push(Arc::new(cfg));
     }
 
-    let config_model = ConfigModelResolver::from_providers(&config_providers);
+    let config_model = config_model::ConfigModelResolver::from_providers(&config_providers);
     sources.push(Arc::new(config_model));
 
     let models_dev = ModelsDevResolver::new();

@@ -36,7 +36,6 @@ members = [
     "experimental/curator",
     "loom-stream-display",
     "loom-prompt",
-    "loom-tier",
     "loom-react-config",
     "loom-cli-types",
     "experimental/memory-v2",

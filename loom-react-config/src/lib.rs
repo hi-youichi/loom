@@ -19,6 +19,13 @@ pub use loom_types::config::{BuiltinToolFilter, TotRunnerConfig, GotRunnerConfig
 // Profile loading and agent resolution
 pub mod profile;
 
+// Tier resolution applied to ReactBuildConfig
+pub mod tier_apply;
+pub use tier_apply::{
+    extract_provider_hint, resolve_tier_and_build_config,
+    resolve_tier_and_build_config_with_resolver,
+};
+
 // Profile conversion to external formats
 pub mod profile_convert;
 

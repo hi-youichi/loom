@@ -12,4 +12,4 @@ pub use dispatch::{
 pub use loom_types::active_operation::{
     ActiveOperationCanceller, ActiveOperationKind, ActiveOperation, RunCancellation,
 };
-pub use loom_tier::{resolve_tier_and_build_config, resolve_tier_and_build_config_with_resolver};
+pub use loom_react_config::{resolve_tier_and_build_config, resolve_tier_and_build_config_with_resolver};

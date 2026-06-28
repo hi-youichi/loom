@@ -294,7 +294,7 @@ pub async fn build_runner(
     cmd: &RunCmd,
     llm_override: Option<Box<dyn LlmClient>>,
 ) -> Result<AnyRunner, RunError> {
-    let config = loom_tier::resolve_tier_and_build_config(config).await;
+    let config = loom_react_config::resolve_tier_and_build_config(config).await;
     let cancellation = opts.cancellation.as_ref().map(RunCancellation::token);
     let llm_override_provider: Option<Arc<dyn loom_llm::LlmProvider>> = llm_override.map(|llm| {
         Arc::new(loom_llm::client::FixedLlmProvider {

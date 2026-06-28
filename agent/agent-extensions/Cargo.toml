@@ -16,7 +16,6 @@ tool-core = { path = "../tool/tool-core" }
 loom-compress = { path = "../../loom-compress" }
 loom-cli-types = { path = "../../loom-cli-types" }
 skill = { path = "../skill" }
-loom-tier = { path = "../../loom-tier" }
 loom-react-config = { path = "../../loom-react-config" }
 loom-worktree = { path = "../../loom-worktree" }
 

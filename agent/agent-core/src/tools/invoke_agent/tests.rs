@@ -112,18 +112,20 @@ struct MockTierResolver {
 }
 
 #[async_trait::async_trait]
-impl loom_tier::TierResolver for MockTierResolver {
+impl model_spec_core::TierResolver for MockTierResolver {
     async fn resolve_tier(
         &self,
-        _config: &ReactBuildConfig,
+        _model: Option<&str>,
         tier: model_spec_core::ModelTier,
-    ) -> Option<loom_tier::ResolvedTierModel> {
+        _provider_hint: Option<&str>,
+        _providers: &[model_spec_core::ProviderConfig],
+    ) -> Option<model_spec_core::ResolvedTierModel> {
         assert_eq!(
             tier,
             model_spec_core::ModelTier::Light,
             "explore agent should request Light tier"
         );
-        Some(loom_tier::ResolvedTierModel {
+        Some(model_spec_core::ResolvedTierModel {
             model_id: self.light_model_id.clone(),
             base_url: Some("https://mock.test/v1".into()),
             api_key: Some("sk-mock".into()),
@@ -158,7 +160,7 @@ async fn explore_agent_resolves_light_tier_model() {
         light_model_id: "anthropic/claude-haiku-4".to_string(),
     };
     let resolved =
-        loom_tier::resolve_tier_and_build_config_with_resolver(&sub_config, &resolver).await;
+        loom_react_config::resolve_tier_and_build_config_with_resolver(&sub_config, &resolver).await;
 
     assert_eq!(
         resolved.model.as_deref(),

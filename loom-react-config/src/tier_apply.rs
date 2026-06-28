@@ -1,10 +1,21 @@
-use loom_react_config::ReactBuildConfig;
-use super::resolver::{DefaultTierResolver, TierResolver};
+//! Apply tier resolution results to [`ReactBuildConfig`].
+//!
+//! Migrated from `loom-tier/src/apply.rs`. Lives in `loom-react-config` because
+//! it reads and writes `ReactBuildConfig` fields.
 
+use model_spec_core::{
+    DefaultTierResolver, TierResolver,
+    registry::ModelEntry,
+};
+
+use crate::ReactBuildConfig;
+
+/// Resolve `model_tier` in the config using the default resolver, returning a new config.
 pub async fn resolve_tier_and_build_config(config: &ReactBuildConfig) -> ReactBuildConfig {
     resolve_tier_and_build_config_with_resolver(config, &DefaultTierResolver).await
 }
 
+/// Resolve `model_tier` in the config using a custom resolver, returning a new config.
 pub async fn resolve_tier_and_build_config_with_resolver(
     config: &ReactBuildConfig,
     resolver: &dyn TierResolver,
@@ -15,7 +26,19 @@ pub async fn resolve_tier_and_build_config_with_resolver(
     };
     let mut config = config.clone();
     tracing::info!("Resolving model tier: {:?}", tier);
-    match resolver.resolve_tier(&config, tier).await {
+
+    let providers = env_config::load_provider_configs_from_xdg().unwrap_or_default();
+    let provider_hint = extract_provider_hint(&config);
+
+    match resolver
+        .resolve_tier(
+            config.model.as_deref(),
+            tier,
+            provider_hint.as_deref(),
+            &providers,
+        )
+        .await
+    {
         Some(resolved) => {
             tracing::info!(
                 tier = ?tier,
@@ -29,10 +52,7 @@ pub async fn resolve_tier_and_build_config_with_resolver(
             config.model_tier = None;
 
             if let Some(base_url) = resolved.base_url {
-                tracing::debug!(
-                    base_url = %base_url,
-                    "Applying base_url from tier resolution"
-                );
+                tracing::debug!(base_url = %base_url, "Applying base_url from tier resolution");
                 config.openai_base_url = Some(base_url);
             }
             if let Some(api_key) = resolved.api_key {
@@ -60,21 +80,32 @@ pub async fn resolve_tier_and_build_config_with_resolver(
             config
         }
         None => {
-            tracing::warn!(
-                tier = ?tier,
-                "Tier resolution failed, returning config as-is"
-            );
+            tracing::warn!(tier = ?tier, "Tier resolution failed, returning config as-is");
             config
         }
     }
 }
 
+/// Extract provider hint from [`ReactBuildConfig`] fields.
+///
+/// Priority: `parent_model_hint` (parsed as `provider/model`) → `llm_provider_name` → `llm_provider`.
+pub fn extract_provider_hint(config: &ReactBuildConfig) -> Option<String> {
+    if let Some(hint) = config.parent_model_hint.as_deref() {
+        if let Some((provider, _)) = ModelEntry::parse_id(hint) {
+            return Some(provider.to_string());
+        }
+    }
+    config
+        .llm_provider_name
+        .as_deref()
+        .or(config.llm_provider.as_deref())
+        .map(|p| p.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_react_config::ReactBuildConfig;
-    use model_spec_core::ModelTier;
-    use crate::ResolvedTierModel;
+    use model_spec_core::{ModelTier, ProviderConfig, ResolvedTierModel};
 
     struct MockTierResolver {
         should_resolve: bool,
@@ -85,8 +116,10 @@ mod tests {
     impl TierResolver for MockTierResolver {
         async fn resolve_tier(
             &self,
-            _config: &ReactBuildConfig,
+            _model: Option<&str>,
             _tier: ModelTier,
+            _provider_hint: Option<&str>,
+            _providers: &[ProviderConfig],
         ) -> Option<ResolvedTierModel> {
             if self.should_resolve {
                 self.test_result.clone()

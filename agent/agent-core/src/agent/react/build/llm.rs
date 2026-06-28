@@ -26,8 +26,8 @@ fn parse_provider_model(model: &str) -> Option<(&str, &str)> {
     Some((provider, model_id))
 }
 
-pub use loom_tier::{DefaultTierResolver, ResolvedTierModel, TierResolver};
-pub(crate) use loom_tier::resolve_tier_for_config;
+pub use model_spec_core::{DefaultTierResolver, ResolvedTierModel, TierResolver};
+pub(crate) use model_spec_core::resolve_tier;
 
 pub(crate) fn model_entry_from_config(
     config: &ReactBuildConfig,
@@ -107,7 +107,6 @@ pub(crate) fn model_entry_from_config(
         provider_type: config.llm_provider.clone(),
         temperature,
         max_tokens: None,
-        tool_choice: None,
         family: None,
         version: None,
     })
@@ -151,9 +150,6 @@ pub async fn build_default_llm_with_tool_source(
                 tracing::debug!("Set X-Thread-Id header: {}", thread_id);
             }
             
-            if let Some(mode) = entry.tool_choice {
-                client = client.with_tool_choice(mode);
-            }
             if let Some(t) = entry.temperature {
                 client = client.with_temperature(t);
             }
@@ -198,9 +194,6 @@ pub async fn build_default_llm_with_tool_source(
                 tracing::debug!("Set X-Thread-Id header: {}", thread_id);
             }
             
-            if let Some(mode) = entry.tool_choice {
-                client = client.with_tool_choice(mode);
-            }
             if let Some(t) = entry.temperature {
                 client = client.with_temperature(t);
             }
@@ -227,7 +220,9 @@ pub(crate) async fn build_default_provider(
 pub(crate) async fn resolve_title_provider(
     config: &ReactBuildConfig,
 ) -> Option<Arc<dyn LlmProvider>> {
-    let resolved = resolve_tier_for_config(config, ModelTier::Light).await?;
+    let providers = env_config::load_provider_configs_from_xdg().unwrap_or_default();
+    let provider_hint = loom_react_config::extract_provider_hint(config);
+    let resolved = resolve_tier(config.model.as_deref(), ModelTier::Light, provider_hint.as_deref(), &providers).await?;
     let (provider, model_name) = ModelEntry::parse_id(&resolved.model_id)?;
     let entry = ModelEntry {
         id: resolved.model_id.clone(),
@@ -238,7 +233,6 @@ pub(crate) async fn resolve_title_provider(
         provider_type: resolved.provider_type,
         temperature: None,
         max_tokens: None,
-        tool_choice: None,
         family: None,
         version: None,
     };

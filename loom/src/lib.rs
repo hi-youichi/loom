@@ -14,7 +14,7 @@
 //! - `loom_memory` — `Checkpointer`, `Store`, `MemorySaver`, `SqliteSaver`
 //! - `loom_stream` — `StreamEvent`, `StreamMode`, `StreamWriter`
 //! - `loom_prompt` — `assemble_system_prompt`, `EnvContext`
-//! - `loom_tier` — tier resolution, model registry, LLM factory
+//! - `model_spec_core` — tier resolution, model registry
 //! - `loom_cache` — `Cache`, `InMemoryCache`
 //! - `loom_compress` — context compression / compaction
 //! - `loom_pregel` — low-level Pregel graph runtime

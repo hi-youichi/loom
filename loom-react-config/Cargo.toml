@@ -15,7 +15,7 @@ tool-core = { path = "../agent/tool/tool-core" }
 tool-basic = { path = "../agent/tool/tool-basic" }
 
 # Model tier
-model-spec-core = { path = "../foundation/model-spec-core" }
+model-spec-core = { path = "../foundation/model-spec-core", features = ["tier"] }
 
 # Shared types (BuiltinToolFilter, TotRunnerConfig, GotRunnerConfig)
 loom-types = { path = "../loom-types" }
@@ -34,6 +34,10 @@ serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 thiserror = "2"
 tracing = "0.1"
+
+# Tier resolution (tier_apply.rs)
+async-trait = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

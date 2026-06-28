@@ -22,7 +22,7 @@ pub struct LlmFactory {
 impl LlmFactory {
     /// Load provider configs from the config file.
     pub fn load() -> Option<Self> {
-        loom_tier::provider::load_provider_configs().map(|providers| Self { providers })
+        env_config::load_provider_configs_from_xdg().map(|providers| Self { providers })
     }
 
     /// Resolve a tier to a fully configured ModelEntry.
@@ -36,7 +36,7 @@ impl LlmFactory {
         version: &str,
         tier: ModelTier,
     ) -> Option<ModelEntry> {
-        let plans = loom_tier::plan::tier_plans();
+        let plans = model_spec_core::tier_plans();
         let key = format!("{}/{}/{}", provider, family, version);
         let plan = plans.get(&key)?;
         let model_name = plan.tiers.get(&tier)?;

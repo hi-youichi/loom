@@ -5,7 +5,6 @@ pub mod parser;
 pub mod provider;
 pub mod registry;
 pub mod tier;
-pub mod tool_choice;
 
 #[cfg(feature = "resolver")]
 pub mod resolver;
@@ -20,4 +19,24 @@ pub use parser::{
 pub use provider::Provider;
 pub use registry::{CachedModelList, CombinedModelList, ModelEntry, ProviderConfig};
 pub use tier::{pick_best_for_tier, ModelTier};
-pub use tool_choice::ToolChoiceMode;
+
+#[cfg(feature = "tier")]
+pub(crate) mod tier_error;
+#[cfg(feature = "tier")]
+pub mod tier_plan;
+#[cfg(feature = "tier")]
+pub mod tier_resolve;
+#[cfg(feature = "tier")]
+pub mod model_registry;
+
+#[cfg(feature = "tier")]
+pub use tier_plan::{TierPlan, tier_plans};
+#[cfg(feature = "tier")]
+pub use tier_resolve::{
+    resolve_tier_intelligent,
+    resolve_from_spec, resolve_from_plan,
+    resolve_tier,
+    TierResolver, DefaultTierResolver, ResolvedTierModel,
+};
+#[cfg(feature = "tier")]
+pub use model_registry::ModelRegistry;

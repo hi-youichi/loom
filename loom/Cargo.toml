@@ -71,13 +71,10 @@ tool-extensions = { path = "../agent/tool/tool-extensions" }
 tool-experimental = { path = "../agent/tool/tool-experimental" }
 
 
-# Tier resolution, model registry (loom-tier crate)
-loom-tier = { path = "../loom-tier" }
+# Model spec core types (ModelEntry, ProviderConfig, tier resolution)
+model-spec-core = { path = "../foundation/model-spec-core", features = ["tier"] }
 
-# Model spec core types (ModelEntry, ProviderConfig, etc.)
-model-spec-core = { path = "../foundation/model-spec-core", features = ["resolver"] }
-
-# LLM factory (moved from loom-tier): ChatOpenAI, ChatOpenAICompat
+# LLM factory: ChatOpenAI, ChatOpenAICompat
 async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
 reqwest = { version = "0.12", features = ["json"] }
 
@@ -156,7 +153,6 @@ loom-stream = { path = "../loom-stream" }
 loom-llm = { path = "../loom-llm" }
 loom-types = { path = "../loom-types" }
 loom-react-config = { path = "../loom-react-config" }
-loom-tier = { path = "../loom-tier" }
 async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
 dotenv = { workspace = true }
 

@@ -1,9 +1,146 @@
-//! Tier resolution strategies: plan, spec, provider API, local.
+//! Tier resolution: trait, strategies, and intelligent resolution.
+//!
+//! Merged from `loom-tier/src/resolve.rs` and `loom-tier/src/resolver.rs`.
 
-use model_spec_core::registry::{ModelEntry, ProviderConfig};
+use async_trait::async_trait;
+
+use crate::registry::{ModelEntry, ProviderConfig};
+use crate::{ModelTier, pick_best_for_tier};
 
 use crate::model_registry::ModelRegistry;
-use crate::plan::tier_plans;
+use crate::tier_plan::tier_plans;
+
+// ============================================================================
+// ResolvedTierModel
+// ============================================================================
+
+/// The result of tier resolution — a fully resolved model with provider info.
+#[derive(Clone)]
+pub struct ResolvedTierModel {
+    pub model_id: String,
+    pub base_url: Option<String>,
+    pub api_key: Option<String>,
+    pub provider_type: Option<String>,
+    pub provider_name: Option<String>,
+}
+
+impl ResolvedTierModel {
+    pub fn from_entry(entry: ModelEntry) -> Self {
+        Self {
+            model_id: entry.id,
+            base_url: entry.base_url,
+            api_key: entry.api_key,
+            provider_type: entry.provider_type,
+            provider_name: Some(entry.provider),
+        }
+    }
+}
+
+// ============================================================================
+// TierResolver trait + DefaultTierResolver
+// ============================================================================
+
+/// Resolves a model tier to a concrete model.
+///
+/// Takes raw parameters instead of `ReactBuildConfig` to avoid a dependency on
+/// `loom-react-config`. Callers extract the provider hint and load providers
+/// before calling this trait.
+#[async_trait]
+pub trait TierResolver: Send + Sync {
+    /// Resolve a tier to a concrete model.
+    ///
+    /// - `model`: explicit model override (e.g. `"openai/gpt-4o"`)
+    /// - `tier`: the target tier to resolve
+    /// - `provider_hint`: provider name extracted from parent config
+    /// - `providers`: loaded provider configurations
+    async fn resolve_tier(
+        &self,
+        model: Option<&str>,
+        tier: ModelTier,
+        provider_hint: Option<&str>,
+        providers: &[ProviderConfig],
+    ) -> Option<ResolvedTierModel>;
+}
+
+/// Default resolver using plan → spec → provider API → local strategy chain.
+pub struct DefaultTierResolver;
+
+#[async_trait]
+impl TierResolver for DefaultTierResolver {
+    async fn resolve_tier(
+        &self,
+        model: Option<&str>,
+        tier: ModelTier,
+        provider_hint: Option<&str>,
+        providers: &[ProviderConfig],
+    ) -> Option<ResolvedTierModel> {
+        match model {
+            Some(model_id) => {
+                if let Some((provider, _model)) = ModelEntry::parse_id(model_id) {
+                    if let Some(provider_cfg) = providers.iter().find(|p| p.name == provider) {
+                        if provider_cfg.enable_tier_resolution {
+                            let entry =
+                                resolve_tier_intelligent(provider, tier, providers).await?;
+                            return Some(ResolvedTierModel::from_entry(entry));
+                        }
+                    }
+                }
+
+                let entry = resolve_for_model(model_id, tier, providers).await?;
+                Some(ResolvedTierModel::from_entry(entry))
+            }
+            None => match provider_hint {
+                Some(p) => {
+                    if let Some(provider_cfg) = providers.iter().find(|cfg| cfg.name == p) {
+                        if !provider_cfg.enable_tier_resolution {
+                            tracing::debug!(
+                                provider = %p,
+                                "Tier resolution disabled for this provider"
+                            );
+                            return None;
+                        }
+                    }
+
+                    tracing::debug!(
+                        provider = %p,
+                        ?tier,
+                        "Resolving tier from provider"
+                    );
+                    let entry = resolve_tier_intelligent(p, tier, providers).await?;
+                    Some(ResolvedTierModel::from_entry(entry))
+                }
+                None => {
+                    for p in providers {
+                        if p.enable_tier_resolution {
+                            if let Some(entry) =
+                                resolve_tier_intelligent(&p.name, tier, providers).await
+                            {
+                                return Some(ResolvedTierModel::from_entry(entry));
+                            }
+                        }
+                    }
+                    None
+                }
+            },
+        }
+    }
+}
+
+/// Convenience wrapper: resolve a tier using the default resolver.
+pub async fn resolve_tier(
+    model: Option<&str>,
+    tier: ModelTier,
+    provider_hint: Option<&str>,
+    providers: &[ProviderConfig],
+) -> Option<ResolvedTierModel> {
+    DefaultTierResolver
+        .resolve_tier(model, tier, provider_hint, providers)
+        .await
+}
+
+// ============================================================================
+// Resolution strategies
+// ============================================================================
 
 fn entry_with_spec_fallback(
     provider_cfg: &ProviderConfig,
@@ -25,7 +162,7 @@ fn entry_with_spec_fallback(
 /// Resolve a model from the model spec (models.dev) for the given tier.
 pub async fn resolve_from_spec(
     provider: &str,
-    tier: model_spec_core::ModelTier,
+    tier: ModelTier,
     providers: &[ProviderConfig],
 ) -> Option<ModelEntry> {
     let registry = ModelRegistry::global();
@@ -33,16 +170,19 @@ pub async fn resolve_from_spec(
         .find_provider_data(provider, providers)
         .await?;
 
-    let (model_id, _model) =
-        model_spec_core::pick_best_for_tier(&spec_provider.models, tier)?;
+    let (model_id, _model) = pick_best_for_tier(&spec_provider.models, tier)?;
 
-    Some(entry_with_spec_fallback(provider_cfg, model_id, spec_provider.api.as_ref()))
+    Some(entry_with_spec_fallback(
+        provider_cfg,
+        model_id,
+        spec_provider.api.as_ref(),
+    ))
 }
 
 /// Resolve a model by fetching from the provider's API.
-pub async fn resolve_from_provider_api(
+pub(crate) async fn resolve_from_provider_api(
     provider: &str,
-    _tier: model_spec_core::ModelTier,
+    _tier: ModelTier,
     providers: &[ProviderConfig],
 ) -> Option<ModelEntry> {
     let provider_cfg = providers.iter().find(|p| p.name == provider)?;
@@ -61,19 +201,10 @@ pub async fn resolve_from_provider_api(
     None
 }
 
-/// Resolve a model from local storage (not yet implemented).
-pub async fn resolve_from_local(
-    _provider: &str,
-    _tier: model_spec_core::ModelTier,
-    _providers: &[ProviderConfig],
-) -> Option<ModelEntry> {
-    None
-}
-
 /// Resolve a model from the embedded tier plans.
 pub fn resolve_from_plan(
     provider: &str,
-    tier: model_spec_core::ModelTier,
+    tier: ModelTier,
     providers: &[ProviderConfig],
 ) -> Option<ModelEntry> {
     let plans = tier_plans();
@@ -89,7 +220,7 @@ pub fn resolve_from_plan(
 /// Resolve a tier using all available strategies (plan → spec → provider API → local).
 pub async fn resolve_tier_intelligent(
     provider: &str,
-    tier: model_spec_core::ModelTier,
+    tier: ModelTier,
     providers: &[ProviderConfig],
 ) -> Option<ModelEntry> {
     if let Some(entry) = resolve_from_plan(provider, tier, providers) {
@@ -119,15 +250,6 @@ pub async fn resolve_tier_intelligent(
         return Some(entry);
     }
 
-    if let Some(entry) = resolve_from_local(provider, tier, providers).await {
-        tracing::debug!(
-            provider = %provider,
-            tier = ?tier,
-            "Tier resolution succeeded using local models"
-        );
-        return Some(entry);
-    }
-
     tracing::warn!(
         provider = %provider,
         tier = ?tier,
@@ -137,27 +259,91 @@ pub async fn resolve_tier_intelligent(
 }
 
 /// Resolve a tier for a specific model ID (extracts provider from the ID).
-pub async fn resolve_for_model(
+pub(crate) async fn resolve_for_model(
     model_id: &str,
-    tier: model_spec_core::ModelTier,
+    tier: ModelTier,
     providers: &[ProviderConfig],
 ) -> Option<ModelEntry> {
     let (provider, _) = ModelEntry::parse_id(model_id)?;
     resolve_tier_intelligent(provider, tier, providers).await
 }
 
-/// Resolve a tier and return just the model ID string.
-pub async fn resolve_tier_to_model_id(
-    provider: &str,
-    tier: model_spec_core::ModelTier,
-    providers: &[ProviderConfig],
-) -> Option<String> {
-    resolve_tier_intelligent(provider, tier, providers).await.map(|e| e.id)
-}
+// ============================================================================
+// Tests
+// ============================================================================
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_resolved_tier_model_from_entry_complete() {
+        let entry = ModelEntry {
+            id: "test_provider/test_model".to_string(),
+            name: "test_model".to_string(),
+            provider: "test_provider".to_string(),
+            base_url: Some("https://api.test.com".to_string()),
+            api_key: Some("test_key".to_string()),
+            provider_type: Some("openai_compat".to_string()),
+            temperature: None,
+            family: Some("test_family".to_string()),
+            version: None,
+            max_tokens: Some(2048),
+        };
+
+        let resolved = ResolvedTierModel::from_entry(entry);
+        assert_eq!(resolved.model_id, "test_provider/test_model");
+        assert_eq!(resolved.base_url, Some("https://api.test.com".to_string()));
+        assert_eq!(resolved.api_key, Some("test_key".to_string()));
+        assert_eq!(resolved.provider_type, Some("openai_compat".to_string()));
+        assert_eq!(resolved.provider_name, Some("test_provider".to_string()));
+    }
+
+    #[test]
+    fn test_resolved_tier_model_from_entry_minimal() {
+        let entry = ModelEntry {
+            id: "provider/model".to_string(),
+            name: "model".to_string(),
+            provider: "provider".to_string(),
+            base_url: None,
+            api_key: None,
+            provider_type: None,
+            temperature: None,
+            family: None,
+            version: None,
+            max_tokens: None,
+        };
+
+        let resolved = ResolvedTierModel::from_entry(entry);
+        assert_eq!(resolved.model_id, "provider/model");
+        assert_eq!(resolved.base_url, None);
+        assert_eq!(resolved.api_key, None);
+        assert_eq!(resolved.provider_type, None);
+        assert_eq!(resolved.provider_name, Some("provider".to_string()));
+    }
+
+    #[test]
+    fn test_resolved_tier_model_partial_fields() {
+        let entry = ModelEntry {
+            id: "prov/model".to_string(),
+            name: "model".to_string(),
+            provider: "prov".to_string(),
+            base_url: Some("https://url.com".to_string()),
+            api_key: None,
+            provider_type: Some("custom".to_string()),
+            temperature: None,
+            family: None,
+            version: None,
+            max_tokens: None,
+        };
+
+        let resolved = ResolvedTierModel::from_entry(entry);
+        assert_eq!(resolved.model_id, "prov/model");
+        assert_eq!(resolved.base_url, Some("https://url.com".to_string()));
+        assert_eq!(resolved.api_key, None);
+        assert_eq!(resolved.provider_type, Some("custom".to_string()));
+        assert_eq!(resolved.provider_name, Some("prov".to_string()));
+    }
 
     #[test]
     fn test_entry_with_spec_fallback_base_url_missing() {
@@ -289,18 +475,6 @@ mod tests {
         assert_eq!(result.base_url, Some("https://complete.com".to_string()));
         assert_eq!(result.api_key, Some("complete_key".to_string()));
         assert_eq!(result.provider_type, Some("custom_type".to_string()));
-    }
-
-    #[tokio::test]
-    async fn test_resolve_from_local_always_none() {
-        let result = resolve_from_local("test", model_spec_core::ModelTier::Light, &[]).await;
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_resolve_for_model_extracts_provider() {
-        let result = ModelEntry::parse_id("openai/gpt-4o");
-        assert_eq!(result, Some(("openai", "gpt-4o")));
     }
 
     #[test]

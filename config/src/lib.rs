@@ -6,6 +6,7 @@ pub mod home;
 mod lsp_config;
 mod mcp_config;
 mod model;
+pub mod provider_config;
 pub mod xdg_toml;
 
 #[cfg(feature = "tracing-init")]
@@ -29,6 +30,7 @@ pub use xdg_toml::{
 
 // Re-export model resolution helpers
 pub use model::{default_model, default_provider_name};
+pub use provider_config::{load_provider_configs, load_provider_configs_from_xdg};
 
 use model_spec_core::extract_provider_api_from_models_dev_json;
 use std::path::{Path, PathBuf};

@@ -47,9 +47,6 @@ pub fn create_llm_client(
             if let Some(temp) = entry.temperature {
                 client = client.with_temperature(temp);
             }
-            if let Some(mode) = entry.tool_choice {
-                client = client.with_tool_choice(mode);
-            }
             Box::new(client)
         }
         _ => {
@@ -75,9 +72,6 @@ pub fn create_llm_client(
             }
             if let Some(temp) = entry.temperature {
                 client = client.with_temperature(temp);
-            }
-            if let Some(mode) = entry.tool_choice {
-                client = client.with_tool_choice(mode);
             }
             Box::new(client)
         }

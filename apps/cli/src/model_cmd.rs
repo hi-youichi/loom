@@ -9,7 +9,7 @@
 use config::{load_full_config, ProviderDef};
 use loom_llm::ModelInfo;
 use loom_llm::ProviderConfig;
-use loom_tier::ModelRegistry;
+use model_spec_core::ModelRegistry;
 use loom::agent_run::RunError;
 use std::collections::HashMap;
 

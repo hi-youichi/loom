@@ -8,7 +8,7 @@ use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 use loom_react_config::build_config_from_profile;
 use loom_react_config::profile::resolve_profile;
 use loom_react_config::ReactBuildConfig;
-use loom_tier::resolve_tier_and_build_config;
+use loom_react_config::resolve_tier_and_build_config;
 use crate::agent::react::build::build_react_runner;
 
 /// Build sub-agent config, resolve model tier, construct ReactRunner, and execute.

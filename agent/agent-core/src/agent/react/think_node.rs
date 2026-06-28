@@ -11,8 +11,8 @@ use tracing::{debug, trace};
 use loom_graph::{run_cancellable, Next, Node, RunContext};
 use loom_llm::{GraphError, LlmClient, LlmProvider, LlmResponse, LlmUsage, Message, ToolCall};
 use loom_stream::{MessageChunk, StreamEvent, StreamEventSink, StreamMetadata, StreamMode};
-use loom_tier::load_provider_configs;
-use loom_tier::resolve_tier_intelligent;
+use env_config::load_provider_configs_from_xdg;
+use model_spec_core::resolve_tier_intelligent;
 use loom_types::state::{ModelConfig, ReActState};
 use model_spec_core::ModelTier;
 
@@ -33,7 +33,7 @@ impl ThinkNode {
         let model = if !model_config.model_id.is_empty() {
             model_config.model_id.clone()
         } else if model_config.tier != ModelTier::None {
-            let providers = load_provider_configs().ok_or_else(|| {
+            let providers = load_provider_configs_from_xdg().ok_or_else(|| {
                 GraphError::ExecutionFailed("no provider configs for tier resolution".into())
             })?;
             let entry = resolve_tier_intelligent(
