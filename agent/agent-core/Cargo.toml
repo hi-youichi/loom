@@ -1,50 +1,97 @@
 [package]
+
 name = "agent"
+
 version = "0.1.0"
+
 edition = "2021"
 
+
+
 [dependencies]
+
 loom-types = { path = "../../loom-types" }
+
 loom-util = { path = "../../foundation/loom-util" }
+
 loom-graph = { path = "../../loom-graph" }
+
 loom-pregel = { path = "../../loom-pregel" }
+
 loom-llm = { path = "../../loom-llm" }
+
 loom-stream = { path = "../../loom-stream" }
 
+
+
 loom-prompt = { path = "../../loom-prompt" }
+
 loom-memory = { path = "../../loom-memory" }
+
 tool-core = { path = "../tool/tool-core" }
+
 tool-basic = { path = "../tool/tool-basic" }
+
 tool-extensions = { path = "../tool/tool-extensions" }
+
 tool-experimental = { path = "../tool/tool-experimental" }
+
 memory-v2 = { path = "../../experimental/memory-v2" }
+
 loom-compress = { path = "../../loom-compress" }
+
 loom-cli-types = { path = "../../loom-cli-types" }
+
 skill = { path = "../skill" }
+
 loom-react-config = { path = "../../loom-react-config" }
+
 worktree = { path = "../../experimental/worktree" }
 
+
+
 loom-stream-display = { path = "../../loom-stream-display" }
+
 loom-commands = { path = "../../loom-commands" }
-loom-cache = { path = "../../loom-cache" }
+
 lsp = { path = "../../experimental/tool/lsp" }
 
+
 async-trait = "0.1"
+
 serde = { version = "1.0", features = ["derive"] }
+
 serde_json = "1.0"
+
 serde_yaml = "0.9"
+
 thiserror = "2.0"
+
 tokio = { version = "1.0", features = ["full"] }
+
 tokio-stream = "0.1"
+
 tokio-util = { version = "0.7", features = ["rt"] }
+
 tracing = "0.1"
+
 dashmap = "6.0"
+
 futures = "0.3"
+
 futures-util = "0.3"
+
 env-config = { path = "../../config", package = "config" }
+
 model-spec-core = { path = "../../foundation/model-spec-core", features = ["tier"] }
+
 async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
+
 task-core = { path = "../../experimental/task/task-core" }
 
+
+
 [dev-dependencies]
+
 tempfile = "3"
+
