@@ -11,7 +11,8 @@ use tool_basic::{
 };
 use tool_core::{ArcTool, ToolRegistryLocked, YamlSpecError};
 use tool_experimental::{register_file_memory_tool_guarded, register_task_tools};
-use tool_extensions::twitter::TwitterSearchTool;
+use lsp::LspManager;
+use tool_extensions::{twitter::TwitterSearchTool, LspTool};
 
 use env_config::McpServerDef;
 
@@ -119,7 +120,10 @@ register_file_tools(
     if let Some(ref wf) = config.working_folder {
         aggregate.register_sync(Box::new(BatchTool::new(Arc::new(wf.clone()))));
     }
-    // aggregate.register_sync(Box::new(LspTool::default()));
+    let lsp_manager = LspManager::from_configs(env_config::get_default_lsp_servers());
+    aggregate.register_sync(Box::new(LspTool::new(Arc::new(
+        tokio::sync::RwLock::new(lsp_manager),
+    ))));
 
     if let Some(ref servers) = config.mcp_servers {
         for def in servers {

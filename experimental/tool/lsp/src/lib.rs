@@ -18,7 +18,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use loom_lsp::{LspManager};
+//! use lsp::{LspManager};
 //! use std::sync::Arc;
 //! use tokio::sync::RwLock;
 //!

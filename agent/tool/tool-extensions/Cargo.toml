@@ -17,7 +17,7 @@ serde_json = "1.0"
 
 loom-llm = { path = "../../../loom-llm" }
 loom-types = { path = "../../../loom-types" }
-loom-lsp = { path = "../../../loom-lsp" }
+lsp = { path = "../../../experimental/tool/lsp" }
 loom-stream = { path = "../../../loom-stream" }
 config = { path = "../../../config" }
 

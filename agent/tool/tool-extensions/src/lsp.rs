@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use loom_lsp::LspManager;
+use lsp::LspManager;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 use tool_core::Tool;
 

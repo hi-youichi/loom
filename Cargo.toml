@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "loom",
     "loom-llm",
-    "loom-lsp",
+    "experimental/tool/lsp",
     "loom-memory",
     "loom-cache",
     "loom-worktree",

@@ -22,7 +22,7 @@ loom-worktree = { path = "../../loom-worktree" }
 loom-stream-display = { path = "../../loom-stream-display" }
 loom-commands = { path = "../../loom-commands" }
 loom-cache = { path = "../../loom-cache" }
-loom-lsp = { path = "../../loom-lsp" }
+lsp = { path = "../../experimental/tool/lsp" }
 
 async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }

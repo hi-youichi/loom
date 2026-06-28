@@ -33,8 +33,8 @@ loom-llm = { path = "../loom-llm" }
 # Shared types (loom-types crate)
 loom-types = { path = "../loom-types" }
 
-# LSP client (loom-lsp crate)
-loom-lsp = { path = "../loom-lsp" }
+# LSP client (lsp crate)
+lsp = { path = "../experimental/tool/lsp" }
 
 # Model specification
 loom-cache = { path = "../loom-cache" }
