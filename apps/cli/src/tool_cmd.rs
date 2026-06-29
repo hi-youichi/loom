@@ -288,6 +288,7 @@ mod tests {
             chat_id: None,
             worktree: false,
             goal_mode: false,
+            acp_mcp_servers: None,
             debug_llm: false,
         }
     }

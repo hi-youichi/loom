@@ -38,7 +38,7 @@ fn cmd_to_runcmd(cmd: &Command) -> RunCmd {
         Command::ReviewSkill(_) => unreachable!("review-skill handled in main"),
         Command::Review(_) => unreachable!("review handled in main"),
         Command::Task(_) => unreachable!("task handled in main"),
-        Command::Tui(_) => unreachable!("tui handled in main"),
+
         Command::Acp(_) => unreachable!("acp handled in main"),
     }
 }

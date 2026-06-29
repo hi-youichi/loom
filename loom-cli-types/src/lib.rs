@@ -75,6 +75,9 @@ pub struct RunOptions {
     /// When true, task management tools (task_create, task_update, etc.) are registered.
     /// Only enabled in goal mode.
     pub goal_mode: bool,
+    /// MCP servers from ACP session/new request, converted to Loom's internal type.
+    /// Merged into build config alongside mcp.json servers.
+    pub acp_mcp_servers: Option<Vec<env_config::McpServerDef>>,
 }
 
 impl std::fmt::Debug for RunOptions {
@@ -121,6 +124,7 @@ impl Clone for RunOptions {
             chat_id: self.chat_id,
             worktree: self.worktree,
             goal_mode: self.goal_mode,
+            acp_mcp_servers: self.acp_mcp_servers.clone(),
         }
     }
 }

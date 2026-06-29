@@ -136,6 +136,29 @@ pub fn build_react_config(
         }
     }
 
+    // Merge ACP-provisioned MCP servers (from session/new request) with file-based servers.
+    // ACP servers override same-name mcp.json entries (priority: ACP > mcp.json).
+    if let Some(ref acp_servers) = effective_opts.acp_mcp_servers {
+        if !acp_servers.is_empty() {
+            let mut merged = base.mcp_servers.unwrap_or_default();
+            for srv in acp_servers {
+                if let Some(pos) = merged.iter().position(|m| m.name() == srv.name()) {
+                    tracing::debug!(name = srv.name(), "ACP MCP server overrides mcp.json entry");
+                    merged[pos] = srv.clone();
+                } else {
+                    merged.push(srv.clone());
+                }
+            }
+            tracing::info!(
+                total = merged.len(),
+                acp_count = acp_servers.len(),
+                "MCP servers after merging ACP-provisioned servers"
+            );
+            base.mcp_servers = Some(merged);
+        }
+    }
+
+
     let skill_registry = {
         let extra_dirs: Vec<PathBuf> = profile
             .as_ref()

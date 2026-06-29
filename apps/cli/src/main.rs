@@ -23,8 +23,7 @@ mod skill_usage_cmd;
 mod subcommands;
 mod task_cmd;
 mod task_db;
-mod tui;
-mod tui_cmd;
+
 
 pub(crate) use args::Command;
 
@@ -181,13 +180,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         return Ok(());
     }
-    if let Some(Cmd::Tui(ta)) = &args.cmd {
-        if let Err(err) = tui_cmd::handle_tui_command(ta) {
-            eprintln!("{}", err);
-            std::process::exit(1);
-        }
-        return Ok(());
-    }
+
 
     let message = resolve_user_message(&args);
     if !args.interactive && message.is_none() {

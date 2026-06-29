@@ -390,6 +390,18 @@ impl LoomAcpAgent {
         let session_id = SessionId::new(our_id.as_str().to_string());
         tracing::debug!(session_id = %session_id, "session created");
 
+        // Store MCP servers from ACP session/new request
+        if !args.mcp_servers.is_empty() {
+            let loom_mcp = crate::mcp_convert::acp_mcp_to_loom(&args.mcp_servers);
+            tracing::info!(
+                session_id = %session_id,
+                acp_count = args.mcp_servers.len(),
+                loom_count = loom_mcp.len(),
+                "MCP servers from session/new"
+            );
+            self.sessions.update_mcp_servers(&our_id, loom_mcp);
+        }
+
         let default_mode = self.agent_registry.default_mode_id();
         let current_model = None.or_else(crate::last_model::load).unwrap_or_default();
         let is_default = current_model.is_empty() || current_model == "default";
@@ -544,6 +556,9 @@ Ok(SetSessionModeResponse::new())
         self.sessions.update_session_config(&new_our_id, |c| {
             *c = source_entry.session_config.clone();
         });
+
+        // Inherit MCP servers from source session
+        self.sessions.update_mcp_servers(&new_our_id, source_entry.mcp_servers.clone());
 
         // Copy persistent config from source to target
         if let Err(e) = self.config_store.copy_config(&source_key, &new_our_id) {
@@ -788,6 +803,11 @@ Ok(SetSessionModeResponse::new())
             chat_id: None,
             worktree: false,
             goal_mode: false,
+            acp_mcp_servers: if entry.mcp_servers.is_empty() {
+                None
+            } else {
+                Some(entry.mcp_servers.clone())
+            },
         };
 
         let session_id = args.session_id.clone();
@@ -970,15 +990,16 @@ Ok(SetSessionModeResponse::new())
             }
         }
 
-        // TODO: Connect MCP servers from request
-        // This would require storing MCP connections per session
-        // For now, we just log that they were requested
+        // Convert and store MCP servers from the load request
         if !args.mcp_servers.is_empty() {
-            tracing::debug!(
+            let loom_mcp = crate::mcp_convert::acp_mcp_to_loom(&args.mcp_servers);
+            tracing::info!(
                 session_id = %session_id,
-                mcp_server_count = args.mcp_servers.len(),
-                "MCP servers requested for loaded session"
+                acp_count = args.mcp_servers.len(),
+                loom_count = loom_mcp.len(),
+                "MCP servers from session/load"
             );
+            self.sessions.update_mcp_servers(&our_session_id, loom_mcp);
         }
 
         // Return LoadSessionResponse with config_options and modes

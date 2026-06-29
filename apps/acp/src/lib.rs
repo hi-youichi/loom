@@ -192,6 +192,7 @@ pub mod content;
 pub mod goal_runner;
 pub mod last_model;
 pub mod logging;
+pub mod mcp_convert;
 pub mod protocol;
 pub mod review_runner;
 pub mod server;

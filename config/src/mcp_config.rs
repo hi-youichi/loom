@@ -76,6 +76,16 @@ pub enum McpServerDef {
     },
 }
 
+impl McpServerDef {
+    /// Return the server name regardless of variant.
+    pub fn name(&self) -> &str {
+        match self {
+            McpServerDef::Stdio { name, .. } => name,
+            McpServerDef::Http { name, .. } => name,
+        }
+    }
+}
+
 fn is_http_url(s: &str) -> bool {
     s.starts_with("http://") || s.starts_with("https://")
 }

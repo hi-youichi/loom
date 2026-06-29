@@ -13,5 +13,6 @@ tool-core = { path = "../agent/tool/tool-core" }
 tool-basic = { path = "../agent/tool/tool-basic" }
 loom-llm = { path = "../loom-llm" }
 loom-react-config = { path = "../loom-react-config" }
+env-config = { path = "../config", package = "config" }
 serde = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }

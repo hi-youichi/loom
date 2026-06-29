@@ -68,5 +68,6 @@ pub fn run_options_from_issues_event(
             chat_id: None,
             worktree: false,
             goal_mode: false,
+            acp_mcp_servers: None,
         }
 }

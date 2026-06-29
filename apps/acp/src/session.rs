@@ -90,6 +90,8 @@ pub struct SessionEntry {
     pub session_config: SessionConfig,
     /// Shared cancellation state for the current turn.
     pub cancellation: Arc<SessionCancellationState>,
+    /// MCP servers from ACP session/new or session/load, pre-converted to Loom's [`config::McpServerDef`].
+    pub mcp_servers: Vec<config::McpServerDef>,
 }
 
 #[derive(Debug, Default)]
@@ -150,6 +152,7 @@ impl SessionStore {
             cancelled: AtomicBool::new(false),
             session_config: SessionConfig::default(),
             cancellation: Arc::new(SessionCancellationState::default()),
+            mcp_servers: Vec::new(),
         };
         guard.insert(session_id.clone(), entry.clone());
         entry
@@ -250,6 +253,19 @@ impl SessionStore {
             }
         }
     }
+
+    /// Update MCP servers for the given session. No-op if session_id is not in the store.
+    pub fn update_mcp_servers(
+        &self,
+        session_id: &SessionId,
+        servers: Vec<config::McpServerDef>,
+    ) {
+        if let Ok(mut guard) = self.inner.write() {
+            if let Some(entry) = guard.get_mut(session_id) {
+                entry.mcp_servers = servers;
+            }
+        }
+    }
 }
 
 impl Clone for SessionEntry {
@@ -260,6 +276,7 @@ impl Clone for SessionEntry {
             cancelled: AtomicBool::new(self.cancelled.load(Ordering::SeqCst)),
             session_config: self.session_config.clone(),
             cancellation: Arc::clone(&self.cancellation),
+            mcp_servers: self.mcp_servers.clone(),
         }
     }
 }
@@ -279,6 +296,27 @@ mod tests {
             store.get(&id).unwrap().session_config.model.as_deref(),
             Some("gpt-4o")
         );
+    }
+
+    #[test]
+    fn update_mcp_servers_sets_and_gets() {
+        use config::McpServerDef;
+
+        let store = SessionStore::new();
+        let id = store.create(None);
+        assert!(store.get(&id).unwrap().mcp_servers.is_empty());
+
+        let servers = vec![McpServerDef::Http {
+            name: "test".into(),
+            url: "https://example.com/mcp".into(),
+            headers: std::collections::HashMap::new(),
+            oauth: None,
+        }];
+        store.update_mcp_servers(&id, servers);
+
+        let entry = store.get(&id).unwrap();
+        assert_eq!(entry.mcp_servers.len(), 1);
+        assert_eq!(entry.mcp_servers[0].name(), "test");
     }
 
     #[test]
