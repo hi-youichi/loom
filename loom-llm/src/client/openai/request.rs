@@ -12,9 +12,10 @@ use async_openai::types::chat::{
     ChatCompletionRequestMessageContentPartText, ChatCompletionRequestSystemMessage,
     ChatCompletionRequestToolMessage, ChatCompletionRequestToolMessageContent,
     ChatCompletionRequestUserMessage, ChatCompletionRequestUserMessageContent,
-    ChatCompletionRequestUserMessageContentPart, ChatCompletionTool,
-    ChatCompletionToolChoiceOption, ChatCompletionTools, CreateChatCompletionRequestArgs,
-    FunctionCall, FunctionObject, ImageDetail, ImageUrl, ToolChoiceOptions,
+    ChatCompletionRequestUserMessageContentPart, ChatCompletionStreamOptions,
+    ChatCompletionTool, ChatCompletionToolChoiceOption, ChatCompletionTools,
+    CreateChatCompletionRequestArgs, FunctionCall, FunctionObject, ImageDetail, ImageUrl,
+    ToolChoiceOptions,
 };
 
 use crate::error::LlmError;
@@ -194,6 +195,10 @@ pub(super) fn build_chat_request(
     args.messages(openai_messages);
     if stream {
         args.stream(true);
+        args.stream_options(ChatCompletionStreamOptions {
+            include_usage: Some(true),
+            include_obfuscation: None,
+        });
     }
 
     if let Some(tools) = tools {

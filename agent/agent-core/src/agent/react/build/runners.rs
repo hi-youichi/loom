@@ -4,10 +4,7 @@ use loom_compress::CompactionConfig;
 use loom_graph::GraphError;
 use loom_llm::{LlmClient, LlmProvider};
 use loom_llm::client::FixedLlmProvider;
-use model_spec_core::{
-    resolver::{build_composite_resolver, ConfigModelEntry, ConfigProviderEntry, ModelResolver},
-    Model,
-};
+use model_spec_core::resolver::{ConfigModelEntry, ConfigProviderEntry};
 use loom_types::active_operation::RunCancellation;
 
 use super::super::config::ReactBuildConfig;
@@ -58,22 +55,16 @@ async fn resolve_compaction_config(config: &ReactBuildConfig) -> CompactionConfi
 
     if let Some(ref model) = config.model {
         let providers = load_config_providers();
-        let resolver = build_composite_resolver(None, providers);
 
-        let spec = if model.contains('/') {
-            resolver.resolve_combined(model).await
-        } else {
-            resolve_bare_model_name(&resolver, model).await
-        };
-
-        if let Some(spec) = spec {
+        if let Some(context_limit) =
+            model_spec_core::resolver::resolve_model_context_limit(model, providers).await
+        {
             tracing::info!(
                 model = %model,
-                context_limit = spec.limit.context,
-                output_limit = spec.limit.output,
+                context_limit,
                 "resolved model spec"
             );
-            return CompactionConfig::with_max_context_tokens(spec.limit.context);
+            return CompactionConfig::with_max_context_tokens(context_limit);
         }
 
         tracing::debug!(model = %model, "model spec not found, using default config");
@@ -103,18 +94,6 @@ fn load_config_providers() -> Vec<ConfigProviderEntry> {
             .collect()
     })
     .unwrap_or_default()
-}
-
-async fn resolve_bare_model_name(
-    resolver: &Arc<model_spec_core::resolver::CompositeResolver>,
-    model: &str,
-) -> Option<Model> {
-    for p in load_config_providers() {
-        if let Some(spec) = resolver.resolve(&p.name, model).await {
-            return Some(spec);
-        }
-    }
-    resolver.resolve("openai", model).await
 }
 
 pub struct BoxedLlmClient(pub Box<dyn LlmClient>);

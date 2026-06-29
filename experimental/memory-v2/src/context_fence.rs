@@ -186,9 +186,11 @@ impl StreamingContextScrubber {
                         // can't both be non-zero simultaneously (pending checks
                         // for complete tag, partial checks for incomplete prefix).
                         match held {
-                            Some(h) if h > 0 => {
-                                self.append_visible(&mut out, &buf[..buf.len() - h]);
-                                self.buf = buf[buf.len() - h..].to_string();
+                        Some(h) if h > 0 => {
+                                let split = buf.len().saturating_sub(h);
+                                let split = buf.floor_char_boundary(split);
+                                self.append_visible(&mut out, &buf[..split]);
+                                self.buf = buf[split..].to_string();
                             }
                             _ => {
                                 self.append_visible(&mut out, &buf);
@@ -336,7 +338,11 @@ fn max_partial_suffix(buf: &str, tag: &str) -> usize {
     let buf_lower = buf.to_lowercase();
     let max_check = buf_lower.len().min(tag_lower.len().saturating_sub(1));
     for i in (1..=max_check).rev() {
-        if tag_lower.starts_with(&buf_lower[buf_lower.len() - i..]) {
+        let start = buf_lower.len() - i;
+        if !buf_lower.is_char_boundary(start) {
+            continue;
+        }
+        if tag_lower.starts_with(&buf_lower[start..]) {
             return i;
         }
     }

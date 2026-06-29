@@ -30,12 +30,13 @@
 //! `agent_client_protocol::SessionNotification` for the upper layer to send via the connection.
 
 use crate::content::extract_locations;
+use loom_util::text::truncate::truncate_tail;
 use agent_client_protocol::schema::v1::{
     ContentBlock, ContentChunk, CurrentModeUpdate, Diff, MessageId, Plan, PlanEntry,
     PlanEntryPriority, PlanEntryStatus, SessionId, SessionInfoUpdate, SessionModeId,
     SessionNotification, SessionUpdate, Terminal, TerminalId, TextContent, ToolCall, ToolCallId,
     ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
-    ToolCallContent,
+    ToolCallContent, UsageUpdate,
 };
 use loom_llm::message::Message;
 use loom_stream::{MessageChunkKind, StreamEvent};
@@ -113,6 +114,15 @@ pub enum StreamUpdate {
     /// Agent execution plan (ACP `plan`).
     /// Reports the agent's planned tasks with their priority and status.
     Plan { entries: Vec<PlanEntry> },
+
+    /// Context window usage update (ACP `usage_update`).
+    /// Reports current context token usage and total window size.
+    UsageUpdate {
+        /// Tokens currently in context.
+        used: u64,
+        /// Total context window size in tokens.
+        size: u64,
+    },
 }
 
 /// Convert one Loom stream event into zero or more [`StreamUpdate`]s.
@@ -397,6 +407,9 @@ let update = match u {
         StreamUpdate::Plan { entries } => {
             SessionUpdate::Plan(Plan::new(entries.clone()))
         }
+        StreamUpdate::UsageUpdate { used, size } => {
+            SessionUpdate::UsageUpdate(UsageUpdate::new(*used, *size))
+        }
     };
     Some(SessionNotification::new(session_id.clone(), update))
 }
@@ -482,6 +495,8 @@ pub struct SessionNotifier {
     tx: mpsc::Sender<SessionNotification>,
     session_id: SessionId,
     current_message_id: Mutex<Option<String>>,
+    /// Context window size in tokens; when set, usage_update notifications are emitted.
+    context_window_size: Option<u64>,
 }
 
 impl SessionNotifier {
@@ -490,11 +505,24 @@ impl SessionNotifier {
             tx,
             session_id,
             current_message_id: Mutex::new(None),
+            context_window_size: None,
         }
     }
 
+    /// Set the context window size for `usage_update` notifications.
+    /// When set, each `StreamEvent::Usage` emits an `UsageUpdate` to the client.
+    pub fn with_context_window_size(mut self, size: u64) -> Self {
+        self.context_window_size = Some(size);
+        self
+    }
+
     pub async fn send_event(&self, event: &AnyStreamEvent) {
-        let updates = loom_event_to_updates(event);
+        let mut updates = loom_event_to_updates(event);
+        if let Some(size) = self.context_window_size {
+            if let Some(used) = extract_usage_tokens(event) {
+                updates.push(StreamUpdate::UsageUpdate { used, size });
+            }
+        }
         for u in updates {
             let u = self.inject_message_id(u);
             if let Some(notif) = stream_update_to_session_notification(&self.session_id, &u) {
@@ -506,7 +534,12 @@ impl SessionNotifier {
     }
 
     pub fn try_send_event(&self, event: &AnyStreamEvent) {
-        let updates = loom_event_to_updates(event);
+        let mut updates = loom_event_to_updates(event);
+        if let Some(size) = self.context_window_size {
+            if let Some(used) = extract_usage_tokens(event) {
+                updates.push(StreamUpdate::UsageUpdate { used, size });
+            }
+        }
         for u in updates {
             let u = self.inject_message_id(u);
             if let Some(notif) = stream_update_to_session_notification(&self.session_id, &u) {
@@ -766,6 +799,27 @@ Message::User(content) => vec![SessionNotification::new(
     }
 }
 
+/// Extract prompt-token count from a Loom stream event if it is a Usage event.
+fn extract_usage_tokens(ev: &AnyStreamEvent) -> Option<u64> {
+    let usage = match ev {
+        AnyStreamEvent::React(e) => extract_usage_inner(e),
+        AnyStreamEvent::Dup(e) => extract_usage_inner(e),
+        AnyStreamEvent::Tot(e) => extract_usage_inner(e),
+        AnyStreamEvent::Got(e) => extract_usage_inner(e),
+    };
+    usage.map(|p| p as u64)
+}
+
+fn extract_usage_inner<S>(ev: &StreamEvent<S>) -> Option<u32>
+where
+    S: Clone + Send + Sync + std::fmt::Debug + 'static,
+{
+    match ev {
+        StreamEvent::Usage { prompt_tokens, .. } => Some(*prompt_tokens),
+        _ => None,
+    }
+}
+
 fn tool_call_content_to_raw_output(content: &tool_core::ToolCallContent) -> Value {
     match content {
         tool_core::ToolCallContent::Text(text) => serde_json::json!(text),
@@ -906,7 +960,7 @@ fn extract_target_from_input(name: &str, input: Option<&serde_json::Value>) -> O
                 let display = if key == "command" || key == "cmd" {
                     val.to_string()
                 } else {
-                    truncate_path(val, 60)
+                    truncate_tail(val, 60)
                 };
                 return Some(display);
             }
@@ -915,11 +969,4 @@ fn extract_target_from_input(name: &str, input: Option<&serde_json::Value>) -> O
     None
 }
 
-fn truncate_path(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else {
-        let start = s.len() - max_len + 3;
-        format!("...{}", &s[start..])
-    }
-}
+

@@ -53,6 +53,7 @@ memory-v2 = { path = "../../experimental/memory-v2" }
 agent = { path = "../../agent/agent-core" }
 loom-react-config = { path = "../../loom-react-config" }
 loom-graph = { path = "../../loom-graph" }
+loom-util = { path = "../../foundation/loom-util" }
 
 # Archive handling for curator backup
 flate2 = "1.0"

@@ -331,7 +331,7 @@ pub async fn run_curator_llm_pass(
                     if is_error {
                         warn!(
                             tool = %name,
-                            preview = %&result[..result.len().min(200)],
+                            preview = %loom_util::text::truncate::truncate(&result, 200),
                             "Curator tool '{}' failed",
                             name
                         );

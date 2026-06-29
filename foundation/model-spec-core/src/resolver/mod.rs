@@ -55,6 +55,34 @@ fn split_provider_model(model: &str) -> Option<(&str, &str)> {
     Some((provider, model_id))
 }
 
+/// Resolve the context window limit (in tokens) for a model string.
+///
+/// Accepts either `"provider/model"` or a bare model name (e.g. `"gpt-4o"`).
+/// For bare names, tries each configured provider in order, then falls back to `"openai"`.
+///
+/// Returns `None` if the model cannot be resolved from any source.
+pub async fn resolve_model_context_limit(
+    model: &str,
+    providers: Vec<ConfigProviderEntry>,
+) -> Option<u32> {
+    let resolver = build_composite_resolver(None, providers.clone());
+
+    let spec = if model.contains('/') {
+        resolver.resolve_combined(model).await
+    } else {
+        let mut found = None;
+        for p in &providers {
+            if let Some(spec) = resolver.resolve(&p.name, model).await {
+                found = Some(spec);
+                break;
+            }
+        }
+        found.or(resolver.resolve("openai", model).await)
+    };
+
+    spec.map(|s| s.limit.context)
+}
+
 /// Build a `CompositeResolver` with a standard priority chain.
 ///
 /// Chain: `ConfigOverride` → `ConfigModelResolver` → `CachedResolver<ModelsDevResolver>`
@@ -149,5 +177,26 @@ mod tests {
         assert_eq!(split_provider_model("/"), None);
         assert_eq!(split_provider_model("openai/"), None);
         assert_eq!(split_provider_model("/gpt-4o"), None);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn resolve_model_context_limit_returns_some_for_config_provider() {
+        let providers = vec![ConfigProviderEntry {
+            name: "test".into(),
+            models: vec![ConfigModelEntry {
+                id: "m1".into(),
+                context_limit: 256_000,
+                output_limit: 8_192,
+            }],
+        }];
+        let limit = resolve_model_context_limit("test/m1", providers).await;
+        assert_eq!(limit, Some(256_000));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn resolve_model_context_limit_returns_none_for_unknown() {
+        let providers = vec![];
+        let limit = resolve_model_context_limit("unknown/m1", providers).await;
+        assert_eq!(limit, None);
     }
 }

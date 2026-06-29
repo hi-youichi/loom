@@ -10,12 +10,14 @@ use super::ModelResolver;
 use crate::{Model, ModelLimit};
 
 /// A provider entry from config.toml with manually declared model specs.
+#[derive(Clone)]
 pub struct ConfigProviderEntry {
     pub name: String,
     pub models: Vec<ConfigModelEntry>,
 }
 
 /// A single model spec entry from `[[providers.models]]` in config.toml.
+#[derive(Clone)]
 pub struct ConfigModelEntry {
     pub id: String,
     pub context_limit: u32,

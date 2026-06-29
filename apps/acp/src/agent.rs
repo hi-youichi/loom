@@ -17,11 +17,8 @@ use agent_client_protocol::schema::v1::{
     ListSessionsResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
     NewSessionResponse, PromptRequest, PromptResponse, SessionConfigOptionValue,
     SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
-SetSessionModeRequest, SetSessionModeResponse, StopReason, SessionId, SessionNotification,
-    // SetSessionModelRequest/Response were removed in agent-client-protocol-schema 0.14.0.
-    // Model selection now flows through SetSessionConfigOptionRequest(configId="model"),
-    // handled by `set_session_config_option` below. No dedicated set_session_model RPC exists
-    // in the 0.15.x wire protocol.
+    SetSessionModeRequest, SetSessionModeResponse, StopReason, SessionId, SessionNotification,
+    Usage,
 };
 use loom_memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
 use loom_types::state::ReActState;
@@ -31,7 +28,7 @@ use config::load_full_config;
 use loom::agent_run::{AnyStreamEvent, RunCmd, RunCompletion, RunOptions, RunError, run_agent_with_options};
 use rusqlite::Connection;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
 #[async_trait::async_trait]
@@ -635,11 +632,15 @@ Ok(SetSessionModeResponse::new())
                             .clone()
                             .unwrap_or_else(|| PathBuf::from(loom_cli_types::DEFAULT_WORKING_FOLDER));
 
-let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
+                        let resolved_goal = self.resolve_model_with_tier_awareness(&entry.session_config).await;
+                        let goal_ctx_window = resolve_context_window_size(resolved_goal.model.as_deref()).await;
+
+                        let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
                             self.session_update_tx.clone().map(|sender| {
                                 let session_id = args.session_id.clone();
                                 std::sync::Arc::new(move |ev: AnyStreamEvent| {
-                                    let notifier = SessionNotifier::new(sender.clone(), session_id.clone());
+                                    let notifier = SessionNotifier::new(sender.clone(), session_id.clone())
+                                        .with_context_window_size(goal_ctx_window);
                                     notifier.try_send_event(&ev);
                                 }) as std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>
                             });
@@ -742,16 +743,7 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
             .await;
         let resolved_for_review = resolved.clone();
 
-        let session_id_for_opts = args.session_id.clone();
-        let tx_for_opts = self.session_update_tx.clone();
-        let any_stream_event_sender = tx_for_opts.map(|sender| {
-            let session_id = session_id_for_opts;
-            std::sync::Arc::new(move |ev: loom_cli_types::AnyStreamEvent| {
-                let ev = AnyStreamEvent::from_loom(ev);
-                let notifier = SessionNotifier::new(sender.clone(), session_id.clone());
-                notifier.try_send_event(&ev);
-            }) as std::sync::Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>
-        });
+        let context_window_size = resolve_context_window_size(resolved.model.as_deref()).await;
 
         let opts = RunOptions {
             message: user_content,
@@ -776,7 +768,7 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
             base_url: resolved.base_url,
             api_key: resolved.api_key,
             provider_type: resolved.provider_type,
-            any_stream_event_sender,
+            any_stream_event_sender: None,
             acp_session_id: Some(args.session_id.to_string()),
             bash_executor: {
                 tracing::info!("Using local bash executor (ACP terminal disabled)");
@@ -800,13 +792,27 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
 
         let session_id = args.session_id.clone();
         let tx = self.session_update_tx.clone();
-        let on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>> = tx.map(|sender| {
-            let notifier = SessionNotifier::new(sender, session_id);
-            let closure = move |ev: AnyStreamEvent| {
-                notifier.try_send_event(&ev);
-            };
-            Box::new(closure) as Box<dyn FnMut(AnyStreamEvent) + Send>
-        });
+        let usage_acc: Arc<Mutex<TurnUsage>> = Arc::new(Mutex::new(TurnUsage::default()));
+        let on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>> = {
+            let acc = usage_acc.clone();
+            match tx {
+                Some(sender) => {
+                    let notifier = SessionNotifier::new(sender, session_id)
+                        .with_context_window_size(context_window_size);
+                    let closure = move |ev: AnyStreamEvent| {
+                        capture_turn_usage(&ev, &acc);
+                        notifier.try_send_event(&ev);
+                    };
+                    Some(Box::new(closure) as Box<dyn FnMut(AnyStreamEvent) + Send>)
+                }
+                None => {
+                    let closure = move |ev: AnyStreamEvent| {
+                        capture_turn_usage(&ev, &acc);
+                    };
+                    Some(Box::new(closure) as Box<dyn FnMut(AnyStreamEvent) + Send>)
+                }
+            }
+        };
 
         let result = run_agent_with_options(&opts, &RunCmd::React, on_event).await;
         self.sessions.finish_prompt(&key, cancellation.generation());
@@ -820,7 +826,11 @@ let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
                     true,
                     "background".to_string(),
                 );
-                Ok(PromptResponse::new(StopReason::EndTurn))
+                let mut resp = PromptResponse::new(StopReason::EndTurn);
+                if let Some(usage) = build_acp_usage(&usage_acc) {
+                    resp = resp.usage(usage);
+                }
+                Ok(resp)
             }
             Ok(RunCompletion::Cancelled) => Ok(PromptResponse::new(StopReason::Cancelled)),
             Ok(RunCompletion::Error(e)) => {
@@ -1300,6 +1310,63 @@ fn map_run_error(e: RunError) -> agent_client_protocol::Error {
     agent_client_protocol::Error::internal_error().data(e.to_string())
 }
 
+#[derive(Default)]
+struct TurnUsage {
+    input_tokens: u64,
+    output_tokens: u64,
+    total_tokens: u64,
+    cached_tokens: u64,
+}
+
+fn extract_llm_usage<S>(ev: &loom_stream::StreamEvent<S>) -> Option<(u32, u32, u32, Option<u32>)>
+where
+    S: Clone + Send + Sync + std::fmt::Debug + 'static,
+{
+    match ev {
+        loom_stream::StreamEvent::Usage {
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+            cached_tokens,
+            ..
+        } => Some((*prompt_tokens, *completion_tokens, *total_tokens, *cached_tokens)),
+        _ => None,
+    }
+}
+
+fn extract_llm_usage_from_any(ev: &AnyStreamEvent) -> Option<(u32, u32, u32, Option<u32>)> {
+    match ev {
+        AnyStreamEvent::React(e) => extract_llm_usage(e),
+        AnyStreamEvent::Dup(e) => extract_llm_usage(e),
+        AnyStreamEvent::Tot(e) => extract_llm_usage(e),
+        AnyStreamEvent::Got(e) => extract_llm_usage(e),
+    }
+}
+
+fn capture_turn_usage(ev: &AnyStreamEvent, acc: &Mutex<TurnUsage>) {
+    if let Some((prompt, completion, total, cached)) = extract_llm_usage_from_any(ev) {
+        let mut a = acc.lock().unwrap();
+        a.input_tokens += prompt as u64;
+        a.output_tokens += completion as u64;
+        a.total_tokens += total as u64;
+        if let Some(c) = cached {
+            a.cached_tokens += c as u64;
+        }
+    }
+}
+
+fn build_acp_usage(acc: &Mutex<TurnUsage>) -> Option<Usage> {
+    let a = acc.lock().unwrap();
+    if a.total_tokens == 0 {
+        return None;
+    }
+    let mut usage = Usage::new(a.total_tokens, a.input_tokens, a.output_tokens);
+    if a.cached_tokens > 0 {
+        usage = usage.cached_read_tokens(a.cached_tokens);
+    }
+    Some(usage)
+}
+
 /// Model option for ACP config dropdown.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ModelOption {
@@ -1392,6 +1459,55 @@ fn session_config_value_as_id(value: &SessionConfigOptionValue) -> Option<String
         SessionConfigOptionValue::ValueId { value } => Some(value.to_string()),
         SessionConfigOptionValue::Boolean { .. } => None,
         _ => None,
+    }
+}
+
+/// Resolve model context window from model spec, falling back to 128k default.
+async fn resolve_context_window_size(model: Option<&str>) -> u64 {
+    use model_spec_core::resolver::{ConfigModelEntry, ConfigProviderEntry};
+
+    let Some(model) = model else {
+        return loom_types::config::CompactionConfig::default().max_context_tokens as u64;
+    };
+
+    let providers: Vec<ConfigProviderEntry> = config::load_full_config("loom")
+        .ok()
+        .map(|f| {
+            f.providers
+                .into_iter()
+                .filter(|p| !p.models.is_empty())
+                .map(|p| ConfigProviderEntry {
+                    name: p.name,
+                    models: p
+                        .models
+                        .into_iter()
+                        .map(|m| ConfigModelEntry {
+                            id: m.id,
+                            context_limit: m.context_limit,
+                            output_limit: m.output_limit,
+                        })
+                        .collect(),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    match model_spec_core::resolver::resolve_model_context_limit(model, providers).await {
+        Some(context_limit) => {
+            tracing::info!(
+                model = %model,
+                context_limit,
+                "resolved context window size from model spec"
+            );
+            context_limit as u64
+        }
+        None => {
+            tracing::warn!(
+                model = %model,
+                "model spec not found, using default 128k context window"
+            );
+            loom_types::config::CompactionConfig::default().max_context_tokens as u64
+        }
     }
 }
 
@@ -1630,5 +1746,77 @@ mod tests {
             model_config.get("currentValue").unwrap().as_str(),
             Some("default")
         );
+    }
+
+    #[test]
+    fn test_build_acp_usage_empty() {
+        let acc = Mutex::new(TurnUsage::default());
+        assert!(build_acp_usage(&acc).is_none());
+    }
+
+    #[test]
+    fn test_build_acp_usage_populated() {
+        let acc = Mutex::new(TurnUsage {
+            input_tokens: 1000,
+            output_tokens: 500,
+            total_tokens: 1500,
+            cached_tokens: 200,
+        });
+        let usage = build_acp_usage(&acc).expect("usage should be Some");
+        assert_eq!(usage.input_tokens, 1000);
+        assert_eq!(usage.output_tokens, 500);
+        assert_eq!(usage.total_tokens, 1500);
+        assert_eq!(usage.cached_read_tokens, Some(200));
+        assert_eq!(usage.thought_tokens, None);
+    }
+
+    #[test]
+    fn test_capture_turn_usage_accumulates() {
+        use loom_cli_types::ReActState;
+        use loom_stream::StreamEvent;
+
+        let acc = Arc::new(Mutex::new(TurnUsage::default()));
+
+        let ev1 = AnyStreamEvent::React(StreamEvent::<ReActState>::Usage {
+            prompt_tokens: 500,
+            completion_tokens: 100,
+            total_tokens: 600,
+            cached_tokens: Some(50),
+            prefill_duration: None,
+            decode_duration: None,
+        });
+        let ev2 = AnyStreamEvent::React(StreamEvent::<ReActState>::Usage {
+            prompt_tokens: 800,
+            completion_tokens: 200,
+            total_tokens: 1000,
+            cached_tokens: None,
+            prefill_duration: None,
+            decode_duration: None,
+        });
+
+        capture_turn_usage(&ev1, &acc);
+        capture_turn_usage(&ev2, &acc);
+
+        let usage = build_acp_usage(&acc).expect("usage should be Some");
+        assert_eq!(usage.input_tokens, 1300);
+        assert_eq!(usage.output_tokens, 300);
+        assert_eq!(usage.total_tokens, 1600);
+        assert_eq!(usage.cached_read_tokens, Some(50));
+    }
+
+    #[test]
+    fn test_capture_turn_usage_ignores_non_usage() {
+        use loom_cli_types::ReActState;
+        use loom_stream::StreamEvent;
+
+        let acc = Arc::new(Mutex::new(TurnUsage::default()));
+
+        let ev = AnyStreamEvent::React(StreamEvent::<ReActState>::TaskStart {
+            node_id: "test".to_string(),
+            namespace: None,
+        });
+        capture_turn_usage(&ev, &acc);
+
+        assert!(build_acp_usage(&acc).is_none());
     }
 }

@@ -29,7 +29,8 @@ loom-curator = { path = "../../experimental/curator" }
 config = { path = "../../config", features = ["tracing-init"] }
 task-core = { path = "../../experimental/task/task-core" }
 loom-prompt = { path = "../../loom-prompt" }
-agent-client-protocol = { version = "0.15.1", features = ["unstable_boolean_config", "unstable_session_fork", "unstable_cancel_request", "unstable_model_config_category"] }
+loom-util = { path = "../../foundation/loom-util" }
+agent-client-protocol = { version = "0.15.1", features = ["unstable_boolean_config", "unstable_session_fork", "unstable_cancel_request", "unstable_model_config_category", "unstable_end_turn_token_usage"] }
 async-trait = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { version = "0.7", features = ["compat"] }

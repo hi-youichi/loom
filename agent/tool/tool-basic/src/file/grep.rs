@@ -20,6 +20,7 @@ use grep_searcher::{BinaryDetection, SearcherBuilder};
 use ignore::WalkBuilder;
 use serde_json::json;
 
+use loom_util::text::truncate::truncate;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 use tool_core::Tool;
 
@@ -93,17 +94,7 @@ fn build_include_patterns(include: &str) -> Result<Vec<Pattern>, ToolSourceError
         .collect()
 }
 
-/// Truncates a string to at most `max_bytes` bytes, respecting UTF-8 char boundaries.
-fn truncate_str(s: &str, max_bytes: usize) -> &str {
-    if s.len() <= max_bytes {
-        return s;
-    }
-    let mut end = max_bytes;
-    while !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    &s[..end]
-}
+
 
 #[async_trait]
 impl Tool for GrepTool {
@@ -274,7 +265,7 @@ impl Tool for GrepTool {
                 current_file = m.path.clone();
                 output_lines.push(format!("{}:", m.path));
             }
-            let text = truncate_str(&m.line_text, MAX_LINE_LENGTH);
+            let text = truncate(&m.line_text, MAX_LINE_LENGTH);
             let line_entry = if text.len() < m.line_text.len() {
                 format!("  Line {}: {}...", m.line_num, text)
             } else {

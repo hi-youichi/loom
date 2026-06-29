@@ -59,11 +59,18 @@ pub(super) struct ChatCompletionRequest {
     pub messages: Vec<ChatMessageRequest>,
     pub stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream_options: Option<StreamOptionsRequest>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<ToolSpecRequest>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_choice: Option<String>,
+}
+
+#[derive(serde::Serialize, Clone)]
+pub(super) struct StreamOptionsRequest {
+    pub include_usage: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -293,10 +300,18 @@ pub(super) fn build_request(
     }
 
     let msgs = messages_to_request(messages, model);
+    let stream_options = if stream {
+        Some(StreamOptionsRequest {
+            include_usage: true,
+        })
+    } else {
+        None
+    };
     let mut req = ChatCompletionRequest {
         model: model.to_string(),
         messages: msgs,
         stream,
+        stream_options,
         temperature,
         tools: None,
         tool_choice: None,
