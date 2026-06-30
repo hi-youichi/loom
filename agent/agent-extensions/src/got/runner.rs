@@ -13,6 +13,7 @@ use loom_stream::StreamEvent;
 use tool_core::ToolRegistryLocked;
 use loom_llm::LlmClient;
 use loom_graph::{StateGraph, END, START};
+use loom_llm::message::UserContent;
 
 use super::dag::ready_nodes;
 use super::execute_engine::ExecuteGraphNode;
@@ -31,23 +32,24 @@ fn got_execute_condition(state: &GotState) -> &'static str {
 
 /// Builds the initial GotState for a run.
 pub async fn build_got_initial_state(
-    user_message: &str,
+    user_message: &UserContent,
     checkpointer: Option<&dyn Checkpointer<GotState>>,
     runnable_config: Option<&RunnableConfig>,
 ) -> Result<GotState, CheckpointError> {
+    let input_text = user_message.as_text().into_owned();
     if let (Some(cp), Some(config)) = (checkpointer, runnable_config) {
         if config.thread_id.is_some() {
             let tuple = cp.get_tuple(config).await?;
             if let Some((checkpoint, _)) = tuple {
                 let mut state = checkpoint.channel_values.clone();
-                state.input_message = user_message.to_string();
+                state.input_message = input_text;
                 return Ok(state);
             }
         }
     }
 
     Ok(GotState {
-        input_message: user_message.to_string(),
+        input_message: input_text,
         task_graph: super::state::TaskGraph::default(),
         node_states: std::collections::HashMap::new(),
     })
@@ -148,7 +150,7 @@ impl GotRunner {
     /// Streams the graph execution; returns the final state.
     pub async fn stream_with_callback<F>(
         &self,
-        user_message: &str,
+        user_message: impl Into<UserContent>,
         on_event: Option<F>,
     ) -> Result<runner_common::StreamRunOutcome<GotState>, GotRunError>
     where
@@ -160,16 +162,17 @@ impl GotRunner {
     /// Streams with optional per-invoke config.
     pub async fn stream_with_config<F>(
         &self,
-        user_message: &str,
+        user_message: impl Into<UserContent>,
         config: Option<RunnableConfig>,
         on_event: Option<F>,
     ) -> Result<runner_common::StreamRunOutcome<GotState>, GotRunError>
     where
         F: Fn(StreamEvent<GotState>) + Clone + Send + 'static,
     {
+        let user_content = user_message.into();
         let run_config = config.or_else(|| self.runnable_config.clone());
         let state = build_got_initial_state(
-            user_message,
+            &user_content,
             self.checkpointer.as_deref(),
             run_config.as_ref(),
         )
@@ -246,7 +249,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn build_got_initial_state_without_checkpoint_uses_input_message() {
-        let state = build_got_initial_state("hello got", None, None)
+        let state = build_got_initial_state(&loom_llm::message::UserContent::text("hello got".to_string()), None, None)
             .await
             .unwrap();
         assert_eq!(state.input_message, "hello got");

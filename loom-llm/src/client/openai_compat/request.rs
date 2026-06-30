@@ -29,7 +29,7 @@ pub(super) struct BigModelToolCall {
 pub(super) struct ChatMessageRequest {
     pub role: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub content: Option<String>,
+    pub content: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<BigModelToolCall>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -153,7 +153,7 @@ pub(super) fn messages_to_request(
         .map(|m| match m {
             Message::System(s) => ChatMessageRequest {
                 role: "system".to_string(),
-                content: Some(s.clone()),
+                content: Some(serde_json::json!(s)),
                 tool_calls: None,
                 tool_call_id: None,
                 reasoning_content: None,
@@ -211,7 +211,7 @@ pub(super) fn messages_to_request(
                 };
                 ChatMessageRequest {
                     role: "user".to_string(),
-                    content: Some(content_value.to_string()),
+                    content: Some(content_value),
                     tool_calls: None,
                     tool_call_id: None,
                     reasoning_content: None,
@@ -247,11 +247,11 @@ pub(super) fn messages_to_request(
                     } else {
                         c
                     };
-                    Some(c.into_owned())
+                    Some(serde_json::json!(c))
                 } else if payload.content.trim().is_empty() {
                     None
                 } else {
-                    Some(payload.content.clone())
+                    Some(serde_json::json!(payload.content))
                 };
                 ChatMessageRequest {
                     role: "assistant".to_string(),
@@ -266,7 +266,7 @@ pub(super) fn messages_to_request(
                 content,
             } => ChatMessageRequest {
                 role: "tool".to_string(),
-                content: Some(content.to_display_string()),
+                content: Some(serde_json::json!(content.to_display_string())),
                 tool_calls: None,
                 tool_call_id: Some(tool_call_id.clone()),
                 reasoning_content: None,
@@ -345,3 +345,83 @@ pub(super) fn build_request(
     }
     req
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::message::{ContentPart, Message};
+
+    #[test]
+    fn text_user_message_serializes_as_json_string() {
+        let msgs = vec![Message::user("hello")];
+        let req = messages_to_request(&msgs, "qwen-plus");
+        let json = serde_json::to_value(&req[0]).unwrap();
+        assert_eq!(json["role"], "user");
+        assert_eq!(json["content"], "hello");
+    }
+
+    #[test]
+    fn multimodal_user_message_serializes_as_json_array() {
+        let parts = vec![
+            ContentPart::Text {
+                text: "describe this".into(),
+            },
+            ContentPart::ImageBase64 {
+                media_type: "image/png".into(),
+                data: "iVBORw0KGgo=".into(),
+            },
+        ];
+        let msg = Message::user_multimodal(parts).unwrap();
+        let req = messages_to_request(&[msg], "qwen-plus");
+        let json = serde_json::to_value(&req[0]).unwrap();
+
+        assert!(json["content"].is_array(), "multimodal content must be array");
+        let arr = json["content"].as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+        assert_eq!(arr[0]["type"], "text");
+        assert_eq!(arr[1]["type"], "image_url");
+        assert!(
+            arr[1]["image_url"]["url"]
+                .as_str()
+                .unwrap()
+                .starts_with("data:image/png;base64,"),
+            "base64 image must be data URI"
+        );
+    }
+
+    #[test]
+    fn image_url_user_message_serializes_correctly() {
+        let parts = vec![ContentPart::ImageUrl {
+            url: "https://example.com/test.png".into(),
+            detail: Some("high".into()),
+        }];
+        let msg = Message::user_multimodal(parts).unwrap();
+        let req = messages_to_request(&[msg], "qwen-plus");
+        let json = serde_json::to_value(&req[0]).unwrap();
+
+        assert!(json["content"].is_array());
+        let arr = json["content"].as_array().unwrap();
+        assert_eq!(arr[0]["type"], "image_url");
+        assert_eq!(arr[0]["image_url"]["url"], "https://example.com/test.png");
+        assert_eq!(arr[0]["image_url"]["detail"], "high");
+    }
+
+    #[test]
+    fn system_message_serializes_as_plain_string() {
+        let msgs = vec![Message::System("you are helpful".into())];
+        let req = messages_to_request(&msgs, "qwen-plus");
+        let json = serde_json::to_value(&req[0]).unwrap();
+        assert_eq!(json["role"], "system");
+        assert_eq!(json["content"], "you are helpful");
+    }
+
+    #[test]
+    fn assistant_message_serializes_as_plain_string() {
+        let msgs = vec![Message::assistant("I can help")];
+        let req = messages_to_request(&msgs, "qwen-plus");
+        let json = serde_json::to_value(&req[0]).unwrap();
+        assert_eq!(json["role"], "assistant");
+        assert_eq!(json["content"], "I can help");
+    }
+}
+

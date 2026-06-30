@@ -10,7 +10,7 @@ use agent::agent::react::{build_react_initial_state, REACT_SYSTEM_PROMPT};
 
 use loom_graph::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
 use loom_memory::{CheckpointError, Checkpointer, RunnableConfig, Store};
-use loom_llm::message::Message;
+use loom_llm::message::{Message, UserContent};
 use agent::runner_common::{self, load_from_checkpoint_or_build};
 use loom_stream::StreamEvent;
 use tool_core::ToolRegistryLocked;
@@ -34,13 +34,13 @@ fn dup_tools_condition(state: &DupState) -> &'static str {
 ///
 /// Uses load_from_checkpoint_or_build and build_react_initial_state for fresh core.
 pub async fn build_dup_initial_state(
-    user_message: &str,
+    user_message: &UserContent,
     checkpointer: Option<&dyn Checkpointer<DupState>>,
     runnable_config: Option<&RunnableConfig>,
     system_prompt: Option<&str>,
 ) -> Result<DupState, CheckpointError> {
     let system_prompt_owned = system_prompt.unwrap_or(REACT_SYSTEM_PROMPT).to_string();
-    let user_message_owned = user_message.to_string();
+    let user_message_owned = user_message.clone();
     load_from_checkpoint_or_build(
         checkpointer,
         runnable_config,
@@ -58,7 +58,7 @@ pub async fn build_dup_initial_state(
                 understood: None,
             })
         },
-        |mut state, msg| {
+        |mut state, msg: UserContent| {
             state.core.messages.push(Message::user(msg));
             state.core.tool_calls = vec![];
             state.core.tool_results = vec![];
@@ -186,7 +186,7 @@ impl DupRunner {
     /// Streams the graph execution; returns the final state.
     pub async fn stream_with_callback<F>(
         &self,
-        user_message: &str,
+        user_message: impl Into<UserContent>,
         on_event: Option<F>,
     ) -> Result<runner_common::StreamRunOutcome<DupState>, DupRunError>
     where
@@ -198,16 +198,17 @@ impl DupRunner {
     /// Streams with optional per-invoke config.
     pub async fn stream_with_config<F>(
         &self,
-        user_message: &str,
+        user_message: impl Into<UserContent>,
         config: Option<RunnableConfig>,
         on_event: Option<F>,
     ) -> Result<runner_common::StreamRunOutcome<DupState>, DupRunError>
     where
         F: Fn(StreamEvent<DupState>) + Clone + Send + 'static,
     {
+        let user_content = user_message.into();
         let run_config = config.or_else(|| self.runnable_config.clone());
         let state = build_dup_initial_state(
-            user_message,
+            &user_content,
             self.checkpointer.as_deref(),
             run_config.as_ref(),
             self.system_prompt.as_deref(),
@@ -261,7 +262,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn build_dup_initial_state_builds_without_checkpoint() {
-        let state = build_dup_initial_state("hello dup", None, None, None)
+        let state = build_dup_initial_state(&loom_llm::message::UserContent::text("hello dup".to_string()), None, None, None)
             .await
             .unwrap();
         assert!(state.understood.is_none());

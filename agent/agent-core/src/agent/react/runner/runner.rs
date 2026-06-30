@@ -10,6 +10,7 @@ use loom_graph::{
 };
 
 use loom_llm::LlmProvider;
+use loom_llm::message::UserContent;
 use loom_memory::{Checkpointer, RunnableConfig, Store};
 use crate::runner_common;
 use loom_types::state::ReActState;
@@ -155,7 +156,7 @@ impl ReactRunner {
 
     pub async fn stream_with_callback<F>(
         &self,
-        user_message: &str,
+        user_message: impl Into<UserContent>,
         on_event: Option<F>,
     ) -> Result<runner_common::StreamRunOutcome<ReActState>, RunError>
     where
@@ -166,16 +167,17 @@ impl ReactRunner {
 
     pub async fn stream_with_config<F>(
         &self,
-        user_message: &str,
+        user_message: impl Into<UserContent>,
         config: Option<RunnableConfig>,
         on_event: Option<F>,
     ) -> Result<runner_common::StreamRunOutcome<ReActState>, RunError>
     where
         F: Fn(StreamEvent<ReActState>) + Clone + Send + 'static,
     {
+        let user_content = user_message.into();
         let run_config = config.or_else(|| self.runnable_config.clone());
         let state = build_react_initial_state(
-            user_message,
+            &user_content,
             self.checkpointer.as_deref(),
             run_config.as_ref(),
             &self.system_prompt,

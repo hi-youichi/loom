@@ -13,6 +13,7 @@ use tokio_util::sync::CancellationToken;
 use loom_graph::CompiledStateGraph;
 use loom_graph::GraphError;
 use loom_memory::{CheckpointError, Checkpointer, RunnableConfig};
+use loom_llm::message::UserContent;
 use loom_stream::{StreamEvent, StreamMode};
 
 /// Tries to load state from checkpointer; if found, merges `user_message` via `merge` and returns.
@@ -20,13 +21,13 @@ use loom_stream::{StreamEvent, StreamMode};
 pub async fn load_from_checkpoint_or_build<S, F, M>(
     checkpointer: Option<&dyn Checkpointer<S>>,
     runnable_config: Option<&RunnableConfig>,
-    user_message: &str,
+    user_message: &UserContent,
     build_fresh: F,
     merge: M,
 ) -> Result<S, CheckpointError>
 where
     F: Future<Output = Result<S, CheckpointError>>,
-    M: FnOnce(S, String) -> S,
+    M: FnOnce(S, UserContent) -> S,
     S: Clone + Send + Sync + 'static,
 {
     let load_from_checkpoint =
@@ -45,7 +46,7 @@ where
                 thread_id = ?runnable_config.expect("runnable_config is Some").thread_id,
                 "load_from_checkpoint_or_build: checkpoint found, merging user message"
             );
-            return Ok(merge(checkpoint.channel_values, user_message.to_string()));
+            return Ok(merge(checkpoint.channel_values, user_message.clone()));
         }
         tracing::info!("load_from_checkpoint_or_build: no checkpoint found, building fresh state");
     }

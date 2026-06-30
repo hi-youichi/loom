@@ -161,7 +161,7 @@ pub async fn run_agent(
                 }
             });
             let outcome = r
-                .stream_with_config(opts.message.as_text().as_ref(), None, on_ev)
+                .stream_with_config(opts.message.clone(), None, on_ev)
                 .await?;
             match outcome {
                 runner_common::StreamRunOutcome::Finished(state) => {
@@ -182,7 +182,7 @@ pub async fn run_agent(
                     }
                 }
             });
-            let outcome = r.stream_with_config(opts.message.as_text().as_ref(), None, on_ev).await?;
+            let outcome = r.stream_with_config(opts.message.clone(), None, on_ev).await?;
             match outcome {
                 runner_common::StreamRunOutcome::Finished(state) => {
                     RunCompletion::Finished(AgentRunResult {
@@ -202,7 +202,7 @@ pub async fn run_agent(
                     }
                 }
             });
-            let outcome = r.stream_with_config(opts.message.as_text().as_ref(), None, on_ev).await?;
+            let outcome = r.stream_with_config(opts.message.clone(), None, on_ev).await?;
             match outcome {
                 runner_common::StreamRunOutcome::Finished(state) => {
                     RunCompletion::Finished(AgentRunResult {
@@ -222,7 +222,7 @@ pub async fn run_agent(
                     }
                 }
             });
-            let outcome = r.stream_with_config(opts.message.as_text().as_ref(), None, on_ev).await?;
+            let outcome = r.stream_with_config(opts.message.clone(), None, on_ev).await?;
             match outcome {
                 runner_common::StreamRunOutcome::Finished(state) => {
                     RunCompletion::Finished(AgentRunResult {
