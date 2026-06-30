@@ -6,7 +6,7 @@ use loom_memory::{Namespace, Store};
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, Tool};
 
 /// Tool name for the search_memories operation.
-pub use loom_types::tools::tool_name::TOOL_SEARCH_MEMORIES;
+pub use tool_core::tool_name::TOOL_SEARCH_MEMORIES;
 
 /// Tool for searching long-term memories by query (optional) and limit (optional).
 ///

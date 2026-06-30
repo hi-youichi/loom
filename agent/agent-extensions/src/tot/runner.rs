@@ -268,7 +268,7 @@ mod tests {
 
     fn state_with_tools(has_tools: bool) -> TotState {
         TotState {
-            core: loom_types::state::ReActState {
+            core: loom_stream::state::ReActState {
                 tool_calls: if has_tools {
                     vec![ToolCall {
                         name: "search".to_string(),
@@ -278,7 +278,7 @@ mod tests {
                 } else {
                     vec![]
                 },
-                ..loom_types::state::ReActState::default()
+                ..loom_stream::state::ReActState::default()
             },
             tot: TotExtension::default(),
         }

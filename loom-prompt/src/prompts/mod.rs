@@ -4,8 +4,11 @@
 //! Interacts with [`ReactBuildConfig`](loom_react_config::ReactBuildConfig), [`assemble_system_prompt`](crate::assemble::assemble_system_prompt),
 //! and runners that use system/prompt strings (ReAct, ToT, GoT, DUP).
 
+pub mod constants;
 mod load;
 mod resolve;
+
+pub use constants::*;
 
 use serde::Deserialize;
 

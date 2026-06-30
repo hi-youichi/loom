@@ -4,7 +4,9 @@
 //! This module re-exports them and adds Loom-specific utilities.
 
 pub mod any_event;
+pub mod erased_event;
 pub mod openai_sse;
+pub mod state;
 pub mod writers;
 
 // Re-export core types from stream-event crate
@@ -16,6 +18,13 @@ pub use stream_event::{
 // Loom-specific types
 pub use any_event::TypedAnyStreamEvent;
 pub use writers::tool_stream_writer::ToolStreamWriter;
+
+// Re-export state types for convenience
+pub use state::{
+    ModelConfig, ReActState, ReActCheckpointMeta, ToolResult, ToolStorageRef,
+    NormalizedToolOutput,
+};
+pub use erased_event::{AnyStreamEvent, StubDupState, StubGotState, StubTotState};
 
 #[cfg(test)]
 mod tests {

@@ -11,7 +11,7 @@ use loom_cli_types::RunCancellation;
 use loom_graph::{Next, Node, RunnableConfig, RunContext};
 use loom_graph::GraphError;
 use loom_stream::StreamMode;
-use loom_types::state::ReActState;
+use loom_stream::state::ReActState;
 use tool_core::ToolRegistryLocked;
 
 use super::act_executor::ToolCallExecutor;

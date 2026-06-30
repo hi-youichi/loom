@@ -1,4 +1,4 @@
-use loom_types::state::ReActState;
+use loom_stream::state::ReActState;
 use loom_stream::{MessageChunk, MessageChunkKind, StreamEvent};
 use std::time::Instant;
 

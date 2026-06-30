@@ -4,7 +4,7 @@
 //! main entry point [`assemble_system_prompt`].
 
 use crate::inputs::SystemPromptInputs;
-use loom_types::prompts::REACT_SYSTEM_PROMPT;
+use crate::prompts::constants::REACT_SYSTEM_PROMPT;
 
 /// Assembles the final system prompt from borrowed inputs.
 ///

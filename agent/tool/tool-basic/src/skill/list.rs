@@ -11,7 +11,7 @@ use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
 use super::SkillContext;
 
-pub use loom_types::tools::tool_name::TOOL_SKILL_LIST;
+pub use tool_core::tool_name::TOOL_SKILL_LIST;
 
 pub struct SkillListTool {
     ctx: Arc<SkillContext>,

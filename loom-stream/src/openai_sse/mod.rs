@@ -27,7 +27,7 @@ pub use chunk::{
 };
 pub use request::{ChatCompletionRequest, ChatMessage, MessageContent, StreamOptions};
 
-use loom_types::state::ReActState;
+use crate::state::ReActState;
 use crate::StreamEvent;
 use chunk::ChatCompletionChunk as Chunk;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -260,7 +260,7 @@ pub fn write_sse_line(chunk: &ChatCompletionChunk) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_types::state::{ReActState, ToolCall};
+    use crate::state::{ReActState, ToolCall};
     use crate::{MessageChunk, StreamMetadata};
 
     fn meta_with_created(created: u64) -> ChunkMeta {

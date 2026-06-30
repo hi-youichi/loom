@@ -9,7 +9,7 @@ use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 use tool_core::Tool;
 use tool_core::{ToolOutputHint, ToolOutputStrategy};
 
-pub use loom_types::tools::tool_name::TOOL_WEB_FETCHER;
+pub use tool_core::tool_name::TOOL_WEB_FETCHER;
 
 /// Tool for HTTP requests to URLs (GET or POST).
 ///

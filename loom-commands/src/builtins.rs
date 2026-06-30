@@ -10,8 +10,8 @@ use loom_graph::GraphError;
 use loom_llm::LlmClient;
 use loom_llm::message::{Message, UserContent};
 
-// Re-exported from loom-types
-pub use loom_types::command::{ResetState, CompactState, SummarizeState};
+// Re-exported from loom-stream / tool-core / agent-core
+pub use crate::command_traits::{CompactState, ResetState, SummarizeState};
 
 pub fn execute(cmd: Command, state: &mut dyn ResetState) -> CommandResult {
     match cmd {

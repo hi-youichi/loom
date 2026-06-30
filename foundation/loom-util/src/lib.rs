@@ -2,6 +2,6 @@
 //!
 //! This crate hosts dependency-light logic that multiple crates need
 //! (text processing, string algorithms, etc.). It sits at the bottom of the
-//! dependency graph alongside `loom-types`.
+//! dependency graph alongside `loom-stream / tool-core / agent-core`.
 
 pub mod text;

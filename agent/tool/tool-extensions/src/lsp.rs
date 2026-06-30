@@ -10,7 +10,7 @@ use lsp::LspManager;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 use tool_core::Tool;
 
-pub use loom_types::tools::tool_name::TOOL_LSP;
+pub use tool_core::tool_name::TOOL_LSP;
 
 /// LSP tool provides code completion, diagnostics, and navigation features.
 pub struct LspTool {

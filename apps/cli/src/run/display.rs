@@ -1,12 +1,12 @@
-﻿//! Message and state display formatting for stderr output.
+//! Message and state display formatting for stderr output.
 //!
 //! Provides truncation and formatting utilities for [`Message`](loom::Message)
 //! and agent state types (ReActState, TotState, DupState, GotState) when streaming
 //! to the CLI.
 
 use loom_llm::{message::Message, ToolCall};
-use loom_types::state::ReActState;
-use loom_types::state::ToolResult;
+use loom_stream::state::ReActState;
+use loom_stream::state::ToolResult;
 use agent_extensions::{DupState, GotState, TotState};
 use std::collections::HashMap;
 
@@ -186,7 +186,7 @@ pub(crate) fn format_got_state_display(state: &GotState, max: usize) -> String {
 mod tests {
     use super::*;
     use loom_llm::ToolCall;
-    use loom_types::state::ToolResult;
+    use loom_stream::state::ToolResult;
     use agent_extensions::{TaskGraph, TaskNode, TaskNodeState, TaskStatus};
     use std::collections::HashMap;
 

@@ -2,7 +2,7 @@
 
 use loom_memory::{CheckpointError, Checkpointer, RunnableConfig};
 use loom_llm::message::{Message, UserContent};
-use loom_types::state::ReActState;
+use loom_stream::state::ReActState;
 
 use crate::runner_common::load_from_checkpoint_or_build;
 

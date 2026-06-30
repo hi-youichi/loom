@@ -6,7 +6,7 @@ use task_core::{ShowError, TaskDb};
 
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec, Tool};
 
-pub use loom_types::tools::tool_name::TOOL_TASK_SHOW;
+pub use tool_core::tool_name::TOOL_TASK_SHOW;
 
 pub struct TaskShowTool {
     db: Arc<TaskDb>,

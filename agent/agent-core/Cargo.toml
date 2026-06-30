@@ -10,7 +10,6 @@ edition = "2021"
 
 [dependencies]
 
-loom-types = { path = "../../loom-types" }
 
 loom-util = { path = "../../foundation/loom-util" }
 
@@ -56,6 +55,8 @@ loom-commands = { path = "../../loom-commands" }
 
 lsp = { path = "../../experimental/tool/lsp" }
 
+
+chrono = "0.4"
 
 async-trait = "0.1"
 

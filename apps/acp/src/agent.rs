@@ -21,7 +21,7 @@ use agent_client_protocol::schema::v1::{
     Usage,
 };
 use loom_memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
-use loom_types::state::ReActState;
+use loom_stream::state::ReActState;
 
 use chrono::DateTime;
 use config::load_full_config;
@@ -1488,7 +1488,7 @@ async fn resolve_context_window_size(model: Option<&str>) -> u64 {
     use model_spec_core::resolver::{ConfigModelEntry, ConfigProviderEntry};
 
     let Some(model) = model else {
-        return loom_types::config::CompactionConfig::default().max_context_tokens as u64;
+        return loom_compress::CompactionConfig::default().max_context_tokens as u64;
     };
 
     let providers: Vec<ConfigProviderEntry> = config::load_full_config("loom")
@@ -1527,7 +1527,7 @@ async fn resolve_context_window_size(model: Option<&str>) -> u64 {
                 model = %model,
                 "model spec not found, using default 128k context window"
             );
-            loom_types::config::CompactionConfig::default().max_context_tokens as u64
+            loom_compress::CompactionConfig::default().max_context_tokens as u64
         }
     }
 }

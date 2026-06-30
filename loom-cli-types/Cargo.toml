@@ -7,7 +7,6 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-loom-types = { path = "../loom-types" }
 loom-stream = { path = "../loom-stream" }
 tool-core = { path = "../agent/tool/tool-core" }
 tool-basic = { path = "../agent/tool/tool-basic" }

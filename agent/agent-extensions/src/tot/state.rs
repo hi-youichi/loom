@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use loom_types::state::ReActState;
+use loom_stream::state::ReActState;
 use loom_llm::ToolCall;
 
 /// One candidate produced by ThinkExpand: a thought and optional tool calls.
@@ -85,7 +85,7 @@ impl TotState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_types::state::ReActState;
+    use loom_stream::state::ReActState;
     use loom_llm::message::Message;
 
     #[test]

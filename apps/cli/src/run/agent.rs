@@ -14,8 +14,8 @@ use model_spec_core::resolver::{
 use stream_event::Envelope;
 use loom_react_config::profile::list_available_profiles;
 use loom_stream::MessageChunkKind;
-use loom_types::state::ReActState;
-use loom_types::state::ToolResult;
+use loom_stream::state::ReActState;
+use loom_stream::state::ToolResult;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;

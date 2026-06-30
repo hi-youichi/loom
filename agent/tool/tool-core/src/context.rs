@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use loom_llm::Message;
 use loom_stream::ToolStreamWriter;
-use loom_types::active_operation::RunCancellation;
-use loom_types::cli_run::AnyStreamEvent;
+use crate::active_operation::RunCancellation;
+use loom_stream::AnyStreamEvent;
 
 #[derive(Clone, Default)]
 pub struct ToolCallContext {

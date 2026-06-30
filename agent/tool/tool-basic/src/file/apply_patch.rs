@@ -14,7 +14,7 @@ use super::edit_file::replace as edit_replace;
 use super::path::resolve_path_under;
 
 /// Tool name for apply_patch.
-pub use loom_types::tools::tool_name::TOOL_APPLY_PATCH;
+pub use tool_core::tool_name::TOOL_APPLY_PATCH;
 
 #[derive(Debug)]
 enum Hunk {

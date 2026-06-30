@@ -147,7 +147,7 @@ pub(super) async fn build_and_run_sub_agent(
             let s = s.clone();
             Arc::new(move |ev: loom_cli_types::AnyStreamEvent| {
                 let val = serde_json::to_value(&ev).unwrap_or_default();
-                s(loom_types::cli_run::AnyStreamEvent::React(val));
+                s(loom_stream::AnyStreamEvent::React(val));
             }) as Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>
         });
     let runner = build_react_runner(&sub_config, None, false, None, cli_sender)
@@ -183,7 +183,7 @@ pub(super) async fn build_and_run_sub_agent(
         }
         if let Some(ref sender) = loom_sender {
             let val = serde_json::to_value(&event).unwrap_or_default();
-            sender(loom_types::cli_run::AnyStreamEvent::React(val));
+            sender(loom_stream::AnyStreamEvent::React(val));
         }
     });
 

@@ -34,4 +34,4 @@ pub use event_handler::{
 
 // Re-export types from loom-stream that display consumers commonly need
 pub use loom_stream::{MessageChunk, MessageChunkKind, StreamEvent};
-pub use loom_types::state::{ReActState, ToolCall, ToolResult};
+pub use loom_stream::state::{ReActState, ToolCall, ToolResult};

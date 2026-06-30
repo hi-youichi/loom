@@ -235,7 +235,7 @@ impl SessionManager {
             .optional().map_err(|e| format!("Failed to query payload: {}", e))?;
 
         let (message_count, first_user_message, last_assistant_reply) = if let Some(data) = payload {
-            match serde_json::from_slice::<loom_types::state::ReActState>(&data) {
+            match serde_json::from_slice::<loom_stream::state::ReActState>(&data) {
                 Ok(state) => {
                     let first_user = state.messages.iter().find_map(|m| match m {
                         loom_llm::message::Message::User(s) => Some(s.as_text().to_string()),
@@ -292,7 +292,7 @@ impl SessionManager {
                 .unwrap_or_default();
 
             let found = payloads.iter().any(|data| {
-                serde_json::from_slice::<loom_types::state::ReActState>(data)
+                serde_json::from_slice::<loom_stream::state::ReActState>(data)
                     .map(|state| state.messages.iter().any(|m| match m {
                         loom_llm::message::Message::System(s) => s.to_lowercase().contains(&query_lower),
                         loom_llm::message::Message::User(uc) => uc.as_text().to_lowercase().contains(&query_lower),
@@ -318,7 +318,7 @@ impl SessionManager {
             .map_err(|e| format!("Failed to query checkpoints: {}", e))?
             .collect::<Result<Vec<_>, _>>().map_err(|e| format!("Failed to collect payloads: {}", e))?;
         if payloads.is_empty() { return Err(format!("Session not found: {}", session_id)); }
-        let states: Vec<loom_types::state::ReActState> = payloads.iter().filter_map(|d| serde_json::from_slice(d).ok()).collect();
+        let states: Vec<loom_stream::state::ReActState> = payloads.iter().filter_map(|d| serde_json::from_slice(d).ok()).collect();
         Ok(crate::codex_event_builder::build_codex_events(session_id, &states))
     }
 
@@ -333,7 +333,7 @@ impl SessionManager {
 
         let mut parts = Vec::new();
         for data in &payloads {
-            if let Ok(state) = serde_json::from_slice::<loom_types::state::ReActState>(data) {
+            if let Ok(state) = serde_json::from_slice::<loom_stream::state::ReActState>(data) {
                 for msg in &state.messages {
                     match msg {
                         loom_llm::message::Message::User(u) => parts.push(format!("User: {}", u.as_text())),

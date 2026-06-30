@@ -1,5 +1,5 @@
-use loom_types::cli_run::{StubDupState, StubGotState, StubTotState};
-use loom_types::state::{ReActState, ToolCall, ToolResult};
+use loom_stream::{StubDupState, StubGotState, StubTotState};
+use loom_stream::state::{ReActState, ToolCall, ToolResult};
 use loom_llm::message::Message;
 
 const INDENT: &str = "  ";
@@ -147,7 +147,7 @@ pub fn format_context_limit(limit: u32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_types::cli_run::{StubDupState, StubTotState};
+    use loom_stream::{StubDupState, StubTotState};
 
     // Note: Tests for format_tot_state_display, format_dup_state_display, format_got_state_display
     // are moved to loom-agent crate since they use agent-specific types.

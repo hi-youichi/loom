@@ -15,7 +15,7 @@ use tool_core::Tool;
 use super::todo_file_path;
 use super::TodoInfo;
 
-pub use loom_types::tools::tool_name::TOOL_TODO_WRITE;
+pub use tool_core::tool_name::TOOL_TODO_WRITE;
 
 /// Tool that writes the todo list to thread context.
 ///

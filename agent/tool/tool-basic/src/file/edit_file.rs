@@ -14,7 +14,7 @@ use tool_core::Tool;
 use super::path::resolve_path_under;
 
 /// Tool name for editing a file.
-pub use loom_types::tools::tool_name::TOOL_EDIT_FILE;
+pub use tool_core::tool_name::TOOL_EDIT_FILE;
 
 /// Re-export of the fuzzy find-and-replace engine from `loom-core`.
 ///

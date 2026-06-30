@@ -73,10 +73,10 @@ impl NormalizationConfig {
 }
 
 // Defined in this module
-pub use crate::state::ToolStorageRef;
+pub use loom_stream::state::ToolStorageRef;
 
 // Defined in this module
-pub use crate::state::NormalizedToolOutput;
+pub use loom_stream::state::NormalizedToolOutput;
 
 
 static TOOL_OUTPUT_FILE_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -542,7 +542,7 @@ fn persist_output(
 }
 
 fn default_tool_output_dir() -> PathBuf {
-    config::home::thread_session_dir("default").join("tool-output")
+    env_config::home::thread_session_dir("default").join("tool-output")
 }
 
 fn build_storage_file_name(tool_name: &str, extension: &str) -> String {

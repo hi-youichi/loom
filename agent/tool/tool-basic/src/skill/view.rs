@@ -12,7 +12,7 @@ use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
 use super::SkillContext;
 
-pub use loom_types::tools::tool_name::TOOL_SKILL_VIEW;
+pub use tool_core::tool_name::TOOL_SKILL_VIEW;
 
 pub struct SkillViewTool {
     ctx: Arc<SkillContext>,

@@ -5,7 +5,7 @@ use loom_graph::GraphError;
 use loom_llm::{LlmClient, LlmProvider};
 use loom_llm::client::FixedLlmProvider;
 use model_spec_core::resolver::{ConfigModelEntry, ConfigProviderEntry};
-use loom_types::active_operation::RunCancellation;
+use tool_core::active_operation::RunCancellation;
 
 use super::super::config::ReactBuildConfig;
 use super::super::runner::ReactRunner;

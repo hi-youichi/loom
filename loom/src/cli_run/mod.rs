@@ -273,7 +273,7 @@ pub fn build_react_config(
     if let Some(ref prof) = profile {
         if let Some(ref tools) = prof.tools {
             if let Some(ref builtin) = tools.builtin {
-                let filter = loom_types::config::BuiltinToolFilter {
+                let filter = tool_core::BuiltinToolFilter {
                     enabled: builtin.enabled.clone(),
                     disabled: builtin.disabled.clone(),
                 };

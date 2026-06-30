@@ -9,7 +9,7 @@ use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec, Too
 mod executor;
 pub use executor::{CommandExecutor, LocalCommandExecutor};
 
-pub use loom_types::tools::tool_name::TOOL_BASH;
+pub use tool_core::tool_name::TOOL_BASH;
 
 pub struct BashTool {
     working_folder: Option<Arc<std::path::PathBuf>>,

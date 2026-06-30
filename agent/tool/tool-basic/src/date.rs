@@ -10,7 +10,7 @@ use serde_json::json;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 use tool_core::Tool;
 
-pub use loom_types::tools::tool_name::TOOL_DATE;
+pub use tool_core::tool_name::TOOL_DATE;
 
 /// Default format string (ISO 8601 with timezone offset).
 const DEFAULT_FORMAT: &str = "%Y-%m-%dT%H:%M:%S%:z";

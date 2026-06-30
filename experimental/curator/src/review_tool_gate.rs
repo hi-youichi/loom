@@ -1,4 +1,4 @@
-use loom_types::config::BuiltinToolFilter;
+use tool_core::BuiltinToolFilter;
 use std::collections::HashSet;
 
 /// Tool whitelist for background review agents.
@@ -9,7 +9,7 @@ use std::collections::HashSet;
 /// `skills_list` (plural) — see `hermes-agent/tools/skills_tool.py:1449` —
 /// but Loom's unified Rust implementation renamed it to `skill_list`
 /// (singular) to match the rest of the `skill_*` family (`skill_view`,
-/// `skill_manage`). See `loom_types::tools::tool_name::TOOL_SKILL_LIST`. The
+/// `skill_manage`). See `tool_core::tool_name::TOOL_SKILL_LIST`. The
 /// other three names are identical between Python and Rust.
 pub const REVIEW_ALLOWED_TOOLS: &[&str] = &[
     "memory",

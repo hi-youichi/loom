@@ -8,9 +8,12 @@
 
 pub mod builtins;
 pub mod command;
+pub mod command_traits;
 pub mod parser;
+pub mod react_impls;
 
 // Re-exports for convenience
-pub use builtins::{execute, execute_async, CompactState, ResetState, SummarizeState};
+pub use builtins::{execute, execute_async};
 pub use command::{Command, CommandResult};
+pub use command_traits::{CompactState, ResetState, SummarizeState};
 pub use parser::parse;

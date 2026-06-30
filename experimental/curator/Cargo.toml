@@ -16,8 +16,6 @@ testing = []
 # LLM client (loom-llm crate)
 loom-llm = { path = "../../loom-llm" }
 
-# Shared types (loom-types crate)
-loom-types = { path = "../../loom-types" }
 
 # Config crate for loom_home
 env_config = { path = "../../config", package = "config" }

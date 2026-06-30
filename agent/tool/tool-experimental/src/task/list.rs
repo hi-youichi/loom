@@ -6,7 +6,7 @@ use task_core::{parse_status, ListParams, TaskDb};
 
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec, Tool};
 
-pub use loom_types::tools::tool_name::TOOL_TASK_LIST;
+pub use tool_core::tool_name::TOOL_TASK_LIST;
 
 pub struct TaskListTool {
     db: Arc<TaskDb>,

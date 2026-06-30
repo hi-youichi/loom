@@ -62,9 +62,7 @@ loom-llm = { path = "../loom-llm" }
 
 
 
-# Shared types (loom-types crate)
 
-loom-types = { path = "../loom-types" }
 
 
 
@@ -295,7 +293,6 @@ loom-stream = { path = "../loom-stream" }
 
 loom-llm = { path = "../loom-llm" }
 
-loom-types = { path = "../loom-types" }
 
 loom-react-config = { path = "../loom-react-config" }
 

@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use loom_cli_types::AnyStreamEvent;
 use loom_cli_types::{ReActState, StubDupState, StubGotState, StubTotState};
 use loom_stream::{MessageChunk, MessageChunkKind, StreamEvent};
-use loom_types::state::{ToolCall, ToolResult};
+use loom_stream::state::{ToolCall, ToolResult};
 
 use crate::format::*;
 use crate::panel_format;

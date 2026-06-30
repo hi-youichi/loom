@@ -14,14 +14,14 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-// Re-export active operation types from loom-types for convenience
-pub use loom_types::active_operation::{
+// Re-export active operation types from loom-stream / tool-core / agent-core for convenience
+pub use tool_core::active_operation::{
     ActiveOperation, ActiveOperationCanceller, ActiveOperationKind, RunCancellation,
 };
-// Re-export stub agent state types from loom-types
-pub use loom_types::cli_run::{StubDupState, StubGotState, StubTotState};
+// Re-export stub agent state types from loom-stream / tool-core / agent-core
+pub use loom_stream::{StubDupState, StubGotState, StubTotState};
 // Re-export ReActState
-pub use loom_types::state::ReActState;
+pub use loom_stream::state::ReActState;
 
 /// Default working folder when not set (current directory).
 pub const DEFAULT_WORKING_FOLDER: &str = ".";

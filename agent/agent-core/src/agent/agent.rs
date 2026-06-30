@@ -180,7 +180,7 @@ mod tests {
         cfg.working_folder = Some(std::env::temp_dir());
         cfg
     }
-    use loom_types::state::ReActState;
+    use loom_stream::state::ReActState;
 
     fn stream_metadata() -> StreamMetadata {
         StreamMetadata {

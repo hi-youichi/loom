@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
-use loom_types::config::BuiltinToolFilter;
+use crate::BuiltinToolFilter;
 
 use crate::{Tool, ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 

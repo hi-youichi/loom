@@ -6,7 +6,7 @@ use task_core::{parse_status, CreateParams, TaskDb};
 
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec, Tool};
 
-pub use loom_types::tools::tool_name::TOOL_TASK_CREATE;
+pub use tool_core::tool_name::TOOL_TASK_CREATE;
 
 pub struct TaskCreateTool {
     db: Arc<TaskDb>,

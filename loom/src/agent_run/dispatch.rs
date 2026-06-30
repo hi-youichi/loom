@@ -20,8 +20,8 @@ use crate::agent_run::stream_convert::{
 use stream_event::EnvelopeState;
 use loom_react_config::ReactBuildConfig;
 use loom_stream::StreamEvent;
-use loom_types::active_operation::RunCancellation;
-use loom_types::state::ReActState;
+use tool_core::active_operation::RunCancellation;
+use loom_stream::state::ReActState;
 use serde_json::Value;
 use thiserror::Error;
 use tracing::Instrument;

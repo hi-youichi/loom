@@ -16,7 +16,7 @@ use loom_graph::GraphError;
 use loom_graph::Next;
 use loom_llm::{LlmHeaders, LlmProvider};
 use loom_llm::message::Message;
-use loom_types::state::ReActState;
+use loom_stream::state::ReActState;
 use loom_graph::Node;
 
 /// Max characters for stored session summary (matches prompt "不超过50字"; total includes "..." when truncated).

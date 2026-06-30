@@ -16,8 +16,8 @@ use loom_graph::GraphError;
 use loom_llm::ToolCall;
 use loom_memory::uuid6;
 use loom_stream::{StreamEvent, StreamMode, ToolStreamWriter};
-use loom_types::state::{ReActState, ToolResult};
-use loom_types::tool_output_normalizer::{
+use loom_stream::state::{ReActState, ToolResult};
+use crate::tool_output_normalizer::{
     normalize_tool_output, NormalizationConfig, ToolOutputHint,
 };
 use tool_core::{ToolCallContent, ToolCallContext, ToolRegistryLocked, ToolSourceError};
@@ -385,18 +385,18 @@ impl ToolCallExecutor {
 // ────────────────────── helpers ──────────────────────
 
 /// Adapts a `loom_cli_types::AnyStreamEvent` sender into a
-/// `loom_types::cli_run::AnyStreamEvent` sender.
+/// `loom_stream::AnyStreamEvent` sender.
 fn adapt_stream_sender(
     sender: &Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>,
-) -> Arc<dyn Fn(loom_types::cli_run::AnyStreamEvent) + Send + Sync> {
+) -> Arc<dyn Fn(loom_stream::AnyStreamEvent) + Send + Sync> {
     let sender = sender.clone();
-    Arc::new(move |ev: loom_types::cli_run::AnyStreamEvent| {
-        if let loom_types::cli_run::AnyStreamEvent::React(v) = &ev {
+    Arc::new(move |ev: loom_stream::AnyStreamEvent| {
+        if let loom_stream::AnyStreamEvent::React(v) = &ev {
             if let Ok(stream_ev) = serde_json::from_value::<StreamEvent<ReActState>>(v.clone()) {
                 sender(loom_cli_types::AnyStreamEvent::React(stream_ev));
             }
         }
-    }) as Arc<dyn Fn(loom_types::cli_run::AnyStreamEvent) + Send + Sync>
+    }) as Arc<dyn Fn(loom_stream::AnyStreamEvent) + Send + Sync>
 }
 
 /// Ensures each [`ToolResult`] has a non-empty `call_id`.

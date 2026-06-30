@@ -53,9 +53,9 @@ use serde_json::Value;
 use loom_react_config::profile::list_available_profiles;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec, Tool};
 use loom_react_config::ReactBuildConfig;
-use loom_types::tool_output_normalizer::{ToolOutputHint, ToolOutputStrategy};
+use crate::tool_output_normalizer::{ToolOutputHint, ToolOutputStrategy};
 
-pub use loom_types::tools::tool_name::TOOL_INVOKE_AGENT;
+pub use tool_core::tool_name::TOOL_INVOKE_AGENT;
 pub(super) const DEFAULT_MAX_DEPTH: u32 = 3;
 
 pub struct InvokeAgentTool {

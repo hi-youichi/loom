@@ -10,7 +10,6 @@ edition = "2021"
 
 [dependencies]
 
-loom-types = { path = "../../loom-types" }
 
 loom-graph = { path = "../../loom-graph" }
 

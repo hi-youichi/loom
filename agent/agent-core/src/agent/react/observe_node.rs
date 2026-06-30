@@ -147,7 +147,7 @@ impl Node<ReActState> for ObserveNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_types::state::{ReActState, ToolResult, ToolStorageRef};
+    use loom_stream::state::{ReActState, ToolResult, ToolStorageRef};
     use loom_llm::ToolCall;
     use loom_llm::message::Message;
     use std::path::PathBuf;

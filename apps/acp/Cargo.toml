@@ -2,7 +2,7 @@
 name = "acp"
 version.workspace = true
 edition.workspace = true
-description = "ACP (Agent Client Protocol) server for Loom — run Loom as an ACP agent in IDEs"
+description = "ACP (Agent Client Protocol) server for Loom ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â run Loom as an ACP agent in IDEs"
 license.workspace = true
 authors.workspace = true
 
@@ -19,8 +19,8 @@ loom-llm = { path = "../../loom-llm" }
 loom-memory = { path = "../../loom-memory" }
 tool-core = { path = "../../agent/tool/tool-core" }
 tool-basic = { path = "../../agent/tool/tool-basic" }
-loom-types = { path = "../../loom-types" }
 loom-react-config = { path = "../../loom-react-config" }
+loom-compress = { path = "../../agent/compress" }
 model-spec-core = { path = "../../foundation/model-spec-core", features = ["tier"] }
 loom-stream = { path = "../../loom-stream" }
 
@@ -67,9 +67,9 @@ libc = "0.2"
 # top-level `tests/*.rs`, so we declare it explicitly to keep naming
 # deterministic (the file becomes the `e2e_mega` test binary).
 #
-# `tests/e2e/` is a directory — cargo does NOT auto-discover directories.
+# `tests/e2e/` is a directory ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â cargo does NOT auto-discover directories.
 # We pin `tests/e2e/main.rs` as the crate root so `mod common;` inside it
-# resolves `common/{env,harness,...}.rs` as submodules. Micro tests (M1–M5)
+# resolves `common/{env,harness,...}.rs` as submodules. Micro tests (M1ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“M5)
 # land under `tests/e2e/*.rs` in Phase 3.
 
 [[test]]

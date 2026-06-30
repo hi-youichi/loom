@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use tracing::debug;
 
 use loom_graph::GraphError;
-use loom_types::state::ReActState;
+use loom_stream::state::ReActState;
 use loom_graph::{Next, Node};
 
 use super::compaction;
@@ -50,7 +50,7 @@ impl Node<ReActState> for PruneNode {
 #[cfg(test)]
 mod tests {
     use loom_llm::message::{Message, UserContent};
-    use loom_types::state::ReActState;
+    use loom_stream::state::ReActState;
 
     use super::*;
 

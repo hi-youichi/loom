@@ -21,7 +21,6 @@ agent-extensions = { path = "../../agent/agent-extensions" }
 loom-llm = { path = "../../loom-llm" }
 loom-graph = { path = "../../loom-graph" }
 
-loom-types = { path = "../../loom-types" }
 tool-core = { path = "../../agent/tool/tool-core" }
 loom-stream = { path = "../../loom-stream" }
 loom-stream-display = { path = "../../loom-stream-display" }

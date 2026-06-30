@@ -13,6 +13,5 @@ serde_json = "1"
 termsize = "0.1"
 tracing = "0.1"
 loom-stream = { path = "../loom-stream" }
-loom-types = { path = "../loom-types" }
 loom-llm = { path = "../loom-llm" }
 loom-cli-types = { path = "../loom-cli-types" }

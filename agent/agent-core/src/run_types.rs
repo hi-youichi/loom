@@ -3,7 +3,7 @@
 //! These types are shared across all agent patterns and consumers.
 
 // Re-export cancellation types from loom
-pub use loom_types::active_operation::{ActiveOperationCanceller, ActiveOperationKind, ActiveOperation, RunCancellation};
+pub use tool_core::active_operation::{ActiveOperationCanceller, ActiveOperationKind, ActiveOperation, RunCancellation};
 
 /// Final result of a single agent run.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

@@ -6,7 +6,7 @@ use loom_memory::{Namespace, Store};
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, Tool};
 
 /// Tool name for the remember operation.
-pub use loom_types::tools::tool_name::TOOL_REMEMBER;
+pub use tool_core::tool_name::TOOL_REMEMBER;
 
 /// Tool for writing key-value pairs to long-term memory.
 ///

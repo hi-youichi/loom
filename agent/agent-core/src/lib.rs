@@ -10,6 +10,7 @@ pub mod agent;
 pub mod runner_common;
 pub mod runner_error;
 pub mod run_types;
+pub mod tool_output_normalizer;
 pub mod tools;
 
 pub use runner_error::RunnerError;
@@ -32,4 +33,4 @@ pub use run_types::{
 };
 
 // Re-export from loom for RunCancellation
-pub use loom_types::active_operation::RunCancellation;
+pub use tool_core::active_operation::RunCancellation;

@@ -4,7 +4,7 @@
 //! getters resolve from loaded values to code defaults. ReAct prompt assembly now lives
 //! in the single main assembler path under [`crate::prompt`].
 
-use loom_types::prompts::{DUP_UNDERSTAND_PROMPT, AGOT_EXPAND_SYSTEM, GOT_PLAN_SYSTEM, TOT_EXPAND_SYSTEM_ADDON, TOT_RESEARCH_QUALITY_ADDON};
+use crate::prompts::constants::{DUP_UNDERSTAND_PROMPT, AGOT_EXPAND_SYSTEM, GOT_PLAN_SYSTEM, TOT_EXPAND_SYSTEM_ADDON, TOT_RESEARCH_QUALITY_ADDON};
 
 use super::{DupPromptsFile, GotPromptsFile, PromptOverridesFile, ReactPromptsFile, TotPromptsFile};
 

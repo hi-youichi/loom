@@ -6,7 +6,7 @@ use loom_memory::{Namespace, Store};
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, Tool};
 
 /// Tool name for the recall operation.
-pub use loom_types::tools::tool_name::TOOL_RECALL;
+pub use tool_core::tool_name::TOOL_RECALL;
 
 /// Tool for reading a value by key from long-term memory.
 ///

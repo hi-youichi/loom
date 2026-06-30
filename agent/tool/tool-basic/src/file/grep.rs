@@ -27,7 +27,7 @@ use tool_core::Tool;
 use super::path::resolve_path_under;
 
 /// Tool name for grep file content search.
-pub use loom_types::tools::tool_name::TOOL_GREP;
+pub use tool_core::tool_name::TOOL_GREP;
 
 /// Maximum bytes per matched line before truncation (char-boundary safe).
 const MAX_LINE_LENGTH: usize = 2000;

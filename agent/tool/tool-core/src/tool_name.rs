@@ -3,22 +3,8 @@
 //! These constants are the single source of truth for tool names used across
 //! the workspace. All tool implementations should import from this module
 //! rather than defining their own local constants.
-//!
-//! # Usage
-//!
-//! ```rust
-//! use loom_types::tools::tool_name::TOOL_READ_FILE;
-//! ```
-//!
-//! Or import the entire module:
-//! ```rust
-//! use loom_types::tools::tool_name as tool;
-//! let name = tool::TOOL_BASH;
-//! ```
 
-/// Tool name constants for all built-in tools.
-pub mod tool_name {
-    // ============================================================================
+// ============================================================================
     // File tools
     // ============================================================================
 
@@ -150,4 +136,3 @@ pub mod tool_name {
 
     /// todo_write — create and manage a structured task list.
     pub const TOOL_TODO_WRITE: &str = "todo_write";
-}

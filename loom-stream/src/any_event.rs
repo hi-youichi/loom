@@ -4,12 +4,12 @@
 //! into a single enum that display and bridge layers can pattern-match on.
 
 use crate::StreamEvent;
-use loom_types::cli_run::{StubDupState, StubGotState, StubTotState};
-use loom_types::state::ReActState;
+use crate::{StubDupState, StubGotState, StubTotState};
+use crate::state::ReActState;
 
 /// Typed multi-pattern stream event.
 ///
-/// Unlike `loom_types::cli_run::AnyStreamEvent` (which uses `serde_json::Value`),
+/// Unlike `crate::AnyStreamEvent` (which uses `serde_json::Value`),
 /// this carries the actual `StreamEvent<S>` for each agent pattern.
 #[derive(Debug, Clone)]
 pub enum TypedAnyStreamEvent {

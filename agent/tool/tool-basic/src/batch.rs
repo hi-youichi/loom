@@ -7,7 +7,7 @@ use serde_json::json;
 
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, Tool};
 
-pub use loom_types::tools::tool_name::TOOL_BATCH;
+pub use tool_core::tool_name::TOOL_BATCH;
 
 const MAX_CALLS: usize = 25;
 

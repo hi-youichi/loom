@@ -13,8 +13,11 @@ use skill::SkillRegistry;
 // Re-export EnvContext from loom-prompt
 pub use loom_prompt::env_context::EnvContext;
 
-// Re-exported from loom-types
-pub use loom_types::config::{BuiltinToolFilter, TotRunnerConfig, GotRunnerConfig};
+// Re-exported from local modules
+mod config;
+pub use config::{TotRunnerConfig, GotRunnerConfig};
+pub use tool_core::BuiltinToolFilter;
+pub use loom_compress::CompactionConfig;
 
 // Profile loading and agent resolution
 pub mod profile;
@@ -93,7 +96,7 @@ pub struct ReactBuildConfig {
     pub embedding_base_url: Option<String>,
     pub embedding_model: Option<String>,
     pub working_folder: Option<PathBuf>,
-    pub compaction_config: Option<loom_types::config::CompactionConfig>,
+    pub compaction_config: Option<CompactionConfig>,
     pub tot_config: TotRunnerConfig,
     pub got_config: GotRunnerConfig,
     /// MCP servers from mcp.json (discovered by CLI/ACP) or from ACP request.

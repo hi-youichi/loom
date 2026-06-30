@@ -13,11 +13,11 @@ use loom_llm::LlmProvider;
 use loom_llm::message::UserContent;
 use loom_memory::{Checkpointer, RunnableConfig, Store};
 use crate::runner_common;
-use loom_types::state::ReActState;
+use loom_stream::state::ReActState;
 use loom_stream::StreamEvent;
 use tool_core::ToolRegistryLocked;
 use loom_memory::user_message::UserMessageStore;
-use loom_types::active_operation::RunCancellation;
+use tool_core::active_operation::RunCancellation;
 
 use super::error::RunError;
 use super::initial_state::build_react_initial_state;

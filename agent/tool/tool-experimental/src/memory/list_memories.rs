@@ -6,7 +6,7 @@ use loom_memory::{Namespace, Store};
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, Tool};
 
 /// Tool name for the list_memories operation.
-pub use loom_types::tools::tool_name::TOOL_LIST_MEMORIES;
+pub use tool_core::tool_name::TOOL_LIST_MEMORIES;
 
 /// Tool for listing all memory keys in the current namespace.
 ///
