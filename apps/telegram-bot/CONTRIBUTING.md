@@ -20,7 +20,7 @@ cargo clippy -p telegram-bot --all-targets -- -W clippy::all
 ## Project Structure
 
 ```
-telegram-bot/
+apps/telegram-bot/
 ├── src/
 │   ├── main.rs              # 入口
 │   ├── lib.rs               # 公共 API 导出

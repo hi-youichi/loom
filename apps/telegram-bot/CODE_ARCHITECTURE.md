@@ -28,7 +28,7 @@ telegram-bot 是一个基于 [teloxide](https://github.com/teloxide/teloxide) �
 ## 2. 目录结构
 
 ```
-telegram-bot/
+apps/telegram-bot/
 ├── src/
 │   ├── main.rs              # 入口：配置加载 → 日志 → 启动 BotManager
 │   ├── lib.rs               # 库入口：模块声明与 re-export

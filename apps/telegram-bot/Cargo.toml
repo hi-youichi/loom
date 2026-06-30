@@ -23,13 +23,13 @@ anyhow = "1.0"
 chrono = "0.4"
 rand = "0.8"
 rusqlite = { version = "0.31", features = ["bundled"] }
-config = { path = "../config", features = ["tracing-init"] }
-loom = { path = "../loom" }
-loom-memory = { path = "../loom-memory" }
-tool-core = { path = "../agent/tool/tool-core" }
-tool-extensions = { path = "../agent/tool/tool-extensions" }
-loom-llm = { path = "../loom-llm" }
-loom-commands = { path = "../loom-commands" }
+config = { path = "../../config", features = ["tracing-init"] }
+loom = { path = "../../loom" }
+loom-memory = { path = "../../loom-memory" }
+tool-core = { path = "../../agent/tool/tool-core" }
+tool-extensions = { path = "../../agent/tool/tool-extensions" }
+loom-llm = { path = "../../loom-llm" }
+loom-commands = { path = "../../loom-commands" }
 axum = "0.7"
 tokio-util = "0.7"
 

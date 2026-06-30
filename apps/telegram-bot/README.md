@@ -10,7 +10,7 @@
 ├── telegram-bot.toml        # Bot 专用配置
 └── .env                     # 环境变量
 
-telegram-bot/
+apps/telegram-bot/
 ├── Cargo.toml
 ├── telegram-bot.example.toml # 示例配置
 └── src/
@@ -28,7 +28,7 @@ telegram-bot/
 ```bash
 # 1. 复制示例配置到 LOOM_HOME
 mkdir -p ~/.loom
-cp telegram-bot/telegram-bot.example.toml ~/.loom/telegram-bot.toml
+cp apps/telegram-bot/telegram-bot.example.toml ~/.loom/telegram-bot.toml
 
 # 2. 编辑配置，填写 bot token
 vim ~/.loom/telegram-bot.toml

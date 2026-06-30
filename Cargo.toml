@@ -36,7 +36,7 @@ members = [
 
     "loom-workspace/gh",
 
-    "telegram-bot",
+    "apps/telegram-bot",
 
     "experimental/task/task-core",
 

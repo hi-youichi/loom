@@ -3,7 +3,7 @@ name: telegram-bot CI
 on:
   push:
     paths:
-      - 'telegram-bot/**'
+      - 'apps/telegram-bot/**'
       - 'loom/**'
       - 'config/**'
       - 'Cargo.toml'
@@ -11,7 +11,7 @@ on:
       - 'Dockerfile'
   pull_request:
     paths:
-      - 'telegram-bot/**'
+      - 'apps/telegram-bot/**'
       - 'loom/**'
       - 'config/**'
       - 'Cargo.toml'

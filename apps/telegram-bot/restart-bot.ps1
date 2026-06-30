@@ -20,7 +20,7 @@ $ErrorActionPreference = "Stop"
 
 # ── 配置 ──
 $ProcessName = "telegram-bot"
-$ProjectRoot = Join-Path $PSScriptRoot ".."
+$ProjectRoot = Join-Path (Join-Path $PSScriptRoot "..") ".."
 $BotBinary = Join-Path $ProjectRoot "target" "release" "telegram-bot"
 $GracefulShutdownTimeoutSec = 15
 $HealthCheckTimeoutSec = 30
