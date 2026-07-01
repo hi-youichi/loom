@@ -10,8 +10,8 @@ mod profile;
 
 use loom_react_config::ReactBuildConfig;
 use skill::discovery::SkillRegistry;
-use loom_prompt::env_context::{EnvContext, ProjectInfo};
-use loom_prompt::{SystemPromptInputs, assemble_system_prompt};
+use loom_react_config::env_context::{EnvContext, ProjectInfo};
+use loom_react_config::prompt_assembly::{SystemPromptInputs, assemble_system_prompt};
 use std::path::PathBuf;
 use std::sync::Arc;
 

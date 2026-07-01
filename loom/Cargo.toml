@@ -109,9 +109,7 @@ loom-stream-display = { path = "../loom-stream-display" }
 
 
 
-# Prompt assembly and environment context (loom-prompt crate)
 
-loom-prompt = { path = "../loom-prompt" }
 
 
 

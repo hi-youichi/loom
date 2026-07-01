@@ -21,7 +21,7 @@ loom-stream = { path = "../../loom-stream" }
 
 
 
-loom-prompt = { path = "../../loom-prompt" }
+
 
 checkpoint = { path = "../../foundation/checkpoint" }
 

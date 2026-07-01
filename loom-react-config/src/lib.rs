@@ -10,8 +10,11 @@ use std::sync::Arc;
 
 use skill::SkillRegistry;
 
-// Re-export EnvContext from loom-prompt
-pub use loom_prompt::env_context::EnvContext;
+// Environment context and prompt assembly (migrated from loom-prompt)
+pub mod env_context;
+pub mod prompt_assembly;
+pub use env_context::EnvContext;
+pub use prompt_assembly::{assemble_system_prompt, SystemPromptInputs};
 
 // Re-exported from local modules
 mod config;

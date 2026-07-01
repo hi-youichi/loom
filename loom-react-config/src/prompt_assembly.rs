@@ -3,8 +3,39 @@
 //! All prompt materials are loaded elsewhere and assembled through the single
 //! main entry point [`assemble_system_prompt`].
 
-use crate::inputs::SystemPromptInputs;
-use crate::prompts::constants::REACT_SYSTEM_PROMPT;
+use std::path::Path;
+
+use crate::env_context::EnvContext;
+
+/// Default ReAct base system prompt when no `react.yaml` / `REACT_SYSTEM_PROMPT` override.
+///
+/// The previous RULES/PHASES block is **disabled**: it conflicts with `tool_choice: required`
+/// and with tasks that need real workspace listing without hallucination.
+pub const REACT_SYSTEM_PROMPT: &str = "";
+
+/// Borrowed inputs for one system-prompt assembly call.
+///
+/// This type is a transient borrow: callers construct it inline from `ReactBuildConfig`
+/// fields, pass it to [`assemble_system_prompt`], and discard it.
+#[derive(Debug, Clone, Default)]
+pub struct SystemPromptInputs<'a> {
+    /// When set, overrides the entire final prompt and bypasses all assembly.
+    pub full_override: Option<&'a str>,
+    /// Optional base prompt content that replaces the default `REACT_SYSTEM_PROMPT`.
+    pub base_prompt_override: Option<&'a str>,
+    /// Optional role/persona section prepended before the base content.
+    pub role_setting: Option<&'a str>,
+    /// Optional project rules (e.g. from `AGENTS.md`) prepended after `role_setting`.
+    pub agents_md: Option<&'a str>,
+    /// Optional skills section prepended after `agents_md`.
+    pub skills_prompt: Option<&'a str>,
+    /// Optional memory context prepended after `skills_prompt`.
+    pub memory_prompt: Option<&'a str>,
+    /// Optional runtime environment context prepended before all other sections.
+    pub env_context: Option<&'a EnvContext>,
+    /// Working folder displayed in the workdir section when present.
+    pub working_folder: Option<&'a Path>,
+}
 
 /// Assembles the final system prompt from borrowed inputs.
 ///

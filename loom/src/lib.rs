@@ -15,7 +15,7 @@
 //! - `checkpoint_sqlite_store` - `SqliteSaver`, `SqliteStore`, SQLite-backed persistence
 //! - `vector_store` - `LanceStore`, `OpenAIEmbedder`, vector search Store impls
 //! - `loom_stream` - `StreamEvent`, `StreamMode`, `StreamWriter`
-//! - `loom_prompt` - `assemble_system_prompt`, `EnvContext`
+//! - `loom_react_config` - `assemble_system_prompt`, `EnvContext`, `ReactBuildConfig`
 //! - `model_spec_core` - tier resolution, model registry
 //! - `loom_compress` - context compression / compaction
 //! - `loom_pregel` - low-level Pregel graph runtime

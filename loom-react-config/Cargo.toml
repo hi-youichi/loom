@@ -20,8 +20,6 @@ model-spec-core = { path = "../foundation/model-spec-core", features = ["tier"] 
 # Compaction config
 loom-compress = { path = "../agent/compress" }
 
-# Prompt assembly (EnvContext for config field)
-loom-prompt = { path = "../loom-prompt" }
 
 # Worktree profile config
 worktree = { path = "../experimental/worktree" }
