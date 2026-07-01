@@ -66,6 +66,8 @@ pub(super) struct ChatCompletionRequest {
     pub tools: Option<Vec<ToolSpecRequest>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_choice: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -283,6 +285,7 @@ pub(super) fn build_request(
     tools: Option<&[ToolSpec]>,
     temperature: Option<f32>,
     tool_choice: Option<ToolChoiceMode>,
+    reasoning_effort: Option<&str>,
     stream: bool,
 ) -> ChatCompletionRequest {
     use crate::message::{check_orphan_tool_calls, message_summary};
@@ -315,6 +318,9 @@ pub(super) fn build_request(
         temperature,
         tools: None,
         tool_choice: None,
+        reasoning_effort: reasoning_effort
+            .filter(|e| *e != "auto")
+            .map(|e| e.to_string()),
     };
     if let Some(tools) = tools {
         if !tools.is_empty() {

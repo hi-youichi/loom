@@ -153,6 +153,11 @@ pub async fn build_default_llm_with_tool_source(
             if let Some(t) = entry.temperature {
                 client = client.with_temperature(t);
             }
+            if let Some(ref effort) = config.reasoning_effort {
+                if effort != "auto" {
+                    client = client.with_reasoning_effort(effort);
+                }
+            }
             if let Some(ref audit_log) = audit_log {
                 client = client.with_audit_log(audit_log.clone());
             }
@@ -196,6 +201,11 @@ pub async fn build_default_llm_with_tool_source(
             
             if let Some(t) = entry.temperature {
                 client = client.with_temperature(t);
+            }
+            if let Some(ref effort) = config.reasoning_effort {
+                if effort != "auto" {
+                    client = client.with_reasoning_effort(effort);
+                }
             }
             let client: Box<dyn LlmClient> = Box::new(client);
             let retry_client = RetryLlmClient::new(Arc::from(client));

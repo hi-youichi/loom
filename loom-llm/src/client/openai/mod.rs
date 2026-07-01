@@ -75,6 +75,8 @@ pub struct ChatOpenAI {
     parse_thinking_tags: bool,
     headers: Option<crate::traits::LlmHeaders>,
     audit_log: Option<Arc<dyn LlmAuditLog>>,
+    /// Reasoning effort level passed to the API as `reasoning_effort`.
+    reasoning_effort: Option<String>,
 }
 
 impl ChatOpenAI {
@@ -92,6 +94,7 @@ impl ChatOpenAI {
             parse_thinking_tags: true,
             headers: None,
             audit_log: None,
+            reasoning_effort: None,
         }
     }
 
@@ -109,6 +112,7 @@ impl ChatOpenAI {
             parse_thinking_tags: true,
             headers: None,
             audit_log: None,
+            reasoning_effort: None,
         }
     }
 
@@ -144,6 +148,15 @@ impl ChatOpenAI {
     /// the remaining content is emitted as normal message text.
     pub fn with_parse_thinking_tags(mut self, enable: bool) -> Self {
         self.parse_thinking_tags = enable;
+        self
+    }
+
+    /// Sets the reasoning effort level for reasoning models.
+    ///
+    /// Valid values: "none", "minimal", "low", "medium", "high", "xhigh".
+    /// The value "auto" or `None` means no override (use model default).
+    pub fn with_reasoning_effort(mut self, effort: impl Into<String>) -> Self {
+        self.reasoning_effort = Some(effort.into());
         self
     }
 
@@ -246,6 +259,7 @@ impl ChatOpenAI {
             self.tools.as_deref(),
             self.temperature,
             self.tool_choice,
+            self.reasoning_effort.as_deref(),
             stream,
         )
     }

@@ -162,6 +162,25 @@ impl LoomAcpAgent {
         self.model_provider.fetch_models().await
     }
 
+    /// Returns the model-declared reasoning efforts subset for `model_id`.
+    /// When the model is "default"/empty or not found in config, returns `None`
+    /// (meaning all effort values are offered).
+    async fn get_model_reasoning_efforts(&self, model_id: &str) -> Option<Vec<String>> {
+        if model_id.is_empty() || model_id == "default" {
+            return None;
+        }
+        let full_config = load_full_config("loom").ok()?;
+        let (_, model_name) = model_spec_core::ModelEntry::parse_id(model_id)?;
+        for p in &full_config.providers {
+            for m in &p.models {
+                if m.id == model_name {
+                    return m.reasoning_efforts.clone();
+                }
+            }
+        }
+        None
+    }
+
     /// Resolve model configuration with tier awareness.
     /// Priority: ACP explicit model > agent model name > agent tier > default config.
     async fn resolve_model_with_tier_awareness(
@@ -218,6 +237,7 @@ impl LoomAcpAgent {
                             base_url: resolved_config.openai_base_url.clone(),
                             api_key: resolved_config.openai_api_key.clone(),
                             provider_type: resolved_config.llm_provider.clone(),
+                            effort: None,
                         };
 
                         tracing::info!(
@@ -272,6 +292,7 @@ impl LoomAcpAgent {
                         base_url: p.base_url.clone(),
                         api_key: p.api_key.clone(),
                         provider_type: p.provider_type.clone(),
+                        effort: None,
                     };
                 }
             }
@@ -424,9 +445,17 @@ impl LoomAcpAgent {
         let model_options = self.get_available_models().await;
         let current_mode = default_mode;
         let modes = self.agent_registry.to_session_modes();
-        let config_options =
-            build_session_config_options(current_mode, display_model, &modes, &model_options)
-                .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
+        let current_effort = "auto";
+        let model_reasoning_efforts = self.get_model_reasoning_efforts(display_model).await;
+        let config_options = build_session_config_options(
+            current_mode,
+            display_model,
+            current_effort,
+            &modes,
+            &model_options,
+            model_reasoning_efforts.as_deref(),
+        )
+        .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
         Ok(NewSessionResponse::new(session_id)
             .modes(self.agent_registry.to_session_mode_state(current_mode))
             .config_options(config_options))
@@ -483,6 +512,26 @@ impl LoomAcpAgent {
                     tracing::warn!(session_id = %args.session_id, error = %e, "Failed to persist mode config");
                 }
             }
+            "effort" => {
+                let valid = matches!(value_str.as_str(),
+                    "auto" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh");
+                if !valid {
+                    return Err(agent_client_protocol::Error::new(
+                        -32602,
+                        format!("invalid effort value: {}", value_str),
+                    ));
+                }
+                if value_str == "auto" {
+                    self.sessions
+                        .update_session_config(&key, |c| c.effort = None);
+                } else {
+                    self.sessions
+                        .update_session_config(&key, |c| c.effort = Some(value_str.clone()));
+                }
+                if let Err(e) = self.config_store.set(&key, "effort", &value_str) {
+                    tracing::warn!(session_id = %args.session_id, error = %e, "Failed to persist effort config");
+                }
+            }
             _ => {
                 return Err(agent_client_protocol::Error::new(
                     -32602,
@@ -507,11 +556,19 @@ impl LoomAcpAgent {
             .unwrap_or_else(|| crate::last_model::load().unwrap_or_default());
         let modes = self.agent_registry.to_session_modes();
         let model_options = self.get_available_models().await;
+        let current_effort = entry
+            .session_config
+            .effort
+            .clone()
+            .unwrap_or_else(|| "auto".to_string());
+        let model_reasoning_efforts = self.get_model_reasoning_efforts(&current_model).await;
         build_set_session_config_option_response(
             &current_mode,
             &current_model,
+            &current_effort,
             &modes,
             &model_options,
+            model_reasoning_efforts.as_deref(),
         )
         .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))
     }
@@ -602,9 +659,21 @@ Ok(SetSessionModeResponse::new())
 
         let model_options = self.get_available_models().await;
         let modes = self.agent_registry.to_session_modes();
-        let config_options =
-            build_session_config_options(&current_mode, &current_model, &modes, &model_options)
-                .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
+        let current_effort = source_entry
+            .session_config
+            .effort
+            .clone()
+            .unwrap_or_else(|| "auto".to_string());
+        let model_reasoning_efforts = self.get_model_reasoning_efforts(&current_model).await;
+        let config_options = build_session_config_options(
+            &current_mode,
+            &current_model,
+            &current_effort,
+            &modes,
+            &model_options,
+            model_reasoning_efforts.as_deref(),
+        )
+        .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
 
         Ok(ForkSessionResponse::new(new_session_id)
             .modes(self.agent_registry.to_session_mode_state(&current_mode))
@@ -808,6 +877,7 @@ Ok(SetSessionModeResponse::new())
             } else {
                 Some(entry.mcp_servers.clone())
             },
+            effort: resolved.effort,
         };
 
         let session_id = args.session_id.clone();
@@ -1025,13 +1095,34 @@ Ok(SetSessionModeResponse::new())
                 .clone()
                 .unwrap_or_else(|| crate::last_model::load().unwrap_or_default())
         });
+
+        let current_effort = persisted_config.get("effort").cloned().unwrap_or_else(|| {
+            entry
+                .session_config
+                .effort
+                .clone()
+                .unwrap_or_else(|| "auto".to_string())
+        });
+        if current_effort == "auto" {
+            self.sessions
+                .update_session_config(&our_session_id, |c| c.effort = None);
+        } else {
+            self.sessions
+                .update_session_config(&our_session_id, |c| {
+                    c.effort = Some(current_effort.clone())
+                });
+        }
+
         let model_options = self.get_available_models().await;
         let available_modes = self.agent_registry.to_session_modes();
+        let model_reasoning_efforts = self.get_model_reasoning_efforts(&current_model).await;
         let config_options = build_session_config_options(
             &current_mode,
             &current_model,
+            &current_effort,
             &available_modes,
             &model_options,
+            model_reasoning_efforts.as_deref(),
         )
         .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
 
@@ -1418,8 +1509,10 @@ fn normalize_current_model_for_acp(current_model: &str, options: &[ModelOption])
 fn build_session_config_options(
     current_mode: &str,
     current_model: &str,
+    current_effort: &str,
     modes: &[agent_client_protocol::schema::v1::SessionMode],
     model_options: &[ModelOption],
+    model_reasoning_efforts: Option<&[String]>,
 ) -> Result<Vec<agent_client_protocol::schema::v1::SessionConfigOption>, serde_json::Error> {
     let current_model = normalize_current_model_for_acp(current_model, model_options);
     let mode_options: Vec<_> = modes
@@ -1434,6 +1527,24 @@ fn build_session_config_options(
     let model_options: Vec<_> = model_options
         .iter()
         .map(|m| serde_json::json!({ "value": &m.id, "name": &m.name }))
+        .collect();
+
+    let all_efforts = [
+        ("auto", "Auto", "Use model default"),
+        ("none", "None", "No reasoning"),
+        ("minimal", "Minimal", "Minimal reasoning"),
+        ("low", "Low", "Low effort"),
+        ("medium", "Medium", "Balanced"),
+        ("high", "High", "Deep reasoning"),
+        ("xhigh", "Xhigh", "Deepest reasoning"),
+    ];
+    let effort_options: Vec<_> = all_efforts
+        .iter()
+        .filter(|(v, _, _)| {
+            *v == "auto"
+                || model_reasoning_efforts.is_none_or(|r| r.iter().any(|e| e == v))
+        })
+        .map(|(v, n, d)| serde_json::json!({"value": v, "name": n, "description": d}))
         .collect();
 
     let json = serde_json::json!([
@@ -1454,6 +1565,15 @@ fn build_session_config_options(
             "type": "select",
             "currentValue": current_model,
             "options": model_options
+        },
+        {
+            "id": "effort",
+            "name": "Reasoning Effort",
+            "description": "Controls reasoning depth for thinking models.",
+            "category": "thought_level",
+            "type": "select",
+            "currentValue": current_effort,
+            "options": effort_options
         }
     ]);
     serde_json::from_value(json)
@@ -1463,11 +1583,19 @@ fn build_session_config_options(
 fn build_set_session_config_option_response(
     current_mode: &str,
     current_model: &str,
+    current_effort: &str,
     modes: &[agent_client_protocol::schema::v1::SessionMode],
     model_options: &[ModelOption],
+    model_reasoning_efforts: Option<&[String]>,
 ) -> Result<SetSessionConfigOptionResponse, serde_json::Error> {
-    let config_options =
-        build_session_config_options(current_mode, current_model, modes, model_options)?;
+    let config_options = build_session_config_options(
+        current_mode,
+        current_model,
+        current_effort,
+        modes,
+        model_options,
+        model_reasoning_efforts,
+    )?;
     let json = serde_json::json!({
         "configOptions": config_options,
         "meta": None::<()>
@@ -1574,11 +1702,11 @@ mod tests {
         ];
 
         // Bare MODEL= id normalizes to the unique provider/model match
-        let result = build_session_config_options("ask", "gpt-4o", &modes, &model_options);
+        let result = build_session_config_options("ask", "gpt-4o", "auto", &modes, &model_options, None);
         assert!(result.is_ok(), "Expected Ok, got Err: {:?}", result.err());
 
         let config_options = result.unwrap();
-        assert_eq!(config_options.len(), 2);
+        assert_eq!(config_options.len(), 3);
 
         let json = serde_json::to_value(&config_options).unwrap();
         assert_eq!(json[0]["id"], "mode");
@@ -1642,7 +1770,7 @@ mod tests {
             agent_client_protocol::schema::v1::SessionModeId::new("ask"),
             "Ask",
         )];
-        let result = build_session_config_options("ask", "", &modes, &[]);
+        let result = build_session_config_options("ask", "", "auto", &modes, &[], None);
         assert!(result.is_ok(), "Expected Ok, got Err: {:?}", result.err());
 
         let config_options = result.unwrap();
@@ -1677,7 +1805,7 @@ mod tests {
         }];
 
         let result =
-            build_set_session_config_option_response("ask", "gpt-4o", &modes, &model_options);
+            build_set_session_config_option_response("ask", "gpt-4o", "auto", &modes, &model_options, None);
         assert!(result.is_ok());
 
         let response = result.unwrap();
@@ -1750,7 +1878,7 @@ mod tests {
             },
         ];
 
-        let result = build_session_config_options("ask", "default", &modes, &model_options);
+        let result = build_session_config_options("ask", "default", "auto", &modes, &model_options, None);
         assert!(result.is_ok());
 
         let config_options = result.unwrap();

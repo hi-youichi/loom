@@ -88,6 +88,9 @@ pub fn build_react_config(
     if let Some(ref t) = effective_opts.provider_type {
         base.llm_provider = Some(t.clone());
     }
+    if let Some(ref effort) = effective_opts.effort {
+        base.reasoning_effort = Some(effort.clone());
+    }
 
     if let Some(ref prof) = profile {
         if let Some(t) = prof.model.as_ref().and_then(|m| m.temperature) {
@@ -322,6 +325,7 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
             base_url: entry.base_url,
             api_key: entry.api_key,
             provider_type: entry.provider_type,
+            effort: None,
         };
     }
 
@@ -354,6 +358,7 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
                 base_url: p.base_url,
                 api_key: p.api_key,
                 provider_type: p.provider_type,
+                effort: None,
             };
         } else {
             tracing::warn!(

@@ -290,6 +290,7 @@ mod tests {
             goal_mode: false,
             acp_mcp_servers: None,
             debug_llm: false,
+            effort: None,
         }
     }
 

@@ -165,6 +165,9 @@ pub acp_session_id: Option<String>,
     pub memory_prompt: Option<String>,
     /// Runtime environment context (OS, locale, agent intro).
     pub env_context: Option<EnvContext>,
+    /// Reasoning effort level: "auto"|"none"|"minimal"|"low"|"medium"|"high"|"xhigh"
+    /// When set (and not "auto"), passed to OpenAI API as `reasoning_effort`.
+    pub reasoning_effort: Option<String>,
 }
 
 impl std::fmt::Debug for ReactBuildConfig {
@@ -240,6 +243,7 @@ impl Default for ReactBuildConfig {
             skills_prompt: None,
             memory_prompt: None,
             env_context: None,
+            reasoning_effort: None,
         }
     }
 }
@@ -329,6 +333,7 @@ impl ReactBuildConfig {
             skills_prompt: None,
             memory_prompt: None,
             env_context: None,
+            reasoning_effort: None,
         }
     }
 }

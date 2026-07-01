@@ -52,6 +52,7 @@ mod tests {
             worktree: false,
             goal_mode: false,
             acp_mcp_servers: None,
+            effort: None,
         };
         let (profile, source) = load_profile_from_options(&opts).expect("built-in dev profile");
         assert_eq!(profile.name, "dev");
@@ -96,6 +97,7 @@ mod tests {
             worktree: false,
             goal_mode: false,
             acp_mcp_servers: None,
+            effort: None,
         };
         let (profile, source) =
             load_profile_from_options(&opts).expect("built-in agent-builder profile");
@@ -145,6 +147,7 @@ mod tests {
             worktree: false,
             goal_mode: false,
             acp_mcp_servers: None,
+            effort: None,
         };
         let result = load_profile_from_options(&opts);
 
@@ -195,6 +198,7 @@ mod tests {
             worktree: false,
             goal_mode: false,
             acp_mcp_servers: None,
+            effort: None,
         };
         let result = load_profile_from_options(&opts);
         match prev_loom {

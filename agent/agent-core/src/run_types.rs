@@ -64,6 +64,8 @@ pub struct RunOptions {
     /// MCP servers from ACP session/new request, converted to Loom's internal type.
     /// Merged into build config alongside mcp.json servers.
     pub acp_mcp_servers: Option<Vec<env_config::McpServerDef>>,
+    /// Reasoning effort override.
+    pub effort: Option<String>,
 }
 
 impl std::fmt::Debug for RunOptions {
@@ -110,6 +112,7 @@ impl RunOptions {
             worktree: self.worktree,
             goal_mode: self.goal_mode,
             acp_mcp_servers: self.acp_mcp_servers.clone(),
+            effort: self.effort.clone(),
         }
     }
 }

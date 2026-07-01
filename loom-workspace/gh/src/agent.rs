@@ -69,5 +69,6 @@ pub fn run_options_from_issues_event(
             worktree: false,
             goal_mode: false,
             acp_mcp_servers: None,
+            effort: None,
         }
 }

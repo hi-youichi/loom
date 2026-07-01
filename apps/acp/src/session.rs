@@ -71,6 +71,8 @@ pub struct SessionConfig {
     pub model: Option<String>,
     /// Current agent/mode id for this session (e.g. "ask", "default", "dev"). Maps to ACP session mode.
     pub current_agent: String,
+    /// Reasoning effort: "auto"|"none"|"minimal"|"low"|"medium"|"high"|"xhigh"|None
+    pub effort: Option<String>,
 }
 
 /// Metadata and cancel flag for a single session.

@@ -257,6 +257,7 @@ impl CodingTool for LoomTool {
             worktree: false,
             goal_mode: true,
             acp_mcp_servers: None,
+            effort: None,
         };
 
         let result = run_agent_with_options(&opts, &RunCmd::React, on_event)

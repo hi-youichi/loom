@@ -36,6 +36,12 @@ pub struct ProviderModelDef {
     pub context_limit: u32,
     /// Output token limit.
     pub output_limit: u32,
+    /// Model-supported reasoning effort subset.
+    /// When declared, ACP effort options show only `auto` + these values;
+    /// when absent, all 7 values are shown.
+    /// Example: `reasoning_efforts = ["low", "medium", "high"]`
+    #[serde(default)]
+    pub reasoning_efforts: Option<Vec<String>>,
 }
 
 /// A named LLM provider definition from `[[providers]]` in `config.toml`.

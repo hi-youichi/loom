@@ -51,6 +51,7 @@ pub struct ChatOpenAICompat {
     pub(super) parse_thinking_tags: bool,
     pub(super) headers: Option<crate::traits::LlmHeaders>,
     pub(super) audit_log: Option<Arc<dyn LlmAuditLog>>,
+    pub(super) reasoning_effort: Option<String>,
 }
 
 impl ChatOpenAICompat {
@@ -87,6 +88,7 @@ impl ChatOpenAICompat {
             parse_thinking_tags: true,
             headers: None,
             audit_log: None,
+            reasoning_effort: None,
         }
     }
 
@@ -108,6 +110,7 @@ impl ChatOpenAICompat {
             parse_thinking_tags: false,
             headers: None,
             audit_log: None,
+            reasoning_effort: None,
         }
     }
 
@@ -128,6 +131,11 @@ impl ChatOpenAICompat {
 
     pub fn with_parse_thinking_tags(mut self, enable: bool) -> Self {
         self.parse_thinking_tags = enable;
+        self
+    }
+
+    pub fn with_reasoning_effort(mut self, effort: impl Into<String>) -> Self {
+        self.reasoning_effort = Some(effort.into());
         self
     }
 
@@ -181,6 +189,7 @@ impl ChatOpenAICompat {
             self.tools.as_deref(),
             self.temperature,
             self.tool_choice,
+            self.reasoning_effort.as_deref(),
             stream,
         )
     }

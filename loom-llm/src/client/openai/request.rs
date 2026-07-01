@@ -15,7 +15,7 @@ use async_openai::types::chat::{
     ChatCompletionRequestUserMessageContentPart, ChatCompletionStreamOptions,
     ChatCompletionTool, ChatCompletionToolChoiceOption, ChatCompletionTools,
     CreateChatCompletionRequestArgs, FunctionCall, FunctionObject, ImageDetail, ImageUrl,
-    ToolChoiceOptions,
+    ReasoningEffort, ToolChoiceOptions,
 };
 
 use crate::error::LlmError;
@@ -172,6 +172,7 @@ pub(super) fn build_chat_request(
     tools: Option<&[ToolSpec]>,
     temperature: Option<f32>,
     tool_choice: Option<ToolChoiceMode>,
+    reasoning_effort: Option<&str>,
     stream: bool,
 ) -> Result<async_openai::types::chat::CreateChatCompletionRequest, LlmError> {
     debug!(
@@ -220,6 +221,20 @@ pub(super) fn build_chat_request(
 
     if let Some(t) = temperature {
         args.temperature(t);
+    }
+
+    if let Some(effort) = reasoning_effort.filter(|&e| e != "auto") {
+        match effort {
+            "none" => { args.reasoning_effort(ReasoningEffort::None); }
+            "minimal" => { args.reasoning_effort(ReasoningEffort::Minimal); }
+            "low" => { args.reasoning_effort(ReasoningEffort::Low); }
+            "medium" => { args.reasoning_effort(ReasoningEffort::Medium); }
+            "high" => { args.reasoning_effort(ReasoningEffort::High); }
+            "xhigh" => { args.reasoning_effort(ReasoningEffort::Xhigh); }
+            _ => {
+                warn!(effort = %effort, "Unknown reasoning_effort value, ignoring");
+            }
+        }
     }
 
     let tools_nonempty = tools.is_some_and(|t| !t.is_empty());
@@ -312,6 +327,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             true,
         )
         .unwrap();
@@ -319,6 +335,7 @@ mod tests {
         let r2 = build_chat_request(
             "gpt-4o-mini",
             &[Message::user("hi")],
+            None,
             None,
             None,
             None,
@@ -343,6 +360,7 @@ mod tests {
             Some(&tools),
             None,
             Some(ToolChoiceMode::Required),
+            None,
             false,
         )
         .unwrap();
@@ -358,6 +376,7 @@ mod tests {
             None,
             None,
             Some(ToolChoiceMode::Required),
+            None,
             false,
         )
         .unwrap();

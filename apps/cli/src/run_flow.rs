@@ -59,6 +59,7 @@ pub(crate) fn build_run_options(args: &Args, message: String, got_adaptive: bool
         worktree: args.worktree,
         goal_mode: false,
         acp_mcp_servers: None,
+        effort: None,
     }
 }
 

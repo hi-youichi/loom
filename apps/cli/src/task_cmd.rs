@@ -102,6 +102,7 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
                 goal_mode: false,
                 acp_mcp_servers: None,
                 debug_llm: false,
+                effort: None,
             };
 
             let output = OutputConfig {
@@ -236,6 +237,7 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
                 goal_mode: false,
                 acp_mcp_servers: None,
                 debug_llm: false,
+                effort: None,
             };
 
             let output = OutputConfig {
