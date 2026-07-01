@@ -1,3 +1,0 @@
-# ReAct prompts. Canonical source: embedded at compile time when no prompts dir.
-# Default: empty (no system_prompt), so code uses REACT_SYSTEM_PROMPT const (currently "" — see mod.rs).
-# Old RULES/PHASES text: experimental/react.yaml (commented archive).
