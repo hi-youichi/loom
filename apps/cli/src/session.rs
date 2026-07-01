@@ -79,7 +79,7 @@ impl SessionManager {
     }
 
     pub fn with_default_path() -> Self {
-        Self::new(sqlite_store::default_memory_db_path())
+        Self::new(checkpoint_sqlite_store::default_memory_db_path())
     }
 
     /// Lists sessions with SQL-level filtering (limit, since, until, reverse).

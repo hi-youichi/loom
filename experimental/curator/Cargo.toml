@@ -23,7 +23,7 @@ env_config = { path = "../../config", package = "config" }
 # SQLite for review history persistence
 rusqlite = { version = "0.31", features = ["bundled"] }
 checkpoint = { path = "../../foundation/checkpoint" }
-sqlite-store = { path = "../../persistence/sqlite-store" }
+checkpoint-sqlite-store = { path = "../../foundation/checkpoint-sqlite-store" }
 
 # Async runtime
 tokio = { workspace = true }

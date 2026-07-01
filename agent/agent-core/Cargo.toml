@@ -26,7 +26,7 @@ loom-stream = { path = "../../loom-stream" }
 loom-prompt = { path = "../../loom-prompt" }
 
 checkpoint = { path = "../../foundation/checkpoint" }
-sqlite-store = { path = "../../persistence/sqlite-store" }
+checkpoint-sqlite-store = { path = "../../foundation/checkpoint-sqlite-store" }
 vector-store = { path = "../../experimental/vector-store" }
 
 tool-core = { path = "../tool/tool-core" }

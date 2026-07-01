@@ -17,7 +17,7 @@ loom-cli-types = { path = "../../loom-cli-types" }
 loom-graph-core = { path = "../../foundation/graph-core" }
 loom-llm = { path = "../../foundation/llm" }
 checkpoint = { path = "../../foundation/checkpoint" }
-sqlite-store = { path = "../../persistence/sqlite-store" }
+checkpoint-sqlite-store = { path = "../../foundation/checkpoint-sqlite-store" }
 tool-core = { path = "../../agent/tool/tool-core" }
 tool-basic = { path = "../../agent/tool/tool-basic" }
 loom-react-config = { path = "../../loom-react-config" }

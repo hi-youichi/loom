@@ -43,7 +43,7 @@ loom-llm = { path = "../foundation/llm" }
 tool-core = { path = "../agent/tool/tool-core" }
 loom-stream = { path = "../loom-stream" }
 checkpoint = { path = "../foundation/checkpoint" }
-sqlite-store = { path = "../persistence/sqlite-store" }
+checkpoint-sqlite-store = { path = "../foundation/checkpoint-sqlite-store" }
 vector-store = { path = "../experimental/vector-store" }
 tokio = { workspace = true }
 async-trait = { workspace = true }

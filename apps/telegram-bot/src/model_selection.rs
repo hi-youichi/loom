@@ -44,7 +44,7 @@ pub struct SqliteModelSelectionStore {
 impl SqliteModelSelectionStore {
     pub fn new() -> Self {
         Self {
-            database_path: sqlite_store::default_memory_db_path(),
+            database_path: checkpoint_sqlite_store::default_memory_db_path(),
         }
     }
 

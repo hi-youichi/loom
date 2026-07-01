@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use checkpoint::{Checkpointer, JsonSerializer, Namespace, RunnableConfig, Store, StoreError};
-use sqlite_store::SqliteSaver;
+use checkpoint_sqlite_store::SqliteSaver;
 use vector_store::LanceStore;
 use loom_llm::{Embedder, LlmClient, LlmResponse};
 use loom_llm::message::Message;

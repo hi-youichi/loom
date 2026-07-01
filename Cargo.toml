@@ -11,7 +11,7 @@ members = [
     "experimental/tool/lsp",
 
     "foundation/checkpoint",
-    "persistence/sqlite-store",
+    "foundation/checkpoint-sqlite-store",
     "experimental/worktree",
 
 
@@ -31,11 +31,11 @@ members = [
 
     "stream-event",
 
-    "loom-workspace",
+
 
     "apps/acp",
 
-    "loom-workspace/gh",
+
 
     "apps/telegram-bot",
 

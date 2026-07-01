@@ -71,7 +71,7 @@ impl ReviewHistory {
         if let Some(parent) = self.db_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create db dir: {}", e))?;
         }
-        let conn = sqlite_store::sqlite_util::open_sqlite_with_wal(&self.db_path)?;
+        let conn = checkpoint_sqlite_store::sqlite_util::open_sqlite_with_wal(&self.db_path)?;
         self.init_schema(&conn)?;
         self.migrate_from_jsonl_if_needed(&conn)?;
         Ok(conn)

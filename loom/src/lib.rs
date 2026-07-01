@@ -12,7 +12,7 @@
 //! - `loom_stream` - `ReActState`, `ToolResult`, `ToolCall`, `ModelConfig`
 //! - `loom_tools` - `ToolSource`, `ToolSpec`, `McpToolSource`, `BashTool`, etc.
 //! - `checkpoint` - `Checkpointer`, `Store`, `MemorySaver`, `RunnableConfig`
-//! - `sqlite_store` - `SqliteSaver`, `SqliteStore`, SQLite-backed persistence
+//! - `checkpoint_sqlite_store` - `SqliteSaver`, `SqliteStore`, SQLite-backed persistence
 //! - `vector_store` - `LanceStore`, `OpenAIEmbedder`, vector search Store impls
 //! - `loom_stream` - `StreamEvent`, `StreamMode`, `StreamWriter`
 //! - `loom_prompt` - `assemble_system_prompt`, `EnvContext`

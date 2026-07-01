@@ -7,7 +7,7 @@ use checkpoint::{
     KernelMetadata, RunnableConfig, SearchOptions, Store,
     CHECKPOINT_VERSION,
 };
-use sqlite_store::{SqliteSaver, SqliteStore};
+use checkpoint_sqlite_store::{SqliteSaver, SqliteStore};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;

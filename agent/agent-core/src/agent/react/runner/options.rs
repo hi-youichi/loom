@@ -6,7 +6,7 @@ use loom_llm::LlmProvider;
 use checkpoint::{Checkpointer, RunnableConfig, Store};
 use loom_cli_types::ReActState;
 use tool_core::ToolRegistryLocked;
-use sqlite_store::user_message::UserMessageStore;
+use checkpoint_sqlite_store::user_message::UserMessageStore;
 
 /// Optional configuration for [`super::run_agent`] and [`super::run_react_graph_stream`].
 ///

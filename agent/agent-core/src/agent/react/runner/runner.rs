@@ -16,7 +16,7 @@ use crate::runner_common;
 use loom_stream::state::ReActState;
 use loom_stream::StreamEvent;
 use tool_core::ToolRegistryLocked;
-use sqlite_store::user_message::UserMessageStore;
+use checkpoint_sqlite_store::user_message::UserMessageStore;
 use tool_core::active_operation::RunCancellation;
 
 use super::error::RunError;

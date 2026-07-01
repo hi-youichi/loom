@@ -11,7 +11,7 @@ lance = ["dep:lancedb", "dep:arrow-array", "dep:arrow-schema"]
 
 [dependencies]
 checkpoint = { path = "../../foundation/checkpoint" }
-sqlite-store = { path = "../../persistence/sqlite-store" }
+checkpoint-sqlite-store = { path = "../../foundation/checkpoint-sqlite-store" }
 async-trait = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
