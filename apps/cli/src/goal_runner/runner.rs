@@ -1,4 +1,4 @@
-﻿use std::path::PathBuf;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -8,12 +8,13 @@ use tokio::process::Child;
 use tokio_util::sync::CancellationToken;
 use tracing;
 
-use loom_cli_types::goal_runner::message;
-use loom_cli_types::goal_runner::state::{
+use agent::goal_runner::message;
+use agent::goal_runner::state::{
     GoalError, GoalMeta, GoalOutcome, HistoryEntry, ToolError,
     DEFAULT_MAX_ITERATIONS, MAX_CONSECUTIVE_FAILURES, MAX_HISTORY_ENTRIES,
 };
 use super::tool::CodingTool;
+use loom::agent_run::TypedAnyStreamEvent as FullTypedAnyStreamEvent;
 
 /// Fraction of token budget remaining that triggers the budget-limit prompt.
 const BUDGET_WARNING_FRACTION: f64 = 0.2;
@@ -509,7 +510,7 @@ pub async fn resume(
     working_dir: PathBuf,
     db: Arc<TaskDb>,
     cancel: CancellationToken,
-    run_cancellation: Option<loom_cli_types::RunCancellation>,
+    run_cancellation: Option<tool_core::active_operation::RunCancellation>,
 ) -> Result<GoalRunner, GoalError> {
     resume_with_event_sender(id, working_dir, db, cancel, run_cancellation, None).await
 }
@@ -519,8 +520,8 @@ pub async fn resume_with_event_sender(
     working_dir: PathBuf,
     db: Arc<TaskDb>,
     cancel: CancellationToken,
-    run_cancellation: Option<loom_cli_types::RunCancellation>,
-    event_sender: Option<Arc<dyn Fn(loom::agent_run::AnyStreamEvent) + Send + Sync>>,
+    run_cancellation: Option<tool_core::active_operation::RunCancellation>,
+    event_sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
 ) -> Result<GoalRunner, GoalError> {
     let updated = db
         .atomic_update_status(id, TaskStatus::Pending, TaskStatus::InProgress)
@@ -572,8 +573,8 @@ fn resolve_tool(
     id: &str,
     db_path: &std::path::Path,
     working_dir: &std::path::Path,
-    run_cancellation: &Option<loom_cli_types::RunCancellation>,
-    event_sender: &Option<Arc<dyn Fn(loom::agent_run::AnyStreamEvent) + Send + Sync>>,
+    run_cancellation: &Option<tool_core::active_operation::RunCancellation>,
+    event_sender: &Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
     cancel: &CancellationToken,
 ) -> Result<Box<dyn CodingTool>, GoalError> {
     match tool_name {
@@ -589,7 +590,13 @@ fn resolve_tool(
                 tool = tool.with_cancellation(rc.clone());
             }
             if let Some(ref sender) = event_sender {
-                tool = tool.with_event_sender(sender.clone());
+                let sender = sender.clone();
+                let adapted: Arc<dyn Fn(FullTypedAnyStreamEvent) + Send + Sync> = Arc::new(move |ev: FullTypedAnyStreamEvent| {
+                    if let Some(cli_ev) = loom::agent_run::to_loom_any_stream_event(&ev) {
+                        sender(cli_ev);
+                    }
+                });
+                tool = tool.with_event_sender(adapted);
             }
             Ok(Box::new(tool))
         }

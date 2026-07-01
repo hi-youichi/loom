@@ -44,7 +44,7 @@ pub enum ToolShowFormat {
 /// Interacts with [`build_react_config`](crate::run::build_react_config) and
 /// [`build_react_run_context`](loom::build_react_run_context).
 pub async fn list_tools(opts: &RunOptions) -> Result<(), RunError> {
-    let loom_opts = opts.to_cli_run_options();
+    let loom_opts = opts.clone();
     let (config, _resolved_agent) = build_react_config(&loom_opts);
     let ctx = build_react_run_context(&config)
         .await
@@ -169,7 +169,7 @@ pub async fn show_tool(
     name: &str,
     format: ToolShowFormat,
 ) -> Result<(), RunError> {
-    let loom_opts = opts.to_cli_run_options();
+    let loom_opts = opts.clone();
     let (config, _resolved_agent) = build_react_config(&loom_opts);
     let ctx = build_react_run_context(&config)
         .await

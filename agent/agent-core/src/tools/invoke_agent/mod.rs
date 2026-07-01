@@ -38,11 +38,10 @@
 //! - **Multiple agents, fail_fast=false**: Collects all errors and returns an aggregated result.
 //! - **Async mode**: Errors are logged but not returned (fire-and-forget behavior).
 
+pub mod build_config;
 mod dispatch;
 mod runner;
 mod worktree;
-
-#[cfg(test)]
 mod tests;
 
 use std::sync::Arc;
@@ -50,9 +49,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use loom_react_config::profile::list_available_profiles;
+use crate::profile::list_available_profiles;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec, Tool};
-use loom_react_config::ReactBuildConfig;
+use crate::ReactBuildConfig;
 use crate::tool_output_normalizer::{ToolOutputHint, ToolOutputStrategy};
 
 pub use tool_core::tool_name::TOOL_INVOKE_AGENT;

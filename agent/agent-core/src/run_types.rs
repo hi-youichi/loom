@@ -52,7 +52,7 @@ pub struct RunOptions {
     pub output_timestamp: bool,
     pub dry_run: bool,
     pub debug_llm: bool,
-    pub any_stream_event_sender: Option<std::sync::Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>>,
+    pub any_stream_event_sender: Option<std::sync::Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
     pub bash_executor: Option<std::sync::Arc<dyn tool_basic::bash::CommandExecutor>>,
     pub extra_tools: Option<std::sync::Arc<Vec<std::sync::Arc<dyn tool_core::Tool>>>>,
     pub acp_session_id: Option<String>,
@@ -80,39 +80,4 @@ impl std::fmt::Debug for RunOptions {
     }
 }
 
-impl RunOptions {
-    /// Convert to loom_cli_types::RunOptions for use with build_react_config.
-    pub fn to_cli_run_options(&self) -> loom_cli_types::RunOptions {
-        loom_cli_types::RunOptions {
-            message: self.message.clone(),
-            working_folder: self.working_folder.clone(),
-            session_id: self.session_id.clone(),
-            agent: self.agent.clone(),
-            verbose: self.verbose,
-            got_adaptive: self.got_adaptive,
-            display_max_len: self.display_max_len,
-            output_json: self.output_json,
-            model: self.model.clone(),
-            provider: self.provider.clone(),
-            base_url: self.base_url.clone(),
-            api_key: self.api_key.clone(),
-            provider_type: self.provider_type.clone(),
-            mcp_config_path: self.mcp_config_path.clone(),
-            cancellation: self.cancellation.clone(),
-            thread_id: self.thread_id.clone(),
-            output_timestamp: self.output_timestamp,
-            dry_run: self.dry_run,
-            debug_llm: self.debug_llm,
-            any_stream_event_sender: None,
-            bash_executor: self.bash_executor.clone(),
-            extra_tools: self.extra_tools.clone(),
-            acp_session_id: self.acp_session_id.clone(),
-            force_compact: self.force_compact,
-            chat_id: self.chat_id,
-            worktree: self.worktree,
-            goal_mode: self.goal_mode,
-            acp_mcp_servers: self.acp_mcp_servers.clone(),
-            effort: self.effort.clone(),
-        }
-    }
-}
+

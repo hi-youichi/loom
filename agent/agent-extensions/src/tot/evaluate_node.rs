@@ -172,7 +172,7 @@ impl Node<TotState> for ThinkEvaluateNode {
 mod tests {
     use super::*;
     use checkpoint::RunnableConfig;
-    use loom_cli_types::ReActState;
+    use loom_stream::state::ReActState;
     use loom_llm::ToolCall;
     use tokio::sync::mpsc;
 

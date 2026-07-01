@@ -3,7 +3,7 @@
 
 use serde_json::Value;
 
-use loom_cli_types::goal_runner::state::ToolError;
+use crate::goal_runner::state::ToolError;
 
 /// Event type for Custom stream events emitted after each tool call (step progress).
 /// Server or clients can use this to show progress (e.g. "Calling list_dir", "Done: 12 entries").

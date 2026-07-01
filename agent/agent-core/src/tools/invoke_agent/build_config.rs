@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use crate::profile::AgentProfile;
 use crate::ReactBuildConfig;
-use crate::BuiltinToolFilter;
+use tool_core::BuiltinToolFilter;
 use skill::discovery::SkillRegistry;
 
 
@@ -23,7 +23,7 @@ const AGENTS_MD_FILE: &str = "AGENTS.md";
 /// overrides for model, tools, skills, and working folder.
 ///
 /// The `system_prompt` field is NOT assembled here — callers should handle
-/// prompt assembly themselves via `loom_react_config::prompt_assembly`.
+/// prompt assembly themselves via `crate::prompt_assembly`.
 pub fn build_config_from_profile(
     profile: &AgentProfile,
     parent_config: &ReactBuildConfig,

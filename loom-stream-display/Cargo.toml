@@ -14,4 +14,3 @@ termsize = "0.1"
 tracing = "0.1"
 loom-stream = { path = "../loom-stream" }
 loom-llm = { path = "../foundation/llm" }
-loom-cli-types = { path = "../loom-cli-types" }

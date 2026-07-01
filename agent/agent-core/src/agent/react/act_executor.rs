@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{debug, trace, warn};
 
-use loom_cli_types::RunCancellation;
+use tool_core::active_operation::RunCancellation;
 use loom_graph_core::{run_cancellable, RunContext};
 use loom_graph_core::GraphError;
 use loom_llm::ToolCall;
@@ -56,7 +56,7 @@ pub(crate) struct ToolCallExecutor {
     used_chars: AtomicUsize,
 
     // ── cross-layer adapter ──
-    any_stream_event_sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>>,
+    any_stream_event_sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
 }
 
 /// Internal result of normalizing one tool call.
@@ -74,7 +74,7 @@ impl ToolCallExecutor {
         messages: Vec<loom_llm::Message>,
         run_ctx: &RunContext<ReActState>,
         run_cancellation: Option<RunCancellation>,
-        any_stream_event_sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>>,
+        any_stream_event_sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
     ) -> Self {
         let tools_mode = run_ctx.stream_mode.contains(&StreamMode::Tools)
             || run_ctx.stream_mode.contains(&StreamMode::Debug);
@@ -384,19 +384,11 @@ impl ToolCallExecutor {
 
 // ────────────────────── helpers ──────────────────────
 
-/// Adapts a `loom_cli_types::AnyStreamEvent` sender into a
-/// `loom_stream::AnyStreamEvent` sender.
+/// Passes through a `loom_stream::TypedAnyStreamEvent` sender unchanged.
 fn adapt_stream_sender(
-    sender: &Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>,
-) -> Arc<dyn Fn(loom_stream::AnyStreamEvent) + Send + Sync> {
-    let sender = sender.clone();
-    Arc::new(move |ev: loom_stream::AnyStreamEvent| {
-        if let loom_stream::AnyStreamEvent::React(v) = &ev {
-            if let Ok(stream_ev) = serde_json::from_value::<StreamEvent<ReActState>>(v.clone()) {
-                sender(loom_cli_types::AnyStreamEvent::React(stream_ev));
-            }
-        }
-    }) as Arc<dyn Fn(loom_stream::AnyStreamEvent) + Send + Sync>
+    sender: &Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>,
+) -> Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync> {
+    sender.clone()
 }
 
 /// Ensures each [`ToolResult`] has a non-empty `call_id`.

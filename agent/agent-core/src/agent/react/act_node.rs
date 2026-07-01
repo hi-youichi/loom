@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::{debug, warn};
 
-use loom_cli_types::RunCancellation;
+use tool_core::active_operation::RunCancellation;
 use checkpoint::RunnableConfig;
 use loom_graph_core::{Next, Node, RunContext};
 use loom_graph_core::GraphError;
@@ -22,7 +22,7 @@ use super::act_executor::ToolCallExecutor;
 pub struct ActNode {
     tools: Arc<ToolRegistryLocked>,
     run_cancellation: Option<RunCancellation>,
-    any_stream_event_sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>>,
+    any_stream_event_sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
 }
 
 impl ActNode {
@@ -41,7 +41,7 @@ impl ActNode {
 
     pub fn with_any_stream_event_sender(
         mut self,
-        sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>>,
+        sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
     ) -> Self {
         self.any_stream_event_sender = sender;
         self

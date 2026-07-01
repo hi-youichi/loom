@@ -16,7 +16,7 @@ fn ensure_short_mcp_timeout() {
 
 use loom::cli_run::build_react_config;
 use agent::build_react_run_context;
-use loom_cli_types::RunOptions;
+use loom::cli_run::RunOptions;
 use std::path::PathBuf;
 
 fn opts(working_folder: PathBuf) -> RunOptions {

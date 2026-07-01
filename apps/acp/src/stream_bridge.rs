@@ -1,6 +1,6 @@
 //! Map Loom stream events to ACP SessionUpdate-equivalent structures
 //!
-//! [`loom::agent_run::run_agent_with_options`]'s `on_event` callback receives [`loom_cli_types::AnyStreamEvent`].
+//! [`loom::agent_run::run_agent_with_options`]'s `on_event` callback receives [`agent::TypedAnyStreamEvent`].
 //! This module provides [`loom_event_to_updates`] to turn a single Loom event into zero or more [`StreamUpdate`],
 //! which the upper layer sends as **session/update notifications** (no response) via the `agent_client_protocol` connection.
 //! Protocol details are in [`crate::protocol`].
@@ -40,7 +40,7 @@ use agent_client_protocol::schema::v1::{
 };
 use loom_llm::message::Message;
 use loom_stream::{MessageChunkKind, StreamEvent};
-use loom::agent_run::AnyStreamEvent;
+use loom::agent_run::TypedAnyStreamEvent;
 use serde_json::Value;
 use std::sync::Mutex;
 use std::collections::HashMap;
@@ -146,22 +146,22 @@ pub enum StreamUpdate {
 ///     connection.send_session_update(session_id, u).await?;
 /// }
 /// ```
-pub fn loom_event_to_updates(ev: &AnyStreamEvent) -> Vec<StreamUpdate> {
+pub fn loom_event_to_updates(ev: &TypedAnyStreamEvent) -> Vec<StreamUpdate> {
     match ev {
-        AnyStreamEvent::React(e) => {
+        TypedAnyStreamEvent::React(e) => {
             let mut updates = stream_event_to_updates_inner(e);
             if let Some(title_update) = extract_title_from_react_event(e) {
                 updates.push(title_update);
             }
             updates
         }
-        AnyStreamEvent::Dup(e) => stream_event_to_updates_inner(e),
-        AnyStreamEvent::Tot(e) => stream_event_to_updates_inner(e),
-        AnyStreamEvent::Got(e) => stream_event_to_updates_inner(e),
+        TypedAnyStreamEvent::Dup(e) => stream_event_to_updates_inner(e),
+        TypedAnyStreamEvent::Tot(e) => stream_event_to_updates_inner(e),
+        TypedAnyStreamEvent::Got(e) => stream_event_to_updates_inner(e),
     }
 }
 
-fn extract_title_from_react_event(ev: &StreamEvent<loom_cli_types::ReActState>) -> Option<StreamUpdate> {
+fn extract_title_from_react_event(ev: &StreamEvent<loom_stream::state::ReActState>) -> Option<StreamUpdate> {
     match ev {
         StreamEvent::Updates { node_id, state, .. } if node_id == "title" => state
             .summary
@@ -516,7 +516,7 @@ impl SessionNotifier {
         self
     }
 
-    pub async fn send_event(&self, event: &AnyStreamEvent) {
+    pub async fn send_event(&self, event: &TypedAnyStreamEvent) {
         let mut updates = loom_event_to_updates(event);
         if let Some(size) = self.context_window_size {
             if let Some(used) = extract_usage_tokens(event) {
@@ -533,13 +533,24 @@ impl SessionNotifier {
         }
     }
 
-    pub fn try_send_event(&self, event: &AnyStreamEvent) {
+    pub fn try_send_event(&self, event: &TypedAnyStreamEvent) {
         let mut updates = loom_event_to_updates(event);
         if let Some(size) = self.context_window_size {
             if let Some(used) = extract_usage_tokens(event) {
                 updates.push(StreamUpdate::UsageUpdate { used, size });
             }
         }
+        self.send_updates(updates);
+    }
+
+    pub fn try_send_stream_event(&self, event: &loom_stream::TypedAnyStreamEvent) {
+        if let loom_stream::TypedAnyStreamEvent::React(e) = event {
+            let typed = TypedAnyStreamEvent::React(e.clone());
+            self.try_send_event(&typed);
+        }
+    }
+
+    fn send_updates(&self, updates: Vec<StreamUpdate>) {
         for u in updates {
             let u = self.inject_message_id(u);
             if let Some(notif) = stream_update_to_session_notification(&self.session_id, &u) {
@@ -800,12 +811,12 @@ Message::User(content) => vec![SessionNotification::new(
 }
 
 /// Extract prompt-token count from a Loom stream event if it is a Usage event.
-fn extract_usage_tokens(ev: &AnyStreamEvent) -> Option<u64> {
+fn extract_usage_tokens(ev: &TypedAnyStreamEvent) -> Option<u64> {
     let usage = match ev {
-        AnyStreamEvent::React(e) => extract_usage_inner(e),
-        AnyStreamEvent::Dup(e) => extract_usage_inner(e),
-        AnyStreamEvent::Tot(e) => extract_usage_inner(e),
-        AnyStreamEvent::Got(e) => extract_usage_inner(e),
+        TypedAnyStreamEvent::React(e) => extract_usage_inner(e),
+        TypedAnyStreamEvent::Dup(e) => extract_usage_inner(e),
+        TypedAnyStreamEvent::Tot(e) => extract_usage_inner(e),
+        TypedAnyStreamEvent::Got(e) => extract_usage_inner(e),
     };
     usage.map(|p| p as u64)
 }

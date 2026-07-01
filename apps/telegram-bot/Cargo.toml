@@ -27,6 +27,7 @@ config = { path = "../../config", features = ["tracing-init"] }
 loom = { path = "../../loom" }
 checkpoint-sqlite-store = { path = "../../foundation/checkpoint-sqlite-store" }
 tool-core = { path = "../../agent/tool/tool-core" }
+loom-stream = { path = "../../loom-stream" }
 tool-extensions = { path = "../../agent/tool/tool-extensions" }
 loom-llm = { path = "../../foundation/llm" }
 loom-commands = { path = "../../loom-commands" }

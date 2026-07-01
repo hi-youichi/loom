@@ -22,4 +22,5 @@ pub use contract::{
     cli_list_models, cli_list_tools, cli_show_tool, run_cli_turn, RunOutput, StreamOut,
 };
 pub use loom::cli_run::build_react_config;
-pub use loom::agent_run::{RunCmd, RunError, RunOptions};
+pub use loom::agent_run::{RunCmd, RunError};
+pub use loom::cli_run::RunOptions;

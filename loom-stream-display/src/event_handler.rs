@@ -1,8 +1,8 @@
 use chrono::Local;
 use std::sync::Mutex;
 
-use loom_cli_types::AnyStreamEvent;
-use loom_cli_types::{ReActState, StubDupState, StubGotState, StubTotState};
+use loom_stream::TypedAnyStreamEvent;
+use loom_stream::{ReActState, StubDupState, StubGotState, StubTotState};
 use loom_stream::{MessageChunk, MessageChunkKind, StreamEvent};
 use loom_stream::state::{ToolCall, ToolResult};
 
@@ -82,28 +82,28 @@ impl EventState {
 
 pub fn create_stdio_event_callback(
     config: StreamDisplayConfig,
-) -> Box<dyn FnMut(AnyStreamEvent) + Send> {
+) -> Box<dyn FnMut(TypedAnyStreamEvent) + Send> {
     let state = Mutex::new(EventState::new(config.agent_display, config.use_spinner));
     let display_max_len = config.display_max_len;
     let verbose = config.verbose;
     let output_timestamp = config.output_timestamp;
 
-    Box::new(move |ev: AnyStreamEvent| {
+    Box::new(move |ev: TypedAnyStreamEvent| {
         let mut s = match state.lock() {
             Ok(guard) => guard,
             Err(_) => return,
         };
         match &ev {
-            AnyStreamEvent::React(e) => {
+            TypedAnyStreamEvent::React(e) => {
                 on_event_react(e, &mut s, display_max_len, verbose, output_timestamp)
             }
-            AnyStreamEvent::Dup(e) => {
+            TypedAnyStreamEvent::Dup(e) => {
                 on_event_dup(e, &mut s, display_max_len, verbose, output_timestamp)
             }
-            AnyStreamEvent::Tot(e) => {
+            TypedAnyStreamEvent::Tot(e) => {
                 on_event_tot(e, &mut s, display_max_len, verbose, output_timestamp)
             }
-            AnyStreamEvent::Got(e) => {
+            TypedAnyStreamEvent::Got(e) => {
                 on_event_got(e, &mut s, display_max_len, verbose, output_timestamp)
             }
         }

@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use loom_llm::LlmClient;
-use loom_react_config::ReactBuildConfig;
+use agent::ReactBuildConfig;
 
 use crate::got::{GotRunner, GotState};
 use agent::agent::react::build::{

@@ -231,7 +231,7 @@ pub(crate) async fn resolve_title_provider(
     config: &ReactBuildConfig,
 ) -> Option<Arc<dyn LlmProvider>> {
     let providers = env_config::load_provider_configs_from_xdg().unwrap_or_default();
-    let provider_hint = loom_react_config::extract_provider_hint(config);
+    let provider_hint = crate::agent::react::tier_apply::extract_provider_hint(config);
     let resolved = resolve_tier(config.model.as_deref(), ModelTier::Light, provider_hint.as_deref(), &providers).await?;
     let (provider, model_name) = ModelEntry::parse_id(&resolved.model_id)?;
     let entry = ModelEntry {

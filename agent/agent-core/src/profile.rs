@@ -425,6 +425,14 @@ impl std::fmt::Display for ProfileSource {
     }
 }
 
+/// Metadata about the agent profile that was resolved for a run.
+#[derive(Debug, Clone)]
+pub struct ResolvedAgent {
+    pub name: String,
+    pub description: Option<String>,
+    pub source: ProfileSource,
+}
+
 /// Lightweight summary of a discovered agent profile.
 #[derive(Debug, Clone)]
 pub struct ProfileSummary {

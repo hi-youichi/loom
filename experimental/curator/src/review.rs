@@ -2,7 +2,7 @@ use crate::prompts::select_review_prompt;
 use crate::review_tool_gate::ReviewToolGate;
 use agent::agent::{Agent, AgentError, AgentEvent};
 use checkpoint::RunnableConfig;
-use loom_react_config::ReactBuildConfig;
+use agent::ReactBuildConfig;
 use std::sync::{Arc, Mutex};
 use tracing::{error, info, warn};
 

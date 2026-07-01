@@ -8,7 +8,9 @@ use crate::streaming::event_mapper::StreamEventMapper;
 use crate::streaming::message_handler::StreamCommand;
 use crate::traits::{AgentRunContext, MessageSender};
 use tool_extensions::set_current_chat_id;
-use loom::agent_run::{run_agent_with_options, RunCmd, RunCompletion, RunOptions};
+use loom::agent_run::{run_agent_with_options, RunCmd};
+use loom::cli_run::{RunCompletion, RunOptions};
+
 use loom_llm::message::UserContent;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -103,7 +105,6 @@ pub async fn run_loom_agent_streaming(
             };
             Ok(text)
         }
-        RunCompletion::Cancelled => Err(BotError::Agent("Agent run was cancelled".to_string())),
-        RunCompletion::Error(e) => Err(BotError::Agent(format!("Agent run error: {}", e.0))),
+        RunCompletion::Cancelled => Err(BotError::Agent("Agent run cancelled".to_string())),
     }
 }

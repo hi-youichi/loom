@@ -7,6 +7,8 @@
 //! - Basic run types
 
 pub mod agent;
+pub mod goal_runner;
+pub mod profile;
 pub mod runner_common;
 pub mod runner_error;
 pub mod run_types;
@@ -21,6 +23,15 @@ pub use agent::{
     Agent, AgentConfig, AgentError, AgentEvent, AgentResult,
     ReactRunner,
 };
+
+// Profile + tier + build_config (migrated from loom-react-config)
+pub use profile::{AgentProfile, ProfileSource, ResolvedAgent};
+pub use agent::react::config::{EnvContext, ProjectInfo};
+pub use agent::react::tier_apply::{
+    extract_provider_hint, resolve_tier_and_build_config,
+    resolve_tier_and_build_config_with_resolver,
+};
+pub use tools::invoke_agent::build_config::{build_config_from_profile, load_agents_md};
 
 // Re-export runner_common
 pub use runner_common::{

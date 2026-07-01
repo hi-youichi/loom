@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 loom = { path = "../../loom" }
 loom-llm = { path = "../../foundation/llm" }
+loom-stream = { path = "../../loom-stream" }
 config = { path = "../../config" }
 stream-event = { path = "../../stream-event" }
 

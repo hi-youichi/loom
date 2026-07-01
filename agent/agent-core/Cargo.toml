@@ -41,11 +41,9 @@ memory-v2 = { path = "../../experimental/memory-v2" }
 
 loom-compress = { path = "../compress" }
 
-loom-cli-types = { path = "../../loom-cli-types" }
 
 skill = { path = "../skill" }
 
-loom-react-config = { path = "../../loom-react-config" }
 
 worktree = { path = "../../experimental/worktree" }
 

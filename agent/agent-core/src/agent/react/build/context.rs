@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use loom_llm::support::audit::LlmAuditLog;
 use checkpoint::RunnableConfig;
-use loom_cli_types::ReActState;
+use loom_stream::state::ReActState;
 use tool_core::ToolRegistryLocked;
 
 /// Context for running the ReAct graph.

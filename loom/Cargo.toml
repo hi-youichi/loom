@@ -141,15 +141,6 @@ reqwest = { version = "0.12", features = ["json"] }
 
 
 
-# React build configuration (loom-react-config crate)
-
-loom-react-config = { path = "../loom-react-config" }
-
-
-
-# CLI run types (loom-cli-types crate)
-
-loom-cli-types = { path = "../loom-cli-types" }
 
 
 
@@ -288,7 +279,6 @@ loom-stream = { path = "../loom-stream" }
 loom-llm = { path = "../foundation/llm" }
 
 
-loom-react-config = { path = "../loom-react-config" }
 
 async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
 

@@ -28,8 +28,6 @@ loom-curator = { path = "../../experimental/curator" }
 tool-experimental = { path = "../../agent/tool/tool-experimental" }
 memory-v2 = { path = "../../experimental/memory-v2" }
 loom-commands = { path = "../../loom-commands" }
-loom-cli-types = { path = "../../loom-cli-types" }
-loom-react-config = { path = "../../loom-react-config" }
 model-spec-core = { path = "../../foundation/model-spec-core", features = ["tier"] }
 checkpoint-sqlite-store = { path = "../../foundation/checkpoint-sqlite-store" }
 loom-acp = { package = "acp", path = "../acp" }

@@ -8,6 +8,7 @@ use crate::display_limits::{generate_session_id, max_message_len};
 use crate::output::{emit_run_output, make_stream_out, OutputConfig};
 use crate::repl::{run_one_turn, run_repl_loop};
 use cli::RunOptions;
+use tool_core::active_operation::RunCancellation;
 use loom_llm::message::UserContent;
 
 use crate::args::Command;
@@ -51,7 +52,7 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
                 task.id, desc
             );
 
-            let run_cancellation = loom_cli_types::RunCancellation::new(0);
+            let run_cancellation = RunCancellation::new(0);
             let rc_clone = run_cancellation.clone();
             let last_ctrlc = Arc::new(std::sync::Mutex::new(None::<std::time::Instant>));
             let lc_clone = last_ctrlc.clone();
@@ -186,7 +187,7 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
                 task.id, task.description, task.status
             );
 
-            let run_cancellation = loom_cli_types::RunCancellation::new(0);
+            let run_cancellation = RunCancellation::new(0);
             let rc_clone = run_cancellation.clone();
             let last_ctrlc = Arc::new(std::sync::Mutex::new(None::<std::time::Instant>));
             let lc_clone = last_ctrlc.clone();

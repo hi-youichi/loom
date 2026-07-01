@@ -5,7 +5,7 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
-use loom_react_config::profile::resolve_profile;
+use crate::profile::resolve_profile;
 
 use super::InvokeAgentTool;
 use super::runner::build_and_run_sub_agent;

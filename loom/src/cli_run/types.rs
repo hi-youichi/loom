@@ -1,38 +1,11 @@
-//! CLI run types for Loom agent patterns.
-//!
-//! Contains the core types used across CLI, serve, and agent crates for
-//! configuring and running agents: `RunOptions`, `AnyStreamEvent`, `RunCmd`,
-//! `RunCompletion`, `RunError`, `AgentRunResult`, `ResolvedAgent`, `ResolvedModelConfig`.
-//!
-//! These types were extracted from `loom::cli_run` to allow downstream crates
-//! (cli, serve, loom-acp, loom-agent) to depend on them directly without
-//! pulling in the full `loom` facade.
-
-pub mod goal_runner;
-
-use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-// Re-export active operation types from loom-stream / tool-core / agent-core for convenience
-pub use tool_core::active_operation::{
-    ActiveOperation, ActiveOperationCanceller, ActiveOperationKind, RunCancellation,
-};
-// Re-export stub agent state types from loom-stream / tool-core / agent-core
-pub use loom_stream::{StubDupState, StubGotState, StubTotState};
-// Re-export ReActState
-pub use loom_stream::state::ReActState;
+use loom_stream::TypedAnyStreamEvent;
+use tool_core::active_operation::RunCancellation;
 
 /// Default working folder when not set (current directory).
 pub const DEFAULT_WORKING_FOLDER: &str = ".";
-
-/// Metadata about the agent profile that was resolved for a run.
-#[derive(Debug, Clone)]
-pub struct ResolvedAgent {
-    pub name: String,
-    pub description: Option<String>,
-    pub source: loom_react_config::profile::ProfileSource,
-}
 
 /// Resolved model + provider configuration from a model string like "openai/gpt-4o".
 #[derive(Debug, Clone, Default)]
@@ -42,7 +15,6 @@ pub struct ResolvedModelConfig {
     pub base_url: Option<String>,
     pub api_key: Option<String>,
     pub provider_type: Option<String>,
-    /// Reasoning effort: "auto"|"none"|"minimal"|"low"|"medium"|"high"|"xhigh"|None
     pub effort: Option<String>,
 }
 
@@ -67,20 +39,15 @@ pub struct RunOptions {
     pub base_url: Option<String>,
     pub api_key: Option<String>,
     pub provider_type: Option<String>,
-    pub any_stream_event_sender: Option<Arc<dyn Fn(AnyStreamEvent) + Send + Sync>>,
+    pub any_stream_event_sender: Option<Arc<dyn Fn(TypedAnyStreamEvent) + Send + Sync>>,
     pub bash_executor: Option<Arc<dyn tool_basic::bash::CommandExecutor>>,
     pub extra_tools: Option<Arc<Vec<Arc<dyn tool_core::Tool>>>>,
     pub acp_session_id: Option<String>,
     pub force_compact: bool,
     pub chat_id: Option<i64>,
     pub worktree: bool,
-    /// When true, task management tools (task_create, task_update, etc.) are registered.
-    /// Only enabled in goal mode.
     pub goal_mode: bool,
-    /// MCP servers from ACP session/new request, converted to Loom's internal type.
-    /// Merged into build config alongside mcp.json servers.
     pub acp_mcp_servers: Option<Vec<env_config::McpServerDef>>,
-    /// Reasoning effort override.
     pub effort: Option<String>,
 }
 
@@ -158,18 +125,11 @@ pub enum RunError {
     Other(String),
 }
 
-/// Union type for stream events from different agent patterns.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum AnyStreamEvent {
-    React(loom_stream::StreamEvent<ReActState>),
-    Dup(loom_stream::StreamEvent<StubDupState>),
-    Tot(loom_stream::StreamEvent<StubTotState>),
-    Got(loom_stream::StreamEvent<StubGotState>),
-}
-
 /// Result of a successfully completed agent run.
 #[derive(Debug, Clone)]
 pub struct AgentRunResult {
     pub reply: String,
     pub reasoning_content: Option<String>,
 }
+
+

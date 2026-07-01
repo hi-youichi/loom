@@ -32,8 +32,8 @@ impl From<std::io::Error> for ConvertError {
     }
 }
 
-impl From<crate::profile::ProfileError> for ConvertError {
-    fn from(e: crate::profile::ProfileError) -> Self {
+impl From<agent::profile::ProfileError> for ConvertError {
+    fn from(e: agent::profile::ProfileError) -> Self {
         ConvertError::ProfileNotFound(e.to_string())
     }
 }

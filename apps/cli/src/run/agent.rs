@@ -4,15 +4,15 @@
 use agent::build_react_run_context;
 use agent_extensions::{DupState, GotState, TotState};
 use chrono::Local;
-use loom::agent_run::{run_agent_with_options, AnyStreamEvent};
+use loom::agent_run::{run_agent_with_options, TypedAnyStreamEvent};
 use loom::cli_run::build_react_config;
-use loom_cli_types::ResolvedAgent;
+use agent::ResolvedAgent;
 use loom_llm::ToolCall;
 use model_spec_core::resolver::{
     build_composite_resolver, ConfigModelEntry, ConfigProviderEntry, ModelResolver,
 };
 use stream_event::Envelope;
-use loom_react_config::profile::list_available_profiles;
+use agent::profile::list_available_profiles;
 use loom_stream::MessageChunkKind;
 use loom_stream::state::ReActState;
 use loom_stream::state::ToolResult;
@@ -26,7 +26,8 @@ use super::display::{
     format_dup_state_display, format_got_state_display, format_react_state_display,
     format_tot_state_display, truncate_display,
 };
-use loom::agent_run::{RunCmd, RunOptions};
+    use loom::agent_run::RunCmd;
+    use loom::cli_run::RunOptions;
 use stream_event::EnvelopeState;
 use loom_stream::StreamEvent;
 use loom_stream_display as panel_format;
@@ -63,18 +64,17 @@ pub enum RunStopReason {
 }
 
 fn completion_reply(
-    result: loom::agent_run::RunCompletion,
+    result: loom::cli_run::RunCompletion,
 ) -> (String, Option<String>, RunStopReason) {
     match result {
-        loom::agent_run::RunCompletion::Finished(result) => (
+        loom::cli_run::RunCompletion::Finished(result) => (
             result.reply,
             result.reasoning_content,
             RunStopReason::EndTurn,
         ),
-        loom::agent_run::RunCompletion::Cancelled => {
+        loom::cli_run::RunCompletion::Cancelled => {
             (String::new(), None, RunStopReason::Cancelled)
         }
-        loom::agent_run::RunCompletion::Error(e) => (e.0, None, RunStopReason::Cancelled),
     }
 }
 
@@ -203,7 +203,7 @@ pub async fn run_agent_wrapper(
     // future issue that arises from holding a span guard across awaits in
     // caller-side async functions.
 
-    let loom_opts = opts.to_cli_run_options();
+    let loom_opts = opts.clone();
     let (config, resolved_agent) = build_react_config(&loom_opts);
 
     print_loaded_tools(&config).await?;
@@ -236,7 +236,7 @@ pub async fn run_agent_wrapper(
             let out = out.clone();
             let state = Arc::new(Mutex::new(EnvelopeState::new(session_id.clone())));
             let state_clone = state.clone();
-            let on_event = Box::new(move |ev: AnyStreamEvent| {
+            let on_event = Box::new(move |ev: TypedAnyStreamEvent| {
                 let v = match state_clone.lock() {
                     Ok(mut s) => ev.to_protocol_format(&mut s),
                     Err(_) => return,
@@ -267,7 +267,7 @@ pub async fn run_agent_wrapper(
         let events_clone = events.clone();
         let state = Arc::new(Mutex::new(EnvelopeState::new(session_id.clone())));
         let state_clone = state.clone();
-        let on_event = Box::new(move |ev: AnyStreamEvent| {
+        let on_event = Box::new(move |ev: TypedAnyStreamEvent| {
             let v = match state_clone.lock() {
                 Ok(mut s) => ev.to_protocol_format(&mut s),
                 Err(_) => return,
@@ -314,19 +314,19 @@ pub async fn run_agent_wrapper(
     let state_clone = state.clone();
     let verbose = opts.verbose;
     let output_timestamp = opts.output_timestamp;
-    let on_event = Box::new(move |ev: AnyStreamEvent| {
+    let on_event = Box::new(move |ev: TypedAnyStreamEvent| {
         let mut s = state_clone.lock().unwrap();
         match &ev {
-            AnyStreamEvent::React(e) => {
+            TypedAnyStreamEvent::React(e) => {
                 on_event_react(e, &mut s, display_max_len, verbose, output_timestamp)
             }
-            AnyStreamEvent::Dup(e) => {
+            TypedAnyStreamEvent::Dup(e) => {
                 on_event_dup(e, &mut s, display_max_len, verbose, output_timestamp)
             }
-            AnyStreamEvent::Tot(e) => {
+            TypedAnyStreamEvent::Tot(e) => {
                 on_event_tot(e, &mut s, display_max_len, verbose, output_timestamp)
             }
-            AnyStreamEvent::Got(e) => {
+            TypedAnyStreamEvent::Got(e) => {
                 on_event_got(e, &mut s, display_max_len, verbose, output_timestamp)
             }
         }
@@ -337,9 +337,8 @@ pub async fn run_agent_wrapper(
     let duration = start.elapsed();
 
     let outcome = match &result {
-        loom::agent_run::RunCompletion::Finished(_) => "finished",
-        loom::agent_run::RunCompletion::Cancelled => "cancelled",
-        loom::agent_run::RunCompletion::Error(_) => "error",
+        loom::cli_run::RunCompletion::Finished(_) => "finished",
+        loom::cli_run::RunCompletion::Cancelled => "cancelled",
     };
     let (prompt_tokens, completion_tokens, last_node, agent) = state
         .lock()
@@ -905,7 +904,7 @@ impl EventState {
 }
 
 /// Prints loaded tools info to stderr at startup (structured panel format).
-async fn print_loaded_tools(config: &loom_react_config::ReactBuildConfig) -> Result<(), RunError> {
+async fn print_loaded_tools(config: &agent::ReactBuildConfig) -> Result<(), RunError> {
     let ctx = build_react_run_context(config)
         .await
         .map_err(|e| RunError::Build(agent::BuildRunnerError::Context(e)))?;
@@ -1019,7 +1018,8 @@ mod tests {
     use agent_extensions::{
         TaskGraph, TaskNode, TaskNodeState, TaskStatus, TotExtension, UnderstandOutput,
     };
-    use loom::agent_run::{RunCmd, RunOptions};
+use loom::agent_run::RunCmd;
+use loom::cli_run::RunOptions;
     use loom_llm::{message::Message, ToolCall};
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
@@ -1031,8 +1031,8 @@ mod tests {
         }
     }
 
-    fn minimal_build_config() -> loom_react_config::ReactBuildConfig {
-        loom_react_config::ReactBuildConfig {
+    fn minimal_build_config() -> agent::ReactBuildConfig {
+        agent::ReactBuildConfig {
             mcp_exa_url: "https://mcp.exa.ai/mcp".to_string(),
             mcp_remote_cmd: "npx".to_string(),
             mcp_remote_args: "-y mcp-remote".to_string(),
@@ -1047,7 +1047,7 @@ mod tests {
 
     #[test]
     fn any_stream_event_to_format_a_and_protocol_format() {
-        let ev = AnyStreamEvent::React(StreamEvent::TaskStart {
+        let ev = TypedAnyStreamEvent::React(StreamEvent::TaskStart {
             node_id: "think".to_string(),
             namespace: None,
         });

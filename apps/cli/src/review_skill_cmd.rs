@@ -2,7 +2,7 @@ use crate::args::ReviewSkillArgs;
 use config::{load_full_config, ProviderDef};
 use loom_curator::review::uuid_v4;
 use loom_curator::{run_review, ReviewConfig, ReviewOutcome};
-use loom_react_config::ReactBuildConfig;
+use agent::ReactBuildConfig;
 use std::io::{self, Read};
 use std::path::PathBuf;
 use tracing::info;

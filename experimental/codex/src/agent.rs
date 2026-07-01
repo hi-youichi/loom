@@ -6,7 +6,8 @@ use std::sync::Arc;
 use serde_json::json;
 use tokio::sync::{mpsc, Mutex};
 
-use loom::agent_run::{AnyStreamEvent, RunCmd, RunCompletion, RunOptions, run_agent_with_options};
+use loom::agent_run::{RunCmd, run_agent_with_options};
+use loom::cli_run::{RunOptions, RunCompletion};
 use loom_llm::message::UserContent;
 use stream_event::codex::{CodexErrorInfo, CodexEvent, CodexUsage};
 
@@ -350,12 +351,12 @@ impl CodexAgent {
                 });
             }
 
-            let on_event: Box<dyn FnMut(AnyStreamEvent) + Send> = {
+            let on_event: Box<dyn FnMut(loom::agent_run::TypedAnyStreamEvent) + Send> = {
                 let output_tx_ev = output_tx_ev.clone();
                 let approval_manager_ev = approval_manager_ev.clone();
                 let tracker = tracker.clone();
                 let thread_log = thread_log.clone();
-                Box::new(move |ev: AnyStreamEvent| {
+                Box::new(move |ev: loom::agent_run::TypedAnyStreamEvent| {
                     let output_tx_ev = output_tx_ev.clone();
                     let approval_manager_ev = approval_manager_ev.clone();
                     let tracker = tracker.clone();
@@ -401,14 +402,6 @@ impl CodexAgent {
                     let notif = codex_event_to_notification(&CodexEvent::TurnFailed {
                         error: CodexErrorInfo {
                             message: "Turn cancelled".to_string(),
-                        },
-                    });
-                    let _ = output_tx.send(OutputEvent::Notification(notif)).await;
-                }
-                Ok(RunCompletion::Error(e)) => {
-                    let notif = codex_event_to_notification(&CodexEvent::TurnFailed {
-                        error: CodexErrorInfo {
-                            message: e.to_string(),
                         },
                     });
                     let _ = output_tx.send(OutputEvent::Notification(notif)).await;

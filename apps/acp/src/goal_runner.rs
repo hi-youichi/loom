@@ -12,8 +12,8 @@ use std::sync::Arc;
 
 use tokio_util::sync::CancellationToken;
 
-use loom_cli_types::RunCancellation;
-use loom_cli_types::goal_runner::GoalOutcome;
+use tool_core::active_operation::RunCancellation;
+use agent::goal_runner::GoalOutcome;
 
 /// Result of a goal run.
 #[derive(Debug)]
@@ -39,7 +39,7 @@ pub async fn run_goal(
     _objective: String,
     _working_dir: PathBuf,
     _cancel: CancellationToken,
-    _event_sender: Option<Arc<dyn Fn(loom::agent_run::AnyStreamEvent) + Send + Sync>>,
+    _event_sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
     _run_cancellation: Option<RunCancellation>,
 ) -> Result<GoalResult, GoalRunError> {
     Err(GoalRunError::Unavailable(

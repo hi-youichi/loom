@@ -7,7 +7,7 @@ use crate::args::{
     McpCommand, MemoryCmdArgs, MemoryCommand, ModelsArgs, ModelsCommand, SkillsArgs,
     SkillsCommand, ToolArgs, ToolCommand,
 };
-use loom_react_config::profile_convert::ExportFormat;
+use cli::profile_convert::ExportFormat;
 use crate::mcp_manager::{AddMcpArgs, EditMcpArgs, McpManager, ServerDetail, ServerInfo};
 use crate::run_flow::build_run_options;
 use crate::session::{SessionArgs, SessionCommand, SessionManager};
@@ -341,7 +341,7 @@ pub(crate) fn handle_agent_command(
 }
 
 fn handle_agent_list() -> Result<(), Box<dyn std::error::Error>> {
-    let profiles = loom_react_config::profile::list_available_profiles();
+    let profiles = agent::profile::list_available_profiles();
     if profiles.is_empty() {
         println!("No agent profiles found.");
         return Ok(());
@@ -358,13 +358,13 @@ fn handle_agent_list() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn handle_agent_export(export_args: &ExportArgs) -> Result<(), Box<dyn std::error::Error>> {
-    use loom_react_config::profile_convert::export;
+    use cli::profile_convert::export;
 
     let format: ExportFormat = export_args.format.parse()?;
 
     let agent_names: Vec<String> = match &export_args.agent {
         Some(name) => vec![name.clone()],
-        None => loom_react_config::profile::list_available_profiles()
+        None => agent::profile::list_available_profiles()
             .into_iter()
             .map(|p| p.name)
             .collect(),
@@ -561,7 +561,7 @@ pub(crate) async fn handle_curator_command(
             if !curator_args.dry_run {
                 if let Some((base_url, api_key, model)) = resolve_curator_llm_credentials() {
                     eprintln!("Curator LLM pass: starting (model: {})", model);
-                    let mut agent_config = loom_react_config::ReactBuildConfig::from_env();
+                    let mut agent_config = agent::ReactBuildConfig::from_env();
                     agent_config.openai_api_key = Some(api_key);
                     agent_config.openai_base_url = Some(base_url);
                     agent_config.model = Some(model);
@@ -835,7 +835,7 @@ pub(crate) async fn handle_curator_command(
                 std::process::exit(1);
             };
 
-            let mut agent_config = loom_react_config::ReactBuildConfig::from_env();
+            let mut agent_config = agent::ReactBuildConfig::from_env();
             agent_config.openai_api_key = Some(api_key);
             agent_config.openai_base_url = Some(base_url);
             agent_config.model = Some(model.clone());

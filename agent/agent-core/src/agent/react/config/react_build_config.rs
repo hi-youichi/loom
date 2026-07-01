@@ -1,99 +1,40 @@
-//! Configuration for building a ReAct run context.
-//!
-//! This crate defines [`ReactBuildConfig`], the shared configuration type used by
-//! Loom agent runners (ReAct, GoT, ToT, DUP). It is extracted into its own crate to
-//! break the circular dependency between `loom`, `loom-agent`, and `loom-agent-patterns`.
-
 use env_config::McpServerDef;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use skill::SkillRegistry;
+use loom_compress::CompactionConfig;
+use tool_core::BuiltinToolFilter;
+use model_spec_core::ModelTier;
+use super::runner_config::{TotRunnerConfig, GotRunnerConfig};
+use super::env_context::EnvContext;
 
-// Environment context and prompt assembly (migrated from loom-prompt)
-pub mod env_context;
-pub mod prompt_assembly;
-pub use env_context::EnvContext;
-pub use prompt_assembly::{assemble_system_prompt, SystemPromptInputs};
-
-// Re-exported from local modules
-mod config;
-pub use config::{TotRunnerConfig, GotRunnerConfig};
-pub use tool_core::BuiltinToolFilter;
-pub use loom_compress::CompactionConfig;
-
-// Profile loading and agent resolution
-pub mod profile;
-
-// Tier resolution applied to ReactBuildConfig
-pub mod tier_apply;
-pub use tier_apply::{
-    extract_provider_hint, resolve_tier_and_build_config,
-    resolve_tier_and_build_config_with_resolver,
-};
-
-// Profile conversion to external formats
-pub mod profile_convert;
-
-// Build config from profile (for sub-agent configuration)
-pub mod build_config;
-pub use build_config::{build_config_from_profile, load_agents_md};
-
-/// Configuration for building ReAct run context.
-///
-/// **Prefer `ReactBuildConfig::from_env()`** over `Default::default()` — the latter
-/// produces empty strings for network/MCP fields and `false` for toggles.
-/// `from_env()` applies all the documented production defaults.
 #[derive(Clone)]
 pub struct ReactBuildConfig {
     pub db_path: Option<String>,
     pub thread_id: Option<String>,
-    /// Root thread ID used for LLM trace headers (`X-Thread-Id`).
-    /// Always carries the top-level (root) agent's thread_id so that all
-    /// sub-agent LLM calls can be correlated in external tracing.
-    /// Set once at the root level, then propagated unchanged by `invoke_agent`.
     pub trace_thread_id: Option<String>,
     pub user_id: Option<String>,
     pub system_prompt: Option<String>,
     pub exa_api_key: Option<String>,
-    /// When `EXA_API_KEY` is set, register the Exa `codesearch` tool only if this is true.
-    /// Opt-in via env `LOOM_EXA_CODESEARCH` (`1`, `true`, or `yes`, case-insensitive). Default off.
     pub exa_codesearch_enabled: bool,
     pub twitter_api_key: Option<String>,
     pub mcp_exa_url: String,
     pub mcp_remote_cmd: String,
     pub mcp_remote_args: String,
-    /// When set, loom will spawn the GitHub MCP server (mcp_github_cmd + mcp_github_args) and pass
-    /// GITHUB_TOKEN so the agent can operate on issues (comment, close, labels, etc.).
     pub github_token: Option<String>,
-    /// Command to run the GitHub MCP server (e.g. "npx"). Override with MCP_GITHUB_CMD.
     pub mcp_github_cmd: String,
-    /// Args for the GitHub MCP server (e.g. ["-y", "@modelcontextprotocol/server-github"]). Override with MCP_GITHUB_ARGS (space-separated).
     pub mcp_github_args: Vec<String>,
-    /// When set and http(s), use HTTP transport for GitHub MCP (e.g. https://api.githubcopilot.com/mcp/). Override with MCP_GITHUB_URL.
     pub mcp_github_url: Option<String>,
     pub mcp_verbose: bool,
     pub openai_api_key: Option<String>,
     pub openai_base_url: Option<String>,
     pub model: Option<String>,
-    pub model_tier: Option<model_spec_core::ModelTier>,
-    /// When a sub-agent profile declares `tier: light/standard/strong` but no explicit `model.name`,
-    /// the parent's resolved model (e.g. `"zhipuai-coding-plan/glm-4.7"`) is saved here so that
-    /// tier resolution can extract the provider and stay within the same model family.
+    pub model_tier: Option<ModelTier>,
     pub parent_model_hint: Option<String>,
-    /// Auxiliary model for background tasks (review, curator).
-    /// When set (via `LOOM_AUX_MODEL`), background review and curator agents
-    /// will use this model instead of the main session model.
-    /// Aligns Hermes `aux_model` / `dev_model` configuration.
     pub aux_model: Option<String>,
-    /// Explicit provider type override. When `Some("openai_compat")` or `Some("bigmodel")`, build layer uses `ChatOpenAICompat`; otherwise default is OpenAI.
-    /// If unset, build layer may infer provider type from `MODEL` in `provider/model` format.
     pub llm_provider: Option<String>,
-    /// Provider name used for tier plan lookup (e.g., `"zhipuai-coding-plan"`).
-    /// Set during tier resolution from `ModelEntry.provider`. Preserved across sub-agent config
-    /// inheritance so child tier resolution can match the correct plan.
     pub llm_provider_name: Option<String>,
-    /// Sampling temperature for chat completions. Set via `OPENAI_TEMPERATURE`.
     pub openai_temperature: Option<String>,
     pub embedding_api_key: Option<String>,
     pub embedding_base_url: Option<String>,
@@ -102,74 +43,27 @@ pub struct ReactBuildConfig {
     pub compaction_config: Option<CompactionConfig>,
     pub tot_config: TotRunnerConfig,
     pub got_config: GotRunnerConfig,
-    /// MCP servers from mcp.json (discovered by CLI/ACP) or from ACP request.
     pub mcp_servers: Option<Vec<McpServerDef>>,
-    /// Skill registry for the skill tool (built during ReactBuildConfig construction in `build_react_config`).
     pub skill_registry: Option<Arc<SkillRegistry>>,
-    /// Maximum nesting depth for `invoke_agent` tool calls (default 3).
     pub max_sub_agent_depth: Option<u32>,
-    /// When true, tools are not executed; call_tool returns a placeholder (CLI --dry).
     pub dry_run: bool,
-    /// Optional filter for builtin tools (enabled whitelist / disabled blacklist).
-    /// Populated from agent profile `tools.builtin` config.
-    /// Affects BOTH `list_tools()` (LLM-visible) and `call_tool()` (execution).
     pub builtin_tool_filter: Option<BuiltinToolFilter>,
-    /// Optional execution-only filter. Unlike `builtin_tool_filter`, this does NOT
-    /// affect `list_tools()` — the LLM still sees the full tool set (preserving
-    /// prompt cache parity with the parent agent), but `call_tool()` rejects
-    /// non-whitelisted tools at execution time.
-    /// Use this for review/fork scenarios where you want cache parity + safety.
     pub call_tool_filter: Option<BuiltinToolFilter>,
     pub bash_executor: Option<Arc<dyn tool_basic::bash::CommandExecutor>>,
     pub extra_tools: Option<Arc<Vec<Arc<dyn tool_core::Tool>>>>,
-pub acp_session_id: Option<String>,
-    /// When true, task management tools (task_create/update/show/list/delete) are registered.
-    /// Only enabled in goal mode.
+    pub acp_session_id: Option<String>,
     pub goal_mode: bool,
-    /// When true, this config builds a background-review agent (sub-fork of a main agent).
-    /// Affects tool factory selection:
-    /// - `SkillManagerTool::for_background_review` — writes go through `WriteOrigin::BackgroundReview`
-    ///   thread-local guard, marking created skills as `agent-created`.
-    /// - `MemoryTool::for_background_review` — writes carry `execution_context="background_review"`
-    ///   provenance and default `user_profile_enabled=false`.
-    ///
-    /// Default `false`; only `review.rs` should set this to `true` when forking a review agent.
-    /// This flag does NOT auto-short-circuit nudge intervals — that is the review agent's own
-    /// responsibility (see plan 011-03).
     pub is_background_review: bool,
-
-    // --- Memory / Skill toggle & nudge fields (plan 011-03) ---
-    /// Master switch for memory *writes*. When `false`, `MemoryTool` is not registered
-    /// (alignment with Hermes `agent_init.py:1076`). Default `true`.
     pub memory_enabled: bool,
-    /// Switch for USER.md *writes*. When `false`, `MemoryTool` rejects writes targeting
-    /// `USER.md` (alignment with Hermes `file_memory` guard semantics).
-    /// Default `true`.
     pub user_profile_enabled: bool,
-    /// Every N *user turns* the memory review nudge fires (0 = disabled).
-    /// Default `10` (matches Hermes `memory.nudge_interval`).
-    /// Background-review agents set this to `0` to prevent recursive reviews.
     pub memory_nudge_interval: u32,
-    /// Every N *tool iterations* the skill review nudge fires (0 = disabled).
-    /// Default `10` (matches Hermes `skills.creation_nudge_interval`).
-    /// Background-review agents set this to `0` to prevent recursive reviews.
     pub skill_nudge_interval: u32,
-
-    // --- Prompt assembly inputs (migrated from HelveConfig) ---
-    /// Role/persona setting (e.g. from instructions.md).
     pub role_setting: Option<String>,
-    /// Project-level agent rules (e.g. from AGENTS.md).
     pub agents_md: Option<String>,
-    /// Optional full system prompt override (bypasses assembly).
     pub system_prompt_override: Option<String>,
-    /// Skills section (from skill registry).
     pub skills_prompt: Option<String>,
-    /// Memory context (user preferences, project facts).
     pub memory_prompt: Option<String>,
-    /// Runtime environment context (OS, locale, agent intro).
     pub env_context: Option<EnvContext>,
-    /// Reasoning effort level: "auto"|"none"|"minimal"|"low"|"medium"|"high"|"xhigh"
-    /// When set (and not "auto"), passed to OpenAI API as `reasoning_effort`.
     pub reasoning_effort: Option<String>,
 }
 
@@ -186,11 +80,6 @@ impl std::fmt::Debug for ReactBuildConfig {
 }
 
 impl Default for ReactBuildConfig {
-    /// Produces an all-`None`/`false`/empty config with sensible static defaults.
-    ///
-    /// **Prefer `ReactBuildConfig::from_env()`** for production use — it hydrates
-    /// fields from environment variables. This `Default` impl exists so that
-    /// tests and builders can use struct-update syntax (`..Default::default()`).
     fn default() -> Self {
         Self {
             db_path: None,
@@ -323,9 +212,6 @@ impl ReactBuildConfig {
             acp_session_id: None,
             goal_mode: false,
             is_background_review: false,
-            // plan 011-03: memory/skill defaults aligned with Hermes user-config defaults.
-            // Hermes runtime inits to false then hydrates from user-config (default true).
-            // Loom uses struct defaults directly — matching the observable "works out of the box" state.
             memory_enabled: true,
             user_profile_enabled: true,
             memory_nudge_interval: 10,
@@ -359,10 +245,8 @@ mod tests {
         }
     }
 
-    /// Run all from_env GitHub-related tests in one test to avoid env races when tests run in parallel.
     #[test]
     fn from_env_github_token_and_mcp_override() {
-        // 1) With GITHUB_TOKEN set: github_token is_some and default cmd/args
         with_env("GITHUB_TOKEN", Some("test-token"), || {
             with_env("MCP_GITHUB_CMD", None, || {
                 with_env("MCP_GITHUB_ARGS", None, || {
@@ -379,13 +263,11 @@ mod tests {
             });
         });
 
-        // 2) Without GITHUB_TOKEN: github_token is_none
         with_env("GITHUB_TOKEN", None, || {
             let config = ReactBuildConfig::from_env();
             assert!(config.github_token.is_none());
         });
 
-        // 3) With overrides: MCP_GITHUB_CMD and MCP_GITHUB_ARGS
         with_env("GITHUB_TOKEN", Some("x"), || {
             with_env("MCP_GITHUB_CMD", Some("custom-cmd"), || {
                 with_env("MCP_GITHUB_ARGS", Some("arg1 arg2"), || {
@@ -396,7 +278,6 @@ mod tests {
             });
         });
 
-        // 4) MCP_GITHUB_URL: when set, mcp_github_url is Some
         with_env(
             "MCP_GITHUB_URL",
             Some("https://api.githubcopilot.com/mcp/"),
@@ -452,12 +333,10 @@ mod tests {
 
     #[test]
     fn aux_model_reads_from_env() {
-        // When LOOM_AUX_MODEL is set, from_env picks it up.
         with_env("LOOM_AUX_MODEL", Some("cheap-model-v1"), || {
             let config = ReactBuildConfig::from_env();
             assert_eq!(config.aux_model.as_deref(), Some("cheap-model-v1"));
         });
-        // When unset, aux_model is None.
         with_env("LOOM_AUX_MODEL", None, || {
             let config = ReactBuildConfig::from_env();
             assert!(config.aux_model.is_none());

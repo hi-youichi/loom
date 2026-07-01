@@ -15,7 +15,7 @@
 //! - `checkpoint_sqlite_store` - `SqliteSaver`, `SqliteStore`, SQLite-backed persistence
 //! - `vector_store` - `LanceStore`, `OpenAIEmbedder`, vector search Store impls
 //! - `loom_stream` - `StreamEvent`, `StreamMode`, `StreamWriter`
-//! - `loom_react_config` - `assemble_system_prompt`, `EnvContext`, `ReactBuildConfig`
+//! - `agent` - `assemble_system_prompt`, `EnvContext`, `ReactBuildConfig`
 //! - `model_spec_core` - tier resolution, model registry
 //! - `loom_compress` - context compression / compaction
 //! - `loom_pregel` - low-level Pregel graph runtime
@@ -25,8 +25,8 @@
 //! - `loom_stream_display` - stream event display/rendering
 //! - `worktree` - git worktree isolation
 //! - `lsp` - LSP integration
-//! - `loom_cli_types` - `RunOptions`, `RunCmd`, `RunCompletion`, `AnyStreamEvent`
-//! - `loom_react_config` - `ReactBuildConfig`, profile types
+//! - `agent` - `TypedAnyStreamEvent`, `RunCompletion` (agent core types)
+//! - `agent` - `ReactBuildConfig`, profile types
 
 pub mod agent_run;
 pub mod cli_run;

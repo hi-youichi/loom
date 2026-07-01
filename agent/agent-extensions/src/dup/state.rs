@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use loom_cli_types::ReActState;
+use loom_stream::state::ReActState;
 
 /// Structured output from the Understand node (DUP phase 1–2).
 ///
@@ -51,7 +51,7 @@ impl DupState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_cli_types::ReActState;
+    use loom_stream::state::ReActState;
     use loom_llm::message::Message;
 
     #[test]

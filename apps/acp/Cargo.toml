@@ -12,7 +12,7 @@ path = "src/lib.rs"
 
 [dependencies]
 loom = { path = "../../loom" }
-loom-cli-types = { path = "../../loom-cli-types" }
+agent = { path = "../../agent/agent-core" }
 
 loom-graph-core = { path = "../../foundation/graph-core" }
 loom-llm = { path = "../../foundation/llm" }
@@ -20,7 +20,6 @@ checkpoint = { path = "../../foundation/checkpoint" }
 checkpoint-sqlite-store = { path = "../../foundation/checkpoint-sqlite-store" }
 tool-core = { path = "../../agent/tool/tool-core" }
 tool-basic = { path = "../../agent/tool/tool-basic" }
-loom-react-config = { path = "../../loom-react-config" }
 loom-compress = { path = "../../agent/compress" }
 model-spec-core = { path = "../../foundation/model-spec-core", features = ["tier"] }
 loom-stream = { path = "../../loom-stream" }

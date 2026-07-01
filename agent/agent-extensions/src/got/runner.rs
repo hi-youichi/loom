@@ -63,7 +63,7 @@ pub struct GotRunner {
     checkpointer: Option<Arc<dyn Checkpointer<GotState>>>,
     runnable_config: Option<RunnableConfig>,
     cancellation: Option<CancellationToken>,
-    any_stream_event_sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>>,
+    any_stream_event_sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
 }
 
 impl GotRunner {
@@ -72,7 +72,7 @@ impl GotRunner {
         self
     }
 
-    pub fn with_any_stream_event_sender(mut self, sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>>) -> Self {
+    pub fn with_any_stream_event_sender(mut self, sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>) -> Self {
         self.any_stream_event_sender = sender;
         self
     }

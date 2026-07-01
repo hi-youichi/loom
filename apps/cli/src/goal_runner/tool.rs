@@ -6,11 +6,12 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 
-use loom::agent_run::{run_agent_with_options, AnyStreamEvent as FullAnyStreamEvent};
-use loom_cli_types::AnyStreamEvent;
+use loom::agent_run::{run_agent_with_options, TypedAnyStreamEvent as FullTypedAnyStreamEvent};
+use loom::cli_run::RunCompletion;
+use loom_stream::TypedAnyStreamEvent;
 use loom_stream::StreamEvent;
 
-use loom_cli_types::goal_runner::state::{ToolCallSummary, ToolError, TurnResult};
+use agent::goal_runner::state::{ToolCallSummary, ToolError, TurnResult};
 
 const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 300;
 
@@ -130,7 +131,7 @@ pub struct LoomTool {
     session_id: String,
     _working_dir: PathBuf,
     mcp_config_path: PathBuf,
-    cancellation: Option<loom_cli_types::RunCancellation>,
+    cancellation: Option<tool_core::active_operation::RunCancellation>,
     verbose: bool,
     model: Option<String>,
     provider: Option<String>,
@@ -138,7 +139,7 @@ pub struct LoomTool {
     api_key: Option<String>,
     provider_type: Option<String>,
     agent: Option<String>,
-    any_stream_event_sender: Option<Arc<dyn Fn(FullAnyStreamEvent) + Send + Sync>>,
+    any_stream_event_sender: Option<Arc<dyn Fn(FullTypedAnyStreamEvent) + Send + Sync>>,
 }
 
 impl LoomTool {
@@ -163,7 +164,7 @@ impl LoomTool {
         }
     }
 
-    pub fn with_cancellation(mut self, c: loom_cli_types::RunCancellation) -> Self {
+    pub fn with_cancellation(mut self, c: tool_core::active_operation::RunCancellation) -> Self {
         self.cancellation = Some(c);
         self
     }
@@ -175,7 +176,7 @@ impl LoomTool {
 
     pub fn with_event_sender(
         mut self,
-        sender: Arc<dyn Fn(FullAnyStreamEvent) + Send + Sync>,
+        sender: Arc<dyn Fn(FullTypedAnyStreamEvent) + Send + Sync>,
     ) -> Self {
         self.any_stream_event_sender = Some(sender);
         self
@@ -185,17 +186,18 @@ impl LoomTool {
 #[async_trait]
 impl CodingTool for LoomTool {
     async fn execute(&self, prompt: &str, working_dir: &Path) -> Result<TurnResult, ToolError> {
-        use loom::agent_run::{RunCmd, RunCompletion, RunOptions};
+        use loom::cli_run::{RunOptions};
+        use loom::agent_run::RunCmd;
         use loom_llm::message::UserContent;
 
         let tool_summaries: Arc<Mutex<Vec<ToolCallSummary>>> =
             Arc::new(Mutex::new(Vec::new()));
 
-        let on_event: Option<Box<dyn FnMut(FullAnyStreamEvent) + Send>> =
+        let on_event: Option<Box<dyn FnMut(FullTypedAnyStreamEvent) + Send>> =
             if let Some(ref sender) = self.any_stream_event_sender {
                 let sender = sender.clone();
                 let summaries = tool_summaries.clone();
-                Some(Box::new(move |ev: FullAnyStreamEvent| {
+                Some(Box::new(move |ev: FullTypedAnyStreamEvent| {
                     // Convert full event to cli_types event for summary collection
                     if let Some(cli_ev) = loom::agent_run::to_loom_any_stream_event(&ev) {
                         collect_tool_summary(&cli_ev, &summaries);
@@ -213,7 +215,7 @@ impl CodingTool for LoomTool {
                     },
                 );
                 let summaries = tool_summaries.clone();
-                Some(Box::new(move |ev: FullAnyStreamEvent| {
+                Some(Box::new(move |ev: FullTypedAnyStreamEvent| {
                     if let Some(cli_ev) = loom::agent_run::to_loom_any_stream_event(&ev) {
                         collect_tool_summary(&cli_ev, &summaries);
                         original(cli_ev);
@@ -243,11 +245,11 @@ impl CodingTool for LoomTool {
             debug_llm: false,
             any_stream_event_sender: self.any_stream_event_sender.as_ref().map(|sender| {
                 let sender = sender.clone();
-                Arc::new(move |ev: loom_cli_types::AnyStreamEvent| {
+                Arc::new(move |ev: loom_stream::TypedAnyStreamEvent| {
                     // Convert cli_types event to full event (best-effort, only React supported)
-                    let full_ev = FullAnyStreamEvent::from_loom(ev);
+                    let full_ev = FullTypedAnyStreamEvent::from_loom(ev);
                     sender(full_ev);
-                }) as Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>
+                }) as Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>
             }),
             bash_executor: None,
             extra_tools: None,
@@ -282,7 +284,6 @@ impl CodingTool for LoomTool {
                 work_summary: None,
             }),
             RunCompletion::Cancelled => Err(ToolError::Aborted),
-            RunCompletion::Error(e) => Err(ToolError::ExecutionFailed(format!("agent error: {}", e.0))),
         }
     }
 
@@ -310,10 +311,10 @@ pub fn shell_tool_args(tool_name: &str) -> Vec<String> {
 /// Extract tool name + result preview from `StreamEvent::ToolEnd` events
 /// into a shared summary list for the goal runner to display after each turn.
 fn collect_tool_summary(
-    ev: &AnyStreamEvent,
+    ev: &TypedAnyStreamEvent,
     summaries: &Arc<Mutex<Vec<ToolCallSummary>>>,
 ) {
-    if let AnyStreamEvent::React(StreamEvent::ToolEnd { name, result, .. }) = ev {
+    if let TypedAnyStreamEvent::React(StreamEvent::ToolEnd { name, result, .. }) = ev {
         let preview = loom_stream_display::tool_summary::truncate(
             result.lines().next().unwrap_or(result),
             80,

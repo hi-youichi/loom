@@ -86,7 +86,7 @@ pub struct TotRunner {
     runnable_config: Option<RunnableConfig>,
     system_prompt: Option<String>,
     cancellation: Option<CancellationToken>,
-    any_stream_event_sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>>,
+    any_stream_event_sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
 }
 
 /// Wraps Arc<dyn LlmClient> to share one LLM between ThinkExpandNode and potential future nodes.
@@ -116,7 +116,7 @@ impl TotRunner {
         self
     }
 
-    pub fn with_any_stream_event_sender(mut self, sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>>) -> Self {
+    pub fn with_any_stream_event_sender(mut self, sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>) -> Self {
         self.any_stream_event_sender = sender;
         self
     }

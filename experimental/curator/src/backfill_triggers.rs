@@ -21,7 +21,7 @@
 use crate::review_tool_gate::ReviewToolGate;
 use crate::skill_registry::SkillRegistry;
 use agent::agent::{Agent, AgentEvent};
-use loom_react_config::ReactBuildConfig;
+use agent::ReactBuildConfig;
 use serde::Deserialize;
 use std::path::Path;
 use tracing::{info, warn};

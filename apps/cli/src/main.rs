@@ -35,7 +35,7 @@ use tokio::sync::Notify;
 use args::{AcpCmd, Args, Command as Cmd, GotArgs};
 use bootstrap::{init_logging, preserve_shell_env, print_config_report};
 use display_limits::max_reply_len;
-use loom_cli_types::RunCancellation;
+use tool_core::active_operation::RunCancellation;
 use run_flow::{
     build_run_options, output_config, resolve_user_message, run_interactive_mode,
     run_single_turn_mode,

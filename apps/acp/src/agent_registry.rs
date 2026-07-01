@@ -4,7 +4,7 @@
 //! Each ACP Session Mode maps 1:1 to a Loom Agent Profile.
 
 use agent_client_protocol::schema::v1::{SessionMode, SessionModeId, SessionModeState};
-use loom_react_config::profile::{list_available_profiles, resolve_profile, AgentProfile, ProfileSummary};
+use agent::profile::{list_available_profiles, resolve_profile, AgentProfile, ProfileSummary};
 
 #[derive(Debug, Clone)]
 pub struct AgentRegistry {

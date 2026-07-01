@@ -1,10 +1,12 @@
 //! Tests for InvokeAgentTool.
 
+#![allow(dead_code, unused_imports)]
+
 use std::sync::Arc;
 
 use super::*;
-use loom_react_config::build_config_from_profile;
-use loom_react_config::profile::resolve_profile;
+use crate::tools::invoke_agent::build_config::build_config_from_profile;
+use crate::profile::resolve_profile;
 
 fn make_tool() -> InvokeAgentTool {
     InvokeAgentTool::new(Arc::new(ReactBuildConfig::from_env()), Some(3))
@@ -160,7 +162,7 @@ async fn explore_agent_resolves_light_tier_model() {
         light_model_id: "anthropic/claude-haiku-4".to_string(),
     };
     let resolved =
-        loom_react_config::resolve_tier_and_build_config_with_resolver(&sub_config, &resolver).await;
+        crate::agent::react::tier_apply::resolve_tier_and_build_config_with_resolver(&sub_config, &resolver).await;
 
     assert_eq!(
         resolved.model.as_deref(),

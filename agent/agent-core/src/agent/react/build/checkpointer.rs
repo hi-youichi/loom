@@ -3,7 +3,7 @@ use std::sync::Arc;
 use loom_graph_core::GraphError;
 use checkpoint::{Checkpointer, JsonSerializer, RunnableConfig};
 use checkpoint_sqlite_store::SqliteSaver;
-use loom_cli_types::ReActState;
+use loom_stream::state::ReActState;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 

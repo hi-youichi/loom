@@ -1,11 +1,10 @@
-﻿//! No-op event mapper.
+//! No-op event mapper.
 //!
 //! The streaming handler no longer displays intermediate act/tool phases.
 //! This module is kept as a thin adapter to satisfy the agent run callback signature.
 
 use std::sync::Arc;
 
-use loom::agent_run::AnyStreamEvent;
 use tokio::sync::mpsc;
 
 use crate::streaming::message_handler::StreamCommand;
@@ -19,7 +18,7 @@ impl StreamEventMapper {
         Arc::new(Self { _tx: tx })
     }
 
-    pub(crate) fn boxed_callback(self: &Arc<Self>) -> Box<dyn FnMut(AnyStreamEvent) + Send> {
+    pub(crate) fn boxed_callback(self: &Arc<Self>) -> Box<dyn FnMut(loom::agent_run::TypedAnyStreamEvent) + Send> {
         let _inner = Arc::clone(self);
         Box::new(move |_ev| {
             // Intentionally empty: no intermediate display.

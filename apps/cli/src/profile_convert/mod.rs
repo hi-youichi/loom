@@ -5,7 +5,7 @@ pub mod error;
 
 use std::path::PathBuf;
 
-use crate::profile::{resolve_profile, AgentProfile};
+use agent::profile::{resolve_profile, AgentProfile};
 
 pub use error::ConvertError;
 

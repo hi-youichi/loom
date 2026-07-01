@@ -5,7 +5,7 @@
 
 use super::curator::{Curator, CuratorConfig};
 use super::skill_registry::{default_path as skills_default_path, SkillRegistry};
-use loom_react_config::ReactBuildConfig;
+use agent::ReactBuildConfig;
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 use tracing::{info, warn};

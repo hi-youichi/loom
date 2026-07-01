@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use loom_graph_core::{LoggingNodeMiddleware, StateGraph};
-use loom_cli_types::ReActState;
+use loom_stream::state::ReActState;
 
 pub trait WithNodeLogging {
     fn with_node_logging(self) -> Self;

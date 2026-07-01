@@ -1,11 +1,11 @@
 //! Agent Profile — helpers that depend on `RunOptions`.
 //
-//! The core profile types and functions live in `loom_react_config::profile`.
+//! The core profile types and functions live in `agent::profile`.
 //! Consumers should import directly from that crate.
 
-use loom_react_config::profile::{load_profile_by_name, AgentProfile, ProfileSource};
+use agent::profile::{load_profile_by_name, AgentProfile, ProfileSource};
 
-use loom_cli_types::RunOptions;
+use crate::cli_run::RunOptions;
 
 /// Load profile from RunOptions when `--agent` / `-P` is set: built-in agents (compile-time) or
 /// resolve_named_profile. When `agent` is unset, returns [`None`] (no implicit default profile).
@@ -228,7 +228,7 @@ mod tests {
         let empty = tempfile::tempdir().unwrap();
         let _ = std::env::set_current_dir(empty.path());
 
-        let result = loom_react_config::profile::resolve_named_profile("custom-agent");
+        let result = agent::profile::resolve_named_profile("custom-agent");
 
         if let Some(d) = prev_dir {
             let _ = std::env::set_current_dir(d);

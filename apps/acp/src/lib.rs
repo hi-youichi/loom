@@ -18,7 +18,7 @@
 //! - **Agent**: [`LoomAcpAgent`] implements ACP's `Agent` trait and forwards protocol requests to session, content parsing, and Loom execution.
 //! - **Session**: [`SessionStore`] maintains session_id ↔ thread_id, working_directory, and per-session cancel flag.
 //! - **Content**: [`content_blocks_to_message`] turns ACP ContentBlock list into a single user message string.
-//! - **Stream bridge**: [`stream_bridge`] converts Loom's [`loom::AnyStreamEvent`] into ACP SessionUpdate and sends them.
+//! - **Stream bridge**: [`stream_bridge`] converts Loom's [`loom::TypedAnyStreamEvent`] into ACP SessionUpdate and sends them.
 //!
 //! ### Diagram 1: Process and protocol layers
 //!
@@ -46,7 +46,7 @@
 //! |         v           v              v                    v                    |  |
 //! |  +----------+ +----------+ +----------------+ +------------------+           |  |
 //! |  | Session  | | Content  | | StreamBridge   | | (connection      | ----------+  |
-//! |  | Store    | | Parser   | | AnyStreamEvent | | session/update   |             |
+//! |  | Store    | | Parser   | | TypedAnyStreamEvent | | session/update   |             |
 //! |  |          | |          | | -> StreamUpdate| | request_permission|             |
 //! |  +----------+ +----------+ +----------------+ +------------------+             |
 //! |         |           |              |                                              |
@@ -55,7 +55,7 @@
 //! |                     v                                                             |
 //! |  +-------------------------------------------------------------------------+     |
 //! |  |  Loom   loom::run_agent_with_options / build_react_config              |     |
-//! |  |  - RunOptions, RunCmd, on_event(AnyStreamEvent) -> reply                 |     |
+//! |  |  - RunOptions, RunCmd, on_event(TypedAnyStreamEvent) -> reply                 |     |
 //! |  +-------------------------------------------------------------------------+     |
 //! |         |  Tools MCP(new_session/config) / local; graph execution -> StreamBridge  |
 //! |         |  When permission needed: connection request_permission -> execute or deny |
@@ -118,7 +118,7 @@
 //!          |                |        |   updates()      |
 //!          v                v        | StreamUpdate     |
 //!    +------------------------------------------------------------------+
-//!    |  loom crate   RunOptions, RunCmd, AnyStreamEvent, build_react_config
+//!    |  loom crate   RunOptions, RunCmd, TypedAnyStreamEvent, build_react_config
 //!    |  tools from MCP (new_session) / config                           |
 //!    +------------------------------------------------------------------+
 //! ```
@@ -129,7 +129,7 @@
 //!   Loom graph                on_event callback           stream_bridge           connection
 //!   (StreamEvent)                  |                         |                        |
 //!        |                          |                         |                        |
-//!        | AnyStreamEvent           |                         |                        |
+//!        | TypedAnyStreamEvent           |                         |                        |
 //!        |------------------------->| loom_event_to_updates() |                        |
 //!        |                          |------------------------>|                        |
 //!        |                          |                         | Vec<StreamUpdate>      |

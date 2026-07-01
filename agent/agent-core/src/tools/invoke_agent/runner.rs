@@ -5,10 +5,10 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
-use loom_react_config::build_config_from_profile;
-use loom_react_config::profile::resolve_profile;
-use loom_react_config::ReactBuildConfig;
-use loom_react_config::resolve_tier_and_build_config;
+use crate::tools::invoke_agent::build_config::build_config_from_profile;
+use crate::profile::resolve_profile;
+use crate::ReactBuildConfig;
+use crate::agent::react::tier_apply::resolve_tier_and_build_config;
 use crate::agent::react::build::build_react_runner;
 
 /// Build sub-agent config, resolve model tier, construct ReactRunner, and execute.
@@ -142,14 +142,7 @@ pub(super) async fn build_and_run_sub_agent(
     tracing::debug!(agent = %agent_name, "Building React runner");
     let child_depth = ctx.map_or(1u32, |c| c.depth + 1);
     let loom_sender = ctx.and_then(|c| c.any_stream_event_sender.clone());
-    let cli_sender: Option<Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>> =
-        loom_sender.as_ref().map(|s| {
-            let s = s.clone();
-            Arc::new(move |ev: loom_cli_types::AnyStreamEvent| {
-                let val = serde_json::to_value(&ev).unwrap_or_default();
-                s(loom_stream::AnyStreamEvent::React(val));
-            }) as Arc<dyn Fn(loom_cli_types::AnyStreamEvent) + Send + Sync>
-        });
+    let cli_sender = loom_sender.clone();
     let runner = build_react_runner(&sub_config, None, false, None, cli_sender)
         .await
         .map_err(|e| {
@@ -164,7 +157,7 @@ pub(super) async fn build_and_run_sub_agent(
     let agent_name_for_event = agent_name.to_string();
     let start = std::time::Instant::now();
 
-    let on_event = Some(move |event: loom_stream::StreamEvent<loom_cli_types::ReActState>| {
+    let on_event = Some(move |event: loom_stream::StreamEvent<loom_stream::state::ReActState>| {
         match &event {
             loom_stream::StreamEvent::TaskStart { .. }
             | loom_stream::StreamEvent::TaskEnd { .. }
@@ -182,8 +175,7 @@ pub(super) async fn build_and_run_sub_agent(
             _ => {}
         }
         if let Some(ref sender) = loom_sender {
-            let val = serde_json::to_value(&event).unwrap_or_default();
-            sender(loom_stream::AnyStreamEvent::React(val));
+            sender(loom_stream::TypedAnyStreamEvent::React(event.clone()));
         }
     });
 

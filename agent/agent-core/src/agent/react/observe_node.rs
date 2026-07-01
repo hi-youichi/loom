@@ -7,7 +7,7 @@ use loom_graph_core::GraphError;
 use loom_graph_core::Next;
 use checkpoint::uuid6;
 use loom_llm::message::{message_summary, Message};
-use loom_cli_types::ReActState;
+use loom_stream::state::ReActState;
 use tool_core::ToolCallContent;
 use loom_graph_core::Node;
 

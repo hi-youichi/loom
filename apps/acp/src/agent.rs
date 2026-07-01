@@ -26,7 +26,9 @@ use loom_stream::state::ReActState;
 
 use chrono::DateTime;
 use config::load_full_config;
-use loom::agent_run::{AnyStreamEvent, RunCmd, RunCompletion, RunOptions, RunError, run_agent_with_options};
+use loom::agent_run::{run_agent_with_options, RunCmd, RunError};
+use loom::cli_run::{RunCompletion, RunOptions};
+use loom::agent_run::TypedAnyStreamEvent;
 use rusqlite::Connection;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -187,7 +189,7 @@ impl LoomAcpAgent {
     async fn resolve_model_with_tier_awareness(
         &self,
         session_config: &crate::session::SessionConfig,
-    ) -> loom_cli_types::ResolvedModelConfig {
+    ) -> loom::cli_run::ResolvedModelConfig {
         let start_time = std::time::Instant::now();
 
         if let Some(ref acp_model) = session_config.model {
@@ -227,12 +229,12 @@ impl LoomAcpAgent {
                         "Starting tier-based model resolution"
                     );
 
-                    let mut config = loom_react_config::ReactBuildConfig::from_env();
+                    let mut config = agent::ReactBuildConfig::from_env();
                     config.model_tier = Some(tier);
-                    let resolved_config = loom_react_config::resolve_tier_and_build_config(&config).await;
+                    let resolved_config = agent::resolve_tier_and_build_config(&config).await;
 
                     if resolved_config.model.is_some() {
-                        let resolved = loom_cli_types::ResolvedModelConfig {
+                        let resolved = loom::cli_run::ResolvedModelConfig {
                             model: resolved_config.model.clone(),
                             provider: resolved_config.llm_provider.clone(),
                             base_url: resolved_config.openai_base_url.clone(),
@@ -287,7 +289,7 @@ impl LoomAcpAgent {
                             return resolved;
                         }
                     }
-                    return loom_cli_types::ResolvedModelConfig {
+                    return loom::cli_run::ResolvedModelConfig {
                         model: p.model.clone(),
                         provider: Some(p.name.clone()),
                         base_url: p.base_url.clone(),
@@ -715,19 +717,19 @@ Ok(SetSessionModeResponse::new())
                         let working_folder = entry
                             .working_directory
                             .clone()
-                            .unwrap_or_else(|| PathBuf::from(loom_cli_types::DEFAULT_WORKING_FOLDER));
+                            .unwrap_or_else(|| PathBuf::from(loom::cli_run::DEFAULT_WORKING_FOLDER));
 
                         let resolved_goal = self.resolve_model_with_tier_awareness(&entry.session_config).await;
                         let goal_ctx_window = resolve_context_window_size(resolved_goal.model.as_deref()).await;
 
-                        let event_sender: Option<std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>> =
+                        let event_sender: Option<std::sync::Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>> =
                             self.session_update_tx.clone().map(|sender| {
                                 let session_id = args.session_id.clone();
-                                std::sync::Arc::new(move |ev: AnyStreamEvent| {
+                                std::sync::Arc::new(move |ev: loom_stream::TypedAnyStreamEvent| {
                                     let notifier = SessionNotifier::new(sender.clone(), session_id.clone())
                                         .with_context_window_size(goal_ctx_window);
-                                    notifier.try_send_event(&ev);
-                                }) as std::sync::Arc<dyn Fn(AnyStreamEvent) + Send + Sync>
+                                    notifier.try_send_stream_event(&ev);
+                                }) as std::sync::Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>
                             });
 
                         let cancel = tokio_util::sync::CancellationToken::new();
@@ -821,7 +823,7 @@ Ok(SetSessionModeResponse::new())
         let working_folder = entry
             .working_directory
             .clone()
-            .unwrap_or_else(|| PathBuf::from(loom_cli_types::DEFAULT_WORKING_FOLDER));
+            .unwrap_or_else(|| PathBuf::from(loom::cli_run::DEFAULT_WORKING_FOLDER));
 
         let resolved = self
             .resolve_model_with_tier_awareness(&entry.session_config)
@@ -884,23 +886,23 @@ Ok(SetSessionModeResponse::new())
         let session_id = args.session_id.clone();
         let tx = self.session_update_tx.clone();
         let usage_acc: Arc<Mutex<TurnUsage>> = Arc::new(Mutex::new(TurnUsage::default()));
-        let on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>> = {
+        let on_event: Option<Box<dyn FnMut(TypedAnyStreamEvent) + Send>> = {
             let acc = usage_acc.clone();
             match tx {
                 Some(sender) => {
                     let notifier = SessionNotifier::new(sender, session_id)
                         .with_context_window_size(context_window_size);
-                    let closure = move |ev: AnyStreamEvent| {
+                    let closure = move |ev: TypedAnyStreamEvent| {
                         capture_turn_usage(&ev, &acc);
                         notifier.try_send_event(&ev);
                     };
-                    Some(Box::new(closure) as Box<dyn FnMut(AnyStreamEvent) + Send>)
+                    Some(Box::new(closure) as Box<dyn FnMut(TypedAnyStreamEvent) + Send>)
                 }
                 None => {
-                    let closure = move |ev: AnyStreamEvent| {
+                    let closure = move |ev: TypedAnyStreamEvent| {
                         capture_turn_usage(&ev, &acc);
                     };
-                    Some(Box::new(closure) as Box<dyn FnMut(AnyStreamEvent) + Send>)
+                    Some(Box::new(closure) as Box<dyn FnMut(TypedAnyStreamEvent) + Send>)
                 }
             }
         };
@@ -924,12 +926,8 @@ Ok(SetSessionModeResponse::new())
                 Ok(resp)
             }
             Ok(RunCompletion::Cancelled) => Ok(PromptResponse::new(StopReason::Cancelled)),
-            Ok(RunCompletion::Error(e)) => {
-                tracing::error!(session_id = %args.session_id, error = %e, "run_agent errored");
-                Ok(PromptResponse::new(StopReason::EndTurn))
-            }
             Err(e) => {
-                tracing::error!(session_id = %args.session_id, error = %e, "run_agent failed");
+                tracing::error!(session_id = %args.session_id, error = %e, "run_agent errored");
                 Err(map_run_error(e))
             }
         }
@@ -1161,7 +1159,7 @@ Ok(SetSessionModeResponse::new())
                 // Convert cwd: Option<String> to PathBuf string (use default if None)
                 let cwd_str = s
                     .cwd
-                    .unwrap_or_else(|| loom_cli_types::DEFAULT_WORKING_FOLDER.to_string());
+                    .unwrap_or_else(|| loom::cli_run::DEFAULT_WORKING_FOLDER.to_string());
                 let cwd_path = std::path::PathBuf::from(&cwd_str);
 
                 let mut session_json = serde_json::json!({
@@ -1447,16 +1445,16 @@ where
     }
 }
 
-fn extract_llm_usage_from_any(ev: &AnyStreamEvent) -> Option<(u32, u32, u32, Option<u32>)> {
+fn extract_llm_usage_from_any(ev: &TypedAnyStreamEvent) -> Option<(u32, u32, u32, Option<u32>)> {
     match ev {
-        AnyStreamEvent::React(e) => extract_llm_usage(e),
-        AnyStreamEvent::Dup(e) => extract_llm_usage(e),
-        AnyStreamEvent::Tot(e) => extract_llm_usage(e),
-        AnyStreamEvent::Got(e) => extract_llm_usage(e),
+        TypedAnyStreamEvent::React(e) => extract_llm_usage(e),
+        TypedAnyStreamEvent::Dup(e) => extract_llm_usage(e),
+        TypedAnyStreamEvent::Tot(e) => extract_llm_usage(e),
+        TypedAnyStreamEvent::Got(e) => extract_llm_usage(e),
     }
 }
 
-fn capture_turn_usage(ev: &AnyStreamEvent, acc: &Mutex<TurnUsage>) {
+fn capture_turn_usage(ev: &TypedAnyStreamEvent, acc: &Mutex<TurnUsage>) {
     if let Some((prompt, completion, total, cached)) = extract_llm_usage_from_any(ev) {
         let mut a = acc.lock().unwrap();
         a.input_tokens += prompt as u64;
@@ -1922,12 +1920,12 @@ mod tests {
 
     #[test]
     fn test_capture_turn_usage_accumulates() {
-        use loom_cli_types::ReActState;
+        use ReActState;
         use loom_stream::StreamEvent;
 
         let acc = Arc::new(Mutex::new(TurnUsage::default()));
 
-        let ev1 = AnyStreamEvent::React(StreamEvent::<ReActState>::Usage {
+        let ev1 = TypedAnyStreamEvent::React(StreamEvent::<ReActState>::Usage {
             prompt_tokens: 500,
             completion_tokens: 100,
             total_tokens: 600,
@@ -1935,7 +1933,7 @@ mod tests {
             prefill_duration: None,
             decode_duration: None,
         });
-        let ev2 = AnyStreamEvent::React(StreamEvent::<ReActState>::Usage {
+        let ev2 = TypedAnyStreamEvent::React(StreamEvent::<ReActState>::Usage {
             prompt_tokens: 800,
             completion_tokens: 200,
             total_tokens: 1000,
@@ -1956,12 +1954,12 @@ mod tests {
 
     #[test]
     fn test_capture_turn_usage_ignores_non_usage() {
-        use loom_cli_types::ReActState;
+        use ReActState;
         use loom_stream::StreamEvent;
 
         let acc = Arc::new(Mutex::new(TurnUsage::default()));
 
-        let ev = AnyStreamEvent::React(StreamEvent::<ReActState>::TaskStart {
+        let ev = TypedAnyStreamEvent::React(StreamEvent::<ReActState>::TaskStart {
             node_id: "test".to_string(),
             namespace: None,
         });

@@ -69,9 +69,7 @@ members = [
 
 
 
-    "loom-react-config",
 
-    "loom-cli-types",
 
     "experimental/memory-v2",
     "experimental/vector-store",

@@ -4,8 +4,8 @@ use crate::args::GoalArgs;
 use crate::goal_runner::{
     GoalRunner, LoomTool, ShellTool, resume, write_mcp_config,
 };
-use loom_cli_types::goal_runner::GoalOutcome;
-use loom_cli_types::RunCancellation;
+use agent::goal_runner::GoalOutcome;
+use tool_core::active_operation::RunCancellation;
 use task_core::TaskDb;
 use tokio_util::sync::CancellationToken;
 

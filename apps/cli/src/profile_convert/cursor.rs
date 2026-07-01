@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::profile::AgentProfile;
+use agent::profile::AgentProfile;
 use model_spec_core::ModelTier;
 
 use super::{collect_constraints, ExportOutput, format_constraints_section, role_content};

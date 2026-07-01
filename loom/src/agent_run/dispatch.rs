@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use agent::run_types::{AgentRunResult, RunCompletion, RunOptions};
+use crate::cli_run::{AgentRunResult, RunCompletion, RunOptions};
 use agent::RunnerError;
 use agent::agent::react::build::{build_react_runner, BuildRunnerError};
 use agent::agent::react::ReactRunner;
@@ -18,7 +18,7 @@ use crate::agent_run::stream_convert::{
     stream_event_to_format_a, stream_event_to_protocol_envelope, ProtocolEventEnvelope,
 };
 use stream_event::EnvelopeState;
-use loom_react_config::ReactBuildConfig;
+use agent::ReactBuildConfig;
 use loom_stream::StreamEvent;
 use tool_core::active_operation::RunCancellation;
 use loom_stream::state::ReActState;
@@ -58,20 +58,20 @@ pub enum AnyRunner {
 }
 
 #[derive(Debug)]
-pub enum AnyStreamEvent {
+pub enum TypedAnyStreamEvent {
     React(StreamEvent<ReActState>),
     Dup(StreamEvent<DupState>),
     Tot(StreamEvent<TotState>),
     Got(StreamEvent<GotState>),
 }
 
-impl AnyStreamEvent {
+impl TypedAnyStreamEvent {
     pub fn to_format_a(&self) -> Result<Value, serde_json::Error> {
         match self {
-            AnyStreamEvent::React(ev) => stream_event_to_format_a(ev),
-            AnyStreamEvent::Dup(ev) => stream_event_to_format_a(ev),
-            AnyStreamEvent::Tot(ev) => stream_event_to_format_a(ev),
-            AnyStreamEvent::Got(ev) => stream_event_to_format_a(ev),
+            TypedAnyStreamEvent::React(ev) => stream_event_to_format_a(ev),
+            TypedAnyStreamEvent::Dup(ev) => stream_event_to_format_a(ev),
+            TypedAnyStreamEvent::Tot(ev) => stream_event_to_format_a(ev),
+            TypedAnyStreamEvent::Got(ev) => stream_event_to_format_a(ev),
         }
     }
 
@@ -80,10 +80,10 @@ impl AnyStreamEvent {
         state: &mut EnvelopeState,
     ) -> Result<ProtocolEventEnvelope, serde_json::Error> {
         match self {
-            AnyStreamEvent::React(ev) => stream_event_to_protocol_envelope(ev, state),
-            AnyStreamEvent::Dup(ev) => stream_event_to_protocol_envelope(ev, state),
-            AnyStreamEvent::Tot(ev) => stream_event_to_protocol_envelope(ev, state),
-            AnyStreamEvent::Got(ev) => stream_event_to_protocol_envelope(ev, state),
+            TypedAnyStreamEvent::React(ev) => stream_event_to_protocol_envelope(ev, state),
+            TypedAnyStreamEvent::Dup(ev) => stream_event_to_protocol_envelope(ev, state),
+            TypedAnyStreamEvent::Tot(ev) => stream_event_to_protocol_envelope(ev, state),
+            TypedAnyStreamEvent::Got(ev) => stream_event_to_protocol_envelope(ev, state),
         }
     }
 
@@ -95,17 +95,17 @@ impl AnyStreamEvent {
         event.to_value()
     }
 
-    pub fn from_loom(ev: loom_cli_types::AnyStreamEvent) -> Self {
+    pub fn from_loom(ev: loom_stream::TypedAnyStreamEvent) -> Self {
         match ev {
-            loom_cli_types::AnyStreamEvent::React(e) => AnyStreamEvent::React(e),
-            _ => AnyStreamEvent::React(StreamEvent::Custom(serde_json::json!({"type": "noop"}))),
+            loom_stream::TypedAnyStreamEvent::React(e) => TypedAnyStreamEvent::React(e),
+            _ => TypedAnyStreamEvent::React(StreamEvent::Custom(serde_json::json!({"type": "noop"}))),
         }
     }
 }
 
-pub fn to_loom_any_stream_event(ev: &AnyStreamEvent) -> Option<loom_cli_types::AnyStreamEvent> {
+pub fn to_loom_any_stream_event(ev: &TypedAnyStreamEvent) -> Option<loom_stream::TypedAnyStreamEvent> {
     match ev {
-        AnyStreamEvent::React(e) => Some(loom_cli_types::AnyStreamEvent::React(e.clone())),
+        TypedAnyStreamEvent::React(e) => Some(loom_stream::TypedAnyStreamEvent::React(e.clone())),
         _ => None,
     }
 }
@@ -114,10 +114,10 @@ pub fn to_loom_any_stream_event(ev: &AnyStreamEvent) -> Option<loom_cli_types::A
 pub async fn run_agent(
     opts: &RunOptions,
     cmd: &RunCmd,
-    on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>>,
+    on_event: Option<Box<dyn FnMut(TypedAnyStreamEvent) + Send>>,
     llm_override: Option<Box<dyn LlmClient>>,
 ) -> Result<RunCompletion, RunError> {
-    let loom_opts = opts.to_cli_run_options();
+    let loom_opts = opts.clone();
     let (mut config, _resolved_agent) = build_react_config(&loom_opts);
     if opts.debug_llm {
         eprintln!("========== [DEBUG-LLM] System Prompt ==========");
@@ -147,7 +147,7 @@ pub async fn run_agent(
 
     let runner = build_runner(&config, opts, cmd, llm_override).await?;
 
-    let on_event: Option<Arc<Mutex<Box<dyn FnMut(AnyStreamEvent) + Send>>>> =
+    let on_event: Option<Arc<Mutex<Box<dyn FnMut(TypedAnyStreamEvent) + Send>>>> =
         on_event.map(|b| Arc::new(Mutex::new(b)));
 
     let result = match &runner {
@@ -156,7 +156,7 @@ pub async fn run_agent(
             let on_ev = sink.map(|s| {
                 move |ev: StreamEvent<ReActState>| {
                     if let Ok(mut f) = s.lock() {
-                        f(AnyStreamEvent::React(ev.clone()));
+                        f(TypedAnyStreamEvent::React(ev.clone()));
                     }
                 }
             });
@@ -178,7 +178,7 @@ pub async fn run_agent(
             let on_ev = sink.map(|s| {
                 move |ev: StreamEvent<DupState>| {
                     if let Ok(mut f) = s.lock() {
-                        f(AnyStreamEvent::Dup(ev));
+                        f(TypedAnyStreamEvent::Dup(ev));
                     }
                 }
             });
@@ -198,7 +198,7 @@ pub async fn run_agent(
             let on_ev = sink.map(|s| {
                 move |ev: StreamEvent<TotState>| {
                     if let Ok(mut f) = s.lock() {
-                        f(AnyStreamEvent::Tot(ev));
+                        f(TypedAnyStreamEvent::Tot(ev));
                     }
                 }
             });
@@ -218,7 +218,7 @@ pub async fn run_agent(
             let on_ev = sink.map(|s| {
                 move |ev: StreamEvent<GotState>| {
                     if let Ok(mut f) = s.lock() {
-                        f(AnyStreamEvent::Got(ev));
+                        f(TypedAnyStreamEvent::Got(ev));
                     }
                 }
             });
@@ -263,7 +263,7 @@ pub async fn run_agent(
 pub async fn run_agent_with_options(
     opts: &RunOptions,
     cmd: &RunCmd,
-    on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>>,
+    on_event: Option<Box<dyn FnMut(TypedAnyStreamEvent) + Send>>,
 ) -> Result<RunCompletion, RunError> {
     let thread_id = opts.thread_id.clone();
     let root_span = match thread_id.as_deref() {
@@ -282,7 +282,7 @@ pub async fn run_agent_with_options(
 pub async fn run_agent_with_llm_override(
     opts: &RunOptions,
     cmd: &RunCmd,
-    on_event: Option<Box<dyn FnMut(AnyStreamEvent) + Send>>,
+    on_event: Option<Box<dyn FnMut(TypedAnyStreamEvent) + Send>>,
     llm_override: Option<Box<dyn LlmClient>>,
 ) -> Result<RunCompletion, RunError> {
     run_agent(opts, cmd, on_event, llm_override).await
@@ -294,7 +294,7 @@ pub async fn build_runner(
     cmd: &RunCmd,
     llm_override: Option<Box<dyn LlmClient>>,
 ) -> Result<AnyRunner, RunError> {
-    let config = loom_react_config::resolve_tier_and_build_config(config).await;
+    let config = agent::resolve_tier_and_build_config(config).await;
     let cancellation = opts.cancellation.as_ref().map(RunCancellation::token);
     let llm_override_provider: Option<Arc<dyn loom_llm::LlmProvider>> = llm_override.map(|llm| {
         Arc::new(loom_llm::client::FixedLlmProvider {
