@@ -171,7 +171,7 @@ impl Node<TotState> for ThinkEvaluateNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_memory::RunnableConfig;
+    use checkpoint::RunnableConfig;
     use loom_cli_types::ReActState;
     use loom_llm::ToolCall;
     use tokio::sync::mpsc;

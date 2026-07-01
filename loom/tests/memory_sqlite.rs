@@ -2,11 +2,12 @@
 
 mod init_logging;
 
-use loom_memory::{
+use checkpoint::{
     Checkpoint, CheckpointSource, Checkpointer, JsonSerializer,
-    KernelMetadata, RunnableConfig, SearchOptions, SqliteSaver, SqliteStore, Store,
+    KernelMetadata, RunnableConfig, SearchOptions, Store,
     CHECKPOINT_VERSION,
 };
+use sqlite_store::{SqliteSaver, SqliteStore};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;

@@ -3,10 +3,10 @@
 use std::sync::Arc;
 
 use loom_llm::LlmProvider;
-use loom_memory::{Checkpointer, RunnableConfig, Store};
+use checkpoint::{Checkpointer, RunnableConfig, Store};
 use loom_cli_types::ReActState;
 use tool_core::ToolRegistryLocked;
-use loom_memory::user_message::UserMessageStore;
+use sqlite_store::user_message::UserMessageStore;
 
 /// Optional configuration for [`super::run_agent`] and [`super::run_react_graph_stream`].
 ///

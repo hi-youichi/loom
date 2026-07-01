@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 # Core dependencies
 loom-graph = { path = "../loom-graph" }
+checkpoint = { path = "../foundation/checkpoint" }
 stream-event = { path = "../stream-event" }
 
 # Async runtime

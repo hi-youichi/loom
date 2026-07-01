@@ -24,7 +24,7 @@ fn to_agent_error(e: impl std::fmt::Display) -> GraphError {
 
 pub(crate) async fn build_tool_source(
     config: &ReactBuildConfig,
-    _store: &Option<Arc<dyn loom_memory::Store>>,
+    _store: &Option<Arc<dyn checkpoint::Store>>,
 ) -> Result<Arc<ToolRegistryLocked>, GraphError> {
     let working_folder_arc = config.working_folder.as_ref().map(|p| Arc::new(p.clone()));
 

@@ -6,7 +6,8 @@
 use async_trait::async_trait;
 use loom_graph::{Agent, AgentNode, StateGraph, END, START};
 use loom_llm::{error::GraphError, message::Message};
-use loom_memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
+use checkpoint::{Checkpointer, JsonSerializer, RunnableConfig};
+use sqlite_store::SqliteSaver;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::Path;

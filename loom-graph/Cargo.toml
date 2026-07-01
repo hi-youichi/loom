@@ -9,6 +9,7 @@ authors.workspace = true
 [dependencies]
 # Core dependencies
 stream-event = { path = "../stream-event" }
+checkpoint = { path = "../foundation/checkpoint" }
 
 # Async runtime
 tokio = { workspace = true, features = ["full"] }

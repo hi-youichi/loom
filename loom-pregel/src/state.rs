@@ -1,6 +1,6 @@
 //! Pregel checkpoint-backed state inspection types.
 
-use loom_graph::memory::Checkpoint;
+use checkpoint::Checkpoint;
 use crate::types::{ChannelName, ChannelValue, InterruptRecord, PendingWrite};
 
 /// Materialized runtime state loaded from a checkpoint.
@@ -54,7 +54,7 @@ pub struct BulkStateUpdateRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_graph::memory::Checkpoint;
+    use checkpoint::Checkpoint;
 
     fn create_minimal_checkpoint() -> Checkpoint<serde_json::Value> {
         Checkpoint {
@@ -62,8 +62,8 @@ mod tests {
             ts: "test-timestamp".to_string(),
             v: 1,
             user: (),
-            kernel: loom_graph::memory::KernelMetadata {
-                source: loom_graph::memory::CheckpointSource::default(),
+            kernel: checkpoint::KernelMetadata {
+                source: checkpoint::CheckpointSource::default(),
                 step: 5,
                 created_at: None,
                 parents: std::collections::HashMap::new(),
@@ -282,8 +282,8 @@ mod tests {
             ts: "test-timestamp".to_string(),
             v: 1,
             user: (),
-            kernel: loom_graph::memory::KernelMetadata {
-                source: loom_graph::memory::CheckpointSource::default(),
+            kernel: checkpoint::KernelMetadata {
+                source: checkpoint::CheckpointSource::default(),
                 step: 0,
                 created_at: None,
                 parents: std::collections::HashMap::new(),

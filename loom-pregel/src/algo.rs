@@ -3,7 +3,7 @@
 use std::collections::{hash_map::DefaultHasher, BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
-use loom_graph::memory::RunnableConfig;
+use checkpoint::RunnableConfig;
 use crate::cache::TaskCacheKey;
 use crate::channel::{build_channel, BoxedChannel};
 use crate::node::PregelGraph;
@@ -55,7 +55,7 @@ pub enum TaskOutcome {
 
 /// Prepares the next set of tasks from updated channels.
 pub fn prepare_next_tasks(
-    checkpoint: &loom_graph::memory::Checkpoint<serde_json::Value>,
+    checkpoint: &checkpoint::Checkpoint<serde_json::Value>,
     channels: &HashMap<ChannelName, BoxedChannel>,
     graph: &PregelGraph,
     step: u64,
@@ -109,7 +109,7 @@ pub fn pending_send_packet_id(value: &ChannelValue) -> Option<String> {
 
 /// Rebuilds interrupted tasks when a checkpoint already carries resume values.
 pub fn prepare_resume_tasks_from_interrupts(
-    checkpoint: &loom_graph::memory::Checkpoint<serde_json::Value>,
+    checkpoint: &checkpoint::Checkpoint<serde_json::Value>,
     channels: &HashMap<ChannelName, BoxedChannel>,
     graph: &PregelGraph,
     step: u64,
@@ -139,7 +139,7 @@ pub fn prepare_resume_tasks_from_interrupts(
 
 /// Applies task writes to channels and returns the channels updated this step.
 pub fn apply_writes(
-    checkpoint: &mut loom_graph::memory::Checkpoint<serde_json::Value>,
+    checkpoint: &mut checkpoint::Checkpoint<serde_json::Value>,
     channels: &mut HashMap<ChannelName, BoxedChannel>,
     tasks: &[ExecutableTask],
     graph: &PregelGraph,
@@ -270,7 +270,7 @@ pub fn snapshot_channels(channels: &HashMap<ChannelName, BoxedChannel>) -> serde
 
 /// Restores runtime channels from a checkpoint or from graph defaults.
 pub fn restore_channels_from_checkpoint(
-    checkpoint: &loom_graph::memory::Checkpoint<serde_json::Value>,
+    checkpoint: &checkpoint::Checkpoint<serde_json::Value>,
     graph: &PregelGraph,
 ) -> HashMap<ChannelName, BoxedChannel> {
     let mut channels = HashMap::new();
@@ -545,7 +545,7 @@ fn prepare_pull_tasks(
 
 fn prepare_push_tasks(
     tasks_by_id: &mut BTreeMap<TaskId, PreparedTask>,
-    checkpoint: &loom_graph::memory::Checkpoint<serde_json::Value>,
+    checkpoint: &checkpoint::Checkpoint<serde_json::Value>,
     graph: &PregelGraph,
     step: u64,
 ) {
@@ -627,13 +627,13 @@ mod tests {
         }
     }
 
-    fn create_test_checkpoint() -> loom_graph::memory::Checkpoint<serde_json::Value> {
-        loom_graph::memory::Checkpoint {
+    fn create_test_checkpoint() -> checkpoint::Checkpoint<serde_json::Value> {
+        checkpoint::Checkpoint {
             id: "test-checkpoint".to_string(),
             ts: "1234567890".to_string(),
             v: 2,
-            kernel: loom_graph::memory::KernelMetadata {
-                source: loom_graph::memory::CheckpointSource::default(),
+            kernel: checkpoint::KernelMetadata {
+                source: checkpoint::CheckpointSource::default(),
                 step: 0,
                 created_at: None,
                 parents: HashMap::new(),

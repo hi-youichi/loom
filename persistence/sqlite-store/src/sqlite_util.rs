@@ -6,7 +6,7 @@ const MEMORY_DB_FILENAME: &str = "memory.db";
 
 /// Returns the default memory DB path (`~/.loom/memory.db`).
 /// Creates the parent directory if missing. Falls back to `memory.db` (cwd-relative) if home is unavailable.
-pub(crate) fn default_memory_db_path() -> PathBuf {
+pub fn default_memory_db_path() -> PathBuf {
     let path = env_config::home::loom_home().join(MEMORY_DB_FILENAME);
     if let Some(parent) = path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {

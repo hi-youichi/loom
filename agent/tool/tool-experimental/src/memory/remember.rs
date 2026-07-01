@@ -2,7 +2,7 @@ use async_trait::async_trait;
 
 use serde_json::json;
 
-use loom_memory::{Namespace, Store};
+use checkpoint::{Namespace, Store};
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, Tool};
 
 /// Tool name for the remember operation.
@@ -17,7 +17,7 @@ pub use tool_core::tool_name::TOOL_REMEMBER;
 ///
 /// ```no_run
 /// use loom_tools::tools::{RememberTool, Tool};
-/// use loom_memory::{InMemoryStore, Namespace};
+/// use checkpoint::{InMemoryStore, Namespace};
 /// use std::sync::Arc;
 /// use serde_json::json;
 ///
@@ -59,7 +59,7 @@ impl RememberTool {
     ///
     /// ```
     /// use loom_tools::tools::RememberTool;
-    /// use loom_memory::{InMemoryStore, Namespace};
+    /// use checkpoint::{InMemoryStore, Namespace};
     /// use std::sync::Arc;
     ///
     /// let store = Arc::new(InMemoryStore::new());
@@ -114,12 +114,12 @@ impl Tool for RememberTool {
             .put(&self.namespace, key, &value)
             .await
             .map_err(|e| match e {
-                loom_memory::StoreError::NotFound => {
+                checkpoint::StoreError::NotFound => {
                     ToolSourceError::NotFound("key not found".to_string())
                 }
-                loom_memory::StoreError::Serialization(s) => ToolSourceError::InvalidInput(s),
-                loom_memory::StoreError::Storage(s) => ToolSourceError::Transport(s),
-                loom_memory::StoreError::EmbeddingError(s) => ToolSourceError::Transport(s),
+                checkpoint::StoreError::Serialization(s) => ToolSourceError::InvalidInput(s),
+                checkpoint::StoreError::Storage(s) => ToolSourceError::Transport(s),
+                checkpoint::StoreError::EmbeddingError(s) => ToolSourceError::Transport(s),
             })?;
 
         Ok(ToolCallContent::text("ok".to_string()))

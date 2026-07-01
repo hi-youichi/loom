@@ -41,7 +41,7 @@ fn build_review_react_config(resolved: &ResolvedModelConfig) -> ReactBuildConfig
 /// given thread, deserializes `ReActState`, and joins messages as
 /// `"User: ...\nAssistant: ...\nTool: ..."`.
 fn extract_session_text(thread_id: &str) -> Result<String, String> {
-    let db_path = loom_memory::default_memory_db_path();
+    let db_path = sqlite_store::default_memory_db_path();
     let conn = rusqlite::Connection::open(&db_path)
         .map_err(|e| format!("Failed to open database: {e}"))?;
     let mut stmt = conn
@@ -130,7 +130,7 @@ pub fn spawn_inprocess_review(
             &config,
         ));
 
-        let history = ReviewHistory::with_db_path(loom_memory::default_memory_db_path());
+        let history = ReviewHistory::with_db_path(sqlite_store::default_memory_db_path());
 
         match result {
             Ok(outcome) => {

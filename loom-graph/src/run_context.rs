@@ -33,7 +33,7 @@ use tokio_util::sync::CancellationToken;
 
 use stream_event::{StreamEvent, StreamMode, StreamWriter};
 use crate::managed::ManagedValue;
-use crate::memory::{RunnableConfig, Store};
+use checkpoint::{RunnableConfig, Store};
 
 /// Run context passed into nodes for streaming-aware execution.
 ///
@@ -52,7 +52,7 @@ use crate::memory::{RunnableConfig, Store};
 ///
 /// ```rust,no_run
 /// use loom_graph::RunContext;
-/// use loom_graph::memory::RunnableConfig;
+/// use checkpoint::RunnableConfig;
 ///
 /// let config = RunnableConfig::default();
 /// let mut ctx = RunContext::<String>::new(config);
@@ -258,7 +258,7 @@ where
 mod tests {
     use super::*;
     use crate::managed::ManagedValue;
-    use crate::memory;
+    use checkpoint;
     use std::sync::Arc;
     use tokio::sync::mpsc;
     use stream_event::StreamMode;
@@ -285,66 +285,66 @@ mod tests {
     struct MockStore;
     
     #[async_trait::async_trait]
-    impl crate::memory::Store for MockStore {
+    impl checkpoint::Store for MockStore {
         async fn get(
             &self,
-            _namespace: &memory::Namespace,
+            _namespace: &checkpoint::Namespace,
             _key: &str,
-        ) -> Result<Option<serde_json::Value>, memory::StoreError> {
+        ) -> Result<Option<serde_json::Value>, checkpoint::StoreError> {
             Ok(None)
         }
         
         async fn get_item(
             &self,
-            _namespace: &memory::Namespace,
+            _namespace: &checkpoint::Namespace,
             _key: &str,
-        ) -> Result<Option<memory::Item>, memory::StoreError> {
+        ) -> Result<Option<checkpoint::Item>, checkpoint::StoreError> {
             Ok(None)
         }
         
         async fn put(
             &self,
-            _namespace: &memory::Namespace,
+            _namespace: &checkpoint::Namespace,
             _key: &str,
             _value: &serde_json::Value,
-        ) -> Result<(), memory::StoreError> {
+        ) -> Result<(), checkpoint::StoreError> {
             Ok(())
         }
         
         async fn delete(
             &self,
-            _namespace: &memory::Namespace,
+            _namespace: &checkpoint::Namespace,
             _key: &str,
-        ) -> Result<(), memory::StoreError> {
+        ) -> Result<(), checkpoint::StoreError> {
             Ok(())
         }
         
         async fn list(
             &self,
-            _namespace: &memory::Namespace,
-        ) -> Result<Vec<String>, memory::StoreError> {
+            _namespace: &checkpoint::Namespace,
+        ) -> Result<Vec<String>, checkpoint::StoreError> {
             Ok(vec![])
         }
         
         async fn search(
             &self,
-            _namespace_prefix: &memory::Namespace,
-            _options: memory::SearchOptions,
-        ) -> Result<Vec<memory::SearchItem>, memory::StoreError> {
+            _namespace_prefix: &checkpoint::Namespace,
+            _options: checkpoint::SearchOptions,
+        ) -> Result<Vec<checkpoint::SearchItem>, checkpoint::StoreError> {
             Ok(vec![])
         }
         
         async fn list_namespaces(
             &self,
-            _options: memory::ListNamespacesOptions,
-        ) -> Result<Vec<memory::Namespace>, memory::StoreError> {
+            _options: checkpoint::ListNamespacesOptions,
+        ) -> Result<Vec<checkpoint::Namespace>, checkpoint::StoreError> {
             Ok(vec![])
         }
         
         async fn batch(
             &self,
-            _ops: Vec<memory::StoreOp>,
-        ) -> Result<Vec<memory::StoreOpResult>, memory::StoreError> {
+            _ops: Vec<checkpoint::StoreOp>,
+        ) -> Result<Vec<checkpoint::StoreOpResult>, checkpoint::StoreError> {
             Ok(vec![])
         }
     }

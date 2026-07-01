@@ -34,7 +34,7 @@ required-features = ["embedding"]
 
 [features]
 # LanceDB vector store for LanceStore (react_memory example). Disabled by default so `cargo test` does not pull in lancedb.
-embedding = ["loom/lance"]
+embedding = ["vector-store/lance"]
 
 [dependencies]
 loom = { path = "../loom" }
@@ -42,7 +42,9 @@ loom-graph = { path = "../loom-graph" }
 loom-llm = { path = "../loom-llm" }
 tool-core = { path = "../agent/tool/tool-core" }
 loom-stream = { path = "../loom-stream" }
-loom-memory = { path = "../loom-memory" }
+checkpoint = { path = "../foundation/checkpoint" }
+sqlite-store = { path = "../persistence/sqlite-store" }
+vector-store = { path = "../experimental/vector-store" }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 dotenv = { workspace = true }

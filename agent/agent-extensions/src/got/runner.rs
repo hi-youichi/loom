@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 
 
 use loom_graph::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
-use loom_memory::{CheckpointError, Checkpointer, RunnableConfig, Store};
+use checkpoint::{CheckpointError, Checkpointer, RunnableConfig, Store};
 use agent::runner_common;
 use loom_stream::StreamEvent;
 use tool_core::ToolRegistryLocked;

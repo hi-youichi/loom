@@ -11,12 +11,12 @@ use loom_graph::{
 
 use loom_llm::LlmProvider;
 use loom_llm::message::UserContent;
-use loom_memory::{Checkpointer, RunnableConfig, Store};
+use checkpoint::{Checkpointer, RunnableConfig, Store};
 use crate::runner_common;
 use loom_stream::state::ReActState;
 use loom_stream::StreamEvent;
 use tool_core::ToolRegistryLocked;
-use loom_memory::user_message::UserMessageStore;
+use sqlite_store::user_message::UserMessageStore;
 use tool_core::active_operation::RunCancellation;
 
 use super::error::RunError;

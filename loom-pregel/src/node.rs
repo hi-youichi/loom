@@ -7,7 +7,7 @@ use async_trait::async_trait;
 
 use tokio_util::sync::CancellationToken;
 use loom_graph::{GraphError, Interrupt};
-use loom_graph::memory::RunnableConfig;
+use checkpoint::RunnableConfig;
 use crate::channel::ChannelSpec;
 use crate::runtime::PregelRuntime;
 use crate::subgraph::{PregelSubgraph, SubgraphInvocation, SubgraphResult};

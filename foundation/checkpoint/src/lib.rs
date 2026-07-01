@@ -1,6 +1,7 @@
-//! # Memory: checkpointing and long-term store
+//! # Checkpoint: checkpointing and long-term store abstractions
 //!
-//! This module groups Loom's two persistence layers:
+//! This crate provides the persistence abstractions for Loom, aligned with
+//! LangGraph's `langgraph-checkpoint` package:
 //!
 //! - [`Checkpointer`] stores per-run snapshots for resume, replay, branching,
 //!   and inspection.
@@ -9,12 +10,14 @@
 //!
 //! ## Overview
 //!
-//! The memory module provides two distinct capabilities:
+//! The crate provides two distinct capabilities plus default in-memory
+//! implementations:
 //!
-//! 1. **Checkpointer** — Per-thread state snapshots for time-travel, branching, and resumable
-//!    conversations. Keys checkpoints by `(thread_id, checkpoint_ns, checkpoint_id)`.
-//! 2. **Store** — Cross-session key-value storage for long-term memory (preferences, facts, etc.).
-//!    Isolated by [`Namespace`] (e.g. `[user_id, "memories"]`). Optional vector search via LanceDB.
+//! 1. **Checkpointer** — Per-thread state snapshots for time-travel, branching,
+//!    and resumable conversations. Keys checkpoints by
+//!    `(thread_id, checkpoint_ns, checkpoint_id)`.
+//! 2. **Store** — Cross-session key-value storage for long-term memory
+//!    (preferences, facts, etc.). Isolated by [`Namespace`].
 //!
 //! ## Config
 //!
@@ -43,10 +46,14 @@
 //! - [`uuid6`] - Generate UUID version 6 checkpoint IDs
 
 pub mod checkpoint;
-pub mod checkpointer;  
+pub mod checkpointer;
 pub mod config;
 pub mod store;
 pub mod uuid6;
+
+mod in_memory_store;
+mod memory_saver;
+mod serializer;
 
 // Re-export core types
 pub use checkpoint::{
@@ -62,3 +69,10 @@ pub use store::{
     FilterOp, ListNamespacesOptions, MatchCondition, NamespaceMatchType, SearchOptions,
 };
 pub use uuid6::{uuid6, uuid6_with_params, Uuid6};
+
+// Default in-memory implementations
+pub use in_memory_store::InMemoryStore;
+pub use memory_saver::MemorySaver;
+pub use serializer::{
+    JsonSerializer, Serializer, TypedData, TypedSerializer, TYPE_BYTES, TYPE_JSON, TYPE_NULL,
+};

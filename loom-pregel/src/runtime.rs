@@ -13,7 +13,7 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use tokio_util::sync::CancellationToken;
 use loom_graph::GraphError;
-use loom_graph::memory::{
+use checkpoint::{
     Checkpoint, CheckpointError, CheckpointListItem, CheckpointSource, Checkpointer,
     RunnableConfig, Store,
 };

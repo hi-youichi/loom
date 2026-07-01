@@ -4,8 +4,8 @@
 //! state, along with the frontier metadata needed to resume execution or inspect
 //! history.
 
-use super::config::RunnableConfig;
-use super::uuid6::uuid6;
+use crate::config::RunnableConfig;
+use crate::uuid6::uuid6;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::SystemTime;
@@ -277,7 +277,7 @@ fn default_checkpoint_version() -> u32 {
 /// One persisted checkpoint snapshot.
 ///
 /// Checkpoints are keyed by `(thread_id, checkpoint_ns, checkpoint_id)` inside
-/// a [`crate::memory::Checkpointer`]. `channel_values` stores the user-visible
+/// a [`crate::Checkpointer`]. `channel_values` stores the user-visible
 /// state snapshot, while the version and pending-write fields preserve enough
 /// runtime context to continue execution or inspect lineage later.
 ///
@@ -330,7 +330,7 @@ pub struct CheckpointListItem {
     pub metadata: KernelMetadata,
 }
 
-/// Expanded checkpoint record returned by [`crate::memory::Checkpointer::get_tuple`].
+/// Expanded checkpoint record returned by [`crate::Checkpointer::get_tuple`].
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(bound = "S: serde::Serialize + serde::de::DeserializeOwned, M: Clone + Default + serde::Serialize + serde::de::DeserializeOwned")]
 pub struct CheckpointTuple<S, M = ()> {

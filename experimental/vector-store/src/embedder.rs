@@ -4,7 +4,7 @@
 
 use async_trait::async_trait;
 
-use crate::StoreError;
+use checkpoint::StoreError;
 
 /// Produces fixed-size float vectors from text. Used by [`crate::LanceStore`]
 /// for embedding value text on put and query text on search.

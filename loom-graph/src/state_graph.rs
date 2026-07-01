@@ -29,7 +29,7 @@ use crate::interrupt::InterruptHandler;
 use crate::node::Node;
 use crate::node_middleware::NodeMiddleware;
 use crate::retry::RetryPolicy;
-use crate::memory::{Checkpointer, Store};
+use checkpoint::{Checkpointer, Store};
 
 /// Type alias for metadata extractor closure used to extract checkpoint summaries from state.
 pub type MetadataExtractorFn<S> = Arc<dyn Fn(&S) -> Option<String> + Send + Sync>;

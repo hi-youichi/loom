@@ -13,7 +13,7 @@
 //! ## Example
 //!
 //! ```rust,ignore
-//! use loom_graph::memory::{Store, Namespace};
+//! use checkpoint::{Store, Namespace};
 //!
 //! // Single operations
 //! store.put(&namespace, "key1", &json!({"data": "value"})).await?;
@@ -37,7 +37,7 @@ use std::time::SystemTime;
 /// ## Example
 ///
 /// ```rust
-/// use loom_graph::memory::Namespace;
+/// use checkpoint::Namespace;
 ///
 /// let ns: Namespace = vec!["users".into(), "user123".into(), "memories".into()];
 /// ```
@@ -571,7 +571,7 @@ pub struct StoreSearchHit {
 /// ## Example
 ///
 /// ```rust,ignore
-/// use loom_graph::memory::{Store, Namespace, SearchOptions};
+/// use checkpoint::{Store, Namespace, SearchOptions};
 ///
 /// let ns: Namespace = vec!["user123".into(), "memories".into()];
 ///

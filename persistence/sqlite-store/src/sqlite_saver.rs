@@ -8,13 +8,13 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use rusqlite::params;
 
-use crate::{
+use checkpoint::{
     ChannelVersions, Checkpoint, CheckpointListItem, CheckpointMetadata, CheckpointSource,
     KernelMetadata, CHECKPOINT_VERSION,
 };
-use crate::{CheckpointError, Checkpointer};
-use crate::RunnableConfig;
-use crate::serializer::Serializer;
+use checkpoint::{CheckpointError, Checkpointer};
+use checkpoint::RunnableConfig;
+use checkpoint::Serializer;
 use std::collections::HashMap;
 
 fn source_to_str(s: &CheckpointSource) -> &'static str {
@@ -548,7 +548,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("test.db");
         let serializer: Arc<dyn Serializer<serde_json::Value>> =
-            Arc::new(crate::serializer::JsonSerializer);
+            Arc::new(checkpoint::JsonSerializer);
         let _saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
         assert!(db_path.exists());
     }
@@ -558,7 +558,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("rt.db");
         let serializer: Arc<dyn Serializer<serde_json::Value>> =
-            Arc::new(crate::serializer::JsonSerializer);
+            Arc::new(checkpoint::JsonSerializer);
         let saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
 
         let config = RunnableConfig {
@@ -645,7 +645,7 @@ mod tests {
     async fn list_returns_checkpoints() {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("list.db");
-        let serializer = Arc::new(crate::serializer::JsonSerializer)
+        let serializer = Arc::new(checkpoint::JsonSerializer)
             as Arc<dyn Serializer<serde_json::Value>>;
         let saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
 
@@ -697,7 +697,7 @@ mod tests {
     async fn get_tuple_missing_thread_id() {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("no_tid.db");
-        let serializer = Arc::new(crate::serializer::JsonSerializer)
+        let serializer = Arc::new(checkpoint::JsonSerializer)
             as Arc<dyn Serializer<serde_json::Value>>;
         let saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
         let config = RunnableConfig::default();
@@ -709,7 +709,7 @@ mod tests {
     async fn get_tuple_not_found() {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("empty.db");
-        let serializer = Arc::new(crate::serializer::JsonSerializer)
+        let serializer = Arc::new(checkpoint::JsonSerializer)
             as Arc<dyn Serializer<serde_json::Value>>;
         let saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
         let config = RunnableConfig {

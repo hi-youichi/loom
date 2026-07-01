@@ -93,7 +93,7 @@ impl Node<GotState> for PlanGraphNode {
     }
 
     async fn run(&self, state: GotState) -> Result<(GotState, Next), GraphError> {
-        let ctx = loom_graph::RunContext::new(loom_memory::RunnableConfig::default());
+        let ctx = loom_graph::RunContext::new(checkpoint::RunnableConfig::default());
         self.run_with_context(state, &ctx).await
     }
 
@@ -145,7 +145,7 @@ impl Node<GotState> for PlanGraphNode {
 mod tests {
     use super::*;
     use loom_llm::client::MockLlm;
-    use loom_memory::RunnableConfig;
+    use checkpoint::RunnableConfig;
     use tokio::sync::mpsc;
 
     #[test]

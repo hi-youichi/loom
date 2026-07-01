@@ -50,7 +50,7 @@ pub struct PregelLoop {
     /// Checkpoint namespace used for persistence and subgraph isolation.
     pub checkpoint_namespace: String,
     /// Latest persisted-or-in-memory checkpoint snapshot.
-    pub checkpoint: loom_graph::memory::Checkpoint<serde_json::Value>,
+    pub checkpoint: checkpoint::Checkpoint<serde_json::Value>,
     /// Materialized channel states for the current step.
     pub channels: HashMap<ChannelName, BoxedChannel>,
     /// Writes staged for the next barrier or loaded from checkpoint state.
@@ -68,7 +68,7 @@ impl PregelLoop {
     pub fn new(
         graph: Arc<PregelGraph>,
         checkpoint_namespace: String,
-        checkpoint: loom_graph::memory::Checkpoint<serde_json::Value>,
+        checkpoint: checkpoint::Checkpoint<serde_json::Value>,
         channels: HashMap<ChannelName, BoxedChannel>,
         config: PregelConfig,
     ) -> Self {
@@ -510,7 +510,7 @@ fn retain_unconsumed_interrupts(
 }
 
 fn push_pending_interrupt_record(
-    checkpoint: &mut loom_graph::memory::Checkpoint<serde_json::Value>,
+    checkpoint: &mut checkpoint::Checkpoint<serde_json::Value>,
     record: InterruptRecord,
     consumed_interrupt_ids: &HashSet<String>,
 ) {
@@ -529,7 +529,7 @@ fn push_pending_interrupt_record(
 }
 
 fn push_pending_interrupt_records(
-    checkpoint: &mut loom_graph::memory::Checkpoint<serde_json::Value>,
+    checkpoint: &mut checkpoint::Checkpoint<serde_json::Value>,
     records: Vec<InterruptRecord>,
     consumed_interrupt_ids: &HashSet<String>,
 ) {
@@ -539,7 +539,7 @@ fn push_pending_interrupt_records(
 }
 
 fn stage_successful_task_writes(
-    checkpoint: &mut loom_graph::memory::Checkpoint<serde_json::Value>,
+    checkpoint: &mut checkpoint::Checkpoint<serde_json::Value>,
     outcomes: &[TaskOutcome],
     excluded_task_ids: &HashSet<String>,
 ) {

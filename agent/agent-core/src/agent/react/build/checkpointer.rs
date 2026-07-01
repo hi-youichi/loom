@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use loom_graph::GraphError;
-use loom_memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
+use checkpoint::{Checkpointer, JsonSerializer, RunnableConfig};
+use sqlite_store::SqliteSaver;
 use loom_cli_types::ReActState;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -14,7 +15,7 @@ pub(super) fn to_agent_error(e: impl std::fmt::Display) -> GraphError {
 
 pub fn resolve_memory_db_path(config: &ReactBuildConfig) -> String {
     config.db_path.clone().unwrap_or_else(|| {
-        loom_memory::default_memory_db_path()
+        sqlite_store::default_memory_db_path()
             .to_string_lossy()
             .into_owned()
     })

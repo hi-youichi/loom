@@ -1,6 +1,6 @@
 //! Build initial ReAct state from user message, optionally loading from checkpoint.
 
-use loom_memory::{CheckpointError, Checkpointer, RunnableConfig};
+use checkpoint::{CheckpointError, Checkpointer, RunnableConfig};
 use loom_llm::message::{Message, UserContent};
 use loom_stream::state::ReActState;
 

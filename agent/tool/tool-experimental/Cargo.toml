@@ -17,7 +17,7 @@ serde_json = "1.0"
 
 tool-core = { path = "../tool-core" }
 loom-llm = { path = "../../../loom-llm" }
-loom-memory = { path = "../../../loom-memory" }
+checkpoint = { path = "../../../foundation/checkpoint" }
 memory-v2 = { path = "../../../experimental/memory-v2" }
 loom-stream = { path = "../../../loom-stream" }
 loom-commands = { path = "../../../loom-commands" }

@@ -282,7 +282,7 @@ mod tests {
     use super::*;
     use loom_graph::RunContext;
     use loom_llm::client::MockLlm;
-    use loom_memory::RunnableConfig;
+    use checkpoint::RunnableConfig;
     use loom_stream::state::ReActState;
     use tokio::sync::mpsc;
 

@@ -5,7 +5,8 @@
 mod init_logging;
 
 use async_trait::async_trait;
-use loom::memory::{Embedder, LanceStore, Store};
+use checkpoint::Store;
+use vector_store::{Embedder, LanceStore};
 use std::sync::Arc;
 
 /// Mock embedder: returns a fixed vector per text (hash-based) for deterministic tests.
@@ -29,7 +30,7 @@ impl MockEmbedder {
 
 #[async_trait]
 impl Embedder for MockEmbedder {
-    async fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, loom::memory::StoreError> {
+    async fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, checkpoint::StoreError> {
         Ok(texts.iter().map(|t| self.text_to_vec(t)).collect())
     }
 

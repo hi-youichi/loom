@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
 use rusqlite::params;
 
-use crate::{
+use checkpoint::{
     Item, ListNamespacesOptions, MatchCondition, Namespace, NamespaceMatchType, SearchItem,
     SearchOptions, Store, StoreError, StoreOp, StoreOpResult, StoreSearchHit,
 };

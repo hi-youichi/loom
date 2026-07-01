@@ -6,7 +6,7 @@
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use crate::memory::{RunnableConfig, Store};
+use checkpoint::{RunnableConfig, Store};
 use stream_event::StreamEvent;
 
 /// Runtime context that bundles run-scoped context and other runtime utilities.
@@ -24,7 +24,7 @@ use stream_event::StreamEvent;
 ///
 /// ```rust,ignore
 /// use loom_graph::Runtime;
-/// use loom_graph::memory::{RunnableConfig, InMemoryStore};
+/// use checkpoint::{RunnableConfig, InMemoryStore};
 /// use std::sync::Arc;
 ///
 /// let config = RunnableConfig::default();

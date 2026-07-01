@@ -22,7 +22,7 @@ path = "src/lib.rs"
 
 [features]
 
-lance = ["dep:lancedb", "dep:arrow-array", "dep:arrow-schema", "loom-memory/lance"]
+lance = ["vector-store/lance"]
 
 testing = []
 
@@ -82,10 +82,6 @@ loom-compress = { path = "../agent/compress" }
 loom-commands = { path = "../loom-commands" }
 
 
-
-# Memory implementations (loom-memory crate)
-
-loom-memory = { path = "../loom-memory" }
 
 
 
@@ -299,6 +295,10 @@ loom-react-config = { path = "../loom-react-config" }
 async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
 
 dotenv = { workspace = true }
+
+checkpoint = { path = "../foundation/checkpoint" }
+sqlite-store = { path = "../persistence/sqlite-store" }
+vector-store = { path = "../experimental/vector-store" }
 
 
 

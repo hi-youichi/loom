@@ -17,7 +17,7 @@ use crate::channels::BoxedStateUpdater;
 use crate::conditional::NextEntry;
 use crate::interrupt::InterruptHandler;
 use crate::logging::{log_graph_complete, log_graph_error, log_graph_start, log_node_complete, log_node_start, log_node_state, log_state_update};
-use crate::memory::{Checkpoint, CheckpointSource, Checkpointer, RunnableConfig, Store};
+use checkpoint::{Checkpoint, CheckpointSource, Checkpointer, RunnableConfig, Store};
 use crate::node_middleware::NodeMiddleware;
 use crate::retry::RetryPolicy;
 use crate::state_graph::END;
@@ -457,7 +457,7 @@ let should_end = next_id.is_none() || next_id.as_deref() == Some(END);
     ///
     /// ```rust,ignore
     /// use loom_graph::RunContext;
-    /// use loom_graph::memory::{RunnableConfig, InMemoryStore};
+    /// use checkpoint::{RunnableConfig, InMemoryStore};
     /// use std::sync::Arc;
     ///
     /// // Create a context with store and custom data

@@ -10,7 +10,7 @@ pub struct SqliteSessionManager {
 
 impl SqliteSessionManager {
     pub fn new() -> Result<Self, BotError> {
-        let db_path = loom_memory::default_memory_db_path();
+        let db_path = sqlite_store::default_memory_db_path();
         let conn = Connection::open(&db_path)?;
         Ok(Self {
             conn: Mutex::new(conn),

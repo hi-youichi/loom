@@ -8,7 +8,7 @@
 use async_trait::async_trait;
 use loom_graph::{Agent, AgentNode, StateGraph, END, START};
 use loom_llm::{error::GraphError, message::Message};
-use loom_memory::{Checkpointer, MemorySaver, RunnableConfig};
+use checkpoint::{Checkpointer, MemorySaver, RunnableConfig};
 use std::env;
 use std::sync::Arc;
 

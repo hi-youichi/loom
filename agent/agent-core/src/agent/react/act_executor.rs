@@ -14,7 +14,7 @@ use loom_cli_types::RunCancellation;
 use loom_graph::{run_cancellable, RunContext};
 use loom_graph::GraphError;
 use loom_llm::ToolCall;
-use loom_memory::uuid6;
+use checkpoint::uuid6;
 use loom_stream::{StreamEvent, StreamMode, ToolStreamWriter};
 use loom_stream::state::{ReActState, ToolResult};
 use crate::tool_output_normalizer::{

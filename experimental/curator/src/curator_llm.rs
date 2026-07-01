@@ -39,7 +39,7 @@ use crate::review_tool_gate::ReviewToolGate;
 use crate::skill_registry::{Lifecycle, SkillContent, SkillRegistry};
 
 use agent::agent::{Agent, AgentEvent};
-use loom_graph::RunnableConfig;
+use checkpoint::RunnableConfig;
 use loom_react_config::ReactBuildConfig;
 use skill::SkillUsageStore;
 use tool_basic::skill::{make_skill_tools_with_skills_dir, SkillManagerTool};

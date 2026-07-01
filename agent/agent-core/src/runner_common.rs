@@ -12,7 +12,7 @@ use tokio_util::sync::CancellationToken;
 
 use loom_graph::CompiledStateGraph;
 use loom_graph::GraphError;
-use loom_memory::{CheckpointError, Checkpointer, RunnableConfig};
+use checkpoint::{CheckpointError, Checkpointer, RunnableConfig};
 use loom_llm::message::UserContent;
 use loom_stream::{StreamEvent, StreamMode};
 

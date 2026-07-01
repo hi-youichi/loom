@@ -16,8 +16,7 @@ use lancedb::query::ExecutableQuery;
 use lancedb::query::QueryBase;
 
 use crate::embedder::Embedder;
-use crate::{Namespace, Store, StoreError};
-use loom_graph::memory::{Item, ListNamespacesOptions, SearchItem, SearchOptions, StoreOp, StoreOpResult};
+use checkpoint::{Item, ListNamespacesOptions, Namespace, SearchItem, SearchOptions, Store, StoreError, StoreOp, StoreOpResult};
 
 const TABLE_NAME: &str = "store";
 

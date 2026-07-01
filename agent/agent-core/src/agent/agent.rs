@@ -1,7 +1,7 @@
 use crate::agent::react::build::build_react_runner;
 use crate::agent::react::{ReactBuildConfig, ReactRunner};
 use crate::runner_common::StreamRunOutcome;
-use loom_graph::RunnableConfig;
+use checkpoint::RunnableConfig;
 use loom_llm::MessageChunkKind;
 use loom_stream::StreamEvent;
 use loom_cli_types::ReActState;

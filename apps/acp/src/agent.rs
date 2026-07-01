@@ -20,7 +20,8 @@ use agent_client_protocol::schema::v1::{
     SetSessionModeRequest, SetSessionModeResponse, StopReason, SessionId, SessionNotification,
     Usage,
 };
-use loom_memory::{Checkpointer, JsonSerializer, RunnableConfig, SqliteSaver};
+use checkpoint::{Checkpointer, JsonSerializer, RunnableConfig};
+use sqlite_store::SqliteSaver;
 use loom_stream::state::ReActState;
 
 use chrono::DateTime;
@@ -115,7 +116,7 @@ impl std::fmt::Debug for LoomAcpAgent {
 impl LoomAcpAgent {
     /// Construct a new Agent instance (no session/update sending).
     pub fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let db_path = loom_memory::default_memory_db_path();
+        let db_path = sqlite_store::default_memory_db_path();
         let config_store = SessionConfigStore::new(db_path.to_str().unwrap_or_default())
             .map_err(|e| format!("session config store init failed: {e}"))?;
 
@@ -130,7 +131,7 @@ impl LoomAcpAgent {
     }
 
     pub fn with_session_update_tx(tx: mpsc::Sender<SessionNotification>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let db_path = loom_memory::default_memory_db_path();
+        let db_path = sqlite_store::default_memory_db_path();
         let config_store = SessionConfigStore::new(db_path.to_str().unwrap_or_default())
             .map_err(|e| format!("session config store init failed: {e}"))?;
 
@@ -978,7 +979,7 @@ Ok(SetSessionModeResponse::new())
                 })?
             };
 
-        let db_path = loom_memory::default_memory_db_path();
+        let db_path = sqlite_store::default_memory_db_path();
         tracing::debug!(
             session_id = %session_id,
             thread_id = %entry.thread_id,
@@ -1296,7 +1297,7 @@ impl LoomAcpAgent {
         cwd_filter: Option<&str>,
         _cursor: Option<&str>,
     ) -> Result<Vec<crate::agent::SessionInfo>, agent_client_protocol::Error> {
-        let db_path = loom_memory::default_memory_db_path();
+        let db_path = sqlite_store::default_memory_db_path();
         let cwd_filter = cwd_filter.map(String::from);
 
         // Use spawn_blocking for SQLite operations

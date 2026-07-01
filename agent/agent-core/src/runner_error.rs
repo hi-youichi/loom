@@ -1,6 +1,6 @@
 use loom_graph::CompilationError;
 use loom_graph::GraphError;
-use loom_memory::CheckpointError;
+use checkpoint::CheckpointError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunnerError {

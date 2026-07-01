@@ -31,7 +31,7 @@ loom-commands = { path = "../../loom-commands" }
 loom-cli-types = { path = "../../loom-cli-types" }
 loom-react-config = { path = "../../loom-react-config" }
 model-spec-core = { path = "../../foundation/model-spec-core", features = ["tier"] }
-loom-memory = { path = "../../loom-memory" }
+sqlite-store = { path = "../../persistence/sqlite-store" }
 loom-acp = { package = "acp", path = "../acp" }
 
 stream-event = { path = "../../stream-event" }

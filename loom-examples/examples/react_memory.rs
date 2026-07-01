@@ -3,7 +3,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use loom_memory::{SqliteSaver, Checkpointer, JsonSerializer, LanceStore, Namespace, RunnableConfig, Store, StoreError};
+use checkpoint::{Checkpointer, JsonSerializer, Namespace, RunnableConfig, Store, StoreError};
+use sqlite_store::SqliteSaver;
+use vector_store::LanceStore;
 use loom_llm::{Embedder, LlmClient, LlmResponse};
 use loom_llm::message::Message;
 use loom_graph::{Next, Node, SearchOptions, StateGraph, END, START};

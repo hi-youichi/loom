@@ -170,7 +170,7 @@ impl Node<GotState> for ExecuteGraphNode {
     }
 
     async fn run(&self, state: GotState) -> Result<(GotState, Next), GraphError> {
-        let ctx = RunContext::new(loom_memory::RunnableConfig::default());
+        let ctx = RunContext::new(checkpoint::RunnableConfig::default());
         self.run_with_context(state, &ctx).await
     }
 

@@ -8,7 +8,8 @@ use std::sync::Arc;
 use tracing::{debug, warn};
 
 use loom_cli_types::RunCancellation;
-use loom_graph::{Next, Node, RunnableConfig, RunContext};
+use checkpoint::RunnableConfig;
+use loom_graph::{Next, Node, RunContext};
 use loom_graph::GraphError;
 use loom_stream::StreamMode;
 use loom_stream::state::ReActState;

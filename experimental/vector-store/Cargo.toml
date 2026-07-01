@@ -1,8 +1,8 @@
 [package]
-name = "loom-memory"
+name = "vector-store"
 version.workspace = true
 edition.workspace = true
-description = "Memory implementations for Loom: checkpointing and long-term store"
+description = "Vector search Store implementations for Loom (in-memory, sqlite-vec, LanceDB)"
 license.workspace = true
 authors.workspace = true
 
@@ -10,22 +10,17 @@ authors.workspace = true
 lance = ["dep:lancedb", "dep:arrow-array", "dep:arrow-schema"]
 
 [dependencies]
-loom-graph = { path = "../loom-graph" }
-loom-llm = { path = "../loom-llm" }
+checkpoint = { path = "../../foundation/checkpoint" }
+sqlite-store = { path = "../../persistence/sqlite-store" }
 async-trait = { workspace = true }
-thiserror = { workspace = true }
 tokio = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
 tracing = "0.1"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-dashmap = "6.0"
-futures = "0.3"
 rusqlite = { version = "0.31", features = ["bundled"] }
-async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
 sqlite-vec = "0.1"
-
-# Config for home directory resolution
-env_config = { path = "../config", package = "config" }
+dashmap = "6.0"
+async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
 
 # Optional: LanceDB for persistent Store with vector search (feature "lance").
 lancedb = { version = "0.23", optional = true }

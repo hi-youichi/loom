@@ -1,7 +1,5 @@
-use loom_memory::{
-    LanceStore, Namespace, OpenAIEmbedder, SearchOptions, Store,
-};
-use loom_memory::Embedder;
+use checkpoint::{Namespace, SearchOptions, Store};
+use vector_store::{LanceStore, OpenAIEmbedder, Embedder};
 use serde_json::json;
 use std::sync::Arc;
 

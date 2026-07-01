@@ -5,7 +5,7 @@ use tracing::{debug, warn};
 
 use loom_graph::GraphError;
 use loom_graph::Next;
-use loom_memory::uuid6;
+use checkpoint::uuid6;
 use loom_llm::message::{message_summary, Message};
 use loom_cli_types::ReActState;
 use tool_core::ToolCallContent;

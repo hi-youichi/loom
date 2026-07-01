@@ -102,7 +102,7 @@ impl Node<TotState> for BacktrackNode {
 mod tests {
     use super::super::state::{TotCandidate, TotExtension};
     use super::*;
-    use loom_memory::RunnableConfig;
+    use checkpoint::RunnableConfig;
     use loom_llm::message::UserContent;
     use loom_cli_types::ReActState;
     use loom_llm::ToolCall;

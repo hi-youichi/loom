@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use rusqlite::params;
 use tracing::{debug, warn};
 
-use crate::uuid6;
+use checkpoint::uuid6;
 use loom_llm::message::{AssistantPayload, Message, UserContent, ToolCallContent};
 use super::{UserMessageStore, UserMessageStoreError};
 

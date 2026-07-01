@@ -25,7 +25,7 @@ rand = "0.8"
 rusqlite = { version = "0.31", features = ["bundled"] }
 config = { path = "../../config", features = ["tracing-init"] }
 loom = { path = "../../loom" }
-loom-memory = { path = "../../loom-memory" }
+sqlite-store = { path = "../../persistence/sqlite-store" }
 tool-core = { path = "../../agent/tool/tool-core" }
 tool-extensions = { path = "../../agent/tool/tool-extensions" }
 loom-llm = { path = "../../loom-llm" }

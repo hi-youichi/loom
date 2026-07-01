@@ -328,7 +328,7 @@ pub async fn download_video(
 /// Opens with WAL mode to match `SqliteSaver` and ensure the DELETE is visible to
 /// subsequent WAL-mode reads.
 pub fn reset_session(thread_id: &str) -> Result<usize, BotError> {
-    let db_path = loom_memory::default_memory_db_path();
+    let db_path = sqlite_store::default_memory_db_path();
     tracing::info!(
         thread_id = %thread_id,
         db_path = %db_path.display(),
