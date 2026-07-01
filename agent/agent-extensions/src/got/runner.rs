@@ -6,13 +6,13 @@ use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
 
-use loom_graph::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
+use loom_graph_core::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
 use checkpoint::{CheckpointError, Checkpointer, RunnableConfig, Store};
 use agent::runner_common;
 use loom_stream::StreamEvent;
 use tool_core::ToolRegistryLocked;
 use loom_llm::LlmClient;
-use loom_graph::{StateGraph, END, START};
+use loom_graph_core::{StateGraph, END, START};
 use loom_llm::message::UserContent;
 
 use super::dag::ready_nodes;

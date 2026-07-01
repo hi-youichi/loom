@@ -8,7 +8,7 @@ use sqlite_store::SqliteSaver;
 use vector_store::LanceStore;
 use loom_llm::{Embedder, LlmClient, LlmResponse};
 use loom_llm::message::Message;
-use loom_graph::{Next, Node, SearchOptions, StateGraph, END, START};
+use loom_graph_core::{Next, Node, SearchOptions, StateGraph, END, START};
 use loom_tools::tool_source::{ToolSource, ToolSpec, ToolCallContent, ToolResult};
 use loom_stream::state::ToolCall as ReActToolCall;
 

@@ -14,7 +14,7 @@ testing = []
 
 [dependencies]
 # LLM client (loom-llm crate)
-loom-llm = { path = "../../loom-llm" }
+loom-llm = { path = "../../foundation/llm" }
 
 
 # Config crate for loom_home
@@ -51,7 +51,7 @@ tool-experimental = { path = "../../agent/tool/tool-experimental" }
 memory-v2 = { path = "../../experimental/memory-v2" }
 agent = { path = "../../agent/agent-core" }
 loom-react-config = { path = "../../loom-react-config" }
-loom-graph = { path = "../../loom-graph" }
+loom-graph-core = { path = "../../foundation/graph-core" }
 loom-util = { path = "../../foundation/loom-util" }
 
 # Archive handling for curator backup

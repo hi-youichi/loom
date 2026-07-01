@@ -11,7 +11,7 @@ use model_spec_core::ModelTier;
 
 use loom_llm::factory::create_llm_client;
 use model_spec_core::registry::{ModelEntry, ProviderConfig};
-use loom_graph::GraphError;
+use loom_graph_core::GraphError;
 use loom_llm::traits::LlmClient;
 
 /// LLM client factory that unifies provider config loading, tier resolution, and client creation.

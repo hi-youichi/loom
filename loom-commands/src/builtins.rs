@@ -6,7 +6,7 @@
 use crate::command::{Command, CommandResult};
 use loom_compress::compaction::{build_summary_prompt, compact, prune};
 use loom_compress::config::CompactionConfig;
-use loom_graph::GraphError;
+use loom_graph_core::GraphError;
 use loom_llm::LlmClient;
 use loom_llm::message::{Message, UserContent};
 

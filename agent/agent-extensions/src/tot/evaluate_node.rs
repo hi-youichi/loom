@@ -6,11 +6,11 @@
 
 use async_trait::async_trait;
 
-use loom_graph::GraphError;
-use loom_graph::{Next, RunContext};
+use loom_graph_core::GraphError;
+use loom_graph_core::{Next, RunContext};
 use loom_llm::message::Message;
 use loom_stream::StreamEvent;
-use loom_graph::Node;
+use loom_graph_core::Node;
 
 use super::state::{TotCandidate, TotState};
 

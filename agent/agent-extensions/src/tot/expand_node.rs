@@ -5,12 +5,12 @@
 
 use async_trait::async_trait;
 
-use loom_graph::GraphError;
-use loom_graph::{Next, RunContext};
+use loom_graph_core::GraphError;
+use loom_graph_core::{Next, RunContext};
 use loom_llm::message::Message;
 use loom_llm::ToolCall;
 use loom_stream::StreamEvent;
-use loom_graph::Node;
+use loom_graph_core::Node;
 
 use super::prompt::{TOT_EXPAND_SYSTEM_ADDON, TOT_RESEARCH_QUALITY_ADDON};
 use super::state::{TotCandidate, TotState};
@@ -280,7 +280,7 @@ impl Node<TotState> for ThinkExpandNode {
 mod tests {
     use super::super::state::TotExtension;
     use super::*;
-    use loom_graph::RunContext;
+    use loom_graph_core::RunContext;
     use loom_llm::client::MockLlm;
     use checkpoint::RunnableConfig;
     use loom_stream::state::ReActState;

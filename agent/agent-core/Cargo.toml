@@ -13,11 +13,11 @@ edition = "2021"
 
 loom-util = { path = "../../foundation/loom-util" }
 
-loom-graph = { path = "../../loom-graph" }
+loom-graph-core = { path = "../../foundation/graph-core" }
 
-loom-pregel = { path = "../../loom-pregel" }
+loom-pregel = { path = "../../foundation/pregel" }
 
-loom-llm = { path = "../../loom-llm" }
+loom-llm = { path = "../../foundation/llm" }
 
 loom-stream = { path = "../../loom-stream" }
 

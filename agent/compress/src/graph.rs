@@ -4,10 +4,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use loom_graph::GraphError;
+use loom_graph_core::GraphError;
 use loom_llm::LlmProvider;
 use loom_stream::state::ReActState;
-use loom_graph::{
+use loom_graph_core::{
     CompilationError, CompiledStateGraph, Next, Node, RunContext, StateGraph, END, START,
 };
 

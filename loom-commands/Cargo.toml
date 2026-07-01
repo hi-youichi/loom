@@ -10,8 +10,8 @@ authors.workspace = true
 path = "src/lib.rs"
 
 [dependencies]
-loom-llm = { path = "../loom-llm" }
-loom-graph = { path = "../loom-graph" }
+loom-llm = { path = "../foundation/llm" }
+loom-graph-core = { path = "../foundation/graph-core" }
 loom-compress = { path = "../agent/compress" }
 loom-stream = { path = "../loom-stream" }
 

@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use loom_graph::{Agent, AgentNode, CompiledStateGraph, StateGraph, END, START};
+use loom_graph_core::{Agent, AgentNode, CompiledStateGraph, StateGraph, END, START};
 use loom_llm::{error::GraphError, message::Message};
 use serde::{Deserialize, Serialize};
 

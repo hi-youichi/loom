@@ -10,7 +10,7 @@
 //! placeholder message (not used for execution).
 
 use tool_core::ToolSpec;
-use loom_graph::GraphError;
+use loom_graph_core::GraphError;
 use agent::{build_react_run_context, BuildRunnerError};
 use serde::{Deserialize, Serialize};
 

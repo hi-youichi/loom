@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use loom_compress::CompactionConfig;
-use loom_graph::GraphError;
+use loom_graph_core::GraphError;
 use loom_llm::{LlmClient, LlmProvider};
 use loom_llm::client::FixedLlmProvider;
 use model_spec_core::resolver::{ConfigModelEntry, ConfigProviderEntry};

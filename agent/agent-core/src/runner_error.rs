@@ -1,5 +1,5 @@
-use loom_graph::CompilationError;
-use loom_graph::GraphError;
+use loom_graph_core::CompilationError;
+use loom_graph_core::GraphError;
 use checkpoint::CheckpointError;
 
 #[derive(Debug, thiserror::Error)]

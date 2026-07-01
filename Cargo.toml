@@ -6,7 +6,7 @@ members = [
 
     "loom",
 
-    "loom-llm",
+    "foundation/llm",
 
     "experimental/tool/lsp",
 
@@ -17,9 +17,9 @@ members = [
 
     "agent/skill",
 
-    "loom-graph",
+    "foundation/graph-core",
 
-    "loom-pregel",
+    "foundation/pregel",
 
     "config",
 
@@ -80,7 +80,7 @@ members = [
 
     "foundation/loom-http-retry",
 
-    "loom-codex",
+    "experimental/codex",
 
 ]
 

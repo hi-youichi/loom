@@ -18,8 +18,8 @@ path = "src/main.rs"
 loom = { path = "../../loom" }
 agent = { path = "../../agent/agent-core" }
 agent-extensions = { path = "../../agent/agent-extensions" }
-loom-llm = { path = "../../loom-llm" }
-loom-graph = { path = "../../loom-graph" }
+loom-llm = { path = "../../foundation/llm" }
+loom-graph-core = { path = "../../foundation/graph-core" }
 
 tool-core = { path = "../../agent/tool/tool-core" }
 loom-stream = { path = "../../loom-stream" }

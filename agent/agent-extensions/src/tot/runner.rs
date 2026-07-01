@@ -8,14 +8,14 @@ use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
 use agent::agent::react::{build_react_initial_state, REACT_SYSTEM_PROMPT};
-use loom_graph::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
+use loom_graph_core::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
 use checkpoint::{CheckpointError, Checkpointer, RunnableConfig, Store};
 use loom_llm::message::{Message, UserContent};
 use agent::runner_common::{self, load_from_checkpoint_or_build};
 use loom_stream::StreamEvent;
 use tool_core::ToolRegistryLocked;
 use loom_llm::LlmClient;
-use loom_graph::{StateGraph, END, START};
+use loom_graph_core::{StateGraph, END, START};
 
 use super::adapter_nodes::{TotActNode, TotObserveNode};
 use super::backtrack_node::BacktrackNode;

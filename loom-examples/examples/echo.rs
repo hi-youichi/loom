@@ -3,7 +3,7 @@
 //! Run: `cargo run -p loom-examples --example echo`
 
 use async_trait::async_trait;
-use loom_graph::Agent;
+use loom_graph_core::Agent;
 use loom_llm::{error::GraphError, message::Message};
 use std::env;
 

@@ -8,10 +8,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use agent::agent::react::{ActNode, ObserveNode, ThinkNode};
-use loom_graph::GraphError;
-use loom_graph::Next;
+use loom_graph_core::GraphError;
+use loom_graph_core::Next;
 use loom_llm::LlmProvider;
-use loom_graph::Node;
+use loom_graph_core::Node;
 use tool_core::ToolRegistryLocked;
 
 use super::state::DupState;

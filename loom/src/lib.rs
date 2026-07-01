@@ -7,7 +7,7 @@
 //!
 //! All core types are now in their own crates - import them directly:
 //!
-//! - `loom_graph` - `StateGraph`, `CompiledStateGraph`, `Node`, `Next`, `Agent`, `channels`, `managed`
+//! - `loom_graph_core` - `StateGraph`, `CompiledStateGraph`, `Node`, `Next`, `Agent`, `channels`, `managed`
 //! - `loom_llm` - `LlmClient`, `ChatOpenAI`, `MockLlm`, `Message`, `ToolCall`, etc.
 //! - `loom_stream` - `ReActState`, `ToolResult`, `ToolCall`, `ModelConfig`
 //! - `loom_tools` - `ToolSource`, `ToolSpec`, `McpToolSource`, `BashTool`, etc.

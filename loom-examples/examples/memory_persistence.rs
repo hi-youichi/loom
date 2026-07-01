@@ -4,7 +4,7 @@
 //! Run: `cargo run -p loom-examples --example memory_persistence -- "hello"`
 
 use async_trait::async_trait;
-use loom_graph::{Agent, AgentNode, StateGraph, END, START};
+use loom_graph_core::{Agent, AgentNode, StateGraph, END, START};
 use loom_llm::{error::GraphError, message::Message};
 use checkpoint::{Checkpointer, JsonSerializer, RunnableConfig};
 use sqlite_store::SqliteSaver;

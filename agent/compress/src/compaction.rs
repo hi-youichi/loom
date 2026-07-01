@@ -6,7 +6,7 @@
 
 use tracing::{debug, info};
 
-use loom_graph::GraphError;
+use loom_graph_core::GraphError;
 use loom_llm::message::{Message, ToolCallContent, UserContent};
 
 use super::config::CompactionConfig;

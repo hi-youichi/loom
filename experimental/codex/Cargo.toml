@@ -1,0 +1,29 @@
+[package]
+name = "loom-codex"
+version.workspace = true
+edition = "2021"
+description = "Loom codex app-server compatible daemon"
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "loom-codex"
+path = "src/main.rs"
+
+[dependencies]
+loom = { path = "../../loom" }
+loom-llm = { path = "../../foundation/llm" }
+loom-workspace = { path = "../../loom-workspace" }
+config = { path = "../../config" }
+stream-event = { path = "../../stream-event" }
+
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dirs = "5"
+uuid = { version = "1", features = ["v4"] }
+async-trait = "0.1"

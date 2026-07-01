@@ -2,7 +2,7 @@
 //!
 //! These types define how LLM output is chunked and delivered during streaming.
 //! They live here (not in `loom-llm`) to avoid a circular dependency:
-//! `loom-llm → loom-graph → stream-event`.
+//! `loom-llm → loom-graph-core → stream-event`.
 
 use serde::{Deserialize, Serialize};
 

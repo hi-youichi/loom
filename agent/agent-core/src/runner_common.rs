@@ -10,8 +10,8 @@ use futures::FutureExt;
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 
-use loom_graph::CompiledStateGraph;
-use loom_graph::GraphError;
+use loom_graph_core::CompiledStateGraph;
+use loom_graph_core::GraphError;
 use checkpoint::{CheckpointError, Checkpointer, RunnableConfig};
 use loom_llm::message::UserContent;
 use loom_stream::{StreamEvent, StreamMode};

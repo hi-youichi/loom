@@ -1,7 +1,7 @@
 //! Error type when building a ReactRunner from config.
 
-use loom_graph::GraphError;
-use loom_graph::CompilationError;
+use loom_graph_core::GraphError;
+use loom_graph_core::CompilationError;
 
 /// Error when building a ReactRunner from config.
 #[derive(Debug, thiserror::Error)]

@@ -11,8 +11,8 @@ use tokio::sync::mpsc;
 use tracing::{debug, trace, warn};
 
 use loom_cli_types::RunCancellation;
-use loom_graph::{run_cancellable, RunContext};
-use loom_graph::GraphError;
+use loom_graph_core::{run_cancellable, RunContext};
+use loom_graph_core::GraphError;
 use loom_llm::ToolCall;
 use checkpoint::uuid6;
 use loom_stream::{StreamEvent, StreamMode, ToolStreamWriter};

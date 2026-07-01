@@ -11,7 +11,7 @@ path = "src/lib.rs"
 
 [dependencies]
 stream-event = { path = "../stream-event" }
-loom-llm = { path = "../loom-llm" }
+loom-llm = { path = "../foundation/llm" }
 model-spec-core = { path = "../foundation/model-spec-core", features = ["tier"] }
 tokio = { workspace = true }
 serde = { workspace = true }

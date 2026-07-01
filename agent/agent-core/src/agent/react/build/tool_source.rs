@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::tools::InvokeAgentTool;
-use loom_graph::GraphError;
+use loom_graph_core::GraphError;
 use memory_v2::MemoryStore;
 use skill::SkillUsageStore;
 use tool_basic::{

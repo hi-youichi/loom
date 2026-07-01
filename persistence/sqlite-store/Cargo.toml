@@ -8,7 +8,7 @@ authors.workspace = true
 
 [dependencies]
 checkpoint = { path = "../../foundation/checkpoint" }
-loom-llm = { path = "../../loom-llm" }
+loom-llm = { path = "../../foundation/llm" }
 env_config = { path = "../../config", package = "config" }
 rusqlite = { version = "0.31", features = ["bundled"] }
 async-trait = { workspace = true }

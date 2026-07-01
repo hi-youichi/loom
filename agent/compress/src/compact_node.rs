@@ -5,10 +5,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tracing::debug;
 
-use loom_graph::GraphError;
+use loom_graph_core::GraphError;
 use loom_llm::LlmClient;
 use loom_stream::state::ReActState;
-use loom_graph::{Next, Node};
+use loom_graph_core::{Next, Node};
 
 use super::compaction;
 use super::config::CompactionConfig;
@@ -76,7 +76,7 @@ impl Node<ReActState> for CompactNode {
     async fn run_with_context(
         &self,
         state: ReActState,
-        _ctx: &loom_graph::RunContext<ReActState>,
+        _ctx: &loom_graph_core::RunContext<ReActState>,
     ) -> Result<(ReActState, Next), GraphError> {
         // For now, delegate to run. Implement proper context handling if needed.
         self.run(state).await

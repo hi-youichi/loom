@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use loom_graph::GraphError;
+use loom_graph_core::GraphError;
 use loom_llm::message::Message;
 use loom_llm::LlmClient;
 

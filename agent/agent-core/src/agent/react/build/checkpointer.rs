@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use loom_graph::GraphError;
+use loom_graph_core::GraphError;
 use checkpoint::{Checkpointer, JsonSerializer, RunnableConfig};
 use sqlite_store::SqliteSaver;
 use loom_cli_types::ReActState;

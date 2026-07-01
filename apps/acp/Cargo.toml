@@ -14,8 +14,8 @@ path = "src/lib.rs"
 loom = { path = "../../loom" }
 loom-cli-types = { path = "../../loom-cli-types" }
 
-loom-graph = { path = "../../loom-graph" }
-loom-llm = { path = "../../loom-llm" }
+loom-graph-core = { path = "../../foundation/graph-core" }
+loom-llm = { path = "../../foundation/llm" }
 checkpoint = { path = "../../foundation/checkpoint" }
 sqlite-store = { path = "../../persistence/sqlite-store" }
 tool-core = { path = "../../agent/tool/tool-core" }

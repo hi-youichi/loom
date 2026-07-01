@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use loom_graph::GraphError;
+use loom_graph_core::GraphError;
 use loom_llm::support::audit::LlmAuditLog;
 use loom_llm::{ChatOpenAI, ChatOpenAICompat, LlmClient, LlmProvider, ModelEntry};
 use loom_llm::client::{FixedLlmProvider, RetryLlmClient};

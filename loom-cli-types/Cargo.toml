@@ -10,7 +10,7 @@ authors.workspace = true
 loom-stream = { path = "../loom-stream" }
 tool-core = { path = "../agent/tool/tool-core" }
 tool-basic = { path = "../agent/tool/tool-basic" }
-loom-llm = { path = "../loom-llm" }
+loom-llm = { path = "../foundation/llm" }
 loom-react-config = { path = "../loom-react-config" }
 env-config = { path = "../config", package = "config" }
 serde = { workspace = true, features = ["derive"] }

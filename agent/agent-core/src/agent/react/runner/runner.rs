@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::agent::react::REACT_SYSTEM_PROMPT;
 use loom_compress::{build_graph, CompactionConfig, CompressionGraphNode};
-use loom_graph::{
+use loom_graph_core::{
     CompilationError, CompiledStateGraph, LoggingNodeMiddleware, StateGraph, END, START,
 };
 
@@ -109,7 +109,7 @@ impl ReactRunner {
         graph
             .add_node("think", Arc::new(think))
             .add_node("title", Arc::new(title_node))
-            .add_node("act", Arc::clone(&act) as Arc<dyn loom_graph::Node<ReActState>>)
+            .add_node("act", Arc::clone(&act) as Arc<dyn loom_graph_core::Node<ReActState>>)
             .add_node("observe", Arc::new(observe))
             .add_node("compress", compress_node)
             .add_edge(START, "title")
