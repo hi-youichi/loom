@@ -9,7 +9,7 @@ use loom_graph_core::GraphError;
 use loom_graph_core::{Next, RunContext};
 use loom_llm::LlmClient;
 use loom_llm::message::Message;
-use loom_stream::{StreamEvent, StreamMode};
+use stream_event::{StreamEvent, StreamMode};
 use loom_graph_core::Node;
 
 use super::prompt::GOT_PLAN_SYSTEM;

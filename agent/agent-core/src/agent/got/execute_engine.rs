@@ -13,7 +13,7 @@ use loom_graph_core::{Next, RunContext};
 use loom_llm::message::Message;
 use loom_llm::LlmProvider;
 use crate::state::ReActState;
-use loom_stream::{StreamEvent, StreamMode};
+use stream_event::{StreamEvent, StreamMode};
 use tool_core::ToolRegistryLocked;
 use loom_graph_core::Node;
 

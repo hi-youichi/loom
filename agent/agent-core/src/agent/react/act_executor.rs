@@ -15,7 +15,7 @@ use loom_graph_core::{run_cancellable, RunContext};
 use loom_graph_core::GraphError;
 use loom_llm::ToolCall;
 use checkpoint::uuid6;
-use loom_stream::{StreamEvent, StreamMode};
+use stream_event::{StreamEvent, StreamMode};
 use crate::state::{ReActState, ToolResult};
 use crate::tool_output_normalizer::{
     normalize_tool_output, NormalizationConfig, ToolOutputHint,
@@ -54,7 +54,7 @@ pub(crate) struct ToolCallExecutor {
     used_chars: AtomicUsize,
 
     // ── cross-layer adapter ──
-    any_stream_event_sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
+    any_stream_event_sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
 }
 
 /// Internal result of normalizing one tool call.
@@ -72,7 +72,7 @@ impl ToolCallExecutor {
         messages: Vec<loom_llm::Message>,
         run_ctx: &RunContext<ReActState>,
         run_cancellation: Option<RunCancellation>,
-        any_stream_event_sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
+        any_stream_event_sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
     ) -> Self {
         let tools_mode = run_ctx.stream_mode.contains(&StreamMode::Tools)
             || run_ctx.stream_mode.contains(&StreamMode::Debug);
@@ -337,11 +337,17 @@ impl ToolCallExecutor {
 
 // ────────────────────── helpers ──────────────────────
 
-/// Passes through a `loom_stream::TypedAnyStreamEvent` sender unchanged.
+/// Adapts a typed event sender to the type-erased `serde_json::Value` interface
+/// expected by `ToolCallContext`.
 fn adapt_stream_sender(
-    sender: &Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>,
-) -> Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync> {
-    sender.clone()
+    sender: &Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>,
+) -> Arc<dyn Fn(serde_json::Value) + Send + Sync> {
+    let sender = sender.clone();
+    Arc::new(move |value: serde_json::Value| {
+        if let Ok(ev) = serde_json::from_value::<crate::run::TypedAnyStreamEvent>(value) {
+            sender(ev);
+        }
+    })
 }
 
 /// Ensures each [`ToolResult`] has a non-empty `call_id`.

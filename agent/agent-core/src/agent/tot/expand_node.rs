@@ -9,7 +9,7 @@ use loom_graph_core::GraphError;
 use loom_graph_core::{Next, RunContext};
 use loom_llm::message::Message;
 use loom_llm::ToolCall;
-use loom_stream::StreamEvent;
+use stream_event::StreamEvent;
 use loom_graph_core::Node;
 
 use super::prompt::{TOT_EXPAND_SYSTEM_ADDON, TOT_RESEARCH_QUALITY_ADDON};

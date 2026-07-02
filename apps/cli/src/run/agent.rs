@@ -12,7 +12,7 @@ use model_spec_core::resolver::{
 };
 use stream_event::Envelope;
 use agent::profile::list_available_profiles;
-use loom_stream::MessageChunkKind;
+use stream_event::MessageChunkKind;
 use agent::state::ReActState;
 use agent::state::ToolResult;
 use serde_json::Value;
@@ -28,7 +28,7 @@ use super::display::{
 
 
 use stream_event::EnvelopeState;
-use loom_stream::StreamEvent;
+use stream_event::StreamEvent;
 use crate::display as panel_format;
 
 use agent::run::RunError;
@@ -415,7 +415,7 @@ pub async fn run_agent_wrapper(
 
 use crate::display::StreamingMarkdownRenderer;
 
-fn print_stream_chunk(chunk: &loom_stream::MessageChunk, renderer: &mut StreamingMarkdownRenderer) {
+fn print_stream_chunk(chunk: &stream_event::MessageChunk, renderer: &mut StreamingMarkdownRenderer) {
     renderer.push_chunk(chunk);
 }
 
@@ -1366,8 +1366,8 @@ use agent::run::agent::RunOptions;
         );
         on_event_tot(
             &StreamEvent::Messages {
-                chunk: loom_stream::MessageChunk::message("tok"),
-                metadata: loom_stream::StreamMetadata {
+                chunk: stream_event::MessageChunk::message("tok"),
+                metadata: stream_event::StreamMetadata {
                     loom_node: "think_expand".to_string(),
                     namespace: None,
                 },
@@ -1420,8 +1420,8 @@ use agent::run::agent::RunOptions;
         );
         on_event_tot(
             &StreamEvent::Messages {
-                chunk: loom_stream::MessageChunk::message("chunk"),
-                metadata: loom_stream::StreamMetadata {
+                chunk: stream_event::MessageChunk::message("chunk"),
+                metadata: stream_event::StreamMetadata {
                     loom_node: "execute_graph".to_string(),
                     namespace: None,
                 },

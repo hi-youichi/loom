@@ -2,7 +2,7 @@ use agent_client_protocol::schema::v1::{PlanEntry, PlanEntryPriority, PlanEntryS
 
 use loom_acp::stream_bridge::{loom_event_to_updates, StreamUpdate};
 use agent::run::AnyStreamEvent;
-use loom_stream::StreamEvent;
+use stream_event::StreamEvent;
 use agent::state::ReActState;
 
 fn make_tool_end(name: &str, result: &str) -> StreamEvent<ReActState> {
@@ -234,7 +234,7 @@ fn sub_agent_plan_deduplicates_with_parent_plan() {
 
 mod session_notifier_tests {
     use agent::run::AnyStreamEvent;
-    use loom_stream::StreamEvent;
+    use stream_event::StreamEvent;
     use agent::state::ReActState;
     use loom_acp::stream_bridge::SessionNotifier;
     use serde_json::Value;

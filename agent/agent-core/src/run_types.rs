@@ -52,7 +52,7 @@ pub struct RunOptions {
     pub output_timestamp: bool,
     pub dry_run: bool,
     pub debug_llm: bool,
-    pub any_stream_event_sender: Option<std::sync::Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
+    pub any_stream_event_sender: Option<std::sync::Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
     pub bash_executor: Option<std::sync::Arc<dyn tool_basic::bash::CommandExecutor>>,
     pub extra_tools: Option<std::sync::Arc<Vec<std::sync::Arc<dyn tool_core::Tool>>>>,
     pub acp_session_id: Option<String>,

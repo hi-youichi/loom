@@ -1,5 +1,5 @@
 use crate::state::ReActState;
-use loom_stream::{MessageChunk, MessageChunkKind, StreamEvent};
+use stream_event::{MessageChunk, MessageChunkKind, StreamEvent};
 use std::time::Instant;
 
 pub struct SubagentDisplay {

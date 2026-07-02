@@ -3,7 +3,7 @@ use crate::agent::react::{ReactBuildConfig, ReactRunner};
 use crate::runner_common::StreamRunOutcome;
 use checkpoint::RunnableConfig;
 use loom_llm::MessageChunkKind;
-use loom_stream::StreamEvent;
+use stream_event::StreamEvent;
 use crate::state::ReActState;
 use std::sync::Arc;
 
@@ -172,7 +172,7 @@ mod tests {
     use crate::agent::react::build::build_react_runner;
     use loom_llm::client::{FixedLlmProvider, MockLlm};
     use loom_llm::MessageChunk;
-    use loom_stream::StreamMetadata;
+    use stream_event::StreamMetadata;
     use std::sync::Arc;
 
     fn base_config() -> ReactBuildConfig {

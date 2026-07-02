@@ -19,7 +19,6 @@ futures-util = "0.3"
 tool-core = { path = "../tool-core" }
 loom-llm = { path = "../../../foundation/llm" }
 loom-util = { path = "../../../foundation/loom-util" }
-loom-stream = { path = "../../../loom-stream" }
 skill = { path = "../../skill" }
 config = { path = "../../../config" }
 

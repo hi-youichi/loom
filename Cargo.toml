@@ -43,8 +43,6 @@ members = [
 
     "agent/agent-core",
 
-    "loom-stream",
-
     "agent/tool/tool-core",
 
     "agent/tool/tool-basic",

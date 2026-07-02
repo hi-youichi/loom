@@ -39,7 +39,7 @@ pub async fn run_goal(
     _objective: String,
     _working_dir: PathBuf,
     _cancel: CancellationToken,
-    _event_sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
+    _event_sender: Option<Arc<dyn Fn(agent::run::TypedAnyStreamEvent) + Send + Sync>>,
     _run_cancellation: Option<RunCancellation>,
 ) -> Result<GoalResult, GoalRunError> {
     Err(GoalRunError::Unavailable(

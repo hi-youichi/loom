@@ -19,7 +19,6 @@ loom-pregel = { path = "../../foundation/pregel" }
 
 loom-llm = { path = "../../foundation/llm" }
 
-loom-stream = { path = "../../loom-stream" }
 
 
 

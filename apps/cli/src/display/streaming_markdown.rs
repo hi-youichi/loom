@@ -5,7 +5,7 @@
 //! markdown constructs (bold, italic, code blocks, etc.) are split across
 //! multiple LLM stream chunks.
 
-use loom_stream::{MessageChunk, MessageChunkKind};
+use stream_event::{MessageChunk, MessageChunkKind};
 use super::markdown::*;
 use std::io::Write;
 

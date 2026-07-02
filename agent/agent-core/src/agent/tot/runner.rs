@@ -12,7 +12,7 @@ use loom_graph_core::{CompilationError, CompiledStateGraph, LoggingNodeMiddlewar
 use checkpoint::{CheckpointError, Checkpointer, RunnableConfig, Store};
 use loom_llm::message::{Message, UserContent};
 use crate::runner_common::{self, load_from_checkpoint_or_build};
-use loom_stream::StreamEvent;
+use stream_event::StreamEvent;
 use tool_core::ToolRegistryLocked;
 use loom_llm::LlmClient;
 use loom_graph_core::{StateGraph, END, START};
@@ -86,7 +86,7 @@ pub struct TotRunner {
     runnable_config: Option<RunnableConfig>,
     system_prompt: Option<String>,
     cancellation: Option<CancellationToken>,
-    any_stream_event_sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
+    any_stream_event_sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
 }
 
 /// Wraps Arc<dyn LlmClient> to share one LLM between ThinkExpandNode and potential future nodes.
@@ -116,7 +116,7 @@ impl TotRunner {
         self
     }
 
-    pub fn with_any_stream_event_sender(mut self, sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>) -> Self {
+    pub fn with_any_stream_event_sender(mut self, sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>) -> Self {
         self.any_stream_event_sender = sender;
         self
     }
@@ -262,7 +262,7 @@ mod tests {
     use super::super::state::TotCandidate;
     use super::*;
     use loom_llm::client::MockLlm;
-    use loom_stream::StreamEvent;
+    use stream_event::StreamEvent;
     use loom_llm::ToolCall;
     use std::sync::{Arc, Mutex};
 

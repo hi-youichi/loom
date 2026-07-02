@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use loom_stream::TypedAnyStreamEvent;
+use crate::run::TypedAnyStreamEvent;
 use tool_core::active_operation::RunCancellation;
 
 /// Default working folder when not set (current directory).

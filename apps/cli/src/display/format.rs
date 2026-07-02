@@ -147,7 +147,7 @@ pub fn format_context_limit(limit: u32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_stream::{StubDupState, StubTotState};
+    use agent::{DupState, TotState};
 
     // Note: Tests for format_tot_state_display, format_dup_state_display, format_got_state_display
     // are moved to loom-agent crate since they use agent-specific types.

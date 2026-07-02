@@ -39,7 +39,7 @@ use agent_client_protocol::schema::v1::{
     ToolCallContent, UsageUpdate,
 };
 use loom_llm::message::Message;
-use loom_stream::{MessageChunkKind, StreamEvent};
+use stream_event::{MessageChunkKind, StreamEvent};
 use agent::run::TypedAnyStreamEvent;
 use serde_json::Value;
 use std::sync::Mutex;
@@ -543,10 +543,8 @@ impl SessionNotifier {
         self.send_updates(updates);
     }
 
-    pub fn try_send_stream_event(&self, event: &loom_stream::TypedAnyStreamEvent) {
-        let loom_stream::TypedAnyStreamEvent::React(e) = event;
-        let typed = TypedAnyStreamEvent::React(e.clone());
-        self.try_send_event(&typed);
+    pub fn try_send_stream_event(&self, event: &agent::run::TypedAnyStreamEvent) {
+        self.try_send_event(event);
     }
 
     fn send_updates(&self, updates: Vec<StreamUpdate>) {

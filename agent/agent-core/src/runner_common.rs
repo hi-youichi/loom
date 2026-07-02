@@ -14,7 +14,7 @@ use loom_graph_core::CompiledStateGraph;
 use loom_graph_core::GraphError;
 use checkpoint::{CheckpointError, Checkpointer, RunnableConfig};
 use loom_llm::message::UserContent;
-use loom_stream::{StreamEvent, StreamMode};
+use stream_event::{StreamEvent, StreamMode};
 
 /// Tries to load state from checkpointer; if found, merges `user_message` via `merge` and returns.
 /// Otherwise runs `build_fresh` and returns its result. Shared by ReAct, DUP, and ToT initial state builders.

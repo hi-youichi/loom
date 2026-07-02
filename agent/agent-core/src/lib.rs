@@ -62,7 +62,7 @@ pub use run::{
     build_react_config, resolve_model_config, load_memory_prompt,
     AgentRunResult, DEFAULT_WORKING_FOLDER, ResolvedModelConfig,
     RunCmd, RunCompletion, RunError, RunOptions,
-    RunParams, TypedAnyStreamEvent, to_loom_any_stream_event,
+    RunParams, TypedAnyStreamEvent,
     run_agent_from_config, run_agent_from_config_traced,
 };
 

@@ -121,7 +121,7 @@ pub async fn build_react_runner(
     provider: Option<Arc<dyn LlmProvider>>,
     verbose: bool,
     cancellation: Option<RunCancellation>,
-    any_stream_event_sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
+    any_stream_event_sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
 ) -> Result<ReactRunner, BuildRunnerError> {
     let ctx = build_react_run_context(config).await?;
     if let Some(ref cf) = config.call_tool_filter {

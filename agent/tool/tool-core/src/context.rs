@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use loom_llm::Message;
 use crate::active_operation::RunCancellation;
-use loom_stream::TypedAnyStreamEvent;
+
 
 #[derive(Clone, Default)]
 pub struct ToolCallContext {
     pub recent_messages: Vec<Message>,
-    pub any_stream_event_sender: Option<Arc<dyn Fn(TypedAnyStreamEvent) + Send + Sync>>,
+    pub any_stream_event_sender: Option<Arc<dyn Fn(serde_json::Value) + Send + Sync>>,
     pub thread_id: Option<String>,
     pub user_id: Option<String>,
     pub acp_session_id: Option<String>,

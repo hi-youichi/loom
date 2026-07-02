@@ -3,7 +3,7 @@ use std::sync::Mutex;
 
 use agent::run::TypedAnyStreamEvent;
 use agent::state::ReActState; use agent::{DupState, TotState, GotState};
-use loom_stream::{MessageChunk, MessageChunkKind, StreamEvent};
+use stream_event::{MessageChunk, MessageChunkKind, StreamEvent};
 use agent::state::{ToolCall, ToolResult};
 
 use super::format::*;

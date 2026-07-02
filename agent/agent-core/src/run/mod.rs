@@ -9,7 +9,7 @@ pub use config_builder::{build_react_config, resolve_model_config, load_memory_p
 pub use runner::{
     run_agent_from_config, run_agent_from_config_traced,
     build_runner, AnyRunner, RunCmd, RunError, RunParams,
-    TypedAnyStreamEvent, to_loom_any_stream_event,
+    TypedAnyStreamEvent,
 };
 pub use types::{
     AgentRunResult, DEFAULT_WORKING_FOLDER, ResolvedModelConfig,

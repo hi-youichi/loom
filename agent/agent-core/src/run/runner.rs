@@ -24,7 +24,7 @@ use stream_event::convert::{
 };
 use stream_event::envelope::EnvelopeState;
 use crate::agent::ReactBuildConfig;
-use loom_stream::StreamEvent;
+use stream_event::StreamEvent;
 use tool_core::active_operation::RunCancellation;
 use crate::state::ReActState;
 use serde_json::Value;
@@ -67,11 +67,11 @@ pub struct RunParams {
     pub message: loom_llm::message::UserContent,
     pub verbose: bool,
     pub cancellation: Option<RunCancellation>,
-    pub any_stream_event_sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
+    pub any_stream_event_sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
     pub llm_override: Option<Box<dyn LlmClient>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum TypedAnyStreamEvent {
     React(StreamEvent<ReActState>),
     Dup(StreamEvent<DupState>),
@@ -109,18 +109,6 @@ impl TypedAnyStreamEvent {
         event.to_value()
     }
 
-    pub fn from_loom(ev: loom_stream::TypedAnyStreamEvent) -> Self {
-        match ev {
-            loom_stream::TypedAnyStreamEvent::React(e) => Self::React(e),
-        }
-    }
-}
-
-pub fn to_loom_any_stream_event(ev: &TypedAnyStreamEvent) -> Option<loom_stream::TypedAnyStreamEvent> {
-    match ev {
-        TypedAnyStreamEvent::React(e) => Some(loom_stream::TypedAnyStreamEvent::React(e.clone())),
-        _ => None,
-    }
 }
 
 #[allow(clippy::type_complexity)]

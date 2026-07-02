@@ -10,7 +10,7 @@ use tracing::{debug, trace};
 
 use loom_graph_core::{run_cancellable, Next, Node, RunContext};
 use loom_llm::{GraphError, LlmClient, LlmProvider, LlmResponse, LlmUsage, Message, ToolCall};
-use loom_stream::{MessageChunk, StreamEvent, StreamEventSink, StreamMetadata, StreamMode};
+use stream_event::{MessageChunk, StreamEvent, StreamEventSink, StreamMetadata, StreamMode};
 use env_config::load_provider_configs_from_xdg;
 use model_spec_core::resolve_tier_intelligent;
 use crate::state::{ModelConfig, ReActState};

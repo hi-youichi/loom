@@ -19,7 +19,6 @@ tool-core = { path = "../tool-core" }
 loom-llm = { path = "../../../foundation/llm" }
 checkpoint = { path = "../../../foundation/checkpoint" }
 memory-v2 = { path = "../../../experimental/memory-v2" }
-loom-stream = { path = "../../../loom-stream" }
 task-core = { path = "../../../experimental/task/task-core" }
 
 tracing = "0.1"

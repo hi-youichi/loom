@@ -722,14 +722,14 @@ Ok(SetSessionModeResponse::new())
                         let resolved_goal = self.resolve_model_with_tier_awareness(&entry.session_config).await;
                         let goal_ctx_window = resolve_context_window_size(resolved_goal.model.as_deref()).await;
 
-                        let event_sender: Option<std::sync::Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>> =
+                        let event_sender: Option<std::sync::Arc<dyn Fn(agent::run::TypedAnyStreamEvent) + Send + Sync>> =
                             self.session_update_tx.clone().map(|sender| {
                                 let session_id = args.session_id.clone();
-                                std::sync::Arc::new(move |ev: loom_stream::TypedAnyStreamEvent| {
+                                std::sync::Arc::new(move |ev: agent::run::TypedAnyStreamEvent| {
                                     let notifier = SessionNotifier::new(sender.clone(), session_id.clone())
                                         .with_context_window_size(goal_ctx_window);
                                     notifier.try_send_stream_event(&ev);
-                                }) as std::sync::Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>
+                                }) as std::sync::Arc<dyn Fn(agent::run::TypedAnyStreamEvent) + Send + Sync>
                             });
 
                         let cancel = tokio_util::sync::CancellationToken::new();
@@ -1441,12 +1441,12 @@ struct TurnUsage {
     cached_tokens: u64,
 }
 
-fn extract_llm_usage<S>(ev: &loom_stream::StreamEvent<S>) -> Option<(u32, u32, u32, Option<u32>)>
+fn extract_llm_usage<S>(ev: &stream_event::StreamEvent<S>) -> Option<(u32, u32, u32, Option<u32>)>
 where
     S: Clone + Send + Sync + std::fmt::Debug + 'static,
 {
     match ev {
-        loom_stream::StreamEvent::Usage {
+        stream_event::StreamEvent::Usage {
             prompt_tokens,
             completion_tokens,
             total_tokens,
@@ -1933,7 +1933,7 @@ mod tests {
     #[test]
     fn test_capture_turn_usage_accumulates() {
         use ReActState;
-        use loom_stream::StreamEvent;
+        use stream_event::StreamEvent;
 
         let acc = Arc::new(Mutex::new(TurnUsage::default()));
 
@@ -1967,7 +1967,7 @@ mod tests {
     #[test]
     fn test_capture_turn_usage_ignores_non_usage() {
         use ReActState;
-        use loom_stream::StreamEvent;
+        use stream_event::StreamEvent;
 
         let acc = Arc::new(Mutex::new(TurnUsage::default()));
 

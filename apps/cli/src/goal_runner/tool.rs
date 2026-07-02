@@ -8,7 +8,7 @@ use tokio_util::sync::CancellationToken;
 
 use agent::run::{build_react_config, run_agent_from_config, RunParams, TypedAnyStreamEvent as FullTypedAnyStreamEvent};
 use agent::run::RunCompletion;
-use loom_stream::StreamEvent;
+use stream_event::StreamEvent;
 
 use agent::goal_runner::state::{ToolCallSummary, ToolError, TurnResult};
 
@@ -237,14 +237,7 @@ impl CodingTool for LoomTool {
             output_timestamp: false,
             dry_run: false,
             debug_llm: false,
-            any_stream_event_sender: self.any_stream_event_sender.as_ref().map(|sender| {
-                let sender = sender.clone();
-                Arc::new(move |ev: loom_stream::TypedAnyStreamEvent| {
-                    // Convert cli_types event to full event (best-effort, only React supported)
-                    let full_ev = FullTypedAnyStreamEvent::from_loom(ev);
-                    sender(full_ev);
-                }) as Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>
-            }),
+            any_stream_event_sender: self.any_stream_event_sender.clone(),
             bash_executor: None,
             extra_tools: None,
             acp_session_id: None,

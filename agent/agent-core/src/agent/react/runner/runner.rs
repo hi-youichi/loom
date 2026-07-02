@@ -14,7 +14,7 @@ use loom_llm::message::UserContent;
 use checkpoint::{Checkpointer, RunnableConfig, Store};
 use crate::runner_common;
 use crate::state::ReActState;
-use loom_stream::StreamEvent;
+use stream_event::StreamEvent;
 use tool_core::ToolRegistryLocked;
 use checkpoint_sqlite_store::user_message::UserMessageStore;
 use tool_core::active_operation::RunCancellation;
@@ -36,7 +36,7 @@ pub struct ReactRunner {
     runnable_config: Option<RunnableConfig>,
     system_prompt: String,
     cancellation: Option<RunCancellation>,
-    any_stream_event_sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
+    any_stream_event_sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
 }
 
 impl ReactRunner {
@@ -56,7 +56,7 @@ impl ReactRunner {
         self.checkpointer.as_ref()
     }
 
-    pub fn with_any_stream_event_sender(mut self, sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>) -> Self {
+    pub fn with_any_stream_event_sender(mut self, sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>) -> Self {
         self.any_stream_event_sender = sender;
         self
     }
@@ -75,7 +75,7 @@ impl ReactRunner {
         verbose: bool,
         title_provider: Option<Arc<dyn LlmProvider>>,
         title_headers: Option<loom_llm::LlmHeaders>,
-        any_stream_event_sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
+        any_stream_event_sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
     ) -> Result<Self, CompilationError> {
         let think = ThinkNode::new(Arc::clone(&provider));
         let act = ActNode::new(tool_source)

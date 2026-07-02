@@ -141,9 +141,16 @@ pub(super) async fn build_and_run_sub_agent(
     // --- build runner + run ---
     tracing::debug!(agent = %agent_name, "Building React runner");
     let child_depth = ctx.map_or(1u32, |c| c.depth + 1);
-    let loom_sender = ctx.and_then(|c| c.any_stream_event_sender.clone());
-    let cli_sender = loom_sender.clone();
-    let runner = build_react_runner(&sub_config, None, false, None, cli_sender)
+    let value_sender = ctx.and_then(|c| c.any_stream_event_sender.clone());
+    let runner_sender = value_sender.as_ref().map(|vs| {
+        let vs = vs.clone();
+        Arc::new(move |ev: crate::run::TypedAnyStreamEvent| {
+            if let Ok(value) = serde_json::to_value(&ev) {
+                vs(value);
+            }
+        }) as Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>
+    });
+    let runner = build_react_runner(&sub_config, None, false, None, runner_sender)
         .await
         .map_err(|e| {
             tracing::error!(agent = %agent_name, error = %e, "Failed to build sub-agent runner");
@@ -157,12 +164,12 @@ pub(super) async fn build_and_run_sub_agent(
     let agent_name_for_event = agent_name.to_string();
     let start = std::time::Instant::now();
 
-    let on_event = Some(move |event: loom_stream::StreamEvent<crate::state::ReActState>| {
+    let on_event = Some(move |event: stream_event::StreamEvent<crate::state::ReActState>| {
         match &event {
-            loom_stream::StreamEvent::TaskStart { .. }
-            | loom_stream::StreamEvent::TaskEnd { .. }
-            | loom_stream::StreamEvent::ToolStart { .. }
-            | loom_stream::StreamEvent::ToolEnd { .. } => {
+            stream_event::StreamEvent::TaskStart { .. }
+            | stream_event::StreamEvent::TaskEnd { .. }
+            | stream_event::StreamEvent::ToolStart { .. }
+            | stream_event::StreamEvent::ToolEnd { .. } => {
                 if let Some(formatted) = crate::subagent_display::format_subagent_event(
                     &event,
                     &agent_name_for_event,
@@ -173,9 +180,6 @@ pub(super) async fn build_and_run_sub_agent(
                 }
             }
             _ => {}
-        }
-        if let Some(ref sender) = loom_sender {
-            sender(loom_stream::TypedAnyStreamEvent::React(event.clone()));
         }
     });
 

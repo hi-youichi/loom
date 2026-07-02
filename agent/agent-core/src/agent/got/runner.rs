@@ -9,7 +9,7 @@ use tokio_util::sync::CancellationToken;
 use loom_graph_core::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
 use checkpoint::{CheckpointError, Checkpointer, RunnableConfig, Store};
 use crate::runner_common;
-use loom_stream::StreamEvent;
+use stream_event::StreamEvent;
 use tool_core::ToolRegistryLocked;
 use loom_llm::LlmClient;
 use loom_graph_core::{StateGraph, END, START};
@@ -63,7 +63,7 @@ pub struct GotRunner {
     checkpointer: Option<Arc<dyn Checkpointer<GotState>>>,
     runnable_config: Option<RunnableConfig>,
     cancellation: Option<CancellationToken>,
-    any_stream_event_sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
+    any_stream_event_sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
 }
 
 impl GotRunner {
@@ -72,7 +72,7 @@ impl GotRunner {
         self
     }
 
-    pub fn with_any_stream_event_sender(mut self, sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>) -> Self {
+    pub fn with_any_stream_event_sender(mut self, sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>) -> Self {
         self.any_stream_event_sender = sender;
         self
     }
@@ -219,7 +219,7 @@ impl LlmClient for SharedLlm {
 mod tests {
     use super::*;
     use loom_llm::client::MockLlm;
-    use loom_stream::StreamEvent;
+    use stream_event::StreamEvent;
     use std::sync::{Arc, Mutex};
 
     #[test]

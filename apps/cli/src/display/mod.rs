@@ -29,5 +29,5 @@ pub use event_handler::{
     print_reply_timestamp, log_node_enter, print_stream_chunk,
 };
 
-pub use loom_stream::{MessageChunk, MessageChunkKind, StreamEvent};
+pub use stream_event::{MessageChunk, MessageChunkKind, StreamEvent};
 pub use agent::state::{ReActState, ToolCall, ToolResult};
