@@ -26,7 +26,7 @@ use stream_event::envelope::EnvelopeState;
 use crate::agent::ReactBuildConfig;
 use loom_stream::StreamEvent;
 use tool_core::active_operation::RunCancellation;
-use loom_stream::state::ReActState;
+use crate::state::ReActState;
 use serde_json::Value;
 use thiserror::Error;
 use tracing::Instrument;

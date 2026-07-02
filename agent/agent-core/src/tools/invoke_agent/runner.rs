@@ -157,7 +157,7 @@ pub(super) async fn build_and_run_sub_agent(
     let agent_name_for_event = agent_name.to_string();
     let start = std::time::Instant::now();
 
-    let on_event = Some(move |event: loom_stream::StreamEvent<loom_stream::state::ReActState>| {
+    let on_event = Some(move |event: loom_stream::StreamEvent<crate::state::ReActState>| {
         match &event {
             loom_stream::StreamEvent::TaskStart { .. }
             | loom_stream::StreamEvent::TaskEnd { .. }

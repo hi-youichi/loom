@@ -4,7 +4,7 @@ use crate::runner_common::StreamRunOutcome;
 use checkpoint::RunnableConfig;
 use loom_llm::MessageChunkKind;
 use loom_stream::StreamEvent;
-use loom_stream::state::ReActState;
+use crate::state::ReActState;
 use std::sync::Arc;
 
 pub type AgentConfig = ReactBuildConfig;
@@ -180,7 +180,7 @@ mod tests {
         cfg.working_folder = Some(std::env::temp_dir());
         cfg
     }
-    use loom_stream::state::ReActState;
+    use crate::state::ReActState;
 
     fn stream_metadata() -> StreamMetadata {
         StreamMetadata {

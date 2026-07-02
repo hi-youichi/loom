@@ -13,7 +13,7 @@ use loom_llm::{GraphError, LlmClient, LlmProvider, LlmResponse, LlmUsage, Messag
 use loom_stream::{MessageChunk, StreamEvent, StreamEventSink, StreamMetadata, StreamMode};
 use env_config::load_provider_configs_from_xdg;
 use model_spec_core::resolve_tier_intelligent;
-use loom_stream::state::{ModelConfig, ReActState};
+use crate::state::{ModelConfig, ReActState};
 use model_spec_core::ModelTier;
 
 pub struct ThinkNode {

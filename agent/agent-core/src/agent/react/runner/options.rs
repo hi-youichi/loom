@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use loom_llm::LlmProvider;
 use checkpoint::{Checkpointer, RunnableConfig, Store};
-use loom_stream::state::ReActState;
+use crate::state::ReActState;
 use tool_core::ToolRegistryLocked;
 use checkpoint_sqlite_store::user_message::UserMessageStore;
 

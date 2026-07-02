@@ -73,10 +73,10 @@ impl NormalizationConfig {
 }
 
 // Defined in this module
-pub use loom_stream::state::ToolStorageRef;
+pub use crate::state::ToolStorageRef;
 
 // Defined in this module
-pub use loom_stream::state::NormalizedToolOutput;
+pub use crate::state::NormalizedToolOutput;
 
 
 static TOOL_OUTPUT_FILE_COUNTER: AtomicU64 = AtomicU64::new(1);

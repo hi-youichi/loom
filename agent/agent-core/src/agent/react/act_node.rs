@@ -12,7 +12,7 @@ use checkpoint::RunnableConfig;
 use loom_graph_core::{Next, Node, RunContext};
 use loom_graph_core::GraphError;
 use loom_stream::StreamMode;
-use loom_stream::state::ReActState;
+use crate::state::ReActState;
 use tool_core::ToolRegistryLocked;
 
 use super::act_executor::ToolCallExecutor;

@@ -161,7 +161,7 @@ pub fn loom_event_to_updates(ev: &TypedAnyStreamEvent) -> Vec<StreamUpdate> {
     }
 }
 
-fn extract_title_from_react_event(ev: &StreamEvent<loom_stream::state::ReActState>) -> Option<StreamUpdate> {
+fn extract_title_from_react_event(ev: &StreamEvent<agent::state::ReActState>) -> Option<StreamUpdate> {
     match ev {
         StreamEvent::Updates { node_id, state, .. } if node_id == "title" => state
             .summary

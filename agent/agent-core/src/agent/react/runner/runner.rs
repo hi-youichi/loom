@@ -13,7 +13,7 @@ use loom_llm::LlmProvider;
 use loom_llm::message::UserContent;
 use checkpoint::{Checkpointer, RunnableConfig, Store};
 use crate::runner_common;
-use loom_stream::state::ReActState;
+use crate::state::ReActState;
 use loom_stream::StreamEvent;
 use tool_core::ToolRegistryLocked;
 use checkpoint_sqlite_store::user_message::UserMessageStore;

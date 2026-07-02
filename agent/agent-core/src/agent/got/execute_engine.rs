@@ -12,7 +12,7 @@ use loom_graph_core::GraphError;
 use loom_graph_core::{Next, RunContext};
 use loom_llm::message::Message;
 use loom_llm::LlmProvider;
-use loom_stream::state::ReActState;
+use crate::state::ReActState;
 use loom_stream::{StreamEvent, StreamMode};
 use tool_core::ToolRegistryLocked;
 use loom_graph_core::Node;

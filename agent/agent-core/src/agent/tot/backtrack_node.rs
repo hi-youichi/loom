@@ -104,9 +104,9 @@ mod tests {
     use super::*;
     use checkpoint::RunnableConfig;
     use loom_llm::message::UserContent;
-    use loom_stream::state::ReActState;
+    use crate::state::ReActState;
     use loom_llm::ToolCall;
-    use loom_stream::state::ToolResult;
+    use crate::state::ToolResult;
     use tokio::sync::mpsc;
 
     fn candidate(thought: &str, tool_name: &str) -> TotCandidate {

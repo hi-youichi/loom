@@ -11,7 +11,7 @@ use loom_curator::{run_review, ReviewConfig, ReviewHistory, ReviewRecord};
 use agent::run::ResolvedModelConfig;
 use loom_llm::message::Message;
 use agent::ReactBuildConfig;
-use loom_stream::state::ReActState;
+use agent::state::ReActState;
 use tracing::{error, info, warn};
 
 /// Map `/review-skill` scope to `(review_memory, review_skills)` booleans.

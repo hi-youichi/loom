@@ -1,5 +1,5 @@
 use loom_stream::{StubDupState, StubGotState, StubTotState};
-use loom_stream::state::{ReActState, ToolCall, ToolResult};
+use agent::state::{ReActState, ToolCall, ToolResult};
 use loom_llm::message::Message;
 
 const INDENT: &str = "  ";

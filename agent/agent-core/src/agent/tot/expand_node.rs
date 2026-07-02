@@ -283,7 +283,7 @@ mod tests {
     use loom_graph_core::RunContext;
     use loom_llm::client::MockLlm;
     use checkpoint::RunnableConfig;
-    use loom_stream::state::ReActState;
+    use crate::state::ReActState;
     use tokio::sync::mpsc;
 
     fn make_state() -> TotState {

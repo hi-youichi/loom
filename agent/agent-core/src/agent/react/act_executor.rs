@@ -16,7 +16,7 @@ use loom_graph_core::GraphError;
 use loom_llm::ToolCall;
 use checkpoint::uuid6;
 use loom_stream::{StreamEvent, StreamMode};
-use loom_stream::state::{ReActState, ToolResult};
+use crate::state::{ReActState, ToolResult};
 use crate::tool_output_normalizer::{
     normalize_tool_output, NormalizationConfig, ToolOutputHint,
 };

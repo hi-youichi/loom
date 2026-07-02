@@ -22,7 +22,7 @@ use agent_client_protocol::schema::v1::{
 };
 use checkpoint::{Checkpointer, JsonSerializer, RunnableConfig};
 use checkpoint_sqlite_store::SqliteSaver;
-use loom_stream::state::ReActState;
+use agent::state::ReActState;
 
 use chrono::DateTime;
 use config::load_full_config;

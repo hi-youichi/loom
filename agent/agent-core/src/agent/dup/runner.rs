@@ -241,19 +241,19 @@ mod tests {
     #[test]
     fn dup_tools_condition_routes_correctly() {
         let no_tools = DupState {
-            core: loom_stream::state::ReActState::default(),
+            core: crate::state::ReActState::default(),
             understood: None,
         };
         assert_eq!(dup_tools_condition(&no_tools), END);
 
         let with_tools = DupState {
-            core: loom_stream::state::ReActState {
-                tool_calls: vec![loom_stream::state::ToolCall {
+            core: crate::state::ReActState {
+                tool_calls: vec![crate::state::ToolCall {
                     name: "x".to_string(),
                     arguments: "{}".to_string(),
                     id: None,
                 }],
-                ..loom_stream::state::ReActState::default()
+                ..crate::state::ReActState::default()
             },
             understood: None,
         };

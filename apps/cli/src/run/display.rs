@@ -5,8 +5,8 @@
 //! to the CLI.
 
 use loom_llm::{message::Message, ToolCall};
-use loom_stream::state::ReActState;
-use loom_stream::state::ToolResult;
+use agent::state::ReActState;
+use agent::state::ToolResult;
 use agent::{DupState, GotState, TotState};
 use std::collections::HashMap;
 
@@ -186,7 +186,7 @@ pub(crate) fn format_got_state_display(state: &GotState, max: usize) -> String {
 mod tests {
     use super::*;
     use loom_llm::ToolCall;
-    use loom_stream::state::ToolResult;
+    use agent::state::ToolResult;
     use agent::{TaskGraph, TaskNode, TaskNodeState, TaskStatus};
     use std::collections::HashMap;
 

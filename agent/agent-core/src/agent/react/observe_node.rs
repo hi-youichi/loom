@@ -7,7 +7,7 @@ use loom_graph_core::GraphError;
 use loom_graph_core::Next;
 use checkpoint::uuid6;
 use loom_llm::message::{message_summary, Message};
-use loom_stream::state::ReActState;
+use crate::state::ReActState;
 use tool_core::ToolCallContent;
 use loom_graph_core::Node;
 
@@ -147,7 +147,7 @@ impl Node<ReActState> for ObserveNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_stream::state::{ReActState, ToolResult, ToolStorageRef};
+    use crate::state::{ReActState, ToolResult, ToolStorageRef};
     use loom_llm::ToolCall;
     use loom_llm::message::Message;
     use std::path::PathBuf;

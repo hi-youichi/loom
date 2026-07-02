@@ -59,7 +59,7 @@ pub use title_node::TitleNode;
 pub use think_node::ThinkNode;
 pub use with_node_logging::WithNodeLogging;
 
-use loom_stream::state::ReActState;
+use crate::state::ReActState;
 
 /// Output of the tools_condition function.
 #[derive(Debug, Clone, PartialEq, Eq)]

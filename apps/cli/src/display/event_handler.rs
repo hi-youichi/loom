@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use loom_stream::TypedAnyStreamEvent;
 use loom_stream::{ReActState, StubDupState, StubGotState, StubTotState};
 use loom_stream::{MessageChunk, MessageChunkKind, StreamEvent};
-use loom_stream::state::{ToolCall, ToolResult};
+use agent::state::{ToolCall, ToolResult};
 
 use super::format::*;
 use super::panel_format;
