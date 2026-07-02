@@ -10,7 +10,7 @@ use crate::error::BotError;
 use crate::formatting::telegram::markdown_notice;
 use crate::handler_deps::HandlerDeps;
 use crate::traits::AgentRunContext;
-use loom_commands as loom_command;
+use agent::commands as loom_command;
 use teloxide::types::Message;
 
 pub struct MessageContext<'a> {

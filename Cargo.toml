@@ -43,10 +43,6 @@ members = [
 
     "agent/agent-core",
 
-    "agent/compress",
-
-    "loom-commands",
-
     "loom-stream",
 
     "agent/tool/tool-core",
@@ -58,9 +54,6 @@ members = [
     "agent/tool/tool-experimental",
 
     "experimental/curator",
-
-    "loom-stream-display",
-
 
 
 

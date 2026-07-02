@@ -5,7 +5,7 @@
 //! or config file defaults.
 
 use chrono::{DateTime, Utc};
-use loom_stream_display::terminal as term;
+use crate::display::terminal as term;
 use serde::Serialize;
 use std::collections::HashMap;
 

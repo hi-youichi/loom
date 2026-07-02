@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use skill::SkillRegistry;
-use loom_compress::CompactionConfig;
+use crate::compress::CompactionConfig;
 use tool_core::BuiltinToolFilter;
 use model_spec_core::ModelTier;
 use super::runner_config::{TotRunnerConfig, GotRunnerConfig};

@@ -6,7 +6,7 @@
 //! multiple LLM stream chunks.
 
 use loom_stream::{MessageChunk, MessageChunkKind};
-use crate::markdown::*;
+use super::markdown::*;
 use std::io::Write;
 
 /// Stateful line-buffering markdown renderer for streaming output.
@@ -40,7 +40,7 @@ impl StreamingMarkdownRenderer {
     ///   rendered with markdown formatting and printed to stdout.
     pub fn push_chunk(&mut self, chunk: &MessageChunk) {
         if chunk.kind == MessageChunkKind::Thinking {
-            eprint!("{}", crate::terminal::dim(&chunk.content));
+            eprint!("{}", super::terminal::dim(&chunk.content));
             let _ = std::io::stderr().flush();
             return;
         }

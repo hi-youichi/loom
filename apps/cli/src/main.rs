@@ -27,6 +27,9 @@ mod task_db;
 
 pub(crate) use args::Command;
 
+use cli::display;
+
+
 use std::sync::Arc;
 
 use clap::Parser;

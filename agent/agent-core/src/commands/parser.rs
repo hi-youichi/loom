@@ -1,6 +1,6 @@
 //! Slash command parser: user text -> Option<Command>.
 
-use crate::command::Command;
+use crate::commands::command::Command;
 
 pub fn parse(text: &str) -> Option<Command> {
     let trimmed = text.trim();

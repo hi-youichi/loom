@@ -163,7 +163,7 @@ pub(super) async fn build_and_run_sub_agent(
             | loom_stream::StreamEvent::TaskEnd { .. }
             | loom_stream::StreamEvent::ToolStart { .. }
             | loom_stream::StreamEvent::ToolEnd { .. } => {
-                if let Some(formatted) = loom_stream_display::format_subagent_event(
+                if let Some(formatted) = crate::subagent_display::format_subagent_event(
                     &event,
                     &agent_name_for_event,
                     child_depth,

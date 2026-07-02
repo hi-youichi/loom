@@ -146,12 +146,12 @@ fn truncate_to_terminal_width(s: &str, margin: usize) -> String {
 
 /// Returns terminal width, defaulting to 80 on failure.
 fn get_terminal_width() -> usize {
-    loom_stream_display::terminal::get_terminal_width()
+    crate::display::terminal::get_terminal_width()
 }
 
 /// Checks if stderr is connected to a TTY.
 fn is_stderr_tty() -> bool {
-    loom_stream_display::terminal::is_stderr_tty()
+    crate::display::terminal::is_stderr_tty()
 }
 
 #[cfg(test)]

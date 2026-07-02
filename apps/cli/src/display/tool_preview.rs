@@ -6,7 +6,7 @@
 //! PREVIEW: Shows a snapshot of tool output (read, glob, grep, etc.)
 //! DIFF: Shows edit changes with red/green highlighting
 
-use crate::terminal::stderr_color_enabled;
+use super::terminal::stderr_color_enabled;
 
 fn color_enabled() -> bool {
     stderr_color_enabled()
@@ -751,7 +751,7 @@ fn format_ls_preview(result: &str) -> String {
 /// Applies both line-level formatting (headings, lists, blockquotes) and
 /// inline formatting (bold, italic, code, links) to a single line of text.
 fn render_markdown_line(line: &str) -> String {
-    use crate::markdown::*;
+    use super::markdown::*;
 
     if let Some((level, content)) = parse_heading(line) {
         return format_heading(level, content);

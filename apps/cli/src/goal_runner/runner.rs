@@ -146,7 +146,7 @@ impl GoalRunner {
             );
 
             eprintln!("\n{}",
-                loom_stream_display::panel_format::format_panel_line(
+                crate::display::panel_format::format_panel_line(
                     "GOAL",
                     &format!("iteration {} | tool: {} | time: {}s",
                         self.iteration, self.tool.name(), self.time_used_seconds),
@@ -172,18 +172,18 @@ impl GoalRunner {
                     if let Some(ref reasoning) = turn_result.reasoning_content {
                         if !reasoning.trim().is_empty() {
                             eprintln!("{}",
-                                loom_stream_display::panel_format::format_panel_line(
-                                    "THINKING", &loom_stream_display::render_markdown(reasoning).to_string()
+                                crate::display::panel_format::format_panel_line(
+                                    "THINKING", &crate::display::render_markdown(reasoning).to_string()
                                 )
                             );
                         }
                     }
                     if !turn_result.reply.trim().is_empty() {
-                        eprintln!("{}", loom_stream_display::render_markdown(&turn_result.reply));
+                        eprintln!("{}", crate::display::render_markdown(&turn_result.reply));
                     }
                     for tc in &turn_result.tool_calls_summary {
                         eprintln!("{}",
-                            loom_stream_display::panel_format::format_panel_line(
+                            crate::display::panel_format::format_panel_line(
                                 "TOOL", &format!("{} → {}", tc.tool_name, tc.result_preview)
                             )
                         );
@@ -415,7 +415,7 @@ impl GoalRunner {
     async fn run_verify_command(&self, cmd: &str) -> bool {
         tracing::info!(session_id = %self.task_id, cmd = cmd, "running verify command");
         eprintln!("{}",
-            loom_stream_display::panel_format::format_panel_line(
+            crate::display::panel_format::format_panel_line(
                 "VERIFY", cmd,
             )
         );
@@ -437,7 +437,7 @@ impl GoalRunner {
             Ok(output) => {
                 if output.status.success() {
                     eprintln!("{}",
-                        loom_stream_display::panel_format::format_panel_line(
+                        crate::display::panel_format::format_panel_line(
                             "VERIFY", "passed",
                         )
                     );
@@ -445,7 +445,7 @@ impl GoalRunner {
                 } else {
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     eprintln!("{}",
-                        loom_stream_display::panel_format::format_panel_line(
+                        crate::display::panel_format::format_panel_line(
                             "VERIFY", &format!("failed: {}", stderr.trim()),
                         )
                     );
@@ -455,7 +455,7 @@ impl GoalRunner {
             Err(e) => {
                 tracing::error!(session_id = %self.task_id, error = %e, "verify command failed to execute");
                 eprintln!("{}",
-                    loom_stream_display::panel_format::format_panel_line(
+                    crate::display::panel_format::format_panel_line(
                         "VERIFY", &format!("error: {}", e),
                     )
                 );

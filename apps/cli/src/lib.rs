@@ -3,6 +3,7 @@
 //! Used by the `loom` binary. Builds a [`ReactRunner`](loom::ReactRunner) from
 //! config (env, working folder, etc.) and runs or streams the graph.
 
+pub mod display;
 pub mod envelope;
 pub mod mcp_manager;
 pub mod model_cmd;

@@ -6,10 +6,10 @@ use loom_stream::{ReActState, StubDupState, StubGotState, StubTotState};
 use loom_stream::{MessageChunk, MessageChunkKind, StreamEvent};
 use loom_stream::state::{ToolCall, ToolResult};
 
-use crate::format::*;
-use crate::panel_format;
-use crate::spinner::{NoopSpinner, Spinner, SpinnerTrait};
-use crate::StreamingMarkdownRenderer;
+use super::format::*;
+use super::panel_format;
+use super::spinner::{NoopSpinner, Spinner, SpinnerTrait};
+use super::StreamingMarkdownRenderer;
 
 pub struct StreamDisplayConfig {
     pub verbose: bool,
@@ -252,10 +252,10 @@ pub fn on_event_react(
                     }
                     // Show tool call lines (name + args summary)
                     for tc in &state.tool_calls {
-                        let summary = crate::tool_summary::format_call_summary(&tc.name, &tc.arguments);
+                        let summary = super::tool_summary::format_call_summary(&tc.name, &tc.arguments);
                         eprintln!("{}", panel_format::format_tool_call(&tc.name, &summary));
                         // Show DIFF immediately for edit/multiedit (doesn't need result)
-                        if let Some(diff) = crate::tool_preview::format_diff(
+                        if let Some(diff) = super::tool_preview::format_diff(
                             &tc.name, &tc.arguments, "", s.compact,
                         ) {
                             eprintln!("{}", diff);
@@ -291,28 +291,28 @@ pub fn on_event_react(
                             Some(r) => r.lines().next().unwrap_or("error"),
                             None => "error",
                         };
-                        eprintln!("{}", panel_format::format_panel_line("ERROR", &format!("{}: {}", tc.name, crate::tool_summary::truncate(err_msg, 80))));
+                        eprintln!("{}", panel_format::format_panel_line("ERROR", &format!("{}: {}", tc.name, super::tool_summary::truncate(err_msg, 80))));
                     }
 
                     // PREVIEW and result fallback: skip for edit/multiedit (diff already shown)
                     if !is_edit_like {
                         if let Some(ref result) = result_text {
-                            let has_diff = crate::tool_preview::format_diff(
+                            let has_diff = super::tool_preview::format_diff(
                                 &tc.name, &tc.arguments, result, compact,
                             ).is_some();
 
-                            if let Some(preview) = crate::tool_preview::format_preview(
+                            if let Some(preview) = super::tool_preview::format_preview(
                                 &tc.name, &tc.arguments, result, compact,
                             ) {
                                 eprintln!("{}", preview);
                             } else if !is_error && !result.trim().is_empty() && !compact && !has_diff {
-                                eprintln!("{}", crate::tool_preview::format_result_preview(
+                                eprintln!("{}", super::tool_preview::format_result_preview(
                                     &tc.name, result, elapsed,
                                 ));
                             }
 
                             if has_diff {
-                                if let Some(diff) = crate::tool_preview::format_diff(
+                                if let Some(diff) = super::tool_preview::format_diff(
                                     &tc.name, &tc.arguments, result, compact,
                                 ) {
                                     eprintln!("{}", diff);
@@ -323,7 +323,7 @@ pub fn on_event_react(
 
                     // Show DONE line for non-edit tools
                     if !is_edit_like {
-                        let done_summary = crate::tool_summary::format_done_summary(
+                        let done_summary = super::tool_summary::format_done_summary(
                             &tc.name,
                             result_text.as_deref().unwrap_or(""),
                             is_error,

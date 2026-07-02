@@ -8,4 +8,4 @@ pub use runner_config::{TotRunnerConfig, GotRunnerConfig};
 pub use env_context::{EnvContext, ProjectInfo};
 
 pub use tool_core::BuiltinToolFilter;
-pub use loom_compress::CompactionConfig;
+pub use crate::compress::CompactionConfig;

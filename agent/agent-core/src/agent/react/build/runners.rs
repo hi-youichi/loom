@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use loom_compress::CompactionConfig;
+use crate::compress::CompactionConfig;
 use loom_graph_core::GraphError;
 use loom_llm::{LlmClient, LlmProvider};
 use loom_llm::client::FixedLlmProvider;

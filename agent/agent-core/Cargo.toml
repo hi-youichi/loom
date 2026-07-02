@@ -38,19 +38,12 @@ tool-experimental = { path = "../tool/tool-experimental" }
 
 memory-v2 = { path = "../../experimental/memory-v2" }
 
-loom-compress = { path = "../compress" }
-
-
 skill = { path = "../skill" }
 
 
 worktree = { path = "../../experimental/worktree" }
 
 
-
-loom-stream-display = { path = "../../loom-stream-display" }
-
-loom-commands = { path = "../../loom-commands" }
 
 stream-event = { path = "../../stream-event" }
 

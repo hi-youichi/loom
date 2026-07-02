@@ -205,8 +205,8 @@ impl CodingTool for LoomTool {
                     sender(ev);
                 }))
             } else {
-                let mut original = loom_stream_display::create_stdio_event_callback(
-                    loom_stream_display::StreamDisplayConfig {
+                let mut original = crate::display::create_stdio_event_callback(
+                    crate::display::StreamDisplayConfig {
                         verbose: self.verbose,
                         display_max_len: 10000,
                         output_timestamp: false,
@@ -323,7 +323,7 @@ fn collect_tool_summary(
     summaries: &Arc<Mutex<Vec<ToolCallSummary>>>,
 ) {
     if let TypedAnyStreamEvent::React(StreamEvent::ToolEnd { name, result, .. }) = ev {
-        let preview = loom_stream_display::tool_summary::truncate(
+        let preview = crate::display::tool_summary::truncate(
             result.lines().next().unwrap_or(result),
             80,
         );

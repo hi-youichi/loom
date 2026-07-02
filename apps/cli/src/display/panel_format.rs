@@ -10,11 +10,11 @@
 use std::time::Duration;
 
 // ANSI color wrappers come from `terminal` module.
-use crate::terminal::{bold, green, yellow};
+use super::terminal::{bold, green, yellow};
 
 /// Backward-compat alias: checks stderr TTY + NO_COLOR.
 fn color_enabled() -> bool {
-    crate::terminal::stderr_color_enabled()
+    super::terminal::stderr_color_enabled()
 }
 
 // ── Panel line formatting ────────────────────────────────────────────
@@ -53,7 +53,7 @@ pub fn format_tool_call(tool_name: &str, args_summary: &str) -> String {
 
 pub fn format_tool_done(tool_name: &str, result_summary: &str, elapsed: Option<Duration>) -> String {
     let timing = match elapsed {
-        Some(d) => format!(" {}", crate::tool_summary::format_elapsed(d)),
+        Some(d) => format!(" {}", super::tool_summary::format_elapsed(d)),
         None => String::new(),
     };
     let summary = if result_summary.is_empty() {

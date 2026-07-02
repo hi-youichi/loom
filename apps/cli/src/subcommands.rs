@@ -122,7 +122,7 @@ pub(crate) async fn handle_session_command(
             let use_pager = !json
                 && !effective_args.no_pager
                 && effective_args.format.is_none()
-                && loom_stream_display::terminal::is_stdout_tty();
+                && crate::display::terminal::is_stdout_tty();
 
             // Build display config from effective args (P2: decoupled from ListArgs).
             // Enrich with review status map (non-fatal: empty map on error).

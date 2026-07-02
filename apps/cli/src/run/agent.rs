@@ -29,7 +29,7 @@ use super::display::{
 
 use stream_event::EnvelopeState;
 use loom_stream::StreamEvent;
-use loom_stream_display as panel_format;
+use crate::display as panel_format;
 
 use agent::run::RunError;
 
@@ -413,7 +413,7 @@ pub async fn run_agent_wrapper(
     })
 }
 
-use loom_stream_display::StreamingMarkdownRenderer;
+use crate::display::StreamingMarkdownRenderer;
 
 fn print_stream_chunk(chunk: &loom_stream::MessageChunk, renderer: &mut StreamingMarkdownRenderer) {
     renderer.push_chunk(chunk);
@@ -537,7 +537,7 @@ fn on_event_react(
                     }
                     // Show tool call lines (name + args summary)
                     for tc in &react_state.tool_calls {
-                        let summary = loom_stream_display::tool_summary::format_call_summary(
+                        let summary = crate::display::tool_summary::format_call_summary(
                             &tc.name,
                             &tc.arguments,
                         );
@@ -547,7 +547,7 @@ fn on_event_react(
                         );
                         // Show DIFF immediately for edit/multiedit (doesn't need result)
                         if let Some(diff) =
-                            loom_stream_display::format_diff(&tc.name, &tc.arguments, "", false)
+                            crate::display::format_diff(&tc.name, &tc.arguments, "", false)
                         {
                             eprintln!("{}", diff);
                         }
@@ -587,9 +587,9 @@ fn on_event_react(
                 };
                 for tc in s.pending_tool_calls.drain(..) {
                     let result_text =
-                        loom_stream_display::find_tool_result(tool_results, &tc.name, &tc.id);
+                        crate::display::find_tool_result(tool_results, &tc.name, &tc.id);
                     let is_error =
-                        loom_stream_display::find_tool_result_error(tool_results, &tc.name, &tc.id);
+                        crate::display::find_tool_result_error(tool_results, &tc.name, &tc.id);
                     let is_edit_like = tc.name == "edit" || tc.name == "multiedit";
 
                     if is_error {
@@ -604,7 +604,7 @@ fn on_event_react(
                                 &format!(
                                     "{}: {}",
                                     tc.name,
-                                    loom_stream_display::tool_summary::truncate(err_msg, 80)
+                                    crate::display::tool_summary::truncate(err_msg, 80)
                                 )
                             )
                         );
@@ -613,7 +613,7 @@ fn on_event_react(
                     // PREVIEW and result fallback: skip for edit/multiedit (diff already shown)
                     if !is_edit_like {
                         if let Some(ref result) = result_text {
-                            if let Some(preview) = loom_stream_display::format_preview(
+                            if let Some(preview) = crate::display::format_preview(
                                 &tc.name,
                                 &tc.arguments,
                                 result,
@@ -623,7 +623,7 @@ fn on_event_react(
                             } else if !is_error && !result.trim().is_empty() {
                                 eprintln!(
                                     "{}",
-                                    loom_stream_display::tool_preview::format_result_preview(
+                                    crate::display::tool_preview::format_result_preview(
                                         &tc.name, result, elapsed,
                                     )
                                 );
@@ -634,7 +634,7 @@ fn on_event_react(
                     // DIFF for edit/multiedit already shown during think; skip here
                     if !is_edit_like {
                         if let Some(ref result) = result_text {
-                            if let Some(diff) = loom_stream_display::format_diff(
+                            if let Some(diff) = crate::display::format_diff(
                                 &tc.name,
                                 &tc.arguments,
                                 result,
@@ -647,7 +647,7 @@ fn on_event_react(
 
                     // Show DONE line for non-edit tools
                     if !is_edit_like {
-                        let done_summary = loom_stream_display::tool_summary::format_done_summary(
+                        let done_summary = crate::display::tool_summary::format_done_summary(
                             &tc.name,
                             result_text.as_deref().unwrap_or(""),
                             is_error,

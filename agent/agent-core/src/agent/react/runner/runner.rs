@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::agent::react::REACT_SYSTEM_PROMPT;
-use loom_compress::{build_graph, CompactionConfig, CompressionGraphNode};
+use crate::compress::{build_graph, CompactionConfig, CompressionGraphNode};
 use loom_graph_core::{
     CompilationError, CompiledStateGraph, LoggingNodeMiddleware, StateGraph, END, START,
 };

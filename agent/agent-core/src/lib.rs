@@ -8,12 +8,16 @@
 //! - Profile loading, tier resolution, prompt assembly
 
 pub mod agent;
+pub mod commands;
+pub mod compress;
 pub mod goal_runner;
 pub mod profile;
 pub mod run;
 pub mod runner_common;
 pub mod runner_error;
 pub mod run_types;
+pub mod state;
+pub mod subagent_display;
 pub mod tool_output_normalizer;
 pub mod tools;
 
@@ -75,3 +79,9 @@ pub use run_types::{
 
 // Cancellation
 pub use tool_core::active_operation::RunCancellation;
+
+// Compress (merged from loom-compress)
+pub use compress::{CompactionConfig, CompressionGraphNode, build_graph};
+
+// Commands (merged from loom-commands)
+pub use commands::{Command, CommandResult, execute, execute_async, parse};

@@ -1,9 +1,9 @@
 //! ReActState implementations of command traits.
 
 use loom_llm::message::Message;
-use loom_stream::state::ReActState;
+use crate::state::ReActState;
 
-use crate::command_traits::{CompactState, ResetState, SummarizeState};
+use crate::commands::command_traits::{CompactState, ResetState, SummarizeState};
 
 impl ResetState for ReActState {
     fn reset_context(&mut self) {

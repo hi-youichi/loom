@@ -701,14 +701,14 @@ Ok(SetSessionModeResponse::new())
             })?;
 
         if let loom_llm::message::UserContent::Text(ref text) = user_content {
-            if let Some(cmd) = loom_commands::parse(text) {
+            if let Some(cmd) = agent::commands::parse(text) {
                 match cmd {
-                    loom_commands::Command::ResetContext => {
+                    agent::commands::Command::ResetContext => {
                         self.sessions.cancel_current_generation(&key);
                         tracing::info!(session_id = %args.session_id, "Context cleared via /reset command");
                         return Ok(PromptResponse::new(StopReason::EndTurn));
                     }
-                    loom_commands::Command::Goal { description } => {
+                    agent::commands::Command::Goal { description } => {
                         tracing::info!(
                             session_id = %args.session_id,
                             goal = %description,
@@ -762,7 +762,7 @@ Ok(SetSessionModeResponse::new())
                             }
                         }
                     }
-                    loom_commands::Command::ReviewSkill { scope } => {
+                    agent::commands::Command::ReviewSkill { scope } => {
                         tracing::info!(
                             session_id = %args.session_id,
                             scope = ?scope,
@@ -782,8 +782,8 @@ Ok(SetSessionModeResponse::new())
                         );
                         return Ok(PromptResponse::new(StopReason::EndTurn));
                     }
-                    loom_commands::Command::Models { .. }
-                    | loom_commands::Command::ModelsUse { .. } => {
+                    agent::commands::Command::Models { .. }
+                    | agent::commands::Command::ModelsUse { .. } => {
                         // ACP handles models via SetSessionConfigOption, not here
                     }
                     _ => {
@@ -1627,7 +1627,7 @@ async fn resolve_context_window_size(model: Option<&str>) -> u64 {
     use model_spec_core::resolver::{ConfigModelEntry, ConfigProviderEntry};
 
     let Some(model) = model else {
-        return loom_compress::CompactionConfig::default().max_context_tokens as u64;
+        return agent::compress::CompactionConfig::default().max_context_tokens as u64;
     };
 
     let providers: Vec<ConfigProviderEntry> = config::load_full_config("loom")
@@ -1666,7 +1666,7 @@ async fn resolve_context_window_size(model: Option<&str>) -> u64 {
                 model = %model,
                 "model spec not found, using default 128k context window"
             );
-            loom_compress::CompactionConfig::default().max_context_tokens as u64
+            agent::compress::CompactionConfig::default().max_context_tokens as u64
         }
     }
 }

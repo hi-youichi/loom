@@ -1,6 +1,5 @@
 pub mod event_handler;
 pub mod format;
-pub mod format_subagent;
 pub mod markdown;
 pub mod panel_format;
 pub mod spinner;
@@ -10,7 +9,6 @@ pub mod tool_preview;
 pub mod tool_summary;
 
 pub use markdown::render_markdown;
-// Re-export terminal utilities for downstream crates.
 pub use terminal::{
     bold, dim, get_terminal_width, green, is_stderr_tty, is_stdout_tty,
     stderr_color_enabled, stdout_color_enabled, yellow,
@@ -24,7 +22,6 @@ pub use spinner::{NoopSpinner, Spinner, SpinnerTrait};
 pub use streaming_markdown::StreamingMarkdownRenderer;
 pub use tool_preview::{format_diff, format_preview, format_result_preview};
 pub use tool_summary::{format_call_summary, format_elapsed, truncate};
-pub use format_subagent::{format_subagent_event, SubagentDisplay};
 pub use event_handler::{
     create_stdio_event_callback, find_tool_result, find_tool_result_error,
     EventState, StreamDisplayConfig,
@@ -32,6 +29,5 @@ pub use event_handler::{
     print_reply_timestamp, log_node_enter, print_stream_chunk,
 };
 
-// Re-export types from loom-stream that display consumers commonly need
 pub use loom_stream::{MessageChunk, MessageChunkKind, StreamEvent};
 pub use loom_stream::state::{ReActState, ToolCall, ToolResult};

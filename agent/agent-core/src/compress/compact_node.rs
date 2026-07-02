@@ -7,7 +7,7 @@ use tracing::debug;
 
 use loom_graph_core::GraphError;
 use loom_llm::LlmClient;
-use loom_stream::state::ReActState;
+use crate::state::ReActState;
 use loom_graph_core::{Next, Node};
 
 use super::compaction;
@@ -89,7 +89,7 @@ mod tests {
 
     use loom_llm::client::MockLlm;
     use loom_llm::message::Message;
-    use loom_stream::state::ReActState;
+    use crate::state::ReActState;
 
     use super::*;
 

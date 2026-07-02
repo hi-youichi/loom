@@ -30,7 +30,6 @@ tool-core = { path = "../../agent/tool/tool-core" }
 loom-stream = { path = "../../loom-stream" }
 loom-llm = { path = "../../foundation/llm" }
 tool-extensions = { path = "../../agent/tool/tool-extensions" }
-loom-commands = { path = "../../loom-commands" }
 axum = "0.7"
 tokio-util = "0.7"
 

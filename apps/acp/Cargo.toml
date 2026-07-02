@@ -19,11 +19,9 @@ checkpoint = { path = "../../foundation/checkpoint" }
 checkpoint-sqlite-store = { path = "../../foundation/checkpoint-sqlite-store" }
 tool-core = { path = "../../agent/tool/tool-core" }
 tool-basic = { path = "../../agent/tool/tool-basic" }
-loom-compress = { path = "../../agent/compress" }
 model-spec-core = { path = "../../foundation/model-spec-core", features = ["tier"] }
 loom-stream = { path = "../../loom-stream" }
 
-loom-commands = { path = "../../loom-commands" }
 loom-curator = { path = "../../experimental/curator" }
 config = { path = "../../config", features = ["tracing-init"] }
 task-core = { path = "../../experimental/task/task-core" }

@@ -1,8 +1,3 @@
-//! Context compression for LLM interactions
-//!
-//! This module provides functionality for compressing conversation history
-//! and managing context windows efficiently.
-
 pub mod compact_node;
 pub mod compaction;
 pub mod config;

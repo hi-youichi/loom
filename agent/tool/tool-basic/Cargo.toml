@@ -20,7 +20,6 @@ tool-core = { path = "../tool-core" }
 loom-llm = { path = "../../../foundation/llm" }
 loom-util = { path = "../../../foundation/loom-util" }
 loom-stream = { path = "../../../loom-stream" }
-loom-commands = { path = "../../../loom-commands" }
 skill = { path = "../../skill" }
 config = { path = "../../../config" }
 
