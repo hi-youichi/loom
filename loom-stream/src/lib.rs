@@ -14,9 +14,7 @@ pub use stream_event::{
 
 // Loom-specific types (to be removed in Phase 5)
 pub mod any_event;
-pub mod erased_event;
 pub use any_event::TypedAnyStreamEvent;
-pub use erased_event::{AnyStreamEvent, StubDupState, StubGotState, StubTotState};
 
 // Re-export state types for convenience
 pub use state::{

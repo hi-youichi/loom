@@ -1,8 +1,8 @@
 use chrono::Local;
 use std::sync::Mutex;
 
-use loom_stream::TypedAnyStreamEvent;
-use loom_stream::{ReActState, StubDupState, StubGotState, StubTotState};
+use agent::run::TypedAnyStreamEvent;
+use agent::state::ReActState; use agent::{DupState, TotState, GotState};
 use loom_stream::{MessageChunk, MessageChunkKind, StreamEvent};
 use agent::state::{ToolCall, ToolResult};
 
@@ -349,7 +349,7 @@ pub fn on_event_react(
 }
 
 pub fn on_event_dup(
-    ev: &StreamEvent<StubDupState>,
+    ev: &StreamEvent<DupState>,
     s: &mut EventState,
     display_max_len: usize,
     verbose: bool,
@@ -393,7 +393,7 @@ pub fn on_event_dup(
 }
 
 pub fn on_event_tot(
-    ev: &StreamEvent<StubTotState>,
+    ev: &StreamEvent<TotState>,
     s: &mut EventState,
     display_max_len: usize,
     verbose: bool,
@@ -453,7 +453,7 @@ pub fn on_event_tot(
 }
 
 pub fn on_event_got(
-    ev: &StreamEvent<StubGotState>,
+    ev: &StreamEvent<GotState>,
     s: &mut EventState,
     display_max_len: usize,
     verbose: bool,

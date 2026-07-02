@@ -544,10 +544,9 @@ impl SessionNotifier {
     }
 
     pub fn try_send_stream_event(&self, event: &loom_stream::TypedAnyStreamEvent) {
-        if let loom_stream::TypedAnyStreamEvent::React(e) = event {
-            let typed = TypedAnyStreamEvent::React(e.clone());
-            self.try_send_event(&typed);
-        }
+        let loom_stream::TypedAnyStreamEvent::React(e) = event;
+        let typed = TypedAnyStreamEvent::React(e.clone());
+        self.try_send_event(&typed);
     }
 
     fn send_updates(&self, updates: Vec<StreamUpdate>) {

@@ -8,7 +8,6 @@ use tokio_util::sync::CancellationToken;
 
 use agent::run::{build_react_config, run_agent_from_config, RunParams, TypedAnyStreamEvent as FullTypedAnyStreamEvent};
 use agent::run::RunCompletion;
-use loom_stream::TypedAnyStreamEvent;
 use loom_stream::StreamEvent;
 
 use agent::goal_runner::state::{ToolCallSummary, ToolError, TurnResult};
@@ -198,10 +197,7 @@ impl CodingTool for LoomTool {
                 let sender = sender.clone();
                 let summaries = tool_summaries.clone();
                 Some(Box::new(move |ev: FullTypedAnyStreamEvent| {
-                    // Convert full event to cli_types event for summary collection
-                    if let Some(cli_ev) = agent::run::to_loom_any_stream_event(&ev) {
-                        collect_tool_summary(&cli_ev, &summaries);
-                    }
+                    collect_tool_summary(&ev, &summaries);
                     sender(ev);
                 }))
             } else {
@@ -216,10 +212,8 @@ impl CodingTool for LoomTool {
                 );
                 let summaries = tool_summaries.clone();
                 Some(Box::new(move |ev: FullTypedAnyStreamEvent| {
-                    if let Some(cli_ev) = agent::run::to_loom_any_stream_event(&ev) {
-                        collect_tool_summary(&cli_ev, &summaries);
-                        original(cli_ev);
-                    }
+                    collect_tool_summary(&ev, &summaries);
+                    original(ev);
                 }))
             };
 
@@ -319,10 +313,10 @@ pub fn shell_tool_args(tool_name: &str) -> Vec<String> {
 /// Extract tool name + result preview from `StreamEvent::ToolEnd` events
 /// into a shared summary list for the goal runner to display after each turn.
 fn collect_tool_summary(
-    ev: &TypedAnyStreamEvent,
+    ev: &FullTypedAnyStreamEvent,
     summaries: &Arc<Mutex<Vec<ToolCallSummary>>>,
 ) {
-    if let TypedAnyStreamEvent::React(StreamEvent::ToolEnd { name, result, .. }) = ev {
+    if let FullTypedAnyStreamEvent::React(StreamEvent::ToolEnd { name, result, .. }) = ev {
         let preview = crate::display::tool_summary::truncate(
             result.lines().next().unwrap_or(result),
             80,

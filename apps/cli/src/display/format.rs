@@ -1,4 +1,4 @@
-use loom_stream::{StubDupState, StubGotState, StubTotState};
+use agent::{DupState, TotState, GotState};
 use agent::state::{ReActState, ToolCall, ToolResult};
 use loom_llm::message::Message;
 
@@ -103,7 +103,7 @@ pub fn indent_lines(s: &str, indent: &str) -> String {
         .join("\n")
 }
 
-pub fn format_tot_state_display(state: &StubTotState, max: usize) -> String {
+pub fn format_tot_state_display(state: &TotState, max: usize) -> String {
     let core_block = format_react_state_display(&state.core, max);
     let core_indented = indent_lines(&core_block, "    ");
     let lines = [
@@ -115,7 +115,7 @@ pub fn format_tot_state_display(state: &StubTotState, max: usize) -> String {
     lines.join("\n")
 }
 
-pub fn format_dup_state_display(state: &StubDupState, max: usize) -> String {
+pub fn format_dup_state_display(state: &DupState, max: usize) -> String {
     let core_block = format_react_state_display(&state.core, max);
     let core_indented = indent_lines(&core_block, "    ");
     let lines = [
@@ -127,7 +127,7 @@ pub fn format_dup_state_display(state: &StubDupState, max: usize) -> String {
     lines.join("\n")
 }
 
-pub fn format_got_state_display(state: &StubGotState, max: usize) -> String {
+pub fn format_got_state_display(state: &GotState, max: usize) -> String {
     format!(
         "GotState {{ input_message: {} }}",
         truncate_display(&state.input_message, max),

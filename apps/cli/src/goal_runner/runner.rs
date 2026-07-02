@@ -521,7 +521,7 @@ pub async fn resume_with_event_sender(
     db: Arc<TaskDb>,
     cancel: CancellationToken,
     run_cancellation: Option<tool_core::active_operation::RunCancellation>,
-    event_sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
+    event_sender: Option<Arc<dyn Fn(FullTypedAnyStreamEvent) + Send + Sync>>,
 ) -> Result<GoalRunner, GoalError> {
     let updated = db
         .atomic_update_status(id, TaskStatus::Pending, TaskStatus::InProgress)
@@ -574,7 +574,7 @@ fn resolve_tool(
     db_path: &std::path::Path,
     working_dir: &std::path::Path,
     run_cancellation: &Option<tool_core::active_operation::RunCancellation>,
-    event_sender: &Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
+    event_sender: &Option<Arc<dyn Fn(FullTypedAnyStreamEvent) + Send + Sync>>,
     cancel: &CancellationToken,
 ) -> Result<Box<dyn CodingTool>, GoalError> {
     match tool_name {
@@ -592,9 +592,7 @@ fn resolve_tool(
             if let Some(ref sender) = event_sender {
                 let sender = sender.clone();
                 let adapted: Arc<dyn Fn(FullTypedAnyStreamEvent) + Send + Sync> = Arc::new(move |ev: FullTypedAnyStreamEvent| {
-                    if let Some(cli_ev) = agent::run::to_loom_any_stream_event(&ev) {
-                        sender(cli_ev);
-                    }
+                    sender(ev);
                 });
                 tool = tool.with_event_sender(adapted);
             }

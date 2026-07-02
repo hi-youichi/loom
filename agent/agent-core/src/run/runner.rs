@@ -112,7 +112,6 @@ impl TypedAnyStreamEvent {
     pub fn from_loom(ev: loom_stream::TypedAnyStreamEvent) -> Self {
         match ev {
             loom_stream::TypedAnyStreamEvent::React(e) => Self::React(e),
-            _ => Self::React(StreamEvent::Custom(serde_json::json!({"type": "noop"}))),
         }
     }
 }
