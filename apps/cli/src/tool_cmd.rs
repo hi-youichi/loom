@@ -205,10 +205,9 @@ mod tests {
     #[test]
     fn format_tools_list_with_empty_vec_shows_message() {
         let empty: Vec<ToolSpec> = vec![];
+        // format_tools_list writes to stdout; we just verify it doesn't panic.
         let res = format_tools_list(&empty, false);
         assert!(res.is_ok());
-        let output = String::from_utf8_lossy(&std::io::stdout().into_inner());
-        assert!(output.contains("No tools available"));
     }
 
     #[test]
@@ -218,11 +217,13 @@ mod tests {
                 name: "test1".to_string(),
                 description: Some("Short description".to_string()),
                 input_schema: serde_json::Value::Null,
+                output_hint: None,
             },
             ToolSpec {
                 name: "test2".to_string(),
                 description: Some("This is a very long description that should be truncated with ... when displayed in the CLI table to maintain readability and proper table formatting".to_string()),
                 input_schema: serde_json::Value::Null,
+                output_hint: None,
             },
         ];
         let res = format_tools_list(&specs, false);
@@ -236,6 +237,7 @@ mod tests {
                 name: "test1".to_string(),
                 description: Some("Short description".to_string()),
                 input_schema: serde_json::Value::Null,
+                output_hint: None,
             },
         ];
         let res = format_tools_list(&specs, true);

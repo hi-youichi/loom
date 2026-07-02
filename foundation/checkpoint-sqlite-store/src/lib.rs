@@ -31,7 +31,6 @@ pub fn default_memory_db_path() -> std::path::PathBuf {
 }
 
 /// Global mutex for tests that modify environment variables.
-#[cfg(test)]
 pub fn env_test_lock() -> &'static std::sync::Mutex<()> {
     static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
     LOCK.get_or_init(|| std::sync::Mutex::new(()))

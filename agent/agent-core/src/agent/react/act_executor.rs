@@ -106,13 +106,16 @@ impl ToolCallExecutor {
 
     /// Execute all tool calls in sequence, returning normalized results with
     /// backfilled call_ids.
-    pub async fn execute(&self, tool_calls: &[ToolCall]) -> Result<Vec<ToolResult>, GraphError> {
+    ///
+    /// If a `ToolCall.id` is empty, a fallback id is generated and written back
+    /// to **both** the ToolCall and the ToolResult to keep them in sync.
+    pub async fn execute(&self, tool_calls: &mut [ToolCall]) -> Result<Vec<ToolResult>, GraphError> {
         if self.is_cancelled() {
             return Err(GraphError::Cancelled);
         }
 
         let mut tool_results = Vec::with_capacity(tool_calls.len());
-        for tc in tool_calls {
+        for tc in tool_calls.iter() {
             if self.is_cancelled() {
                 return Err(GraphError::Cancelled);
             }
@@ -350,24 +353,35 @@ fn adapt_stream_sender(
     })
 }
 
-/// Ensures each [`ToolResult`] has a non-empty `call_id`.
-fn backfill_call_ids(tool_calls: &[ToolCall], tool_results: &mut [ToolResult]) {
-    for (tc, tr) in tool_calls.iter().zip(tool_results.iter_mut()) {
-        let needs_fill = tr.call_id.as_deref().is_none_or(|s| s.is_empty());
-        if !needs_fill {
+/// Ensures each [`ToolResult`] has a non-empty `call_id`, syncing the id to
+/// both sides (ToolCall and ToolResult) when a fallback is generated.
+fn backfill_call_ids(tool_calls: &mut [ToolCall], tool_results: &mut [ToolResult]) {
+    for (tc, tr) in tool_calls.iter_mut().zip(tool_results.iter_mut()) {
+        let needs_fill_tr = tr.call_id.as_deref().is_none_or(|s| s.is_empty());
+        let needs_fill_tc = tc.id.as_deref().is_none_or(|s| s.is_empty());
+        if !needs_fill_tr && !needs_fill_tc {
             continue;
         }
-        if let Some(ref id) = tc.id {
-            if !id.is_empty() {
-                tr.call_id = Some(id.clone());
-                continue;
-            }
+        // Determine the canonical id (prefer existing non-empty)
+        let canonical_id = if !needs_fill_tc {
+            tc.id.clone().unwrap()
+        } else if !needs_fill_tr {
+            tr.call_id.clone().unwrap()
+        } else {
+            let id = format!("call_{}", uuid6());
+            warn!(
+                tool_name = %tc.name,
+                "both ToolCall.id and ToolResult.call_id empty; generated fallback id"
+            );
+            id
+        };
+        // Write to BOTH sides
+        if needs_fill_tc {
+            tc.id = Some(canonical_id.clone());
         }
-        tr.call_id = Some(format!("call_{}", uuid6()));
-        warn!(
-            tool_name = %tc.name,
-            "ToolResult missing call_id; generated fallback id (ToolCall.id also empty)"
-        );
+        if needs_fill_tr {
+            tr.call_id = Some(canonical_id);
+        }
     }
     let paired = tool_calls.len().min(tool_results.len());
     for tr in tool_results.iter_mut().skip(paired) {
@@ -400,7 +414,7 @@ mod tests {
 
     #[test]
     fn backfill_call_ids_from_toolcall_id() {
-        let tcs = vec![ToolCall {
+        let mut tcs = vec![ToolCall {
             id: Some("call-1".into()),
             name: "get_time".into(),
             arguments: "{}".into(),
@@ -411,19 +425,21 @@ mod tests {
             "ok".into(),
             false,
         )];
-        backfill_call_ids(&tcs, &mut results);
+        backfill_call_ids(&mut tcs, &mut results);
         assert_eq!(results[0].call_id.as_deref(), Some("call-1"));
     }
 
     #[test]
     fn backfill_call_ids_generates_when_both_missing() {
-        let tcs = vec![ToolCall {
+        let mut tcs = vec![ToolCall {
             id: None,
             name: "x".into(),
             arguments: "{}".into(),
         }];
         let mut results = vec![ToolResult::simple(None, None, "y".into(), false)];
-        backfill_call_ids(&tcs, &mut results);
+        backfill_call_ids(&mut tcs, &mut results);
         assert!(results[0].call_id.as_deref().is_some_and(|s| !s.is_empty()));
+        // Both sides should get the same id
+        assert_eq!(tcs[0].id, results[0].call_id);
     }
 }

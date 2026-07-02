@@ -88,3 +88,5 @@ task-core = { path = "../../experimental/task/task-core" }
 [dev-dependencies]
 
 tempfile = "3"
+
+checkpoint-sqlite-store = { path = "../../foundation/checkpoint-sqlite-store" }

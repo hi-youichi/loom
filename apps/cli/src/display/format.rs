@@ -147,10 +147,7 @@ pub fn format_context_limit(limit: u32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent::{DupState, TotState};
-
-    // Note: Tests for format_tot_state_display, format_dup_state_display, format_got_state_display
-    // are moved to loom-agent crate since they use agent-specific types.
+    use agent::{DupState, TotState, TotExtension};
 
     #[test]
     fn truncate_display_handles_short_exact_and_truncated() {
@@ -211,11 +208,13 @@ mod tests {
             messages: vec![Message::user("u"), Message::assistant("a")],
             ..ReActState::default()
         };
-        let tot = StubTotState {
+        let tot = TotState {
             core: core.clone(),
+            tot: TotExtension::default(),
         };
-        let dup = StubDupState {
+        let dup = DupState {
             core,
+            understood: None,
         };
 
         let tot_rendered = format_tot_state_display(&tot, 20);

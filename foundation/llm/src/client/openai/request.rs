@@ -20,7 +20,7 @@ use async_openai::types::chat::{
 
 use crate::error::LlmError;
 use crate::traits::ToolChoiceMode;
-use crate::message::{assistant_content_for_chat_api, check_orphan_tool_calls, message_summary, Message};
+use crate::message::{assistant_content_for_chat_api, check_orphan_tool_calls, message_summary, sanitize_tool_call_ids, Message};
 use crate::tool::ToolSpec;
 use tracing::{debug, warn};
 
@@ -175,21 +175,30 @@ pub(super) fn build_chat_request(
     reasoning_effort: Option<&str>,
     stream: bool,
 ) -> Result<async_openai::types::chat::CreateChatCompletionRequest, LlmError> {
+    let sanitized = sanitize_tool_call_ids(messages.to_vec());
+    if sanitized.len() != messages.len() {
+        warn!(
+            before = messages.len(),
+            after = sanitized.len(),
+            "api:request messages were sanitized"
+        );
+    }
+
     debug!(
         model,
         stream,
         tools_count = tools.map_or(0, |t| t.len()),
-        input_message_count = messages.len(),
+        input_message_count = sanitized.len(),
         "api:request building OpenAI chat request"
     );
-    for (i, msg) in messages.iter().enumerate() {
+    for (i, msg) in sanitized.iter().enumerate() {
         debug!("  {}", message_summary(i, msg));
     }
-    for w in check_orphan_tool_calls(messages) {
+    for w in check_orphan_tool_calls(&sanitized) {
         warn!("api:request {}", w);
     }
 
-    let openai_messages = messages_to_openai(messages);
+    let openai_messages = messages_to_openai(&sanitized);
     let mut args = CreateChatCompletionRequestArgs::default();
 
     args.model(model);

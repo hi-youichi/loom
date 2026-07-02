@@ -31,7 +31,7 @@ mod tests {
     #[test]
     fn load_tool_specs_returns_builtin_tools() {
         let specs = load_tool_specs().expect("tools/*.yaml must parse");
-        let names: Vec<&str> = specs.iter().map(|s| s.name.as_str()).collect();
+        let _names: Vec<&str> = specs.iter().map(|s| s.name.as_str()).collect();
         // Temporarily disabled due to missing YAML files
         // assert!(names.contains(&"read"), "expected read in {:?}", names);
         // assert!(

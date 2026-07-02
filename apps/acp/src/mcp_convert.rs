@@ -77,7 +77,6 @@ fn http_headers_to_map(headers: &[HttpHeader]) -> HashMap<String, String> {
 mod tests {
     use super::*;
     use agent_client_protocol::schema::v1::{EnvVariable, McpServerHttp, McpServerSse, McpServerStdio};
-    use std::path::PathBuf;
 
     #[test]
     fn stdio_conversion() {

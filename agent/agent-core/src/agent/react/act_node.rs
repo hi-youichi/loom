@@ -61,7 +61,7 @@ impl Node<ReActState> for ActNode {
 
     async fn run_with_context(
         &self,
-        state: ReActState,
+        mut state: ReActState,
         run_ctx: &RunContext<ReActState>,
     ) -> Result<(ReActState, Next), GraphError> {
         let tools_mode = run_ctx.stream_mode.contains(&StreamMode::Tools)
@@ -87,7 +87,7 @@ impl Node<ReActState> for ActNode {
             self.any_stream_event_sender.clone(),
         )
         .await;
-        let tool_results = executor.execute(&state.tool_calls).await?;
+        let tool_results = executor.execute(&mut state.tool_calls).await?;
 
         debug!(
             tool_calls = state.tool_calls.len(),

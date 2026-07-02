@@ -20,6 +20,7 @@ pub use message::{
     Message, UserContent, ContentPart, ContentError,
     AssistantToolCall, AssistantPayload, ToolCallContent,
     assistant_content_for_chat_api, content_part_modality,
+    check_orphan_tool_calls, message_summary, sanitize_tool_call_ids,
 };
 
 // Re-exports — Tool types (MCP-format ToolSpec, ToolCall, ToolSourceError, etc.)

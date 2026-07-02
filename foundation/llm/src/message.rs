@@ -658,16 +658,23 @@ pub fn content_part_modality(part: &ContentPart) -> &'static str {
     }
 }
 
-/// Helper function to check for orphan tool calls
+/// Checks for orphan tool calls in both directions.
+///
+/// **Forward**: assistant issued a `tool_calls[*].id` but no matching `Message::Tool` result exists.
+/// **Reverse**: a `Message::Tool` exists whose `tool_call_id` is not present in any preceding
+/// assistant message's `tool_calls[*].id` — the API will reject this with HTTP 400.
 pub fn check_orphan_tool_calls(messages: &[Message]) -> Vec<String> {
     let mut warnings = Vec::new();
+
+    // Pass 1 (forward): assistant tool_calls without matching tool results
     let mut expected_tool_results = std::collections::HashSet::new();
-    
     for msg in messages {
         match msg {
             Message::Assistant(payload) => {
                 for tc in &payload.tool_calls {
-                    expected_tool_results.insert(tc.id.clone());
+                    if !tc.id.is_empty() {
+                        expected_tool_results.insert(tc.id.clone());
+                    }
                 }
             }
             Message::Tool { tool_call_id, .. } => {
@@ -676,27 +683,143 @@ pub fn check_orphan_tool_calls(messages: &[Message]) -> Vec<String> {
             _ => {}
         }
     }
-    
     for orphan_id in expected_tool_results {
-        warnings.push(format!("Tool call '{}' without matching tool result", orphan_id));
+        warnings.push(format!(
+            "Tool call '{}' without matching tool result",
+            orphan_id
+        ));
     }
-    
+
+    // Pass 2 (reverse): tool messages without matching assistant tool_call
+    let mut known_tool_call_ids = std::collections::HashSet::new();
+    for msg in messages {
+        match msg {
+            Message::Assistant(payload) => {
+                for tc in &payload.tool_calls {
+                    if !tc.id.is_empty() {
+                        known_tool_call_ids.insert(tc.id.clone());
+                    }
+                }
+            }
+            Message::Tool { tool_call_id, .. } => {
+                if !known_tool_call_ids.contains(tool_call_id) {
+                    warnings.push(format!(
+                        "Tool message with tool_call_id '{}' has no matching assistant tool_call — this will be rejected by the API",
+                        tool_call_id
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+
     warnings
 }
 
-/// Helper function to create a summary of a message
+/// Creates a one-line debug summary of a message, including tool_call ids.
 pub fn message_summary(index: usize, msg: &Message) -> String {
     let content_preview = msg.content()
         .chars()
         .take(50)
         .collect::<String>();
-    
-    format!("{}: {}{}", index, msg.role(), 
+
+    let base = format!("{}: {}{}", index, msg.role(),
         if content_preview.len() < msg.content().len() {
             format!("{}...", content_preview)
         } else {
             content_preview
+        });
+
+    match msg {
+        Message::Assistant(p) if !p.tool_calls.is_empty() => {
+            let ids: Vec<&str> = p.tool_calls.iter().map(|tc| tc.id.as_str()).collect();
+            format!("{} [tool_call_ids: {}]", base, ids.join(", "))
+        }
+        Message::Tool { tool_call_id, .. } => {
+            format!("{} [tool_call_id: {}]", base, tool_call_id)
+        }
+        _ => base,
+    }
+}
+
+/// Sanitizes a message list to ensure all tool_call_id references are valid.
+///
+/// This is the last-resort safety net before sending messages to an OpenAI-compatible API.
+/// It performs three fixes:
+///
+/// 1. **Backfill empty assistant tool_call ids**: if an assistant message has a tool_call
+///    with empty `id`, generates a new id and writes it to **both** the assistant side
+///    and the matching tool message.
+/// 2. **Drop orphaned tool messages**: removes any `Message::Tool` whose `tool_call_id`
+///    cannot be found in any assistant message's `tool_calls[*].id`.
+/// 3. **Drop orphaned assistant tool_calls**: removes tool_calls from assistant messages
+///    that have no matching tool result (less critical but keeps the list clean).
+pub fn sanitize_tool_call_ids(messages: Vec<Message>) -> Vec<Message> {
+    use std::collections::HashSet;
+
+    if messages.is_empty() {
+        return messages;
+    }
+
+    let mut messages = messages;
+
+    // ── Step 1: Backfill empty assistant tool_call ids ──
+    // When an assistant tool_call has an empty id, generate a new one and try to
+    // sync it to the corresponding tool message.
+    for (i, msg) in messages.iter_mut().enumerate() {
+        if let Message::Assistant(ref mut payload) = msg {
+            for tc_idx in 0..payload.tool_calls.len() {
+                if payload.tool_calls[tc_idx].id.is_empty() {
+                    let new_id = format!("call_{}", uuid::Uuid::new_v4());
+                    payload.tool_calls[tc_idx].id = new_id.clone();
+                    tracing::warn!(
+                        index = i,
+                        tool_call_index = tc_idx,
+                        new_id = %new_id,
+                        "sanitize: backfilled empty tool_call id"
+                    );
+                }
+            }
+        }
+    }
+
+    // ── Step 2: Collect valid tool_call ids from all assistant messages ──
+    let valid_ids: HashSet<String> = messages
+        .iter()
+        .filter_map(|m| match m {
+            Message::Assistant(p) => Some(p.tool_calls.iter().map(|tc| tc.id.clone())),
+            _ => None,
         })
+        .flatten()
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    // ── Step 3: Drop orphaned tool messages ──
+    let original_len = messages.len();
+    messages.retain(|m| match m {
+        Message::Tool { tool_call_id, .. } => {
+            if valid_ids.contains(tool_call_id) {
+                true
+            } else {
+                tracing::warn!(
+                    tool_call_id = %tool_call_id,
+                    "sanitize: dropped orphaned tool message (no matching assistant tool_call)"
+                );
+                false
+            }
+        }
+        _ => true,
+    });
+
+    if messages.len() != original_len {
+        tracing::warn!(
+            original_len,
+            sanitized_len = messages.len(),
+            "sanitize: message list was modified"
+        );
+    }
+
+    messages
 }
 
 impl std::fmt::Display for Message {
@@ -1118,8 +1241,7 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
             Some("Reasoning process".to_string()),
         );
         let summary = message_summary(6, &msg);
-        // message_summary format: "{index}: {role}{content_preview}"
-        assert_eq!(summary, "6: assistantResponse");
+        assert_eq!(summary, "6: assistantResponse [tool_call_ids: call_123]");
     }
 
     // Additional UserContent edge cases

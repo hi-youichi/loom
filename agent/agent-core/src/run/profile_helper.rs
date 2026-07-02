@@ -18,7 +18,7 @@ pub fn load_profile_from_options(opts: &RunOptions) -> Option<(AgentProfile, Pro
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::env_test_lock;
+    use checkpoint_sqlite_store::env_test_lock;
     use loom_llm::message::UserContent;
 
     #[test]

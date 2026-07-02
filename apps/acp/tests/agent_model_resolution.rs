@@ -39,6 +39,7 @@ fn create_test_session_config(model: Option<String>, agent: &str) -> SessionConf
     SessionConfig {
         model,
         current_agent: agent.to_string(),
+        effort: None,
     }
 }
 

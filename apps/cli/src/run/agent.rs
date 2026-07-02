@@ -1029,7 +1029,8 @@ mod tests {
         TaskGraph, TaskNode, TaskNodeState, TaskStatus, TotExtension, UnderstandOutput,
     };
 use agent::run::RunCmd;
-use agent::run::agent::RunOptions;
+
+
     use loom_llm::{message::Message, ToolCall};
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};

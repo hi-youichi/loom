@@ -125,6 +125,38 @@ pub async fn compact(
     // Split: older messages to summarize, last `keep` messages to keep verbatim
     let split = messages.len().saturating_sub(keep);
     let (to_summarize, recent) = messages.split_at(split);
+
+    // Prevent orphaned tool messages: if an assistant message (with tool_calls)
+    // lands in `to_summarize` while its tool result lands in `recent`, the tool
+    // message's tool_call_id would have no matching assistant after summarization
+    // → API 400. Drop such orphaned tool messages from `recent`.
+    let recent_assistant_ids: std::collections::HashSet<&str> = recent
+        .iter()
+        .filter_map(|m| match m {
+            Message::Assistant(p) => Some(p.tool_calls.iter().map(|tc| tc.id.as_str())),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    let recent_filtered: Vec<Message> = recent
+        .iter()
+        .filter(|m| match m {
+            Message::Tool { tool_call_id, .. } => {
+                recent_assistant_ids.contains(tool_call_id.as_str())
+            }
+            _ => true,
+        })
+        .cloned()
+        .collect();
+    let dropped = recent.len() - recent_filtered.len();
+    if dropped > 0 {
+        info!(
+            dropped_orphaned_tools = dropped,
+            "compact: dropped orphaned tool messages from recent (assistant was summarized away)"
+        );
+    }
+    let recent = &recent_filtered[..];
+
     let estimated_tokens_to_summarize = estimate_tokens(to_summarize);
 
     info!(

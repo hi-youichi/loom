@@ -1,7 +1,7 @@
 use agent_client_protocol::schema::v1::{PlanEntry, PlanEntryPriority, PlanEntryStatus};
 
 use loom_acp::stream_bridge::{loom_event_to_updates, StreamUpdate};
-use agent::run::AnyStreamEvent;
+    use agent::run::TypedAnyStreamEvent;
 use stream_event::StreamEvent;
 use agent::state::ReActState;
 
@@ -39,7 +39,7 @@ fn todo_result_quoted_json() -> String {
 #[test]
 fn plan_emitted_on_todo_write_tool_end() {
     let ev = make_tool_end("todo_write", todo_result_json());
-    let updates = loom_event_to_updates(&AnyStreamEvent::React(ev));
+    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     assert_eq!(plans.len(), 1);
     assert_eq!(plans[0].len(), 3);
@@ -48,7 +48,7 @@ fn plan_emitted_on_todo_write_tool_end() {
 #[test]
 fn plan_all_entries_pending_on_create() {
     let ev = make_tool_end("todo_write", todo_result_json());
-    let updates = loom_event_to_updates(&AnyStreamEvent::React(ev));
+    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     let entries = plans[0];
     assert!(entries.iter().all(|e| e.status == PlanEntryStatus::Pending));
@@ -57,7 +57,7 @@ fn plan_all_entries_pending_on_create() {
 #[test]
 fn plan_entries_have_correct_content() {
     let ev = make_tool_end("todo_write", todo_result_json());
-    let updates = loom_event_to_updates(&AnyStreamEvent::React(ev));
+    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     let entries = plans[0];
     assert_eq!(entries[0].content, "Analyze the codebase");
@@ -68,7 +68,7 @@ fn plan_entries_have_correct_content() {
 #[test]
 fn plan_entries_have_correct_priority() {
     let ev = make_tool_end("todo_write", todo_result_json());
-    let updates = loom_event_to_updates(&AnyStreamEvent::React(ev));
+    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     let entries = plans[0];
     assert_eq!(entries[0].priority, PlanEntryPriority::High);
@@ -85,7 +85,7 @@ fn plan_status_updates_on_todo_change() {
   { "id": "3", "content": "Add tests", "status": "pending", "priority": "medium" }
 ]"#;
     let ev = make_tool_end("todo_write", updated);
-    let updates = loom_event_to_updates(&AnyStreamEvent::React(ev));
+    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     let entries = plans[0];
     assert_eq!(entries[0].status, PlanEntryStatus::Completed);
@@ -101,7 +101,7 @@ fn plan_completed_and_cancelled_map_to_completed() {
   { "id": "2", "content": "Task B", "status": "cancelled", "priority": "low" }
 ]"#;
     let ev = make_tool_end("todo_write", result);
-    let updates = loom_event_to_updates(&AnyStreamEvent::React(ev));
+    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     let entries = plans[0];
     assert_eq!(entries[0].status, PlanEntryStatus::Completed);
@@ -118,7 +118,7 @@ fn plan_full_replacement() {
   { "id": "4", "content": "D", "status": "pending", "priority": "low" }
 ]"#;
     let ev = make_tool_end("todo_write", updated);
-    let updates = loom_event_to_updates(&AnyStreamEvent::React(ev));
+    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     assert_eq!(plans[0].len(), 4);
 }
@@ -126,7 +126,7 @@ fn plan_full_replacement() {
 #[test]
 fn plan_not_emitted_for_other_tools() {
     let ev = make_tool_end("read_file", "file contents here");
-    let updates = loom_event_to_updates(&AnyStreamEvent::React(ev));
+    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     assert!(plans.is_empty());
 }
@@ -134,7 +134,7 @@ fn plan_not_emitted_for_other_tools() {
 #[test]
 fn plan_emitted_alongside_tool_update() {
     let ev = make_tool_end("todo_write", todo_result_json());
-    let updates = loom_event_to_updates(&AnyStreamEvent::React(ev));
+    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let has_tool_update = updates.iter().any(|u| matches!(u, StreamUpdate::ToolCallUpdated { .. }));
     let has_plan = updates.iter().any(|u| matches!(u, StreamUpdate::Plan { .. }));
     assert!(has_tool_update, "should still emit ToolCallUpdated");
@@ -150,7 +150,7 @@ fn plan_not_emitted_on_error() {
         is_error: true,
         raw_result: None,
     };
-    let updates = loom_event_to_updates(&AnyStreamEvent::React(ev));
+    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     assert!(plans.is_empty());
 }
@@ -158,7 +158,7 @@ fn plan_not_emitted_on_error() {
 #[test]
 fn plan_not_emitted_on_malformed_result() {
     let ev = make_tool_end("todo_write", "not valid json");
-    let updates = loom_event_to_updates(&AnyStreamEvent::React(ev));
+    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     assert!(plans.is_empty());
 }
@@ -166,7 +166,7 @@ fn plan_not_emitted_on_malformed_result() {
 #[test]
 fn plan_not_emitted_on_empty_todos() {
     let ev = make_tool_end("todo_write", "0 todos\n[]");
-    let updates = loom_event_to_updates(&AnyStreamEvent::React(ev));
+    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     assert!(plans.is_empty());
 }
@@ -175,7 +175,7 @@ fn plan_not_emitted_on_empty_todos() {
 fn plan_works_with_quoted_json_result() {
     let quoted = todo_result_quoted_json();
     let ev = make_tool_end("todo_write", &quoted);
-    let updates = loom_event_to_updates(&AnyStreamEvent::React(ev));
+    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     assert_eq!(plans.len(), 1);
     assert_eq!(plans[0].len(), 3);
@@ -195,17 +195,17 @@ fn make_sub_agent_tool_end(result: &str) -> StreamEvent<ReActState> {
 #[test]
 fn sub_agent_any_stream_event_produces_plan_update() {
     let ev = make_sub_agent_tool_end(todo_result_json());
-    let wrapped = AnyStreamEvent::React(ev);
+    let wrapped = TypedAnyStreamEvent::React(ev);
     let updates = loom_event_to_updates(&wrapped);
     let plans = find_plan_updates(&updates);
-    assert_eq!(plans.len(), 1, "AnyStreamEvent::React wrapping sub-agent ToolEnd should produce exactly one plan");
+    assert_eq!(plans.len(), 1, "TypedAnyStreamEvent::React wrapping sub-agent ToolEnd should produce exactly one plan");
     assert_eq!(plans[0].len(), 3);
 }
 
 #[test]
 fn sub_agent_plan_entries_have_correct_priority_and_status() {
     let ev = make_sub_agent_tool_end(todo_result_json());
-    let updates = loom_event_to_updates(&AnyStreamEvent::React(ev));
+    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     let entries = &plans[0];
     assert_eq!(entries[0].priority, PlanEntryPriority::High);
@@ -219,7 +219,7 @@ fn sub_agent_plan_entries_have_correct_priority_and_status() {
 #[test]
 fn sub_agent_plan_deduplicates_with_parent_plan() {
     let sub_ev = make_sub_agent_tool_end(todo_result_json());
-    let sub_updates = loom_event_to_updates(&AnyStreamEvent::React(sub_ev));
+    let sub_updates = loom_event_to_updates(&TypedAnyStreamEvent::React(sub_ev));
     assert_eq!(find_plan_updates(&sub_updates).len(), 1);
 
     let parent_result = r#"1 todos
@@ -227,13 +227,13 @@ fn sub_agent_plan_deduplicates_with_parent_plan() {
   { "id": "1", "content": "Parent task", "status": "pending", "priority": "high" }
 ]"#;
     let parent_ev = make_tool_end("todo_write", parent_result);
-    let parent_updates = loom_event_to_updates(&AnyStreamEvent::React(parent_ev));
+    let parent_updates = loom_event_to_updates(&TypedAnyStreamEvent::React(parent_ev));
     assert_eq!(find_plan_updates(&parent_updates).len(), 1);
     assert_eq!(find_plan_updates(&parent_updates)[0][0].content, "Parent task");
 }
 
 mod session_notifier_tests {
-    use agent::run::AnyStreamEvent;
+use agent::run::TypedAnyStreamEvent;
     use stream_event::StreamEvent;
     use agent::state::ReActState;
     use loom_acp::stream_bridge::SessionNotifier;
@@ -254,7 +254,7 @@ mod session_notifier_tests {
         }
     }
 
-    fn send_and_collect(event: &AnyStreamEvent) -> Vec<Value> {
+    fn send_and_collect(event: &TypedAnyStreamEvent) -> Vec<Value> {
         let (tx, mut rx) = tokio::sync::mpsc::channel(64);
         let notifier = SessionNotifier::new(tx, "test-session".into());
         notifier.try_send_event(event);
@@ -269,19 +269,19 @@ mod session_notifier_tests {
 
     #[test]
     fn sub_agent_tool_end_produces_plan_notification() {
-        let ev = AnyStreamEvent::React(sub_agent_todo_end());
+        let ev = TypedAnyStreamEvent::React(sub_agent_todo_end());
         let notifs = send_and_collect(&ev);
         let has_plan = notifs.iter().any(|n| {
             n.pointer("/update/sessionUpdate")
                 .and_then(|v| v.as_str())
                 == Some("plan")
         });
-        assert!(has_plan, "sub-agent ToolEnd via AnyStreamEvent::React should produce plan notification");
+        assert!(has_plan, "sub-agent ToolEnd via TypedAnyStreamEvent::React should produce plan notification");
     }
 
     #[test]
     fn sub_agent_plan_notification_has_correct_entries() {
-        let ev = AnyStreamEvent::React(sub_agent_todo_end());
+        let ev = TypedAnyStreamEvent::React(sub_agent_todo_end());
         let notifs = send_and_collect(&ev);
         let plan_notif = notifs.iter().find(|n| {
             n.pointer("/update/sessionUpdate")
@@ -300,8 +300,8 @@ mod session_notifier_tests {
 
     #[test]
     fn sub_agent_and_parent_plans_both_produce_notifications() {
-        let sub_ev = AnyStreamEvent::React(sub_agent_todo_end());
-        let parent_ev = AnyStreamEvent::React(StreamEvent::ToolEnd {
+        let sub_ev = TypedAnyStreamEvent::React(sub_agent_todo_end());
+        let parent_ev = TypedAnyStreamEvent::React(StreamEvent::ToolEnd {
             call_id: Some("parent-call-001".to_string()),
             name: "todo_write".to_string(),
             result: r#"1 todos

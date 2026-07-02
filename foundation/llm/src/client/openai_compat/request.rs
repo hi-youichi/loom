@@ -3,7 +3,7 @@
 
 use std::borrow::Cow;
 
-use crate::message::{assistant_content_for_chat_api, ContentPart, Message, UserContent};
+use crate::message::{assistant_content_for_chat_api, AssistantToolCall, ContentPart, Message, UserContent};
 use crate::tool::ToolSpec;
 use crate::traits::ToolChoiceMode;
 
@@ -224,6 +224,17 @@ pub(super) fn messages_to_request(
                     .tool_calls
                     .iter()
                     .filter(|tc| !tc.name.is_empty())
+                    .map(|tc| {
+                        if tc.id.is_empty() {
+                            AssistantToolCall {
+                                id: format!("call_{}", uuid::Uuid::new_v4()),
+                                name: tc.name.clone(),
+                                arguments: tc.arguments.clone(),
+                            }
+                        } else {
+                            tc.clone()
+                        }
+                    })
                     .collect();
                 let tool_calls = if valid_tool_calls.is_empty() {
                     None
@@ -288,21 +299,31 @@ pub(super) fn build_request(
     reasoning_effort: Option<&str>,
     stream: bool,
 ) -> ChatCompletionRequest {
-    use crate::message::{check_orphan_tool_calls, message_summary};
+    use crate::message::{check_orphan_tool_calls, message_summary, sanitize_tool_call_ids};
+
+    let sanitized = sanitize_tool_call_ids(messages.to_vec());
+    if sanitized.len() != messages.len() {
+        tracing::warn!(
+            before = messages.len(),
+            after = sanitized.len(),
+            "compat:build_request messages were sanitized"
+        );
+    }
+
     tracing::debug!(
         model = %model,
         stream,
-        message_count = messages.len(),
+        message_count = sanitized.len(),
         "compat:build_request"
     );
-    for (i, msg) in messages.iter().enumerate() {
+    for (i, msg) in sanitized.iter().enumerate() {
         tracing::debug!("  {}", message_summary(i, msg));
     }
-    for w in check_orphan_tool_calls(messages) {
+    for w in check_orphan_tool_calls(&sanitized) {
         tracing::warn!("compat:build_request {}", w);
     }
 
-    let msgs = messages_to_request(messages, model);
+    let msgs = messages_to_request(&sanitized, model);
     let stream_options = if stream {
         Some(StreamOptionsRequest {
             include_usage: true,

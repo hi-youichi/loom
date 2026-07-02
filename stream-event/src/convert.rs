@@ -357,7 +357,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use stream_event::{CheckpointEvent, MessageChunk};
+    use crate::{CheckpointEvent, MessageChunk};
 
     #[derive(Clone, Debug, serde::Serialize)]
     struct DummyState(i32);
