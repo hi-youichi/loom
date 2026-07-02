@@ -25,18 +25,6 @@ pub(crate) fn truncate_for_log(s: &str, max_len: usize) -> String {
     }
 }
 
-pub(crate) fn truncate_for_display(s: &str, max_chars: usize) -> String {
-    if max_chars == 0 {
-        return String::new();
-    }
-    if s.chars().count() <= max_chars {
-        s.to_string()
-    } else {
-        let truncated: String = s.chars().take(max_chars).collect();
-        format!("{}...", truncated)
-    }
-}
-
 /// Parses ToolCall.arguments string to JSON Value.
 ///
 /// Returns `Err(ToolError::InvalidJsonArguments)` for malformed input so the

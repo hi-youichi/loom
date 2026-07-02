@@ -15,7 +15,7 @@ use loom_graph_core::{run_cancellable, RunContext};
 use loom_graph_core::GraphError;
 use loom_llm::ToolCall;
 use checkpoint::uuid6;
-use loom_stream::{StreamEvent, StreamMode, ToolStreamWriter};
+use loom_stream::{StreamEvent, StreamMode};
 use loom_stream::state::{ReActState, ToolResult};
 use crate::tool_output_normalizer::{
     normalize_tool_output, NormalizationConfig, ToolOutputHint,
@@ -23,7 +23,7 @@ use crate::tool_output_normalizer::{
 use tool_core::{ToolCallContent, ToolCallContext, ToolRegistryLocked, ToolSourceError};
 
 use super::act_utils::{
-    parse_tool_arguments, step_progress_payload, truncate_for_display, truncate_for_log,
+    parse_tool_arguments, step_progress_payload, truncate_for_log,
     DEFAULT_EXECUTION_ERROR_TEMPLATE,
 };
 
@@ -40,14 +40,12 @@ pub(crate) struct ToolCallExecutor {
 
     // ── derived from RunContext (was ActExecCtx) ──
     messages: Vec<loom_llm::Message>,
-    base_writer: ToolStreamWriter,
     thread_id: Option<String>,
     user_id: Option<String>,
     depth: u32,
     run_cancellation: Option<RunCancellation>,
     acp_session_id: Option<String>,
     tools_mode: bool,
-    display_limit: usize,
     stream_tx: Option<mpsc::Sender<StreamEvent<ReActState>>>,
     cancellation: Option<tokio_util::sync::CancellationToken>,
 
@@ -79,19 +77,6 @@ impl ToolCallExecutor {
         let tools_mode = run_ctx.stream_mode.contains(&StreamMode::Tools)
             || run_ctx.stream_mode.contains(&StreamMode::Debug);
 
-        let base_writer = if run_ctx.stream_mode.contains(&StreamMode::Custom) || tools_mode {
-            if let Some(tx) = &run_ctx.stream_tx {
-                let tx = tx.clone();
-                ToolStreamWriter::new(move |value| {
-                    tx.try_send(StreamEvent::Custom(value)).is_ok()
-                })
-            } else {
-                ToolStreamWriter::noop()
-            }
-        } else {
-            ToolStreamWriter::noop()
-        };
-
         let hints = {
             let specs = tools.list_tools().await;
             specs
@@ -103,14 +88,12 @@ impl ToolCallExecutor {
         Self {
             tools,
             messages,
-            base_writer,
             thread_id: run_ctx.config.thread_id.clone(),
             user_id: run_ctx.config.user_id.clone(),
             depth: run_ctx.config.depth.unwrap_or(0),
             run_cancellation,
             acp_session_id: run_ctx.config.acp_session_id.clone(),
             tools_mode,
-            display_limit: NormalizationConfig::default().display_limit,
             stream_tx: run_ctx.stream_tx.clone(),
             cancellation: run_ctx.cancellation.clone(),
             hints,
@@ -217,8 +200,7 @@ impl ToolCallExecutor {
         tc: &ToolCall,
         args: &serde_json::Value,
     ) -> Result<Result<ToolCallContent, ToolSourceError>, GraphError> {
-        let writer = self.build_writer(tc);
-        let tool_ctx = self.build_tool_ctx(&writer);
+        let tool_ctx = self.build_tool_ctx();
         self.emit_start(tc);
 
         debug!(tool = %tc.name, args = ?args, "Calling tool");
@@ -246,7 +228,7 @@ impl ToolCallExecutor {
         Ok(result)
     }
 
-    fn build_tool_ctx(&self, writer: &ToolStreamWriter) -> ToolCallContext {
+    fn build_tool_ctx(&self) -> ToolCallContext {
         let any_stream_event_sender = self
             .any_stream_event_sender
             .as_ref()
@@ -254,7 +236,6 @@ impl ToolCallExecutor {
 
         ToolCallContext {
             recent_messages: self.messages.clone(),
-            stream_writer: Some(writer.clone()),
             thread_id: self.thread_id.clone(),
             user_id: self.user_id.clone(),
             depth: self.depth,
@@ -342,34 +323,6 @@ impl ToolCallExecutor {
             if let Some(tx) = &self.stream_tx {
                 let _ = tx.try_send(StreamEvent::Custom(payload));
             }
-        }
-    }
-
-    fn build_writer(&self, tc: &ToolCall) -> ToolStreamWriter {
-        if self.tools_mode {
-            if let Some(tx) = &self.stream_tx {
-                let out_tx = tx.clone();
-                let out_call_id = tc.id.clone();
-                let out_name = tc.name.clone();
-                let display_limit = self.display_limit;
-                let emit_custom = self.base_writer.emit_fn_clone();
-                ToolStreamWriter::new_with_output(
-                    move |value| emit_custom(value),
-                    move |content| {
-                        out_tx
-                            .try_send(StreamEvent::ToolOutput {
-                                call_id: out_call_id.clone(),
-                                name: out_name.clone(),
-                                content: truncate_for_display(&content, display_limit),
-                            })
-                            .is_ok()
-                    },
-                )
-            } else {
-                self.base_writer.clone()
-            }
-        } else {
-            self.base_writer.clone()
         }
     }
 

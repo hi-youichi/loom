@@ -3,9 +3,6 @@
 //! Core types are defined in the `stream-event` crate.
 //! This module re-exports them and adds Loom-specific utilities.
 
-pub mod any_event;
-pub mod erased_event;
-pub mod openai_sse;
 pub mod state;
 pub mod writers;
 
@@ -15,21 +12,21 @@ pub use stream_event::{
     StreamMetadata, StreamMode, StreamWriter,
 };
 
-// Loom-specific types
+// Loom-specific types (to be removed in Phase 5)
+pub mod any_event;
+pub mod erased_event;
 pub use any_event::TypedAnyStreamEvent;
-pub use writers::tool_stream_writer::ToolStreamWriter;
+pub use erased_event::{AnyStreamEvent, StubDupState, StubGotState, StubTotState};
 
 // Re-export state types for convenience
 pub use state::{
     ModelConfig, ReActState, ReActCheckpointMeta, ToolResult, ToolStorageRef,
     NormalizedToolOutput,
 };
-pub use erased_event::{AnyStreamEvent, StubDupState, StubGotState, StubTotState};
 
 #[cfg(test)]
 mod tests {
     pub mod integration_tests;
     pub mod stream_event_tests;
     pub mod stream_mode_tests;
-    pub mod writer_tests;
 }
